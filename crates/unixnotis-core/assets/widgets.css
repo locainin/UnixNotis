@@ -1,0 +1,407 @@
+/* UnixNotis widgets + media theme
+ *
+ * Quick controls, toggles, stats, info cards, and media carousel.
+ */
+.unixnotis-quick-controls {
+  margin-bottom: 6px;
+}
+
+.unixnotis-quick-slider {
+  background-image: linear-gradient(160deg, alpha(@unixnotis-surface-soft, 0.92), alpha(@unixnotis-surface, 0.97));
+  border-radius: 18px;
+  padding: 8px 12px;
+  border: 1px solid alpha(@unixnotis-accent, 0.26);
+  box-shadow:
+    0 12px 24px -20px @unixnotis-shadow-soft,
+    0 0 18px -14px alpha(@unixnotis-accent, 0.4),
+    inset 0 0 0 1px alpha(#ffffff, 0.06);
+}
+
+.unixnotis-quick-slider:hover {
+  border-color: alpha(@unixnotis-accent, 0.45);
+  box-shadow:
+    0 16px 26px -20px @unixnotis-shadow-soft,
+    0 0 22px -14px alpha(@unixnotis-accent, 0.5),
+    inset 0 0 0 1px alpha(#ffffff, 0.08);
+}
+
+.unixnotis-quick-slider-volume {
+  border-color: alpha(@unixnotis-accent, 0.35);
+}
+
+.unixnotis-quick-slider-brightness {
+  border-color: alpha(@unixnotis-accent-2, 0.35);
+}
+
+.unixnotis-quick-slider-icon {
+  background-image: linear-gradient(150deg, alpha(@unixnotis-surface, 0.9), alpha(@unixnotis-surface-soft, 0.65));
+  border-radius: 999px;
+  border: 1px solid alpha(@unixnotis-accent, 0.3);
+  padding: 4px 6px;
+  box-shadow:
+    0 6px 12px -10px @unixnotis-shadow-soft,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
+}
+
+.unixnotis-quick-slider-icon:hover {
+  background-image: linear-gradient(150deg, alpha(@unixnotis-accent, 0.2), alpha(@unixnotis-accent-2, 0.18));
+  border-color: alpha(@unixnotis-accent, 0.5);
+}
+
+.unixnotis-quick-slider-value {
+  color: @unixnotis-muted;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.unixnotis-quick-slider-scale trough {
+  background-image: linear-gradient(90deg, alpha(#000000, 0.3), alpha(#000000, 0.15));
+  border-radius: 999px;
+  min-height: 6px;
+  border: 1px solid alpha(#ffffff, 0.05);
+}
+
+.unixnotis-quick-slider-scale highlight {
+  background-image: linear-gradient(90deg, alpha(@unixnotis-accent, 0.7), alpha(@unixnotis-accent-2, 0.5));
+  border-radius: 999px;
+}
+
+.unixnotis-quick-slider-scale slider {
+  background-image: linear-gradient(140deg, alpha(@unixnotis-accent-2, 0.9), alpha(@unixnotis-accent, 0.6));
+  border-radius: 999px;
+  min-width: 16px;
+  min-height: 16px;
+  border: 1px solid alpha(@unixnotis-accent, 0.6);
+  margin: 0;
+  padding: 0;
+  box-shadow:
+    0 6px 12px -10px @unixnotis-shadow-soft,
+    0 0 8px -6px alpha(@unixnotis-accent-2, 0.8);
+}
+
+/*
+ * Toggle grid
+ */
+.unixnotis-toggle-section {
+  margin-bottom: 4px;
+}
+
+.unixnotis-toggle-grid {
+  padding: 2px 0;
+}
+
+.unixnotis-toggle {
+  background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.94), alpha(@unixnotis-surface, 0.98));
+  border-radius: 18px;
+  padding: 12px 14px;
+  border: 1px solid alpha(@unixnotis-outline, 0.7);
+  min-height: 54px;
+  min-width: 100px;
+  box-shadow:
+    0 16px 28px -22px alpha(#000000, 0.35),
+    0 0 0 1px alpha(@unixnotis-accent, 0.08),
+    inset 0 1px 0 alpha(#ffffff, 0.06);
+}
+
+.unixnotis-toggle:hover {
+  border-color: alpha(@unixnotis-accent, 0.5);
+  box-shadow:
+    0 18px 30px -22px alpha(#000000, 0.4),
+    inset 0 0 0 1px alpha(#ffffff, 0.08);
+}
+
+.unixnotis-toggle:checked {
+  background-image: linear-gradient(150deg, alpha(@unixnotis-accent, 0.42), alpha(@unixnotis-accent-2, 0.36));
+  border-color: alpha(@unixnotis-accent, 0.7);
+  box-shadow:
+    0 18px 30px -22px alpha(@unixnotis-accent, 0.45),
+    0 0 0 1px alpha(@unixnotis-accent, 0.35),
+    inset 0 1px 0 alpha(#ffffff, 0.12);
+}
+
+.unixnotis-toggle-icon {
+  font-size: 16px;
+}
+
+.unixnotis-toggle-label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.unixnotis-stat-header,
+.unixnotis-info-header {
+  margin-bottom: 6px;
+}
+
+.unixnotis-stat-icon,
+.unixnotis-info-icon {
+  background-image: linear-gradient(150deg, alpha(@unixnotis-surface, 0.9), alpha(@unixnotis-surface-soft, 0.7));
+  border-radius: 10px;
+  padding: 4px;
+  border: 1px solid alpha(@unixnotis-outline, 0.5);
+  box-shadow:
+    0 8px 16px -14px alpha(#000000, 0.45),
+    inset 0 0 0 1px alpha(#ffffff, 0.06);
+  color: @unixnotis-accent;
+}
+
+.unixnotis-info-icon {
+  border-radius: 12px;
+  padding: 6px;
+  color: @unixnotis-accent-2;
+}
+
+/*
+ * Stat grid
+ */
+.unixnotis-stat-section {
+  margin-bottom: 4px;
+}
+
+.unixnotis-stat-grid {
+  padding: 2px 0;
+}
+
+.unixnotis-stat-card {
+  background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.95), alpha(@unixnotis-surface, 0.98));
+  border-radius: 18px;
+  padding: 12px 14px;
+  border: 1px solid alpha(@unixnotis-outline, 0.7);
+  border-left: 3px solid alpha(@unixnotis-accent, 0.4);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  box-shadow:
+    0 18px 30px -22px alpha(#000000, 0.35),
+    0 0 0 1px alpha(@unixnotis-accent, 0.1),
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
+}
+
+.unixnotis-stat-card:hover {
+  border-color: alpha(@unixnotis-accent, 0.45);
+  box-shadow:
+    0 20px 32px -24px alpha(#000000, 0.4),
+    inset 0 0 0 1px alpha(#ffffff, 0.06);
+}
+
+.unixnotis-stat-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: @unixnotis-muted;
+}
+
+.unixnotis-stat-value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/*
+ * Info cards
+ */
+.unixnotis-card-section {
+  margin-bottom: 4px;
+}
+
+.unixnotis-card-grid {
+  padding: 2px 0;
+}
+
+.unixnotis-info-card {
+  background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.92), alpha(@unixnotis-surface, 0.98));
+  border-radius: 22px;
+  padding: 14px 16px;
+  border: 1px solid alpha(@unixnotis-outline, 0.7);
+  border-left: 3px solid alpha(@unixnotis-accent-2, 0.4);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  box-shadow:
+    0 20px 32px -24px alpha(#000000, 0.4),
+    0 0 0 1px alpha(@unixnotis-accent-2, 0.1),
+    inset 0 0 0 1px alpha(#ffffff, 0.06);
+}
+
+.unixnotis-info-card:hover {
+  border-color: alpha(@unixnotis-accent-2, 0.45);
+  box-shadow:
+    0 22px 36px -24px alpha(#000000, 0.4),
+    inset 0 0 0 1px alpha(#ffffff, 0.07);
+}
+
+.unixnotis-info-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.unixnotis-info-body {
+  font-size: 12px;
+  color: @unixnotis-muted;
+}
+
+.unixnotis-info-card-mono .unixnotis-info-body {
+  font-family: "CaskaydiaCove Nerd Font Mono", "JetBrains Mono", monospace;
+}
+
+.unixnotis-calendar {
+  background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.85), alpha(@unixnotis-surface, 0.95));
+  border-radius: 18px;
+  padding: 8px;
+  border: 1px solid alpha(@unixnotis-outline, 0.45);
+  box-shadow:
+    0 14px 24px -20px alpha(#000000, 0.45),
+    inset 0 0 0 1px alpha(#ffffff, 0.06);
+}
+
+.unixnotis-info-card-weather {
+  background-image:
+    radial-gradient(circle at 20% 20%, alpha(@unixnotis-accent-2, 0.18), transparent 60%),
+    linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.92), alpha(@unixnotis-surface, 0.98));
+  border-color: alpha(@unixnotis-accent-2, 0.45);
+  box-shadow:
+    0 22px 36px -24px alpha(#000000, 0.5),
+    0 0 0 1px alpha(@unixnotis-accent-2, 0.12),
+    inset 0 0 0 1px alpha(#ffffff, 0.07);
+}
+
+.unixnotis-info-card-weather .unixnotis-info-title {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: @unixnotis-muted;
+}
+
+.unixnotis-info-card-weather .unixnotis-info-body {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.unixnotis-info-icon-weather {
+  background-image: linear-gradient(150deg, alpha(@unixnotis-accent-2, 0.35), alpha(@unixnotis-accent, 0.2));
+  border-color: alpha(@unixnotis-accent-2, 0.6);
+  color: @unixnotis-accent-2;
+  box-shadow:
+    0 12px 18px -14px alpha(@unixnotis-accent-2, 0.6),
+    inset 0 0 0 1px alpha(#ffffff, 0.1);
+}
+
+/*
+ * Media carousel
+ *
+ * Displays active MPRIS players with navigation buttons.
+ */
+.unixnotis-media-container {
+  margin-bottom: 10px;
+}
+
+.unixnotis-media-stack {
+  background: transparent;
+}
+
+.unixnotis-media-row {
+  background: transparent;
+}
+
+.unixnotis-media-nav {
+  background-image: linear-gradient(150deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.9));
+  border-radius: 12px;
+  padding: 4px;
+  border: 1px solid alpha(@unixnotis-accent, 0.2);
+  font-weight: 700;
+  font-size: 12px;
+  min-width: 22px;
+  color: @unixnotis-text;
+  box-shadow: 0 6px 12px -10px @unixnotis-shadow-soft;
+}
+
+.unixnotis-media-nav:hover {
+  background-image: linear-gradient(150deg, @unixnotis-action-bg-hover, alpha(@unixnotis-accent-2, 0.16));
+  border-color: alpha(@unixnotis-accent, 0.5);
+}
+
+.unixnotis-media-position {
+  color: @unixnotis-muted;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.unixnotis-media-card {
+  background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, alpha(#0f1828, 0.94));
+  border-radius: 18px;
+  border: 1px solid @unixnotis-card-border;
+  padding: 8px 10px;
+  min-height: 68px;
+  box-shadow:
+    0 14px 26px -20px @unixnotis-shadow-strong,
+    inset 0 0 0 1px alpha(#ffffff, 0.04);
+}
+
+.unixnotis-media-card.playing {
+  border-left: 3px solid @unixnotis-accent;
+}
+
+.unixnotis-media-art {
+  min-width: 50px;
+  min-height: 50px;
+  border-radius: 12px;
+  background: alpha(#000000, 0.12);
+}
+
+.unixnotis-media-art-frame {
+  min-width: 54px;
+  min-height: 54px;
+  border-radius: 14px;
+  background: alpha(#000000, 0.12);
+  border: 1px solid alpha(@unixnotis-outline, 0.35);
+  box-shadow: inset 0 0 0 1px alpha(#ffffff, 0.04);
+}
+
+.unixnotis-media-art.empty {
+  background: alpha(#000000, 0.18);
+}
+
+.unixnotis-media-source {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: @unixnotis-muted;
+}
+
+.unixnotis-media-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.unixnotis-marquee {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+.unixnotis-media-artist {
+  color: @unixnotis-muted;
+  font-size: 12px;
+}
+
+.unixnotis-media-artist.empty {
+  color: transparent;
+}
+
+.unixnotis-media-controls {
+  background: transparent;
+}
+
+.unixnotis-media-button {
+  background-image: linear-gradient(160deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.95));
+  border-radius: 10px;
+  border: 1px solid alpha(@unixnotis-accent, 0.2);
+  padding: 4px 6px;
+  box-shadow: 0 6px 14px -12px @unixnotis-shadow-soft;
+}
+
+.unixnotis-media-button:hover {
+  background-image: linear-gradient(160deg, @unixnotis-action-bg-hover, alpha(@unixnotis-accent-2, 0.2));
+  border-color: alpha(@unixnotis-accent, 0.5);
+}
+
+.unixnotis-media-button.primary {
+  background-image: linear-gradient(160deg, @unixnotis-action-bg-active, alpha(@unixnotis-accent-2, 0.28));
+  border-color: alpha(@unixnotis-accent, 0.75);
+}

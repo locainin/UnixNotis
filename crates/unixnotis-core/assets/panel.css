@@ -1,0 +1,264 @@
+/* UnixNotis panel theme
+ *
+ * Panel shell, list, and notification group styling.
+ */
+.unixnotis-panel {
+  background-image: linear-gradient(160deg, @unixnotis-panel-grad-1 0%, @unixnotis-panel-grad-2 55%, @unixnotis-panel-grad-3 100%);
+  color: @unixnotis-text;
+  border-radius: 28px;
+  padding: 18px;
+  border: 1px solid @unixnotis-outline;
+  box-shadow:
+    0 28px 70px -38px alpha(@unixnotis-accent, 0.35),
+    0 12px 28px -20px @unixnotis-shadow-soft,
+    inset 0 0 0 1px alpha(#ffffff, 0.04);
+}
+
+.unixnotis-panel-header {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background-image: linear-gradient(160deg, alpha(@unixnotis-surface-soft, 0.7), alpha(@unixnotis-surface, 0.9));
+  border: 1px solid alpha(@unixnotis-accent, 0.16);
+  box-shadow:
+    0 10px 24px -18px @unixnotis-shadow-soft,
+    inset 0 0 0 1px alpha(#ffffff, 0.03);
+}
+
+.unixnotis-panel-title {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.3px;
+}
+
+.unixnotis-panel-count {
+  background-image: linear-gradient(160deg, alpha(@unixnotis-accent, 0.22), alpha(@unixnotis-accent-2, 0.18));
+  color: @unixnotis-text;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid alpha(@unixnotis-accent, 0.35);
+  min-width: 26px;
+}
+
+.unixnotis-panel-action {
+  background-image: linear-gradient(160deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.9));
+  color: @unixnotis-text;
+  border-radius: 999px;
+  padding: 6px 10px;
+  border: 1px solid alpha(@unixnotis-accent, 0.18);
+  box-shadow:
+    0 8px 16px -12px @unixnotis-shadow-soft,
+    inset 0 0 0 1px alpha(#ffffff, 0.04);
+  font-size: 11px;
+}
+
+.unixnotis-panel-action:hover {
+  background-image: linear-gradient(160deg, @unixnotis-action-bg-hover, alpha(@unixnotis-accent-2, 0.16));
+  border-color: alpha(@unixnotis-accent, 0.5);
+}
+
+.unixnotis-panel-action:checked {
+  background-image: linear-gradient(140deg, @unixnotis-action-bg-active, alpha(@unixnotis-accent-2, 0.3));
+  border-color: alpha(@unixnotis-accent, 0.75);
+}
+
+.unixnotis-panel-close,
+.unixnotis-popup-close {
+  background: alpha(#0b111d, 0.5);
+  border-radius: 999px;
+  border: 1px solid alpha(@unixnotis-accent, 0.18);
+  padding: 2px;
+}
+
+.unixnotis-panel-close:hover,
+.unixnotis-popup-close:hover {
+  background: alpha(@unixnotis-urgent, 0.2);
+  border-color: alpha(@unixnotis-urgent, 0.6);
+}
+
+.unixnotis-panel-list {
+  background: transparent;
+}
+
+.unixnotis-panel-list row {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+/*
+ * Group headers (app pills)
+ */
+.unixnotis-group {
+  background: transparent;
+  margin-bottom: 8px;
+}
+
+.unixnotis-group-header {
+  background-image: linear-gradient(160deg, @unixnotis-pill-bg, alpha(@unixnotis-surface-soft, 0.86));
+  color: @unixnotis-text;
+  border-radius: 999px;
+  padding: 7px 14px;
+  border: 1px solid @unixnotis-pill-border;
+  box-shadow: 0 10px 18px -16px @unixnotis-shadow-soft;
+  outline: none;
+}
+
+.unixnotis-group-header:hover {
+  background-image: linear-gradient(160deg, @unixnotis-pill-hover, alpha(@unixnotis-accent-2, 0.18));
+}
+
+.unixnotis-group-header:focus,
+.unixnotis-group-header:active {
+  outline: none;
+  box-shadow:
+    0 10px 18px -16px @unixnotis-shadow-soft,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
+}
+
+.unixnotis-panel-list row:selected,
+.unixnotis-panel-list row:focus,
+.unixnotis-panel-list row:active {
+  background: transparent;
+  outline: none;
+  box-shadow: none;
+}
+
+.unixnotis-group-title {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+
+.unixnotis-group-count {
+  background-image: linear-gradient(160deg, alpha(@unixnotis-accent, 0.22), alpha(@unixnotis-accent-2, 0.2));
+  color: @unixnotis-text;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid alpha(@unixnotis-accent, 0.35);
+  min-width: 22px;
+}
+
+.unixnotis-group-chevron {
+  color: @unixnotis-muted;
+}
+
+.unixnotis-group-cards {
+  margin-top: 6px;
+}
+
+.unixnotis-group.collapsed .unixnotis-group-cards {
+  margin-left: 6px;
+  margin-right: 6px;
+  padding-bottom: 4px;
+}
+
+.unixnotis-group.collapsed .unixnotis-panel-card {
+  margin-bottom: 6px;
+}
+
+/*
+ * Notification cards (panel)
+ */
+.unixnotis-panel-card {
+  background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
+  border: 1px solid @unixnotis-card-border;
+  border-radius: 18px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  box-shadow:
+    0 12px 26px -20px @unixnotis-shadow-strong,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
+}
+
+.unixnotis-panel-card.stacked {
+  box-shadow:
+    0 8px 0 -4px alpha(@unixnotis-accent, 0.18),
+    0 16px 0 -8px alpha(@unixnotis-accent, 0.14),
+    0 0 0 1px alpha(@unixnotis-accent, 0.16),
+    0 24px 32px -22px @unixnotis-shadow-soft;
+}
+
+.unixnotis-stack-ghost {
+  background-image: linear-gradient(165deg, alpha(@unixnotis-notification-bg-1, 0.88), alpha(@unixnotis-notification-bg-2, 0.82));
+  border-radius: 18px;
+  padding: 0;
+  min-height: 30px;
+  opacity: 0.7;
+  margin-left: 14px;
+  margin-right: 14px;
+  margin-top: -20px;
+  border: 1px solid alpha(@unixnotis-card-border, 0.75);
+  box-shadow:
+    0 12px 22px -18px @unixnotis-shadow-soft,
+    0 0 0 1px alpha(@unixnotis-accent, 0.12),
+    inset 0 0 0 1px alpha(#ffffff, 0.07);
+}
+
+.unixnotis-stack-ghost-2 {
+  min-height: 26px;
+  opacity: 0.48;
+  margin-left: 24px;
+  margin-right: 24px;
+  margin-top: -22px;
+  box-shadow:
+    0 14px 24px -20px @unixnotis-shadow-soft,
+    0 0 0 1px alpha(@unixnotis-accent, 0.08),
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
+}
+
+.unixnotis-panel-card.active {
+  box-shadow:
+    0 0 0 1px alpha(@unixnotis-accent, 0.28),
+    0 12px 26px -20px @unixnotis-shadow-strong,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
+}
+
+.unixnotis-panel-card.critical {
+  box-shadow:
+    0 0 0 1px alpha(@unixnotis-urgent, 0.35),
+    0 12px 26px -20px @unixnotis-shadow-strong,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
+}
+
+.unixnotis-panel-app {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.unixnotis-panel-summary {
+  font-size: 13px;
+}
+
+.unixnotis-panel-body {
+  color: @unixnotis-muted;
+  font-size: 12px;
+}
+
+.unixnotis-panel-icon {
+  margin-right: 8px;
+}
+
+.unixnotis-notification-actions {
+  margin-top: 4px;
+}
+
+.unixnotis-notification-action {
+  background-image: linear-gradient(160deg, alpha(@unixnotis-surface-soft, 0.9), alpha(@unixnotis-surface, 0.95));
+  color: @unixnotis-text;
+  border-radius: 10px;
+  padding: 4px 10px;
+  border: 1px solid alpha(@unixnotis-accent, 0.18);
+  font-size: 12px;
+}
+
+.unixnotis-notification-action:hover {
+  background-image: linear-gradient(160deg, alpha(@unixnotis-accent, 0.2), alpha(@unixnotis-accent-2, 0.2));
+  border-color: alpha(@unixnotis-accent, 0.5);
+}

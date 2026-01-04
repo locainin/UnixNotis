@@ -1,0 +1,60 @@
+/* UnixNotis base theme
+ *
+ * Covers palette, shared tokens, and global window rules.
+ * Override in $XDG_CONFIG_HOME/unixnotis/base.css.
+ */
+
+/*
+ * Color palette
+ *
+ * Tuned for Wayland compositors with translucent surfaces.
+ */
+@define-color unixnotis-surface alpha(#0e1422, 0.88);
+@define-color unixnotis-surface-strong alpha(#10192b, 0.96);
+@define-color unixnotis-surface-soft alpha(#182338, 0.74);
+@define-color unixnotis-card alpha(#141f31, 0.94);
+@define-color unixnotis-card-border alpha(#8fd4ff, 0.24);
+@define-color unixnotis-text #eef5ff;
+@define-color unixnotis-muted #9cb3d3;
+@define-color unixnotis-accent #6ee7ff;
+@define-color unixnotis-accent-2 #ff87c7;
+@define-color unixnotis-urgent #ff6b7a;
+@define-color unixnotis-outline alpha(#a8c5ff, 0.24);
+@define-color unixnotis-shadow-soft alpha(#000000, 0.30);
+@define-color unixnotis-shadow-strong alpha(#000000, 0.62);
+
+/*
+ * Theme hooks
+ *
+ * Adjust these to recolor cards, pills, and buttons without touching rules.
+ */
+@define-color unixnotis-panel-grad-1 alpha(#0f172a, 0.92);
+@define-color unixnotis-panel-grad-2 alpha(#111c31, 0.94);
+@define-color unixnotis-panel-grad-3 alpha(#1a2945, 0.96);
+@define-color unixnotis-notification-bg-1 alpha(#1b2b44, 0.9);
+@define-color unixnotis-notification-bg-2 alpha(#141f33, 0.92);
+@define-color unixnotis-popup-bg-1 alpha(#111b2d, 0.95);
+@define-color unixnotis-popup-bg-2 alpha(#1b2a44, 0.96);
+@define-color unixnotis-pill-bg alpha(#1c2a42, 0.9);
+@define-color unixnotis-pill-border alpha(#8fd4ff, 0.25);
+@define-color unixnotis-pill-hover alpha(@unixnotis-accent, 0.25);
+@define-color unixnotis-action-bg alpha(#1a243a, 0.9);
+@define-color unixnotis-action-bg-hover alpha(@unixnotis-accent, 0.22);
+@define-color unixnotis-action-bg-active alpha(@unixnotis-accent, 0.36);
+@define-color unixnotis-popup-action-bg alpha(#1a2438, 0.92);
+@define-color unixnotis-popup-action-hover alpha(@unixnotis-accent, 0.22);
+@define-color unixnotis-popup-action-active alpha(@unixnotis-accent, 0.34);
+
+
+/*
+ * Global window styling
+ *
+ * Applied to both the panel and the popup surfaces.
+ */
+.unixnotis-panel-window,
+.unixnotis-popup-window {
+  background: transparent;
+  font-family: "Manrope", "SF Pro Text", "CaskaydiaCove Nerd Font Propo", "Noto Sans", sans-serif;
+}
+
+/*
