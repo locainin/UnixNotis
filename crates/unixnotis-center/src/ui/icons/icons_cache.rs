@@ -8,8 +8,8 @@ use std::path::Path;
 use std::rc::Rc;
 
 use gtk::gdk::{Paintable, Texture};
-use gtk::IconPaintable;
 use gtk::prelude::*;
+use gtk::IconPaintable;
 use unixnotis_core::NotificationImage;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -58,20 +58,29 @@ pub(super) fn icon_key_for_image(
 }
 
 pub(super) fn icon_key_for_path(path: &Path, size: i32, scale: i32) -> Option<IconKey> {
+    // Empty path means “no icon path provided”; treat as absent rather than creating a useless cache key.
     if path.as_os_str().is_empty() {
         return None;
     }
+
+    // Convert the path into an owned String for the cache key.
+    // to_string_lossy() avoids panics on non-UTF8 paths by substituting invalid bytes,
+    // which is acceptable for a cache key (it only needs to be stable enough for lookups).
     Some(IconKey::Path {
         path: path.to_string_lossy().to_string(),
-        size,
-        scale,
+        size,  // Target icon size in logical pixels (used to avoid cross-size cache collisions).
+        scale, // Output scale factor (used to avoid mixing 1x/2x assets in the same entry).
     })
 }
 
 pub(super) fn icon_key_for_name(name: &str, size: i32, scale: i32) -> Option<IconKey> {
+    // Empty icon name means “no themed icon requested”; treat as absent.
     if name.is_empty() {
         return None;
     }
+
+    // Store an owned copy of the name so the key outlives the caller's &str.
+    // Size/scale are included so the same themed icon can be cached distinctly per requested resolution.
     Some(IconKey::Name {
         name: name.to_string(),
         size,
@@ -80,13 +89,29 @@ pub(super) fn icon_key_for_name(name: &str, size: i32, scale: i32) -> Option<Ico
 }
 
 fn hash_image_data(data: &[u8]) -> u64 {
+    // Hash helper for raw image blobs used as cache keys/dedup identifiers.
+    // We avoid hashing the entire buffer (which could be large) by hashing:
+    // - total length
+    // - a small prefix sample
+    // - a small suffix sample (if the buffer is longer than the sample)
+    //
+    // This is a performance tradeoff: fast and usually unique enough for caching,
+    // but it is not a cryptographic hash and collisions are still theoretically possible.
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
+
+    // Length is important: many different images share common headers/prefixes.
     data.len().hash(&mut hasher);
+
+    // Prefix sample: captures headers and early bytes that often differ between images.
     let sample = 64.min(data.len());
     data[..sample].hash(&mut hasher);
+
+    // Suffix sample: captures tail differences (helps reduce collisions for similar headers).
     if data.len() > sample {
         data[data.len() - sample..].hash(&mut hasher);
     }
+
+    // Final 64-bit fingerprint used in the cache key.
     hasher.finish()
 }
 
@@ -145,28 +170,58 @@ pub(super) struct IconCache {
 
 impl IconCache {
     pub(super) fn new(max_entries: usize) -> Self {
+        // Create an empty bounded cache. The cache is keyed by IconKey and stores Rc<CachedPaintable>
+        // so callers can cheaply clone references without copying the underlying paintable.
+        //
+        // order is a simple LRU-like list (oldest at front, newest at back).
         Self {
-            entries: HashMap::new(),
-            order: VecDeque::new(),
-            max_entries,
+            entries: HashMap::new(), // Key -> cached paintable (shared via Rc)
+            order: VecDeque::new(),  // Recency order for eviction / promotion
+            max_entries,             // Maximum number of entries we keep before evicting
         }
     }
 
     pub(super) fn get(&mut self, key: &IconKey) -> Option<Rc<CachedPaintable>> {
+        // Fast path: look up by key. If present, clone the Rc (cheap) and promote in LRU order.
+        // We take &mut self because promotion mutates the recency list.
         let paintable = self.entries.get(key)?.clone();
+
+        // Mark this key as most-recently used so it is less likely to be evicted.
         self.promote(key);
+
         Some(paintable)
     }
 
-    pub(super) fn insert(&mut self, key: IconKey, paintable: CachedPaintable) -> Rc<CachedPaintable> {
+    pub(super) fn insert(
+        &mut self,
+        key: IconKey,
+        paintable: CachedPaintable,
+    ) -> Rc<CachedPaintable> {
+        // Wrap the paintable in Rc so it can be shared by multiple widgets without copying.
         let paintable = Rc::new(paintable);
+
+        // Insert/replace in the map. If this key already existed, this overwrites the value.
+        // Note: order will still get a new push_back; if you frequently replace the same key,
+        // you may want to dedupe order entries (optional improvement).
         self.entries.insert(key.clone(), paintable.clone());
+
+        // Record as most-recently used.
         self.order.push_back(key);
+
+        // Enforce size bound (evicts least-recently used items).
         self.evict();
+
         paintable
     }
 
     fn promote(&mut self, key: &IconKey) {
+        // Promote the key in the recency deque:
+        // - find its current position
+        // - remove it from that spot
+        // - push it to the back (most-recently used)
+        //
+        // This is O(n) due to position search; for small max_entries this is fine.
+        // If max_entries grows large, consider an LRU structure with a linked map.
         if let Some(position) = self.order.iter().position(|item| item == key) {
             if let Some(item) = self.order.remove(position) {
                 self.order.push_back(item);
@@ -176,10 +231,16 @@ impl IconCache {
 
     fn evict(&mut self) {
         // Trim the oldest entries to keep cache memory bounded.
+        // Oldest == front of the deque. Newest == back of the deque.
         while self.entries.len() > self.max_entries {
             if let Some(key) = self.order.pop_front() {
+                // Remove the entry from the map as well. If order contains duplicates (possible when
+                // inserting the same key multiple times), removing here might no-op if it was already
+                // removed earlier; that's safe, and the loop will continue trimming until bounded.
                 self.entries.remove(&key);
             } else {
+                // order should normally track entries, but if it gets out of sync,
+                // break to avoid an infinite loop.
                 break;
             }
         }

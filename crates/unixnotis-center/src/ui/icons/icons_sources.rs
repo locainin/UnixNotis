@@ -19,18 +19,29 @@ pub(super) enum IconSource {
 }
 
 pub(super) fn resolve_icon_source(name: &str, size: i32, scale: i32) -> Option<IconSource> {
+    // Resolve a themed icon into a GTK paintable at the requested size/scale.
+    // If the paintable originates from a non-SVG file on disk, we prefer returning the path
+    // so the raster decode pipeline can cache + decode off-thread (avoids main-thread spikes).
     let paintable = resolve_icon_paintable(name, size, scale)?;
+
+    // Some paintables are backed by a gio::File (theme icons loaded from disk). If we can get a real
+    // filesystem path and it's not SVG, treat it as a raster path source.
     if let Some(file) = paintable.file() {
         if let Some(path) = file.path() {
+            // SVG decoding/rendering often stays on the GTK side; only fast-path raster files here.
             if !is_svg_path(&path) {
                 return Some(IconSource::RasterPath(path));
             }
         }
     }
+
+    // Fallback: keep the paintable (covers SVGs, non-file paintables, and theme backends).
     Some(IconSource::Paintable(paintable))
 }
 
 pub(super) fn file_path_from_hint(path: &str) -> Option<&Path> {
+    // Notification hints may provide a direct absolute path or a file:// URL.
+    // We normalize both into a Path, and reject anything else (http, relative, etc.).
     if path.starts_with('/') {
         return Some(Path::new(path));
     }
@@ -41,15 +52,21 @@ pub(super) fn file_path_from_hint(path: &str) -> Option<&Path> {
 }
 
 pub(super) fn resolve_path_texture(path: &Path) -> Option<CachedPaintable> {
+    // Only load real files from disk; avoids weird behavior for directories/symlinks/invalid paths.
     if !path.is_file() {
         return None;
     }
+
+    // Let GDK load the texture directly. This is a synchronous path and is typically fine for small icons;
+    // heavy/large loads should prefer the async raster decode pipeline when possible.
     let file = gio::File::for_path(path);
     let texture = gdk::Texture::from_file(&file).ok()?;
     Some(CachedPaintable::from_texture(texture))
 }
 
 pub(super) fn is_svg_path(path: &Path) -> bool {
+    // SVG/SVGZ should stay on GTK's paintable path (scaling/vector rendering rules differ from raster).
+    // Case-insensitive check on extension.
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "svg" | "svgz"))
@@ -193,40 +210,56 @@ fn add_icon_to_map(map: &mut HashMap<String, Vec<String>>, key: &str, icon: &str
 }
 
 fn normalize_key(value: &str) -> String {
+    // Normalizes keys for consistent map lookups / comparisons:
+    // - trim removes accidental whitespace
+    // - lowercase makes lookups case-insensitive (theme/icon names often vary in casing)
     value.trim().to_lowercase()
 }
 
 fn is_missing_icon(path: &Path) -> bool {
     // Ignore theme placeholders to avoid rendering missing-icon glyphs.
+    // Many icon themes provide an "image-missing" asset; treating it as a real icon looks bad.
     let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
-        return false;
+        return false; // Non-UTF8 or missing filename stem; don't classify as missing placeholder.
     };
     stem.starts_with("image-missing")
 }
 
 pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Texture> {
+    // Only proceed if the notification actually carried image-data (not just a name/path hint).
     if !image.has_image_data {
         return None;
     }
+
     let data = &image.image_data;
+
+    // The standard image-data payload for notifications is typically 8 bits per channel.
+    // If it's not 8, we don't currently support it (avoids misinterpreting the byte layout).
     if data.bits_per_sample != 8 {
         return None;
     }
 
+    // Clamp dimensions so we never pass 0 to MemoryTexture (which would error or behave oddly).
     let width = data.width.max(1) as u32;
     let height = data.height.max(1) as u32;
 
+    // We only handle RGBA (channels == 4) here because MemoryFormat::R8g8b8a8 expects 4 bytes/pixel.
+    // If the payload is RGB or something else, it should have been expanded earlier in the pipeline.
     let bytes = if data.channels == 4 {
         gtk::glib::Bytes::from(&data.data)
     } else {
         return None;
     };
 
+    // Rowstride is bytes per row; Hypr/notify image-data can include padding.
+    // If rowstride is invalid/zero, fall back to tightly packed RGBA (width * 4).
     let stride = if data.rowstride > 0 {
         data.rowstride as usize
     } else {
         (width * 4) as usize
     };
+
+    // Build a GPU texture from the raw pixel bytes. MemoryFormat must match the byte layout.
     Some(
         gdk::MemoryTexture::new(
             width as i32,

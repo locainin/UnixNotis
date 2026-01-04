@@ -7,9 +7,9 @@ use std::thread;
 
 use crossbeam_channel as channel;
 use gtk::gdk;
+use gtk::gdk::Texture;
 use gtk::glib;
 use gtk::prelude::*;
-use gtk::gdk::Texture;
 use image::imageops::FilterType;
 
 use super::icons_cache::IconKey;
@@ -46,14 +46,21 @@ enum IconJob {
 
 impl IconWorker {
     pub(super) fn new(update_tx: async_channel::Sender<IconUpdate>) -> Self {
+        // Unbounded job queue; UI thread submits decode work, workers consume.
         let (sender, receiver) = channel::unbounded::<IconJob>();
+
+        // Keep worker count small (<=2) because decode is CPU-heavy and we don't want to starve GTK.
+        // available_parallelism() may fail in constrained environments, so default to 1.
         let worker_count = thread::available_parallelism()
             .map(|count| count.get().min(2))
             .unwrap_or(1);
+
         for _ in 0..worker_count {
             let receiver = receiver.clone();
             let update_tx = update_tx.clone();
+
             thread::spawn(move || {
+                // Blocking worker loop: wait for decode jobs, run decode, report back to UI via update_tx.
                 for job in receiver.iter() {
                     let IconJob::Decode {
                         key,
@@ -61,15 +68,21 @@ impl IconWorker {
                         size,
                         scale,
                     } = job;
+
+                    // Decode off-thread; GTK objects should be created/applied on the main loop later.
                     let result = decode_raster(&path, size, scale);
+
+                    // send_blocking is fine here (worker thread), avoids busy looping if UI is momentarily slow.
                     let _ = update_tx.send_blocking(IconUpdate { key, result });
                 }
             });
         }
+
         Self { sender }
     }
 
     pub(super) fn submit_decode(&self, key: IconKey, path: PathBuf, size: i32, scale: i32) {
+        // Best-effort enqueue; if the worker is shut down, dropping the job is acceptable.
         let _ = self.sender.send(IconJob::Decode {
             key,
             path,
@@ -80,20 +93,35 @@ impl IconWorker {
 }
 
 fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
+    // Read the file into memory. This keeps decode logic simple and lets the image crate
+    // handle format detection (PNG/JPEG/etc). Failures become IconResult::Failed.
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(err) => return IconResult::Failed(err.to_string()),
     };
+
+    // Decode the image from the raw bytes. load_from_memory auto-detects the format.
     let image = match image::load_from_memory(&bytes) {
         Ok(image) => image,
         Err(err) => return IconResult::Failed(err.to_string()),
     };
+
+    // Compute target pixel size. size is logical units; scale accounts for output scale (e.g. 2x).
+    // max(1) prevents zero/negative values from producing nonsense.
     let target = (size.max(1) * scale.max(1)) as u32;
+
+    // Resize to an exact square; CatmullRom gives good quality for downscales and upscales.
     let resized = image.resize_exact(target, target, FilterType::CatmullRom);
+
+    // Convert to RGBA8 (4 bytes per pixel) so the UI thread can build a MemoryTexture directly.
     let rgba = resized.to_rgba8();
     let width = rgba.width() as i32;
     let height = rgba.height() as i32;
+
+    // Bytes per row for RGBA8. saturating_mul avoids overflow if width is unexpectedly large.
     let stride = width.saturating_mul(4);
+
+    // into_raw consumes the image buffer and returns the owned RGBA bytes (no extra copy).
     IconResult::Raster(RasterImage {
         bytes: rgba.into_raw(),
         width,
@@ -103,13 +131,16 @@ fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
 }
 
 pub(super) fn texture_from_raster(image: &RasterImage) -> Texture {
+    // Wrap the Vec<u8> as glib::Bytes so GTK can reference it efficiently.
+    // MemoryTexture copies/uses the bytes per GTK expectations; stride must match row size.
     let bytes = glib::Bytes::from(&image.bytes);
+
     gdk::MemoryTexture::new(
-        image.width,
-        image.height,
-        gdk::MemoryFormat::R8g8b8a8,
-        &bytes,
-        image.stride as usize,
+        image.width,                 // pixel width
+        image.height,                // pixel height
+        gdk::MemoryFormat::R8g8b8a8, // matches RGBA8 layout from decode_raster()
+        &bytes,                      // backing storage
+        image.stride as usize,       // bytes per row
     )
     .upcast::<Texture>()
 }
