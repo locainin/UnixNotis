@@ -1,0 +1,11 @@
+[package]
+name = "unixnotis-installer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
+unixnotis-core = { path = "../unixnotis-core" }

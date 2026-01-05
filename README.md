@@ -36,12 +36,28 @@ frontends for the panel and popups.
 - Wayland session (panel UI requires Wayland compositors).
 - GTK4 and gtk4-layer-shell libraries.
 - D-Bus session bus.
-- Rust toolchain for builds.
+- Rust toolchain for builds and the installer.
+- systemd --user for the installer-managed service.
 - Optional external commands used by widgets and watchers:
   - `nmcli` for NetworkManager toggles
   - `bluetoothctl` for Bluetooth toggles
   - `udevadm` for rfkill events
   - `pactl` for audio subscription events
+
+## Installer (recommended)
+
+Run the ratatui installer to perform trial runs, installs, and uninstalls:
+
+```sh
+cargo run --release -p unixnotis-installer
+```
+
+The installer:
+- Builds the release binaries.
+- Installs binaries to `$HOME/.local/bin`.
+- Ensures config and theme files exist under `$HOME/.config/unixnotis`.
+- Installs and enables the systemd user unit at
+  `$HOME/.config/systemd/user/unixnotis-daemon.service`.
 
 ## Build
 
@@ -49,20 +65,22 @@ frontends for the panel and popups.
 cargo build --release
 ```
 
-## Quick start (no systemd install)
+## Preview without install
 
-Running with `cargo run --release` is a safe way to preview behavior without installing user
-services. If a user service is already running, stop it first so the D-Bus name is available.
+Use the installer’s trial mode to preview behavior without installing user services:
+
+```sh
+cargo run --release -p unixnotis-installer
+```
+
+Choose “Trial run” and the daemon will temporarily replace the current notification daemon,
+then restore it on exit.
+
+For manual runs, stop any existing notification daemon so the D-Bus name is available:
 
 ```sh
 cargo run --release -p unixnotis-daemon
-```
-
-```sh
 cargo run --release -p unixnotis-center
-```
-
-```sh
 cargo run --release -p unixnotis-popups
 ```
 
@@ -146,36 +164,23 @@ Example CSS for `$HOME/.config/waybar/style.css`:
 }
 ```
 
-## Systemd user units (optional)
+## Systemd user unit (installer-managed)
 
-No unit files are shipped in the repo yet. Example user unit for the daemon:
+The installer manages the user unit. The unit runs the daemon from `$HOME/.local/bin`:
 
 ```ini
 [Unit]
 Description=UnixNotis Daemon
 
 [Service]
-ExecStart=%h/UnixNotis/target/release/unixnotis-daemon
+ExecStart=%h/.local/bin/unixnotis-daemon
 Restart=on-failure
 
 [Install]
 WantedBy=default.target
 ```
 
-Example user unit for the center panel:
-
-```ini
-[Unit]
-Description=UnixNotis Center
-After=unixnotis-daemon.service
-
-[Service]
-ExecStart=%h/UnixNotis/target/release/unixnotis-center
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-```
+The daemon launches the panel and popup frontends automatically.
 
 ## Logging
 

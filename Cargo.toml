@@ -5,6 +5,7 @@ members = [
   "crates/unixnotis-popups",
   "crates/unixnotis-center",
   "crates/noticenterctl",
+  "crates/unixnotis-installer",
 ]
 resolver = "2"
 
@@ -38,3 +39,5 @@ gtk4-layer-shell = "0.7.1"
 indexmap = "2"
 libc = "0.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff", "webp", "ico"] }
+ratatui = "0.30.0"
+crossterm = "0.28"
