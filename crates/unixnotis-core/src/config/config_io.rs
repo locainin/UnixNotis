@@ -108,7 +108,7 @@ impl Config {
             return Ok(PathBuf::from(xdg).join("unixnotis"));
         }
         let home = env::var("HOME").map_err(|_| ConfigError::MissingHome)?;
-        // Fall back to the standard ~/.config path for predictable location.
+        // Fall back to the standard $HOME/.config path for predictable location.
         Ok(PathBuf::from(home).join(".config").join("unixnotis"))
     }
 

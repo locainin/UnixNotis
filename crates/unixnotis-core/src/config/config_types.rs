@@ -182,26 +182,43 @@ pub struct SliderWidgetConfig {
 }
 
 impl SliderWidgetConfig {
+    // wpctl (PipeWire/WirePlumber CLI) volume commands.
+    // These are fast and avoid a shell wrapper when available.
     pub(super) const WPCTL_GET: &'static str = "wpctl get-volume @DEFAULT_AUDIO_SINK@";
     pub(super) const WPCTL_SET: &'static str = "wpctl set-volume @DEFAULT_AUDIO_SINK@ {value}%";
     pub(super) const WPCTL_TOGGLE: &'static str = "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle";
+
+    // pactl (PulseAudio / pipewire-pulse) volume commands.
+    // Note: PACTL_GET uses sh -lc because it runs two commands and relies on shell sequencing.
+    // A Rust multi-command path can replace this shell invocation if needed.
     pub(super) const PACTL_GET: &'static str =
         "sh -lc 'pactl get-sink-volume @DEFAULT_SINK@; pactl get-sink-mute @DEFAULT_SINK@'";
     pub(super) const PACTL_SET: &'static str = "pactl set-sink-volume @DEFAULT_SINK@ {value}%";
     pub(super) const PACTL_TOGGLE: &'static str = "pactl set-sink-mute @DEFAULT_SINK@ toggle";
+
+    // Long-running watcher for audio changes; emits events and stays open.
+    // The UI/daemon can listen to this and refresh on demand instead of polling.
     pub(super) const PACTL_WATCH: &'static str = "pactl subscribe";
 
     fn default_volume() -> Self {
+        // Default config for the Volume slider widget.
+        // Uses wpctl by default (common on PipeWire setups), with runtime fallback support elsewhere.
         Self {
-            enabled: false,
+            enabled: false, // Off by default so users opt-in via config/UI.
             label: "Volume".to_string(),
             icon: "audio-volume-high-symbolic".to_string(),
             icon_muted: Some("audio-volume-muted-symbolic".to_string()),
+
+            // Commands are templates; runtime replaces tokens like {value} and default sink placeholders.
             get_cmd: Self::WPCTL_GET.to_string(),
             set_cmd: Self::WPCTL_SET.to_string(),
             toggle_cmd: Some(Self::WPCTL_TOGGLE.to_string()),
+
             // Watcher is applied at runtime when a supported long-running command is available.
+            // Keeping this None in defaults avoids silently configuring a watcher that may not exist.
             watch_cmd: None,
+
+            // Slider range and granularity (UI uses these for adjustment and formatting).
             min: 0.0,
             max: 100.0,
             step: 1.0,
@@ -209,15 +226,24 @@ impl SliderWidgetConfig {
     }
 
     fn default_brightness() -> Self {
+        // Default config for the Brightness slider widget.
+        // brightnessctl typically supports get/set, but it does not have a universal watch mode.
         Self {
             enabled: false,
             label: "Brightness".to_string(),
             icon: "display-brightness-symbolic".to_string(),
             icon_muted: None,
+
+            // -m outputs machine-readable values; parsing stays stable.
             get_cmd: "brightnessctl -m".to_string(),
             set_cmd: "brightnessctl s {value}%".to_string(),
             toggle_cmd: None,
+
+            // Watch mode is not reliably supported by brightnessctl; leaving this here means
+            // spawning may fail and the widget will fall back to polling.
+            // Runtime clears invalid watchers, so this value is treated as None.
             watch_cmd: Some("brightnessctl -w".to_string()),
+
             min: 0.0,
             max: 100.0,
             step: 1.0,
@@ -420,6 +446,8 @@ pub enum Anchor {
 
 impl Default for Anchor {
     fn default() -> Self {
+        // Default anchor determines which screen corner/edge the panel is attached to
+        // when no explicit anchor is provided in config.
         Self::TopRight
     }
 }
@@ -427,13 +455,17 @@ impl Default for Anchor {
 #[derive(Debug, Copy, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PanelKeyboardInteractivity {
+    // Do not request keyboard focus; panel is purely pointer-driven.
     None,
+    // Only request keyboard focus when an interaction requires it (search entry, text input, etc.).
     OnDemand,
+    // Always grab exclusive keyboard focus while the panel is open.
     Exclusive,
 }
 
 impl Default for PanelKeyboardInteractivity {
     fn default() -> Self {
+        // OnDemand is a good UX default: keyboard works when needed without stealing focus constantly.
         Self::OnDemand
     }
 }
@@ -441,6 +473,9 @@ impl Default for PanelKeyboardInteractivity {
 #[derive(Debug, Copy, Clone, Deserialize)]
 #[serde(default)]
 pub struct Margins {
+    // Pixel margins applied around the panel/control-center surface.
+    // These are logical pixels (before output scaling), and are used both for aesthetics and
+    // to keep the surface off the screen edge / away from reserved work area.
     pub top: i32,
     pub right: i32,
     pub bottom: i32,
@@ -449,6 +484,8 @@ pub struct Margins {
 
 impl Default for Margins {
     fn default() -> Self {
+        // Default padding around the panel. Keeping it symmetric produces a balanced look by default.
+        // Users can override individual edges in config for tighter or asymmetric layouts.
         Self {
             top: 12,
             right: 12,
