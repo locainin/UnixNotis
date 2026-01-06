@@ -46,9 +46,11 @@ frontends for the panel and popups.
 
 ## Installer (recommended)
 
-Run the ratatui installer to perform trial runs, installs, and uninstalls:
+Clone the repo and run the ratatui installer to perform trial runs, installs, and uninstalls:
 
 ```sh
+git clone https://github.com/locainin/UnixNotis
+cd UnixNotis
 cargo run --release -p unixnotis-installer
 ```
 
@@ -58,6 +60,10 @@ The installer:
 - Ensures config and theme files exist under `$HOME/.config/unixnotis`.
 - Installs and enables the systemd user unit at
   `$HOME/.config/systemd/user/unixnotis-daemon.service`.
+
+### Installer UI
+
+![Installer CLI](InstallerCLI.png)
 
 ## Build
 
