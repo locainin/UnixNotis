@@ -4,6 +4,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::process::Command as ProcCommand;
 use unixnotis_core::{ControlProxy, NotificationView, PanelDebugLevel};
+use unixnotis_core::util;
 use zbus::Connection;
 
 #[derive(Parser, Debug)]
@@ -29,8 +30,14 @@ enum Command {
     Dismiss {
         id: u32,
     },
-    ListActive,
-    ListHistory,
+    ListActive {
+        #[arg(long)]
+        full: bool,
+    },
+    ListHistory {
+        #[arg(long)]
+        full: bool,
+    },
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
@@ -82,13 +89,21 @@ async fn main() -> Result<()> {
         Command::ClosePanel => proxy.close_panel().await?,
         Command::Clear => proxy.clear_all().await?,
         Command::Dismiss { id } => proxy.dismiss(id).await?,
-        Command::ListActive => {
+        Command::ListActive { full } => {
+            let allow_full = full && util::diagnostic_mode();
+            if full && !util::diagnostic_mode() {
+                eprintln!("--full requires UNIXNOTIS_DIAGNOSTIC=1; using redacted output");
+            }
             let notifications = proxy.list_active().await?;
-            print_notifications("active", &notifications);
+            print_notifications("active", &notifications, allow_full);
         }
-        Command::ListHistory => {
+        Command::ListHistory { full } => {
+            let allow_full = full && util::diagnostic_mode();
+            if full && !util::diagnostic_mode() {
+                eprintln!("--full requires UNIXNOTIS_DIAGNOSTIC=1; using redacted output");
+            }
             let notifications = proxy.list_history().await?;
-            print_notifications("history", &notifications);
+            print_notifications("history", &notifications, allow_full);
         }
         Command::Dnd { state } => match state {
             DndState::On => proxy.set_dnd(true).await?,
@@ -103,14 +118,20 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn print_notifications(label: &str, notifications: &[NotificationView]) {
+fn print_notifications(label: &str, notifications: &[NotificationView], full: bool) {
+    let limit = if full {
+        util::diagnostic_log_limit()
+    } else {
+        util::default_log_limit()
+    };
     println!("{} notifications: {}", label, notifications.len());
     for notification in notifications {
+        let summary = util::sanitize_log_value(&notification.summary, limit);
         println!(
             "- #{id} [{app}] {summary}",
             id = notification.id,
             app = notification.app_name,
-            summary = notification.summary
+            summary = summary
         );
     }
 }

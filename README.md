@@ -193,6 +193,24 @@ The daemon launches the panel and popup frontends automatically.
 Log level is controlled by `general.log_level` in the config. Standard `RUST_LOG` overrides apply
 when set in the environment.
 
+UnixNotis redacts notification bodies and command output in logs by default. To opt in to
+diagnostic logging, set `UNIXNOTIS_DIAGNOSTIC=1`. This enables capped, newline-stripped snippets
+for debugging (limits are enforced to avoid leaking full content).
+
+To stream logs in the terminal while opening the panel:
+
+```sh
+UNIXNOTIS_DIAGNOSTIC=1 noticenterctl open-panel --debug verbose
+```
+
+Valid levels are `critical`, `warn`, `info`, and `verbose`.
+
+For CLI output that includes notification bodies, use `--full` with diagnostic mode enabled:
+
+```sh
+UNIXNOTIS_DIAGNOSTIC=1 noticenterctl list-active --full
+```
+
 ## Development
 
 ```sh

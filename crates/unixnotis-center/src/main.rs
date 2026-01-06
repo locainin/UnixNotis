@@ -31,6 +31,20 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let (config, config_path) = load_config(&args).context("load config")?;
     init_tracing(&config);
+    let config_source = if args.config.is_some() {
+        "custom"
+    } else if config_path.exists() {
+        "default"
+    } else {
+        "builtin"
+    };
+    info!(config_source, "center configuration loaded");
+    if unixnotis_core::util::diagnostic_mode() {
+        info!(
+            limit = unixnotis_core::util::log_limit(),
+            "diagnostic logging enabled (snippets capped; newlines stripped)"
+        );
+    }
 
     if !is_wayland_session() {
         return Err(anyhow!(

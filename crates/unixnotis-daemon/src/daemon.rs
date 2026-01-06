@@ -152,10 +152,22 @@ impl NotificationServer {
         hints: HashMap<String, OwnedValue>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
-        debug!(
-            app_name,
-            summary, replaces_id, expire_timeout, "received notification"
-        );
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            let summary_snip = unixnotis_core::util::log_snippet(&summary);
+            debug!(
+                app = %app_name,
+                summary = %summary_snip,
+                summary_len = summary.len(),
+                body_len = body.len(),
+                replaces_id,
+                expire_timeout,
+                "received notification"
+            );
+            if unixnotis_core::util::diagnostic_mode() {
+                let body_snip = unixnotis_core::util::log_snippet(&body);
+                debug!(body = %body_snip, "notification body snippet");
+            }
+        }
         let notification = build_notification(
             app_name,
             app_icon,

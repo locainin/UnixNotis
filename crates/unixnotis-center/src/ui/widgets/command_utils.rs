@@ -11,6 +11,7 @@ use std::os::unix::process::CommandExt;
 use crossbeam_channel as channel;
 use tracing::warn;
 use unixnotis_core::PanelDebugLevel;
+use unixnotis_core::util;
 
 use crate::debug;
 
@@ -77,7 +78,10 @@ pub(in crate::ui::widgets) fn run_command(cmd: &str) {
         warn!("command was empty");
         return;
     }
-    debug::log(PanelDebugLevel::Verbose, || format!("enqueue action command: {cmd}"));
+    debug::log(PanelDebugLevel::Verbose, || {
+        let snippet = util::log_snippet(cmd);
+        format!("enqueue action command: {snippet}")
+    });
     enqueue_command(cmd.to_string(), resolve_command_plan(cmd, CommandKind::Action), None);
 }
 
@@ -94,10 +98,10 @@ pub(in crate::ui::widgets) fn run_command_capture_async(
         return rx;
     }
     let plan = resolve_command_plan(cmd, CommandKind::Slow);
-    debug::log(
-        PanelDebugLevel::Verbose,
-        || format!("enqueue slow command: {cmd}"),
-    );
+    debug::log(PanelDebugLevel::Verbose, || {
+        let snippet = util::log_snippet(cmd);
+        format!("enqueue slow command: {snippet}")
+    });
     enqueue_command(cmd.to_string(), plan, Some(tx));
     rx
 }
@@ -115,10 +119,10 @@ pub(in crate::ui::widgets) fn run_command_capture_status_async(
         return rx;
     }
     let plan = resolve_command_plan(cmd, CommandKind::Fast);
-    debug::log(
-        PanelDebugLevel::Verbose,
-        || format!("enqueue fast command: {cmd}"),
-    );
+    debug::log(PanelDebugLevel::Verbose, || {
+        let snippet = util::log_snippet(cmd);
+        format!("enqueue fast command: {snippet}")
+    });
     enqueue_command(cmd.to_string(), plan, Some(tx));
     rx
 }
@@ -188,8 +192,9 @@ fn run_worker(rx: channel::Receiver<CommandJob>) {
 }
 
 fn handle_job(job: CommandJob) {
+    let cmd_snip = util::log_snippet(&job.cmd);
     debug::log(PanelDebugLevel::Verbose, || {
-        format!("command start kind={:?} cmd={}", job.plan.kind, job.cmd)
+        format!("command start kind={:?} cmd={}", job.plan.kind, cmd_snip)
     });
     let started = Instant::now();
     let jitter = job.plan.jitter();
@@ -205,7 +210,7 @@ fn handle_job(job: CommandJob) {
     match result {
         Ok(output) => {
             if !output.status.success() {
-                warn!(command = ?job.cmd, "command returned non-zero status");
+                warn!(command = %cmd_snip, "command returned non-zero status");
                 debug::log(PanelDebugLevel::Warn, || {
                     format!(
                         "command failed kind={:?} status={:?} elapsed_ms={elapsed_ms}",
@@ -224,7 +229,7 @@ fn handle_job(job: CommandJob) {
             }
         }
         Err(err) => {
-            warn!(command = ?job.cmd, ?err, "command failed");
+            warn!(command = %cmd_snip, ?err, "command failed");
             debug::log(PanelDebugLevel::Warn, || {
                 format!(
                     "command error kind={:?} elapsed_ms={elapsed_ms} err={err}",

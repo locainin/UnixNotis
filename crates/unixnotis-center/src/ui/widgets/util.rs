@@ -14,7 +14,7 @@ use std::time::Duration;
 use gtk::prelude::*;
 use gtk::{glib, Align};
 use tracing::warn;
-use unixnotis_core::{NumericParseMode, PanelDebugLevel, SliderWidgetConfig};
+use unixnotis_core::{util, NumericParseMode, PanelDebugLevel, SliderWidgetConfig};
 
 use crate::debug;
 pub(super) use command_utils::{
@@ -262,7 +262,7 @@ fn refresh_inner(
         let value = match parse_numeric(&stdout, min, max, parse_mode) {
             Some(value) => value,
             None => {
-                let snippet = truncate_log_value(stdout.trim(), 120);
+                let snippet = util::log_snippet(stdout.trim());
                 debug::log(PanelDebugLevel::Warn, || {
                     format!("slider parse failed cmd=\"{}\" output=\"{}\"", cmd, snippet)
                 });
@@ -388,25 +388,6 @@ fn parse_numeric(text: &str, min: f64, max: f64, mode: NumericParseMode) -> Opti
     }
 
     Some(value.clamp(min, max))
-}
-
-fn truncate_log_value(value: &str, max_len: usize) -> String {
-    if max_len == 0 {
-        return String::new();
-    }
-    let mut out = String::new();
-    for ch in value.chars() {
-        if out.chars().count() >= max_len {
-            out.push_str("...");
-            break;
-        }
-        if ch == '\n' || ch == '\r' {
-            out.push(' ');
-        } else {
-            out.push(ch);
-        }
-    }
-    out
 }
 
 fn parse_muted(text: &str) -> bool {

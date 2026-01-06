@@ -37,7 +37,7 @@ use crate::child_process::{
 use crate::shutdown_signal::shutdown_signal;
 use crate::trial_mode::{prepare_trial, restore_previous, TrialState};
 use crate::sound::SoundSettings;
-use unixnotis_core::{CONTROL_BUS_NAME, CONTROL_OBJECT_PATH};
+use unixnotis_core::{Config, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH};
 
 const NOTIFICATIONS_OBJECT_PATH: &str = "/org/freedesktop/Notifications";
 
@@ -83,6 +83,21 @@ async fn main() -> Result<()> {
     let config = load_config(&args).context("load config")?;
 
     init_tracing(&config);
+    let config_source = if args.config.is_some() {
+        "custom"
+    } else {
+        match Config::default_config_path() {
+            Ok(path) if path.exists() => "default",
+            _ => "builtin",
+        }
+    };
+    info!(config_source, "configuration loaded");
+    if unixnotis_core::util::diagnostic_mode() {
+        info!(
+            limit = unixnotis_core::util::log_limit(),
+            "diagnostic logging enabled (snippets capped; newlines stripped)"
+        );
+    }
 
     if args.check {
         info!("configuration loaded successfully");

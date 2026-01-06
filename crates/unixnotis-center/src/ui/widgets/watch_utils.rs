@@ -9,6 +9,7 @@ use async_channel::TryRecvError;
 use gtk::glib;
 use tracing::warn;
 use unixnotis_core::PanelDebugLevel;
+use unixnotis_core::util;
 
 use crate::debug;
 
@@ -46,7 +47,8 @@ impl Drop for CommandWatch {
                 let _ = handle.join();
             }
             debug::log(PanelDebugLevel::Info, || {
-                format!("watch cleanup complete: {cmd}")
+                let snippet = util::log_snippet(&cmd);
+                format!("watch cleanup complete: {snippet}")
             });
         });
     }
@@ -61,7 +63,10 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
         warn!("watch command was empty");
         return None;
     }
-    debug::log(PanelDebugLevel::Info, || format!("watch start: {cmd}"));
+    debug::log(PanelDebugLevel::Info, || {
+        let snippet = util::log_snippet(cmd);
+        format!("watch start: {snippet}")
+    });
 
     let plan = resolve_command_plan(cmd, CommandKind::Slow);
     let cmd_string = cmd.to_string();
@@ -69,7 +74,8 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
     let mut child = match plan.spawn_watch_command(cmd) {
         Ok(child) => child,
         Err(err) => {
-            warn!(command = ?cmd, ?err, "watch command failed to start");
+            let snippet = util::log_snippet(cmd);
+            warn!(command = %snippet, ?err, "watch command failed to start");
             return None;
         }
     };
@@ -77,7 +83,8 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
         None => {
-            warn!(command = ?cmd, "watch command missing stdout");
+            let snippet = util::log_snippet(cmd);
+            warn!(command = %snippet, "watch command missing stdout");
             let _ = child.kill();
             let _ = child.wait();
             return None;
@@ -103,7 +110,8 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
                     }
                 }
                 debug::log(PanelDebugLevel::Verbose, || {
-                    format!("watch event: {cmd}")
+                    let snippet = util::log_snippet(&cmd);
+                    format!("watch event: {snippet}")
                 });
                 on_event();
             }
@@ -125,7 +133,8 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
                 }
             }
             debug::log(PanelDebugLevel::Info, || {
-                format!("watch stopped: {cmd} (events={events})")
+                let snippet = util::log_snippet(&cmd);
+                format!("watch stopped: {snippet} (events={events})")
             });
         }
     });
