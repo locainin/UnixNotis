@@ -201,11 +201,11 @@ impl IconCache {
         let paintable = Rc::new(paintable);
 
         // Insert/replace in the map. If this key already existed, this overwrites the value.
-        // Note: order will still get a new push_back; if you frequently replace the same key,
-        // you may want to dedupe order entries (optional improvement).
+        // Ensure order stays bounded by removing any existing entry before re-adding.
         self.entries.insert(key.clone(), paintable.clone());
 
         // Record as most-recently used.
+        self.order.retain(|item| item != &key);
         self.order.push_back(key);
 
         // Enforce size bound (evicts least-recently used items).

@@ -4,6 +4,8 @@
 
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+use gtk::{cairo, gdk};
+use gtk::glib::translate::ToGlibPtr;
 use unixnotis_core::{Anchor, Config, Margins};
 
 pub(super) fn build_popup_window(
@@ -24,6 +26,12 @@ pub(super) fn build_popup_window(
     window.set_child(Some(&stack));
     window.set_visible(false);
     apply_popup_config(&window, &stack, config);
+    window.connect_realize({
+        let allow_click_through = config.popups.allow_click_through;
+        move |window| {
+            apply_input_region(window, allow_click_through);
+        }
+    });
 
     (window, stack)
 }
@@ -43,6 +51,24 @@ pub(super) fn apply_popup_config(window: &gtk::ApplicationWindow, stack: &gtk::B
         }
     } else {
         window.set_monitor(None);
+    }
+    apply_input_region(window, config.popups.allow_click_through);
+}
+
+fn apply_input_region(window: &gtk::ApplicationWindow, allow_click_through: bool) {
+    let Some(surface) = window.surface() else {
+        return;
+    };
+
+    if allow_click_through {
+        let region = cairo::Region::create();
+        surface.set_input_region(&region);
+        return;
+    }
+
+    // Clear the input region so the popup surface accepts clicks as normal.
+    unsafe {
+        gdk::ffi::gdk_surface_set_input_region(surface.to_glib_none().0, std::ptr::null_mut());
     }
 }
 

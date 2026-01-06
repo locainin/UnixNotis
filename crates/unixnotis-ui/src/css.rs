@@ -249,6 +249,12 @@ fn load_provider_with_overrides(
     match fs::read_to_string(path) {
         Ok(contents) => {
             if contents.trim().is_empty() {
+                let merged = if overrides.trim().is_empty() {
+                    fallback.to_string()
+                } else {
+                    format!("{fallback}\n{overrides}")
+                };
+                provider.load_from_data(&merged);
                 return;
             }
             let is_default = contents.trim() == fallback.trim();
@@ -273,10 +279,16 @@ fn load_provider_with_overrides(
 }
 
 fn build_base_overrides(theme: &ThemeConfig) -> String {
+    let surface_alpha = theme.surface_alpha.clamp(0.0, 1.0);
+    let surface_strong_alpha = theme.surface_strong_alpha.clamp(0.0, 1.0);
     let shadow_soft = theme.shadow_soft_alpha.clamp(0.0, 1.0);
     let shadow_strong = theme.shadow_strong_alpha.clamp(0.0, 1.0);
     format!(
         r#"
+@define-color unixnotis-surface-base @unixnotis-surface;
+@define-color unixnotis-surface-strong-base @unixnotis-surface-strong;
+@define-color unixnotis-surface alpha(@unixnotis-surface-base, {surface_alpha});
+@define-color unixnotis-surface-strong alpha(@unixnotis-surface-strong-base, {surface_strong_alpha});
 @define-color unixnotis-shadow-soft alpha(#000000, {shadow_soft});
 @define-color unixnotis-shadow-strong alpha(#000000, {shadow_strong});
 "#

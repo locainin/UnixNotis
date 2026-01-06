@@ -131,6 +131,7 @@ struct CommandJob {
 
 struct CommandWorker {
     tx: channel::Sender<CommandJob>,
+    inline_fallback: bool,
 }
 
 impl CommandWorker {
@@ -141,14 +142,26 @@ impl CommandWorker {
 
     fn new(worker_count: usize) -> Self {
         let (tx, rx) = channel::unbounded();
+        let mut spawned = 0usize;
         for idx in 0..worker_count.max(1) {
             let rx = rx.clone();
-            std::thread::Builder::new()
+            match std::thread::Builder::new()
                 .name(format!("unixnotis-command-worker-{idx}"))
                 .spawn(move || run_worker(rx))
-                .ok();
+            {
+                Ok(_) => spawned += 1,
+                Err(err) => {
+                    warn!(?err, "failed to spawn command worker thread");
+                }
+            }
         }
-        Self { tx }
+        if spawned == 0 {
+            warn!("no command worker threads available; falling back to inline execution");
+        }
+        Self {
+            tx,
+            inline_fallback: spawned == 0,
+        }
     }
 }
 
@@ -159,6 +172,10 @@ fn enqueue_command(
 ) {
     let job = CommandJob { cmd, plan, respond };
     let worker = CommandWorker::global();
+    if worker.inline_fallback {
+        handle_job(job);
+        return;
+    }
     if worker.tx.send(job).is_err() {
         warn!("command worker channel closed");
     }
@@ -166,50 +183,54 @@ fn enqueue_command(
 
 fn run_worker(rx: channel::Receiver<CommandJob>) {
     for job in rx.iter() {
-        debug::log(PanelDebugLevel::Verbose, || {
-            format!("command start kind={:?} cmd={}", job.plan.kind, job.cmd)
-        });
-        let started = Instant::now();
-        let jitter = job.plan.jitter();
-        if !jitter.is_zero() {
-            std::thread::sleep(jitter);
-        }
-        let result = run_command_with_timeout(&job.cmd, job.plan.timeout());
-        let elapsed_ms = started.elapsed().as_millis();
-        if let Some(tx) = job.respond {
-            let _ = tx.send_blocking(result);
-            continue;
-        }
-        match result {
-            Ok(output) => {
-                if !output.status.success() {
-                    warn!(command = ?job.cmd, "command returned non-zero status");
-                    debug::log(PanelDebugLevel::Warn, || {
-                        format!(
-                            "command failed kind={:?} status={:?} elapsed_ms={elapsed_ms}",
-                            job.plan.kind,
-                            output.status.code()
-                        )
-                    });
-                } else {
-                    debug::log(PanelDebugLevel::Verbose, || {
-                        format!(
-                            "command ok kind={:?} status={:?} elapsed_ms={elapsed_ms}",
-                            job.plan.kind,
-                            output.status.code()
-                        )
-                    });
-                }
-            }
-            Err(err) => {
-                warn!(command = ?job.cmd, ?err, "command failed");
+        handle_job(job);
+    }
+}
+
+fn handle_job(job: CommandJob) {
+    debug::log(PanelDebugLevel::Verbose, || {
+        format!("command start kind={:?} cmd={}", job.plan.kind, job.cmd)
+    });
+    let started = Instant::now();
+    let jitter = job.plan.jitter();
+    if !jitter.is_zero() {
+        std::thread::sleep(jitter);
+    }
+    let result = run_command_with_timeout(&job.cmd, job.plan.timeout());
+    let elapsed_ms = started.elapsed().as_millis();
+    if let Some(tx) = job.respond {
+        let _ = tx.send_blocking(result);
+        return;
+    }
+    match result {
+        Ok(output) => {
+            if !output.status.success() {
+                warn!(command = ?job.cmd, "command returned non-zero status");
                 debug::log(PanelDebugLevel::Warn, || {
                     format!(
-                        "command error kind={:?} elapsed_ms={elapsed_ms} err={err}",
-                        job.plan.kind
+                        "command failed kind={:?} status={:?} elapsed_ms={elapsed_ms}",
+                        job.plan.kind,
+                        output.status.code()
+                    )
+                });
+            } else {
+                debug::log(PanelDebugLevel::Verbose, || {
+                    format!(
+                        "command ok kind={:?} status={:?} elapsed_ms={elapsed_ms}",
+                        job.plan.kind,
+                        output.status.code()
                     )
                 });
             }
+        }
+        Err(err) => {
+            warn!(command = ?job.cmd, ?err, "command failed");
+            debug::log(PanelDebugLevel::Warn, || {
+                format!(
+                    "command error kind={:?} elapsed_ms={elapsed_ms} err={err}",
+                    job.plan.kind
+                )
+            });
         }
     }
 }

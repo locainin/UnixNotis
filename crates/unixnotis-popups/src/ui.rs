@@ -127,7 +127,14 @@ impl UiState {
                 return;
             }
         };
-        let theme_paths = match config.resolve_theme_paths() {
+        let theme_base = self
+            .config_path
+            .parent()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                Config::default_config_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            });
+        let theme_paths = match config.resolve_theme_paths_from(&theme_base) {
             Ok(paths) => paths,
             Err(err) => {
                 tracing::warn!(?err, "failed to resolve theme paths");
@@ -191,6 +198,16 @@ impl UiState {
     fn update_popup_visibility(&self) {
         let max_visible = self.config.popups.max_visible;
         let stack_depth = 3; // Increased depth for better visual pile
+
+        if max_visible == 0 {
+            for entry in self.popups.values() {
+                entry.root.set_visible(false);
+                entry.revealer.set_reveal_child(false);
+            }
+            self.popup_window.set_visible(false);
+            debug!("popups disabled by max_visible = 0");
+            return;
+        }
 
         if self.popup_order.is_empty() {
             self.popup_window.set_visible(false);

@@ -83,5 +83,4 @@
 .unixnotis-popup-action:checked {
   background-image: linear-gradient(160deg, @unixnotis-popup-action-active, alpha(@unixnotis-accent-2, 0.25));
 }
-
-/*
+/* End of popup theme. */

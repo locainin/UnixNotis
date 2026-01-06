@@ -311,7 +311,14 @@ impl UiState {
                 return;
             }
         };
-        let theme_paths = match config.resolve_theme_paths() {
+        let theme_base = self
+            .config_path
+            .parent()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                Config::default_config_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            });
+        let theme_paths = match config.resolve_theme_paths_from(&theme_base) {
             Ok(paths) => paths,
             Err(err) => {
                 tracing::warn!(?err, "failed to resolve theme paths");

@@ -38,8 +38,14 @@ fn main() -> Result<()> {
         ));
     }
 
+    let theme_base = config_path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            Config::default_config_dir().unwrap_or_else(|_| PathBuf::from("."))
+        });
     let theme_paths = config
-        .resolve_theme_paths()
+        .resolve_theme_paths_from(&theme_base)
         .context("resolve theme paths")?;
     config
         .ensure_theme_files(&theme_paths)
@@ -97,13 +103,8 @@ fn load_config(args: &Args) -> Result<(Config, PathBuf)> {
         ));
     }
     let path = Config::default_config_path().context("resolve default config path")?;
-    if !path.exists() {
-        return Ok((Config::default(), path));
-    }
-    Ok((
-        Config::load_from_path(&path).context("read default config")?,
-        path,
-    ))
+    let config = Config::load_default().context("read default config")?;
+    Ok((config, path))
 }
 
 fn init_tracing(config: &Config) {

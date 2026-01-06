@@ -56,12 +56,17 @@ impl Config {
     /// Resolve configured CSS paths relative to the config directory.
     pub fn resolve_theme_paths(&self) -> Result<ThemePaths, ConfigError> {
         let base = Self::default_config_dir()?;
-        // Resolve relative paths against the UnixNotis config directory.
+        self.resolve_theme_paths_from(&base)
+    }
+
+    /// Resolve configured CSS paths relative to an explicit config directory.
+    pub fn resolve_theme_paths_from(&self, base: &Path) -> Result<ThemePaths, ConfigError> {
+        // Resolve relative paths against the supplied config directory.
         Ok(ThemePaths {
-            base_css: Self::resolve_path(&base, &self.theme.base_css),
-            popup_css: Self::resolve_path(&base, &self.theme.popup_css),
-            panel_css: Self::resolve_path(&base, &self.theme.panel_css),
-            widgets_css: Self::resolve_path(&base, &self.theme.widgets_css),
+            base_css: Self::resolve_path(base, &self.theme.base_css),
+            popup_css: Self::resolve_path(base, &self.theme.popup_css),
+            panel_css: Self::resolve_path(base, &self.theme.panel_css),
+            widgets_css: Self::resolve_path(base, &self.theme.widgets_css),
         })
     }
 
