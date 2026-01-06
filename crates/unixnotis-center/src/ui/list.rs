@@ -81,7 +81,7 @@ impl NotificationList {
                 command_tx_clone.clone(),
                 event_tx_clone.clone(),
             );
-            set_row_widgets(&root, Rc::new(widgets));
+            set_row_widgets(list_item, Rc::new(widgets));
         });
 
         let command_tx_clone = command_tx.clone();
@@ -103,10 +103,7 @@ impl NotificationList {
         });
 
         factory.connect_unbind(move |_, list_item| {
-            let Some(root) = list_item.child().and_downcast::<gtk::Box>() else {
-                return;
-            };
-            if let Some(widgets) = get_row_widgets(&root) {
+            if let Some(widgets) = get_row_widgets(list_item) {
                 widgets.unbind();
             }
         });

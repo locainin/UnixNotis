@@ -12,8 +12,8 @@ use gtk::prelude::*;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 use unixnotis_core::Config;
+use unixnotis_ui::css::{self, CssKind};
 
-mod css;
 mod dbus;
 mod ui;
 
@@ -47,7 +47,7 @@ fn main() -> Result<()> {
         let (event_tx, event_rx) = async_channel::unbounded();
         let command_tx = dbus::start_dbus_runtime(event_tx.clone());
 
-        let css_manager = css::CssManager::new(theme_paths.clone(), config.theme.clone());
+        let css_manager = css::CssManager::new_popup(theme_paths.clone(), config.theme.clone());
         css_manager.apply_to_display();
         css_manager.reload(css::DEFAULT_CSS);
 
@@ -66,8 +66,15 @@ fn main() -> Result<()> {
             }
         });
 
-        css::start_css_watcher(&theme_paths, event_tx.clone());
-        css::start_config_watcher(config_path.clone(), event_tx);
+        css::start_css_watcher(&theme_paths, CssKind::Popup, {
+            let event_tx = event_tx.clone();
+            move || {
+                let _ = event_tx.try_send(dbus::UiEvent::CssReload);
+            }
+        });
+        css::start_config_watcher(config_path.clone(), move || {
+            let _ = event_tx.try_send(dbus::UiEvent::ConfigReload);
+        });
         info!("unixnotis-popups running");
     });
 

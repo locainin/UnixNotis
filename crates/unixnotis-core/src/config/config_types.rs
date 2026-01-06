@@ -2,10 +2,10 @@
 //!
 //! Keeps schema definitions in one place for easier auditing.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Top-level configuration loaded from config.toml.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     pub general: GeneralConfig,
@@ -19,14 +19,14 @@ pub struct Config {
     pub rules: Vec<RuleConfig>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct GeneralConfig {
     pub dnd_default: bool,
     pub log_level: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct PopupConfig {
     pub anchor: Anchor,
@@ -56,7 +56,7 @@ impl Default for PopupConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct PanelConfig {
     pub anchor: Anchor,
@@ -94,7 +94,7 @@ impl Default for PanelConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct HistoryConfig {
     pub max_entries: usize,
@@ -112,7 +112,7 @@ impl Default for HistoryConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct MediaConfig {
     /// Enable the media widget in the notification center.
@@ -139,7 +139,7 @@ impl Default for MediaConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct WidgetsConfig {
     pub volume: SliderWidgetConfig,
@@ -156,16 +156,28 @@ impl Default for WidgetsConfig {
         Self {
             volume: SliderWidgetConfig::default_volume(),
             brightness: SliderWidgetConfig::default_brightness(),
-            toggles: Vec::new(),
-            stats: Vec::new(),
-            cards: Vec::new(),
+            toggles: vec![
+                ToggleWidgetConfig::default_wifi(),
+                ToggleWidgetConfig::default_bluetooth(),
+                ToggleWidgetConfig::default_airplane(),
+                ToggleWidgetConfig::default_night(),
+            ],
+            stats: vec![
+                StatWidgetConfig::default_cpu(),
+                StatWidgetConfig::default_memory(),
+                StatWidgetConfig::default_battery(),
+            ],
+            cards: vec![
+                CardWidgetConfig::default_calendar(),
+                CardWidgetConfig::default_weather(),
+            ],
             refresh_interval_ms: 1000,
             refresh_interval_slow_ms: 3000,
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SliderWidgetConfig {
     pub enabled: bool,
@@ -179,6 +191,8 @@ pub struct SliderWidgetConfig {
     pub min: f64,
     pub max: f64,
     pub step: f64,
+    /// Controls how numeric command output is interpreted for slider values.
+    pub parse_mode: NumericParseMode,
 }
 
 impl SliderWidgetConfig {
@@ -189,10 +203,9 @@ impl SliderWidgetConfig {
     pub(super) const WPCTL_TOGGLE: &'static str = "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle";
 
     // pactl (PulseAudio / pipewire-pulse) volume commands.
-    // Note: PACTL_GET uses sh -lc because it runs two commands and relies on shell sequencing.
-    // A Rust multi-command path can replace this shell invocation if needed.
+    // PACTL_GET relies on shell sequencing to capture volume + mute in one call.
     pub(super) const PACTL_GET: &'static str =
-        "sh -lc 'pactl get-sink-volume @DEFAULT_SINK@; pactl get-sink-mute @DEFAULT_SINK@'";
+        "pactl get-sink-volume @DEFAULT_SINK@; pactl get-sink-mute @DEFAULT_SINK@";
     pub(super) const PACTL_SET: &'static str = "pactl set-sink-volume @DEFAULT_SINK@ {value}%";
     pub(super) const PACTL_TOGGLE: &'static str = "pactl set-sink-mute @DEFAULT_SINK@ toggle";
 
@@ -204,7 +217,7 @@ impl SliderWidgetConfig {
         // Default config for the Volume slider widget.
         // Uses wpctl by default (common on PipeWire setups), with runtime fallback support elsewhere.
         Self {
-            enabled: false, // Off by default so users opt-in via config/UI.
+            enabled: true, // Enabled in the stock config; disable in config to hide.
             label: "Volume".to_string(),
             icon: "audio-volume-high-symbolic".to_string(),
             icon_muted: Some("audio-volume-muted-symbolic".to_string()),
@@ -222,6 +235,7 @@ impl SliderWidgetConfig {
             min: 0.0,
             max: 100.0,
             step: 1.0,
+            parse_mode: NumericParseMode::Auto,
         }
     }
 
@@ -229,7 +243,7 @@ impl SliderWidgetConfig {
         // Default config for the Brightness slider widget.
         // brightnessctl typically supports get/set, but it does not have a universal watch mode.
         Self {
-            enabled: false,
+            enabled: true,
             label: "Brightness".to_string(),
             icon: "display-brightness-symbolic".to_string(),
             icon_muted: None,
@@ -247,6 +261,7 @@ impl SliderWidgetConfig {
             min: 0.0,
             max: 100.0,
             step: 1.0,
+            parse_mode: NumericParseMode::Auto,
         }
     }
 }
@@ -257,7 +272,24 @@ impl Default for SliderWidgetConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NumericParseMode {
+    /// Uses heuristic parsing for mixed output formats.
+    Auto,
+    /// Interprets values as percentages without normalization.
+    Percent,
+    /// Interprets values as 0.0-1.0 ratios and scales to percent.
+    Ratio,
+}
+
+impl Default for NumericParseMode {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ToggleWidgetConfig {
     pub enabled: bool,
@@ -267,6 +299,56 @@ pub struct ToggleWidgetConfig {
     pub on_cmd: Option<String>,
     pub off_cmd: Option<String>,
     pub watch_cmd: Option<String>,
+}
+
+impl ToggleWidgetConfig {
+    fn default_wifi() -> Self {
+        Self {
+            enabled: true,
+            label: "Wi-Fi".to_string(),
+            icon: "network-wireless-signal-excellent-symbolic".to_string(),
+            state_cmd: Some("nmcli radio wifi".to_string()),
+            on_cmd: Some("nmcli radio wifi on".to_string()),
+            off_cmd: Some("nmcli radio wifi off".to_string()),
+            watch_cmd: Some("nmcli -t monitor".to_string()),
+        }
+    }
+
+    fn default_bluetooth() -> Self {
+        Self {
+            enabled: true,
+            label: "Bluetooth".to_string(),
+            icon: "bluetooth-active-symbolic".to_string(),
+            state_cmd: Some("bluetoothctl show".to_string()),
+            on_cmd: Some("bluetoothctl power on".to_string()),
+            off_cmd: Some("bluetoothctl power off".to_string()),
+            watch_cmd: Some("bluetoothctl --monitor".to_string()),
+        }
+    }
+
+    fn default_airplane() -> Self {
+        Self {
+            enabled: true,
+            label: "Airplane".to_string(),
+            icon: "airplane-mode-symbolic".to_string(),
+            state_cmd: Some("rfkill list all | grep -q \"Soft blocked: yes\"".to_string()),
+            on_cmd: Some("rfkill block all".to_string()),
+            off_cmd: Some("rfkill unblock all".to_string()),
+            watch_cmd: Some("udevadm monitor --udev --subsystem-match=rfkill".to_string()),
+        }
+    }
+
+    fn default_night() -> Self {
+        Self {
+            enabled: true,
+            label: "Night".to_string(),
+            icon: "weather-clear-night-symbolic".to_string(),
+            state_cmd: None,
+            on_cmd: None,
+            off_cmd: None,
+            watch_cmd: None,
+        }
+    }
 }
 
 impl Default for ToggleWidgetConfig {
@@ -283,7 +365,7 @@ impl Default for ToggleWidgetConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct StatWidgetConfig {
     pub enabled: bool,
@@ -292,6 +374,41 @@ pub struct StatWidgetConfig {
     pub kind: Option<String>,
     pub cmd: Option<String>,
     pub min_height: i32,
+}
+
+impl StatWidgetConfig {
+    fn default_cpu() -> Self {
+        Self {
+            enabled: true,
+            label: "CPU".to_string(),
+            icon: Some("utilities-system-monitor-symbolic".to_string()),
+            kind: None,
+            cmd: Some("builtin:cpu".to_string()),
+            min_height: 72,
+        }
+    }
+
+    fn default_memory() -> Self {
+        Self {
+            enabled: true,
+            label: "RAM".to_string(),
+            icon: Some("drive-harddisk-symbolic".to_string()),
+            kind: None,
+            cmd: Some("builtin:memory".to_string()),
+            min_height: 72,
+        }
+    }
+
+    fn default_battery() -> Self {
+        Self {
+            enabled: true,
+            label: "Battery".to_string(),
+            icon: Some("battery-full-symbolic".to_string()),
+            kind: None,
+            cmd: Some("builtin:battery".to_string()),
+            min_height: 72,
+        }
+    }
 }
 
 impl Default for StatWidgetConfig {
@@ -307,7 +424,7 @@ impl Default for StatWidgetConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct CardWidgetConfig {
     pub enabled: bool,
@@ -318,6 +435,34 @@ pub struct CardWidgetConfig {
     pub cmd: Option<String>,
     pub min_height: i32,
     pub monospace: bool,
+}
+
+impl CardWidgetConfig {
+    fn default_calendar() -> Self {
+        Self {
+            enabled: true,
+            kind: Some("calendar".to_string()),
+            title: "Calendar".to_string(),
+            subtitle: None,
+            icon: Some("x-office-calendar-symbolic".to_string()),
+            cmd: None,
+            min_height: 180,
+            monospace: false,
+        }
+    }
+
+    fn default_weather() -> Self {
+        Self {
+            enabled: true,
+            kind: Some("weather".to_string()),
+            title: "Weather".to_string(),
+            subtitle: Some("No data".to_string()),
+            icon: Some("weather-clear-symbolic".to_string()),
+            cmd: None,
+            min_height: 160,
+            monospace: false,
+        }
+    }
 }
 
 impl Default for CardWidgetConfig {
@@ -336,7 +481,7 @@ impl Default for CardWidgetConfig {
 }
 
 /// Notification sound behavior.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SoundConfig {
     /// Enables sound playback when the daemon receives notifications.
@@ -360,7 +505,7 @@ impl Default for SoundConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ThemeConfig {
     #[serde(alias = "style_css")]
@@ -402,7 +547,7 @@ impl Default for ThemeConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RuleConfig {
     /// Optional rule name for logging or debugging.
@@ -431,7 +576,7 @@ pub struct RuleConfig {
     pub transient: Option<bool>,
 }
 
-#[derive(Debug, Copy, Clone, Deserialize)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Anchor {
     TopRight,
@@ -452,7 +597,7 @@ impl Default for Anchor {
     }
 }
 
-#[derive(Debug, Copy, Clone, Deserialize)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PanelKeyboardInteractivity {
     // Do not request keyboard focus; panel is purely pointer-driven.
@@ -470,7 +615,7 @@ impl Default for PanelKeyboardInteractivity {
     }
 }
 
-#[derive(Debug, Copy, Clone, Deserialize)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Margins {
     // Pixel margins applied around the panel/control-center surface.

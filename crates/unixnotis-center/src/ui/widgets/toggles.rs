@@ -8,8 +8,9 @@ use std::sync::Arc;
 use gtk::prelude::*;
 use gtk::{glib, Align};
 use tracing::warn;
-use unixnotis_core::ToggleWidgetConfig;
+use unixnotis_core::{PanelDebugLevel, ToggleWidgetConfig};
 
+use crate::debug;
 use super::util::{run_command, run_command_capture_status_async, start_command_watch, CommandWatch};
 
 pub struct ToggleGrid {
@@ -107,10 +108,14 @@ impl ToggleItem {
         let on_cmd = config.on_cmd.clone();
         let off_cmd = config.off_cmd.clone();
         let refresh_gen_for_toggle = refresh_gen.clone();
+        let label = config.label.clone();
         button.connect_toggled(move |button| {
             if guard_clone.get() {
                 return;
             }
+            debug::log(PanelDebugLevel::Info, || {
+                format!("toggle '{}' set to {}", label, button.is_active())
+            });
             let command = if button.is_active() {
                 on_cmd.as_ref()
             } else {
@@ -158,9 +163,17 @@ impl ToggleItem {
         let mut handle = self.watch_handle.borrow_mut();
         if active {
             if handle.is_none() {
+                debug::log(PanelDebugLevel::Info, || {
+                    format!("toggle watch enabled: {}", self.config.label)
+                });
                 *handle = self.start_watch();
             }
         } else {
+            if handle.is_some() {
+                debug::log(PanelDebugLevel::Info, || {
+                    format!("toggle watch disabled: {}", self.config.label)
+                });
+            }
             handle.take();
         }
     }
@@ -211,9 +224,11 @@ fn refresh_toggle_state(
         } else {
             parse_toggle_state(&stdout)
         };
-        guard.set(true);
-        button.set_active(active);
-        guard.set(false);
+        if button.is_active() != active {
+            guard.set(true);
+            button.set_active(active);
+            guard.set(false);
+        }
     });
 }
 

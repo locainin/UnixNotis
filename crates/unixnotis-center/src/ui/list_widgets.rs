@@ -291,17 +291,16 @@ pub(super) fn ensure_row_widgets(
     command_tx: UnboundedSender<UiCommand>,
     event_tx: Sender<UiEvent>,
 ) -> Rc<RowWidgets> {
-    if let Some(root) = list_item.child().and_downcast::<gtk::Box>() {
-        if let Some(existing) = get_row_widgets(&root) {
-            if existing.kind == kind {
-                return existing.clone();
-            }
+    if let Some(existing) = get_row_widgets(list_item) {
+        if existing.kind == kind {
+            return existing.clone();
         }
     }
 
     let widgets = Rc::new(RowWidgets::new(kind, command_tx, event_tx));
     list_item.set_child(Some(&widgets.root));
-    set_row_widgets(&widgets.root, widgets.clone());
+    set_row_widgets(list_item, widgets.clone());
+    debug!(?kind, "row widgets created");
     widgets
 }
 
@@ -324,16 +323,17 @@ pub(super) fn bind_row(
     *widgets.handler.borrow_mut() = Some((item.clone(), handler));
 }
 
-pub(super) fn set_row_widgets(root: &gtk::Box, widgets: Rc<RowWidgets>) {
+pub(super) fn set_row_widgets(list_item: &gtk::ListItem, widgets: Rc<RowWidgets>) {
     unsafe {
-        // Store the widgets in GTK user data for reuse between binds.
-        root.set_data("unixnotis-row-widgets", widgets);
+        // Store on the list item to avoid a root <-> widget reference cycle.
+        list_item.set_data("unixnotis-row-widgets", widgets);
     }
 }
 
-pub(super) fn get_row_widgets(root: &gtk::Box) -> Option<Rc<RowWidgets>> {
+pub(super) fn get_row_widgets(list_item: &gtk::ListItem) -> Option<Rc<RowWidgets>> {
     unsafe {
-        root.data::<Rc<RowWidgets>>("unixnotis-row-widgets")
+        list_item
+            .data::<Rc<RowWidgets>>("unixnotis-row-widgets")
             .map(|ptr| ptr.as_ref().clone())
     }
 }

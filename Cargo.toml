@@ -4,6 +4,7 @@ members = [
   "crates/unixnotis-daemon",
   "crates/unixnotis-popups",
   "crates/unixnotis-center",
+  "crates/unixnotis-ui",
   "crates/noticenterctl",
   "crates/unixnotis-installer",
 ]
@@ -23,6 +24,7 @@ crossbeam-channel = "0.5"
 futures-util = "0.3"
 notify = "6"
 serde = { version = "1", features = ["derive"] }
+serde_repr = "0.1"
 serde_json = "1"
 toml = "0.8"
 thiserror = "1"

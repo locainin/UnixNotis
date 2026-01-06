@@ -10,6 +10,9 @@ use std::os::unix::process::CommandExt;
 
 use crossbeam_channel as channel;
 use tracing::warn;
+use unixnotis_core::PanelDebugLevel;
+
+use crate::debug;
 
 const COMMAND_WORKERS: usize = 2;
 const FAST_TIMEOUT_MS: u64 = 350;
@@ -51,7 +54,7 @@ impl CommandPlan {
     }
 
     pub(in crate::ui::widgets) fn spawn_watch_command(&self, cmd: &str) -> io::Result<Child> {
-        let mut command = build_shell_command(cmd);
+        let mut command = build_command(cmd);
         command.stdout(Stdio::piped()).stderr(Stdio::null());
         command.spawn()
     }
@@ -74,6 +77,7 @@ pub(in crate::ui::widgets) fn run_command(cmd: &str) {
         warn!("command was empty");
         return;
     }
+    debug::log(PanelDebugLevel::Verbose, || format!("enqueue action command: {cmd}"));
     enqueue_command(cmd.to_string(), resolve_command_plan(cmd, CommandKind::Action), None);
 }
 
@@ -89,11 +93,12 @@ pub(in crate::ui::widgets) fn run_command_capture_async(
         )));
         return rx;
     }
-    enqueue_command(
-        cmd.to_string(),
-        resolve_command_plan(cmd, CommandKind::Slow),
-        Some(tx),
+    let plan = resolve_command_plan(cmd, CommandKind::Slow);
+    debug::log(
+        PanelDebugLevel::Verbose,
+        || format!("enqueue slow command: {cmd}"),
     );
+    enqueue_command(cmd.to_string(), plan, Some(tx));
     rx
 }
 
@@ -109,11 +114,12 @@ pub(in crate::ui::widgets) fn run_command_capture_status_async(
         )));
         return rx;
     }
-    enqueue_command(
-        cmd.to_string(),
-        resolve_command_plan(cmd, CommandKind::Fast),
-        Some(tx),
+    let plan = resolve_command_plan(cmd, CommandKind::Fast);
+    debug::log(
+        PanelDebugLevel::Verbose,
+        || format!("enqueue fast command: {cmd}"),
     );
+    enqueue_command(cmd.to_string(), plan, Some(tx));
     rx
 }
 
@@ -160,11 +166,16 @@ fn enqueue_command(
 
 fn run_worker(rx: channel::Receiver<CommandJob>) {
     for job in rx.iter() {
+        debug::log(PanelDebugLevel::Verbose, || {
+            format!("command start kind={:?} cmd={}", job.plan.kind, job.cmd)
+        });
+        let started = Instant::now();
         let jitter = job.plan.jitter();
         if !jitter.is_zero() {
             std::thread::sleep(jitter);
         }
         let result = run_command_with_timeout(&job.cmd, job.plan.timeout());
+        let elapsed_ms = started.elapsed().as_millis();
         if let Some(tx) = job.respond {
             let _ = tx.send_blocking(result);
             continue;
@@ -173,10 +184,31 @@ fn run_worker(rx: channel::Receiver<CommandJob>) {
             Ok(output) => {
                 if !output.status.success() {
                     warn!(command = ?job.cmd, "command returned non-zero status");
+                    debug::log(PanelDebugLevel::Warn, || {
+                        format!(
+                            "command failed kind={:?} status={:?} elapsed_ms={elapsed_ms}",
+                            job.plan.kind,
+                            output.status.code()
+                        )
+                    });
+                } else {
+                    debug::log(PanelDebugLevel::Verbose, || {
+                        format!(
+                            "command ok kind={:?} status={:?} elapsed_ms={elapsed_ms}",
+                            job.plan.kind,
+                            output.status.code()
+                        )
+                    });
                 }
             }
             Err(err) => {
                 warn!(command = ?job.cmd, ?err, "command failed");
+                debug::log(PanelDebugLevel::Warn, || {
+                    format!(
+                        "command error kind={:?} elapsed_ms={elapsed_ms} err={err}",
+                        job.plan.kind
+                    )
+                });
             }
         }
     }
@@ -230,14 +262,26 @@ fn spawn_reader<R: Read + Send + 'static>(mut reader: R) -> std::thread::JoinHan
 }
 
 fn spawn_capture_command(cmd: &str) -> io::Result<Child> {
-    let mut command = build_shell_command(cmd);
+    let mut command = build_command(cmd);
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     command.spawn()
 }
 
-fn build_shell_command(cmd: &str) -> Command {
+fn build_command(cmd: &str) -> Command {
+    if let Some((program, args)) = parse_simple_command(cmd) {
+        let mut command = Command::new(program);
+        command.args(args);
+        configure_command(&mut command);
+        return command;
+    }
+
     let mut command = Command::new("sh");
     command.arg("-lc").arg(cmd);
+    configure_command(&mut command);
+    command
+}
+
+fn configure_command(command: &mut Command) {
     command.stdin(Stdio::null());
     #[cfg(unix)]
     unsafe {
@@ -248,7 +292,34 @@ fn build_shell_command(cmd: &str) -> Command {
             Ok(())
         });
     }
-    command
+}
+
+fn parse_simple_command(cmd: &str) -> Option<(String, Vec<String>)> {
+    let cmd = cmd.trim();
+    if cmd.is_empty() || !is_simple_command(cmd) {
+        return None;
+    }
+    let mut parts = cmd.split_whitespace();
+    let program = parts.next()?.to_string();
+    let args = parts.map(str::to_string).collect();
+    Some((program, args))
+}
+
+fn is_simple_command(cmd: &str) -> bool {
+    const META: [char; 18] = [
+        '|', '&', ';', '<', '>', '$', '`', '\\', '"', '\'', '(', ')', '{', '}', '[', ']',
+        '*', '?',
+    ];
+    if cmd.chars().any(|ch| META.contains(&ch) || ch == '~' || ch == '\n' || ch == '\r') {
+        return false;
+    }
+
+    let first = cmd.split_whitespace().next().unwrap_or_default();
+    if first.contains('=') && !first.starts_with('/') && !first.starts_with("./") {
+        return false;
+    }
+
+    true
 }
 
 pub(in crate::ui::widgets) fn kill_process_group(pid: i32) {

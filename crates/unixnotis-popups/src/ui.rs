@@ -13,8 +13,8 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;
 use unixnotis_core::{Config, NotificationView, Urgency};
 
-use crate::css::CssManager;
 use crate::dbus::{UiCommand, UiEvent};
+use unixnotis_ui::css::{self, CssManager};
 
 use icons::{
     collect_icon_candidates, file_path_from_hint, image_data_texture, resolve_icon_image,
@@ -110,7 +110,7 @@ impl UiState {
             }
             UiEvent::CssReload => {
                 debug!("popup css reload requested");
-                self.css.reload(crate::css::DEFAULT_CSS);
+                self.css.reload(css::DEFAULT_CSS);
             }
             UiEvent::ConfigReload => {
                 debug!("popup config reload requested");
@@ -138,7 +138,7 @@ impl UiState {
         self.config = config.clone();
         debug!("popup config reloaded");
         self.css.update_theme(theme_paths, config.theme.clone());
-        self.css.reload(crate::css::DEFAULT_CSS);
+        self.css.reload(css::DEFAULT_CSS);
         apply_popup_config(&self.popup_window, &self.popup_stack, &config);
     }
 

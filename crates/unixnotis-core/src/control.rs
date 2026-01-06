@@ -1,6 +1,7 @@
 //! D-Bus control interface types and proxy definitions.
 
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use zbus::proxy;
 use zbus::zvariant::Type;
 
@@ -20,16 +21,79 @@ pub struct ControlState {
     pub history_count: u32,
 }
 
-/// Panel visibility requests sent to the UI.
+/// Panel visibility actions sent to the UI.
+#[derive(Debug, Copy, Clone, Serialize_repr, Deserialize_repr, Type)]
+#[repr(u32)]
+pub enum PanelAction {
+    Open = 0,
+    Close = 1,
+    Toggle = 2,
+}
+
+/// Debug verbosity for panel diagnostics requested via control tooling.
+#[derive(
+    Debug, Copy, Clone, Serialize_repr, Deserialize_repr, Type, Eq, PartialEq, Ord, PartialOrd,
+)]
+#[repr(u8)]
+pub enum PanelDebugLevel {
+    Off = 0,
+    Critical = 1,
+    Warn = 2,
+    Info = 3,
+    Verbose = 4,
+}
+
+impl Default for PanelDebugLevel {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl PanelDebugLevel {
+    pub fn allows(self, level: PanelDebugLevel) -> bool {
+        self != PanelDebugLevel::Off && self >= level
+    }
+}
+
+/// Panel request payload combining action and requested debug verbosity.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, Type)]
-pub enum PanelRequest {
-    Open,
-    Close,
-    Toggle,
+pub struct PanelRequest {
+    pub action: PanelAction,
+    pub debug: PanelDebugLevel,
+}
+
+impl PanelRequest {
+    pub fn open() -> Self {
+        Self {
+            action: PanelAction::Open,
+            debug: PanelDebugLevel::Off,
+        }
+    }
+
+    pub fn open_debug(level: PanelDebugLevel) -> Self {
+        Self {
+            action: PanelAction::Open,
+            debug: level,
+        }
+    }
+
+    pub fn close() -> Self {
+        Self {
+            action: PanelAction::Close,
+            debug: PanelDebugLevel::Off,
+        }
+    }
+
+    pub fn toggle() -> Self {
+        Self {
+            action: PanelAction::Toggle,
+            debug: PanelDebugLevel::Off,
+        }
+    }
 }
 
 /// Reason codes aligned with the notification specification.
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Copy, Clone, Serialize_repr, Deserialize_repr, Type)]
 #[repr(u32)]
 pub enum CloseReason {
     Expired = 1,
@@ -55,6 +119,9 @@ trait Control {
 
     /// Open the control center panel.
     fn open_panel(&self) -> zbus::Result<()>;
+
+    /// Open the control center panel with debug logging.
+    fn open_panel_debug(&self, level: PanelDebugLevel) -> zbus::Result<()>;
 
     /// Close the control center panel.
     fn close_panel(&self) -> zbus::Result<()>;

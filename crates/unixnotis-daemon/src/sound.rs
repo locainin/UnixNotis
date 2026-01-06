@@ -1,6 +1,5 @@
 //! Notification sound playback and backend selection.
 
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -8,7 +7,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use tracing::{info, warn};
-use unixnotis_core::Config;
+use unixnotis_core::{program_in_path, Config};
 use zbus::zvariant::OwnedValue;
 
 use std::collections::HashMap;
@@ -204,21 +203,6 @@ fn detect_backend() -> SoundBackend {
         return SoundBackend::PaPlay;
     }
     SoundBackend::None
-}
-
-fn program_in_path(program: &str) -> bool {
-    if program.contains(std::path::MAIN_SEPARATOR) {
-        return Path::new(program).is_file();
-    }
-    let Ok(paths) = env::var("PATH") else {
-        return false;
-    };
-    for dir in env::split_paths(&paths) {
-        if dir.join(program).is_file() {
-            return true;
-        }
-    }
-    false
 }
 
 fn play_with_canberra(source: SoundSource) {

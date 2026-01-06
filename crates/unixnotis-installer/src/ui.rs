@@ -48,7 +48,7 @@ fn draw_welcome(frame: &mut Frame<'_>, app: &App) {
         body[0],
     );
 
-    let menu = render_menu(app);
+    let menu = render_menu(app, body[1].width);
     let menu_block = Block::default().title("Actions").borders(Borders::ALL);
     frame.render_widget(menu.block(menu_block), body[1]);
 
@@ -83,7 +83,7 @@ fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
 
     let mut lines = Vec::new();
     lines.push(Line::from(vec![Span::styled(
-        format!("Confirm {}", mode.label()),
+        format!("Confirm {}", app.action_label(mode)),
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD),
@@ -115,6 +115,26 @@ fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
             ),
             Span::raw(reason),
         ]));
+    }
+    if matches!(mode, ActionMode::Install)
+        && app
+            .install_state
+            .as_ref()
+            .map(|state| state.is_fully_installed())
+            .unwrap_or(false)
+    {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Reinstall will overwrite binaries and the systemd unit.",
+            Style::default().fg(Color::Yellow),
+        )));
+    }
+    if matches!(mode, ActionMode::Reset) {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Reset will overwrite config.toml and theme files with defaults.",
+            Style::default().fg(Color::Yellow),
+        )));
     }
 
     let block = Block::default().title("Confirmation").borders(Borders::ALL);
@@ -157,7 +177,7 @@ fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
     draw_header(frame, layout[0]);
 
     let mut status_lines = vec![Line::from(Span::styled(
-        format!("{} - {}", mode.label(), status_label),
+        format!("{} - {}", app.action_label(mode), status_label),
         Style::default()
             .fg(status_color)
             .add_modifier(Modifier::BOLD),
@@ -184,18 +204,13 @@ fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
         .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(layout[2]);
 
-    let steps = render_steps(&app.steps);
+    let steps = render_steps(&app.steps, body[0].width);
     let steps_block = Block::default().title("Steps").borders(Borders::ALL);
     frame.render_widget(steps.block(steps_block), body[0]);
 
     let logs = render_logs(&app.logs, body[1].width);
     let logs_block = Block::default().title("Logs").borders(Borders::ALL);
-    frame.render_widget(
-        Paragraph::new(logs)
-            .block(logs_block)
-            .wrap(Wrap { trim: false }),
-        body[1],
-    );
+    frame.render_widget(Paragraph::new(logs).block(logs_block), body[1]);
 
     let footer_text = match app.progress_state {
         ProgressState::Running => "Running...",
@@ -305,16 +320,18 @@ fn render_check(item: &CheckItem) -> Vec<Line<'static>> {
     ])]
 }
 
-fn render_menu(app: &App) -> List<'static> {
+fn render_menu(app: &App, width: u16) -> List<'static> {
+    let inner_width = width.saturating_sub(2) as usize;
     let items = App::menu_items();
     let list_items = items
         .iter()
         .enumerate()
         .map(|(index, item)| {
             let label = match item {
-                MenuItem::Action(mode) => mode.label(),
+                MenuItem::Action(mode) => app.action_label(*mode),
                 MenuItem::Quit => "Quit",
             };
+            let label = truncate_to_width(label, inner_width);
             let style = if index == app.menu_index {
                 Style::default()
                     .fg(Color::Black)
@@ -330,7 +347,8 @@ fn render_menu(app: &App) -> List<'static> {
     List::new(list_items)
 }
 
-fn render_steps(steps: &[ActionStep]) -> List<'static> {
+fn render_steps(steps: &[ActionStep], width: u16) -> List<'static> {
+    let inner_width = width.saturating_sub(2) as usize;
     let items = steps
         .iter()
         .map(|step| {
@@ -340,10 +358,12 @@ fn render_steps(steps: &[ActionStep]) -> List<'static> {
                 StepStatus::Done => ("[ok]", Style::default().fg(Color::Green)),
                 StepStatus::Failed => ("[!!]", Style::default().fg(Color::Red)),
             };
+            let available = inner_width.saturating_sub(symbol.len() + 1);
+            let label = truncate_to_width(step.name, available);
             ListItem::new(Line::from(vec![
                 Span::styled(symbol, style.add_modifier(Modifier::BOLD)),
                 Span::raw(" "),
-                Span::raw(step.name),
+                Span::raw(label),
             ]))
         })
         .collect::<Vec<_>>();
@@ -356,6 +376,7 @@ fn render_logs(logs: &[String], width: u16) -> Text<'static> {
     let mut lines = Vec::new();
     for line in logs {
         for wrapped in wrap_line(line, inner_width) {
+            let wrapped = truncate_to_width(&wrapped, inner_width);
             lines.push(Line::from(wrapped));
         }
     }
@@ -442,6 +463,25 @@ fn break_long_word(word: &str, width: usize) -> Vec<String> {
     chunks
 }
 
+fn truncate_to_width(text: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let len = text.chars().count();
+    if len <= width {
+        return text.to_string();
+    }
+    if width <= 3 {
+        return text.chars().take(width).collect();
+    }
+    let mut out = String::new();
+    for ch in text.chars().take(width - 3) {
+        out.push(ch);
+    }
+    out.push_str("...");
+    out
+}
+
 fn summarize_error(err: &str) -> String {
     // Provide a short, user-friendly error line for the UI while keeping full details in logs.
     // This prevents the status panel from being dominated by long multi-line errors.
@@ -450,6 +490,15 @@ fn summarize_error(err: &str) -> String {
     // (This makes the UI consistent even if the underlying error text changes slightly.)
     if err.contains("failed to install") {
         return "failed to install binary (see logs)".to_string();
+    }
+    if err.contains("missing build artifact") {
+        return "missing release binary (see logs)".to_string();
+    }
+    if err.contains("command failed: cargo") {
+        return "cargo command failed (see logs)".to_string();
+    }
+    if err.contains("repository root not found") {
+        return "repository root not found (see logs)".to_string();
     }
 
     // Default: truncate to a fixed number of characters and add an ellipsis if needed.

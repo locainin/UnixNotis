@@ -1,5 +1,6 @@
 //! D-Bus runtime for center UI events and control commands.
 
+use std::collections::VecDeque;
 use std::thread;
 use std::time::Duration;
 
@@ -7,10 +8,12 @@ use futures_util::StreamExt;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tracing::{info, warn};
 use unixnotis_core::{
-    CloseReason, ControlProxy, ControlState, Margins, NotificationView, PanelRequest,
+    CloseReason, ControlProxy, ControlState, Margins, NotificationView, PanelDebugLevel,
+    PanelRequest,
 };
 use zbus::{Connection, Result as ZbusResult};
 
+use crate::debug;
 use crate::media::MediaInfo;
 
 /// Events delivered to the GTK main loop.
@@ -70,18 +73,22 @@ pub fn start_dbus_runtime(sender: async_channel::Sender<UiEvent>) -> UnboundedSe
                 }
             };
 
+            // Buffer UI actions during reconnect to avoid losing user intent.
+            let mut offline_commands: VecDeque<UiCommand> = VecDeque::new();
+
             loop {
                 let proxy = match ControlProxy::new(&connection).await {
                     Ok(proxy) => proxy,
                     Err(err) => {
                         warn!(?err, "control interface unavailable, retrying");
-                        drain_offline_commands(&mut command_rx);
+                        stash_offline_commands(&mut command_rx, &mut offline_commands);
                         tokio::time::sleep(Duration::from_millis(500)).await;
                         continue;
                     }
                 };
                 info!("connected to unixnotis control interface");
                 seed_state(&proxy, &sender).await;
+                flush_offline_commands(&proxy, &sender, &mut offline_commands).await;
 
                 let mut added_stream = match proxy.receive_notification_added().await {
                     Ok(stream) => stream,
@@ -196,6 +203,7 @@ pub fn start_dbus_runtime(sender: async_channel::Sender<UiEvent>) -> UnboundedSe
                         }
                     }
                 }
+                stash_offline_commands(&mut command_rx, &mut offline_commands);
                 tokio::time::sleep(Duration::from_millis(300)).await;
             }
         });
@@ -238,8 +246,45 @@ async fn handle_command(
     }
 }
 
-fn drain_offline_commands(command_rx: &mut mpsc::UnboundedReceiver<UiCommand>) {
-    while command_rx.try_recv().is_ok() {
-        warn!("dropping control command while interface is unavailable");
+const MAX_OFFLINE_COMMANDS: usize = 128;
+
+fn stash_offline_commands(
+    command_rx: &mut mpsc::UnboundedReceiver<UiCommand>,
+    offline: &mut VecDeque<UiCommand>,
+) {
+    let mut drained = 0usize;
+    while let Ok(command) = command_rx.try_recv() {
+        if offline.len() >= MAX_OFFLINE_COMMANDS {
+            offline.pop_front();
+            warn!("dropping control command while interface is unavailable");
+        }
+        offline.push_back(command);
+        drained += 1;
+    }
+    if drained > 0 {
+        debug::log(PanelDebugLevel::Info, || {
+            format!(
+                "buffered {drained} control command(s) while offline (queued={})",
+                offline.len()
+            )
+        });
+    }
+}
+
+async fn flush_offline_commands(
+    proxy: &ControlProxy<'_>,
+    sender: &async_channel::Sender<UiEvent>,
+    offline: &mut VecDeque<UiCommand>,
+) {
+    if offline.is_empty() {
+        return;
+    }
+    debug::log(PanelDebugLevel::Info, || {
+        format!("replaying {} buffered control command(s)", offline.len())
+    });
+    while let Some(command) = offline.pop_front() {
+        if let Err(err) = handle_command(proxy, sender, command).await {
+            warn!(?err, "buffered control command failed");
+        }
     }
 }

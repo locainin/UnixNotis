@@ -160,12 +160,12 @@ fn parse_reserved(value: &Value) -> Option<Margins> {
     // as an object with explicit keys. Support both to be robust across versions/tools.
     if let Some(array) = value.as_array() {
         if array.len() == 4 {
-            // Hyprland JSON monitor output emits reserved as [left, top, right, bottom].
-            // We normalize into our internal Margins { top, right, bottom, left } ordering.
-            let left = array[0].as_i64()? as i32;
-            let top = array[1].as_i64()? as i32;
-            let right = array[2].as_i64()? as i32;
-            let bottom = array[3].as_i64()? as i32;
+            // Hyprland JSON monitor output emits reserved as [top, right, bottom, left].
+            // Normalize into our internal Margins { top, right, bottom, left } ordering.
+            let top = array[0].as_i64()?.max(0) as i32;
+            let right = array[1].as_i64()?.max(0) as i32;
+            let bottom = array[2].as_i64()?.max(0) as i32;
+            let left = array[3].as_i64()?.max(0) as i32;
 
             // Debug log helps validate order on real systems (especially multi-monitor).
             debug!(left, top, right, bottom, "hyprland reserved margins parsed");
@@ -182,10 +182,10 @@ fn parse_reserved(value: &Value) -> Option<Margins> {
     if let Some(object) = value.as_object() {
         // Object form is unambiguous; just read the named edges.
         // Using and_then(Value::as_i64) ensures type correctness; any mismatch returns None.
-        let top = object.get("top").and_then(Value::as_i64)? as i32;
-        let right = object.get("right").and_then(Value::as_i64)? as i32;
-        let bottom = object.get("bottom").and_then(Value::as_i64)? as i32;
-        let left = object.get("left").and_then(Value::as_i64)? as i32;
+        let top = object.get("top").and_then(Value::as_i64)?.max(0) as i32;
+        let right = object.get("right").and_then(Value::as_i64)?.max(0) as i32;
+        let bottom = object.get("bottom").and_then(Value::as_i64)?.max(0) as i32;
+        let left = object.get("left").and_then(Value::as_i64)?.max(0) as i32;
 
         debug!(
             left,
@@ -237,12 +237,12 @@ mod tests {
 
     #[test]
     fn parse_reserved_array_order() {
-        // [left, top, right, bottom] -> Margins { top, right, bottom, left }
+        // [top, right, bottom, left] -> Margins { top, right, bottom, left }
         let value = serde_json::json!([10, 20, 30, 40]);
         let margins = parse_reserved(&value).expect("reserved margins");
-        assert_eq!(margins.top, 20);
-        assert_eq!(margins.right, 30);
-        assert_eq!(margins.bottom, 40);
-        assert_eq!(margins.left, 10);
+        assert_eq!(margins.top, 10);
+        assert_eq!(margins.right, 20);
+        assert_eq!(margins.bottom, 30);
+        assert_eq!(margins.left, 40);
     }
 }

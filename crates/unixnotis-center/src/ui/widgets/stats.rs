@@ -6,8 +6,9 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{glib, Align};
 use tracing::warn;
-use unixnotis_core::StatWidgetConfig;
+use unixnotis_core::{PanelDebugLevel, StatWidgetConfig};
 
+use crate::debug;
 use super::stats_builtin::BuiltinStat;
 use super::util::run_command_capture_async;
 
@@ -91,6 +92,7 @@ impl StatItem {
         let value_label = gtk::Label::new(Some("n/a"));
         value_label.add_css_class("unixnotis-stat-value");
         value_label.set_xalign(0.0);
+        value_label.set_width_chars(12);
 
         card.append(&header);
         card.append(&value_label);
@@ -114,6 +116,9 @@ impl StatItem {
         if !self.root.is_visible() {
             return;
         }
+        debug::log(PanelDebugLevel::Verbose, || {
+            format!("stat refresh: {}", self.config.label)
+        });
         if let Some(builtin) = self.builtin.borrow_mut().as_mut() {
             let value = builtin.read().unwrap_or_else(|| "n/a".to_string());
             self.apply_value(&value);
@@ -167,6 +172,9 @@ impl StatItem {
     }
 
     fn apply_value(&self, value: &str) {
+        if self.last_value.borrow().as_deref() == Some(value) {
+            return;
+        }
         self.value_label.set_text(value);
         *self.last_value.borrow_mut() = Some(value.to_string());
     }
@@ -174,8 +182,10 @@ impl StatItem {
 
 fn apply_cached_value(label: &gtk::Label, cache: &Rc<RefCell<Option<String>>>) {
     if let Some(value) = cache.borrow().as_ref() {
-        label.set_text(value);
-    } else {
+        if label.text().as_str() != value {
+            label.set_text(value);
+        }
+    } else if label.text().as_str() != "n/a" {
         label.set_text("n/a");
     }
 }

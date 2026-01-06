@@ -1,12 +1,11 @@
 [package]
-name = "unixnotis-installer"
+name = "unixnotis-ui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow.workspace = true
-crossterm.workspace = true
-ratatui.workspace = true
-toml.workspace = true
+gtk.workspace = true
+notify.workspace = true
+tracing.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }

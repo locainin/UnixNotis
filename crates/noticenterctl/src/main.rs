@@ -1,8 +1,9 @@
 //! Command-line control surface for the UnixNotis D-Bus interface.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use unixnotis_core::{ControlProxy, NotificationView};
+use std::process::Command as ProcCommand;
+use unixnotis_core::{ControlProxy, NotificationView, PanelDebugLevel};
 use zbus::Connection;
 
 #[derive(Parser, Debug)]
@@ -15,7 +16,10 @@ struct Args {
 #[derive(Subcommand, Debug)]
 enum Command {
     TogglePanel,
-    OpenPanel,
+    OpenPanel {
+        #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "info")]
+        debug: Option<DebugLevelArg>,
+    },
     ClosePanel,
     Dnd {
         #[arg(value_enum)]
@@ -36,6 +40,25 @@ enum DndState {
     Toggle,
 }
 
+#[derive(ValueEnum, Debug, Clone, Copy)]
+enum DebugLevelArg {
+    Critical,
+    Warn,
+    Info,
+    Verbose,
+}
+
+impl From<DebugLevelArg> for PanelDebugLevel {
+    fn from(value: DebugLevelArg) -> Self {
+        match value {
+            DebugLevelArg::Critical => PanelDebugLevel::Critical,
+            DebugLevelArg::Warn => PanelDebugLevel::Warn,
+            DebugLevelArg::Info => PanelDebugLevel::Info,
+            DebugLevelArg::Verbose => PanelDebugLevel::Verbose,
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -48,7 +71,14 @@ async fn main() -> Result<()> {
 
     match args.command {
         Command::TogglePanel => proxy.toggle_panel().await?,
-        Command::OpenPanel => proxy.open_panel().await?,
+        Command::OpenPanel { debug } => {
+            if let Some(level) = debug {
+                proxy.open_panel_debug(level.into()).await?;
+                follow_debug_logs().context("follow unixnotis debug logs")?;
+            } else {
+                proxy.open_panel().await?;
+            }
+        }
         Command::ClosePanel => proxy.close_panel().await?,
         Command::Clear => proxy.clear_all().await?,
         Command::Dismiss { id } => proxy.dismiss(id).await?,
@@ -82,5 +112,24 @@ fn print_notifications(label: &str, notifications: &[NotificationView]) {
             app = notification.app_name,
             summary = notification.summary
         );
+    }
+}
+
+fn follow_debug_logs() -> Result<()> {
+    let status = ProcCommand::new("journalctl")
+        .args([
+            "--user",
+            "-f",
+            "-u",
+            "unixnotis-daemon.service",
+            "-o",
+            "cat",
+        ])
+        .status()
+        .context("start journalctl follow")?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!("journalctl exited with status {}", status))
     }
 }

@@ -2,6 +2,8 @@
 //!
 //! Offloads image decoding and resizing to worker threads.
 
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::thread;
 
@@ -13,6 +15,9 @@ use gtk::prelude::*;
 use image::imageops::FilterType;
 
 use super::icons_cache::IconKey;
+
+// Prevent unbounded reads from untrusted icon paths.
+const MAX_ICON_BYTES: u64 = 16 * 1024 * 1024;
 
 pub(super) struct IconWorker {
     sender: channel::Sender<IconJob>,
@@ -93,12 +98,33 @@ impl IconWorker {
 }
 
 fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
-    // Read the file into memory. This keeps decode logic simple and lets the image crate
-    // handle format detection (PNG/JPEG/etc). Failures become IconResult::Failed.
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
+    let metadata = match std::fs::metadata(path) {
+        Ok(metadata) => metadata,
         Err(err) => return IconResult::Failed(err.to_string()),
     };
+    if !metadata.is_file() {
+        return IconResult::Failed("icon path is not a regular file".to_string());
+    }
+    if metadata.len() > MAX_ICON_BYTES {
+        return IconResult::Failed(format!(
+            "icon file too large ({} bytes)",
+            metadata.len()
+        ));
+    }
+
+    // Read the file into memory with a hard cap to avoid unbounded allocations.
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(err) => return IconResult::Failed(err.to_string()),
+    };
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    let mut limited = file.take(MAX_ICON_BYTES + 1);
+    if let Err(err) = limited.read_to_end(&mut bytes) {
+        return IconResult::Failed(err.to_string());
+    }
+    if bytes.len() as u64 > MAX_ICON_BYTES {
+        return IconResult::Failed("icon file too large".to_string());
+    }
 
     // Decode the image from the raw bytes. load_from_memory auto-detects the format.
     let image = match image::load_from_memory(&bytes) {

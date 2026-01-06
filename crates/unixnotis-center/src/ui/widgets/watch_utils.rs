@@ -8,10 +8,14 @@ use std::time::Duration;
 use async_channel::TryRecvError;
 use gtk::glib;
 use tracing::warn;
+use unixnotis_core::PanelDebugLevel;
+
+use crate::debug;
 
 use super::command_utils::{kill_process_group, resolve_command_plan, CommandKind};
 
 pub(in crate::ui::widgets) struct CommandWatch {
+    cmd: String,
     child: Option<Child>,
     thread: Option<std::thread::JoinHandle<()>>,
     task: Option<glib::JoinHandle<()>>,
@@ -22,15 +26,29 @@ impl Drop for CommandWatch {
         if let Some(task) = self.task.take() {
             task.abort();
         }
-        if let Some(mut child) = self.child.take() {
-            let pid = child.id() as i32;
-            kill_process_group(pid);
-            let _ = child.kill();
-            let _ = child.wait();
+        let cmd = std::mem::take(&mut self.cmd);
+        let child = self.child.take();
+        let thread = self.thread.take();
+
+        if child.is_none() && thread.is_none() {
+            return;
         }
-        if let Some(handle) = self.thread.take() {
-            let _ = handle.join();
-        }
+
+        // Cleanup runs off the GTK thread to avoid UI stalls on process shutdown.
+        std::thread::spawn(move || {
+            if let Some(mut child) = child {
+                let pid = child.id() as i32;
+                kill_process_group(pid);
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            if let Some(handle) = thread {
+                let _ = handle.join();
+            }
+            debug::log(PanelDebugLevel::Info, || {
+                format!("watch cleanup complete: {cmd}")
+            });
+        });
     }
 }
 
@@ -43,8 +61,11 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
         warn!("watch command was empty");
         return None;
     }
+    debug::log(PanelDebugLevel::Info, || format!("watch start: {cmd}"));
 
     let plan = resolve_command_plan(cmd, CommandKind::Slow);
+    let cmd_string = cmd.to_string();
+    let cmd_for_thread = cmd_string.clone();
     let mut child = match plan.spawn_watch_command(cmd) {
         Ok(child) => child,
         Err(err) => {
@@ -68,6 +89,7 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
     let debounce = Duration::from_millis(120);
     let task = glib::MainContext::default().spawn_local({
         let on_event = on_event.clone();
+        let cmd = cmd_string.clone();
         async move {
             while rx.recv().await.is_ok() {
                 loop {
@@ -80,24 +102,36 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
                         Err(TryRecvError::Closed) => return,
                     }
                 }
+                debug::log(PanelDebugLevel::Verbose, || {
+                    format!("watch event: {cmd}")
+                });
                 on_event();
             }
         }
     });
 
-    let thread = std::thread::spawn(move || {
-        let reader = io::BufReader::new(stdout);
-        for line in reader.lines() {
-            if line.is_err() {
-                break;
+    let thread = std::thread::spawn({
+        let cmd = cmd_for_thread;
+        move || {
+            let reader = io::BufReader::new(stdout);
+            let mut events = 0usize;
+            for line in reader.lines() {
+                if line.is_err() {
+                    break;
+                }
+                events += 1;
+                if tx.send_blocking(()).is_err() {
+                    break;
+                }
             }
-            if tx.send_blocking(()).is_err() {
-                break;
-            }
+            debug::log(PanelDebugLevel::Info, || {
+                format!("watch stopped: {cmd} (events={events})")
+            });
         }
     });
 
     Some(CommandWatch {
+        cmd: cmd_string,
         child: Some(child),
         thread: Some(thread),
         task: Some(task),

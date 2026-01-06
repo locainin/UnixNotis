@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tracing::{debug, info};
 use unixnotis_core::{
-    Action, CloseReason, Config, Notification, NotificationImage, NotificationView, PanelRequest,
-    Urgency, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH,
+    Action, CloseReason, Config, Notification, NotificationImage, NotificationView, PanelDebugLevel,
+    PanelRequest, Urgency, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH,
 };
 use zbus::fdo::{RequestNameFlags, RequestNameReply};
 use zbus::zvariant::OwnedValue;
@@ -177,7 +177,7 @@ impl NotificationServer {
         // Sound playback is driven by hints plus configured defaults.
         self.state
             .sound
-            .play_from_hints(&outcome.notification.hints, outcome.show_popup);
+            .play_from_hints(&outcome.notification.hints, outcome.allow_sound);
 
         let control_ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
             .map_err(to_fdo_error)?;
@@ -275,7 +275,15 @@ impl ControlServer {
     async fn open_panel(&self) -> zbus::fdo::Result<()> {
         let ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
             .map_err(to_fdo_error)?;
-        ControlServer::panel_requested(&ctx, PanelRequest::Open)
+        ControlServer::panel_requested(&ctx, PanelRequest::open())
+            .await
+            .map_err(to_fdo_error)
+    }
+
+    async fn open_panel_debug(&self, level: PanelDebugLevel) -> zbus::fdo::Result<()> {
+        let ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
+            .map_err(to_fdo_error)?;
+        ControlServer::panel_requested(&ctx, PanelRequest::open_debug(level))
             .await
             .map_err(to_fdo_error)
     }
@@ -283,7 +291,7 @@ impl ControlServer {
     async fn close_panel(&self) -> zbus::fdo::Result<()> {
         let ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
             .map_err(to_fdo_error)?;
-        ControlServer::panel_requested(&ctx, PanelRequest::Close)
+        ControlServer::panel_requested(&ctx, PanelRequest::close())
             .await
             .map_err(to_fdo_error)
     }
@@ -291,7 +299,7 @@ impl ControlServer {
     async fn toggle_panel(&self) -> zbus::fdo::Result<()> {
         let ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
             .map_err(to_fdo_error)?;
-        ControlServer::panel_requested(&ctx, PanelRequest::Toggle)
+        ControlServer::panel_requested(&ctx, PanelRequest::toggle())
             .await
             .map_err(to_fdo_error)
     }
@@ -418,6 +426,8 @@ fn build_notification(
         category,
         is_transient,
         is_resident,
+        suppress_popup: false,
+        suppress_sound: false,
         image,
         expire_timeout,
         received_at: chrono::Utc::now(),

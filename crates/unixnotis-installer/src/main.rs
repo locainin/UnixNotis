@@ -15,6 +15,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::actions::{
     build_plan, check_install_state, run_step, steps_from_plan, ActionContext, StepKind,
@@ -150,7 +151,7 @@ fn handle_confirm_key(
                         repo_root: paths.repo_root.clone(),
                     }));
                 }
-                ActionMode::Install | ActionMode::Uninstall => {
+                ActionMode::Install | ActionMode::Uninstall | ActionMode::Reset => {
                     start_action(app, terminal_guard, ui_tx, mode)?;
                 }
             }
@@ -164,6 +165,11 @@ fn handle_confirm_key(
 fn handle_progress_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
     if matches!(app.progress_state, ProgressState::Running) {
         return Ok(None);
+    }
+    if let Some(ready_at) = app.progress_ready_at {
+        if Instant::now() < ready_at {
+            return Ok(None);
+        }
     }
     match key.code {
         KeyCode::Enter => {
@@ -192,20 +198,13 @@ fn start_action(
         None
     };
 
-    let plan = if let Some(state) = install_state.as_ref() {
-        if state.is_fully_installed() {
-            vec![StepKind::InstallCheck]
-        } else {
-            build_plan(mode, app.verify)
-        }
-    } else {
-        build_plan(mode, app.verify)
-    };
+    let plan = build_plan(mode, app.verify);
 
     app.steps = steps_from_plan(&plan);
     app.logs.clear();
     app.last_error = None;
     app.progress_state = ProgressState::Running;
+    app.progress_ready_at = None;
     app.screen = Screen::Progress(mode);
 
     terminal_guard
@@ -215,7 +214,7 @@ fn start_action(
     let detection = app.detection.clone();
     let ui_tx = ui_tx.clone();
     thread::spawn(move || {
-        run_action_worker(plan, detection, paths, install_state, ui_tx);
+        run_action_worker(plan, mode, detection, paths, install_state, ui_tx);
     });
 
     Ok(())
@@ -223,6 +222,7 @@ fn start_action(
 
 fn run_action_worker(
     plan: Vec<StepKind>,
+    mode: ActionMode,
     detection: crate::detect::Detection,
     paths: InstallPaths,
     install_state: Option<crate::actions::InstallState>,
@@ -240,6 +240,7 @@ fn run_action_worker(
                 paths: &paths,
                 install_state: install_state.clone(),
                 log_tx: ui_tx.clone(),
+                action_mode: mode,
             };
             run_step(*step, &mut ctx)
         };
@@ -281,6 +282,7 @@ fn apply_worker_event(app: &mut App, event: WorkerEvent) {
             app.last_error = Some(err.clone());
             append_log(app, format!("Error: {}", err));
             app.progress_state = ProgressState::Failed;
+            app.progress_ready_at = Some(Instant::now() + Duration::from_millis(400));
         }
         WorkerEvent::LogLine(line) => {
             append_log(app, line);
@@ -288,6 +290,7 @@ fn apply_worker_event(app: &mut App, event: WorkerEvent) {
         WorkerEvent::Finished => {
             if matches!(app.progress_state, ProgressState::Running) {
                 app.progress_state = ProgressState::Completed;
+                app.progress_ready_at = Some(Instant::now() + Duration::from_millis(400));
             }
         }
     }
@@ -323,6 +326,7 @@ fn reset_to_menu(app: &mut App) {
     app.logs.clear();
     app.steps.clear();
     app.progress_state = ProgressState::Idle;
+    app.progress_ready_at = None;
     app.refresh();
 }
 

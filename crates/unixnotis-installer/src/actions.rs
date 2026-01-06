@@ -21,6 +21,7 @@ pub struct ActionContext<'a> {
     pub paths: &'a InstallPaths,
     pub install_state: Option<InstallState>,
     pub log_tx: Sender<UiMessage>,
+    pub action_mode: ActionMode,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,6 +31,7 @@ pub enum StepKind {
     Verify,
     Build,
     EnsureConfig,
+    ResetConfig,
     InstallBinaries,
     InstallService,
     EnableService,
@@ -56,6 +58,7 @@ pub fn build_plan(mode: ActionMode, verify: bool) -> Vec<StepKind> {
             steps
         }
         ActionMode::Uninstall => vec![StepKind::UninstallService, StepKind::RemoveBinaries],
+        ActionMode::Reset => vec![StepKind::ResetConfig],
     }
 }
 
@@ -75,6 +78,7 @@ pub fn run_step(step: StepKind, ctx: &mut ActionContext) -> Result<()> {
         StepKind::Verify => run_verify(ctx),
         StepKind::Build => run_build(ctx),
         StepKind::EnsureConfig => ensure_config(ctx),
+        StepKind::ResetConfig => reset_config(ctx),
         StepKind::InstallBinaries => install_binaries(ctx),
         StepKind::InstallService => install_service(ctx),
         StepKind::EnableService => enable_service(ctx),
@@ -90,6 +94,7 @@ pub fn step_label(kind: StepKind) -> &'static str {
         StepKind::Verify => "Verify workspace",
         StepKind::Build => "Build release binaries",
         StepKind::EnsureConfig => "Ensure config files",
+        StepKind::ResetConfig => "Reset config files",
         StepKind::InstallBinaries => "Install binaries",
         StepKind::InstallService => "Install systemd unit",
         StepKind::EnableService => "Enable user service",
@@ -192,7 +197,11 @@ fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     );
 
     if state.is_fully_installed() {
-        log_line(ctx, "Already installed. No changes applied.");
+        if matches!(ctx.action_mode, ActionMode::Install) {
+            log_line(ctx, "Already installed. Reinstall will overwrite existing files.");
+        } else {
+            log_line(ctx, "Already installed.");
+        }
     } else {
         log_line(ctx, "Install will continue and update missing items.");
     }
@@ -385,6 +394,50 @@ fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
             ),
         );
     }
+
+    Ok(())
+}
+
+fn reset_config(ctx: &mut ActionContext) -> Result<()> {
+    let config = Config::default();
+    let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
+    let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;
+
+    fs::create_dir_all(&config_dir)
+        .with_context(|| "failed to create config directory")?;
+
+    let config_toml =
+        toml::to_string_pretty(&config).map_err(|err| anyhow!(err.to_string()))?;
+    fs::write(&config_path, config_toml).with_context(|| "failed to write config.toml")?;
+
+    log_line(
+        ctx,
+        format!(
+            "Reset config file to defaults: {}",
+            format_with_home(&config_path)
+        ),
+    );
+
+    let theme_paths = config
+        .resolve_theme_paths()
+        .map_err(|err| anyhow!(err.to_string()))?;
+
+    fs::write(&theme_paths.base_css, unixnotis_core::DEFAULT_BASE_CSS)
+        .with_context(|| "failed to write base.css")?;
+    fs::write(&theme_paths.panel_css, unixnotis_core::DEFAULT_PANEL_CSS)
+        .with_context(|| "failed to write panel.css")?;
+    fs::write(&theme_paths.popup_css, unixnotis_core::DEFAULT_POPUP_CSS)
+        .with_context(|| "failed to write popup.css")?;
+    fs::write(&theme_paths.widgets_css, unixnotis_core::DEFAULT_WIDGETS_CSS)
+        .with_context(|| "failed to write widgets.css")?;
+
+    log_line(
+        ctx,
+        format!(
+            "Reset theme files in {}",
+            format_with_home(&config_dir)
+        ),
+    );
 
     Ok(())
 }

@@ -14,8 +14,9 @@ use std::time::Duration;
 use gtk::prelude::*;
 use gtk::{glib, Align};
 use tracing::warn;
-use unixnotis_core::SliderWidgetConfig;
+use unixnotis_core::{NumericParseMode, PanelDebugLevel, SliderWidgetConfig};
 
+use crate::debug;
 pub(super) use command_utils::{
     run_command, run_command_capture_async, run_command_capture_status_async,
 };
@@ -64,6 +65,8 @@ impl CommandSlider {
         let value_label = gtk::Label::new(Some("0%"));
         value_label.add_css_class("unixnotis-quick-slider-value");
         value_label.set_valign(Align::Center);
+        value_label.set_xalign(1.0);
+        value_label.set_width_chars(4);
 
         root.append(&icon_button);
         root.append(&scale);
@@ -77,6 +80,7 @@ impl CommandSlider {
         let icon_muted = config.icon_muted.clone();
         let min = config.min;
         let max = config.max;
+        let parse_mode = config.parse_mode;
 
         if let Some(toggle_cmd) = config.toggle_cmd.as_ref() {
             let cmd = toggle_cmd.clone();
@@ -107,10 +111,11 @@ impl CommandSlider {
                         refresh_label.clone(),
                         refresh_icon.clone(),
                         refresh_updating.clone(),
-                        refresh_gen.clone(),
-                        refresh_icon_name.clone(),
-                        refresh_icon_muted.clone(),
-                    );
+                    refresh_gen.clone(),
+                    refresh_icon_name.clone(),
+                    refresh_icon_muted.clone(),
+                    parse_mode,
+                );
                     glib::ControlFlow::Break
                 });
             });
@@ -163,6 +168,7 @@ impl CommandSlider {
             self.refresh_gen.clone(),
             self.icon_name.clone(),
             self.icon_muted.clone(),
+            self.config.parse_mode,
         );
     }
 
@@ -196,6 +202,7 @@ impl CommandSlider {
         let refresh_icon_muted = self.icon_muted.clone();
         let min = self.config.min;
         let max = self.config.max;
+        let parse_mode = self.config.parse_mode;
         start_command_watch(cmd, move || {
             refresh_inner(
                 refresh_cmd.clone(),
@@ -208,6 +215,7 @@ impl CommandSlider {
                 refresh_gen.clone(),
                 refresh_icon_name.clone(),
                 refresh_icon_muted.clone(),
+                parse_mode,
             );
         })
     }
@@ -225,6 +233,7 @@ fn refresh_inner(
     refresh_gen: Arc<AtomicU64>,
     icon_name: String,
     icon_muted: Option<String>,
+    parse_mode: NumericParseMode,
 ) {
     let gen = refresh_gen.fetch_add(1, Ordering::Relaxed) + 1;
 
@@ -250,20 +259,41 @@ fn refresh_inner(
             return;
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let value = match parse_numeric(&stdout, min, max) {
+        let value = match parse_numeric(&stdout, min, max, parse_mode) {
             Some(value) => value,
-            None => return,
+            None => {
+                let snippet = truncate_log_value(stdout.trim(), 120);
+                debug::log(PanelDebugLevel::Warn, || {
+                    format!("slider parse failed cmd=\"{}\" output=\"{}\"", cmd, snippet)
+                });
+                return;
+            }
         };
         let muted = parse_muted(&stdout);
 
-        updating.set(true);
-        scale.set_value(value);
-        label.set_text(&format_value(value));
+        let formatted = format_value(value);
+        let value_changed = (scale.value() - value).abs() > f64::EPSILON;
+        let label_changed = label.text().as_str() != formatted;
+        if value_changed || label_changed {
+            updating.set(true);
+            if value_changed {
+                scale.set_value(value);
+            }
+            if label_changed {
+                label.set_text(&formatted);
+            }
+            updating.set(false);
+            debug::log(PanelDebugLevel::Verbose, || {
+                format!(
+                    "slider updated cmd=\"{}\" value={value:.1} muted={muted}",
+                    cmd
+                )
+            });
+        }
         if let Some(icon_muted) = icon_muted.as_ref() {
             let icon = if muted { icon_muted } else { &icon_name };
             icon_button.set_icon_name(icon);
         }
-        updating.set(false);
     });
 }
 
@@ -278,6 +308,9 @@ fn schedule_command(
         return;
     }
 
+    debug::log(PanelDebugLevel::Verbose, || {
+        format!("slider set scheduled value={value:.0}")
+    });
     let pending_guard = pending.clone();
     let pending_value = pending_value.clone();
     let id = glib::timeout_add_local(Duration::from_millis(120), move || {
@@ -292,7 +325,7 @@ fn schedule_command(
     *pending.borrow_mut() = Some(id);
 }
 
-fn parse_numeric(text: &str, min: f64, max: f64) -> Option<f64> {
+fn parse_numeric(text: &str, min: f64, max: f64, mode: NumericParseMode) -> Option<f64> {
     #[derive(Clone)]
     struct Token {
         value: f64,
@@ -338,13 +371,42 @@ fn parse_numeric(text: &str, min: f64, max: f64) -> Option<f64> {
         .or_else(|| tokens.last())?;
     let mut value = token.value;
 
-    // Heuristic: If the token contains a decimal point, it's likely a normalized ratio (0.0-1.0+)
-    // from tools like wpctl. Scale to percentage.
-    if token.raw.contains('.') && value <= 5.0 {
-        value *= 100.0;
+    match mode {
+        NumericParseMode::Auto => {
+            // Heuristic: If the token contains a decimal point, it's likely a normalized ratio
+            // from tools like wpctl. Scale to percentage.
+            if !token.percent && token.raw.contains('.') && value <= 5.0 {
+                value *= 100.0;
+            }
+        }
+        NumericParseMode::Percent => {}
+        NumericParseMode::Ratio => {
+            if !token.percent {
+                value *= 100.0;
+            }
+        }
     }
 
     Some(value.clamp(min, max))
+}
+
+fn truncate_log_value(value: &str, max_len: usize) -> String {
+    if max_len == 0 {
+        return String::new();
+    }
+    let mut out = String::new();
+    for ch in value.chars() {
+        if out.chars().count() >= max_len {
+            out.push_str("...");
+            break;
+        }
+        if ch == '\n' || ch == '\r' {
+            out.push(' ');
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 fn parse_muted(text: &str) -> bool {

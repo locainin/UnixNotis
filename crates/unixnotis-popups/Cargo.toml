@@ -13,7 +13,6 @@ gio.workspace = true
 glib.workspace = true
 gtk.workspace = true
 gtk4-layer-shell.workspace = true
-notify.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -22,3 +21,4 @@ tracing-subscriber.workspace = true
 zbus.workspace = true
 toml.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
+unixnotis-ui = { path = "../unixnotis-ui" }

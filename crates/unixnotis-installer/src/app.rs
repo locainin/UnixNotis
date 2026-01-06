@@ -1,8 +1,11 @@
 //! UI state and event handling for the installer TUI.
 
+use crate::actions::{check_install_state, InstallState};
 use crate::checks::Checks;
 use crate::detect::Detection;
 use crate::model::{ActionMode, ActionStep};
+use crate::paths::InstallPaths;
+use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProgressState {
@@ -61,6 +64,12 @@ pub struct App {
 
     // Last error message for failure display.
     pub last_error: Option<String>,
+
+    // Cached install state for dynamic menu labeling.
+    pub install_state: Option<InstallState>,
+
+    // Earliest time the progress screen can accept navigation input.
+    pub progress_ready_at: Option<Instant>,
 }
 
 impl App {
@@ -68,6 +77,9 @@ impl App {
         // Initialize with current system state.
         let checks = Checks::run();
         let detection = crate::detect::detect();
+        let install_state = InstallPaths::discover()
+            .ok()
+            .map(|paths| check_install_state(&paths));
 
         Self {
             checks,
@@ -79,13 +91,16 @@ impl App {
             steps: Vec::new(),
             progress_state: ProgressState::Idle,
             last_error: None,
+            install_state,
+            progress_ready_at: None,
         }
     }
 
-    pub fn menu_items() -> [MenuItem; 4] {
+    pub fn menu_items() -> [MenuItem; 5] {
         [
             MenuItem::Action(ActionMode::Test),
             MenuItem::Action(ActionMode::Install),
+            MenuItem::Action(ActionMode::Reset),
             MenuItem::Action(ActionMode::Uninstall),
             MenuItem::Quit,
         ]
@@ -99,5 +114,29 @@ impl App {
     pub fn refresh(&mut self) {
         self.checks = Checks::run();
         self.detection = crate::detect::detect();
+        self.install_state = InstallPaths::discover()
+            .ok()
+            .map(|paths| check_install_state(&paths));
+    }
+
+    pub fn action_label(&self, mode: ActionMode) -> &'static str {
+        match mode {
+            ActionMode::Install => self.install_label(),
+            ActionMode::Reset => "Reset config",
+            _ => mode.label(),
+        }
+    }
+
+    fn install_label(&self) -> &'static str {
+        if self
+            .install_state
+            .as_ref()
+            .map(|state| state.is_fully_installed())
+            .unwrap_or(false)
+        {
+            "Reinstall"
+        } else {
+            "Install"
+        }
     }
 }

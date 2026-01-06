@@ -5,6 +5,7 @@ pub enum ActionMode {
     Test,
     Install,
     Uninstall,
+    Reset,
 }
 
 impl ActionMode {
@@ -13,6 +14,7 @@ impl ActionMode {
             ActionMode::Test => "Trial run",
             ActionMode::Install => "Install",
             ActionMode::Uninstall => "Uninstall",
+            ActionMode::Reset => "Reset config",
         }
     }
 }

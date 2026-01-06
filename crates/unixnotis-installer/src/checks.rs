@@ -99,6 +99,7 @@ impl Checks {
                     return Err("systemd --user session required".to_string());
                 }
             }
+            ActionMode::Reset => {}
         }
         Ok(())
     }

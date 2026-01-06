@@ -9,11 +9,12 @@ use std::time::Instant;
 use gtk::gdk;
 use gtk::prelude::*;
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::debug;
-use unixnotis_core::{Config, Margins, PanelRequest};
+use tracing::{debug, info};
+use unixnotis_core::{Config, Margins, PanelDebugLevel, PanelRequest};
 
-use crate::css::CssManager;
 use crate::dbus::{UiCommand, UiEvent};
+use crate::debug;
+use unixnotis_ui::css::{self, CssManager};
 
 mod hyprland;
 mod icons;
@@ -61,6 +62,7 @@ impl UiState {
     ) -> Self {
         let panel = panel::build_panel_widgets(app, &config);
         let icon_resolver = Rc::new(icons::IconResolver::new());
+        debug::set_level(PanelDebugLevel::Off);
         let list = list::NotificationList::new(
             panel.scroller.clone(),
             command_tx.clone(),
@@ -196,6 +198,10 @@ impl UiState {
                     app = %notification.app_name,
                     "notification added"
                 );
+                self.log_debug(
+                    PanelDebugLevel::Verbose,
+                    || format!("notification added: {} #{}", notification.app_name, notification.id),
+                );
                 self.list.add_or_update(notification, true);
                 self.refresh_counts();
             }
@@ -205,36 +211,66 @@ impl UiState {
                     app = %notification.app_name,
                     "notification updated"
                 );
+                self.log_debug(
+                    PanelDebugLevel::Verbose,
+                    || {
+                        format!(
+                            "notification updated: {} #{}",
+                            notification.app_name, notification.id
+                        )
+                    },
+                );
                 self.list.add_or_update(notification, true);
                 self.refresh_counts();
             }
             UiEvent::NotificationClosed(id, reason) => {
                 debug!(id, ?reason, "notification closed");
+                self.log_debug(
+                    PanelDebugLevel::Verbose,
+                    || format!("notification closed: #{id} ({reason:?})"),
+                );
                 self.list.mark_closed(id, reason);
                 self.refresh_counts();
             }
             UiEvent::StateChanged(state) => {
                 debug!(dnd = state.dnd_enabled, "state updated");
+                self.log_debug(
+                    PanelDebugLevel::Info,
+                    || format!("state changed: dnd={}", state.dnd_enabled),
+                );
                 self.update_state(state);
                 self.refresh_counts();
             }
             UiEvent::PanelRequested(request) => {
                 debug!(?request, "panel request");
+                self.log_debug(
+                    PanelDebugLevel::Info,
+                    || format!("panel request: {:?}", request),
+                );
                 self.apply_panel_request(request);
             }
             UiEvent::GroupToggled(key) => {
                 debug!(app = %key, "group toggled");
+                self.log_debug(
+                    PanelDebugLevel::Verbose,
+                    || format!("group toggled: {key}"),
+                );
                 self.list.toggle_group(&key);
                 self.refresh_counts();
             }
             UiEvent::MediaUpdated(infos) => {
                 debug!(players = infos.len(), "media updated");
+                self.log_debug(
+                    PanelDebugLevel::Verbose,
+                    || format!("media updated: {} players", infos.len()),
+                );
                 if let Some(widget) = self.media.as_mut() {
                     widget.update(&infos);
                 }
             }
             UiEvent::MediaCleared => {
                 debug!("media cleared");
+                self.log_debug(PanelDebugLevel::Info, || "media cleared".to_string());
                 if let Some(widget) = self.media.as_mut() {
                     widget.clear();
                 }
@@ -247,6 +283,8 @@ impl UiState {
                 debug!(?reserved, "work area updated");
                 self.work_area = reserved;
                 panel::apply_panel_config(&self.panel, &self.config, self.work_area);
+                let message = format!("work area update: {:?}", self.work_area);
+                self.log_debug(PanelDebugLevel::Info, move || message);
             }
             UiEvent::RefreshWidgets => {
                 if self.panel_visible {
@@ -255,7 +293,8 @@ impl UiState {
             }
             UiEvent::CssReload => {
                 debug!("css reload requested");
-                self.css.reload(crate::css::DEFAULT_CSS);
+                self.css.reload(css::DEFAULT_CSS);
+                self.log_debug(PanelDebugLevel::Info, || "css reloaded".to_string());
             }
             UiEvent::ConfigReload => {
                 debug!("config reload requested");
@@ -282,10 +321,13 @@ impl UiState {
 
         self.config = config.clone();
         debug!("config reloaded");
-        self.css
-            .update_theme(theme_paths, config.theme.clone(), config.panel.width);
-        self.css.reload(crate::css::DEFAULT_CSS);
+        self.css.update_theme(theme_paths, config.theme.clone());
+        self.css.reload(css::DEFAULT_CSS);
         panel::apply_panel_config(&self.panel, &config, self.work_area);
+        self.log_debug(
+            PanelDebugLevel::Info,
+            || "panel config applied after reload".to_string(),
+        );
         self.apply_media_config(&config);
         self.apply_widget_config(&config);
         self.restart_refresh_timer();
@@ -365,10 +407,29 @@ impl UiState {
     }
 
     fn apply_panel_request(&mut self, request: PanelRequest) {
-        match request {
-            PanelRequest::Open => self.set_visible(true),
-            PanelRequest::Close => self.set_visible(false),
-            PanelRequest::Toggle => self.set_visible(!self.panel_visible),
+        match request.action {
+            unixnotis_core::PanelAction::Open => {
+                debug::set_level(PanelDebugLevel::Off);
+                self.set_visible(true);
+            }
+            unixnotis_core::PanelAction::Close => {
+                debug::set_level(PanelDebugLevel::Off);
+                self.set_visible(false);
+            }
+            unixnotis_core::PanelAction::Toggle => {
+                if !self.panel_visible {
+                    debug::set_level(PanelDebugLevel::Off);
+                }
+                self.set_visible(!self.panel_visible);
+            }
+        }
+
+        if request.debug != PanelDebugLevel::Off {
+            debug::set_level(request.debug);
+            self.log_debug(
+                PanelDebugLevel::Info,
+                || format!("debug mode enabled: {:?}", request.debug),
+            );
         }
     }
 
@@ -377,6 +438,16 @@ impl UiState {
         self.panel_visible_flag.store(visible, Ordering::SeqCst);
         self.panel.window.set_visible(visible);
         debug!(visible, "panel visibility updated");
+        self.log_debug(
+            PanelDebugLevel::Info,
+            || format!("panel visibility set to {visible}"),
+        );
+        if visible {
+            let width = self.panel.window.allocated_width();
+            let height = self.panel.window.allocated_height();
+            let message = format!("panel allocated size: {width}x{height}");
+            self.log_debug(PanelDebugLevel::Verbose, move || message);
+        }
         if visible {
             if let Some(volume) = self.volume.as_ref() {
                 volume.set_watch_active(true);
@@ -404,6 +475,7 @@ impl UiState {
                 toggles.set_watch_active(false);
             }
             self.stop_refresh_timer();
+            debug::set_level(PanelDebugLevel::Off);
         }
     }
 
@@ -412,9 +484,17 @@ impl UiState {
             return;
         }
         if !self.is_click_outside_panel() {
+            self.log_debug(
+                PanelDebugLevel::Verbose,
+                || "click outside ignored (pointer inside panel)".to_string(),
+            );
             return;
         }
         // Close requests go through the daemon to keep control state consistent.
+        self.log_debug(
+            PanelDebugLevel::Info,
+            || "click outside detected; requesting close".to_string(),
+        );
         let _ = self.command_tx.send(UiCommand::ClosePanel);
     }
 
@@ -422,6 +502,9 @@ impl UiState {
         let now = Instant::now();
         let fast_ms = self.config.widgets.refresh_interval_ms;
         let slow_ms = self.config.widgets.refresh_interval_slow_ms;
+        if debug::allows(PanelDebugLevel::Verbose) {
+            info!(force, fast_ms, slow_ms, "widget refresh tick");
+        }
 
         let refresh_fast = force
             || (fast_ms > 0
@@ -496,6 +579,10 @@ impl UiState {
                 gtk::glib::ControlFlow::Continue
             });
         self.refresh_source = Some(id);
+        self.log_debug(
+            PanelDebugLevel::Info,
+            || format!("refresh timer started ({} ms)", interval),
+        );
     }
 
     fn stop_refresh_timer(&mut self) {
@@ -504,17 +591,34 @@ impl UiState {
         }
         self.last_fast_refresh = None;
         self.last_slow_refresh = None;
+        self.log_debug(PanelDebugLevel::Info, || "refresh timer stopped".to_string());
+    }
+
+    fn log_debug(&self, level: PanelDebugLevel, message: impl FnOnce() -> String) {
+        debug::log(level, message);
     }
 
     fn is_click_outside_panel(&self) -> bool {
         // Hyprland focus changes can be hover-driven; only close when a mouse button is down.
         let Some(display) = gdk::Display::default() else {
+            self.log_debug(
+                PanelDebugLevel::Verbose,
+                || "click outside check skipped (no display)".to_string(),
+            );
             return false;
         };
         let Some(seat) = display.default_seat() else {
+            self.log_debug(
+                PanelDebugLevel::Verbose,
+                || "click outside check skipped (no seat)".to_string(),
+            );
             return false;
         };
         let Some(pointer) = seat.pointer() else {
+            self.log_debug(
+                PanelDebugLevel::Verbose,
+                || "click outside check skipped (no pointer)".to_string(),
+            );
             return false;
         };
         let modifiers = pointer.modifier_state();
@@ -522,12 +626,20 @@ impl UiState {
             || modifiers.contains(gdk::ModifierType::BUTTON2_MASK)
             || modifiers.contains(gdk::ModifierType::BUTTON3_MASK);
         if !click_active {
+            self.log_debug(
+                PanelDebugLevel::Verbose,
+                || "click outside check skipped (no button pressed)".to_string(),
+            );
             return false;
         }
         let (surface, _, _) = pointer.surface_at_position();
         let panel_surface = self.panel.window.surface();
         if let (Some(surface), Some(panel_surface)) = (surface, panel_surface) {
             if surface == panel_surface {
+                self.log_debug(
+                    PanelDebugLevel::Verbose,
+                    || "click outside check ignored (surface matches panel)".to_string(),
+                );
                 return false;
             }
         }

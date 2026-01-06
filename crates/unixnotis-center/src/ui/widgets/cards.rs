@@ -6,8 +6,9 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{glib, Align};
 use tracing::warn;
-use unixnotis_core::CardWidgetConfig;
+use unixnotis_core::{CardWidgetConfig, PanelDebugLevel};
 
+use crate::debug;
 use super::util::run_command_capture_async;
 
 pub struct CardGrid {
@@ -138,12 +139,16 @@ impl CardItem {
 
     fn refresh(&self) {
         if self.is_calendar {
+            debug::log(PanelDebugLevel::Verbose, || "calendar refresh".to_string());
             self.refresh_calendar();
             return;
         }
         if !self.root.is_visible() {
             return;
         }
+        debug::log(PanelDebugLevel::Verbose, || {
+            format!("card refresh: {}", self.config.title)
+        });
         let Some(cmd) = self.config.cmd.as_ref() else {
             return;
         };
@@ -183,6 +188,9 @@ impl CardItem {
             if value.is_empty() {
                 apply_cached_value(&label, &last_value);
             } else {
+                if last_value.borrow().as_deref() == Some(value) {
+                    return;
+                }
                 label.set_text(value);
                 *last_value.borrow_mut() = Some(value.to_string());
             }
@@ -204,8 +212,10 @@ impl CardItem {
 
 fn apply_cached_value(label: &gtk::Label, cache: &Rc<RefCell<Option<String>>>) {
     if let Some(value) = cache.borrow().as_ref() {
-        label.set_text(value);
-    } else {
+        if label.text().as_str() != value {
+            label.set_text(value);
+        }
+    } else if label.text().as_str() != "n/a" {
         label.set_text("n/a");
     }
 }

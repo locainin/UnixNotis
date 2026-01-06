@@ -84,6 +84,10 @@ pub struct Notification {
     pub category: Option<String>,
     pub is_transient: bool,
     pub is_resident: bool,
+    /// Suppress showing this notification as a popup.
+    pub suppress_popup: bool,
+    /// Suppress sound playback for this notification.
+    pub suppress_sound: bool,
     pub image: NotificationImage,
     pub expire_timeout: i32,
     pub received_at: DateTime<Utc>,
@@ -134,6 +138,8 @@ impl Notification {
             category: self.category.clone(),
             is_transient: self.is_transient,
             is_resident: self.is_resident,
+            suppress_popup: self.suppress_popup,
+            suppress_sound: self.suppress_sound,
             image: self.image.for_history(),
             expire_timeout: self.expire_timeout,
             received_at: self.received_at,
