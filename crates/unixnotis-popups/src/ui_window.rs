@@ -19,6 +19,7 @@ pub(super) fn build_popup_window(
     window.add_css_class("unixnotis-popup-window");
 
     window.init_layer_shell();
+    window.set_namespace(Some("unixnotis-popups"));
     window.set_layer(Layer::Overlay);
 
     let stack = gtk::Box::new(gtk::Orientation::Vertical, config.popups.spacing);

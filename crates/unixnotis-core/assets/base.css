@@ -33,8 +33,8 @@
 @define-color unixnotis-panel-grad-3 alpha(#1a2945, 0.96);
 @define-color unixnotis-notification-bg-1 alpha(#1b2b44, 0.9);
 @define-color unixnotis-notification-bg-2 alpha(#141f33, 0.92);
-@define-color unixnotis-popup-bg-1 alpha(#111b2d, 0.95);
-@define-color unixnotis-popup-bg-2 alpha(#1b2a44, 0.96);
+@define-color unixnotis-popup-bg-1 #111b2d;
+@define-color unixnotis-popup-bg-2 #1b2a44;
 @define-color unixnotis-pill-bg alpha(#1c2a42, 0.9);
 @define-color unixnotis-pill-border alpha(#8fd4ff, 0.25);
 @define-color unixnotis-pill-hover alpha(@unixnotis-accent, 0.25);

@@ -37,7 +37,9 @@
   background-image: linear-gradient(150deg, alpha(@unixnotis-surface, 0.9), alpha(@unixnotis-surface-soft, 0.65));
   border-radius: 999px;
   border: 1px solid alpha(@unixnotis-accent, 0.3);
-  padding: 4px 6px;
+  padding: 4px;
+  min-width: 32px;
+  min-height: 32px;
   box-shadow:
     0 6px 12px -10px @unixnotis-shadow-soft,
     inset 0 0 0 1px alpha(#ffffff, 0.05);
@@ -52,6 +54,10 @@
   color: @unixnotis-muted;
   font-size: 12px;
   letter-spacing: 0.06em;
+  min-width: 42px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .unixnotis-quick-slider-scale trough {
@@ -87,16 +93,16 @@
 }
 
 .unixnotis-toggle-grid {
-  padding: 2px 0;
+  padding: 0;
 }
 
 .unixnotis-toggle {
   background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.94), alpha(@unixnotis-surface, 0.98));
   border-radius: 18px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid alpha(@unixnotis-outline, 0.7);
-  min-height: 54px;
-  min-width: 100px;
+  min-height: 56px;
+  min-width: 104px;
   box-shadow:
     0 16px 28px -22px alpha(#000000, 0.35),
     0 0 0 1px alpha(@unixnotis-accent, 0.08),
@@ -120,7 +126,9 @@
 }
 
 .unixnotis-toggle-icon {
-  font-size: 16px;
+  -gtk-icon-size: 18px;
+  min-width: 24px;
+  min-height: 24px;
 }
 
 .unixnotis-toggle-label {
@@ -159,16 +167,15 @@
 }
 
 .unixnotis-stat-grid {
-  padding: 2px 0;
+  padding: 0;
 }
 
 .unixnotis-stat-card {
   background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.95), alpha(@unixnotis-surface, 0.98));
   border-radius: 18px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid alpha(@unixnotis-outline, 0.7);
-  border-left: 3px solid alpha(@unixnotis-accent, 0.4);
-  border-top: 1px solid alpha(#ffffff, 0.08);
+  min-height: 56px;
   box-shadow:
     0 18px 30px -22px alpha(#000000, 0.35),
     0 0 0 1px alpha(@unixnotis-accent, 0.1),
@@ -202,16 +209,15 @@
 }
 
 .unixnotis-card-grid {
-  padding: 2px 0;
+  padding: 0;
 }
 
 .unixnotis-info-card {
   background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.92), alpha(@unixnotis-surface, 0.98));
   border-radius: 22px;
-  padding: 14px 16px;
+  padding: 12px;
   border: 1px solid alpha(@unixnotis-outline, 0.7);
-  border-left: 3px solid alpha(@unixnotis-accent-2, 0.4);
-  border-top: 1px solid alpha(#ffffff, 0.08);
+  min-height: 56px;
   box-shadow:
     0 20px 32px -24px alpha(#000000, 0.4),
     0 0 0 1px alpha(@unixnotis-accent-2, 0.1),
@@ -241,13 +247,11 @@
 }
 
 .unixnotis-calendar {
-  background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.85), alpha(@unixnotis-surface, 0.95));
-  border-radius: 18px;
-  padding: 8px;
-  border: 1px solid alpha(@unixnotis-outline, 0.45);
-  box-shadow:
-    0 14px 24px -20px alpha(#000000, 0.45),
-    inset 0 0 0 1px alpha(#ffffff, 0.06);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
 }
 
 .unixnotis-info-card-weather {
@@ -334,7 +338,7 @@
 }
 
 .unixnotis-media-card.playing {
-  border-left: 3px solid @unixnotis-accent;
+  border-left: 1px solid @unixnotis-card-border;
 }
 
 .unixnotis-media-art {

@@ -46,8 +46,8 @@ impl ToggleGrid {
         root.set_selection_mode(gtk::SelectionMode::None);
         root.set_max_children_per_line(4);
         root.set_min_children_per_line(4);
-        root.set_row_spacing(10);
-        root.set_column_spacing(10);
+        root.set_row_spacing(8);
+        root.set_column_spacing(8);
         root.set_halign(Align::Fill);
         root.set_hexpand(true);
 

@@ -31,6 +31,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     window.add_css_class("unixnotis-panel-window");
 
     window.init_layer_shell();
+    window.set_namespace(Some("unixnotis-panel"));
     window.set_layer(Layer::Overlay);
     apply_anchor(&window, config.panel.anchor, config.panel.margin);
     window.set_exclusive_zone(0);
@@ -163,20 +164,43 @@ fn resolve_panel_size(
         return (width, config.panel.height);
     }
     if matches!(config.panel.anchor, Anchor::Left | Anchor::Right) {
-        if let Some(monitor) = monitor {
-            let geometry = monitor.geometry();
-            let mut available =
-                geometry.height() - (config.panel.margin.top + config.panel.margin.bottom);
-            if config.panel.respect_work_area {
-                if let Some(reserved) = reserved {
-                    available -= reserved.top + reserved.bottom;
-                }
-            }
-            return (width, available.max(1));
+        if let Some(height) = compute_side_panel_height(config, monitor, reserved) {
+            return (width, height);
         }
     }
     // Natural height keeps top or bottom anchored panels compact when no explicit size is set.
     (width, -1)
+}
+
+fn compute_side_panel_height(
+    config: &Config,
+    monitor: Option<&gdk::Monitor>,
+    reserved: Option<Margins>,
+) -> Option<i32> {
+    const MIN_HEIGHT: i32 = 520;
+    const BOTTOM_PAD: i32 = 96;
+
+    if !matches!(config.panel.anchor, Anchor::Left | Anchor::Right) {
+        return None;
+    }
+
+    let monitor = monitor?;
+    let geometry = monitor.geometry();
+    let mut work_area = geometry.height() - (config.panel.margin.top + config.panel.margin.bottom);
+    if config.panel.respect_work_area {
+        if let Some(reserved) = reserved {
+            work_area -= reserved.top + reserved.bottom;
+        }
+    }
+    if work_area <= 0 {
+        return None;
+    }
+
+    let max_height = (work_area - BOTTOM_PAD).max(1);
+    let min_height = MIN_HEIGHT.min(max_height);
+
+    // Keep the panel tall while leaving a small bottom gap.
+    Some(max_height.max(min_height))
 }
 
 fn default_monitor() -> Option<gdk::Monitor> {
