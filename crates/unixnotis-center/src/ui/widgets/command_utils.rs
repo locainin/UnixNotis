@@ -10,8 +10,8 @@ use std::os::unix::process::CommandExt;
 
 use crossbeam_channel as channel;
 use tracing::warn;
-use unixnotis_core::PanelDebugLevel;
 use unixnotis_core::util;
+use unixnotis_core::PanelDebugLevel;
 
 use crate::debug;
 
@@ -82,7 +82,11 @@ pub(in crate::ui::widgets) fn run_command(cmd: &str) {
         let snippet = util::log_snippet(cmd);
         format!("enqueue action command: {snippet}")
     });
-    enqueue_command(cmd.to_string(), resolve_command_plan(cmd, CommandKind::Action), None);
+    enqueue_command(
+        cmd.to_string(),
+        resolve_command_plan(cmd, CommandKind::Action),
+        None,
+    );
 }
 
 pub(in crate::ui::widgets) fn run_command_capture_async(
@@ -333,10 +337,12 @@ fn parse_simple_command(cmd: &str) -> Option<(String, Vec<String>)> {
 
 fn is_simple_command(cmd: &str) -> bool {
     const META: [char; 18] = [
-        '|', '&', ';', '<', '>', '$', '`', '\\', '"', '\'', '(', ')', '{', '}', '[', ']',
-        '*', '?',
+        '|', '&', ';', '<', '>', '$', '`', '\\', '"', '\'', '(', ')', '{', '}', '[', ']', '*', '?',
     ];
-    if cmd.chars().any(|ch| META.contains(&ch) || ch == '~' || ch == '\n' || ch == '\r') {
+    if cmd
+        .chars()
+        .any(|ch| META.contains(&ch) || ch == '~' || ch == '\n' || ch == '\r')
+    {
         return false;
     }
 
@@ -360,10 +366,8 @@ pub(in crate::ui::widgets) fn kill_process_group(pid: i32) {
 
 fn is_probably_slow(cmd: &str) -> bool {
     let lower = cmd.to_ascii_lowercase();
-    let has_pipeline = lower.contains('|')
-        || lower.contains("&&")
-        || lower.contains("||")
-        || lower.contains(';');
+    let has_pipeline =
+        lower.contains('|') || lower.contains("&&") || lower.contains("||") || lower.contains(';');
     if has_pipeline || lower.contains("sleep") {
         return true;
     }

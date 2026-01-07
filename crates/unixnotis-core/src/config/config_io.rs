@@ -5,13 +5,17 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use thiserror::Error;
+use tracing::warn;
 
 use crate::{DEFAULT_BASE_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS};
 
 use super::config_runtime::{apply_brightness_backend, apply_volume_backend};
 use super::Config;
+
+static LEGACY_RENAME_WARNED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone)]
 pub struct ThemePaths {
@@ -73,8 +77,7 @@ impl Config {
     /// Ensure all theme files exist in the config directory.
     pub fn ensure_theme_files(&self, theme_paths: &ThemePaths) -> Result<(), ConfigError> {
         let config_dir = Self::default_config_dir()?;
-        fs::create_dir_all(&config_dir)
-            .map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
+        fs::create_dir_all(&config_dir).map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
 
         let legacy = config_dir.join("style.css");
         let legacy_contents = fs::read_to_string(&legacy)
@@ -83,9 +86,7 @@ impl Config {
 
         write_if_missing(
             &theme_paths.base_css,
-            legacy_contents
-                .as_deref()
-                .unwrap_or(DEFAULT_BASE_CSS),
+            legacy_contents.as_deref().unwrap_or(DEFAULT_BASE_CSS),
         )?;
         write_if_missing(&theme_paths.panel_css, DEFAULT_PANEL_CSS)?;
         write_if_missing(&theme_paths.popup_css, DEFAULT_POPUP_CSS)?;
@@ -94,7 +95,18 @@ impl Config {
         if legacy_contents.is_some() && legacy.exists() {
             let backup = legacy.with_extension("css.bak");
             if !backup.exists() {
-                let _ = fs::rename(&legacy, &backup);
+                if let Err(err) = fs::rename(&legacy, &backup) {
+                    // Non-fatal: leave legacy style.css in place if backup fails (permissions,
+                    // existing paths, or filesystem limitations).
+                    if !LEGACY_RENAME_WARNED.swap(true, Ordering::Relaxed) {
+                        warn!(
+                            ?err,
+                            legacy = %legacy.display(),
+                            backup = %backup.display(),
+                            "failed to rename legacy style.css"
+                        );
+                    }
+                }
             }
         }
 

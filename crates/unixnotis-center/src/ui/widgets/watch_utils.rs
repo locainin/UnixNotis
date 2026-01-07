@@ -8,8 +8,8 @@ use std::time::Duration;
 use async_channel::TryRecvError;
 use gtk::glib;
 use tracing::warn;
-use unixnotis_core::PanelDebugLevel;
 use unixnotis_core::util;
+use unixnotis_core::PanelDebugLevel;
 
 use crate::debug;
 
@@ -102,9 +102,7 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
                 loop {
                     glib::timeout_future(debounce).await;
                     match rx.try_recv() {
-                        Ok(_) => {
-                            while rx.try_recv().is_ok() {}
-                        }
+                        Ok(_) => while rx.try_recv().is_ok() {},
                         Err(TryRecvError::Empty) => break,
                         Err(TryRecvError::Closed) => return,
                     }

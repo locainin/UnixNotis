@@ -198,7 +198,10 @@ fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
 
     if state.is_fully_installed() {
         if matches!(ctx.action_mode, ActionMode::Install) {
-            log_line(ctx, "Already installed. Reinstall will overwrite existing files.");
+            log_line(
+                ctx,
+                "Already installed. Reinstall will overwrite existing files.",
+            );
         } else {
             log_line(ctx, "Already installed.");
         }
@@ -403,11 +406,9 @@ fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
     let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;
 
-    fs::create_dir_all(&config_dir)
-        .with_context(|| "failed to create config directory")?;
+    fs::create_dir_all(&config_dir).with_context(|| "failed to create config directory")?;
 
-    let config_toml =
-        toml::to_string_pretty(&config).map_err(|err| anyhow!(err.to_string()))?;
+    let config_toml = toml::to_string_pretty(&config).map_err(|err| anyhow!(err.to_string()))?;
     fs::write(&config_path, config_toml).with_context(|| "failed to write config.toml")?;
 
     log_line(
@@ -428,15 +429,15 @@ fn reset_config(ctx: &mut ActionContext) -> Result<()> {
         .with_context(|| "failed to write panel.css")?;
     fs::write(&theme_paths.popup_css, unixnotis_core::DEFAULT_POPUP_CSS)
         .with_context(|| "failed to write popup.css")?;
-    fs::write(&theme_paths.widgets_css, unixnotis_core::DEFAULT_WIDGETS_CSS)
-        .with_context(|| "failed to write widgets.css")?;
+    fs::write(
+        &theme_paths.widgets_css,
+        unixnotis_core::DEFAULT_WIDGETS_CSS,
+    )
+    .with_context(|| "failed to write widgets.css")?;
 
     log_line(
         ctx,
-        format!(
-            "Reset theme files in {}",
-            format_with_home(&config_dir)
-        ),
+        format!("Reset theme files in {}", format_with_home(&config_dir)),
     );
 
     Ok(())

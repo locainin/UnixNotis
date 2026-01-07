@@ -11,8 +11,8 @@ use std::rc::Rc;
 
 use async_channel::Sender;
 use gio::prelude::*;
-use gtk::prelude::*;
 use gtk::glib;
+use gtk::prelude::*;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;
 use unixnotis_core::{CloseReason, NotificationView};
@@ -21,9 +21,7 @@ use crate::dbus::{UiCommand, UiEvent};
 
 use super::icons::IconResolver;
 use super::list_item::{RowData, RowItem, RowKind};
-use list_widgets::{
-    bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets,
-};
+use list_widgets::{bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets};
 
 /// Maintains notification data and renders grouped widgets into the panel list.
 pub struct NotificationList {
@@ -105,6 +103,11 @@ impl NotificationList {
         factory.connect_unbind(move |_, list_item| {
             if let Some(widgets) = get_row_widgets(list_item) {
                 widgets.unbind();
+            }
+            unsafe {
+                // SAFETY: list_item is owned by GTK and accessed on the main thread.
+                // Clearing the stored widgets releases the Rc when rows are recycled.
+                let _ = list_item.steal_data::<Rc<RowWidgets>>("unixnotis-row-widgets");
             }
         });
 
@@ -268,8 +271,10 @@ impl NotificationList {
             bucket.push(*id);
         }
 
-        self.group_headers.retain(|key, _| grouped.contains_key(key));
-        self.group_expanded.retain(|key, _| grouped.contains_key(key));
+        self.group_headers
+            .retain(|key, _| grouped.contains_key(key));
+        self.group_expanded
+            .retain(|key, _| grouped.contains_key(key));
 
         let mut items = std::mem::take(&mut self.items_scratch);
         items.clear();

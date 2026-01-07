@@ -14,8 +14,8 @@ use tracing_subscriber::EnvFilter;
 use unixnotis_core::Config;
 use unixnotis_ui::css::{self, CssKind};
 
-mod debug;
 mod dbus;
+mod debug;
 mod media;
 mod ui;
 
@@ -55,9 +55,7 @@ fn main() -> Result<()> {
     let theme_base = config_path
         .parent()
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            Config::default_config_dir().unwrap_or_else(|_| PathBuf::from("."))
-        });
+        .unwrap_or_else(|| Config::default_config_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let theme_paths = config
         .resolve_theme_paths_from(&theme_base)
         .context("resolve theme paths")?;

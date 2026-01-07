@@ -2,12 +2,14 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::Stdio;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use tracing::{info, warn};
-use unixnotis_core::{program_in_path, Config};
+use tokio::process::Command;
+use tokio::time::timeout;
+use tracing::{debug, info, warn};
+use unixnotis_core::{program_in_path, util, Config};
 use zbus::zvariant::OwnedValue;
 
 use std::collections::HashMap;
@@ -39,6 +41,7 @@ impl SoundSettings {
     /// Build sound settings from configuration and resolve any custom paths.
     pub fn from_config(config: &Config) -> Self {
         let backend = detect_backend();
+        debug!(?backend, "sound backend selected");
         if config.sound.enabled && backend == SoundBackend::None {
             warn!("sound enabled but no playback backend found in PATH");
         }
@@ -205,22 +208,119 @@ fn detect_backend() -> SoundBackend {
     SoundBackend::None
 }
 
+const SOUND_COMMAND_TIMEOUT: Duration = Duration::from_secs(3);
+
+fn spawn_sound_command(backend: &'static str, program: &str, args: &[String]) {
+    let command_str = if args.is_empty() {
+        program.to_string()
+    } else {
+        format!("{program} {}", args.join(" "))
+    };
+    let command_snip = util::log_snippet(&command_str);
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    match command.spawn() {
+        Ok(child) => {
+            let pid = child.id();
+            debug!(
+                backend,
+                pid,
+                command = %command_snip,
+                "sound command spawned"
+            );
+            tokio::spawn(async move {
+                reap_sound_child(backend, command_snip, pid, child).await;
+            });
+        }
+        Err(err) => {
+            warn!(
+                backend,
+                command = %command_snip,
+                ?err,
+                "failed to spawn sound command"
+            );
+        }
+    }
+}
+
+async fn reap_sound_child(
+    backend: &'static str,
+    command_snip: String,
+    pid: Option<u32>,
+    mut child: tokio::process::Child,
+) {
+    let started = Instant::now();
+    match timeout(SOUND_COMMAND_TIMEOUT, child.wait()).await {
+        Ok(Ok(status)) => {
+            let elapsed_ms = started.elapsed().as_millis();
+            if status.success() {
+                debug!(
+                    backend,
+                    pid,
+                    command = %command_snip,
+                    status = ?status.code(),
+                    elapsed_ms,
+                    "sound command completed"
+                );
+            } else {
+                warn!(
+                    backend,
+                    pid,
+                    command = %command_snip,
+                    status = ?status.code(),
+                    elapsed_ms,
+                    "sound command exited with error"
+                );
+            }
+        }
+        Ok(Err(err)) => {
+            warn!(
+                backend,
+                pid,
+                command = %command_snip,
+                ?err,
+                "sound command wait failed"
+            );
+        }
+        Err(_) => {
+            warn!(
+                backend,
+                pid,
+                command = %command_snip,
+                "sound command timed out"
+            );
+            if let Err(err) = child.kill().await {
+                warn!(
+                    backend,
+                    pid,
+                    command = %command_snip,
+                    ?err,
+                    "sound command kill failed"
+                );
+            }
+            let _ = child.wait().await;
+        }
+    }
+}
+
 fn play_with_canberra(source: SoundSource) {
-    let mut command = Command::new("canberra-gtk-play");
+    let mut args = Vec::new();
     match source {
         SoundSource::Name(name) => {
-            command.arg("-i").arg(name);
+            args.push("-i".to_string());
+            args.push(name);
         }
         SoundSource::File(path) => {
-            command.arg("-f").arg(path);
+            args.push("-f".to_string());
+            args.push(path.to_string_lossy().to_string());
         }
     }
-    if let Err(err) = command.spawn() {
-        warn!(
-            ?err,
-            "failed to play notification sound with canberra-gtk-play"
-        );
-    }
+    spawn_sound_command("canberra", "canberra-gtk-play", &args);
 }
 
 fn play_with_pw_play(source: SoundSource) {
@@ -228,9 +328,8 @@ fn play_with_pw_play(source: SoundSource) {
         warn!("pw-play backend does not support sound-name hints");
         return;
     };
-    if let Err(err) = Command::new("pw-play").arg(path).spawn() {
-        warn!(?err, "failed to play notification sound with pw-play");
-    }
+    let args = vec![path.to_string_lossy().to_string()];
+    spawn_sound_command("pw-play", "pw-play", &args);
 }
 
 fn play_with_paplay(source: SoundSource) {
@@ -238,7 +337,23 @@ fn play_with_paplay(source: SoundSource) {
         warn!("paplay backend does not support sound-name hints");
         return;
     };
-    if let Err(err) = Command::new("paplay").arg(path).spawn() {
-        warn!(?err, "failed to play notification sound with paplay");
+    let args = vec![path.to_string_lossy().to_string()];
+    spawn_sound_command("paplay", "paplay", &args);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn reaps_short_lived_command() {
+        let mut command = Command::new("true");
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let child = command.spawn().expect("spawn true");
+        reap_sound_child("test", "true".to_string(), child.id(), child).await;
     }
 }

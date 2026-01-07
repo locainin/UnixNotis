@@ -8,8 +8,8 @@ use gtk::{glib, Align};
 use tracing::warn;
 use unixnotis_core::{CardWidgetConfig, PanelDebugLevel};
 
-use crate::debug;
 use super::util::run_command_capture_async;
+use crate::debug;
 
 pub struct CardGrid {
     root: gtk::FlowBox,

@@ -274,7 +274,11 @@ async fn apply_owner_change(
     }
 
     if let Some(state) = build_player_state(connection, name).await? {
-        spawn_properties_listener(state.properties.clone(), name.to_string(), signal_tx.clone());
+        spawn_properties_listener(
+            state.properties.clone(),
+            name.to_string(),
+            signal_tx.clone(),
+        );
         players.insert(name.to_string(), state);
         refresh_player_cache(players, cache, name).await;
         send_snapshot(sender, cache).await;

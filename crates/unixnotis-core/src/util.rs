@@ -22,8 +22,7 @@ pub fn program_in_path(program: &str) -> bool {
     }
 
     let found = match env::var("PATH") {
-        Ok(paths) => env::split_paths(&paths)
-            .any(|dir| dir.join(program).is_file()),
+        Ok(paths) => env::split_paths(&paths).any(|dir| dir.join(program).is_file()),
         Err(_) => false,
     };
 
@@ -41,7 +40,11 @@ pub fn diagnostic_mode() -> bool {
 
 fn diagnostic_mode_from(value: Option<&str>) -> bool {
     matches!(
-        value.unwrap_or_default().trim().to_ascii_lowercase().as_str(),
+        value
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
         "1" | "true" | "yes" | "on"
     )
 }

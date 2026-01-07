@@ -42,10 +42,7 @@ pub(super) async fn refresh_player_cache(
     }
 }
 
-pub(super) async fn send_snapshot(
-    sender: &Sender<UiEvent>,
-    cache: &HashMap<String, MediaInfo>,
-) {
+pub(super) async fn send_snapshot(sender: &Sender<UiEvent>, cache: &HashMap<String, MediaInfo>) {
     // Snapshot keeps UI updates atomic and ordered.
     let snapshot = build_snapshot(cache);
     if snapshot.is_empty() {

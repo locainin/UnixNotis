@@ -139,11 +139,7 @@ impl CssManager {
 }
 
 /// Start a file watcher for CSS paths and emit reload callbacks.
-pub fn start_css_watcher(
-    paths: &ThemePaths,
-    kind: CssKind,
-    on_reload: impl Fn() + Send + 'static,
-) {
+pub fn start_css_watcher(paths: &ThemePaths, kind: CssKind, on_reload: impl Fn() + Send + 'static) {
     let mut watched_dirs = HashSet::new();
     let css_paths = match kind {
         CssKind::Panel => vec![&paths.base_css, &paths.panel_css, &paths.widgets_css],
@@ -191,10 +187,7 @@ pub fn start_css_watcher(
 }
 
 /// Start a file watcher for the config path and emit reload callbacks.
-pub fn start_config_watcher(
-    config_path: PathBuf,
-    on_reload: impl Fn() + Send + 'static,
-) {
+pub fn start_config_watcher(config_path: PathBuf, on_reload: impl Fn() + Send + 'static) {
     let Some(parent) = config_path.parent().map(PathBuf::from) else {
         return;
     };

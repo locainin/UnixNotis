@@ -18,8 +18,8 @@ use tracing::debug;
 use unixnotis_core::NotificationView;
 
 use icons_cache::{
-    icon_key_for_image, icon_key_for_name, icon_key_for_path, image_key_matches,
-    set_image_key, CachedPaintable, IconCache, IconKey,
+    icon_key_for_image, icon_key_for_name, icon_key_for_path, image_key_matches, set_image_key,
+    CachedPaintable, IconCache, IconKey,
 };
 use icons_decode::{texture_from_raster, IconResult, IconUpdate, IconWorker};
 use icons_sources::{
@@ -105,10 +105,9 @@ impl IconResolverInner {
     ) -> Option<IconResolution> {
         let image = &notification.image;
         if let Some(key) = icon_key_for_image(image, size, scale) {
-            if let Some(paintable) = self.lookup_cached(
-                key.clone(),
-                || image_data_texture(image).map(CachedPaintable::from_texture),
-            ) {
+            if let Some(paintable) = self.lookup_cached(key.clone(), || {
+                image_data_texture(image).map(CachedPaintable::from_texture)
+            }) {
                 return Some(IconResolution::Ready { key, paintable });
             }
         }
@@ -166,18 +165,16 @@ impl IconResolverInner {
         None
     }
 
-    fn resolve_icon_name(
-        &self,
-        name: &str,
-        size: i32,
-        scale: i32,
-    ) -> Option<IconResolution> {
+    fn resolve_icon_name(&self, name: &str, size: i32, scale: i32) -> Option<IconResolution> {
         if name.is_empty() {
             return None;
         }
         if let Some(key) = icon_key_for_name(name, size, scale) {
             if let Some(cached) = self.cache.borrow_mut().get(&key) {
-                return Some(IconResolution::Ready { key, paintable: cached });
+                return Some(IconResolution::Ready {
+                    key,
+                    paintable: cached,
+                });
             }
         }
         let source = resolve_icon_source(name, size, scale)?;
@@ -185,13 +182,19 @@ impl IconResolverInner {
             IconSource::Paintable(paintable) => {
                 let key = icon_key_for_name(name, size, scale)?;
                 if let Some(cached) = self.cache.borrow_mut().get(&key) {
-                    return Some(IconResolution::Ready { key, paintable: cached });
+                    return Some(IconResolution::Ready {
+                        key,
+                        paintable: cached,
+                    });
                 }
                 let cached = self
                     .cache
                     .borrow_mut()
                     .insert(key.clone(), CachedPaintable::from_icon(paintable));
-                Some(IconResolution::Ready { key, paintable: cached })
+                Some(IconResolution::Ready {
+                    key,
+                    paintable: cached,
+                })
             }
             IconSource::RasterPath(path) => {
                 let key = icon_key_for_path(path.as_path(), size, scale)?;
@@ -218,8 +221,12 @@ impl IconResolverInner {
             return;
         }
         inflight.insert(request.key.clone(), vec![image.downgrade()]);
-        self.worker
-            .submit_decode(request.key.clone(), request.path.clone(), request.size, request.scale);
+        self.worker.submit_decode(
+            request.key.clone(),
+            request.path.clone(),
+            request.size,
+            request.scale,
+        );
     }
 
     fn handle_update(&self, update: IconUpdate) {
@@ -232,17 +239,17 @@ impl IconResolverInner {
         let paintable = match update.result {
             IconResult::Raster(image) => {
                 let texture = texture_from_raster(&image);
-                Some(self.cache.borrow_mut().insert(
-                    update.key.clone(),
-                    CachedPaintable::from_texture(texture),
-                ))
+                Some(
+                    self.cache
+                        .borrow_mut()
+                        .insert(update.key.clone(), CachedPaintable::from_texture(texture)),
+                )
             }
             IconResult::Failed(err) => {
                 debug!(?err, "icon decode failed");
                 match &update.key {
-                    IconKey::Path { path, .. } => resolve_path_texture(Path::new(path)).map(
-                        |texture| self.cache.borrow_mut().insert(update.key.clone(), texture),
-                    ),
+                    IconKey::Path { path, .. } => resolve_path_texture(Path::new(path))
+                        .map(|texture| self.cache.borrow_mut().insert(update.key.clone(), texture)),
                     _ => None,
                 }
             }

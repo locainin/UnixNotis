@@ -8,9 +8,9 @@ use gtk::{glib, Align};
 use tracing::warn;
 use unixnotis_core::{PanelDebugLevel, StatWidgetConfig};
 
-use crate::debug;
 use super::stats_builtin::BuiltinStat;
 use super::util::run_command_capture_async;
+use crate::debug;
 
 pub struct StatGrid {
     root: gtk::FlowBox,

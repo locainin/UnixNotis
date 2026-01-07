@@ -2,10 +2,10 @@
 //!
 //! Keeps layout configuration isolated from popup state logic.
 
-use gtk::prelude::*;
-use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
-use gtk::{cairo, gdk};
 use gtk::glib::translate::ToGlibPtr;
+use gtk::prelude::*;
+use gtk::{cairo, gdk};
+use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use unixnotis_core::{Anchor, Config, Margins};
 
 pub(super) fn build_popup_window(
@@ -36,7 +36,11 @@ pub(super) fn build_popup_window(
     (window, stack)
 }
 
-pub(super) fn apply_popup_config(window: &gtk::ApplicationWindow, stack: &gtk::Box, config: &Config) {
+pub(super) fn apply_popup_config(
+    window: &gtk::ApplicationWindow,
+    stack: &gtk::Box,
+    config: &Config,
+) {
     window.set_default_size(config.popups.width, 1);
     window.set_size_request(config.popups.width, -1);
     stack.set_spacing(config.popups.spacing);

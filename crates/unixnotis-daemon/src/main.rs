@@ -9,34 +9,34 @@ use tracing::{error, info};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
-mod daemon;
-mod expire;
-mod sound;
-mod store;
-#[path = "runtime_config.rs"]
-mod runtime_config;
-#[path = "dbus_owner.rs"]
-mod dbus_owner;
 #[path = "child_process.rs"]
 mod child_process;
+mod daemon;
+#[path = "dbus_owner.rs"]
+mod dbus_owner;
+mod expire;
+#[path = "runtime_config.rs"]
+mod runtime_config;
 #[path = "shutdown_signal.rs"]
 mod shutdown_signal;
+mod sound;
+mod store;
 #[path = "trial_mode.rs"]
 mod trial_mode;
 
+use crate::child_process::{
+    start_center_process, start_popups_process, stop_center_process, stop_popups_process,
+};
 use crate::daemon::{
     log_name_reply, request_control_name, request_well_known_name, ControlServer, DaemonState,
     NotificationServer,
 };
+use crate::dbus_owner::{log_current_owner, wait_for_owner_state};
 use crate::expire::ExpirationScheduler;
 use crate::runtime_config::{init_tracing, is_wayland_session, load_config};
-use crate::dbus_owner::{log_current_owner, wait_for_owner_state};
-use crate::child_process::{
-    start_center_process, start_popups_process, stop_center_process, stop_popups_process,
-};
 use crate::shutdown_signal::shutdown_signal;
-use crate::trial_mode::{prepare_trial, restore_previous, TrialState};
 use crate::sound::SoundSettings;
+use crate::trial_mode::{prepare_trial, restore_previous, TrialState};
 use unixnotis_core::{Config, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH};
 
 const NOTIFICATIONS_OBJECT_PATH: &str = "/org/freedesktop/Notifications";

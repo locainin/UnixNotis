@@ -111,11 +111,11 @@ impl CommandSlider {
                         refresh_label.clone(),
                         refresh_icon.clone(),
                         refresh_updating.clone(),
-                    refresh_gen.clone(),
-                    refresh_icon_name.clone(),
-                    refresh_icon_muted.clone(),
-                    parse_mode,
-                );
+                        refresh_gen.clone(),
+                        refresh_icon_name.clone(),
+                        refresh_icon_muted.clone(),
+                        parse_mode,
+                    );
                     glib::ControlFlow::Break
                 });
             });

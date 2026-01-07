@@ -10,8 +10,10 @@ use gtk::{glib, Align};
 use tracing::warn;
 use unixnotis_core::{PanelDebugLevel, ToggleWidgetConfig};
 
+use super::util::{
+    run_command, run_command_capture_status_async, start_command_watch, CommandWatch,
+};
 use crate::debug;
-use super::util::{run_command, run_command_capture_status_async, start_command_watch, CommandWatch};
 
 pub struct ToggleGrid {
     root: gtk::FlowBox,

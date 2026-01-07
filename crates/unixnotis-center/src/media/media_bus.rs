@@ -47,7 +47,9 @@ pub(super) async fn refresh_players(
     players.retain(|name, _| allowed.contains(name));
     let removed = before.saturating_sub(players.len());
     if removed > 0 {
-        debug::log(PanelDebugLevel::Info, || format!("media players removed: {removed}"));
+        debug::log(PanelDebugLevel::Info, || {
+            format!("media players removed: {removed}")
+        });
     }
 
     for name in allowed {
@@ -65,7 +67,9 @@ pub(super) async fn refresh_players(
             // Each player gets a properties listener so updates stay event-driven.
             spawn_properties_listener(state.properties.clone(), name.clone(), signal_tx.clone());
             players.insert(name.clone(), state);
-            debug::log(PanelDebugLevel::Info, || format!("media player added: {name}"));
+            debug::log(PanelDebugLevel::Info, || {
+                format!("media player added: {name}")
+            });
         }
     }
 
@@ -121,9 +125,7 @@ fn is_relevant_media_change(
     if changed.keys().any(|key| KEYS.contains(key)) {
         return true;
     }
-    invalidated
-        .iter()
-        .any(|key| KEYS.contains(key))
+    invalidated.iter().any(|key| KEYS.contains(key))
 }
 
 pub(super) async fn handle_command(

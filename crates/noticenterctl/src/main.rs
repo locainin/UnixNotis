@@ -3,8 +3,8 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::process::Command as ProcCommand;
-use unixnotis_core::{ControlProxy, NotificationView, PanelDebugLevel};
 use unixnotis_core::util;
+use unixnotis_core::{ControlProxy, NotificationView, PanelDebugLevel};
 use zbus::Connection;
 
 #[derive(Parser, Debug)]

@@ -273,9 +273,7 @@ impl NotificationImage {
     }
 
     pub fn for_history(&self) -> NotificationImage {
-        if self.has_image_data
-            && (!self.image_path.is_empty() || !self.icon_name.is_empty())
-        {
+        if self.has_image_data && (!self.image_path.is_empty() || !self.icon_name.is_empty()) {
             let mut trimmed = self.clone();
             trimmed.has_image_data = false;
             trimmed.image_data = ImageData::default();

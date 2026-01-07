@@ -106,10 +106,7 @@ fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
         return IconResult::Failed("icon path is not a regular file".to_string());
     }
     if metadata.len() > MAX_ICON_BYTES {
-        return IconResult::Failed(format!(
-            "icon file too large ({} bytes)",
-            metadata.len()
-        ));
+        return IconResult::Failed(format!("icon file too large ({} bytes)", metadata.len()));
     }
 
     // Read the file into memory with a hard cap to avoid unbounded allocations.

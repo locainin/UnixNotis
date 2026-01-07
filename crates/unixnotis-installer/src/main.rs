@@ -319,7 +319,6 @@ fn spawn_input_thread(ui_tx: mpsc::Sender<UiMessage>) {
     });
 }
 
-
 fn reset_to_menu(app: &mut App) {
     app.screen = Screen::Welcome;
     app.last_error = None;

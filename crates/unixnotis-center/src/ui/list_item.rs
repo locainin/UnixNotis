@@ -4,9 +4,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
+use glib::subclass::prelude::*;
 use gtk::glib;
 use gtk::glib::object::ObjectExt;
-use glib::subclass::prelude::*;
 use unixnotis_core::NotificationView;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,8 +61,8 @@ impl RowData {
             stacked: false,
             ghost_depth: 0,
             is_active: false,
-        notification: Some(sample),
-    }
+            notification: Some(sample),
+        }
     }
 
     pub fn notification(

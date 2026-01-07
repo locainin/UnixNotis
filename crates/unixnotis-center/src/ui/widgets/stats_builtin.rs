@@ -23,8 +23,15 @@ enum BuiltinStatKind {
 #[derive(Clone, Debug)]
 enum BuiltinState {
     None,
-    Cpu { last_total: u64, last_idle: u64 },
-    Network { last_rx: u64, last_tx: u64, last_at: Instant },
+    Cpu {
+        last_total: u64,
+        last_idle: u64,
+    },
+    Network {
+        last_rx: u64,
+        last_tx: u64,
+        last_at: Instant,
+    },
 }
 
 impl BuiltinStat {
@@ -182,9 +189,15 @@ fn read_memory() -> Option<String> {
     let mut avail_kb = None;
     for line in contents.lines() {
         if line.starts_with("MemTotal:") {
-            total_kb = line.split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok());
+            total_kb = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| v.parse::<u64>().ok());
         } else if line.starts_with("MemAvailable:") {
-            avail_kb = line.split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok());
+            avail_kb = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| v.parse::<u64>().ok());
         }
     }
     let total = total_kb? as f64 / 1024.0 / 1024.0;
@@ -206,7 +219,10 @@ fn read_battery() -> Option<String> {
     let entries = fs::read_dir("/sys/class/power_supply").ok()?;
     for entry in entries.flatten() {
         let path = entry.path();
-        let name = path.file_name().and_then(|value| value.to_str()).unwrap_or("");
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
         if !name.starts_with("BAT") {
             continue;
         }
@@ -235,7 +251,10 @@ fn pick_default_iface() -> Option<String> {
     let mut fallback = None;
     for entry in entries.flatten() {
         let path = entry.path();
-        let iface = path.file_name().and_then(|value| value.to_str()).unwrap_or("lo");
+        let iface = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("lo");
         if iface == "lo" {
             continue;
         }

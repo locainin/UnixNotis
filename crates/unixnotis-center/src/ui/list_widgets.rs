@@ -10,7 +10,7 @@ use gtk::prelude::*;
 use gtk::{self, Align};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;
-use unixnotis_core::{NotificationView, Urgency};
+use unixnotis_core::{util, NotificationView, Urgency};
 
 use crate::dbus::{UiCommand, UiEvent};
 
@@ -134,7 +134,17 @@ impl RowWidgets {
             if group.is_empty() {
                 return;
             }
-            let _ = event_tx_clone.try_send(UiEvent::GroupToggled(group.to_string()));
+            // Non-blocking send: the event channel is unbounded, so failure implies shutdown.
+            if event_tx_clone
+                .try_send(UiEvent::GroupToggled(group.to_string()))
+                .is_err()
+            {
+                let snippet = util::log_snippet(&group);
+                debug!(
+                    group = %snippet,
+                    "group toggle dropped because event channel closed (likely shutdown)"
+                );
+            }
         });
 
         Self {
@@ -325,7 +335,10 @@ pub(super) fn bind_row(
 
 pub(super) fn set_row_widgets(list_item: &gtk::ListItem, widgets: Rc<RowWidgets>) {
     unsafe {
-        // Store on the list item to avoid a root <-> widget reference cycle.
+        // SAFETY: gtk::ListItem stays on the GTK main thread and never crosses threads.
+        // RowWidgets uses Rc and is only accessed from list factory callbacks on the
+        // main thread. Data is replaced in ensure_row_widgets when the row kind changes
+        // and cleared on unbind, so stale references are not retained.
         list_item.set_data("unixnotis-row-widgets", widgets);
     }
 }
@@ -401,7 +414,12 @@ fn update_notification_row(
     update_body_label(&row.body_label, &notification.body);
     row.notify_id.set(notification.id);
 
-    update_actions(&row.actions_box, &row.action_cache, command_tx, notification);
+    update_actions(
+        &row.actions_box,
+        &row.action_cache,
+        command_tx,
+        notification,
+    );
 
     let next_sig = IconSignature::from(notification);
     let mut sig_guard = row.icon_sig.borrow_mut();

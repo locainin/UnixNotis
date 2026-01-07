@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tracing::{debug, info};
 use unixnotis_core::{
-    Action, CloseReason, Config, Notification, NotificationImage, NotificationView, PanelDebugLevel,
-    PanelRequest, Urgency, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH,
+    Action, CloseReason, Config, Notification, NotificationImage, NotificationView,
+    PanelDebugLevel, PanelRequest, Urgency, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH,
 };
 use zbus::fdo::{RequestNameFlags, RequestNameReply};
 use zbus::zvariant::OwnedValue;
