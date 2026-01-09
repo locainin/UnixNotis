@@ -1,6 +1,6 @@
 # UnixNotis
 
-![Example layout](Examplelayout.png)
+![Example output](assets/images/ExampleDisplay.png)
 
 UnixNotis is a Wayland-first notification system with a control-center panel and toast popups.
 It includes a D-Bus daemon that implements the Freedesktop.org notification spec and GTK4
@@ -63,7 +63,7 @@ The installer:
 
 ### Installer UI
 
-![Installer CLI](InstallerCLI.png)
+![Installer CLI](assets/images/InstallerCLI.png)
 
 ## Build
 
