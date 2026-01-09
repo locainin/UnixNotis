@@ -33,7 +33,7 @@ use crate::daemon::{
 };
 use crate::dbus_owner::{log_current_owner, wait_for_owner_state};
 use crate::expire::ExpirationScheduler;
-use crate::runtime_config::{init_tracing, is_wayland_session, load_config};
+use crate::runtime_config::{ensure_wayland_session, init_tracing, load_config};
 use crate::shutdown_signal::shutdown_signal;
 use crate::sound::SoundSettings;
 use crate::trial_mode::{prepare_trial, restore_previous, TrialState};
@@ -104,11 +104,9 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    if !is_wayland_session() {
-        return Err(anyhow!(
-            "Wayland session not detected; use --check for config validation"
-        ));
-    }
+    ensure_wayland_session(Duration::from_secs(20))
+        .await
+        .context("wait for Wayland session")?;
 
     let connection = Connection::session()
         .await

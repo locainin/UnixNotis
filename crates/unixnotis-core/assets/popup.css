@@ -5,7 +5,9 @@
   background: alpha(#0b111d, 0.5);
   border-radius: 999px;
   border: 1px solid alpha(@unixnotis-accent, 0.18);
-  padding: 2px;
+  padding: 3px;
+  min-width: 24px;
+  min-height: 24px;
 }
 
 .unixnotis-popup-close:hover {
@@ -25,14 +27,15 @@
 }
 
 .unixnotis-popup-card {
-  background-image: linear-gradient(170deg, @unixnotis-popup-bg-1, @unixnotis-popup-bg-2);
+  background-image: linear-gradient(155deg, @unixnotis-popup-bg-1, @unixnotis-popup-bg-2);
   color: @unixnotis-text;
-  border-radius: 18px;
-  padding: 12px 14px;
-  border: 1px solid @unixnotis-card-border;
+  border-radius: 20px;
+  padding: 14px 16px;
+  border: 1px solid alpha(@unixnotis-card-border, 0.85);
   box-shadow:
     0 18px 32px -18px @unixnotis-shadow-strong,
-    0 10px 18px -16px @unixnotis-shadow-soft;
+    0 10px 18px -16px @unixnotis-shadow-soft,
+    inset 0 0 0 1px alpha(#ffffff, 0.04);
 }
 
 .unixnotis-popup-card.critical {
@@ -40,30 +43,37 @@
 }
 
 .unixnotis-popup-header-row {
-  margin-bottom: 2px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid alpha(@unixnotis-card-border, 0.4);
 }
 
 .unixnotis-popup-header {
   font-weight: 700;
   font-size: 14px;
+  letter-spacing: 0.2px;
 }
 
 .unixnotis-popup-summary {
   font-weight: 600;
   font-size: 13px;
+  margin-top: 4px;
 }
 
 .unixnotis-popup-icon {
-  margin-right: 6px;
+  margin-right: 8px;
+  min-width: 18px;
+  min-height: 18px;
 }
 
 .unixnotis-popup-body {
   color: @unixnotis-muted;
   font-size: 12px;
+  margin-top: 2px;
 }
 
 .unixnotis-popup-actions {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .unixnotis-popup-action {

@@ -323,14 +323,12 @@ fn build_widgets_overrides(theme: &ThemeConfig) -> String {
 fn build_popup_overrides(theme: &ThemeConfig) -> String {
     let border_width = theme.border_width as f32;
     let card_radius = theme.card_radius as f32;
-    let card_alpha = theme.card_alpha.clamp(0.0, 1.0);
     format!(
         r#"
 .unixnotis-popup-card {{
   border-width: {border_width}px;
   border-style: solid;
   border-radius: {card_radius}px;
-  background: alpha(@unixnotis-surface-strong, {card_alpha});
 }}
 "#
     )
