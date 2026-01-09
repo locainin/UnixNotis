@@ -1,6 +1,6 @@
 //! Notification store with ordering and history management.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -12,7 +12,7 @@ pub struct NotificationStore {
     config: Config,
     next_id: u32,
     active: IndexMap<u32, Arc<Notification>>,
-    history: IndexMap<u32, Arc<Notification>>,
+    history: HistoryStore,
     expirations: HashMap<u32, Instant>,
     dnd_enabled: bool,
 }
@@ -36,6 +36,74 @@ impl DismissOutcome {
     }
 }
 
+struct HistoryStore {
+    entries: HashMap<u32, Arc<Notification>>,
+    order: VecDeque<u32>,
+}
+
+impl HistoryStore {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    fn contains(&self, id: &u32) -> bool {
+        self.entries.contains_key(id)
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.order.clear();
+    }
+
+    fn list_views(&self) -> Vec<NotificationView> {
+        let mut views = Vec::with_capacity(self.entries.len());
+        for id in self.order.iter().rev() {
+            if let Some(notification) = self.entries.get(id) {
+                views.push(notification.to_list_view());
+            }
+        }
+        views
+    }
+
+    fn remove(&mut self, id: &u32) -> Option<Arc<Notification>> {
+        let removed = self.entries.remove(id);
+        if removed.is_some() {
+            // Removal is infrequent compared to insertion; pay the cost here to keep order clean.
+            self.order.retain(|entry| entry != id);
+        }
+        removed
+    }
+
+    fn insert(&mut self, notification: Arc<Notification>) {
+        let id = notification.id;
+        if self.entries.contains_key(&id) {
+            // Avoid duplicate IDs in order when a notification is replaced.
+            self.order.retain(|entry| *entry != id);
+        }
+        self.entries.insert(id, notification);
+        self.order.push_back(id);
+    }
+
+    fn evict_to_limit(&mut self, max_entries: usize) {
+        while self.entries.len() > max_entries {
+            if let Some(id) = self.order.pop_front() {
+                if self.entries.remove(&id).is_some() {
+                    continue;
+                }
+            } else {
+                break;
+            }
+        }
+    }
+}
+
 impl NotificationStore {
     pub fn new(config: Config) -> Self {
         Self {
@@ -43,7 +111,7 @@ impl NotificationStore {
             dnd_enabled: config.general.dnd_default,
             config,
             active: IndexMap::new(),
-            history: IndexMap::new(),
+            history: HistoryStore::new(),
             expirations: HashMap::new(),
         }
     }
@@ -69,11 +137,7 @@ impl NotificationStore {
     }
 
     pub fn list_history(&self) -> Vec<NotificationView> {
-        self.history
-            .values()
-            .rev()
-            .map(|notification| notification.to_list_view())
-            .collect()
+        self.history.list_views()
     }
 
     pub fn history_len(&self) -> usize {
@@ -86,7 +150,7 @@ impl NotificationStore {
         let has_replaces_id = replaces_id != 0;
         // Replacement is only true when the referenced notification is present.
         let replaced = has_replaces_id
-            && (self.active.contains_key(&replaces_id) || self.history.contains_key(&replaces_id));
+            && (self.active.contains_key(&replaces_id) || self.history.contains(&replaces_id));
         let assigned_id = if replaced {
             replaces_id
         } else {
@@ -96,7 +160,7 @@ impl NotificationStore {
 
         // Remove any stale entries for this ID before inserting the replacement.
         self.active.shift_remove(&assigned_id);
-        self.history.shift_remove(&assigned_id);
+        self.history.remove(&assigned_id);
         self.expirations.remove(&assigned_id);
 
         let notification = Arc::new(notification);
@@ -132,7 +196,7 @@ impl NotificationStore {
             self.expirations.remove(&id);
         }
 
-        let removed_history = self.history.shift_remove(&id).is_some();
+        let removed_history = self.history.remove(&id).is_some();
 
         DismissOutcome {
             removed_active,
@@ -167,7 +231,7 @@ impl NotificationStore {
         let start = self.next_id.max(1);
         let mut candidate = start;
         loop {
-            if !self.active.contains_key(&candidate) && !self.history.contains_key(&candidate) {
+            if !self.active.contains_key(&candidate) && !self.history.contains(&candidate) {
                 self.next_id = candidate.wrapping_add(1);
                 if self.next_id == 0 {
                     self.next_id = 1;
@@ -206,13 +270,10 @@ impl NotificationStore {
         if notification.is_transient && !self.config.history.transient_to_history {
             return;
         }
-        let id = notification.id;
-        self.history.shift_remove(&id);
         let stored = Arc::new(notification.to_history());
-        self.history.insert(id, stored);
-        while self.history.len() > self.config.history.max_entries {
-            let _ = self.history.shift_remove_index(0);
-        }
+        self.history.insert(stored);
+        self.history
+            .evict_to_limit(self.config.history.max_entries);
     }
 
     fn should_show_popup(&self, notification: &Notification) -> bool {
@@ -306,28 +367,14 @@ fn contains_ci(haystack: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
     }
-    let haystack = haystack.as_bytes();
-    let needle = needle.as_bytes();
-    if needle.len() > haystack.len() {
+    let haystack_bytes = haystack.as_bytes();
+    let needle_bytes = needle.as_bytes();
+    if needle_bytes.len() > haystack_bytes.len() {
         return false;
     }
-
-    for i in 0..=haystack.len() - needle.len() {
-        if haystack[i].to_ascii_lowercase() != needle[0].to_ascii_lowercase() {
-            continue;
-        }
-        let mut matched = true;
-        for j in 1..needle.len() {
-            if haystack[i + j].to_ascii_lowercase() != needle[j].to_ascii_lowercase() {
-                matched = false;
-                break;
-            }
-        }
-        if matched {
-            return true;
-        }
-    }
-    false
+    haystack_bytes
+        .windows(needle_bytes.len())
+        .any(|window| window.eq_ignore_ascii_case(needle_bytes))
 }
 
 #[cfg(test)]

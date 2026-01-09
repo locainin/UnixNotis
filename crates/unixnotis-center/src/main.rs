@@ -4,15 +4,17 @@ use std::cell::RefCell;
 use std::env;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use glib::MainContext;
 use gtk::prelude::*;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 use unixnotis_core::Config;
 use unixnotis_ui::css::{self, CssKind};
+use zbus::Connection;
 
 mod dbus;
 mod debug;
@@ -67,13 +69,36 @@ fn main() -> Result<()> {
 
     app.connect_activate(move |app| {
         let (event_tx, event_rx) = async_channel::unbounded();
-        let command_tx = dbus::start_dbus_runtime(event_tx.clone());
+        let runtime = match tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => Arc::new(runtime),
+            Err(err) => {
+                warn!(?err, "failed to initialize async runtime");
+                return;
+            }
+        };
+        let connection = match runtime.block_on(Connection::session()) {
+            Ok(connection) => connection,
+            Err(err) => {
+                warn!(?err, "failed to connect to session bus");
+                return;
+            }
+        };
+        let command_tx =
+            dbus::start_dbus_task(runtime.handle(), connection.clone(), event_tx.clone());
 
         let css_manager = css::CssManager::new_panel(theme_paths.clone(), config.theme.clone());
         css_manager.apply_to_display();
         css_manager.reload(css::DEFAULT_CSS);
 
-        let media_handle = media::start_media_runtime(config.media.clone(), event_tx.clone());
+        let media_handle = media::start_media_task(
+            runtime.handle(),
+            connection.clone(),
+            config.media.clone(),
+            event_tx.clone(),
+        );
         let ui = Rc::new(RefCell::new(ui::UiState::new(
             app,
             config.clone(),
@@ -82,6 +107,7 @@ fn main() -> Result<()> {
             css_manager,
             event_tx.clone(),
             media_handle,
+            runtime.clone(),
         )));
 
         let ui_clone = ui.clone();

@@ -139,7 +139,7 @@ impl Default for MediaConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct WidgetsConfig {
     pub volume: SliderWidgetConfig,
@@ -177,7 +177,7 @@ impl Default for WidgetsConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct SliderWidgetConfig {
     pub enabled: bool,
@@ -272,7 +272,7 @@ impl Default for SliderWidgetConfig {
     }
 }
 
-#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum NumericParseMode {
     /// Uses heuristic parsing for mixed output formats.
@@ -289,7 +289,7 @@ impl Default for NumericParseMode {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct ToggleWidgetConfig {
     pub enabled: bool,
@@ -365,7 +365,7 @@ impl Default for ToggleWidgetConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct StatWidgetConfig {
     pub enabled: bool,
@@ -424,7 +424,7 @@ impl Default for StatWidgetConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct CardWidgetConfig {
     pub enabled: bool,

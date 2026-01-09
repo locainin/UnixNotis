@@ -17,6 +17,7 @@ struct MarqueeState {
     reset_pending: bool,
     enabled: bool,
     is_ticking: bool,
+    is_mapped: bool,
     char_limit: usize,
     buffer: Vec<char>,
     last_rendered_offset: usize,
@@ -60,13 +61,33 @@ impl MarqueeLabel {
         let state = Rc::new(RefCell::new(MarqueeState {
             reset_pending: true,
             enabled: false,
+            is_mapped: root.is_mapped(),
             char_limit,
             last_rendered_offset: usize::MAX,
             render_buf: String::new(),
             ..Default::default()
         }));
 
-        Self { root, label, state }
+        let instance = Self { root, label, state };
+        let mapped_label = instance.clone();
+        let mapped_root = mapped_label.root.clone();
+        mapped_root.connect_map(move |_| {
+            let mut state = mapped_label.state.borrow_mut();
+            state.is_mapped = true;
+            let should_start = state.enabled && !state.is_ticking;
+            drop(state);
+            if should_start {
+                mapped_label.start_ticking();
+            }
+        });
+        let unmapped_label = instance.clone();
+        let unmapped_root = unmapped_label.root.clone();
+        unmapped_root.connect_unmap(move |_| {
+            let mut state = unmapped_label.state.borrow_mut();
+            state.is_mapped = false;
+        });
+
+        instance
     }
 
     pub fn widget(&self) -> gtk::Fixed {
@@ -92,6 +113,7 @@ impl MarqueeLabel {
         state.last_rendered_offset = usize::MAX;
 
         let enabled = state.enabled;
+        let mapped = state.is_mapped;
         let ticking = state.is_ticking;
 
         if enabled {
@@ -100,7 +122,7 @@ impl MarqueeLabel {
         }
         drop(state);
 
-        if enabled && !ticking {
+        if enabled && mapped && !ticking {
             self.start_ticking();
         }
     }
@@ -130,7 +152,7 @@ impl MarqueeLabel {
         self.root.add_tick_callback(move |_, frame_clock| {
             let mut state = state_tick.borrow_mut();
 
-            if !state.enabled {
+            if !state.enabled || !state.is_mapped {
                 state.is_ticking = false;
                 return glib::ControlFlow::Break;
             }

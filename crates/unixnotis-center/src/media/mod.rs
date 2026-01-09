@@ -8,7 +8,6 @@ mod media_metadata;
 mod media_schedule;
 
 use std::collections::HashMap;
-use std::thread;
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -99,7 +98,9 @@ impl MediaHandle {
     }
 }
 
-pub fn start_media_runtime(
+pub fn start_media_task(
+    runtime: &tokio::runtime::Handle,
+    connection: Connection,
     config: MediaConfig,
     sender: async_channel::Sender<UiEvent>,
 ) -> Option<MediaHandle> {
@@ -121,128 +122,107 @@ pub fn start_media_runtime(
         .collect();
 
     let (command_tx, mut command_rx) = mpsc::unbounded_channel();
-
-    thread::spawn(move || {
-        let runtime = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(runtime) => runtime,
+    runtime.spawn(async move {
+        let dbus_proxy = match DBusProxy::new(&connection).await {
+            Ok(proxy) => proxy,
             Err(err) => {
-                warn!(?err, "failed to initialize media runtime");
+                warn!(?err, "failed to create D-Bus proxy for media");
                 return;
             }
         };
-        runtime.block_on(async move {
-            let connection = match Connection::session().await {
-                Ok(connection) => connection,
-                Err(err) => {
-                    warn!(?err, "failed to connect to session bus for media");
-                    return;
+
+        let mut owner_stream = match dbus_proxy.receive_name_owner_changed().await {
+            Ok(stream) => stream,
+            Err(err) => {
+                warn!(?err, "failed to subscribe to name owner changes");
+                return;
+            }
+        };
+
+        // Dedicated signal channel keeps property updates out of the UI thread.
+        let (signal_tx, mut signal_rx) = mpsc::unbounded_channel::<MediaSignal>();
+        let mut players: HashMap<String, PlayerState> = HashMap::new();
+        let mut cache: HashMap<String, MediaInfo> = HashMap::new();
+        let mut refresh = true;
+
+        loop {
+            if refresh {
+                if let Err(err) =
+                    refresh_players(&connection, &dbus_proxy, &config, &signal_tx, &mut players)
+                        .await
+                {
+                    warn!(?err, "failed to refresh media players");
                 }
-            };
+                refresh_cache(&players, &mut cache).await;
+                send_snapshot(&sender, &cache).await;
+                schedule_metadata_fallbacks(&cache, signal_tx.clone());
+                refresh = false;
+            }
 
-            let dbus_proxy = match DBusProxy::new(&connection).await {
-                Ok(proxy) => proxy,
-                Err(err) => {
-                    warn!(?err, "failed to create D-Bus proxy for media");
-                    return;
-                }
-            };
-
-            let mut owner_stream = match dbus_proxy.receive_name_owner_changed().await {
-                Ok(stream) => stream,
-                Err(err) => {
-                    warn!(?err, "failed to subscribe to name owner changes");
-                    return;
-                }
-            };
-
-            // Dedicated signal channel keeps property updates out of the UI thread.
-            let (signal_tx, mut signal_rx) = mpsc::unbounded_channel::<MediaSignal>();
-            let mut players: HashMap<String, PlayerState> = HashMap::new();
-            let mut cache: HashMap<String, MediaInfo> = HashMap::new();
-            let mut refresh = true;
-
-            loop {
-                if refresh {
-                    if let Err(err) =
-                        refresh_players(&connection, &dbus_proxy, &config, &signal_tx, &mut players)
-                            .await
-                    {
-                        warn!(?err, "failed to refresh media players");
-                    }
-                    refresh_cache(&players, &mut cache).await;
-                    send_snapshot(&sender, &cache).await;
-                    schedule_metadata_fallbacks(&cache, signal_tx.clone());
-                    refresh = false;
-                }
-
-                tokio::select! {
-                    command = command_rx.recv() => {
-                        let Some(command) = command else {
-                            break;
-                        };
-                        match command {
-                            MediaCommand::Refresh => {
-                                refresh = true;
-                            }
-                            command => {
-                                if let Ok(Some(name)) = handle_command(&players, command).await {
-                                    // Post-command refresh keeps controls responsive without polling.
-                                    refresh_player_cache(&players, &mut cache, &name).await;
-                                    send_snapshot(&sender, &cache).await;
-                                    schedule_metadata_fallback(&cache, signal_tx.clone(), &name);
-                                    for delay_ms in [150_u64, 650_u64] {
-                                        schedule_delayed_refresh(
-                                            signal_tx.clone(),
-                                            name.clone(),
-                                            Duration::from_millis(delay_ms),
-                                        );
-                                    }
+            tokio::select! {
+                command = command_rx.recv() => {
+                    let Some(command) = command else {
+                        break;
+                    };
+                    match command {
+                        MediaCommand::Refresh => {
+                            refresh = true;
+                        }
+                        command => {
+                            if let Ok(Some(name)) = handle_command(&players, command).await {
+                                // Post-command refresh keeps controls responsive without polling.
+                                refresh_player_cache(&players, &mut cache, &name).await;
+                                send_snapshot(&sender, &cache).await;
+                                schedule_metadata_fallback(&cache, signal_tx.clone(), &name);
+                                for delay_ms in [150_u64, 650_u64] {
+                                    schedule_delayed_refresh(
+                                        signal_tx.clone(),
+                                        name.clone(),
+                                        Duration::from_millis(delay_ms),
+                                    );
                                 }
                             }
                         }
                     }
-                    signal = signal_rx.recv() => {
-                        let Some(signal) = signal else {
-                            break;
-                        };
-                        let MediaSignal::PropertiesChanged(name) = signal;
-                        // Property changes are per-player; refresh only the updated entry.
-                        refresh_player_cache(&players, &mut cache, &name).await;
-                        send_snapshot(&sender, &cache).await;
-                        schedule_metadata_fallback(&cache, signal_tx.clone(), &name);
-                    }
-                    signal = owner_stream.next() => {
-                        let Some(signal) = signal else {
-                            break;
-                        };
-                        if let Ok(args) = signal.args() {
-                            let name = args.name();
-                            let new_owner = args
-                                .new_owner()
-                                .as_ref()
-                                .map(|owner| owner.as_str().to_string());
-                            if let Err(err) = apply_owner_change(
-                                name,
-                                new_owner.as_deref(),
-                                &connection,
-                                &config,
-                                &signal_tx,
-                                &mut players,
-                                &mut cache,
-                                &sender,
-                            )
-                            .await
-                            {
-                                warn!(?err, "failed to apply media owner change");
-                            }
+                }
+                signal = signal_rx.recv() => {
+                    let Some(signal) = signal else {
+                        break;
+                    };
+                    let MediaSignal::PropertiesChanged(name) = signal;
+                    // Property changes are per-player; refresh only the updated entry.
+                    refresh_player_cache(&players, &mut cache, &name).await;
+                    send_snapshot(&sender, &cache).await;
+                    schedule_metadata_fallback(&cache, signal_tx.clone(), &name);
+                }
+                signal = owner_stream.next() => {
+                    let Some(signal) = signal else {
+                        break;
+                    };
+                    if let Ok(args) = signal.args() {
+                        let name = args.name();
+                        let new_owner = args
+                            .new_owner()
+                            .as_ref()
+                            .map(|owner| owner.as_str().to_string());
+                        if let Err(err) = apply_owner_change(
+                            name,
+                            new_owner.as_deref(),
+                            &connection,
+                            &config,
+                            &signal_tx,
+                            &mut players,
+                            &mut cache,
+                            &sender,
+                        )
+                        .await
+                        {
+                            warn!(?err, "failed to apply media owner change");
                         }
                     }
                 }
             }
-        });
+        }
     });
 
     Some(MediaHandle {

@@ -1,18 +1,18 @@
 //! Notification sound playback and backend selection.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use tokio::process::Command;
+use tokio::sync::Semaphore;
 use tokio::time::timeout;
 use tracing::{debug, info, warn};
 use unixnotis_core::{program_in_path, util, Config};
 use zbus::zvariant::OwnedValue;
-
-use std::collections::HashMap;
 
 /// Sound handling for notification playback.
 pub struct SoundSettings {
@@ -209,8 +209,22 @@ fn detect_backend() -> SoundBackend {
 }
 
 const SOUND_COMMAND_TIMEOUT: Duration = Duration::from_secs(3);
+const SOUND_MAX_CONCURRENT: usize = 2;
+
+fn sound_semaphore() -> &'static Arc<Semaphore> {
+    static SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    SEMAPHORE.get_or_init(|| Arc::new(Semaphore::new(SOUND_MAX_CONCURRENT)))
+}
 
 fn spawn_sound_command(backend: &'static str, program: &str, args: &[String]) {
+    let limiter = sound_semaphore().clone();
+    let permit = match limiter.try_acquire_owned() {
+        Ok(permit) => permit,
+        Err(_) => {
+            debug!(backend, "sound command skipped (concurrency limit reached)");
+            return;
+        }
+    };
     let command_str = if args.is_empty() {
         program.to_string()
     } else {
@@ -234,6 +248,7 @@ fn spawn_sound_command(backend: &'static str, program: &str, args: &[String]) {
                 "sound command spawned"
             );
             tokio::spawn(async move {
+                let _permit = permit;
                 reap_sound_child(backend, command_snip, pid, child).await;
             });
         }

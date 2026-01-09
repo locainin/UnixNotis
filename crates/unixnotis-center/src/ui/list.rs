@@ -424,8 +424,13 @@ impl NotificationList {
 
         let group_count = grouped.len();
         self.grouped_cache = grouped;
-        std::mem::swap(&mut self.group_order, &mut group_order);
-        self.group_order_scratch = group_order;
+        let mut old_group_order = std::mem::replace(&mut self.group_order, group_order);
+        // Drop stale group keys while keeping the scratch capacity for reuse.
+        old_group_order.clear();
+        self.group_order_scratch = old_group_order;
+
+        // Prune interned keys that are no longer referenced by any list state.
+        self.interned.retain(|key| Rc::strong_count(key) > 1);
 
         debug!(
             groups = group_count,

@@ -13,6 +13,8 @@ use gtk::prelude::*;
 use gtk::IconPaintable;
 use unixnotis_core::NotificationImage;
 
+const DEFAULT_MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(super) enum IconKey {
     ImageData {
@@ -33,6 +35,16 @@ pub(super) enum IconKey {
         size: i32,
         scale: i32,
     },
+}
+
+impl IconKey {
+    fn size_and_scale(&self) -> (i32, i32) {
+        match self {
+            IconKey::ImageData { size, scale, .. }
+            | IconKey::Path { size, scale, .. }
+            | IconKey::Name { size, scale, .. } => (*size, *scale),
+        }
+    }
 }
 
 pub(super) fn icon_key_for_image(
@@ -170,9 +182,11 @@ impl CachedPaintable {
 }
 
 pub(super) struct IconCache {
-    entries: HashMap<IconKey, Rc<CachedPaintable>>,
+    entries: HashMap<IconKey, CacheEntry>,
     order: VecDeque<IconKey>,
     max_entries: usize,
+    max_bytes: usize,
+    total_bytes: usize,
 }
 
 impl IconCache {
@@ -185,13 +199,15 @@ impl IconCache {
             entries: HashMap::new(), // Key -> cached paintable (shared via Rc)
             order: VecDeque::new(),  // Recency order for eviction / promotion
             max_entries,             // Maximum number of entries we keep before evicting
+            max_bytes: DEFAULT_MAX_CACHE_BYTES, // Approximate memory budget for cached textures.
+            total_bytes: 0,
         }
     }
 
     pub(super) fn get(&mut self, key: &IconKey) -> Option<Rc<CachedPaintable>> {
         // Fast path: look up by key. If present, clone the Rc (cheap) and promote in LRU order.
         // We take &mut self because promotion mutates the recency list.
-        let paintable = self.entries.get(key)?.clone();
+        let paintable = self.entries.get(key)?.paintable.clone();
 
         // Mark this key as most-recently used so it is less likely to be evicted.
         self.promote(key);
@@ -206,10 +222,20 @@ impl IconCache {
     ) -> Rc<CachedPaintable> {
         // Wrap the paintable in Rc so it can be shared by multiple widgets without copying.
         let paintable = Rc::new(paintable);
+        let estimated_bytes = estimate_cache_bytes(&paintable, &key);
 
         // Insert/replace in the map. If this key already existed, this overwrites the value.
         // Ensure order stays bounded by removing any existing entry before re-adding.
-        self.entries.insert(key.clone(), paintable.clone());
+        if let Some(entry) = self.entries.insert(
+            key.clone(),
+            CacheEntry {
+                paintable: paintable.clone(),
+                bytes: estimated_bytes,
+            },
+        ) {
+            self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+        }
+        self.total_bytes = self.total_bytes.saturating_add(estimated_bytes);
 
         // Record as most-recently used.
         self.order.retain(|item| item != &key);
@@ -239,17 +265,41 @@ impl IconCache {
     fn evict(&mut self) {
         // Trim the oldest entries to keep cache memory bounded.
         // Oldest == front of the deque. Newest == back of the deque.
-        while self.entries.len() > self.max_entries {
+        while self.entries.len() > self.max_entries || self.total_bytes > self.max_bytes {
             if let Some(key) = self.order.pop_front() {
                 // Remove the entry from the map as well. If order contains duplicates (possible when
                 // inserting the same key multiple times), removing here might no-op if it was already
                 // removed earlier; that's safe, and the loop will continue trimming until bounded.
-                self.entries.remove(&key);
+                if let Some(entry) = self.entries.remove(&key) {
+                    self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+                }
             } else {
                 // order should normally track entries, but if it gets out of sync,
                 // break to avoid an infinite loop.
                 break;
             }
+        }
+    }
+}
+
+#[derive(Clone)]
+struct CacheEntry {
+    paintable: Rc<CachedPaintable>,
+    bytes: usize,
+}
+
+fn estimate_cache_bytes(paintable: &CachedPaintable, key: &IconKey) -> usize {
+    match &paintable.inner {
+        CachedPaintableInner::Texture(texture) => {
+            let width = texture.width().max(1) as usize;
+            let height = texture.height().max(1) as usize;
+            width.saturating_mul(height).saturating_mul(4)
+        }
+        CachedPaintableInner::Icon(_) => {
+            let (size, scale) = key.size_and_scale();
+            let scale = scale.max(1);
+            let pixels = (size.max(1) * scale) as usize;
+            pixels.saturating_mul(pixels).saturating_mul(4)
         }
     }
 }

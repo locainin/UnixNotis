@@ -48,6 +48,8 @@ pub struct UiState {
     refresh_source: Option<gtk::glib::SourceId>,
     last_fast_refresh: Option<Instant>,
     last_slow_refresh: Option<Instant>,
+    // Keeps the shared async runtime alive for D-Bus and media tasks.
+    _runtime: Arc<tokio::runtime::Runtime>,
 }
 
 impl UiState {
@@ -59,6 +61,7 @@ impl UiState {
         css: CssManager,
         event_tx: async_channel::Sender<UiEvent>,
         media_handle: Option<crate::media::MediaHandle>,
+        runtime: Arc<tokio::runtime::Runtime>,
     ) -> Self {
         let panel = panel::build_panel_widgets(app, &config);
         let icon_resolver = Rc::new(icons::IconResolver::new());
@@ -173,6 +176,7 @@ impl UiState {
             refresh_source: None,
             last_fast_refresh: None,
             last_slow_refresh: None,
+            _runtime: runtime,
         }
     }
 
@@ -296,6 +300,7 @@ impl UiState {
     }
 
     fn reload_config(&mut self) {
+        let widgets_before = self.config.widgets.clone();
         let config = match Config::load_from_path(&self.config_path) {
             Ok(config) => config,
             Err(err) => {
@@ -327,7 +332,11 @@ impl UiState {
             "panel config applied after reload".to_string()
         });
         self.apply_media_config(&config);
-        self.apply_widget_config(&config);
+        if config.widgets != widgets_before {
+            self.apply_widget_config(&config);
+        } else {
+            debug!("widget config unchanged; skipping rebuild");
+        }
         self.restart_refresh_timer();
         if config.panel.respect_work_area {
             self.work_area = None;
