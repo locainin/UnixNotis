@@ -160,6 +160,11 @@ impl NotificationList {
 
     pub fn add_or_update(&mut self, notification: NotificationView, is_active: bool) {
         let id = notification.id;
+        // Snapshot ordering state before any mutations; used to decide whether a full rebuild
+        // is necessary (rebuilds are expensive for large histories).
+        let was_in_history = self.history_order.iter().any(|entry| *entry == id);
+        let was_in_active = self.active_order.iter().any(|entry| *entry == id);
+        let was_front = self.active_order.front().copied() == Some(id);
         let needs_new_key = self
             .entries
             .get(&id)
@@ -171,9 +176,16 @@ impl NotificationList {
             None
         };
 
+        // Track whether this update changes grouping or ordering. If not, update in place.
+        let mut existing = false;
+        let mut old_is_active = None;
+        let mut group_changed = false;
         if let Some(entry) = self.entries.get_mut(&id) {
+            existing = true;
+            old_is_active = Some(entry.is_active);
             if let Some(key) = new_key {
                 entry.app_key = key;
+                group_changed = true;
             }
             entry.view = Rc::new(notification);
             entry.is_active = is_active;
@@ -181,10 +193,61 @@ impl NotificationList {
             self.insert_entry(notification, is_active);
         }
 
+        let mut ordering_changed = false;
         if is_active {
-            self.history_order.retain(|entry| *entry != id);
-            self.active_order.retain(|entry| *entry != id);
-            self.active_order.push_front(id);
+            // Reorder only when the notification is not already at the front.
+            if was_in_history || !was_in_active || !was_front {
+                self.history_order.retain(|entry| *entry != id);
+                self.active_order.retain(|entry| *entry != id);
+                self.active_order.push_front(id);
+                ordering_changed = true;
+            }
+        }
+
+        // Fast path: when the group and ordering are unchanged, update the row and header only.
+        if existing && !group_changed && old_is_active == Some(is_active) && !ordering_changed {
+            if let Some(entry) = self.entries.get(&id) {
+                // Compute stacked state from the cached grouping instead of rebuilding it.
+                let stacked = self
+                    .grouped_cache
+                    .get(&entry.app_key)
+                    .map(|ids| {
+                        !self
+                            .group_expanded
+                            .get(&entry.app_key)
+                            .copied()
+                            .unwrap_or(false)
+                            && ids.len() > 1
+                    })
+                    .unwrap_or(false);
+                // Update the row object in-place to avoid ListStore churn.
+                entry.item.update(RowData::notification(
+                    entry.app_key.clone(),
+                    entry.view.clone(),
+                    stacked,
+                    entry.is_active,
+                ));
+                if let Some(ids) = self.grouped_cache.get(&entry.app_key) {
+                    if ids.first().copied() == Some(id) {
+                        let expanded = self
+                            .group_expanded
+                            .get(&entry.app_key)
+                            .copied()
+                            .unwrap_or(false);
+                        if let Some(header) = self.group_headers.get(&entry.app_key) {
+                            // Refresh the group header count and sample notification.
+                            header.update(RowData::group_header(
+                                entry.app_key.clone(),
+                                ids.len(),
+                                expanded,
+                                entry.view.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+            debug!(id, active = is_active, "notification updated in place");
+            return;
         }
 
         debug!(id, active = is_active, "notification upserted");
