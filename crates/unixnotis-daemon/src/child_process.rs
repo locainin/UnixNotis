@@ -56,7 +56,14 @@ async fn terminate_child(child: &mut Child, label: &str) {
     let pid = child.id();
     #[cfg(unix)]
     unsafe {
-        libc::kill(pid as i32, libc::SIGTERM);
+        let pid = match i32::try_from(pid) {
+            Ok(pid) => pid,
+            Err(_) => {
+                warn!(label, pid, "pid exceeds i32 range; skipping SIGTERM");
+                return;
+            }
+        };
+        libc::kill(pid, libc::SIGTERM);
     }
     let start = Instant::now();
     let timeout = Duration::from_millis(600);

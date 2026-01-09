@@ -4,6 +4,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::OnceLock;
 
 use async_channel::Sender;
 use gtk::prelude::*;
@@ -26,6 +27,11 @@ pub(super) struct RowWidgets {
     ghost: Option<GhostRowWidgets>,
     handler: RefCell<Option<(RowItem, gtk::glib::SignalHandlerId)>>,
     command_tx: UnboundedSender<UiCommand>,
+}
+
+fn row_widgets_quark() -> gtk::glib::Quark {
+    static QUARK: OnceLock<gtk::glib::Quark> = OnceLock::new();
+    *QUARK.get_or_init(|| gtk::glib::Quark::from_str("unixnotis-row-widgets"))
 }
 
 struct GroupRowWidgets {
@@ -339,15 +345,22 @@ pub(super) fn set_row_widgets(list_item: &gtk::ListItem, widgets: Rc<RowWidgets>
         // RowWidgets uses Rc and is only accessed from list factory callbacks on the
         // main thread. Data is replaced in ensure_row_widgets when the row kind changes
         // and cleared on unbind, so stale references are not retained.
-        list_item.set_data("unixnotis-row-widgets", widgets);
+        list_item.set_qdata(row_widgets_quark(), widgets);
     }
 }
 
 pub(super) fn get_row_widgets(list_item: &gtk::ListItem) -> Option<Rc<RowWidgets>> {
     unsafe {
         list_item
-            .data::<Rc<RowWidgets>>("unixnotis-row-widgets")
+            .qdata::<Rc<RowWidgets>>(row_widgets_quark())
             .map(|ptr| ptr.as_ref().clone())
+    }
+}
+
+pub(super) fn clear_row_widgets(list_item: &gtk::ListItem) {
+    unsafe {
+        // SAFETY: clearing uses the same quark/type pairing as set_row_widgets.
+        let _ = list_item.steal_qdata::<Rc<RowWidgets>>(row_widgets_quark());
     }
 }
 

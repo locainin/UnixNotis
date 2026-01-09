@@ -155,10 +155,13 @@ async fn detect_owner(
     dbus_proxy: &DBusProxy<'_>,
     notifications_name: zbus::names::BusName<'_>,
 ) -> Result<Option<OwnerInfo>> {
-    let has_owner = dbus_proxy
-        .name_has_owner(notifications_name.clone())
-        .await
-        .unwrap_or(false);
+    let has_owner = match dbus_proxy.name_has_owner(notifications_name.clone()).await {
+        Ok(value) => value,
+        Err(err) => {
+            warn!(?err, "failed to query D-Bus owner state");
+            false
+        }
+    };
     if !has_owner {
         return Ok(None);
     }

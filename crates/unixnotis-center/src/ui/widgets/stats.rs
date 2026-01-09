@@ -2,11 +2,15 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::OnceLock;
+use std::thread;
 
 use gtk::prelude::*;
 use gtk::{glib, Align};
 use tracing::warn;
 use unixnotis_core::{PanelDebugLevel, StatWidgetConfig};
+
+use crossbeam_channel as channel;
 
 use super::stats_builtin::BuiltinStat;
 use super::util::run_command_capture_async;
@@ -21,9 +25,55 @@ struct StatItem {
     config: StatWidgetConfig,
     root: gtk::Box,
     value_label: gtk::Label,
-    builtin: RefCell<Option<BuiltinStat>>,
+    builtin: Rc<RefCell<Option<BuiltinStat>>>,
     inflight: Rc<Cell<bool>>,
     last_value: Rc<RefCell<Option<String>>>,
+}
+
+struct BuiltinStatJob {
+    stat: BuiltinStat,
+    respond: async_channel::Sender<(BuiltinStat, String)>,
+}
+
+struct BuiltinStatWorker {
+    tx: channel::Sender<BuiltinStatJob>,
+    inline_fallback: bool,
+}
+
+impl BuiltinStatWorker {
+    // Single worker avoids per-refresh thread churn while keeping UI updates async.
+    fn global() -> &'static Self {
+        static WORKER: OnceLock<BuiltinStatWorker> = OnceLock::new();
+        WORKER.get_or_init(Self::new)
+    }
+
+    fn new() -> Self {
+        let (tx, rx) = channel::unbounded::<BuiltinStatJob>();
+        let spawn = thread::Builder::new()
+            .name("unixnotis-builtin-stats".to_string())
+            .spawn(move || {
+                for mut job in rx.iter() {
+                    let value = job.stat.read().unwrap_or_else(|| "n/a".to_string());
+                    let _ = job.respond.send_blocking((job.stat, value));
+                }
+            });
+        let inline_fallback = spawn.is_err();
+        if inline_fallback {
+            warn!("builtin stats worker unavailable; using inline reads");
+        }
+
+        Self {
+            tx,
+            inline_fallback,
+        }
+    }
+
+    fn submit(&self, job: BuiltinStatJob) -> bool {
+        if self.inline_fallback {
+            return false;
+        }
+        self.tx.send(job).is_ok()
+    }
 }
 
 impl StatGrid {
@@ -106,7 +156,7 @@ impl StatItem {
             config,
             root: card,
             value_label,
-            builtin: RefCell::new(builtin),
+            builtin: Rc::new(RefCell::new(builtin)),
             inflight: Rc::new(Cell::new(false)),
             last_value: Rc::new(RefCell::new(None)),
         }
@@ -119,9 +169,44 @@ impl StatItem {
         debug::log(PanelDebugLevel::Verbose, || {
             format!("stat refresh: {}", self.config.label)
         });
-        if let Some(builtin) = self.builtin.borrow_mut().as_mut() {
-            let value = builtin.read().unwrap_or_else(|| "n/a".to_string());
-            self.apply_value(&value);
+        if self.inflight.get() {
+            return;
+        }
+        if let Some(builtin) = self.builtin.borrow_mut().take() {
+            self.inflight.set(true);
+            let (tx, rx) = async_channel::bounded(1);
+            let mut fallback = builtin.clone();
+            let worker = BuiltinStatWorker::global();
+            if !worker.submit(BuiltinStatJob { stat: builtin, respond: tx }) {
+                self.inflight.set(false);
+                // Fallback to inline reads when the worker thread is unavailable.
+                let value = fallback.read().unwrap_or_else(|| "n/a".to_string());
+                *self.builtin.borrow_mut() = Some(fallback);
+                self.apply_value(&value);
+                return;
+            }
+
+            let label = self.value_label.clone();
+            let inflight = self.inflight.clone();
+            let builtin_cell = self.builtin.clone();
+            let last_value = self.last_value.clone();
+            glib::MainContext::default().spawn_local(async move {
+                let result = rx.recv().await;
+                inflight.set(false);
+                let Ok((builtin, value)) = result else {
+                    *builtin_cell.borrow_mut() = Some(fallback);
+                    return;
+                };
+                *builtin_cell.borrow_mut() = Some(builtin);
+                if value.is_empty() {
+                    apply_cached_value(&label, &last_value);
+                } else {
+                    if last_value.borrow().as_deref() != Some(&value) {
+                        label.set_text(&value);
+                        *last_value.borrow_mut() = Some(value);
+                    }
+                }
+            });
             return;
         }
 
@@ -129,9 +214,6 @@ impl StatItem {
             self.apply_value("n/a");
             return;
         };
-        if self.inflight.get() {
-            return;
-        }
         self.inflight.set(true);
         let cmd = cmd.clone();
         let rx = run_command_capture_async(&cmd);

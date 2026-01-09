@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
@@ -154,9 +154,14 @@ async fn main() -> Result<()> {
 
     let reply = request_well_known_name(&connection, args.trial).await?;
     log_name_reply(&reply);
-    let owner_is_self = log_current_owner(&dbus_proxy, &connection, notifications_name.clone())
-        .await
-        .unwrap_or(false);
+    let owner_is_self =
+        match log_current_owner(&dbus_proxy, &connection, notifications_name.clone()).await {
+            Ok(value) => value,
+            Err(err) => {
+                warn!(?err, "failed to query current notification owner");
+                false
+            }
+        };
     if !args.trial
         && !matches!(
             reply,
@@ -198,14 +203,20 @@ async fn main() -> Result<()> {
             if let Err(err) = restore_previous(action) {
                 error!(?err, "failed to restore previous notification daemon");
             }
-            let reacquired = wait_for_owner_state(
+            let reacquired = match wait_for_owner_state(
                 &dbus_proxy,
                 zbus::names::BusName::try_from("org.freedesktop.Notifications")?,
                 true,
                 Duration::from_millis(args.restore_wait_ms),
             )
             .await
-            .unwrap_or(false);
+            {
+                Ok(value) => value,
+                Err(err) => {
+                    warn!(?err, "failed to wait for notification owner reacquire");
+                    false
+                }
+            };
 
             if !reacquired {
                 info!("no daemon re-acquired after release");

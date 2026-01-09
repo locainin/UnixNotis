@@ -18,6 +18,7 @@ use super::icons_cache::IconKey;
 
 // Prevent unbounded reads from untrusted icon paths.
 const MAX_ICON_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_ICON_DIMENSION: u32 = 2048;
 
 pub(super) struct IconWorker {
     sender: channel::Sender<IconJob>,
@@ -131,15 +132,24 @@ fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
 
     // Compute target pixel size. size is logical units; scale accounts for output scale (e.g. 2x).
     // max(1) prevents zero/negative values from producing nonsense.
-    let target = (size.max(1) * scale.max(1)) as u32;
+    let size = i64::from(size.max(1));
+    let scale = i64::from(scale.max(1));
+    let target = size
+        .saturating_mul(scale)
+        .clamp(1, MAX_ICON_DIMENSION as i64) as u32;
 
     // Resize to an exact square; CatmullRom gives good quality for downscales and upscales.
     let resized = image.resize_exact(target, target, FilterType::CatmullRom);
 
     // Convert to RGBA8 (4 bytes per pixel) so the UI thread can build a MemoryTexture directly.
     let rgba = resized.to_rgba8();
-    let width = rgba.width() as i32;
-    let height = rgba.height() as i32;
+    let width = rgba.width();
+    let height = rgba.height();
+    if width > i32::MAX as u32 || height > i32::MAX as u32 {
+        return IconResult::Failed("decoded icon exceeds supported dimensions".to_string());
+    }
+    let width = width as i32;
+    let height = height as i32;
 
     // Bytes per row for RGBA8. saturating_mul avoids overflow if width is unexpectedly large.
     let stride = width.saturating_mul(4);

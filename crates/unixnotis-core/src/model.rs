@@ -323,16 +323,20 @@ impl NotificationImage {
 
         for y in 0..height_px {
             let row_start = y.saturating_mul(rowstride_bytes);
-            for x in 0..width_px {
-                let idx = row_start.saturating_add(x * 3);
-                if idx + 2 >= elements.len() {
-                    return None;
-                }
+            let row_bytes = width_px.checked_mul(3)?;
+            let row_end = row_start.checked_add(row_bytes)?;
+            if row_end > elements.len() {
+                return None;
+            }
+            let row = &elements[row_start..row_end];
+            for (x, chunk) in row.chunks_exact(3).enumerate() {
+                let r = u8::try_from(&chunk[0]).ok()?;
+                let g = u8::try_from(&chunk[1]).ok()?;
+                let b = u8::try_from(&chunk[2]).ok()?;
                 let dst = (y * width_px + x) * 4;
-                rgba[dst] = u8::try_from(&elements[idx]).ok()?;
-                rgba[dst + 1] = u8::try_from(&elements[idx + 1]).ok()?;
-                rgba[dst + 2] = u8::try_from(&elements[idx + 2]).ok()?;
-                rgba[dst + 3] = 255;
+                // Pack RGBA bytes to minimize per-channel writes in tight loops.
+                let packed = u32::from_le_bytes([r, g, b, 255]);
+                rgba[dst..dst + 4].copy_from_slice(&packed.to_le_bytes());
             }
         }
 
@@ -359,16 +363,17 @@ impl NotificationImage {
 
         for y in 0..height {
             let row_start = y.saturating_mul(rowstride);
-            for x in 0..width {
-                let idx = row_start.saturating_add(x * 3);
-                if idx + 2 >= image.data.len() {
-                    return None;
-                }
+            let row_bytes = width.checked_mul(3)?;
+            let row_end = row_start.checked_add(row_bytes)?;
+            if row_end > image.data.len() {
+                return None;
+            }
+            let row = &image.data[row_start..row_end];
+            for (x, chunk) in row.chunks_exact(3).enumerate() {
                 let dst = (y * width + x) * 4;
-                rgba[dst] = image.data[idx];
-                rgba[dst + 1] = image.data[idx + 1];
-                rgba[dst + 2] = image.data[idx + 2];
-                rgba[dst + 3] = 255;
+                // Pack RGBA bytes to reduce bounds checks and stores.
+                let packed = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], 255]);
+                rgba[dst..dst + 4].copy_from_slice(&packed.to_le_bytes());
             }
         }
 

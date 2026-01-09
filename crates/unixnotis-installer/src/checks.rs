@@ -46,22 +46,22 @@ impl Checks {
             CheckItem::warn("Hyprland", "not detected")
         };
 
-        let systemd_user = if command_success("systemctl", &["--user", "show-environment"]) {
-            CheckItem::ok("systemd --user", "session available")
-        } else {
-            CheckItem::fail("systemd --user", "session unavailable")
+        let systemd_user = match command_success("systemctl", &["--user", "show-environment"]) {
+            Ok(true) => CheckItem::ok("systemd --user", "session available"),
+            Ok(false) => CheckItem::fail("systemd --user", "session unavailable"),
+            Err(err) => CheckItem::fail("systemd --user", &format!("check failed: {err}")),
         };
 
-        let cargo = if command_success("cargo", &["--version"]) {
-            CheckItem::ok("cargo", "available")
-        } else {
-            CheckItem::fail("cargo", "not installed")
+        let cargo = match command_success("cargo", &["--version"]) {
+            Ok(true) => CheckItem::ok("cargo", "available"),
+            Ok(false) => CheckItem::fail("cargo", "not installed"),
+            Err(err) => CheckItem::fail("cargo", &format!("check failed: {err}")),
         };
 
-        let busctl = if command_success("busctl", &["--version"]) {
-            CheckItem::ok("busctl", "available")
-        } else {
-            CheckItem::warn("busctl", "not found; owner detection limited")
+        let busctl = match command_success("busctl", &["--version"]) {
+            Ok(true) => CheckItem::ok("busctl", "available"),
+            Ok(false) => CheckItem::warn("busctl", "not found; owner detection limited"),
+            Err(err) => CheckItem::warn("busctl", &format!("check failed: {err}")),
         };
 
         Self {
@@ -131,12 +131,12 @@ impl CheckItem {
     }
 }
 
-fn command_success(program: &str, args: &[&str]) -> bool {
+fn command_success(program: &str, args: &[&str]) -> Result<bool, String> {
     Command::new(program)
         .args(args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .map(|status| status.success())
-        .unwrap_or(false)
+        .map_err(|err| err.to_string())
 }

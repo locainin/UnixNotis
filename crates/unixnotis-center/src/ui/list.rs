@@ -21,7 +21,9 @@ use crate::dbus::{UiCommand, UiEvent};
 
 use super::icons::IconResolver;
 use super::list_item::{RowData, RowItem, RowKind};
-use list_widgets::{bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets};
+use list_widgets::{
+    bind_row, clear_row_widgets, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets,
+};
 
 /// Maintains notification data and renders grouped widgets into the panel list.
 pub struct NotificationList {
@@ -104,11 +106,7 @@ impl NotificationList {
             if let Some(widgets) = get_row_widgets(list_item) {
                 widgets.unbind();
             }
-            unsafe {
-                // SAFETY: list_item is owned by GTK and accessed on the main thread.
-                // Clearing the stored widgets releases the Rc when rows are recycled.
-                let _ = list_item.steal_data::<Rc<RowWidgets>>("unixnotis-row-widgets");
-            }
+            clear_row_widgets(list_item);
         });
 
         Self {
@@ -160,14 +158,13 @@ impl NotificationList {
 
     pub fn add_or_update(&mut self, notification: NotificationView, is_active: bool) {
         let id = notification.id;
+        let existing_entry = self.entries.get(&id);
+        let was_in_active = existing_entry.map(|entry| entry.is_active).unwrap_or(false);
+        let was_in_history = existing_entry.is_some() && !was_in_active;
         // Snapshot ordering state before any mutations; used to decide whether a full rebuild
         // is necessary (rebuilds are expensive for large histories).
-        let was_in_history = self.history_order.iter().any(|entry| *entry == id);
-        let was_in_active = self.active_order.iter().any(|entry| *entry == id);
         let was_front = self.active_order.front().copied() == Some(id);
-        let needs_new_key = self
-            .entries
-            .get(&id)
+        let needs_new_key = existing_entry
             .map(|entry| entry.view.app_name != notification.app_name)
             .unwrap_or(false);
         let new_key = if needs_new_key {

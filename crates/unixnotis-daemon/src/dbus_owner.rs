@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use futures_util::StreamExt;
-use tracing::info;
+use tracing::{info, warn};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
@@ -16,10 +16,13 @@ pub(super) async fn wait_for_owner_state(
     expect_owner: bool,
     timeout: Duration,
 ) -> Result<bool> {
-    let has_owner = dbus_proxy
-        .name_has_owner(name.clone())
-        .await
-        .unwrap_or(false);
+    let has_owner = match dbus_proxy.name_has_owner(name.clone()).await {
+        Ok(value) => value,
+        Err(err) => {
+            warn!(?err, "failed to query D-Bus owner state");
+            false
+        }
+    };
     if has_owner == expect_owner {
         return Ok(true);
     }

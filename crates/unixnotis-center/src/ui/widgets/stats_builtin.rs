@@ -6,6 +6,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
+#[derive(Clone, Debug)]
 pub(super) struct BuiltinStat {
     kind: BuiltinStatKind,
     state: BuiltinState,

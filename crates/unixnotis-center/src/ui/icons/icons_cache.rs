@@ -6,6 +6,7 @@ use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::OnceLock;
 
 use gtk::gdk::{Paintable, Texture};
 use gtk::prelude::*;
@@ -117,17 +118,23 @@ fn hash_image_data(data: &[u8]) -> u64 {
 
 pub(super) fn set_image_key(image: &gtk::Image, key: IconKey) {
     unsafe {
-        image.set_data("unixnotis-icon-key", key);
+        // SAFETY: gtk::Image is main-thread only; the quark/type pairing is stable.
+        image.set_qdata(icon_key_quark(), key);
     }
 }
 
 pub(super) fn image_key_matches(image: &gtk::Image, key: &IconKey) -> bool {
     unsafe {
         image
-            .data::<IconKey>("unixnotis-icon-key")
+            .qdata::<IconKey>(icon_key_quark())
             .map(|ptr| ptr.as_ref() == key)
             .unwrap_or(false)
     }
+}
+
+fn icon_key_quark() -> gtk::glib::Quark {
+    static QUARK: OnceLock<gtk::glib::Quark> = OnceLock::new();
+    *QUARK.get_or_init(|| gtk::glib::Quark::from_str("unixnotis-icon-key"))
 }
 
 #[derive(Clone)]

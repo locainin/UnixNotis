@@ -115,6 +115,7 @@ pub struct InstallState {
     binaries: Vec<BinaryState>,
     unit_exists: bool,
     unit_active: bool,
+    unit_active_error: Option<String>,
 }
 
 impl InstallState {
@@ -142,16 +143,23 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
     .collect::<Vec<_>>();
 
     let unit_exists = paths.unit_path.exists();
-    let unit_active = Command::new("systemctl")
+    let mut unit_active_error = None;
+    let unit_active = match Command::new("systemctl")
         .args(["--user", "is-active", "--quiet", "unixnotis-daemon.service"])
         .status()
-        .map(|status| status.success())
-        .unwrap_or(false);
+    {
+        Ok(status) => status.success(),
+        Err(err) => {
+            unit_active_error = Some(err.to_string());
+            false
+        }
+    };
 
     InstallState {
         binaries,
         unit_exists,
         unit_active,
+        unit_active_error,
     }
 }
 
@@ -188,6 +196,9 @@ fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
             format_with_home(&ctx.paths.unit_path)
         ),
     );
+    if let Some(err) = state.unit_active_error.as_ref() {
+        log_line(ctx, format!("- systemd status check failed: {}", err));
+    }
     log_line(
         ctx,
         format!(
@@ -278,7 +289,7 @@ fn wait_for_exit(ctx: &mut ActionContext, pid: u32) -> Result<()> {
     let poll = Duration::from_millis(100);
 
     while start.elapsed() < timeout {
-        if !pid_alive(pid) {
+        if !pid_alive(pid)? {
             log_line(ctx, format!("Process {} stopped.", pid));
             return Ok(());
         }
@@ -288,12 +299,12 @@ fn wait_for_exit(ctx: &mut ActionContext, pid: u32) -> Result<()> {
     Err(anyhow!("process {} did not exit after 5s", pid))
 }
 
-fn pid_alive(pid: u32) -> bool {
-    Command::new("kill")
+fn pid_alive(pid: u32) -> Result<bool> {
+    let status = Command::new("kill")
         .args(["-0", &pid.to_string()])
         .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+        .with_context(|| format!("failed to probe pid {pid}"))?;
+    Ok(status.success())
 }
 
 fn run_verify(ctx: &mut ActionContext) -> Result<()> {
@@ -693,6 +704,9 @@ pub fn format_daemon_status(daemon: &DetectedDaemon) -> String {
     }
     if daemon.systemd_active {
         status.push("systemd-active".to_string());
+    }
+    if let Some(err) = daemon.systemd_error.as_ref() {
+        status.push(format!("systemd-error: {}", err));
     }
     if !daemon.running_pids.is_empty() {
         let ids = daemon

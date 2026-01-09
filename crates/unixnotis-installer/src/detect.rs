@@ -15,6 +15,7 @@ pub struct DetectedDaemon {
     pub name: String,
     pub unit: String,
     pub systemd_active: bool,
+    pub systemd_error: Option<String>,
     pub running_pids: Vec<u32>,
     pub is_owner: bool,
 }
@@ -101,22 +102,28 @@ fn detect_known_daemons(owner: &Option<OwnerInfo>) -> Vec<DetectedDaemon> {
     let owner_name = owner.as_ref().and_then(|info| info.comm.as_deref());
     KNOWN_DAEMONS
         .iter()
-        .map(|daemon| DetectedDaemon {
-            name: daemon.name.to_string(),
-            unit: daemon.unit.to_string(),
-            systemd_active: is_unit_active(daemon.unit),
-            running_pids: pgrep_exact(daemon.name),
-            is_owner: owner_name == Some(daemon.name),
+        .map(|daemon| {
+            let (systemd_active, systemd_error) = is_unit_active(daemon.unit);
+            DetectedDaemon {
+                name: daemon.name.to_string(),
+                unit: daemon.unit.to_string(),
+                systemd_active,
+                systemd_error,
+                running_pids: pgrep_exact(daemon.name),
+                is_owner: owner_name == Some(daemon.name),
+            }
         })
         .collect()
 }
 
-fn is_unit_active(unit: &str) -> bool {
-    Command::new("systemctl")
+fn is_unit_active(unit: &str) -> (bool, Option<String>) {
+    match Command::new("systemctl")
         .args(["--user", "is-active", "--quiet", unit])
         .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+    {
+        Ok(status) => (status.success(), None),
+        Err(err) => (false, Some(err.to_string())),
+    }
 }
 
 fn pgrep_exact(name: &str) -> Vec<u32> {
