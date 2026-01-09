@@ -9,7 +9,7 @@ use std::thread;
 
 use serde_json::Value;
 use tracing::{debug, warn};
-use unixnotis_core::Margins;
+use unixnotis_core::{util, Margins};
 
 use crate::dbus::UiEvent;
 
@@ -136,7 +136,19 @@ fn reserved_work_area_sync(output: Option<&str>) -> Option<Margins> {
             return None;
         }
     };
-    let value: Value = serde_json::from_str(&response).ok()?;
+    let value: Value = match serde_json::from_str(&response) {
+        Ok(value) => value,
+        Err(err) => {
+            let snippet = util::log_snippet(&response);
+            warn!(
+                ?err,
+                response = %snippet,
+                response_len = response.len(),
+                "failed to parse hyprland monitors JSON"
+            );
+            return None;
+        }
+    };
     let monitors = value.as_array()?;
     for monitor in monitors {
         let Some(name) = monitor.get("name").and_then(Value::as_str) else {

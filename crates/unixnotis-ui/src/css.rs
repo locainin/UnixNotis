@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use gtk::gdk;
 use gtk::CssProvider;
@@ -176,11 +176,24 @@ pub fn start_css_watcher(paths: &ThemePaths, kind: CssKind, on_reload: impl Fn()
             }
         }
 
-        let mut last_reload = Instant::now();
-        while let Ok(event) = event_rx.recv() {
-            if event.is_ok() && last_reload.elapsed() >= Duration::from_millis(150) {
-                on_reload();
-                last_reload = Instant::now();
+        let debounce = Duration::from_millis(150);
+        let mut pending = false;
+        loop {
+            match event_rx.recv_timeout(debounce) {
+                Ok(event) => {
+                    if let Err(err) = event {
+                        warn!(?err, "css watcher reported an error");
+                        continue;
+                    }
+                    pending = true;
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if pending {
+                        on_reload();
+                        pending = false;
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
     });
@@ -211,23 +224,33 @@ pub fn start_config_watcher(config_path: PathBuf, on_reload: impl Fn() + Send + 
             warn!(?err, "failed to watch config directory");
         }
 
-        let mut last_reload = Instant::now();
-        while let Ok(event) = event_rx.recv() {
-            let Ok(event) = event else {
-                continue;
-            };
-            if let Some(name) = config_name.as_ref() {
-                let matches = event
-                    .paths
-                    .iter()
-                    .any(|path| path.file_name() == Some(name));
-                if !matches {
-                    continue;
+        let debounce = Duration::from_millis(150);
+        let mut pending = false;
+        loop {
+            match event_rx.recv_timeout(debounce) {
+                Ok(event) => {
+                    let Ok(event) = event else {
+                        warn!(?event, "config watcher reported an error");
+                        continue;
+                    };
+                    if let Some(name) = config_name.as_ref() {
+                        let matches = event
+                            .paths
+                            .iter()
+                            .any(|path| path.file_name() == Some(name));
+                        if !matches {
+                            continue;
+                        }
+                    }
+                    pending = true;
                 }
-            }
-            if last_reload.elapsed() >= Duration::from_millis(150) {
-                on_reload();
-                last_reload = Instant::now();
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if pending {
+                        on_reload();
+                        pending = false;
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
     });

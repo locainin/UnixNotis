@@ -43,6 +43,7 @@ pub struct NotificationList {
     keys_scratch: Vec<RowKey>,
     items_scratch: Vec<RowItem>,
     objects_scratch: Vec<glib::Object>,
+    needs_rebuild: bool,
 }
 
 struct NotificationEntry {
@@ -124,6 +125,7 @@ impl NotificationList {
             keys_scratch: Vec::new(),
             items_scratch: Vec::new(),
             objects_scratch: Vec::new(),
+            needs_rebuild: false,
         }
     }
 
@@ -153,7 +155,7 @@ impl NotificationList {
             history = self.history_order.len(),
             "seeded notification list"
         );
-        self.rebuild_list();
+        self.request_rebuild();
     }
 
     pub fn add_or_update(&mut self, notification: NotificationView, is_active: bool) {
@@ -202,7 +204,12 @@ impl NotificationList {
         }
 
         // Fast path: when the group and ordering are unchanged, update the row and header only.
-        if existing && !group_changed && old_is_active == Some(is_active) && !ordering_changed {
+        if existing
+            && !group_changed
+            && old_is_active == Some(is_active)
+            && !ordering_changed
+            && !self.needs_rebuild
+        {
             if let Some(entry) = self.entries.get(&id) {
                 // Compute stacked state from the cached grouping instead of rebuilding it.
                 let stacked = self
@@ -248,14 +255,14 @@ impl NotificationList {
         }
 
         debug!(id, active = is_active, "notification upserted");
-        self.rebuild_list();
+        self.request_rebuild();
     }
 
     pub fn mark_closed(&mut self, id: u32, reason: CloseReason) {
         if matches!(reason, CloseReason::DismissedByUser) {
             self.remove_entry(id);
             debug!(id, ?reason, "notification removed");
-            self.rebuild_list();
+            self.request_rebuild();
             return;
         }
 
@@ -266,7 +273,7 @@ impl NotificationList {
         self.history_order.retain(|entry| *entry != id);
         self.history_order.push_front(id);
         debug!(id, ?reason, "notification archived");
-        self.rebuild_list();
+        self.request_rebuild();
     }
 
     pub fn toggle_group(&mut self, key: &str) {
@@ -274,11 +281,19 @@ impl NotificationList {
         let expanded = self.group_expanded.entry(key.clone()).or_insert(false);
         *expanded = !*expanded;
         debug!(app = key.as_ref(), expanded = *expanded, "group toggled");
-        self.rebuild_list();
+        self.request_rebuild();
     }
 
     pub fn total_count(&self) -> usize {
         self.active_order.len() + self.history_order.len()
+    }
+
+    pub fn flush_rebuild(&mut self) {
+        if !self.needs_rebuild {
+            return;
+        }
+        self.needs_rebuild = false;
+        self.rebuild_list();
     }
 
     fn insert_entry(&mut self, notification: NotificationView, is_active: bool) -> Rc<str> {
@@ -448,6 +463,10 @@ impl NotificationList {
         let value: Rc<str> = Rc::from(key);
         self.interned.insert(value.clone());
         value
+    }
+
+    fn request_rebuild(&mut self) {
+        self.needs_rebuild = true;
     }
 }
 

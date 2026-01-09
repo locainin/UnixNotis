@@ -13,6 +13,9 @@ use tracing::warn;
 
 use super::Args;
 
+#[cfg(target_os = "linux")]
+use std::os::unix::process::CommandExt;
+
 pub(super) fn start_popups_process(args: &Args) -> Result<Option<Child>> {
     let Some(mut command) = build_popups_command(args)? else {
         return Ok(None);
@@ -86,6 +89,8 @@ fn build_popups_command(args: &Args) -> Result<Option<Command>> {
         Command::new("unixnotis-popups")
     };
 
+    apply_parent_death_signal(&mut command);
+
     if let Some(config) = args.config.as_ref() {
         command.arg("--config").arg(config);
     }
@@ -114,12 +119,30 @@ fn build_center_command(args: &Args) -> Result<Option<Command>> {
         Command::new("unixnotis-center")
     };
 
+    apply_parent_death_signal(&mut command);
+
     if let Some(config) = args.config.as_ref() {
         command.arg("--config").arg(config);
     }
 
     Ok(Some(command))
 }
+
+#[cfg(target_os = "linux")]
+fn apply_parent_death_signal(command: &mut Command) {
+    // Ensure UI subprocesses exit if the daemon dies unexpectedly.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn apply_parent_death_signal(_command: &mut Command) {}
 
 fn resolve_center_path() -> Option<PathBuf> {
     let exe = env::current_exe().ok()?;

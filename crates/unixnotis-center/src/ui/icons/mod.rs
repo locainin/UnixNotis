@@ -8,9 +8,10 @@ mod icons_decode;
 mod icons_sources;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use gtk::glib;
 use gtk::prelude::*;
@@ -40,6 +41,7 @@ impl IconResolver {
             desktop_index: DesktopIconIndex::new(),
             cache: RefCell::new(IconCache::new(256)),
             inflight: RefCell::new(HashMap::new()),
+            missing_names: RefCell::new(MissingIconCache::new(512)),
             worker,
         });
         let inner_clone = inner.clone();
@@ -67,6 +69,7 @@ struct IconResolverInner {
     desktop_index: DesktopIconIndex,
     cache: RefCell<IconCache>,
     inflight: RefCell<HashMap<IconKey, Vec<glib::WeakRef<gtk::Image>>>>,
+    missing_names: RefCell<MissingIconCache>,
     worker: IconWorker,
 }
 
@@ -169,18 +172,26 @@ impl IconResolverInner {
         if name.is_empty() {
             return None;
         }
-        if let Some(key) = icon_key_for_name(name, size, scale) {
-            if let Some(cached) = self.cache.borrow_mut().get(&key) {
-                return Some(IconResolution::Ready {
-                    key,
-                    paintable: cached,
-                });
-            }
+        let key = icon_key_for_name(name, size, scale)?;
+        if self.missing_names.borrow_mut().contains(&key) {
+            return None;
         }
-        let source = resolve_icon_source(name, size, scale)?;
+        if let Some(cached) = self.cache.borrow_mut().get(&key) {
+            return Some(IconResolution::Ready {
+                key,
+                paintable: cached,
+            });
+        }
+        let source = match resolve_icon_source(name, size, scale) {
+            Some(source) => source,
+            None => {
+                // Cache misses briefly to avoid repeated theme lookups during bursts.
+                self.missing_names.borrow_mut().insert(key.clone());
+                return None;
+            }
+        };
         match source {
             IconSource::Paintable(paintable) => {
-                let key = icon_key_for_name(name, size, scale)?;
                 if let Some(cached) = self.cache.borrow_mut().get(&key) {
                     return Some(IconResolution::Ready {
                         key,
@@ -278,6 +289,55 @@ impl IconResolverInner {
         }
         let paintable = build()?;
         Some(self.cache.borrow_mut().insert(key, paintable))
+    }
+}
+
+// Cache failed icon lookups briefly to avoid repeated theme scans during bursts.
+// Entries expire quickly to avoid pinning misses after icon theme changes.
+struct MissingIconCache {
+    order: VecDeque<(IconKey, Instant)>,
+    set: HashSet<IconKey>,
+    max_entries: usize,
+}
+
+impl MissingIconCache {
+    fn new(max_entries: usize) -> Self {
+        Self {
+            order: VecDeque::new(),
+            set: HashSet::new(),
+            max_entries,
+        }
+    }
+
+    fn contains(&mut self, key: &IconKey) -> bool {
+        self.purge_expired();
+        self.set.contains(key)
+    }
+
+    fn insert(&mut self, key: IconKey) {
+        self.purge_expired();
+        if !self.set.insert(key.clone()) {
+            return;
+        }
+        self.order.push_back((key, Instant::now()));
+        while self.order.len() > self.max_entries {
+            if let Some((evicted, _)) = self.order.pop_front() {
+                self.set.remove(&evicted);
+            }
+        }
+    }
+
+    fn purge_expired(&mut self) {
+        let ttl = Duration::from_secs(30);
+        let now = Instant::now();
+        while let Some((key, timestamp)) = self.order.front() {
+            if now.duration_since(*timestamp) < ttl {
+                break;
+            }
+            let key = key.clone();
+            self.order.pop_front();
+            self.set.remove(&key);
+        }
     }
 }
 

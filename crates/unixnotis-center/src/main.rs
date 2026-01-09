@@ -113,7 +113,14 @@ fn main() -> Result<()> {
         let ui_clone = ui.clone();
         MainContext::default().spawn_local(async move {
             while let Ok(event) = event_rx.recv().await {
-                ui_clone.borrow_mut().handle_event(event);
+                {
+                    let mut ui = ui_clone.borrow_mut();
+                    ui.handle_event(event);
+                    while let Ok(next_event) = event_rx.try_recv() {
+                        ui.handle_event(next_event);
+                    }
+                    ui.flush_list_rebuild();
+                }
             }
         });
 

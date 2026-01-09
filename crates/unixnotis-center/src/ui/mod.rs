@@ -307,6 +307,10 @@ impl UiState {
         }
     }
 
+    pub fn flush_list_rebuild(&mut self) {
+        self.list.flush_rebuild();
+    }
+
     fn reload_config(&mut self) {
         let widgets_before = self.config.widgets.clone();
         let config = match Config::load_from_path(&self.config_path) {
