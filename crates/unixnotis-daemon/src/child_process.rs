@@ -8,6 +8,7 @@ use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
+use tokio::time::sleep;
 use tracing::warn;
 
 use super::Args;
@@ -26,8 +27,8 @@ pub(super) fn start_popups_process(args: &Args) -> Result<Option<Child>> {
     Ok(Some(child))
 }
 
-pub(super) fn stop_popups_process(child: &mut Child) {
-    terminate_child(child, "unixnotis-popups");
+pub(super) async fn stop_popups_process(child: &mut Child) {
+    terminate_child(child, "unixnotis-popups").await;
 }
 
 pub(super) fn start_center_process(args: &Args) -> Result<Option<Child>> {
@@ -47,11 +48,11 @@ pub(super) fn start_center_process(args: &Args) -> Result<Option<Child>> {
     }
 }
 
-pub(super) fn stop_center_process(child: &mut Child) {
-    terminate_child(child, "unixnotis-center");
+pub(super) async fn stop_center_process(child: &mut Child) {
+    terminate_child(child, "unixnotis-center").await;
 }
 
-fn terminate_child(child: &mut Child, label: &str) {
+async fn terminate_child(child: &mut Child, label: &str) {
     let pid = child.id();
     #[cfg(unix)]
     unsafe {
@@ -63,7 +64,8 @@ fn terminate_child(child: &mut Child, label: &str) {
         if let Ok(Some(_)) = child.try_wait() {
             return;
         }
-        std::thread::sleep(Duration::from_millis(50));
+        // Async sleep avoids blocking the runtime during shutdown.
+        sleep(Duration::from_millis(50)).await;
     }
     warn!(label, pid, "force killing unresponsive child process");
     let _ = child.kill();

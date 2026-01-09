@@ -9,6 +9,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::os::unix::process::CommandExt;
 
 use crossbeam_channel as channel;
+use glib::shell_parse_argv;
 use tracing::warn;
 use unixnotis_core::util;
 use unixnotis_core::PanelDebugLevel;
@@ -306,7 +307,8 @@ fn build_command(cmd: &str) -> Command {
     }
 
     let mut command = Command::new("sh");
-    command.arg("-lc").arg(cmd);
+    // Non-login shell avoids profile sourcing on every widget refresh.
+    command.arg("-c").arg(cmd);
     configure_command(&mut command);
     command
 }
@@ -329,15 +331,18 @@ fn parse_simple_command(cmd: &str) -> Option<(String, Vec<String>)> {
     if cmd.is_empty() || !is_simple_command(cmd) {
         return None;
     }
-    let mut parts = cmd.split_whitespace();
-    let program = parts.next()?.to_string();
-    let args = parts.map(str::to_string).collect();
+    // Use GLib parsing to honor quoted arguments without invoking a shell.
+    let mut parts = shell_parse_argv(cmd).ok()?.into_iter();
+    let program = parts.next()?.into_string().ok()?;
+    let args = parts
+        .map(|arg| arg.into_string().ok())
+        .collect::<Option<Vec<_>>>()?;
     Some((program, args))
 }
 
 fn is_simple_command(cmd: &str) -> bool {
-    const META: [char; 18] = [
-        '|', '&', ';', '<', '>', '$', '`', '\\', '"', '\'', '(', ')', '{', '}', '[', ']', '*', '?',
+    const META: [char; 15] = [
+        '|', '&', ';', '<', '>', '$', '`', '(', ')', '{', '}', '[', ']', '*', '?',
     ];
     if cmd
         .chars()
@@ -352,6 +357,24 @@ fn is_simple_command(cmd: &str) -> bool {
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_simple_command;
+
+    #[test]
+    fn parse_simple_command_honors_quotes() {
+        let (program, args) =
+            parse_simple_command("notify-send \"Hello World\"").expect("parsed command");
+        assert_eq!(program, "notify-send");
+        assert_eq!(args, vec!["Hello World"]);
+    }
+
+    #[test]
+    fn parse_simple_command_rejects_shell_meta() {
+        assert!(parse_simple_command("echo hi | wc -l").is_none());
+    }
 }
 
 pub(in crate::ui::widgets) fn kill_process_group(pid: i32) {

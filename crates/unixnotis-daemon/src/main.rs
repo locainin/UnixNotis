@@ -180,10 +180,10 @@ async fn main() -> Result<()> {
     shutdown_signal().await;
 
     if let Some(mut child) = popups_process.take() {
-        stop_popups_process(&mut child);
+        stop_popups_process(&mut child).await;
     }
     if let Some(mut child) = center_process.take() {
-        stop_center_process(&mut child);
+        stop_center_process(&mut child).await;
     }
 
     if args.trial {
