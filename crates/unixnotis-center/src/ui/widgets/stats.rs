@@ -200,11 +200,9 @@ impl StatItem {
                 *builtin_cell.borrow_mut() = Some(builtin);
                 if value.is_empty() {
                     apply_cached_value(&label, &last_value);
-                } else {
-                    if last_value.borrow().as_deref() != Some(&value) {
-                        label.set_text(&value);
-                        *last_value.borrow_mut() = Some(value);
-                    }
+                } else if last_value.borrow().as_deref() != Some(&value) {
+                    label.set_text(&value);
+                    *last_value.borrow_mut() = Some(value);
                 }
             });
             return;

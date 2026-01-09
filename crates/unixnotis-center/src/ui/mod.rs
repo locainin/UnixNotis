@@ -52,44 +52,47 @@ pub struct UiState {
     _runtime: Arc<tokio::runtime::Runtime>,
 }
 
+// Bundles constructor inputs to keep initialization readable and stable.
+pub struct UiStateInit {
+    pub app: gtk::Application,
+    pub config: Config,
+    pub config_path: std::path::PathBuf,
+    pub command_tx: UnboundedSender<UiCommand>,
+    pub css: CssManager,
+    pub event_tx: async_channel::Sender<UiEvent>,
+    pub media_handle: Option<crate::media::MediaHandle>,
+    pub runtime: Arc<tokio::runtime::Runtime>,
+}
+
 impl UiState {
-    pub fn new(
-        app: &gtk::Application,
-        config: Config,
-        config_path: std::path::PathBuf,
-        command_tx: UnboundedSender<UiCommand>,
-        css: CssManager,
-        event_tx: async_channel::Sender<UiEvent>,
-        media_handle: Option<crate::media::MediaHandle>,
-        runtime: Arc<tokio::runtime::Runtime>,
-    ) -> Self {
-        let panel = panel::build_panel_widgets(app, &config);
+    pub fn new(init: UiStateInit) -> Self {
+        let panel = panel::build_panel_widgets(&init.app, &init.config);
         let icon_resolver = Rc::new(icons::IconResolver::new());
         debug::set_level(PanelDebugLevel::Off);
         let list = list::NotificationList::new(
             panel.scroller.clone(),
-            command_tx.clone(),
-            event_tx.clone(),
+            init.command_tx.clone(),
+            init.event_tx.clone(),
             icon_resolver,
         );
 
         let dnd_guard = Rc::new(Cell::new(false));
         let panel_visible_flag = Arc::new(AtomicBool::new(false));
-        let media = media_handle.as_ref().map(|handle| {
+        let media = init.media_handle.as_ref().map(|handle| {
             media_widget::MediaWidget::new(
                 &panel.media_container,
                 handle.clone(),
-                config.panel.width,
-                config.media.title_char_limit,
+                init.config.panel.width,
+                init.config.media.title_char_limit,
             )
         });
         if media.is_none() {
             panel.media_container.set_visible(false);
         }
-        let (volume, brightness) = build_quick_controls(&panel, &config);
-        let (toggles, stats, cards) = build_extra_widgets(&panel, &config);
+        let (volume, brightness) = build_quick_controls(&panel, &init.config);
+        let (toggles, stats, cards) = build_extra_widgets(&panel, &init.config);
         let dnd_guard_clone = dnd_guard.clone();
-        let dnd_tx = command_tx.clone();
+        let dnd_tx = init.command_tx.clone();
         panel.dnd_toggle.connect_toggled(move |button| {
             if dnd_guard_clone.get() {
                 return;
@@ -98,24 +101,26 @@ impl UiState {
             let _ = dnd_tx.send(UiCommand::SetDnd(button.is_active()));
         });
 
-        let clear_tx = command_tx.clone();
+        let clear_tx = init.command_tx.clone();
         panel.clear_button.connect_clicked(move |_| {
             debug!("clear all clicked");
             let _ = clear_tx.send(UiCommand::ClearAll);
         });
 
-        let close_tx = command_tx.clone();
+        let close_tx = init.command_tx.clone();
         panel.close_button.connect_clicked(move |_| {
             debug!("close panel clicked");
             let _ = close_tx.send(UiCommand::ClosePanel);
         });
 
-        if config.panel.close_on_click_outside {
+        if init.config.panel.close_on_click_outside {
             // Hyprland watcher emits active-window changes that are later filtered for clicks.
-            let started =
-                hyprland::start_active_window_watcher(event_tx.clone(), panel_visible_flag.clone());
-            if !started && config.panel.close_on_blur {
-                let close_tx = command_tx.clone();
+            let started = hyprland::start_active_window_watcher(
+                init.event_tx.clone(),
+                panel_visible_flag.clone(),
+            );
+            if !started && init.config.panel.close_on_blur {
+                let close_tx = init.command_tx.clone();
                 let visible_flag = panel_visible_flag.clone();
                 panel.window.connect_is_active_notify(move |window| {
                     if !visible_flag.load(Ordering::SeqCst) {
@@ -126,8 +131,8 @@ impl UiState {
                     }
                 });
             }
-        } else if config.panel.close_on_blur {
-            let close_tx = command_tx.clone();
+        } else if init.config.panel.close_on_blur {
+            let close_tx = init.command_tx.clone();
             let visible_flag = panel_visible_flag.clone();
             panel.window.connect_is_active_notify(move |window| {
                 if !visible_flag.load(Ordering::SeqCst) {
@@ -139,7 +144,7 @@ impl UiState {
             });
         }
 
-        let esc_tx = command_tx.clone();
+        let esc_tx = init.command_tx.clone();
         let key_controller = gtk::EventControllerKey::new();
         key_controller.connect_key_pressed(move |_, key, _, _| {
             if key == gdk::Key::Escape {
@@ -150,14 +155,17 @@ impl UiState {
         });
         panel.root.add_controller(key_controller);
 
-        if config.panel.respect_work_area {
-            hyprland::refresh_reserved_work_area(config.panel.output.clone(), event_tx.clone());
+        if init.config.panel.respect_work_area {
+            hyprland::refresh_reserved_work_area(
+                init.config.panel.output.clone(),
+                init.event_tx.clone(),
+            );
         }
 
         Self {
-            config,
-            config_path,
-            css,
+            config: init.config,
+            config_path: init.config_path,
+            css: init.css,
             panel,
             list,
             dnd_guard,
@@ -165,18 +173,18 @@ impl UiState {
             panel_visible_flag,
             work_area: None,
             media,
-            media_handle,
+            media_handle: init.media_handle,
             volume,
             brightness,
             toggles,
             stats,
             cards,
-            command_tx,
-            event_tx,
+            command_tx: init.command_tx,
+            event_tx: init.event_tx,
             refresh_source: None,
             last_fast_refresh: None,
             last_slow_refresh: None,
-            _runtime: runtime,
+            _runtime: init.runtime,
         }
     }
 

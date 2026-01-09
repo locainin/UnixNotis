@@ -6,9 +6,12 @@ mod icons;
 mod ui_window;
 
 use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
+use std::thread;
 
 use gtk::prelude::*;
 use gtk::Align;
+use gtk::{gdk, glib};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;
 use unixnotis_core::{Config, NotificationView, Urgency};
@@ -17,8 +20,8 @@ use crate::dbus::{UiCommand, UiEvent};
 use unixnotis_ui::css::{self, CssManager};
 
 use icons::{
-    collect_icon_candidates, file_path_from_hint, image_data_texture, resolve_icon_image,
-    DesktopIconIndex,
+    collect_icon_candidates, decode_icon_file, file_path_from_hint, image_data_texture,
+    resolve_icon_image, DesktopIconIndex, RasterIcon,
 };
 use ui_window::{apply_popup_config, build_popup_window};
 
@@ -362,7 +365,7 @@ impl UiState {
             let path = image.image_path.as_str();
             if let Some(file_path) = file_path_from_hint(path) {
                 if file_path.is_file() {
-                    return Some(gtk::Image::from_file(file_path));
+                    return Some(self.spawn_file_icon(file_path.to_path_buf()));
                 }
             }
             return resolve_icon_image(path, 20);
@@ -403,6 +406,41 @@ impl UiState {
 
         self.icon_cache.insert(cache_key, resolved.clone());
         resolved.and_then(|icon_name| resolve_icon_image(&icon_name, 20))
+    }
+
+    fn spawn_file_icon(&self, path: PathBuf) -> gtk::Image {
+        let widget = gtk::Image::new();
+        let (tx, rx) = async_channel::bounded::<Result<RasterIcon, String>>(1);
+        let widget_clone = widget.clone();
+        // Apply the texture on the main loop to avoid GTK thread violations.
+        glib::MainContext::default().spawn_local(async move {
+            if let Ok(result) = rx.recv().await {
+                match result {
+                    Ok(icon) => {
+                        let bytes = glib::Bytes::from(&icon.bytes);
+                        let texture = gdk::MemoryTexture::new(
+                            icon.width,
+                            icon.height,
+                            gdk::MemoryFormat::R8g8b8a8,
+                            &bytes,
+                            icon.stride as usize,
+                        );
+                        widget_clone.set_paintable(Some(&texture));
+                    }
+                    Err(err) => {
+                        debug!(?err, "popup icon decode failed");
+                    }
+                }
+            }
+        });
+
+        thread::spawn(move || {
+            // Decode on a background thread to keep popup animations smooth.
+            let result = decode_icon_file(&path);
+            let _ = tx.send_blocking(result);
+        });
+
+        widget
     }
 }
 

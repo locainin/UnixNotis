@@ -10,6 +10,9 @@ use std::os::unix::process::CommandExt;
 
 use crossbeam_channel as channel;
 use glib::shell_parse_argv;
+use tokio::io::AsyncReadExt;
+use tokio::process::Command as TokioCommand;
+use tokio::runtime::Runtime;
 use tracing::warn;
 use unixnotis_core::util;
 use unixnotis_core::PanelDebugLevel;
@@ -182,7 +185,7 @@ fn enqueue_command(
     let job = CommandJob { cmd, plan, respond };
     let worker = CommandWorker::global();
     if worker.inline_fallback {
-        handle_job(job);
+        handle_job(job, None);
         return;
     }
     if worker.tx.send(job).is_err() {
@@ -191,12 +194,14 @@ fn enqueue_command(
 }
 
 fn run_worker(rx: channel::Receiver<CommandJob>) {
+    // Each worker owns a small current-thread runtime to avoid per-command OS threads.
+    let runtime = build_command_runtime();
     for job in rx.iter() {
-        handle_job(job);
+        handle_job(job, runtime.as_ref());
     }
 }
 
-fn handle_job(job: CommandJob) {
+fn handle_job(job: CommandJob, runtime: Option<&Runtime>) {
     let cmd_snip = util::log_snippet(&job.cmd);
     debug::log(PanelDebugLevel::Verbose, || {
         format!("command start kind={:?} cmd={}", job.plan.kind, cmd_snip)
@@ -206,7 +211,7 @@ fn handle_job(job: CommandJob) {
     if !jitter.is_zero() {
         std::thread::sleep(jitter);
     }
-    let result = run_command_with_timeout(&job.cmd, job.plan.timeout());
+    let result = run_command_with_timeout(&job.cmd, job.plan.timeout(), runtime);
     let elapsed_ms = started.elapsed().as_millis();
     if let Some(tx) = job.respond {
         let _ = tx.send_blocking(result);
@@ -245,7 +250,94 @@ fn handle_job(job: CommandJob) {
     }
 }
 
-fn run_command_with_timeout(cmd: &str, timeout: Duration) -> Result<Output, io::Error> {
+fn build_command_runtime() -> Option<Runtime> {
+    // A lightweight runtime enables async pipe reads without spawning extra threads.
+    tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .map_err(|err| {
+            warn!(?err, "failed to build command runtime, falling back to blocking I/O");
+            err
+        })
+        .ok()
+}
+
+fn run_command_with_timeout(
+    cmd: &str,
+    timeout: Duration,
+    runtime: Option<&Runtime>,
+) -> Result<Output, io::Error> {
+    // Prefer async I/O when a runtime is available; fall back to blocking in worst case.
+    if let Some(runtime) = runtime {
+        return run_command_with_timeout_async(cmd, timeout, runtime);
+    }
+    run_command_with_timeout_blocking(cmd, timeout)
+}
+
+fn run_command_with_timeout_async(
+    cmd: &str,
+    timeout: Duration,
+    runtime: &Runtime,
+) -> Result<Output, io::Error> {
+    runtime.block_on(async { run_command_with_timeout_inner(cmd, timeout).await })
+}
+
+async fn run_command_with_timeout_inner(cmd: &str, timeout: Duration) -> Result<Output, io::Error> {
+    let mut child = spawn_capture_command_async(cmd)?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    // Drain stdout/stderr on the runtime to avoid per-command reader threads.
+    let stdout_handle = tokio::spawn(async move {
+        let mut buf = Vec::new();
+        if let Some(mut stdout) = stdout {
+            let _ = stdout.read_to_end(&mut buf).await;
+        }
+        buf
+    });
+    let stderr_handle = tokio::spawn(async move {
+        let mut buf = Vec::new();
+        if let Some(mut stderr) = stderr {
+            let _ = stderr.read_to_end(&mut buf).await;
+        }
+        buf
+    });
+
+    let status = if timeout.is_zero() {
+        child.wait().await?
+    } else {
+        match tokio::time::timeout(timeout, child.wait()).await {
+            Ok(status) => status?,
+            Err(_) => {
+                // Kill on timeout to keep worker throughput predictable.
+                kill_child_process(&mut child).await;
+                stdout_handle.abort();
+                stderr_handle.abort();
+                return Err(io::Error::new(io::ErrorKind::TimedOut, "command timed out"));
+            }
+        }
+    };
+
+    let stdout = stdout_handle.await.unwrap_or_default();
+    let stderr = stderr_handle.await.unwrap_or_default();
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+async fn kill_child_process(child: &mut tokio::process::Child) {
+    // Best-effort kill; ensures the child is reaped even if signal delivery races.
+    if let Some(pid) = child.id() {
+        kill_process_group(pid as i32);
+    }
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+}
+
+fn run_command_with_timeout_blocking(cmd: &str, timeout: Duration) -> Result<Output, io::Error> {
     let mut child = spawn_capture_command(cmd)?;
     if timeout.is_zero() {
         return child.wait_with_output();
@@ -313,7 +405,43 @@ fn build_command(cmd: &str) -> Command {
     command
 }
 
+fn spawn_capture_command_async(cmd: &str) -> io::Result<tokio::process::Child> {
+    // Mirrors the blocking builder but returns a tokio child with piped output.
+    let mut command = build_tokio_command(cmd);
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    command.spawn()
+}
+
+fn build_tokio_command(cmd: &str) -> TokioCommand {
+    if let Some((program, args)) = parse_simple_command(cmd) {
+        let mut command = TokioCommand::new(program);
+        command.args(args);
+        configure_command_tokio(&mut command);
+        return command;
+    }
+
+    // Shell fallback keeps behavior consistent with previous implementation.
+    let mut command = TokioCommand::new("sh");
+    command.arg("-c").arg(cmd);
+    configure_command_tokio(&mut command);
+    command
+}
+
 fn configure_command(command: &mut Command) {
+    command.stdin(Stdio::null());
+    #[cfg(unix)]
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+fn configure_command_tokio(command: &mut TokioCommand) {
+    // Use a dedicated process group so timeouts can kill the whole subtree.
     command.stdin(Stdio::null());
     #[cfg(unix)]
     unsafe {
@@ -359,24 +487,6 @@ fn is_simple_command(cmd: &str) -> bool {
     true
 }
 
-#[cfg(test)]
-mod tests {
-    use super::parse_simple_command;
-
-    #[test]
-    fn parse_simple_command_honors_quotes() {
-        let (program, args) =
-            parse_simple_command("notify-send \"Hello World\"").expect("parsed command");
-        assert_eq!(program, "notify-send");
-        assert_eq!(args, vec!["Hello World"]);
-    }
-
-    #[test]
-    fn parse_simple_command_rejects_shell_meta() {
-        assert!(parse_simple_command("echo hi | wc -l").is_none());
-    }
-}
-
 pub(in crate::ui::widgets) fn kill_process_group(pid: i32) {
     if pid <= 0 {
         return;
@@ -407,4 +517,22 @@ fn is_probably_slow(cmd: &str) -> bool {
     ]
     .iter()
     .any(|token| lower.contains(token))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_simple_command;
+
+    #[test]
+    fn parse_simple_command_honors_quotes() {
+        let (program, args) =
+            parse_simple_command("notify-send \"Hello World\"").expect("parsed command");
+        assert_eq!(program, "notify-send");
+        assert_eq!(args, vec!["Hello World"]);
+    }
+
+    #[test]
+    fn parse_simple_command_rejects_shell_meta() {
+        assert!(parse_simple_command("echo hi | wc -l").is_none());
+    }
 }

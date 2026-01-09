@@ -99,16 +99,16 @@ fn main() -> Result<()> {
             config.media.clone(),
             event_tx.clone(),
         );
-        let ui = Rc::new(RefCell::new(ui::UiState::new(
-            app,
-            config.clone(),
-            config_path.clone(),
+        let ui = Rc::new(RefCell::new(ui::UiState::new(ui::UiStateInit {
+            app: app.clone(),
+            config: config.clone(),
+            config_path: config_path.clone(),
             command_tx,
-            css_manager,
-            event_tx.clone(),
+            css: css_manager,
+            event_tx: event_tx.clone(),
             media_handle,
-            runtime.clone(),
-        )));
+            runtime: runtime.clone(),
+        })));
 
         let ui_clone = ui.clone();
         MainContext::default().spawn_local(async move {

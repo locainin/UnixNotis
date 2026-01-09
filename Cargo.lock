@@ -3243,6 +3243,7 @@ dependencies = [
  "glib",
  "gtk4",
  "gtk4-layer-shell",
+ "image",
  "serde",
  "thiserror 1.0.69",
  "tokio",
