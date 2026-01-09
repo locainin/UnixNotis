@@ -107,6 +107,19 @@ pub fn start_media_runtime(
         return None;
     }
 
+    let mut config = config;
+    // Normalize allow/deny lists once to avoid repeated lowercasing in hot paths.
+    config.allowlist = config
+        .allowlist
+        .into_iter()
+        .map(|entry| entry.to_lowercase())
+        .collect();
+    config.denylist = config
+        .denylist
+        .into_iter()
+        .map(|entry| entry.to_lowercase())
+        .collect();
+
     let (command_tx, mut command_rx) = mpsc::unbounded_channel();
 
     thread::spawn(move || {

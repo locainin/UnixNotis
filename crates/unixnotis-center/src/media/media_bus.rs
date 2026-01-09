@@ -213,19 +213,12 @@ async fn fetch_identity(connection: &Connection, name: &str) -> Option<String> {
 
 pub(super) fn is_allowed_player(name: &str, config: &MediaConfig) -> bool {
     let lower = name.to_lowercase();
-    if config
-        .denylist
-        .iter()
-        .any(|entry| lower.contains(&entry.to_lowercase()))
-    {
+    if config.denylist.iter().any(|entry| lower.contains(entry)) {
         return false;
     }
 
     if !config.allowlist.is_empty() {
-        return config
-            .allowlist
-            .iter()
-            .any(|entry| lower.contains(&entry.to_lowercase()));
+        return config.allowlist.iter().any(|entry| lower.contains(entry));
     }
 
     if !config.include_browsers {
@@ -236,4 +229,38 @@ pub(super) fn is_allowed_player(name: &str, config: &MediaConfig) -> bool {
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_allowed_player;
+    use unixnotis_core::MediaConfig;
+
+    #[test]
+    fn is_allowed_player_respects_lists() {
+        let mut config = MediaConfig::default();
+        config.include_browsers = false;
+        config.allowlist = vec!["spotify".to_string()];
+        config.denylist = vec!["playerctld".to_string()];
+        config.allowlist = config
+            .allowlist
+            .into_iter()
+            .map(|entry| entry.to_lowercase())
+            .collect();
+        config.denylist = config
+            .denylist
+            .into_iter()
+            .map(|entry| entry.to_lowercase())
+            .collect();
+
+        assert!(is_allowed_player("org.mpris.MediaPlayer2.spotify", &config));
+        assert!(!is_allowed_player(
+            "org.mpris.MediaPlayer2.playerctld",
+            &config
+        ));
+        assert!(!is_allowed_player(
+            "org.mpris.MediaPlayer2.firefox",
+            &config
+        ));
+    }
 }

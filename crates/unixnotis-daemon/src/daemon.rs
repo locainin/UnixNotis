@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::Mutex;
 use tracing::{debug, info};
 use unixnotis_core::{
@@ -354,17 +355,25 @@ impl ControlServer {
             .map_err(to_fdo_error)?;
         let control_ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
             .map_err(to_fdo_error)?;
+        // Emit close signals concurrently to avoid blocking on large clears.
+        let mut tasks = FuturesUnordered::new();
         for id in ids {
-            NotificationServer::notification_closed(
-                &notif_ctx,
-                id,
-                CloseReason::DismissedByUser as u32,
-            )
-            .await
-            .map_err(to_fdo_error)?;
-            ControlServer::notification_closed(&control_ctx, id, CloseReason::DismissedByUser)
-                .await
-                .map_err(to_fdo_error)?;
+            let notif_ctx = notif_ctx.clone();
+            let control_ctx = control_ctx.clone();
+            tasks.push(async move {
+                NotificationServer::notification_closed(
+                    &notif_ctx,
+                    id,
+                    CloseReason::DismissedByUser as u32,
+                )
+                .await?;
+                ControlServer::notification_closed(&control_ctx, id, CloseReason::DismissedByUser)
+                    .await?;
+                Ok::<(), zbus::Error>(())
+            });
+        }
+        while let Some(result) = tasks.next().await {
+            result.map_err(to_fdo_error)?;
         }
         self.state.emit_state_changed().await.map_err(to_fdo_error)
     }

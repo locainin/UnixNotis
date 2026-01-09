@@ -302,7 +302,44 @@ fn apply_rule(rule: &RuleConfig, notification: &mut Notification) {
 }
 
 fn contains_ci(haystack: &str, needle: &str) -> bool {
-    haystack
-        .to_ascii_lowercase()
-        .contains(&needle.to_ascii_lowercase())
+    // ASCII-only case-insensitive substring match without per-call allocations.
+    if needle.is_empty() {
+        return true;
+    }
+    let haystack = haystack.as_bytes();
+    let needle = needle.as_bytes();
+    if needle.len() > haystack.len() {
+        return false;
+    }
+
+    for i in 0..=haystack.len() - needle.len() {
+        if haystack[i].to_ascii_lowercase() != needle[0].to_ascii_lowercase() {
+            continue;
+        }
+        let mut matched = true;
+        for j in 1..needle.len() {
+            if haystack[i + j].to_ascii_lowercase() != needle[j].to_ascii_lowercase() {
+                matched = false;
+                break;
+            }
+        }
+        if matched {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::contains_ci;
+
+    #[test]
+    fn contains_ci_matches_ascii() {
+        assert!(contains_ci("Signal-Desktop", "signal"));
+        assert!(contains_ci("signal-desktop", "Signal"));
+        assert!(!contains_ci("signal-desktop", "brave"));
+        assert!(contains_ci("mixedCase", "case"));
+        assert!(contains_ci("mixedCase", ""));
+    }
 }
