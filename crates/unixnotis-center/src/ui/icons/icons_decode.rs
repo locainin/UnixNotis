@@ -8,11 +8,11 @@ use std::path::{Path, PathBuf};
 use std::thread;
 
 use crossbeam_channel as channel;
+use fast_image_resize as fir;
 use gtk::gdk;
 use gtk::gdk::Texture;
 use gtk::glib;
 use gtk::prelude::*;
-use image::imageops::FilterType;
 
 use super::icons_cache::IconKey;
 
@@ -138,25 +138,39 @@ fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
         .saturating_mul(scale)
         .clamp(1, MAX_ICON_DIMENSION as i64) as u32;
 
-    // Resize to an exact square; CatmullRom gives good quality for downscales and upscales.
-    let resized = image.resize_exact(target, target, FilterType::CatmullRom);
-
-    // Convert to RGBA8 (4 bytes per pixel) so the UI thread can build a MemoryTexture directly.
-    let rgba = resized.to_rgba8();
+    // Convert to RGBA8 so the SIMD resizer works on a stable pixel layout.
+    let rgba = image.to_rgba8();
     let width = rgba.width();
     let height = rgba.height();
     if width > i32::MAX as u32 || height > i32::MAX as u32 {
         return IconResult::Failed("decoded icon exceeds supported dimensions".to_string());
     }
-    let width = width as i32;
-    let height = height as i32;
+    let src = match fir::images::Image::from_vec_u8(
+        width,
+        height,
+        rgba.into_raw(),
+        fir::PixelType::U8x4,
+    ) {
+        Ok(src) => src,
+        Err(err) => return IconResult::Failed(err.to_string()),
+    };
+    let mut dst = fir::images::Image::new(target, target, fir::PixelType::U8x4);
+    let options = fir::ResizeOptions::new()
+        .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::CatmullRom));
+    let mut resizer = fir::Resizer::new();
+    if let Err(err) = resizer.resize(&src, &mut dst, Some(&options)) {
+        return IconResult::Failed(err.to_string());
+    }
+
+    let width = target as i32;
+    let height = target as i32;
 
     // Bytes per row for RGBA8. saturating_mul avoids overflow if width is unexpectedly large.
     let stride = width.saturating_mul(4);
 
-    // into_raw consumes the image buffer and returns the owned RGBA bytes (no extra copy).
+    // into_vec consumes the resize buffer and returns the owned RGBA bytes (no extra copy).
     IconResult::Raster(RasterImage {
-        bytes: rgba.into_raw(),
+        bytes: dst.into_vec(),
         width,
         height,
         stride,
