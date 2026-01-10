@@ -67,6 +67,10 @@ struct Args {
     /// Validate configuration and exit
     #[arg(long)]
     check: bool,
+
+    /// Exit after running for the requested number of seconds (profiling helper)
+    #[arg(long)]
+    run_seconds: Option<u64>,
 }
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -182,7 +186,20 @@ async fn main() -> Result<()> {
     let mut center_process = start_center_process(&args)?;
 
     info!("unixnotis-daemon running");
-    shutdown_signal().await;
+    match args.run_seconds {
+        Some(seconds) => {
+            let timeout = tokio::time::sleep(Duration::from_secs(seconds));
+            tokio::select! {
+                _ = shutdown_signal() => {},
+                _ = timeout => {
+                    info!(seconds, "run-seconds elapsed, shutting down");
+                }
+            }
+        }
+        None => {
+            shutdown_signal().await;
+        }
+    }
 
     if let Some(mut child) = popups_process.take() {
         stop_popups_process(&mut child).await;

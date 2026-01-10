@@ -177,7 +177,10 @@ impl StatItem {
             let (tx, rx) = async_channel::bounded(1);
             let mut fallback = builtin.clone();
             let worker = BuiltinStatWorker::global();
-            if !worker.submit(BuiltinStatJob { stat: builtin, respond: tx }) {
+            if !worker.submit(BuiltinStatJob {
+                stat: builtin,
+                respond: tx,
+            }) {
                 self.inflight.set(false);
                 // Fallback to inline reads when the worker thread is unavailable.
                 let value = fallback.read().unwrap_or_else(|| "n/a".to_string());

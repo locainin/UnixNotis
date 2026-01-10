@@ -421,17 +421,15 @@ fn expand_rgb_row_scalar(src: &[u8], dst: &mut [u8]) {
 #[target_feature(enable = "ssse3")]
 unsafe fn expand_rgb_row_ssse3(src: &[u8], dst: &mut [u8]) {
     // SSSE3 shuffles 12-byte RGB quads into 16-byte RGBA blocks with a fixed alpha mask.
-    use std::arch::x86_64::{__m128i, _mm_loadu_si128, _mm_or_si128, _mm_setr_epi8, _mm_shuffle_epi8, _mm_storeu_si128};
+    use std::arch::x86_64::{
+        __m128i, _mm_loadu_si128, _mm_or_si128, _mm_setr_epi8, _mm_shuffle_epi8, _mm_storeu_si128,
+    };
 
     let mut s = 0usize;
     let mut d = 0usize;
 
-    let mask: __m128i = _mm_setr_epi8(
-        0, 1, 2, -128, 3, 4, 5, -128, 6, 7, 8, -128, 9, 10, 11, -128,
-    );
-    let alpha: __m128i = _mm_setr_epi8(
-        0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, -1,
-    );
+    let mask: __m128i = _mm_setr_epi8(0, 1, 2, -128, 3, 4, 5, -128, 6, 7, 8, -128, 9, 10, 11, -128);
+    let alpha: __m128i = _mm_setr_epi8(0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, -1);
 
     // Process 4 pixels at a time (12 bytes -> 16 bytes). Read requires 16 bytes.
     while s + 16 <= src.len() {

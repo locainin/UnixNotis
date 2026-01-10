@@ -272,8 +272,7 @@ impl NotificationStore {
         }
         let stored = Arc::new(notification.to_history());
         self.history.insert(stored);
-        self.history
-            .evict_to_limit(self.config.history.max_entries);
+        self.history.evict_to_limit(self.config.history.max_entries);
     }
 
     fn should_show_popup(&self, notification: &Notification) -> bool {

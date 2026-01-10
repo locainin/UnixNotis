@@ -5,6 +5,7 @@ use std::env;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
@@ -111,15 +112,27 @@ fn main() -> Result<()> {
         })));
 
         let ui_clone = ui.clone();
+        let rebuild_source: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
         MainContext::default().spawn_local(async move {
             while let Ok(event) = event_rx.recv().await {
-                {
-                    let mut ui = ui_clone.borrow_mut();
-                    ui.handle_event(event);
-                    while let Ok(next_event) = event_rx.try_recv() {
-                        ui.handle_event(next_event);
-                    }
-                    ui.flush_list_rebuild();
+                let mut ui = ui_clone.borrow_mut();
+                ui.handle_event(event);
+                while let Ok(next_event) = event_rx.try_recv() {
+                    ui.handle_event(next_event);
+                }
+                // Coalesce rebuilds to once per frame to avoid bursty list churn.
+                if ui.list_needs_rebuild() && rebuild_source.borrow().is_none() {
+                    let ui_weak = Rc::downgrade(&ui_clone);
+                    let rebuild_source_handle = rebuild_source.clone();
+                    // Debounce rebuilds to batch burst updates into a single list refresh.
+                    let source_id =
+                        glib::timeout_add_local_once(Duration::from_millis(16), move || {
+                            if let Some(ui) = ui_weak.upgrade() {
+                                ui.borrow_mut().flush_list_rebuild();
+                            }
+                            *rebuild_source_handle.borrow_mut() = None;
+                        });
+                    *rebuild_source.borrow_mut() = Some(source_id);
                 }
             }
         });

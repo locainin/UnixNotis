@@ -3,4 +3,5 @@
 /perf.data.old
 **/*.rs.bk
 **/*.swp
+.nvimlog
 .DS_Store

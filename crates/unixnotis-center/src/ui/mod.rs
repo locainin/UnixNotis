@@ -74,6 +74,8 @@ impl UiState {
             init.command_tx.clone(),
             init.event_tx.clone(),
             icon_resolver,
+            init.config.history.max_active,
+            init.config.history.max_entries,
         );
 
         let dnd_guard = Rc::new(Cell::new(false));
@@ -309,6 +311,10 @@ impl UiState {
 
     pub fn flush_list_rebuild(&mut self) {
         self.list.flush_rebuild();
+    }
+
+    pub fn list_needs_rebuild(&self) -> bool {
+        self.list.needs_rebuild()
     }
 
     fn reload_config(&mut self) {

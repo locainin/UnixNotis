@@ -145,15 +145,12 @@ fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
     if width > i32::MAX as u32 || height > i32::MAX as u32 {
         return IconResult::Failed("decoded icon exceeds supported dimensions".to_string());
     }
-    let src = match fir::images::Image::from_vec_u8(
-        width,
-        height,
-        rgba.into_raw(),
-        fir::PixelType::U8x4,
-    ) {
-        Ok(src) => src,
-        Err(err) => return IconResult::Failed(err.to_string()),
-    };
+    let src =
+        match fir::images::Image::from_vec_u8(width, height, rgba.into_raw(), fir::PixelType::U8x4)
+        {
+            Ok(src) => src,
+            Err(err) => return IconResult::Failed(err.to_string()),
+        };
     let mut dst = fir::images::Image::new(target, target, fir::PixelType::U8x4);
     let options = fir::ResizeOptions::new()
         .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::CatmullRom));

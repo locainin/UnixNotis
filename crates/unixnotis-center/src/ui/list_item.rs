@@ -97,6 +97,29 @@ impl RowData {
             notification: None,
         }
     }
+
+    fn is_equivalent(&self, other: &RowData) -> bool {
+        self.kind == other.kind
+            && self.id == other.id
+            && Rc::ptr_eq(&self.group_key, &other.group_key)
+            && self.count == other.count
+            && self.expanded == other.expanded
+            && self.stacked == other.stacked
+            && self.ghost_depth == other.ghost_depth
+            && self.is_active == other.is_active
+            && Self::same_notification(&self.notification, &other.notification)
+    }
+
+    fn same_notification(
+        left: &Option<Rc<NotificationView>>,
+        right: &Option<Rc<NotificationView>>,
+    ) -> bool {
+        match (left, right) {
+            (None, None) => true,
+            (Some(left), Some(right)) => Rc::ptr_eq(left, right),
+            _ => false,
+        }
+    }
 }
 
 mod imp {
@@ -133,7 +156,15 @@ impl RowItem {
     }
 
     pub fn update(&self, data: RowData) {
-        self.imp().data.replace(data);
+        // Batch change notifications so row bindings update once per mutation.
+        let _notify_guard = self.freeze_notify();
+        {
+            let mut slot = self.imp().data.borrow_mut();
+            if slot.is_equivalent(&data) {
+                return;
+            }
+            *slot = data;
+        }
         self.emit_by_name::<()>("updated", &[]);
     }
 

@@ -257,7 +257,10 @@ fn build_command_runtime() -> Option<Runtime> {
         .enable_time()
         .build()
         .map_err(|err| {
-            warn!(?err, "failed to build command runtime, falling back to blocking I/O");
+            warn!(
+                ?err,
+                "failed to build command runtime, falling back to blocking I/O"
+            );
             err
         })
         .ok()

@@ -244,7 +244,11 @@ pub(super) fn decode_icon_file(path: &Path) -> Result<RasterIcon, String> {
     let (width, height) = image.dimensions();
     if width > MAX_ICON_DIMENSION || height > MAX_ICON_DIMENSION {
         // Clamp oversized images to keep memory usage bounded.
-        image = image.resize(MAX_ICON_DIMENSION, MAX_ICON_DIMENSION, FilterType::CatmullRom);
+        image = image.resize(
+            MAX_ICON_DIMENSION,
+            MAX_ICON_DIMENSION,
+            FilterType::CatmullRom,
+        );
     }
 
     let rgba = image.to_rgba8();

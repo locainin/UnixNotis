@@ -196,9 +196,9 @@ impl IconCache {
         //
         // order is a simple LRU-like list (oldest at front, newest at back).
         Self {
-            entries: HashMap::new(), // Key -> cached paintable (shared via Rc)
-            order: VecDeque::new(),  // Recency order for eviction / promotion
-            max_entries,             // Maximum number of entries we keep before evicting
+            entries: HashMap::new(),            // Key -> cached paintable (shared via Rc)
+            order: VecDeque::new(),             // Recency order for eviction / promotion
+            max_entries,                        // Maximum number of entries we keep before evicting
             max_bytes: DEFAULT_MAX_CACHE_BYTES, // Approximate memory budget for cached textures.
             total_bytes: 0,
         }
