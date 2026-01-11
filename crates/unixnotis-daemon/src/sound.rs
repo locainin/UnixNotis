@@ -125,11 +125,57 @@ fn resolve_hint_sound(hints: &HashMap<String, OwnedValue>) -> Option<SoundSource
 
 fn resolve_sound_file(value: &str) -> PathBuf {
     let trimmed = value.trim();
-    if let Some(path) = trimmed.strip_prefix("file://") {
-        PathBuf::from(path)
-    } else {
-        PathBuf::from(trimmed)
+    // Prefer decoded file:// URIs for correctness; fall back to raw path strings.
+    if let Some(decoded) = decode_file_uri(trimmed) {
+        return decoded;
     }
+    PathBuf::from(trimmed)
+}
+
+fn decode_file_uri(value: &str) -> Option<PathBuf> {
+    // Strictly parse file:// URIs to avoid remote hosts and malformed paths.
+    let stripped = value.strip_prefix("file://")?;
+    let (host, path) = match stripped.split_once('/') {
+        Some((host, path)) => (host, format!("/{}", path)),
+        None => ("", stripped.to_string()),
+    };
+    // Only accept local file URIs (empty host or localhost).
+    if !host.is_empty() && host != "localhost" {
+        return None;
+    }
+    let decoded = percent_decode_path(&path)?;
+    if !decoded.starts_with('/') {
+        return None;
+    }
+    Some(PathBuf::from(decoded))
+}
+
+fn percent_decode_path(value: &str) -> Option<String> {
+    // Decode percent-escaped bytes; reject malformed sequences and NULs.
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'%' => {
+                let hi = *bytes.get(index + 1)?;
+                let lo = *bytes.get(index + 2)?;
+                let hi = char::from(hi).to_digit(16)?;
+                let lo = char::from(lo).to_digit(16)?;
+                let value = ((hi << 4) | lo) as u8;
+                if value == 0 {
+                    return None;
+                }
+                out.push(value);
+                index += 3;
+            }
+            byte => {
+                out.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 fn resolve_default_file(config: &Config) -> Option<PathBuf> {
@@ -370,5 +416,38 @@ mod tests {
             .stderr(Stdio::null());
         let child = command.spawn().expect("spawn true");
         reap_sound_child("test", "true".to_string(), child.id(), child).await;
+    }
+
+    #[test]
+    fn decode_file_uri_accepts_localhost() {
+        // Uses $HOME to avoid hard-coded absolute paths in test data.
+        let Ok(home) = std::env::var("HOME") else {
+            return;
+        };
+        if home.is_empty() {
+            return;
+        }
+        let uri = format!("file://localhost{home}/sound%20file.ogg");
+        let expected = PathBuf::from(format!("{home}/sound file.ogg"));
+        assert_eq!(decode_file_uri(&uri), Some(expected));
+    }
+
+    #[test]
+    fn decode_file_uri_rejects_remote_hosts() {
+        // Remote file URI hosts should be rejected for local playback.
+        let Ok(home) = std::env::var("HOME") else {
+            return;
+        };
+        if home.is_empty() {
+            return;
+        }
+        let uri = format!("file://example.com{home}/sound.ogg");
+        assert!(decode_file_uri(&uri).is_none());
+    }
+
+    #[test]
+    fn percent_decode_path_rejects_nul() {
+        // NUL bytes should never appear in decoded filesystem paths.
+        assert!(percent_decode_path("/%00.wav").is_none());
     }
 }

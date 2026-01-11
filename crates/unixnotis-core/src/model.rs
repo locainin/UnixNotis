@@ -226,13 +226,26 @@ impl NotificationImage {
     }
 
     fn is_image_data_usable(data: &ImageData) -> bool {
+        // Strict validation keeps downstream GTK texture creation safe.
         if data.width <= 0 || data.height <= 0 {
             return false;
         }
         if data.width > MAX_IMAGE_DIMENSION || data.height > MAX_IMAGE_DIMENSION {
             return false;
         }
-        data.data.len() <= MAX_IMAGE_BYTES
+        if data.bits_per_sample != 8 || data.channels != 4 {
+            return false;
+        }
+        // Reject invalid rowstride/data lengths early to avoid unsafe downstream consumers.
+        Self::normalized_rowstride(
+            data.width,
+            data.height,
+            data.rowstride,
+            data.bits_per_sample,
+            data.channels,
+            data.data.len(),
+        )
+        .is_some()
     }
 
     fn parse_image_data(value: &OwnedValue) -> Option<ImageData> {
@@ -242,23 +255,14 @@ impl NotificationImage {
         if fields.len() != 7 {
             return None;
         }
+        // Treat all fields as untrusted; malformed values should fail closed.
         let width = i32::try_from(&fields[0]).ok()?;
         let height = i32::try_from(&fields[1]).ok()?;
         let rowstride = i32::try_from(&fields[2]).ok()?;
         let has_alpha = bool::try_from(&fields[3]).ok()?;
         let bits_per_sample = i32::try_from(&fields[4]).ok()?;
         let channels = i32::try_from(&fields[5]).ok()?;
-
-        if bits_per_sample == 8 && channels == 3 {
-            return Self::expand_rgb_array_to_rgba(
-                width,
-                height,
-                rowstride,
-                bits_per_sample,
-                &fields[6],
-            );
-        }
-
+        // Copy array contents into an owned buffer, enforcing size limits.
         let data = Self::array_to_bytes(&fields[6])?;
         let image = ImageData {
             width,
@@ -284,8 +288,22 @@ impl NotificationImage {
 
     fn normalize_image_data(image: ImageData) -> Option<ImageData> {
         if image.bits_per_sample != 8 {
-            return Some(image);
+            return None;
         }
+        // Normalize rowstride to a safe, non-zero value and reject invalid layouts.
+        let rowstride = Self::normalized_rowstride(
+            image.width,
+            image.height,
+            image.rowstride,
+            image.bits_per_sample,
+            image.channels,
+            image.data.len(),
+        )?;
+        let rowstride = i32::try_from(rowstride).ok()?;
+        let image = ImageData {
+            rowstride,
+            ..image
+        };
         match image.channels {
             4 => Some(image),
             3 => Self::expand_rgb_to_rgba(&image),
@@ -296,6 +314,10 @@ impl NotificationImage {
     fn array_to_bytes(value: &Value<'_>) -> Option<Vec<u8>> {
         let array = <&Array>::try_from(value).ok()?;
         let elements = array.inner();
+        // Cap allocation to the maximum allowed payload to avoid oversized hint buffers.
+        if elements.is_empty() || elements.len() > MAX_IMAGE_BYTES {
+            return None;
+        }
         let mut bytes = Vec::with_capacity(elements.len());
         for element in elements {
             bytes.push(u8::try_from(element).ok()?);
@@ -303,63 +325,72 @@ impl NotificationImage {
         Some(bytes)
     }
 
-    fn expand_rgb_array_to_rgba(
+    fn normalized_rowstride(
         width: i32,
         height: i32,
         rowstride: i32,
         bits_per_sample: i32,
-        data_value: &Value<'_>,
-    ) -> Option<ImageData> {
-        let array = <&Array>::try_from(data_value).ok()?;
-        let elements = array.inner();
-        let width_px = width.max(1) as usize;
-        let height_px = height.max(1) as usize;
-        let rowstride_bytes = if rowstride > 0 {
-            rowstride as usize
-        } else {
-            width_px * 3
-        };
-        let mut rgba = vec![0u8; width_px * height_px * 4];
-
-        for y in 0..height_px {
-            let row_start = y.saturating_mul(rowstride_bytes);
-            let row_bytes = width_px.checked_mul(3)?;
-            let row_end = row_start.checked_add(row_bytes)?;
-            if row_end > elements.len() {
-                return None;
-            }
-            let row = &elements[row_start..row_end];
-            for (x, chunk) in row.chunks_exact(3).enumerate() {
-                let r = u8::try_from(&chunk[0]).ok()?;
-                let g = u8::try_from(&chunk[1]).ok()?;
-                let b = u8::try_from(&chunk[2]).ok()?;
-                let dst = (y * width_px + x) * 4;
-                // Pack RGBA bytes to minimize per-channel writes in tight loops.
-                let packed = u32::from_le_bytes([r, g, b, 255]);
-                rgba[dst..dst + 4].copy_from_slice(&packed.to_le_bytes());
-            }
+        channels: i32,
+        data_len: usize,
+    ) -> Option<usize> {
+        // Ensure rowstride covers at least one full pixel row and the backing buffer is large enough.
+        if data_len == 0 || data_len > MAX_IMAGE_BYTES {
+            return None;
         }
+        // Negative rowstride is invalid for memory buffers.
+        if rowstride < 0 {
+            return None;
+        }
+        let width = usize::try_from(width).ok()?;
+        let height = usize::try_from(height).ok()?;
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let bytes_per_pixel = Self::bytes_per_pixel(bits_per_sample, channels)?;
+        let min_rowstride = width.checked_mul(bytes_per_pixel)?;
+        let stride = if rowstride > 0 {
+            usize::try_from(rowstride).ok()?
+        } else {
+            min_rowstride
+        };
+        if stride < min_rowstride {
+            return None;
+        }
+        let required = stride.checked_mul(height)?;
+        if data_len < required {
+            return None;
+        }
+        Some(stride)
+    }
 
-        Some(ImageData {
-            width,
-            height,
-            rowstride: (width_px * 4) as i32,
-            has_alpha: true,
-            bits_per_sample,
-            channels: 4,
-            data: rgba,
-        })
+    fn bytes_per_pixel(bits_per_sample: i32, channels: i32) -> Option<usize> {
+        // Require a whole number of bytes per pixel to avoid fractional layouts.
+        if bits_per_sample <= 0 || channels <= 0 {
+            return None;
+        }
+        let bits_per_pixel = bits_per_sample.checked_mul(channels)?;
+        if bits_per_pixel % 8 != 0 {
+            return None;
+        }
+        usize::try_from(bits_per_pixel / 8).ok()
     }
 
     fn expand_rgb_to_rgba(image: &ImageData) -> Option<ImageData> {
+        // Expand RGB to RGBA while preserving row semantics and size limits.
         let width = image.width.max(1) as usize;
         let height = image.height.max(1) as usize;
         let rowstride = if image.rowstride > 0 {
             image.rowstride as usize
         } else {
-            width * 3
+            width.checked_mul(3)?
         };
-        let mut rgba = vec![0u8; width * height * 4];
+        let pixel_count = width.checked_mul(height)?;
+        let output_len = pixel_count.checked_mul(4)?;
+        // Cap expanded output to the same limit as the raw image payload.
+        if output_len > MAX_IMAGE_BYTES {
+            return None;
+        }
+        let mut rgba = vec![0u8; output_len];
 
         // SSSE3 path is opt-in per CPU to accelerate RGB->RGBA expansion.
         let use_simd = {
@@ -466,5 +497,73 @@ fn strip_desktop_suffix(value: &str) -> String {
         stripped.to_string()
     } else {
         value.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ImageData, NotificationImage};
+
+    #[test]
+    fn normalize_image_data_rejects_short_rowstride() {
+        // Rowstride shorter than width * 4 must be rejected to avoid invalid layouts.
+        let image = ImageData {
+            width: 2,
+            height: 1,
+            rowstride: 4,
+            has_alpha: true,
+            bits_per_sample: 8,
+            channels: 4,
+            data: vec![0u8; 8],
+        };
+        assert!(NotificationImage::normalize_image_data(image).is_none());
+    }
+
+    #[test]
+    fn normalize_image_data_rejects_short_buffer() {
+        // Buffer smaller than rowstride * height must be rejected.
+        let image = ImageData {
+            width: 2,
+            height: 2,
+            rowstride: 8,
+            has_alpha: true,
+            bits_per_sample: 8,
+            channels: 4,
+            data: vec![0u8; 8],
+        };
+        assert!(NotificationImage::normalize_image_data(image).is_none());
+    }
+
+    #[test]
+    fn normalize_image_data_accepts_valid_rgba() {
+        // Rowstride 0 should normalize to width * 4 when data length matches.
+        let image = ImageData {
+            width: 2,
+            height: 1,
+            rowstride: 0,
+            has_alpha: true,
+            bits_per_sample: 8,
+            channels: 4,
+            data: vec![0u8; 8],
+        };
+        let normalized = NotificationImage::normalize_image_data(image).expect("valid image data");
+        assert_eq!(normalized.rowstride, 8);
+    }
+
+    #[test]
+    fn normalize_image_data_expands_rgb() {
+        // RGB input should expand to RGBA with the expected output size.
+        let image = ImageData {
+            width: 2,
+            height: 1,
+            rowstride: 0,
+            has_alpha: false,
+            bits_per_sample: 8,
+            channels: 3,
+            data: vec![10, 20, 30, 40, 50, 60],
+        };
+        let normalized = NotificationImage::normalize_image_data(image).expect("expanded image");
+        assert_eq!(normalized.channels, 4);
+        assert_eq!(normalized.data.len(), 8);
     }
 }

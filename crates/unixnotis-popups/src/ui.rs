@@ -364,8 +364,9 @@ impl UiState {
         if !image.image_path.is_empty() {
             let path = image.image_path.as_str();
             if let Some(file_path) = file_path_from_hint(path) {
+                // Decoded file:// paths allow loading icon files with escaped characters.
                 if file_path.is_file() {
-                    return Some(self.spawn_file_icon(file_path.to_path_buf()));
+                    return Some(self.spawn_file_icon(file_path));
                 }
             }
             return resolve_icon_image(path, 20);

@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use gio::prelude::{AppInfoExt, FileExt};
 use gtk::gdk;
@@ -14,12 +14,19 @@ use image::imageops::FilterType;
 use image::GenericImageView;
 use unixnotis_core::{NotificationImage, NotificationView};
 
-pub(super) fn file_path_from_hint(path: &str) -> Option<&Path> {
+pub(super) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
+    // Accept raw absolute paths and file:// URIs, decoding percent escapes when present.
     if path.starts_with('/') {
-        return Some(Path::new(path));
+        return Some(PathBuf::from(path));
     }
-    if let Some(stripped) = path.strip_prefix("file://") {
-        return Some(Path::new(stripped));
+    if path.starts_with("file://") {
+        // gio::File handles URI decoding and local filesystem resolution.
+        let file = gio::File::for_uri(path);
+        // Only accept native filesystem paths to avoid non-local URIs.
+        if !file.is_native() {
+            return None;
+        }
+        return file.path();
     }
     None
 }
@@ -52,7 +59,7 @@ fn resolve_icon_paintable(name: &str, size: i32) -> Option<IconPaintable> {
 pub(super) fn resolve_icon_image(name: &str, size: i32) -> Option<gtk::Image> {
     if let Some(file_path) = file_path_from_hint(name) {
         if file_path.is_file() {
-            return Some(gtk::Image::from_file(file_path));
+            return Some(gtk::Image::from_file(&file_path));
         }
     }
     let paintable = resolve_icon_paintable(name, size)?;
@@ -193,9 +200,19 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<Texture> {
     if data.bits_per_sample != 8 {
         return None;
     }
+    // Negative rowstride is invalid for pixel buffers.
+    if data.rowstride < 0 {
+        return None;
+    }
 
-    let width = data.width.max(1) as u32;
-    let height = data.height.max(1) as u32;
+    // Reject non-positive dimensions before creating the texture.
+    if data.width <= 0 || data.height <= 0 {
+        return None;
+    }
+    let width = data.width as usize;
+    let height = data.height as usize;
+    let width_i32 = i32::try_from(width).ok()?;
+    let height_i32 = i32::try_from(height).ok()?;
 
     let bytes = if data.channels == 4 {
         gtk::glib::Bytes::from(&data.data)
@@ -203,15 +220,25 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<Texture> {
         return None;
     };
 
+    // Rowstride is bytes per row; hint payloads may include padding.
+    let min_stride = width.checked_mul(4)?;
     let stride = if data.rowstride > 0 {
         data.rowstride as usize
     } else {
-        (width * 4) as usize
+        min_stride
     };
+    // Validate rowstride and buffer length before building the texture.
+    if stride < min_stride {
+        return None;
+    }
+    let required = stride.checked_mul(height)?;
+    if data.data.len() < required {
+        return None;
+    }
     Some(
         gdk::MemoryTexture::new(
-            width as i32,
-            height as i32,
+            width_i32,
+            height_i32,
             gdk::MemoryFormat::R8g8b8a8,
             &bytes,
             stride,

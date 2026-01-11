@@ -5,7 +5,14 @@ use std::env;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-static PROGRAM_CACHE: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
+struct ProgramCache {
+    // Snapshot of PATH used to invalidate cached entries when environment changes.
+    path: Option<String>,
+    // Cached program presence results keyed by program name.
+    results: HashMap<String, bool>,
+}
+
+static PROGRAM_CACHE: OnceLock<Mutex<ProgramCache>> = OnceLock::new();
 const DEFAULT_LOG_LIMIT: usize = 160;
 const DIAGNOSTIC_LOG_LIMIT: usize = 512;
 
@@ -14,20 +21,36 @@ pub fn program_in_path(program: &str) -> bool {
     if program.contains(std::path::MAIN_SEPARATOR) {
         return Path::new(program).is_file();
     }
-    let cache = PROGRAM_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(cache) = cache.lock() {
-        if let Some(result) = cache.get(program) {
+    // Capture PATH once per call to avoid repeated env lookups.
+    let current_path = env::var("PATH").ok();
+    let cache = PROGRAM_CACHE.get_or_init(|| {
+        Mutex::new(ProgramCache {
+            path: None,
+            results: HashMap::new(),
+        })
+    });
+    if let Ok(mut cache) = cache.lock() {
+        // Reset cached lookups whenever PATH changes to avoid stale results in long-lived sessions.
+        if cache.path.as_deref() != current_path.as_deref() {
+            cache.path = current_path.clone();
+            cache.results.clear();
+        }
+        if let Some(result) = cache.results.get(program) {
             return *result;
         }
     }
 
-    let found = match env::var("PATH") {
-        Ok(paths) => env::split_paths(&paths).any(|dir| dir.join(program).is_file()),
-        Err(_) => false,
-    };
+    let found = current_path
+        .as_ref()
+        .map(|paths| env::split_paths(paths).any(|dir| dir.join(program).is_file()))
+        .unwrap_or(false);
 
     if let Ok(mut cache) = cache.lock() {
-        cache.insert(program.to_string(), found);
+        if cache.path.as_deref() != current_path.as_deref() {
+            cache.path = current_path.clone();
+            cache.results.clear();
+        }
+        cache.results.insert(program.to_string(), found);
     }
 
     found

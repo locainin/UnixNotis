@@ -117,13 +117,13 @@ impl IconResolverInner {
 
         if !image.image_path.is_empty() {
             if let Some(path) = file_path_from_hint(&image.image_path) {
-                let path_buf = path.to_path_buf();
-                if let Some(key) = icon_key_for_path(path, size, scale) {
+                // Own the decoded path to keep icon decode jobs self-contained.
+                if let Some(key) = icon_key_for_path(&path, size, scale) {
                     if let Some(paintable) = self.cache.borrow_mut().get(&key) {
                         return Some(IconResolution::Ready { key, paintable });
                     }
-                    if is_svg_path(path) {
-                        if let Some(paintable) = resolve_path_texture(path) {
+                    if is_svg_path(&path) {
+                        if let Some(paintable) = resolve_path_texture(&path) {
                             let paintable = self.cache.borrow_mut().insert(key.clone(), paintable);
                             return Some(IconResolution::Ready { key, paintable });
                         }
@@ -133,7 +133,7 @@ impl IconResolverInner {
                         key: key.clone(),
                         request: IconDecodeRequest {
                             key,
-                            path: path_buf,
+                            path,
                             size,
                             scale,
                         },

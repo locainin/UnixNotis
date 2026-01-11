@@ -39,14 +39,19 @@ pub(super) fn resolve_icon_source(name: &str, size: i32, scale: i32) -> Option<I
     Some(IconSource::Paintable(paintable))
 }
 
-pub(super) fn file_path_from_hint(path: &str) -> Option<&Path> {
-    // Notification hints may provide a direct absolute path or a file:// URL.
-    // We normalize both into a Path, and reject anything else (http, relative, etc.).
+pub(super) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
+    // Accept raw absolute paths and file:// URIs, decoding percent escapes when present.
     if path.starts_with('/') {
-        return Some(Path::new(path));
+        return Some(PathBuf::from(path));
     }
-    if let Some(stripped) = path.strip_prefix("file://") {
-        return Some(Path::new(stripped));
+    if path.starts_with("file://") {
+        // gio::File handles URI decoding and local filesystem resolution.
+        let file = gio::File::for_uri(path);
+        // Only accept native filesystem paths to avoid non-local URIs.
+        if !file.is_native() {
+            return None;
+        }
+        return file.path();
     }
     None
 }
@@ -238,10 +243,19 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Textu
     if data.bits_per_sample != 8 {
         return None;
     }
+    // Negative rowstride is invalid for pixel buffers.
+    if data.rowstride < 0 {
+        return None;
+    }
 
-    // Clamp dimensions so we never pass 0 to MemoryTexture (which would error or behave oddly).
-    let width = data.width.max(1) as u32;
-    let height = data.height.max(1) as u32;
+    // Reject non-positive dimensions before creating the texture.
+    if data.width <= 0 || data.height <= 0 {
+        return None;
+    }
+    let width = data.width as usize;
+    let height = data.height as usize;
+    let width_i32 = i32::try_from(width).ok()?;
+    let height_i32 = i32::try_from(height).ok()?;
 
     // We only handle RGBA (channels == 4) here because MemoryFormat::R8g8b8a8 expects 4 bytes/pixel.
     // If the payload is RGB or something else, it should have been expanded earlier in the pipeline.
@@ -251,19 +265,28 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Textu
         return None;
     };
 
-    // Rowstride is bytes per row; Hypr/notify image-data can include padding.
+    // Rowstride is bytes per row; hint payloads may include padding.
     // If rowstride is invalid/zero, fall back to tightly packed RGBA (width * 4).
+    let min_stride = width.checked_mul(4)?;
     let stride = if data.rowstride > 0 {
         data.rowstride as usize
     } else {
-        (width * 4) as usize
+        min_stride
     };
+    // Validate rowstride and buffer length before building the texture.
+    if stride < min_stride {
+        return None;
+    }
+    let required = stride.checked_mul(height)?;
+    if data.data.len() < required {
+        return None;
+    }
 
     // Build a GPU texture from the raw pixel bytes. MemoryFormat must match the byte layout.
     Some(
         gdk::MemoryTexture::new(
-            width as i32,
-            height as i32,
+            width_i32,
+            height_i32,
             gdk::MemoryFormat::R8g8b8a8,
             &bytes,
             stride,
