@@ -100,7 +100,8 @@ pub fn sanitize_log_value(value: &str, max_len: usize) -> String {
     if max_len == 0 {
         return String::new();
     }
-    let mut cleaned = String::new();
+    // Pre-allocate to reduce churn when sanitizing frequent log values.
+    let mut cleaned = String::with_capacity(max_len.min(value.len()));
     let mut count = 0usize;
     let mut truncated = false;
     for ch in value.chars() {

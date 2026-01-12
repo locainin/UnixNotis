@@ -501,13 +501,28 @@ pub(in crate::ui::widgets) fn kill_process_group(pid: i32) {
 }
 
 fn is_probably_slow(cmd: &str) -> bool {
-    let lower = cmd.to_ascii_lowercase();
-    let has_pipeline =
-        lower.contains('|') || lower.contains("&&") || lower.contains("||") || lower.contains(';');
-    if has_pipeline || lower.contains("sleep") {
+    // Single-pass meta scan avoids allocating a lowercase copy on every refresh.
+    let mut prev_amp = false;
+    for byte in cmd.as_bytes() {
+        let ch = byte.to_ascii_lowercase();
+        if ch == b'|' || ch == b';' {
+            return true;
+        }
+        if ch == b'&' {
+            if prev_amp {
+                return true;
+            }
+            prev_amp = true;
+            continue;
+        }
+        prev_amp = false;
+    }
+
+    if contains_ascii_case_insensitive(cmd, "sleep") {
         return true;
     }
-    [
+
+    const SLOW_TOKENS: [&str; 9] = [
         "nmcli",
         "bluetoothctl",
         "rfkill",
@@ -517,9 +532,28 @@ fn is_probably_slow(cmd: &str) -> bool {
         "pactl",
         "wpctl",
         "brightnessctl",
-    ]
-    .iter()
-    .any(|token| lower.contains(token))
+    ];
+    SLOW_TOKENS
+        .iter()
+        .any(|token| contains_ascii_case_insensitive(cmd, token))
+}
+
+fn contains_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {
+    // ASCII-only case folding is enough for command tokens and avoids allocations.
+    let haystack = haystack.as_bytes();
+    let needle = needle.as_bytes();
+    if needle.is_empty() {
+        return true;
+    }
+    if haystack.len() < needle.len() {
+        return false;
+    }
+    haystack.windows(needle.len()).any(|window| {
+        window
+            .iter()
+            .zip(needle)
+            .all(|(lhs, rhs)| lhs.to_ascii_lowercase() == *rhs)
+    })
 }
 
 #[cfg(test)]
