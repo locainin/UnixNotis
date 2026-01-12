@@ -326,62 +326,57 @@ fn schedule_command(
 }
 
 fn parse_numeric(text: &str, min: f64, max: f64, mode: NumericParseMode) -> Option<f64> {
-    #[derive(Clone)]
-    struct Token {
-        value: f64,
-        raw: String,
-        percent: bool,
-    }
+    // Parse the last numeric token, preferring percent tokens, without allocating buffers.
+    let mut current_start = None;
+    let mut current_has_dot = false;
+    let mut last_any: Option<(f64, bool, bool)> = None;
+    let mut last_percent: Option<(f64, bool)> = None;
 
-    let mut current = String::new();
-    let mut tokens: Vec<Token> = Vec::new();
-
-    for ch in text.chars() {
+    for (index, ch) in text.char_indices() {
         if ch.is_ascii_digit() || ch == '.' {
-            current.push(ch);
+            if current_start.is_none() {
+                current_start = Some(index);
+            }
+            if ch == '.' {
+                current_has_dot = true;
+            }
             continue;
         }
-        if !current.is_empty() {
-            if let Ok(value) = current.parse::<f64>() {
+        if let Some(start) = current_start.take() {
+            if let Ok(value) = text[start..index].parse::<f64>() {
                 let percent = ch == '%';
-                tokens.push(Token {
-                    value,
-                    raw: current.clone(),
-                    percent,
-                });
+                last_any = Some((value, percent, current_has_dot));
+                if percent {
+                    last_percent = Some((value, current_has_dot));
+                }
             }
-            current.clear();
+            current_has_dot = false;
         }
     }
 
-    if !current.is_empty() {
-        if let Ok(value) = current.parse::<f64>() {
-            tokens.push(Token {
-                value,
-                raw: current.clone(),
-                percent: false,
-            });
+    if let Some(start) = current_start.take() {
+        if let Ok(value) = text[start..].parse::<f64>() {
+            last_any = Some((value, false, current_has_dot));
         }
     }
 
-    let token = tokens
-        .iter()
-        .rev()
-        .find(|token| token.percent)
-        .or_else(|| tokens.last())?;
-    let mut value = token.value;
+    let (mut value, percent, has_dot) = if let Some((value, has_dot)) = last_percent {
+        (value, true, has_dot)
+    } else {
+        last_any?
+    };
 
     match mode {
         NumericParseMode::Auto => {
             // Heuristic: If the token contains a decimal point, it's likely a normalized ratio
             // from tools like wpctl. Scale to percentage.
-            if !token.percent && token.raw.contains('.') && value <= 5.0 {
+            if !percent && has_dot && value <= 5.0 {
                 value *= 100.0;
             }
         }
         NumericParseMode::Percent => {}
         NumericParseMode::Ratio => {
-            if !token.percent {
+            if !percent {
                 value *= 100.0;
             }
         }
@@ -391,10 +386,29 @@ fn parse_numeric(text: &str, min: f64, max: f64, mode: NumericParseMode) -> Opti
 }
 
 fn parse_muted(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    lower.contains("muted") || lower.contains("mute: yes")
+    // Avoid per-refresh allocations by using ASCII-only case-insensitive checks.
+    contains_ascii_case_insensitive(text, "muted")
+        || contains_ascii_case_insensitive(text, "mute: yes")
 }
 
 fn format_value(value: f64) -> String {
     format!("{value:.0}%")
+}
+
+fn contains_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {
+    // ASCII-only command output is expected for widget status; keep the scan allocation-free.
+    let haystack = haystack.as_bytes();
+    let needle = needle.as_bytes();
+    if needle.is_empty() {
+        return true;
+    }
+    if haystack.len() < needle.len() {
+        return false;
+    }
+    haystack.windows(needle.len()).any(|window| {
+        window
+            .iter()
+            .zip(needle)
+            .all(|(lhs, rhs)| lhs.to_ascii_lowercase() == *rhs)
+    })
 }
