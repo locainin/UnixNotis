@@ -370,7 +370,15 @@ fn update_group_row(
     data: &RowData,
     icon_resolver: &IconResolver,
 ) {
-    group.title.set_text(data.group_key.as_ref());
+    let display_name = data
+        .notification
+        .as_ref()
+        .map(|notification| notification.app_name.trim())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| data.group_key.as_ref());
+    // Display the original app label while the normalized key drives grouping behavior.
+    // Fall back to the group key if no sample notification is available.
+    group.title.set_text(display_name);
     group.count.set_text(&format!("{}", data.count));
     let chevron_name = if data.expanded {
         "pan-up-symbolic"
