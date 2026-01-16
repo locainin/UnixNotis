@@ -16,7 +16,7 @@ use unixnotis_core::{util, NotificationView, Urgency};
 use crate::dbus::{UiCommand, UiEvent};
 
 use super::super::icons::IconResolver;
-use super::super::list_item::{RowData, RowItem, RowKind};
+use super::list_item::{RowData, RowItem, RowKind};
 
 /// GTK wrapper widgets for each row type.
 pub(super) struct RowWidgets {

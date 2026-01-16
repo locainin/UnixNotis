@@ -32,21 +32,26 @@ pub enum PanelAction {
 
 /// Debug verbosity for panel diagnostics requested via control tooling.
 #[derive(
-    Debug, Copy, Clone, Serialize_repr, Deserialize_repr, Type, Eq, PartialEq, Ord, PartialOrd,
+    Debug,
+    Copy,
+    Clone,
+    Serialize_repr,
+    Deserialize_repr,
+    Type,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Default,
 )]
 #[repr(u8)]
 pub enum PanelDebugLevel {
+    #[default]
     Off = 0,
     Critical = 1,
     Warn = 2,
     Info = 3,
     Verbose = 4,
-}
-
-impl Default for PanelDebugLevel {
-    fn default() -> Self {
-        Self::Off
-    }
 }
 
 impl PanelDebugLevel {

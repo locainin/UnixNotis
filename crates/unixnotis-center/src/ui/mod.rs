@@ -19,7 +19,6 @@ use unixnotis_ui::css::{self, CssManager};
 mod hyprland;
 mod icons;
 mod list;
-mod list_item;
 mod marquee;
 mod media_widget;
 mod panel;

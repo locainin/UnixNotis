@@ -272,21 +272,16 @@ impl Default for SliderWidgetConfig {
     }
 }
 
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum NumericParseMode {
     /// Uses heuristic parsing for mixed output formats.
+    #[default]
     Auto,
     /// Interprets values as percentages without normalization.
     Percent,
     /// Interprets values as 0.0-1.0 ratios and scales to percent.
     Ratio,
-}
-
-impl Default for NumericParseMode {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -576,9 +571,11 @@ pub struct RuleConfig {
     pub transient: Option<bool>,
 }
 
-#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum Anchor {
+    /// Default anchor for panels when no explicit config value is set.
+    #[default]
     TopRight,
     TopLeft,
     BottomRight,
@@ -589,30 +586,17 @@ pub enum Anchor {
     Right,
 }
 
-impl Default for Anchor {
-    fn default() -> Self {
-        // Default anchor determines which screen corner/edge the panel is attached to
-        // when no explicit anchor is provided in config.
-        Self::TopRight
-    }
-}
-
-#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum PanelKeyboardInteractivity {
     // Do not request keyboard focus; panel is purely pointer-driven.
     None,
     // Only request keyboard focus when an interaction requires it (search entry, text input, etc.).
+    // Default keeps focus optional to avoid persistent grabs.
+    #[default]
     OnDemand,
     // Always grab exclusive keyboard focus while the panel is open.
     Exclusive,
-}
-
-impl Default for PanelKeyboardInteractivity {
-    fn default() -> Self {
-        // OnDemand is a good UX default: keyboard works when needed without stealing focus constantly.
-        Self::OnDemand
-    }
 }
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
