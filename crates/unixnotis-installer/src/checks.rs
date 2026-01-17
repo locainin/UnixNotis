@@ -23,6 +23,7 @@ pub struct Checks {
     pub hyprland: CheckItem,
     pub systemd_user: CheckItem,
     pub cargo: CheckItem,
+    pub gtk4_layer_shell: CheckItem,
     pub busctl: CheckItem,
 }
 
@@ -58,6 +59,17 @@ impl Checks {
             Err(err) => CheckItem::fail("cargo", &format!("check failed: {err}")),
         };
 
+        let gtk4_layer_shell = match pkg_config_version("gtk4-layer-shell-0") {
+            Ok(Some(version)) => {
+                CheckItem::ok("gtk4-layer-shell", &format!("found {version}"))
+            }
+            Ok(None) => CheckItem::fail(
+                "gtk4-layer-shell",
+                "pkg-config gtk4-layer-shell-0 not found; is gtk4-layer-shell installed?",
+            ),
+            Err(err) => CheckItem::fail("gtk4-layer-shell", &format!("check failed: {err}")),
+        };
+
         let busctl = match command_success("busctl", &["--version"]) {
             Ok(true) => CheckItem::ok("busctl", "available"),
             Ok(false) => CheckItem::warn("busctl", "not found; owner detection limited"),
@@ -69,6 +81,7 @@ impl Checks {
             hyprland,
             systemd_user,
             cargo,
+            gtk4_layer_shell,
             busctl,
         }
     }
@@ -82,6 +95,12 @@ impl Checks {
                 if self.cargo.state == CheckState::Fail {
                     return Err("cargo is required for trial mode".to_string());
                 }
+                if self.gtk4_layer_shell.state == CheckState::Fail {
+                    return Err(
+                        "gtk4-layer-shell is required; is the gtk4-layer-shell package installed?"
+                            .to_string(),
+                    );
+                }
             }
             ActionMode::Install => {
                 if self.wayland.state == CheckState::Fail {
@@ -92,6 +111,12 @@ impl Checks {
                 }
                 if self.cargo.state == CheckState::Fail {
                     return Err("cargo is required for installation".to_string());
+                }
+                if self.gtk4_layer_shell.state == CheckState::Fail {
+                    return Err(
+                        "gtk4-layer-shell is required; is the gtk4-layer-shell package installed?"
+                            .to_string(),
+                    );
                 }
             }
             ActionMode::Uninstall => {
@@ -139,4 +164,20 @@ fn command_success(program: &str, args: &[&str]) -> Result<bool, String> {
         .status()
         .map(|status| status.success())
         .map_err(|err| err.to_string())
+}
+
+fn pkg_config_version(lib: &str) -> Result<Option<String>, String> {
+    let output = Command::new("pkg-config")
+        .args(["--modversion", lib])
+        .output()
+        .map_err(|err| err.to_string())?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if version.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(version))
+    }
 }
