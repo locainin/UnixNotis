@@ -57,6 +57,8 @@ pub struct MediaConfig {
     pub enabled: bool,
     /// Include web browser media players.
     pub include_browsers: bool,
+    /// Browser-identifying substrings for MPRIS bus names or identities (case-insensitive).
+    pub browser_tokens: Vec<String>,
     /// Characters allowed before marquee scrolling begins.
     pub title_char_limit: usize,
     /// Allowlist of player identifiers or bus names (case-insensitive substrings).
@@ -70,6 +72,21 @@ impl Default for MediaConfig {
         Self {
             enabled: true,
             include_browsers: true,
+            browser_tokens: vec![
+                "firefox".to_string(),
+                "librewolf".to_string(),
+                "waterfox".to_string(),
+                "floorp".to_string(),
+                "brave".to_string(),
+                "chromium".to_string(),
+                "chrome".to_string(),
+                "vivaldi".to_string(),
+                "edge".to_string(),
+                "opera".to_string(),
+                "epiphany".to_string(),
+                "midori".to_string(),
+                "zen".to_string(),
+            ],
             title_char_limit: 32,
             allowlist: Vec::new(),
             denylist: vec!["playerctld".to_string()],

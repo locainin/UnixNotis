@@ -15,7 +15,7 @@ use async_channel::Sender;
 use gio::prelude::*;
 use gtk::glib;
 use gtk::prelude::*;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc;
 use tracing::debug;
 use unixnotis_core::{CloseReason, NotificationView};
 
@@ -71,7 +71,7 @@ struct GroupRange {
 impl NotificationList {
     pub fn new(
         scroller: gtk::ScrolledWindow,
-        command_tx: UnboundedSender<UiCommand>,
+        command_tx: mpsc::Sender<UiCommand>,
         event_tx: Sender<UiEvent>,
         icon_resolver: Rc<IconResolver>,
         max_active: usize,

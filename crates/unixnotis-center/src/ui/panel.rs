@@ -177,9 +177,6 @@ fn compute_side_panel_height(
     monitor: Option<&gdk::Monitor>,
     reserved: Option<Margins>,
 ) -> Option<i32> {
-    const MIN_HEIGHT: i32 = 520;
-    const BOTTOM_PAD: i32 = 96;
-
     if !matches!(config.panel.anchor, Anchor::Left | Anchor::Right) {
         return None;
     }
@@ -196,16 +193,47 @@ fn compute_side_panel_height(
         return None;
     }
 
-    let max_height = (work_area - BOTTOM_PAD).max(1);
-    let min_height = MIN_HEIGHT.min(max_height);
+    let bottom_pad = dynamic_bottom_pad(work_area);
+    let max_height = (work_area - bottom_pad).max(1);
 
-    // Keep the panel tall while leaving a small bottom gap.
-    Some(max_height.max(min_height))
+    // Use the available work area minus a proportional bottom gap.
+    Some(max_height)
+}
+
+fn dynamic_bottom_pad(work_area: i32) -> i32 {
+    // Scale the bottom gap with display height to avoid oversized panels on small screens.
+    let scaled = ((work_area as f32) * 0.1).round() as i32;
+    // Clamp provides guard rails so extreme screen sizes still keep a reasonable gap.
+    scaled.clamp(24, 160)
 }
 
 fn default_monitor() -> Option<gdk::Monitor> {
     let display = gdk::Display::default()?;
     let monitors = display.monitors();
+    let mut best: Option<gdk::Monitor> = None;
+    let mut best_area = 0i64;
+
+    // Pick the largest monitor as a reasonable default when no primary API is available.
+    for index in 0..monitors.n_items() {
+        let Some(item) = monitors.item(index) else {
+            continue;
+        };
+        let Ok(monitor) = item.downcast::<gdk::Monitor>() else {
+            continue;
+        };
+        let geometry = monitor.geometry();
+        let area = i64::from(geometry.width()) * i64::from(geometry.height());
+        if area > best_area {
+            best_area = area;
+            best = Some(monitor);
+        }
+    }
+
+    if best.is_some() {
+        return best;
+    }
+
+    // Fall back to the first enumerated monitor when discovery yields nothing.
     let item = monitors.item(0)?;
     item.downcast::<gdk::Monitor>().ok()
 }

@@ -169,16 +169,35 @@ fn load_config(args: &Args) -> Result<(Config, PathBuf)> {
 }
 
 fn init_tracing(config: &Config) {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new(
-            config
+    // Prefer RUST_LOG when present; fall back to config value with validation.
+    let (filter, warning) = match EnvFilter::try_from_default_env() {
+        Ok(filter) => (filter, None),
+        Err(_) => {
+            let configured = config
                 .general
                 .log_level
                 .clone()
-                .unwrap_or_else(|| "info".to_string()),
-        )
-    });
+                .unwrap_or_else(|| "info".to_string());
+            match EnvFilter::try_new(configured.clone()) {
+                Ok(filter) => (filter, None),
+                Err(err) => {
+                    // Invalid directives should not crash startup; default to info.
+                    let fallback = EnvFilter::try_new("info").unwrap_or_else(|_| EnvFilter::new("info"));
+                    let warning = format!(
+                        "invalid log_level '{}'; defaulting to 'info' ({err})",
+                        configured
+                    );
+                    (fallback, Some(warning))
+                }
+            }
+        }
+    };
+
+    // Install the subscriber once; warnings after init reach the configured sink.
     tracing_subscriber::fmt().with_env_filter(filter).init();
+    if let Some(message) = warning {
+        tracing::warn!("{message}");
+    }
 }
 
 fn is_wayland_session() -> bool {

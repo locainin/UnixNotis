@@ -9,13 +9,14 @@ use std::sync::OnceLock;
 use async_channel::{Sender, TrySendError};
 use gtk::prelude::*;
 use gtk::{self, Align};
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc;
 use tracing::debug;
 use unixnotis_core::{util, NotificationView, Urgency};
 
 use crate::dbus::{UiCommand, UiEvent};
 
 use super::super::icons::IconResolver;
+use super::super::try_send_command;
 use super::list_item::{RowData, RowItem, RowKind};
 
 /// GTK wrapper widgets for each row type.
@@ -26,7 +27,7 @@ pub(super) struct RowWidgets {
     notification: Option<NotificationRowWidgets>,
     ghost: Option<GhostRowWidgets>,
     handler: RefCell<Option<(RowItem, gtk::glib::SignalHandlerId)>>,
-    command_tx: UnboundedSender<UiCommand>,
+    command_tx: mpsc::Sender<UiCommand>,
 }
 
 fn row_widgets_quark() -> gtk::glib::Quark {
@@ -85,7 +86,7 @@ impl IconSignature {
 impl RowWidgets {
     pub(super) fn new(
         kind: RowKind,
-        command_tx: UnboundedSender<UiCommand>,
+        command_tx: mpsc::Sender<UiCommand>,
         event_tx: Sender<UiEvent>,
     ) -> Self {
         match kind {
@@ -95,7 +96,7 @@ impl RowWidgets {
         }
     }
 
-    fn new_group(command_tx: UnboundedSender<UiCommand>, event_tx: Sender<UiEvent>) -> Self {
+    fn new_group(command_tx: mpsc::Sender<UiCommand>, event_tx: Sender<UiEvent>) -> Self {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
         root.add_css_class("unixnotis-group");
         root.add_css_class("unixnotis-group-row");
@@ -176,7 +177,7 @@ impl RowWidgets {
         }
     }
 
-    fn new_notification(command_tx: UnboundedSender<UiCommand>) -> Self {
+    fn new_notification(command_tx: mpsc::Sender<UiCommand>) -> Self {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
         root.add_css_class("unixnotis-panel-card");
 
@@ -228,7 +229,8 @@ impl RowWidgets {
                 return;
             }
             debug!(id, "dismiss clicked");
-            let _ = close_tx.send(UiCommand::Dismiss(id));
+            // Non-blocking enqueue avoids GTK stalls during D-Bus backpressure.
+            try_send_command(&close_tx, UiCommand::Dismiss(id));
         });
 
         Self {
@@ -251,7 +253,7 @@ impl RowWidgets {
         }
     }
 
-    fn new_ghost(command_tx: UnboundedSender<UiCommand>) -> Self {
+    fn new_ghost(command_tx: mpsc::Sender<UiCommand>) -> Self {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         root.add_css_class("unixnotis-panel-card");
         root.add_css_class("unixnotis-stack-ghost");
@@ -310,7 +312,7 @@ impl RowWidgets {
 pub(super) fn ensure_row_widgets(
     list_item: &gtk::ListItem,
     kind: RowKind,
-    command_tx: UnboundedSender<UiCommand>,
+    command_tx: mpsc::Sender<UiCommand>,
     event_tx: Sender<UiEvent>,
 ) -> Rc<RowWidgets> {
     if let Some(existing) = get_row_widgets(list_item) {
@@ -413,7 +415,7 @@ fn update_notification_row(
     root: &gtk::Box,
     data: &RowData,
     icon_resolver: &IconResolver,
-    command_tx: &UnboundedSender<UiCommand>,
+    command_tx: &mpsc::Sender<UiCommand>,
 ) {
     let Some(notification) = data.notification.as_ref() else {
         return;
@@ -484,7 +486,7 @@ fn update_body_label(label: &gtk::Label, body: &str) {
 fn update_actions(
     actions_box: &gtk::Box,
     cache: &RefCell<Vec<(String, String)>>,
-    command_tx: &UnboundedSender<UiCommand>,
+    command_tx: &mpsc::Sender<UiCommand>,
     notification: &NotificationView,
 ) {
     {
@@ -525,7 +527,8 @@ fn update_actions(
         let id = notification.id;
         button.connect_clicked(move |_| {
             debug!(id, action = %action_key, "action invoked");
-            let _ = tx.send(UiCommand::InvokeAction {
+            // Best-effort enqueue keeps action handling responsive.
+            try_send_command(&tx, UiCommand::InvokeAction {
                 id,
                 action_key: action_key.clone(),
             });

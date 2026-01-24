@@ -60,6 +60,11 @@ pub(super) fn sanitize_config(config: &mut Config) {
     config.panel.margin.bottom = config.panel.margin.bottom.clamp(0, MAX_MARGIN);
     config.panel.margin.left = config.panel.margin.left.clamp(0, MAX_MARGIN);
 
+    // Normalize media identifiers to lowercase for consistent substring matching.
+    config.media.allowlist = normalize_media_tokens(&config.media.allowlist);
+    config.media.denylist = normalize_media_tokens(&config.media.denylist);
+    config.media.browser_tokens = normalize_media_tokens(&config.media.browser_tokens);
+
     // Clamp min-height values directly; clamp covers negative inputs.
     for stat in &mut config.widgets.stats {
         stat.min_height = stat.min_height.clamp(0, MAX_CARD_HEIGHT);
@@ -102,6 +107,15 @@ pub(super) fn sanitize_config(config: &mut Config) {
     config.theme.border_width = config.theme.border_width.min(MAX_BORDER_WIDTH);
     config.theme.card_radius = config.theme.card_radius.min(MAX_CARD_RADIUS);
     warn_missing_shell(config);
+}
+
+fn normalize_media_tokens(tokens: &[String]) -> Vec<String> {
+    // Drop empty entries and enforce lowercase so comparisons stay case-insensitive.
+    tokens
+        .iter()
+        .map(|token| token.trim().to_lowercase())
+        .filter(|token| !token.is_empty())
+        .collect()
 }
 
 fn clamp_alpha(value: &mut f32, fallback: f32) {
@@ -278,6 +292,20 @@ mod tests {
         assert_eq!(config.widgets.stats[1].min_height, MAX_CARD_HEIGHT);
         assert_eq!(config.widgets.cards[0].min_height, 0);
         assert_eq!(config.widgets.cards[1].min_height, MAX_CARD_HEIGHT);
+    }
+
+    #[test]
+    fn sanitize_normalizes_media_tokens() {
+        // Normalize case and drop empty entries to keep media matching stable.
+        let mut config = Config::default();
+        config.media.allowlist = vec!["Spotify".to_string(), " ".to_string()];
+        config.media.denylist = vec!["Playerctld".to_string()];
+        config.media.browser_tokens = vec!["FireFox".to_string(), "".to_string()];
+        sanitize_config(&mut config);
+
+        assert_eq!(config.media.allowlist, vec!["spotify".to_string()]);
+        assert_eq!(config.media.denylist, vec!["playerctld".to_string()]);
+        assert_eq!(config.media.browser_tokens, vec!["firefox".to_string()]);
     }
 
     #[test]

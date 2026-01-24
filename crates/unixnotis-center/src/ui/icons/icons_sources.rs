@@ -13,6 +13,9 @@ use unixnotis_core::{NotificationImage, NotificationView};
 
 use super::icons_cache::CachedPaintable;
 
+// Guard against blocking loads of unusually large icons on the GTK thread.
+const MAX_SYNC_ICON_BYTES: u64 = 4 * 1024 * 1024;
+
 pub(super) enum IconSource {
     Paintable(IconPaintable),
     RasterPath(PathBuf),
@@ -60,6 +63,13 @@ pub(super) fn resolve_path_texture(path: &Path) -> Option<CachedPaintable> {
     // Only load real files from disk; avoids weird behavior for directories/symlinks/invalid paths.
     if !path.is_file() {
         return None;
+    }
+
+    // Avoid synchronous decoding for unusually large icon files to reduce UI stalls.
+    if let Ok(metadata) = std::fs::metadata(path) {
+        if metadata.len() > MAX_SYNC_ICON_BYTES {
+            return None;
+        }
     }
 
     // Let GDK load the texture directly. This is a synchronous path and is typically fine for small icons;
@@ -239,7 +249,7 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Textu
     let data = &image.image_data;
 
     // The standard image-data payload for notifications is typically 8 bits per channel.
-    // If it's not 8, we don't currently support it (avoids misinterpreting the byte layout).
+    // If it's not 8, the byte layout is ambiguous for this path, so reject it.
     if data.bits_per_sample != 8 {
         return None;
     }
@@ -257,30 +267,38 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Textu
     let width_i32 = i32::try_from(width).ok()?;
     let height_i32 = i32::try_from(height).ok()?;
 
-    // We only handle RGBA (channels == 4) here because MemoryFormat::R8g8b8a8 expects 4 bytes/pixel.
-    // If the payload is RGB or something else, it should have been expanded earlier in the pipeline.
-    let bytes = if data.channels == 4 {
-        gtk::glib::Bytes::from(&data.data)
-    } else {
-        return None;
+    // Select a conversion path based on the channel layout.
+    // RGBA can be used directly, RGB is expanded to RGBA with an opaque alpha.
+    let (bytes, stride) = match data.channels {
+        4 => {
+            // Rowstride is bytes per row; hint payloads may include padding.
+            // If rowstride is invalid/zero, fall back to tightly packed RGBA (width * 4).
+            let min_stride = width.checked_mul(4)?;
+            let stride = if data.rowstride > 0 {
+                data.rowstride as usize
+            } else {
+                min_stride
+            };
+            // Validate rowstride and buffer length before building the texture.
+            if stride < min_stride {
+                return None;
+            }
+            let required = stride.checked_mul(height)?;
+            if data.data.len() < required {
+                return None;
+            }
+            (gtk::glib::Bytes::from(&data.data), stride)
+        }
+        3 => {
+            // RGB payloads are valid per spec; expand to RGBA with alpha=255.
+            let (expanded, stride) = expand_rgb_to_rgba(data)?;
+            (gtk::glib::Bytes::from(&expanded), stride)
+        }
+        _ => {
+            // Other channel counts are not supported by the RGBA texture path.
+            return None;
+        }
     };
-
-    // Rowstride is bytes per row; hint payloads may include padding.
-    // If rowstride is invalid/zero, fall back to tightly packed RGBA (width * 4).
-    let min_stride = width.checked_mul(4)?;
-    let stride = if data.rowstride > 0 {
-        data.rowstride as usize
-    } else {
-        min_stride
-    };
-    // Validate rowstride and buffer length before building the texture.
-    if stride < min_stride {
-        return None;
-    }
-    let required = stride.checked_mul(height)?;
-    if data.data.len() < required {
-        return None;
-    }
 
     // Build a GPU texture from the raw pixel bytes. MemoryFormat must match the byte layout.
     Some(
@@ -293,4 +311,88 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Textu
         )
         .upcast::<gdk::Texture>(),
     )
+}
+
+fn expand_rgb_to_rgba(data: &unixnotis_core::ImageData) -> Option<(Vec<u8>, usize)> {
+    // Expand RGB to RGBA while honoring per-row padding in the source buffer.
+    let width = usize::try_from(data.width).ok()?;
+    let height = usize::try_from(data.height).ok()?;
+    if width == 0 || height == 0 {
+        return None;
+    }
+
+    // Source stride handles optional per-row padding for RGB input.
+    let min_src_stride = width.checked_mul(3)?;
+    let src_stride = if data.rowstride > 0 {
+        data.rowstride as usize
+    } else {
+        min_src_stride
+    };
+    if src_stride < min_src_stride {
+        return None;
+    }
+    let required = src_stride.checked_mul(height)?;
+    if data.data.len() < required {
+        return None;
+    }
+
+    // Destination uses tightly packed RGBA rows.
+    let dst_stride = width.checked_mul(4)?;
+    let mut rgba = vec![0u8; dst_stride.checked_mul(height)?];
+
+    // Copy RGB per pixel and append opaque alpha.
+    for y in 0..height {
+        let src_row_start = y * src_stride;
+        let dst_row_start = y * dst_stride;
+        let src_row = &data.data[src_row_start..src_row_start + min_src_stride];
+        let dst_row = &mut rgba[dst_row_start..dst_row_start + dst_stride];
+        for x in 0..width {
+            let src = x * 3;
+            let dst = x * 4;
+            dst_row[dst] = src_row[src];
+            dst_row[dst + 1] = src_row[src + 1];
+            dst_row[dst + 2] = src_row[src + 2];
+            dst_row[dst + 3] = 255;
+        }
+    }
+
+    Some((rgba, dst_stride))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expand_rgb_to_rgba;
+    use unixnotis_core::ImageData;
+
+    #[test]
+    fn expand_rgb_to_rgba_appends_alpha() {
+        let data = ImageData {
+            width: 2,
+            height: 1,
+            rowstride: 0,
+            has_alpha: false,
+            bits_per_sample: 8,
+            channels: 3,
+            data: vec![10, 20, 30, 40, 50, 60],
+        };
+        let (expanded, stride) = expand_rgb_to_rgba(&data).expect("rgb expansion");
+        assert_eq!(stride, 8);
+        assert_eq!(expanded, vec![10, 20, 30, 255, 40, 50, 60, 255]);
+    }
+
+    #[test]
+    fn expand_rgb_to_rgba_honors_row_padding() {
+        let data = ImageData {
+            width: 2,
+            height: 1,
+            rowstride: 8,
+            has_alpha: false,
+            bits_per_sample: 8,
+            channels: 3,
+            data: vec![1, 2, 3, 4, 5, 6, 99, 100],
+        };
+        let (expanded, stride) = expand_rgb_to_rgba(&data).expect("rgb expansion");
+        assert_eq!(stride, 8);
+        assert_eq!(expanded, vec![1, 2, 3, 255, 4, 5, 6, 255]);
+    }
 }

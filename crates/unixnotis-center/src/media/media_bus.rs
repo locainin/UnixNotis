@@ -227,14 +227,16 @@ pub(super) fn is_allowed_player(name: &str, config: &MediaConfig) -> bool {
         return config.allowlist.iter().any(|entry| lower.contains(entry));
     }
 
-    if !config.include_browsers {
-        let browser_tokens = ["firefox", "brave", "chromium", "chrome", "vivaldi"];
-        if browser_tokens.iter().any(|token| lower.contains(token)) {
-            return false;
-        }
+    if !config.include_browsers && is_browser_name(&lower, &config.browser_tokens) {
+        return false;
     }
 
     true
+}
+
+fn is_browser_name(lower: &str, browser_tokens: &[String]) -> bool {
+    // Tokens are config-driven to allow browser matching without hardcoded lists.
+    browser_tokens.iter().any(|token| lower.contains(token))
 }
 
 #[cfg(test)]
@@ -256,6 +258,11 @@ mod tests {
             .collect();
         config.denylist = config
             .denylist
+            .into_iter()
+            .map(|entry| entry.to_lowercase())
+            .collect();
+        config.browser_tokens = config
+            .browser_tokens
             .into_iter()
             .map(|entry| entry.to_lowercase())
             .collect();

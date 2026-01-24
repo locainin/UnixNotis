@@ -12,7 +12,7 @@ use unixnotis_core::{PanelAction, PanelDebugLevel, PanelRequest};
 use crate::dbus::UiCommand;
 use crate::debug;
 
-use super::UiState;
+use super::{try_send_command, UiState};
 
 impl UiState {
     pub(super) fn update_state(&mut self, state: unixnotis_core::ControlState) {
@@ -119,7 +119,8 @@ impl UiState {
         self.log_debug(PanelDebugLevel::Info, || {
             "click outside detected; requesting close".to_string()
         });
-        let _ = self.command_tx.send(UiCommand::ClosePanel);
+        // Non-blocking send avoids freezing the click handler.
+        try_send_command(&self.command_tx, UiCommand::ClosePanel);
     }
 
     pub(super) fn log_debug(&self, level: PanelDebugLevel, message: impl FnOnce() -> String) {

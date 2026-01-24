@@ -15,12 +15,14 @@ use super::MediaInfo;
 
 pub(super) async fn refresh_cache(
     players: &HashMap<String, PlayerState>,
+    browser_tokens: &[String],
     cache: &mut HashMap<String, MediaInfo>,
 ) {
     cache.clear();
     let states: Vec<PlayerState> = players.values().cloned().collect();
     for state in states {
         if let Some(info) = fetch_media_info(&state).await {
+            let info = with_browser_family(info, browser_tokens);
             cache.insert(state.bus_name.clone(), info);
         }
     }
@@ -28,6 +30,7 @@ pub(super) async fn refresh_cache(
 
 pub(super) async fn refresh_player_cache(
     players: &HashMap<String, PlayerState>,
+    browser_tokens: &[String],
     cache: &mut HashMap<String, MediaInfo>,
     bus_name: &str,
 ) {
@@ -36,6 +39,7 @@ pub(super) async fn refresh_player_cache(
         return;
     };
     if let Some(info) = fetch_media_info(&state).await {
+        let info = with_browser_family(info, browser_tokens);
         cache.insert(bus_name.to_string(), info);
     } else {
         cache.remove(bus_name);
@@ -112,7 +116,7 @@ fn dedupe_players(infos: Vec<MediaInfo>) -> Vec<MediaInfo> {
 }
 
 fn dedupe_key(info: &MediaInfo) -> Option<String> {
-    if let Some(family) = browser_family(&info.identity, &info.bus_name) {
+    if let Some(family) = info.browser_family.as_deref() {
         return Some(format!("browser:{family}"));
     }
     let title = info.title.trim();
@@ -137,35 +141,47 @@ fn media_score(info: &MediaInfo) -> (u8, u8) {
     (status, art_rank)
 }
 
-fn browser_family(identity: &str, bus_name: &str) -> Option<&'static str> {
+fn with_browser_family(mut info: MediaInfo, browser_tokens: &[String]) -> MediaInfo {
+    // Browser tokens are config-driven to avoid hardcoded identification lists.
+    info.browser_family = detect_browser_family(&info.identity, &info.bus_name, browser_tokens);
+    info
+}
+
+fn detect_browser_family(
+    identity: &str,
+    bus_name: &str,
+    browser_tokens: &[String],
+) -> Option<String> {
+    if browser_tokens.is_empty() {
+        return None;
+    }
     let bus_lower = bus_name.to_lowercase();
-    if let Some(family) = browser_family_from_value(&bus_lower) {
+    if let Some(family) = browser_family_from_value(&bus_lower, browser_tokens) {
         return Some(family);
     }
     let identity_lower = identity.to_lowercase();
-    browser_family_from_value(&identity_lower)
+    browser_family_from_value(&identity_lower, browser_tokens).or_else(|| {
+        // Fall back to MPRIS suffix when identity signals a browser but tokens miss.
+        if !identity_lower.contains("browser") {
+            return None;
+        }
+        mpris_suffix(&bus_lower).map(|suffix| suffix.to_string())
+    })
 }
 
-fn browser_family_from_value(value: &str) -> Option<&'static str> {
-    if value.contains("brave") {
-        return Some("brave");
-    }
-    if value.contains("firefox") {
-        return Some("firefox");
-    }
-    if value.contains("chromium") {
-        return Some("chromium");
-    }
-    if value.contains("chrome") {
-        return Some("chrome");
-    }
-    if value.contains("vivaldi") {
-        return Some("vivaldi");
-    }
-    if value.contains("edge") {
-        return Some("edge");
+fn browser_family_from_value(value: &str, browser_tokens: &[String]) -> Option<String> {
+    for token in browser_tokens {
+        if value.contains(token) {
+            return Some(token.clone());
+        }
     }
     None
+}
+
+fn mpris_suffix(bus_name: &str) -> Option<&str> {
+    let suffix = bus_name.strip_prefix("org.mpris.mediaplayer2.")?;
+    // Keep only the first segment to group instance-specific bus names together.
+    Some(suffix.split('.').next().unwrap_or(suffix))
 }
 
 fn normalize_token(value: &str) -> String {
@@ -196,10 +212,12 @@ mod tests {
         identity: &str,
         playback_status: &str,
         art_uri: Option<&str>,
+        browser_family: Option<&str>,
     ) -> MediaInfo {
         MediaInfo {
             bus_name: bus_name.to_string(),
             identity: identity.to_string(),
+            browser_family: browser_family.map(|family| family.to_string()),
             title: "title".to_string(),
             artist: "artist".to_string(),
             playback_status: playback_status.to_string(),
@@ -216,15 +234,15 @@ mod tests {
         let mut cache = HashMap::new();
         cache.insert(
             "org.mpris.MediaPlayer2.b".to_string(),
-            make_info("org.mpris.MediaPlayer2.b", "Zeta", "Paused", None),
+            make_info("org.mpris.MediaPlayer2.b", "Zeta", "Paused", None, None),
         );
         cache.insert(
             "org.mpris.MediaPlayer2.a".to_string(),
-            make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", None),
+            make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", None, None),
         );
         cache.insert(
             "org.mpris.MediaPlayer2.c".to_string(),
-            make_info("org.mpris.MediaPlayer2.c", "Beta", "Playing", None),
+            make_info("org.mpris.MediaPlayer2.c", "Beta", "Playing", None, None),
         );
 
         let snapshot = build_snapshot(&cache);
@@ -242,6 +260,7 @@ mod tests {
                 "Firefox",
                 "Paused",
                 Some("art://paused"),
+                Some("firefox"),
             ),
         );
         cache.insert(
@@ -251,6 +270,7 @@ mod tests {
                 "Firefox",
                 "Playing",
                 None,
+                Some("firefox"),
             ),
         );
 

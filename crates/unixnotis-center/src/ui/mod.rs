@@ -9,7 +9,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Instant;
 
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc;
 use unixnotis_core::{Config, Margins};
 
 use crate::dbus::{UiCommand, UiEvent};
@@ -47,7 +47,7 @@ pub struct UiState {
     toggles: Option<widgets::toggles::ToggleGrid>,
     stats: Option<widgets::stats::StatGrid>,
     cards: Option<widgets::cards::CardGrid>,
-    command_tx: UnboundedSender<UiCommand>,
+    command_tx: mpsc::Sender<UiCommand>,
     event_tx: async_channel::Sender<UiEvent>,
     refresh_source: Option<gtk::glib::SourceId>,
     last_fast_refresh: Option<Instant>,
@@ -61,9 +61,17 @@ pub struct UiStateInit {
     pub app: gtk::Application,
     pub config: Config,
     pub config_path: std::path::PathBuf,
-    pub command_tx: UnboundedSender<UiCommand>,
+    pub command_tx: mpsc::Sender<UiCommand>,
     pub css: CssManager,
     pub event_tx: async_channel::Sender<UiEvent>,
     pub media_handle: Option<crate::media::MediaHandle>,
     pub runtime: Arc<tokio::runtime::Runtime>,
+}
+
+pub(super) fn try_send_command(command_tx: &mpsc::Sender<UiCommand>, command: UiCommand) {
+    // Non-blocking send keeps GTK handlers responsive under D-Bus stalls.
+    if let Err(err) = command_tx.try_send(command) {
+        // Dropping commands on backpressure is safer than blocking the UI thread.
+        tracing::warn!(?err, "failed to enqueue ui command");
+    }
 }

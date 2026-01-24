@@ -29,15 +29,17 @@ use media_schedule::{
 };
 
 // MPRIS base identifiers used to discover players on the session bus.
-const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
-const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
-const MPRIS_PLAYER: &str = "org.mpris.MediaPlayer2.Player";
-const MPRIS_APP: &str = "org.mpris.MediaPlayer2";
+pub(super) const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
+pub(super) const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
+pub(super) const MPRIS_PLAYER: &str = "org.mpris.MediaPlayer2.Player";
+pub(super) const MPRIS_APP: &str = "org.mpris.MediaPlayer2";
 
 #[derive(Debug, Clone)]
 pub struct MediaInfo {
     pub bus_name: String,
     pub identity: String,
+    /// Browser family tag used for deduping multiple browser-backed players.
+    pub browser_family: Option<String>,
     pub title: String,
     pub artist: String,
     pub playback_status: String,
@@ -156,6 +158,8 @@ pub fn start_media_task(
         let (signal_tx, mut signal_rx) = mpsc::channel::<MediaSignal>(MEDIA_SIGNAL_CAPACITY);
         let mut players: HashMap<String, PlayerState> = HashMap::new();
         let mut cache: HashMap<String, MediaInfo> = HashMap::new();
+        // Clone tokens once to avoid repeated allocations in refresh paths.
+        let browser_tokens = config.browser_tokens.clone();
         let mut refresh = true;
 
         loop {
@@ -166,7 +170,7 @@ pub fn start_media_task(
                 {
                     warn!(?err, "failed to refresh media players");
                 }
-                refresh_cache(&players, &mut cache).await;
+                refresh_cache(&players, &browser_tokens, &mut cache).await;
                 send_snapshot(&sender, &cache).await;
                 schedule_metadata_fallbacks(&cache, signal_tx.clone());
                 refresh = false;
@@ -184,7 +188,8 @@ pub fn start_media_task(
                         command => {
                             if let Ok(Some(name)) = handle_command(&players, command).await {
                                 // Post-command refresh keeps controls responsive without polling.
-                                refresh_player_cache(&players, &mut cache, &name).await;
+                                refresh_player_cache(&players, &browser_tokens, &mut cache, &name)
+                                    .await;
                                 send_snapshot(&sender, &cache).await;
                                 schedule_metadata_fallback(&cache, signal_tx.clone(), &name);
                                 for delay_ms in [150_u64, 650_u64] {
@@ -204,7 +209,7 @@ pub fn start_media_task(
                     };
                     let MediaSignal::PropertiesChanged(name) = signal;
                     // Property changes are per-player; refresh only the updated entry.
-                    refresh_player_cache(&players, &mut cache, &name).await;
+                    refresh_player_cache(&players, &browser_tokens, &mut cache, &name).await;
                     send_snapshot(&sender, &cache).await;
                     schedule_metadata_fallback(&cache, signal_tx.clone(), &name);
                 }
@@ -287,7 +292,8 @@ async fn apply_owner_change(
             signal_tx.clone(),
         );
         players.insert(name.to_string(), state);
-        refresh_player_cache(players, cache, name).await;
+        // Use the same browser token set for late-joining players.
+        refresh_player_cache(players, &config.browser_tokens, cache, name).await;
         send_snapshot(sender, cache).await;
         schedule_metadata_fallback(cache, signal_tx.clone(), name);
     }

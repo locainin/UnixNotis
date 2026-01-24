@@ -1,10 +1,11 @@
 //! D-Bus runtime for center UI events and control commands.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::StreamExt;
-use tokio::sync::mpsc::{self, UnboundedSender};
+use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 use unixnotis_core::{
     CloseReason, ControlProxy, ControlState, Margins, NotificationView, PanelDebugLevel,
@@ -23,6 +24,8 @@ const SEED_RETRY_BASE_MS: u64 = 250;
 const SEED_RETRY_MAX_MS: u64 = 2000;
 const SEED_RETRY_BUDGET_SECS: u64 = 30;
 const SEED_RETRY_LOG_INTERVAL_SECS: u64 = 10;
+// Bound UI command queue to prevent unbounded growth during stalls.
+const UI_COMMAND_QUEUE_CAPACITY: usize = 64;
 
 struct Backoff {
     base: Duration,
@@ -56,12 +59,32 @@ fn jitter_duration(max_ms: u64) -> Duration {
     if max_ms == 0 {
         return Duration::from_millis(0);
     }
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos() as u64;
-    let jitter_ms = (nanos % (max_ms * 1_000_000)) / 1_000_000;
+    // Simple xorshift-based jitter avoids deterministic alignment without extra dependencies.
+    let jitter_ms = next_jitter_seed().wrapping_rem(max_ms);
     Duration::from_millis(jitter_ms)
+}
+
+fn next_jitter_seed() -> u64 {
+    static STATE: AtomicU64 = AtomicU64::new(0);
+    // Seed from wall clock once; subsequent calls evolve the state.
+    let seed = STATE.load(Ordering::Relaxed);
+    let mut value = if seed == 0 {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos() as u64;
+        // Avoid a zero seed to keep the xorshift cycle moving.
+        nanos | 1
+    } else {
+        seed
+    };
+    // xorshift64* variant for compact, fast jitter values.
+    value ^= value >> 12;
+    value ^= value << 25;
+    value ^= value >> 27;
+    value = value.wrapping_mul(0x2545F4914F6CDD1D);
+    STATE.store(value, Ordering::Relaxed);
+    value
 }
 
 // Rate-limited logger used to avoid warning spam during retry loops.
@@ -165,8 +188,8 @@ pub fn start_dbus_task(
     runtime: &tokio::runtime::Handle,
     connection: Connection,
     sender: async_channel::Sender<UiEvent>,
-) -> UnboundedSender<UiCommand> {
-    let (command_tx, command_rx) = mpsc::unbounded_channel();
+) -> mpsc::Sender<UiCommand> {
+    let (command_tx, command_rx) = mpsc::channel(UI_COMMAND_QUEUE_CAPACITY);
     runtime.spawn(run_dbus_loop(connection, sender, command_rx));
     command_tx
 }
@@ -174,7 +197,7 @@ pub fn start_dbus_task(
 async fn run_dbus_loop(
     connection: Connection,
     sender: async_channel::Sender<UiEvent>,
-    mut command_rx: mpsc::UnboundedReceiver<UiCommand>,
+    mut command_rx: mpsc::Receiver<UiCommand>,
 ) {
     // Buffer UI actions during reconnect to avoid losing user intent.
     let mut offline_commands: VecDeque<UiCommand> = VecDeque::new();
@@ -197,6 +220,7 @@ async fn run_dbus_loop(
         connect_log.reset();
         info!("connected to unixnotis control interface");
         seed_state_with_retry(&proxy, &sender).await;
+        drop_stale_offline_commands(&mut offline_commands);
         flush_offline_commands(&proxy, &sender, &mut offline_commands).await;
 
         let mut added_stream = match proxy.receive_notification_added().await {
@@ -400,7 +424,7 @@ async fn handle_command(
 const MAX_OFFLINE_COMMANDS: usize = 128;
 
 fn stash_offline_commands(
-    command_rx: &mut mpsc::UnboundedReceiver<UiCommand>,
+    command_rx: &mut mpsc::Receiver<UiCommand>,
     offline: &mut VecDeque<UiCommand>,
 ) {
     let mut drained = 0usize;
@@ -440,6 +464,23 @@ async fn flush_offline_commands(
     }
 }
 
+fn drop_stale_offline_commands(offline: &mut VecDeque<UiCommand>) {
+    // Drop ID-based commands after reconnect to avoid acting on stale IDs.
+    let before = offline.len();
+    offline.retain(|command| {
+        matches!(
+            command,
+            UiCommand::ClearAll | UiCommand::SetDnd(_) | UiCommand::ClosePanel
+        )
+    });
+    let dropped = before.saturating_sub(offline.len());
+    if dropped > 0 {
+        debug::log(PanelDebugLevel::Info, || {
+            format!("dropped {dropped} stale offline command(s) after reconnect")
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,5 +513,32 @@ mod tests {
     #[test]
     fn jitter_zero_returns_zero() {
         assert_eq!(jitter_duration(0), Duration::from_millis(0));
+    }
+
+    #[test]
+    fn jitter_duration_is_bounded() {
+        // Ensure jitter never exceeds the configured maximum.
+        let jitter = jitter_duration(5);
+        assert!(jitter <= Duration::from_millis(5));
+    }
+
+    #[test]
+    fn drop_stale_offline_commands_retains_safe_actions() {
+        let mut offline = VecDeque::new();
+        offline.push_back(UiCommand::Dismiss(10));
+        offline.push_back(UiCommand::InvokeAction {
+            id: 11,
+            action_key: "open".to_string(),
+        });
+        offline.push_back(UiCommand::SetDnd(true));
+        offline.push_back(UiCommand::ClearAll);
+        offline.push_back(UiCommand::ClosePanel);
+
+        drop_stale_offline_commands(&mut offline);
+
+        assert_eq!(offline.len(), 3);
+        assert!(offline.iter().any(|cmd| matches!(cmd, UiCommand::SetDnd(true))));
+        assert!(offline.iter().any(|cmd| matches!(cmd, UiCommand::ClearAll)));
+        assert!(offline.iter().any(|cmd| matches!(cmd, UiCommand::ClosePanel)));
     }
 }

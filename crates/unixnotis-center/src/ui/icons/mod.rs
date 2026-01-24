@@ -131,17 +131,18 @@ impl IconResolverInner {
                             let paintable = self.cache.borrow_mut().insert(key.clone(), paintable);
                             return Some(IconResolution::Ready { key, paintable });
                         }
-                        return None;
+                        // Fall through to themed/icon candidates when SVG load is skipped.
+                    } else {
+                        return Some(IconResolution::Async {
+                            key: key.clone(),
+                            request: IconDecodeRequest {
+                                key,
+                                path,
+                                size,
+                                scale,
+                            },
+                        });
                     }
-                    return Some(IconResolution::Async {
-                        key: key.clone(),
-                        request: IconDecodeRequest {
-                            key,
-                            path,
-                            size,
-                            scale,
-                        },
-                    });
                 }
             }
         }

@@ -42,6 +42,8 @@ pub(super) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {
     Some(MediaInfo {
         bus_name: state.bus_name.clone(),
         identity: state.identity.clone(),
+        // Browser family tagging is computed in the cache layer with config-aware tokens.
+        browser_family: None,
         title,
         artist,
         playback_status,

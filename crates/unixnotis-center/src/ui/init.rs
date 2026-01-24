@@ -17,7 +17,7 @@ use crate::dbus::UiCommand;
 use crate::debug;
 
 use super::widget_builders::{build_extra_widgets, build_quick_controls};
-use super::{hyprland, icons, list, media_widget, panel, UiState, UiStateInit};
+use super::{hyprland, icons, list, media_widget, panel, try_send_command, UiState, UiStateInit};
 
 impl UiState {
     pub fn new(init: UiStateInit) -> Self {
@@ -61,20 +61,38 @@ impl UiState {
                 return;
             }
             debug!(enabled = button.is_active(), "dnd toggled");
-            let _ = dnd_tx.send(UiCommand::SetDnd(button.is_active()));
+            // Non-blocking send keeps GTK handlers responsive.
+            try_send_command(&dnd_tx, UiCommand::SetDnd(button.is_active()));
         });
 
         let clear_tx = init.command_tx.clone();
         panel.clear_button.connect_clicked(move |_| {
             debug!("clear all clicked");
-            let _ = clear_tx.send(UiCommand::ClearAll);
+            // Non-blocking send avoids UI stalls on D-Bus backpressure.
+            try_send_command(&clear_tx, UiCommand::ClearAll);
         });
 
         let close_tx = init.command_tx.clone();
         panel.close_button.connect_clicked(move |_| {
             debug!("close panel clicked");
-            let _ = close_tx.send(UiCommand::ClosePanel);
+            // Best-effort enqueue keeps close behavior immediate.
+            try_send_command(&close_tx, UiCommand::ClosePanel);
         });
+
+        let connect_blur_close = |close_tx: tokio::sync::mpsc::Sender<UiCommand>,
+                                  visible_flag: Arc<AtomicBool>,
+                                  window: &gtk::ApplicationWindow| {
+            // Focus-based close is shared between click-away fallback and explicit blur mode.
+            window.connect_is_active_notify(move |window| {
+                // Only close when the panel is visible and focus is lost.
+                if !visible_flag.load(Ordering::SeqCst) {
+                    return;
+                }
+                if !window.is_active() {
+                    try_send_command(&close_tx, UiCommand::ClosePanel);
+                }
+            });
+        };
 
         if init.config.panel.close_on_click_outside {
             // Hyprland watcher is preferred; fall back to focus-based close if unavailable.
@@ -84,29 +102,18 @@ impl UiState {
                 panel_visible_flag.clone(),
             );
             if !started && init.config.panel.close_on_blur {
-                let close_tx = init.command_tx.clone();
-                let visible_flag = panel_visible_flag.clone();
-                panel.window.connect_is_active_notify(move |window| {
-                    if !visible_flag.load(Ordering::SeqCst) {
-                        return;
-                    }
-                    if !window.is_active() {
-                        let _ = close_tx.send(UiCommand::ClosePanel);
-                    }
-                });
+                connect_blur_close(
+                    init.command_tx.clone(),
+                    panel_visible_flag.clone(),
+                    &panel.window,
+                );
             }
         } else if init.config.panel.close_on_blur {
-            let close_tx = init.command_tx.clone();
-            let visible_flag = panel_visible_flag.clone();
-            panel.window.connect_is_active_notify(move |window| {
-                // Only close when the panel is visible and focus is lost.
-                if !visible_flag.load(Ordering::SeqCst) {
-                    return;
-                }
-                if !window.is_active() {
-                    let _ = close_tx.send(UiCommand::ClosePanel);
-                }
-            });
+            connect_blur_close(
+                init.command_tx.clone(),
+                panel_visible_flag.clone(),
+                &panel.window,
+            );
         }
 
         // Escape closes the panel regardless of the focused widget.
@@ -114,7 +121,8 @@ impl UiState {
         let key_controller = gtk::EventControllerKey::new();
         key_controller.connect_key_pressed(move |_, key, _, _| {
             if key == gdk::Key::Escape {
-                let _ = esc_tx.send(UiCommand::ClosePanel);
+                // Escape should close quickly without blocking the UI thread.
+                try_send_command(&esc_tx, UiCommand::ClosePanel);
                 return gtk::glib::Propagation::Stop;
             }
             gtk::glib::Propagation::Proceed
