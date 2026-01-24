@@ -322,26 +322,86 @@ fn read_network_bytes(iface: &str) -> Option<(u64, u64)> {
 }
 
 fn pick_default_iface() -> Option<String> {
+    // Collect interface metadata from sysfs before choosing a default.
+    // Deterministic selection avoids flicker across restarts when multiple interfaces are present.
     let entries = fs::read_dir("/sys/class/net").ok()?;
-    let mut fallback = None;
+    let mut candidates = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
         let iface = path
             .file_name()
             .and_then(|value| value.to_str())
             .unwrap_or("lo");
+        // Loopback should never be selected for bandwidth stats.
         if iface == "lo" {
             continue;
         }
-        if fallback.is_none() {
-            fallback = Some(iface.to_string());
-        }
+        // Track operstate separately so sorting can prefer active interfaces.
         let operstate = fs::read_to_string(path.join("operstate")).unwrap_or_default();
-        if operstate.trim() == "up" {
-            return Some(iface.to_string());
-        }
+        candidates.push(IfaceCandidate {
+            name: iface.to_string(),
+            operstate,
+        });
     }
-    fallback
+
+    pick_default_iface_from(&candidates)
+}
+
+#[derive(Debug, Clone)]
+struct IfaceCandidate {
+    // Interface name as reported by sysfs.
+    name: String,
+    // Raw operstate contents ("up", "down", etc), kept for ranking.
+    operstate: String,
+}
+
+fn pick_default_iface_from(candidates: &[IfaceCandidate]) -> Option<String> {
+    // Filter invalid entries early to keep ranking logic simple.
+    let mut ranked: Vec<&IfaceCandidate> = candidates
+        .iter()
+        .filter(|candidate| !candidate.name.is_empty())
+        .filter(|candidate| candidate.name != "lo")
+        .collect();
+    if ranked.is_empty() {
+        return None;
+    }
+
+    // Sort deterministically: prefer active interfaces, then physical, then by name.
+    ranked.sort_by(|left, right| iface_sort_key(left).cmp(&iface_sort_key(right)));
+
+    ranked.first().map(|candidate| candidate.name.clone())
+}
+
+fn iface_sort_key(candidate: &IfaceCandidate) -> (u8, u8, &str) {
+    // Active interfaces are sorted first; other states are considered less reliable.
+    let up_rank = if candidate.operstate.trim() == "up" { 0 } else { 1 };
+    // Physical interfaces are favored over virtual ones for default bandwidth stats.
+    let class_rank = iface_class_rank(candidate.name.as_str());
+    // Name order provides stable ties across runs and reboots.
+    (up_rank, class_rank, candidate.name.as_str())
+}
+
+fn iface_class_rank(name: &str) -> u8 {
+    // Common physical prefixes across distros and predictable interface naming.
+    const PHYSICAL_PREFIXES: [&str; 6] = ["en", "eth", "wl", "wlan", "wlp", "wwan"];
+    // Known virtual or container/VM prefixes that should be deprioritized.
+    const VIRTUAL_PREFIXES: [&str; 11] = [
+        "veth", "docker", "br", "virbr", "vmnet", "tap", "tun", "wg", "zt", "lo", "tailscale",
+    ];
+
+    if starts_with_any(name, &PHYSICAL_PREFIXES) {
+        return 0;
+    }
+    if starts_with_any(name, &VIRTUAL_PREFIXES) {
+        return 2;
+    }
+    // Unknown interfaces are treated as neutral and sort after physical ones.
+    1
+}
+
+fn starts_with_any(name: &str, prefixes: &[&str]) -> bool {
+    // Prefix matching keeps the logic lightweight and deterministic.
+    prefixes.iter().any(|prefix| name.starts_with(prefix))
 }
 
 fn format_rate(rate: f64) -> String {
@@ -373,7 +433,7 @@ fn extract_iface(cmd: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::read_battery_from;
+    use super::{pick_default_iface_from, read_battery_from, IfaceCandidate};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -500,5 +560,59 @@ mod tests {
         );
         let percent = read_battery_from(temp.path()).expect("battery percent missing");
         assert_eq!(percent, "50");
+    }
+
+    #[test]
+    fn default_iface_prefers_up_physical_over_virtual() {
+        // Virtual interfaces should be deprioritized even when they are up.
+        let candidates = vec![
+            IfaceCandidate {
+                name: "docker0".to_string(),
+                operstate: "up".to_string(),
+            },
+            IfaceCandidate {
+                name: "wlan0".to_string(),
+                operstate: "up".to_string(),
+            },
+        ];
+
+        let selected = pick_default_iface_from(&candidates).expect("iface selected");
+        assert_eq!(selected, "wlan0");
+    }
+
+    #[test]
+    fn default_iface_uses_deterministic_name_tiebreaker() {
+        // Alphabetical ordering keeps selection stable when all candidates are up.
+        let candidates = vec![
+            IfaceCandidate {
+                name: "wlp2s0".to_string(),
+                operstate: "up".to_string(),
+            },
+            IfaceCandidate {
+                name: "enp3s0".to_string(),
+                operstate: "up".to_string(),
+            },
+        ];
+
+        let selected = pick_default_iface_from(&candidates).expect("iface selected");
+        assert_eq!(selected, "enp3s0");
+    }
+
+    #[test]
+    fn default_iface_falls_back_to_physical_when_none_up() {
+        // When no interfaces are up, prefer physical devices over virtual ones.
+        let candidates = vec![
+            IfaceCandidate {
+                name: "veth1234".to_string(),
+                operstate: "down".to_string(),
+            },
+            IfaceCandidate {
+                name: "eth0".to_string(),
+                operstate: "down".to_string(),
+            },
+        ];
+
+        let selected = pick_default_iface_from(&candidates).expect("iface selected");
+        assert_eq!(selected, "eth0");
     }
 }
