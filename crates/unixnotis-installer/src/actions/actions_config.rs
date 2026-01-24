@@ -1,6 +1,7 @@
 //! Config and theme file creation/reset logic.
 
 use std::fs;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use unixnotis_core::Config;
@@ -74,6 +75,9 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
 
     fs::create_dir_all(&config_dir).with_context(|| "failed to create config directory")?;
 
+    // Preserve existing config before overwriting so customizations are recoverable.
+    backup_existing_file(ctx, &config_path, "config.toml")?;
+
     let config_toml = toml::to_string_pretty(&config).map_err(|err| anyhow!(err.to_string()))?;
     fs::write(&config_path, config_toml).with_context(|| "failed to write config.toml")?;
 
@@ -88,6 +92,12 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     let theme_paths = config
         .resolve_theme_paths()
         .map_err(|err| anyhow!(err.to_string()))?;
+
+    // Backup theme files before reset to avoid accidental loss of user styling.
+    backup_existing_file(ctx, &theme_paths.base_css, "base.css")?;
+    backup_existing_file(ctx, &theme_paths.panel_css, "panel.css")?;
+    backup_existing_file(ctx, &theme_paths.popup_css, "popup.css")?;
+    backup_existing_file(ctx, &theme_paths.widgets_css, "widgets.css")?;
 
     fs::write(&theme_paths.base_css, unixnotis_core::DEFAULT_BASE_CSS)
         .with_context(|| "failed to write base.css")?;
@@ -107,4 +117,68 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     );
 
     Ok(())
+}
+
+fn backup_existing_file(ctx: &mut ActionContext, path: &Path, label: &str) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let backup_path = next_backup_path(path);
+    fs::rename(path, &backup_path).with_context(|| format!("failed to backup {}", label))?;
+    log_line(
+        ctx,
+        format!(
+            "Backed up {} to {}",
+            label,
+            format_with_home(&backup_path)
+        ),
+    );
+    Ok(())
+}
+
+fn next_backup_path(path: &Path) -> PathBuf {
+    // Keep backups alongside the original file with .bak suffixes.
+    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+    let mut candidate = path.with_file_name(format!("{file_name}.bak"));
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    // Increment suffixes to avoid overwriting prior backups.
+    let mut index = 1;
+    loop {
+        candidate = path.with_file_name(format!("{file_name}.bak.{index}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_backup_path;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn next_backup_path_increments_suffixes() {
+        // Ensures backup naming avoids overwriting existing .bak files.
+        let Ok(home) = std::env::var("HOME") else {
+            return;
+        };
+        let dir = PathBuf::from(home).join(".cache").join(format!(
+            "unixnotis-installer-backup-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        let target = dir.join("config.toml");
+        let _ = fs::write(&target, "original");
+        let first = next_backup_path(&target);
+        let _ = fs::write(&first, "bak");
+        let second = next_backup_path(&target);
+        assert_ne!(first, second);
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

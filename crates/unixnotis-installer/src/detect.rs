@@ -4,6 +4,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use serde_json::Value;
+
 #[derive(Clone)]
 pub struct OwnerInfo {
     pub pid: Option<u32>,
@@ -101,22 +103,100 @@ fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
     Some(OwnerInfo { pid, comm })
 }
 
-fn detect_owner() -> Option<OwnerInfo> {
-    let output = Command::new("busctl")
-        .args(["--user", "status", "org.freedesktop.Notifications"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
+fn parse_busctl_json(status: &str) -> Option<OwnerInfo> {
+    // Accept loosely structured JSON and search for PID/Comm fields anywhere in the tree.
+    let value: Value = serde_json::from_str(status).ok()?;
+    let mut comm = None;
+    let mut pid = None;
+    walk_busctl_json(&value, &mut comm, &mut pid);
+
+    if comm.is_none() && pid.is_none() {
         return None;
     }
 
-    let status = String::from_utf8_lossy(&output.stdout);
-    let OwnerInfo { pid, comm } = parse_busctl_status(&status)?;
+    Some(OwnerInfo { pid, comm })
+}
+
+fn walk_busctl_json(value: &Value, comm: &mut Option<String>, pid: &mut Option<u32>) {
+    match value {
+        Value::Object(map) => {
+            for (key, value) in map {
+                if key == "Comm" && comm.is_none() {
+                    if let Value::String(text) = value {
+                        if !text.trim().is_empty() {
+                            *comm = Some(text.to_string());
+                        }
+                    }
+                }
+                if key == "PID" && pid.is_none() {
+                    if let Some(parsed) = parse_pid_value(value) {
+                        *pid = Some(parsed);
+                    }
+                }
+                walk_busctl_json(value, comm, pid);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                walk_busctl_json(item, comm, pid);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn parse_pid_value(value: &Value) -> Option<u32> {
+    match value {
+        Value::Number(number) => number.as_u64().and_then(|val| {
+            if val == 0 {
+                None
+            } else {
+                u32::try_from(val).ok()
+            }
+        }),
+        Value::String(text) => text.parse::<u32>().ok().and_then(|val| {
+            if val == 0 {
+                None
+            } else {
+                Some(val)
+            }
+        }),
+        _ => None,
+    }
+}
+
+fn detect_owner() -> Option<OwnerInfo> {
+    let OwnerInfo { pid, comm } = read_busctl_owner()?;
     // Prefer the executable name derived from argv0; fall back to busctl and /proc data.
     let comm = pid
         .and_then(read_cmdline_program)
         .or_else(|| comm.or_else(|| pid.and_then(read_comm)));
     Some(OwnerInfo { pid, comm })
+}
+
+fn read_busctl_owner() -> Option<OwnerInfo> {
+    // Prefer JSON output when supported; fall back to the textual format otherwise.
+    if let Some(status) = run_busctl(&[
+        "--user",
+        "--json=short",
+        "status",
+        "org.freedesktop.Notifications",
+    ]) {
+        if let Some(owner) = parse_busctl_json(&status) {
+            return Some(owner);
+        }
+    }
+
+    let status = run_busctl(&["--user", "status", "org.freedesktop.Notifications"])?;
+    parse_busctl_status(&status)
+}
+
+fn run_busctl(args: &[&str]) -> Option<String> {
+    let output = Command::new("busctl").args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 fn detect_known_daemons(owner: &Option<OwnerInfo>) -> Vec<DetectedDaemon> {
@@ -210,7 +290,7 @@ fn read_cmdline_program(pid: u32) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_busctl_status;
+    use super::{parse_busctl_json, parse_busctl_status};
 
     #[test]
     fn parse_busctl_status_reads_indented_fields() {
@@ -262,5 +342,21 @@ Status of org.freedesktop.Notifications:
         let owner = parse_busctl_status(output).expect("expected parsed owner info");
         assert_eq!(owner.pid, None);
         assert_eq!(owner.comm.as_deref(), Some("notify-osd"));
+    }
+
+    #[test]
+    fn parse_busctl_json_reads_pid_and_comm() {
+        // Confirms JSON parsing extracts PID and command name when present.
+        let output = r#"
+{
+  "Status": {
+    "PID": 4242,
+    "Comm": "unixnotis-daemon"
+  }
+}
+"#;
+        let owner = parse_busctl_json(output).expect("expected parsed owner info");
+        assert_eq!(owner.pid, Some(4242));
+        assert_eq!(owner.comm.as_deref(), Some("unixnotis-daemon"));
     }
 }

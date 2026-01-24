@@ -256,6 +256,8 @@ fn render_status(app: &App) -> Text<'static> {
     lines.extend(render_check(&app.checks.cargo));
     lines.extend(render_check(&app.checks.gtk4_layer_shell));
     lines.extend(render_check(&app.checks.busctl));
+    lines.extend(render_check(&app.checks.install_paths));
+    lines.extend(render_check(&app.checks.path_contains_bin));
 
     // Blank line = visual separation between sections.
     lines.push(Line::from(""));

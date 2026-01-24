@@ -13,7 +13,7 @@ use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::{format_with_home, InstallPaths};
 
-use super::log_line;
+use super::{actions_binaries::resolve_install_binaries, log_line};
 
 pub struct ActionContext<'a> {
     pub detection: &'a Detection,
@@ -25,7 +25,7 @@ pub struct ActionContext<'a> {
 
 #[derive(Clone)]
 struct BinaryState {
-    name: &'static str,
+    name: String,
     path: PathBuf,
     exists: bool,
 }
@@ -41,7 +41,9 @@ pub struct InstallState {
 impl InstallState {
     pub fn is_installed(&self) -> bool {
         // Treat installed as binaries + unit present; runtime status tracked separately.
-        self.binaries.iter().all(|binary| binary.exists) && self.unit_exists
+        !self.binaries.is_empty()
+            && self.binaries.iter().all(|binary| binary.exists)
+            && self.unit_exists
     }
 
     pub fn is_fully_installed(&self) -> bool {
@@ -50,22 +52,19 @@ impl InstallState {
 }
 
 pub fn check_install_state(paths: &InstallPaths) -> InstallState {
-    let binaries = [
-        "unixnotis-daemon",
-        "unixnotis-popups",
-        "unixnotis-center",
-        "noticenterctl",
-    ]
-    .into_iter()
-    .map(|name| {
-        let path = paths.bin_dir.join(name);
-        BinaryState {
-            name,
-            exists: path.exists(),
-            path,
-        }
-    })
-    .collect::<Vec<_>>();
+    // Keep install state aligned with installer binary discovery.
+    let binaries = resolve_install_binaries(paths)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|name| {
+            let path = paths.bin_dir.join(&name);
+            BinaryState {
+                name,
+                exists: path.exists(),
+                path,
+            }
+        })
+        .collect::<Vec<_>>();
 
     let unit_exists = paths.unit_path.exists();
     let mut unit_active_error = None;
@@ -96,6 +95,10 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
         .unwrap_or_else(|| check_install_state(ctx.paths));
 
     log_line(ctx, "Install state:");
+    if state.binaries.is_empty() {
+        // Surface metadata/discovery issues early so installer output is actionable.
+        log_line(ctx, "Warning: no installable binaries discovered");
+    }
     for binary in &state.binaries {
         let status = if binary.exists { "present" } else { "missing" };
         log_line(

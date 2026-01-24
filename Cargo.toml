@@ -45,3 +45,8 @@ libc = "0.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff", "webp", "ico"] }
 ratatui = "0.30.0"
 crossterm = "0.28"
+
+[workspace.metadata.unixnotis.installer]
+# Installer-managed binaries live in workspace metadata to avoid duplication between build and install logic.
+# This list is the single source of truth for unixnotis-installer binary deployment.
+binaries = ["unixnotis-daemon", "unixnotis-popups", "unixnotis-center", "noticenterctl"]

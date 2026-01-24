@@ -58,6 +58,14 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
 
         if let Some(pid) = owner_pid {
             log_line(ctx, format!("Stopping {} (pid {})", daemon.name, pid));
+            // Re-check the command name to avoid signaling a recycled PID.
+            if !pid_matches_comm(pid, &daemon.name)? {
+                return Err(anyhow!(
+                    "pid {} no longer matches expected daemon {}; aborting stop",
+                    pid,
+                    daemon.name
+                ));
+            }
             let status = Command::new("kill")
                 .args(["-TERM", &pid.to_string()])
                 .status()
@@ -108,4 +116,21 @@ fn pid_alive(pid: u32) -> Result<bool> {
         .status()
         .with_context(|| format!("failed to probe pid {pid}"))?;
     Ok(status.success())
+}
+
+fn pid_matches_comm(pid: u32, expected: &str) -> Result<bool> {
+    // Validate the process name with ps before sending signals to avoid PID reuse hazards.
+    let output = Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "comm="])
+        .output()
+        .with_context(|| format!("failed to read comm for pid {pid}"))?;
+    if !output.status.success() {
+        return Ok(false);
+    }
+    let comm = String::from_utf8_lossy(&output.stdout);
+    let comm = comm.trim();
+    if comm.is_empty() {
+        return Ok(false);
+    }
+    Ok(comm == expected)
 }

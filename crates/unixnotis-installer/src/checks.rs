@@ -1,9 +1,12 @@
 //! Environment checks for session requirements and tooling availability.
 
 use std::env;
+use std::fs::OpenOptions;
+use std::path::Path;
 use std::process::Command;
 
 use crate::model::ActionMode;
+use crate::paths::InstallPaths;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CheckState {
@@ -25,6 +28,8 @@ pub struct Checks {
     pub cargo: CheckItem,
     pub gtk4_layer_shell: CheckItem,
     pub busctl: CheckItem,
+    pub install_paths: CheckItem,
+    pub path_contains_bin: CheckItem,
 }
 
 impl Checks {
@@ -82,6 +87,28 @@ impl Checks {
             Err(err) => CheckItem::warn("busctl", &format!("check failed: {err}")),
         };
 
+        let (install_paths, path_contains_bin) = match InstallPaths::discover() {
+            Ok(paths) => {
+                let writable = install_paths_writable(&paths);
+                let install_paths = if writable {
+                    CheckItem::ok("Install paths", "writable")
+                } else {
+                    CheckItem::fail("Install paths", "not writable")
+                };
+                let in_path = path_includes_bin(&paths);
+                let path_contains_bin = if in_path {
+                    CheckItem::ok("PATH", "includes install bin")
+                } else {
+                    CheckItem::warn("PATH", "missing install bin")
+                };
+                (install_paths, path_contains_bin)
+            }
+            Err(err) => (
+                CheckItem::warn("Install paths", &format!("discovery failed: {err}")),
+                CheckItem::warn("PATH", "install bin unknown"),
+            ),
+        };
+
         Self {
             wayland,
             hyprland,
@@ -89,6 +116,8 @@ impl Checks {
             cargo,
             gtk4_layer_shell,
             busctl,
+            install_paths,
+            path_contains_bin,
         }
     }
 
@@ -124,10 +153,16 @@ impl Checks {
                             .to_string(),
                     );
                 }
+                if self.install_paths.state == CheckState::Fail {
+                    return Err("install paths are not writable".to_string());
+                }
             }
             ActionMode::Uninstall => {
                 if self.systemd_user.state == CheckState::Fail {
                     return Err("systemd --user session required".to_string());
+                }
+                if self.install_paths.state == CheckState::Fail {
+                    return Err("install paths are not writable".to_string());
                 }
             }
             ActionMode::Reset => {}
@@ -186,4 +221,52 @@ fn pkg_config_version(lib: &str) -> Result<Option<String>, String> {
     } else {
         Ok(Some(version))
     }
+}
+
+fn install_paths_writable(paths: &InstallPaths) -> bool {
+    // Validate both binary and unit directories because install/uninstall touches both.
+    let bin_ok = path_is_writable(&paths.bin_dir);
+    let unit_ok = path_is_writable(&paths.unit_dir);
+    bin_ok && unit_ok
+}
+
+fn path_is_writable(path: &Path) -> bool {
+    // Check write access using a temporary file in the directory or its parent.
+    let mut target_dir = if path.exists() {
+        path.to_path_buf()
+    } else {
+        match path.parent() {
+            Some(parent) => parent.to_path_buf(),
+            None => return false,
+        }
+    };
+    while !target_dir.exists() {
+        match target_dir.parent() {
+            Some(parent) => target_dir = parent.to_path_buf(),
+            None => return false,
+        }
+    }
+    if !target_dir.is_dir() {
+        return false;
+    }
+    let probe_name = format!(".unixnotis-installer-probe-{}", std::process::id());
+    let probe_path = target_dir.join(probe_name);
+    let result = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&probe_path);
+    if result.is_err() {
+        return false;
+    }
+    let _ = std::fs::remove_file(&probe_path);
+    true
+}
+
+fn path_includes_bin(paths: &InstallPaths) -> bool {
+    // Confirm the install bin directory is in PATH for user convenience.
+    let Ok(path_var) = env::var("PATH") else {
+        return false;
+    };
+    let mut entries = env::split_paths(&path_var);
+    entries.any(|entry| entry == paths.bin_dir)
 }
