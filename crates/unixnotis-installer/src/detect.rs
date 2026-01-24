@@ -60,6 +60,47 @@ pub fn detect() -> Detection {
     Detection { owner, daemons }
 }
 
+fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
+    // Parses `busctl --user status` output and tolerates the indented key/value format.
+    let mut comm = None;
+    let mut pid = None;
+
+    for line in status.lines() {
+        let trimmed = line.trim_start();
+        let Some((raw_key, raw_value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        // Normalize key/value parsing to accept both `Key=Value` and `Key = Value` variants.
+        let key = raw_key.trim();
+        let value = raw_value.trim();
+        if value.is_empty() {
+            // Empty values are ignored to avoid masking earlier valid data.
+            continue;
+        }
+        match key {
+            "Comm" => {
+                // Preserve the reported command name for fallback owner matching.
+                comm = Some(value.to_string());
+            }
+            "PID" => {
+                if let Ok(parsed) = value.parse::<u32>() {
+                    // PID 0 is not a valid user process; ignore it to avoid false positives.
+                    if parsed != 0 {
+                        pid = Some(parsed);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if comm.is_none() && pid.is_none() {
+        return None;
+    }
+
+    Some(OwnerInfo { pid, comm })
+}
+
 fn detect_owner() -> Option<OwnerInfo> {
     let output = Command::new("busctl")
         .args(["--user", "status", "org.freedesktop.Notifications"])
@@ -70,28 +111,8 @@ fn detect_owner() -> Option<OwnerInfo> {
     }
 
     let status = String::from_utf8_lossy(&output.stdout);
-    let mut comm = None;
-    let mut pid = None;
-
-    for line in status.lines() {
-        if let Some(value) = line.strip_prefix("Comm=") {
-            let trimmed = value.trim();
-            if !trimmed.is_empty() {
-                comm = Some(trimmed.to_string());
-            }
-        }
-        if let Some(value) = line.strip_prefix("PID=") {
-            let trimmed = value.trim();
-            if let Ok(parsed) = trimmed.parse::<u32>() {
-                pid = Some(parsed);
-            }
-        }
-    }
-
-    if comm.is_none() && pid.is_none() {
-        return None;
-    }
-
+    let OwnerInfo { pid, comm } = parse_busctl_status(&status)?;
+    // Prefer the executable name derived from argv0; fall back to busctl and /proc data.
     let comm = pid
         .and_then(read_cmdline_program)
         .or_else(|| comm.or_else(|| pid.and_then(read_comm)));
@@ -159,7 +180,14 @@ fn read_comm(pid: u32) -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    let comm = String::from_utf8_lossy(&output.stdout);
+    // Avoid returning empty command names from ps output.
+    let comm = comm.trim();
+    if comm.is_empty() {
+        None
+    } else {
+        Some(comm.to_string())
+    }
 }
 
 fn read_cmdline_program(pid: u32) -> Option<String> {
@@ -177,5 +205,62 @@ fn read_cmdline_program(pid: u32) -> Option<String> {
         None
     } else {
         Some(name.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_busctl_status;
+
+    #[test]
+    fn parse_busctl_status_reads_indented_fields() {
+        // Confirms indented output with spaced separators still yields PID and command name.
+        let output = "\
+Status of org.freedesktop.Notifications:
+   Name=org.freedesktop.Notifications
+   PID = 4242
+   UID=1000
+   User=vk
+   Comm = unixnotis-daemon
+";
+        let owner = parse_busctl_status(output).expect("expected parsed owner info");
+        assert_eq!(owner.pid, Some(4242));
+        assert_eq!(owner.comm.as_deref(), Some("unixnotis-daemon"));
+    }
+
+    #[test]
+    fn parse_busctl_status_handles_comm_only() {
+        // Verifies comm-only output remains useful when PID is absent.
+        let output = "\
+Status of org.freedesktop.Notifications:
+    Comm=dunst
+";
+        let owner = parse_busctl_status(output).expect("expected parsed owner info");
+        assert_eq!(owner.pid, None);
+        assert_eq!(owner.comm.as_deref(), Some("dunst"));
+    }
+
+    #[test]
+    fn parse_busctl_status_ignores_invalid_pid() {
+        // Ensures invalid PID values do not produce a false-positive owner.
+        let output = "\
+Status of org.freedesktop.Notifications:
+    PID=not-a-number
+";
+        let owner = parse_busctl_status(output);
+        assert!(owner.is_none());
+    }
+
+    #[test]
+    fn parse_busctl_status_ignores_zero_pid() {
+        // Treats PID 0 as invalid while still preserving the command name.
+        let output = "\
+Status of org.freedesktop.Notifications:
+    PID=0
+    Comm=notify-osd
+";
+        let owner = parse_busctl_status(output).expect("expected parsed owner info");
+        assert_eq!(owner.pid, None);
+        assert_eq!(owner.comm.as_deref(), Some("notify-osd"));
     }
 }

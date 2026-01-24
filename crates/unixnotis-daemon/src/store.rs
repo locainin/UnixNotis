@@ -92,14 +92,28 @@ impl HistoryStore {
     }
 
     fn evict_to_limit(&mut self, max_entries: usize) {
+        if max_entries == 0 {
+            self.clear();
+            return;
+        }
+
         while self.entries.len() > max_entries {
-            if let Some(id) = self.order.pop_front() {
-                if self.entries.remove(&id).is_some() {
-                    continue;
+            let Some(id) = self.order.pop_front() else {
+                // Recover ordering when entries outlive the recorded order.
+                self.order.extend(self.entries.keys().copied());
+                if self.order.is_empty() {
+                    break;
                 }
-            } else {
-                break;
+                continue;
+            };
+
+            if self.entries.remove(&id).is_none() {
+                continue;
             }
+        }
+
+        if self.entries.is_empty() {
+            self.order.clear();
         }
     }
 }
@@ -277,6 +291,11 @@ impl NotificationStore {
     }
 
     fn push_history(&mut self, notification: Arc<Notification>) {
+        if self.config.history.max_entries == 0 {
+            // Honor zero-history limit without allocating a history copy.
+            self.history.clear();
+            return;
+        }
         if notification.is_transient && !self.config.history.transient_to_history {
             return;
         }
@@ -462,6 +481,58 @@ mod tests {
         let outcome = store.insert(make_notification("first"), 0);
         store.close(outcome.notification.id);
 
+        assert_eq!(store.history_len(), 0);
+    }
+
+    #[test]
+    fn replace_id_in_history_reuses_id_and_clears_entry() {
+        let mut store = make_store_with_limits(2, 10);
+
+        let first = store.insert(make_notification("first"), 0);
+        store.close(first.notification.id);
+        assert_eq!(store.history_len(), 1);
+
+        // Replacement should reuse the original ID and remove the history entry.
+        let replaced = store.insert(make_notification("replacement"), first.notification.id);
+        assert!(replaced.replaced);
+        assert_eq!(replaced.notification.id, first.notification.id);
+        assert_eq!(store.history_len(), 0);
+
+        let active = store.list_active();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].summary, "replacement");
+
+        // Closing the replacement should re-add a single history entry for the updated notification.
+        store.close(replaced.notification.id);
+        let history = store.list_history();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].summary, "replacement");
+    }
+
+    #[test]
+    fn history_eviction_keeps_most_recent_entries() {
+        let mut store = make_store_with_limits(0, 2);
+
+        store.insert(make_notification("first"), 0);
+        store.insert(make_notification("second"), 0);
+        store.insert(make_notification("third"), 0);
+
+        // History listing returns most-recent-first order.
+        let history = store.list_history();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].summary, "third");
+        assert_eq!(history[1].summary, "second");
+    }
+
+    #[test]
+    fn max_entries_zero_drops_history_on_insert() {
+        let mut store = make_store_with_limits(0, 0);
+
+        let outcome = store.insert(make_notification("first"), 0);
+
+        // Eviction should archive the active entry, then drop it due to the zero history limit.
+        assert_eq!(outcome.evicted.len(), 1);
+        assert!(store.list_active().is_empty());
         assert_eq!(store.history_len(), 0);
     }
 }
