@@ -214,27 +214,31 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<Texture> {
     let width_i32 = i32::try_from(width).ok()?;
     let height_i32 = i32::try_from(height).ok()?;
 
-    let bytes = if data.channels == 4 {
-        gtk::glib::Bytes::from(&data.data)
-    } else {
-        return None;
+    let (bytes, stride) = match data.channels {
+        4 => {
+            // Rowstride is bytes per row; hint payloads may include padding.
+            let min_stride = width.checked_mul(4)?;
+            let stride = if data.rowstride > 0 {
+                data.rowstride as usize
+            } else {
+                min_stride
+            };
+            // Validate rowstride and buffer length before building the texture.
+            if stride < min_stride {
+                return None;
+            }
+            let required = stride.checked_mul(height)?;
+            if data.data.len() < required {
+                return None;
+            }
+            (gtk::glib::Bytes::from(&data.data), stride)
+        }
+        3 => {
+            let (expanded, stride) = expand_rgb_to_rgba(data)?;
+            (gtk::glib::Bytes::from(&expanded), stride)
+        }
+        _ => return None,
     };
-
-    // Rowstride is bytes per row; hint payloads may include padding.
-    let min_stride = width.checked_mul(4)?;
-    let stride = if data.rowstride > 0 {
-        data.rowstride as usize
-    } else {
-        min_stride
-    };
-    // Validate rowstride and buffer length before building the texture.
-    if stride < min_stride {
-        return None;
-    }
-    let required = stride.checked_mul(height)?;
-    if data.data.len() < required {
-        return None;
-    }
     Some(
         gdk::MemoryTexture::new(
             width_i32,
@@ -247,6 +251,99 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<Texture> {
     )
 }
 
+fn expand_rgb_to_rgba(data: &unixnotis_core::ImageData) -> Option<(Vec<u8>, usize)> {
+    // Expand RGB to RGBA while honoring per-row padding in the source buffer.
+    let width = usize::try_from(data.width).ok()?;
+    let height = usize::try_from(data.height).ok()?;
+    if width == 0 || height == 0 {
+        return None;
+    }
+
+    // Source stride handles optional per-row padding for RGB input.
+    let min_src_stride = width.checked_mul(3)?;
+    let src_stride = if data.rowstride > 0 {
+        data.rowstride as usize
+    } else {
+        min_src_stride
+    };
+    if src_stride < min_src_stride {
+        return None;
+    }
+    let required = src_stride.checked_mul(height)?;
+    if data.data.len() < required {
+        return None;
+    }
+
+    // Destination uses tightly packed RGBA rows.
+    let dst_stride = width.checked_mul(4)?;
+    let mut rgba = vec![0u8; dst_stride.checked_mul(height)?];
+
+    // Copy RGB per pixel and append opaque alpha.
+    for y in 0..height {
+        let src_row_start = y * src_stride;
+        let dst_row_start = y * dst_stride;
+        let src_row = &data.data[src_row_start..src_row_start + min_src_stride];
+        let dst_row = &mut rgba[dst_row_start..dst_row_start + dst_stride];
+        for x in 0..width {
+            let src = x * 3;
+            let dst = x * 4;
+            dst_row[dst] = src_row[src];
+            dst_row[dst + 1] = src_row[src + 1];
+            dst_row[dst + 2] = src_row[src + 2];
+            dst_row[dst + 3] = 255;
+        }
+    }
+
+    Some((rgba, dst_stride))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expand_rgb_to_rgba;
+    use unixnotis_core::ImageData;
+
+    #[test]
+    fn expand_rgb_to_rgba_appends_alpha() {
+        // Ensures RGB input is expanded to RGBA with an opaque alpha channel.
+        let data = ImageData {
+            width: 2,
+            height: 1,
+            rowstride: 0,
+            has_alpha: false,
+            bits_per_sample: 8,
+            channels: 3,
+            data: vec![10, 20, 30, 40, 50, 60],
+        };
+        let (expanded, stride) = expand_rgb_to_rgba(&data).expect("rgb expansion");
+        assert_eq!(stride, 8);
+        assert_eq!(expanded, vec![10, 20, 30, 255, 40, 50, 60, 255]);
+    }
+
+    #[test]
+    fn expand_rgb_to_rgba_honors_row_padding() {
+        // Confirms per-row padding does not leak into the expanded RGBA output.
+        let data = ImageData {
+            width: 2,
+            height: 2,
+            rowstride: 8,
+            has_alpha: false,
+            bits_per_sample: 8,
+            channels: 3,
+            data: vec![
+                1, 2, 3, 4, 5, 6, 0, 0, 7, 8, 9, 10, 11, 12, 0, 0,
+            ],
+        };
+        let (expanded, stride) = expand_rgb_to_rgba(&data).expect("rgb expansion");
+        assert_eq!(stride, 8);
+        assert_eq!(
+            expanded,
+            vec![
+                1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255
+            ]
+        );
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct RasterIcon {
     pub(super) bytes: Vec<u8>,
@@ -255,8 +352,10 @@ pub(super) struct RasterIcon {
     pub(super) stride: i32,
 }
 
+// Keep icon loads lightweight; popups only render small thumbnails.
 const MAX_ICON_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_ICON_DIMENSION: u32 = 2048;
+// Cap decoded dimensions to bound memory use (512px RGBA = ~1MB per icon).
+const MAX_ICON_DIMENSION: u32 = 512;
 
 pub(super) fn decode_icon_file(path: &Path) -> Result<RasterIcon, String> {
     // Decode on a worker thread; keep I/O and CPU-bound work off the GTK main loop.

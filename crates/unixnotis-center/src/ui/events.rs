@@ -99,17 +99,31 @@ impl UiState {
                 self.log_debug(PanelDebugLevel::Verbose, || {
                     format!("media updated: {} players", infos.len())
                 });
-                // Media widget handles per-player diffing internally.
-                if let Some(widget) = self.media.as_mut() {
-                    widget.update(&infos);
+                // Avoid updating hidden widgets; cache the snapshot and apply on next open.
+                // This keeps background CPU minimal while preserving the most recent media state.
+                if self.panel_visible {
+                    if let Some(widget) = self.media.as_mut() {
+                        widget.update(&infos);
+                    }
+                } else {
+                    // Cache the latest snapshot to prevent repeated UI work while hidden.
+                    self.pending_media = Some(infos);
+                    self.pending_media_cleared = false;
                 }
             }
             UiEvent::MediaCleared => {
                 debug!("media cleared");
                 self.log_debug(PanelDebugLevel::Info, || "media cleared".to_string());
-                // Clearing removes UI state even when the widget remains enabled.
-                if let Some(widget) = self.media.as_mut() {
-                    widget.clear();
+                // Clearing removes UI state; defer until visible to avoid hidden updates.
+                // The pending flags ensure the next open matches daemon state.
+                if self.panel_visible {
+                    if let Some(widget) = self.media.as_mut() {
+                        widget.clear();
+                    }
+                } else {
+                    // Clear cached data and mark a pending clear so stale artwork is not shown later.
+                    self.pending_media = None;
+                    self.pending_media_cleared = true;
                 }
             }
             UiEvent::ClickOutside => {

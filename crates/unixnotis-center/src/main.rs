@@ -74,6 +74,9 @@ fn main() -> Result<()> {
         // Bound the UI event queue to avoid unbounded memory growth under stalls.
         let (event_tx, event_rx) = async_channel::bounded(UI_EVENT_QUEUE_CAPACITY);
         let runtime = match tokio::runtime::Builder::new_multi_thread()
+            // Limit worker threads to reduce idle CPU and memory overhead.
+            // The center workload is I/O bound, so a small pool remains responsive.
+            .worker_threads(2)
             .enable_all()
             .build()
         {
@@ -124,14 +127,22 @@ fn main() -> Result<()> {
                     ui.handle_event(next_event);
                 }
                 // Coalesce rebuilds to once per frame to avoid bursty list churn.
-                if ui.list_needs_rebuild() && rebuild_source.borrow().is_none() {
+                // Defer rebuilds while hidden; they'll be flushed on the next open.
+                // This keeps the GTK list idle when the panel is closed.
+                if ui.list_needs_rebuild()
+                    && ui.panel_is_visible()
+                    && rebuild_source.borrow().is_none()
+                {
                     let ui_weak = Rc::downgrade(&ui_clone);
                     let rebuild_source_handle = rebuild_source.clone();
                     // Debounce rebuilds to batch burst updates into a single list refresh.
                     let source_id =
                         glib::timeout_add_local_once(Duration::from_millis(16), move || {
                             if let Some(ui) = ui_weak.upgrade() {
-                                ui.borrow_mut().flush_list_rebuild();
+                                let mut ui = ui.borrow_mut();
+                                if ui.panel_is_visible() {
+                                    ui.flush_list_rebuild();
+                                }
                             }
                             *rebuild_source_handle.borrow_mut() = None;
                         });

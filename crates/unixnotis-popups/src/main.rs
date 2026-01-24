@@ -263,13 +263,19 @@ fn load_config(args: &Args) -> Result<(Config, PathBuf)> {
 
 fn init_tracing(config: &Config) {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new(
-            config
-                .general
-                .log_level
-                .clone()
-                .unwrap_or_else(|| "info".to_string()),
-        )
+        let configured = config
+            .general
+            .log_level
+            .clone()
+            .unwrap_or_else(|| "info".to_string());
+        EnvFilter::try_new(configured.clone()).unwrap_or_else(|err| {
+            // Fall back to a safe default instead of crashing on invalid config.
+            eprintln!(
+                "unixnotis-popups: invalid log level '{}': {err}; falling back to info",
+                configured
+            );
+            EnvFilter::new("info")
+        })
     });
     tracing_subscriber::fmt().with_env_filter(filter).init();
 }

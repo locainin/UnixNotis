@@ -2,22 +2,27 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
 use gtk::{glib, Align, Overflow};
 
 const MARQUEE_SPEED_CHARS_PER_SEC: f64 = 8.0;
-const MARQUEE_PAUSE_MS: i64 = 900;
+const MARQUEE_PAUSE_MS: u64 = 900;
+// Lower tick rate keeps CPU usage minimal while still providing smooth enough motion.
+// This avoids per-frame callbacks that can spike CPU on large or multiple marquee labels.
+const MARQUEE_TICK_MS: u64 = 100;
 
 #[derive(Default)]
 struct MarqueeState {
     offset: f64,
-    last_time: i64,
-    hold_until: i64,
+    last_tick: Option<Instant>,
+    hold_until: Option<Instant>,
     reset_pending: bool,
     enabled: bool,
     is_ticking: bool,
     is_mapped: bool,
+    tick_source: Option<glib::SourceId>,
     char_limit: usize,
     buffer: Vec<char>,
     last_rendered_offset: usize,
@@ -62,6 +67,7 @@ impl MarqueeLabel {
             reset_pending: true,
             enabled: false,
             is_mapped: root.is_mapped(),
+            tick_source: None,
             char_limit,
             last_rendered_offset: usize::MAX,
             render_buf: String::new(),
@@ -85,6 +91,14 @@ impl MarqueeLabel {
         unmapped_root.connect_unmap(move |_| {
             let mut state = unmapped_label.state.borrow_mut();
             state.is_mapped = false;
+            // Stop ticking immediately when the widget is unmapped to avoid background work.
+            // Unmapped widgets should not keep timers alive.
+            if let Some(source_id) = state.tick_source.take() {
+                source_id.remove();
+                state.is_ticking = false;
+                state.last_tick = None;
+                state.hold_until = None;
+            }
         });
 
         instance
@@ -101,8 +115,8 @@ impl MarqueeLabel {
         state.enabled = char_limit > 0 && text.chars().count() > char_limit;
         state.reset_pending = true;
         state.offset = 0.0;
-        state.hold_until = 0;
-        state.last_time = 0;
+        state.hold_until = None;
+        state.last_tick = None;
         state.full_text = text.to_string();
         state.buffer = if state.enabled {
             let padded = format!("{text}   ");
@@ -124,6 +138,10 @@ impl MarqueeLabel {
 
         if enabled && mapped && !ticking {
             self.start_ticking();
+        } else if !enabled {
+            // Disable any scheduled tick when marquee is not needed.
+            // Keeps idle CPU near zero when text fits inside the label.
+            self.stop_ticking();
         }
     }
 
@@ -149,37 +167,46 @@ impl MarqueeLabel {
 
         let state_tick = self.state.clone();
         let label_tick = self.label.clone();
-        self.root.add_tick_callback(move |_, frame_clock| {
+        let source_id = glib::timeout_add_local(Duration::from_millis(MARQUEE_TICK_MS), move || {
             let mut state = state_tick.borrow_mut();
 
             if !state.enabled || !state.is_mapped {
                 state.is_ticking = false;
+                state.tick_source = None;
+                state.last_tick = None;
+                state.hold_until = None;
                 return glib::ControlFlow::Break;
             }
 
-            let time = frame_clock.frame_time();
-            if state.last_time == 0 {
-                state.last_time = time;
-            }
-            let delta_sec = (time - state.last_time) as f64 / 1_000_000.0;
-            state.last_time = time;
-
-            if state.reset_pending {
-                state.offset = 0.0;
-                state.hold_until = time + MARQUEE_PAUSE_MS * 1000;
-                state.reset_pending = false;
-            }
+            let now = Instant::now();
+            let delta_sec = match state.last_tick {
+                Some(last) => now.duration_since(last).as_secs_f64(),
+                None => 0.0,
+            };
+            state.last_tick = Some(now);
 
             let buffer_len = state.buffer.len();
             if buffer_len == 0 {
                 return glib::ControlFlow::Continue;
             }
 
-            if time >= state.hold_until {
+            if state.reset_pending {
+                state.offset = 0.0;
+                state.hold_until = Some(now + Duration::from_millis(MARQUEE_PAUSE_MS));
+                state.reset_pending = false;
+            }
+
+            if let Some(hold_until) = state.hold_until {
+                if now < hold_until {
+                    return glib::ControlFlow::Continue;
+                }
+            }
+
+            if delta_sec > 0.0 {
                 state.offset += MARQUEE_SPEED_CHARS_PER_SEC * delta_sec;
                 if state.offset >= buffer_len as f64 {
                     state.offset = 0.0;
-                    state.hold_until = time + MARQUEE_PAUSE_MS * 1000;
+                    state.hold_until = Some(now + Duration::from_millis(MARQUEE_PAUSE_MS));
                 }
             }
 
@@ -191,6 +218,19 @@ impl MarqueeLabel {
             }
             glib::ControlFlow::Continue
         });
+
+        let mut state = self.state.borrow_mut();
+        state.tick_source = Some(source_id);
+    }
+
+    fn stop_ticking(&self) {
+        let mut state = self.state.borrow_mut();
+        if let Some(source_id) = state.tick_source.take() {
+            source_id.remove();
+        }
+        state.is_ticking = false;
+        state.last_tick = None;
+        state.hold_until = None;
     }
 }
 

@@ -55,7 +55,12 @@ pub(super) fn apply_popup_config(
             window.set_monitor(Some(&monitor));
         }
     } else {
-        window.set_monitor(None);
+        // Fall back to a deterministic default monitor when no output is configured.
+        if let Some(monitor) = default_monitor() {
+            window.set_monitor(Some(&monitor));
+        } else {
+            window.set_monitor(None);
+        }
     }
     apply_input_region(window, config.popups.allow_click_through);
 }
@@ -139,4 +144,35 @@ fn find_monitor(name: &str) -> Option<gtk::gdk::Monitor> {
         }
     }
     None
+}
+
+fn default_monitor() -> Option<gtk::gdk::Monitor> {
+    let display = gtk::gdk::Display::default()?;
+    let monitors = display.monitors();
+    let mut best: Option<gtk::gdk::Monitor> = None;
+    let mut best_area = 0i64;
+
+    // Pick the largest monitor as a reasonable default when no primary API is available.
+    for index in 0..monitors.n_items() {
+        let Some(item) = monitors.item(index) else {
+            continue;
+        };
+        let Ok(monitor) = item.downcast::<gtk::gdk::Monitor>() else {
+            continue;
+        };
+        let geometry = monitor.geometry();
+        let area = i64::from(geometry.width()) * i64::from(geometry.height());
+        if area > best_area {
+            best_area = area;
+            best = Some(monitor);
+        }
+    }
+
+    if best.is_some() {
+        return best;
+    }
+
+    // Fall back to the first enumerated monitor when discovery yields nothing.
+    let item = monitors.item(0)?;
+    item.downcast::<gtk::gdk::Monitor>().ok()
 }

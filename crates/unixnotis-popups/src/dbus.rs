@@ -1,10 +1,11 @@
 //! D-Bus runtime for popup UI events and control updates.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::StreamExt;
-use tokio::sync::mpsc::{self, UnboundedSender};
+use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 use unixnotis_core::{CloseReason, ControlProxy, ControlState, NotificationView};
 use zbus::{Connection, Result as ZbusResult};
@@ -20,6 +21,8 @@ const SEED_RETRY_BASE_MS: u64 = 250;
 const SEED_RETRY_MAX_MS: u64 = 2000;
 const SEED_RETRY_BUDGET_SECS: u64 = 30;
 const SEED_RETRY_LOG_INTERVAL_SECS: u64 = 10;
+// Bound UI commands to avoid unbounded memory growth under a stuck UI event loop.
+const UI_COMMAND_QUEUE_CAPACITY: usize = 64;
 
 struct Backoff {
     base: Duration,
@@ -108,12 +111,32 @@ fn jitter_duration(max_ms: u64) -> Duration {
     if max_ms == 0 {
         return Duration::from_millis(0);
     }
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos() as u64;
-    let jitter_ms = (nanos % (max_ms * 1_000_000)) / 1_000_000;
+    // Simple xorshift-based jitter avoids deterministic alignment without extra dependencies.
+    let jitter_ms = next_jitter_seed().wrapping_rem(max_ms);
     Duration::from_millis(jitter_ms)
+}
+
+fn next_jitter_seed() -> u64 {
+    static STATE: AtomicU64 = AtomicU64::new(0);
+    // Seed from wall clock once; subsequent calls evolve the state.
+    let seed = STATE.load(Ordering::Relaxed);
+    let mut value = if seed == 0 {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos() as u64;
+        // Avoid a zero seed to keep the xorshift cycle moving.
+        nanos | 1
+    } else {
+        seed
+    };
+    // xorshift64* variant for compact, fast jitter values.
+    value ^= value >> 12;
+    value ^= value << 25;
+    value ^= value >> 27;
+    value = value.wrapping_mul(0x2545F4914F6CDD1D);
+    STATE.store(value, Ordering::Relaxed);
+    value
 }
 
 /// Events delivered to the GTK main loop.
@@ -138,12 +161,17 @@ pub enum UiCommand {
     InvokeAction { id: u32, action_key: String },
 }
 
-pub fn start_dbus_runtime(sender: async_channel::Sender<UiEvent>) -> UnboundedSender<UiCommand> {
-    let (command_tx, mut command_rx) = mpsc::unbounded_channel();
+pub fn start_dbus_runtime(sender: async_channel::Sender<UiEvent>) -> mpsc::Sender<UiCommand> {
+    let (command_tx, mut command_rx) = mpsc::channel(UI_COMMAND_QUEUE_CAPACITY);
 
     thread::spawn(move || {
         // Dedicated runtime keeps async D-Bus work off the GTK main thread.
-        let runtime = match tokio::runtime::Runtime::new() {
+        let runtime = match tokio::runtime::Builder::new_multi_thread()
+            // Small worker pool keeps background popups responsive without excess threads.
+            .worker_threads(2)
+            .enable_all()
+            .build()
+        {
             Ok(runtime) => runtime,
             Err(err) => {
                 warn!(?err, "failed to initialize tokio runtime");
@@ -340,8 +368,27 @@ async fn handle_command(proxy: &ControlProxy<'_>, command: UiCommand) -> ZbusRes
     }
 }
 
-fn drain_offline_commands(command_rx: &mut mpsc::UnboundedReceiver<UiCommand>) {
+fn drain_offline_commands(command_rx: &mut mpsc::Receiver<UiCommand>) {
     while command_rx.try_recv().is_ok() {
         warn!("dropping control command while interface is unavailable");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::jitter_duration;
+    use std::time::Duration;
+
+    #[test]
+    fn jitter_zero_returns_zero() {
+        // Zero jitter should always return zero to avoid unexpected backoff delays.
+        assert_eq!(jitter_duration(0), Duration::from_millis(0));
+    }
+
+    #[test]
+    fn jitter_duration_is_bounded() {
+        // Jitter must always fall within the configured bound.
+        let jitter = jitter_duration(5);
+        assert!(jitter < Duration::from_millis(5));
     }
 }

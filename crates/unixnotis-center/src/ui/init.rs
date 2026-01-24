@@ -149,6 +149,8 @@ impl UiState {
             work_area: None,
             media,
             media_handle: init.media_handle,
+            pending_media: None,
+            pending_media_cleared: false,
             volume,
             brightness,
             toggles,

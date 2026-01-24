@@ -23,6 +23,11 @@ impl UiState {
     }
 
     pub(super) fn refresh_counts(&self) {
+        if !self.panel_visible {
+            // Skip label updates while hidden to avoid unnecessary UI work.
+            // Counts are refreshed on the next open to keep the header accurate.
+            return;
+        }
         // Header count always reflects total active + history entries.
         let total = self.list.total_count();
         self.panel.header_count.set_text(&format!("{total}"));
@@ -87,6 +92,26 @@ impl UiState {
                 // Media refresh is deferred until the panel is visible.
                 handle.refresh();
             }
+            // Apply any pending media state that accumulated while the panel was hidden.
+            if self.pending_media_cleared {
+                if let Some(widget) = self.media.as_mut() {
+                    widget.clear();
+                }
+                self.pending_media_cleared = false;
+            }
+            if let Some(infos) = self.pending_media.take() {
+                if let Some(widget) = self.media.as_mut() {
+                    widget.update(&infos);
+                }
+            }
+            // Flush deferred list rebuilds once to avoid repeated background work.
+            if self.list_needs_rebuild() {
+                // Apply any deferred list rebuilds once the panel becomes visible.
+                self.list.flush_rebuild();
+            }
+            // Refresh counts after applying deferred updates to keep UI consistent.
+            // Refresh counts after pending updates land so header stays accurate.
+            self.refresh_counts();
             self.refresh_widgets(true);
             self.start_refresh_timer();
         } else {

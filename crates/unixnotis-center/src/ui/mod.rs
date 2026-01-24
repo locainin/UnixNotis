@@ -42,6 +42,12 @@ pub struct UiState {
     work_area: Option<Margins>,
     media: Option<media_widget::MediaWidget>,
     media_handle: Option<crate::media::MediaHandle>,
+    // Holds the most recent media snapshot while the panel is hidden.
+    // Defers GTK updates until visible to keep idle CPU near zero.
+    pending_media: Option<Vec<crate::media::MediaInfo>>,
+    // Tracks a pending media clear request while hidden.
+    // Ensures stale artwork does not linger across open/close cycles.
+    pending_media_cleared: bool,
     volume: Option<widgets::volume::VolumeWidget>,
     brightness: Option<widgets::brightness::BrightnessWidget>,
     toggles: Option<widgets::toggles::ToggleGrid>,
@@ -66,6 +72,12 @@ pub struct UiStateInit {
     pub event_tx: async_channel::Sender<UiEvent>,
     pub media_handle: Option<crate::media::MediaHandle>,
     pub runtime: Arc<tokio::runtime::Runtime>,
+}
+
+impl UiState {
+    pub fn panel_is_visible(&self) -> bool {
+        self.panel_visible
+    }
 }
 
 pub(super) fn try_send_command(command_tx: &mpsc::Sender<UiCommand>, command: UiCommand) {
