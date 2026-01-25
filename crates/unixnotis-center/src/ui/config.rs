@@ -8,6 +8,7 @@ use tracing::debug;
 use unixnotis_core::{Config, PanelDebugLevel};
 
 use super::widget_builders::{build_extra_widgets, build_quick_controls, clear_container};
+use super::list;
 use super::{media_widget, panel, UiState};
 
 impl UiState {
@@ -53,6 +54,18 @@ impl UiState {
         } else {
             debug!("widget config unchanged; skipping rebuild");
         }
+        let list_config = list::NotificationListConfig {
+            max_active: config.history.max_active,
+            max_entries: config.history.max_entries,
+            empty_text: config.panel.empty_text.clone(),
+            empty_offset_top: config.panel.empty_offset_top,
+        };
+        let has_widgets = self.panel.quick_controls.is_visible()
+            || self.panel.media_container.is_visible()
+            || self.panel.toggle_container.is_visible()
+            || self.panel.stat_container.is_visible()
+            || self.panel.card_container.is_visible();
+        self.list.apply_config(&list_config, has_widgets);
         self.restart_refresh_timer();
         if config.panel.respect_work_area {
             self.work_area = None;

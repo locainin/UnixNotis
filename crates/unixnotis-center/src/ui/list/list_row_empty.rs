@@ -24,3 +24,12 @@ pub(super) fn build_empty_row(text: &str) -> gtk::Box {
 
     root
 }
+
+pub(super) fn update_empty_row(root: &gtk::Box, text: &str) {
+    if let Some(child) = root.first_child() {
+        if let Ok(label) = child.downcast::<gtk::Label>() {
+            // Keep the empty-state label in sync with config reloads.
+            label.set_text(text);
+        }
+    }
+}

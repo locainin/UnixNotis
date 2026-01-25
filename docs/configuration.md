@@ -186,7 +186,9 @@ no_popup = true
 
 ### [theme]
 Theme CSS file names resolve relative to the config directory. Alpha values are clamped to
-`0.0..=1.0` and dimensions are clamped to safe ranges.
+`0.0..=1.0` and dimensions are clamped to safe ranges. Custom `base.css` files should define
+`unixnotis-surface-base` and `unixnotis-card-base` (opaque colors) so alpha overrides apply
+exactly once.
 
 ### [widgets]
 See `docs/widgets.md` for the widget schema and command examples.

@@ -99,6 +99,7 @@ impl CssManager {
             &self.theme_paths.base_css,
             fallback,
             &base_overrides,
+            true,
         );
 
         if let Some(panel) = self.panel.as_ref() {
@@ -108,6 +109,7 @@ impl CssManager {
                 &self.theme_paths.panel_css,
                 DEFAULT_PANEL_CSS,
                 &panel_overrides,
+                false,
             );
         }
 
@@ -118,6 +120,7 @@ impl CssManager {
                 &self.theme_paths.widgets_css,
                 DEFAULT_WIDGETS_CSS,
                 &widgets_overrides,
+                false,
             );
         }
 
@@ -128,6 +131,7 @@ impl CssManager {
                 &self.theme_paths.popup_css,
                 DEFAULT_POPUP_CSS,
                 &popup_overrides,
+                false,
             );
         }
     }
@@ -261,9 +265,15 @@ fn load_provider_with_overrides(
     path: &Path,
     fallback: &str,
     overrides: &str,
+    inject_base_tokens: bool,
 ) {
     match fs::read_to_string(path) {
         Ok(contents) => {
+            let contents = if inject_base_tokens {
+                ensure_base_tokens(&contents, path)
+            } else {
+                contents
+            };
             if contents.trim().is_empty() {
                 let merged = if overrides.trim().is_empty() {
                     fallback.to_string()
@@ -283,15 +293,42 @@ fn load_provider_with_overrides(
             };
             provider.load_from_data(&merged);
         }
-        Err(_) => {
+        Err(err) => {
+            let file = path.file_name().and_then(|name| name.to_str()).unwrap_or("css");
+            warn!(?err, file, "failed to read css file; falling back to defaults");
+            let fallback = if inject_base_tokens {
+                ensure_base_tokens(fallback, path)
+            } else {
+                fallback.to_string()
+            };
             if overrides.trim().is_empty() {
-                provider.load_from_data(fallback);
+                provider.load_from_data(&fallback);
                 return;
             }
             let merged = format!("{fallback}\n{overrides}");
             provider.load_from_data(&merged);
         }
     }
+}
+
+fn ensure_base_tokens(contents: &str, path: &Path) -> String {
+    if contents.contains("unixnotis-surface-base") && contents.contains("unixnotis-card-base") {
+        return contents.to_string();
+    }
+    let file = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("base.css");
+    warn!(
+        file,
+        "base css missing base color tokens; alpha overrides may be compounded until updated"
+    );
+    format!(
+        "{prefix}\n{contents}",
+        prefix = r#"@define-color unixnotis-surface-base @unixnotis-surface;
+@define-color unixnotis-surface-strong-base @unixnotis-surface-strong;
+@define-color unixnotis-card-base @unixnotis-card;"#,
+    )
 }
 
 fn build_base_overrides(theme: &ThemeConfig) -> String {
@@ -301,8 +338,6 @@ fn build_base_overrides(theme: &ThemeConfig) -> String {
     let shadow_strong = theme.shadow_strong_alpha.clamp(0.0, 1.0);
     format!(
         r#"
-@define-color unixnotis-surface-base @unixnotis-surface;
-@define-color unixnotis-surface-strong-base @unixnotis-surface-strong;
 @define-color unixnotis-surface alpha(@unixnotis-surface-base, {surface_alpha});
 @define-color unixnotis-surface-strong alpha(@unixnotis-surface-strong-base, {surface_strong_alpha});
 @define-color unixnotis-shadow-soft alpha(#000000, {shadow_soft});
@@ -321,7 +356,7 @@ fn build_panel_overrides(theme: &ThemeConfig) -> String {
   border-width: {border_width}px;
   border-style: solid;
   border-radius: {card_radius}px;
-  background: alpha(@unixnotis-card, {card_alpha});
+  background: alpha(@unixnotis-card-base, {card_alpha});
 }}
 "#
     )
@@ -337,7 +372,7 @@ fn build_widgets_overrides(theme: &ThemeConfig) -> String {
   border-width: {border_width}px;
   border-style: solid;
   border-radius: {card_radius}px;
-  background: alpha(@unixnotis-card, {card_alpha});
+  background: alpha(@unixnotis-card-base, {card_alpha});
 }}
 "#
     )
@@ -406,7 +441,7 @@ mod tests {
         let overrides = build_panel_overrides(&theme);
         assert!(overrides.contains("border-width: 3px;"));
         assert!(overrides.contains("border-radius: 12px;"));
-        assert!(overrides.contains("alpha(@unixnotis-card, 0.42"));
+        assert!(overrides.contains("alpha(@unixnotis-card-base, 0.42"));
     }
 
     #[test]
@@ -422,7 +457,7 @@ mod tests {
         let overrides = build_widgets_overrides(&theme);
         assert!(overrides.contains("border-width: 2px;"));
         assert!(overrides.contains("border-radius: 8px;"));
-        assert!(overrides.contains("alpha(@unixnotis-card, 0.77"));
+        assert!(overrides.contains("alpha(@unixnotis-card-base, 0.77"));
     }
 
     #[test]

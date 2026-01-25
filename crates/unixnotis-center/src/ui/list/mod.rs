@@ -28,7 +28,7 @@ use unixnotis_core::NotificationView;
 use crate::dbus::{UiCommand, UiEvent};
 
 use self::list_item::{RowItem, RowKind};
-use self::list_row_empty::build_empty_row;
+use self::list_row_empty::{build_empty_row, update_empty_row};
 use self::list_widgets::{
     bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets,
 };
@@ -39,6 +39,7 @@ pub struct NotificationList {
     store: gio::ListStore,
     empty_overlay: gtk::Box,
     empty_offset_top: i32,
+    empty_text: String,
     entries: HashMap<u32, NotificationEntry>,
     // Active notifications render first to match the in-flight stack.
     active_order: VecDeque<u32>,
@@ -163,6 +164,7 @@ impl NotificationList {
             store,
             empty_overlay,
             empty_offset_top: config.empty_offset_top,
+            empty_text: config.empty_text,
             entries: HashMap::new(),
             active_order: VecDeque::new(),
             history_order: VecDeque::new(),
@@ -183,6 +185,18 @@ impl NotificationList {
             max_active: config.max_active,
             max_entries: config.max_entries,
         }
+    }
+
+    pub fn apply_config(&mut self, config: &NotificationListConfig, has_widgets: bool) {
+        if self.empty_text != config.empty_text {
+            update_empty_row(&self.empty_overlay, &config.empty_text);
+            self.empty_text = config.empty_text.clone();
+        }
+        if self.empty_offset_top != config.empty_offset_top {
+            self.empty_offset_top = config.empty_offset_top;
+        }
+        self.set_empty_layout(has_widgets);
+        self.apply_limits(config.max_active, config.max_entries);
     }
 
     pub fn set_empty_layout(&self, has_widgets: bool) {

@@ -9,10 +9,13 @@
  *
  * Tuned for Wayland compositors with translucent surfaces.
  */
-@define-color unixnotis-surface alpha(#0e1422, 0.88);
-@define-color unixnotis-surface-strong alpha(#10192b, 0.96);
+@define-color unixnotis-surface-base #0e1422;
+@define-color unixnotis-surface-strong-base #10192b;
+@define-color unixnotis-card-base #141f31;
+@define-color unixnotis-surface alpha(@unixnotis-surface-base, 0.88);
+@define-color unixnotis-surface-strong alpha(@unixnotis-surface-strong-base, 0.96);
 @define-color unixnotis-surface-soft alpha(#182338, 0.74);
-@define-color unixnotis-card alpha(#141f31, 0.94);
+@define-color unixnotis-card alpha(@unixnotis-card-base, 0.94);
 @define-color unixnotis-card-border alpha(#8fd4ff, 0.24);
 @define-color unixnotis-text #eef5ff;
 @define-color unixnotis-muted #9cb3d3;

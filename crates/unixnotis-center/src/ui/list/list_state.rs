@@ -11,6 +11,23 @@ use super::list_item::{RowData, RowItem};
 use super::{NotificationEntry, NotificationList};
 
 impl NotificationList {
+    pub fn apply_limits(&mut self, max_active: usize, max_entries: usize) {
+        let mut changed = false;
+        if self.max_active != max_active {
+            self.max_active = max_active;
+            changed = true;
+        }
+        if self.max_entries != max_entries {
+            self.max_entries = max_entries;
+            changed = true;
+        }
+        if changed {
+            // Trim and rebuild when limits change so list size is immediately correct.
+            self.trim_to_limits();
+            self.request_rebuild();
+        }
+    }
+
     pub fn seed(&mut self, active: Vec<NotificationView>, history: Vec<NotificationView>) {
         // Reset caches before rebuilding to avoid stale list store content.
         self.entries.clear();
