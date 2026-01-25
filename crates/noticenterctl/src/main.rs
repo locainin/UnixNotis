@@ -4,7 +4,9 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::process::Command as ProcCommand;
 use unixnotis_core::util;
-use unixnotis_core::{ControlProxy, NotificationView, PanelDebugLevel};
+use unixnotis_core::{
+    ControlProxy, NotificationView, PanelDebugLevel, INHIBIT_SCOPE_ALL, INHIBIT_SCOPE_POPUPS,
+};
 use zbus::Connection;
 
 #[derive(Parser, Debug)]
@@ -38,6 +40,15 @@ enum Command {
         #[arg(long)]
         full: bool,
     },
+    Inhibit {
+        reason: String,
+        #[arg(long, value_enum, default_value = "all")]
+        scope: InhibitScopeArg,
+    },
+    Uninhibit {
+        id: u64,
+    },
+    ListInhibitors,
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
@@ -53,6 +64,21 @@ enum DebugLevelArg {
     Warn,
     Info,
     Verbose,
+}
+
+#[derive(ValueEnum, Debug, Clone, Copy)]
+enum InhibitScopeArg {
+    All,
+    Popups,
+}
+
+impl InhibitScopeArg {
+    fn as_scope(self) -> u32 {
+        match self {
+            Self::All => INHIBIT_SCOPE_ALL,
+            Self::Popups => INHIBIT_SCOPE_POPUPS,
+        }
+    }
 }
 
 impl From<DebugLevelArg> for PanelDebugLevel {
@@ -113,6 +139,20 @@ async fn main() -> Result<()> {
                 proxy.set_dnd(!current.dnd_enabled).await?;
             }
         },
+        Command::Inhibit { reason, scope } => {
+            let token = proxy.inhibit(&reason, scope.as_scope()).await?;
+            println!("{token}");
+        }
+        Command::Uninhibit { id } => {
+            proxy.uninhibit(id).await?;
+        }
+        Command::ListInhibitors => {
+            let inhibitors = proxy.list_inhibitors().await?;
+            println!("inhibitors: {}", inhibitors.len());
+            for (id, reason, scope, owner) in inhibitors {
+                println!("- #{id} scope={scope} owner={owner} reason={reason}");
+            }
+        }
     }
 
     Ok(())
@@ -216,6 +256,38 @@ mod tests {
         for (arg, expected) in table {
             let mapped: PanelDebugLevel = arg.into();
             assert_eq!(mapped, expected);
+        }
+    }
+
+    #[test]
+    fn parses_inhibit_default_scope() {
+        // Ensures inhibit defaults to the "all" scope when omitted.
+        let args = Args::try_parse_from(["noticenterctl", "inhibit", "focus"])
+            .expect("parse args");
+        match args.command {
+            Command::Inhibit { scope, .. } => {
+                assert!(matches!(scope, InhibitScopeArg::All));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_inhibit_popups_scope() {
+        // Confirms popups scope is accepted for inhibit calls.
+        let args = Args::try_parse_from([
+            "noticenterctl",
+            "inhibit",
+            "focus",
+            "--scope",
+            "popups",
+        ])
+        .expect("parse args");
+        match args.command {
+            Command::Inhibit { scope, .. } => {
+                assert!(matches!(scope, InhibitScopeArg::Popups));
+            }
+            other => panic!("unexpected command: {other:?}"),
         }
     }
 }

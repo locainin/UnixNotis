@@ -13,13 +13,24 @@ pub const CONTROL_BUS_NAME: &str = "com.unixnotis.Control";
 pub const CONTROL_OBJECT_PATH: &str = "/com/unixnotis/Control";
 /// D-Bus interface name for control calls.
 pub const CONTROL_INTERFACE: &str = "com.unixnotis.Control";
+/// Inhibit scope meaning "all notification output" (default/legacy).
+pub const INHIBIT_SCOPE_ALL: u32 = 0;
+/// Inhibit scope bitmask value for suppressing popups.
+pub const INHIBIT_SCOPE_POPUPS: u32 = 1;
 
 /// Control-plane state broadcast to the UI.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ControlState {
     pub dnd_enabled: bool,
     pub history_count: u32,
+    /// True when at least one active inhibitor suppresses popups.
+    pub inhibited: bool,
+    /// Total number of active inhibitors (all scopes).
+    pub inhibitor_count: u32,
 }
+
+/// Tuple layout for inhibitor listings: (id, reason, scope, owner).
+pub type InhibitorInfo = (u64, String, u32, String);
 
 /// Panel visibility actions sent to the UI.
 #[derive(Debug, Copy, Clone, Serialize_repr, Deserialize_repr, Type)]
@@ -137,6 +148,15 @@ trait Control {
     /// Update the Do Not Disturb state.
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
 
+    /// Register an inhibitor to suppress notification output and return its token.
+    fn inhibit(&self, reason: &str, scope: u32) -> zbus::Result<u64>;
+
+    /// Remove a previously registered inhibitor token.
+    fn uninhibit(&self, id: u64) -> zbus::Result<()>;
+
+    /// List active inhibitors as (id, reason, scope, owner).
+    fn list_inhibitors(&self) -> zbus::Result<Vec<InhibitorInfo>>;
+
     /// Remove a notification by ID.
     fn dismiss(&self, id: u32) -> zbus::Result<()>;
 
@@ -165,6 +185,10 @@ trait Control {
 
     #[zbus(signal)]
     fn state_changed(&self, state: ControlState) -> zbus::Result<()>;
+
+    /// Emitted when inhibitor state toggles or count changes.
+    #[zbus(signal)]
+    fn inhibitors_changed(&self, active: bool, count: u32) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn panel_requested(&self, request: PanelRequest) -> zbus::Result<()>;

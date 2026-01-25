@@ -9,8 +9,10 @@ frontends for the panel and popups.
 ## Features
 
 - Freedesktop.org notification daemon with history, rules, sound, and DND.
+- Persistent DND state across daemon restarts.
 - Control-center panel with widgets, notification list, and media controls.
 - Toast popup UI with configurable timeouts and styling.
+- D-Bus inhibit API for programmatic popup suppression.
 - MPRIS media integration with playback controls.
 - Hot-reloaded config and CSS for fast iteration.
 - CLI control via `noticenterctl`.
@@ -68,9 +70,9 @@ Arch Linux (optional widget backends):
 sudo pacman -S networkmanager wireplumber pipewire-pulse brightnessctl bluez rfkill procps-ng hyprsunset
 ```
 
-## Installer (recommended)
+## Getting started
 
-Clone the repo and run the ratatui installer to perform trial runs, installs, and uninstalls:
+Quick install or trial run:
 
 ```sh
 git clone https://github.com/locainin/UnixNotis
@@ -78,108 +80,29 @@ cd UnixNotis
 cargo run --release -p unixnotis-installer
 ```
 
-The installer:
-- Builds the release binaries.
-- Installs binaries to `$HOME/.local/bin`.
-- Ensures config and theme files exist under `$HOME/.config/unixnotis`.
-- Installs and enables the systemd user unit at
-  `$HOME/.config/systemd/user/unixnotis-daemon.service`.
-
-### Installer UI
-
-![Installer CLI](assets/images/InstallerCLI.png)
-
-## Build
+Manual build/run:
 
 ```sh
 cargo build --release
-```
-
-## Preview without install
-
-Use the installer’s trial mode to preview behavior without installing user services:
-
-```sh
-cargo run --release -p unixnotis-installer
-```
-
-Choose “Trial run” and the daemon will temporarily replace the current notification daemon,
-then restore it on exit.
-
-For manual runs, stop any existing notification daemon so the D-Bus name is available:
-
-```sh
 cargo run --release -p unixnotis-daemon
 cargo run --release -p unixnotis-center
 cargo run --release -p unixnotis-popups
 ```
 
-Open or close the panel using the CLI:
+Panel control:
 
 ```sh
 cargo run --release -p noticenterctl -- open-panel
 cargo run --release -p noticenterctl -- close-panel
 ```
 
-## Configuration
+## Documentation
 
-The default config path follows XDG conventions:
-
-- `$XDG_CONFIG_HOME/unixnotis/config.toml`
-- fallback: `$HOME/.config/unixnotis/config.toml`
-
-If the config file is missing, defaults are used. Theme files are stored alongside the config
-directory and are created on demand.
-
-### Removing widgets
-
-Widgets can be removed either by disabling their flags or removing entries from the widget lists:
-
-```toml
-[widgets.volume]
-enabled = false
-
-[widgets.brightness]
-enabled = false
-
-[[widgets.toggles]]
-enabled = false
-label = "Wi-Fi"
-
-[[widgets.stats]]
-enabled = false
-label = "CPU"
-
-[[widgets.cards]]
-enabled = false
-title = "System"
-```
-
-Removing entries from `widgets.toggles`, `widgets.stats`, or `widgets.cards` disables them
-entirely. For sliders, set `enabled = false`.
-
-### Toggle identifiers
-
-Toggle widgets can include a stable `kind` identifier to keep backend selection intact when the
-label is customized. Supported kinds are `wifi`, `bluetooth`, `airplane`, and `night`.
-
-```toml
-[[widgets.toggles]]
-kind = "night"
-label = "Night Light"
-```
-
-### Styling
-
-CSS is controlled by the theme files under the config directory:
-
-- `base.css`
-- `panel.css`
-- `popup.css`
-- `widgets.css`
-
-The filenames are configurable via the `[theme]` section (`base_css`, `panel_css`, `popup_css`,
-`widgets_css`). CSS changes are hot-reloaded.
+- Getting started: `docs/getting-started.md`
+- Configuration guide: `docs/configuration.md`
+- Widgets and commands: `docs/widgets.md`
+- CLI usage: `docs/cli.md`
+- D-Bus API: `docs/dbus.md`
 
 ## Waybar integration
 

@@ -75,6 +75,10 @@ impl UiState {
     pub fn handle_event(&mut self, event: UiEvent) {
         match event {
             UiEvent::Seed { state, active } => {
+                if state.inhibited {
+                    // Inhibits suppress popup rendering while preserving history elsewhere.
+                    return;
+                }
                 if state.dnd_enabled {
                     for notification in active {
                         if notification.urgency == Urgency::Critical as u8 {
@@ -110,7 +114,10 @@ impl UiState {
                 self.remove_popup(id);
             }
             UiEvent::StateChanged(state) => {
-                if state.dnd_enabled {
+                if state.inhibited {
+                    debug!("clearing popups due to inhibition");
+                    self.clear_popups();
+                } else if state.dnd_enabled {
                     debug!("clearing popups due to dnd");
                     self.clear_popups();
                 }

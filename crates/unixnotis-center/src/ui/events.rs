@@ -71,9 +71,17 @@ impl UiState {
                 self.refresh_counts();
             }
             UiEvent::StateChanged(state) => {
-                debug!(dnd = state.dnd_enabled, "state updated");
+                debug!(
+                    dnd = state.dnd_enabled,
+                    inhibited = state.inhibited,
+                    inhibitors = state.inhibitor_count,
+                    "state updated"
+                );
                 self.log_debug(PanelDebugLevel::Info, || {
-                    format!("state changed: dnd={}", state.dnd_enabled)
+                    format!(
+                        "state changed: dnd={}, inhibited={}, inhibitors={}",
+                        state.dnd_enabled, state.inhibited, state.inhibitor_count
+                    )
                 });
                 self.update_state(state);
                 // Keep counts in sync if daemon state changes imply list updates.

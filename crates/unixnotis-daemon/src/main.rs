@@ -29,7 +29,7 @@ use crate::child_process::{
 };
 use crate::daemon::{
     log_name_reply, request_control_name, request_well_known_name, ControlServer, DaemonState,
-    NotificationServer,
+    spawn_inhibitor_owner_watch, NotificationServer,
 };
 use crate::dbus_owner::{log_current_owner, wait_for_owner_state};
 use crate::expire::ExpirationScheduler;
@@ -180,6 +180,10 @@ async fn main() -> Result<()> {
         return Err(anyhow!(
             "org.freedesktop.Notifications is still owned by another daemon; stop it or use --restore systemd if managed by systemd --user"
         ));
+    }
+
+    if let Err(err) = spawn_inhibitor_owner_watch(state.clone()).await {
+        warn!(?err, "failed to start inhibitor owner watcher");
     }
 
     let mut popups_process = start_popups_process(&args)?;

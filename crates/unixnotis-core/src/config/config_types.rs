@@ -15,6 +15,7 @@ use super::config_widgets::WidgetsConfig;
 #[serde(default)]
 pub struct Config {
     pub general: GeneralConfig,
+    pub inhibit: InhibitConfig,
     pub popups: PopupConfig,
     pub panel: PanelConfig,
     pub history: HistoryConfig,
@@ -30,6 +31,30 @@ pub struct Config {
 pub struct GeneralConfig {
     pub dnd_default: bool,
     pub log_level: Option<String>,
+}
+
+/// Inhibit behavior controls how the daemon handles suppression requests.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct InhibitConfig {
+    pub mode: InhibitMode,
+}
+
+impl Default for InhibitConfig {
+    fn default() -> Self {
+        Self {
+            mode: InhibitMode::NoPopups,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum InhibitMode {
+    /// Store notifications but suppress popup rendering.
+    NoPopups,
+    /// Drop incoming notifications entirely while inhibited.
+    DropAll,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

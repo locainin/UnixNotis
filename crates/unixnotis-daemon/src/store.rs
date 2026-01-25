@@ -1,11 +1,29 @@
-//! Notification store with ordering and history management.
+//! Notification store with ordering, history, and suppression policies.
+//!
+//! Split into focused modules so persistence and inhibitor tracking stay isolated
+//! from the core notification lifecycle logic.
 
-use std::collections::{HashMap, VecDeque};
+#[path = "store/store_history.rs"]
+mod store_history;
+#[path = "store/store_inhibit.rs"]
+mod store_inhibit;
+#[path = "store/store_state.rs"]
+mod store_state;
+
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
 use indexmap::IndexMap;
-use unixnotis_core::{Config, Notification, NotificationView, RuleConfig, Urgency};
+use tracing::{debug, warn};
+use unixnotis_core::{Config, InhibitMode, Notification, NotificationView, RuleConfig, Urgency};
+
+use store_history::HistoryStore;
+use store_inhibit::{inhibits_popups, Inhibitor, InhibitorOwnerMismatch};
+use store_state::{DndStateStore, DND_STATE_VERSION};
+
+#[cfg(test)]
+use std::path::PathBuf;
 
 /// Mutable notification state owned by the daemon.
 pub struct NotificationStore {
@@ -15,6 +33,16 @@ pub struct NotificationStore {
     history: HistoryStore,
     expirations: HashMap<u32, Instant>,
     dnd_enabled: bool,
+    // Optional persistence layer for the DND toggle; absence keeps behavior in-memory only.
+    dnd_state_store: Option<DndStateStore>,
+    // Monotonic token for inhibitor registration; tokens are never reused in a process.
+    next_inhibitor_id: u64,
+    // Active inhibitors keyed by token for O(1) lookup and removal.
+    inhibitors: HashMap<u64, Inhibitor>,
+    // Cached boolean so popup decisions stay O(1) during notify bursts.
+    inhibited: bool,
+    // Cached total so D-Bus state can be emitted without recomputation.
+    inhibitor_count: u32,
 }
 
 pub struct InsertOutcome {
@@ -23,6 +51,7 @@ pub struct InsertOutcome {
     pub show_popup: bool,
     pub allow_sound: bool,
     pub evicted: Vec<u32>,
+    pub dropped: bool,
 }
 
 pub struct DismissOutcome {
@@ -36,97 +65,56 @@ impl DismissOutcome {
     }
 }
 
-struct HistoryStore {
-    entries: HashMap<u32, Arc<Notification>>,
-    order: VecDeque<u32>,
-}
-
-impl HistoryStore {
-    fn new() -> Self {
-        Self {
-            entries: HashMap::new(),
-            order: VecDeque::new(),
-        }
-    }
-
-    fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    fn contains(&self, id: &u32) -> bool {
-        self.entries.contains_key(id)
-    }
-
-    fn clear(&mut self) {
-        self.entries.clear();
-        self.order.clear();
-    }
-
-    fn list_views(&self) -> Vec<NotificationView> {
-        let mut views = Vec::with_capacity(self.entries.len());
-        for id in self.order.iter().rev() {
-            if let Some(notification) = self.entries.get(id) {
-                views.push(notification.to_list_view());
-            }
-        }
-        views
-    }
-
-    fn remove(&mut self, id: &u32) -> Option<Arc<Notification>> {
-        let removed = self.entries.remove(id);
-        if removed.is_some() {
-            // Removal is infrequent compared to insertion; pay the cost here to keep order clean.
-            self.order.retain(|entry| entry != id);
-        }
-        removed
-    }
-
-    fn insert(&mut self, notification: Arc<Notification>) {
-        let id = notification.id;
-        if self.entries.contains_key(&id) {
-            // Avoid duplicate IDs in order when a notification is replaced.
-            self.order.retain(|entry| *entry != id);
-        }
-        self.entries.insert(id, notification);
-        self.order.push_back(id);
-    }
-
-    fn evict_to_limit(&mut self, max_entries: usize) {
-        if max_entries == 0 {
-            self.clear();
-            return;
-        }
-
-        while self.entries.len() > max_entries {
-            let Some(id) = self.order.pop_front() else {
-                // Recover ordering when entries outlive the recorded order.
-                self.order.extend(self.entries.keys().copied());
-                if self.order.is_empty() {
-                    break;
-                }
-                continue;
-            };
-
-            if self.entries.remove(&id).is_none() {
-                continue;
-            }
-        }
-
-        if self.entries.is_empty() {
-            self.order.clear();
-        }
-    }
-}
 
 impl NotificationStore {
     pub fn new(config: Config) -> Self {
+        let dnd_state_store = DndStateStore::new();
+        Self::new_with_state_store(config, dnd_state_store)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_state_dir(config: Config, state_dir: PathBuf) -> Self {
+        // Test helper: allow a custom state directory without mutating process env.
+        let dnd_state_store = Some(DndStateStore::from_state_dir(state_dir));
+        Self::new_with_state_store(config, dnd_state_store)
+    }
+
+    fn new_with_state_store(config: Config, dnd_state_store: Option<DndStateStore>) -> Self {
+        let mut dnd_enabled = config.general.dnd_default;
+        if let Some(store) = dnd_state_store.as_ref() {
+            match store.load() {
+                Ok(Some(state)) if state.version == DND_STATE_VERSION => {
+                    dnd_enabled = state.dnd_enabled;
+                    debug!(
+                        dnd_enabled,
+                        "loaded persisted do-not-disturb state"
+                    );
+                }
+                Ok(Some(state)) => {
+                    warn!(
+                        version = state.version,
+                        "unsupported dnd state version; ignoring persisted value"
+                    );
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    warn!(?err, "failed to read persisted do-not-disturb state");
+                }
+            }
+        }
+
         Self {
             next_id: 1,
-            dnd_enabled: config.general.dnd_default,
+            dnd_enabled,
             config,
             active: IndexMap::new(),
             history: HistoryStore::new(),
             expirations: HashMap::new(),
+            dnd_state_store,
+            next_inhibitor_id: 1,
+            inhibitors: HashMap::new(),
+            inhibited: false,
+            inhibitor_count: 0,
         }
     }
 
@@ -138,8 +126,88 @@ impl NotificationStore {
         self.dnd_enabled
     }
 
-    pub fn set_dnd(&mut self, enabled: bool) {
+    pub fn set_dnd(&mut self, enabled: bool) -> bool {
+        if self.dnd_enabled == enabled {
+            return false;
+        }
         self.dnd_enabled = enabled;
+        if let Some(store) = self.dnd_state_store.as_ref() {
+            if let Err(err) = store.persist(enabled) {
+                warn!(?err, "failed to persist do-not-disturb state");
+            }
+        }
+        true
+    }
+
+    pub fn inhibited(&self) -> bool {
+        self.inhibited
+    }
+
+    pub fn inhibitor_count(&self) -> u32 {
+        self.inhibitor_count
+    }
+
+    pub fn add_inhibitor(&mut self, owner: String, reason: String, scope: u32) -> u64 {
+        let id = self.next_inhibitor_id.max(1);
+        self.next_inhibitor_id = id.saturating_add(1);
+        // Keep the owner name so disconnect cleanup can evict all related inhibitors.
+        self.inhibitors.insert(
+            id,
+            Inhibitor {
+                id,
+                owner,
+                reason,
+                scope,
+            },
+        );
+        self.refresh_inhibit_state();
+        id
+    }
+
+    pub fn remove_inhibitor(
+        &mut self,
+        id: u64,
+        owner: &str,
+    ) -> Result<bool, InhibitorOwnerMismatch> {
+        let Some(existing) = self.inhibitors.get(&id) else {
+            return Ok(false);
+        };
+        if existing.owner != owner {
+            // Owner checks prevent one client from removing another client's inhibitor.
+            return Err(InhibitorOwnerMismatch::new(
+                existing.owner.clone(),
+                owner.to_string(),
+            ));
+        }
+        self.inhibitors.remove(&id);
+        self.refresh_inhibit_state();
+        Ok(true)
+    }
+
+    pub fn remove_inhibitors_by_owner(&mut self, owner: &str) -> bool {
+        let before = self.inhibitors.len();
+        self.inhibitors.retain(|_, inhibitor| inhibitor.owner != owner);
+        if self.inhibitors.len() == before {
+            return false;
+        }
+        // Refresh cached counters only when the set actually changes.
+        self.refresh_inhibit_state();
+        true
+    }
+
+    pub fn list_inhibitors(&self) -> Vec<(u64, String, u32, String)> {
+        let mut inhibitors = Vec::with_capacity(self.inhibitors.len());
+        for inhibitor in self.inhibitors.values() {
+            inhibitors.push((
+                inhibitor.id,
+                inhibitor.reason.clone(),
+                inhibitor.scope,
+                inhibitor.owner.clone(),
+            ));
+        }
+        // Sort by token for deterministic CLI output and test expectations.
+        inhibitors.sort_by_key(|(id, _, _, _)| *id);
+        inhibitors
     }
 
     pub fn list_active(&self) -> Vec<NotificationView> {
@@ -160,6 +228,19 @@ impl NotificationStore {
 
     pub fn insert(&mut self, mut notification: Notification, replaces_id: u32) -> InsertOutcome {
         self.apply_rules(&mut notification);
+        if self.should_drop_inhibited() {
+            let assigned_id = self.next_id();
+            notification.id = assigned_id;
+            let notification = Arc::new(notification);
+            return InsertOutcome {
+                show_popup: false,
+                allow_sound: false,
+                notification,
+                replaced: false,
+                evicted: Vec::new(),
+                dropped: true,
+            };
+        }
         // Preserve protocol semantics: replaces_id only applies when it matches an existing item.
         let has_replaces_id = replaces_id != 0;
         // Replacement is only true when the referenced notification is present.
@@ -187,6 +268,7 @@ impl NotificationStore {
             notification,
             replaced,
             evicted,
+            dropped: false,
         }
     }
 
@@ -308,6 +390,9 @@ impl NotificationStore {
         if notification.suppress_popup {
             return false;
         }
+        if self.inhibited {
+            return false;
+        }
         if self.dnd_enabled {
             return notification.urgency == Urgency::Critical;
         }
@@ -318,6 +403,7 @@ impl NotificationStore {
         if notification.suppress_sound {
             return false;
         }
+        // Inhibitors only gate popup rendering; sound follows DND and rule overrides.
         if self.dnd_enabled {
             return notification.urgency == Urgency::Critical;
         }
@@ -331,6 +417,18 @@ impl NotificationStore {
             }
             apply_rule(rule, notification);
         }
+    }
+
+    fn should_drop_inhibited(&self) -> bool {
+        self.inhibited && matches!(self.config.inhibit.mode, InhibitMode::DropAll)
+    }
+
+    fn refresh_inhibit_state(&mut self) {
+        self.inhibitor_count = self.inhibitors.len() as u32;
+        self.inhibited = self
+            .inhibitors
+            .values()
+            .any(|inhibitor| inhibits_popups(inhibitor.scope));
     }
 }
 
@@ -402,137 +500,5 @@ fn contains_ci(haystack: &str, needle: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{contains_ci, NotificationStore};
-    use chrono::Utc;
-    use std::collections::HashMap;
-    use unixnotis_core::{Config, Notification, NotificationImage, Urgency};
-    use zbus::zvariant::OwnedValue;
-
-    #[test]
-    fn contains_ci_matches_ascii() {
-        assert!(contains_ci("Signal-Desktop", "signal"));
-        assert!(contains_ci("signal-desktop", "Signal"));
-        assert!(!contains_ci("signal-desktop", "brave"));
-        assert!(contains_ci("mixedCase", "case"));
-        assert!(contains_ci("mixedCase", ""));
-    }
-
-    fn make_notification(summary: &str) -> Notification {
-        Notification {
-            id: 0,
-            app_name: "TestApp".to_string(),
-            app_icon: String::new(),
-            summary: summary.to_string(),
-            body: String::new(),
-            actions: Vec::new(),
-            hints: HashMap::<String, OwnedValue>::new(),
-            urgency: Urgency::Normal,
-            category: None,
-            is_transient: false,
-            is_resident: false,
-            suppress_popup: false,
-            suppress_sound: false,
-            image: NotificationImage::default(),
-            expire_timeout: 0,
-            received_at: Utc::now(),
-        }
-    }
-
-    fn make_store_with_limits(max_active: usize, max_entries: usize) -> NotificationStore {
-        let mut config = Config::default();
-        config.history.max_active = max_active;
-        config.history.max_entries = max_entries;
-        NotificationStore::new(config)
-    }
-
-    #[test]
-    fn max_active_zero_archives_immediately() {
-        let mut store = make_store_with_limits(0, 10);
-
-        let outcome = store.insert(make_notification("first"), 0);
-        assert_eq!(outcome.evicted.len(), 1);
-        assert!(store.list_active().is_empty());
-        assert_eq!(store.history_len(), 1);
-
-        store.insert(make_notification("second"), 0);
-        assert!(store.list_active().is_empty());
-        assert_eq!(store.history_len(), 2);
-    }
-
-    #[test]
-    fn max_active_evicts_oldest_to_history() {
-        let mut store = make_store_with_limits(1, 10);
-
-        store.insert(make_notification("first"), 0);
-        let outcome = store.insert(make_notification("second"), 0);
-
-        assert_eq!(outcome.evicted.len(), 1);
-        let active = store.list_active();
-        assert_eq!(active.len(), 1);
-        assert_eq!(active[0].summary, "second");
-        assert_eq!(store.history_len(), 1);
-    }
-
-    #[test]
-    fn max_entries_zero_drops_history_on_close() {
-        let mut store = make_store_with_limits(10, 0);
-
-        let outcome = store.insert(make_notification("first"), 0);
-        store.close(outcome.notification.id);
-
-        assert_eq!(store.history_len(), 0);
-    }
-
-    #[test]
-    fn replace_id_in_history_reuses_id_and_clears_entry() {
-        let mut store = make_store_with_limits(2, 10);
-
-        let first = store.insert(make_notification("first"), 0);
-        store.close(first.notification.id);
-        assert_eq!(store.history_len(), 1);
-
-        // Replacement should reuse the original ID and remove the history entry.
-        let replaced = store.insert(make_notification("replacement"), first.notification.id);
-        assert!(replaced.replaced);
-        assert_eq!(replaced.notification.id, first.notification.id);
-        assert_eq!(store.history_len(), 0);
-
-        let active = store.list_active();
-        assert_eq!(active.len(), 1);
-        assert_eq!(active[0].summary, "replacement");
-
-        // Closing the replacement should re-add a single history entry for the updated notification.
-        store.close(replaced.notification.id);
-        let history = store.list_history();
-        assert_eq!(history.len(), 1);
-        assert_eq!(history[0].summary, "replacement");
-    }
-
-    #[test]
-    fn history_eviction_keeps_most_recent_entries() {
-        let mut store = make_store_with_limits(0, 2);
-
-        store.insert(make_notification("first"), 0);
-        store.insert(make_notification("second"), 0);
-        store.insert(make_notification("third"), 0);
-
-        // History listing returns most-recent-first order.
-        let history = store.list_history();
-        assert_eq!(history.len(), 2);
-        assert_eq!(history[0].summary, "third");
-        assert_eq!(history[1].summary, "second");
-    }
-
-    #[test]
-    fn max_entries_zero_drops_history_on_insert() {
-        let mut store = make_store_with_limits(0, 0);
-
-        let outcome = store.insert(make_notification("first"), 0);
-
-        // Eviction should archive the active entry, then drop it due to the zero history limit.
-        assert_eq!(outcome.evicted.len(), 1);
-        assert!(store.list_active().is_empty());
-        assert_eq!(store.history_len(), 0);
-    }
-}
+#[path = "store/store_tests.rs"]
+mod store_tests;
