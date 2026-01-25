@@ -147,6 +147,7 @@ impl UiState {
             panel_visible: false,
             panel_visible_flag,
             work_area: None,
+            last_count: None,
             media,
             media_handle: init.media_handle,
             pending_media: None,

@@ -22,7 +22,7 @@ impl UiState {
         self.dnd_guard.set(false);
     }
 
-    pub(super) fn refresh_counts(&self) {
+    pub(super) fn refresh_counts(&mut self) {
         if !self.panel_visible {
             // Skip label updates while hidden to avoid unnecessary UI work.
             // Counts are refreshed on the next open to keep the header accurate.
@@ -30,6 +30,10 @@ impl UiState {
         }
         // Header count always reflects total active + history entries.
         let total = self.list.total_count();
+        if self.last_count == Some(total) {
+            return;
+        }
+        self.last_count = Some(total);
         self.panel.header_count.set_text(&format!("{total}"));
     }
 

@@ -4,6 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::OnceLock;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
 use gtk::{glib, Align};
@@ -13,7 +14,7 @@ use unixnotis_core::{PanelDebugLevel, StatWidgetConfig};
 use crossbeam_channel as channel;
 
 use super::stats_builtin::BuiltinStat;
-use super::util::run_command_capture_async;
+use super::util::{run_command_capture_async, RefreshBackoff};
 use crate::debug;
 
 pub struct StatGrid {
@@ -28,6 +29,8 @@ struct StatItem {
     builtin: Rc<RefCell<Option<BuiltinStat>>>,
     inflight: Rc<Cell<bool>>,
     last_value: Rc<RefCell<Option<String>>>,
+    // Backoff reduces repeated reads when the value is stable.
+    refresh_backoff: Rc<RefCell<RefreshBackoff>>,
 }
 
 struct BuiltinStatJob {
@@ -110,9 +113,9 @@ impl StatGrid {
         &self.root
     }
 
-    pub fn refresh(&self) {
+    pub fn refresh(&self, base_interval: Duration, force: bool) {
         for item in &self.items {
-            item.refresh();
+            item.refresh(base_interval, force);
         }
     }
 }
@@ -159,11 +162,21 @@ impl StatItem {
             builtin: Rc::new(RefCell::new(builtin)),
             inflight: Rc::new(Cell::new(false)),
             last_value: Rc::new(RefCell::new(None)),
+            refresh_backoff: Rc::new(RefCell::new(RefreshBackoff::default())),
         }
     }
 
-    fn refresh(&self) {
+    fn refresh(&self, base_interval: Duration, force: bool) {
         if !self.root.is_visible() {
+            return;
+        }
+        let now = Instant::now();
+        // Skip refresh when the backoff window has not elapsed.
+        if !self
+            .refresh_backoff
+            .borrow()
+            .should_refresh(now, force)
+        {
             return;
         }
         debug::log(PanelDebugLevel::Verbose, || {
@@ -185,7 +198,10 @@ impl StatItem {
                 // Fallback to inline reads when the worker thread is unavailable.
                 let value = fallback.read().unwrap_or_else(|| "n/a".to_string());
                 *self.builtin.borrow_mut() = Some(fallback);
-                self.apply_value(&value);
+                let changed = self.apply_value(&value);
+                self.refresh_backoff
+                    .borrow_mut()
+                    .note_success(Instant::now(), base_interval, changed);
                 return;
             }
 
@@ -193,26 +209,43 @@ impl StatItem {
             let inflight = self.inflight.clone();
             let builtin_cell = self.builtin.clone();
             let last_value = self.last_value.clone();
+            let refresh_backoff = self.refresh_backoff.clone();
             glib::MainContext::default().spawn_local(async move {
                 let result = rx.recv().await;
                 inflight.set(false);
                 let Ok((builtin, value)) = result else {
                     *builtin_cell.borrow_mut() = Some(fallback);
+                    refresh_backoff
+                        .borrow_mut()
+                        .note_error(Instant::now(), base_interval);
                     return;
                 };
                 *builtin_cell.borrow_mut() = Some(builtin);
                 if value.is_empty() {
                     apply_cached_value(&label, &last_value);
+                    refresh_backoff
+                        .borrow_mut()
+                        .note_success(Instant::now(), base_interval, false);
                 } else if last_value.borrow().as_deref() != Some(&value) {
                     label.set_text(&value);
                     *last_value.borrow_mut() = Some(value);
+                    refresh_backoff
+                        .borrow_mut()
+                        .note_success(Instant::now(), base_interval, true);
+                } else {
+                    refresh_backoff
+                        .borrow_mut()
+                        .note_success(Instant::now(), base_interval, false);
                 }
             });
             return;
         }
 
         let Some(cmd) = self.config.cmd.as_ref() else {
-            self.apply_value("n/a");
+            let changed = self.apply_value("n/a");
+            self.refresh_backoff
+                .borrow_mut()
+                .note_success(Instant::now(), base_interval, changed);
             return;
         };
         self.inflight.set(true);
@@ -221,11 +254,15 @@ impl StatItem {
         let label = self.value_label.clone();
         let inflight = self.inflight.clone();
         let last_value = self.last_value.clone();
+        let refresh_backoff = self.refresh_backoff.clone();
         glib::MainContext::default().spawn_local(async move {
             let output = match rx.recv().await {
                 Ok(output) => output,
                 Err(_) => {
                     inflight.set(false);
+                    refresh_backoff
+                        .borrow_mut()
+                        .note_error(Instant::now(), base_interval);
                     return;
                 }
             };
@@ -235,31 +272,47 @@ impl StatItem {
                 Err(err) => {
                     warn!(?cmd, ?err, "stat command failed");
                     apply_cached_value(&label, &last_value);
+                    refresh_backoff
+                        .borrow_mut()
+                        .note_error(Instant::now(), base_interval);
                     return;
                 }
             };
             if !output.status.success() {
                 warn!(?cmd, "stat command failed");
                 apply_cached_value(&label, &last_value);
+                refresh_backoff
+                    .borrow_mut()
+                    .note_error(Instant::now(), base_interval);
                 return;
             }
             let stdout = String::from_utf8_lossy(&output.stdout);
             let value = stdout.trim();
             if value.is_empty() {
                 apply_cached_value(&label, &last_value);
+                refresh_backoff
+                    .borrow_mut()
+                    .note_success(Instant::now(), base_interval, false);
             } else {
-                label.set_text(value);
-                *last_value.borrow_mut() = Some(value.to_string());
+                let changed = last_value.borrow().as_deref() != Some(value);
+                if changed {
+                    label.set_text(value);
+                    *last_value.borrow_mut() = Some(value.to_string());
+                }
+                refresh_backoff
+                    .borrow_mut()
+                    .note_success(Instant::now(), base_interval, changed);
             }
         });
     }
 
-    fn apply_value(&self, value: &str) {
+    fn apply_value(&self, value: &str) -> bool {
         if self.last_value.borrow().as_deref() == Some(value) {
-            return;
+            return false;
         }
         self.value_label.set_text(value);
         *self.last_value.borrow_mut() = Some(value.to_string());
+        true
     }
 }
 

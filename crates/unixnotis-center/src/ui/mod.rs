@@ -40,6 +40,8 @@ pub struct UiState {
     panel_visible: bool,
     panel_visible_flag: Arc<AtomicBool>,
     work_area: Option<Margins>,
+    // Tracks the last rendered count to avoid redundant label updates.
+    last_count: Option<usize>,
     media: Option<media_widget::MediaWidget>,
     media_handle: Option<crate::media::MediaHandle>,
     // Holds the most recent media snapshot while the panel is hidden.

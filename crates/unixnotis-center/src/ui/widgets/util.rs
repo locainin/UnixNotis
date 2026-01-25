@@ -9,7 +9,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
 use gtk::{glib, Align};
@@ -21,6 +21,64 @@ pub(super) use command_utils::{
     run_command, run_command_capture_async, run_command_capture_status_async,
 };
 pub(super) use watch_utils::{start_command_watch, CommandWatch};
+
+// Backoff keeps stable widgets from re-running commands on every tick.
+const REFRESH_BACKOFF_MAX_MULT: u64 = 4;
+const REFRESH_BACKOFF_STABLE_AFTER: u8 = 2;
+const REFRESH_BACKOFF_ERROR_AFTER: u8 = 2;
+
+#[derive(Debug, Default)]
+pub(super) struct RefreshBackoff {
+    next_due: Option<Instant>,
+    stable_streak: u8,
+    error_streak: u8,
+    backoff_mult: u64,
+}
+
+impl RefreshBackoff {
+    pub(super) fn should_refresh(&self, now: Instant, force: bool) -> bool {
+        if force {
+            return true;
+        }
+        match self.next_due {
+            Some(due) => now >= due,
+            None => true,
+        }
+    }
+
+    pub(super) fn note_success(&mut self, now: Instant, base: Duration, changed: bool) {
+        self.error_streak = 0;
+        if changed {
+            // Reset the backoff when data changes to keep the UI responsive.
+            self.stable_streak = 0;
+            self.backoff_mult = 1;
+        } else {
+            self.stable_streak = self.stable_streak.saturating_add(1);
+            if self.stable_streak >= REFRESH_BACKOFF_STABLE_AFTER {
+                self.backoff_mult = (self.backoff_mult.max(1) * 2).min(REFRESH_BACKOFF_MAX_MULT);
+            }
+        }
+        self.next_due = Some(now + scale_duration(base, self.backoff_mult.max(1)));
+    }
+
+    pub(super) fn note_error(&mut self, now: Instant, base: Duration) {
+        // Keep retrying quickly at first, then back off to reduce churn on persistent failures.
+        self.error_streak = self.error_streak.saturating_add(1);
+        self.stable_streak = 0;
+        if self.error_streak >= REFRESH_BACKOFF_ERROR_AFTER {
+            self.backoff_mult = (self.backoff_mult.max(1) * 2).min(REFRESH_BACKOFF_MAX_MULT);
+        } else {
+            self.backoff_mult = 1;
+        }
+        self.next_due = Some(now + scale_duration(base, self.backoff_mult.max(1)));
+    }
+}
+
+fn scale_duration(base: Duration, mult: u64) -> Duration {
+    let base_ms = base.as_millis();
+    let scaled = base_ms.saturating_mul(mult as u128);
+    Duration::from_millis(scaled.min(u64::MAX as u128) as u64)
+}
 
 pub struct CommandSlider {
     pub root: gtk::Box,
@@ -420,4 +478,49 @@ fn contains_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {
             .zip(needle)
             .all(|(lhs, rhs)| lhs.to_ascii_lowercase() == *rhs)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RefreshBackoff;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn refresh_backoff_resets_on_change() {
+        let mut backoff = RefreshBackoff::default();
+        let base = Duration::from_millis(100);
+        let now = Instant::now();
+        backoff.note_success(now, base, false);
+        let next = now + base;
+        assert!(backoff.should_refresh(next, false));
+        backoff.note_success(next, base, true);
+        // After a change, backoff resets but still waits the base interval.
+        assert!(!backoff.should_refresh(next, false));
+        assert!(backoff.should_refresh(next + base, false));
+    }
+
+    #[test]
+    fn refresh_backoff_increases_on_stable() {
+        let mut backoff = RefreshBackoff::default();
+        let base = Duration::from_millis(100);
+        let mut now = Instant::now();
+        backoff.note_success(now, base, false);
+        now += base;
+        backoff.note_success(now, base, false);
+        // After two stable updates, backoff should extend the next due time.
+        assert!(!backoff.should_refresh(now + base, false));
+    }
+
+    #[test]
+    fn refresh_backoff_increases_on_errors() {
+        let mut backoff = RefreshBackoff::default();
+        let base = Duration::from_millis(100);
+        let now = Instant::now();
+        backoff.note_error(now, base);
+        // First error should still allow a quick retry.
+        assert!(backoff.should_refresh(now + base, false));
+        backoff.note_error(now + base, base);
+        // After repeated errors, backoff should delay retries.
+        assert!(!backoff.should_refresh(now + base, false));
+    }
 }

@@ -2,13 +2,14 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
 use gtk::{glib, Align};
 use tracing::warn;
 use unixnotis_core::{CardWidgetConfig, PanelDebugLevel};
 
-use super::util::run_command_capture_async;
+use super::util::{run_command_capture_async, RefreshBackoff};
 use crate::debug;
 
 pub struct CardGrid {
@@ -24,6 +25,10 @@ struct CardItem {
     is_calendar: bool,
     inflight: Rc<Cell<bool>>,
     last_value: Rc<RefCell<Option<String>>>,
+    // Backoff reduces repeated command executions when the value is stable.
+    refresh_backoff: Rc<RefCell<RefreshBackoff>>,
+    // Calendar only changes daily; track the last rendered day to avoid redundant updates.
+    last_calendar_day: Rc<Cell<Option<(i32, i32, i32)>>>,
 }
 
 impl CardGrid {
@@ -60,9 +65,9 @@ impl CardGrid {
         &self.root
     }
 
-    pub fn refresh(&self) {
+    pub fn refresh(&self, base_interval: Duration, force: bool) {
         for item in &self.items {
-            item.refresh();
+            item.refresh(base_interval, force);
         }
     }
 }
@@ -134,22 +139,46 @@ impl CardItem {
             is_calendar,
             inflight: Rc::new(Cell::new(false)),
             last_value: Rc::new(RefCell::new(None)),
+            refresh_backoff: Rc::new(RefCell::new(RefreshBackoff::default())),
+            last_calendar_day: Rc::new(Cell::new(None)),
         }
     }
 
-    fn refresh(&self) {
+    fn refresh(&self, base_interval: Duration, force: bool) {
         if self.is_calendar {
             debug::log(PanelDebugLevel::Verbose, || "calendar refresh".to_string());
-            self.refresh_calendar();
+            let now = Instant::now();
+            // Skip calendar refresh while within the backoff window.
+            if !self
+                .refresh_backoff
+                .borrow()
+                .should_refresh(now, force)
+            {
+                return;
+            }
+            self.refresh_calendar(base_interval);
             return;
         }
         if !self.root.is_visible() {
+            return;
+        }
+        let now = Instant::now();
+        // Skip command execution while within the backoff window.
+        if !self
+            .refresh_backoff
+            .borrow()
+            .should_refresh(now, force)
+        {
             return;
         }
         debug::log(PanelDebugLevel::Verbose, || {
             format!("card refresh: {}", self.config.title)
         });
         let Some(cmd) = self.config.cmd.as_ref() else {
+            // Static cards do not need repeated refresh work once visible.
+            self.refresh_backoff
+                .borrow_mut()
+                .note_success(Instant::now(), base_interval, false);
             return;
         };
         if self.inflight.get() {
@@ -161,11 +190,15 @@ impl CardItem {
         let label = self.body_label.clone();
         let inflight = self.inflight.clone();
         let last_value = self.last_value.clone();
+        let refresh_backoff = self.refresh_backoff.clone();
         glib::MainContext::default().spawn_local(async move {
             let output = match rx.recv().await {
                 Ok(output) => output,
                 Err(_) => {
                     inflight.set(false);
+                    refresh_backoff
+                        .borrow_mut()
+                        .note_error(Instant::now(), base_interval);
                     return;
                 }
             };
@@ -175,36 +208,61 @@ impl CardItem {
                 Err(err) => {
                     warn!(?cmd, ?err, "info card command failed");
                     apply_cached_value(&label, &last_value);
+                    refresh_backoff
+                        .borrow_mut()
+                        .note_error(Instant::now(), base_interval);
                     return;
                 }
             };
             if !output.status.success() {
                 warn!(?cmd, "info card command failed");
                 apply_cached_value(&label, &last_value);
+                refresh_backoff
+                    .borrow_mut()
+                    .note_error(Instant::now(), base_interval);
                 return;
             }
             let stdout = String::from_utf8_lossy(&output.stdout);
             let value = stdout.trim();
             if value.is_empty() {
                 apply_cached_value(&label, &last_value);
+                refresh_backoff
+                    .borrow_mut()
+                    .note_success(Instant::now(), base_interval, false);
             } else {
-                if last_value.borrow().as_deref() == Some(value) {
-                    return;
+                let changed = last_value.borrow().as_deref() != Some(value);
+                if changed {
+                    label.set_text(value);
+                    *last_value.borrow_mut() = Some(value.to_string());
                 }
-                label.set_text(value);
-                *last_value.borrow_mut() = Some(value.to_string());
+                refresh_backoff
+                    .borrow_mut()
+                    .note_success(Instant::now(), base_interval, changed);
             }
         });
     }
 
-    fn refresh_calendar(&self) {
+    fn refresh_calendar(&self, base_interval: Duration) {
         let Some(calendar) = self.calendar.as_ref() else {
             return;
         };
         match glib::DateTime::now_local() {
-            Ok(now) => calendar.select_day(&now),
+            Ok(now) => {
+                let date_key = (now.year(), now.month(), now.day_of_month());
+                let changed = self.last_calendar_day.get() != Some(date_key);
+                if changed {
+                    calendar.select_day(&now);
+                    self.last_calendar_day.set(Some(date_key));
+                }
+                self.refresh_backoff
+                    .borrow_mut()
+                    .note_success(Instant::now(), base_interval, changed);
+            }
             Err(err) => {
                 warn!(?err, "calendar refresh failed");
+                self.refresh_backoff
+                    .borrow_mut()
+                    .note_error(Instant::now(), base_interval);
             }
         }
     }

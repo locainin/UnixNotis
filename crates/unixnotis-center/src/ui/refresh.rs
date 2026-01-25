@@ -2,7 +2,7 @@
 //!
 //! Maintains the fast/slow polling cadence and the GLib timer lifecycle.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use gtk::glib;
 use tracing::info;
@@ -57,10 +57,10 @@ impl UiState {
                 }
             }
             if let Some(stats) = self.stats.as_ref() {
-                stats.refresh();
+                stats.refresh(Duration::from_millis(slow_ms), force);
             }
             if let Some(cards) = self.cards.as_ref() {
-                cards.refresh();
+                cards.refresh(Duration::from_millis(slow_ms), force);
             }
             self.last_slow_refresh = Some(now);
         }
