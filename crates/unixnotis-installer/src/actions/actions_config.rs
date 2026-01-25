@@ -10,6 +10,8 @@ use crate::paths::format_with_home;
 
 use super::{log_line, ActionContext};
 
+const DND_STATE_FILE: &str = "state.json";
+
 pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
     let config = Config::default();
     let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
@@ -119,6 +121,78 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     Ok(())
 }
 
+pub fn remove_state(ctx: &mut ActionContext) -> Result<()> {
+    let Some(state_dir) = resolve_state_dir() else {
+        log_line(ctx, "State directory not resolved; skipping state cleanup.");
+        return Ok(());
+    };
+
+    let state_root = state_dir.join("unixnotis");
+    let outcome = match remove_state_file(&state_root) {
+        Ok(outcome) => outcome,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            log_line(ctx, "State file not present; nothing to remove.");
+            return Ok(());
+        }
+        Err(err) => return Err(err).with_context(|| "failed to remove state file"),
+    };
+
+    if outcome.removed_file {
+        let path = state_root.join(DND_STATE_FILE);
+        log_line(
+            ctx,
+            format!(
+                "Removed persisted state file: {}",
+                format_with_state_env(&path)
+            ),
+        );
+    }
+
+    if outcome.removed_dir {
+        log_line(
+            ctx,
+            format!(
+                "Removed empty state directory: {}",
+                format_with_state_env(&state_root)
+            ),
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Default)]
+struct RemoveStateOutcome {
+    removed_file: bool,
+    removed_dir: bool,
+}
+
+fn remove_state_file(state_root: &Path) -> std::io::Result<RemoveStateOutcome> {
+    let state_file = state_root.join(DND_STATE_FILE);
+    let removed_file = match fs::remove_file(&state_file) {
+        Ok(()) => true,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
+        Err(err) => return Err(err),
+    };
+
+    if !removed_file {
+        return Ok(RemoveStateOutcome::default());
+    }
+
+    let removed_dir =
+        is_dir_empty(state_root).unwrap_or(false) && fs::remove_dir(state_root).is_ok();
+
+    Ok(RemoveStateOutcome {
+        removed_file,
+        removed_dir,
+    })
+}
+
+fn is_dir_empty(path: &Path) -> std::io::Result<bool> {
+    let mut entries = fs::read_dir(path)?;
+    Ok(entries.next().is_none())
+}
+
 fn backup_existing_file(ctx: &mut ActionContext, path: &Path, label: &str) -> Result<()> {
     if !path.exists() {
         return Ok(());
@@ -152,9 +226,52 @@ fn next_backup_path(path: &Path) -> PathBuf {
     }
 }
 
+fn resolve_state_dir() -> Option<PathBuf> {
+    resolve_state_dir_from_env(
+        std::env::var("XDG_STATE_HOME").ok(),
+        std::env::var("HOME").ok(),
+    )
+}
+
+fn resolve_state_dir_from_env(
+    xdg_state_home: Option<String>,
+    home: Option<String>,
+) -> Option<PathBuf> {
+    if let Some(dir) = xdg_state_home {
+        if !dir.trim().is_empty() {
+            return Some(PathBuf::from(dir));
+        }
+    }
+
+    let home = home?;
+    if home.trim().is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(home).join(".local").join("state"))
+}
+
+fn format_with_state_env(path: &Path) -> String {
+    // Prefer XDG_STATE_HOME for display when available to avoid absolute paths in logs.
+    if let Ok(state_home) = std::env::var("XDG_STATE_HOME") {
+        if !state_home.trim().is_empty() {
+            let state_root = PathBuf::from(state_home);
+            if let Ok(stripped) = path.strip_prefix(&state_root) {
+                let mut rendered = PathBuf::from("$XDG_STATE_HOME");
+                rendered.push(stripped);
+                return rendered.display().to_string();
+            }
+        }
+    }
+
+    format_with_home(path)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::next_backup_path;
+    use super::{
+        format_with_state_env, next_backup_path, remove_state_file, resolve_state_dir_from_env,
+        DND_STATE_FILE,
+    };
     use std::fs;
     use std::path::PathBuf;
 
@@ -176,5 +293,84 @@ mod tests {
         let second = next_backup_path(&target);
         assert_ne!(first, second);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_state_dir_prefers_xdg_state_home() {
+        // Ensures explicit XDG_STATE_HOME is used when provided.
+        let dir =
+            resolve_state_dir_from_env(Some("state-root".to_string()), Some("home".to_string()));
+        assert_eq!(dir, Some(PathBuf::from("state-root")));
+    }
+
+    #[test]
+    fn resolve_state_dir_falls_back_to_home() {
+        // Ensures HOME/.local/state is used when XDG_STATE_HOME is empty.
+        let dir = resolve_state_dir_from_env(Some("  ".to_string()), Some("home".to_string()));
+        assert_eq!(
+            dir,
+            Some(PathBuf::from("home").join(".local").join("state"))
+        );
+    }
+
+    #[test]
+    fn remove_state_file_cleans_up_directory_when_empty() {
+        // Confirms state.json removal cleans the directory when no other files exist.
+        let root = PathBuf::from("target").join(format!(
+            "unixnotis-installer-state-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&root);
+        let state_path = root.join(DND_STATE_FILE);
+        let _ = fs::write(&state_path, "{}");
+
+        let outcome = remove_state_file(&root).expect("state removal should succeed");
+        assert!(outcome.removed_file);
+        assert!(!state_path.exists());
+        assert!(outcome.removed_dir || !root.exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn remove_state_file_keeps_directory_when_not_empty() {
+        // Ensures unrelated files keep the state directory in place.
+        let root = PathBuf::from("target").join(format!(
+            "unixnotis-installer-state-nonempty-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&root);
+        let state_path = root.join(DND_STATE_FILE);
+        let other_path = root.join("extra.txt");
+        let _ = fs::write(&state_path, "{}");
+        let _ = fs::write(&other_path, "keep");
+
+        let outcome = remove_state_file(&root).expect("state removal should succeed");
+        assert!(outcome.removed_file);
+        assert!(!state_path.exists());
+        assert!(!outcome.removed_dir);
+        assert!(root.exists());
+        assert!(other_path.exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn format_with_state_env_uses_xdg_state_home_prefix() {
+        // Ensures state paths are rendered with $XDG_STATE_HOME when available.
+        let key = "XDG_STATE_HOME";
+        let original = std::env::var(key).ok();
+        std::env::set_var(key, "state-root");
+
+        let path = PathBuf::from("state-root")
+            .join("unixnotis")
+            .join(DND_STATE_FILE);
+        let rendered = format_with_state_env(&path);
+        assert!(rendered.starts_with("$XDG_STATE_HOME"));
+
+        match original {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
     }
 }

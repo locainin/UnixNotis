@@ -9,8 +9,8 @@ use crate::model::{ActionMode, ActionStep, StepStatus};
 
 use super::{
     check_install_state_step, enable_service, ensure_config, install_binaries, install_service,
-    remove_binaries, reset_config, run_build, run_verify, stop_active_daemon, uninstall_service,
-    ActionContext,
+    remove_binaries, remove_state, reset_config, run_build, run_verify, stop_active_daemon,
+    uninstall_service, ActionContext,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -26,6 +26,7 @@ pub enum StepKind {
     EnableService,
     UninstallService,
     RemoveBinaries,
+    RemoveState,
 }
 
 pub fn build_plan(mode: ActionMode, verify: bool) -> Vec<StepKind> {
@@ -46,7 +47,11 @@ pub fn build_plan(mode: ActionMode, verify: bool) -> Vec<StepKind> {
             ]);
             steps
         }
-        ActionMode::Uninstall => vec![StepKind::UninstallService, StepKind::RemoveBinaries],
+        ActionMode::Uninstall => vec![
+            StepKind::UninstallService,
+            StepKind::RemoveBinaries,
+            StepKind::RemoveState,
+        ],
         ActionMode::Reset => vec![StepKind::ResetConfig],
     }
 }
@@ -73,6 +78,7 @@ pub fn run_step(step: StepKind, ctx: &mut ActionContext) -> Result<()> {
         StepKind::EnableService => enable_service(ctx),
         StepKind::UninstallService => uninstall_service(ctx),
         StepKind::RemoveBinaries => remove_binaries(ctx),
+        StepKind::RemoveState => remove_state(ctx),
     }
 }
 
@@ -89,5 +95,6 @@ pub fn step_label(kind: StepKind) -> &'static str {
         StepKind::EnableService => "Enable user service",
         StepKind::UninstallService => "Remove systemd unit",
         StepKind::RemoveBinaries => "Remove binaries",
+        StepKind::RemoveState => "Remove persisted state",
     }
 }

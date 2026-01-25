@@ -27,7 +27,7 @@ pub use actions_format::{format_daemon_status, summarize_owner};
 pub use actions_plan::{build_plan, run_step, steps_from_plan, StepKind};
 pub use actions_state::{check_install_state, ActionContext, InstallState};
 
-pub(super) use actions_config::{ensure_config, reset_config};
+pub(super) use actions_config::{ensure_config, remove_state, reset_config};
 pub(super) use actions_daemon::stop_active_daemon;
 pub(super) use actions_install::{
     enable_service, install_binaries, install_service, remove_binaries, uninstall_service,
