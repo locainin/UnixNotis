@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gio, Align};
+use glib::clone;
 
 use crate::media::{MediaHandle, MediaInfo};
 
@@ -74,35 +75,55 @@ impl MediaWidget {
 
         let selection_prev = selection.clone();
         let card_prev = card.clone();
-        let root_prev = root.clone();
-        let nav_prev_clone = nav_prev.clone();
-        let nav_next_clone = nav_next.clone();
-        nav_prev.connect_clicked(move |_| {
-            selection_prev.borrow_mut().prev();
-            apply_selection(
-                &selection_prev.borrow(),
-                &card_prev,
-                &root_prev,
-                &nav_prev_clone,
-                &nav_next_clone,
-            );
-        });
+        nav_prev.connect_clicked(clone!(
+            #[weak]
+            root,
+            #[weak]
+            nav_prev,
+            #[weak]
+            nav_next,
+            #[strong]
+            selection_prev,
+            #[strong]
+            card_prev,
+            move |_| {
+                // Weak captures avoid widget reference cycles across config reloads.
+                selection_prev.borrow_mut().prev();
+                apply_selection(
+                    &selection_prev.borrow(),
+                    &card_prev,
+                    &root,
+                    &nav_prev,
+                    &nav_next,
+                );
+            }
+        ));
 
         let selection_next = selection.clone();
         let card_next = card.clone();
-        let root_next = root.clone();
-        let nav_prev_clone = nav_prev.clone();
-        let nav_next_clone = nav_next.clone();
-        nav_next.connect_clicked(move |_| {
-            selection_next.borrow_mut().next();
-            apply_selection(
-                &selection_next.borrow(),
-                &card_next,
-                &root_next,
-                &nav_prev_clone,
-                &nav_next_clone,
-            );
-        });
+        nav_next.connect_clicked(clone!(
+            #[weak]
+            root,
+            #[weak]
+            nav_prev,
+            #[weak]
+            nav_next,
+            #[strong]
+            selection_next,
+            #[strong]
+            card_next,
+            move |_| {
+                // Weak captures avoid widget reference cycles across config reloads.
+                selection_next.borrow_mut().next();
+                apply_selection(
+                    &selection_next.borrow(),
+                    &card_next,
+                    &root,
+                    &nav_prev,
+                    &nav_next,
+                );
+            }
+        ));
 
         Self {
             root,

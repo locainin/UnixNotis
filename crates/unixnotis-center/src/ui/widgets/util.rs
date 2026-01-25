@@ -11,8 +11,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use glib::clone;
 use gtk::prelude::*;
-use gtk::{glib, Align};
+use gtk::Align;
 use tracing::warn;
 use unixnotis_core::{util, NumericParseMode, PanelDebugLevel, SliderWidgetConfig};
 
@@ -143,40 +144,73 @@ impl CommandSlider {
         if let Some(toggle_cmd) = config.toggle_cmd.as_ref() {
             let cmd = toggle_cmd.clone();
             let refresh_cmd = config.get_cmd.clone();
-            let refresh_scale = scale.clone();
-            let refresh_label = value_label.clone();
-            let refresh_icon = icon_button.clone();
             let refresh_updating = updating.clone();
             let refresh_gen = refresh_gen.clone();
             let refresh_icon_name = icon_name.clone();
             let refresh_icon_muted = icon_muted.clone();
-            icon_button.connect_clicked(move |_| {
-                run_command(&cmd);
-                let refresh_cmd = refresh_cmd.clone();
-                let refresh_scale = refresh_scale.clone();
-                let refresh_label = refresh_label.clone();
-                let refresh_icon = refresh_icon.clone();
-                let refresh_updating = refresh_updating.clone();
-                let refresh_gen = refresh_gen.clone();
-                let refresh_icon_name = refresh_icon_name.clone();
-                let refresh_icon_muted = refresh_icon_muted.clone();
-                glib::timeout_add_local(Duration::from_millis(160), move || {
-                    refresh_inner(
-                        refresh_cmd.clone(),
-                        min,
-                        max,
-                        refresh_scale.clone(),
-                        refresh_label.clone(),
-                        refresh_icon.clone(),
-                        refresh_updating.clone(),
-                        refresh_gen.clone(),
-                        refresh_icon_name.clone(),
-                        refresh_icon_muted.clone(),
-                        parse_mode,
+            icon_button.connect_clicked(clone!(
+                #[weak]
+                icon_button,
+                #[weak]
+                scale,
+                #[weak]
+                value_label,
+                #[strong]
+                cmd,
+                #[strong]
+                refresh_cmd,
+                #[strong]
+                refresh_updating,
+                #[strong]
+                refresh_gen,
+                #[strong]
+                refresh_icon_name,
+                #[strong]
+                refresh_icon_muted,
+                move |_| {
+                    // Weak widget captures avoid self-referential signal cycles.
+                    run_command(&cmd);
+                    glib::timeout_add_local(
+                        Duration::from_millis(160),
+                        clone!(
+                            #[weak]
+                            icon_button,
+                            #[weak]
+                            scale,
+                            #[weak]
+                            value_label,
+                            #[strong]
+                            refresh_cmd,
+                            #[strong]
+                            refresh_updating,
+                            #[strong]
+                            refresh_gen,
+                            #[strong]
+                            refresh_icon_name,
+                            #[strong]
+                            refresh_icon_muted,
+                            #[upgrade_or]
+                            glib::ControlFlow::Break,
+                            move || {
+                                refresh_inner(
+                                    refresh_cmd.clone(),
+                                    min,
+                                    max,
+                                    scale.clone(),
+                                    value_label.clone(),
+                                    icon_button.clone(),
+                                    refresh_updating.clone(),
+                                    refresh_gen.clone(),
+                                    refresh_icon_name.clone(),
+                                    refresh_icon_muted.clone(),
+                                    parse_mode,
+                                );
+                                glib::ControlFlow::Break
+                            }
+                        ),
                     );
-                    glib::ControlFlow::Break
-                });
-            });
+                }
+            ));
         } else {
             icon_button.set_sensitive(false);
         }

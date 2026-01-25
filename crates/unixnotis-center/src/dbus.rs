@@ -219,10 +219,9 @@ async fn run_dbus_loop(
         connect_backoff.reset();
         connect_log.reset();
         info!("connected to unixnotis control interface");
-        seed_state_with_retry(&proxy, &sender).await;
-        drop_stale_offline_commands(&mut offline_commands);
-        flush_offline_commands(&proxy, &sender, &mut offline_commands).await;
 
+        // Subscribe to signal streams before seeding so match rules are installed
+        // early and in-flight events are buffered while the seed request runs.
         let mut added_stream = match proxy.receive_notification_added().await {
             Ok(stream) => stream,
             Err(err) => {
@@ -265,6 +264,12 @@ async fn run_dbus_loop(
         };
         subscribe_backoff.reset();
         subscribe_log.reset();
+
+        // Seed after subscriptions to avoid dropping events that arrive during the
+        // initial state fetch. The streams buffer messages until polling resumes.
+        seed_state_with_retry(&proxy, &sender).await;
+        drop_stale_offline_commands(&mut offline_commands);
+        flush_offline_commands(&proxy, &sender, &mut offline_commands).await;
 
         loop {
             tokio::select! {

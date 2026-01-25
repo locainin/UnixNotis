@@ -265,7 +265,9 @@ async fn apply_owner_change(
     }
 
     if !is_allowed_player(name, config) {
-        if players.remove(name).is_some() {
+        if let Some(state) = players.remove(name) {
+            // Stop the background properties listener when removing the player.
+            let _ = state.listener_cancel.send(true);
             cache.remove(name);
             send_snapshot(sender, cache).await;
         }
@@ -274,7 +276,9 @@ async fn apply_owner_change(
 
     let has_owner = new_owner.map(|owner| !owner.is_empty()).unwrap_or(false);
     if !has_owner {
-        if players.remove(name).is_some() {
+        if let Some(state) = players.remove(name) {
+            // Stop the background properties listener when the player exits.
+            let _ = state.listener_cancel.send(true);
             cache.remove(name);
             send_snapshot(sender, cache).await;
         }
@@ -290,6 +294,7 @@ async fn apply_owner_change(
             state.properties.clone(),
             name.to_string(),
             signal_tx.clone(),
+            state.listener_cancel.subscribe(),
         );
         players.insert(name.to_string(), state);
         // Use the same browser token set for late-joining players.

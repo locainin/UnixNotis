@@ -106,3 +106,8 @@ Writes are atomic (temp + rename) and best-effort durable across power loss.
 ```sh
 busctl --user introspect com.unixnotis.Control /com/unixnotis/Control
 ```
+
+### Client guidance
+
+- Subscribe to control signals before issuing `GetState`/`ListActive`/`ListHistory` so
+  the match rules are installed early and events are buffered during the seed round.

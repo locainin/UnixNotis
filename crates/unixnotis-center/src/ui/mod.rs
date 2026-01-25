@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 use unixnotis_core::{Config, Margins};
 
 use crate::dbus::{UiCommand, UiEvent};
@@ -84,8 +85,19 @@ impl UiState {
 
 pub(super) fn try_send_command(command_tx: &mpsc::Sender<UiCommand>, command: UiCommand) {
     // Non-blocking send keeps GTK handlers responsive under D-Bus stalls.
-    if let Err(err) = command_tx.try_send(command) {
-        // Dropping commands on backpressure is safer than blocking the UI thread.
-        tracing::warn!(?err, "failed to enqueue ui command");
+    match command_tx.try_send(command) {
+        Ok(()) => {}
+        Err(TrySendError::Full(command)) => {
+            // Backpressure is retried asynchronously to avoid dropping user actions.
+            let command_tx = command_tx.clone();
+            glib::MainContext::default().spawn_local(async move {
+                if let Err(err) = command_tx.send(command).await {
+                    tracing::warn!(?err, "failed to enqueue ui command after backpressure");
+                }
+            });
+        }
+        Err(TrySendError::Closed(command)) => {
+            tracing::warn!(?command, "ui command dropped because channel closed");
+        }
     }
 }

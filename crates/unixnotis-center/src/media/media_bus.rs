@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 
 use futures_util::StreamExt;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc::Sender, watch};
 use tracing::warn;
 use unixnotis_core::{MediaConfig, PanelDebugLevel};
 use zbus::fdo::{DBusProxy, PropertiesProxy};
@@ -20,6 +20,8 @@ pub(super) struct PlayerState {
     pub(super) identity: String,
     pub(super) player: Proxy<'static>,
     pub(super) properties: PropertiesProxy<'static>,
+    // Cancellation sender for the properties listener task.
+    pub(super) listener_cancel: watch::Sender<bool>,
 }
 
 pub(super) async fn refresh_players(
@@ -43,12 +45,21 @@ pub(super) async fn refresh_players(
     }
 
     // Remove players that no longer exist on the bus to avoid stale UI cards.
-    let before = players.len();
-    players.retain(|name, _| allowed.contains(name));
-    let removed = before.saturating_sub(players.len());
-    if removed > 0 {
+    let mut removed_names: Vec<String> = Vec::new();
+    for name in players.keys() {
+        if !allowed.contains(name) {
+            removed_names.push(name.clone());
+        }
+    }
+    for name in &removed_names {
+        if let Some(state) = players.remove(name) {
+            // Signal the background listener to shut down promptly.
+            let _ = state.listener_cancel.send(true);
+        }
+    }
+    if !removed_names.is_empty() {
         debug::log(PanelDebugLevel::Info, || {
-            format!("media players removed: {removed}")
+            format!("media players removed: {}", removed_names.len())
         });
     }
 
@@ -65,7 +76,12 @@ pub(super) async fn refresh_players(
         };
         if let Some(state) = state {
             // Each player gets a properties listener so updates stay event-driven.
-            spawn_properties_listener(state.properties.clone(), name.clone(), signal_tx.clone());
+            spawn_properties_listener(
+                state.properties.clone(),
+                name.clone(),
+                signal_tx.clone(),
+                state.listener_cancel.subscribe(),
+            );
             players.insert(name.clone(), state);
             debug::log(PanelDebugLevel::Info, || {
                 format!("media player added: {name}")
@@ -80,6 +96,7 @@ pub(super) fn spawn_properties_listener(
     properties: PropertiesProxy<'static>,
     bus_name: String,
     signal_tx: Sender<MediaSignal>,
+    mut cancel_rx: watch::Receiver<bool>,
 ) {
     tokio::spawn(async move {
         let mut stream = match properties.receive_properties_changed().await {
@@ -89,25 +106,38 @@ pub(super) fn spawn_properties_listener(
                 return;
             }
         };
-        while let Some(update) = stream.next().await {
-            let Ok(args) = update.args() else {
-                continue;
-            };
-            if args.interface_name != MPRIS_PLAYER {
-                continue;
-            }
-            if !is_relevant_media_change(&args.changed_properties, &args.invalidated_properties) {
-                continue;
-            }
-            debug::log(PanelDebugLevel::Verbose, || {
-                format!("media properties changed: {bus_name}")
-            });
-            if signal_tx
-                .send(MediaSignal::PropertiesChanged(bus_name.clone()))
-                .await
-                .is_err()
-            {
-                break;
+        loop {
+            tokio::select! {
+                result = cancel_rx.changed() => {
+                    // Exit promptly when the player is removed or cancellation is requested.
+                    if result.is_err() || *cancel_rx.borrow() {
+                        break;
+                    }
+                }
+                update = stream.next() => {
+                    let Some(update) = update else {
+                        break;
+                    };
+                    let Ok(args) = update.args() else {
+                        continue;
+                    };
+                    if args.interface_name != MPRIS_PLAYER {
+                        continue;
+                    }
+                    if !is_relevant_media_change(&args.changed_properties, &args.invalidated_properties) {
+                        continue;
+                    }
+                    debug::log(PanelDebugLevel::Verbose, || {
+                        format!("media properties changed: {bus_name}")
+                    });
+                    if signal_tx
+                        .send(MediaSignal::PropertiesChanged(bus_name.clone()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
             }
         }
     });
@@ -194,12 +224,14 @@ pub(super) async fn build_player_state(
         .path(MPRIS_PATH)?
         .build()
         .await?;
+    let (listener_cancel, _listener_rx) = watch::channel(false);
 
     Ok(Some(PlayerState {
         bus_name: name.to_string(),
         identity,
         player,
         properties,
+        listener_cancel,
     }))
 }
 
