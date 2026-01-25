@@ -43,6 +43,10 @@ pub struct PanelConfig {
     pub height: i32,
     pub keyboard_interactivity: PanelKeyboardInteractivity,
     pub output: Option<String>,
+    /// Text shown when the notification list is empty.
+    pub empty_text: String,
+    /// Top offset in logical pixels for the empty-state label.
+    pub empty_offset_top: i32,
     /// Hide the panel when focus leaves the window.
     pub close_on_blur: bool,
     /// Close the panel when a different window becomes active (Hyprland only).
@@ -65,6 +69,8 @@ impl Default for PanelConfig {
             height: 0,
             keyboard_interactivity: PanelKeyboardInteractivity::OnDemand,
             output: None,
+            empty_text: "NO NOTIFICATIONS".to_string(),
+            empty_offset_top: 120,
             close_on_blur: false,
             close_on_click_outside: true,
             respect_work_area: true,

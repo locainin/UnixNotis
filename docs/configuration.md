@@ -156,6 +156,8 @@ no_popup = true
 - `close_on_blur`: hide when panel loses focus.
 - `close_on_click_outside`: hide on outside click (Hyprland only).
 - `respect_work_area`: respects compositor reserved area (Hyprland only).
+- `empty_text`: empty-state label text (supports `\n` for multi-line).
+- `empty_offset_top`: top offset for empty-state label (logical pixels). Ignored when no widgets are visible; the label is centered.
 - `[panel.margin]`: margins in logical pixels.
 
 ### [popups]

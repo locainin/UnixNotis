@@ -6,6 +6,7 @@
 mod list_blocks;
 mod list_grouping;
 mod list_item;
+mod list_row_empty;
 mod list_row_ghost;
 mod list_row_group;
 mod list_row_notification;
@@ -20,12 +21,14 @@ use async_channel::Sender;
 use gio::prelude::*;
 use gtk::glib;
 use gtk::prelude::*;
+use gtk::Align;
 use tokio::sync::mpsc;
 use unixnotis_core::NotificationView;
 
 use crate::dbus::{UiCommand, UiEvent};
 
 use self::list_item::{RowItem, RowKind};
+use self::list_row_empty::build_empty_row;
 use self::list_widgets::{
     bind_row, clear_row_widgets, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets,
 };
@@ -34,6 +37,8 @@ use super::icons::IconResolver;
 /// Maintains notification data and renders grouped widgets into the panel list.
 pub struct NotificationList {
     store: gio::ListStore,
+    empty_overlay: gtk::Box,
+    empty_offset_top: i32,
     entries: HashMap<u32, NotificationEntry>,
     // Active notifications render first to match the in-flight stack.
     active_order: VecDeque<u32>,
@@ -59,6 +64,14 @@ pub struct NotificationList {
     max_entries: usize,
 }
 
+/// Input settings that influence list rendering and empty-state behavior.
+pub struct NotificationListConfig {
+    pub max_active: usize,
+    pub max_entries: usize,
+    pub empty_text: String,
+    pub empty_offset_top: i32,
+}
+
 struct NotificationEntry {
     view: Rc<NotificationView>,
     is_active: bool,
@@ -78,8 +91,7 @@ impl NotificationList {
         command_tx: mpsc::Sender<UiCommand>,
         event_tx: Sender<UiEvent>,
         icon_resolver: Rc<IconResolver>,
-        max_active: usize,
-        max_entries: usize,
+        config: NotificationListConfig,
     ) -> Self {
         let store = gio::ListStore::new::<RowItem>();
         let selection = gtk::NoSelection::new(Some(store.clone()));
@@ -90,7 +102,21 @@ impl NotificationList {
         list_view.set_hexpand(true);
         list_view.set_vexpand(true);
 
-        scroller.set_child(Some(&list_view));
+        let overlay = gtk::Overlay::new();
+        overlay.add_css_class("unixnotis-panel-list-overlay");
+        overlay.set_child(Some(&list_view));
+
+        let empty_overlay = build_empty_row(&config.empty_text);
+        empty_overlay.set_halign(Align::Center);
+        empty_overlay.set_valign(Align::Start);
+        empty_overlay.set_hexpand(true);
+        empty_overlay.set_vexpand(true);
+        // Offset from the top of the list area to match the reference layout.
+        empty_overlay.set_margin_top(config.empty_offset_top);
+        empty_overlay.set_visible(true);
+        overlay.add_overlay(&empty_overlay);
+
+        scroller.set_child(Some(&overlay));
 
         let command_tx_clone = command_tx.clone();
         let event_tx_clone = event_tx.clone();
@@ -133,6 +159,8 @@ impl NotificationList {
 
         Self {
             store,
+            empty_overlay,
+            empty_offset_top: config.empty_offset_top,
             entries: HashMap::new(),
             active_order: VecDeque::new(),
             history_order: VecDeque::new(),
@@ -150,8 +178,20 @@ impl NotificationList {
             objects_scratch: Vec::new(),
             needs_rebuild: false,
             dirty_groups: HashSet::new(),
-            max_active,
-            max_entries,
+            max_active: config.max_active,
+            max_entries: config.max_entries,
+        }
+    }
+
+    pub fn set_empty_layout(&self, has_widgets: bool) {
+        if has_widgets {
+            // When widgets are visible, align the empty state beneath them.
+            self.empty_overlay.set_valign(Align::Start);
+            self.empty_overlay.set_margin_top(self.empty_offset_top);
+        } else {
+            // When no widgets are visible, center the empty state in the list area.
+            self.empty_overlay.set_valign(Align::Center);
+            self.empty_overlay.set_margin_top(0);
         }
     }
 }

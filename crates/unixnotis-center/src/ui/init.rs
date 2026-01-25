@@ -26,13 +26,18 @@ impl UiState {
         let icon_resolver = Rc::new(icons::IconResolver::new());
         debug::set_level(PanelDebugLevel::Off);
         // List rendering is initialized with the current config limits and shared icon resolver.
+        let list_config = list::NotificationListConfig {
+            max_active: init.config.history.max_active,
+            max_entries: init.config.history.max_entries,
+            empty_text: init.config.panel.empty_text.clone(),
+            empty_offset_top: init.config.panel.empty_offset_top,
+        };
         let list = list::NotificationList::new(
             panel.scroller.clone(),
             init.command_tx.clone(),
             init.event_tx.clone(),
             icon_resolver,
-            init.config.history.max_active,
-            init.config.history.max_entries,
+            list_config,
         );
 
         // DND updates are triggered from both UI and daemon; guard prevents feedback loops.
@@ -52,6 +57,12 @@ impl UiState {
         }
         let (volume, brightness) = build_quick_controls(&panel, &init.config);
         let (toggles, stats, cards) = build_extra_widgets(&panel, &init.config);
+        let has_widgets = panel.quick_controls.is_visible()
+            || panel.media_container.is_visible()
+            || panel.toggle_container.is_visible()
+            || panel.stat_container.is_visible()
+            || panel.card_container.is_visible();
+        list.set_empty_layout(has_widgets);
 
         let dnd_guard_clone = dnd_guard.clone();
         let dnd_tx = init.command_tx.clone();

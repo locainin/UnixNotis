@@ -59,6 +59,7 @@ pub(super) fn sanitize_config(config: &mut Config) {
     config.panel.margin.right = config.panel.margin.right.clamp(0, MAX_MARGIN);
     config.panel.margin.bottom = config.panel.margin.bottom.clamp(0, MAX_MARGIN);
     config.panel.margin.left = config.panel.margin.left.clamp(0, MAX_MARGIN);
+    config.panel.empty_offset_top = config.panel.empty_offset_top.clamp(0, MAX_MARGIN);
 
     // Normalize media identifiers to lowercase for consistent substring matching.
     config.media.allowlist = normalize_media_tokens(&config.media.allowlist);

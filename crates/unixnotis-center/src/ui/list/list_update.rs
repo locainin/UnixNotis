@@ -8,6 +8,7 @@ use std::rc::Rc;
 use gio::prelude::ListModelExt;
 use gtk::glib;
 use gtk::glib::object::Cast;
+use gtk::prelude::WidgetExt;
 use tracing::debug;
 
 use super::list_blocks;
@@ -116,6 +117,8 @@ impl NotificationList {
         // Prune interned keys that are no longer referenced by any list state.
         self.interned.retain(|key| Rc::strong_count(key) > 1);
         self.dirty_groups.clear();
+
+        self.update_empty_overlay();
 
         debug!(
             groups = group_count,
@@ -237,6 +240,8 @@ impl NotificationList {
         // Prune interned keys that are no longer referenced by any list state.
         self.interned.retain(|key| Rc::strong_count(key) > 1);
 
+        self.update_empty_overlay();
+
         // Cross-check the cached grouping against the GTK store after incremental edits.
         let expected_len = self.expected_list_len();
         let actual_len = self.store.n_items() as usize;
@@ -249,5 +254,10 @@ impl NotificationList {
 
     pub(super) fn request_rebuild(&mut self) {
         self.needs_rebuild = true;
+    }
+
+    fn update_empty_overlay(&self) {
+        let is_empty = self.active_order.is_empty() && self.history_order.is_empty();
+        self.empty_overlay.set_visible(is_empty);
     }
 }
