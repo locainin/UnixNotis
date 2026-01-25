@@ -4,6 +4,7 @@ use super::store_state::{PersistedDndState, DND_STATE_FILE, DND_STATE_VERSION};
 use super::{contains_ci, NotificationStore};
 use chrono::Utc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use unixnotis_core::{Config, InhibitMode, Notification, NotificationImage, Urgency};
 use zbus::zvariant::OwnedValue;
 
@@ -70,6 +71,14 @@ fn write_dnd_state(dir: &std::path::Path, enabled: bool, version: u32) {
 
 fn cleanup_temp_dir(dir: &std::path::Path) {
     let _ = std::fs::remove_dir_all(dir);
+}
+
+fn apply_dnd_update(store: &mut NotificationStore, enabled: bool) -> bool {
+    let (changed, persist) = store.set_dnd(enabled);
+    if let Some(store) = persist {
+        store.persist(enabled).expect("persist dnd state");
+    }
+    changed
 }
 
 #[test]
@@ -196,7 +205,7 @@ fn dnd_state_persists_on_change() {
     let mut config = Config::default();
     config.general.dnd_default = false;
     let mut store = NotificationStore::new_with_state_dir(config, state_dir.clone());
-    assert!(store.set_dnd(true));
+    assert!(apply_dnd_update(&mut store, true));
 
     let path = state_dir.join("unixnotis").join(DND_STATE_FILE);
     let contents = std::fs::read_to_string(&path).expect("read persisted state");
@@ -204,6 +213,23 @@ fn dnd_state_persists_on_change() {
     assert!(parsed.dnd_enabled);
 
     cleanup_temp_dir(&state_dir);
+}
+
+#[test]
+fn next_id_skips_used_ids_within_used_window() {
+    let mut store = make_store_with_limits(5, 5);
+    store.next_id = 1;
+
+    let mut active = make_notification("active");
+    active.id = 1;
+    store.active.insert(1, Arc::new(active));
+
+    let mut history = make_notification("history");
+    history.id = 3;
+    store.history.insert(Arc::new(history));
+
+    let id = store.next_id();
+    assert_eq!(id, 2);
 }
 
 #[test]

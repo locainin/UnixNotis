@@ -66,18 +66,27 @@ impl ExpirationScheduler {
                             if !is_current {
                                 continue;
                             }
-                            // Remove the scheduled entry once the matching deadline is handled.
-                            scheduled.remove(&item.id);
                             // Verify the deadline is still current before closing the notification.
-                            let should_expire = {
+                            let expiration = {
                                 let store = state.store.lock().await;
-                                store
-                                    .expiration_for(item.id)
-                                    .map(|deadline| deadline == item.deadline)
-                                    .unwrap_or(false)
+                                store.expiration_for(item.id)
                             };
-                            if should_expire {
-                                let _ = state.close_notification(item.id, CloseReason::Expired).await;
+                            let is_still_current = expiration
+                                .map(|deadline| deadline == item.deadline)
+                                .unwrap_or(false);
+                            if is_still_current {
+                                // Remove the scheduled entry only once the deadline is confirmed
+                                // to still be active. This avoids dropping new schedules created
+                                // while the expiration task was waiting on the store lock.
+                                if scheduled.get(&item.id) == Some(&item.deadline) {
+                                    scheduled.remove(&item.id);
+                                }
+                                let _ =
+                                    state.close_notification(item.id, CloseReason::Expired).await;
+                            } else if scheduled.get(&item.id) == Some(&item.deadline) {
+                                // The store no longer expects this deadline (dismissed or updated),
+                                // so drop the stale schedule to avoid repeated checks.
+                                scheduled.remove(&item.id);
                             }
                         }
                         maybe_compact(&mut heap, &scheduled);

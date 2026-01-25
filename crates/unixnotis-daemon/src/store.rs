@@ -122,17 +122,13 @@ impl NotificationStore {
         self.dnd_enabled
     }
 
-    pub fn set_dnd(&mut self, enabled: bool) -> bool {
+    pub fn set_dnd(&mut self, enabled: bool) -> (bool, Option<DndStateStore>) {
         if self.dnd_enabled == enabled {
-            return false;
+            return (false, None);
         }
         self.dnd_enabled = enabled;
-        if let Some(store) = self.dnd_state_store.as_ref() {
-            if let Err(err) = store.persist(enabled) {
-                warn!(?err, "failed to persist do-not-disturb state");
-            }
-        }
-        true
+        // Persist outside the store lock to avoid blocking notification processing on I/O.
+        (true, self.dnd_state_store.clone())
     }
 
     pub fn inhibited(&self) -> bool {
@@ -321,10 +317,13 @@ impl NotificationStore {
     }
 
     fn next_id(&mut self) -> u32 {
-        // Walk the u32 space (skipping 0) to find a free id; wrap around once to avoid loops.
+        // Walk at most (active + history + 1) IDs to find a free slot.
+        // Any window of N+1 IDs must contain a free value when only N are in use.
         let start = self.next_id.max(1);
         let mut candidate = start;
-        loop {
+        let used = self.active.len().saturating_add(self.history.len());
+        let max_attempts = used.saturating_add(1).max(1);
+        for _ in 0..max_attempts {
             if !self.active.contains_key(&candidate) && !self.history.contains(&candidate) {
                 self.next_id = candidate.wrapping_add(1);
                 if self.next_id == 0 {
@@ -336,10 +335,16 @@ impl NotificationStore {
             if candidate == 0 {
                 candidate = 1;
             }
-            if candidate == start {
-                return candidate;
-            }
         }
+        warn!(
+            used,
+            "notification id space exhausted; reusing id to avoid deadlock"
+        );
+        self.next_id = start.wrapping_add(1);
+        if self.next_id == 0 {
+            self.next_id = 1;
+        }
+        start
     }
 
     fn enforce_active_limit(&mut self) -> Vec<u32> {

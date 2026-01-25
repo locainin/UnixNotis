@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use futures_util::stream::{FuturesUnordered, StreamExt};
+use futures_util::stream::{self, StreamExt, TryStreamExt};
 use tracing::warn;
 use unixnotis_core::{
     CloseReason, ControlState, InhibitorInfo, NotificationView, PanelDebugLevel, PanelRequest,
@@ -20,6 +20,8 @@ use super::{to_fdo_error, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_
 pub struct ControlServer {
     state: Arc<DaemonState>,
 }
+
+const CLEAR_ALL_CONCURRENCY: usize = 64;
 
 impl ControlServer {
     pub fn new(state: Arc<DaemonState>) -> Self {
@@ -89,10 +91,15 @@ impl ControlServer {
     }
 
     async fn set_dnd(&self, enabled: bool) -> zbus::fdo::Result<()> {
-        let changed = {
+        let (changed, persist) = {
             let mut store = self.state.store.lock().await;
             store.set_dnd(enabled)
         };
+        if let Some(store) = persist {
+            if let Err(err) = store.persist(enabled) {
+                warn!(?err, "failed to persist do-not-disturb state");
+            }
+        }
         if changed {
             // Emit state updates only when the value changes to avoid log noise.
             self.state
@@ -210,26 +217,27 @@ impl ControlServer {
             .map_err(to_fdo_error)?;
         let control_ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
             .map_err(to_fdo_error)?;
-        // Emit close signals concurrently to avoid blocking on large clears.
-        let mut tasks = FuturesUnordered::new();
-        for id in ids {
-            let notif_ctx = notif_ctx.clone();
-            let control_ctx = control_ctx.clone();
-            tasks.push(async move {
-                NotificationServer::notification_closed(
-                    &notif_ctx,
-                    id,
-                    CloseReason::DismissedByUser as u32,
-                )
-                .await?;
-                ControlServer::notification_closed(&control_ctx, id, CloseReason::DismissedByUser)
+        // Emit close signals with a bounded concurrency limit to avoid task spikes.
+        stream::iter(ids)
+            .map(|id| {
+                let notif_ctx = notif_ctx.clone();
+                let control_ctx = control_ctx.clone();
+                async move {
+                    NotificationServer::notification_closed(
+                        &notif_ctx,
+                        id,
+                        CloseReason::DismissedByUser as u32,
+                    )
                     .await?;
-                Ok::<(), zbus::Error>(())
-            });
-        }
-        while let Some(result) = tasks.next().await {
-            result.map_err(to_fdo_error)?;
-        }
+                    ControlServer::notification_closed(&control_ctx, id, CloseReason::DismissedByUser)
+                        .await?;
+                    Ok::<(), zbus::Error>(())
+                }
+            })
+            .buffer_unordered(CLEAR_ALL_CONCURRENCY)
+            .try_for_each(|_| async { Ok(()) })
+            .await
+            .map_err(to_fdo_error)?;
         self.state.emit_state_changed().await.map_err(to_fdo_error)
     }
 

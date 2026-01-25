@@ -21,7 +21,7 @@ pub(super) struct PersistedDndState {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct DndStateStore {
+pub(crate) struct DndStateStore {
     path: PathBuf,
 }
 
@@ -47,7 +47,7 @@ impl DndStateStore {
         Ok(Some(parsed))
     }
 
-    pub(super) fn persist(&self, enabled: bool) -> io::Result<()> {
+    pub(crate) fn persist(&self, enabled: bool) -> io::Result<()> {
         let payload = PersistedDndState {
             version: DND_STATE_VERSION,
             dnd_enabled: enabled,
