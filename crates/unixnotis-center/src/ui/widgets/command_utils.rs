@@ -198,14 +198,7 @@ fn enqueue_command(
             .is_err()
         {
             warn!("failed to spawn fallback command worker; running inline");
-            handle_job(
-                CommandJob {
-                    cmd,
-                    plan,
-                    respond,
-                },
-                None,
-            );
+            handle_job(CommandJob { cmd, plan, respond }, None);
         }
         return;
     }

@@ -53,12 +53,18 @@ pub fn run_command(
     // Surface log thread failures so command output issues are visible in the installer UI.
     if let Some(handle) = stdout_handle {
         if let Err(err) = handle.join() {
-            log_line(ctx, format!("Warning: stdout log thread panicked: {:?}", err));
+            log_line(
+                ctx,
+                format!("Warning: stdout log thread panicked: {:?}", err),
+            );
         }
     }
     if let Some(handle) = stderr_handle {
         if let Err(err) = handle.join() {
-            log_line(ctx, format!("Warning: stderr log thread panicked: {:?}", err));
+            log_line(
+                ctx,
+                format!("Warning: stderr log thread panicked: {:?}", err),
+            );
         }
     }
 

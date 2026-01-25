@@ -36,7 +36,8 @@ pub struct IconResolver {
 impl IconResolver {
     pub fn new() -> Self {
         // Bound update queue to avoid unbounded memory growth if UI stalls.
-        let (update_tx, update_rx) = async_channel::bounded::<IconUpdate>(ICON_UPDATE_QUEUE_CAPACITY);
+        let (update_tx, update_rx) =
+            async_channel::bounded::<IconUpdate>(ICON_UPDATE_QUEUE_CAPACITY);
         let worker = IconWorker::new(update_tx);
         let inner = Rc::new(IconResolverInner {
             desktop_index: DesktopIconIndex::new(),

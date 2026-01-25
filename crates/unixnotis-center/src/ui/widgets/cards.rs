@@ -149,11 +149,7 @@ impl CardItem {
             debug::log(PanelDebugLevel::Verbose, || "calendar refresh".to_string());
             let now = Instant::now();
             // Skip calendar refresh while within the backoff window.
-            if !self
-                .refresh_backoff
-                .borrow()
-                .should_refresh(now, force)
-            {
+            if !self.refresh_backoff.borrow().should_refresh(now, force) {
                 return;
             }
             self.refresh_calendar(base_interval);
@@ -164,11 +160,7 @@ impl CardItem {
         }
         let now = Instant::now();
         // Skip command execution while within the backoff window.
-        if !self
-            .refresh_backoff
-            .borrow()
-            .should_refresh(now, force)
-        {
+        if !self.refresh_backoff.borrow().should_refresh(now, force) {
             return;
         }
         debug::log(PanelDebugLevel::Verbose, || {
@@ -254,9 +246,11 @@ impl CardItem {
                     calendar.select_day(&now);
                     self.last_calendar_day.set(Some(date_key));
                 }
-                self.refresh_backoff
-                    .borrow_mut()
-                    .note_success(Instant::now(), base_interval, changed);
+                self.refresh_backoff.borrow_mut().note_success(
+                    Instant::now(),
+                    base_interval,
+                    changed,
+                );
             }
             Err(err) => {
                 warn!(?err, "calendar refresh failed");

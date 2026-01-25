@@ -6,8 +6,8 @@
 mod list_blocks;
 mod list_grouping;
 mod list_item;
-mod list_row_group;
 mod list_row_ghost;
+mod list_row_group;
 mod list_row_notification;
 mod list_state;
 mod list_update;
@@ -25,11 +25,11 @@ use unixnotis_core::NotificationView;
 
 use crate::dbus::{UiCommand, UiEvent};
 
-use super::icons::IconResolver;
 use self::list_item::{RowItem, RowKind};
 use self::list_widgets::{
     bind_row, clear_row_widgets, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets,
 };
+use super::icons::IconResolver;
 
 /// Maintains notification data and renders grouped widgets into the panel list.
 pub struct NotificationList {
@@ -154,7 +154,6 @@ impl NotificationList {
             max_entries,
         }
     }
-
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

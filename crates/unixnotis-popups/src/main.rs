@@ -118,9 +118,8 @@ fn start_reload_timer(
     let reload_gate = Arc::clone(reload_gate);
     let sender = sender.clone();
     let timer_state = Arc::clone(timer_state);
-    let source_id = glib::timeout_add_local(
-        Duration::from_millis(RELOAD_FLUSH_INTERVAL_MS),
-        move || {
+    let source_id =
+        glib::timeout_add_local(Duration::from_millis(RELOAD_FLUSH_INTERVAL_MS), move || {
             reload_gate.flush(&sender);
             if reload_gate.has_pending() {
                 ControlFlow::Continue
@@ -132,8 +131,7 @@ fn start_reload_timer(
                 *timer_guard = None;
                 ControlFlow::Break
             }
-        },
-    );
+        });
     *timer_guard = Some(source_id);
 }
 

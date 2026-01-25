@@ -12,9 +12,7 @@ use super::{
     actions_binaries::resolve_install_binaries,
     actions_env::sync_user_environment,
     actions_hyprland::{ensure_hyprland_autostart, remove_hyprland_autostart},
-    log_line,
-    run_command,
-    ActionContext,
+    log_line, run_command, ActionContext,
 };
 
 pub fn install_binaries(ctx: &mut ActionContext) -> Result<()> {
@@ -135,7 +133,6 @@ pub fn remove_binaries(ctx: &mut ActionContext) -> Result<()> {
 
     Ok(())
 }
-
 
 fn copy_binary(ctx: &mut ActionContext, source: &Path, destination: &Path) -> Result<()> {
     if !source.exists() {

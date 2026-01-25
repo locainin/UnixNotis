@@ -299,7 +299,10 @@ mod tests {
             .expect_err("queue should be full");
 
         assert!(matches!(err, IconSubmitError::Full));
-        assert!(matches!(update_rx.try_recv(), Err(async_channel::TryRecvError::Empty)));
+        assert!(matches!(
+            update_rx.try_recv(),
+            Err(async_channel::TryRecvError::Empty)
+        ));
     }
 
     #[test]
@@ -308,10 +311,7 @@ mod tests {
             IconSubmitError::Full.reason(),
             "icon decode queue full (drop-newest)"
         );
-        assert_eq!(
-            IconSubmitError::Closed.reason(),
-            "icon decode queue closed"
-        );
+        assert_eq!(IconSubmitError::Closed.reason(), "icon decode queue closed");
     }
 
     #[test]

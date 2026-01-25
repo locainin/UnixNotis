@@ -115,10 +115,9 @@ mod tests {
         if home.is_empty() {
             return;
         }
-        let dir = PathBuf::from(home).join(".cache").join(format!(
-            "unixnotis-test-{}",
-            std::process::id()
-        ));
+        let dir = PathBuf::from(home)
+            .join(".cache")
+            .join(format!("unixnotis-test-{}", std::process::id()));
         if fs::create_dir_all(&dir).is_err() {
             return;
         }

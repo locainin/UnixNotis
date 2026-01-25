@@ -193,7 +193,8 @@ fn init_tracing(config: &Config) {
                 Ok(filter) => (filter, None),
                 Err(err) => {
                     // Invalid directives should not crash startup; default to info.
-                    let fallback = EnvFilter::try_new("info").unwrap_or_else(|_| EnvFilter::new("info"));
+                    let fallback =
+                        EnvFilter::try_new("info").unwrap_or_else(|_| EnvFilter::new("info"));
                     let warning = format!(
                         "invalid log_level '{}'; defaulting to 'info' ({err})",
                         configured

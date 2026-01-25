@@ -155,7 +155,10 @@ impl IconDecodePool {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        in_flight.get(path).map(|waiters| waiters.len()).unwrap_or(0)
+        in_flight
+            .get(path)
+            .map(|waiters| waiters.len())
+            .unwrap_or(0)
     }
 }
 
@@ -217,10 +220,7 @@ impl TextureCache {
     }
 }
 
-fn worker_loop(
-    rx: async_channel::Receiver<IconDecodeJob>,
-    in_flight: IconWaiters,
-) {
+fn worker_loop(rx: async_channel::Receiver<IconDecodeJob>, in_flight: IconWaiters) {
     while let Ok(job) = rx.recv_blocking() {
         // Decode file-backed icons off the GTK thread to keep animations smooth.
         let result = decode_icon_file(&job.path).map(Arc::new);
@@ -241,7 +241,10 @@ fn worker_loop(
 }
 
 impl UiState {
-    pub(super) fn build_image_widget(&mut self, notification: &NotificationView) -> Option<gtk::Image> {
+    pub(super) fn build_image_widget(
+        &mut self,
+        notification: &NotificationView,
+    ) -> Option<gtk::Image> {
         let image = &notification.image;
         if let Some(texture) = image_data_texture(image) {
             let widget = gtk::Image::from_paintable(Some(&texture));
@@ -354,7 +357,9 @@ impl UiState {
                         .upcast::<gdk::Texture>();
                         // Cache only modestly sized textures to limit resident memory.
                         if icon.bytes.len() <= ICON_TEXTURE_CACHE_MAX_BYTES {
-                            cache.borrow_mut().insert(path_clone.clone(), texture.clone());
+                            cache
+                                .borrow_mut()
+                                .insert(path_clone.clone(), texture.clone());
                         }
                         widget_clone.set_paintable(Some(&texture));
                     }

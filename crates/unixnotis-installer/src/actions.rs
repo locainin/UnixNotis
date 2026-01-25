@@ -1,19 +1,19 @@
 //! Installer action orchestration and shared exports.
 
-#[path = "actions/actions_config.rs"]
-mod actions_config;
 #[path = "actions/actions_binaries.rs"]
 mod actions_binaries;
-#[path = "actions/actions_env.rs"]
-mod actions_env;
+#[path = "actions/actions_config.rs"]
+mod actions_config;
 #[path = "actions/actions_daemon.rs"]
 mod actions_daemon;
+#[path = "actions/actions_env.rs"]
+mod actions_env;
 #[path = "actions/actions_format.rs"]
 mod actions_format;
-#[path = "actions/actions_install.rs"]
-mod actions_install;
 #[path = "actions/actions_hyprland.rs"]
 mod actions_hyprland;
+#[path = "actions/actions_install.rs"]
+mod actions_install;
 #[path = "actions/actions_plan.rs"]
 mod actions_plan;
 #[path = "actions/actions_process.rs"]

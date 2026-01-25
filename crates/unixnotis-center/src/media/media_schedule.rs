@@ -16,7 +16,9 @@ pub(super) fn schedule_delayed_refresh(
 ) {
     tokio::spawn(async move {
         tokio::time::sleep(delay).await;
-        let _ = signal_tx.send(MediaSignal::PropertiesChanged(bus_name)).await;
+        let _ = signal_tx
+            .send(MediaSignal::PropertiesChanged(bus_name))
+            .await;
     });
 }
 

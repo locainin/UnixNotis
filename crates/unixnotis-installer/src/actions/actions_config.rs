@@ -128,11 +128,7 @@ fn backup_existing_file(ctx: &mut ActionContext, path: &Path, label: &str) -> Re
     fs::rename(path, &backup_path).with_context(|| format!("failed to backup {}", label))?;
     log_line(
         ctx,
-        format!(
-            "Backed up {} to {}",
-            label,
-            format_with_home(&backup_path)
-        ),
+        format!("Backed up {} to {}", label, format_with_home(&backup_path)),
     );
     Ok(())
 }

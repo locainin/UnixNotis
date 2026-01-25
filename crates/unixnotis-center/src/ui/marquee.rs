@@ -167,57 +167,58 @@ impl MarqueeLabel {
 
         let state_tick = self.state.clone();
         let label_tick = self.label.clone();
-        let source_id = glib::timeout_add_local(Duration::from_millis(MARQUEE_TICK_MS), move || {
-            let mut state = state_tick.borrow_mut();
+        let source_id =
+            glib::timeout_add_local(Duration::from_millis(MARQUEE_TICK_MS), move || {
+                let mut state = state_tick.borrow_mut();
 
-            if !state.enabled || !state.is_mapped {
-                state.is_ticking = false;
-                state.tick_source = None;
-                state.last_tick = None;
-                state.hold_until = None;
-                return glib::ControlFlow::Break;
-            }
+                if !state.enabled || !state.is_mapped {
+                    state.is_ticking = false;
+                    state.tick_source = None;
+                    state.last_tick = None;
+                    state.hold_until = None;
+                    return glib::ControlFlow::Break;
+                }
 
-            let now = Instant::now();
-            let delta_sec = match state.last_tick {
-                Some(last) => now.duration_since(last).as_secs_f64(),
-                None => 0.0,
-            };
-            state.last_tick = Some(now);
+                let now = Instant::now();
+                let delta_sec = match state.last_tick {
+                    Some(last) => now.duration_since(last).as_secs_f64(),
+                    None => 0.0,
+                };
+                state.last_tick = Some(now);
 
-            let buffer_len = state.buffer.len();
-            if buffer_len == 0 {
-                return glib::ControlFlow::Continue;
-            }
-
-            if state.reset_pending {
-                state.offset = 0.0;
-                state.hold_until = Some(now + Duration::from_millis(MARQUEE_PAUSE_MS));
-                state.reset_pending = false;
-            }
-
-            if let Some(hold_until) = state.hold_until {
-                if now < hold_until {
+                let buffer_len = state.buffer.len();
+                if buffer_len == 0 {
                     return glib::ControlFlow::Continue;
                 }
-            }
 
-            if delta_sec > 0.0 {
-                state.offset += MARQUEE_SPEED_CHARS_PER_SEC * delta_sec;
-                if state.offset >= buffer_len as f64 {
+                if state.reset_pending {
                     state.offset = 0.0;
                     state.hold_until = Some(now + Duration::from_millis(MARQUEE_PAUSE_MS));
+                    state.reset_pending = false;
                 }
-            }
 
-            let offset = state.offset.floor() as usize;
-            if offset != state.last_rendered_offset {
-                render_visible(&mut state, offset);
-                label_tick.set_text(&state.render_buf);
-                state.last_rendered_offset = offset;
-            }
-            glib::ControlFlow::Continue
-        });
+                if let Some(hold_until) = state.hold_until {
+                    if now < hold_until {
+                        return glib::ControlFlow::Continue;
+                    }
+                }
+
+                if delta_sec > 0.0 {
+                    state.offset += MARQUEE_SPEED_CHARS_PER_SEC * delta_sec;
+                    if state.offset >= buffer_len as f64 {
+                        state.offset = 0.0;
+                        state.hold_until = Some(now + Duration::from_millis(MARQUEE_PAUSE_MS));
+                    }
+                }
+
+                let offset = state.offset.floor() as usize;
+                if offset != state.last_rendered_offset {
+                    render_visible(&mut state, offset);
+                    label_tick.set_text(&state.render_buf);
+                    state.last_rendered_offset = offset;
+                }
+                glib::ControlFlow::Continue
+            });
 
         let mut state = self.state.borrow_mut();
         state.tick_source = Some(source_id);

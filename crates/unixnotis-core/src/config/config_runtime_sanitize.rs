@@ -187,7 +187,10 @@ fn config_requires_shell(config: &Config) -> bool {
 }
 
 fn command_requires_shell_opt(value: &Option<String>) -> bool {
-    value.as_deref().map(command_requires_shell).unwrap_or(false)
+    value
+        .as_deref()
+        .map(command_requires_shell)
+        .unwrap_or(false)
 }
 
 fn command_requires_shell(cmd: &str) -> bool {
@@ -202,8 +205,8 @@ fn command_requires_shell(cmd: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::config_widgets::{CardWidgetConfig, StatWidgetConfig};
+    use super::*;
 
     #[test]
     fn sanitize_clamps_refresh_intervals_and_preserves_ordering() {

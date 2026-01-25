@@ -10,8 +10,8 @@ use unixnotis_core::util;
 
 use crate::dbus::UiEvent;
 
-use super::list_item::RowData;
 use super::super::icons::IconResolver;
+use super::list_item::RowData;
 
 pub(super) struct GroupRowWidgets {
     pub(super) icon: gtk::Image,
@@ -21,9 +21,7 @@ pub(super) struct GroupRowWidgets {
     pub(super) group_key: Rc<RefCell<Rc<str>>>,
 }
 
-pub(super) fn build_group_row(
-    event_tx: Sender<UiEvent>,
-) -> (gtk::Box, GroupRowWidgets) {
+pub(super) fn build_group_row(event_tx: Sender<UiEvent>) -> (gtk::Box, GroupRowWidgets) {
     // Root container groups the header and any future expansion widgets.
     let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
     root.add_css_class("unixnotis-group");

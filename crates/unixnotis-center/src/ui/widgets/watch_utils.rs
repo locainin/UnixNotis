@@ -171,8 +171,7 @@ fn should_emit_watch_event(cmd: &str, line: &str) -> bool {
     // pactl subscribe emits events for all server activity; filter to sink/server changes.
     if cmd.trim().starts_with("pactl subscribe") {
         let line = line.to_ascii_lowercase();
-        return contains_token(&line, " on sink")
-            || contains_token(&line, " on server");
+        return contains_token(&line, " on sink") || contains_token(&line, " on server");
     }
     true
 }
@@ -196,7 +195,10 @@ mod tests {
         assert!(should_emit_watch_event(cmd, "Event 'change' on sink #1"));
         assert!(should_emit_watch_event(cmd, "Event 'new' on server"));
         assert!(!should_emit_watch_event(cmd, "Event 'change' on source #2"));
-        assert!(!should_emit_watch_event(cmd, "Event 'change' on sink-input #3"));
+        assert!(!should_emit_watch_event(
+            cmd,
+            "Event 'change' on sink-input #3"
+        ));
     }
 
     #[test]

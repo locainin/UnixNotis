@@ -181,8 +181,8 @@ fn write_if_missing(path: &Path, contents: &str) -> Result<(), ConfigError> {
 }
 
 fn ensure_parent_dir(path: &Path) -> Result<(), ConfigError> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| ConfigError::ReadFailed("missing theme file parent directory".to_string()))?;
+    let parent = path.parent().ok_or_else(|| {
+        ConfigError::ReadFailed("missing theme file parent directory".to_string())
+    })?;
     fs::create_dir_all(parent).map_err(|err| ConfigError::ReadFailed(err.to_string()))
 }

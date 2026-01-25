@@ -313,10 +313,7 @@ impl NotificationImage {
             image.data.len(),
         )?;
         let rowstride = i32::try_from(rowstride).ok()?;
-        let image = ImageData {
-            rowstride,
-            ..image
-        };
+        let image = ImageData { rowstride, ..image };
         match image.channels {
             4 => Some(image),
             3 => Self::expand_rgb_to_rgba(&image),

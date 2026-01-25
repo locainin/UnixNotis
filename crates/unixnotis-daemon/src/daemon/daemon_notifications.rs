@@ -8,15 +8,14 @@ use std::time::{Duration, Instant};
 
 use tracing::debug;
 use unixnotis_core::{
-    Action, CloseReason, Config, Notification, NotificationImage, Urgency,
-    CONTROL_OBJECT_PATH,
+    Action, CloseReason, Config, Notification, NotificationImage, Urgency, CONTROL_OBJECT_PATH,
 };
 use zbus::zvariant::OwnedValue;
 use zbus::{interface, SignalContext};
 
 use crate::expire::ExpirationScheduler;
 
-use super::{DaemonState, ControlServer, NOTIFICATIONS_OBJECT_PATH, to_fdo_error};
+use super::{to_fdo_error, ControlServer, DaemonState, NOTIFICATIONS_OBJECT_PATH};
 
 /// D-Bus server for org.freedesktop.Notifications.
 pub struct NotificationServer {

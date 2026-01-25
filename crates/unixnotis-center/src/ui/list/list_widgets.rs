@@ -16,11 +16,11 @@ use crate::dbus::{UiCommand, UiEvent};
 
 use super::super::icons::IconResolver;
 use super::list_item::{RowData, RowItem, RowKind};
+use super::list_row_ghost::{build_ghost_row, update_ghost_row, GhostRowWidgets};
 use super::list_row_group::{build_group_row, update_group_row, GroupRowWidgets};
 use super::list_row_notification::{
     build_notification_row, update_notification_row, NotificationRowWidgets,
 };
-use super::list_row_ghost::{build_ghost_row, update_ghost_row, GhostRowWidgets};
 
 /// GTK wrapper widgets for each row type.
 pub(super) struct RowWidgets {

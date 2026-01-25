@@ -294,14 +294,14 @@ fn read_battery_from(root: &Path) -> Option<String> {
     // If both unit families are present, capacity averaging is the only safe fallback.
     if energy_full_total > 0 && charge_count == 0 {
         // Rounded integer percent avoids floating-point drift for repeated reads.
-        let percent = (energy_now_total.saturating_mul(100) + energy_full_total / 2)
-            / energy_full_total;
+        let percent =
+            (energy_now_total.saturating_mul(100) + energy_full_total / 2) / energy_full_total;
         return Some(percent.to_string());
     }
     if charge_full_total > 0 && energy_count == 0 {
         // Charge-based values use the same arithmetic when energy data is absent.
-        let percent = (charge_now_total.saturating_mul(100) + charge_full_total / 2)
-            / charge_full_total;
+        let percent =
+            (charge_now_total.saturating_mul(100) + charge_full_total / 2) / charge_full_total;
         return Some(percent.to_string());
     }
     if capacity_count > 0 {
@@ -374,7 +374,11 @@ fn pick_default_iface_from(candidates: &[IfaceCandidate]) -> Option<String> {
 
 fn iface_sort_key(candidate: &IfaceCandidate) -> (u8, u8, &str) {
     // Active interfaces are sorted first; other states are considered less reliable.
-    let up_rank = if candidate.operstate.trim() == "up" { 0 } else { 1 };
+    let up_rank = if candidate.operstate.trim() == "up" {
+        0
+    } else {
+        1
+    };
     // Physical interfaces are favored over virtual ones for default bandwidth stats.
     let class_rank = iface_class_rank(candidate.name.as_str());
     // Name order provides stable ties across runs and reboots.
@@ -386,7 +390,17 @@ fn iface_class_rank(name: &str) -> u8 {
     const PHYSICAL_PREFIXES: [&str; 6] = ["en", "eth", "wl", "wlan", "wlp", "wwan"];
     // Known virtual or container/VM prefixes that should be deprioritized.
     const VIRTUAL_PREFIXES: [&str; 11] = [
-        "veth", "docker", "br", "virbr", "vmnet", "tap", "tun", "wg", "zt", "lo", "tailscale",
+        "veth",
+        "docker",
+        "br",
+        "virbr",
+        "vmnet",
+        "tap",
+        "tun",
+        "wg",
+        "zt",
+        "lo",
+        "tailscale",
     ];
 
     if starts_with_any(name, &PHYSICAL_PREFIXES) {
@@ -448,12 +462,8 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos();
-            let path = std::env::temp_dir().join(format!(
-                "{}-{}-{}",
-                prefix,
-                std::process::id(),
-                stamp
-            ));
+            let path =
+                std::env::temp_dir().join(format!("{}-{}-{}", prefix, std::process::id(), stamp));
             fs::create_dir_all(&path).expect("temp dir creation failed");
             Self { path }
         }

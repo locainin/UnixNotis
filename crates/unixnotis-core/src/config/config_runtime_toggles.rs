@@ -93,27 +93,29 @@ fn matches_default_kind(toggle: &ToggleWidgetConfig, kind: &str) -> bool {
                 || watch_cmd == BLUETOOTH_WATCH_DBUS
                 || watch_cmd == BLUETOOTH_WATCH_RFKILL
         }
-        TOGGLE_KIND_AIRPLANE => toggle
-            .state_cmd
-            .as_deref()
-            // Match default and legacy state commands for older configs.
-            .map(|state| state == AIRPLANE_STATE_CMD || is_legacy_airplane_state(state))
-            .unwrap_or(false)
-            || toggle
-                .on_cmd
+        TOGGLE_KIND_AIRPLANE => {
+            toggle
+                .state_cmd
                 .as_deref()
-                .map(|cmd| cmd == AIRPLANE_ON_CMD)
+                // Match default and legacy state commands for older configs.
+                .map(|state| state == AIRPLANE_STATE_CMD || is_legacy_airplane_state(state))
                 .unwrap_or(false)
-            || toggle
-                .off_cmd
-                .as_deref()
-                .map(|cmd| cmd == AIRPLANE_OFF_CMD)
-                .unwrap_or(false)
-            || toggle
-                .watch_cmd
-                .as_deref()
-                .map(|cmd| cmd == AIRPLANE_WATCH_CMD)
-                .unwrap_or(false),
+                || toggle
+                    .on_cmd
+                    .as_deref()
+                    .map(|cmd| cmd == AIRPLANE_ON_CMD)
+                    .unwrap_or(false)
+                || toggle
+                    .off_cmd
+                    .as_deref()
+                    .map(|cmd| cmd == AIRPLANE_OFF_CMD)
+                    .unwrap_or(false)
+                || toggle
+                    .watch_cmd
+                    .as_deref()
+                    .map(|cmd| cmd == AIRPLANE_WATCH_CMD)
+                    .unwrap_or(false)
+        }
         TOGGLE_KIND_NIGHT => is_default_night_backend(toggle),
         _ => false,
     }
@@ -250,9 +252,15 @@ fn apply_night_defaults(
     // This prevents configs from pointing at missing executables after upgrades.
     let default_backend = is_default_night_backend(toggle);
     let backend_unavailable = default_backend
-        && ((uses_hyprsunset && !hyprsunset_preferred && (gammastep_available || wlsunset_available))
-            || (uses_gammastep && !gammastep_available && (hyprsunset_preferred || wlsunset_available))
-            || (uses_wlsunset && !wlsunset_available && (hyprsunset_preferred || gammastep_available)));
+        && ((uses_hyprsunset
+            && !hyprsunset_preferred
+            && (gammastep_available || wlsunset_available))
+            || (uses_gammastep
+                && !gammastep_available
+                && (hyprsunset_preferred || wlsunset_available))
+            || (uses_wlsunset
+                && !wlsunset_available
+                && (hyprsunset_preferred || gammastep_available)));
     // Only rewrite when commands are blank, legacy, or mismatched with available backends.
     let needs_update = is_blank(&toggle.state_cmd)
         || is_blank(&toggle.on_cmd)
@@ -294,7 +302,10 @@ fn apply_night_defaults(
 }
 
 fn is_blank(value: &Option<String>) -> bool {
-    value.as_deref().map(|cmd| cmd.trim().is_empty()).unwrap_or(true)
+    value
+        .as_deref()
+        .map(|cmd| cmd.trim().is_empty())
+        .unwrap_or(true)
 }
 
 fn is_legacy_airplane_state(cmd: &str) -> bool {
@@ -312,7 +323,8 @@ fn is_legacy_night_toggle(toggle: &ToggleWidgetConfig) -> bool {
     let legacy_on = on_cmd.contains("command -v gammastep")
         || on_cmd.contains("gammastep -O")
         || on_cmd.contains("wlsunset -T");
-    let legacy_off = off_cmd.contains("pkill -x gammastep") && off_cmd.contains("pkill -x wlsunset");
+    let legacy_off =
+        off_cmd.contains("pkill -x gammastep") && off_cmd.contains("pkill -x wlsunset");
     legacy_state || legacy_on || legacy_off
 }
 

@@ -30,7 +30,9 @@ where
 }
 
 // Splits existing and missing paths to keep file checks testable without GTK.
-fn partition_existing_paths(paths: impl IntoIterator<Item = PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
+fn partition_existing_paths(
+    paths: impl IntoIterator<Item = PathBuf>,
+) -> (Vec<PathBuf>, Vec<PathBuf>) {
     // Iterator::partition keeps split logic localized while preserving ownership
     // so extra clones are avoided in this test-friendly helper.
     paths.into_iter().partition(|path| path.exists())
@@ -119,7 +121,8 @@ mod tests {
         fs::write(&existing_path, "body {}").expect("temp file write should succeed");
         let missing_path = unique_temp_path("missing.css");
 
-        let (existing, missing) = partition_existing_paths(vec![existing_path.clone(), missing_path.clone()]);
+        let (existing, missing) =
+            partition_existing_paths(vec![existing_path.clone(), missing_path.clone()]);
 
         assert_eq!(existing, vec![existing_path.clone()]);
         assert_eq!(missing, vec![missing_path]);

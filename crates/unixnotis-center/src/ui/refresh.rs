@@ -95,12 +95,20 @@ impl UiState {
         let slow = self.config.widgets.refresh_interval_slow_ms;
         // Prefer the fastest interval only when fast-refresh widgets are active.
         let fast_interval = if volume_poll || brightness_poll {
-            if fast > 0 { Some(fast) } else { None }
+            if fast > 0 {
+                Some(fast)
+            } else {
+                None
+            }
         } else {
             None
         };
         let slow_interval = if toggles_poll || stats_poll || cards_poll {
-            if slow > 0 { Some(slow) } else { None }
+            if slow > 0 {
+                Some(slow)
+            } else {
+                None
+            }
         } else {
             None
         };

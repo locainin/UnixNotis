@@ -28,8 +28,8 @@ use crate::child_process::{
     start_center_process, start_popups_process, stop_center_process, stop_popups_process,
 };
 use crate::daemon::{
-    log_name_reply, request_control_name, request_well_known_name, ControlServer, DaemonState,
-    spawn_inhibitor_owner_watch, NotificationServer,
+    log_name_reply, request_control_name, request_well_known_name, spawn_inhibitor_owner_watch,
+    ControlServer, DaemonState, NotificationServer,
 };
 use crate::dbus_owner::{log_current_owner, wait_for_owner_state};
 use crate::expire::ExpirationScheduler;

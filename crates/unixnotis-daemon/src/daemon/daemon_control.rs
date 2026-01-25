@@ -14,7 +14,7 @@ use zbus::fdo::DBusProxy;
 use zbus::message::Header;
 use zbus::{interface, SignalContext};
 
-use super::{DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH, to_fdo_error};
+use super::{to_fdo_error, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH};
 
 /// D-Bus server for com.unixnotis.Control.
 pub struct ControlServer {
@@ -95,7 +95,10 @@ impl ControlServer {
         };
         if changed {
             // Emit state updates only when the value changes to avoid log noise.
-            self.state.emit_state_changed().await.map_err(to_fdo_error)?;
+            self.state
+                .emit_state_changed()
+                .await
+                .map_err(to_fdo_error)?;
         }
         Ok(())
     }
@@ -123,7 +126,10 @@ impl ControlServer {
         ControlServer::inhibitors_changed(&ctx, active, count)
             .await
             .map_err(to_fdo_error)?;
-        self.state.emit_state_changed().await.map_err(to_fdo_error)?;
+        self.state
+            .emit_state_changed()
+            .await
+            .map_err(to_fdo_error)?;
         Ok(id)
     }
 
@@ -160,7 +166,10 @@ impl ControlServer {
         ControlServer::inhibitors_changed(&ctx, active, count)
             .await
             .map_err(to_fdo_error)?;
-        self.state.emit_state_changed().await.map_err(to_fdo_error)?;
+        self.state
+            .emit_state_changed()
+            .await
+            .map_err(to_fdo_error)?;
         Ok(())
     }
 
@@ -301,7 +310,10 @@ pub async fn spawn_inhibitor_owner_watch(state: Arc<DaemonState>) -> zbus::Resul
                 }
             };
             if let Err(err) = ControlServer::inhibitors_changed(&ctx, active, count).await {
-                warn!(?err, "failed to emit inhibitors_changed after owner disconnect");
+                warn!(
+                    ?err,
+                    "failed to emit inhibitors_changed after owner disconnect"
+                );
             }
             if let Err(err) = state.emit_state_changed().await {
                 warn!(?err, "failed to emit state_changed after owner disconnect");

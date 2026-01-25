@@ -61,8 +61,12 @@ pub(super) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     // Only append missing exec-once directives; existing lines remain untouched.
     // Build the minimal set of exec-once directives required for a clean login sync.
     let mut additions = Vec::new();
-    if !has_exec_once_command(&stripped, "dbus-update-activation-environment --systemd --all") {
-        additions.push("exec-once = dbus-update-activation-environment --systemd --all".to_string());
+    if !has_exec_once_command(
+        &stripped,
+        "dbus-update-activation-environment --systemd --all",
+    ) {
+        additions
+            .push("exec-once = dbus-update-activation-environment --systemd --all".to_string());
     }
     // Detect existing exec-once imports that already cover the required variables.
     let has_import = has_exec_once_import(&stripped, &HYPR_IMPORT_VARS);
@@ -79,7 +83,10 @@ pub(super) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
         // When no directives are missing, drop any stale managed block and keep the file stable.
         if block_found {
             if let Err(err) = fs::write(&hypr_config, stripped) {
-                log_line(ctx, format!("Warning: failed to update Hyprland config: {}", err));
+                log_line(
+                    ctx,
+                    format!("Warning: failed to update Hyprland config: {}", err),
+                );
             } else {
                 log_line(
                     ctx,
@@ -102,7 +109,10 @@ pub(super) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     updated_contents.push_str(&render_hyprland_bootstrap_block(&additions));
 
     if let Err(err) = fs::write(&hypr_config, updated_contents) {
-        log_line(ctx, format!("Warning: failed to update Hyprland config: {}", err));
+        log_line(
+            ctx,
+            format!("Warning: failed to update Hyprland config: {}", err),
+        );
     } else {
         log_line(
             ctx,
@@ -153,7 +163,10 @@ pub(super) fn remove_hyprland_autostart(ctx: &mut ActionContext) {
         return;
     }
     if let Err(err) = fs::write(&hypr_config, stripped) {
-        log_line(ctx, format!("Warning: failed to update Hyprland config: {}", err));
+        log_line(
+            ctx,
+            format!("Warning: failed to update Hyprland config: {}", err),
+        );
     } else {
         log_line(
             ctx,
@@ -169,13 +182,14 @@ fn hyprland_config_path() -> Result<PathBuf> {
     // Respect XDG_CONFIG_HOME when defined to support non-default config roots.
     if let Ok(base) = env::var("XDG_CONFIG_HOME") {
         if !base.trim().is_empty() {
-            return Ok(PathBuf::from(base)
-                .join("hypr")
-                .join("hyprland.conf"));
+            return Ok(PathBuf::from(base).join("hypr").join("hyprland.conf"));
         }
     }
     // Fall back to the conventional ~/.config path when XDG_CONFIG_HOME is unset.
-    Ok(home_dir()?.join(".config").join("hypr").join("hyprland.conf"))
+    Ok(home_dir()?
+        .join(".config")
+        .join("hypr")
+        .join("hyprland.conf"))
 }
 
 fn render_hyprland_bootstrap_block(lines: &[String]) -> String {
@@ -318,10 +332,7 @@ mod tests {
             log_tx: tx,
             action_mode: ActionMode::Install,
         };
-        let contents = format!(
-            "{start}\nexec-once = foo\n",
-            start = HYPR_BOOTSTRAP_START
-        );
+        let contents = format!("{start}\nexec-once = foo\n", start = HYPR_BOOTSTRAP_START);
         let result =
             strip_hyprland_bootstrap_block(&mut ctx, &contents, Path::new("hyprland.conf"));
         assert_eq!(result.stripped, contents);

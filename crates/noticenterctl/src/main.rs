@@ -203,8 +203,8 @@ mod tests {
     #[test]
     fn parses_open_panel_debug_default() {
         // Ensures clap default_missing_value maps --debug to the Info level.
-        let args = Args::try_parse_from(["noticenterctl", "open-panel", "--debug"])
-            .expect("parse args");
+        let args =
+            Args::try_parse_from(["noticenterctl", "open-panel", "--debug"]).expect("parse args");
         match args.command {
             Command::OpenPanel { debug } => {
                 assert!(matches!(debug, Some(DebugLevelArg::Info)));
@@ -216,13 +216,8 @@ mod tests {
     #[test]
     fn parses_open_panel_debug_value() {
         // Verifies explicit debug values map to the requested verbosity.
-        let args = Args::try_parse_from([
-            "noticenterctl",
-            "open-panel",
-            "--debug",
-            "verbose",
-        ])
-        .expect("parse args");
+        let args = Args::try_parse_from(["noticenterctl", "open-panel", "--debug", "verbose"])
+            .expect("parse args");
         match args.command {
             Command::OpenPanel { debug } => {
                 assert!(matches!(debug, Some(DebugLevelArg::Verbose)));
@@ -234,8 +229,7 @@ mod tests {
     #[test]
     fn parses_dnd_toggle() {
         // Confirms the value enum accepts the toggle state for DND commands.
-        let args = Args::try_parse_from(["noticenterctl", "dnd", "toggle"])
-            .expect("parse args");
+        let args = Args::try_parse_from(["noticenterctl", "dnd", "toggle"]).expect("parse args");
         match args.command {
             Command::Dnd { state } => {
                 assert!(matches!(state, DndState::Toggle));
@@ -262,8 +256,7 @@ mod tests {
     #[test]
     fn parses_inhibit_default_scope() {
         // Ensures inhibit defaults to the "all" scope when omitted.
-        let args = Args::try_parse_from(["noticenterctl", "inhibit", "focus"])
-            .expect("parse args");
+        let args = Args::try_parse_from(["noticenterctl", "inhibit", "focus"]).expect("parse args");
         match args.command {
             Command::Inhibit { scope, .. } => {
                 assert!(matches!(scope, InhibitScopeArg::All));
@@ -275,14 +268,8 @@ mod tests {
     #[test]
     fn parses_inhibit_popups_scope() {
         // Confirms popups scope is accepted for inhibit calls.
-        let args = Args::try_parse_from([
-            "noticenterctl",
-            "inhibit",
-            "focus",
-            "--scope",
-            "popups",
-        ])
-        .expect("parse args");
+        let args = Args::try_parse_from(["noticenterctl", "inhibit", "focus", "--scope", "popups"])
+            .expect("parse args");
         match args.command {
             Command::Inhibit { scope, .. } => {
                 assert!(matches!(scope, InhibitScopeArg::Popups));

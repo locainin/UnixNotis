@@ -10,9 +10,9 @@ use unixnotis_core::{NotificationView, Urgency};
 
 use crate::dbus::UiCommand;
 
-use super::list_item::RowData;
 use super::super::icons::IconResolver;
 use super::super::try_send_command;
+use super::list_item::RowData;
 
 pub(super) struct NotificationRowWidgets {
     pub(super) icon: gtk::Image,

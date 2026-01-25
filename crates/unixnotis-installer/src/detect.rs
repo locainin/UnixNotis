@@ -154,13 +154,11 @@ fn parse_pid_value(value: &Value) -> Option<u32> {
                 u32::try_from(val).ok()
             }
         }),
-        Value::String(text) => text.parse::<u32>().ok().and_then(|val| {
-            if val == 0 {
-                None
-            } else {
-                Some(val)
-            }
-        }),
+        Value::String(text) => {
+            text.parse::<u32>()
+                .ok()
+                .and_then(|val| if val == 0 { None } else { Some(val) })
+        }
         _ => None,
     }
 }

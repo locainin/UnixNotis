@@ -230,7 +230,11 @@ mod tests {
             &mut heap,
             &mut scheduled,
         );
-        apply_command(ExpirationCommand::Cancel { id: 9 }, &mut heap, &mut scheduled);
+        apply_command(
+            ExpirationCommand::Cancel { id: 9 },
+            &mut heap,
+            &mut scheduled,
+        );
 
         assert!(scheduled.is_empty());
     }

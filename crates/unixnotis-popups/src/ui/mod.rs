@@ -5,10 +5,10 @@
 // Load the shared icon helpers without pulling them into the crate root module list.
 #[path = "../icons/mod.rs"]
 mod icons;
-mod ui_window;
 mod ui_entry;
 mod ui_icons;
 mod ui_popups;
+mod ui_window;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};

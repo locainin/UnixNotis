@@ -64,8 +64,7 @@ fn write_dnd_state(dir: &std::path::Path, enabled: bool, version: u32) {
     };
     let payload = serde_json::to_string(&state).expect("serialize state");
     let path = dir.join("unixnotis").join(DND_STATE_FILE);
-    std::fs::create_dir_all(path.parent().expect("state parent"))
-        .expect("create state directory");
+    std::fs::create_dir_all(path.parent().expect("state parent")).expect("create state directory");
     std::fs::write(&path, payload).expect("write state");
 }
 
@@ -180,8 +179,7 @@ fn dnd_state_overrides_default() {
 fn dnd_state_invalid_payload_falls_back_to_default() {
     let state_dir = make_temp_state_dir("dnd-invalid");
     let path = state_dir.join("unixnotis").join(DND_STATE_FILE);
-    std::fs::create_dir_all(path.parent().expect("state parent"))
-        .expect("create state directory");
+    std::fs::create_dir_all(path.parent().expect("state parent")).expect("create state directory");
     std::fs::write(&path, "{").expect("write invalid state");
 
     let mut config = Config::default();
@@ -202,8 +200,7 @@ fn dnd_state_persists_on_change() {
 
     let path = state_dir.join("unixnotis").join(DND_STATE_FILE);
     let contents = std::fs::read_to_string(&path).expect("read persisted state");
-    let parsed: PersistedDndState =
-        serde_json::from_str(&contents).expect("parse persisted state");
+    let parsed: PersistedDndState = serde_json::from_str(&contents).expect("parse persisted state");
     assert!(parsed.dnd_enabled);
 
     cleanup_temp_dir(&state_dir);

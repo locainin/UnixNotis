@@ -281,10 +281,7 @@ mod tests {
     #[test]
     fn relevant_media_change_detects_updates() {
         let mut changed = HashMap::new();
-        changed.insert(
-            "Metadata",
-            zbus::zvariant::Value::from("track"),
-        );
+        changed.insert("Metadata", zbus::zvariant::Value::from("track"));
         let invalidated: [&str; 0] = [];
 
         assert!(is_relevant_media_change(&changed, &invalidated));

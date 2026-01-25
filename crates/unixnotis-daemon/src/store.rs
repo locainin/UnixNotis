@@ -65,7 +65,6 @@ impl DismissOutcome {
     }
 }
 
-
 impl NotificationStore {
     pub fn new(config: Config) -> Self {
         let dnd_state_store = DndStateStore::new();
@@ -85,10 +84,7 @@ impl NotificationStore {
             match store.load() {
                 Ok(Some(state)) if state.version == DND_STATE_VERSION => {
                     dnd_enabled = state.dnd_enabled;
-                    debug!(
-                        dnd_enabled,
-                        "loaded persisted do-not-disturb state"
-                    );
+                    debug!(dnd_enabled, "loaded persisted do-not-disturb state");
                 }
                 Ok(Some(state)) => {
                     warn!(
@@ -186,7 +182,8 @@ impl NotificationStore {
 
     pub fn remove_inhibitors_by_owner(&mut self, owner: &str) -> bool {
         let before = self.inhibitors.len();
-        self.inhibitors.retain(|_, inhibitor| inhibitor.owner != owner);
+        self.inhibitors
+            .retain(|_, inhibitor| inhibitor.owner != owner);
         if self.inhibitors.len() == before {
             return false;
         }

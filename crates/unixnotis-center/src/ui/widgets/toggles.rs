@@ -136,13 +136,7 @@ impl ToggleItem {
                 let button = button.clone();
                 // The button state reflects user intent; the retries reconcile it with reality.
                 let expected = button.is_active();
-                schedule_toggle_refresh_with_retry(
-                    state_cmd,
-                    expected,
-                    button,
-                    guard,
-                    refresh_gen,
-                );
+                schedule_toggle_refresh_with_retry(state_cmd, expected, button, guard, refresh_gen);
             }
         });
 
@@ -269,8 +263,7 @@ fn schedule_toggle_refresh_with_retry(
             if refresh_gen.load(Ordering::Relaxed) != gen {
                 return;
             }
-            let (Some(button), Some(guard)) = (button_weak.upgrade(), guard_weak.upgrade())
-            else {
+            let (Some(button), Some(guard)) = (button_weak.upgrade(), guard_weak.upgrade()) else {
                 // Stop retries if the UI has been dropped to avoid needless work.
                 return;
             };

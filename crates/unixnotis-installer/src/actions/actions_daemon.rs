@@ -18,7 +18,12 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
     let owner_comm = owner.comm.as_deref();
     // Prefer the bus-reported command name, but fall back to PID matching when comm is unavailable.
     let known = owner_comm
-        .and_then(|comm| ctx.detection.daemons.iter().find(|daemon| daemon.name == comm))
+        .and_then(|comm| {
+            ctx.detection
+                .daemons
+                .iter()
+                .find(|daemon| daemon.name == comm)
+        })
         .or_else(|| {
             owner_pid.and_then(|pid| {
                 ctx.detection

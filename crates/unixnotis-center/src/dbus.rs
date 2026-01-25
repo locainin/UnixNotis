@@ -537,8 +537,12 @@ mod tests {
         drop_stale_offline_commands(&mut offline);
 
         assert_eq!(offline.len(), 3);
-        assert!(offline.iter().any(|cmd| matches!(cmd, UiCommand::SetDnd(true))));
+        assert!(offline
+            .iter()
+            .any(|cmd| matches!(cmd, UiCommand::SetDnd(true))));
         assert!(offline.iter().any(|cmd| matches!(cmd, UiCommand::ClearAll)));
-        assert!(offline.iter().any(|cmd| matches!(cmd, UiCommand::ClosePanel)));
+        assert!(offline
+            .iter()
+            .any(|cmd| matches!(cmd, UiCommand::ClosePanel)));
     }
 }

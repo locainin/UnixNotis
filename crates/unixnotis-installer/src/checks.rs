@@ -71,9 +71,7 @@ impl Checks {
         };
 
         let gtk4_layer_shell = match pkg_config_version("gtk4-layer-shell-0") {
-            Ok(Some(version)) => {
-                CheckItem::ok("gtk4-layer-shell", &format!("found {version}"))
-            }
+            Ok(Some(version)) => CheckItem::ok("gtk4-layer-shell", &format!("found {version}")),
             Ok(None) => CheckItem::fail(
                 "gtk4-layer-shell",
                 "pkg-config gtk4-layer-shell-0 not found; is gtk4-layer-shell installed?",

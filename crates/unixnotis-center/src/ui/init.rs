@@ -79,20 +79,21 @@ impl UiState {
             try_send_command(&close_tx, UiCommand::ClosePanel);
         });
 
-        let connect_blur_close = |close_tx: tokio::sync::mpsc::Sender<UiCommand>,
-                                  visible_flag: Arc<AtomicBool>,
-                                  window: &gtk::ApplicationWindow| {
-            // Focus-based close is shared between click-away fallback and explicit blur mode.
-            window.connect_is_active_notify(move |window| {
-                // Only close when the panel is visible and focus is lost.
-                if !visible_flag.load(Ordering::SeqCst) {
-                    return;
-                }
-                if !window.is_active() {
-                    try_send_command(&close_tx, UiCommand::ClosePanel);
-                }
-            });
-        };
+        let connect_blur_close =
+            |close_tx: tokio::sync::mpsc::Sender<UiCommand>,
+             visible_flag: Arc<AtomicBool>,
+             window: &gtk::ApplicationWindow| {
+                // Focus-based close is shared between click-away fallback and explicit blur mode.
+                window.connect_is_active_notify(move |window| {
+                    // Only close when the panel is visible and focus is lost.
+                    if !visible_flag.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    if !window.is_active() {
+                        try_send_command(&close_tx, UiCommand::ClosePanel);
+                    }
+                });
+            };
 
         if init.config.panel.close_on_click_outside {
             // Hyprland watcher is preferred; fall back to focus-based close if unavailable.

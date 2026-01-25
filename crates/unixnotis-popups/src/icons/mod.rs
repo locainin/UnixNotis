@@ -329,17 +329,13 @@ mod tests {
             has_alpha: false,
             bits_per_sample: 8,
             channels: 3,
-            data: vec![
-                1, 2, 3, 4, 5, 6, 0, 0, 7, 8, 9, 10, 11, 12, 0, 0,
-            ],
+            data: vec![1, 2, 3, 4, 5, 6, 0, 0, 7, 8, 9, 10, 11, 12, 0, 0],
         };
         let (expanded, stride) = expand_rgb_to_rgba(&data).expect("rgb expansion");
         assert_eq!(stride, 8);
         assert_eq!(
             expanded,
-            vec![
-                1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255
-            ]
+            vec![1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255]
         );
     }
 }

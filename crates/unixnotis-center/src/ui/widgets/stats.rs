@@ -172,11 +172,7 @@ impl StatItem {
         }
         let now = Instant::now();
         // Skip refresh when the backoff window has not elapsed.
-        if !self
-            .refresh_backoff
-            .borrow()
-            .should_refresh(now, force)
-        {
+        if !self.refresh_backoff.borrow().should_refresh(now, force) {
             return;
         }
         debug::log(PanelDebugLevel::Verbose, || {
@@ -199,9 +195,11 @@ impl StatItem {
                 let value = fallback.read().unwrap_or_else(|| "n/a".to_string());
                 *self.builtin.borrow_mut() = Some(fallback);
                 let changed = self.apply_value(&value);
-                self.refresh_backoff
-                    .borrow_mut()
-                    .note_success(Instant::now(), base_interval, changed);
+                self.refresh_backoff.borrow_mut().note_success(
+                    Instant::now(),
+                    base_interval,
+                    changed,
+                );
                 return;
             }
 
