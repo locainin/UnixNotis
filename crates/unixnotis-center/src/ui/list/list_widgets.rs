@@ -173,7 +173,7 @@ pub(super) fn set_row_widgets(list_item: &gtk::ListItem, widgets: Rc<RowWidgets>
         // SAFETY: gtk::ListItem stays on the GTK main thread and never crosses threads.
         // RowWidgets uses Rc and is only accessed from list factory callbacks on the
         // main thread. Data is replaced in ensure_row_widgets when the row kind changes
-        // and cleared on unbind, so stale references are not retained.
+        // and otherwise kept to let GTK reuse the row widgets across scroll events.
         list_item.set_qdata(row_widgets_quark(), widgets);
     }
 }
@@ -183,12 +183,5 @@ pub(super) fn get_row_widgets(list_item: &gtk::ListItem) -> Option<Rc<RowWidgets
         list_item
             .qdata::<Rc<RowWidgets>>(row_widgets_quark())
             .map(|ptr| ptr.as_ref().clone())
-    }
-}
-
-pub(super) fn clear_row_widgets(list_item: &gtk::ListItem) {
-    unsafe {
-        // SAFETY: clearing uses the same quark/type pairing as set_row_widgets.
-        let _ = list_item.steal_qdata::<Rc<RowWidgets>>(row_widgets_quark());
     }
 }

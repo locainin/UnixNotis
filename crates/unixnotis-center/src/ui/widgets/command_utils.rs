@@ -497,24 +497,19 @@ pub(in crate::ui::widgets) fn kill_process_group(pid: i32) {
 }
 
 fn is_probably_slow(cmd: &str) -> bool {
-    // Single-pass meta scan avoids allocating a lowercase copy on every refresh.
-    let mut prev_amp = false;
-    for byte in cmd.as_bytes() {
-        let ch = byte.to_ascii_lowercase();
-        if ch == b'|' || ch == b';' {
-            return true;
-        }
-        if ch == b'&' {
-            if prev_amp {
-                return true;
-            }
-            prev_amp = true;
-            continue;
-        }
-        prev_amp = false;
-    }
+    // Complex commands (shell meta, env assignments, etc.) are treated as slow to
+    // avoid under-budgeting timeouts for shells and pipelines.
+    let Some((program, args)) = parse_simple_command(cmd) else {
+        return true;
+    };
 
-    if contains_ascii_case_insensitive(cmd, "sleep") {
+    let program_name = program
+        .rsplit('/')
+        .next()
+        .unwrap_or(program.as_str())
+        .to_ascii_lowercase();
+
+    if program_name == "sleep" {
         return true;
     }
 
@@ -529,32 +524,34 @@ fn is_probably_slow(cmd: &str) -> bool {
         "wpctl",
         "brightnessctl",
     ];
-    SLOW_TOKENS
-        .iter()
-        .any(|token| contains_ascii_case_insensitive(cmd, token))
-}
-
-fn contains_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {
-    // ASCII-only case folding is enough for command tokens and avoids allocations.
-    let haystack = haystack.as_bytes();
-    let needle = needle.as_bytes();
-    if needle.is_empty() {
+    if SLOW_TOKENS.contains(&program_name.as_str()) {
         return true;
     }
-    if haystack.len() < needle.len() {
-        return false;
+
+    if matches!(program_name.as_str(), "sh" | "bash" | "zsh" | "fish") {
+        if let Some(script) = shell_script_arg(&args) {
+            if script.split_whitespace().next() == Some("sleep") {
+                return true;
+            }
+        }
     }
-    haystack.windows(needle.len()).any(|window| {
-        window
-            .iter()
-            .zip(needle)
-            .all(|(lhs, rhs)| lhs.to_ascii_lowercase() == *rhs)
-    })
+
+    false
+}
+
+fn shell_script_arg(args: &[String]) -> Option<&str> {
+    let mut iter = args.iter().peekable();
+    while let Some(arg) = iter.next() {
+        if arg == "-c" {
+            return iter.peek().map(|value| value.as_str());
+        }
+    }
+    None
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_simple_command;
+    use super::{is_probably_slow, parse_simple_command};
 
     #[test]
     fn parse_simple_command_honors_quotes() {
@@ -567,5 +564,18 @@ mod tests {
     #[test]
     fn parse_simple_command_rejects_shell_meta() {
         assert!(parse_simple_command("echo hi | wc -l").is_none());
+    }
+
+    #[test]
+    fn is_probably_slow_respects_program_tokens() {
+        assert!(is_probably_slow("sleep 1"));
+        assert!(is_probably_slow("nmcli radio wifi"));
+        assert!(!is_probably_slow("echo \"I am not sleeping\""));
+    }
+
+    #[test]
+    fn is_probably_slow_handles_shell_sleep_script() {
+        assert!(is_probably_slow("bash -c \"sleep 1\""));
+        assert!(!is_probably_slow("bash -c \"echo sleep\""));
     }
 }

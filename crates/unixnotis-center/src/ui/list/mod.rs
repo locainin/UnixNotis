@@ -30,7 +30,7 @@ use crate::dbus::{UiCommand, UiEvent};
 use self::list_item::{RowItem, RowKind};
 use self::list_row_empty::build_empty_row;
 use self::list_widgets::{
-    bind_row, clear_row_widgets, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets,
+    bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets,
 };
 use super::icons::IconResolver;
 
@@ -154,7 +154,9 @@ impl NotificationList {
             if let Some(widgets) = get_row_widgets(list_item) {
                 widgets.unbind();
             }
-            clear_row_widgets(list_item);
+            // Keep RowWidgets attached so GTK can recycle rows without rebuilding
+            // the widget tree on every scroll. Kind mismatches are handled in
+            // ensure_row_widgets when the row is rebound.
         });
 
         Self {

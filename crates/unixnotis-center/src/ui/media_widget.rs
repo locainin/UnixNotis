@@ -3,9 +3,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use glib::clone;
 use gtk::prelude::*;
 use gtk::{gio, Align};
-use glib::clone;
 
 use crate::media::{MediaHandle, MediaInfo};
 
