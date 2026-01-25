@@ -181,24 +181,28 @@ pub fn start_css_watcher(paths: &ThemePaths, kind: CssKind, on_reload: impl Fn()
         }
 
         let debounce = Duration::from_millis(150);
-        let mut pending = false;
-        loop {
-            match event_rx.recv_timeout(debounce) {
-                Ok(event) => {
-                    if let Err(err) = event {
-                        warn!(?err, "css watcher reported an error");
-                        continue;
-                    }
-                    pending = true;
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if pending {
-                        on_reload();
-                        pending = false;
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        // Block on recv so the watcher thread does not wake periodically when idle.
+        // Using recv_timeout here would wake every debounce interval and burn CPU
+        // even when no files change.
+        while let Ok(event) = event_rx.recv() {
+            if let Err(err) = event {
+                warn!(?err, "css watcher reported an error");
+                continue;
             }
+            // Once an event arrives, coalesce bursts by waiting for a quiet window.
+            // This keeps reloads responsive while minimizing redundant reload work.
+            loop {
+                match event_rx.recv_timeout(debounce) {
+                    Ok(event) => {
+                        if let Err(err) = event {
+                            warn!(?err, "css watcher reported an error");
+                        }
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => break,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                }
+            }
+            on_reload();
         }
     });
 }
@@ -229,33 +233,47 @@ pub fn start_config_watcher(config_path: PathBuf, on_reload: impl Fn() + Send + 
         }
 
         let debounce = Duration::from_millis(150);
-        let mut pending = false;
-        loop {
-            match event_rx.recv_timeout(debounce) {
-                Ok(event) => {
-                    let Ok(event) = event else {
-                        warn!(?event, "config watcher reported an error");
-                        continue;
-                    };
-                    if let Some(name) = config_name.as_ref() {
-                        let matches = event
-                            .paths
-                            .iter()
-                            .any(|path| path.file_name() == Some(name));
-                        if !matches {
+        // Block on recv so the watcher thread does not wake periodically when idle.
+        // Using recv_timeout here would wake every debounce interval and burn CPU
+        // even when no files change.
+        while let Ok(event) = event_rx.recv() {
+            let Ok(event) = event else {
+                warn!(?event, "config watcher reported an error");
+                continue;
+            };
+            if let Some(name) = config_name.as_ref() {
+                let matches = event
+                    .paths
+                    .iter()
+                    .any(|path| path.file_name() == Some(name));
+                if !matches {
+                    continue;
+                }
+            }
+            // Coalesce rapid edits by draining events until the debounce window is quiet.
+            // This avoids multiple reloads during a single save operation.
+            loop {
+                match event_rx.recv_timeout(debounce) {
+                    Ok(event) => {
+                        let Ok(event) = event else {
+                            warn!(?event, "config watcher reported an error");
                             continue;
+                        };
+                        if let Some(name) = config_name.as_ref() {
+                            let matches = event
+                                .paths
+                                .iter()
+                                .any(|path| path.file_name() == Some(name));
+                            if !matches {
+                                continue;
+                            }
                         }
                     }
-                    pending = true;
+                    Err(mpsc::RecvTimeoutError::Timeout) => break,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if pending {
-                        on_reload();
-                        pending = false;
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
+            on_reload();
         }
     });
 }
