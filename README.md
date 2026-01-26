@@ -17,11 +17,7 @@ git clone https://github.com/locainin/UnixNotis.wiki.git
 
 ### Configuration and Styling
 
-See the Wiki for full configuration and styling details:
-
-```
-https://github.com/locainin/UnixNotis/wiki
-```
+[See the wiki for more details.](https://github.com/locainin/UnixNotis/wiki)
 
 ## Features
 
