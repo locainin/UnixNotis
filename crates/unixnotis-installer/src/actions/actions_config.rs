@@ -22,15 +22,22 @@ pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
         format!("Config directory: {}", format_with_home(&config_dir)),
     );
 
+    // Ensure the config directory exists before creating defaults.
+    fs::create_dir_all(&config_dir).with_context(|| "failed to create config directory")?;
+
     if config_path.exists() {
         log_line(
             ctx,
             format!("Config file present: {}", format_with_home(&config_path)),
         );
     } else {
+        // Write a default config.toml when missing so users have a base to edit.
+        let config_toml =
+            toml::to_string_pretty(&config).map_err(|err| anyhow!(err.to_string()))?;
+        fs::write(&config_path, config_toml).with_context(|| "failed to write config.toml")?;
         log_line(
             ctx,
-            format!("Config file missing: {}", format_with_home(&config_path)),
+            format!("Config file created: {}", format_with_home(&config_path)),
         );
     }
 

@@ -169,12 +169,8 @@ fn copy_binary(ctx: &mut ActionContext, source: &Path, destination: &Path) -> Re
         )
     })?;
 
-    if destination.exists() {
-        // Remove the existing file to avoid rename failures on platforms that forbid overwrite.
-        fs::remove_file(destination)
-            .with_context(|| "failed to remove existing destination binary")?;
-    }
-
+    // On Linux, rename is atomic and replaces the destination when it exists.
+    // Avoid pre-removal to prevent a window where the binary is missing.
     if let Err(err) = fs::rename(&temp_path, destination) {
         let _ = fs::remove_file(&temp_path);
         return Err(anyhow!(

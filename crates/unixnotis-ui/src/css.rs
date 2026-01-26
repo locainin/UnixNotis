@@ -312,8 +312,14 @@ fn load_provider_with_overrides(
             provider.load_from_data(&merged);
         }
         Err(err) => {
-            let file = path.file_name().and_then(|name| name.to_str()).unwrap_or("css");
-            warn!(?err, file, "failed to read css file; falling back to defaults");
+            let file = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("css");
+            warn!(
+                ?err,
+                file, "failed to read css file; falling back to defaults"
+            );
             let fallback = if inject_base_tokens {
                 ensure_base_tokens(fallback, path)
             } else {

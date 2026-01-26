@@ -76,7 +76,7 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
                 .status()
                 .context("failed to terminate notification daemon")?;
             if status.success() {
-                wait_for_exit(ctx, pid)?;
+                wait_for_exit(ctx, pid, &daemon.name)?;
                 return Ok(());
             }
             return Err(anyhow!("failed to stop {}", daemon.name));
@@ -84,22 +84,28 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
     }
 
     if let Some(comm) = owner_comm {
-        log_line(
-            ctx,
-            format!("Detected owner '{}' is not managed by a known unit.", comm),
+        let message = format!(
+            "Detected owner '{}' is not managed by a known unit; stop it manually before install.",
+            comm
         );
-    } else if let Some(pid) = owner_pid {
-        log_line(
-            ctx,
-            format!("Detected owner pid {} is not managed by a known unit.", pid),
-        );
-    } else {
-        log_line(ctx, "Detected owner is not managed by a known unit.");
+        log_line(ctx, message.clone());
+        return Err(anyhow!(message));
     }
-    Ok(())
+    if let Some(pid) = owner_pid {
+        let message = format!(
+            "Detected owner pid {} is not managed by a known unit; stop it manually before install.",
+            pid
+        );
+        log_line(ctx, message.clone());
+        return Err(anyhow!(message));
+    }
+    let message = "Detected owner is not managed by a known unit; stop it manually before install."
+        .to_string();
+    log_line(ctx, message.clone());
+    Err(anyhow!(message))
 }
 
-fn wait_for_exit(ctx: &mut ActionContext, pid: u32) -> Result<()> {
+fn wait_for_exit(ctx: &mut ActionContext, pid: u32, expected_comm: &str) -> Result<()> {
     let start = Instant::now();
     let timeout = Duration::from_secs(5);
     let poll = Duration::from_millis(100);
@@ -108,6 +114,14 @@ fn wait_for_exit(ctx: &mut ActionContext, pid: u32) -> Result<()> {
         if !pid_alive(pid)? {
             log_line(ctx, format!("Process {} stopped.", pid));
             return Ok(());
+        }
+        // PID reuse protection: verify the command name during the wait loop.
+        if !pid_matches_comm(pid, expected_comm)? {
+            return Err(anyhow!(
+                "pid {} no longer matches expected daemon {}; aborting wait",
+                pid,
+                expected_comm
+            ));
         }
         thread::sleep(poll);
     }

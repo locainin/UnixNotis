@@ -2,6 +2,8 @@
 
 #[path = "actions/actions_binaries.rs"]
 mod actions_binaries;
+#[path = "actions/actions_build_accel.rs"]
+mod actions_build_accel;
 #[path = "actions/actions_config.rs"]
 mod actions_config;
 #[path = "actions/actions_daemon.rs"]
@@ -23,6 +25,10 @@ mod actions_state;
 #[path = "actions/actions_verify.rs"]
 mod actions_verify;
 
+pub use actions_build_accel::{
+    detect_build_accel, detect_build_accel_without_repo, write_build_accel_config,
+    BuildAccelConfigStatus, BuildAccelDetection, BuildAccelOutcome,
+};
 pub use actions_format::{format_daemon_status, summarize_owner};
 pub use actions_plan::{build_plan, run_step, steps_from_plan, StepKind};
 pub use actions_state::{check_install_state, ActionContext, InstallState};

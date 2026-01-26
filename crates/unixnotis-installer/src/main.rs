@@ -18,7 +18,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::actions::{
-    build_plan, check_install_state, run_step, steps_from_plan, ActionContext, StepKind,
+    build_plan, check_install_state, detect_build_accel, detect_build_accel_without_repo, run_step,
+    steps_from_plan, write_build_accel_config, ActionContext, BuildAccelOutcome, StepKind,
 };
 use crate::app::{App, MenuItem, ProgressState, Screen};
 use crate::events::{UiMessage, WorkerEvent};
@@ -82,6 +83,7 @@ fn handle_event(
             Screen::Welcome => handle_welcome_key(app, key),
             Screen::Confirm(mode) => handle_confirm_key(app, terminal_guard, ui_tx, key, mode),
             Screen::Progress(_) => handle_progress_key(app, key),
+            Screen::BuildAccel => handle_build_accel_key(app, key),
         },
         Event::Resize(_, _) => Ok(None),
         _ => Ok(None),
@@ -173,12 +175,47 @@ fn handle_progress_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction
     }
     match key.code {
         KeyCode::Enter => {
-            reset_to_menu(app);
+            if matches!(app.screen, Screen::Progress(ActionMode::Install))
+                && matches!(app.progress_state, ProgressState::Completed)
+            {
+                // Present the optional build-acceleration prompt after a successful install.
+                prepare_build_accel_prompt(app);
+                app.screen = Screen::BuildAccel;
+            } else {
+                reset_to_menu(app);
+            }
             Ok(None)
         }
         KeyCode::Char('q') | KeyCode::Char('Q') => Ok(Some(ExitAction::None)),
         KeyCode::Esc => {
             app.screen = Screen::Welcome;
+            Ok(None)
+        }
+        _ => Ok(None),
+    }
+}
+
+fn handle_build_accel_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Char('Q') => Ok(Some(ExitAction::None)),
+        KeyCode::Up => {
+            if app.build_accel_menu_index > 0 {
+                app.build_accel_menu_index -= 1;
+            }
+            Ok(None)
+        }
+        KeyCode::Down => {
+            if app.build_accel_menu_index + 1 < app.build_accel_menu_len() {
+                app.build_accel_menu_index += 1;
+            }
+            Ok(None)
+        }
+        KeyCode::Esc => {
+            reset_to_menu(app);
+            Ok(None)
+        }
+        KeyCode::Enter => {
+            handle_build_accel_enter(app);
             Ok(None)
         }
         _ => Ok(None),
@@ -300,11 +337,13 @@ fn append_log(app: &mut App, line: String) {
     // Bound log memory usage by trimming old entries.
     const MAX_LINES: usize = 200;
 
-    app.logs.push(line);
+    app.logs.push_back(line);
 
     if app.logs.len() > MAX_LINES {
-        let excess = app.logs.len() - MAX_LINES;
-        app.logs.drain(0..excess);
+        // VecDeque allows O(1) removal from the front.
+        while app.logs.len() > MAX_LINES {
+            app.logs.pop_front();
+        }
     }
 }
 
@@ -326,7 +365,64 @@ fn reset_to_menu(app: &mut App) {
     app.steps.clear();
     app.progress_state = ProgressState::Idle;
     app.progress_ready_at = None;
+    app.build_accel = None;
+    app.build_accel_menu_index = 0;
     app.refresh();
+}
+
+fn prepare_build_accel_prompt(app: &mut App) {
+    // Snapshot detection so the prompt remains stable while the user decides.
+    let detection = match InstallPaths::discover() {
+        Ok(paths) => detect_build_accel(&paths.repo_root),
+        Err(err) => detect_build_accel_without_repo(err.to_string()),
+    };
+    app.build_accel = Some(crate::app::BuildAccelState {
+        detection,
+        outcome: None,
+    });
+    app.build_accel_menu_index = 0;
+}
+
+fn apply_build_accel_setup(app: &mut App) {
+    // Writes per-repository Cargo config only when explicitly requested.
+    let Some(state) = app.build_accel.as_mut() else {
+        return;
+    };
+    let paths = match InstallPaths::discover() {
+        Ok(paths) => paths,
+        Err(err) => {
+            state.outcome = Some(BuildAccelOutcome::Failed(err.to_string()));
+            return;
+        }
+    };
+    let outcome = write_build_accel_config(&paths.repo_root, &state.detection);
+    state.outcome = Some(outcome);
+    // Keep selection on the only available action once a result is shown.
+    app.build_accel_menu_index = 0;
+    // Refresh detection so config state is reflected in the prompt immediately.
+    state.detection = detect_build_accel(&paths.repo_root);
+}
+
+fn handle_build_accel_enter(app: &mut App) {
+    match app.build_accel_menu_mode() {
+        crate::app::BuildAccelMenuMode::ReturnOnly => {
+            reset_to_menu(app);
+        }
+        crate::app::BuildAccelMenuMode::EnableOrSkip => {
+            if app.build_accel_menu_index == 0 {
+                apply_build_accel_setup(app);
+            } else {
+                reset_to_menu(app);
+            }
+        }
+        crate::app::BuildAccelMenuMode::Reinstall => {
+            if app.build_accel_menu_index == 0 {
+                reset_to_menu(app);
+            } else {
+                apply_build_accel_setup(app);
+            }
+        }
+    }
 }
 
 fn run_trial(repo_root: PathBuf) -> Result<()> {

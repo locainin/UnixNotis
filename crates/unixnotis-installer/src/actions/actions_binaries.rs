@@ -3,16 +3,25 @@
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 
 use crate::paths::InstallPaths;
 
 pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<String>> {
-    // Prefer workspace metadata so the installer and workspace stay in sync.
-    let metadata = load_install_binaries_from_metadata(paths)?;
-    if !metadata.is_empty() {
-        return Ok(metadata);
+    // Prefer cargo metadata for accuracy across workspace layouts.
+    if let Ok(metadata) = load_install_binaries_from_cargo_metadata(paths) {
+        if !metadata.is_empty() {
+            return Ok(metadata);
+        }
+    }
+
+    // Fall back to workspace metadata when cargo metadata is unavailable.
+    if let Ok(metadata) = load_install_binaries_from_metadata(paths) {
+        if !metadata.is_empty() {
+            return Ok(metadata);
+        }
     }
 
     // Fall back to workspace discovery for older checkouts without installer metadata.
@@ -147,9 +156,61 @@ fn discover_crate_binaries(member_root: &Path) -> Result<Vec<String>> {
     Ok(binaries)
 }
 
+fn load_install_binaries_from_cargo_metadata(paths: &InstallPaths) -> Result<Vec<String>> {
+    // cargo metadata is the most robust source of workspace targets.
+    let output = Command::new("cargo")
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .current_dir(&paths.repo_root)
+        .output()
+        .with_context(|| "failed to run cargo metadata")?;
+
+    if !output.status.success() {
+        return Err(anyhow!(
+            "cargo metadata exited with status {}",
+            output.status
+        ));
+    }
+
+    let metadata: CargoMetadata =
+        serde_json::from_slice(&output.stdout).with_context(|| "failed to parse cargo metadata")?;
+
+    Ok(extract_bins_from_metadata(&metadata))
+}
+
+fn extract_bins_from_metadata(metadata: &CargoMetadata) -> Vec<String> {
+    let mut binaries = BTreeSet::new();
+    for package in &metadata.packages {
+        for target in &package.targets {
+            if target.kind.iter().any(|kind| kind == "bin") {
+                if target.name == "unixnotis-installer" {
+                    continue;
+                }
+                binaries.insert(target.name.clone());
+            }
+        }
+    }
+    binaries.into_iter().collect()
+}
+
+#[derive(serde::Deserialize)]
+struct CargoMetadata {
+    packages: Vec<CargoPackage>,
+}
+
+#[derive(serde::Deserialize)]
+struct CargoPackage {
+    targets: Vec<CargoTarget>,
+}
+
+#[derive(serde::Deserialize)]
+struct CargoTarget {
+    name: String,
+    kind: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::parse_install_binaries_metadata;
+    use super::{extract_bins_from_metadata, parse_install_binaries_metadata, CargoMetadata};
 
     #[test]
     fn parse_install_binaries_metadata_reads_entries() {
@@ -176,5 +237,25 @@ members = ["crates/unixnotis-daemon"]
         let value: toml::Value = toml::from_str(input).expect("valid toml");
         let binaries = parse_install_binaries_metadata(&value);
         assert!(binaries.is_empty());
+    }
+
+    #[test]
+    fn extract_bins_from_cargo_metadata() {
+        let input = r#"
+{
+  "packages": [
+    {
+      "targets": [
+        { "name": "unixnotis-daemon", "kind": ["bin"] },
+        { "name": "unixnotis-installer", "kind": ["bin"] },
+        { "name": "unixnotis-core", "kind": ["lib"] }
+      ]
+    }
+  ]
+}
+"#;
+        let metadata: CargoMetadata = serde_json::from_str(input).expect("metadata");
+        let binaries = extract_bins_from_metadata(&metadata);
+        assert_eq!(binaries, vec!["unixnotis-daemon".to_string()]);
     }
 }

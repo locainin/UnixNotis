@@ -229,8 +229,12 @@ impl ControlServer {
                         CloseReason::DismissedByUser as u32,
                     )
                     .await?;
-                    ControlServer::notification_closed(&control_ctx, id, CloseReason::DismissedByUser)
-                        .await?;
+                    ControlServer::notification_closed(
+                        &control_ctx,
+                        id,
+                        CloseReason::DismissedByUser,
+                    )
+                    .await?;
                     Ok::<(), zbus::Error>(())
                 }
             })

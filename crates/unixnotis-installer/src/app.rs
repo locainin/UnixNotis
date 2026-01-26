@@ -1,10 +1,12 @@
 //! UI state and event handling for the installer TUI.
 
 use crate::actions::{check_install_state, InstallState};
+use crate::actions::{BuildAccelConfigStatus, BuildAccelDetection, BuildAccelOutcome};
 use crate::checks::Checks;
 use crate::detect::Detection;
 use crate::model::{ActionMode, ActionStep};
 use crate::paths::InstallPaths;
+use std::collections::VecDeque;
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -27,6 +29,8 @@ pub enum Screen {
     Confirm(ActionMode),
     // Progress screen for running actions.
     Progress(ActionMode),
+    // Optional build-acceleration prompt after install.
+    BuildAccel,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -54,7 +58,7 @@ pub struct App {
     pub verify: bool,
 
     // Log lines for UI display.
-    pub logs: Vec<String>,
+    pub logs: VecDeque<String>,
 
     // Steps for the active action.
     pub steps: Vec<ActionStep>,
@@ -70,6 +74,25 @@ pub struct App {
 
     // Earliest time the progress screen can accept navigation input.
     pub progress_ready_at: Option<Instant>,
+
+    // Optional build-acceleration prompt data.
+    pub build_accel: Option<BuildAccelState>,
+
+    // Selected option index for the build-acceleration prompt.
+    pub build_accel_menu_index: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct BuildAccelState {
+    pub detection: BuildAccelDetection,
+    pub outcome: Option<BuildAccelOutcome>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuildAccelMenuMode {
+    ReturnOnly,
+    EnableOrSkip,
+    Reinstall,
 }
 
 impl App {
@@ -83,12 +106,14 @@ impl App {
             menu_index: 0,
             screen: Screen::Welcome,
             verify: false,
-            logs: Vec::new(),
+            logs: VecDeque::new(),
             steps: Vec::new(),
             progress_state: ProgressState::Idle,
             last_error: None,
             install_state,
             progress_ready_at: None,
+            build_accel: None,
+            build_accel_menu_index: 0,
         }
     }
 
@@ -113,6 +138,38 @@ impl App {
         self.checks = checks;
         self.detection = detection;
         self.install_state = install_state;
+    }
+
+    pub fn build_accel_menu_mode(&self) -> BuildAccelMenuMode {
+        let Some(state) = self.build_accel.as_ref() else {
+            return BuildAccelMenuMode::ReturnOnly;
+        };
+
+        // Enabling only makes sense if at least one accelerator is available.
+        let enable_available = state.detection.sccache_installed || state.detection.mold_installed;
+
+        match state.detection.config_status {
+            BuildAccelConfigStatus::Managed { .. } => BuildAccelMenuMode::Reinstall,
+            BuildAccelConfigStatus::Missing => {
+                if enable_available {
+                    BuildAccelMenuMode::EnableOrSkip
+                } else {
+                    BuildAccelMenuMode::ReturnOnly
+                }
+            }
+            BuildAccelConfigStatus::Unmanaged | BuildAccelConfigStatus::ReadFailed(_) => {
+                BuildAccelMenuMode::ReturnOnly
+            }
+        }
+    }
+
+    pub fn build_accel_menu_len(&self) -> usize {
+        // Keep menu length aligned with the chosen mode to avoid invalid indices.
+        match self.build_accel_menu_mode() {
+            BuildAccelMenuMode::ReturnOnly => 1,
+            BuildAccelMenuMode::EnableOrSkip => 2,
+            BuildAccelMenuMode::Reinstall => 2,
+        }
     }
 
     pub fn action_label(&self, mode: ActionMode) -> &'static str {

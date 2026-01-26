@@ -7,8 +7,8 @@ use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::{Config, PanelDebugLevel};
 
-use super::widget_builders::{build_extra_widgets, build_quick_controls, clear_container};
 use super::list;
+use super::widget_builders::{build_extra_widgets, build_quick_controls, clear_container};
 use super::{media_widget, panel, UiState};
 
 impl UiState {
