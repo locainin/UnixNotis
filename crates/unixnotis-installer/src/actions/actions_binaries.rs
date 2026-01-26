@@ -7,13 +7,16 @@ use std::process::Command;
 use anyhow::{anyhow, Context, Result};
 
 use crate::paths::InstallPaths;
+use unixnotis_core::program_in_path;
 
 pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<String>> {
     // Prefer explicit installer metadata as the source of truth.
     let metadata_list = load_install_binaries_from_metadata(paths)?;
+    let cargo_available = program_in_path("cargo");
     if !metadata_list.is_empty() {
         // Validate against cargo metadata when available to catch stale entries.
-        if let Ok(available) = load_install_binaries_from_cargo_metadata(paths) {
+        if cargo_available {
+            let available = load_install_binaries_from_cargo_metadata(paths)?;
             if !available.is_empty() {
                 let missing = metadata_list
                     .iter()
@@ -32,7 +35,8 @@ pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<Strin
     }
 
     // Fall back to cargo metadata when no installer list is declared.
-    if let Ok(metadata) = load_install_binaries_from_cargo_metadata(paths) {
+    if cargo_available {
+        let metadata = load_install_binaries_from_cargo_metadata(paths)?;
         if !metadata.is_empty() {
             return Ok(metadata);
         }

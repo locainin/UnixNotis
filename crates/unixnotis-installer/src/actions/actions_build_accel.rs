@@ -81,11 +81,13 @@ pub fn write_build_accel_config(
             return BuildAccelOutcome::Failed(err.to_string());
         }
     }
-    if let Err(err) = fs::write(&config_path, content) {
-        return BuildAccelOutcome::Failed(err.to_string());
-    }
+    // Write the wrapper first so a failure never leaves a config pointing
+    // at a missing executable wrapper script.
     if let Err(err) = write_wrapper_script(&wrapper_path) {
         return BuildAccelOutcome::Failed(err);
+    }
+    if let Err(err) = fs::write(&config_path, content) {
+        return BuildAccelOutcome::Failed(err.to_string());
     }
 
     BuildAccelOutcome::Written {
@@ -131,11 +133,12 @@ fn update_existing_config(
     // when sccache or mold are removed after initial setup.
     let content = format_build_accel_config();
 
-    if let Err(err) = fs::write(config_path, content) {
-        return BuildAccelOutcome::Failed(err.to_string());
-    }
+    // Write the wrapper first so config updates never point at missing scripts.
     if let Err(err) = write_wrapper_script(wrapper_path) {
         return BuildAccelOutcome::Failed(err);
+    }
+    if let Err(err) = fs::write(config_path, content) {
+        return BuildAccelOutcome::Failed(err.to_string());
     }
 
     BuildAccelOutcome::UpdatedExisting {
