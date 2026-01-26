@@ -207,7 +207,9 @@ fn backup_existing_file(ctx: &mut ActionContext, path: &Path, label: &str) -> Re
     }
 
     let backup_path = next_backup_path(path);
-    fs::rename(path, &backup_path).with_context(|| format!("failed to backup {}", label))?;
+    // Copy first so the original remains intact until new content is written.
+    // This avoids leaving users without a live config if a later write fails.
+    fs::copy(path, &backup_path).with_context(|| format!("failed to backup {}", label))?;
     log_line(
         ctx,
         format!("Backed up {} to {}", label, format_with_home(&backup_path)),

@@ -43,12 +43,26 @@ pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<Strin
     }
 
     // Last-resort fallback retains legacy behavior when discovery yields nothing.
-    Ok(vec![
+    Ok(legacy_binaries())
+}
+
+pub(super) fn resolve_install_binaries_best_effort(
+    paths: &InstallPaths,
+) -> (Vec<String>, Option<String>) {
+    // Best-effort resolution keeps uninstall working even if workspace metadata is broken.
+    match resolve_install_binaries(paths) {
+        Ok(binaries) => (binaries, None),
+        Err(err) => (legacy_binaries(), Some(err.to_string())),
+    }
+}
+
+fn legacy_binaries() -> Vec<String> {
+    vec![
         "unixnotis-daemon".to_string(),
         "unixnotis-popups".to_string(),
         "unixnotis-center".to_string(),
         "noticenterctl".to_string(),
-    ])
+    ]
 }
 
 fn load_install_binaries_from_metadata(paths: &InstallPaths) -> Result<Vec<String>> {

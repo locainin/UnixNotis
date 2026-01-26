@@ -9,7 +9,7 @@ use anyhow::{anyhow, Context, Result};
 use crate::paths::{format_with_home, InstallPaths};
 
 use super::{
-    actions_binaries::resolve_install_binaries,
+    actions_binaries::{resolve_install_binaries, resolve_install_binaries_best_effort},
     actions_env::sync_user_environment,
     actions_hyprland::{ensure_hyprland_autostart, remove_hyprland_autostart},
     log_line, run_command, ActionContext,
@@ -115,8 +115,17 @@ pub fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
 }
 
 pub fn remove_binaries(ctx: &mut ActionContext) -> Result<()> {
-    // Use the same discovery logic as installation to keep uninstall symmetric.
-    let binaries = resolve_install_binaries(ctx.paths)?;
+    // Use best-effort discovery so uninstall still works with a broken workspace.
+    let (binaries, warning) = resolve_install_binaries_best_effort(ctx.paths);
+    if let Some(message) = warning {
+        log_line(
+            ctx,
+            format!(
+                "Warning: binary discovery failed; using fallback list ({})",
+                message
+            ),
+        );
+    }
 
     for binary in binaries {
         let path = ctx.paths.bin_dir.join(binary);

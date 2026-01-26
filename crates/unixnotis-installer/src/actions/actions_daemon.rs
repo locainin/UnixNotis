@@ -63,6 +63,11 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
 
         if let Some(pid) = owner_pid {
             log_line(ctx, format!("Stopping {} (pid {})", daemon.name, pid));
+            // If the process is already gone, the stop goal is satisfied.
+            if !pid_alive(pid)? {
+                log_line(ctx, format!("Process {} already stopped.", pid));
+                return Ok(());
+            }
             // Re-check the command name to avoid signaling a recycled PID.
             if !pid_matches_comm(pid, &daemon.name)? {
                 return Err(anyhow!(
