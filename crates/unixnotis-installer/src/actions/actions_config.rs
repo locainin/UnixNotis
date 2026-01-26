@@ -35,7 +35,8 @@ pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
         // Write a default config.toml when missing so users have a base to edit.
         let config_toml =
             toml::to_string_pretty(&config).map_err(|err| anyhow!(err.to_string()))?;
-        fs::write(&config_path, config_toml).with_context(|| "failed to write config.toml")?;
+        write_atomic(&config_path, &config_toml)
+            .with_context(|| "failed to write config.toml")?;
         log_line(
             ctx,
             format!("Config file created: {}", format_with_home(&config_path)),
@@ -89,7 +90,7 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     backup_existing_file(ctx, &config_path, "config.toml")?;
 
     let config_toml = toml::to_string_pretty(&config).map_err(|err| anyhow!(err.to_string()))?;
-    fs::write(&config_path, config_toml).with_context(|| "failed to write config.toml")?;
+    write_atomic(&config_path, &config_toml).with_context(|| "failed to write config.toml")?;
 
     log_line(
         ctx,
@@ -109,17 +110,14 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     backup_existing_file(ctx, &theme_paths.popup_css, "popup.css")?;
     backup_existing_file(ctx, &theme_paths.widgets_css, "widgets.css")?;
 
-    fs::write(&theme_paths.base_css, unixnotis_core::DEFAULT_BASE_CSS)
+    write_atomic(&theme_paths.base_css, unixnotis_core::DEFAULT_BASE_CSS)
         .with_context(|| "failed to write base.css")?;
-    fs::write(&theme_paths.panel_css, unixnotis_core::DEFAULT_PANEL_CSS)
+    write_atomic(&theme_paths.panel_css, unixnotis_core::DEFAULT_PANEL_CSS)
         .with_context(|| "failed to write panel.css")?;
-    fs::write(&theme_paths.popup_css, unixnotis_core::DEFAULT_POPUP_CSS)
+    write_atomic(&theme_paths.popup_css, unixnotis_core::DEFAULT_POPUP_CSS)
         .with_context(|| "failed to write popup.css")?;
-    fs::write(
-        &theme_paths.widgets_css,
-        unixnotis_core::DEFAULT_WIDGETS_CSS,
-    )
-    .with_context(|| "failed to write widgets.css")?;
+    write_atomic(&theme_paths.widgets_css, unixnotis_core::DEFAULT_WIDGETS_CSS)
+        .with_context(|| "failed to write widgets.css")?;
 
     log_line(
         ctx,
@@ -238,6 +236,23 @@ fn next_backup_path(path: &Path) -> PathBuf {
 
 fn resolve_state_dir() -> Option<PathBuf> {
     util::resolve_state_dir()
+}
+
+fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    // Write to a sibling temp file, then rename to avoid partial writes.
+    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+    let temp_name = format!("{file_name}.tmp-{}", std::process::id());
+    let temp_path = path.with_file_name(temp_name);
+
+    if temp_path.exists() {
+        let _ = fs::remove_file(&temp_path);
+    }
+
+    fs::write(&temp_path, contents)?;
+    fs::rename(&temp_path, path).or_else(|err| {
+        let _ = fs::remove_file(&temp_path);
+        Err(err)
+    })
 }
 
 fn format_with_state_env(path: &Path) -> String {

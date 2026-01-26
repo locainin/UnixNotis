@@ -70,6 +70,11 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
             }
             // Re-check the command name to avoid signaling a recycled PID.
             if !pid_matches_comm(pid, &daemon.name)? {
+                // Re-check liveness to treat a natural exit as success.
+                if !pid_alive(pid)? {
+                    log_line(ctx, format!("Process {} already stopped.", pid));
+                    return Ok(());
+                }
                 return Err(anyhow!(
                     "pid {} no longer matches expected daemon {}; aborting stop",
                     pid,
