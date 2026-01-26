@@ -9,6 +9,7 @@ use std::time::SystemTime;
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use unixnotis_core::util;
 
 pub(super) const DND_STATE_VERSION: u32 = 1;
 pub(super) const DND_STATE_FILE: &str = "state.json";
@@ -27,7 +28,7 @@ pub(crate) struct DndStateStore {
 
 impl DndStateStore {
     pub(super) fn new() -> Option<Self> {
-        let state_dir = resolve_state_dir()?;
+        let state_dir = util::resolve_state_dir()?;
         Some(Self::from_state_dir(state_dir))
     }
 
@@ -80,19 +81,6 @@ impl DndStateStore {
         let name = format!(".{DND_STATE_FILE}.tmp.{pid}.{nanos}");
         parent.join(name)
     }
-}
-
-fn resolve_state_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("XDG_STATE_HOME") {
-        if !dir.trim().is_empty() {
-            return Some(PathBuf::from(dir));
-        }
-    }
-    let home = std::env::var("HOME").ok()?;
-    if home.trim().is_empty() {
-        return None;
-    }
-    Some(PathBuf::from(home).join(".local").join("state"))
 }
 
 fn sync_parent_dir(parent: &Path) -> io::Result<()> {

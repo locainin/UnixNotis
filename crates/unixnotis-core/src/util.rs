@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 #[cfg(unix)]
@@ -61,6 +61,40 @@ pub fn program_in_path(program: &str) -> bool {
     }
 
     found
+}
+
+/// Resolve XDG_STATE_HOME with the specification defaults.
+pub fn resolve_state_dir() -> Option<PathBuf> {
+    resolve_state_dir_from_env(
+        env::var("XDG_STATE_HOME").ok().as_deref(),
+        env::var("HOME").ok().as_deref(),
+    )
+}
+
+/// Resolve the state directory from explicit environment values.
+pub fn resolve_state_dir_from_env(
+    xdg_state_home: Option<&str>,
+    home: Option<&str>,
+) -> Option<PathBuf> {
+    if let Some(dir) = xdg_state_home {
+        let trimmed = dir.trim();
+        if !trimmed.is_empty() {
+            let path = PathBuf::from(trimmed);
+            if path.is_absolute() {
+                return Some(path);
+            }
+        }
+    }
+    let home = home?;
+    let trimmed = home.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(trimmed);
+    if !path.is_absolute() {
+        return None;
+    }
+    Some(path.join(".local").join("state"))
 }
 
 fn is_executable_path(path: &Path) -> bool {
@@ -195,6 +229,44 @@ mod tests {
 
         let no_truncate = sanitize_log_value("ok", 5);
         assert_eq!(no_truncate, "ok");
+    }
+
+    #[test]
+    fn resolve_state_dir_prefers_xdg_when_absolute() {
+        let Ok(home) = env::var("HOME") else {
+            return;
+        };
+        if home.trim().is_empty() {
+            return;
+        }
+        let xdg = PathBuf::from(&home).join(".state-test");
+        let dir =
+            resolve_state_dir_from_env(Some(xdg.to_string_lossy().as_ref()), Some(home.as_str()));
+        assert_eq!(dir, Some(xdg));
+    }
+
+    #[test]
+    fn resolve_state_dir_ignores_relative_xdg() {
+        let Ok(home) = env::var("HOME") else {
+            return;
+        };
+        if home.trim().is_empty() {
+            return;
+        }
+        let dir = resolve_state_dir_from_env(Some("state-root"), Some(home.as_str()));
+        assert_eq!(dir, Some(PathBuf::from(&home).join(".local").join("state")));
+    }
+
+    #[test]
+    fn resolve_state_dir_falls_back_to_home() {
+        let Ok(home) = env::var("HOME") else {
+            return;
+        };
+        if home.trim().is_empty() {
+            return;
+        }
+        let dir = resolve_state_dir_from_env(Some(""), Some(home.as_str()));
+        assert_eq!(dir, Some(PathBuf::from(&home).join(".local").join("state")));
     }
 
     #[test]

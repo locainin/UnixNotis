@@ -2,7 +2,6 @@
 
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
-use std::path::Path;
 use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
@@ -10,24 +9,33 @@ use anyhow::{anyhow, Context, Result};
 use crate::paths::InstallPaths;
 
 pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<String>> {
-    // Prefer cargo metadata for accuracy across workspace layouts.
+    // Prefer explicit installer metadata as the source of truth.
+    let metadata_list = load_install_binaries_from_metadata(paths)?;
+    if !metadata_list.is_empty() {
+        // Validate against cargo metadata when available to catch stale entries.
+        if let Ok(available) = load_install_binaries_from_cargo_metadata(paths) {
+            if !available.is_empty() {
+                let missing = metadata_list
+                    .iter()
+                    .filter(|name| !available.contains(*name))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if !missing.is_empty() {
+                    return Err(anyhow!(
+                        "installer metadata lists binaries missing from workspace: {}",
+                        missing.join(", ")
+                    ));
+                }
+            }
+        }
+        return Ok(metadata_list);
+    }
+
+    // Fall back to cargo metadata when no installer list is declared.
     if let Ok(metadata) = load_install_binaries_from_cargo_metadata(paths) {
         if !metadata.is_empty() {
             return Ok(metadata);
         }
-    }
-
-    // Fall back to workspace metadata when cargo metadata is unavailable.
-    if let Ok(metadata) = load_install_binaries_from_metadata(paths) {
-        if !metadata.is_empty() {
-            return Ok(metadata);
-        }
-    }
-
-    // Fall back to workspace discovery for older checkouts without installer metadata.
-    let discovered = discover_workspace_binaries(paths)?;
-    if !discovered.is_empty() {
-        return Ok(discovered);
     }
 
     // Last-resort fallback retains legacy behavior when discovery yields nothing.
@@ -77,83 +85,6 @@ fn parse_install_binaries_metadata(root: &toml::Value) -> Vec<String> {
         }
     }
     binaries
-}
-
-fn discover_workspace_binaries(paths: &InstallPaths) -> Result<Vec<String>> {
-    // Fall back to scanning workspace members when metadata is unavailable.
-    let cargo_path = paths.repo_root.join("Cargo.toml");
-    let contents =
-        fs::read_to_string(&cargo_path).with_context(|| "failed to read workspace Cargo.toml")?;
-    let root: toml::Value =
-        toml::from_str(&contents).with_context(|| "failed to parse workspace Cargo.toml")?;
-
-    let members = root
-        .get("workspace")
-        .and_then(|value| value.get("members"))
-        .and_then(|value| value.as_array())
-        .map(|array| {
-            array
-                .iter()
-                .filter_map(|entry| entry.as_str())
-                .map(|member| paths.repo_root.join(member))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    let mut binaries = BTreeSet::new();
-    for member in members {
-        if let Ok(names) = discover_crate_binaries(&member) {
-            for name in names {
-                // Avoid auto-installing the installer itself unless explicitly configured.
-                if name == "unixnotis-installer" {
-                    continue;
-                }
-                binaries.insert(name);
-            }
-        }
-    }
-
-    Ok(binaries.into_iter().collect())
-}
-
-fn discover_crate_binaries(member_root: &Path) -> Result<Vec<String>> {
-    // Parse the crate Cargo.toml to discover explicit [[bin]] entries first.
-    let cargo_path = member_root.join("Cargo.toml");
-    let contents =
-        fs::read_to_string(&cargo_path).with_context(|| "failed to read crate Cargo.toml")?;
-    let value: toml::Value =
-        toml::from_str(&contents).with_context(|| "failed to parse crate Cargo.toml")?;
-
-    let mut binaries = Vec::new();
-    if let Some(bins) = value.get("bin").and_then(|bin| bin.as_array()) {
-        for bin in bins {
-            if let Some(name) = bin.get("name").and_then(|name| name.as_str()) {
-                if !name.trim().is_empty() {
-                    binaries.push(name.to_string());
-                }
-            }
-        }
-    }
-
-    if !binaries.is_empty() {
-        return Ok(binaries);
-    }
-
-    // Fall back to the package name when a src/main.rs exists.
-    let has_main = member_root.join("src").join("main.rs").is_file();
-    let package_name = value
-        .get("package")
-        .and_then(|package| package.get("name"))
-        .and_then(|name| name.as_str());
-    if has_main {
-        if let Some(name) = package_name {
-            if !name.trim().is_empty() {
-                binaries.push(name.to_string());
-            }
-        }
-    }
-
-    Ok(binaries)
 }
 
 fn load_install_binaries_from_cargo_metadata(paths: &InstallPaths) -> Result<Vec<String>> {

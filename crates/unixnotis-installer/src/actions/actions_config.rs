@@ -7,6 +7,7 @@ use anyhow::{anyhow, Context, Result};
 use unixnotis_core::Config;
 
 use crate::paths::format_with_home;
+use unixnotis_core::util;
 
 use super::{log_line, ActionContext};
 
@@ -234,27 +235,7 @@ fn next_backup_path(path: &Path) -> PathBuf {
 }
 
 fn resolve_state_dir() -> Option<PathBuf> {
-    resolve_state_dir_from_env(
-        std::env::var("XDG_STATE_HOME").ok(),
-        std::env::var("HOME").ok(),
-    )
-}
-
-fn resolve_state_dir_from_env(
-    xdg_state_home: Option<String>,
-    home: Option<String>,
-) -> Option<PathBuf> {
-    if let Some(dir) = xdg_state_home {
-        if !dir.trim().is_empty() {
-            return Some(PathBuf::from(dir));
-        }
-    }
-
-    let home = home?;
-    if home.trim().is_empty() {
-        return None;
-    }
-    Some(PathBuf::from(home).join(".local").join("state"))
+    util::resolve_state_dir()
 }
 
 fn format_with_state_env(path: &Path) -> String {
@@ -275,12 +256,10 @@ fn format_with_state_env(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        format_with_state_env, next_backup_path, remove_state_file, resolve_state_dir_from_env,
-        DND_STATE_FILE,
-    };
+    use super::{format_with_state_env, next_backup_path, remove_state_file, DND_STATE_FILE};
     use std::fs;
     use std::path::PathBuf;
+    use unixnotis_core::util;
 
     #[test]
     fn next_backup_path_increments_suffixes() {
@@ -305,19 +284,31 @@ mod tests {
     #[test]
     fn resolve_state_dir_prefers_xdg_state_home() {
         // Ensures explicit XDG_STATE_HOME is used when provided.
-        let dir =
-            resolve_state_dir_from_env(Some("state-root".to_string()), Some("home".to_string()));
-        assert_eq!(dir, Some(PathBuf::from("state-root")));
+        let Ok(home) = std::env::var("HOME") else {
+            return;
+        };
+        if home.trim().is_empty() {
+            return;
+        }
+        let xdg = PathBuf::from(&home).join(".state-test");
+        let dir = util::resolve_state_dir_from_env(
+            Some(xdg.to_string_lossy().as_ref()),
+            Some(home.as_str()),
+        );
+        assert_eq!(dir, Some(xdg));
     }
 
     #[test]
     fn resolve_state_dir_falls_back_to_home() {
         // Ensures HOME/.local/state is used when XDG_STATE_HOME is empty.
-        let dir = resolve_state_dir_from_env(Some("  ".to_string()), Some("home".to_string()));
-        assert_eq!(
-            dir,
-            Some(PathBuf::from("home").join(".local").join("state"))
-        );
+        let Ok(home) = std::env::var("HOME") else {
+            return;
+        };
+        if home.trim().is_empty() {
+            return;
+        }
+        let dir = util::resolve_state_dir_from_env(Some("  "), Some(home.as_str()));
+        assert_eq!(dir, Some(PathBuf::from(&home).join(".local").join("state")));
     }
 
     #[test]
