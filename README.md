@@ -15,6 +15,14 @@ Clone the wiki locally if needed:
 git clone https://github.com/locainin/UnixNotis.wiki.git
 ```
 
+### Configuration and Styling
+
+See the Wiki for full configuration and styling details:
+
+```
+https://github.com/locainin/UnixNotis/wiki
+```
+
 ## Features
 
 - Freedesktop.org notification daemon with history, rules, sound, and DND.
@@ -48,4 +56,3 @@ cargo run --release -p unixnotis-installer
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
-
