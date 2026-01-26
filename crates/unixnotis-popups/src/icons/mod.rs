@@ -57,11 +57,7 @@ fn resolve_icon_paintable(name: &str, size: i32) -> Option<IconPaintable> {
 }
 
 pub(super) fn resolve_icon_image(name: &str, size: i32) -> Option<gtk::Image> {
-    if let Some(file_path) = file_path_from_hint(name) {
-        if file_path.is_file() {
-            return Some(gtk::Image::from_file(&file_path));
-        }
-    }
+    // File-path icons are resolved asynchronously in the UI layer to avoid blocking the GTK thread.
     let paintable = resolve_icon_paintable(name, size)?;
     let widget = gtk::Image::from_paintable(Some(&paintable));
     widget.set_pixel_size(size);

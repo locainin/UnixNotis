@@ -254,26 +254,14 @@ impl UiState {
 
         if !image.image_path.is_empty() {
             let path = image.image_path.as_str();
-            if let Some(file_path) = file_path_from_hint(path) {
-                // Decoded file:// paths allow loading icon files with escaped characters.
-                if file_path.is_file() {
-                    // Reuse a cached texture when available to avoid repeated decode work.
-                    if let Some(texture) = self.icon_texture_cache.borrow_mut().get(&file_path) {
-                        let widget = gtk::Image::new();
-                        widget.set_paintable(Some(&texture));
-                        return Some(widget);
-                    }
-                    return Some(self.spawn_file_icon(file_path));
-                }
-            }
-            return resolve_icon_image(path, 20);
+            return self.resolve_icon_widget(path, 20);
         }
 
         let cache_key = format!("{}|{}", notification.app_name, notification.image.icon_name);
         if let Some(cached) = self.icon_cache.get(&cache_key) {
             return cached
                 .as_ref()
-                .and_then(|icon_name| resolve_icon_image(icon_name, 20));
+                .and_then(|icon_name| self.resolve_icon_widget(icon_name, 20));
         }
 
         let candidates = collect_icon_candidates(notification);
@@ -283,7 +271,7 @@ impl UiState {
         for candidate in &candidates {
             if let Some(icon_names) = self.desktop_icons.icons_for(candidate) {
                 for icon_name in icon_names {
-                    if let Some(widget) = resolve_icon_image(icon_name.as_str(), 20) {
+                    if let Some(widget) = self.resolve_icon_widget(icon_name.as_str(), 20) {
                         resolved = Some((icon_name.clone(), widget));
                         break;
                     }
@@ -296,7 +284,7 @@ impl UiState {
 
         if resolved.is_none() {
             for candidate in &candidates {
-                if let Some(widget) = resolve_icon_image(candidate, 20) {
+                if let Some(widget) = self.resolve_icon_widget(candidate, 20) {
                     resolved = Some((candidate.clone(), widget));
                     break;
                 }
@@ -333,6 +321,22 @@ impl UiState {
                 self.icon_cache.remove(&evicted);
             }
         }
+    }
+
+    fn resolve_icon_widget(&self, name: &str, size: i32) -> Option<gtk::Image> {
+        if let Some(file_path) = file_path_from_hint(name) {
+            // Decoded file:// paths allow loading icon files with escaped characters.
+            if file_path.is_file() {
+                // Reuse a cached texture when available to avoid repeated decode work.
+                if let Some(texture) = self.icon_texture_cache.borrow_mut().get(&file_path) {
+                    let widget = gtk::Image::new();
+                    widget.set_paintable(Some(&texture));
+                    return Some(widget);
+                }
+                return Some(self.spawn_file_icon(file_path));
+            }
+        }
+        resolve_icon_image(name, size)
     }
 
     fn spawn_file_icon(&self, path: PathBuf) -> gtk::Image {

@@ -211,7 +211,6 @@ pub fn start_dbus_runtime(sender: async_channel::Sender<UiEvent>) -> mpsc::Sende
                 subscribe_backoff.reset();
                 subscribe_log.reset();
                 info!("connected to unixnotis control interface");
-                seed_state_with_retry(&proxy, &sender).await;
 
                 let mut added_stream = match proxy.receive_notification_added().await {
                     Ok(stream) => stream,
@@ -245,6 +244,9 @@ pub fn start_dbus_runtime(sender: async_channel::Sender<UiEvent>) -> mpsc::Sende
                         continue;
                     }
                 };
+
+                // Seed only after subscriptions are active to avoid missing events during startup.
+                seed_state_with_retry(&proxy, &sender).await;
 
                 loop {
                     tokio::select! {

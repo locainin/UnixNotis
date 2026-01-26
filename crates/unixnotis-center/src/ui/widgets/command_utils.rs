@@ -20,6 +20,12 @@ use unixnotis_core::PanelDebugLevel;
 use crate::debug;
 
 const COMMAND_WORKERS: usize = 2;
+// Bound the command queue to avoid unbounded memory growth during stalls.
+const COMMAND_QUEUE_CAPACITY: usize = 128;
+// Fallback queue keeps user actions flowing without spawning unbounded threads.
+const COMMAND_FALLBACK_QUEUE_CAPACITY: usize = 32;
+// Rate-limit queue saturation warnings to avoid log spam under misconfiguration.
+const COMMAND_QUEUE_WARN_INTERVAL_SECS: u64 = 5;
 const FAST_TIMEOUT_MS: u64 = 350;
 const SLOW_TIMEOUT_MS: u64 = 800;
 const ACTION_TIMEOUT_MS: u64 = 1200;
@@ -153,7 +159,7 @@ impl CommandWorker {
     }
 
     fn new(worker_count: usize) -> Self {
-        let (tx, rx) = channel::unbounded();
+        let (tx, rx) = channel::bounded(COMMAND_QUEUE_CAPACITY);
         let mut spawned = 0usize;
         for idx in 0..worker_count.max(1) {
             let rx = rx.clone();
@@ -203,9 +209,70 @@ fn enqueue_command(
         return;
     }
     let job = CommandJob { cmd, plan, respond };
-    if worker.tx.send(job).is_err() {
-        warn!("command worker channel closed");
+    match worker.tx.try_send(job) {
+        Ok(()) => {}
+        Err(channel::TrySendError::Full(job)) => {
+            // Avoid unbounded memory growth; prefer executing user actions immediately.
+            if job.plan.kind == CommandKind::Action {
+                if should_warn_queue_full() {
+                    warn!("command queue full; routing action to fallback worker");
+                }
+                if FallbackWorker::global().submit(job).is_err() && should_warn_queue_full() {
+                    warn!("fallback command queue full; dropping action");
+                }
+            } else {
+                if should_warn_queue_full() {
+                    warn!("command queue full; dropping refresh command");
+                }
+            }
+        }
+        Err(channel::TrySendError::Disconnected(_job)) => {
+            warn!("command worker channel closed");
+        }
     }
+}
+
+struct FallbackWorker {
+    tx: channel::Sender<CommandJob>,
+}
+
+impl FallbackWorker {
+    fn global() -> &'static FallbackWorker {
+        static WORKER: OnceLock<FallbackWorker> = OnceLock::new();
+        WORKER.get_or_init(|| FallbackWorker::new(COMMAND_FALLBACK_QUEUE_CAPACITY))
+    }
+
+    fn new(capacity: usize) -> Self {
+        let (tx, rx) = channel::bounded(capacity);
+        if std::thread::Builder::new()
+            .name("unixnotis-command-fallback".to_string())
+            .spawn(move || run_worker(rx))
+            .is_err()
+        {
+            warn!("failed to spawn fallback command worker");
+        }
+        Self { tx }
+    }
+
+    fn submit(&self, job: CommandJob) -> Result<(), channel::TrySendError<CommandJob>> {
+        self.tx.try_send(job)
+    }
+}
+
+fn should_warn_queue_full() -> bool {
+    use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+
+    static LAST_WARN: AtomicU64 = AtomicU64::new(0);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let last = LAST_WARN.load(AtomicOrdering::Relaxed);
+    if now.saturating_sub(last) >= COMMAND_QUEUE_WARN_INTERVAL_SECS {
+        LAST_WARN.store(now, AtomicOrdering::Relaxed);
+        return true;
+    }
+    false
 }
 
 fn run_worker(rx: channel::Receiver<CommandJob>) {
