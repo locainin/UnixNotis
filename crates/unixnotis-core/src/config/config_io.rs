@@ -19,6 +19,7 @@ use super::config_runtime::{
 use super::Config;
 
 static LEGACY_RENAME_WARNED: AtomicBool = AtomicBool::new(false);
+static INVALID_XDG_WARNED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone)]
 pub struct ThemePaths {
@@ -149,8 +150,17 @@ impl Config {
     /// Return the default config directory based on XDG or $HOME.
     pub fn default_config_dir() -> Result<PathBuf, ConfigError> {
         if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
-            // Prefer the XDG base directory when it is explicitly configured.
-            return Ok(PathBuf::from(xdg).join("unixnotis"));
+            let trimmed = xdg.trim();
+            if !trimmed.is_empty() {
+                let path = PathBuf::from(trimmed);
+                if path.is_absolute() {
+                    // Prefer the XDG base directory when it is explicitly configured.
+                    return Ok(path.join("unixnotis"));
+                }
+            }
+            if !INVALID_XDG_WARNED.swap(true, Ordering::Relaxed) {
+                warn!("invalid XDG_CONFIG_HOME; falling back to $HOME/.config");
+            }
         }
         let home = env::var("HOME").map_err(|_| ConfigError::MissingHome)?;
         // Fall back to the standard $HOME/.config path for predictable location.
@@ -185,4 +195,94 @@ fn ensure_parent_dir(path: &Path) -> Result<(), ConfigError> {
         ConfigError::ReadFailed("missing theme file parent directory".to_string())
     })?;
     fs::create_dir_all(parent).map_err(|err| ConfigError::ReadFailed(err.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+    use std::env;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().expect("env lock")
+    }
+
+    fn set_env(key: &str, value: Option<&str>) -> Option<String> {
+        let previous = env::var(key).ok();
+        match value {
+            Some(value) => env::set_var(key, value),
+            None => env::remove_var(key),
+        }
+        previous
+    }
+
+    fn restore_env(key: &str, previous: Option<String>) {
+        match previous {
+            Some(value) => env::set_var(key, value),
+            None => env::remove_var(key),
+        }
+    }
+
+    #[test]
+    fn default_config_dir_ignores_empty_xdg() {
+        let _guard = env_lock();
+        let home = env::var("HOME").unwrap_or_default();
+        if home.trim().is_empty() {
+            return;
+        }
+        let prev_xdg = set_env("XDG_CONFIG_HOME", Some(""));
+        let prev_home = set_env("HOME", Some(&home));
+        let dir = Config::default_config_dir().expect("config dir");
+        assert_eq!(dir, PathBuf::from(home).join(".config").join("unixnotis"));
+        restore_env("XDG_CONFIG_HOME", prev_xdg);
+        restore_env("HOME", prev_home);
+    }
+
+    #[test]
+    fn default_config_dir_ignores_whitespace_xdg() {
+        let _guard = env_lock();
+        let home = env::var("HOME").unwrap_or_default();
+        if home.trim().is_empty() {
+            return;
+        }
+        let prev_xdg = set_env("XDG_CONFIG_HOME", Some("   "));
+        let prev_home = set_env("HOME", Some(&home));
+        let dir = Config::default_config_dir().expect("config dir");
+        assert_eq!(dir, PathBuf::from(home).join(".config").join("unixnotis"));
+        restore_env("XDG_CONFIG_HOME", prev_xdg);
+        restore_env("HOME", prev_home);
+    }
+
+    #[test]
+    fn default_config_dir_ignores_relative_xdg() {
+        let _guard = env_lock();
+        let home = env::var("HOME").unwrap_or_default();
+        if home.trim().is_empty() {
+            return;
+        }
+        let prev_xdg = set_env("XDG_CONFIG_HOME", Some("relative/path"));
+        let prev_home = set_env("HOME", Some(&home));
+        let dir = Config::default_config_dir().expect("config dir");
+        assert_eq!(dir, PathBuf::from(home).join(".config").join("unixnotis"));
+        restore_env("XDG_CONFIG_HOME", prev_xdg);
+        restore_env("HOME", prev_home);
+    }
+
+    #[test]
+    fn default_config_dir_accepts_absolute_xdg() {
+        let _guard = env_lock();
+        let home = env::var("HOME").unwrap_or_default();
+        if home.trim().is_empty() {
+            return;
+        }
+        let xdg = PathBuf::from(home.clone()).join(".config-test");
+        let prev_xdg = set_env("XDG_CONFIG_HOME", Some(xdg.to_string_lossy().as_ref()));
+        let prev_home = set_env("HOME", Some(&home));
+        let dir = Config::default_config_dir().expect("config dir");
+        assert_eq!(dir, xdg.join("unixnotis"));
+        restore_env("XDG_CONFIG_HOME", prev_xdg);
+        restore_env("HOME", prev_home);
+    }
 }

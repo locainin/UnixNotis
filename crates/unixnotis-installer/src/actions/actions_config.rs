@@ -249,9 +249,8 @@ fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     }
 
     fs::write(&temp_path, contents)?;
-    fs::rename(&temp_path, path).or_else(|err| {
+    fs::rename(&temp_path, path).inspect_err(|_err| {
         let _ = fs::remove_file(&temp_path);
-        Err(err)
     })
 }
 

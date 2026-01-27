@@ -19,14 +19,21 @@ const MAX_CARD_RADIUS: u8 = 64;
 
 pub(super) fn sanitize_config(config: &mut Config) {
     // Clamp refresh intervals to avoid busy loops or runaway timers.
-    let fast = config
-        .widgets
-        .refresh_interval_ms
-        .clamp(MIN_REFRESH_MS, MAX_REFRESH_MS);
-    let slow = config
-        .widgets
-        .refresh_interval_slow_ms
-        .clamp(fast, MAX_REFRESH_SLOW_MS);
+    // A value of 0 disables polling and must be preserved for UI correctness.
+    let fast = clamp_refresh_interval(
+        config.widgets.refresh_interval_ms,
+        MIN_REFRESH_MS,
+        MAX_REFRESH_MS,
+    );
+    let mut slow = clamp_refresh_interval(
+        config.widgets.refresh_interval_slow_ms,
+        MIN_REFRESH_MS,
+        MAX_REFRESH_SLOW_MS,
+    );
+    // Only enforce slow >= fast when both intervals are enabled.
+    if fast > 0 && slow > 0 && slow < fast {
+        slow = fast;
+    }
     config.widgets.refresh_interval_ms = fast;
     config.widgets.refresh_interval_slow_ms = slow;
 
@@ -131,6 +138,13 @@ fn clamp_alpha_finite(value: &mut f32) {
     *value = value.clamp(0.0, 1.0);
 }
 
+fn clamp_refresh_interval(value: u64, min: u64, max: u64) -> u64 {
+    if value == 0 {
+        return 0;
+    }
+    value.clamp(min, max)
+}
+
 fn warn_missing_shell(config: &Config) {
     if program_in_path("sh") {
         return;
@@ -226,6 +240,38 @@ mod tests {
         sanitize_config(&mut config);
         assert_eq!(config.widgets.refresh_interval_ms, MAX_REFRESH_MS);
         assert_eq!(config.widgets.refresh_interval_slow_ms, MAX_REFRESH_SLOW_MS);
+
+        // Preserve disabled intervals at 0 to avoid re-enabling polling.
+        let mut config = Config::default();
+        config.widgets.refresh_interval_ms = 0;
+        config.widgets.refresh_interval_slow_ms = 0;
+        sanitize_config(&mut config);
+        assert_eq!(config.widgets.refresh_interval_ms, 0);
+        assert_eq!(config.widgets.refresh_interval_slow_ms, 0);
+
+        // Allow slow refresh to remain enabled when fast refresh is disabled.
+        let mut config = Config::default();
+        config.widgets.refresh_interval_ms = 0;
+        config.widgets.refresh_interval_slow_ms = 200;
+        sanitize_config(&mut config);
+        assert_eq!(config.widgets.refresh_interval_ms, 0);
+        assert_eq!(config.widgets.refresh_interval_slow_ms, 200);
+
+        // Preserve slow-disabled state when fast refresh is enabled.
+        let mut config = Config::default();
+        config.widgets.refresh_interval_ms = 200;
+        config.widgets.refresh_interval_slow_ms = 0;
+        sanitize_config(&mut config);
+        assert_eq!(config.widgets.refresh_interval_ms, 200);
+        assert_eq!(config.widgets.refresh_interval_slow_ms, 0);
+
+        // Enforce slow >= fast when both are enabled.
+        let mut config = Config::default();
+        config.widgets.refresh_interval_ms = 200;
+        config.widgets.refresh_interval_slow_ms = 100;
+        sanitize_config(&mut config);
+        assert_eq!(config.widgets.refresh_interval_ms, 200);
+        assert_eq!(config.widgets.refresh_interval_slow_ms, 200);
     }
 
     #[test]

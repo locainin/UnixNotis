@@ -220,10 +220,8 @@ fn enqueue_command(
                 if FallbackWorker::global().submit(job).is_err() && should_warn_queue_full() {
                     warn!("fallback command queue full; dropping action");
                 }
-            } else {
-                if should_warn_queue_full() {
-                    warn!("command queue full; dropping refresh command");
-                }
+            } else if should_warn_queue_full() {
+                warn!("command queue full; dropping refresh command");
             }
         }
         Err(channel::TrySendError::Disconnected(_job)) => {

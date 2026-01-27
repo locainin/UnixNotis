@@ -131,6 +131,14 @@ pub fn expand_tilde(value: &str) -> Cow<'_, str> {
 }
 
 /// Returns true when the command can run without a shell wrapper.
+///
+/// # Example
+/// ```
+/// use unixnotis_core::util::is_simple_command;
+///
+/// assert!(is_simple_command("echo hello"));
+/// assert!(!is_simple_command("echo hello | wc -l"));
+/// ```
 pub fn is_simple_command(cmd: &str) -> bool {
     if cmd
         .chars()
