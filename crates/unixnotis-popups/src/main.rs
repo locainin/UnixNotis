@@ -260,22 +260,36 @@ fn load_config(args: &Args) -> Result<(Config, PathBuf)> {
 }
 
 fn init_tracing(config: &Config) {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        let configured = config
-            .general
-            .log_level
-            .clone()
-            .unwrap_or_else(|| "info".to_string());
-        EnvFilter::try_new(configured.clone()).unwrap_or_else(|err| {
-            // Fall back to a safe default instead of crashing on invalid config.
-            eprintln!(
-                "unixnotis-popups: invalid log level '{}': {err}; falling back to info",
-                configured
-            );
-            EnvFilter::new("info")
-        })
-    });
+    let (filter, env_warning) = match EnvFilter::try_from_default_env() {
+        Ok(filter) => (filter, None),
+        Err(err) => {
+            let env_warning = if env::var("RUST_LOG").is_ok() {
+                Some(format!(
+                    "invalid RUST_LOG value: {err}; falling back to config log_level"
+                ))
+            } else {
+                None
+            };
+            let configured = config
+                .general
+                .log_level
+                .clone()
+                .unwrap_or_else(|| "info".to_string());
+            let filter = EnvFilter::try_new(configured.clone()).unwrap_or_else(|err| {
+                // Fall back to a safe default instead of crashing on invalid config.
+                eprintln!(
+                    "unixnotis-popups: invalid log level '{}': {err}; falling back to info",
+                    configured
+                );
+                EnvFilter::new("info")
+            });
+            (filter, env_warning)
+        }
+    };
     tracing_subscriber::fmt().with_env_filter(filter).init();
+    if let Some(message) = env_warning {
+        tracing::warn!("{message}");
+    }
 }
 
 fn is_wayland_session() -> bool {

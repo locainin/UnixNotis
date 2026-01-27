@@ -13,6 +13,9 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use gdk_pixbuf::Pixbuf;
+use gio::MemoryInputStream;
+use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
 use tracing::debug;
@@ -22,7 +25,7 @@ use icons_cache::{
     icon_key_for_image, icon_key_for_name, icon_key_for_path, image_key_matches, set_image_key,
     CachedPaintable, IconCache, IconKey,
 };
-use icons_decode::{texture_from_raster, IconResult, IconUpdate, IconWorker};
+use icons_decode::{texture_from_raster, IconDecodeMode, IconResult, IconUpdate, IconWorker};
 use icons_sources::{
     collect_icon_candidates, file_path_from_hint, image_data_texture, is_svg_path,
     resolve_icon_source, resolve_path_texture, DesktopIconIndex, IconSource,
@@ -128,12 +131,9 @@ impl IconResolverInner {
                         return Some(IconResolution::Ready { key, paintable });
                     }
                     if is_svg_path(&path) {
-                        if let Some(paintable) = resolve_path_texture(&path) {
-                            let paintable = self.cache.borrow_mut().insert(key.clone(), paintable);
-                            return Some(IconResolution::Ready { key, paintable });
-                        }
-                        // Fall through to themed/icon candidates when SVG load is skipped.
-                    } else {
+                        // SVG icon hints should avoid synchronous file I/O on the GTK thread.
+                        // Route them through the async byte loader so texture creation happens on
+                        // the main loop without blocking disk reads.
                         return Some(IconResolution::Async {
                             key: key.clone(),
                             request: IconDecodeRequest {
@@ -141,9 +141,20 @@ impl IconResolverInner {
                                 path,
                                 size,
                                 scale,
+                                mode: IconDecodeMode::Bytes,
                             },
                         });
                     }
+                    return Some(IconResolution::Async {
+                        key: key.clone(),
+                        request: IconDecodeRequest {
+                            key,
+                            path,
+                            size,
+                            scale,
+                            mode: IconDecodeMode::Raster,
+                        },
+                    });
                 }
             }
         }
@@ -225,6 +236,7 @@ impl IconResolverInner {
                         path,
                         size,
                         scale,
+                        mode: IconDecodeMode::Raster,
                     },
                 })
             }
@@ -245,6 +257,7 @@ impl IconResolverInner {
             request.path.clone(),
             request.size,
             request.scale,
+            request.mode,
         ) {
             // Keep the inflight map consistent by issuing an immediate failure update.
             self.handle_update(IconUpdate {
@@ -269,6 +282,39 @@ impl IconResolverInner {
                         .borrow_mut()
                         .insert(update.key.clone(), CachedPaintable::from_texture(texture)),
                 )
+            }
+            IconResult::Bytes(bytes) => {
+                // Create textures on the GTK thread to keep GDK/GIO object use thread-safe.
+                // The bytes were loaded off-thread to avoid synchronous disk I/O here.
+                let (size, scale) = match &update.key {
+                    IconKey::ImageData { size, scale, .. }
+                    | IconKey::Path { size, scale, .. }
+                    | IconKey::Name { size, scale, .. } => (*size, *scale),
+                };
+                let target = size.max(1).saturating_mul(scale.max(1)).max(1);
+                // Decode at the target size to avoid large SVG rasterization on the UI thread.
+                let bytes = glib::Bytes::from_owned(bytes);
+                let stream = MemoryInputStream::from_bytes(&bytes);
+                match Pixbuf::from_stream_at_scale(
+                    &stream,
+                    target,
+                    target,
+                    true,
+                    None::<&gio::Cancellable>,
+                ) {
+                    Ok(pixbuf) => {
+                        let texture = gdk::Texture::for_pixbuf(&pixbuf);
+                        Some(
+                            self.cache
+                                .borrow_mut()
+                                .insert(update.key.clone(), CachedPaintable::from_texture(texture)),
+                        )
+                    }
+                    Err(err) => {
+                        debug!(?err, "icon byte decode failed");
+                        None
+                    }
+                }
             }
             IconResult::Failed(err) => {
                 debug!(?err, "icon decode failed");
@@ -371,4 +417,5 @@ struct IconDecodeRequest {
     path: std::path::PathBuf,
     size: i32,
     scale: i32,
+    mode: IconDecodeMode,
 }

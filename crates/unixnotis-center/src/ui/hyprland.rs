@@ -6,6 +6,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tracing::{debug, warn};
@@ -40,6 +41,8 @@ pub fn start_active_window_watcher(
         // Hyprland's event socket (socket2) is a newline-delimited text stream of compositor events.
         // This path format is Hyprland-specific and derived from runtime_dir + instance signature.
         let socket_path = format!("{runtime_dir}/hypr/{signature}/.socket2.sock");
+        let warn_interval = Duration::from_secs(10);
+        let mut last_warn = Instant::now() - warn_interval;
 
         // Outer loop: connect -> read until failure -> sleep -> reconnect.
         // This makes the watcher resilient to Hyprland restarts, socket restarts, or transient errors.
@@ -89,7 +92,16 @@ pub fn start_active_window_watcher(
                             }
                             Err(err) => {
                                 // Any read error means the stream is unhealthy; log and reconnect.
-                                warn!(?err, "hyprland event stream read failed");
+                                let now = Instant::now();
+                                if now.duration_since(last_warn) >= warn_interval {
+                                    warn!(?err, "hyprland event stream read failed");
+                                    last_warn = now;
+                                } else {
+                                    debug!(
+                                        ?err,
+                                        "hyprland event stream read failed (rate-limited)"
+                                    );
+                                }
                                 break;
                             }
                         }
@@ -97,12 +109,27 @@ pub fn start_active_window_watcher(
 
                     // If we exit the inner loop, the stream ended or errored out.
                     // Sleep a bit before reconnect to avoid busy reconnection loops during compositor restart.
-                    warn!("hyprland event stream ended, reconnecting in 1s");
+                    let now = Instant::now();
+                    if now.duration_since(last_warn) >= warn_interval {
+                        warn!("hyprland event stream ended, reconnecting in 1s");
+                        last_warn = now;
+                    } else {
+                        debug!("hyprland event stream ended, reconnecting in 1s (rate-limited)");
+                    }
                 }
                 Err(err) => {
                     // Initial connect failed (Hyprland not ready yet, socket missing, permission issue, etc.).
                     // Sleep before retrying to avoid burning CPU.
-                    warn!(?err, "failed to connect to hyprland socket, retrying in 1s");
+                    let now = Instant::now();
+                    if now.duration_since(last_warn) >= warn_interval {
+                        warn!(?err, "failed to connect to hyprland socket, retrying in 1s");
+                        last_warn = now;
+                    } else {
+                        debug!(
+                            ?err,
+                            "failed to connect to hyprland socket, retrying in 1s (rate-limited)"
+                        );
+                    }
                 }
             }
 

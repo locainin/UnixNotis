@@ -22,16 +22,36 @@ pub(super) fn load_config(args: &Args) -> Result<Config> {
 }
 
 pub(super) fn init_tracing(config: &Config) {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new(
-            config
+    let (filter, warning) = match EnvFilter::try_from_default_env() {
+        Ok(filter) => (filter, None),
+        Err(err) => {
+            // Only warn if RUST_LOG was set but invalid; missing env should remain quiet.
+            let env_warning = if env::var("RUST_LOG").is_ok() {
+                Some(format!(
+                    "invalid RUST_LOG value: {err}; falling back to config log_level"
+                ))
+            } else {
+                None
+            };
+            let configured = config
                 .general
                 .log_level
                 .clone()
-                .unwrap_or_else(|| "info".to_string()),
-        )
-    });
+                .unwrap_or_else(|| "info".to_string());
+            let fallback = EnvFilter::try_new(configured.clone()).unwrap_or_else(|err| {
+                eprintln!(
+                    "unixnotis-daemon: invalid log level '{}': {err}; falling back to info",
+                    configured
+                );
+                EnvFilter::new("info")
+            });
+            (fallback, env_warning)
+        }
+    };
     tracing_subscriber::fmt().with_env_filter(filter).init();
+    if let Some(message) = warning {
+        tracing::warn!("{message}");
+    }
 }
 
 pub(super) async fn ensure_wayland_session(timeout: Duration) -> Result<()> {
@@ -79,10 +99,15 @@ fn detect_wayland_display() -> Option<String> {
         if !name.starts_with("wayland-") {
             continue;
         }
-        if let Ok(file_type) = entry.file_type() {
-            if !file_type.is_socket() {
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => {
+                // If file type cannot be inspected, skip the entry to avoid false positives.
                 continue;
             }
+        };
+        if !file_type.is_socket() {
+            continue;
         }
         if name == "wayland-0" {
             return Some(name);

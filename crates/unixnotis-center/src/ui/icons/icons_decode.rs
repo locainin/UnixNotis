@@ -62,11 +62,14 @@ impl IconSubmitError {
     }
 }
 
+#[derive(Debug)]
 pub(super) enum IconResult {
     Raster(RasterImage),
+    Bytes(Vec<u8>),
     Failed(String),
 }
 
+#[derive(Debug)]
 pub(super) struct RasterImage {
     pub(super) bytes: Vec<u8>,
     pub(super) width: i32,
@@ -80,7 +83,14 @@ enum IconJob {
         path: PathBuf,
         size: i32,
         scale: i32,
+        mode: IconDecodeMode,
     },
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(super) enum IconDecodeMode {
+    Raster,
+    Bytes,
 }
 
 impl IconWorker {
@@ -119,10 +129,16 @@ impl IconWorker {
                             path,
                             size,
                             scale,
+                            mode,
                         } = job;
 
                         // Decode off-thread; GTK objects should be created/applied on the main loop later.
-                        let result = decode_raster(&path, size, scale);
+                        let result = match mode {
+                            IconDecodeMode::Raster => decode_raster(&path, size, scale),
+                            // Bytes mode keeps file I/O off the GTK thread for formats that
+                            // are still decoded on the main loop (e.g., SVG via GDK).
+                            IconDecodeMode::Bytes => load_bytes(&path),
+                        };
 
                         // send_blocking is fine here (worker thread), avoids busy looping if UI is momentarily slow.
                         let _ = update_tx.send_blocking(IconUpdate { key, result });
@@ -146,6 +162,7 @@ impl IconWorker {
         path: PathBuf,
         size: i32,
         scale: i32,
+        mode: IconDecodeMode,
     ) -> Result<(), IconSubmitError> {
         // Non-blocking submit; overload handling is delegated to the caller.
         let job = IconJob::Decode {
@@ -153,6 +170,7 @@ impl IconWorker {
             path,
             size,
             scale,
+            mode,
         };
         match self.sender.try_send(job) {
             Ok(()) => Ok(()),
@@ -257,6 +275,34 @@ fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
     })
 }
 
+fn load_bytes(path: &Path) -> IconResult {
+    let metadata = match std::fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) => return IconResult::Failed(err.to_string()),
+    };
+    if !metadata.is_file() {
+        return IconResult::Failed("icon path is not a regular file".to_string());
+    }
+    if metadata.len() > MAX_ICON_BYTES {
+        return IconResult::Failed(format!("icon file too large ({} bytes)", metadata.len()));
+    }
+
+    // Read the file into memory with a hard cap to avoid unbounded allocations.
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(err) => return IconResult::Failed(err.to_string()),
+    };
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    let mut limited = file.take(MAX_ICON_BYTES + 1);
+    if let Err(err) = limited.read_to_end(&mut bytes) {
+        return IconResult::Failed(err.to_string());
+    }
+    if bytes.len() as u64 > MAX_ICON_BYTES {
+        return IconResult::Failed("icon file too large".to_string());
+    }
+    IconResult::Bytes(bytes)
+}
+
 pub(super) fn texture_from_raster(image: &RasterImage) -> Texture {
     // Wrap the Vec<u8> as glib::Bytes so GTK can reference it efficiently.
     // MemoryTexture copies/uses the bytes per GTK expectations; stride must match row size.
@@ -275,6 +321,8 @@ pub(super) fn texture_from_raster(image: &RasterImage) -> Texture {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn icon_worker_queue_overflow_reports_failure() {
@@ -292,10 +340,22 @@ mod tests {
         };
 
         assert!(worker
-            .submit_decode(key_a, PathBuf::from("icon-a.png"), 16, 1)
+            .submit_decode(
+                key_a,
+                PathBuf::from("icon-a.png"),
+                16,
+                1,
+                IconDecodeMode::Raster,
+            )
             .is_ok());
         let err = worker
-            .submit_decode(key_b, PathBuf::from("icon-b.png"), 16, 1)
+            .submit_decode(
+                key_b,
+                PathBuf::from("icon-b.png"),
+                16,
+                1,
+                IconDecodeMode::Raster,
+            )
             .expect_err("queue should be full");
 
         assert!(matches!(err, IconSubmitError::Full));
@@ -318,5 +378,24 @@ mod tests {
     fn decode_raster_reports_missing_file() {
         let result = decode_raster(Path::new("missing-icon.png"), 16, 1);
         assert!(matches!(result, IconResult::Failed(_)));
+    }
+
+    #[test]
+    fn load_bytes_reads_small_file() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("unixnotis-icon-bytes-{stamp}.bin"));
+        let payload = b"svg-bytes";
+        fs::write(&path, payload).expect("write temp icon bytes");
+
+        let result = load_bytes(&path);
+        match result {
+            IconResult::Bytes(bytes) => assert_eq!(bytes, payload),
+            other => panic!("unexpected result: {other:?}"),
+        }
+
+        let _ = fs::remove_file(&path);
     }
 }

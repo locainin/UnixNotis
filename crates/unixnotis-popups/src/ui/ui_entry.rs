@@ -2,6 +2,8 @@
 //!
 //! Keeps widget assembly separate from popup list bookkeeping.
 
+use std::sync::OnceLock;
+
 use gtk::prelude::*;
 use gtk::Align;
 use tokio::sync::mpsc::error::TrySendError;
@@ -141,13 +143,34 @@ fn try_send_command(tx: &Sender<UiCommand>, command: UiCommand) {
     match tx.try_send(command) {
         Ok(()) => {}
         Err(TrySendError::Full(command)) => {
-            let tx = tx.clone();
-            gtk::glib::MainContext::default().spawn_local(async move {
-                let _ = tx.send(command).await;
-            });
+            enqueue_fallback(tx, command);
         }
         Err(TrySendError::Closed(command)) => {
             debug!(?command, "command channel closed; dropping UI action");
         }
+    }
+}
+
+fn enqueue_fallback(tx: &Sender<UiCommand>, command: UiCommand) {
+    // Use a bounded fallback queue to keep user actions flowing without spawning
+    // unbounded async tasks when the main command channel is saturated.
+    const FALLBACK_QUEUE_CAPACITY: usize = 32;
+    static FALLBACK: OnceLock<async_channel::Sender<UiCommand>> = OnceLock::new();
+
+    let fallback = FALLBACK.get_or_init(|| {
+        let (fallback_tx, fallback_rx) = async_channel::bounded(FALLBACK_QUEUE_CAPACITY);
+        let target = tx.clone();
+        gtk::glib::MainContext::default().spawn_local(async move {
+            while let Ok(cmd) = fallback_rx.recv().await {
+                if target.send(cmd).await.is_err() {
+                    break;
+                }
+            }
+        });
+        fallback_tx
+    });
+
+    if fallback.try_send(command).is_err() {
+        debug!("popup command fallback queue full; dropping UI action");
     }
 }

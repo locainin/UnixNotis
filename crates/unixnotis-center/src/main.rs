@@ -181,16 +181,23 @@ fn load_config(args: &Args) -> Result<(Config, PathBuf)> {
 
 fn init_tracing(config: &Config) {
     // Prefer RUST_LOG when present; fall back to config value with validation.
-    let (filter, warning) = match EnvFilter::try_from_default_env() {
-        Ok(filter) => (filter, None),
-        Err(_) => {
+    let (filter, warning, env_warning) = match EnvFilter::try_from_default_env() {
+        Ok(filter) => (filter, None, None),
+        Err(err) => {
+            let env_warning = if env::var("RUST_LOG").is_ok() {
+                Some(format!(
+                    "invalid RUST_LOG value: {err}; falling back to config log_level"
+                ))
+            } else {
+                None
+            };
             let configured = config
                 .general
                 .log_level
                 .clone()
                 .unwrap_or_else(|| "info".to_string());
             match EnvFilter::try_new(configured.clone()) {
-                Ok(filter) => (filter, None),
+                Ok(filter) => (filter, None, env_warning),
                 Err(err) => {
                     // Invalid directives should not crash startup; default to info.
                     let fallback =
@@ -199,7 +206,7 @@ fn init_tracing(config: &Config) {
                         "invalid log_level '{}'; defaulting to 'info' ({err})",
                         configured
                     );
-                    (fallback, Some(warning))
+                    (fallback, Some(warning), env_warning)
                 }
             }
         }
@@ -207,6 +214,9 @@ fn init_tracing(config: &Config) {
 
     // Install the subscriber once; warnings after init reach the configured sink.
     tracing_subscriber::fmt().with_env_filter(filter).init();
+    if let Some(message) = env_warning {
+        tracing::warn!("{message}");
+    }
     if let Some(message) = warning {
         tracing::warn!("{message}");
     }

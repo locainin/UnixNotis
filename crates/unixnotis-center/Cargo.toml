@@ -11,6 +11,7 @@ clap.workspace = true
 crossbeam-channel.workspace = true
 fast_image_resize.workspace = true
 futures-util.workspace = true
+gdk-pixbuf.workspace = true
 gio.workspace = true
 glib.workspace = true
 gtk.workspace = true

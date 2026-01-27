@@ -41,9 +41,16 @@ struct BuiltinStatJob {
 struct BuiltinStatWorker {
     tx: channel::Sender<BuiltinStatJob>,
     inline_fallback: bool,
+    // Test-only receiver guard keeps the queue alive when no workers are spawned.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    receiver_guard: channel::Receiver<BuiltinStatJob>,
 }
 
 impl BuiltinStatWorker {
+    // Limit queued jobs to avoid unbounded growth if refresh is faster than the worker.
+    const QUEUE_CAPACITY: usize = 32;
+
     // Single worker avoids per-refresh thread churn while keeping UI updates async.
     fn global() -> &'static Self {
         static WORKER: OnceLock<BuiltinStatWorker> = OnceLock::new();
@@ -51,16 +58,27 @@ impl BuiltinStatWorker {
     }
 
     fn new() -> Self {
-        let (tx, rx) = channel::unbounded::<BuiltinStatJob>();
-        let spawn = thread::Builder::new()
-            .name("unixnotis-builtin-stats".to_string())
-            .spawn(move || {
-                for mut job in rx.iter() {
-                    let value = job.stat.read().unwrap_or_else(|| "n/a".to_string());
-                    let _ = job.respond.send_blocking((job.stat, value));
-                }
-            });
-        let inline_fallback = spawn.is_err();
+        Self::new_with_capacity(Self::QUEUE_CAPACITY, true)
+    }
+
+    fn new_with_capacity(capacity: usize, spawn_workers: bool) -> Self {
+        // Bounded queue prevents unbounded memory growth during slow reads or tight refresh loops.
+        let (tx, rx) = channel::bounded::<BuiltinStatJob>(capacity);
+        #[cfg(test)]
+        let receiver_guard = rx.clone();
+        let inline_fallback = if spawn_workers {
+            let spawn = thread::Builder::new()
+                .name("unixnotis-builtin-stats".to_string())
+                .spawn(move || {
+                    for mut job in rx.iter() {
+                        let value = job.stat.read().unwrap_or_else(|| "n/a".to_string());
+                        let _ = job.respond.send_blocking((job.stat, value));
+                    }
+                });
+            spawn.is_err()
+        } else {
+            true
+        };
         if inline_fallback {
             warn!("builtin stats worker unavailable; using inline reads");
         }
@@ -68,6 +86,8 @@ impl BuiltinStatWorker {
         Self {
             tx,
             inline_fallback,
+            #[cfg(test)]
+            receiver_guard,
         }
     }
 
@@ -75,7 +95,21 @@ impl BuiltinStatWorker {
         if self.inline_fallback {
             return false;
         }
-        self.tx.send(job).is_ok()
+        // Avoid blocking the UI thread when the worker queue is saturated.
+        self.tx.try_send(job).is_ok()
+    }
+}
+
+#[cfg(test)]
+impl BuiltinStatWorker {
+    fn new_for_tests(capacity: usize) -> Self {
+        let (tx, rx) = channel::bounded::<BuiltinStatJob>(capacity);
+        // Do not spawn a worker; tests drive queue saturation deterministically.
+        Self {
+            tx,
+            inline_fallback: false,
+            receiver_guard: rx,
+        }
     }
 }
 
@@ -321,5 +355,29 @@ fn apply_cached_value(label: &gtk::Label, cache: &Rc<RefCell<Option<String>>>) {
         }
     } else if label.text().as_str() != "n/a" {
         label.set_text("n/a");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BuiltinStatJob, BuiltinStatWorker};
+    use crate::ui::widgets::stats_builtin::BuiltinStat;
+
+    #[test]
+    fn builtin_worker_queue_full_falls_back() {
+        let worker = BuiltinStatWorker::new_for_tests(1);
+        let stat_a = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
+        let stat_b = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
+        let (tx_a, _rx_a) = async_channel::bounded(1);
+        let (tx_b, _rx_b) = async_channel::bounded(1);
+
+        assert!(worker.submit(BuiltinStatJob {
+            stat: stat_a,
+            respond: tx_a,
+        }));
+        assert!(!worker.submit(BuiltinStatJob {
+            stat: stat_b,
+            respond: tx_b,
+        }));
     }
 }

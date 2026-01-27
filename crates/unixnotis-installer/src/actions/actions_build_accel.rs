@@ -86,7 +86,7 @@ pub fn write_build_accel_config(
     if let Err(err) = write_wrapper_script(&wrapper_path) {
         return BuildAccelOutcome::Failed(err);
     }
-    if let Err(err) = fs::write(&config_path, content) {
+    if let Err(err) = write_atomic(&config_path, &content) {
         return BuildAccelOutcome::Failed(err.to_string());
     }
 
@@ -137,7 +137,7 @@ fn update_existing_config(
     if let Err(err) = write_wrapper_script(wrapper_path) {
         return BuildAccelOutcome::Failed(err);
     }
-    if let Err(err) = fs::write(config_path, content) {
+    if let Err(err) = write_atomic(config_path, &content) {
         return BuildAccelOutcome::Failed(err.to_string());
     }
 
@@ -241,6 +241,19 @@ fn command_exists(program: &str) -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    // Atomic writes avoid leaving a truncated config if the write is interrupted.
+    // Using a sibling temp file keeps the rename atomic on common Unix filesystems.
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing parent directory")
+    })?;
+    fs::create_dir_all(parent)?;
+    let tmp_path = path.with_extension("tmp");
+    fs::write(&tmp_path, contents)?;
+    fs::rename(tmp_path, path)?;
+    Ok(())
 }
 
 #[cfg(test)]

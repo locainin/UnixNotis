@@ -60,6 +60,10 @@ pub(super) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn resolve_path_texture(path: &Path) -> Option<CachedPaintable> {
+    // Avoid synchronous SVG loads on the GTK thread; SVGs are routed through async paths.
+    if is_svg_path(path) {
+        return None;
+    }
     // Only load real files from disk; avoids weird behavior for directories/symlinks/invalid paths.
     if !path.is_file() {
         return None;

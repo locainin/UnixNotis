@@ -35,8 +35,7 @@ pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
         // Write a default config.toml when missing so users have a base to edit.
         let config_toml =
             toml::to_string_pretty(&config).map_err(|err| anyhow!(err.to_string()))?;
-        write_atomic(&config_path, &config_toml)
-            .with_context(|| "failed to write config.toml")?;
+        write_atomic(&config_path, &config_toml).with_context(|| "failed to write config.toml")?;
         log_line(
             ctx,
             format!("Config file created: {}", format_with_home(&config_path)),
@@ -116,8 +115,11 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
         .with_context(|| "failed to write panel.css")?;
     write_atomic(&theme_paths.popup_css, unixnotis_core::DEFAULT_POPUP_CSS)
         .with_context(|| "failed to write popup.css")?;
-    write_atomic(&theme_paths.widgets_css, unixnotis_core::DEFAULT_WIDGETS_CSS)
-        .with_context(|| "failed to write widgets.css")?;
+    write_atomic(
+        &theme_paths.widgets_css,
+        unixnotis_core::DEFAULT_WIDGETS_CSS,
+    )
+    .with_context(|| "failed to write widgets.css")?;
 
     log_line(
         ctx,

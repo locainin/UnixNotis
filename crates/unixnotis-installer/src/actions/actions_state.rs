@@ -13,7 +13,7 @@ use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::{format_with_home, InstallPaths};
 
-use super::{actions_binaries::resolve_install_binaries, log_line};
+use super::{actions_binaries::resolve_install_binaries_best_effort, log_line};
 
 pub struct ActionContext<'a> {
     pub detection: &'a Detection,
@@ -36,6 +36,7 @@ pub struct InstallState {
     unit_exists: bool,
     unit_active: bool,
     unit_active_error: Option<String>,
+    binary_warning: Option<String>,
 }
 
 impl InstallState {
@@ -53,8 +54,9 @@ impl InstallState {
 
 pub fn check_install_state(paths: &InstallPaths) -> InstallState {
     // Keep install state aligned with installer binary discovery.
-    let binaries = resolve_install_binaries(paths)
-        .unwrap_or_default()
+    // Best-effort resolution keeps install state usable even if workspace metadata is broken.
+    let (binaries, warning) = resolve_install_binaries_best_effort(paths);
+    let binaries = binaries
         .into_iter()
         .map(|name| {
             let path = paths.bin_dir.join(&name);
@@ -84,6 +86,7 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         unit_exists,
         unit_active,
         unit_active_error,
+        binary_warning: warning,
     }
 }
 
@@ -95,6 +98,10 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
         .unwrap_or_else(|| check_install_state(ctx.paths));
 
     log_line(ctx, "Install state:");
+    if let Some(warning) = state.binary_warning.as_ref() {
+        // Surface discovery failures so the install state output stays actionable.
+        log_line(ctx, format!("Warning: binary discovery failed ({warning})"));
+    }
     if state.binaries.is_empty() {
         // Surface metadata/discovery issues early so installer output is actionable.
         log_line(ctx, "Warning: no installable binaries discovered");
