@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::SyncSender;
 
 use anyhow::Result;
 
@@ -19,7 +19,7 @@ pub struct ActionContext<'a> {
     pub detection: &'a Detection,
     pub paths: &'a InstallPaths,
     pub install_state: Option<InstallState>,
-    pub log_tx: Sender<UiMessage>,
+    pub log_tx: SyncSender<UiMessage>,
     pub action_mode: ActionMode,
 }
 

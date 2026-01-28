@@ -324,7 +324,7 @@ mod tests {
             daemons: Vec::new(),
         };
         let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
-        let (tx, _rx) = mpsc::channel::<UiMessage>();
+        let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
         let mut ctx = crate::actions::ActionContext {
             detection: &detection,
             paths: &paths,
@@ -348,7 +348,7 @@ mod tests {
             daemons: Vec::new(),
         };
         let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
-        let (tx, _rx) = mpsc::channel::<UiMessage>();
+        let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
         let mut ctx = crate::actions::ActionContext {
             detection: &detection,
             paths: &paths,

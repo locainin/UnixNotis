@@ -16,6 +16,7 @@ use tokio::runtime::Runtime;
 use tracing::warn;
 use unixnotis_core::util;
 use unixnotis_core::PanelDebugLevel;
+use wait_timeout::ChildExt;
 
 use crate::debug;
 
@@ -436,18 +437,12 @@ fn run_command_with_timeout_blocking(cmd: &str, timeout: Duration) -> Result<Out
     };
 
     let pid = child.id() as i32;
-    let started = Instant::now();
-    loop {
-        if let Some(status) = child.try_wait()? {
-            let stdout = stdout_handle.join().unwrap_or_default();
-            let stderr = stderr_handle.join().unwrap_or_default();
-            return Ok(Output {
-                status,
-                stdout,
-                stderr,
-            });
-        }
-        if started.elapsed() >= timeout {
+    // Block on the OS wait call with a timeout instead of polling in a tight loop.
+    // This keeps idle CPU near zero while preserving deterministic timeouts.
+    let status = match child.wait_timeout(timeout)? {
+        Some(status) => status,
+        None => {
+            // Kill on timeout to keep worker throughput predictable.
             kill_process_group(pid);
             let _ = child.kill();
             let _ = child.wait();
@@ -455,8 +450,15 @@ fn run_command_with_timeout_blocking(cmd: &str, timeout: Duration) -> Result<Out
             let _ = stderr_handle.join();
             return Err(io::Error::new(io::ErrorKind::TimedOut, "command timed out"));
         }
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    };
+
+    let stdout = stdout_handle.join().unwrap_or_default();
+    let stderr = stderr_handle.join().unwrap_or_default();
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 fn spawn_reader<R: Read + Send + 'static>(mut reader: R) -> std::thread::JoinHandle<Vec<u8>> {

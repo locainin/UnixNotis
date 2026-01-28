@@ -3,7 +3,8 @@
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::mpsc::Sender;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{SyncSender, TrySendError};
 use std::thread;
 
 use anyhow::{Context, Result};
@@ -11,6 +12,12 @@ use anyhow::{Context, Result};
 use crate::events::{UiMessage, WorkerEvent};
 
 use super::ActionContext;
+
+// Track dropped log lines when the UI channel is saturated.
+// Avoids blocking log threads (stdout/stderr readers) while still surfacing
+// loss to the UI once capacity returns, keeping the installer responsive
+// under noisy subprocess output.
+static DROPPED_LOG_LINES: AtomicUsize = AtomicUsize::new(0);
 
 pub fn run_command(
     ctx: &mut ActionContext,
@@ -76,9 +83,7 @@ pub fn run_command(
 }
 
 pub fn log_line(ctx: &mut ActionContext, line: impl Into<String>) {
-    let _ = ctx
-        .log_tx
-        .send(UiMessage::Worker(WorkerEvent::LogLine(line.into())));
+    send_log_line(&ctx.log_tx, line.into());
 }
 
 fn sanitize_log_line(line: &str) -> String {
@@ -87,7 +92,7 @@ fn sanitize_log_line(line: &str) -> String {
 
 fn read_stream(
     stream: impl std::io::Read,
-    tx: Sender<UiMessage>,
+    tx: SyncSender<UiMessage>,
     label: String,
     stream_name: &str,
 ) {
@@ -95,17 +100,57 @@ fn read_stream(
     for line in reader.lines() {
         match line {
             Ok(line) => {
-                let _ = tx.send(UiMessage::Worker(WorkerEvent::LogLine(sanitize_log_line(
-                    &line,
-                ))));
+                send_log_line(&tx, sanitize_log_line(&line));
             }
             Err(err) => {
-                let _ = tx.send(UiMessage::Worker(WorkerEvent::LogLine(format!(
-                    "Warning: log stream error for {} ({}): {}",
-                    label, stream_name, err
-                ))));
+                send_log_line(
+                    &tx,
+                    format!(
+                        "Warning: log stream error for {} ({}): {}",
+                        label, stream_name, err
+                    ),
+                );
                 break;
             }
+        }
+    }
+}
+
+fn send_log_line(tx: &SyncSender<UiMessage>, line: String) {
+    // Non-blocking send keeps worker/log threads from stalling on a full UI queue.
+    // When the channel is full, the line is dropped and a summary warning is
+    // emitted later once capacity frees up.
+    if try_send_log_line(tx, line) {
+        flush_dropped_log_lines(tx);
+    }
+}
+
+fn try_send_log_line(tx: &SyncSender<UiMessage>, line: String) -> bool {
+    match tx.try_send(UiMessage::Worker(WorkerEvent::LogLine(line))) {
+        Ok(()) => true,
+        Err(TrySendError::Full(_)) => {
+            // Count dropped lines so the UI can be told once capacity returns.
+            DROPPED_LOG_LINES.fetch_add(1, Ordering::Relaxed);
+            false
+        }
+        Err(TrySendError::Disconnected(_)) => false,
+    }
+}
+
+fn flush_dropped_log_lines(tx: &SyncSender<UiMessage>) {
+    let dropped = DROPPED_LOG_LINES.swap(0, Ordering::Relaxed);
+    if dropped == 0 {
+        return;
+    }
+    let message = format!(
+        "Warning: {dropped} log line(s) dropped because the UI was busy",
+    );
+    // If the UI channel is still full, retain the count for a future flush.
+    if let Err(err) = tx.try_send(UiMessage::Worker(WorkerEvent::LogLine(message))) {
+        if matches!(err, TrySendError::Full(_)) {
+            // Restore the dropped count so the warning is emitted later instead
+            // of being lost under sustained saturation.
+            DROPPED_LOG_LINES.fetch_add(dropped, Ordering::Relaxed);
         }
     }
 }

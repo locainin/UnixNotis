@@ -42,6 +42,10 @@ impl UiState {
         debug!("config reloaded");
         self.css.update_theme(theme_paths, config.theme.clone());
         self.css.reload(unixnotis_ui::css::DEFAULT_CSS);
+        // Theme changes can introduce icons that were previously missing.
+        // Clearing the miss cache ensures new theme assets are discovered
+        // without waiting for cache TTL expiry.
+        self.icon_resolver.clear_missing_cache();
         panel::apply_panel_config(&self.panel, &config, self.work_area);
         self.log_debug(PanelDebugLevel::Info, || {
             "panel config applied after reload".to_string()

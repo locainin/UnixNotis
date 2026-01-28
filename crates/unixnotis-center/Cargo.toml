@@ -18,6 +18,7 @@ gtk.workspace = true
 gtk4-layer-shell.workspace = true
 image.workspace = true
 libc.workspace = true
+wait-timeout.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

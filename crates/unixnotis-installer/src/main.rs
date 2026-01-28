@@ -46,7 +46,10 @@ enum ExitAction {
 }
 
 fn run_app(terminal_guard: &mut TerminalGuard, app: &mut App) -> Result<ExitAction> {
-    let (ui_tx, ui_rx) = mpsc::channel::<UiMessage>();
+    // Bound UI event channel to avoid unbounded memory growth if worker output
+    // (especially verbose logs) outpaces the render loop.
+    const UI_QUEUE_CAPACITY: usize = 512;
+    let (ui_tx, ui_rx) = mpsc::sync_channel::<UiMessage>(UI_QUEUE_CAPACITY);
     spawn_input_thread(ui_tx.clone());
 
     terminal_guard
@@ -75,7 +78,7 @@ fn run_app(terminal_guard: &mut TerminalGuard, app: &mut App) -> Result<ExitActi
 fn handle_event(
     app: &mut App,
     terminal_guard: &mut TerminalGuard,
-    ui_tx: &mpsc::Sender<UiMessage>,
+    ui_tx: &mpsc::SyncSender<UiMessage>,
     event: Event,
 ) -> Result<Option<ExitAction>> {
     match event {
@@ -127,7 +130,7 @@ fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>
 fn handle_confirm_key(
     app: &mut App,
     terminal_guard: &mut TerminalGuard,
-    ui_tx: &mpsc::Sender<UiMessage>,
+    ui_tx: &mpsc::SyncSender<UiMessage>,
     key: KeyEvent,
     mode: ActionMode,
 ) -> Result<Option<ExitAction>> {
@@ -225,7 +228,7 @@ fn handle_build_accel_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAct
 fn start_action(
     app: &mut App,
     terminal_guard: &mut TerminalGuard,
-    ui_tx: &mpsc::Sender<UiMessage>,
+    ui_tx: &mpsc::SyncSender<UiMessage>,
     mode: ActionMode,
 ) -> Result<()> {
     let paths = InstallPaths::discover()?;
@@ -263,7 +266,7 @@ fn run_action_worker(
     detection: crate::detect::Detection,
     paths: InstallPaths,
     install_state: Option<crate::actions::InstallState>,
-    ui_tx: mpsc::Sender<UiMessage>,
+    ui_tx: mpsc::SyncSender<UiMessage>,
 ) {
     // Run plan steps on the worker thread and stream progress events to the UI.
     for (index, step) in plan.iter().enumerate() {
@@ -347,7 +350,7 @@ fn append_log(app: &mut App, line: String) {
     }
 }
 
-fn spawn_input_thread(ui_tx: mpsc::Sender<UiMessage>) {
+fn spawn_input_thread(ui_tx: mpsc::SyncSender<UiMessage>) {
     // Forward blocking terminal events to the UI thread; exit on channel close.
     thread::spawn(move || {
         while let Ok(event) = event::read() {

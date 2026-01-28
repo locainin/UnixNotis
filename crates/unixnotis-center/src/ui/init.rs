@@ -36,7 +36,7 @@ impl UiState {
             panel.scroller.clone(),
             init.command_tx.clone(),
             init.event_tx.clone(),
-            icon_resolver,
+            icon_resolver.clone(),
             list_config,
         );
 
@@ -155,6 +155,7 @@ impl UiState {
             css: init.css,
             panel,
             list,
+            icon_resolver,
             dnd_guard,
             panel_visible: false,
             panel_visible_flag,

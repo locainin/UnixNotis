@@ -34,6 +34,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "syn
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
 url = "2"
+wait-timeout = "0.2"
 zbus = { version = "4", default-features = false, features = ["tokio"] }
 
 gio = "0.21"

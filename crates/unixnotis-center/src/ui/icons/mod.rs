@@ -68,6 +68,13 @@ impl IconResolver {
     ) {
         self.inner.apply_icon(image, notification, size, scale);
     }
+
+    pub fn clear_missing_cache(&self) {
+        // Theme reloads can add icons that were previously missing.
+        // Clearing the miss cache ensures new lookups are attempted immediately
+        // instead of waiting for the miss TTL to expire.
+        self.inner.clear_missing_cache();
+    }
 }
 
 struct IconResolverInner {
@@ -106,6 +113,11 @@ impl IconResolverInner {
         }
 
         image.set_visible(false);
+    }
+
+    fn clear_missing_cache(&self) {
+        // Clear both ordered and set storage to keep cache state consistent.
+        self.missing_names.borrow_mut().clear();
     }
 
     fn resolve_icon(
@@ -398,6 +410,13 @@ impl MissingIconCache {
             self.order.pop_front();
             self.set.remove(&key);
         }
+    }
+
+    fn clear(&mut self) {
+        // Clear both the ordered list and set to reset miss tracking.
+        // This avoids reusing stale misses after theme changes.
+        self.order.clear();
+        self.set.clear();
     }
 }
 

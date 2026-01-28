@@ -37,6 +37,8 @@ pub struct UiState {
     css: CssManager,
     panel: panel::PanelWidgets,
     list: list::NotificationList,
+    // Shared resolver keeps icon cache and inflight decode tracking centralized.
+    icon_resolver: Rc<icons::IconResolver>,
     dnd_guard: Rc<Cell<bool>>,
     panel_visible: bool,
     panel_visible_flag: Arc<AtomicBool>,

@@ -3,12 +3,15 @@
 //! Keeps widget assembly separate from popup list bookkeeping.
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use gtk::prelude::*;
 use gtk::Align;
+use gtk::pango;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::Sender;
-use tracing::debug;
+use tracing::{debug, warn};
 use unixnotis_core::{NotificationView, Urgency};
 
 use crate::dbus::UiCommand;
@@ -135,7 +138,33 @@ fn set_label_markup(label: &gtk::Label, body: &str) {
         label.set_text("");
         return;
     }
+    // Validate markup before applying it to avoid panics and malformed render state.
+    // Use '\0' to disable accelerator parsing and keep validation strict.
+    // Fallback to plain text so notifications remain readable.
+    if let Err(err) = pango::parse_markup(body, '\0') {
+        if should_warn_invalid_markup() {
+            warn!(?err, "invalid notification markup; falling back to plain text");
+        }
+        label.set_text(body);
+        return;
+    }
     label.set_markup(body);
+}
+
+fn should_warn_invalid_markup() -> bool {
+    // Rate-limit malformed markup warnings to avoid log spam from noisy apps.
+    const WARN_INTERVAL_SECS: u64 = 30;
+    static LAST_WARN: AtomicU64 = AtomicU64::new(0);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let last = LAST_WARN.load(Ordering::Relaxed);
+    if now.saturating_sub(last) >= WARN_INTERVAL_SECS {
+        LAST_WARN.store(now, Ordering::Relaxed);
+        return true;
+    }
+    false
 }
 
 fn try_send_command(tx: &Sender<UiCommand>, command: UiCommand) {
