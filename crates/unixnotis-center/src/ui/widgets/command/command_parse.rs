@@ -7,6 +7,8 @@ use glib::shell_parse_argv;
 use unixnotis_core::util;
 
 pub(super) fn parse_simple_command(cmd: &str) -> Option<(String, Vec<String>)> {
+    // Simple commands are parsed without a shell so quoting works but
+    // shell metacharacters are rejected by util::is_simple_command.
     let cmd = cmd.trim();
     if cmd.is_empty() || !util::is_simple_command(cmd) {
         return None;
@@ -37,6 +39,7 @@ pub(super) fn is_probably_slow(cmd: &str) -> bool {
         return true;
     }
 
+    // Known utilities that are likely to block or hit D-Bus.
     const SLOW_TOKENS: [&str; 9] = [
         "nmcli",
         "bluetoothctl",
@@ -53,6 +56,7 @@ pub(super) fn is_probably_slow(cmd: &str) -> bool {
     }
 
     if matches!(program_name.as_str(), "sh" | "bash" | "zsh" | "fish") {
+        // Shell scripts are treated as slow if the first token is "sleep".
         if let Some(script) = shell_script_arg(&args) {
             if script.split_whitespace().next() == Some("sleep") {
                 return true;

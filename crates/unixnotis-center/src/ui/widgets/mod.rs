@@ -6,7 +6,6 @@ pub mod stats;
 pub mod toggles;
 pub mod volume;
 
-mod stats_builtin;
 mod util;
 
 pub use util::CommandSlider;

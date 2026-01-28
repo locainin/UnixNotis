@@ -54,6 +54,7 @@ impl BuiltinStat {
     pub(super) fn from_command(cmd: &str) -> Option<Self> {
         let trimmed = cmd.trim();
         if let Some(rest) = trimmed.strip_prefix("builtin:") {
+            // Explicit builtin tags bypass filesystem path sniffing.
             return Self::from_builtin_tag(rest);
         }
         if trimmed.contains("/proc/stat") {
@@ -125,10 +126,12 @@ impl BuiltinStat {
                 last_idle,
             } => {
                 let usage = if *last_total > 0 && total > *last_total {
+                    // Delta-based usage avoids spikes when the counter wraps.
                     let delta_total = total - *last_total;
                     let delta_idle = idle.saturating_sub(*last_idle);
                     100.0 * (delta_total.saturating_sub(delta_idle)) as f64 / delta_total as f64
                 } else if total > 0 {
+                    // First read falls back to absolute usage.
                     100.0 * (total.saturating_sub(idle)) as f64 / total as f64
                 } else {
                     0.0

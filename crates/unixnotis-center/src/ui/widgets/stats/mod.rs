@@ -1,5 +1,7 @@
 //! Statistic widgets and refresh orchestration.
 
+mod stats_builtin;
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -13,7 +15,7 @@ use unixnotis_core::{PanelDebugLevel, StatWidgetConfig};
 
 use crossbeam_channel as channel;
 
-use super::stats_builtin::BuiltinStat;
+use self::stats_builtin::BuiltinStat;
 use super::util::{run_command_capture_async, RefreshBackoff};
 use crate::debug;
 
@@ -149,6 +151,7 @@ impl StatGrid {
 
     pub fn refresh(&self, base_interval: Duration, force: bool) {
         for item in &self.items {
+            // Per-item refresh keeps slow widgets from blocking the grid.
             item.refresh(base_interval, force);
         }
     }
@@ -159,6 +162,7 @@ impl StatItem {
         let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
         card.add_css_class("unixnotis-stat-card");
         if config.min_height > 0 {
+            // Respect configured min height to keep cards visually aligned.
             card.set_size_request(-1, config.min_height);
         }
 
@@ -188,6 +192,7 @@ impl StatItem {
             .cmd
             .as_ref()
             .and_then(|cmd| BuiltinStat::from_command(cmd));
+        // Builtin stats are cached so repeated refreshes avoid redundant parsing.
 
         Self {
             config,
@@ -361,7 +366,7 @@ fn apply_cached_value(label: &gtk::Label, cache: &Rc<RefCell<Option<String>>>) {
 #[cfg(test)]
 mod tests {
     use super::{BuiltinStatJob, BuiltinStatWorker};
-    use crate::ui::widgets::stats_builtin::BuiltinStat;
+    use crate::ui::widgets::stats::stats_builtin::BuiltinStat;
 
     #[test]
     fn builtin_worker_queue_full_falls_back() {

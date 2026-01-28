@@ -20,9 +20,12 @@ use command_queue::enqueue_command;
 
 pub(in crate::ui::widgets) use command_exec::kill_process_group;
 
+// Timeout budgets are tuned to keep UI responsive while allowing slow shell
+// commands enough time to finish without spamming retries.
 const FAST_TIMEOUT_MS: u64 = 350;
 const SLOW_TIMEOUT_MS: u64 = 800;
 const ACTION_TIMEOUT_MS: u64 = 1200;
+// Slow command jitter avoids synchronized polling across widgets.
 const SLOW_JITTER_MS: u64 = 200;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -59,6 +62,8 @@ impl CommandPlan {
     }
 
     pub(in crate::ui::widgets) fn spawn_watch_command(&self, cmd: &str) -> io::Result<Child> {
+        // Watch commands must keep stdout open for streaming; stderr is suppressed
+        // to avoid spurious wakeups for noisy utilities.
         let mut command = build_command(cmd);
         command.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
         command.spawn()
@@ -70,6 +75,7 @@ pub(in crate::ui::widgets) fn resolve_command_plan(
     default_kind: CommandKind,
 ) -> CommandPlan {
     let mut kind = default_kind;
+    // Action commands remain action-class even if the heuristic marks them slow.
     if default_kind != CommandKind::Action && is_probably_slow(cmd) {
         kind = CommandKind::Slow;
     }
@@ -82,6 +88,7 @@ pub(in crate::ui::widgets) fn run_command(cmd: &str) {
         warn!("command was empty");
         return;
     }
+    // Fire-and-forget path for UI actions that do not need output capture.
     debug::log(PanelDebugLevel::Verbose, || {
         let snippet = util::log_snippet(cmd);
         format!("enqueue action command: {snippet}")
@@ -99,6 +106,7 @@ pub(in crate::ui::widgets) fn run_command_capture_async(
     let (tx, rx) = async_channel::bounded(1);
     let cmd = cmd.trim();
     if cmd.is_empty() {
+        // Preserve error semantics on the receiver even when the command is invalid.
         let _ = tx.send_blocking(Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "command was empty",
@@ -120,6 +128,7 @@ pub(in crate::ui::widgets) fn run_command_capture_status_async(
     let (tx, rx) = async_channel::bounded(1);
     let cmd = cmd.trim();
     if cmd.is_empty() {
+        // Keep the receiver behavior consistent with the non-empty path.
         let _ = tx.send_blocking(Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "command was empty",

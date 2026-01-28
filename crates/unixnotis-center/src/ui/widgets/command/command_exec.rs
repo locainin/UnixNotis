@@ -19,7 +19,8 @@ use wait_timeout::ChildExt;
 use super::command_parse::parse_simple_command;
 
 pub(super) fn build_command_runtime() -> Option<Runtime> {
-    // A lightweight runtime enables async pipe reads without spawning extra threads.
+    // A lightweight runtime enables async pipe reads without spawning extra threads,
+    // which keeps per-command overhead low for frequent widget refreshes.
     tokio::runtime::Builder::new_current_thread()
         .enable_io()
         .enable_time()
@@ -55,6 +56,7 @@ fn run_command_with_timeout_async(
 }
 
 async fn run_command_with_timeout_inner(cmd: &str, timeout: Duration) -> Result<Output, io::Error> {
+    // Spawn the command with piped stdout/stderr so both streams can be drained.
     let mut child = spawn_capture_command_async(cmd)?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -76,6 +78,7 @@ async fn run_command_with_timeout_inner(cmd: &str, timeout: Duration) -> Result<
     });
 
     let status = if timeout.is_zero() {
+        // Zero timeout indicates "no timeout" rather than "immediate timeout."
         child.wait().await?
     } else {
         match tokio::time::timeout(timeout, child.wait()).await {
@@ -111,6 +114,7 @@ async fn kill_child_process(child: &mut tokio::process::Child) {
 fn run_command_with_timeout_blocking(cmd: &str, timeout: Duration) -> Result<Output, io::Error> {
     let mut child = spawn_capture_command(cmd)?;
     if timeout.is_zero() {
+        // Consistent with async path: 0 means no timeout.
         return child.wait_with_output();
     }
 
@@ -149,6 +153,7 @@ fn run_command_with_timeout_blocking(cmd: &str, timeout: Duration) -> Result<Out
 }
 
 fn spawn_reader<R: Read + Send + 'static>(mut reader: R) -> std::thread::JoinHandle<Vec<u8>> {
+    // Dedicated reader thread avoids blocking command worker while draining pipes.
     std::thread::spawn(move || {
         let mut buf = Vec::new();
         let _ = reader.read_to_end(&mut buf);
@@ -164,6 +169,7 @@ pub(super) fn spawn_capture_command(cmd: &str) -> io::Result<Child> {
 
 pub(super) fn build_command(cmd: &str) -> Command {
     if let Some((program, args)) = parse_simple_command(cmd) {
+        // Simple commands avoid shell invocation for safety and performance.
         let mut command = Command::new(program);
         command.args(args);
         configure_command(&mut command);
@@ -186,6 +192,7 @@ pub(super) fn spawn_capture_command_async(cmd: &str) -> io::Result<tokio::proces
 
 pub(super) fn build_tokio_command(cmd: &str) -> TokioCommand {
     if let Some((program, args)) = parse_simple_command(cmd) {
+        // Tokio command mirrors the blocking path for consistent behavior.
         let mut command = TokioCommand::new(program);
         command.args(args);
         configure_command_tokio(&mut command);

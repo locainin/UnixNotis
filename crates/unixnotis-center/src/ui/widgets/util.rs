@@ -1,6 +1,6 @@
 //! Shared widget helpers and command plumbing.
 
-#[path = "command_utils.rs"]
+#[path = "command/command_utils.rs"]
 mod command_utils;
 #[path = "watch_utils.rs"]
 mod watch_utils;

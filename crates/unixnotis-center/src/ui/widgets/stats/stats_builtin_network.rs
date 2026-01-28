@@ -10,6 +10,7 @@ use super::BuiltinState;
 
 pub(super) fn read_network(state: &mut BuiltinState, iface: &mut Option<String>) -> Option<String> {
     if iface.is_none() {
+        // Choose a stable default interface once to avoid flicker between refreshes.
         *iface = pick_default_iface();
     }
     let iface = iface.as_ref()?;
@@ -32,6 +33,7 @@ pub(super) fn read_network(state: &mut BuiltinState, iface: &mut Option<String>)
             } else {
                 0.0
             };
+            // Update counters after rate calculation to avoid skew on quick refreshes.
             *last_rx = rx;
             *last_tx = tx;
             *last_at = now;

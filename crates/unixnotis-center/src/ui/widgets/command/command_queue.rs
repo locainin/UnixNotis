@@ -24,6 +24,7 @@ const COMMAND_FALLBACK_QUEUE_CAPACITY: usize = 32;
 const COMMAND_QUEUE_WARN_INTERVAL_SECS: u64 = 5;
 
 struct CommandJob {
+    // Command text is stored once per job to keep worker threads independent.
     cmd: String,
     plan: CommandPlan,
     respond: Option<async_channel::Sender<Result<std::process::Output, std::io::Error>>>,
@@ -56,6 +57,7 @@ impl CommandWorker {
             }
         }
         if spawned == 0 {
+            // Inline fallback is enabled when no worker threads could be created.
             warn!("no command worker threads available; falling back to inline execution");
         }
         Self {
@@ -159,6 +161,8 @@ fn run_worker(rx: channel::Receiver<CommandJob>) {
     // Each worker owns a small current-thread runtime to avoid per-command OS threads.
     let runtime = build_command_runtime();
     for job in rx.iter() {
+        // Jobs are processed sequentially per worker to preserve ordering semantics
+        // for commands enqueued from the same widget.
         handle_job(job, runtime.as_ref());
     }
 }
@@ -171,6 +175,7 @@ fn handle_job(job: CommandJob, runtime: Option<&tokio::runtime::Runtime>) {
     let started = Instant::now();
     let jitter = job.plan.jitter();
     if !jitter.is_zero() {
+        // Jitter reduces synchronized polling when multiple widgets refresh together.
         std::thread::sleep(jitter);
     }
     let result = run_command_with_timeout(&job.cmd, job.plan.timeout(), runtime);
