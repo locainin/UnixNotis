@@ -73,9 +73,15 @@ pub(super) fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) 
     let steps_block = Block::default().title("Steps").borders(Borders::ALL);
     frame.render_widget(steps.block(steps_block), body[0]);
 
-    let logs = render_logs(&app.logs, body[1].width);
+    let logs = render_logs(&app.logs);
     let logs_block = Block::default().title("Logs").borders(Borders::ALL);
-    frame.render_widget(Paragraph::new(logs).block(logs_block), body[1]);
+    // Let Ratatui handle wrapping to avoid per-frame manual layout work.
+    frame.render_widget(
+        Paragraph::new(logs)
+            .block(logs_block)
+            .wrap(Wrap { trim: true }),
+        body[1],
+    );
 
     // Footer text varies by state to make next action explicit.
     let footer_text = match app.progress_state {

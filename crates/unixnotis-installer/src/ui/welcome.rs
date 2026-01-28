@@ -79,6 +79,8 @@ fn render_status(app: &App) -> Text<'static> {
     lines.extend(render_check(&app.checks.cargo));
     lines.extend(render_check(&app.checks.gtk4_layer_shell));
     lines.extend(render_check(&app.checks.busctl));
+    lines.extend(render_check(&app.checks.dbus_update_env));
+    lines.extend(render_check(&app.checks.date_cmd));
     lines.extend(render_check(&app.checks.install_paths));
     lines.extend(render_check(&app.checks.path_contains_bin));
 

@@ -7,6 +7,7 @@ use std::process::Command;
 
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
+use unixnotis_core::program_in_path;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CheckState {
@@ -28,6 +29,8 @@ pub struct Checks {
     pub cargo: CheckItem,
     pub gtk4_layer_shell: CheckItem,
     pub busctl: CheckItem,
+    pub dbus_update_env: CheckItem,
+    pub date_cmd: CheckItem,
     pub install_paths: CheckItem,
     pub path_contains_bin: CheckItem,
 }
@@ -85,6 +88,23 @@ impl Checks {
             Err(err) => CheckItem::warn("busctl", &format!("check failed: {err}")),
         };
 
+        // Preflight keeps env sync failure from hiding until install steps run.
+        let dbus_update_env = if program_in_path("dbus-update-activation-environment") {
+            CheckItem::ok("dbus-update-activation-environment", "available")
+        } else {
+            CheckItem::warn(
+                "dbus-update-activation-environment",
+                "not found; session env may be stale",
+            )
+        };
+
+        // Backups are timestamped with `date`, so surface availability up front.
+        let date_cmd = if program_in_path("date") {
+            CheckItem::ok("date", "available")
+        } else {
+            CheckItem::warn("date", "not found; backup naming will fail")
+        };
+
         let (install_paths, path_contains_bin) = match InstallPaths::discover() {
             Ok(paths) => {
                 let writable = install_paths_writable(&paths);
@@ -114,6 +134,8 @@ impl Checks {
             cargo,
             gtk4_layer_shell,
             busctl,
+            dbus_update_env,
+            date_cmd,
             install_paths,
             path_contains_bin,
         }

@@ -52,7 +52,13 @@ pub(super) fn resolve_install_binaries_best_effort(
     // Best-effort resolution keeps uninstall working even if workspace metadata is broken.
     match resolve_install_binaries(paths) {
         Ok(binaries) => (binaries, None),
-        Err(err) => (legacy_binaries(), Some(err.to_string())),
+        Err(err) => {
+            let discovered = discover_installed_binaries(paths);
+            if !discovered.is_empty() {
+                return (discovered, Some(err.to_string()));
+            }
+            (legacy_binaries(), Some(err.to_string()))
+        }
     }
 }
 
@@ -70,30 +76,24 @@ fn load_install_binaries_from_metadata(paths: &InstallPaths) -> Result<Vec<Strin
     let cargo_path = paths.repo_root.join("Cargo.toml");
     let contents =
         fs::read_to_string(&cargo_path).with_context(|| "failed to read workspace Cargo.toml")?;
-    let root: toml::Value =
-        toml::from_str(&contents).with_context(|| "failed to parse workspace Cargo.toml")?;
-    Ok(parse_install_binaries_metadata(&root))
+    parse_install_binaries_metadata(&contents)
 }
 
-fn parse_install_binaries_metadata(root: &toml::Value) -> Vec<String> {
-    // Walk workspace.metadata.unixnotis.installer.binaries and preserve declaration order.
-    let Some(array) = root
-        .get("workspace")
-        .and_then(|value| value.get("metadata"))
-        .and_then(|value| value.get("unixnotis"))
-        .and_then(|value| value.get("installer"))
-        .and_then(|value| value.get("binaries"))
-        .and_then(|value| value.as_array())
-    else {
-        return Vec::new();
-    };
+fn parse_install_binaries_metadata(contents: &str) -> Result<Vec<String>> {
+    // Deserialize a minimal schema so the metadata stays readable and future-safe.
+    let root: WorkspaceCargoToml =
+        toml::from_str(contents).with_context(|| "failed to parse workspace Cargo.toml")?;
+    let array = root
+        .workspace
+        .and_then(|workspace| workspace.metadata)
+        .and_then(|metadata| metadata.unixnotis)
+        .and_then(|unixnotis| unixnotis.installer)
+        .and_then(|installer| installer.binaries)
+        .unwrap_or_default();
 
     let mut seen = HashSet::new();
     let mut binaries = Vec::new();
-    for entry in array {
-        let Some(name) = entry.as_str() else {
-            continue;
-        };
+    for name in array {
         let name = name.trim();
         if name.is_empty() {
             continue;
@@ -102,7 +102,57 @@ fn parse_install_binaries_metadata(root: &toml::Value) -> Vec<String> {
             binaries.push(name.to_string());
         }
     }
-    binaries
+    Ok(binaries)
+}
+
+fn discover_installed_binaries(paths: &InstallPaths) -> Vec<String> {
+    // Best-effort scan of the install bin directory to keep uninstall resilient.
+    // Only UnixNotis-prefixed binaries are collected to avoid touching unrelated tools.
+    let Ok(entries) = fs::read_dir(&paths.bin_dir) else {
+        return Vec::new();
+    };
+
+    let mut candidates = BTreeSet::new();
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == "noticenterctl" || name.starts_with("unixnotis-") {
+            candidates.insert(name.to_string());
+        }
+    }
+
+    candidates.into_iter().collect()
+}
+
+#[derive(serde::Deserialize)]
+struct WorkspaceCargoToml {
+    workspace: Option<WorkspaceSection>,
+}
+
+#[derive(serde::Deserialize)]
+struct WorkspaceSection {
+    metadata: Option<WorkspaceMetadata>,
+}
+
+#[derive(serde::Deserialize)]
+struct WorkspaceMetadata {
+    unixnotis: Option<UnixnotisMetadata>,
+}
+
+#[derive(serde::Deserialize)]
+struct UnixnotisMetadata {
+    installer: Option<InstallerMetadata>,
+}
+
+#[derive(serde::Deserialize)]
+struct InstallerMetadata {
+    binaries: Option<Vec<String>>,
 }
 
 fn load_install_binaries_from_cargo_metadata(paths: &InstallPaths) -> Result<Vec<String>> {
@@ -168,8 +218,7 @@ mod tests {
 [workspace.metadata.unixnotis.installer]
 binaries = ["unixnotis-daemon", "noticenterctl", "unixnotis-daemon"]
 "#;
-        let value: toml::Value = toml::from_str(input).expect("valid toml");
-        let binaries = parse_install_binaries_metadata(&value);
+        let binaries = parse_install_binaries_metadata(input).expect("valid metadata");
         assert_eq!(
             binaries,
             vec!["unixnotis-daemon".to_string(), "noticenterctl".to_string()]
@@ -183,8 +232,7 @@ binaries = ["unixnotis-daemon", "noticenterctl", "unixnotis-daemon"]
 [workspace]
 members = ["crates/unixnotis-daemon"]
 "#;
-        let value: toml::Value = toml::from_str(input).expect("valid toml");
-        let binaries = parse_install_binaries_metadata(&value);
+        let binaries = parse_install_binaries_metadata(input).expect("valid metadata");
         assert!(binaries.is_empty());
     }
 
