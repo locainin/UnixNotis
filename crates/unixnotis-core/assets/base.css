@@ -1,53 +1,96 @@
-/* UnixNotis base theme
+/* UnixNotis base theme (ExampleOne+)
  *
- * Covers palette, shared tokens, and global window rules.
- * Override in $XDG_CONFIG_HOME/unixnotis/base.css.
+ * Purpose:
+ * - Owns the shared palette and reusable theme tokens.
+ * - Keeps higher-level CSS files (panel/popup/widgets) mostly declarative.
+ *
+ * Notes:
+ * - GTK CSS does not support every web-CSS feature; this theme sticks to
+ *   conservative constructs already used elsewhere in the project.
+ * - Alpha values are also configurable in config.toml; these colors provide the
+ *   visual direction while the config controls overall translucency.
  */
 
 /*
- * Color palette
+ * Color palette: "Neon Noir"
  *
- * Tuned for Wayland compositors with translucent surfaces.
+ * Deep navy base with a cyan -> hotpink accent split.
+ * Designed for translucent panels that sit over bright wallpapers.
  */
-@define-color unixnotis-surface-base #0e1422;
-@define-color unixnotis-surface-strong-base #10192b;
-@define-color unixnotis-card-base #141f31;
+@define-color unixnotis-surface-base #0b1020;        /* primary backdrop */
+@define-color unixnotis-surface-strong-base #0c1430; /* headers / focus surfaces */
+@define-color unixnotis-card-base #111a33;           /* cards / pills */
+
+/* The surface/card colors are expected to be semi-transparent; the alphas here
+ * are aligned with the current config.toml defaults for a consistent look. */
 @define-color unixnotis-surface alpha(@unixnotis-surface-base, 0.88);
 @define-color unixnotis-surface-strong alpha(@unixnotis-surface-strong-base, 0.96);
-@define-color unixnotis-surface-soft alpha(#182338, 0.74);
+@define-color unixnotis-surface-soft alpha(#14224a, 0.70);
 @define-color unixnotis-card alpha(@unixnotis-card-base, 0.94);
-@define-color unixnotis-card-border alpha(#8fd4ff, 0.24);
-@define-color unixnotis-text #eef5ff;
-@define-color unixnotis-muted #9cb3d3;
-@define-color unixnotis-accent #6ee7ff;
-@define-color unixnotis-accent-2 #ff87c7;
-@define-color unixnotis-urgent #ff6b7a;
-@define-color unixnotis-outline alpha(#a8c5ff, 0.24);
+
+/* Text colors are intentionally high contrast to preserve legibility over glass. */
+@define-color unixnotis-text #eef4ff;
+@define-color unixnotis-muted #a4b5d6;
+
+/* Accent split:
+ * - unixnotis-accent: "electric cyan" (primary interaction / fill)
+ * - unixnotis-accent-2: "hotpink" (secondary glow / gradient tail) */
+@define-color unixnotis-accent #66f2e6;
+@define-color unixnotis-accent-2 #ff4fb7;
+@define-color unixnotis-urgent #ff5a78;
+
+/* Per-toggle accents
+ *
+ * These are intentionally bright and distinct so the toggle grid reads as
+ * individual "controls" rather than a uniform set of pills. */
+@define-color unixnotis-accent-wifi #66f2e6;      /* cyan */
+@define-color unixnotis-accent-bluetooth #6aa6ff; /* blue */
+@define-color unixnotis-accent-airplane #ffb86b;  /* amber */
+@define-color unixnotis-accent-night #b28cff;     /* violet */
+
+/* Borders and outlines are subtle to avoid "boxed UI" on translucent surfaces. */
+@define-color unixnotis-card-border alpha(#7aa8ff, 0.22);
+@define-color unixnotis-outline alpha(#8db3ff, 0.22);
+
+/* Shadow tokens are tuned for large radius + soft glow. */
 @define-color unixnotis-shadow-soft alpha(#000000, 0.30);
-@define-color unixnotis-shadow-strong alpha(#000000, 0.62);
+@define-color unixnotis-shadow-strong alpha(#000000, 0.64);
+
+/* Extra glow helpers (used by the panel/popup/widget CSS for highlights). */
+@define-color unixnotis-glow-cyan alpha(@unixnotis-accent, 0.22);
+@define-color unixnotis-glow-pink alpha(@unixnotis-accent-2, 0.24);
+@define-color unixnotis-glow-wifi alpha(@unixnotis-accent-wifi, 0.28);
+@define-color unixnotis-glow-bluetooth alpha(@unixnotis-accent-bluetooth, 0.26);
+@define-color unixnotis-glow-airplane alpha(@unixnotis-accent-airplane, 0.26);
+@define-color unixnotis-glow-night alpha(@unixnotis-accent-night, 0.26);
 
 /*
  * Theme hooks
  *
- * Adjust these to recolor cards, pills, and buttons without touching rules.
+ * These are the primary knobs to recolor the UI without rewriting selectors.
+ * Most rules should reference these tokens, not hard-coded hex values.
  */
-@define-color unixnotis-panel-grad-1 alpha(#0f172a, 0.92);
-@define-color unixnotis-panel-grad-2 alpha(#111c31, 0.94);
-@define-color unixnotis-panel-grad-3 alpha(#1a2945, 0.96);
-@define-color unixnotis-notification-bg-1 alpha(#1b2b44, 0.9);
-@define-color unixnotis-notification-bg-2 alpha(#141f33, 0.92);
-@define-color unixnotis-popup-bg-1 #111b2d;
-@define-color unixnotis-popup-bg-2 #1b2a44;
-@define-color unixnotis-pill-bg alpha(#1c2a42, 0.9);
-@define-color unixnotis-pill-border alpha(#8fd4ff, 0.25);
-@define-color unixnotis-pill-hover alpha(@unixnotis-accent, 0.25);
-@define-color unixnotis-action-bg alpha(#1a243a, 0.9);
-@define-color unixnotis-action-bg-hover alpha(@unixnotis-accent, 0.22);
-@define-color unixnotis-action-bg-active alpha(@unixnotis-accent, 0.36);
-@define-color unixnotis-popup-action-bg alpha(#1a2438, 0.92);
-@define-color unixnotis-popup-action-hover alpha(@unixnotis-accent, 0.22);
-@define-color unixnotis-popup-action-active alpha(@unixnotis-accent, 0.34);
+@define-color unixnotis-panel-grad-1 alpha(#0c1226, 0.92);
+@define-color unixnotis-panel-grad-2 alpha(#121a35, 0.94);
+/* Bottom-right fade accent to hotpink (the "Example One" signature). */
+@define-color unixnotis-panel-grad-3 alpha(#ff4fb7, 0.58);
 
+@define-color unixnotis-notification-bg-1 alpha(#15254a, 0.92);
+@define-color unixnotis-notification-bg-2 alpha(#101b37, 0.94);
+@define-color unixnotis-popup-bg-1 #0f1733;
+@define-color unixnotis-popup-bg-2 #1a2a53;
+
+@define-color unixnotis-pill-bg alpha(#142447, 0.92);
+@define-color unixnotis-pill-border alpha(#7aa8ff, 0.24);
+@define-color unixnotis-pill-hover alpha(@unixnotis-accent, 0.20);
+
+@define-color unixnotis-action-bg alpha(#131f3c, 0.92);
+@define-color unixnotis-action-bg-hover alpha(@unixnotis-accent, 0.18);
+@define-color unixnotis-action-bg-active alpha(@unixnotis-accent, 0.30);
+
+@define-color unixnotis-popup-action-bg alpha(#131f3a, 0.92);
+@define-color unixnotis-popup-action-hover alpha(@unixnotis-accent, 0.18);
+@define-color unixnotis-popup-action-active alpha(@unixnotis-accent, 0.30);
 
 /*
  * Global window styling

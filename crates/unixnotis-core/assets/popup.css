@@ -8,6 +8,7 @@
   padding: 3px;
   min-width: 24px;
   min-height: 24px;
+  box-shadow: 0 0 14px -12px @unixnotis-glow-cyan;
 }
 
 .unixnotis-popup-close:hover {
@@ -35,6 +36,7 @@
   box-shadow:
     0 18px 32px -18px @unixnotis-shadow-strong,
     0 10px 18px -16px @unixnotis-shadow-soft,
+    0 0 26px -22px @unixnotis-glow-pink,
     inset 0 0 0 1px alpha(#ffffff, 0.04);
 }
 

@@ -60,10 +60,12 @@ impl Default for PanelConfig {
         Self {
             anchor: Anchor::Right,
             margin: Margins {
-                top: 54,
-                right: 6,
-                bottom: 6,
-                left: 6,
+                // Tuned for the default control-center layout shipped with UnixNotis.
+                // Keeps the panel clear of edges and compositor bars without feeling cramped.
+                top: 16,
+                right: 10,
+                bottom: 14,
+                left: 10,
             },
             width: 420,
             height: 0,
@@ -123,10 +125,11 @@ impl Default for Margins {
         // Default padding around the panel. Keeping it symmetric produces a balanced look by default.
         // Users can override individual edges in config for tighter or asymmetric layouts.
         Self {
-            top: 12,
-            right: 12,
-            bottom: 12,
-            left: 12,
+            // Matches the default popup stack spacing for a cohesive baseline layout.
+            top: 14,
+            right: 14,
+            bottom: 14,
+            left: 14,
         }
     }
 }

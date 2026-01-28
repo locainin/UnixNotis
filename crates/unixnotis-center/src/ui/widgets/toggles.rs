@@ -91,6 +91,16 @@ impl ToggleItem {
         let refresh_gen = Arc::new(AtomicU64::new(0));
         let button = gtk::ToggleButton::new();
         button.add_css_class("unixnotis-toggle");
+        // Add a stable kind-specific CSS class so themes can style per-toggle colors.
+        //
+        // The identifier is treated as user-controlled input, so it is sanitized
+        // into a conservative CSS-safe token before being used. This prevents
+        // invalid selectors and ensures the output remains deterministic.
+        if let Some(kind) = config.kind.as_deref() {
+            if let Some(class) = toggle_kind_css_class(kind) {
+                button.add_css_class(&class);
+            }
+        }
         button.set_focusable(false);
 
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -202,6 +212,42 @@ impl ToggleItem {
             refresh_toggle_state(&state_cmd, &button, &guard, &refresh_gen);
         })
     }
+}
+
+fn toggle_kind_css_class(kind: &str) -> Option<String> {
+    // Convert the configured kind into a CSS-safe class suffix.
+    //
+    // Constraints:
+    // - GTK CSS class names behave like identifiers; spaces and punctuation are invalid.
+    // - This function must be deterministic so user themes can rely on stable names.
+    //
+    // Output format:
+    // - "unixnotis-toggle-kind-<token>" where <token> is lowercase ascii [a-z0-9-].
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in kind.chars() {
+        let mapped = match ch {
+            'a'..='z' | '0'..='9' => Some(ch),
+            'A'..='Z' => Some(ch.to_ascii_lowercase()),
+            '-' | '_' => Some('-'),
+            _ => Some('-'),
+        };
+        let ch = mapped?;
+        if ch == '-' {
+            if last_dash {
+                continue;
+            }
+            last_dash = true;
+        } else {
+            last_dash = false;
+        }
+        out.push(ch);
+    }
+    let token = out.trim_matches('-');
+    if token.is_empty() {
+        return None;
+    }
+    Some(format!("unixnotis-toggle-kind-{token}"))
 }
 
 fn refresh_toggle_state(
@@ -343,4 +389,22 @@ fn parse_toggle_state(output: &str) -> bool {
     value
         .split(|ch: char| !ch.is_ascii_alphanumeric())
         .any(|token| matches!(token, "on" | "yes" | "true" | "enabled" | "up" | "active"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::toggle_kind_css_class;
+
+    #[test]
+    fn kind_css_class_sanitizes_to_stable_token() {
+        assert_eq!(
+            toggle_kind_css_class("WiFi"),
+            Some("unixnotis-toggle-kind-wifi".to_string())
+        );
+        assert_eq!(
+            toggle_kind_css_class("airplane_mode"),
+            Some("unixnotis-toggle-kind-airplane-mode".to_string())
+        );
+        assert_eq!(toggle_kind_css_class("  !!!  "), None);
+    }
 }

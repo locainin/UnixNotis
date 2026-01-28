@@ -34,12 +34,14 @@ impl Default for ThemeConfig {
             panel_css: "panel.css".to_string(),
             widgets_css: "widgets.css".to_string(),
             border_width: 1,
-            card_radius: 16,
+            // Matches the default card radius used by the bundled theme.
+            card_radius: 22,
             surface_alpha: 0.88,
             surface_strong_alpha: 0.96,
             card_alpha: 0.94,
             shadow_soft_alpha: 0.30,
-            shadow_strong_alpha: 0.55,
+            // Slightly stronger to preserve depth on dark backgrounds.
+            shadow_strong_alpha: 0.64,
         }
     }
 }
