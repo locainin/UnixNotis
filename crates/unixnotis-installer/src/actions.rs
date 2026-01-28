@@ -44,4 +44,4 @@ pub(super) use actions_install::{
 };
 pub(super) use actions_process::{log_line, run_command};
 pub(super) use actions_state::check_install_state_step;
-pub(super) use actions_verify::{run_build, run_verify};
+pub(super) use actions_verify::{run_build, run_verify_check, run_verify_clippy, run_verify_test};

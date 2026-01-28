@@ -55,6 +55,16 @@ pub(super) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     // Remove any previously managed block so it can be rewritten cleanly.
     // If the block is malformed, the strip result keeps the file intact for safe appends.
     let strip_result = strip_hyprland_bootstrap_block(ctx, &contents, &hypr_config);
+    if strip_result.malformed {
+        log_line(
+            ctx,
+            format!(
+                "Warning: malformed UnixNotis bootstrap block in {}; fix manually before reapplying",
+                format_with_home(&hypr_config)
+            ),
+        );
+        return;
+    }
     let stripped = strip_result.stripped;
     let block_found = strip_result.block_found;
 

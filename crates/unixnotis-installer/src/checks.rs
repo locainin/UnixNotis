@@ -27,6 +27,7 @@ pub struct Checks {
     pub hyprland: CheckItem,
     pub systemd_user: CheckItem,
     pub cargo: CheckItem,
+    pub pkg_config: CheckItem,
     pub gtk4_layer_shell: CheckItem,
     pub busctl: CheckItem,
     pub dbus_update_env: CheckItem,
@@ -73,8 +74,18 @@ impl Checks {
             Err(err) => CheckItem::fail("cargo", &format!("check failed: {err}")),
         };
 
+        let pkg_config = match command_success("pkg-config", &["--version"]) {
+            Ok(true) => CheckItem::ok("pkg-config", "available"),
+            Ok(false) => CheckItem::fail("pkg-config", "not installed"),
+            Err(err) => CheckItem::fail("pkg-config", &format!("check failed: {err}")),
+        };
+
         let gtk4_layer_shell = match pkg_config_version("gtk4-layer-shell-0") {
             Ok(Some(version)) => CheckItem::ok("gtk4-layer-shell", &format!("found {version}")),
+            Ok(None) if pkg_config.state == CheckState::Fail => CheckItem::fail(
+                "gtk4-layer-shell",
+                "pkg-config missing; cannot probe gtk4-layer-shell",
+            ),
             Ok(None) => CheckItem::fail(
                 "gtk4-layer-shell",
                 "pkg-config gtk4-layer-shell-0 not found; is gtk4-layer-shell installed?",
@@ -132,6 +143,7 @@ impl Checks {
             hyprland,
             systemd_user,
             cargo,
+            pkg_config,
             gtk4_layer_shell,
             busctl,
             dbus_update_env,

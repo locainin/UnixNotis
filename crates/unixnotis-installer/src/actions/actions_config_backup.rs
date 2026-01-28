@@ -235,25 +235,57 @@ pub(crate) fn restore_config(ctx: &mut ActionContext) -> Result<()> {
 
     fs::create_dir_all(&config_dir).with_context(|| "failed to create config directory")?;
 
-    let config = Config::default();
+    log_line(
+        ctx,
+        format!("Restoring config from {}", format_with_home(&backup_dir)),
+    );
+
+    // Restore config.toml first so theme paths resolve using the restored settings.
+    let config_backup = backup_dir.join("config.toml");
+    if config_backup.exists() {
+        let contents = fs::read_to_string(&config_backup)
+            .with_context(|| "failed to read backup config.toml")?;
+        write_atomic(&config_path, &contents).with_context(|| "failed to restore config.toml")?;
+        log_line(
+            ctx,
+            format!("Restored config.toml -> {}", format_with_home(&config_path)),
+        );
+    } else {
+        log_line(
+            ctx,
+            "Warning: backup missing config.toml; leaving current file unchanged".to_string(),
+        );
+    }
+
+    let config = if config_path.exists() {
+        match Config::load_from_path(&config_path) {
+            Ok(config) => config,
+            Err(err) => {
+                log_line(
+                    ctx,
+                    format!(
+                        "Warning: failed to parse restored config.toml ({:?}); using defaults",
+                        err
+                    ),
+                );
+                Config::default()
+            }
+        }
+    } else {
+        Config::default()
+    };
     let theme_paths = config
-        .resolve_theme_paths()
+        .resolve_theme_paths_from(&config_dir)
         .map_err(|err| anyhow!(err.to_string()))?;
 
-    let targets = [
-        ("config.toml", config_path),
+    let theme_targets = [
         ("base.css", theme_paths.base_css),
         ("panel.css", theme_paths.panel_css),
         ("popup.css", theme_paths.popup_css),
         ("widgets.css", theme_paths.widgets_css),
     ];
 
-    log_line(
-        ctx,
-        format!("Restoring config from {}", format_with_home(&backup_dir)),
-    );
-
-    for (name, target) in targets {
+    for (name, target) in theme_targets {
         let source = backup_dir.join(name);
         if !source.exists() {
             log_line(
@@ -264,6 +296,11 @@ pub(crate) fn restore_config(ctx: &mut ActionContext) -> Result<()> {
                 ),
             );
             continue;
+        }
+        if let Some(parent) = target.parent() {
+            // Create parent directories for custom theme paths before restoring content.
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create parent dir for {}", name))?;
         }
         let contents = fs::read_to_string(&source)
             .with_context(|| format!("failed to read backup {}", name))?;
@@ -325,6 +362,8 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::sync::mpsc;
+    use std::sync::{Mutex, OnceLock};
+    use unixnotis_core::Config;
 
     #[test]
     fn prune_old_backups_keeps_newest() {
@@ -380,5 +419,73 @@ mod tests {
     fn backup_config_defaults_to_three() {
         let config = BackupConfig::default();
         assert_eq!(config.keep, 3);
+    }
+
+    #[test]
+    fn restore_config_uses_restored_theme_paths() {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+
+        let root = PathBuf::from("target").join(format!(
+            "unixnotis-installer-restore-test-{}",
+            std::process::id()
+        ));
+        let xdg_config = root.join("xdg");
+        let _ = fs::create_dir_all(&xdg_config);
+
+        let prior_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", &xdg_config);
+
+        let config_dir = Config::default_config_dir().expect("config dir");
+        let backup_dir = config_dir.join("Backup-2024-01-01");
+        let _ = fs::create_dir_all(&backup_dir);
+
+        let config_toml = r#"
+[theme]
+base_css = "themes/custom/base.css"
+panel_css = "themes/custom/panel.css"
+popup_css = "themes/custom/popup.css"
+widgets_css = "themes/custom/widgets.css"
+"#;
+        fs::write(backup_dir.join("config.toml"), config_toml).expect("write config");
+        fs::write(backup_dir.join("base.css"), "base").expect("write base");
+        fs::write(backup_dir.join("panel.css"), "panel").expect("write panel");
+        fs::write(backup_dir.join("popup.css"), "popup").expect("write popup");
+        fs::write(backup_dir.join("widgets.css"), "widgets").expect("write widgets");
+
+        let detection = Detection {
+            owner: None,
+            daemons: Vec::new(),
+        };
+        let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+        let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
+        let mut ctx = crate::actions::ActionContext {
+            detection: &detection,
+            paths: &paths,
+            install_state: None,
+            log_tx: tx,
+            action_mode: ActionMode::Install,
+            restore_backup: Some(backup_dir.clone()),
+        };
+
+        super::restore_config(&mut ctx).expect("restore should succeed");
+
+        let config_path = Config::default_config_path().expect("config path");
+        assert!(config_path.exists());
+        let custom_base = config_dir.join("themes").join("custom").join("base.css");
+        let custom_panel = config_dir.join("themes").join("custom").join("panel.css");
+        let custom_popup = config_dir.join("themes").join("custom").join("popup.css");
+        let custom_widgets = config_dir.join("themes").join("custom").join("widgets.css");
+        assert!(custom_base.exists());
+        assert!(custom_panel.exists());
+        assert!(custom_popup.exists());
+        assert!(custom_widgets.exists());
+
+        let _ = fs::remove_dir_all(&root);
+        if let Some(value) = prior_xdg {
+            std::env::set_var("XDG_CONFIG_HOME", value);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 }

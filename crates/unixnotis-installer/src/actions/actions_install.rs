@@ -21,6 +21,21 @@ pub fn install_binaries(ctx: &mut ActionContext) -> Result<()> {
 
     fs::create_dir_all(&ctx.paths.bin_dir).with_context(|| "failed to create bin directory")?;
 
+    // Preflight validation ensures all build artifacts exist before any replacements occur.
+    let mut missing = Vec::new();
+    for binary in &binaries {
+        let source = ctx.paths.release_dir.join(binary);
+        if !source.exists() {
+            missing.push(format_with_home(&source));
+        }
+    }
+    if !missing.is_empty() {
+        return Err(anyhow!(
+            "missing build artifacts (aborting before install): {}",
+            missing.join(", ")
+        ));
+    }
+
     for binary in binaries {
         let source = ctx.paths.release_dir.join(&binary);
         let destination = ctx.paths.bin_dir.join(&binary);
@@ -71,6 +86,8 @@ pub fn enable_service(ctx: &mut ActionContext) -> Result<()> {
     let mut daemon_reload = Command::new("systemctl");
     daemon_reload.args(["--user", "daemon-reload"]);
     run_command(ctx, "systemctl --user daemon-reload", daemon_reload, None)?;
+    // Sync environment before starting the service to avoid startup race conditions.
+    sync_user_environment(ctx)?;
     let mut enable = Command::new("systemctl");
     enable.args(["--user", "enable", "--now", "unixnotis-daemon.service"]);
     run_command(
@@ -79,8 +96,6 @@ pub fn enable_service(ctx: &mut ActionContext) -> Result<()> {
         enable,
         None,
     )?;
-    // Keep the environment in sync after enabling the service so future restarts inherit it.
-    sync_user_environment(ctx)?;
     // Hyprland exec-once ensures session vars are synced once per login without extra hooks.
     ensure_hyprland_autostart(ctx);
     Ok(())

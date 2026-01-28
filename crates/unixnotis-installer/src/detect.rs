@@ -226,7 +226,11 @@ fn is_unit_active(unit: &str) -> (bool, Option<String>) {
 }
 
 fn pgrep_exact(name: &str) -> Vec<u32> {
-    let output = Command::new("pgrep").arg("-x").arg(name).output();
+    // Limit process discovery to the current user to avoid cross-user noise.
+    let uid = unsafe { libc::geteuid() };
+    let output = Command::new("pgrep")
+        .args(["-x", "-u", &uid.to_string(), name])
+        .output();
     let Ok(output) = output else {
         return Vec::new();
     };

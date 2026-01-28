@@ -77,6 +77,7 @@ fn render_status(app: &App) -> Text<'static> {
     lines.extend(render_check(&app.checks.hyprland));
     lines.extend(render_check(&app.checks.systemd_user));
     lines.extend(render_check(&app.checks.cargo));
+    lines.extend(render_check(&app.checks.pkg_config));
     lines.extend(render_check(&app.checks.gtk4_layer_shell));
     lines.extend(render_check(&app.checks.busctl));
     lines.extend(render_check(&app.checks.dbus_update_env));

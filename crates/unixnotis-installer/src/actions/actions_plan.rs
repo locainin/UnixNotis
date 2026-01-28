@@ -9,15 +9,17 @@ use crate::model::{ActionMode, ActionStep, StepStatus};
 
 use super::{
     check_install_state_step, enable_service, ensure_config, install_binaries, install_service,
-    remove_binaries, remove_state, reset_config, restore_config, run_build, run_verify,
-    stop_active_daemon, uninstall_service, ActionContext,
+    remove_binaries, remove_state, reset_config, restore_config, run_build, run_verify_check,
+    run_verify_clippy, run_verify_test, stop_active_daemon, uninstall_service, ActionContext,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StepKind {
     InstallCheck,
     StopDaemon,
-    Verify,
+    VerifyCheck,
+    VerifyTest,
+    VerifyClippy,
     Build,
     EnsureConfig,
     ResetConfig,
@@ -36,7 +38,9 @@ pub fn build_plan(mode: ActionMode, verify: bool) -> Vec<StepKind> {
         ActionMode::Install => {
             let mut steps = vec![StepKind::InstallCheck];
             if verify {
-                steps.push(StepKind::Verify);
+                steps.push(StepKind::VerifyCheck);
+                steps.push(StepKind::VerifyTest);
+                steps.push(StepKind::VerifyClippy);
             }
             steps.extend([
                 StepKind::Build,
@@ -70,7 +74,9 @@ pub fn run_step(step: StepKind, ctx: &mut ActionContext) -> Result<()> {
     match step {
         StepKind::InstallCheck => check_install_state_step(ctx),
         StepKind::StopDaemon => stop_active_daemon(ctx),
-        StepKind::Verify => run_verify(ctx),
+        StepKind::VerifyCheck => run_verify_check(ctx),
+        StepKind::VerifyTest => run_verify_test(ctx),
+        StepKind::VerifyClippy => run_verify_clippy(ctx),
         StepKind::Build => run_build(ctx),
         StepKind::EnsureConfig => ensure_config(ctx),
         StepKind::ResetConfig => reset_config(ctx),
@@ -88,7 +94,9 @@ pub fn step_label(kind: StepKind) -> &'static str {
     match kind {
         StepKind::InstallCheck => "Check existing install",
         StepKind::StopDaemon => "Stop existing daemon",
-        StepKind::Verify => "Verify workspace",
+        StepKind::VerifyCheck => "Verify workspace (check)",
+        StepKind::VerifyTest => "Verify workspace (test)",
+        StepKind::VerifyClippy => "Verify workspace (clippy)",
         StepKind::Build => "Build release binaries",
         StepKind::EnsureConfig => "Ensure config files",
         StepKind::ResetConfig => "Reset config files",
