@@ -8,6 +8,7 @@ use crate::app::App;
 use crate::model::ActionMode;
 
 use super::header::draw_header;
+use super::reset::describe_reset_action;
 
 pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
     // Confirmation screen keeps the user on one page before running actions.
@@ -75,8 +76,17 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
     }
     if matches!(mode, ActionMode::Reset) {
         lines.push(Line::from(""));
+        // Reset warning includes backup retention to avoid surprise data loss.
         lines.push(Line::from(Span::styled(
-            "Reset will overwrite config.toml and theme files with defaults.",
+            "Reset overwrites config.toml and theme files with defaults.",
+            Style::default().fg(Color::Yellow),
+        )));
+        lines.push(Line::from(Span::styled(
+            "Existing files are backed up to $XDG_CONFIG_HOME/unixnotis/Backup-YYYY-MM-DD (keeps last 3; installer.toml).",
+            Style::default().fg(Color::Yellow),
+        )));
+        lines.push(Line::from(Span::styled(
+            describe_reset_action(app),
             Style::default().fg(Color::Yellow),
         )));
     }

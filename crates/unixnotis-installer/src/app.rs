@@ -4,9 +4,10 @@ use crate::actions::{check_install_state, InstallState};
 use crate::actions::{BuildAccelConfigStatus, BuildAccelDetection, BuildAccelOutcome};
 use crate::checks::Checks;
 use crate::detect::Detection;
-use crate::model::{ActionMode, ActionStep};
+use crate::model::{ActionMode, ActionStep, ResetAction};
 use crate::paths::InstallPaths;
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -27,6 +28,10 @@ pub enum Screen {
     Welcome,
     // Confirmation screen before execution.
     Confirm(ActionMode),
+    // Reset submenu for default vs restore.
+    ResetMenu,
+    // Backup selection screen for restore.
+    RestoreSelect,
     // Progress screen for running actions.
     Progress(ActionMode),
     // Optional build-acceleration prompt after install.
@@ -80,6 +85,17 @@ pub struct App {
 
     // Selected option index for the build-acceleration prompt.
     pub build_accel_menu_index: usize,
+
+    // Reset submenu selection index (defaults vs restore).
+    pub reset_menu_index: usize,
+
+    // Selected reset action (defaults or a specific backup restore).
+    pub reset_action: ResetAction,
+
+    // Cached list of backup directories for the restore flow.
+    pub restore_backups: Vec<PathBuf>,
+    // Selected backup index when restoring.
+    pub restore_menu_index: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -114,6 +130,10 @@ impl App {
             progress_ready_at: None,
             build_accel: None,
             build_accel_menu_index: 0,
+            reset_menu_index: 0,
+            reset_action: ResetAction::ResetDefaults,
+            restore_backups: Vec::new(),
+            restore_menu_index: 0,
         }
     }
 
@@ -178,6 +198,12 @@ impl App {
             ActionMode::Reset => "Reset config",
             _ => mode.label(),
         }
+    }
+
+    pub fn refresh_backups(&mut self) {
+        // Refresh the list of available backup directories for restore.
+        self.restore_backups = crate::actions::list_backup_dirs_for_ui();
+        self.restore_menu_index = 0;
     }
 
     fn install_label(&self) -> &'static str {

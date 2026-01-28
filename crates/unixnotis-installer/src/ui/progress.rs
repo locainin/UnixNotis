@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::{App, ProgressState};
-use crate::model::ActionMode;
+use crate::model::{ActionMode, ResetAction};
 
 use super::header::draw_header;
 use super::widgets::{render_logs, render_steps, summarize_error};
@@ -32,8 +32,15 @@ pub(super) fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) 
     draw_header(frame, layout[0]);
 
     // Build the status block first so error summaries stay close to the header.
+    let action_label = match mode {
+        ActionMode::Reset => match &app.reset_action {
+            ResetAction::ResetDefaults => "Reset config",
+            ResetAction::RestoreBackup { .. } => "Restore backup",
+        },
+        _ => app.action_label(mode),
+    };
     let mut status_lines = vec![Line::from(Span::styled(
-        format!("{} - {}", app.action_label(mode), status_label),
+        format!("{action_label} - {status_label}"),
         Style::default()
             .fg(status_color)
             .add_modifier(Modifier::BOLD),

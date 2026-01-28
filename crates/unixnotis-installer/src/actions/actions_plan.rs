@@ -9,8 +9,8 @@ use crate::model::{ActionMode, ActionStep, StepStatus};
 
 use super::{
     check_install_state_step, enable_service, ensure_config, install_binaries, install_service,
-    remove_binaries, remove_state, reset_config, run_build, run_verify, stop_active_daemon,
-    uninstall_service, ActionContext,
+    remove_binaries, remove_state, reset_config, restore_config, run_build, run_verify,
+    stop_active_daemon, uninstall_service, ActionContext,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -21,6 +21,7 @@ pub enum StepKind {
     Build,
     EnsureConfig,
     ResetConfig,
+    RestoreConfig,
     InstallBinaries,
     InstallService,
     EnableService,
@@ -73,6 +74,7 @@ pub fn run_step(step: StepKind, ctx: &mut ActionContext) -> Result<()> {
         StepKind::Build => run_build(ctx),
         StepKind::EnsureConfig => ensure_config(ctx),
         StepKind::ResetConfig => reset_config(ctx),
+        StepKind::RestoreConfig => restore_config(ctx),
         StepKind::InstallBinaries => install_binaries(ctx),
         StepKind::InstallService => install_service(ctx),
         StepKind::EnableService => enable_service(ctx),
@@ -90,6 +92,7 @@ pub fn step_label(kind: StepKind) -> &'static str {
         StepKind::Build => "Build release binaries",
         StepKind::EnsureConfig => "Ensure config files",
         StepKind::ResetConfig => "Reset config files",
+        StepKind::RestoreConfig => "Restore config backup",
         StepKind::InstallBinaries => "Install binaries",
         StepKind::InstallService => "Install systemd unit",
         StepKind::EnableService => "Enable user service",

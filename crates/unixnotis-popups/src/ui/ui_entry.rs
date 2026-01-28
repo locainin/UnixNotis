@@ -2,13 +2,13 @@
 //!
 //! Keeps widget assembly separate from popup list bookkeeping.
 
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use gtk::pango;
 use gtk::prelude::*;
 use gtk::Align;
-use gtk::pango;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, warn};
@@ -143,7 +143,10 @@ fn set_label_markup(label: &gtk::Label, body: &str) {
     // Fallback to plain text so notifications remain readable.
     if let Err(err) = pango::parse_markup(body, '\0') {
         if should_warn_invalid_markup() {
-            warn!(?err, "invalid notification markup; falling back to plain text");
+            warn!(
+                ?err,
+                "invalid notification markup; falling back to plain text"
+            );
         }
         label.set_text(body);
         return;

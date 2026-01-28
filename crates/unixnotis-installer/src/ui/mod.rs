@@ -4,6 +4,7 @@ mod build_accel;
 mod confirm;
 mod header;
 mod progress;
+mod reset;
 mod welcome;
 mod widgets;
 
@@ -18,6 +19,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App) {
     match app.screen {
         Screen::Welcome => welcome::draw_welcome(frame, app),
         Screen::Confirm(mode) => confirm::draw_confirm(frame, app, mode),
+        Screen::ResetMenu => reset::draw_reset_menu(frame, app),
+        Screen::RestoreSelect => reset::draw_restore_select(frame, app),
         Screen::Progress(mode) => progress::draw_progress(frame, app, mode),
         Screen::BuildAccel => build_accel::draw_build_accel(frame, app),
     }

@@ -21,6 +21,7 @@ pub struct ActionContext<'a> {
     pub install_state: Option<InstallState>,
     pub log_tx: SyncSender<UiMessage>,
     pub action_mode: ActionMode,
+    pub restore_backup: Option<PathBuf>,
 }
 
 #[derive(Clone)]

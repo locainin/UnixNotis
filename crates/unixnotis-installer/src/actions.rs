@@ -6,6 +6,8 @@ mod actions_binaries;
 mod actions_build_accel;
 #[path = "actions/actions_config.rs"]
 mod actions_config;
+#[path = "actions/actions_config_backup.rs"]
+mod actions_config_backup;
 #[path = "actions/actions_daemon.rs"]
 mod actions_daemon;
 #[path = "actions/actions_env.rs"]
@@ -34,6 +36,8 @@ pub use actions_plan::{build_plan, run_step, steps_from_plan, StepKind};
 pub use actions_state::{check_install_state, ActionContext, InstallState};
 
 pub(super) use actions_config::{ensure_config, remove_state, reset_config};
+pub(crate) use actions_config_backup::list_backup_dirs_for_ui;
+pub(crate) use actions_config_backup::restore_config;
 pub(super) use actions_daemon::stop_active_daemon;
 pub(super) use actions_install::{
     enable_service, install_binaries, install_service, remove_binaries, uninstall_service,

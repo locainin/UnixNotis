@@ -331,6 +331,7 @@ mod tests {
             install_state: None,
             log_tx: tx,
             action_mode: ActionMode::Install,
+            restore_backup: None,
         };
         let contents = format!("{start}\nexec-once = foo\n", start = HYPR_BOOTSTRAP_START);
         let result =
@@ -355,6 +356,7 @@ mod tests {
             install_state: None,
             log_tx: tx,
             action_mode: ActionMode::Install,
+            restore_backup: None,
         };
         let contents = format!(
             "line-a\n{start}\nexec-once = foo\n{end}\nline-b\n",

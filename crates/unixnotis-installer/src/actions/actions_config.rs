@@ -9,15 +9,17 @@ use unixnotis_core::Config;
 use crate::paths::format_with_home;
 use unixnotis_core::util;
 
+use super::actions_config_backup::{
+    backup_existing_file, create_backup_dir, ensure_installer_config, load_installer_config,
+    write_atomic,
+};
 use super::{log_line, ActionContext};
 
 const DND_STATE_FILE: &str = "state.json";
-
 pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
     let config = Config::default();
     let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
     let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;
-
     log_line(
         ctx,
         format!("Config directory: {}", format_with_home(&config_dir)),
@@ -41,6 +43,8 @@ pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
             format!("Config file created: {}", format_with_home(&config_path)),
         );
     }
+
+    ensure_installer_config(ctx, &config_dir)?;
 
     let theme_paths = config
         .resolve_theme_paths()
@@ -85,8 +89,13 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
 
     fs::create_dir_all(&config_dir).with_context(|| "failed to create config directory")?;
 
+    ensure_installer_config(ctx, &config_dir)?;
+
+    let installer_config = load_installer_config(&config_dir, ctx);
+    let backup_dir = create_backup_dir(ctx, &config_dir, installer_config.backups.keep)?;
+
     // Preserve existing config before overwriting so customizations are recoverable.
-    backup_existing_file(ctx, &config_path, "config.toml")?;
+    backup_existing_file(ctx, &config_path, "config.toml", backup_dir.as_deref())?;
 
     let config_toml = toml::to_string_pretty(&config).map_err(|err| anyhow!(err.to_string()))?;
     write_atomic(&config_path, &config_toml).with_context(|| "failed to write config.toml")?;
@@ -104,10 +113,30 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
         .map_err(|err| anyhow!(err.to_string()))?;
 
     // Backup theme files before reset to avoid accidental loss of user styling.
-    backup_existing_file(ctx, &theme_paths.base_css, "base.css")?;
-    backup_existing_file(ctx, &theme_paths.panel_css, "panel.css")?;
-    backup_existing_file(ctx, &theme_paths.popup_css, "popup.css")?;
-    backup_existing_file(ctx, &theme_paths.widgets_css, "widgets.css")?;
+    backup_existing_file(
+        ctx,
+        &theme_paths.base_css,
+        "base.css",
+        backup_dir.as_deref(),
+    )?;
+    backup_existing_file(
+        ctx,
+        &theme_paths.panel_css,
+        "panel.css",
+        backup_dir.as_deref(),
+    )?;
+    backup_existing_file(
+        ctx,
+        &theme_paths.popup_css,
+        "popup.css",
+        backup_dir.as_deref(),
+    )?;
+    backup_existing_file(
+        ctx,
+        &theme_paths.widgets_css,
+        "widgets.css",
+        backup_dir.as_deref(),
+    )?;
 
     write_atomic(&theme_paths.base_css, unixnotis_core::DEFAULT_BASE_CSS)
         .with_context(|| "failed to write base.css")?;
@@ -201,59 +230,8 @@ fn is_dir_empty(path: &Path) -> std::io::Result<bool> {
     Ok(entries.next().is_none())
 }
 
-fn backup_existing_file(ctx: &mut ActionContext, path: &Path, label: &str) -> Result<()> {
-    if !path.exists() {
-        return Ok(());
-    }
-
-    let backup_path = next_backup_path(path);
-    // Copy first so the original remains intact until new content is written.
-    // This avoids leaving users without a live config if a later write fails.
-    fs::copy(path, &backup_path).with_context(|| format!("failed to backup {}", label))?;
-    log_line(
-        ctx,
-        format!("Backed up {} to {}", label, format_with_home(&backup_path)),
-    );
-    Ok(())
-}
-
-fn next_backup_path(path: &Path) -> PathBuf {
-    // Keep backups alongside the original file with .bak suffixes.
-    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-    let mut candidate = path.with_file_name(format!("{file_name}.bak"));
-    if !candidate.exists() {
-        return candidate;
-    }
-
-    // Increment suffixes to avoid overwriting prior backups.
-    let mut index = 1;
-    loop {
-        candidate = path.with_file_name(format!("{file_name}.bak.{index}"));
-        if !candidate.exists() {
-            return candidate;
-        }
-        index += 1;
-    }
-}
-
 fn resolve_state_dir() -> Option<PathBuf> {
     util::resolve_state_dir()
-}
-
-fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
-    // Write to a sibling temp file, then rename to avoid partial writes.
-    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-    let temp_name = format!("{file_name}.tmp-{}", std::process::id());
-    let temp_path = path.with_file_name(temp_name);
-
-    if temp_path.exists() {
-        let _ = fs::remove_file(&temp_path);
-    }
-
-    fs::write(&temp_path, contents)?;
-    fs::rename(&temp_path, path).inspect_err(|_err| {
-        let _ = fs::remove_file(&temp_path);
-    })
 }
 
 fn format_with_state_env(path: &Path) -> String {
@@ -274,30 +252,10 @@ fn format_with_state_env(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_with_state_env, next_backup_path, remove_state_file, DND_STATE_FILE};
+    use super::{format_with_state_env, remove_state_file, DND_STATE_FILE};
     use std::fs;
     use std::path::PathBuf;
     use unixnotis_core::util;
-
-    #[test]
-    fn next_backup_path_increments_suffixes() {
-        // Ensures backup naming avoids overwriting existing .bak files.
-        let Ok(home) = std::env::var("HOME") else {
-            return;
-        };
-        let dir = PathBuf::from(home).join(".cache").join(format!(
-            "unixnotis-installer-backup-test-{}",
-            std::process::id()
-        ));
-        let _ = fs::create_dir_all(&dir);
-        let target = dir.join("config.toml");
-        let _ = fs::write(&target, "original");
-        let first = next_backup_path(&target);
-        let _ = fs::write(&first, "bak");
-        let second = next_backup_path(&target);
-        assert_ne!(first, second);
-        let _ = fs::remove_dir_all(&dir);
-    }
 
     #[test]
     fn resolve_state_dir_prefers_xdg_state_home() {

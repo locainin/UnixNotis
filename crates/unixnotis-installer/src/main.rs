@@ -85,6 +85,8 @@ fn handle_event(
         Event::Key(key) => match app.screen {
             Screen::Welcome => handle_welcome_key(app, key),
             Screen::Confirm(mode) => handle_confirm_key(app, terminal_guard, ui_tx, key, mode),
+            Screen::ResetMenu => handle_reset_menu_key(app, key),
+            Screen::RestoreSelect => handle_restore_select_key(app, key),
             Screen::Progress(_) => handle_progress_key(app, key),
             Screen::BuildAccel => handle_build_accel_key(app, key),
         },
@@ -119,10 +121,90 @@ fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>
         KeyCode::Enter => match app.selected_menu() {
             MenuItem::Quit => Ok(Some(ExitAction::None)),
             MenuItem::Action(mode) => {
-                app.screen = Screen::Confirm(mode);
+                if mode == ActionMode::Reset {
+                    // Reset uses a submenu to avoid accidental destructive actions.
+                    app.reset_menu_index = 0;
+                    app.screen = Screen::ResetMenu;
+                } else {
+                    app.screen = Screen::Confirm(mode);
+                }
                 Ok(None)
             }
         },
+        _ => Ok(None),
+    }
+}
+
+fn handle_reset_menu_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
+    match key.code {
+        KeyCode::Esc => {
+            app.screen = Screen::Welcome;
+            Ok(None)
+        }
+        KeyCode::Up => {
+            // Clamp selection to keep navigation predictable in small terminals.
+            if app.reset_menu_index > 0 {
+                app.reset_menu_index -= 1;
+            }
+            Ok(None)
+        }
+        KeyCode::Down => {
+            // Reset menu has three entries; enforce bounds.
+            if app.reset_menu_index < 2 {
+                app.reset_menu_index += 1;
+            }
+            Ok(None)
+        }
+        KeyCode::Enter => {
+            match app.reset_menu_index {
+                0 => {
+                    // Default reset overwrites config and theme files.
+                    app.reset_action = crate::model::ResetAction::ResetDefaults;
+                    app.screen = Screen::Confirm(ActionMode::Reset);
+                }
+                1 => {
+                    // Restore flow needs the latest list of backup directories.
+                    app.refresh_backups();
+                    app.screen = Screen::RestoreSelect;
+                }
+                _ => {
+                    app.screen = Screen::Welcome;
+                }
+            }
+            Ok(None)
+        }
+        _ => Ok(None),
+    }
+}
+
+fn handle_restore_select_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
+    match key.code {
+        KeyCode::Esc => {
+            app.screen = Screen::ResetMenu;
+            Ok(None)
+        }
+        KeyCode::Up => {
+            // Backup selection should never underflow.
+            if app.restore_menu_index > 0 {
+                app.restore_menu_index -= 1;
+            }
+            Ok(None)
+        }
+        KeyCode::Down => {
+            // Only advance selection when there are backup entries.
+            if app.restore_menu_index + 1 < app.restore_backups.len() {
+                app.restore_menu_index += 1;
+            }
+            Ok(None)
+        }
+        KeyCode::Enter => {
+            // Restore proceeds only when a backup is selected.
+            if let Some(path) = app.restore_backups.get(app.restore_menu_index).cloned() {
+                app.reset_action = crate::model::ResetAction::RestoreBackup { path };
+                app.screen = Screen::Confirm(ActionMode::Reset);
+            }
+            Ok(None)
+        }
         _ => Ok(None),
     }
 }
@@ -238,7 +320,15 @@ fn start_action(
         None
     };
 
-    let plan = build_plan(mode, app.verify);
+    let (plan, restore_backup) = match mode {
+        ActionMode::Reset => match &app.reset_action {
+            crate::model::ResetAction::ResetDefaults => (build_plan(mode, app.verify), None),
+            crate::model::ResetAction::RestoreBackup { path } => {
+                (vec![StepKind::RestoreConfig], Some(path.clone()))
+            }
+        },
+        _ => (build_plan(mode, app.verify), None),
+    };
 
     app.steps = steps_from_plan(&plan);
     app.logs.clear();
@@ -254,7 +344,15 @@ fn start_action(
     let detection = app.detection.clone();
     let ui_tx = ui_tx.clone();
     thread::spawn(move || {
-        run_action_worker(plan, mode, detection, paths, install_state, ui_tx);
+        run_action_worker(
+            plan,
+            mode,
+            detection,
+            paths,
+            install_state,
+            restore_backup,
+            ui_tx,
+        );
     });
 
     Ok(())
@@ -266,6 +364,7 @@ fn run_action_worker(
     detection: crate::detect::Detection,
     paths: InstallPaths,
     install_state: Option<crate::actions::InstallState>,
+    restore_backup: Option<PathBuf>,
     ui_tx: mpsc::SyncSender<UiMessage>,
 ) {
     // Run plan steps on the worker thread and stream progress events to the UI.
@@ -281,6 +380,7 @@ fn run_action_worker(
                 install_state: install_state.clone(),
                 log_tx: ui_tx.clone(),
                 action_mode: mode,
+                restore_backup: restore_backup.clone(),
             };
             run_step(*step, &mut ctx)
         };
@@ -370,6 +470,10 @@ fn reset_to_menu(app: &mut App) {
     app.progress_ready_at = None;
     app.build_accel = None;
     app.build_accel_menu_index = 0;
+    app.reset_menu_index = 0;
+    app.reset_action = crate::model::ResetAction::ResetDefaults;
+    app.restore_backups.clear();
+    app.restore_menu_index = 0;
     app.refresh();
 }
 

@@ -19,6 +19,12 @@ impl ActionMode {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ResetAction {
+    ResetDefaults,
+    RestoreBackup { path: std::path::PathBuf },
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StepStatus {
     Pending,

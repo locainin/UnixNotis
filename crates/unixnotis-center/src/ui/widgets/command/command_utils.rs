@@ -65,7 +65,9 @@ impl CommandPlan {
         // Watch commands must keep stdout open for streaming; stderr is suppressed
         // to avoid spurious wakeups for noisy utilities.
         let mut command = build_command(cmd);
-        command.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
+        command
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
         command.spawn()
     }
 }

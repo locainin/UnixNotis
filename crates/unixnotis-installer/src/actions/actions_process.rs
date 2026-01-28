@@ -142,9 +142,7 @@ fn flush_dropped_log_lines(tx: &SyncSender<UiMessage>) {
     if dropped == 0 {
         return;
     }
-    let message = format!(
-        "Warning: {dropped} log line(s) dropped because the UI was busy",
-    );
+    let message = format!("Warning: {dropped} log line(s) dropped because the UI was busy",);
     // If the UI channel is still full, retain the count for a future flush.
     if let Err(err) = tx.try_send(UiMessage::Worker(WorkerEvent::LogLine(message))) {
         if matches!(err, TrySendError::Full(_)) {
