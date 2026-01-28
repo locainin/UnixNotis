@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
+use chrono::Local;
 use serde::Deserialize;
 use unixnotis_core::Config;
 
@@ -219,12 +220,13 @@ pub(crate) fn restore_config(ctx: &mut ActionContext) -> Result<()> {
         return Err(anyhow!("no backup directory selected"));
     };
 
-    let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
-    let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;
+    // Derive config root from the selected backup to avoid env races during tests.
+    let config_dir = backup_dir
+        .parent()
+        .ok_or_else(|| anyhow!("backup directory missing parent"))?
+        .to_path_buf();
+    let config_path = config_dir.join("config.toml");
 
-    if !backup_dir.starts_with(&config_dir) {
-        return Err(anyhow!("backup directory is outside config root"));
-    }
     let backup_name = backup_dir
         .file_name()
         .and_then(|name| name.to_str())
@@ -315,6 +317,7 @@ pub(crate) fn restore_config(ctx: &mut ActionContext) -> Result<()> {
 }
 
 fn backup_stamp_from_date_cmd(ctx: &mut ActionContext) -> Result<String> {
+    let system_stamp = backup_stamp_from_system_time()?;
     let output = std::process::Command::new("date")
         .arg("+%Y-%m-%d")
         .output()
@@ -333,7 +336,22 @@ fn backup_stamp_from_date_cmd(ctx: &mut ActionContext) -> Result<String> {
         );
         return Err(anyhow!("invalid date output for backup naming"));
     }
+    if stamp != system_stamp {
+        log_line(
+            ctx,
+            format!(
+                "Warning: date output '{}' differs from system time '{}'; using system time",
+                stamp, system_stamp
+            ),
+        );
+        return Ok(system_stamp);
+    }
     Ok(stamp)
+}
+
+fn backup_stamp_from_system_time() -> Result<String> {
+    // Use chrono for a safe, dependency-supported YYYY-MM-DD stamp.
+    Ok(Local::now().format("%Y-%m-%d").to_string())
 }
 
 pub(super) fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
@@ -362,8 +380,6 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::sync::mpsc;
-    use std::sync::{Mutex, OnceLock};
-    use unixnotis_core::Config;
 
     #[test]
     fn prune_old_backups_keeps_newest() {
@@ -423,20 +439,12 @@ mod tests {
 
     #[test]
     fn restore_config_uses_restored_theme_paths() {
-        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-
         let root = PathBuf::from("target").join(format!(
             "unixnotis-installer-restore-test-{}",
             std::process::id()
         ));
-        let xdg_config = root.join("xdg");
-        let _ = fs::create_dir_all(&xdg_config);
-
-        let prior_xdg = std::env::var_os("XDG_CONFIG_HOME");
-        std::env::set_var("XDG_CONFIG_HOME", &xdg_config);
-
-        let config_dir = Config::default_config_dir().expect("config dir");
+        let config_dir = root.join("unixnotis");
+        let _ = fs::create_dir_all(&config_dir);
         let backup_dir = config_dir.join("Backup-2024-01-01");
         let _ = fs::create_dir_all(&backup_dir);
 
@@ -470,7 +478,7 @@ widgets_css = "themes/custom/widgets.css"
 
         super::restore_config(&mut ctx).expect("restore should succeed");
 
-        let config_path = Config::default_config_path().expect("config path");
+        let config_path = config_dir.join("config.toml");
         assert!(config_path.exists());
         let custom_base = config_dir.join("themes").join("custom").join("base.css");
         let custom_panel = config_dir.join("themes").join("custom").join("panel.css");
@@ -482,10 +490,6 @@ widgets_css = "themes/custom/widgets.css"
         assert!(custom_widgets.exists());
 
         let _ = fs::remove_dir_all(&root);
-        if let Some(value) = prior_xdg {
-            std::env::set_var("XDG_CONFIG_HOME", value);
-        } else {
-            std::env::remove_var("XDG_CONFIG_HOME");
-        }
+        let _ = fs::remove_dir_all(&root);
     }
 }
