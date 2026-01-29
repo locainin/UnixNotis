@@ -292,7 +292,7 @@ fn collect_css_files(root: &Path) -> Result<Vec<PathBuf>> {
     let mut visited: HashSet<PathBuf> = HashSet::new();
     let canonical_root = fs::canonicalize(root)
         .with_context(|| format!("resolve config directory {}", root.display()))?;
-    visited.insert(canonical_root);
+    visited.insert(canonical_root.clone());
     let mut stack = vec![root.to_path_buf()];
     let mut results = Vec::new();
     while let Some(dir) = stack.pop() {
@@ -314,6 +314,10 @@ fn collect_css_files(root: &Path) -> Result<Vec<PathBuf>> {
                     continue;
                 }
                 if let Ok(canonical) = fs::canonicalize(&path) {
+                    // Restrict traversal to the config root even when symlinks are present.
+                    if !canonical.starts_with(&canonical_root) {
+                        continue;
+                    }
                     if !visited.insert(canonical) {
                         continue;
                     }
