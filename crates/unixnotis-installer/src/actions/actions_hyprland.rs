@@ -278,41 +278,43 @@ fn strip_hyprland_bootstrap_block(
     config_path: &Path,
 ) -> HyprlandStripResult {
     // Use the marker range to avoid disturbing user-maintained content.
-    let Some(start) = contents.find(HYPR_BOOTSTRAP_START) else {
-        return HyprlandStripResult {
-            stripped: contents.to_string(),
-            block_found: false,
-            malformed: false,
+    let original = contents.to_string();
+    let mut current = contents.to_string();
+    let mut removed_any = false;
+
+    loop {
+        let Some(start) = current.find(HYPR_BOOTSTRAP_START) else {
+            return HyprlandStripResult {
+                stripped: current,
+                block_found: removed_any,
+                malformed: false,
+            };
         };
-    };
-    let Some(end_rel) = contents[start..].find(HYPR_BOOTSTRAP_END) else {
-        log_line(
-            ctx,
-            format!(
-                "Warning: unterminated UnixNotis block in {}; leaving content intact and appending a fresh block",
-                format_with_home(config_path)
-            ),
-        );
-        return HyprlandStripResult {
-            stripped: contents.to_string(),
-            block_found: false,
-            malformed: true,
+        let Some(end_rel) = current[start..].find(HYPR_BOOTSTRAP_END) else {
+            log_line(
+                ctx,
+                format!(
+                    "Warning: unterminated UnixNotis block in {}; leaving content intact and appending a fresh block",
+                    format_with_home(config_path)
+                ),
+            );
+            return HyprlandStripResult {
+                stripped: original,
+                block_found: false,
+                malformed: true,
+            };
         };
-    };
-    // Merge the remaining sections with minimal whitespace adjustments.
-    let end = start + end_rel + HYPR_BOOTSTRAP_END.len();
-    let before = contents[..start].trim_end_matches('\n');
-    let after = contents[end..].trim_start_matches('\n');
-    let mut merged = String::new();
-    merged.push_str(before);
-    if !before.is_empty() && !after.is_empty() {
-        merged.push('\n');
-    }
-    merged.push_str(after);
-    HyprlandStripResult {
-        stripped: merged,
-        block_found: true,
-        malformed: false,
+        let end = start + end_rel + HYPR_BOOTSTRAP_END.len();
+        let before = current[..start].trim_end_matches('\n');
+        let after = current[end..].trim_start_matches('\n');
+        let mut merged = String::new();
+        merged.push_str(before);
+        if !before.is_empty() && !after.is_empty() {
+            merged.push('\n');
+        }
+        merged.push_str(after);
+        current = merged;
+        removed_any = true;
     }
 }
 
@@ -376,6 +378,34 @@ mod tests {
         let result =
             strip_hyprland_bootstrap_block(&mut ctx, &contents, Path::new("hyprland.conf"));
         assert_eq!(result.stripped, "line-a\nline-b\n");
+        assert!(result.block_found);
+        assert!(!result.malformed);
+    }
+
+    #[test]
+    fn strip_hyprland_bootstrap_block_removes_all_blocks() {
+        let detection = Detection {
+            owner: None,
+            daemons: Vec::new(),
+        };
+        let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+        let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
+        let mut ctx = crate::actions::ActionContext {
+            detection: &detection,
+            paths: &paths,
+            install_state: None,
+            log_tx: tx,
+            action_mode: ActionMode::Install,
+            restore_backup: None,
+        };
+        let contents = format!(
+            "line-a\n{start}\nexec-once = foo\n{end}\nline-b\n{start}\nexec-once = bar\n{end}\nline-c\n",
+            start = HYPR_BOOTSTRAP_START,
+            end = HYPR_BOOTSTRAP_END
+        );
+        let result =
+            strip_hyprland_bootstrap_block(&mut ctx, &contents, Path::new("hyprland.conf"));
+        assert_eq!(result.stripped, "line-a\nline-b\nline-c\n");
         assert!(result.block_found);
         assert!(!result.malformed);
     }

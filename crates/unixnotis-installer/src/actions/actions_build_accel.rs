@@ -250,7 +250,9 @@ fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing parent directory")
     })?;
     fs::create_dir_all(parent)?;
-    let tmp_path = path.with_extension("tmp");
+    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+    let tmp_name = format!("{file_name}.tmp-{}", std::process::id());
+    let tmp_path = path.with_file_name(tmp_name);
     fs::write(&tmp_path, contents)?;
     fs::rename(tmp_path, path)?;
     Ok(())

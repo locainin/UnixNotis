@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
@@ -44,6 +45,11 @@ pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<Strin
 
     // Last-resort fallback retains legacy behavior when discovery yields nothing.
     Ok(legacy_binaries())
+}
+
+pub(super) fn resolve_target_directory(paths: &InstallPaths) -> Result<PathBuf> {
+    let metadata = load_cargo_metadata(paths)?;
+    Ok(metadata.target_directory)
 }
 
 pub(super) fn resolve_install_binaries_best_effort(
@@ -156,6 +162,11 @@ struct InstallerMetadata {
 }
 
 fn load_install_binaries_from_cargo_metadata(paths: &InstallPaths) -> Result<Vec<String>> {
+    let metadata = load_cargo_metadata(paths)?;
+    Ok(extract_bins_from_metadata(&metadata))
+}
+
+fn load_cargo_metadata(paths: &InstallPaths) -> Result<CargoMetadata> {
     // cargo metadata is the most robust source of workspace targets.
     let output = Command::new("cargo")
         .args(["metadata", "--no-deps", "--format-version", "1"])
@@ -170,10 +181,7 @@ fn load_install_binaries_from_cargo_metadata(paths: &InstallPaths) -> Result<Vec
         ));
     }
 
-    let metadata: CargoMetadata =
-        serde_json::from_slice(&output.stdout).with_context(|| "failed to parse cargo metadata")?;
-
-    Ok(extract_bins_from_metadata(&metadata))
+    serde_json::from_slice(&output.stdout).with_context(|| "failed to parse cargo metadata")
 }
 
 fn extract_bins_from_metadata(metadata: &CargoMetadata) -> Vec<String> {
@@ -193,6 +201,7 @@ fn extract_bins_from_metadata(metadata: &CargoMetadata) -> Vec<String> {
 
 #[derive(serde::Deserialize)]
 struct CargoMetadata {
+    target_directory: PathBuf,
     packages: Vec<CargoPackage>,
 }
 
@@ -240,6 +249,7 @@ members = ["crates/unixnotis-daemon"]
     fn extract_bins_from_cargo_metadata() {
         let input = r#"
 {
+  "target_directory": "target",
   "packages": [
     {
       "targets": [

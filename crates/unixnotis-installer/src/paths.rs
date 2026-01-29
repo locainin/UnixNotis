@@ -19,7 +19,7 @@ impl InstallPaths {
         let repo_root = find_repo_root()?;
         let release_dir = repo_root.join("target").join("release");
         let bin_dir = home_dir()?.join(".local").join("bin");
-        let unit_dir = home_dir()?.join(".config").join("systemd").join("user");
+        let unit_dir = systemd_user_dir()?;
         let unit_path = unit_dir.join("unixnotis-daemon.service");
 
         Ok(Self {
@@ -35,6 +35,28 @@ impl InstallPaths {
 pub fn home_dir() -> Result<PathBuf> {
     let home = env::var("HOME").map_err(|_| anyhow!("HOME is not set"))?;
     Ok(PathBuf::from(home))
+}
+
+fn xdg_config_home() -> Option<PathBuf> {
+    let raw = env::var("XDG_CONFIG_HOME").ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(trimmed);
+    if path.is_absolute() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+fn systemd_user_dir() -> Result<PathBuf> {
+    if let Some(base) = xdg_config_home() {
+        Ok(base.join("systemd").join("user"))
+    } else {
+        Ok(home_dir()?.join(".config").join("systemd").join("user"))
+    }
 }
 
 pub fn format_with_home(path: &Path) -> String {
@@ -87,10 +109,34 @@ fn is_unixnotis_repo(cargo_toml: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_with_home, is_unixnotis_repo};
+    use super::{format_with_home, is_unixnotis_repo, InstallPaths};
     use std::env;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock")
+    }
+
+    fn set_env(key: &str, value: Option<&str>) -> Option<String> {
+        let previous = env::var(key).ok();
+        match value {
+            Some(value) => env::set_var(key, value),
+            None => env::remove_var(key),
+        }
+        previous
+    }
+
+    fn restore_env(key: &str, previous: Option<String>) {
+        match previous {
+            Some(value) => env::set_var(key, value),
+            None => env::remove_var(key),
+        }
+    }
 
     #[test]
     fn format_with_home_rewrites_prefix() {
@@ -136,5 +182,23 @@ members = ["crates/unixnotis-daemon", "crates/unixnotis-core"]
 
         assert!(is_unixnotis_repo(&cargo_path));
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn install_paths_use_xdg_config_home_for_systemd_units() {
+        let _guard = env_lock();
+        let Ok(home) = env::var("HOME") else {
+            return;
+        };
+        if home.is_empty() {
+            return;
+        }
+        let xdg_root = PathBuf::from(&home).join(".config-xdg-test");
+        let previous = set_env("XDG_CONFIG_HOME", Some(xdg_root.to_string_lossy().as_ref()));
+
+        let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+        assert_eq!(paths.unit_dir, xdg_root.join("systemd").join("user"));
+
+        restore_env("XDG_CONFIG_HOME", previous);
     }
 }

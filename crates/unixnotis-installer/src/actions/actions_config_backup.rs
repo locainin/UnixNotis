@@ -103,7 +103,7 @@ pub(super) fn create_backup_dir(
 
     // Each reset produces a dedicated backup directory to avoid filename bloat.
     // Format is Backup-YYYY-MM-DD (date-only) with an optional numeric suffix.
-    let stamp = backup_stamp_from_date_cmd(ctx)?;
+    let stamp = backup_stamp_from_system_time()?;
     let base_name = format!("{BACKUP_PREFIX}{stamp}");
     let mut candidate = config_dir.join(base_name);
 
@@ -314,39 +314,6 @@ pub(crate) fn restore_config(ctx: &mut ActionContext) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn backup_stamp_from_date_cmd(ctx: &mut ActionContext) -> Result<String> {
-    let system_stamp = backup_stamp_from_system_time()?;
-    let output = std::process::Command::new("date")
-        .arg("+%Y-%m-%d")
-        .output()
-        .with_context(|| "failed to execute date command for backup naming")?;
-    if !output.status.success() {
-        return Err(anyhow!("date command failed; install coreutils and retry"));
-    }
-    let stamp = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if stamp.is_empty() || !stamp.chars().all(|ch| ch.is_ascii_digit() || ch == '-') {
-        log_line(
-            ctx,
-            format!(
-                "Warning: unexpected date output '{}'; expected YYYY-MM-DD",
-                stamp
-            ),
-        );
-        return Err(anyhow!("invalid date output for backup naming"));
-    }
-    if stamp != system_stamp {
-        log_line(
-            ctx,
-            format!(
-                "Warning: date output '{}' differs from system time '{}'; using system time",
-                stamp, system_stamp
-            ),
-        );
-        return Ok(system_stamp);
-    }
-    Ok(stamp)
 }
 
 fn backup_stamp_from_system_time() -> Result<String> {

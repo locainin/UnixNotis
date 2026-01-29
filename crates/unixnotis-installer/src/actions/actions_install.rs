@@ -1,7 +1,7 @@
 //! Install and uninstall filesystem assets.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
@@ -9,7 +9,10 @@ use anyhow::{anyhow, Context, Result};
 use crate::paths::{format_with_home, InstallPaths};
 
 use super::{
-    actions_binaries::{resolve_install_binaries, resolve_install_binaries_best_effort},
+    actions_binaries::{
+        resolve_install_binaries, resolve_install_binaries_best_effort, resolve_target_directory,
+    },
+    actions_config_backup::write_atomic,
     actions_env::sync_user_environment,
     actions_hyprland::{ensure_hyprland_autostart, remove_hyprland_autostart},
     log_line, run_command, ActionContext,
@@ -18,13 +21,14 @@ use super::{
 pub fn install_binaries(ctx: &mut ActionContext) -> Result<()> {
     // Resolve the installable binaries from workspace metadata to avoid hardcoded duplication.
     let binaries = resolve_install_binaries(ctx.paths)?;
+    let release_dir = resolve_release_dir(ctx);
 
     fs::create_dir_all(&ctx.paths.bin_dir).with_context(|| "failed to create bin directory")?;
 
     // Preflight validation ensures all build artifacts exist before any replacements occur.
     let mut missing = Vec::new();
     for binary in &binaries {
-        let source = ctx.paths.release_dir.join(binary);
+        let source = release_dir.join(binary);
         if !source.exists() {
             missing.push(format_with_home(&source));
         }
@@ -37,7 +41,7 @@ pub fn install_binaries(ctx: &mut ActionContext) -> Result<()> {
     }
 
     for binary in binaries {
-        let source = ctx.paths.release_dir.join(&binary);
+        let source = release_dir.join(&binary);
         let destination = ctx.paths.bin_dir.join(&binary);
         copy_binary(ctx, &source, &destination)?;
     }
@@ -68,7 +72,7 @@ pub fn install_service(ctx: &mut ActionContext) -> Result<()> {
     ]
     .join("\n");
 
-    fs::write(&ctx.paths.unit_path, unit_contents)
+    write_atomic(&ctx.paths.unit_path, &unit_contents)
         .with_context(|| "failed to write systemd user unit")?;
 
     log_line(
@@ -156,6 +160,24 @@ pub fn remove_binaries(ctx: &mut ActionContext) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn resolve_release_dir(ctx: &mut ActionContext) -> PathBuf {
+    match resolve_target_directory(ctx.paths) {
+        Ok(target_dir) => target_dir.join("release"),
+        Err(err) => {
+            let fallback = ctx.paths.release_dir.clone();
+            log_line(
+                ctx,
+                format!(
+                    "Warning: failed to resolve cargo target directory ({}); using fallback {}",
+                    err,
+                    format_with_home(&fallback)
+                ),
+            );
+            fallback
+        }
+    }
 }
 
 fn copy_binary(ctx: &mut ActionContext, source: &Path, destination: &Path) -> Result<()> {
