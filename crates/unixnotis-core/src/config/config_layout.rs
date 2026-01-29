@@ -108,7 +108,8 @@ pub enum PanelKeyboardInteractivity {
     Exclusive,
 }
 
-#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
+// Equality is derived to support work-area change detection without custom comparisons.
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Margins {
     // Pixel margins applied around the panel/control-center surface.

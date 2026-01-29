@@ -60,9 +60,32 @@ impl MediaWidget {
 
         let nav_prev = gtk::Button::with_label("<");
         nav_prev.add_css_class("unixnotis-media-nav");
+        // Center the glyph inside the fixed-size nav button to avoid baseline drift.
+        // The button style uses square borders, so alignment needs to be explicit.
+        nav_prev.set_halign(Align::Center);
+        nav_prev.set_valign(Align::Center);
+        if let Some(label) = nav_prev
+            .child()
+            .and_then(|child| child.downcast::<gtk::Label>().ok())
+        {
+            // Center label text independently of theme padding.
+            label.set_xalign(0.5);
+            label.set_yalign(0.5);
+        }
 
         let nav_next = gtk::Button::with_label(">");
         nav_next.add_css_class("unixnotis-media-nav");
+        // Match the previous button alignment so arrow spacing remains symmetric.
+        nav_next.set_halign(Align::Center);
+        nav_next.set_valign(Align::Center);
+        if let Some(label) = nav_next
+            .child()
+            .and_then(|child| child.downcast::<gtk::Label>().ok())
+        {
+            // Keep label centered even when the font metrics change.
+            label.set_xalign(0.5);
+            label.set_yalign(0.5);
+        }
 
         let selection = Rc::new(RefCell::new(MediaSelection::default()));
         let card = build_media_card(&handle, selection.clone(), marquee_width, title_char_limit);

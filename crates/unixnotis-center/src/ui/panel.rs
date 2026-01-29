@@ -29,6 +29,11 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     window.set_resizable(false);
     window.set_title(Some("UnixNotis Center"));
     window.add_css_class("unixnotis-panel-window");
+    if let Some(settings) = gtk::Settings::default() {
+        // GTK global setting that controls whether scrollbars overlay content.
+        // Enabled here to keep scrollbar behavior consistent across widgets.
+        settings.set_property("gtk-overlay-scrolling", true);
+    }
 
     window.init_layer_shell();
     window.set_namespace(Some("unixnotis-panel"));
@@ -123,7 +128,12 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     let scroller = gtk::ScrolledWindow::new();
     scroller.set_vexpand(true);
     scroller.set_hexpand(true);
-    scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    // Keep vertical scrollbars allocated to avoid width jitter on hover.
+    // Horizontal scrolling remains disabled because the panel is fixed-width.
+    scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Always);
+    // Disable overlay scrolling so the scrollbar width stays constant.
+    // The panel layout relies on a fixed width; overlay scrollbars can shift content.
+    scroller.set_overlay_scrolling(false);
     scroller.set_min_content_width(width);
     scroller.set_max_content_width(width);
 

@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
 use std::fs;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcCommand;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -279,6 +279,17 @@ fn run_css_check() -> Result<()> {
         ));
     }
 
+    // Warnings are advisory only; parsing errors remain fatal because GTK will refuse invalid CSS.
+    // This keeps css-check strict about syntax while still surfacing override risks.
+    let warnings = lint_css_files(&css_files, &config_dir, &display_root)?;
+    if warnings > 0 {
+        println!(
+            "css-check warnings: {} issue(s) under {}",
+            warnings,
+            display_root
+        );
+    }
+
     println!(
         "css-check ok: {} file(s) checked under {}",
         css_files.len(),
@@ -330,6 +341,209 @@ fn collect_css_files(root: &Path) -> Result<Vec<PathBuf>> {
     }
     results.sort();
     Ok(results)
+}
+
+fn lint_css_files(files: &[PathBuf], config_dir: &Path, display_root: &str) -> Result<usize> {
+    let mut warnings = 0usize;
+    for path in files {
+        let display_path = format_display_path(config_dir, display_root, path);
+        // File contents are needed because GTK only reports parse errors, not override hazards.
+        let contents = fs::read_to_string(path)
+            .with_context(|| format!("read css file {}", path.display()))?;
+        // The linter is intentionally shallow and low-cost; it avoids a full CSS parser.
+        let report = lint_css_contents(&contents);
+        for warning in report {
+            warnings += 1;
+            eprintln!("css warning: {}: {}", display_path, warning);
+        }
+    }
+    Ok(warnings)
+}
+
+fn lint_css_contents(contents: &str) -> Vec<String> {
+    let mut warnings = Vec::new();
+    // Strip block comments first so selectors and properties are easier to scan.
+    let stripped = strip_css_comments(contents);
+
+    // Duplicate @define-color entries are allowed but usually accidental overrides.
+    let mut color_defs: HashMap<String, usize> = HashMap::new();
+    for line in stripped.lines() {
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("@define-color") {
+            if let Some(name) = rest.split_whitespace().next() {
+                let count = color_defs.entry(name.to_string()).or_insert(0);
+                *count += 1;
+                if *count > 1 {
+                    warnings.push(format!(
+                        "duplicate @define-color '{}' (later definition overrides earlier)",
+                        name
+                    ));
+                }
+            }
+        }
+    }
+
+    // Track selectors to flag redefinitions that silently override earlier rules.
+    let mut selector_seen: HashMap<String, usize> = HashMap::new();
+    let mut cursor = 0usize;
+    let bytes = stripped.as_bytes();
+    while let Some((selector, block, next)) = next_css_block(bytes, cursor) {
+        cursor = next;
+        // Collapse whitespace so duplicates match even if formatting differs.
+        let selector = normalize_selector(&selector);
+        if selector.is_empty() {
+            continue;
+        }
+        // Skip at-rules like @keyframes or @media since their bodies are parsed differently.
+        if selector.starts_with('@') {
+            continue;
+        }
+        // Split grouped selectors (".a, .b") so each rule is tracked independently.
+        for sel in split_selectors(&selector) {
+            if sel.is_empty() {
+                continue;
+            }
+            let count = selector_seen.entry(sel.to_string()).or_insert(0);
+            *count += 1;
+            if *count > 1 {
+                warnings.push(format!(
+                    "duplicate selector '{}' (later rules override earlier)",
+                    sel
+                ));
+            }
+        }
+        warnings.extend(lint_css_properties(&selector, &block));
+    }
+
+    warnings
+}
+
+fn lint_css_properties(selector: &str, block: &str) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    // Property duplicates within a selector are almost always accidental overrides.
+    for chunk in block.split(';') {
+        let trimmed = chunk.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Some((name, _)) = trimmed.split_once(':') else {
+            continue;
+        };
+        let prop = name.trim();
+        if prop.is_empty() {
+            continue;
+        }
+        let inserted = seen.insert(prop.to_string());
+        if !inserted {
+            warnings.push(format!(
+                "duplicate property '{}' in selector '{}' (later value overrides earlier)",
+                prop, selector
+            ));
+        }
+    }
+    warnings
+}
+
+fn strip_css_comments(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    let mut in_comment = false;
+    while let Some(ch) = chars.next() {
+        if in_comment {
+            if ch == '*' && matches!(chars.peek(), Some('/')) {
+                chars.next();
+                in_comment = false;
+            }
+            continue;
+        }
+        if ch == '/' && matches!(chars.peek(), Some('*')) {
+            chars.next();
+            in_comment = true;
+            continue;
+        }
+        output.push(ch);
+    }
+    output
+}
+
+fn next_css_block(bytes: &[u8], start: usize) -> Option<(String, String, usize)> {
+    // A lightweight brace scanner is sufficient for identifying selector blocks.
+    // Comments are already stripped, so only string literals need to be respected.
+    let mut selector_start = start;
+    while selector_start < bytes.len() && bytes[selector_start].is_ascii_whitespace() {
+        selector_start += 1;
+    }
+    let mut i = selector_start;
+    let mut in_string: Option<u8> = None;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if let Some(quote) = in_string {
+            if b == quote {
+                in_string = None;
+            }
+            i += 1;
+            continue;
+        }
+        if b == b'"' || b == b'\'' {
+            in_string = Some(b);
+            i += 1;
+            continue;
+        }
+        if b == b'{' {
+            let selector = String::from_utf8_lossy(&bytes[selector_start..i]).to_string();
+            // Nested braces can appear in at-rules; track depth to find the matching close.
+            let mut depth = 1usize;
+            i += 1;
+            let block_start = i;
+            while i < bytes.len() {
+                let b = bytes[i];
+                if let Some(quote) = in_string {
+                    if b == quote {
+                        in_string = None;
+                    }
+                    i += 1;
+                    continue;
+                }
+                if b == b'"' || b == b'\'' {
+                    in_string = Some(b);
+                    i += 1;
+                    continue;
+                }
+                if b == b'{' {
+                    depth += 1;
+                } else if b == b'}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        let block = String::from_utf8_lossy(&bytes[block_start..i]).to_string();
+                        return Some((selector, block, i + 1));
+                    }
+                }
+                i += 1;
+            }
+            break;
+        }
+        i += 1;
+    }
+    None
+}
+
+fn normalize_selector(selector: &str) -> String {
+    // Normalize whitespace so the same selector compares equal across formatting styles.
+    selector
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
+}
+
+fn split_selectors(selector: &str) -> Vec<String> {
+    // Split on commas so grouped selectors are checked individually.
+    selector
+        .split(',')
+        .map(|part| part.trim().to_string())
+        .collect()
 }
 
 fn is_backup_dir(path: &Path) -> bool {

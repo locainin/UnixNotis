@@ -68,17 +68,10 @@ impl UiState {
     fn set_visible(&mut self, visible: bool) {
         self.panel_visible = visible;
         self.panel_visible_flag.store(visible, Ordering::SeqCst);
-        self.panel.window.set_visible(visible);
         debug!(visible, "panel visibility updated");
         self.log_debug(PanelDebugLevel::Info, || {
             format!("panel visibility set to {visible}")
         });
-        if visible {
-            let width = self.panel.window.allocated_width();
-            let height = self.panel.window.allocated_height();
-            let message = format!("panel allocated size: {width}x{height}");
-            self.log_debug(PanelDebugLevel::Verbose, move || message);
-        }
         if visible {
             // Activate watches so widgets only poll while the panel is open.
             if let Some(volume) = self.volume.as_ref() {
@@ -118,7 +111,25 @@ impl UiState {
             self.refresh_counts();
             self.refresh_widgets(true);
             self.start_refresh_timer();
+            // Resolve work-area margins before showing the window to avoid a layout shift.
+            // This prevents a first-frame resize when Hyprland publishes margins after open.
+            // Only hit the compositor once per open when the cache is empty.
+            // Keeps open latency stable while avoiding repeated IPC work.
+            if self.config.panel.respect_work_area && self.work_area.is_none() {
+                self.work_area = super::hyprland::reserved_work_area_sync(
+                    self.config.panel.output.as_deref(),
+                );
+                super::panel::apply_panel_config(&self.panel, &self.config, self.work_area);
+            }
+            // Only show the window after geometry is correct to avoid visible jitter.
+            self.panel.window.set_visible(true);
+            let width = self.panel.window.allocated_width();
+            let height = self.panel.window.allocated_height();
+            let message = format!("panel allocated size: {width}x{height}");
+            self.log_debug(PanelDebugLevel::Verbose, move || message);
         } else {
+            // Hide first so any teardown work does not trigger visible reflow.
+            self.panel.window.set_visible(false);
             // Disable watch-based polling when hidden to reduce background load.
             if let Some(volume) = self.volume.as_ref() {
                 volume.set_watch_active(false);

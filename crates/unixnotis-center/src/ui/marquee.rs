@@ -54,9 +54,13 @@ impl MarqueeLabel {
         label.set_valign(Align::Center);
         label.set_single_line_mode(true);
         label.set_wrap(false);
+        // Ellipsize forces width-chars limits to be honored for preferred sizing.
+        // This keeps the marquee width stable even when glyph widths vary.
+        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
         label.set_hexpand(false);
         if char_limit > 0 {
             // Fixed character width avoids layout jitter as the slice changes.
+            // The label still renders the full string; only the measured width is clamped.
             label.set_width_chars(char_limit as i32);
             label.set_max_width_chars(char_limit as i32);
         }

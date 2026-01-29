@@ -155,7 +155,9 @@ pub fn refresh_reserved_work_area(
     });
 }
 
-fn reserved_work_area_sync(output: Option<&str>) -> Option<Margins> {
+// Shared helper to query Hyprland work area synchronously on demand.
+// This supports first-open sizing without waiting for an async refresh.
+pub(super) fn reserved_work_area_sync(output: Option<&str>) -> Option<Margins> {
     let response = match send_command("j/monitors") {
         Ok(response) => response,
         Err(err) => {
@@ -177,6 +179,7 @@ fn reserved_work_area_sync(output: Option<&str>) -> Option<Margins> {
         }
     };
     let monitors = value.as_array()?;
+    // Walk monitors until the matching output is found; fall back to first when no output is requested.
     for monitor in monitors {
         let Some(name) = monitor.get("name").and_then(Value::as_str) else {
             continue;
