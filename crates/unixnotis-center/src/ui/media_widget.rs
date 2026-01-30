@@ -263,22 +263,42 @@ fn apply_selection(
 
 impl MediaCardWidgets {
     fn update(&self, info: &MediaInfo, current: usize, total: usize) {
-        self.source_label.set_text(&info.identity);
-        self.position_label.set_text(&format!("{current}/{total}"));
+        // Skip text updates when content is unchanged to avoid redundant layout work.
+        if self.source_label.text() != info.identity.as_str() {
+            self.source_label.set_text(&info.identity);
+        }
+        // Position string changes only when track count/index changes.
+        let position = format!("{current}/{total}");
+        if self.position_label.text() != position.as_str() {
+            self.position_label.set_text(&position);
+        }
 
         let title = if info.title.is_empty() {
             info.identity.clone()
         } else {
             info.title.clone()
         };
+        // Marquee handles its own caching; keep calls stable and cheap.
         self.title_label.set_text(&title);
 
         if info.artist.is_empty() {
-            self.artist_label.set_text(" ");
-            self.artist_label.add_css_class("empty");
+            // Preserve label height with a placeholder while avoiding repeated updates.
+            if self.artist_label.text() != " " {
+                self.artist_label.set_text(" ");
+            }
+            // CSS class is used for muted styling; only toggle when needed.
+            if !self.artist_label.has_css_class("empty") {
+                self.artist_label.add_css_class("empty");
+            }
         } else {
-            self.artist_label.set_text(&info.artist);
-            self.artist_label.remove_css_class("empty");
+            // Avoid re-rendering when the artist string is unchanged.
+            if self.artist_label.text() != info.artist.as_str() {
+                self.artist_label.set_text(&info.artist);
+            }
+            // Remove muted styling once a real artist is available.
+            if self.artist_label.has_css_class("empty") {
+                self.artist_label.remove_css_class("empty");
+            }
         }
         self.artist_label.set_visible(true);
 
@@ -287,12 +307,22 @@ impl MediaCardWidgets {
         } else {
             "media-playback-start-symbolic"
         };
-        self.play_button.set_icon_name(icon_name);
+        // Only swap the icon when the playback state changes.
+        if self.play_button.icon_name().as_deref() != Some(icon_name) {
+            self.play_button.set_icon_name(icon_name);
+        }
 
-        self.play_button
-            .set_sensitive(info.can_play || info.can_pause);
-        self.next_button.set_sensitive(info.can_next);
-        self.prev_button.set_sensitive(info.can_prev);
+        // Sensitivity toggles are gated to minimize widget invalidation.
+        let can_play = info.can_play || info.can_pause;
+        if self.play_button.is_sensitive() != can_play {
+            self.play_button.set_sensitive(can_play);
+        }
+        if self.next_button.is_sensitive() != info.can_next {
+            self.next_button.set_sensitive(info.can_next);
+        }
+        if self.prev_button.is_sensitive() != info.can_prev {
+            self.prev_button.set_sensitive(info.can_prev);
+        }
 
         let next_uri = info.art_uri.clone();
         if *self.art_uri.borrow() != next_uri {
@@ -313,11 +343,17 @@ impl MediaCardWidgets {
             }
             *self.art_uri.borrow_mut() = next_uri;
         }
-        self.art.set_visible(true);
+        // Keep visibility flips minimal; art refresh is handled separately above.
+        if !self.art.is_visible() {
+            self.art.set_visible(true);
+        }
 
         if info.playback_status == "Playing" {
-            self.root.add_css_class("playing");
-        } else {
+            // Add/remove the playing class only when it actually changes.
+            if !self.root.has_css_class("playing") {
+                self.root.add_css_class("playing");
+            }
+        } else if self.root.has_css_class("playing") {
             self.root.remove_css_class("playing");
         }
     }

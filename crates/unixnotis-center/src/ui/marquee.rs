@@ -125,8 +125,21 @@ impl MarqueeLabel {
     }
 
     pub fn set_text(&self, text: &str) {
-        self.label.set_text(text);
+        self.set_text_inner(text, false);
+    }
+
+    pub fn set_text_force(&self, text: &str) {
+        // Force recomputation even when text is unchanged (used when layout limits change).
+        self.set_text_inner(text, true);
+    }
+
+    fn set_text_inner(&self, text: &str, force: bool) {
         let mut state = self.state.borrow_mut();
+        // Avoid resetting the marquee when the full text is identical.
+        // This prevents unnecessary redraws and keeps CPU usage stable.
+        if !force && state.full_text == text {
+            return;
+        }
         let char_limit = state.char_limit;
         state.enabled = char_limit > 0 && text.chars().count() > char_limit;
         state.reset_pending = true;
@@ -149,6 +162,9 @@ impl MarqueeLabel {
         if enabled {
             render_visible(&mut state, 0);
             self.label.set_text(&state.render_buf);
+        } else {
+            // Only set the raw text when the marquee is disabled to avoid redundant updates.
+            self.label.set_text(text);
         }
         drop(state);
 
@@ -169,7 +185,7 @@ impl MarqueeLabel {
         state.char_limit = char_limit;
         let full_text = state.full_text.clone();
         drop(state);
-        self.set_text(&full_text);
+        self.set_text_force(&full_text);
     }
 
     fn start_ticking(&self) {

@@ -116,9 +116,8 @@ impl UiState {
             // Only hit the compositor once per open when the cache is empty.
             // Keeps open latency stable while avoiding repeated IPC work.
             if self.config.panel.respect_work_area && self.work_area.is_none() {
-                self.work_area = super::hyprland::reserved_work_area_sync(
-                    self.config.panel.output.as_deref(),
-                );
+                self.work_area =
+                    super::hyprland::reserved_work_area_sync(self.config.panel.output.as_deref());
                 super::panel::apply_panel_config(&self.panel, &self.config, self.work_area);
             }
             // Only show the window after geometry is correct to avoid visible jitter.

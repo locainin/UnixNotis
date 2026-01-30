@@ -2,18 +2,19 @@
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use gtk::prelude::*;
+use gtk::CssProvider;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
-use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcCommand;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use gtk::prelude::*;
-use gtk::CssProvider;
 use unixnotis_core::util;
 use unixnotis_core::{
-    Config, ControlProxy, NotificationView, PanelDebugLevel, INHIBIT_SCOPE_ALL, INHIBIT_SCOPE_POPUPS,
+    Config, ControlProxy, NotificationView, PanelDebugLevel, INHIBIT_SCOPE_ALL,
+    INHIBIT_SCOPE_POPUPS,
 };
 use zbus::Connection;
 
@@ -219,10 +220,7 @@ fn run_css_check() -> Result<()> {
         return Err(anyhow!("config directory not found: {}", display_root));
     }
     if !config_dir.is_dir() {
-        return Err(anyhow!(
-            "config path is not a directory: {}",
-            display_root
-        ));
+        return Err(anyhow!("config path is not a directory: {}", display_root));
     }
     let css_files = collect_css_files(&config_dir)?;
     if css_files.is_empty() {
@@ -285,8 +283,7 @@ fn run_css_check() -> Result<()> {
     if warnings > 0 {
         println!(
             "css-check warnings: {} issue(s) under {}",
-            warnings,
-            display_root
+            warnings, display_root
         );
     }
 
