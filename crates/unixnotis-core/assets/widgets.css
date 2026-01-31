@@ -453,12 +453,165 @@
   font-family: "CaskaydiaCove Nerd Font Mono", "JetBrains Mono", monospace;
 }
 
+/*
+ * Calendar: "Neon Glass Ledger"
+ *
+ * Purpose: make the calendar read as a premium card while keeping retro cues.
+ */
 .unixnotis-calendar {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  box-shadow: none;
+  background-image:
+    radial-gradient(circle at 14% 18%, alpha(@unixnotis-accent, 0.16), transparent 55%),
+    linear-gradient(160deg, alpha(@unixnotis-card, 0.96), alpha(@unixnotis-surface, 0.98));
+  border: 1px solid alpha(@unixnotis-outline, 0.6);
+  border-radius: 18px;
+  padding: 10px 12px;
+  color: @unixnotis-text;
+  box-shadow:
+    0 18px 28px -22px alpha(#000000, 0.6),
+    0 0 18px -12px @unixnotis-glow-cyan,
+    inset 0 0 0 1px alpha(#ffffff, 0.05),
+    inset 0 -8px 16px -14px alpha(#000000, 0.5);
+}
+
+.unixnotis-calendar button {
+  /* Calendar nav controls are custom-styled so the arrow icons remain visible. */
+  background-image: linear-gradient(160deg, alpha(@unixnotis-action-bg, 0.8), alpha(@unixnotis-surface-strong, 0.9));
+  border-radius: 999px;
+  border: 1px solid alpha(@unixnotis-outline, 0.7);
+  padding: 3px;
+  min-width: 22px;
+  min-height: 22px;
+  color: @unixnotis-accent;
+  -gtk-icon-size: 12px;
+  -gtk-icon-style: symbolic;
+  -gtk-icon-shadow: 0 0 6px alpha(@unixnotis-accent, 0.45);
+  -gtk-icon-palette: success @unixnotis-accent, warning @unixnotis-accent, error @unixnotis-accent;
+  box-shadow:
+    0 8px 14px -12px alpha(#000000, 0.6),
+    inset 0 0 0 1px alpha(#ffffff, 0.06);
+}
+
+.unixnotis-calendar button:hover {
+  background-image: linear-gradient(160deg, alpha(@unixnotis-action-bg-hover, 0.78), alpha(@unixnotis-accent, 0.28));
+  border-color: alpha(@unixnotis-accent, 0.7);
+  color: @unixnotis-accent;
+}
+
+.unixnotis-calendar button:active {
+  background-image: linear-gradient(160deg, alpha(@unixnotis-action-bg-active, 0.74), alpha(@unixnotis-accent, 0.35));
+  border-color: alpha(@unixnotis-accent, 0.8);
+  color: @unixnotis-accent;
+}
+
+.unixnotis-calendar button:disabled {
+  color: alpha(@unixnotis-muted, 0.6);
+  border-color: alpha(@unixnotis-outline, 0.4);
+}
+
+.unixnotis-calendar button image,
+.unixnotis-calendar button label,
+.unixnotis-calendar button arrow,
+.unixnotis-calendar button .image,
+.unixnotis-calendar button .icon {
+  /* Force symbolic icons to render with the same contrast as text. */
+  color: inherit;
+  -gtk-icon-shadow: 0 0 0 transparent;
+  -gtk-icon-palette: success @unixnotis-text, warning @unixnotis-text, error @unixnotis-text;
+}
+
+.unixnotis-calendar .header button image,
+.unixnotis-calendar .header button label,
+.unixnotis-calendar .header button arrow {
+  /* Header arrows sometimes inherit muted colors; force the accent to ensure visibility. */
+  color: @unixnotis-accent;
+  -gtk-icon-shadow: 0 0 6px alpha(@unixnotis-accent, 0.35);
+}
+
+.unixnotis-calendar header > button:nth-child(1) {
+  /* Prev month */
+  -gtk-icon-source: -gtk-icontheme("go-previous-symbolic");
+  background-image:
+    -gtk-icontheme("go-previous-symbolic"),
+    linear-gradient(160deg, alpha(@unixnotis-action-bg, 0.8), alpha(@unixnotis-surface-strong, 0.9));
+  background-size: 12px 12px, auto;
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+}
+
+.unixnotis-calendar header > button:nth-child(3) {
+  /* Next month */
+  -gtk-icon-source: -gtk-icontheme("go-next-symbolic");
+  background-image:
+    -gtk-icontheme("go-next-symbolic"),
+    linear-gradient(160deg, alpha(@unixnotis-action-bg, 0.8), alpha(@unixnotis-surface-strong, 0.9));
+  background-size: 12px 12px, auto;
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+}
+
+.unixnotis-calendar header > button:nth-child(4) {
+  /* Prev year */
+  -gtk-icon-source: -gtk-icontheme("go-down-symbolic");
+  background-image:
+    -gtk-icontheme("go-down-symbolic"),
+    linear-gradient(160deg, alpha(@unixnotis-action-bg, 0.8), alpha(@unixnotis-surface-strong, 0.9));
+  background-size: 12px 12px, auto;
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+}
+
+.unixnotis-calendar header > button:nth-child(6) {
+  /* Next year */
+  -gtk-icon-source: -gtk-icontheme("go-up-symbolic");
+  background-image:
+    -gtk-icontheme("go-up-symbolic"),
+    linear-gradient(160deg, alpha(@unixnotis-action-bg, 0.8), alpha(@unixnotis-surface-strong, 0.9));
+  background-size: 12px 12px, auto;
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+}
+
+.unixnotis-calendar .header {
+  color: @unixnotis-text;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid alpha(@unixnotis-outline, 0.5);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+
+.unixnotis-calendar .day-name {
+  color: alpha(@unixnotis-muted, 0.9);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.unixnotis-calendar .day-number {
+  color: @unixnotis-text;
+  font-weight: 600;
+}
+
+.unixnotis-calendar .day-number.other-month {
+  color: alpha(@unixnotis-muted, 0.45);
+}
+
+.unixnotis-calendar:selected,
+.unixnotis-calendar .day-number:selected {
+  background-image: linear-gradient(135deg, alpha(@unixnotis-accent, 0.85), alpha(@unixnotis-accent-2, 0.75));
+  color: #0b1020;
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 1px alpha(@unixnotis-accent, 0.5),
+    0 10px 16px -12px alpha(@unixnotis-accent, 0.7);
+}
+
+.unixnotis-calendar .day-number.today {
+  box-shadow:
+    inset 0 0 0 1px alpha(@unixnotis-accent-2, 0.45),
+    0 0 12px -10px @unixnotis-glow-pink;
+  border-radius: 8px;
 }
 
 .unixnotis-info-card-weather {
