@@ -1,9 +1,11 @@
 //! CSS file loading helpers with fallback and override handling.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use gtk::CssProvider;
+use gtk::gio;
+use gtk::prelude::FileExt;
 use tracing::warn;
 
 /// Load CSS into a provider, applying overrides and falling back to defaults.
@@ -28,7 +30,9 @@ pub(crate) fn load_provider_with_overrides(
                 } else {
                     format!("{fallback}\n{overrides}")
                 };
-                provider.load_from_data(&merged);
+                // Relative url(...) assets break when CSS is loaded from raw bytes,
+                // so rebase them against the stylesheet path before GTK sees the data
+                provider.load_from_data(&rebase_relative_css_asset_urls(&merged, path));
                 return;
             }
             let is_default = contents.trim() == fallback.trim();
@@ -40,7 +44,8 @@ pub(crate) fn load_provider_with_overrides(
             } else {
                 format!("{overrides}\n{contents}")
             };
-            provider.load_from_data(&merged);
+            // The provider still loads merged data, but the asset URLs now point at real files
+            provider.load_from_data(&rebase_relative_css_asset_urls(&merged, path));
         }
         Err(err) => {
             let file = path
@@ -57,11 +62,13 @@ pub(crate) fn load_provider_with_overrides(
                 fallback.to_string()
             };
             if overrides.trim().is_empty() {
-                provider.load_from_data(&fallback);
+                // Fallback CSS can carry relative assets too, so it needs the same rebasing path
+                provider.load_from_data(&rebase_relative_css_asset_urls(&fallback, path));
                 return;
             }
             let merged = format!("{fallback}\n{overrides}");
-            provider.load_from_data(&merged);
+            // Overrides are merged before rebasing so later asset refs all see one final stylesheet
+            provider.load_from_data(&rebase_relative_css_asset_urls(&merged, path));
         }
     }
 }
@@ -84,4 +91,225 @@ pub(crate) fn ensure_base_tokens(contents: &str, path: &Path) -> String {
 @define-color unixnotis-surface-strong-base @unixnotis-surface-strong;
 @define-color unixnotis-card-base @unixnotis-card;"#,
     )
+}
+
+fn rebase_relative_css_asset_urls(contents: &str, css_path: &Path) -> String {
+    let mut rewritten = String::with_capacity(contents.len());
+    let mut last_index = 0usize;
+
+    // Each url(...) payload is inspected in-place so the rest of the stylesheet stays untouched
+    for span in collect_url_spans(contents) {
+        rewritten.push_str(&contents[last_index..span.value_start]);
+        if let Some(asset_uri) = rebase_relative_asset_ref_to_file_uri(&span.value, css_path) {
+            rewritten.push_str(&asset_uri);
+        } else {
+            rewritten.push_str(&span.value);
+        }
+        last_index = span.value_end;
+    }
+
+    rewritten.push_str(&contents[last_index..]);
+    rewritten
+}
+
+fn rebase_relative_asset_ref_to_file_uri(asset_ref: &str, css_path: &Path) -> Option<String> {
+    let trimmed = asset_ref.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let lowered = trimmed.to_ascii_lowercase();
+    if lowered.starts_with("data:")
+        || lowered.starts_with("http://")
+        || lowered.starts_with("https://")
+        || lowered.starts_with("file://")
+    {
+        // Data, remote, and already-absolute file URLs should pass through exactly as written
+        return None;
+    }
+
+    let relative = Path::new(trimmed);
+    if relative.is_absolute() {
+        // Absolute filesystem paths are already explicit and do not need CSS rebasing here
+        return None;
+    }
+
+    // Relative CSS asset refs are anchored to the stylesheet directory, not the process cwd
+    let base_dir = css_path.parent()?;
+    let resolved = normalize_lexical_path(&base_dir.join(relative));
+    // GTK understands file:// URIs even when the provider is loaded from raw merged CSS bytes
+    Some(gio::File::for_path(resolved).uri().to_string())
+}
+
+fn collect_url_spans(css_text: &str) -> Vec<UrlValueSpan> {
+    let bytes = css_text.as_bytes();
+    let mut spans = Vec::new();
+    let mut index = 0usize;
+    let mut in_comment = false;
+
+    // Byte-based scanning keeps the rewrite ranges exact when the stylesheet is rebuilt
+    while index < bytes.len() {
+        if in_comment {
+            // Comment bodies should never produce fake url(...) matches
+            if index + 1 < bytes.len() && bytes[index] == b'*' && bytes[index + 1] == b'/' {
+                in_comment = false;
+                index += 2;
+                continue;
+            }
+            index += 1;
+            continue;
+        }
+
+        if index + 1 < bytes.len() && bytes[index] == b'/' && bytes[index + 1] == b'*' {
+            in_comment = true;
+            index += 2;
+            continue;
+        }
+
+        if starts_with_url(bytes, index) {
+            let open_index = index + 4;
+            let Some((span, next_index)) = parse_url_value(css_text, open_index) else {
+                break;
+            };
+            spans.push(span);
+            index = next_index;
+            continue;
+        }
+
+        index += 1;
+    }
+
+    spans
+}
+
+fn starts_with_url(bytes: &[u8], index: usize) -> bool {
+    // ASCII-only matching avoids slicing through UTF-8 code points
+    index + 4 <= bytes.len()
+        && bytes[index].eq_ignore_ascii_case(&b'u')
+        && bytes[index + 1].eq_ignore_ascii_case(&b'r')
+        && bytes[index + 2].eq_ignore_ascii_case(&b'l')
+        && bytes[index + 3] == b'('
+}
+
+struct UrlValueSpan {
+    // Raw url(...) payload after outer quotes and spacing are stripped away
+    value: String,
+    // Byte range inside the original CSS string where the payload lived
+    value_start: usize,
+    value_end: usize,
+}
+
+fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usize)> {
+    let bytes = input.as_bytes();
+    let mut index = open_index;
+
+    // Leading spaces after url( are ignored so stored payloads stay clean
+    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+        index += 1;
+    }
+    if index >= bytes.len() {
+        return None;
+    }
+
+    let mut value = String::new();
+    let mut value_end;
+    let mut quote = None::<u8>;
+    if matches!(bytes[index], b'\'' | b'"') {
+        // Quoted URLs keep the quote out of the stored payload and later rewrite
+        quote = Some(bytes[index]);
+        index += 1;
+    }
+    let value_start = index;
+    value_end = index;
+
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if let Some(open_quote) = quote {
+            if byte == open_quote {
+                quote = None;
+            } else {
+                value.push(byte as char);
+                value_end = index + 1;
+            }
+            index += 1;
+            continue;
+        }
+
+        match byte {
+            b')' => {
+                // Closing paren ends the payload and returns the exact slice that was replaced
+                return Some((
+                    UrlValueSpan {
+                        value: value.trim().to_string(),
+                        value_start,
+                        value_end,
+                    },
+                    index + 1,
+                ));
+            }
+            b'\'' | b'"' => {
+                // Malformed unquoted URLs still keep their bytes so the final CSS stays readable
+                value.push(byte as char);
+                value_end = index + 1;
+            }
+            _ => {
+                value.push(byte as char);
+                if !byte.is_ascii_whitespace() || !value.trim().is_empty() {
+                    value_end = index + 1;
+                }
+            }
+        }
+        index += 1;
+    }
+
+    None
+}
+
+fn normalize_lexical_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(Path::new("/")),
+            Component::CurDir => {}
+            Component::Normal(part) => normalized.push(part),
+            Component::ParentDir => match normalized.components().next_back() {
+                Some(Component::Normal(_)) => {
+                    // One parent segment cancels one earlier normal segment when that is possible
+                    normalized.pop();
+                }
+                Some(Component::RootDir) | Some(Component::Prefix(_)) => {}
+                // Leading `..` must be preserved when there is nothing earlier to fold away
+                _ => normalized.push(".."),
+            },
+        }
+    }
+    normalized
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rebase_relative_css_asset_urls;
+    use std::path::Path;
+
+    #[test]
+    fn rebases_relative_css_asset_urls_to_file_uris() {
+        let css = ".card { background-image: url(\"../assets/example-image.png\"); }";
+        let css_path = Path::new("/tmp/unixnotis/themes/widgets.css");
+
+        let rebased = rebase_relative_css_asset_urls(css, css_path);
+
+        assert!(rebased.contains("file:///tmp/unixnotis/assets/example-image.png"));
+    }
+
+    #[test]
+    fn keeps_absolute_and_remote_css_asset_urls_unchanged() {
+        let css = ".a { background-image: url(\"file:///tmp/outside.png\"); }\n.b { background-image: url(\"https://example.com/test.png\"); }";
+        let css_path = Path::new("/tmp/unixnotis/widgets.css");
+
+        let rebased = rebase_relative_css_asset_urls(css, css_path);
+
+        assert!(rebased.contains("file:///tmp/outside.png"));
+        assert!(rebased.contains("https://example.com/test.png"));
+    }
 }
