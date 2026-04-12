@@ -171,6 +171,7 @@ fn export_rejects_outside_css_asset_refs_in_noninteractive_runs() {
             ))
         },
         |_leaks| Ok(false),
+        |_leaks| Ok(false),
     )
     .expect_err("reject outside css asset refs without confirmation");
 
@@ -203,6 +204,7 @@ fn export_can_rewrite_host_specific_command_paths_in_bundle_config() {
         false,
         |_refs| Ok(()),
         |_leaks| Ok(true),
+        |_leaks| Ok(false),
     )
     .expect("export with rewrite");
 
@@ -244,6 +246,7 @@ fn export_can_keep_host_specific_command_paths_when_fix_is_declined() {
         false,
         |_refs| Ok(()),
         |_leaks| Ok(false),
+        |_leaks| Ok(false),
     )
     .expect("export without rewrite");
 
@@ -256,4 +259,55 @@ fn export_can_keep_host_specific_command_paths_when_fix_is_declined() {
     let config_text = std::str::from_utf8(&config_file.contents).expect("utf8 config");
 
     assert!(config_text.contains(&script_path.display().to_string()));
+}
+
+#[test]
+fn export_can_rewrite_host_specific_css_asset_refs_to_css_relative_paths() {
+    // Shared presets should rewrite host-local CSS URLs into portable stylesheet-relative paths
+    let root = TempDirGuard::new("host-specific-css-asset");
+    let asset_relative = "assets/example-image.png";
+    let stylesheet_relative = "themes/widgets.css";
+    let asset_path = root.path.join(asset_relative);
+    root.write(
+        "config.toml",
+        "[theme]\nbase_css = \"themes/widgets.css\"\npanel_css = \"panel.css\"\npopup_css = \"popup.css\"\nwidgets_css = \"themes/widgets.css\"\nmedia_css = \"media.css\"\n",
+    );
+    root.write(
+        stylesheet_relative,
+        &format!(
+            ".card {{ background-image: url(\"file://{}\"); }}\n",
+            asset_path.display()
+        ),
+    );
+    root.write("panel.css", ".panel { color: red; }");
+    root.write("popup.css", ".popup { color: red; }");
+    root.write("media.css", ".media { color: red; }");
+    root.write(asset_relative, "png");
+
+    let bundle_path = root.path.join("demo.unixnotis");
+    let summary = export_preset_from_with_confirm(
+        &root.path,
+        &bundle_path,
+        &[],
+        false,
+        |_refs| Ok(()),
+        |_leaks| Ok(false),
+        |_leaks| Ok(true),
+    )
+    .expect("export with css rewrite");
+
+    assert_eq!(summary.file_count, 6);
+    let bundle = read_bundle(&bundle_path).expect("read bundle");
+    let css_file = bundle
+        .files
+        .iter()
+        .find(|file| file.relative_path == Path::new(stylesheet_relative))
+        .expect("bundled css");
+    let css_text = std::str::from_utf8(&css_file.contents).expect("utf8 css");
+
+    // The rewritten URL should be relative to the stylesheet location, not the machine home path
+    assert!(css_text.contains("../assets/example-image.png"));
+    assert!(!css_text.contains(&asset_path.display().to_string()));
+    let live_css = fs::read_to_string(root.path.join(stylesheet_relative)).expect("live css");
+    assert!(live_css.contains(&asset_path.display().to_string()));
 }

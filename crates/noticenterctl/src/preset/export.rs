@@ -19,12 +19,15 @@ use unixnotis_core::Config;
 use self::checks::validate_theme_paths_stay_in_root;
 use self::prompts::{
     confirm_export_external_css_refs, prompt_to_fix_host_specific_command_paths,
-    rewrite_host_specific_command_paths_if_requested,
+    prompt_to_fix_host_specific_css_asset_refs, rewrite_host_specific_command_paths_if_requested,
+    rewrite_host_specific_css_asset_refs_if_requested,
 };
 use super::archive::write_bundle;
 use super::command_rules::{validate_config_command_paths_stay_in_root, HostSpecificCommandPath};
 use super::config_root::{collect_config_files, override_collected_file_contents};
-use super::css_asset_refs::{collect_external_css_asset_refs_from_sources, ExternalCssAssetRef};
+use super::css_asset_refs::{
+    collect_external_css_asset_refs_from_collected, ExternalCssAssetRef, HostSpecificCssAssetRef,
+};
 use super::manifest::{PresetManifest, PresetManifestFile};
 use super::pathing::{
     bundle_name_from_path, format_relative_path, parse_except_paths, resolve_cli_bundle_path,
@@ -84,20 +87,23 @@ pub(super) fn export_preset_from(
         force,
         confirm_export_external_css_refs,
         prompt_to_fix_host_specific_command_paths,
+        prompt_to_fix_host_specific_css_asset_refs,
     )
 }
 
-fn export_preset_from_with_confirm<F, G>(
+fn export_preset_from_with_confirm<F, G, H>(
     config_dir: &Path,
     output_path: &Path,
     except: &[String],
     force: bool,
     confirm_external_css_refs: F,
     prompt_fix_host_specific_command_paths: G,
+    prompt_fix_host_specific_css_asset_refs: H,
 ) -> Result<ExportSummary>
 where
     F: FnOnce(&[ExternalCssAssetRef]) -> Result<()>,
     G: FnOnce(&[HostSpecificCommandPath]) -> Result<bool>,
+    H: FnOnce(&[HostSpecificCssAssetRef]) -> Result<bool>,
 {
     // Tests can inject a fixed answer here so they do not depend on terminal state
     // The orchestrator stays narrow so export-specific checks and prompts can live beside it
@@ -198,9 +204,21 @@ where
         );
     }
 
+    let leaked_css_asset_refs = rewrite_host_specific_css_asset_refs_if_requested(
+        config_dir,
+        &mut collected,
+        prompt_fix_host_specific_css_asset_refs,
+    )?;
+    if !leaked_css_asset_refs.is_empty() {
+        eprintln!(
+            "preset export note: rewrote {} host-specific CSS asset reference(s) in the bundled stylesheet(s)",
+            leaked_css_asset_refs.len()
+        );
+    }
+
     // Warn before writing the bundle when shared CSS depends on outside assets
     let external_css_refs =
-        collect_external_css_asset_refs_from_sources(config_dir, &collected.files)?;
+        collect_external_css_asset_refs_from_collected(config_dir, &collected.files)?;
     confirm_external_css_refs(&external_css_refs)?;
 
     let manifest_files = collected

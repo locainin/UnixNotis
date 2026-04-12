@@ -24,6 +24,16 @@ pub(crate) struct ExternalCssAssetRef {
     pub(crate) reason: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HostSpecificCssAssetRef {
+    // CSS file that carried the host-local config path
+    pub(crate) css_file: PathBuf,
+    // Raw url(...) payload as written in the stylesheet
+    pub(crate) asset_ref: String,
+    // Replacement path written into the bundled stylesheet
+    pub(crate) rewritten_ref: String,
+}
+
 pub(super) fn collect_external_css_asset_refs_from_bundle(
     config_dir: &Path,
     files: &[BundleFile],
@@ -47,19 +57,19 @@ pub(super) fn collect_external_css_asset_refs_from_bundle(
     refs
 }
 
-pub(super) fn collect_external_css_asset_refs_from_sources(
+pub(super) fn collect_external_css_asset_refs_from_collected(
     config_dir: &Path,
     files: &[PresetFileSource],
 ) -> Result<Vec<ExternalCssAssetRef>> {
     let mut refs = Vec::new();
 
-    // Export scans live files from disk so the warning matches the bundle that would be written
+    // Export may already have in-memory overrides, so scan the effective bundle bytes here
     for file in files {
         if !has_css_extension(&file.relative_path) {
             continue;
         }
-        let css_text = std::fs::read_to_string(&file.source_path)
-            .with_context(|| format!("read css file {}", file.source_path.display()))?;
+
+        let css_text = read_css_text(file)?;
         refs.extend(collect_external_refs_from_text(
             config_dir,
             &file.source_path,
@@ -68,6 +78,33 @@ pub(super) fn collect_external_css_asset_refs_from_sources(
     }
 
     Ok(refs)
+}
+
+pub(super) fn rewrite_host_specific_css_asset_refs_in_sources(
+    config_dir: &Path,
+    files: &mut [PresetFileSource],
+) -> Result<Vec<HostSpecificCssAssetRef>> {
+    let mut rewrites = Vec::new();
+
+    for file in files {
+        if !has_css_extension(&file.relative_path) {
+            continue;
+        }
+
+        let css_text = read_css_text(file)?;
+        let (rewritten_text, file_rewrites) =
+            rewrite_host_specific_refs_in_text(config_dir, &file.source_path, &css_text);
+        if file_rewrites.is_empty() {
+            continue;
+        }
+
+        // Export keeps the rewritten stylesheet in memory so the live file stays untouched
+        file.size = rewritten_text.len() as u64;
+        file.contents_override = Some(rewritten_text.into_bytes());
+        rewrites.extend(file_rewrites);
+    }
+
+    Ok(rewrites)
 }
 
 pub(crate) fn collect_external_css_asset_refs_from_paths(
@@ -108,6 +145,38 @@ fn collect_external_refs_from_text(
     refs
 }
 
+fn rewrite_host_specific_refs_in_text(
+    config_dir: &Path,
+    css_path: &Path,
+    css_text: &str,
+) -> (String, Vec<HostSpecificCssAssetRef>) {
+    let mut rewritten = String::with_capacity(css_text.len());
+    let mut rewrites = Vec::new();
+    let mut last_index = 0usize;
+
+    for span in collect_url_spans(css_text) {
+        rewritten.push_str(&css_text[last_index..span.value_start]);
+
+        if let Some(rewritten_ref) =
+            rewrite_host_specific_asset_ref(config_dir, css_path, &span.value)
+        {
+            rewritten.push_str(&rewritten_ref);
+            rewrites.push(HostSpecificCssAssetRef {
+                css_file: css_path.to_path_buf(),
+                asset_ref: span.value,
+                rewritten_ref,
+            });
+        } else {
+            rewritten.push_str(&span.value);
+        }
+
+        last_index = span.value_end;
+    }
+
+    rewritten.push_str(&css_text[last_index..]);
+    (rewritten, rewrites)
+}
+
 fn classify_external_asset_ref(
     config_dir: &Path,
     css_path: &Path,
@@ -145,6 +214,39 @@ fn classify_external_asset_ref(
     None
 }
 
+fn rewrite_host_specific_asset_ref(
+    config_dir: &Path,
+    css_path: &Path,
+    asset_ref: &str,
+) -> Option<String> {
+    let trimmed = asset_ref.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let asset_path = if let Some(path) = local_file_url_path(trimmed) {
+        path
+    } else {
+        let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
+        if !expanded.is_absolute() {
+            return None;
+        }
+        expanded
+    };
+
+    let normalized_root = normalize_lexical_path(config_dir);
+    let normalized_asset = normalize_lexical_path(&asset_path);
+    let relative_asset = normalized_asset.strip_prefix(&normalized_root).ok()?;
+
+    // CSS paths should stay stylesheet-relative so they work after import on any machine
+    let css_base_dir = css_path.parent().unwrap_or(config_dir);
+    let normalized_css_base = normalize_lexical_path(css_base_dir);
+    Some(relative_css_path(
+        &normalized_css_base,
+        &normalized_root.join(relative_asset),
+    ))
+}
+
 fn asset_path_reason(config_dir: &Path, candidate: &Path) -> Option<String> {
     let normalized_root = normalize_lexical_path(config_dir);
     let normalized_candidate = normalize_lexical_path(candidate);
@@ -165,23 +267,67 @@ fn local_file_url_path(value: &str) -> Option<PathBuf> {
 }
 
 fn collect_url_values(css_text: &str) -> Vec<String> {
-    let lowered = css_text.to_ascii_lowercase();
-    let mut values = Vec::new();
-    let mut search_from = 0usize;
-
-    while let Some(offset) = lowered[search_from..].find("url(") {
-        let open_index = search_from + offset + 4;
-        let Some((value, next_index)) = parse_url_value(css_text, open_index) else {
-            break;
-        };
-        values.push(value);
-        search_from = next_index;
-    }
-
-    values
+    collect_url_spans(css_text)
+        .into_iter()
+        .map(|span| span.value)
+        .collect()
 }
 
-fn parse_url_value(input: &str, open_index: usize) -> Option<(String, usize)> {
+struct UrlValueSpan {
+    value: String,
+    value_start: usize,
+    value_end: usize,
+}
+
+fn collect_url_spans(css_text: &str) -> Vec<UrlValueSpan> {
+    let bytes = css_text.as_bytes();
+    let mut spans = Vec::new();
+    let mut index = 0usize;
+    let mut in_comment = false;
+
+    while index < bytes.len() {
+        if in_comment {
+            if index + 1 < bytes.len() && bytes[index] == b'*' && bytes[index + 1] == b'/' {
+                in_comment = false;
+                index += 2;
+                continue;
+            }
+            index += 1;
+            continue;
+        }
+
+        if index + 1 < bytes.len() && bytes[index] == b'/' && bytes[index + 1] == b'*' {
+            in_comment = true;
+            index += 2;
+            continue;
+        }
+
+        if starts_with_url(bytes, index) {
+            let open_index = index + 4;
+            let Some((span, next_index)) = parse_url_value(css_text, open_index) else {
+                break;
+            };
+            spans.push(span);
+            index = next_index;
+            continue;
+        }
+
+        index += 1;
+    }
+
+    spans
+}
+
+fn starts_with_url(bytes: &[u8], index: usize) -> bool {
+    // URL matching stays ASCII-only so the scanner never slices through UTF-8 code points
+    index + 4 <= bytes.len()
+        && bytes[index].eq_ignore_ascii_case(&b'u')
+        && bytes[index + 1].eq_ignore_ascii_case(&b'r')
+        && bytes[index + 2].eq_ignore_ascii_case(&b'l')
+        && bytes[index + 3] == b'('
+}
+
+fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usize)> {
     let bytes = input.as_bytes();
     let mut index = open_index;
 
@@ -193,7 +339,15 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(String, usize)> {
     }
 
     let mut value = String::new();
+    let mut value_end;
     let mut quote = None::<u8>;
+    if matches!(bytes[index], b'\'' | b'"') {
+        quote = Some(bytes[index]);
+        index += 1;
+    }
+    let value_start = index;
+    value_end = index;
+
     while index < bytes.len() {
         let byte = bytes[index];
         if let Some(open_quote) = quote {
@@ -201,19 +355,34 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(String, usize)> {
                 quote = None;
             } else {
                 value.push(byte as char);
+                value_end = index + 1;
             }
             index += 1;
             continue;
         }
 
         match byte {
-            b'\'' | b'"' => {
-                quote = Some(byte);
-            }
             b')' => {
-                return Some((value.trim().to_string(), index + 1));
+                return Some((
+                    UrlValueSpan {
+                        value: value.trim().to_string(),
+                        value_start,
+                        value_end,
+                    },
+                    index + 1,
+                ));
             }
-            _ => value.push(byte as char),
+            b'\'' | b'"' => {
+                // Unquoted url(...) should stop at the closing paren
+                value.push(byte as char);
+                value_end = index + 1;
+            }
+            _ => {
+                value.push(byte as char);
+                if !byte.is_ascii_whitespace() || !value.trim().is_empty() {
+                    value_end = index + 1;
+                }
+            }
         }
         index += 1;
     }
@@ -257,6 +426,63 @@ fn has_css_extension(path: &Path) -> bool {
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.eq_ignore_ascii_case("css"))
         .unwrap_or(false)
+}
+
+fn read_css_text(file: &PresetFileSource) -> Result<String> {
+    if let Some(contents) = &file.contents_override {
+        return String::from_utf8(contents.clone())
+            .with_context(|| format!("decode css override {}", file.relative_path.display()));
+    }
+
+    std::fs::read_to_string(&file.source_path)
+        .with_context(|| format!("read css file {}", file.source_path.display()))
+}
+
+fn relative_css_path(base_dir: &Path, target_path: &Path) -> String {
+    let base_parts = base_dir
+        .components()
+        .filter_map(normal_component)
+        .collect::<Vec<_>>();
+    let target_parts = target_path
+        .components()
+        .filter_map(normal_component)
+        .collect::<Vec<_>>();
+
+    let mut shared = 0usize;
+    while shared < base_parts.len()
+        && shared < target_parts.len()
+        && base_parts[shared] == target_parts[shared]
+    {
+        shared += 1;
+    }
+
+    let mut relative = PathBuf::new();
+    for _ in shared..base_parts.len() {
+        relative.push("..");
+    }
+    for part in &target_parts[shared..] {
+        relative.push(part);
+    }
+
+    format_css_relative_path(&relative)
+}
+
+fn normal_component(component: std::path::Component<'_>) -> Option<String> {
+    match component {
+        std::path::Component::Normal(part) => Some(part.to_string_lossy().to_string()),
+        _ => None,
+    }
+}
+
+fn format_css_relative_path(path: &Path) -> String {
+    path.components()
+        .filter_map(|component| match component {
+            std::path::Component::ParentDir => Some("..".to_string()),
+            std::path::Component::Normal(part) => Some(part.to_string_lossy().to_string()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 #[cfg(test)]
