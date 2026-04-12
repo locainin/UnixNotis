@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use rustix::process::geteuid;
 use serde_json::Value;
 
 #[derive(Clone)]
@@ -227,7 +228,7 @@ fn is_unit_active(unit: &str) -> (bool, Option<String>) {
 
 fn pgrep_exact(name: &str) -> Vec<u32> {
     // Limit process discovery to the current user to avoid cross-user noise.
-    let uid = unsafe { libc::geteuid() };
+    let uid = geteuid().as_raw();
     let output = Command::new("pgrep")
         .args(["-x", "-u", &uid.to_string(), name])
         .output();

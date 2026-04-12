@@ -57,13 +57,42 @@ pub(crate) enum Command {
     ListInhibitors,
     // Validate theme CSS files without touching D-Bus.
     CssCheck,
+    // Export, inspect, or import a shareable preset bundle.
+    Preset {
+        #[command(subcommand)]
+        command: PresetCommand,
+    },
 }
 
 impl Command {
-    pub(crate) fn is_css_check(&self) -> bool {
-        // Helper keeps main logic concise and easy to scan.
-        matches!(self, Command::CssCheck)
+    pub(crate) fn is_local_only(&self) -> bool {
+        // Local-only commands should not fail just because D-Bus is unavailable.
+        matches!(self, Command::CssCheck | Command::Preset { .. })
     }
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum PresetCommand {
+    // Export the current config tree into one shareable bundle file.
+    Export {
+        output: String,
+        #[arg(long = "except", value_name = "PATH")]
+        except: Vec<String>,
+        #[arg(long)]
+        force: bool,
+    },
+    // Import a bundle into the current config tree.
+    Import {
+        input: String,
+        #[arg(long = "except", value_name = "PATH")]
+        except: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    // Print bundle metadata and included files without writing anything.
+    Inspect {
+        input: String,
+    },
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
@@ -198,5 +227,72 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_preset_export_with_repeated_except() {
+        // Repeated --except flags should preserve order for later filtering.
+        let args = Args::try_parse_from([
+            "noticenterctl",
+            "preset",
+            "export",
+            "anime.unixnotis",
+            "--except",
+            "installer.toml",
+            "--except",
+            "assets/bg.png",
+        ])
+        .expect("parse args");
+        match args.command {
+            Command::Preset {
+                command:
+                    PresetCommand::Export {
+                        output,
+                        except,
+                        force,
+                    },
+            } => {
+                assert_eq!(output, "anime.unixnotis");
+                assert_eq!(except, vec!["installer.toml", "assets/bg.png"]);
+                assert!(!force);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_preset_import_dry_run() {
+        // Dry-run import should parse without touching D-Bus.
+        let args = Args::try_parse_from([
+            "noticenterctl",
+            "preset",
+            "import",
+            "anime.unixnotis",
+            "--dry-run",
+        ])
+        .expect("parse args");
+        match args.command {
+            Command::Preset {
+                command:
+                    PresetCommand::Import {
+                        input,
+                        except,
+                        dry_run,
+                    },
+            } => {
+                assert_eq!(input, "anime.unixnotis");
+                assert!(except.is_empty());
+                assert!(dry_run);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn preset_commands_are_local_only() {
+        // Preset commands should bypass D-Bus setup like css-check does.
+        let args = Args::try_parse_from(["noticenterctl", "preset", "inspect", "anime.unixnotis"])
+            .expect("parse args");
+        assert!(args.command.is_local_only());
     }
 }

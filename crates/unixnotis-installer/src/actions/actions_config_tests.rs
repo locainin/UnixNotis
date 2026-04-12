@@ -81,8 +81,8 @@ fn remove_state_file_keeps_directory_when_not_empty() {
 fn cleanup_warning_message_flags_directory_inspection_failures() {
     // This covers the path where state.json is gone but read_dir fails afterward
     let root = PathBuf::from("target").join("unixnotis-installer-state-warning-test");
-    let warning = cleanup_warning_message(&root, DirCleanupOutcome::InspectFailed)
-        .expect("warning expected");
+    let warning =
+        cleanup_warning_message(&root, DirCleanupOutcome::InspectFailed).expect("warning expected");
 
     // The warning should explain which cleanup step failed
     assert!(warning.contains("failed to inspect state directory"));
@@ -94,8 +94,8 @@ fn cleanup_warning_message_flags_directory_inspection_failures() {
 fn cleanup_warning_message_flags_empty_directory_removal_failures() {
     // This covers the path where the dir looked empty but remove_dir still failed
     let root = PathBuf::from("target").join("unixnotis-installer-state-remove-warning-test");
-    let warning = cleanup_warning_message(&root, DirCleanupOutcome::RemoveFailed)
-        .expect("warning expected");
+    let warning =
+        cleanup_warning_message(&root, DirCleanupOutcome::RemoveFailed).expect("warning expected");
 
     // The warning should make it clear that the leftover path is the empty state dir
     assert!(warning.contains("failed to remove empty state directory"));

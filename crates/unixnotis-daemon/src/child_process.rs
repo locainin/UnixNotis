@@ -8,6 +8,8 @@ use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
+#[cfg(unix)]
+use rustix::process::{kill_process, set_parent_process_death_signal, Pid, Signal};
 use tokio::process::{Child, Command};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -255,7 +257,7 @@ async fn terminate_child(child: &mut Child, label: &str) {
 
     let pid = child.id().unwrap_or_default();
     #[cfg(unix)]
-    unsafe {
+    {
         let pid = match i32::try_from(pid) {
             Ok(pid) => pid,
             Err(_) => {
@@ -263,7 +265,9 @@ async fn terminate_child(child: &mut Child, label: &str) {
                 return;
             }
         };
-        libc::kill(pid, libc::SIGTERM);
+        if let Some(pid) = Pid::from_raw(pid) {
+            let _ = kill_process(pid, Signal::TERM);
+        }
     }
 
     let start = Instant::now();
@@ -324,10 +328,7 @@ fn apply_parent_death_signal(command: &mut Command) {
     // If the daemon dies, the UI child should not linger alone
     unsafe {
         command.as_std_mut().pre_exec(|| {
-            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
+            set_parent_process_death_signal(Some(Signal::TERM)).map_err(std::io::Error::from)
         });
     }
 }

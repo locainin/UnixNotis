@@ -87,6 +87,9 @@ pub(crate) async fn handle_command(proxy: &ControlProxy<'_>, command: Command) -
         Command::CssCheck => {
             // CSS validation is handled before D-Bus connection setup.
         }
+        Command::Preset { .. } => {
+            // Preset commands are handled before D-Bus connection setup.
+        }
     }
 
     Ok(())

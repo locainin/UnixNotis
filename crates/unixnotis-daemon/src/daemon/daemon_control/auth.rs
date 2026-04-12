@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::OnceLock;
 
+use rustix::process::geteuid;
 use sha2::{Digest, Sha256};
 use tracing::warn;
 use zbus::fdo::DBusProxy;
@@ -60,8 +61,7 @@ pub(super) async fn authorize_control_call(
 
     // Only the current desktop user can control panel behavior
     let caller_uid = proxy.get_connection_unix_user(bus_name.clone()).await?;
-    // SAFETY: `geteuid` is thread-safe and has no memory ownership requirements
-    let expected_uid = unsafe { libc::geteuid() };
+    let expected_uid = geteuid().as_raw();
     if caller_uid != expected_uid {
         warn!(
             method,
