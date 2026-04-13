@@ -2,6 +2,7 @@
 
 mod coalesced;
 mod delayed;
+mod metrics;
 #[cfg(test)]
 mod tests;
 
@@ -16,6 +17,7 @@ use crate::debug;
 
 use self::coalesced::CoalescedRefreshQueue;
 use self::delayed::DelayedSlowQueue;
+use self::metrics::CommandQueueMetrics;
 use super::command_exec::{build_command_runtime, run_command_with_timeout};
 use super::{CommandKind, CommandPlan};
 
@@ -83,6 +85,8 @@ pub(super) fn enqueue_command(
     respond: Option<async_channel::Sender<Result<std::process::Output, std::io::Error>>>,
 ) {
     let worker = CommandWorker::global();
+    let metrics = CommandQueueMetrics::global();
+    metrics.record_enqueued();
     if worker.inline_fallback {
         // Try one extra thread before using inline work
         if std::thread::Builder::new()
@@ -127,11 +131,18 @@ pub(super) fn enqueue_command(
         let delayed = DelayedSlowQueue::global();
         delayed.ensure_drain_thread(worker);
         match delayed.submit(job, jitter) {
-            Ok(()) => return,
+            Ok(()) => {
+                metrics.record_delayed();
+                return;
+            }
             Err(job) => {
                 // If full, skip jitter and run now
+                metrics.record_delayed_bypassed();
                 if should_warn_queue_full() {
-                    warn!("delayed slow queue full; dispatching command without jitter");
+                    warn!(
+                        snapshot = %metrics.snapshot().summary(),
+                        "delayed slow queue full; dispatching command without jitter"
+                    );
                 }
                 dispatch_ready_job(worker, job);
                 return;
@@ -143,25 +154,46 @@ pub(super) fn enqueue_command(
 }
 
 pub(super) fn dispatch_ready_job(worker: &CommandWorker, job: CommandJob) {
+    let metrics = CommandQueueMetrics::global();
     // Normal worker entry point
     match worker.tx.try_send(job) {
         Ok(()) => {}
         Err(channel::TrySendError::Full(job)) => {
             // Keep memory bounded and actions responsive
             if job.plan.kind == CommandKind::Action {
+                metrics.record_action_overflow();
                 if should_warn_queue_full() {
-                    warn!("command queue full; routing action to fallback worker");
+                    warn!(
+                        snapshot = %metrics.snapshot().summary(),
+                        "command queue full; routing action to fallback worker"
+                    );
                 }
-                if FallbackWorker::global().submit(job).is_err() && should_warn_queue_full() {
-                    warn!("fallback command queue full; dropping action");
+                if FallbackWorker::global().submit(job).is_err() {
+                    metrics.record_action_dropped();
+                    if should_warn_queue_full() {
+                        warn!(
+                            snapshot = %metrics.snapshot().summary(),
+                            "fallback command queue full; dropping action"
+                        );
+                    }
                 }
             } else {
+                metrics.record_refresh_overflow();
                 if should_warn_queue_full() {
-                    warn!("command queue full; coalescing refresh command");
+                    warn!(
+                        snapshot = %metrics.snapshot().summary(),
+                        "command queue full; coalescing refresh command"
+                    );
                 }
                 let coalescer = CoalescedRefreshQueue::global();
                 coalescer.ensure_drain_thread(worker.tx.clone());
-                coalescer.enqueue(job);
+                let outcome = coalescer.enqueue(job);
+                if outcome.replaced_existing {
+                    metrics.record_refresh_replaced();
+                }
+                if outcome.evicted_oldest {
+                    metrics.record_refresh_evicted();
+                }
             }
         }
         Err(channel::TrySendError::Disconnected(_job)) => {

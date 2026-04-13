@@ -13,7 +13,6 @@ use std::sync::Arc;
 
 use gtk::prelude::*;
 use gtk::Align;
-use tracing::warn;
 use unixnotis_core::PanelDebugLevel;
 use unixnotis_core::SliderWidgetConfig;
 
@@ -21,7 +20,7 @@ use self::refresh::{request_refresh, SliderRefreshGate, SliderRefreshMeta, Slide
 use self::schedule::schedule_command;
 use super::slider_icons::resolve_slider_icon_name;
 use super::slider_parse::format_value;
-use super::{run_command_capture_action_async, start_command_watch, CommandWatch};
+use super::{run_action_command_with_completion, start_command_watch, CommandWatch};
 use crate::debug;
 
 pub struct CommandSlider {
@@ -29,10 +28,10 @@ pub struct CommandSlider {
     pub root: gtk::Box,
     // Interactive value control
     scale: gtk::Scale,
-    // Human-readable percentage label
+    // Text label for the current slider value
     value_label: gtk::Label,
-    // Icon button used for mute/toggle actions when configured
-    icon_button: gtk::Button,
+    // Icon image is reused by both clickable and static slider variants
+    icon_image: gtk::Image,
     // Default icon shown when slider is not muted
     icon_name: String,
     // Optional icon variant for muted state
@@ -58,10 +57,9 @@ impl CommandSlider {
 
         // Resolve icon upfront so themes without exact names still render valid glyphs
         let icon_name = resolve_slider_icon_name(&config.label, &config.icon);
-        let icon_button = gtk::Button::from_icon_name(&icon_name);
-        icon_button.add_css_class("unixnotis-quick-slider-icon");
-        icon_button.set_valign(Align::Center);
-        icon_button.set_halign(Align::Center);
+        let icon_image = gtk::Image::from_icon_name(&icon_name);
+        icon_image.set_valign(Align::Center);
+        icon_image.set_halign(Align::Center);
 
         let scale = gtk::Scale::with_range(
             gtk::Orientation::Horizontal,
@@ -73,19 +71,16 @@ impl CommandSlider {
         scale.set_hexpand(true);
         scale.set_vexpand(false);
         scale.set_valign(Align::Center);
-        // Ensure GTK gets a non-negative minimum size to avoid layout warnings
+        // One size request is enough here and keeps the layout less rigid
         scale.set_size_request(180, 24);
-        scale.set_width_request(180);
-        scale.set_height_request(24);
         scale.add_css_class("unixnotis-quick-slider-scale");
 
-        let value_label = gtk::Label::new(Some("0%"));
+        // Keep the first frame neutral so generic sliders do not imply a percent value
+        let value_label = gtk::Label::new(Some("----"));
         value_label.add_css_class("unixnotis-quick-slider-value");
         value_label.set_valign(Align::Center);
         value_label.set_xalign(1.0);
         value_label.set_width_chars(4);
-
-        root.append(&icon_button);
         root.append(&scale);
         root.append(&value_label);
 
@@ -114,53 +109,58 @@ impl CommandSlider {
 
         if let Some(toggle_cmd) = config.toggle_cmd.as_ref() {
             let cmd = toggle_cmd.clone();
+            let icon_button = gtk::Button::new();
+            icon_button.set_child(Some(&icon_image));
+            icon_button.add_css_class("unixnotis-quick-slider-icon");
+            icon_button.set_valign(Align::Center);
+            icon_button.set_halign(Align::Center);
+            root.prepend(&icon_button);
+
             let scale_weak = scale.downgrade();
             let label_weak = value_label.downgrade();
-            let icon_weak = icon_button.downgrade();
+            let icon_weak = icon_image.downgrade();
             let refresh_cmd = refresh_cmd.clone();
             let refresh_meta = refresh_meta.clone();
             icon_button.connect_clicked(move |_| {
-                // Refresh after the action completes instead of waiting a guessed delay
-                let rx = run_command_capture_action_async(&cmd);
-                let command = cmd.clone();
                 let scale_weak = scale_weak.clone();
                 let label_weak = label_weak.clone();
                 let icon_weak = icon_weak.clone();
                 let refresh_cmd = refresh_cmd.clone();
                 let refresh_meta = refresh_meta.clone();
-                glib::MainContext::default().spawn_local(async move {
-                    let failed = match rx.recv().await {
-                        Ok(Ok(output)) => !output.status.success(),
-                        Ok(Err(err)) => {
-                            warn!(?err, command = %command, "slider toggle command failed");
-                            true
+                run_action_command_with_completion(
+                    cmd.clone(),
+                    "slider toggle action",
+                    move |failed| {
+                        if failed {
+                            // Failed actions still need one refresh so UI snaps back to real state
+                            debug::log(PanelDebugLevel::Warn, || {
+                                format!(
+                                    "slider toggle action failed; forcing refresh cmd=\"{}\"",
+                                    refresh_cmd
+                                )
+                            });
                         }
-                        Err(_) => true,
-                    };
 
-                    if failed {
-                        // Failed actions still need one refresh so UI snaps back to real state
-                        debug::log(PanelDebugLevel::Warn, || {
-                            format!(
-                                "slider toggle action failed; forcing refresh cmd=\"{}\"",
-                                refresh_cmd
-                            )
-                        });
-                    }
-
-                    let Some(refresh) = build_refresh_state_from_weak(
-                        &scale_weak,
-                        &label_weak,
-                        &icon_weak,
-                        &refresh_meta,
-                    ) else {
-                        return;
-                    };
-                    request_refresh(refresh_cmd.clone(), min, max, step, parse_mode, refresh);
-                });
+                        let Some(refresh) = build_refresh_state_from_weak(
+                            &scale_weak,
+                            &label_weak,
+                            &icon_weak,
+                            &refresh_meta,
+                        ) else {
+                            return;
+                        };
+                        request_refresh(refresh_cmd.clone(), min, max, step, parse_mode, refresh);
+                    },
+                );
             });
         } else {
-            icon_button.set_sensitive(false);
+            // Non-toggle sliders still get the same icon shell without disabled button styling
+            let icon_frame = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            icon_frame.add_css_class("unixnotis-quick-slider-icon");
+            icon_frame.set_valign(Align::Center);
+            icon_frame.set_halign(Align::Center);
+            icon_frame.append(&icon_image);
+            root.prepend(&icon_frame);
         }
 
         let set_cmd = config.set_cmd.clone();
@@ -171,7 +171,7 @@ impl CommandSlider {
         let pending_value_guard = pending_value.clone();
         let scale_weak = scale.downgrade();
         let label_weak = value_label.downgrade();
-        let icon_weak = icon_button.downgrade();
+        let icon_weak = icon_image.downgrade();
         let label_clone = value_label.clone();
         scale.connect_value_changed(move |scale| {
             // Skip callback body when value is being updated programmatically
@@ -221,7 +221,7 @@ impl CommandSlider {
             root,
             scale,
             value_label,
-            icon_button,
+            icon_image,
             icon_name,
             icon_muted,
             config,
@@ -298,7 +298,7 @@ impl CommandSlider {
         SliderRefreshState {
             scale: self.scale.clone(),
             label: self.value_label.clone(),
-            icon_button: self.icon_button.clone(),
+            icon_image: self.icon_image.clone(),
             updating: self.updating.clone(),
             refresh_gen: self.refresh_gen.clone(),
             icon_name: self.icon_name.clone(),
@@ -311,17 +311,17 @@ impl CommandSlider {
 fn build_refresh_state_from_weak(
     scale: &glib::WeakRef<gtk::Scale>,
     label: &glib::WeakRef<gtk::Label>,
-    icon_button: &glib::WeakRef<gtk::Button>,
+    icon_image: &glib::WeakRef<gtk::Image>,
     refresh_meta: &SliderRefreshMeta,
 ) -> Option<SliderRefreshState> {
     // Widget teardown is normal, so stale async completions just stop here
     let scale = scale.upgrade()?;
     let label = label.upgrade()?;
-    let icon_button = icon_button.upgrade()?;
+    let icon_image = icon_image.upgrade()?;
     Some(SliderRefreshState {
         scale,
         label,
-        icon_button,
+        icon_image,
         updating: refresh_meta.updating.clone(),
         refresh_gen: refresh_meta.refresh_gen.clone(),
         icon_name: refresh_meta.icon_name.clone(),

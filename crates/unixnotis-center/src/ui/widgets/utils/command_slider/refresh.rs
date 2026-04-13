@@ -20,8 +20,8 @@ pub(super) struct SliderRefreshState {
     pub(super) scale: gtk::Scale,
     // Label kept in sync with the slider
     pub(super) label: gtk::Label,
-    // Icon button updated after refresh
-    pub(super) icon_button: gtk::Button,
+    // Icon image updated after refresh
+    pub(super) icon_image: gtk::Image,
     // Guard stops refresh writes from triggering another set command
     pub(super) updating: Rc<Cell<bool>>,
     // Generation drops stale async refresh results
@@ -164,7 +164,7 @@ fn start_refresh(
                                 } else {
                                     &refresh.icon_name
                                 };
-                                refresh.icon_button.set_icon_name(icon);
+                                refresh.icon_image.set_icon_name(Some(icon));
                             }
                         } else {
                             let snippet = util::log_snippet(stdout.trim());

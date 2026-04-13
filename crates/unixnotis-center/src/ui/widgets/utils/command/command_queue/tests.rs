@@ -27,11 +27,13 @@ fn coalesced_insert_replaces_existing_key() {
         order: VecDeque::new(),
     };
     insert_coalesced_job(&mut state, job("echo a", CommandKind::Fast));
-    insert_coalesced_job(&mut state, job("echo a", CommandKind::Fast));
+    let outcome = insert_coalesced_job(&mut state, job("echo a", CommandKind::Fast));
 
     // Same key keeps one slot
     assert_eq!(state.pending.len(), 1);
     assert_eq!(state.order.len(), 1);
+    assert!(outcome.replaced_existing);
+    assert!(!outcome.evicted_oldest);
 }
 
 #[test]
@@ -40,12 +42,37 @@ fn coalesced_insert_keeps_distinct_keys() {
         pending: HashMap::new(),
         order: VecDeque::new(),
     };
-    insert_coalesced_job(&mut state, job("echo a", CommandKind::Fast));
-    insert_coalesced_job(&mut state, job("echo a", CommandKind::Slow));
+    let first = insert_coalesced_job(&mut state, job("echo a", CommandKind::Fast));
+    let second = insert_coalesced_job(&mut state, job("echo a", CommandKind::Slow));
 
     // Fast and slow stay separate
     assert_eq!(state.pending.len(), 2);
     assert_eq!(state.order.len(), 2);
+    assert!(!first.replaced_existing);
+    assert!(!second.replaced_existing);
+}
+
+#[test]
+fn coalesced_insert_evicts_oldest_key_at_capacity() {
+    let mut state = CoalescedRefreshState {
+        pending: HashMap::new(),
+        order: VecDeque::new(),
+    };
+
+    for idx in 0..256 {
+        let cmd = format!("echo {idx}");
+        let outcome = insert_coalesced_job(&mut state, job(&cmd, CommandKind::Fast));
+        assert!(!outcome.evicted_oldest);
+    }
+
+    let outcome = insert_coalesced_job(&mut state, job("echo newest", CommandKind::Fast));
+
+    // Oldest key is dropped once capacity is reached
+    assert_eq!(state.pending.len(), 256);
+    assert_eq!(state.order.len(), 256);
+    assert!(outcome.evicted_oldest);
+    assert!(!state.pending.values().any(|job| job.cmd == "echo 0"));
+    assert!(state.pending.values().any(|job| job.cmd == "echo newest"));
 }
 
 #[test]

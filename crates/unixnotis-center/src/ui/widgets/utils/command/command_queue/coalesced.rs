@@ -47,6 +47,12 @@ pub(super) struct CoalescedRefreshQueue {
     wake: Condvar,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct CoalescedInsertOutcome {
+    pub(super) replaced_existing: bool,
+    pub(super) evicted_oldest: bool,
+}
+
 impl CoalescedRefreshQueue {
     pub(super) fn global() -> &'static Self {
         static QUEUE: OnceLock<CoalescedRefreshQueue> = OnceLock::new();
@@ -73,11 +79,12 @@ impl CoalescedRefreshQueue {
         });
     }
 
-    pub(super) fn enqueue(&self, job: CommandJob) {
+    pub(super) fn enqueue(&self, job: CommandJob) -> CoalescedInsertOutcome {
         let mut state = self.state.lock().expect("coalesced refresh lock poisoned");
         // Keep only the newest job for a key
-        insert_coalesced_job(&mut state, job);
+        let outcome = insert_coalesced_job(&mut state, job);
         self.wake.notify_one();
+        outcome
     }
 
     fn drain_loop(&'static self, worker_tx: channel::Sender<CommandJob>) {
@@ -126,13 +133,19 @@ impl CoalescedRefreshQueue {
     }
 }
 
-pub(super) fn insert_coalesced_job(state: &mut CoalescedRefreshState, job: CommandJob) {
+pub(super) fn insert_coalesced_job(
+    state: &mut CoalescedRefreshState,
+    job: CommandJob,
+) -> CoalescedInsertOutcome {
     let key = RefreshCommandKey::from_job(&job);
-    if !state.pending.contains_key(&key) {
+    let replaced_existing = state.pending.contains_key(&key);
+    let mut evicted_oldest = false;
+    if !replaced_existing {
         if state.pending.len() >= COALESCED_REFRESH_CAPACITY {
             if let Some(oldest) = state.order.pop_front() {
                 // Drop the oldest job when full
                 state.pending.remove(&oldest);
+                evicted_oldest = true;
             }
         }
         // First seen key goes to the back
@@ -140,4 +153,8 @@ pub(super) fn insert_coalesced_job(state: &mut CoalescedRefreshState, job: Comma
     }
     // Replacing the old job drops stale refresh work
     state.pending.insert(key, job);
+    CoalescedInsertOutcome {
+        replaced_existing,
+        evicted_oldest,
+    }
 }

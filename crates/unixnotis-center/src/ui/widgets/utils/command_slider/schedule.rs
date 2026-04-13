@@ -3,9 +3,8 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use super::super::run_command_capture_action_async;
+use super::super::run_action_command_with_completion;
 use super::value::format_command_value;
-use tracing::warn;
 use unixnotis_core::PanelDebugLevel;
 
 use crate::debug;
@@ -36,19 +35,9 @@ pub(super) fn schedule_command(
         let _ = pending_guard.borrow_mut().take();
         if let Some(value) = value {
             let formatted = cmd_template.replace("{value}", &format_command_value(value, step));
-            let rx = run_command_capture_action_async(&formatted);
-            let command = formatted.clone();
             let on_complete = on_complete.clone();
-            glib::MainContext::default().spawn_local(async move {
-                // Completion callback decides whether this action needs corrective refresh
-                let failed = match rx.recv().await {
-                    Ok(Ok(output)) => !output.status.success(),
-                    Ok(Err(err)) => {
-                        warn!(?err, command = %command, "slider set command failed");
-                        true
-                    }
-                    Err(_) => true,
-                };
+            // Completion callback decides whether this action needs corrective refresh
+            run_action_command_with_completion(formatted, "slider set action", move |failed| {
                 on_complete(failed);
             });
         }

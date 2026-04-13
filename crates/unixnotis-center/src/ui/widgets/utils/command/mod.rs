@@ -1,5 +1,6 @@
 //! Command execution, budgeting, and watch helpers for widgets.
 
+mod action;
 mod command_exec;
 mod command_parse;
 mod command_queue;
@@ -8,12 +9,12 @@ use std::io;
 use std::process::{Child, Output};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use tracing::warn;
 use unixnotis_core::util;
 use unixnotis_core::PanelDebugLevel;
 
 use crate::debug;
 
+pub(in crate::ui::widgets) use action::run_action_command_with_completion;
 use command_exec::build_command;
 use command_parse::is_probably_slow;
 use command_queue::enqueue_command;
@@ -104,25 +105,6 @@ pub(in crate::ui::widgets) fn resolve_command_plan(
     }
 }
 
-pub(in crate::ui::widgets) fn run_command(cmd: &str) {
-    // Whitespace-only command strings are rejected early to keep logs meaningful
-    let cmd = cmd.trim();
-    if cmd.is_empty() {
-        warn!("command was empty");
-        return;
-    }
-    // Fire-and-forget path for UI actions that do not need output capture.
-    debug::log(PanelDebugLevel::Verbose, || {
-        let snippet = util::log_snippet(cmd);
-        format!("enqueue action command: {snippet}")
-    });
-    enqueue_command(
-        cmd.to_string(),
-        resolve_command_plan(cmd, CommandKind::Action),
-        None,
-    );
-}
-
 pub(in crate::ui::widgets) fn run_command_capture_async(
     cmd: &str,
 ) -> async_channel::Receiver<Result<Output, io::Error>> {
@@ -189,29 +171,6 @@ pub(in crate::ui::widgets) fn run_command_capture_status_async(
     debug::log(PanelDebugLevel::Verbose, || {
         let snippet = util::log_snippet(cmd);
         format!("enqueue fast command: {snippet}")
-    });
-    enqueue_command(cmd.to_string(), plan, Some(tx));
-    rx
-}
-
-pub(in crate::ui::widgets) fn run_command_capture_action_async(
-    cmd: &str,
-) -> async_channel::Receiver<Result<Output, io::Error>> {
-    // Action capture keeps action timeout and queue priority while returning completion
-    let (tx, rx) = async_channel::bounded(1);
-    let cmd = cmd.trim();
-    if cmd.is_empty() {
-        // Keep the receiver behavior consistent with the non-empty path.
-        let _ = tx.send_blocking(Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "command was empty",
-        )));
-        return rx;
-    }
-    let plan = resolve_command_plan(cmd, CommandKind::Action);
-    debug::log(PanelDebugLevel::Verbose, || {
-        let snippet = util::log_snippet(cmd);
-        format!("enqueue action-capture command: {snippet}")
     });
     enqueue_command(cmd.to_string(), plan, Some(tx));
     rx

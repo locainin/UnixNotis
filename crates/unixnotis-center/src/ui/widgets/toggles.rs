@@ -13,7 +13,7 @@ use gtk::Align;
 use tracing::warn;
 use unixnotis_core::{PanelDebugLevel, ToggleWidgetConfig};
 
-use super::utils::{run_command, start_command_watch, CommandWatch};
+use super::utils::{run_action_command_with_completion, start_command_watch, CommandWatch};
 use crate::debug;
 
 mod css;
@@ -22,7 +22,7 @@ mod state;
 
 use self::css::toggle_kind_css_class;
 use self::icons::resolve_toggle_icon_name;
-use self::state::{refresh_toggle_state, schedule_toggle_refresh_with_retry};
+use self::state::{refresh_toggle_state, schedule_toggle_refresh_with_retry, ToggleRefreshGate};
 
 pub struct ToggleGrid {
     // FlowBox root is exposed to the panel layout
@@ -40,6 +40,8 @@ struct ToggleItem {
     guard: Rc<Cell<bool>>,
     // Monotonic generation token drops stale async refresh completions
     refresh_gen: Arc<AtomicU64>,
+    // Local gate keeps poll and watch bursts bounded
+    refresh_gate: ToggleRefreshGate,
     // Optional long-lived watch command handle for event-driven refresh paths
     watch_handle: Rc<RefCell<Option<CommandWatch>>>,
 }
@@ -111,6 +113,7 @@ impl ToggleItem {
         // Guard and generation tokens are per-item to isolate async updates
         let guard = Rc::new(Cell::new(false));
         let refresh_gen = Arc::new(AtomicU64::new(0));
+        let refresh_gate = ToggleRefreshGate::new();
 
         // Build base toggle card
         let button = gtk::ToggleButton::new();
@@ -183,18 +186,38 @@ impl ToggleItem {
             } else {
                 off_cmd.as_ref()
             };
-            if let Some(cmd) = command {
-                // Immediate command dispatch keeps UI interaction snappy
-                run_command(cmd);
-            }
+            // Expected tracks the immediate UI state chosen by the user
+            let expected = button.is_active();
+            let guard = guard_clone.clone();
+            let refresh_gen = refresh_gen_for_toggle.clone();
+            let button = button.clone();
 
-            // Reconcile optimistic UI state with command result via short bounded retries
-            if let Some(state_cmd) = state_cmd.clone() {
-                // Expected tracks the immediate UI state chosen by the user
-                let guard = guard_clone.clone();
-                let refresh_gen = refresh_gen_for_toggle.clone();
-                let button = button.clone();
-                let expected = button.is_active();
+            if let Some(cmd) = command.cloned() {
+                let state_cmd_for_retry = state_cmd.clone();
+                let label_for_retry = label.clone();
+                // Action completion is the clean handoff into retry-based reconciliation
+                run_action_command_with_completion(cmd, "toggle action", move |failed| {
+                    if failed {
+                        debug::log(PanelDebugLevel::Warn, || {
+                            format!(
+                                "toggle action failed; reconciling '{}' back to real state",
+                                label_for_retry
+                            )
+                        });
+                    }
+
+                    if let Some(state_cmd) = state_cmd_for_retry.clone() {
+                        schedule_toggle_refresh_with_retry(
+                            state_cmd,
+                            expected,
+                            button.clone(),
+                            guard.clone(),
+                            refresh_gen.clone(),
+                        );
+                    }
+                });
+            } else if let Some(state_cmd) = state_cmd.clone() {
+                // Command-free toggles still use the same reconcile path
                 schedule_toggle_refresh_with_retry(state_cmd, expected, button, guard, refresh_gen);
             }
         });
@@ -204,6 +227,7 @@ impl ToggleItem {
             button,
             guard,
             refresh_gen,
+            refresh_gate,
             watch_handle: Rc::new(RefCell::new(None)),
         };
         // Prime initial state once after widget construction
@@ -214,7 +238,13 @@ impl ToggleItem {
     fn refresh(&self) {
         // Items without state commands are display-only and skip refresh work
         if let Some(state_cmd) = self.config.state_cmd.as_ref() {
-            refresh_toggle_state(state_cmd, &self.button, &self.guard, &self.refresh_gen);
+            refresh_toggle_state(
+                state_cmd,
+                &self.button,
+                &self.guard,
+                &self.refresh_gen,
+                &self.refresh_gate,
+            );
         }
     }
 
@@ -263,10 +293,11 @@ impl ToggleItem {
         let button = self.button.clone();
         let guard = self.guard.clone();
         let refresh_gen = self.refresh_gen.clone();
+        let refresh_gate = self.refresh_gate.clone();
 
         // Watch callbacks trigger the same refresh path as polling so semantics stay identical
         start_command_watch(watch_cmd, move || {
-            refresh_toggle_state(&state_cmd, &button, &guard, &refresh_gen);
+            refresh_toggle_state(&state_cmd, &button, &guard, &refresh_gen, &refresh_gate);
         })
     }
 }

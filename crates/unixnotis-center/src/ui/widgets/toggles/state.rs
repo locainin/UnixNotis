@@ -11,20 +11,62 @@ use std::time::Duration;
 use gtk::glib;
 use gtk::prelude::*;
 use tracing::warn;
+use unixnotis_core::{util, PanelDebugLevel};
 
 use super::super::utils::run_command_capture_status_async;
+use crate::debug;
 
 // Staggered retry delays keep UI responsive without long-lived polling loops
 const TOGGLE_REFRESH_DELAYS_MS: &[u64] = &[0, 50, 100, 200, 400, 800];
+
+#[derive(Clone)]
+pub(super) struct ToggleRefreshGate {
+    // True while one state probe is already running
+    in_flight: Rc<Cell<bool>>,
+    // One trailing refresh is enough to cover watch bursts
+    pending: Rc<Cell<bool>>,
+}
+
+impl ToggleRefreshGate {
+    pub(super) fn new() -> Self {
+        Self {
+            in_flight: Rc::new(Cell::new(false)),
+            pending: Rc::new(Cell::new(false)),
+        }
+    }
+
+    fn begin_or_queue(&self) -> bool {
+        if self.in_flight.get() {
+            self.pending.set(true);
+            return false;
+        }
+        self.in_flight.set(true);
+        true
+    }
+
+    fn finish(&self) -> bool {
+        self.in_flight.set(false);
+        self.pending.replace(false)
+    }
+}
 
 pub(super) fn refresh_toggle_state(
     cmd: &str,
     button: &gtk::ToggleButton,
     guard: &Rc<Cell<bool>>,
     refresh_gen: &Arc<AtomicU64>,
+    refresh_gate: &ToggleRefreshGate,
 ) {
+    // Bursty watch events only need one running probe and one trailing probe
+    if !refresh_gate.begin_or_queue() {
+        let cmd_snip = util::log_snippet(cmd);
+        debug::log(PanelDebugLevel::Verbose, || {
+            format!("toggle refresh queued while in flight cmd=\"{cmd_snip}\"")
+        });
+        return;
+    }
+
     // Periodic refresh path keeps UI aligned with external command state
-    // Own the command string so spawned tasks stay self-contained
     let cmd = cmd.to_string();
 
     // Each refresh claims a generation so stale tasks cannot overwrite newer state
@@ -32,15 +74,23 @@ pub(super) fn refresh_toggle_state(
     let button = button.clone();
     let guard = guard.clone();
     let refresh_gen = Arc::clone(refresh_gen);
+    let refresh_gate = refresh_gate.clone();
+    let refresh_cmd = cmd.clone();
+    let cmd_snip = util::log_snippet(&cmd);
+    debug::log(PanelDebugLevel::Verbose, || {
+        format!("toggle refresh start cmd=\"{cmd_snip}\"")
+    });
 
     glib::MainContext::default().spawn_local(async move {
         // Single probe path is used for periodic refresh and watch-trigger refresh
         let Some(active) = fetch_toggle_state(&cmd, true).await else {
+            finish_toggle_refresh(refresh_cmd, button, guard, refresh_gen, refresh_gate);
             return;
         };
 
         // Drop stale result when a newer refresh has already started
         if refresh_gen.load(Ordering::Relaxed) != gen {
+            finish_toggle_refresh(refresh_cmd, button, guard, refresh_gen, refresh_gate);
             return;
         }
 
@@ -50,6 +100,8 @@ pub(super) fn refresh_toggle_state(
             button.set_active(active);
             guard.set(false);
         }
+
+        finish_toggle_refresh(refresh_cmd, button, guard, refresh_gen, refresh_gate);
     });
 }
 
@@ -151,6 +203,23 @@ async fn fetch_toggle_state(cmd: &str, log_failures: bool) -> Option<bool> {
     Some(active)
 }
 
+fn finish_toggle_refresh(
+    cmd: String,
+    button: gtk::ToggleButton,
+    guard: Rc<Cell<bool>>,
+    refresh_gen: Arc<AtomicU64>,
+    refresh_gate: ToggleRefreshGate,
+) {
+    // One queued refresh is enough to bring the toggle back to the newest state
+    if refresh_gate.finish() {
+        let cmd_snip = util::log_snippet(&cmd);
+        debug::log(PanelDebugLevel::Verbose, || {
+            format!("toggle refresh consumed pending request cmd=\"{cmd_snip}\"")
+        });
+        refresh_toggle_state(&cmd, &button, &guard, &refresh_gen, &refresh_gate);
+    }
+}
+
 fn parse_toggle_state(output: &str) -> bool {
     // Handle bluetoothctl style structured output first for predictable power semantics
     for line in output.lines() {
@@ -197,4 +266,40 @@ fn parse_toggle_state(output: &str) -> bool {
         .split(|ch: char| !ch.is_ascii_alphanumeric())
         // Any affirmative token is treated as enabled to handle mixed output formats
         .any(|token| matches!(token, "on" | "yes" | "true" | "enabled" | "up" | "active"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ToggleRefreshGate;
+
+    #[test]
+    fn refresh_gate_queues_one_trailing_refresh() {
+        let gate = ToggleRefreshGate::new();
+
+        assert!(gate.begin_or_queue());
+        assert!(!gate.begin_or_queue());
+        assert!(gate.finish());
+    }
+
+    #[test]
+    fn refresh_gate_clears_pending_after_finish() {
+        let gate = ToggleRefreshGate::new();
+
+        assert!(gate.begin_or_queue());
+        assert!(!gate.begin_or_queue());
+        assert!(gate.finish());
+        assert!(!gate.finish());
+        assert!(gate.begin_or_queue());
+    }
+
+    #[test]
+    fn refresh_gate_does_not_stack_multiple_pending_runs() {
+        let gate = ToggleRefreshGate::new();
+
+        assert!(gate.begin_or_queue());
+        assert!(!gate.begin_or_queue());
+        assert!(!gate.begin_or_queue());
+        assert!(gate.finish());
+        assert!(!gate.finish());
+    }
 }

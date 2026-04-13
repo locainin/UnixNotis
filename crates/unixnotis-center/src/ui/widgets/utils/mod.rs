@@ -17,7 +17,7 @@ mod watch;
 
 // Shared command helpers are scoped to widget internals
 pub(super) use command::{
-    run_command, run_command_capture_action_async, run_command_capture_async,
+    run_action_command_with_completion, run_command_capture_async,
     run_command_capture_status_async, run_command_capture_with_timeout_async,
 };
 // Public re-export keeps widget wrappers concise
