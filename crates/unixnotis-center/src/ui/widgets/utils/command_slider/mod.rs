@@ -10,18 +10,19 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
-use std::time::Duration;
 
-use glib::clone;
 use gtk::prelude::*;
 use gtk::Align;
+use tracing::warn;
+use unixnotis_core::PanelDebugLevel;
 use unixnotis_core::SliderWidgetConfig;
 
-use self::refresh::{refresh_inner, SliderRefreshMeta, SliderRefreshState};
+use self::refresh::{request_refresh, SliderRefreshGate, SliderRefreshMeta, SliderRefreshState};
 use self::schedule::schedule_command;
 use super::slider_icons::resolve_slider_icon_name;
 use super::slider_parse::format_value;
-use super::{run_command, start_command_watch, CommandWatch};
+use super::{run_command_capture_action_async, start_command_watch, CommandWatch};
+use crate::debug;
 
 pub struct CommandSlider {
     // Root widget embedded by higher-level widget wrappers
@@ -42,6 +43,8 @@ pub struct CommandSlider {
     updating: Rc<Cell<bool>>,
     // Generation token avoids stale async refresh races
     refresh_gen: Arc<AtomicU64>,
+    // Local gate keeps refresh bursts bounded
+    refresh_gate: SliderRefreshGate,
     // Optional watch command handle for event-driven refresh
     watch_handle: RefCell<Option<CommandWatch>>,
 }
@@ -91,6 +94,7 @@ impl CommandSlider {
         let pending = Rc::new(RefCell::new(None));
         let pending_value = Rc::new(Cell::new(None));
         let refresh_gen = Arc::new(AtomicU64::new(0));
+        let refresh_gate = SliderRefreshGate::new();
         let icon_muted = config
             .icon_muted
             .as_deref()
@@ -99,80 +103,75 @@ impl CommandSlider {
         let max = config.max;
         let step = config.step;
         let parse_mode = config.parse_mode;
+        let refresh_cmd = config.get_cmd.clone();
+        let refresh_meta = SliderRefreshMeta {
+            updating: updating.clone(),
+            refresh_gen: refresh_gen.clone(),
+            icon_name: icon_name.clone(),
+            icon_muted: icon_muted.clone(),
+            gate: refresh_gate.clone(),
+        };
 
         if let Some(toggle_cmd) = config.toggle_cmd.as_ref() {
             let cmd = toggle_cmd.clone();
-            let refresh_cmd = config.get_cmd.clone();
-            let refresh_meta = SliderRefreshMeta {
-                updating: updating.clone(),
-                refresh_gen: refresh_gen.clone(),
-                icon_name: icon_name.clone(),
-                icon_muted: icon_muted.clone(),
-            };
-            icon_button.connect_clicked(clone!(
-                #[weak]
-                icon_button,
-                #[weak]
-                scale,
-                #[weak]
-                value_label,
-                #[strong]
-                cmd,
-                #[strong]
-                refresh_cmd,
-                #[strong]
-                refresh_meta,
-                move |_| {
-                    // Weak widget captures avoid GTK reference cycles here
-                    run_command(&cmd);
-                    glib::timeout_add_local(
-                        Duration::from_millis(160),
-                        clone!(
-                            #[weak]
-                            icon_button,
-                            #[weak]
-                            scale,
-                            #[weak]
-                            value_label,
-                            #[strong]
-                            refresh_cmd,
-                            #[strong]
-                            refresh_meta,
-                            #[upgrade_or]
-                            glib::ControlFlow::Break,
-                            move || {
-                                // Rebuild widget state only after weak refs were upgraded
-                                let refresh = SliderRefreshState {
-                                    scale: scale.clone(),
-                                    label: value_label.clone(),
-                                    icon_button: icon_button.clone(),
-                                    updating: refresh_meta.updating.clone(),
-                                    refresh_gen: refresh_meta.refresh_gen.clone(),
-                                    icon_name: refresh_meta.icon_name.clone(),
-                                    icon_muted: refresh_meta.icon_muted.clone(),
-                                };
-                                refresh_inner(
-                                    refresh_cmd.clone(),
-                                    min,
-                                    max,
-                                    step,
-                                    parse_mode,
-                                    refresh,
-                                );
-                                glib::ControlFlow::Break
-                            }
-                        ),
-                    );
-                }
-            ));
+            let scale_weak = scale.downgrade();
+            let label_weak = value_label.downgrade();
+            let icon_weak = icon_button.downgrade();
+            let refresh_cmd = refresh_cmd.clone();
+            let refresh_meta = refresh_meta.clone();
+            icon_button.connect_clicked(move |_| {
+                // Refresh after the action completes instead of waiting a guessed delay
+                let rx = run_command_capture_action_async(&cmd);
+                let command = cmd.clone();
+                let scale_weak = scale_weak.clone();
+                let label_weak = label_weak.clone();
+                let icon_weak = icon_weak.clone();
+                let refresh_cmd = refresh_cmd.clone();
+                let refresh_meta = refresh_meta.clone();
+                glib::MainContext::default().spawn_local(async move {
+                    let failed = match rx.recv().await {
+                        Ok(Ok(output)) => !output.status.success(),
+                        Ok(Err(err)) => {
+                            warn!(?err, command = %command, "slider toggle command failed");
+                            true
+                        }
+                        Err(_) => true,
+                    };
+
+                    if failed {
+                        // Failed actions still need one refresh so UI snaps back to real state
+                        debug::log(PanelDebugLevel::Warn, || {
+                            format!(
+                                "slider toggle action failed; forcing refresh cmd=\"{}\"",
+                                refresh_cmd
+                            )
+                        });
+                    }
+
+                    let Some(refresh) = build_refresh_state_from_weak(
+                        &scale_weak,
+                        &label_weak,
+                        &icon_weak,
+                        &refresh_meta,
+                    ) else {
+                        return;
+                    };
+                    request_refresh(refresh_cmd.clone(), min, max, step, parse_mode, refresh);
+                });
+            });
         } else {
             icon_button.set_sensitive(false);
         }
 
         let set_cmd = config.set_cmd.clone();
+        let refresh_cmd_for_set = refresh_cmd.clone();
+        let refresh_meta_for_set = refresh_meta.clone();
         let updating_guard = updating.clone();
         let pending_guard = pending.clone();
         let pending_value_guard = pending_value.clone();
+        let scale_weak = scale.downgrade();
+        let label_weak = value_label.downgrade();
+        let icon_weak = icon_button.downgrade();
         let label_clone = value_label.clone();
         scale.connect_value_changed(move |scale| {
             // Skip callback body when value is being updated programmatically
@@ -187,6 +186,34 @@ impl CommandSlider {
                 set_cmd.clone(),
                 value,
                 step,
+                Rc::new({
+                    let scale_weak = scale_weak.clone();
+                    let label_weak = label_weak.clone();
+                    let icon_weak = icon_weak.clone();
+                    let refresh_cmd = refresh_cmd_for_set.clone();
+                    let refresh_meta = refresh_meta_for_set.clone();
+                    move |failed| {
+                        if !failed {
+                            return;
+                        }
+                        // Failed set actions should reconcile quickly instead of waiting for polling
+                        debug::log(PanelDebugLevel::Warn, || {
+                            format!(
+                                "slider set action failed; forcing refresh cmd=\"{}\"",
+                                refresh_cmd
+                            )
+                        });
+                        let Some(refresh) = build_refresh_state_from_weak(
+                            &scale_weak,
+                            &label_weak,
+                            &icon_weak,
+                            &refresh_meta,
+                        ) else {
+                            return;
+                        };
+                        request_refresh(refresh_cmd.clone(), min, max, step, parse_mode, refresh);
+                    }
+                }),
             );
         });
 
@@ -200,13 +227,14 @@ impl CommandSlider {
             config,
             updating,
             refresh_gen,
+            refresh_gate,
             watch_handle: RefCell::new(None),
         }
     }
 
     pub fn refresh(&self) {
         // Public refresh path delegates to shared async fetch routine
-        refresh_inner(
+        request_refresh(
             self.config.get_cmd.clone(),
             self.config.min,
             self.config.max,
@@ -254,7 +282,7 @@ impl CommandSlider {
         let step = self.config.step;
         let parse_mode = self.config.parse_mode;
         start_command_watch(cmd, move || {
-            refresh_inner(
+            request_refresh(
                 refresh_cmd.clone(),
                 min,
                 max,
@@ -275,6 +303,29 @@ impl CommandSlider {
             refresh_gen: self.refresh_gen.clone(),
             icon_name: self.icon_name.clone(),
             icon_muted: self.icon_muted.clone(),
+            gate: self.refresh_gate.clone(),
         }
     }
+}
+
+fn build_refresh_state_from_weak(
+    scale: &glib::WeakRef<gtk::Scale>,
+    label: &glib::WeakRef<gtk::Label>,
+    icon_button: &glib::WeakRef<gtk::Button>,
+    refresh_meta: &SliderRefreshMeta,
+) -> Option<SliderRefreshState> {
+    // Widget teardown is normal, so stale async completions just stop here
+    let scale = scale.upgrade()?;
+    let label = label.upgrade()?;
+    let icon_button = icon_button.upgrade()?;
+    Some(SliderRefreshState {
+        scale,
+        label,
+        icon_button,
+        updating: refresh_meta.updating.clone(),
+        refresh_gen: refresh_meta.refresh_gen.clone(),
+        icon_name: refresh_meta.icon_name.clone(),
+        icon_muted: refresh_meta.icon_muted.clone(),
+        gate: refresh_meta.gate.clone(),
+    })
 }

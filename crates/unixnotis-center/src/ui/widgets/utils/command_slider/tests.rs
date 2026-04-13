@@ -1,3 +1,4 @@
+use super::refresh::SliderRefreshGate;
 use super::value::{format_command_value, slider_value_changed, slider_value_tolerance};
 
 #[test]
@@ -18,4 +19,35 @@ fn slider_value_changed_uses_step_sized_tolerance() {
     assert_eq!(slider_value_tolerance(0.1), 0.05);
     assert!(!slider_value_changed(50.0, 50.04, 0.1));
     assert!(slider_value_changed(50.0, 50.06, 0.1));
+}
+
+#[test]
+fn refresh_gate_queues_one_trailing_refresh() {
+    let gate = SliderRefreshGate::new();
+
+    assert!(gate.begin_or_queue());
+    assert!(!gate.begin_or_queue());
+    assert!(gate.finish());
+}
+
+#[test]
+fn refresh_gate_clears_pending_after_finish() {
+    let gate = SliderRefreshGate::new();
+
+    assert!(gate.begin_or_queue());
+    assert!(!gate.begin_or_queue());
+    assert!(gate.finish());
+    assert!(!gate.finish());
+    assert!(gate.begin_or_queue());
+}
+
+#[test]
+fn refresh_gate_does_not_stack_multiple_pending_runs() {
+    let gate = SliderRefreshGate::new();
+
+    assert!(gate.begin_or_queue());
+    assert!(!gate.begin_or_queue());
+    assert!(!gate.begin_or_queue());
+    assert!(gate.finish());
+    assert!(!gate.finish());
 }

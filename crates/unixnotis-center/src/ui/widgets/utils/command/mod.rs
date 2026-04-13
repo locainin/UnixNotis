@@ -193,3 +193,26 @@ pub(in crate::ui::widgets) fn run_command_capture_status_async(
     enqueue_command(cmd.to_string(), plan, Some(tx));
     rx
 }
+
+pub(in crate::ui::widgets) fn run_command_capture_action_async(
+    cmd: &str,
+) -> async_channel::Receiver<Result<Output, io::Error>> {
+    // Action capture keeps action timeout and queue priority while returning completion
+    let (tx, rx) = async_channel::bounded(1);
+    let cmd = cmd.trim();
+    if cmd.is_empty() {
+        // Keep the receiver behavior consistent with the non-empty path.
+        let _ = tx.send_blocking(Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "command was empty",
+        )));
+        return rx;
+    }
+    let plan = resolve_command_plan(cmd, CommandKind::Action);
+    debug::log(PanelDebugLevel::Verbose, || {
+        let snippet = util::log_snippet(cmd);
+        format!("enqueue action-capture command: {snippet}")
+    });
+    enqueue_command(cmd.to_string(), plan, Some(tx));
+    rx
+}
