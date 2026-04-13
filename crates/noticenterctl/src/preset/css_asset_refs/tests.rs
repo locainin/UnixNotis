@@ -57,8 +57,7 @@ fn finds_file_url_outside_root_in_bundle_css() {
         &config_dir,
         &[BundleFile {
             relative_path: PathBuf::from("base.css"),
-            contents: b".panel { background-image: url(\"file:///tmp/outside.png\"); }\n"
-                .to_vec(),
+            contents: b".panel { background-image: url(\"file:///tmp/outside.png\"); }\n".to_vec(),
             mode: 0o644,
         }],
     );

@@ -170,3 +170,102 @@ pub(super) fn should_recurse_at_rule(selector: &str) -> bool {
         "media" | "supports" | "layer" | "container" | "document"
     )
 }
+
+pub(super) fn parse_css_declarations(block: &str) -> Vec<(String, String)> {
+    // Keep ';' inside quoted text and function args
+    let mut declarations = Vec::new();
+    let mut start = 0usize;
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut in_string: Option<char> = None;
+    let mut escaped = false;
+
+    for (index, ch) in block.char_indices() {
+        if let Some(quote) = in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == quote {
+                in_string = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => in_string = Some(ch),
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            ';' if paren_depth == 0 && bracket_depth == 0 => {
+                push_declaration(&mut declarations, &block[start..index]);
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    push_declaration(&mut declarations, &block[start..]);
+    declarations
+}
+
+fn push_declaration(declarations: &mut Vec<(String, String)>, raw: &str) {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    // Use the first top-level ':' only
+    let Some(colon_index) = find_top_level_colon(trimmed) else {
+        return;
+    };
+
+    let name = trimmed[..colon_index].trim();
+    let value = trimmed[colon_index + 1..].trim();
+    if name.is_empty() || value.is_empty() {
+        return;
+    }
+    declarations.push((name.to_string(), value.to_string()));
+}
+
+fn find_top_level_colon(input: &str) -> Option<usize> {
+    // Ignore ':' inside quotes and nested groups
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut in_string: Option<char> = None;
+    let mut escaped = false;
+
+    for (index, ch) in input.char_indices() {
+        if let Some(quote) = in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == quote {
+                in_string = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => in_string = Some(ch),
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            ':' if paren_depth == 0 && bracket_depth == 0 => return Some(index),
+            _ => {}
+        }
+    }
+
+    None
+}

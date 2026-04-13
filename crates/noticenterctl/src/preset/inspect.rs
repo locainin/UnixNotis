@@ -12,7 +12,10 @@ use super::command_rules::{
     collect_command_references_from_config, collect_host_specific_command_paths,
     collect_outside_command_paths,
 };
-use super::pathing::{resolve_cli_bundle_path, validate_preset_bundle_path};
+use super::css_asset_refs::collect_external_css_asset_refs_from_bundle;
+use super::pathing::{
+    normalize_lexical_path, resolve_cli_bundle_path, validate_preset_bundle_path,
+};
 
 pub(super) fn run_inspect(input_path: &Path) -> Result<()> {
     // CLI inspect accepts a missing extension and can append it after confirmation
@@ -97,6 +100,17 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
                             ));
                         }
                     }
+
+                    // Show theme slot escapes in inspect output
+                    let theme_warnings = collect_theme_path_warnings(&config);
+                    out.push_str(&format!("theme path warnings: {}\n", theme_warnings.len()));
+                    if theme_warnings.is_empty() {
+                        out.push_str("  none\n");
+                    } else {
+                        for warning in theme_warnings {
+                            out.push_str(&format!("  - {warning}\n"));
+                        }
+                    }
                 }
                 Err(err) => {
                     out.push_str(&format!("command refs: unavailable ({err})\n"));
@@ -108,6 +122,28 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
         }
     } else {
         out.push_str("command refs: unavailable (config.toml missing)\n");
+    }
+
+    // Read CSS warnings from bundle bytes only
+    let css_asset_warnings = collect_external_css_asset_refs_from_bundle(
+        Path::new("$XDG_CONFIG_HOME/unixnotis"),
+        &bundle.files,
+    );
+    out.push_str(&format!(
+        "css asset path warnings: {}\n",
+        css_asset_warnings.len()
+    ));
+    if css_asset_warnings.is_empty() {
+        out.push_str("  none\n");
+    } else {
+        for warning in css_asset_warnings {
+            out.push_str(&format!(
+                "  - {} -> {} ({})\n",
+                warning.css_file.display(),
+                warning.asset_ref,
+                warning.reason
+            ));
+        }
     }
 
     out.push_str("file list:\n");
@@ -124,6 +160,37 @@ fn yes_no(value: bool) -> &'static str {
     } else {
         "no"
     }
+}
+
+fn collect_theme_path_warnings(config: &Config) -> Vec<String> {
+    let config_root = Path::new("$XDG_CONFIG_HOME/unixnotis");
+    let normalized_root = normalize_lexical_path(config_root);
+    let theme_paths = match config.resolve_theme_paths_from(config_root) {
+        Ok(paths) => paths,
+        Err(err) => {
+            return vec![format!(
+                "unable to resolve theme paths from config.toml: {err}"
+            )];
+        }
+    };
+
+    let mut warnings = Vec::new();
+    for (slot, path) in [
+        ("base_css", &theme_paths.base_css),
+        ("panel_css", &theme_paths.panel_css),
+        ("popup_css", &theme_paths.popup_css),
+        ("widgets_css", &theme_paths.widgets_css),
+        ("media_css", &theme_paths.media_css),
+    ] {
+        let normalized_path = normalize_lexical_path(path);
+        if !normalized_path.starts_with(&normalized_root) {
+            warnings.push(format!(
+                "theme.{slot} points outside the config root: {}",
+                path.display()
+            ));
+        }
+    }
+    warnings
 }
 
 #[cfg(test)]

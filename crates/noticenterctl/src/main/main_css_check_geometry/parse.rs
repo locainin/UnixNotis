@@ -3,7 +3,8 @@
 use std::collections::HashSet;
 
 use super::super::main_css_check_parse::{
-    next_css_block, normalize_selector, should_recurse_at_rule, split_selectors, strip_css_comments,
+    next_css_block, normalize_selector, parse_css_declarations, should_recurse_at_rule,
+    split_selectors, strip_css_comments,
 };
 use super::model::{is_tracked_class, GeometryModel, HorizontalEdges};
 use super::stock::known_unixnotis_classes;
@@ -182,25 +183,8 @@ fn selector_mentions_tracked_class(selector: &str) -> bool {
 }
 
 fn css_properties(block: &str) -> Vec<(String, String)> {
-    let mut properties = Vec::new();
-    for chunk in block.split(';') {
-        let trimmed = chunk.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        // Malformed declarations are ignored here because GTK parsing already reports real syntax errors
-        let Some((name, value)) = trimmed.split_once(':') else {
-            continue;
-        };
-        let name = name.trim();
-        let value = value.trim();
-        if name.is_empty() || value.is_empty() {
-            continue;
-        }
-        properties.push((name.to_string(), value.to_string()));
-    }
-    properties
+    // Reuse the shared declaration parser so lint and geometry stay behavior-identical
+    parse_css_declarations(block)
 }
 
 fn simple_class_selector(selector: &str) -> Option<&str> {

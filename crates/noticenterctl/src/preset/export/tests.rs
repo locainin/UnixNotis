@@ -1,4 +1,4 @@
-use super::{export_preset_from, export_preset_from_with_confirm};
+use super::{export_preset_from, export_preset_from_with_confirm, ExportConfirmers};
 use crate::preset::archive::read_bundle;
 use anyhow::anyhow;
 use std::fs;
@@ -7,6 +7,73 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn confirm_external_css_refs_ok(
+    _refs: &[crate::preset::css_asset_refs::ExternalCssAssetRef],
+) -> anyhow::Result<()> {
+    // Test helper that always allows export to continue
+    Ok(())
+}
+
+fn confirm_external_css_refs_err(
+    _refs: &[crate::preset::css_asset_refs::ExternalCssAssetRef],
+) -> anyhow::Result<()> {
+    // Test helper that simulates non-interactive rejection
+    Err(anyhow!(
+        "preset export found CSS asset references outside the UnixNotis config directory"
+    ))
+}
+
+fn prompt_fix_host_specific_command_paths_no(
+    _leaks: &[crate::preset::command_rules::HostSpecificCommandPath],
+) -> anyhow::Result<bool> {
+    // Decline rewrite for command path cases
+    Ok(false)
+}
+
+fn prompt_fix_host_specific_command_paths_yes(
+    _leaks: &[crate::preset::command_rules::HostSpecificCommandPath],
+) -> anyhow::Result<bool> {
+    // Accept rewrite for command path cases
+    Ok(true)
+}
+
+fn prompt_fix_host_specific_css_asset_refs_no(
+    _leaks: &[crate::preset::css_asset_refs::HostSpecificCssAssetRef],
+) -> anyhow::Result<bool> {
+    // Decline rewrite for CSS asset cases
+    Ok(false)
+}
+
+fn prompt_fix_host_specific_css_asset_refs_yes(
+    _leaks: &[crate::preset::css_asset_refs::HostSpecificCssAssetRef],
+) -> anyhow::Result<bool> {
+    // Accept rewrite for CSS asset cases
+    Ok(true)
+}
+
+fn prompt_fix_host_specific_script_paths_no(
+    _leaks: &[crate::preset::export::checks::HostSpecificScriptLeak],
+) -> anyhow::Result<bool> {
+    // Decline rewrite for script path cases
+    Ok(false)
+}
+
+fn prompt_fix_host_specific_script_paths_yes(
+    _leaks: &[crate::preset::export::checks::HostSpecificScriptLeak],
+) -> anyhow::Result<bool> {
+    // Accept rewrite for script path cases
+    Ok(true)
+}
+
+fn prompt_fix_host_specific_script_paths_err(
+    _leaks: &[crate::preset::export::checks::HostSpecificScriptLeak],
+) -> anyhow::Result<bool> {
+    // Simulate non-interactive hard stop when no prompt can be shown
+    Err(anyhow!(
+        "preset export found host-specific script path references under the UnixNotis config directory"
+    ))
+}
 
 struct TempDirGuard {
     path: PathBuf,
@@ -121,6 +188,39 @@ fn export_rejects_absolute_plugin_command_outside_root() {
     assert!(!bundle_path.exists());
 }
 
+#[test]
+fn export_rejects_script_path_leaks_in_noninteractive_runs() {
+    // Non-interactive runs should fail when script rewrite confirmation is unavailable
+    let root = TempDirGuard::new("script-host-path-leak");
+    let config_root_text = root.path.display().to_string();
+    root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    root.write("base.css", ".panel { color: red; }");
+    root.write(
+        "scripts/demo-widget",
+        &format!("#!/bin/sh\necho \"{config_root_text}/assets/bg.png\"\n"),
+    );
+
+    let bundle_path = root.path.join("demo.unixnotis");
+    let error = export_preset_from_with_confirm(
+        &root.path,
+        &bundle_path,
+        &[],
+        false,
+        ExportConfirmers {
+            confirm_external_css_refs: confirm_external_css_refs_ok,
+            prompt_fix_host_specific_command_paths: prompt_fix_host_specific_command_paths_no,
+            prompt_fix_host_specific_css_asset_refs: prompt_fix_host_specific_css_asset_refs_no,
+            prompt_fix_host_specific_script_paths: prompt_fix_host_specific_script_paths_err,
+        },
+    )
+    .expect_err("reject script leak");
+
+    assert!(error
+        .to_string()
+        .contains("host-specific script path references under the UnixNotis config directory"));
+    assert!(!bundle_path.exists());
+}
+
 #[cfg(unix)]
 #[test]
 fn export_replaces_symlink_output_instead_of_following_it() {
@@ -165,13 +265,12 @@ fn export_rejects_outside_css_asset_refs_in_noninteractive_runs() {
         &bundle_path,
         &[],
         false,
-        |_refs| {
-            Err(anyhow!(
-                "preset export found CSS asset references outside the UnixNotis config directory"
-            ))
+        ExportConfirmers {
+            confirm_external_css_refs: confirm_external_css_refs_err,
+            prompt_fix_host_specific_command_paths: prompt_fix_host_specific_command_paths_no,
+            prompt_fix_host_specific_css_asset_refs: prompt_fix_host_specific_css_asset_refs_no,
+            prompt_fix_host_specific_script_paths: prompt_fix_host_specific_script_paths_no,
         },
-        |_leaks| Ok(false),
-        |_leaks| Ok(false),
     )
     .expect_err("reject outside css asset refs without confirmation");
 
@@ -202,9 +301,12 @@ fn export_can_rewrite_host_specific_command_paths_in_bundle_config() {
         &bundle_path,
         &[],
         false,
-        |_refs| Ok(()),
-        |_leaks| Ok(true),
-        |_leaks| Ok(false),
+        ExportConfirmers {
+            confirm_external_css_refs: confirm_external_css_refs_ok,
+            prompt_fix_host_specific_command_paths: prompt_fix_host_specific_command_paths_yes,
+            prompt_fix_host_specific_css_asset_refs: prompt_fix_host_specific_css_asset_refs_no,
+            prompt_fix_host_specific_script_paths: prompt_fix_host_specific_script_paths_no,
+        },
     )
     .expect("export with rewrite");
 
@@ -244,9 +346,12 @@ fn export_can_keep_host_specific_command_paths_when_fix_is_declined() {
         &bundle_path,
         &[],
         false,
-        |_refs| Ok(()),
-        |_leaks| Ok(false),
-        |_leaks| Ok(false),
+        ExportConfirmers {
+            confirm_external_css_refs: confirm_external_css_refs_ok,
+            prompt_fix_host_specific_command_paths: prompt_fix_host_specific_command_paths_no,
+            prompt_fix_host_specific_css_asset_refs: prompt_fix_host_specific_css_asset_refs_no,
+            prompt_fix_host_specific_script_paths: prompt_fix_host_specific_script_paths_no,
+        },
     )
     .expect("export without rewrite");
 
@@ -290,9 +395,12 @@ fn export_can_rewrite_host_specific_css_asset_refs_to_css_relative_paths() {
         &bundle_path,
         &[],
         false,
-        |_refs| Ok(()),
-        |_leaks| Ok(false),
-        |_leaks| Ok(true),
+        ExportConfirmers {
+            confirm_external_css_refs: confirm_external_css_refs_ok,
+            prompt_fix_host_specific_command_paths: prompt_fix_host_specific_command_paths_no,
+            prompt_fix_host_specific_css_asset_refs: prompt_fix_host_specific_css_asset_refs_yes,
+            prompt_fix_host_specific_script_paths: prompt_fix_host_specific_script_paths_no,
+        },
     )
     .expect("export with css rewrite");
 
@@ -310,4 +418,83 @@ fn export_can_rewrite_host_specific_css_asset_refs_to_css_relative_paths() {
     assert!(!css_text.contains(&asset_path.display().to_string()));
     let live_css = fs::read_to_string(root.path.join(stylesheet_relative)).expect("live css");
     assert!(live_css.contains(&asset_path.display().to_string()));
+}
+
+#[test]
+fn export_can_rewrite_host_specific_script_paths_in_bundle_scripts() {
+    // Accepting rewrite should change only bundled script bytes
+    let root = TempDirGuard::new("rewrite-script-path-leak");
+    let config_root_text = root.path.display().to_string();
+    root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    root.write("base.css", ".panel { color: red; }");
+    root.write(
+        "scripts/demo-widget",
+        &format!("#!/bin/sh\necho \"{config_root_text}/assets/bg.png\"\n"),
+    );
+
+    let bundle_path = root.path.join("demo.unixnotis");
+    export_preset_from_with_confirm(
+        &root.path,
+        &bundle_path,
+        &[],
+        false,
+        ExportConfirmers {
+            confirm_external_css_refs: confirm_external_css_refs_ok,
+            prompt_fix_host_specific_command_paths: prompt_fix_host_specific_command_paths_no,
+            prompt_fix_host_specific_css_asset_refs: prompt_fix_host_specific_css_asset_refs_no,
+            prompt_fix_host_specific_script_paths: prompt_fix_host_specific_script_paths_yes,
+        },
+    )
+    .expect("export with script rewrite");
+
+    let bundle = read_bundle(&bundle_path).expect("read bundle");
+    let script_file = bundle
+        .files
+        .iter()
+        .find(|file| file.relative_path == Path::new("scripts/demo-widget"))
+        .expect("bundled script");
+    let script_text = std::str::from_utf8(&script_file.contents).expect("utf8 script");
+
+    assert!(script_text.contains("$HOME/"));
+    assert!(!script_text.contains(&config_root_text));
+    let live_script =
+        fs::read_to_string(root.path.join("scripts/demo-widget")).expect("live script");
+    assert!(live_script.contains(&config_root_text));
+}
+
+#[test]
+fn export_can_keep_host_specific_script_paths_when_fix_is_declined() {
+    // Declining rewrite should keep original script bytes in the bundle
+    let root = TempDirGuard::new("keep-script-path-leak");
+    let config_root_text = root.path.display().to_string();
+    root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    root.write("base.css", ".panel { color: red; }");
+    root.write(
+        "scripts/demo-widget",
+        &format!("#!/bin/sh\necho \"{config_root_text}/assets/bg.png\"\n"),
+    );
+
+    let bundle_path = root.path.join("demo.unixnotis");
+    export_preset_from_with_confirm(
+        &root.path,
+        &bundle_path,
+        &[],
+        false,
+        ExportConfirmers {
+            confirm_external_css_refs: confirm_external_css_refs_ok,
+            prompt_fix_host_specific_command_paths: prompt_fix_host_specific_command_paths_no,
+            prompt_fix_host_specific_css_asset_refs: prompt_fix_host_specific_css_asset_refs_no,
+            prompt_fix_host_specific_script_paths: prompt_fix_host_specific_script_paths_no,
+        },
+    )
+    .expect("export without script rewrite");
+
+    let bundle = read_bundle(&bundle_path).expect("read bundle");
+    let script_file = bundle
+        .files
+        .iter()
+        .find(|file| file.relative_path == Path::new("scripts/demo-widget"))
+        .expect("bundled script");
+    let script_text = std::str::from_utf8(&script_file.contents).expect("utf8 script");
+    assert!(script_text.contains(&config_root_text));
 }

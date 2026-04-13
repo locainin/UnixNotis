@@ -6,6 +6,7 @@
 use std::io::{self, Read};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::Duration;
@@ -23,6 +24,8 @@ use super::command_parse::parse_simple_command;
 
 // Bound captured command output to prevent large stdout/stderr from ballooning memory.
 const MAX_CAPTURE_BYTES: usize = 1024 * 1024;
+// Missing target used when a command tries to leave the config dir
+const BLOCKED_OUTSIDE_ROOT_PROGRAM: &str = ".unixnotis-blocked-command-path";
 
 pub(super) fn build_command_runtime() -> Option<Runtime> {
     // A lightweight runtime enables async pipe reads without spawning extra threads,
@@ -304,9 +307,20 @@ fn resolve_simple_program_from_root(config_dir: Option<&Path>, program: &str) ->
     }
 
     // Preset imports rewrite bundled scripts to config-root-relative paths for portability
-    config_dir
-        .map(|config_dir| config_dir.join(path))
-        .unwrap_or_else(|| path.to_path_buf())
+    if let Some(config_dir) = config_dir {
+        let rooted = config_dir.join(path);
+        if command_path_escapes_root(config_dir, &rooted) {
+            warn!(
+                command = %program,
+                root = %config_dir.display(),
+                "blocked path-like command that escapes the UnixNotis config directory"
+            );
+            return config_dir.join(BLOCKED_OUTSIDE_ROOT_PROGRAM);
+        }
+        return rooted;
+    }
+
+    path.to_path_buf()
 }
 
 fn looks_like_relative_path_program(program: &str, path: &Path) -> bool {
@@ -316,6 +330,33 @@ fn looks_like_relative_path_program(program: &str, path: &Path) -> bool {
             || program.starts_with("./")
             || program.starts_with("../")
             || program.contains('/'))
+}
+
+fn command_path_escapes_root(config_dir: &Path, rooted_path: &Path) -> bool {
+    // Catch ../ escapes without touching disk
+    let normalized_root = normalize_lexical_path(config_dir);
+    let normalized_candidate = normalize_lexical_path(rooted_path);
+    !normalized_candidate.starts_with(&normalized_root)
+}
+
+fn normalize_lexical_path(path: &Path) -> PathBuf {
+    // Keep path cleanup lexical only
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            Component::Normal(part) => normalized.push(part),
+            Component::RootDir | Component::Prefix(_) => {
+                normalized.push(component.as_os_str());
+            }
+        }
+    }
+    normalized
 }
 
 pub(in crate::ui::widgets) fn kill_process_group(pid: i32) {
@@ -358,6 +399,16 @@ mod tests {
         assert_eq!(
             resolve_simple_program_from_root(Some(config_dir), "scripts/demo-widget"),
             config_dir.join("scripts/demo-widget")
+        );
+    }
+
+    #[test]
+    fn resolve_simple_program_blocks_parent_traversal_paths() {
+        let config_dir = Path::new("/tmp/demo/unixnotis");
+
+        assert_eq!(
+            resolve_simple_program_from_root(Some(config_dir), "../outside-script"),
+            config_dir.join(".unixnotis-blocked-command-path")
         );
     }
 }

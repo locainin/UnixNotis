@@ -4,9 +4,7 @@ use anyhow::Result;
 use unixnotis_core::util;
 
 use super::parse::collect_url_spans;
-use super::{
-    has_css_extension, local_file_url_path, read_css_text, HostSpecificCssAssetRef,
-};
+use super::{has_css_extension, local_file_url_path, read_css_text, HostSpecificCssAssetRef};
 use crate::preset::config_root::PresetFileSource;
 use crate::preset::pathing::normalize_lexical_path;
 

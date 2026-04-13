@@ -20,10 +20,10 @@ use anyhow::{Context, Result};
 use super::config_root::PresetFileSource;
 use super::pathing::normalize_lexical_path;
 
+pub(crate) use self::collect::collect_external_css_asset_refs_from_paths;
 pub(super) use self::collect::{
     collect_external_css_asset_refs_from_bundle, collect_external_css_asset_refs_from_collected,
 };
-pub(crate) use self::collect::collect_external_css_asset_refs_from_paths;
 pub(super) use self::rewrite::rewrite_host_specific_css_asset_refs_in_sources;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

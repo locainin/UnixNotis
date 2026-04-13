@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 
 use super::main_css_check_files::format_display_path;
 use super::main_css_check_parse::{
-    next_css_block, normalize_selector, should_recurse_at_rule, split_selectors, strip_css_comments,
+    next_css_block, normalize_selector, parse_css_declarations, should_recurse_at_rule,
+    split_selectors, strip_css_comments,
 };
 
 pub(super) fn lint_css_files(
@@ -118,20 +119,7 @@ fn lint_css_block(
 fn lint_css_properties(selector: &str, block: &str, context: Option<&str>) -> Vec<String> {
     let mut warnings = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    for chunk in block.split(';') {
-        let trimmed = chunk.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let Some((name, value)) = trimmed.split_once(':') else {
-            continue;
-        };
-        let prop = name.trim();
-        let value = value.trim();
-        if prop.is_empty() {
-            continue;
-        }
+    for (prop, value) in parse_css_declarations(block) {
         if !seen.insert(prop.to_string()) {
             let context_note = context
                 .map(|ctx| format!(" within {ctx}"))
@@ -142,7 +130,7 @@ fn lint_css_properties(selector: &str, block: &str, context: Option<&str>) -> Ve
             ));
         }
 
-        if let Some(message) = web_length_value_warning(prop, value, selector, context) {
+        if let Some(message) = web_length_value_warning(&prop, &value, selector, context) {
             warnings.push(message);
         }
     }

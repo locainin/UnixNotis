@@ -3,9 +3,9 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use gtk::CssProvider;
 use gtk::gio;
 use gtk::prelude::FileExt;
+use gtk::CssProvider;
 use tracing::warn;
 
 /// Load CSS into a provider, applying overrides and falling back to defaults.

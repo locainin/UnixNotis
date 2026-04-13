@@ -16,11 +16,13 @@ use chrono::Local;
 use std::path::{Path, PathBuf};
 use unixnotis_core::Config;
 
-use self::checks::validate_theme_paths_stay_in_root;
+use self::checks::{validate_theme_paths_stay_in_root, HostSpecificScriptLeak};
 use self::prompts::{
     confirm_export_external_css_refs, prompt_to_fix_host_specific_command_paths,
-    prompt_to_fix_host_specific_css_asset_refs, rewrite_host_specific_command_paths_if_requested,
+    prompt_to_fix_host_specific_css_asset_refs, prompt_to_fix_host_specific_script_paths,
+    rewrite_host_specific_command_paths_if_requested,
     rewrite_host_specific_css_asset_refs_if_requested,
+    rewrite_host_specific_script_paths_if_requested,
 };
 use super::archive::write_bundle;
 use super::command_rules::{validate_config_command_paths_stay_in_root, HostSpecificCommandPath};
@@ -85,29 +87,40 @@ pub(super) fn export_preset_from(
         output_path,
         except,
         force,
-        confirm_export_external_css_refs,
-        prompt_to_fix_host_specific_command_paths,
-        prompt_to_fix_host_specific_css_asset_refs,
+        ExportConfirmers {
+            confirm_external_css_refs: confirm_export_external_css_refs,
+            prompt_fix_host_specific_command_paths: prompt_to_fix_host_specific_command_paths,
+            prompt_fix_host_specific_css_asset_refs: prompt_to_fix_host_specific_css_asset_refs,
+            prompt_fix_host_specific_script_paths: prompt_to_fix_host_specific_script_paths,
+        },
     )
 }
 
-fn export_preset_from_with_confirm<F, G, H>(
+type ConfirmExternalCssRefsFn = fn(&[ExternalCssAssetRef]) -> Result<()>;
+type PromptFixCommandPathsFn = fn(&[HostSpecificCommandPath]) -> Result<bool>;
+type PromptFixCssAssetRefsFn = fn(&[HostSpecificCssAssetRef]) -> Result<bool>;
+type PromptFixScriptPathsFn = fn(&[HostSpecificScriptLeak]) -> Result<bool>;
+
+struct ExportConfirmers {
+    // Guard for CSS refs that leave the config root
+    confirm_external_css_refs: ConfirmExternalCssRefsFn,
+    // Prompt hook for command path rewrite flow
+    prompt_fix_host_specific_command_paths: PromptFixCommandPathsFn,
+    // Prompt hook for CSS asset rewrite flow
+    prompt_fix_host_specific_css_asset_refs: PromptFixCssAssetRefsFn,
+    // Prompt hook for script text rewrite flow
+    prompt_fix_host_specific_script_paths: PromptFixScriptPathsFn,
+}
+
+fn export_preset_from_with_confirm(
     config_dir: &Path,
     output_path: &Path,
     except: &[String],
     force: bool,
-    confirm_external_css_refs: F,
-    prompt_fix_host_specific_command_paths: G,
-    prompt_fix_host_specific_css_asset_refs: H,
-) -> Result<ExportSummary>
-where
-    F: FnOnce(&[ExternalCssAssetRef]) -> Result<()>,
-    G: FnOnce(&[HostSpecificCommandPath]) -> Result<bool>,
-    H: FnOnce(&[HostSpecificCssAssetRef]) -> Result<bool>,
-{
-    // Tests can inject a fixed answer here so they do not depend on terminal state
-    // The orchestrator stays narrow so export-specific checks and prompts can live beside it
-    // The user-facing preset extension is part of the public contract
+    confirmers: ExportConfirmers,
+) -> Result<ExportSummary> {
+    // Tests inject fixed handlers here so behavior is deterministic
+    // Keep preset extension checks close to the entry point
     validate_preset_bundle_path(output_path)?;
     if !config_dir.exists() {
         return Err(anyhow!(
@@ -163,7 +176,7 @@ where
     let leaked_command_paths = rewrite_host_specific_command_paths_if_requested(
         config_dir,
         &mut config,
-        prompt_fix_host_specific_command_paths,
+        confirmers.prompt_fix_host_specific_command_paths,
     )?;
 
     let exclusions = parse_except_paths(except)?;
@@ -192,6 +205,19 @@ where
         return Err(anyhow!("preset export found no files to bundle"));
     }
 
+    let leaked_script_paths = rewrite_host_specific_script_paths_if_requested(
+        config_dir,
+        &mut collected,
+        confirmers.prompt_fix_host_specific_script_paths,
+    )?;
+    if !leaked_script_paths.is_empty() {
+        // Report bundled script rewrites for audit visibility
+        eprintln!(
+            "preset export note: rewrote {} host-specific script path reference(s) in bundled script files",
+            leaked_script_paths.len()
+        );
+    }
+
     if !leaked_command_paths.is_empty() {
         // Only the bundled config is rewritten so the live config tree stays untouched
         let config_bytes = toml::to_string_pretty(&config)
@@ -207,7 +233,7 @@ where
     let leaked_css_asset_refs = rewrite_host_specific_css_asset_refs_if_requested(
         config_dir,
         &mut collected,
-        prompt_fix_host_specific_css_asset_refs,
+        confirmers.prompt_fix_host_specific_css_asset_refs,
     )?;
     if !leaked_css_asset_refs.is_empty() {
         eprintln!(
@@ -219,7 +245,7 @@ where
     // Warn before writing the bundle when shared CSS depends on outside assets
     let external_css_refs =
         collect_external_css_asset_refs_from_collected(config_dir, &collected.files)?;
-    confirm_external_css_refs(&external_css_refs)?;
+    (confirmers.confirm_external_css_refs)(&external_css_refs)?;
 
     let manifest_files = collected
         .files

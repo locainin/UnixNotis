@@ -1,5 +1,5 @@
 use super::main_css_check_lint::lint_css_contents;
-use super::main_css_check_parse::split_selectors;
+use super::main_css_check_parse::{parse_css_declarations, split_selectors};
 use super::main_css_check_runtime::panel_width_floor_warning;
 use unixnotis_core::{Config, PANEL_RUNTIME_WIDTH_MIN};
 
@@ -71,4 +71,15 @@ fn panel_width_floor_warning_skips_safe_widths() {
     config.panel.width = PANEL_RUNTIME_WIDTH_MIN;
 
     assert!(panel_width_floor_warning(&config).is_none());
+}
+
+#[test]
+fn parse_css_declarations_keeps_semicolons_inside_quoted_values() {
+    let block = "background-image: url(\"data:image/svg+xml;utf8,<svg></svg>\"); color: red;";
+    let declarations = parse_css_declarations(block);
+
+    assert_eq!(declarations.len(), 2);
+    assert_eq!(declarations[0].0, "background-image");
+    assert!(declarations[0].1.contains("data:image/svg+xml;utf8"));
+    assert_eq!(declarations[1], ("color".to_string(), "red".to_string()));
 }
