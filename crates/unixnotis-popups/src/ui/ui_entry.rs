@@ -60,26 +60,36 @@ struct OptionalLabelState<'a> {
 
 impl UiState {
     pub(super) fn build_popup_entry(&mut self, notification: &NotificationView) -> PopupEntry {
-        let revealer = gtk::Revealer::new();
-        revealer.add_css_class("unixnotis-popup-revealer");
-        revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-        revealer.set_transition_duration(200);
+        let root = self.build_popup_root(notification);
+        let revealer = build_popup_revealer(&root);
 
+        PopupEntry {
+            // Store the payload used to build this row so later seeds can compare safely
+            notification: notification.clone(),
+            revealer: Some(revealer),
+            root: Some(root),
+        }
+    }
+
+    pub(super) fn build_popup_root(&mut self, notification: &NotificationView) -> gtk::Box {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
         root.add_css_class("unixnotis-popup-card");
-        // Use the live stack width so entries match monitor-aware popup sizing.
-        let popup_width = self.popup_stack.width_request().max(1);
-        // Popup width is strict from runtime geometry; content should adapt.
+        // Use the live stack width when a row is built or rebuilt
+        let popup_width = self
+            .popup_stack
+            .width()
+            .max(self.popup_stack.width_request())
+            .max(1);
         root.set_size_request(popup_width, -1);
         root.set_halign(Align::Fill);
         root.set_hexpand(false);
-        // Entries start hidden so overflow rows do not animate in and out needlessly
+        // New roots stay hidden until visibility logic decides otherwise
         root.set_visible(false);
         if notification.urgency == Urgency::Critical as u8 {
             root.add_css_class("critical");
         }
 
-        // Header row groups app icon, name, and close action.
+        // Header keeps icon, app name, and close in one stable row
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         header.add_css_class("unixnotis-popup-header-row");
         if let Some(icon) = self.build_image_widget(notification) {
@@ -88,31 +98,25 @@ impl UiState {
             icon.add_css_class("unixnotis-popup-icon");
             header.append(&icon);
         }
-        // App name stays single-line so the header height does not jump around
         let app = gtk::Label::new(Some(&notification.app_name));
         app.set_xalign(0.0);
-        // Header label never wraps into multi-line title blocks
         app.set_single_line_mode(true);
         app.set_ellipsize(EllipsizeMode::End);
         app.set_max_width_chars(POPUP_APP_MAX_CHARS as i32);
         app.set_text(clamp_label_text(&notification.app_name, POPUP_APP_MAX_CHARS).as_ref());
         app.add_css_class("unixnotis-popup-header");
 
-        // Close button lives in the same row, so the spacer has to carry alignment
         let close = gtk::Button::from_icon_name("window-close-symbolic");
         close.add_css_class("unixnotis-popup-close");
         close.set_halign(Align::End);
 
         header.append(&app);
-        // Spacer expands so the close button stays pinned to the far edge
         header.append(&build_popup_header_spacer());
         header.append(&close);
 
-        // Summary line mirrors the notification title for quick scanning.
-        // Summary is optional in the protocol, so empty titles should not keep a blank band
+        // Summary stays short and collapses when the payload has no title
         let summary = gtk::Label::new(Some(&notification.summary));
         summary.set_xalign(0.0);
-        // WordChar breaks long tokens instead of letting one token push width
         summary.set_wrap(true);
         summary.set_wrap_mode(WrapMode::WordChar);
         summary.set_ellipsize(EllipsizeMode::End);
@@ -121,11 +125,9 @@ impl UiState {
         summary.add_css_class("unixnotis-popup-summary");
         update_optional_label(&summary, &notification.summary, POPUP_SUMMARY_MAX_CHARS);
 
-        // Body is rendered as bounded plain text so payload markup cannot affect layout.
-        // Body is optional too, so empty body rows should collapse fully
+        // Body follows the same bounded layout rules as the summary
         let body = gtk::Label::new(None);
         body.set_xalign(0.0);
-        // Body follows the same wrapping rules for consistent layout behavior
         body.set_wrap(true);
         body.set_wrap_mode(WrapMode::WordChar);
         body.set_ellipsize(EllipsizeMode::End);
@@ -134,19 +136,15 @@ impl UiState {
         body.add_css_class("unixnotis-popup-body");
         update_optional_label(&body, &notification.body, POPUP_BODY_MAX_CHARS);
 
-        // Row order stays fixed so CSS margins remain predictable across payload shapes
         root.append(&header);
         root.append(&summary);
         root.append(&body);
 
-        // Action buttons map user clicks back into D-Bus action invocations.
-        // Action rows are only created when the notification actually exposes actions
+        // Action buttons are only built when the payload exposes actions
         if !notification.actions.is_empty() {
             let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
             actions.add_css_class("unixnotis-popup-actions");
-            // Only keep the first few actions to avoid action-row overdraw and width spikes
             for action in notification.actions.iter().take(MAX_POPUP_ACTIONS) {
-                // Clamp action text here so a hostile label cannot widen the popup card
                 let button = gtk::Button::with_label(
                     clamp_label_text(&action.label, POPUP_ACTION_LABEL_MAX_CHARS).as_ref(),
                 );
@@ -168,14 +166,14 @@ impl UiState {
             root.append(&actions);
         }
 
-        // Close button requests dismissal for the specific notification id.
+        // Close still targets the notification id even when the row is rebuilt
         let id = notification.id;
         let command_tx_close = self.command_tx.clone();
         close.connect_clicked(move |_| {
             try_send_command(&command_tx_close, UiCommand::Dismiss(id));
         });
 
-        // Default action activates when the popup body is clicked.
+        // Default action still fires from the rebuilt card body
         let default_action = notification
             .actions
             .iter()
@@ -196,17 +194,19 @@ impl UiState {
             root.add_controller(gesture);
         }
 
-        revealer.set_child(Some(&root));
-        // Visibility is driven centrally so only rows inside max_visible animate in
-        revealer.set_reveal_child(false);
-
-        PopupEntry {
-            // Store the payload used to build this row so later seeds can compare safely
-            notification: notification.clone(),
-            revealer: Some(revealer),
-            root: Some(root),
-        }
+        root
     }
+}
+
+fn build_popup_revealer(root: &gtk::Box) -> gtk::Revealer {
+    let revealer = gtk::Revealer::new();
+    revealer.add_css_class("unixnotis-popup-revealer");
+    revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+    revealer.set_transition_duration(200);
+    revealer.set_child(Some(root));
+    // Visibility is driven centrally so only rows inside max_visible animate in
+    revealer.set_reveal_child(false);
+    revealer
 }
 
 fn build_popup_header_spacer() -> gtk::Box {

@@ -107,7 +107,7 @@ impl UiState {
                     app = %notification.app_name,
                     "popup updated"
                 );
-                self.replace_popup(notification, show_popup);
+                self.update_popup(notification, show_popup);
             }
             UiEvent::NotificationClosed(id, _reason) => {
                 debug!(id, "popup closed");

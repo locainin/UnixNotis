@@ -2,30 +2,75 @@
 //!
 //! Focuses on maintaining popup ordering and visibility rules.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use gtk::prelude::*;
-use tracing::debug;
+use tracing::{debug, warn};
 use unixnotis_core::{popup_allowed_by_state, ControlState, NotificationView};
 
 use super::ui_window::{popup_stack_has_active_transitions, refresh_popup_input_region};
 use super::{PopupEntry, UiState};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ReloadRefreshPlan {
-    // Number of already-built popup roots that should be resized in place
-    resized_roots: usize,
-    // Number of popups that should remain visible after limits are applied
-    visible_target: usize,
-}
-
 struct ReconcilePlan {
     // Local rows missing from the daemon snapshot
     stale_ids: Vec<u32>,
-    // Rows that must be added or rebuilt to match daemon truth
-    upserts: Vec<NotificationView>,
+    // Rows that must be inserted or updated to match daemon truth
+    updates: Vec<NotificationView>,
     // Final order copied from the daemon seed
     desired_order: VecDeque<u32>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct VisiblePopupUpdate {
+    // True when stack order, materialization, or reveal state changed
+    stack_changed: bool,
+}
+
+fn visible_popup_restack_ids(previous_visible: &[u32], desired_visible: &[u32]) -> HashSet<u32> {
+    // Work on a local order copy so move decisions stay deterministic and testable
+    let mut working = previous_visible.to_vec();
+    let mut positions = previous_visible
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(index, id)| (id, index))
+        .collect::<HashMap<u32, usize>>();
+    let mut moved = HashSet::new();
+
+    for (target_index, id) in desired_visible.iter().copied().enumerate() {
+        let Some(current_index) = positions.get(&id).copied() else {
+            // New ids need one attach at their final slot
+            working.insert(target_index, id);
+            for (index, current_id) in working.iter().copied().enumerate().skip(target_index) {
+                positions.insert(current_id, index);
+            }
+            moved.insert(id);
+            continue;
+        };
+
+        if current_index == target_index {
+            // Rows already in the right slot do not need another GTK reorder
+            continue;
+        }
+
+        // Move only the row that is actually out of place
+        let moved_id = working.remove(current_index);
+        working.insert(target_index, moved_id);
+        let start = target_index.min(current_index);
+        let end = target_index.max(current_index);
+        for (index, current_id) in working
+            .iter()
+            .copied()
+            .enumerate()
+            .skip(start)
+            .take(end - start + 1)
+        {
+            positions.insert(current_id, index);
+        }
+        moved.insert(id);
+    }
+
+    moved
 }
 
 impl UiState {
@@ -40,24 +85,20 @@ impl UiState {
             .collect();
         let plan = build_reconcile_plan(&local, &self.popup_order, &desired);
 
-        // Remove stale rows first so replacements and reorders do not leave duplicates behind
+        // Remove old ids first so inserts and updates work on the final set
         for id in plan.stale_ids {
-            self.remove_popup(id);
+            self.remove_popup_internal(id, false);
         }
 
-        // Walk oldest to newest so prepend-based insertion lands in daemon order
-        for notification in plan.upserts.iter().rev() {
-            match self.popups.contains_key(&notification.id) {
-                // Existing rows are rebuilt when seed content or order says they changed
-                true => self.replace_popup(notification.clone(), true),
-                // Missing rows are inserted from the daemon snapshot
-                false => self.add_popup(notification.clone()),
-            }
+        // Walk oldest to newest so front insertion lands in daemon order
+        let mut force_region_refresh = false;
+        for notification in plan.updates.iter().rev() {
+            force_region_refresh |= self.update_popup_internal(notification.clone(), true, false);
         }
 
         // Seed order wins even if local insert timing was different before reconnect
         self.popup_order = plan.desired_order;
-        self.update_popup_visibility();
+        self.update_popup_visibility(force_region_refresh);
         debug!(total = self.popup_order.len(), "popup seed reconciled");
     }
 
@@ -71,35 +112,83 @@ impl UiState {
                     .then_some(*id)
             })
             .collect();
+        let removed_any = !remove_ids.is_empty();
         for id in remove_ids {
-            self.remove_popup(id);
+            self.remove_popup_internal(id, false);
+        }
+        if removed_any {
+            self.update_popup_visibility(false);
         }
     }
 
     pub(super) fn add_popup(&mut self, notification: NotificationView) {
+        self.add_popup_internal(notification, true);
+    }
+
+    fn add_popup_internal(&mut self, notification: NotificationView, refresh_visibility: bool) {
         let id = notification.id;
-        // Reconcile paths call replace_popup for changes, so duplicates still mean no-op here
+        // Duplicate ids point at an upstream state bug
         if self.popups.contains_key(&id) {
+            debug!(id, "popup insert skipped because id already exists");
             return;
         }
 
         // Hidden overflow rows stay as plain data until they can actually be shown
         self.popups.insert(id, PopupEntry::queued(notification));
         self.popup_order.push_front(id);
-        self.update_popup_visibility();
+        if refresh_visibility {
+            self.update_popup_visibility(false);
+        }
         debug!(id, total = self.popup_order.len(), "popup inserted");
     }
 
-    pub(super) fn replace_popup(&mut self, notification: NotificationView, show_popup: bool) {
+    pub(super) fn update_popup(&mut self, notification: NotificationView, show_popup: bool) {
+        self.update_popup_internal(notification, show_popup, true);
+    }
+
+    fn update_popup_internal(
+        &mut self,
+        notification: NotificationView,
+        show_popup: bool,
+        refresh_visibility: bool,
+    ) -> bool {
         let id = notification.id;
-        // Replace path keeps one source of truth for update semantics
-        self.remove_popup(id);
-        if show_popup {
-            self.add_popup(notification);
+        if !show_popup {
+            self.remove_popup_internal(id, refresh_visibility);
+            return false;
         }
+
+        if !self.popups.contains_key(&id) {
+            self.add_popup_internal(notification, refresh_visibility);
+            return false;
+        }
+
+        let rebuilt_visible_row = if self
+            .popups
+            .get(&id)
+            .is_some_and(PopupEntry::is_materialized)
+        {
+            self.rebuild_materialized_popup(&notification)
+        } else {
+            false
+        };
+
+        if let Some(entry) = self.popups.get_mut(&id) {
+            entry.notification = notification;
+        }
+
+        if refresh_visibility {
+            self.update_popup_visibility(rebuilt_visible_row);
+        }
+        debug!(id, "popup updated");
+        rebuilt_visible_row
     }
 
     pub(super) fn remove_popup(&mut self, id: u32) {
+        self.remove_popup_internal(id, true);
+    }
+
+    fn remove_popup_internal(&mut self, id: u32, refresh_visibility: bool) {
         if let Some(entry) = self.popups.remove(&id) {
             if let Some(revealer) = entry.revealer {
                 // Visible rows animate out before leaving the stack
@@ -124,25 +213,29 @@ impl UiState {
             }
         }
         self.popup_order.retain(|item| *item != id);
-        self.update_popup_visibility();
+        if refresh_visibility {
+            self.update_popup_visibility(false);
+        }
         debug!(id, total = self.popup_order.len(), "popup removed");
     }
 
-    pub(super) fn update_popup_visibility(&mut self) {
+    pub(super) fn update_popup_visibility(&mut self, force_region_refresh: bool) {
         // Visibility contract is driven strictly by configured max_visible count
         let max_visible = self.config.popups.max_visible;
 
         // Max-visible of zero disables popups entirely.
         if max_visible == 0 {
-            self.apply_visible_popups(Vec::new());
+            let update = self.apply_visible_popups(Vec::new());
             self.popup_window.set_visible(false);
             // Keep input region empty when popups are disabled
-            refresh_popup_input_region(
-                &self.popup_window,
-                &self.popup_stack,
-                &self.popup_input_region,
-                false,
-            );
+            if force_region_refresh || update.stack_changed {
+                refresh_popup_input_region(
+                    &self.popup_window,
+                    &self.popup_stack,
+                    &self.popup_input_region,
+                    false,
+                );
+            }
             debug!("popups disabled by max_visible = 0");
             return;
         }
@@ -161,15 +254,17 @@ impl UiState {
             .take(visible_popup_target(self.popup_order.len(), max_visible))
             .copied()
             .collect::<Vec<u32>>();
-        self.apply_visible_popups(desired_visible);
+        let update = self.apply_visible_popups(desired_visible);
         // Tick while transitions run so interactive area tracks animation frames
         let has_active_transitions = popup_stack_has_active_transitions(&self.popup_stack);
-        refresh_popup_input_region(
-            &self.popup_window,
-            &self.popup_stack,
-            &self.popup_input_region,
-            has_active_transitions,
-        );
+        if force_region_refresh || update.stack_changed || has_active_transitions {
+            refresh_popup_input_region(
+                &self.popup_window,
+                &self.popup_stack,
+                &self.popup_input_region,
+                has_active_transitions,
+            );
+        }
         debug!(
             visible = self.visible_popups.len(),
             total = self.popup_order.len(),
@@ -178,17 +273,17 @@ impl UiState {
     }
 
     pub(super) fn refresh_after_config_reload(&mut self) {
-        let plan = reload_refresh_plan(
-            self.popups.len(),
-            self.popups
-                .values()
-                .filter(|entry| entry.root.is_some())
-                .count(),
-            self.config.popups.max_visible,
-        );
-        // Materialized popup roots cache their width at build time
-        // Refresh them after stack geometry changes so visible cards stay aligned
-        let popup_width = self.popup_stack.width_request().max(1);
+        let resized_roots = self
+            .popups
+            .values()
+            .filter(|entry| entry.root.is_some())
+            .count();
+        // Prefer the live width when GTK has already measured the stack
+        let popup_width = self
+            .popup_stack
+            .width()
+            .max(self.popup_stack.width_request())
+            .max(1);
         for entry in self.popups.values() {
             let Some(root) = entry.root.as_ref() else {
                 continue;
@@ -196,42 +291,63 @@ impl UiState {
             root.set_size_request(popup_width, -1);
         }
         // Re-run visibility so max_visible changes take effect right away
-        self.update_popup_visibility();
+        self.update_popup_visibility(true);
         debug!(
-            resized_roots = plan.resized_roots,
-            visible_target = plan.visible_target,
+            resized_roots,
+            visible_target =
+                visible_popup_target(self.popups.len(), self.config.popups.max_visible),
             total = self.popups.len(),
             "popup config reload refreshed"
         );
     }
 
-    fn apply_visible_popups(&mut self, desired_visible: Vec<u32>) {
+    fn apply_visible_popups(&mut self, desired_visible: Vec<u32>) -> VisiblePopupUpdate {
         // Leaving the visible slice drops widget trees so overflow stays lightweight
         let previous_visible = self.visible_popups.clone();
+        let desired_visible_set = desired_visible.iter().copied().collect::<HashSet<_>>();
+        let restack_ids = visible_popup_restack_ids(&previous_visible, &desired_visible);
+        let mut update = VisiblePopupUpdate::default();
+        let mut applied_visible = Vec::with_capacity(desired_visible.len());
         for id in &previous_visible {
-            if desired_visible.contains(id) {
+            if desired_visible_set.contains(id) {
                 continue;
             }
             self.dematerialize_popup(*id);
+            update.stack_changed = true;
         }
 
-        // Rebuild the on-screen stack from the small visible slice only
-        for id in desired_visible.iter().rev() {
+        // Attach or move only the rows that actually changed order
+        let mut previous_revealer: Option<gtk::Revealer> = None;
+        for id in &desired_visible {
             self.materialize_popup(*id);
             let Some(entry) = self.popups.get(id) else {
+                warn!(id, "popup marked visible but entry is missing");
                 continue;
             };
             let Some(revealer) = entry.revealer.as_ref() else {
+                warn!(id, "popup marked visible but revealer is missing");
                 continue;
             };
-            if revealer.parent().is_some() {
-                self.popup_stack.remove(revealer);
+
+            let needs_attach = revealer.parent().is_none();
+            if needs_attach {
+                // Freshly materialized rows enter the stack once before reveal state is flipped
+                self.popup_stack.append(revealer);
+                update.stack_changed = true;
             }
-            self.popup_stack.prepend(revealer);
+
+            if needs_attach || restack_ids.contains(id) {
+                self.popup_stack
+                    .reorder_child_after(revealer, previous_revealer.as_ref());
+                update.stack_changed = true;
+            }
+
+            previous_revealer = Some(revealer.clone());
+            applied_visible.push(*id);
         }
 
         // Visible rows get their final reveal state after the stack order is correct
-        for id in &desired_visible {
+        for id in &applied_visible {
             let Some(entry) = self.popups.get(id) else {
                 continue;
             };
@@ -239,12 +355,51 @@ impl UiState {
             else {
                 continue;
             };
-            root.set_visible(true);
-            revealer.set_reveal_child(true);
-            root.add_css_class("unixnotis-popup-visible");
+            if !root.is_visible() {
+                root.set_visible(true);
+                update.stack_changed = true;
+            }
+            if !revealer.reveals_child() {
+                revealer.set_reveal_child(true);
+                update.stack_changed = true;
+            }
+            if !root.has_css_class("unixnotis-popup-visible") {
+                root.add_css_class("unixnotis-popup-visible");
+            }
         }
 
-        self.visible_popups = desired_visible;
+        self.visible_popups = applied_visible;
+        update
+    }
+
+    fn rebuild_materialized_popup(&mut self, notification: &NotificationView) -> bool {
+        let id = notification.id;
+        let Some(revealer) = self
+            .popups
+            .get(&id)
+            .and_then(|entry| entry.revealer.clone())
+        else {
+            return false;
+        };
+        let Some(old_root) = self.popups.get(&id).and_then(|entry| entry.root.clone()) else {
+            return false;
+        };
+
+        // Reuse the current revealer so one id still has one stack row
+        let new_root = self.build_popup_root(notification);
+        let rebuilt_visible_row = old_root.is_visible() || revealer.reveals_child();
+        if old_root.is_visible() {
+            new_root.set_visible(true);
+        }
+        if old_root.has_css_class("unixnotis-popup-visible") {
+            new_root.add_css_class("unixnotis-popup-visible");
+        }
+        revealer.set_child(Some(&new_root));
+
+        if let Some(entry) = self.popups.get_mut(&id) {
+            entry.root = Some(new_root);
+        }
+        rebuilt_visible_row
     }
 
     fn materialize_popup(&mut self, id: u32) {
@@ -289,21 +444,8 @@ fn visible_popup_target(total_popups: usize, max_visible: usize) -> usize {
     total_popups.min(max_visible)
 }
 
-fn reload_refresh_plan(
-    total_popups: usize,
-    materialized_popups: usize,
-    max_visible: usize,
-) -> ReloadRefreshPlan {
-    ReloadRefreshPlan {
-        // Only materialized rows have GTK roots that need width updates
-        resized_roots: materialized_popups,
-        // Visibility still respects the runtime popup budget after reload
-        visible_target: visible_popup_target(total_popups, max_visible),
-    }
-}
-
 fn build_reconcile_plan(
-    local: &std::collections::HashMap<u32, NotificationView>,
+    local: &HashMap<u32, NotificationView>,
     local_order: &VecDeque<u32>,
     desired: &[NotificationView],
 ) -> ReconcilePlan {
@@ -315,7 +457,6 @@ fn build_reconcile_plan(
         .iter()
         .map(|notification| notification.id)
         .collect::<HashSet<u32>>();
-    let order_changed = local_order != &desired_order;
 
     // Local rows that the daemon no longer lists must be removed
     let stale_ids = local_order
@@ -323,12 +464,12 @@ fn build_reconcile_plan(
         .copied()
         .filter(|id| !desired_ids.contains(id))
         .collect::<Vec<u32>>();
-    // Rows are rebuilt when content changed or when order must be restored from seed
-    let upserts = desired
+    // Seed order is restored by popup_order, so only payload changes need a rebuild
+    let updates = desired
         .iter()
         .filter(|notification| match local.get(&notification.id) {
-            // Identical rows can stay as they are while the daemon order is stable
-            Some(existing) => existing != *notification || order_changed,
+            // Identical rows can stay as they are while visibility fixes order later
+            Some(existing) => existing != *notification,
             // Missing rows must be inserted from seed
             None => true,
         })
@@ -337,7 +478,7 @@ fn build_reconcile_plan(
 
     ReconcilePlan {
         stale_ids,
-        upserts,
+        updates,
         desired_order,
     }
 }

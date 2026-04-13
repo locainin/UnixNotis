@@ -1,6 +1,8 @@
 use std::collections::{HashMap, VecDeque};
 
-use super::{build_reconcile_plan, desired_seed_popups, reload_refresh_plan, visible_popup_target};
+use super::{
+    build_reconcile_plan, desired_seed_popups, visible_popup_restack_ids, visible_popup_target,
+};
 use unixnotis_core::{Action, ControlState, NotificationImage, NotificationView, Urgency};
 
 fn make_view(id: u32, urgency: Urgency, summary: &str, body: &str) -> NotificationView {
@@ -78,7 +80,7 @@ fn build_reconcile_plan_removes_local_rows_missing_from_seed() {
     let plan = build_reconcile_plan(&local, &local_order, &[]);
 
     assert_eq!(plan.stale_ids, vec![7]);
-    assert!(plan.upserts.is_empty());
+    assert!(plan.updates.is_empty());
     assert!(plan.desired_order.is_empty());
 }
 
@@ -93,16 +95,26 @@ fn build_reconcile_plan_rebuilds_rows_when_payload_changes() {
     let plan = build_reconcile_plan(&local, &local_order, &desired);
 
     assert!(plan.stale_ids.is_empty());
-    assert_eq!(plan.upserts.len(), 1);
-    assert_eq!(plan.upserts[0].id, 5);
-    assert_eq!(plan.upserts[0].summary, "new");
-    assert_eq!(plan.upserts[0].body, "body changed");
+    assert_eq!(plan.updates.len(), 1);
+    assert_eq!(plan.updates[0].id, 5);
+    assert_eq!(plan.updates[0].summary, "new");
+    assert_eq!(plan.updates[0].body, "body changed");
 }
 
 #[test]
-fn visible_popup_target_clamps_to_runtime_limit() {
-    // Visible target should stop at max_visible even when more popups are queued
-    assert_eq!(visible_popup_target(5, 2), 2);
+fn build_reconcile_plan_skips_rebuild_when_only_stale_rows_are_removed() {
+    let mut local = HashMap::new();
+    local.insert(1, make_view(1, Urgency::Normal, "keep", "body"));
+    local.insert(2, make_view(2, Urgency::Normal, "stale", "body"));
+    let local_order = VecDeque::from([2, 1]);
+    let desired = vec![make_view(1, Urgency::Normal, "keep", "body")];
+
+    let plan = build_reconcile_plan(&local, &local_order, &desired);
+
+    // Removing stale ids should not force a rebuild for an unchanged row
+    assert_eq!(plan.stale_ids, vec![2]);
+    assert!(plan.updates.is_empty());
+    assert_eq!(plan.desired_order, VecDeque::from([1]));
 }
 
 #[test]
@@ -113,19 +125,33 @@ fn visible_popup_target_stays_within_available_popups() {
 }
 
 #[test]
-fn reload_refresh_plan_keeps_width_updates_to_materialized_rows() {
-    // Reload should resize only built rows while still respecting popup limits
-    let plan = reload_refresh_plan(5, 2, 3);
-
-    assert_eq!(plan.resized_roots, 2);
-    assert_eq!(plan.visible_target, 3);
+fn visible_popup_target_clamps_to_runtime_limit() {
+    // Visible target should stop at max_visible even when more popups are queued
+    assert_eq!(visible_popup_target(5, 2), 2);
 }
 
 #[test]
-fn reload_refresh_plan_handles_popup_disable_cleanly() {
-    // Disabling popups should still resize built rows before visibility drops to zero
-    let plan = reload_refresh_plan(4, 3, 0);
+fn visible_popup_restack_ids_skips_rows_when_order_is_unchanged() {
+    let moved = visible_popup_restack_ids(&[9, 8, 7], &[9, 8, 7]);
 
-    assert_eq!(plan.resized_roots, 3);
-    assert_eq!(plan.visible_target, 0);
+    // Stable visible order should not trigger another GTK restack pass
+    assert!(moved.is_empty());
+}
+
+#[test]
+fn visible_popup_restack_ids_marks_only_new_front_row_when_prepending() {
+    let moved = visible_popup_restack_ids(&[8, 7], &[9, 8, 7]);
+
+    // New head row is the only widget that needs to be inserted at the front
+    assert_eq!(moved.len(), 1);
+    assert!(moved.contains(&9));
+}
+
+#[test]
+fn visible_popup_restack_ids_marks_only_rows_that_move() {
+    let moved = visible_popup_restack_ids(&[9, 8, 7], &[8, 9, 7]);
+
+    // Only the row that changes position needs a reorder call
+    assert_eq!(moved.len(), 1);
+    assert!(moved.contains(&8));
 }

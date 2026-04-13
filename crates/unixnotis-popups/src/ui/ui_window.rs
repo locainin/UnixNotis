@@ -78,6 +78,14 @@ pub(super) fn build_popup_window(
         }
     });
 
+    window.connect_unmap({
+        let input_region = input_region.clone();
+        move |_| {
+            // Hidden surfaces should drop any stale tick guard before the next map
+            input_region.reset_runtime_state();
+        }
+    });
+
     window.connect_scale_factor_notify({
         let stack = stack.clone();
         let input_region = input_region.clone();
