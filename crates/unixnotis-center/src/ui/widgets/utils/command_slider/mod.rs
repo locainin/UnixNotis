@@ -1,21 +1,27 @@
 //! Command-backed slider widget and refresh wiring
 
+mod refresh;
+mod schedule;
+#[cfg(test)]
+mod tests;
+mod value;
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 
 use glib::clone;
 use gtk::prelude::*;
 use gtk::Align;
-use tracing::warn;
-use unixnotis_core::{util, NumericParseMode, PanelDebugLevel, SliderWidgetConfig};
+use unixnotis_core::SliderWidgetConfig;
 
+use self::refresh::{refresh_inner, SliderRefreshMeta, SliderRefreshState};
+use self::schedule::schedule_command;
 use super::slider_icons::resolve_slider_icon_name;
-use super::slider_parse::{format_value, parse_muted, parse_numeric};
-use super::{run_command, run_command_capture_status_async, start_command_watch, CommandWatch};
-use crate::debug;
+use super::slider_parse::format_value;
+use super::{run_command, start_command_watch, CommandWatch};
 
 pub struct CommandSlider {
     // Root widget embedded by higher-level widget wrappers
@@ -38,36 +44,6 @@ pub struct CommandSlider {
     refresh_gen: Arc<AtomicU64>,
     // Optional watch command handle for event-driven refresh
     watch_handle: RefCell<Option<CommandWatch>>,
-}
-
-#[derive(Clone)]
-struct SliderRefreshState {
-    // Slider updated from command output
-    scale: gtk::Scale,
-    // Label kept in sync with the slider
-    label: gtk::Label,
-    // Icon button updated after refresh
-    icon_button: gtk::Button,
-    // Guard stops refresh writes from triggering another set command
-    updating: Rc<Cell<bool>>,
-    // Generation drops stale async refresh results
-    refresh_gen: Arc<AtomicU64>,
-    // Normal icon shown when not muted
-    icon_name: String,
-    // Optional icon used when muted
-    icon_muted: Option<String>,
-}
-
-#[derive(Clone)]
-struct SliderRefreshMeta {
-    // Non-widget refresh state that is safe to hold across signal closures
-    updating: Rc<Cell<bool>>,
-    // Generation drops stale async refresh results
-    refresh_gen: Arc<AtomicU64>,
-    // Normal icon shown when not muted
-    icon_name: String,
-    // Optional icon used when muted
-    icon_muted: Option<String>,
 }
 
 impl CommandSlider {
@@ -300,190 +276,5 @@ impl CommandSlider {
             icon_name: self.icon_name.clone(),
             icon_muted: self.icon_muted.clone(),
         }
-    }
-}
-
-fn refresh_inner(
-    cmd: String,
-    min: f64,
-    max: f64,
-    step: f64,
-    parse_mode: NumericParseMode,
-    refresh: SliderRefreshState,
-) {
-    // New refresh id makes older async results stale
-    let gen = refresh.refresh_gen.fetch_add(1, Ordering::Relaxed) + 1;
-
-    let rx = run_command_capture_status_async(&cmd);
-    let refresh_gen = refresh.refresh_gen.clone();
-    glib::MainContext::default().spawn_local(async move {
-        let output = match rx.recv().await {
-            Ok(output) => output,
-            Err(_) => return,
-        };
-        if refresh_gen.load(Ordering::Relaxed) != gen {
-            // A newer refresh already started so this result is old
-            return;
-        }
-        let output = match output {
-            Ok(output) => output,
-            Err(err) => {
-                warn!(?err, "slider command failed");
-                return;
-            }
-        };
-        if !output.status.success() {
-            warn!(?cmd, "slider command returned error");
-            return;
-        }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let value = match parse_numeric(&stdout, min, max, parse_mode) {
-            Some(value) => value,
-            None => {
-                let snippet = util::log_snippet(stdout.trim());
-                debug::log(PanelDebugLevel::Warn, || {
-                    format!("slider parse failed cmd=\"{}\" output=\"{}\"", cmd, snippet)
-                });
-                return;
-            }
-        };
-        let muted = parse_muted(&stdout);
-
-        let formatted = format_value(value);
-        // Skip widget writes when the visible state is already current
-        let value_changed = slider_value_changed(refresh.scale.value(), value, step);
-        let label_changed = refresh.label.text().as_str() != formatted;
-        if value_changed || label_changed {
-            refresh.updating.set(true);
-            if value_changed {
-                refresh.scale.set_value(value);
-            }
-            if label_changed {
-                refresh.label.set_text(&formatted);
-            }
-            refresh.updating.set(false);
-            debug::log(PanelDebugLevel::Verbose, || {
-                format!(
-                    "slider updated cmd=\"{}\" value={value:.1} muted={muted}",
-                    cmd
-                )
-            });
-        }
-        if let Some(icon_muted) = refresh.icon_muted.as_ref() {
-            // Not every slider has a muted icon pair
-            let icon = if muted {
-                icon_muted
-            } else {
-                &refresh.icon_name
-            };
-            refresh.icon_button.set_icon_name(icon);
-        }
-    });
-}
-
-fn schedule_command(
-    pending: Rc<RefCell<Option<glib::SourceId>>>,
-    pending_value: Rc<Cell<Option<f64>>>,
-    cmd_template: String,
-    value: f64,
-    step: f64,
-) {
-    // Latest value wins while debounce timer is active
-    pending_value.set(Some(value));
-    if pending.borrow().is_some() {
-        return;
-    }
-
-    let value_text = format_command_value(value, step);
-    debug::log(PanelDebugLevel::Verbose, || {
-        format!("slider set scheduled value={value_text}")
-    });
-    let pending_guard = pending.clone();
-    let pending_value = pending_value.clone();
-    let id = glib::timeout_add_local(Duration::from_millis(120), move || {
-        // Drain pending state and execute the most recent queued command
-        let value = pending_value.replace(None);
-        let _ = pending_guard.borrow_mut().take();
-        if let Some(value) = value {
-            let formatted = cmd_template.replace("{value}", &format_command_value(value, step));
-            run_command(&formatted);
-        }
-        glib::ControlFlow::Break
-    });
-    *pending.borrow_mut() = Some(id);
-}
-
-fn slider_value_changed(current: f64, next: f64, step: f64) -> bool {
-    // Treat values inside half a step as unchanged for UI refresh decisions
-    (current - next).abs() > slider_value_tolerance(step)
-}
-
-fn slider_value_tolerance(step: f64) -> f64 {
-    // Broken or missing step values fall back to a tiny fixed tolerance
-    if !step.is_finite() || step <= 0.0 {
-        return 1e-6;
-    }
-    (step * 0.5).max(1e-6)
-}
-
-fn format_command_value(value: f64, step: f64) -> String {
-    // Match command precision to slider granularity so fractional sliders stay correct
-    let precision = slider_step_precision(step);
-    let formatted = format!("{value:.precision$}");
-    trim_decimal_suffix(formatted)
-}
-
-fn slider_step_precision(step: f64) -> usize {
-    if !step.is_finite() || step <= 0.0 {
-        return 0;
-    }
-
-    // Stop once the step looks like a whole number at this precision
-    for precision in 0..=6 {
-        let factor = 10f64.powi(precision as i32);
-        let scaled = step * factor;
-        if (scaled.round() - scaled).abs() <= 1e-9 {
-            return precision;
-        }
-    }
-
-    6
-}
-
-fn trim_decimal_suffix(mut text: String) -> String {
-    // Drop trailing zeroes so commands get `12.5` instead of `12.500`
-    if text.contains('.') {
-        while text.ends_with('0') {
-            text.pop();
-        }
-        if text.ends_with('.') {
-            text.pop();
-        }
-    }
-    text
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{format_command_value, slider_value_changed, slider_value_tolerance};
-
-    #[test]
-    fn format_command_value_keeps_fractional_precision_from_step() {
-        assert_eq!(format_command_value(12.5, 0.5), "12.5");
-        assert_eq!(format_command_value(12.25, 0.25), "12.25");
-        assert_eq!(format_command_value(12.125, 0.125), "12.125");
-    }
-
-    #[test]
-    fn format_command_value_trims_integer_suffix_when_step_is_whole() {
-        assert_eq!(format_command_value(42.0, 1.0), "42");
-        assert_eq!(format_command_value(42.0, 10.0), "42");
-    }
-
-    #[test]
-    fn slider_value_changed_uses_step_sized_tolerance() {
-        assert_eq!(slider_value_tolerance(0.1), 0.05);
-        assert!(!slider_value_changed(50.0, 50.04, 0.1));
-        assert!(slider_value_changed(50.0, 50.06, 0.1));
     }
 }
