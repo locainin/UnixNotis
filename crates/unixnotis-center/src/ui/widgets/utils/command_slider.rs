@@ -40,6 +40,36 @@ pub struct CommandSlider {
     watch_handle: RefCell<Option<CommandWatch>>,
 }
 
+#[derive(Clone)]
+struct SliderRefreshState {
+    // Slider updated from command output
+    scale: gtk::Scale,
+    // Label kept in sync with the slider
+    label: gtk::Label,
+    // Icon button updated after refresh
+    icon_button: gtk::Button,
+    // Guard stops refresh writes from triggering another set command
+    updating: Rc<Cell<bool>>,
+    // Generation drops stale async refresh results
+    refresh_gen: Arc<AtomicU64>,
+    // Normal icon shown when not muted
+    icon_name: String,
+    // Optional icon used when muted
+    icon_muted: Option<String>,
+}
+
+#[derive(Clone)]
+struct SliderRefreshMeta {
+    // Non-widget refresh state that is safe to hold across signal closures
+    updating: Rc<Cell<bool>>,
+    // Generation drops stale async refresh results
+    refresh_gen: Arc<AtomicU64>,
+    // Normal icon shown when not muted
+    icon_name: String,
+    // Optional icon used when muted
+    icon_muted: Option<String>,
+}
+
 impl CommandSlider {
     pub fn new(config: SliderWidgetConfig, extra_class: &str) -> Self {
         // Root combines base style with caller-provided variant class
@@ -91,15 +121,18 @@ impl CommandSlider {
             .map(|name| resolve_slider_icon_name(&config.label, name));
         let min = config.min;
         let max = config.max;
+        let step = config.step;
         let parse_mode = config.parse_mode;
 
         if let Some(toggle_cmd) = config.toggle_cmd.as_ref() {
             let cmd = toggle_cmd.clone();
             let refresh_cmd = config.get_cmd.clone();
-            let refresh_updating = updating.clone();
-            let refresh_gen = refresh_gen.clone();
-            let refresh_icon_name = icon_name.clone();
-            let refresh_icon_muted = icon_muted.clone();
+            let refresh_meta = SliderRefreshMeta {
+                updating: updating.clone(),
+                refresh_gen: refresh_gen.clone(),
+                icon_name: icon_name.clone(),
+                icon_muted: icon_muted.clone(),
+            };
             icon_button.connect_clicked(clone!(
                 #[weak]
                 icon_button,
@@ -112,15 +145,9 @@ impl CommandSlider {
                 #[strong]
                 refresh_cmd,
                 #[strong]
-                refresh_updating,
-                #[strong]
-                refresh_gen,
-                #[strong]
-                refresh_icon_name,
-                #[strong]
-                refresh_icon_muted,
+                refresh_meta,
                 move |_| {
-                    // Weak widget captures avoid self-referential signal cycles
+                    // Weak widget captures avoid GTK reference cycles here
                     run_command(&cmd);
                     glib::timeout_add_local(
                         Duration::from_millis(160),
@@ -134,28 +161,27 @@ impl CommandSlider {
                             #[strong]
                             refresh_cmd,
                             #[strong]
-                            refresh_updating,
-                            #[strong]
-                            refresh_gen,
-                            #[strong]
-                            refresh_icon_name,
-                            #[strong]
-                            refresh_icon_muted,
+                            refresh_meta,
                             #[upgrade_or]
                             glib::ControlFlow::Break,
                             move || {
+                                // Rebuild widget state only after weak refs were upgraded
+                                let refresh = SliderRefreshState {
+                                    scale: scale.clone(),
+                                    label: value_label.clone(),
+                                    icon_button: icon_button.clone(),
+                                    updating: refresh_meta.updating.clone(),
+                                    refresh_gen: refresh_meta.refresh_gen.clone(),
+                                    icon_name: refresh_meta.icon_name.clone(),
+                                    icon_muted: refresh_meta.icon_muted.clone(),
+                                };
                                 refresh_inner(
                                     refresh_cmd.clone(),
                                     min,
                                     max,
-                                    scale.clone(),
-                                    value_label.clone(),
-                                    icon_button.clone(),
-                                    refresh_updating.clone(),
-                                    refresh_gen.clone(),
-                                    refresh_icon_name.clone(),
-                                    refresh_icon_muted.clone(),
+                                    step,
                                     parse_mode,
+                                    refresh,
                                 );
                                 glib::ControlFlow::Break
                             }
@@ -184,6 +210,7 @@ impl CommandSlider {
                 pending_value_guard.clone(),
                 set_cmd.clone(),
                 value,
+                step,
             );
         });
 
@@ -207,14 +234,9 @@ impl CommandSlider {
             self.config.get_cmd.clone(),
             self.config.min,
             self.config.max,
-            self.scale.clone(),
-            self.value_label.clone(),
-            self.icon_button.clone(),
-            self.updating.clone(),
-            self.refresh_gen.clone(),
-            self.icon_name.clone(),
-            self.icon_muted.clone(),
+            self.config.step,
             self.config.parse_mode,
+            self.refresh_state(),
         );
     }
 
@@ -250,60 +272,57 @@ impl CommandSlider {
         // Watch callbacks reuse polling refresh logic to keep semantics consistent
         let cmd = self.config.watch_cmd.as_ref()?;
         let refresh_cmd = self.config.get_cmd.clone();
-        let refresh_scale = self.scale.clone();
-        let refresh_label = self.value_label.clone();
-        let refresh_icon = self.icon_button.clone();
-        let refresh_updating = self.updating.clone();
-        let refresh_gen = self.refresh_gen.clone();
-        let refresh_icon_name = self.icon_name.clone();
-        let refresh_icon_muted = self.icon_muted.clone();
+        let refresh_state = self.refresh_state();
         let min = self.config.min;
         let max = self.config.max;
+        let step = self.config.step;
         let parse_mode = self.config.parse_mode;
         start_command_watch(cmd, move || {
             refresh_inner(
                 refresh_cmd.clone(),
                 min,
                 max,
-                refresh_scale.clone(),
-                refresh_label.clone(),
-                refresh_icon.clone(),
-                refresh_updating.clone(),
-                refresh_gen.clone(),
-                refresh_icon_name.clone(),
-                refresh_icon_muted.clone(),
+                step,
                 parse_mode,
+                refresh_state.clone(),
             );
         })
     }
+
+    fn refresh_state(&self) -> SliderRefreshState {
+        // Build one refresh bundle so call sites stay small
+        SliderRefreshState {
+            scale: self.scale.clone(),
+            label: self.value_label.clone(),
+            icon_button: self.icon_button.clone(),
+            updating: self.updating.clone(),
+            refresh_gen: self.refresh_gen.clone(),
+            icon_name: self.icon_name.clone(),
+            icon_muted: self.icon_muted.clone(),
+        }
+    }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn refresh_inner(
     cmd: String,
     min: f64,
     max: f64,
-    scale: gtk::Scale,
-    label: gtk::Label,
-    icon_button: gtk::Button,
-    updating: Rc<Cell<bool>>,
-    refresh_gen: Arc<AtomicU64>,
-    icon_name: String,
-    icon_muted: Option<String>,
+    step: f64,
     parse_mode: NumericParseMode,
+    refresh: SliderRefreshState,
 ) {
-    // Claim generation so older async command results cannot overwrite new state
-    let gen = refresh_gen.fetch_add(1, Ordering::Relaxed) + 1;
+    // New refresh id makes older async results stale
+    let gen = refresh.refresh_gen.fetch_add(1, Ordering::Relaxed) + 1;
 
     let rx = run_command_capture_status_async(&cmd);
-    let refresh_gen = refresh_gen.clone();
+    let refresh_gen = refresh.refresh_gen.clone();
     glib::MainContext::default().spawn_local(async move {
         let output = match rx.recv().await {
             Ok(output) => output,
             Err(_) => return,
         };
         if refresh_gen.load(Ordering::Relaxed) != gen {
-            // A newer refresh has started while this command was running
+            // A newer refresh already started so this result is old
             return;
         }
         let output = match output {
@@ -331,18 +350,18 @@ fn refresh_inner(
         let muted = parse_muted(&stdout);
 
         let formatted = format_value(value);
-        // Update only when values changed to reduce redraw and signal churn
-        let value_changed = (scale.value() - value).abs() > f64::EPSILON;
-        let label_changed = label.text().as_str() != formatted;
+        // Skip widget writes when the visible state is already current
+        let value_changed = slider_value_changed(refresh.scale.value(), value, step);
+        let label_changed = refresh.label.text().as_str() != formatted;
         if value_changed || label_changed {
-            updating.set(true);
+            refresh.updating.set(true);
             if value_changed {
-                scale.set_value(value);
+                refresh.scale.set_value(value);
             }
             if label_changed {
-                label.set_text(&formatted);
+                refresh.label.set_text(&formatted);
             }
-            updating.set(false);
+            refresh.updating.set(false);
             debug::log(PanelDebugLevel::Verbose, || {
                 format!(
                     "slider updated cmd=\"{}\" value={value:.1} muted={muted}",
@@ -350,10 +369,14 @@ fn refresh_inner(
                 )
             });
         }
-        if let Some(icon_muted) = icon_muted.as_ref() {
-            // Muted icon mapping is optional because not all sliders support mute semantics
-            let icon = if muted { icon_muted } else { &icon_name };
-            icon_button.set_icon_name(icon);
+        if let Some(icon_muted) = refresh.icon_muted.as_ref() {
+            // Not every slider has a muted icon pair
+            let icon = if muted {
+                icon_muted
+            } else {
+                &refresh.icon_name
+            };
+            refresh.icon_button.set_icon_name(icon);
         }
     });
 }
@@ -363,6 +386,7 @@ fn schedule_command(
     pending_value: Rc<Cell<Option<f64>>>,
     cmd_template: String,
     value: f64,
+    step: f64,
 ) {
     // Latest value wins while debounce timer is active
     pending_value.set(Some(value));
@@ -370,8 +394,9 @@ fn schedule_command(
         return;
     }
 
+    let value_text = format_command_value(value, step);
     debug::log(PanelDebugLevel::Verbose, || {
-        format!("slider set scheduled value={value:.0}")
+        format!("slider set scheduled value={value_text}")
     });
     let pending_guard = pending.clone();
     let pending_value = pending_value.clone();
@@ -380,10 +405,85 @@ fn schedule_command(
         let value = pending_value.replace(None);
         let _ = pending_guard.borrow_mut().take();
         if let Some(value) = value {
-            let formatted = cmd_template.replace("{value}", &format!("{value:.0}"));
+            let formatted = cmd_template.replace("{value}", &format_command_value(value, step));
             run_command(&formatted);
         }
         glib::ControlFlow::Break
     });
     *pending.borrow_mut() = Some(id);
+}
+
+fn slider_value_changed(current: f64, next: f64, step: f64) -> bool {
+    // Treat values inside half a step as unchanged for UI refresh decisions
+    (current - next).abs() > slider_value_tolerance(step)
+}
+
+fn slider_value_tolerance(step: f64) -> f64 {
+    // Broken or missing step values fall back to a tiny fixed tolerance
+    if !step.is_finite() || step <= 0.0 {
+        return 1e-6;
+    }
+    (step * 0.5).max(1e-6)
+}
+
+fn format_command_value(value: f64, step: f64) -> String {
+    // Match command precision to slider granularity so fractional sliders stay correct
+    let precision = slider_step_precision(step);
+    let formatted = format!("{value:.precision$}");
+    trim_decimal_suffix(formatted)
+}
+
+fn slider_step_precision(step: f64) -> usize {
+    if !step.is_finite() || step <= 0.0 {
+        return 0;
+    }
+
+    // Stop once the step looks like a whole number at this precision
+    for precision in 0..=6 {
+        let factor = 10f64.powi(precision as i32);
+        let scaled = step * factor;
+        if (scaled.round() - scaled).abs() <= 1e-9 {
+            return precision;
+        }
+    }
+
+    6
+}
+
+fn trim_decimal_suffix(mut text: String) -> String {
+    // Drop trailing zeroes so commands get `12.5` instead of `12.500`
+    if text.contains('.') {
+        while text.ends_with('0') {
+            text.pop();
+        }
+        if text.ends_with('.') {
+            text.pop();
+        }
+    }
+    text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_command_value, slider_value_changed, slider_value_tolerance};
+
+    #[test]
+    fn format_command_value_keeps_fractional_precision_from_step() {
+        assert_eq!(format_command_value(12.5, 0.5), "12.5");
+        assert_eq!(format_command_value(12.25, 0.25), "12.25");
+        assert_eq!(format_command_value(12.125, 0.125), "12.125");
+    }
+
+    #[test]
+    fn format_command_value_trims_integer_suffix_when_step_is_whole() {
+        assert_eq!(format_command_value(42.0, 1.0), "42");
+        assert_eq!(format_command_value(42.0, 10.0), "42");
+    }
+
+    #[test]
+    fn slider_value_changed_uses_step_sized_tolerance() {
+        assert_eq!(slider_value_tolerance(0.1), 0.05);
+        assert!(!slider_value_changed(50.0, 50.04, 0.1));
+        assert!(slider_value_changed(50.0, 50.06, 0.1));
+    }
 }
