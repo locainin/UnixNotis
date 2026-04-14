@@ -8,7 +8,7 @@ mod main_css_check_geometry;
 mod main_css_check_lint;
 #[path = "main_css_check_parse.rs"]
 mod main_css_check_parse;
-#[path = "main_css_check_report.rs"]
+#[path = "main_css_check_report/mod.rs"]
 mod main_css_check_report;
 #[path = "main_css_check_runtime.rs"]
 mod main_css_check_runtime;
