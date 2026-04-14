@@ -1,4 +1,4 @@
-//! Lint rules for css-check.
+//! Lint rules for css-check
 
 use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
@@ -7,72 +7,109 @@ use std::path::{Path, PathBuf};
 
 use super::main_css_check_files::format_display_path;
 use super::main_css_check_parse::{
-    next_css_block, normalize_selector, parse_css_declarations, should_recurse_at_rule,
-    split_selectors, strip_css_comments,
+    next_css_block_with_offsets, normalize_selector, parse_css_declarations_with_offsets,
+    should_recurse_at_rule, split_selectors, strip_css_comments,
 };
+use super::main_css_check_report::{CssCheckCategory, CssCheckDiagnostic};
+
+pub(super) struct CssCheckLintFinding {
+    pub(super) code: &'static str,
+    // Lint can point at the source when the scanner has a stable offset
+    pub(super) line: Option<usize>,
+    pub(super) column: Option<usize>,
+    pub(super) message: String,
+}
 
 pub(super) fn lint_css_files(
     files: &[PathBuf],
     config_dir: &Path,
     display_root: &str,
-) -> Result<usize> {
-    let mut warnings = 0usize;
+) -> Result<Vec<CssCheckDiagnostic>> {
+    let mut diagnostics = Vec::new();
     for path in files {
         let display_path = format_display_path(config_dir, display_root, path);
 
-        // GTK only reports parse errors, so lint reads the file text too
+        // GTK only reports parser failures, so lint reads the raw file too
         let contents = fs::read_to_string(path)
             .with_context(|| format!("read css file {}", path.display()))?;
         let report = lint_css_contents(&contents);
-        for warning in report {
-            warnings += 1;
-            eprintln!("css warning: {}: {}", display_path, warning);
+        for finding in report {
+            diagnostics.push(CssCheckDiagnostic::warning_at(
+                CssCheckCategory::Lint,
+                finding.code,
+                display_path.clone(),
+                finding.line,
+                finding.column,
+                finding.message,
+            ));
         }
     }
-    Ok(warnings)
+    Ok(diagnostics)
 }
 
-pub(super) fn lint_css_contents(contents: &str) -> Vec<String> {
+pub(super) fn lint_css_contents(contents: &str) -> Vec<CssCheckLintFinding> {
     let mut warnings = Vec::new();
 
-    // Remove comments first so the scanner sees real blocks only
+    // Strip comments first so block scanning stays honest
     let stripped = strip_css_comments(contents);
 
-    // Repeated color names usually mean accidental override order
+    // Repeated color names usually mean an accidental override
     let mut color_defs: HashMap<String, usize> = HashMap::new();
-    for line in stripped.lines() {
+    let mut offset = 0usize;
+    for segment in stripped.split_inclusive('\n') {
+        // Running offsets stay correct even when the same line text appears more than once
+        let line = segment.strip_suffix('\n').unwrap_or(segment);
         let trimmed = line.trim_start();
         if let Some(rest) = trimmed.strip_prefix("@define-color") {
             if let Some(name) = rest.split_whitespace().next() {
                 let count = color_defs.entry(name.to_string()).or_insert(0);
                 *count += 1;
                 if *count > 1 {
-                    warnings.push(format!(
-                        "duplicate @define-color '{}' (later definition overrides earlier)",
-                        name
-                    ));
+                    let trimmed_start = line.len().saturating_sub(trimmed.len());
+                    let (lint_line, lint_column) =
+                        line_column_for_offset(&stripped, offset + trimmed_start);
+                    warnings.push(CssCheckLintFinding {
+                        code: "LINT001",
+                        line: Some(lint_line),
+                        column: Some(lint_column),
+                        message: format!(
+                            "duplicate @define-color '{}' (later definition overrides earlier)",
+                            name
+                        ),
+                    });
                 }
             }
         }
+        offset += segment.len();
     }
 
-    // Selector repeats are tracked across the whole file
+    // Selector repeats matter across the whole file
     let mut selector_seen: HashMap<String, usize> = HashMap::new();
-    lint_css_block(&stripped, None, &mut selector_seen, &mut warnings);
+    lint_css_block(
+        &stripped,
+        &stripped,
+        0,
+        None,
+        &mut selector_seen,
+        &mut warnings,
+    );
     warnings
 }
 
 fn lint_css_block(
     contents: &str,
+    source_contents: &str,
+    base_offset: usize,
     context: Option<String>,
     selector_seen: &mut HashMap<String, usize>,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<CssCheckLintFinding>,
 ) {
+    // Nested blocks reuse the full file text so line math stays absolute
     let mut cursor = 0usize;
     let bytes = contents.as_bytes();
-    while let Some((selector, block, next)) = next_css_block(bytes, cursor) {
-        cursor = next;
-        let selector = normalize_selector(&selector);
+    while let Some(css_block) = next_css_block_with_offsets(bytes, cursor) {
+        cursor = css_block.next;
+        let selector = normalize_selector(&css_block.selector);
         if selector.is_empty() {
             continue;
         }
@@ -83,14 +120,21 @@ fn lint_css_block(
                     Some(parent) => format!("{parent} {selector}"),
                     None => selector.clone(),
                 };
-                // Keep at-rule context so warnings still point to the right scope
-                lint_css_block(&block, Some(nested_context), selector_seen, warnings);
+                // Keep the at-rule in the warning so the scope still makes sense
+                lint_css_block(
+                    &css_block.block,
+                    source_contents,
+                    base_offset + css_block.block_start,
+                    Some(nested_context),
+                    selector_seen,
+                    warnings,
+                );
             }
             continue;
         }
 
-        // Grouped selectors need to be tracked one by one
-        for selector_part in split_selectors(&selector) {
+        // Grouped selectors still need one warning per real selector
+        for (selector_part, selector_offset) in selector_part_locations(&css_block.selector) {
             if selector_part.is_empty() {
                 continue;
             }
@@ -105,33 +149,69 @@ fn lint_css_block(
                     .as_ref()
                     .map(|ctx| format!(" within {ctx}"))
                     .unwrap_or_default();
-                warnings.push(format!(
-                    "duplicate selector '{}'{} (later rules override earlier)",
-                    selector_part, context_note
-                ));
+                let (lint_line, lint_column) = line_column_for_offset(
+                    source_contents,
+                    base_offset + css_block.selector_start + selector_offset,
+                );
+                warnings.push(CssCheckLintFinding {
+                    code: "LINT002",
+                    line: Some(lint_line),
+                    column: Some(lint_column),
+                    message: format!(
+                        "duplicate selector '{}'{} (later rules override earlier)",
+                        selector_part, context_note
+                    ),
+                });
             }
         }
 
-        warnings.extend(lint_css_properties(&selector, &block, context.as_deref()));
+        warnings.extend(lint_css_properties(
+            source_contents,
+            &selector,
+            &css_block.block,
+            base_offset + css_block.block_start,
+            context.as_deref(),
+        ));
     }
 }
 
-fn lint_css_properties(selector: &str, block: &str, context: Option<&str>) -> Vec<String> {
+fn lint_css_properties(
+    contents: &str,
+    selector: &str,
+    block: &str,
+    block_start: usize,
+    context: Option<&str>,
+) -> Vec<CssCheckLintFinding> {
     let mut warnings = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    for (prop, value) in parse_css_declarations(block) {
+    for declaration in parse_css_declarations_with_offsets(block) {
+        // Property offsets are relative to the block, so the block start gets added back here
+        let prop = declaration.name;
+        let value = declaration.value;
+        let (lint_line, lint_column) =
+            line_column_for_offset(contents, block_start + declaration.start);
         if !seen.insert(prop.to_string()) {
             let context_note = context
                 .map(|ctx| format!(" within {ctx}"))
                 .unwrap_or_default();
-            warnings.push(format!(
-                "duplicate property '{}' in selector '{}'{} (later value overrides earlier)",
-                prop, selector, context_note
-            ));
+            warnings.push(CssCheckLintFinding {
+                code: "LINT003",
+                line: Some(lint_line),
+                column: Some(lint_column),
+                message: format!(
+                    "duplicate property '{}' in selector '{}'{} (later value overrides earlier)",
+                    prop, selector, context_note
+                ),
+            });
         }
 
         if let Some(message) = web_length_value_warning(&prop, &value, selector, context) {
-            warnings.push(message);
+            warnings.push(CssCheckLintFinding {
+                code: "LINT004",
+                line: Some(lint_line),
+                column: Some(lint_column),
+                message,
+            });
         }
     }
     warnings
@@ -148,13 +228,13 @@ fn web_length_value_warning(
     }
 
     let hint = if value.contains('%') {
-        // Percentage widths are a common web habit that often breaks GTK layout rules
+        // Percentage widths are a common web habit that often breaks GTK layout
         Some("uses percentage lengths that GTK layout properties often reject or ignore")
     } else if value.contains("calc(") {
-        // calc() can look valid while still not acting like web CSS
+        // calc() can look valid while still not act like web CSS here
         Some("uses calc(), which GTK layout properties often do not evaluate the way web CSS does")
     } else if value.contains("var(") {
-        // GTK color tokens use @define-color rather than web custom properties
+        // GTK uses @define-color instead of web custom properties
         Some("uses var(), but GTK CSS does not support web custom properties for layout values")
     } else {
         None
@@ -187,4 +267,42 @@ fn is_horizontal_size_property(name: &str) -> bool {
             | "border-right"
             | "border-right-width"
     )
+}
+
+fn selector_part_locations(selector: &str) -> Vec<(String, usize)> {
+    let mut parts = Vec::new();
+    let mut search_start = 0usize;
+    for raw_part in split_selectors(selector) {
+        let normalized = normalize_selector(&raw_part);
+        if normalized.is_empty() {
+            continue;
+        }
+
+        let offset = selector[search_start..]
+            .find(raw_part.as_str())
+            .map(|index| search_start + index)
+            .unwrap_or(search_start);
+        // Search resumes after the current match so repeated selectors still get the right offset
+        search_start = offset + raw_part.len();
+        parts.push((normalized, offset));
+    }
+    parts
+}
+
+fn line_column_for_offset(contents: &str, offset: usize) -> (usize, usize) {
+    // Byte offsets are enough here because css-check already works on UTF-8 source slices
+    let mut line = 1usize;
+    let mut column = 1usize;
+    for (index, ch) in contents.char_indices() {
+        if index >= offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+    (line, column)
 }

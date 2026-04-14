@@ -1,4 +1,23 @@
-//! Small CSS scanner helpers for css-check.
+//! Small CSS scanner helpers for css-check
+
+pub(super) struct CssBlock {
+    // Selector text before normalization
+    pub(super) selector: String,
+    // Raw block body without the outer braces
+    pub(super) block: String,
+    // Cursor position for the next scan step
+    pub(super) next: usize,
+    // Absolute offsets let lint map warnings back to line and column
+    pub(super) selector_start: usize,
+    pub(super) block_start: usize,
+}
+
+pub(super) struct CssDeclaration {
+    pub(super) name: String,
+    pub(super) value: String,
+    // Declaration offsets are relative to the block slice
+    pub(super) start: usize,
+}
 
 pub(super) fn strip_css_comments(input: &str) -> String {
     let mut output = String::with_capacity(input.len());
@@ -8,12 +27,24 @@ pub(super) fn strip_css_comments(input: &str) -> String {
         if in_comment {
             // Stay in comment mode until the closing marker is found
             if ch == '*' && matches!(chars.peek(), Some('/')) {
+                output.push(' ');
+                output.push(' ');
                 chars.next();
                 in_comment = false;
+                continue;
+            }
+            if ch == '\n' || ch == '\r' {
+                // Newlines need to stay in place so line numbers still match
+                output.push(ch);
+            } else {
+                output.push(' ');
             }
             continue;
         }
         if ch == '/' && matches!(chars.peek(), Some('*')) {
+            // Replace the opening marker too so offsets stay aligned with the source
+            output.push(' ');
+            output.push(' ');
             chars.next();
             in_comment = true;
             continue;
@@ -24,6 +55,11 @@ pub(super) fn strip_css_comments(input: &str) -> String {
 }
 
 pub(super) fn next_css_block(bytes: &[u8], start: usize) -> Option<(String, String, usize)> {
+    // Older callers only need the text, so this stays as a small adapter
+    next_css_block_with_offsets(bytes, start).map(|block| (block.selector, block.block, block.next))
+}
+
+pub(super) fn next_css_block_with_offsets(bytes: &[u8], start: usize) -> Option<CssBlock> {
     // This scanner only needs to find balanced blocks
     let mut selector_start = start;
     while selector_start < bytes.len() && bytes[selector_start].is_ascii_whitespace() {
@@ -71,7 +107,13 @@ pub(super) fn next_css_block(bytes: &[u8], start: usize) -> Option<(String, Stri
                     depth -= 1;
                     if depth == 0 {
                         let block = String::from_utf8_lossy(&bytes[block_start..index]).to_string();
-                        return Some((selector, block, index + 1));
+                        return Some(CssBlock {
+                            selector,
+                            block,
+                            next: index + 1,
+                            selector_start,
+                            block_start,
+                        });
                     }
                 }
                 index += 1;
@@ -172,6 +214,14 @@ pub(super) fn should_recurse_at_rule(selector: &str) -> bool {
 }
 
 pub(super) fn parse_css_declarations(block: &str) -> Vec<(String, String)> {
+    // Older callers only need declaration text, not source offsets
+    parse_css_declarations_with_offsets(block)
+        .into_iter()
+        .map(|declaration| (declaration.name, declaration.value))
+        .collect()
+}
+
+pub(super) fn parse_css_declarations_with_offsets(block: &str) -> Vec<CssDeclaration> {
     // Keep ';' inside quoted text and function args
     let mut declarations = Vec::new();
     let mut start = 0usize;
@@ -203,18 +253,18 @@ pub(super) fn parse_css_declarations(block: &str) -> Vec<(String, String)> {
             '[' => bracket_depth += 1,
             ']' => bracket_depth = bracket_depth.saturating_sub(1),
             ';' if paren_depth == 0 && bracket_depth == 0 => {
-                push_declaration(&mut declarations, &block[start..index]);
+                push_declaration(&mut declarations, &block[start..index], start);
                 start = index + ch.len_utf8();
             }
             _ => {}
         }
     }
 
-    push_declaration(&mut declarations, &block[start..]);
+    push_declaration(&mut declarations, &block[start..], start);
     declarations
 }
 
-fn push_declaration(declarations: &mut Vec<(String, String)>, raw: &str) {
+fn push_declaration(declarations: &mut Vec<CssDeclaration>, raw: &str, raw_start: usize) {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return;
@@ -230,7 +280,14 @@ fn push_declaration(declarations: &mut Vec<(String, String)>, raw: &str) {
     if name.is_empty() || value.is_empty() {
         return;
     }
-    declarations.push((name.to_string(), value.to_string()));
+
+    // Leading space is kept in the offset so later line math points at the property name
+    let leading_trim = raw.find(trimmed).unwrap_or(0);
+    declarations.push(CssDeclaration {
+        name: name.to_string(),
+        value: value.to_string(),
+        start: raw_start + leading_trim,
+    });
 }
 
 fn find_top_level_colon(input: &str) -> Option<usize> {

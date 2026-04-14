@@ -95,14 +95,14 @@ fn includes_active_targets_outside_config_root_and_skips_unused_css() {
     assert_eq!(inputs.files.len(), 5);
     assert!(inputs.files.iter().any(|path| path == &external_panel));
     assert!(inputs
-        .info_lines
+        .notes
         .iter()
         .any(|line| line.contains("live outside $XDG_CONFIG_HOME/unixnotis")));
-    assert!(inputs.warnings.iter().any(|warning| warning
+    assert!(inputs.diagnostics.iter().any(|warning| warning
         .message
         .contains("point outside $XDG_CONFIG_HOME/unixnotis")));
     assert!(inputs
-        .info_lines
+        .notes
         .iter()
         .any(|line| line.contains("extra css file(s)")));
 }
@@ -145,7 +145,7 @@ fn warns_when_theme_slots_share_one_file() {
     )
     .expect("inputs");
 
-    assert!(inputs.warnings.iter().any(|warning| warning
+    assert!(inputs.diagnostics.iter().any(|warning| warning
         .message
         .contains("[theme].base_css, [theme].panel_css")));
 }
@@ -184,7 +184,7 @@ fn warns_when_configured_theme_target_is_missing() {
     )
     .expect("inputs");
 
-    assert!(inputs.warnings.iter().any(|warning| warning
+    assert!(inputs.diagnostics.iter().any(|warning| warning
         .message
         .contains("configured panel css target is missing")));
 }
@@ -212,10 +212,10 @@ fn warns_when_command_path_points_outside_config_root() {
     .expect("inputs");
 
     assert!(inputs
-        .info_lines
+        .notes
         .iter()
         .any(|line| line.contains("configured command path(s) point outside")));
-    assert!(inputs.warnings.iter().any(|warning| warning
+    assert!(inputs.diagnostics.iter().any(|warning| warning
         .message
         .contains("shared presets should keep explicit command paths inside")));
 }
@@ -246,10 +246,10 @@ fn warns_when_css_asset_ref_points_outside_config_root() {
     .expect("inputs");
 
     assert!(inputs
-        .info_lines
+        .notes
         .iter()
         .any(|line| line.contains("css asset reference(s) point outside")));
-    assert!(inputs.warnings.iter().any(|warning| warning
+    assert!(inputs.diagnostics.iter().any(|warning| warning
         .message
         .contains("css asset reference points outside")));
 }
@@ -282,10 +282,10 @@ fn warns_when_command_path_is_host_specific_under_config_root() {
     .expect("inputs");
 
     assert!(inputs
-        .info_lines
+        .notes
         .iter()
         .any(|line| line.contains("host-local config-root paths")));
-    assert!(inputs.warnings.iter().any(|warning| warning
+    assert!(inputs.diagnostics.iter().any(|warning| warning
         .message
         .contains("export should rewrite it before sharing")));
 }
