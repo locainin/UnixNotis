@@ -7,6 +7,7 @@ use crate::media::MediaInfo;
 
 use super::super::marquee::MarqueeLabel;
 use super::super::media_art::apply_media_art;
+use unixnotis_core::hooks;
 
 #[derive(Clone)]
 pub(super) struct MediaCardWidgets {
@@ -56,11 +57,14 @@ impl MediaCardWidgets {
         // The marquee handles its own internal caching
         self.title_label.set_text(&title);
         update_artist_label(&self.artist_label, &info.artist);
+        update_artist_classes(&self.root, &info.artist);
         update_play_button(&self.play_button, &info.playback_status);
         update_control_sensitivity(self, info);
 
         // Artwork loading is centralized so remote and local sources share one safety path
         apply_media_art(&self.art, &self.art_key, info.art_source.as_ref());
+        update_art_classes(&self.root, info.art_source.is_some());
+        update_player_count_classes(&self.root, total);
         if !self.art.is_visible() {
             self.art.set_visible(true);
         }
@@ -86,20 +90,25 @@ fn update_artist_label(label: &gtk::Label, artist: &str) {
         if label.text() != " " {
             label.set_text(" ");
         }
-        if !label.has_css_class("empty") {
-            label.add_css_class("empty");
+        if !label.has_css_class(hooks::shared_state::EMPTY) {
+            label.add_css_class(hooks::shared_state::EMPTY);
         }
     } else {
         if label.text() != artist {
             label.set_text(artist);
         }
-        if label.has_css_class("empty") {
-            label.remove_css_class("empty");
+        if label.has_css_class(hooks::shared_state::EMPTY) {
+            label.remove_css_class(hooks::shared_state::EMPTY);
         }
     }
     label.set_visible(true);
 }
 
+fn update_artist_classes(root: &gtk::Box, artist: &str) {
+    let has_artist = !artist.is_empty();
+    set_class_state(root, hooks::media_card::HAS_ARTIST, has_artist);
+    set_class_state(root, hooks::media_card::EMPTY_ARTIST, !has_artist);
+}
 fn update_play_button(button: &gtk::Button, playback_status: &str) {
     let icon_name = if playback_status == "Playing" {
         "media-playback-pause-symbolic"
@@ -129,10 +138,42 @@ fn update_control_sensitivity(card: &MediaCardWidgets, info: &MediaInfo) {
 fn update_playing_class(root: &gtk::Box, playback_status: &str) {
     if playback_status == "Playing" {
         // The css class drives the active glow only while playback is live
-        if !root.has_css_class("playing") {
-            root.add_css_class("playing");
+        if !root.has_css_class(hooks::shared_state::PLAYING) {
+            root.add_css_class(hooks::shared_state::PLAYING);
         }
-    } else if root.has_css_class("playing") {
-        root.remove_css_class("playing");
+    } else if root.has_css_class(hooks::shared_state::PLAYING) {
+        root.remove_css_class(hooks::shared_state::PLAYING);
+    }
+
+    set_class_state(
+        root,
+        hooks::media_card::PLAYING,
+        playback_status == "Playing",
+    );
+    set_class_state(root, hooks::media_card::PAUSED, playback_status == "Paused");
+    set_class_state(
+        root,
+        hooks::media_card::STOPPED,
+        playback_status == "Stopped",
+    );
+}
+
+fn update_art_classes(root: &gtk::Box, has_art: bool) {
+    set_class_state(root, hooks::media_card::HAS_ART, has_art);
+    set_class_state(root, hooks::media_card::NO_ART, !has_art);
+}
+
+fn update_player_count_classes(root: &gtk::Box, total: usize) {
+    set_class_state(root, hooks::media_card::MULTI_PLAYER, total > 1);
+    set_class_state(root, hooks::media_card::SINGLE_PLAYER, total <= 1);
+}
+
+fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {
+    if enabled {
+        if !root.has_css_class(class_name) {
+            root.add_css_class(class_name);
+        }
+    } else if root.has_css_class(class_name) {
+        root.remove_css_class(class_name);
     }
 }
