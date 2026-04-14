@@ -23,6 +23,8 @@ fn lint_css_contents_scans_media_blocks() {
     assert!(warnings[0]
         .message
         .contains("within @media (min-width: 1px)"));
+    assert_eq!(warnings[0].line, Some(1));
+    assert!(warnings[0].column.is_some());
 }
 
 #[test]
@@ -64,6 +66,27 @@ fn lint_css_contents_warns_on_web_length_tokens_in_layout_props() {
     assert!(warnings
         .iter()
         .any(|warning| warning.message.contains("uses var()")));
+    assert!(warnings.iter().all(|warning| warning.line.is_some()));
+    assert!(warnings.iter().all(|warning| warning.column.is_some()));
+}
+
+#[test]
+fn lint_css_contents_reports_line_for_duplicate_property() {
+    // Duplicate properties should point at the later property that wins
+    let css = r#"
+        .unixnotis-panel {
+            padding: 6px;
+            padding: 8px;
+        }
+    "#;
+
+    let warnings = lint_css_contents(css);
+    let duplicate = warnings
+        .iter()
+        .find(|warning| warning.code == "LINT003")
+        .expect("duplicate property warning");
+    assert_eq!(duplicate.line, Some(4));
+    assert!(duplicate.column.is_some());
 }
 
 #[test]

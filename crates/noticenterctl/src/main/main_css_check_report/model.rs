@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum CssCheckSeverity {
+pub(in super::super) enum CssCheckSeverity {
     // Errors should always stand out first in the final report
     Error,
     // Warnings keep the run successful but still need attention
@@ -7,7 +7,7 @@ pub(crate) enum CssCheckSeverity {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum CssCheckCategory {
+pub(in super::super) enum CssCheckCategory {
     // Parser failures come from GTK itself
     Parse,
     // Theme warnings come from file paths and shareability checks
@@ -21,7 +21,7 @@ pub(crate) enum CssCheckCategory {
 }
 
 impl CssCheckCategory {
-    pub(crate) fn label(self) -> &'static str {
+    pub(in super::super) fn label(self) -> &'static str {
         match self {
             Self::Parse => "parse",
             Self::Theme => "theme",
@@ -31,7 +31,7 @@ impl CssCheckCategory {
         }
     }
 
-    pub(crate) fn summary_label(self) -> &'static str {
+    pub(in super::super) fn summary_label(self) -> &'static str {
         match self {
             Self::Parse => "parse",
             Self::Theme => "theme",
@@ -41,7 +41,7 @@ impl CssCheckCategory {
         }
     }
 
-    pub(crate) fn sort_rank(self) -> u8 {
+    pub(in super::super) fn sort_rank(self) -> u8 {
         match self {
             Self::Parse => 0,
             Self::Theme => 1,
@@ -53,44 +53,56 @@ impl CssCheckCategory {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CssCheckDiagnostic {
+pub(in super::super) struct CssCheckDiagnostic {
     // Severity decides both ordering and final result color
-    pub(crate) severity: CssCheckSeverity,
+    pub(in super::super) severity: CssCheckSeverity,
     // Category keeps related warnings grouped together
-    pub(crate) category: CssCheckCategory,
+    pub(in super::super) category: CssCheckCategory,
     // Stable codes make docs and tests easier to pin down
-    pub(crate) code: &'static str,
+    pub(in super::super) code: &'static str,
     // This is already formatted for terminal display
-    pub(crate) display_path: String,
+    pub(in super::super) display_path: String,
     // Parser warnings may carry source locations
-    pub(crate) line: Option<usize>,
-    pub(crate) column: Option<usize>,
-    pub(crate) message: String,
+    pub(in super::super) line: Option<usize>,
+    pub(in super::super) column: Option<usize>,
+    pub(in super::super) message: String,
     // Hints stay optional so short warnings do not get bloated
-    pub(crate) hint: Option<String>,
+    pub(in super::super) hint: Option<String>,
 }
 
 impl CssCheckDiagnostic {
-    pub(crate) fn warning(
+    pub(in super::super) fn warning(
         category: CssCheckCategory,
         code: &'static str,
         display_path: String,
         message: impl Into<String>,
     ) -> Self {
-        // Warnings do not carry parser locations
+        // Most warnings still read cleanly without a source location
+        Self::warning_at(category, code, display_path, None, None, message)
+    }
+
+    pub(in super::super) fn warning_at(
+        category: CssCheckCategory,
+        code: &'static str,
+        display_path: String,
+        line: Option<usize>,
+        column: Option<usize>,
+        message: impl Into<String>,
+    ) -> Self {
+        // Warnings do not carry parser locations unless lint can point at the source
         Self {
             severity: CssCheckSeverity::Warning,
             category,
             code,
             display_path,
-            line: None,
-            column: None,
+            line,
+            column,
             message: message.into(),
             hint: None,
         }
     }
 
-    pub(crate) fn error(
+    pub(in super::super) fn error(
         category: CssCheckCategory,
         code: &'static str,
         display_path: String,
@@ -114,26 +126,26 @@ impl CssCheckDiagnostic {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CssCheckActiveFile {
+pub(in super::super) struct CssCheckActiveFile {
     // The slot name shows which config key resolved to this file
-    pub(crate) slot_name: &'static str,
-    pub(crate) display_path: String,
+    pub(in super::super) slot_name: &'static str,
+    pub(in super::super) display_path: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CssCheckReport {
+pub(in super::super) struct CssCheckReport {
     // The displayed root may be $HOME or $XDG_CONFIG_HOME based
-    pub(crate) display_root: String,
-    pub(crate) checked_files: usize,
+    pub(in super::super) display_root: String,
+    pub(in super::super) checked_files: usize,
     // Active theme files are shown when the report needs more context
-    pub(crate) active_files: Vec<CssCheckActiveFile>,
+    pub(in super::super) active_files: Vec<CssCheckActiveFile>,
     // Notes are extra context that should not count as warnings
-    pub(crate) notes: Vec<String>,
-    pub(crate) diagnostics: Vec<CssCheckDiagnostic>,
+    pub(in super::super) notes: Vec<String>,
+    pub(in super::super) diagnostics: Vec<CssCheckDiagnostic>,
 }
 
 impl CssCheckReport {
-    pub(crate) fn error_count(&self) -> usize {
+    pub(in super::super) fn error_count(&self) -> usize {
         // Errors decide whether css-check returns a failure
         self.diagnostics
             .iter()
@@ -141,7 +153,7 @@ impl CssCheckReport {
             .count()
     }
 
-    pub(crate) fn warning_count(&self) -> usize {
+    pub(in super::super) fn warning_count(&self) -> usize {
         // Warnings keep the run successful but change the final verdict
         self.diagnostics
             .iter()
@@ -149,7 +161,7 @@ impl CssCheckReport {
             .count()
     }
 
-    pub(crate) fn is_clean(&self) -> bool {
+    pub(in super::super) fn is_clean(&self) -> bool {
         // A clean report means no diagnostics and no extra notes
         self.diagnostics.is_empty() && self.notes.is_empty()
     }

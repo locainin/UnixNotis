@@ -3,12 +3,12 @@ use std::collections::BTreeMap;
 use super::model::{CssCheckDiagnostic, CssCheckReport, CssCheckSeverity};
 use super::style::ReportStyle;
 
-pub(crate) fn render_css_check_report_for_stdout(report: &CssCheckReport) -> String {
+pub(in super::super) fn render_css_check_report_for_stdout(report: &CssCheckReport) -> String {
     // This path picks color at the last moment so the report model stays plain
     render_css_check_report_with_style(report, ReportStyle::for_stdout())
 }
 
-pub(crate) fn render_css_check_report_with_style(
+pub(in super::super) fn render_css_check_report_with_style(
     report: &CssCheckReport,
     style: ReportStyle,
 ) -> String {
@@ -171,6 +171,7 @@ fn collect_grouped_diagnostics(
             .or_default()
             .push(item);
     }
+    // BTreeMap keeps file order deterministic without an extra sort pass here
     grouped.into_iter().collect()
 }
 
