@@ -53,8 +53,6 @@ pub(super) fn draw_welcome(frame: &mut Frame<'_>, app: &App) {
         Span::raw(" = move  "),
         Span::styled("R", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" = refresh  "),
-        Span::styled("V", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" = toggle verify  "),
         Span::styled("Q", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" = quit"),
     ])))
@@ -106,17 +104,6 @@ fn render_status(app: &App) -> Text<'static> {
             Span::raw(format_daemon_status(daemon)),
         ]));
     }
-
-    // Final section: verification mode.
-    lines.push(Line::from(""));
-
-    lines.push(Line::from(vec![
-        Span::styled(
-            "Verification: ",
-            Style::default().add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(if app.verify { "enabled" } else { "disabled" }),
-    ]));
 
     Text::from(lines)
 }

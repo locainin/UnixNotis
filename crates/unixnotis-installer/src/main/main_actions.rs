@@ -32,12 +32,12 @@ pub(crate) fn start_action(
 
     let (plan, restore_backup) = match mode {
         ActionMode::Reset => match &app.reset_action {
-            crate::model::ResetAction::ResetDefaults => (build_plan(mode, app.verify), None),
+            crate::model::ResetAction::ResetDefaults => (build_plan(mode), None),
             crate::model::ResetAction::RestoreBackup { path } => {
                 (vec![StepKind::RestoreConfig], Some(path.clone()))
             }
         },
-        _ => (build_plan(mode, app.verify), None),
+        _ => (build_plan(mode), None),
     };
 
     app.steps = steps_from_plan(&plan);

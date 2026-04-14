@@ -6,8 +6,11 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::model::ActionMode;
-use crate::paths::InstallPaths;
-use unixnotis_core::program_in_path;
+use crate::paths::{format_with_home, InstallPaths};
+use unixnotis_core::{
+    gtk_css_features_from_version_string, program_in_path,
+    GTK_CSS_CUSTOM_PROPERTIES_MIN_VERSION_LABEL,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CheckState {
@@ -28,6 +31,7 @@ pub struct Checks {
     pub systemd_user: CheckItem,
     pub cargo: CheckItem,
     pub pkg_config: CheckItem,
+    pub gtk4_css_features: CheckItem,
     pub gtk4_layer_shell: CheckItem,
     pub busctl: CheckItem,
     pub dbus_update_env: CheckItem,
@@ -79,6 +83,35 @@ impl Checks {
             Err(err) => CheckItem::fail("pkg-config", &format!("check failed: {err}")),
         };
 
+        // Modern CSS support is additive, so older GTK builds should warn instead of hard-fail
+        let gtk4_css_features = match pkg_config_version("gtk4") {
+            Ok(Some(version)) => match gtk_css_features_from_version_string(&version) {
+                Some(features) if features.custom_properties => CheckItem::ok(
+                    "GTK4 CSS features",
+                    &format!("found {version}; modern css variables and var() are available"),
+                ),
+                Some(_) => CheckItem::warn(
+                    "GTK4 CSS features",
+                    &format!(
+                        "found {version}; legacy theming still works, but modern css variables need {GTK_CSS_CUSTOM_PROPERTIES_MIN_VERSION_LABEL}"
+                    ),
+                ),
+                None => CheckItem::warn(
+                    "GTK4 CSS features",
+                    &format!("found {version}; css feature level could not be parsed"),
+                ),
+            },
+            Ok(None) if pkg_config.state == CheckState::Fail => CheckItem::warn(
+                "GTK4 CSS features",
+                "pkg-config missing; cannot probe GTK4 css feature level",
+            ),
+            Ok(None) => CheckItem::warn(
+                "GTK4 CSS features",
+                "pkg-config gtk4 not found; modern css feature support is unknown",
+            ),
+            Err(err) => CheckItem::warn("GTK4 CSS features", &format!("check failed: {err}")),
+        };
+
         let gtk4_layer_shell = match pkg_config_version("gtk4-layer-shell-0") {
             Ok(Some(version)) => CheckItem::ok("gtk4-layer-shell", &format!("found {version}")),
             Ok(None) if pkg_config.state == CheckState::Fail => CheckItem::fail(
@@ -116,17 +149,12 @@ impl Checks {
                 } else {
                     CheckItem::fail("Install paths", "not writable")
                 };
-                let in_path = path_includes_bin(&paths);
-                let path_contains_bin = if in_path {
-                    CheckItem::ok("PATH", "includes install bin")
-                } else {
-                    CheckItem::warn("PATH", "missing install bin")
-                };
+                let path_contains_bin = path_check_item(&paths);
                 (install_paths, path_contains_bin)
             }
             Err(err) => (
                 CheckItem::warn("Install paths", &format!("discovery failed: {err}")),
-                CheckItem::warn("PATH", "install bin unknown"),
+                CheckItem::warn("Shell PATH", "could not determine install bin path"),
             ),
         };
 
@@ -136,6 +164,7 @@ impl Checks {
             systemd_user,
             cargo,
             pkg_config,
+            gtk4_css_features,
             gtk4_layer_shell,
             busctl,
             dbus_update_env,
@@ -290,6 +319,72 @@ fn path_includes_bin(paths: &InstallPaths) -> bool {
     let Ok(path_var) = env::var("PATH") else {
         return false;
     };
-    let mut entries = env::split_paths(&path_var);
-    entries.any(|entry| entry == paths.bin_dir)
+    env::split_paths(&path_var).any(|entry| path_entries_match(&entry, &paths.bin_dir))
+}
+
+fn path_check_item(paths: &InstallPaths) -> CheckItem {
+    let rendered_bin = format_with_home(&paths.bin_dir);
+    if path_includes_bin(paths) {
+        return CheckItem::ok("Shell PATH", &format!("includes {rendered_bin}"));
+    }
+
+    // Install still writes binaries to the bin dir even when PATH is missing
+    CheckItem::warn(
+        "Shell PATH",
+        &format!(
+            "missing {rendered_bin}; install still copies noticenterctl and unixnotis binaries there and will add a startup PATH entry for new terminals, but the current terminal session cannot run noticenterctl directly yet"
+        ),
+    )
+}
+
+fn path_entries_match(entry: &Path, target: &Path) -> bool {
+    if entry == target {
+        return true;
+    }
+
+    match (entry.canonicalize(), target.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use unixnotis_core::gtk_css_features_from_version_string;
+
+    use super::path_entries_match;
+
+    #[test]
+    fn gtk_css_feature_parser_handles_major_and_minor_checks() {
+        assert!(
+            gtk_css_features_from_version_string("4.16.2")
+                .expect("version")
+                .custom_properties
+        );
+        assert!(
+            gtk_css_features_from_version_string("4.18")
+                .expect("version")
+                .custom_properties
+        );
+        assert!(
+            !gtk_css_features_from_version_string("4.14.9")
+                .expect("version")
+                .custom_properties
+        );
+        assert!(
+            gtk_css_features_from_version_string("5.0.0")
+                .expect("version")
+                .custom_properties
+        );
+    }
+
+    #[test]
+    fn path_entries_match_accepts_exact_paths() {
+        assert!(path_entries_match(
+            Path::new("/tmp/unixnotis-bin"),
+            Path::new("/tmp/unixnotis-bin")
+        ));
+    }
 }

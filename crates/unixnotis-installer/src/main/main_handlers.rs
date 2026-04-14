@@ -34,10 +34,6 @@ pub(crate) fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Result<Option<
             app.refresh();
             Ok(None)
         }
-        KeyCode::Char('v') | KeyCode::Char('V') => {
-            app.verify = !app.verify;
-            Ok(None)
-        }
         KeyCode::Enter => match app.selected_menu() {
             MenuItem::Quit => Ok(Some(ExitAction::None)),
             MenuItem::Action(mode) => {

@@ -11,7 +11,7 @@ use crate::paths::InstallPaths;
 use unixnotis_core::program_in_path;
 
 pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<String>> {
-    // Prefer explicit installer metadata as the source of truth.
+    // Prefer the installer metadata list when it is present.
     let metadata_list = load_install_binaries_from_metadata(paths)?;
     let cargo_available = program_in_path("cargo");
     if !metadata_list.is_empty() {

@@ -6,6 +6,7 @@ use ratatui::Frame;
 
 use crate::app::App;
 use crate::model::ActionMode;
+use crate::paths::format_with_home;
 
 use super::header::draw_header;
 use super::reset::describe_reset_action;
@@ -41,14 +42,6 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
         Span::raw(crate::actions::summarize_owner(&app.detection.owner)),
     ]));
 
-    lines.push(Line::from(vec![
-        Span::styled(
-            "Verification: ",
-            Style::default().add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(if app.verify { "enabled" } else { "disabled" }),
-    ]));
-
     // Blocked state is rendered inline so it is visible before execution.
     if let Err(reason) = app.checks.ready_for(mode) {
         lines.push(Line::from(""));
@@ -73,6 +66,32 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
             "Reinstall will overwrite binaries and the systemd unit.",
             Style::default().fg(Color::Yellow),
         )));
+    }
+    if matches!(mode, ActionMode::Install | ActionMode::Uninstall) {
+        lines.push(Line::from(""));
+        // Fall back to the default user bin path when discovery cannot run here
+        let bin_dir = crate::paths::InstallPaths::discover()
+            .map(|paths| format_with_home(&paths.bin_dir))
+            .unwrap_or_else(|_| "$HOME/.local/bin".to_string());
+        if matches!(mode, ActionMode::Install) {
+            // Install builds release binaries and copies them into the user bin dir
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "Install builds UnixNotis and copies unixnotis-daemon, unixnotis-popups, unixnotis-center, and noticenterctl into {}; startup files are updated so new terminals include this path",
+                    bin_dir
+                ),
+                Style::default().fg(Color::Yellow),
+            )));
+        } else {
+            // Uninstall removes the managed binaries from the same user bin dir
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "Uninstall removes unixnotis-daemon, unixnotis-popups, unixnotis-center, and noticenterctl from {}",
+                    bin_dir
+                ),
+                Style::default().fg(Color::Yellow),
+            )));
+        }
     }
     if matches!(mode, ActionMode::Reset) {
         lines.push(Line::from(""));

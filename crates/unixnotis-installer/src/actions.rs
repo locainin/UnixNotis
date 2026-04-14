@@ -2,6 +2,8 @@
 
 #[path = "actions/actions_binaries.rs"]
 mod actions_binaries;
+#[path = "actions/actions_build.rs"]
+mod actions_build;
 #[path = "actions/actions_build_accel.rs"]
 mod actions_build_accel;
 #[path = "actions/actions_config.rs"]
@@ -24,8 +26,6 @@ mod actions_plan;
 mod actions_process;
 #[path = "actions/actions_state.rs"]
 mod actions_state;
-#[path = "actions/actions_verify.rs"]
-mod actions_verify;
 
 pub use actions_build_accel::{
     detect_build_accel, detect_build_accel_without_repo, write_build_accel_config,
@@ -35,6 +35,7 @@ pub use actions_format::{format_daemon_status, summarize_owner};
 pub use actions_plan::{build_plan, run_step, steps_from_plan, StepKind};
 pub use actions_state::{check_install_state, ActionContext, InstallState};
 
+pub(super) use actions_build::run_build;
 pub(super) use actions_config::{ensure_config, remove_state, reset_config};
 pub(crate) use actions_config_backup::list_backup_dirs_for_ui;
 pub(crate) use actions_config_backup::restore_config;
@@ -44,4 +45,3 @@ pub(super) use actions_install::{
 };
 pub(super) use actions_process::{log_line, run_command};
 pub(super) use actions_state::check_install_state_step;
-pub(super) use actions_verify::{run_build, run_verify_check, run_verify_clippy, run_verify_test};

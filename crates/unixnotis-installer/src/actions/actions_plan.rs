@@ -9,17 +9,14 @@ use crate::model::{ActionMode, ActionStep, StepStatus};
 
 use super::{
     check_install_state_step, enable_service, ensure_config, install_binaries, install_service,
-    remove_binaries, remove_state, reset_config, restore_config, run_build, run_verify_check,
-    run_verify_clippy, run_verify_test, stop_active_daemon, uninstall_service, ActionContext,
+    remove_binaries, remove_state, reset_config, restore_config, run_build, stop_active_daemon,
+    uninstall_service, ActionContext,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StepKind {
     InstallCheck,
     StopDaemon,
-    VerifyCheck,
-    VerifyTest,
-    VerifyClippy,
     Build,
     EnsureConfig,
     ResetConfig,
@@ -32,16 +29,12 @@ pub enum StepKind {
     RemoveState,
 }
 
-pub fn build_plan(mode: ActionMode, verify: bool) -> Vec<StepKind> {
+pub fn build_plan(mode: ActionMode) -> Vec<StepKind> {
     match mode {
         ActionMode::Test => Vec::new(),
         ActionMode::Install => {
+            // Install order keeps state checks and file placement predictable
             let mut steps = vec![StepKind::InstallCheck];
-            if verify {
-                steps.push(StepKind::VerifyCheck);
-                steps.push(StepKind::VerifyTest);
-                steps.push(StepKind::VerifyClippy);
-            }
             steps.extend([
                 StepKind::Build,
                 StepKind::EnsureConfig,
@@ -53,6 +46,7 @@ pub fn build_plan(mode: ActionMode, verify: bool) -> Vec<StepKind> {
             steps
         }
         ActionMode::Uninstall => vec![
+            // Service is removed before deleting binaries and state files
             StepKind::UninstallService,
             StepKind::RemoveBinaries,
             StepKind::RemoveState,
@@ -74,9 +68,6 @@ pub fn run_step(step: StepKind, ctx: &mut ActionContext) -> Result<()> {
     match step {
         StepKind::InstallCheck => check_install_state_step(ctx),
         StepKind::StopDaemon => stop_active_daemon(ctx),
-        StepKind::VerifyCheck => run_verify_check(ctx),
-        StepKind::VerifyTest => run_verify_test(ctx),
-        StepKind::VerifyClippy => run_verify_clippy(ctx),
         StepKind::Build => run_build(ctx),
         StepKind::EnsureConfig => ensure_config(ctx),
         StepKind::ResetConfig => reset_config(ctx),
@@ -94,9 +85,6 @@ pub fn step_label(kind: StepKind) -> &'static str {
     match kind {
         StepKind::InstallCheck => "Check existing install",
         StepKind::StopDaemon => "Stop existing daemon",
-        StepKind::VerifyCheck => "Verify workspace (check)",
-        StepKind::VerifyTest => "Verify workspace (test)",
-        StepKind::VerifyClippy => "Verify workspace (clippy)",
         StepKind::Build => "Build release binaries",
         StepKind::EnsureConfig => "Ensure config files",
         StepKind::ResetConfig => "Reset config files",
@@ -107,5 +95,29 @@ pub fn step_label(kind: StepKind) -> &'static str {
         StepKind::UninstallService => "Remove systemd unit",
         StepKind::RemoveBinaries => "Remove binaries",
         StepKind::RemoveState => "Remove persisted state",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::model::ActionMode;
+
+    use super::{build_plan, StepKind};
+
+    #[test]
+    fn install_plan_stays_focused_on_build_and_install() {
+        let plan = build_plan(ActionMode::Install);
+        assert_eq!(
+            plan,
+            vec![
+                StepKind::InstallCheck,
+                StepKind::Build,
+                StepKind::EnsureConfig,
+                StepKind::StopDaemon,
+                StepKind::InstallBinaries,
+                StepKind::InstallService,
+                StepKind::EnableService,
+            ]
+        );
     }
 }

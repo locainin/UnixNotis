@@ -13,7 +13,7 @@ use super::{
         resolve_install_binaries, resolve_install_binaries_best_effort, resolve_target_directory,
     },
     actions_config_backup::write_atomic,
-    actions_env::sync_user_environment,
+    actions_env::{ensure_shell_path_entry, sync_user_environment},
     actions_hyprland::{ensure_hyprland_autostart, remove_hyprland_autostart},
     log_line, run_command, ActionContext,
 };
@@ -100,6 +100,13 @@ pub fn enable_service(ctx: &mut ActionContext) -> Result<()> {
         enable,
         None,
     )?;
+    // Startup files are updated so new terminals can resolve commands
+    if let Err(err) = ensure_shell_path_entry(ctx) {
+        log_line(
+            ctx,
+            format!("Warning: failed to update shell PATH files ({err})"),
+        );
+    }
     // Hyprland exec-once ensures session vars are synced once per login without extra hooks.
     ensure_hyprland_autostart(ctx);
     Ok(())
@@ -244,5 +251,180 @@ fn format_exec_start(paths: &InstallPaths) -> String {
         format!("%h{}", tail)
     } else {
         path.display().to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::sync::mpsc;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use crate::detect::Detection;
+    use crate::events::UiMessage;
+    use crate::model::ActionMode;
+    use crate::paths::InstallPaths;
+
+    use super::{install_binaries, remove_binaries, ActionContext};
+
+    #[test]
+    fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
+        // A fake workspace keeps the test focused on install behavior
+        let root = test_root("install-binaries");
+        write_fake_workspace(
+            &root,
+            &[
+                "unixnotis-daemon",
+                "unixnotis-popups",
+                "unixnotis-center",
+                "noticenterctl",
+            ],
+        );
+        let paths = test_paths(&root);
+
+        for binary in [
+            "unixnotis-daemon",
+            "unixnotis-popups",
+            "unixnotis-center",
+            "noticenterctl",
+        ] {
+            let source = paths.release_dir.join(binary);
+            fs::create_dir_all(source.parent().expect("release dir")).expect("make release dir");
+            fs::write(&source, format!("binary:{binary}")).expect("write fake binary");
+        }
+
+        let detection = Detection {
+            owner: None,
+            daemons: Vec::new(),
+        };
+        let (tx, _rx) = mpsc::sync_channel::<UiMessage>(32);
+        let mut ctx = ActionContext {
+            detection: &detection,
+            paths: &paths,
+            install_state: None,
+            log_tx: tx,
+            action_mode: ActionMode::Install,
+            restore_backup: None,
+        };
+
+        install_binaries(&mut ctx).expect("install should copy binaries");
+
+        for binary in [
+            "unixnotis-daemon",
+            "unixnotis-popups",
+            "unixnotis-center",
+            "noticenterctl",
+        ] {
+            let installed = paths.bin_dir.join(binary);
+            assert!(installed.exists(), "{binary} should be installed");
+            assert_eq!(
+                fs::read_to_string(&installed).expect("read installed binary"),
+                format!("binary:{binary}")
+            );
+        }
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn remove_binaries_removes_all_managed_binaries_including_noticenterctl() {
+        // Uninstall should remove the same binaries that install manages
+        let root = test_root("remove-binaries");
+        write_fake_workspace(
+            &root,
+            &[
+                "unixnotis-daemon",
+                "unixnotis-popups",
+                "unixnotis-center",
+                "noticenterctl",
+            ],
+        );
+        let paths = test_paths(&root);
+
+        fs::create_dir_all(&paths.bin_dir).expect("make bin dir");
+        for binary in [
+            "unixnotis-daemon",
+            "unixnotis-popups",
+            "unixnotis-center",
+            "noticenterctl",
+        ] {
+            fs::write(paths.bin_dir.join(binary), format!("installed:{binary}"))
+                .expect("write installed binary");
+        }
+
+        let detection = Detection {
+            owner: None,
+            daemons: Vec::new(),
+        };
+        let (tx, _rx) = mpsc::sync_channel::<UiMessage>(32);
+        let mut ctx = ActionContext {
+            detection: &detection,
+            paths: &paths,
+            install_state: None,
+            log_tx: tx,
+            action_mode: ActionMode::Uninstall,
+            restore_backup: None,
+        };
+
+        remove_binaries(&mut ctx).expect("remove should delete binaries");
+
+        for binary in [
+            "unixnotis-daemon",
+            "unixnotis-popups",
+            "unixnotis-center",
+            "noticenterctl",
+        ] {
+            assert!(
+                !paths.bin_dir.join(binary).exists(),
+                "{binary} should be removed"
+            );
+        }
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn test_root(name: &str) -> std::path::PathBuf {
+        // Unique temp roots keep tests from stepping on each other
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "unixnotis-installer-{name}-{}-{stamp}",
+            std::process::id()
+        ))
+    }
+
+    fn test_paths(root: &std::path::Path) -> InstallPaths {
+        InstallPaths {
+            repo_root: root.to_path_buf(),
+            release_dir: root.join("target").join("release"),
+            bin_dir: root.join("home").join(".local").join("bin"),
+            unit_dir: root
+                .join("home")
+                .join(".config")
+                .join("systemd")
+                .join("user"),
+            unit_path: root
+                .join("home")
+                .join(".config")
+                .join("systemd")
+                .join("user")
+                .join("unixnotis-daemon.service"),
+        }
+    }
+
+    fn write_fake_workspace(root: &std::path::Path, binaries: &[&str]) {
+        // cargo metadata only needs a valid virtual workspace to report target dir
+        fs::create_dir_all(root).expect("make fake workspace");
+        let quoted = binaries
+            .iter()
+            .map(|name| format!("\"{name}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let cargo_toml = format!(
+            "[workspace]\nmembers = []\n\n[workspace.metadata.unixnotis.installer]\nbinaries = [{quoted}]\n"
+        );
+        fs::write(root.join("Cargo.toml"), cargo_toml).expect("write fake Cargo.toml");
     }
 }

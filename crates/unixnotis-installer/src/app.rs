@@ -59,9 +59,6 @@ pub struct App {
     // Current screen.
     pub screen: Screen,
 
-    // Whether to run extra verification steps.
-    pub verify: bool,
-
     // Log lines for UI display.
     pub logs: VecDeque<String>,
 
@@ -121,7 +118,6 @@ impl App {
             detection,
             menu_index: 0,
             screen: Screen::Welcome,
-            verify: false,
             logs: VecDeque::new(),
             steps: Vec::new(),
             progress_state: ProgressState::Idle,
