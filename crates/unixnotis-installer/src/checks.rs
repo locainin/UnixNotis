@@ -350,11 +350,15 @@ fn path_entries_match(entry: &Path, target: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+<<<<<<< HEAD
     use std::path::Path;
 
     use unixnotis_core::gtk_css_features_from_version_string;
 
     use super::path_entries_match;
+=======
+    use unixnotis_core::gtk_css_features_from_version_string;
+>>>>>>> a065d5c (unixnotis-core: add shared gtk css feature, token, and hook contract)
 
     #[test]
     fn gtk_css_feature_parser_handles_major_and_minor_checks() {
@@ -378,6 +382,7 @@ mod tests {
                 .expect("version")
                 .custom_properties
         );
+<<<<<<< HEAD
     }
 
     #[test]
@@ -386,5 +391,7 @@ mod tests {
             Path::new("/tmp/unixnotis-bin"),
             Path::new("/tmp/unixnotis-bin")
         ));
+=======
+>>>>>>> a065d5c (unixnotis-core: add shared gtk css feature, token, and hook contract)
     }
 }
