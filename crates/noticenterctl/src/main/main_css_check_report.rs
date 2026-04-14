@@ -1,6 +1,8 @@
 //! Report model and rendering for css-check
 
 use std::collections::BTreeMap;
+use std::env;
+use std::io::{self, IsTerminal};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum CssCheckSeverity {
@@ -137,12 +139,83 @@ impl CssCheckReport {
     }
 }
 
-pub(super) fn render_css_check_report(report: &CssCheckReport) -> String {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ReportStyle {
+    color: bool,
+}
+
+impl ReportStyle {
+    fn for_stdout() -> Self {
+        // Color should stay off for pipes, NO_COLOR, or dumb terminals
+        let color = io::stdout().is_terminal()
+            && env::var_os("NO_COLOR").is_none()
+            && env::var("CLICOLOR")
+                .map(|value| value != "0")
+                .unwrap_or(true)
+            && env::var("TERM")
+                .map(|value| value != "dumb")
+                .unwrap_or(true);
+        Self { color }
+    }
+
+    fn paint(self, text: impl Into<String>, prefix: &str) -> String {
+        let text = text.into();
+        if !self.color {
+            // Plain output keeps tests and redirected output stable
+            return text;
+        }
+
+        // One reset at the end keeps nested formatting simple
+        format!("\u{1b}[{prefix}m{text}\u{1b}[0m")
+    }
+
+    fn bold(self, text: impl Into<String>) -> String {
+        self.paint(text, "1")
+    }
+
+    fn errors_title(self, text: impl Into<String>) -> String {
+        self.paint(text, "1;31")
+    }
+
+    fn warnings_title(self, text: impl Into<String>) -> String {
+        self.paint(text, "1;33")
+    }
+
+    fn notes_title(self, text: impl Into<String>) -> String {
+        self.paint(text, "1;36")
+    }
+
+    fn categories_title(self, text: impl Into<String>) -> String {
+        self.paint(text, "1;35")
+    }
+
+    fn result(self, text: impl Into<String>, errors: usize, warnings: usize) -> String {
+        if errors > 0 {
+            return self.paint(text, "1;31");
+        }
+        if warnings > 0 {
+            return self.paint(text, "1;33");
+        }
+        self.paint(text, "1;32")
+    }
+
+    fn diagnostic_code(self, text: impl Into<String>) -> String {
+        self.paint(text, "2;35")
+    }
+}
+
+pub(super) fn render_css_check_report_for_stdout(report: &CssCheckReport) -> String {
+    // This path picks color at the last moment so the report model stays plain
+    render_css_check_report_with_style(report, ReportStyle::for_stdout())
+}
+
+fn render_css_check_report_with_style(report: &CssCheckReport, style: ReportStyle) -> String {
     let mut lines = Vec::new();
     let errors = report.error_count();
     let warnings = report.warning_count();
 
-    lines.push("css-check summary".to_string());
+    // The summary stays first no matter how noisy the report gets
+    lines.push(style.bold("css-check summary"));
     lines.push(format!("  root: {}", report.display_root));
     lines.push(format!("  checked: {} files", report.checked_files));
     lines.push(format!("  errors: {errors}"));
@@ -153,7 +226,7 @@ pub(super) fn render_css_check_report(report: &CssCheckReport) -> String {
         let category_counts = diagnostic_category_counts(&report.diagnostics);
         if !category_counts.is_empty() {
             lines.push(String::new());
-            lines.push("diagnostic categories".to_string());
+            lines.push(style.categories_title("diagnostic categories"));
             for (label, count) in category_counts {
                 lines.push(format!("  {label}: {count}"));
             }
@@ -163,9 +236,9 @@ pub(super) fn render_css_check_report(report: &CssCheckReport) -> String {
         if report.diagnostics.len() > 3 && !top_files.is_empty() {
             // Large reports are easier to read when the noisiest files are called out early
             lines.push(String::new());
-            lines.push("top problem files".to_string());
+            lines.push(style.bold("top problem files"));
             for (display_path, count) in top_files {
-                lines.push(format!("  {display_path}: {count} issue(s)"));
+                lines.push(format!("  {}: {count} issue(s)", style.bold(display_path)));
             }
         }
     }
@@ -173,7 +246,7 @@ pub(super) fn render_css_check_report(report: &CssCheckReport) -> String {
     if !report.active_files.is_empty() && !report.is_clean() {
         // Active theme files matter most once something needs attention
         lines.push(String::new());
-        lines.push("active theme files".to_string());
+        lines.push(style.bold("active theme files"));
         let slot_width = report
             .active_files
             .iter()
@@ -184,7 +257,7 @@ pub(super) fn render_css_check_report(report: &CssCheckReport) -> String {
             lines.push(format!(
                 "  {slot:<width$} -> {path}",
                 slot = active_file.slot_name,
-                path = active_file.display_path,
+                path = style.bold(&active_file.display_path),
                 width = slot_width
             ));
         }
@@ -193,7 +266,7 @@ pub(super) fn render_css_check_report(report: &CssCheckReport) -> String {
     if !report.notes.is_empty() {
         // Notes hold extra context that should not drown out real diagnostics
         lines.push(String::new());
-        lines.push("notes".to_string());
+        lines.push(style.notes_title("notes"));
         for note in &report.notes {
             lines.push(format!("  {note}"));
         }
@@ -201,25 +274,29 @@ pub(super) fn render_css_check_report(report: &CssCheckReport) -> String {
 
     append_diagnostic_section(
         &mut lines,
-        "errors",
+        style.errors_title("errors"),
         &collect_grouped_diagnostics(&report.diagnostics, CssCheckSeverity::Error),
+        style,
     );
     append_diagnostic_section(
         &mut lines,
-        "warnings",
+        style.warnings_title("warnings"),
         &collect_grouped_diagnostics(&report.diagnostics, CssCheckSeverity::Warning),
+        style,
     );
 
     lines.push(String::new());
+    // One final verdict line makes shell use and quick scans easier
+    let result_text = if errors > 0 {
+        "failed"
+    } else if warnings > 0 {
+        "warnings found"
+    } else {
+        "clean"
+    };
     lines.push(format!(
         "css-check result: {}",
-        if errors > 0 {
-            "failed"
-        } else if warnings > 0 {
-            "warnings found"
-        } else {
-            "clean"
-        }
+        style.result(result_text, errors, warnings)
     ));
 
     lines.join("\n")
@@ -292,33 +369,43 @@ fn collect_grouped_diagnostics(
 
 fn append_diagnostic_section(
     lines: &mut Vec<String>,
-    title: &str,
+    title: String,
     grouped: &[(String, Vec<CssCheckDiagnostic>)],
+    style: ReportStyle,
 ) {
     if grouped.is_empty() {
         return;
     }
 
     lines.push(String::new());
-    lines.push(title.to_string());
+    lines.push(title);
     for (display_path, diagnostics) in grouped {
         // File counts help large reports read faster
         lines.push(String::new());
-        lines.push(format!("  {display_path} ({})", diagnostics.len()));
+        lines.push(format!(
+            "  {} ({})",
+            style.bold(display_path),
+            diagnostics.len()
+        ));
         for diagnostic in diagnostics {
+            // Line and column only show when the source path has a real parser location
             let location = match (diagnostic.line, diagnostic.column) {
                 (Some(line), Some(column)) => format!(" line {line}, col {column}:"),
                 (Some(line), None) => format!(" line {line}:"),
                 _ => String::new(),
             };
             lines.push(format!(
-                "    [{}][{}]{} {}",
-                diagnostic.code,
-                diagnostic.category.label(),
+                "    {}{} {}",
+                style.diagnostic_code(format!(
+                    "[{}][{}]",
+                    diagnostic.code,
+                    diagnostic.category.label()
+                )),
                 location,
                 diagnostic.message
             ));
             if let Some(hint) = diagnostic.hint.as_ref() {
+                // Hints stay on their own line so the main warning text stays short
                 lines.push(format!("      hint: {hint}"));
             }
         }
@@ -328,8 +415,8 @@ fn append_diagnostic_section(
 #[cfg(test)]
 mod tests {
     use super::{
-        render_css_check_report, CssCheckActiveFile, CssCheckCategory, CssCheckDiagnostic,
-        CssCheckReport,
+        render_css_check_report_with_style, CssCheckActiveFile, CssCheckCategory,
+        CssCheckDiagnostic, CssCheckReport, ReportStyle,
     };
 
     #[test]
@@ -364,7 +451,7 @@ mod tests {
             ],
         };
 
-        let rendered = render_css_check_report(&report);
+        let rendered = render_css_check_report_with_style(&report, ReportStyle { color: false });
         assert!(rendered.contains("css-check summary"));
         assert!(rendered.contains("diagnostic categories"));
         assert!(rendered.contains("active theme files"));
@@ -382,7 +469,7 @@ mod tests {
             ..CssCheckReport::default()
         };
 
-        let rendered = render_css_check_report(&report);
+        let rendered = render_css_check_report_with_style(&report, ReportStyle { color: false });
         assert!(rendered.contains("checked: 5 files"));
         assert!(rendered.contains("css-check result: clean"));
         assert!(!rendered.contains("active theme files"));
@@ -433,7 +520,7 @@ mod tests {
             ],
         };
 
-        let rendered = render_css_check_report(&report);
+        let rendered = render_css_check_report_with_style(&report, ReportStyle { color: false });
         // These anchors keep the report layout easy to scan in the terminal
         let notes_idx = rendered.find("\nnotes\n").expect("notes section");
         let errors_idx = rendered.find("\nerrors\n").expect("errors section");
@@ -480,7 +567,7 @@ mod tests {
             ..CssCheckReport::default()
         };
 
-        let rendered = render_css_check_report(&report);
+        let rendered = render_css_check_report_with_style(&report, ReportStyle { color: false });
         let parse_idx = rendered
             .find("[PARSE001][parse]")
             .expect("parse diagnostic");
@@ -491,5 +578,27 @@ mod tests {
 
         assert!(parse_idx < theme_idx);
         assert!(theme_idx < lint_idx);
+    }
+
+    #[test]
+    fn render_report_can_add_terminal_color() {
+        // Color should wrap the same plain text instead of changing the report content
+        let report = CssCheckReport {
+            display_root: "$HOME/.config/unixnotis".to_string(),
+            checked_files: 5,
+            diagnostics: vec![CssCheckDiagnostic::warning(
+                CssCheckCategory::Lint,
+                "LINT002",
+                "$HOME/.config/unixnotis/widgets.css".to_string(),
+                "duplicate selector '.unixnotis-info-icon'",
+            )],
+            ..CssCheckReport::default()
+        };
+
+        let rendered = render_css_check_report_with_style(&report, ReportStyle { color: true });
+        assert!(rendered.contains("\u{1b}[1mcss-check summary\u{1b}[0m"));
+        assert!(rendered.contains("\u{1b}[1;33mwarnings\u{1b}[0m"));
+        assert!(rendered.contains("\u{1b}[2;35m[LINT002][lint]\u{1b}[0m"));
+        assert!(rendered.contains("css-check result: \u{1b}[1;33mwarnings found\u{1b}[0m"));
     }
 }

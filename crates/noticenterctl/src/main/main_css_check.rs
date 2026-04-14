@@ -29,7 +29,7 @@ use self::main_css_check_files::{display_config_root, format_display_path};
 use self::main_css_check_geometry::lint_geometry_css_files;
 use self::main_css_check_lint::lint_css_files;
 use self::main_css_check_report::{
-    render_css_check_report, CssCheckCategory, CssCheckDiagnostic, CssCheckReport,
+    render_css_check_report_for_stdout, CssCheckCategory, CssCheckDiagnostic, CssCheckReport,
 };
 use self::main_css_check_runtime::lint_runtime_config;
 use self::main_css_check_theme::collect_css_check_inputs;
@@ -147,7 +147,7 @@ pub(crate) fn run_css_check() -> Result<()> {
         notes: css_inputs.notes,
         diagnostics,
     };
-    println!("{}", render_css_check_report(&report));
+    println!("{}", render_css_check_report_for_stdout(&report));
 
     let errors = error_count.load(Ordering::Relaxed);
     if errors > 0 {
