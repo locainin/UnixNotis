@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
         // Local-only commands intentionally run without a D-Bus connection.
         match args.command {
             cli_args::Command::CssCheck => {
-                main_css_check::run_css_check().context("css-check failed")?;
+                main_css_check::run_css_check()?;
             }
             cli_args::Command::Preset { command } => {
                 preset::run_preset(command).context("preset command failed")?;

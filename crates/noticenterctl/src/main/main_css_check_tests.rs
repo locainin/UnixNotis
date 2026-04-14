@@ -19,8 +19,10 @@ fn lint_css_contents_scans_media_blocks() {
     let css = "@media (min-width: 1px) { .a { color: red; } .a { color: blue; } }";
     let warnings = lint_css_contents(css);
     assert_eq!(warnings.len(), 1);
-    assert!(warnings[0].contains("duplicate selector '.a'"));
-    assert!(warnings[0].contains("within @media (min-width: 1px)"));
+    assert!(warnings[0].message.contains("duplicate selector '.a'"));
+    assert!(warnings[0]
+        .message
+        .contains("within @media (min-width: 1px)"));
 }
 
 #[test]
@@ -29,8 +31,8 @@ fn lint_css_contents_scans_layer_blocks() {
     let css = "@layer theme { .a { color: red; } .a { color: blue; } }";
     let warnings = lint_css_contents(css);
     assert_eq!(warnings.len(), 1);
-    assert!(warnings[0].contains("duplicate selector '.a'"));
-    assert!(warnings[0].contains("within @layer theme"));
+    assert!(warnings[0].message.contains("duplicate selector '.a'"));
+    assert!(warnings[0].message.contains("within @layer theme"));
 }
 
 #[test]
@@ -58,10 +60,10 @@ fn lint_css_contents_warns_on_web_length_tokens_in_layout_props() {
     let warnings = lint_css_contents(css);
     assert!(warnings
         .iter()
-        .any(|warning| warning.contains("uses calc()")));
+        .any(|warning| warning.message.contains("uses calc()")));
     assert!(warnings
         .iter()
-        .any(|warning| warning.contains("uses var()")));
+        .any(|warning| warning.message.contains("uses var()")));
 }
 
 #[test]
