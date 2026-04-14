@@ -14,6 +14,9 @@ use anyhow::{Context, Result};
 use unixnotis_core::Config;
 
 use self::model::GeometryModel;
+pub(super) use self::parse::{
+    can_model_horizontal_size_value, collect_custom_property_scopes, CssCustomPropertyScopes,
+};
 use self::parse::collect_geometry_from_contents;
 use super::main_css_check_files::format_display_path;
 use super::main_css_check_report::{CssCheckCategory, CssCheckDiagnostic};

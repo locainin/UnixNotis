@@ -54,8 +54,11 @@ fn panel_width_floor_warning_reports_runtime_clamp() {
 
 #[test]
 fn lint_css_contents_warns_on_web_length_tokens_in_layout_props() {
-    // Valid calc and var usage should stay quiet now
+    // Valid calc and var usage should pass when the token chain resolves cleanly
     let css = r#"
+        :root {
+            --pad: 12px;
+        }
         .unixnotis-panel {
             min-width: calc(30px + 4px);
             padding-left: var(--pad);

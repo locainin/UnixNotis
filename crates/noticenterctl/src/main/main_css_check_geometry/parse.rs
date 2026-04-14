@@ -22,7 +22,8 @@ mod selectors;
 
 pub(super) type CssCustomProperties = HashMap<String, String>;
 
-use self::custom_properties::{collect_custom_properties, CssCustomPropertyScopes};
+use self::custom_properties::collect_custom_properties;
+pub(in crate::main_css_check) use self::custom_properties::CssCustomPropertyScopes;
 pub(super) use self::lengths::{parse_box_edges, parse_single_length, set_edge};
 use self::selectors::{maybe_warn_for_complex_unixnotis_selector, simple_class_selector};
 
@@ -47,6 +48,39 @@ pub(super) fn collect_geometry_from_contents(
         &mut warned_classes,
     );
     warnings
+}
+
+pub(in crate::main_css_check) fn collect_custom_property_scopes(
+    contents: &str,
+) -> CssCustomPropertyScopes {
+    // Lint and geometry both need the same custom-property view of the file
+    collect_custom_properties(contents)
+}
+
+pub(in crate::main_css_check) fn can_model_horizontal_size_value(
+    selector: &str,
+    property: &str,
+    value: &str,
+    custom_properties: &CssCustomPropertyScopes,
+) -> bool {
+    // Geometry only understands tracked width-driving properties
+    if !is_horizontal_size_property(property) {
+        return true;
+    }
+
+    let scoped_properties = simple_class_selector(selector)
+        .map(|class_name| custom_properties.for_selector(class_name))
+        .unwrap_or_else(|| custom_properties.for_selector(selector));
+
+    match property {
+        "width" | "min-width" | "margin-left" | "margin-right" | "padding-left"
+        | "padding-right" | "border-left" | "border-left-width" | "border-right"
+        | "border-right-width" => parse_single_length(value, &scoped_properties).is_some(),
+        "margin" | "padding" | "border" | "border-width" => {
+            parse_box_edges(value, &scoped_properties).is_some()
+        }
+        _ => false,
+    }
 }
 
 fn collect_geometry_block(
