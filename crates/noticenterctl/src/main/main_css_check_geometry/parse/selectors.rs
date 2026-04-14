@@ -53,41 +53,6 @@ pub(super) fn simple_class_selector(selector: &str) -> Option<&str> {
     Some(trimmed)
 }
 
-pub(super) fn is_horizontal_size_property(name: &str) -> bool {
-    matches!(
-        name.trim(),
-        "width"
-            | "min-width"
-            | "margin"
-            | "margin-left"
-            | "margin-right"
-            | "padding"
-            | "padding-left"
-            | "padding-right"
-            | "border"
-            | "border-width"
-            | "border-left"
-            | "border-left-width"
-            | "border-right"
-            | "border-right-width"
-    )
-}
-
-pub(super) fn is_complex_warning_property(name: &str) -> bool {
-    // Border-only tweaks are common state styling and usually do not drive row width by themselves
-    matches!(
-        name.trim(),
-        "width"
-            | "min-width"
-            | "margin"
-            | "margin-left"
-            | "margin-right"
-            | "padding"
-            | "padding-left"
-            | "padding-right"
-    )
-}
-
 fn is_compound_class_selector(selector: &str) -> bool {
     let trimmed = selector.trim();
     // Only same-element class chains are warned here

@@ -6,6 +6,9 @@ use super::super::main_css_check_parse::{
     next_css_block, normalize_selector, parse_css_declarations, should_recurse_at_rule,
     split_selectors, strip_css_comments,
 };
+use super::super::main_css_check_policy::{
+    is_complex_geometry_warning_property, is_horizontal_size_property,
+};
 use super::model::GeometryModel;
 use super::stock::known_unixnotis_classes;
 
@@ -19,12 +22,9 @@ mod selectors;
 
 pub(super) type CssCustomProperties = HashMap<String, String>;
 
-use self::custom_properties::collect_custom_properties;
+use self::custom_properties::{collect_custom_properties, CssCustomPropertyScopes};
 pub(super) use self::lengths::{parse_box_edges, parse_single_length, set_edge};
-use self::selectors::{
-    is_complex_warning_property, is_horizontal_size_property,
-    maybe_warn_for_complex_unixnotis_selector, simple_class_selector,
-};
+use self::selectors::{maybe_warn_for_complex_unixnotis_selector, simple_class_selector};
 
 pub(super) fn collect_geometry_from_contents(
     contents: &str,
@@ -52,7 +52,7 @@ pub(super) fn collect_geometry_from_contents(
 fn collect_geometry_block(
     contents: &str,
     model: &mut GeometryModel,
-    custom_properties: &CssCustomProperties,
+    custom_properties: &CssCustomPropertyScopes,
     warnings: &mut Vec<String>,
     warned_classes: &mut HashSet<String>,
 ) {
@@ -94,7 +94,7 @@ fn collect_geometry_selector(
     selector: &str,
     block: &str,
     model: &mut GeometryModel,
-    custom_properties: &CssCustomProperties,
+    custom_properties: &CssCustomPropertyScopes,
     warnings: &mut Vec<String>,
     warned_classes: &mut HashSet<String>,
 ) {
@@ -109,7 +109,7 @@ fn collect_geometry_selector(
         .any(|(name, _)| is_horizontal_size_property(name));
     let has_complex_width_driver_rules = properties
         .iter()
-        .any(|(name, _)| is_complex_warning_property(name));
+        .any(|(name, _)| is_complex_geometry_warning_property(name));
     // Keep selector matching strict so width math does not drift from real widgets
     let Some(class_name) = simple_class_selector(selector) else {
         maybe_warn_for_complex_unixnotis_selector(
@@ -137,11 +137,12 @@ fn collect_geometry_selector(
         // Unknown non-UnixNotis classes are ignored because the lint has no widget map for them
         return;
     };
+    let custom_properties = custom_properties.for_selector(class_name);
 
     for (name, value) in properties {
         if is_horizontal_size_property(&name) {
             // Geometry lint only tracks properties that change horizontal width
-            target.apply_property(&name, &value, custom_properties);
+            target.apply_property(&name, &value, &custom_properties);
         }
     }
 }

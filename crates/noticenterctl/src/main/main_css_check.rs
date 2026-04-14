@@ -8,6 +8,8 @@ mod main_css_check_geometry;
 mod main_css_check_lint;
 #[path = "main_css_check_parse.rs"]
 mod main_css_check_parse;
+#[path = "main_css_check_policy.rs"]
+mod main_css_check_policy;
 #[path = "main_css_check_report/mod.rs"]
 mod main_css_check_report;
 #[path = "main_css_check_runtime.rs"]
@@ -28,6 +30,7 @@ use unixnotis_core::Config;
 use self::main_css_check_files::{display_config_root, format_display_path};
 use self::main_css_check_geometry::lint_geometry_css_files;
 use self::main_css_check_lint::lint_css_files;
+use self::main_css_check_policy::parsing_error_hint;
 use self::main_css_check_report::{
     render_css_check_report_for_stdout, CssCheckCategory, CssCheckDiagnostic, CssCheckReport,
 };
@@ -77,8 +80,7 @@ pub(crate) fn run_css_check() -> Result<()> {
             section.file().and_then(|file| file.path()).as_deref(),
             location.lines() + 1,
         )
-        .and_then(|line_text| parsing_error_hint(&line_text))
-        .map(str::to_string);
+        .and_then(|line_text| parsing_error_hint(&line_text));
         let mut diagnostics = parse_errors_clone.lock().expect("parse error lock");
         diagnostics.push(CssCheckDiagnostic::error(
             CssCheckCategory::Parse,
@@ -169,29 +171,6 @@ fn source_line_text(path: Option<&Path>, line_number: usize) -> Option<String> {
         .nth(line_number.saturating_sub(1))
         .map(str::to_string)
 }
-
-fn parsing_error_hint(line_text: &str) -> Option<&'static str> {
-    // Trim once so the checks stay simple
-    let trimmed = line_text.trim();
-    if trimmed.contains('%') {
-        // GTK size rules are stricter than web CSS
-        return Some(
-            "percentage lengths often fail in GTK CSS size properties; prefer fixed pixel values",
-        );
-    }
-    if trimmed.contains("calc(") {
-        // calc() looks valid but still fails in common GTK layout paths
-        return Some(
-            "GTK CSS does not support calc() in layout properties here; use a fixed value instead",
-        );
-    }
-    if trimmed.contains("var(") {
-        // GTK uses @define-color instead of web CSS custom properties
-        return Some("GTK CSS does not use var() custom properties; use @define-color for colors and fixed lengths for layout");
-    }
-    None
-}
-
 #[cfg(test)]
 #[path = "main_css_check_tests.rs"]
 mod tests;

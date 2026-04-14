@@ -10,8 +10,10 @@ use super::main_css_check_parse::{
     next_css_block_with_offsets, normalize_selector, parse_css_declarations_with_offsets,
     should_recurse_at_rule, split_selectors, strip_css_comments,
 };
+use super::main_css_check_policy::is_horizontal_size_property;
 use super::main_css_check_report::{CssCheckCategory, CssCheckDiagnostic};
 
+#[derive(Debug)]
 pub(super) struct CssCheckLintFinding {
     pub(super) code: &'static str,
     // Lint can point at the source when the scanner has a stable offset
@@ -247,26 +249,6 @@ fn web_length_value_warning(
         "property '{}' in selector '{}'{} {}",
         property, selector, context_note, hint
     ))
-}
-
-fn is_horizontal_size_property(name: &str) -> bool {
-    matches!(
-        name.trim(),
-        "width"
-            | "min-width"
-            | "margin"
-            | "margin-left"
-            | "margin-right"
-            | "padding"
-            | "padding-left"
-            | "padding-right"
-            | "border"
-            | "border-width"
-            | "border-left"
-            | "border-left-width"
-            | "border-right"
-            | "border-right-width"
-    )
 }
 
 fn selector_part_locations(selector: &str) -> Vec<(String, usize)> {
