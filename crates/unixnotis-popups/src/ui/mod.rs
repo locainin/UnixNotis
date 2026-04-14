@@ -21,9 +21,8 @@ use unixnotis_core::{Config, ControlState};
 use crate::dbus::{UiCommand, UiEvent};
 use unixnotis_ui::css::{self, CssManager};
 
-use icons::DesktopIconIndex;
+use icons::{DesktopIconIndex, TextureCache};
 use ui_entry::PopupEntry;
-use ui_icons::TextureCache;
 use ui_window::{apply_popup_config, build_popup_window, PopupInputRegionState};
 
 /// Popup-only GTK state for notification toasts.
