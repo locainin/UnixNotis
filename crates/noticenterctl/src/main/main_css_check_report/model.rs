@@ -62,7 +62,7 @@ pub(in super::super) struct CssCheckDiagnostic {
     pub(in super::super) code: &'static str,
     // This is already formatted for terminal display
     pub(in super::super) display_path: String,
-    // Parser warnings may carry source locations
+    // Source locations show up when lint or parsing can point at a real spot
     pub(in super::super) line: Option<usize>,
     pub(in super::super) column: Option<usize>,
     pub(in super::super) message: String,
@@ -89,7 +89,7 @@ impl CssCheckDiagnostic {
         column: Option<usize>,
         message: impl Into<String>,
     ) -> Self {
-        // Warnings do not carry parser locations unless lint can point at the source
+        // Most warnings still have no source location, so the fields stay optional
         Self {
             severity: CssCheckSeverity::Warning,
             category,

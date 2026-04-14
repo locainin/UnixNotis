@@ -169,7 +169,7 @@ fn render_report_sorts_diagnostics_by_severity_then_category() {
 
 #[test]
 fn render_report_can_add_terminal_color() {
-    // Color should wrap the same plain text instead of changing the report content
+    // Color should wrap the same report text instead of changing the content
     let report = CssCheckReport {
         display_root: "$HOME/.config/unixnotis".to_string(),
         checked_files: 5,
