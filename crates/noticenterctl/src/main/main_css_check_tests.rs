@@ -1,7 +1,10 @@
 use super::main_css_check_lint::lint_css_contents;
 use super::main_css_check_parse::{parse_css_declarations, split_selectors};
 use super::main_css_check_runtime::panel_width_floor_warning;
-use unixnotis_core::{Config, PANEL_RUNTIME_WIDTH_MIN};
+use unixnotis_core::{
+    build_modern_theme_custom_properties, gtk_css_features_for_version, Config, ThemeConfig,
+    PANEL_RUNTIME_WIDTH_MIN,
+};
 
 #[test]
 fn split_selectors_handles_is_commas() {
@@ -51,8 +54,11 @@ fn panel_width_floor_warning_reports_runtime_clamp() {
 
 #[test]
 fn lint_css_contents_warns_on_web_length_tokens_in_layout_props() {
-    // Web CSS length helpers can slip through GTK parsing, so lint should still flag them
+    // Valid calc and var usage should pass when the token chain resolves cleanly
     let css = r#"
+        :root {
+            --pad: 12px;
+        }
         .unixnotis-panel {
             min-width: calc(30px + 4px);
             padding-left: var(--pad);
@@ -60,14 +66,39 @@ fn lint_css_contents_warns_on_web_length_tokens_in_layout_props() {
     "#;
 
     let warnings = lint_css_contents(css);
-    assert!(warnings
-        .iter()
-        .any(|warning| warning.message.contains("uses calc()")));
-    assert!(warnings
-        .iter()
-        .any(|warning| warning.message.contains("uses var()")));
-    assert!(warnings.iter().all(|warning| warning.line.is_some()));
-    assert!(warnings.iter().all(|warning| warning.column.is_some()));
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn lint_css_contents_accepts_generated_modern_theme_tokens() {
+    let css = format!(
+        "{}\n.unixnotis-panel-card {{ border-radius: var(--unixnotis-card-radius); padding: calc(var(--unixnotis-panel-card-padding-y) + 2px) var(--unixnotis-panel-card-padding-x); }}",
+        build_modern_theme_custom_properties(
+            &ThemeConfig::default(),
+            gtk_css_features_for_version(4, 16),
+        )
+    );
+
+    let warnings = lint_css_contents(&css);
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn lint_css_contents_still_warns_on_percentage_layout_values() {
+    // Percentages are still hard for geometry lint to model accurately
+    let css = r#"
+        .unixnotis-panel {
+            min-width: 80%;
+        }
+    "#;
+
+    let warnings = lint_css_contents(css);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0]
+        .message
+        .contains("geometry estimates may be incomplete"));
+    assert!(warnings[0].line.is_some());
+    assert!(warnings[0].column.is_some());
 }
 
 #[test]

@@ -14,6 +14,9 @@ use anyhow::{Context, Result};
 use unixnotis_core::Config;
 
 use self::model::GeometryModel;
+pub(super) use self::parse::{
+    can_model_horizontal_size_value, collect_custom_property_scopes, CssCustomPropertyScopes,
+};
 use self::parse::collect_geometry_from_contents;
 use super::main_css_check_files::format_display_path;
 use super::main_css_check_report::{CssCheckCategory, CssCheckDiagnostic};
@@ -68,6 +71,7 @@ pub(super) fn lint_geometry_css_files(
 #[cfg(test)]
 mod tests {
     use super::{collect_geometry_from_contents, GeometryModel};
+    use unixnotis_core::{build_modern_theme_custom_properties, gtk_css_features_for_version};
     use unixnotis_core::{
         Config, MediaLayout, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS,
         DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
@@ -189,6 +193,104 @@ mod tests {
         assert!(warnings
             .iter()
             .any(|warning| warning.contains(".unixnotis-media-art")));
+    }
+
+    #[test]
+    fn geometry_can_follow_custom_property_lengths() {
+        let mut config = Config::default();
+        config.panel.width = 320;
+        let css = r#"
+            :root {
+                --toggle-width: 104px;
+                --toggle-pad: 12px;
+            }
+
+            .unixnotis-panel { padding: 16px; }
+            .unixnotis-toggle {
+                min-width: var(--toggle-width);
+                padding: 10px var(--toggle-pad);
+                border: 1px solid red;
+            }
+        "#;
+
+        let mut model = GeometryModel::default();
+        let file_warnings = collect_geometry_from_contents(css, &mut model);
+        assert!(file_warnings.is_empty(), "{file_warnings:?}");
+
+        let warnings = model.finalize_warnings(&config);
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("toggle grid")));
+    }
+
+    #[test]
+    fn geometry_can_follow_simple_calc_lengths() {
+        let mut config = Config::default();
+        config.panel.width = 320;
+        let css = r#"
+            .unixnotis-panel { padding: calc(8px + 8px); }
+            .unixnotis-toggle {
+                min-width: calc(96px + 8px);
+                padding: 10px calc(8px + 4px);
+                border: 1px solid red;
+            }
+        "#;
+
+        let mut model = GeometryModel::default();
+        let file_warnings = collect_geometry_from_contents(css, &mut model);
+        assert!(file_warnings.is_empty(), "{file_warnings:?}");
+
+        let warnings = model.finalize_warnings(&config);
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("toggle grid")));
+    }
+
+    #[test]
+    fn geometry_can_follow_selector_scoped_custom_properties() {
+        let mut config = Config::default();
+        config.panel.width = 320;
+        let css = r#"
+            :root { --toggle-pad: 10px; }
+            .unixnotis-panel { padding: 16px; }
+            .unixnotis-toggle {
+                --toggle-min: calc(52px * 2);
+                min-width: var(--toggle-min);
+                padding: 10px calc(var(--toggle-pad) + 2px);
+                border: 1px solid red;
+            }
+        "#;
+
+        let mut model = GeometryModel::default();
+        let file_warnings = collect_geometry_from_contents(css, &mut model);
+        assert!(file_warnings.is_empty(), "{file_warnings:?}");
+
+        let warnings = model.finalize_warnings(&config);
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("toggle grid")));
+    }
+
+    #[test]
+    fn geometry_can_follow_generated_modern_theme_tokens() {
+        let mut config = Config::default();
+        config.panel.width = 320;
+        let css = format!(
+            "{}\n.unixnotis-panel {{ padding: var(--unixnotis-panel-padding); }}\n.unixnotis-toggle {{ min-width: var(--unixnotis-toggle-min-width); padding: 10px calc(var(--unixnotis-panel-action-gap) * 2); border: 1px solid red; }}",
+            build_modern_theme_custom_properties(
+                &Config::default().theme,
+                gtk_css_features_for_version(4, 16),
+            )
+        );
+
+        let mut model = GeometryModel::default();
+        let file_warnings = collect_geometry_from_contents(&css, &mut model);
+        assert!(file_warnings.is_empty(), "{file_warnings:?}");
+
+        let warnings = model.finalize_warnings(&config);
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("toggle grid")));
     }
 
     #[test]

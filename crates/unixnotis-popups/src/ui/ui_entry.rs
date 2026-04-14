@@ -11,7 +11,7 @@ use gtk::Align;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::Sender;
 use tracing::debug;
-use unixnotis_core::{NotificationView, Urgency};
+use unixnotis_core::{hooks, NotificationView, Urgency};
 
 use crate::dbus::UiCommand;
 
@@ -86,17 +86,36 @@ impl UiState {
         // New roots stay hidden until visibility logic decides otherwise
         root.set_visible(false);
         if notification.urgency == Urgency::Critical as u8 {
-            root.add_css_class("critical");
+            root.add_css_class(hooks::shared_state::CRITICAL);
         }
+        // State classes make popup theming less dependent on child selector tricks
+        set_class_state(
+            &root,
+            hooks::popup_card::HAS_SUMMARY,
+            has_visible_text(&notification.summary),
+        );
+        set_class_state(
+            &root,
+            hooks::popup_card::HAS_BODY,
+            has_visible_text(&notification.body),
+        );
+        set_class_state(
+            &root,
+            hooks::popup_card::HAS_ACTIONS,
+            !notification.actions.is_empty(),
+        );
 
         // Header keeps icon, app name, and close in one stable row
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         header.add_css_class("unixnotis-popup-header-row");
         if let Some(icon) = self.build_image_widget(notification) {
+            set_class_state(&root, hooks::popup_card::HAS_ICON, true);
             icon.set_valign(Align::Center);
             icon.set_halign(Align::Start);
             icon.add_css_class("unixnotis-popup-icon");
             header.append(&icon);
+        } else {
+            set_class_state(&root, hooks::popup_card::NO_ICON, true);
         }
         let app = gtk::Label::new(Some(&notification.app_name));
         app.set_xalign(0.0);
@@ -248,6 +267,16 @@ fn optional_label_state(text: &str, max_chars: usize) -> OptionalLabelState<'_> 
 fn has_visible_text(text: &str) -> bool {
     // Visibility depends on real content, not just raw string length
     text.chars().any(|ch| !ch.is_whitespace())
+}
+
+fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {
+    if enabled {
+        if !root.has_css_class(class_name) {
+            root.add_css_class(class_name);
+        }
+    } else if root.has_css_class(class_name) {
+        root.remove_css_class(class_name);
+    }
 }
 
 fn clamp_label_text(text: &str, max_chars: usize) -> Cow<'_, str> {

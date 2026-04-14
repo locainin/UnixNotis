@@ -6,12 +6,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::main_css_check_files::format_display_path;
+use super::main_css_check_geometry::{
+    can_model_horizontal_size_value, collect_custom_property_scopes, CssCustomPropertyScopes,
+};
 use super::main_css_check_parse::{
     next_css_block_with_offsets, normalize_selector, parse_css_declarations_with_offsets,
     should_recurse_at_rule, split_selectors, strip_css_comments,
 };
+use super::main_css_check_policy::is_horizontal_size_property;
 use super::main_css_check_report::{CssCheckCategory, CssCheckDiagnostic};
 
+#[derive(Debug)]
 pub(super) struct CssCheckLintFinding {
     pub(super) code: &'static str,
     // Lint can point at the source when the scanner has a stable offset
@@ -52,6 +57,8 @@ pub(super) fn lint_css_contents(contents: &str) -> Vec<CssCheckLintFinding> {
 
     // Strip comments first so block scanning stays honest
     let stripped = strip_css_comments(contents);
+    // One property map lets lint judge modern var() and calc() the same way geometry does
+    let custom_properties = collect_custom_property_scopes(&stripped);
 
     // Repeated color names usually mean an accidental override
     let mut color_defs: HashMap<String, usize> = HashMap::new();
@@ -90,6 +97,7 @@ pub(super) fn lint_css_contents(contents: &str) -> Vec<CssCheckLintFinding> {
         &stripped,
         0,
         None,
+        &custom_properties,
         &mut selector_seen,
         &mut warnings,
     );
@@ -101,6 +109,7 @@ fn lint_css_block(
     source_contents: &str,
     base_offset: usize,
     context: Option<String>,
+    custom_properties: &CssCustomPropertyScopes,
     selector_seen: &mut HashMap<String, usize>,
     warnings: &mut Vec<CssCheckLintFinding>,
 ) {
@@ -126,6 +135,7 @@ fn lint_css_block(
                     source_contents,
                     base_offset + css_block.block_start,
                     Some(nested_context),
+                    custom_properties,
                     selector_seen,
                     warnings,
                 );
@@ -171,6 +181,7 @@ fn lint_css_block(
             &css_block.block,
             base_offset + css_block.block_start,
             context.as_deref(),
+            custom_properties,
         ));
     }
 }
@@ -181,6 +192,7 @@ fn lint_css_properties(
     block: &str,
     block_start: usize,
     context: Option<&str>,
+    custom_properties: &CssCustomPropertyScopes,
 ) -> Vec<CssCheckLintFinding> {
     let mut warnings = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -205,7 +217,9 @@ fn lint_css_properties(
             });
         }
 
-        if let Some(message) = web_length_value_warning(&prop, &value, selector, context) {
+        if let Some(message) =
+            web_length_value_warning(&prop, &value, selector, context, custom_properties)
+        {
             warnings.push(CssCheckLintFinding {
                 code: "LINT004",
                 line: Some(lint_line),
@@ -222,20 +236,28 @@ fn web_length_value_warning(
     value: &str,
     selector: &str,
     context: Option<&str>,
+    custom_properties: &CssCustomPropertyScopes,
 ) -> Option<String> {
     if !is_horizontal_size_property(property) {
         return None;
     }
 
+    if !value.contains('%')
+        && can_model_horizontal_size_value(selector, property, value, custom_properties)
+    {
+        // Values the shared geometry parser can resolve do not need a fallback lint warning
+        return None;
+    }
+
     let hint = if value.contains('%') {
-        // Percentage widths are a common web habit that often breaks GTK layout
-        Some("uses percentage lengths that GTK layout properties often reject or ignore")
+        // Percentages still depend on parent geometry that css-check does not model
+        Some("uses percentage lengths, so geometry estimates may be incomplete")
     } else if value.contains("calc(") {
-        // calc() can look valid while still not act like web CSS here
-        Some("uses calc(), which GTK layout properties often do not evaluate the way web CSS does")
+        // This stays noisy only when the shared geometry parser could not follow the math
+        Some("uses calc() in a layout value that css-check could not resolve reliably")
     } else if value.contains("var(") {
-        // GTK uses @define-color instead of web custom properties
-        Some("uses var(), but GTK CSS does not support web custom properties for layout values")
+        // This stays noisy only when the shared geometry parser could not follow the token chain
+        Some("uses var() in a layout value that css-check could not resolve reliably")
     } else {
         None
     }?;
@@ -247,26 +269,6 @@ fn web_length_value_warning(
         "property '{}' in selector '{}'{} {}",
         property, selector, context_note, hint
     ))
-}
-
-fn is_horizontal_size_property(name: &str) -> bool {
-    matches!(
-        name.trim(),
-        "width"
-            | "min-width"
-            | "margin"
-            | "margin-left"
-            | "margin-right"
-            | "padding"
-            | "padding-left"
-            | "padding-right"
-            | "border"
-            | "border-width"
-            | "border-left"
-            | "border-left-width"
-            | "border-right"
-            | "border-right-width"
-    )
 }
 
 fn selector_part_locations(selector: &str) -> Vec<(String, usize)> {

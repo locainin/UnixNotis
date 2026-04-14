@@ -9,3 +9,8 @@ gtk.workspace = true
 notify.workspace = true
 tracing.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
+
+[[bin]]
+name = "css_provider_validate"
+path = "src/bin/css_provider_validate.rs"
+test = false

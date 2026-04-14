@@ -8,7 +8,7 @@ use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use tokio::sync::mpsc;
 use tracing::debug;
-use unixnotis_core::{NotificationView, Urgency};
+use unixnotis_core::{hooks, NotificationView, Urgency};
 
 use crate::dbus::UiCommand;
 
@@ -184,23 +184,44 @@ pub(super) fn update_notification_row(
 
     if notification.urgency == Urgency::Critical as u8 {
         // CSS class toggles are explicit to avoid stale visual state
-        root.add_css_class("critical");
+        root.add_css_class(hooks::shared_state::CRITICAL);
     } else {
-        root.remove_css_class("critical");
+        root.remove_css_class(hooks::shared_state::CRITICAL);
     }
     if data.is_active {
         // Active rows can be styled differently from history rows
-        root.add_css_class("active");
+        root.add_css_class(hooks::shared_state::ACTIVE);
     } else {
-        root.remove_css_class("active");
+        root.remove_css_class(hooks::shared_state::ACTIVE);
     }
     if data.stacked {
         // Stacked class indicates collapsed entries in grouped mode
-        root.add_css_class("stacked");
+        root.add_css_class(hooks::shared_state::STACKED);
     } else {
-        root.remove_css_class("stacked");
+        root.remove_css_class(hooks::shared_state::STACKED);
     }
 
+    // Extra state classes give themes better hooks without changing old selectors
+    set_class_state(
+        root,
+        hooks::panel_card::HAS_SUMMARY,
+        has_visible_text(&notification.summary),
+    );
+    set_class_state(
+        root,
+        hooks::panel_card::HAS_BODY,
+        has_visible_text(&notification.body),
+    );
+    set_class_state(
+        root,
+        hooks::panel_card::HAS_ACTIONS,
+        !notification.actions.is_empty(),
+    );
+    set_class_state(
+        root,
+        hooks::panel_card::NO_ACTIONS,
+        notification.actions.is_empty(),
+    );
     // App name always renders, even when summary or body are missing
     row.app_label.set_text(&notification.app_name);
     // Clamp before GTK rendering to avoid giant layout passes
@@ -260,6 +281,16 @@ fn optional_label_state(text: &str, max_chars: usize) -> OptionalLabelState<'_> 
 fn has_visible_text(text: &str) -> bool {
     // Layout only needs to know if the row has real visible content
     text.chars().any(|ch| !ch.is_whitespace())
+}
+
+fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {
+    if enabled {
+        if !root.has_css_class(class_name) {
+            root.add_css_class(class_name);
+        }
+    } else if root.has_css_class(class_name) {
+        root.remove_css_class(class_name);
+    }
 }
 
 fn clamp_action_label_text(text: &str) -> Cow<'_, str> {
