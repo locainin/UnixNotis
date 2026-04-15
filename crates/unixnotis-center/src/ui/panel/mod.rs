@@ -1,13 +1,20 @@
 //! Panel layout and widget construction for the center window.
 
+mod actions;
+mod header;
+mod search;
+mod sections;
+
 use gtk::gdk;
 use gtk::gdk::prelude::*;
 use gtk::prelude::*;
-use gtk::Align;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use unixnotis_core::{
-    Anchor, Config, Margins, PanelKeyboardInteractivity, PANEL_RUNTIME_WIDTH_MIN,
+    css::hooks, Anchor, Config, Margins, PanelKeyboardInteractivity, PANEL_RUNTIME_WIDTH_MIN,
 };
+
+use self::header::build_panel_header;
+use self::sections::build_panel_sections;
 
 // Keep panel width reasonable on narrow displays to avoid dominating screen real estate.
 const PANEL_WIDTH_MONITOR_RATIO_CAP: f32 = 0.32;
@@ -40,7 +47,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     window.set_decorated(false);
     window.set_resizable(false);
     window.set_title(Some("UnixNotis Center"));
-    window.add_css_class("unixnotis-panel-window");
+    window.add_css_class(hooks::panel_shell::WINDOW);
     if let Some(settings) = gtk::Settings::default() {
         // GTK global setting that controls whether scrollbars overlay content.
         // Enabled here to keep scrollbar behavior consistent across widgets.
@@ -72,185 +79,19 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     }
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    root.add_css_class("unixnotis-panel");
+    root.add_css_class(hooks::panel_shell::ROOT);
     root.set_focusable(true);
     root.set_hexpand(true);
     root.set_vexpand(true);
     // Keep the panel width stable regardless of child content.
     root.set_size_request(width, -1);
 
-    let header = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    header.add_css_class("unixnotis-panel-header");
-    // Top row stays minimal so horizontal width remains stable across themes.
-    let header_top = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    header_top.add_css_class("unixnotis-panel-header-top");
+    let header = build_panel_header();
+    let sections = build_panel_sections(width);
 
-    let title_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    title_box.add_css_class("unixnotis-panel-title-stack");
-    let title = gtk::Label::new(Some("Notifications"));
-    title.set_xalign(0.0);
-    title.add_css_class("unixnotis-panel-title");
-    let count = gtk::Label::new(Some("0"));
-    count.set_xalign(0.5);
-    count.set_valign(Align::Center);
-    count.add_css_class("unixnotis-panel-count");
-    let title_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    title_row.add_css_class("unixnotis-panel-title-row");
-    title_row.append(&title);
-    title_row.append(&count);
-    title_box.append(&title_row);
-
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    actions.add_css_class("unixnotis-panel-actions");
-    // Action row is separated from the title row to avoid widening the panel.
-    let action_primary = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    action_primary.add_css_class("unixnotis-panel-action-group");
-
-    let focus_toggle = gtk::ToggleButton::new();
-    focus_toggle.add_css_class("unixnotis-panel-action");
-    focus_toggle.add_css_class("unixnotis-panel-action-focus");
-    focus_toggle.add_css_class("unixnotis-panel-action-with-icon");
-    focus_toggle.set_tooltip_text(Some("Toggle widget visibility"));
-    let focus_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    focus_content.add_css_class("unixnotis-panel-action-content");
-    let focus_icon = gtk::Image::from_icon_name("applications-system-symbolic");
-    focus_icon.add_css_class("unixnotis-panel-action-glyph");
-    let focus_label = gtk::Label::new(Some("Widgets"));
-    focus_label.add_css_class("unixnotis-panel-action-label");
-    focus_content.append(&focus_icon);
-    focus_content.append(&focus_label);
-    focus_toggle.set_child(Some(&focus_content));
-
-    let dnd_toggle = gtk::ToggleButton::new();
-    dnd_toggle.add_css_class("unixnotis-panel-action");
-    dnd_toggle.add_css_class("unixnotis-panel-action-primary");
-    dnd_toggle.add_css_class("unixnotis-panel-action-with-icon");
-    dnd_toggle.set_tooltip_text(Some("Silence incoming notifications"));
-    let dnd_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    dnd_content.add_css_class("unixnotis-panel-action-content");
-    let dnd_icon = gtk::Image::from_icon_name("weather-clear-night-symbolic");
-    dnd_icon.add_css_class("unixnotis-panel-action-glyph");
-    let dnd_label = gtk::Label::new(Some("DND"));
-    dnd_label.add_css_class("unixnotis-panel-action-label");
-    dnd_content.append(&dnd_icon);
-    dnd_content.append(&dnd_label);
-    dnd_toggle.set_child(Some(&dnd_content));
-
-    let clear_button = gtk::Button::new();
-    clear_button.add_css_class("unixnotis-panel-action");
-    clear_button.add_css_class("unixnotis-panel-action-muted");
-    clear_button.add_css_class("unixnotis-panel-action-with-icon");
-    clear_button.set_tooltip_text(Some("Clear all notifications"));
-    let clear_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    clear_content.add_css_class("unixnotis-panel-action-content");
-    let clear_icon = gtk::Image::from_icon_name("user-trash-symbolic");
-    clear_icon.add_css_class("unixnotis-panel-action-glyph");
-    let clear_label = gtk::Label::new(Some("Clear"));
-    clear_label.add_css_class("unixnotis-panel-action-label");
-    clear_content.append(&clear_icon);
-    clear_content.append(&clear_label);
-    clear_button.set_child(Some(&clear_content));
-
-    let search_toggle = gtk::ToggleButton::new();
-    search_toggle.add_css_class("unixnotis-panel-action");
-    search_toggle.add_css_class("unixnotis-panel-action-search");
-    search_toggle.add_css_class("unixnotis-panel-action-icon");
-    search_toggle.set_tooltip_text(Some("Toggle search"));
-    let search_icon = gtk::Image::from_icon_name("system-search-symbolic");
-    search_icon.add_css_class("unixnotis-panel-action-glyph");
-    search_toggle.set_child(Some(&search_icon));
-
-    let close_button = gtk::Button::from_icon_name("window-close-symbolic");
-    close_button.add_css_class("unixnotis-panel-action");
-    close_button.add_css_class("unixnotis-panel-action-icon");
-    close_button.add_css_class("unixnotis-panel-action-close");
-    close_button.set_tooltip_text(Some("Close panel"));
-
-    action_primary.append(&focus_toggle);
-    action_primary.append(&dnd_toggle);
-    action_primary.append(&clear_button);
-    action_primary.append(&search_toggle);
-    actions.append(&action_primary);
-
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
-    spacer.set_hexpand(true);
-    // Spacer expands to align actions to the trailing edge.
-    header_top.append(&title_box);
-    header_top.append(&spacer);
-    // Keep close action isolated from destructive controls like "Clear".
-    header_top.append(&close_button);
-    header.append(&header_top);
-    // Action controls are placed on a dedicated row to keep panel width stable.
-    header.append(&actions);
-
-    let search_entry = gtk::SearchEntry::new();
-    search_entry.add_css_class("unixnotis-panel-search");
-    search_entry.set_placeholder_text(Some("Search app, title, or message"));
-    search_entry.set_hexpand(true);
-    search_entry.set_tooltip_text(Some("Type to filter notifications"));
-    let search_revealer = gtk::Revealer::new();
-    search_revealer.add_css_class("unixnotis-panel-search-revealer");
-    search_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    search_revealer.set_transition_duration(180);
-    // Keep search hidden by default to preserve notification space until requested.
-    search_revealer.set_reveal_child(false);
-    search_revealer.set_child(Some(&search_entry));
-    header.append(&search_revealer);
-
-    let media_container = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    media_container.add_css_class("unixnotis-media-container");
-    media_container.set_hexpand(true);
-    media_container.set_halign(Align::Fill);
-
-    let quick_controls = gtk::Box::new(gtk::Orientation::Vertical, 10);
-    quick_controls.add_css_class("unixnotis-quick-controls");
-
-    let toggle_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    toggle_container.add_css_class("unixnotis-toggle-section");
-    toggle_container.set_hexpand(true);
-    toggle_container.set_visible(false);
-
-    let stat_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    stat_container.add_css_class("unixnotis-stat-section");
-    stat_container.set_hexpand(true);
-    stat_container.set_visible(false);
-
-    let card_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    card_container.add_css_class("unixnotis-card-section");
-    card_container.set_hexpand(true);
-    card_container.set_visible(false);
-
-    let widget_stack = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    widget_stack.add_css_class("unixnotis-widget-stack");
-    widget_stack.append(&quick_controls);
-    widget_stack.append(&media_container);
-    widget_stack.append(&toggle_container);
-    widget_stack.append(&stat_container);
-    widget_stack.append(&card_container);
-
-    let widget_revealer = gtk::Revealer::new();
-    widget_revealer.add_css_class("unixnotis-widget-revealer");
-    widget_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    widget_revealer.set_transition_duration(180);
-    widget_revealer.set_reveal_child(true);
-    // Widget stack remains mounted so collapse/expand does not rebuild child state.
-    widget_revealer.set_child(Some(&widget_stack));
-
-    let scroller = gtk::ScrolledWindow::new();
-    scroller.set_vexpand(true);
-    scroller.set_hexpand(true);
-    // Keep vertical scrollbars allocated to avoid width jitter on hover.
-    // Horizontal scrolling remains disabled because the panel is fixed-width.
-    scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Always);
-    // Disable overlay scrolling so the scrollbar width stays constant.
-    // The panel layout relies on a fixed width; overlay scrollbars can shift content.
-    scroller.set_overlay_scrolling(false);
-    scroller.set_min_content_width(width);
-    scroller.set_max_content_width(width);
-
-    root.append(&header);
-    root.append(&widget_revealer);
-    root.append(&scroller);
+    root.append(&header.root);
+    root.append(&sections.widget_revealer);
+    root.append(&sections.scroller);
 
     window.set_child(Some(&root));
     window.set_visible(false);
@@ -258,21 +99,21 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     PanelWidgets {
         window,
         root,
-        widget_revealer,
-        quick_controls,
-        toggle_container,
-        stat_container,
-        card_container,
-        scroller,
-        media_container,
-        search_revealer,
-        search_entry,
-        search_toggle,
-        header_count: count,
-        focus_toggle,
-        dnd_toggle,
-        clear_button,
-        close_button,
+        widget_revealer: sections.widget_revealer,
+        quick_controls: sections.quick_controls,
+        toggle_container: sections.toggle_container,
+        stat_container: sections.stat_container,
+        card_container: sections.card_container,
+        scroller: sections.scroller,
+        media_container: sections.media_container,
+        search_revealer: header.search.revealer,
+        search_entry: header.search.entry,
+        search_toggle: header.actions.search_toggle,
+        header_count: header.count,
+        focus_toggle: header.actions.focus_toggle,
+        dnd_toggle: header.actions.dnd_toggle,
+        clear_button: header.actions.clear_button,
+        close_button: header.actions.close_button,
     }
 }
 
