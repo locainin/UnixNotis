@@ -4,17 +4,18 @@
 
 use gtk::prelude::*;
 use gtk::{self, Align};
+use unixnotis_core::css::hooks;
 
 pub(super) fn build_empty_row(text: &str) -> gtk::Box {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    root.add_css_class("unixnotis-empty");
+    root.add_css_class(hooks::empty_row::ROOT);
     root.set_hexpand(true);
     root.set_vexpand(true);
     root.set_valign(Align::Center);
     root.set_halign(Align::Center);
 
     let label = gtk::Label::new(Some(text));
-    label.add_css_class("unixnotis-empty-label");
+    label.add_css_class(hooks::empty_row::LABEL);
     label.set_halign(Align::Center);
     label.set_valign(Align::Center);
     // Rely on explicit line breaks from config to avoid auto-hyphenation.

@@ -2,16 +2,16 @@
 //!
 //! Groups desktop icon lookup, themed icon resolution, and image decoding helpers.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use gio::prelude::{AppInfoExt, FileExt};
+use gio::prelude::FileExt;
 use gtk::gdk;
 use gtk::gdk::prelude::*;
 use gtk::{IconLookupFlags, IconPaintable, TextDirection};
 use unixnotis_core::{NotificationImage, NotificationView};
 
-use super::icons_cache::CachedPaintable;
+use super::cache::CachedPaintable;
 
 // Guard against blocking loads of unusually large icons on the GTK thread.
 const MAX_SYNC_ICON_BYTES: u64 = 4 * 1024 * 1024;
@@ -137,102 +137,6 @@ pub(super) fn collect_icon_candidates(notification: &NotificationView) -> Vec<St
         .into_iter()
         .filter(|candidate| !candidate.is_empty() && seen.insert(candidate.clone()))
         .collect()
-}
-
-#[derive(Default)]
-pub(super) struct DesktopIconIndex {
-    by_name: HashMap<String, Vec<String>>,
-    by_wm_class: HashMap<String, Vec<String>>,
-    by_id: HashMap<String, Vec<String>>,
-}
-
-impl DesktopIconIndex {
-    pub(super) fn new() -> Self {
-        let mut index = Self::default();
-        for app_info in gio::AppInfo::all() {
-            let Ok(desktop) = app_info.downcast::<gio::DesktopAppInfo>() else {
-                continue;
-            };
-            let icon_name = desktop
-                .string("Icon")
-                .map(|value| value.to_string())
-                .unwrap_or_default();
-            if icon_name.is_empty() {
-                continue;
-            }
-            index.add_name(desktop.name().as_str(), &icon_name);
-            index.add_name(desktop.display_name().as_str(), &icon_name);
-            if let Some(generic) = desktop.generic_name() {
-                index.add_name(generic.as_str(), &icon_name);
-            }
-            if let Some(startup_wm_class) = desktop.startup_wm_class() {
-                index.add_wm_class(startup_wm_class.as_str(), &icon_name);
-            }
-            if let Some(id) = desktop.id() {
-                index.add_id(id.as_str(), &icon_name);
-            }
-        }
-        index
-    }
-
-    pub(super) fn icons_for(&self, key: &str) -> Option<Vec<String>> {
-        let normalized = normalize_key(key);
-        if normalized.is_empty() {
-            return None;
-        }
-        let mut out = Vec::new();
-        if let Some(values) = self.by_id.get(&normalized) {
-            out.extend(values.iter().cloned());
-        }
-        if let Some(values) = self.by_wm_class.get(&normalized) {
-            out.extend(values.iter().cloned());
-        }
-        if let Some(values) = self.by_name.get(&normalized) {
-            out.extend(values.iter().cloned());
-        }
-        if out.is_empty() {
-            return None;
-        }
-        let mut seen = HashSet::new();
-        let filtered = out
-            .into_iter()
-            .filter(|value| seen.insert(value.clone()))
-            .collect::<Vec<_>>();
-        Some(filtered)
-    }
-
-    fn add_name(&mut self, key: &str, icon: &str) {
-        add_icon_to_map(&mut self.by_name, key, icon);
-    }
-
-    fn add_wm_class(&mut self, key: &str, icon: &str) {
-        add_icon_to_map(&mut self.by_wm_class, key, icon);
-    }
-
-    fn add_id(&mut self, key: &str, icon: &str) {
-        add_icon_to_map(&mut self.by_id, key, icon);
-        if let Some(stripped) = key.strip_suffix(".desktop") {
-            add_icon_to_map(&mut self.by_id, stripped, icon);
-        }
-    }
-}
-
-fn add_icon_to_map(map: &mut HashMap<String, Vec<String>>, key: &str, icon: &str) {
-    let key = normalize_key(key);
-    if key.is_empty() || icon.is_empty() {
-        return;
-    }
-    let entry = map.entry(key).or_default();
-    if !entry.iter().any(|value| value == icon) {
-        entry.push(icon.to_string());
-    }
-}
-
-fn normalize_key(value: &str) -> String {
-    // Normalizes keys for consistent map lookups / comparisons:
-    // - trim removes accidental whitespace
-    // - lowercase makes lookups case-insensitive (theme/icon names often vary in casing)
-    value.trim().to_lowercase()
 }
 
 fn is_missing_icon(path: &Path) -> bool {

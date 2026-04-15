@@ -6,7 +6,7 @@ use std::rc::Rc;
 use async_channel::{Sender, TrySendError};
 use gtk::prelude::*;
 use tracing::debug;
-use unixnotis_core::util;
+use unixnotis_core::{css::hooks, util};
 
 use crate::dbus::UiEvent;
 
@@ -24,11 +24,12 @@ pub(super) struct GroupRowWidgets {
 pub(super) fn build_group_row(event_tx: Sender<UiEvent>) -> (gtk::Box, GroupRowWidgets) {
     // Root container groups the header and any future expansion widgets.
     let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    root.add_css_class("unixnotis-group");
-    root.add_css_class("unixnotis-group-row");
+    root.add_css_class(hooks::group_row::ROOT);
+    root.add_css_class(hooks::group_row::CONTAINER);
+    root.add_css_class(hooks::group_row::EXPANDED);
 
     let button = gtk::Button::new();
-    button.add_css_class("unixnotis-group-header");
+    button.add_css_class(hooks::group_row::HEADER);
     button.set_has_frame(false);
     button.set_focusable(true);
     button.set_tooltip_text(Some("Toggle group"));
@@ -36,21 +37,21 @@ pub(super) fn build_group_row(event_tx: Sender<UiEvent>) -> (gtk::Box, GroupRowW
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = gtk::Image::new();
     icon.set_pixel_size(18);
-    icon.add_css_class("unixnotis-group-icon");
+    icon.add_css_class(hooks::group_row::ICON);
 
     let title = gtk::Label::new(None);
     title.set_xalign(0.0);
-    title.add_css_class("unixnotis-group-title");
+    title.add_css_class(hooks::group_row::TITLE);
 
     let count = gtk::Label::new(Some("0"));
     count.set_xalign(0.5);
-    count.add_css_class("unixnotis-group-count");
+    count.add_css_class(hooks::group_row::COUNT);
 
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
     spacer.set_hexpand(true);
 
     let chevron = gtk::Image::from_icon_name("pan-down-symbolic");
-    chevron.add_css_class("unixnotis-group-chevron");
+    chevron.add_css_class(hooks::group_row::CHEVRON);
 
     header.append(&icon);
     header.append(&title);
@@ -122,9 +123,15 @@ pub(super) fn update_group_row(
     };
     group.chevron.set_icon_name(Some(chevron_name));
     if data.expanded {
-        root.remove_css_class("collapsed");
+        root.remove_css_class(hooks::group_row::COLLAPSED);
+        if !root.has_css_class(hooks::group_row::EXPANDED) {
+            root.add_css_class(hooks::group_row::EXPANDED);
+        }
     } else {
-        root.add_css_class("collapsed");
+        root.add_css_class(hooks::group_row::COLLAPSED);
+        if root.has_css_class(hooks::group_row::EXPANDED) {
+            root.remove_css_class(hooks::group_row::EXPANDED);
+        }
     }
 
     *group.group_key.borrow_mut() = data.group_key.clone();
@@ -132,7 +139,19 @@ pub(super) fn update_group_row(
     if let Some(notification) = data.notification.as_ref() {
         let scale = root.scale_factor();
         icon_resolver.apply_icon(&group.icon, notification.as_ref(), 18, scale);
+        if !root.has_css_class(hooks::group_row::HAS_ICON) {
+            root.add_css_class(hooks::group_row::HAS_ICON);
+        }
+        if root.has_css_class(hooks::group_row::NO_ICON) {
+            root.remove_css_class(hooks::group_row::NO_ICON);
+        }
     } else {
         group.icon.set_visible(false);
+        if !root.has_css_class(hooks::group_row::NO_ICON) {
+            root.add_css_class(hooks::group_row::NO_ICON);
+        }
+        if root.has_css_class(hooks::group_row::HAS_ICON) {
+            root.remove_css_class(hooks::group_row::HAS_ICON);
+        }
     }
 }

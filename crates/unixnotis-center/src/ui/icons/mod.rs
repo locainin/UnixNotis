@@ -3,9 +3,10 @@
 //! Keeps icon orchestration in this module while delegating cache and
 //! decoding helpers to focused submodules.
 
-mod icons_cache;
-mod icons_decode;
-mod icons_sources;
+mod cache;
+mod decode;
+mod index;
+mod theme;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -21,14 +22,15 @@ use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::NotificationView;
 
-use icons_cache::{
+use cache::{
     icon_key_for_image, icon_key_for_name, icon_key_for_path, image_key_matches, set_image_key,
     CachedPaintable, IconCache, IconKey,
 };
-use icons_decode::{texture_from_raster, IconDecodeMode, IconResult, IconUpdate, IconWorker};
-use icons_sources::{
+use decode::{texture_from_raster, IconDecodeMode, IconResult, IconUpdate, IconWorker};
+use index::DesktopIconIndex;
+use theme::{
     collect_icon_candidates, file_path_from_hint, image_data_texture, is_svg_path,
-    resolve_icon_source, resolve_path_texture, DesktopIconIndex, IconSource,
+    resolve_icon_source, resolve_path_texture, IconSource,
 };
 
 /// Resolves notification icons using image hints, themed icons, and desktop metadata.

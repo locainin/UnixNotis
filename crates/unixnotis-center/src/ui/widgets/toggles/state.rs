@@ -11,7 +11,7 @@ use std::time::Duration;
 use gtk::glib;
 use gtk::prelude::*;
 use tracing::warn;
-use unixnotis_core::{util, PanelDebugLevel};
+use unixnotis_core::{css::hooks, util, PanelDebugLevel};
 
 use super::super::utils::run_command_capture_status_async;
 use crate::debug;
@@ -100,6 +100,7 @@ pub(super) fn refresh_toggle_state(
             button.set_active(active);
             guard.set(false);
         }
+        apply_active_class(&button, active);
 
         finish_toggle_refresh(refresh_cmd, button, guard, refresh_gen, refresh_gate);
     });
@@ -159,6 +160,7 @@ pub(super) fn schedule_toggle_refresh_with_retry(
                 button.set_active(active);
                 guard.set(false);
             }
+            apply_active_class(&button, active);
 
             if active == expected {
                 // Stop retrying once backend and UI agree
@@ -166,6 +168,16 @@ pub(super) fn schedule_toggle_refresh_with_retry(
             }
         }
     });
+}
+
+fn apply_active_class(button: &gtk::ToggleButton, active: bool) {
+    if active {
+        if !button.has_css_class(hooks::shared_state::ACTIVE) {
+            button.add_css_class(hooks::shared_state::ACTIVE);
+        }
+    } else if button.has_css_class(hooks::shared_state::ACTIVE) {
+        button.remove_css_class(hooks::shared_state::ACTIVE);
+    }
 }
 
 async fn fetch_toggle_state(cmd: &str, log_failures: bool) -> Option<bool> {

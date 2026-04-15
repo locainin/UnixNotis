@@ -14,7 +14,7 @@ use gtk::gdk::Texture;
 use gtk::glib;
 use gtk::prelude::*;
 
-use super::icons_cache::IconKey;
+use super::cache::IconKey;
 
 // Prevent unbounded reads from untrusted icon paths.
 const MAX_ICON_BYTES: u64 = 16 * 1024 * 1024;

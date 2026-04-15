@@ -11,7 +11,7 @@ use std::sync::Arc;
 use gtk::prelude::*;
 use gtk::Align;
 use tracing::warn;
-use unixnotis_core::{PanelDebugLevel, ToggleWidgetConfig};
+use unixnotis_core::{css::hooks, PanelDebugLevel, ToggleWidgetConfig};
 
 use super::utils::{run_action_command_with_completion, start_command_watch, CommandWatch};
 use crate::debug;
@@ -64,7 +64,7 @@ impl ToggleGrid {
         // FlowBox keeps toggle cards in a stable responsive row layout
         let root = gtk::FlowBox::new();
         // Class hook drives card sizing and spacing from theme css
-        root.add_css_class("unixnotis-toggle-grid");
+        root.add_css_class(hooks::toggle_card::GRID);
         root.set_selection_mode(gtk::SelectionMode::None);
         root.set_max_children_per_line(4);
         root.set_min_children_per_line(4);
@@ -118,7 +118,8 @@ impl ToggleItem {
         // Build base toggle card
         let button = gtk::ToggleButton::new();
         // Base class applies shared visual treatment for all toggle cards
-        button.add_css_class("unixnotis-toggle");
+        button.add_css_class(hooks::toggle_card::ROOT);
+        button.add_css_class(hooks::toggle_card::HAS_ICON);
         button.set_focusable(true);
         // Tooltip stays optional so hover can stay visually quiet in compact layouts
         if show_tooltips {
@@ -137,7 +138,7 @@ impl ToggleItem {
         // Centered content keeps icon and label aligned across theme variants
         content.set_halign(Align::Center);
         content.set_valign(Align::Center);
-        content.add_css_class("unixnotis-toggle-content");
+        content.add_css_class(hooks::toggle_card::CONTENT);
 
         // Resolve themed icon names before creating the image so fallback is explicit
         let icon_name = resolve_toggle_icon_name(&config);
@@ -151,11 +152,11 @@ impl ToggleItem {
         }
         let icon = gtk::Image::from_icon_name(&icon_name);
         // Icon class controls size and tint in one place
-        icon.add_css_class("unixnotis-toggle-icon");
+        icon.add_css_class(hooks::toggle_card::ICON);
 
         let label = gtk::Label::new(Some(&config.label));
         // Label class controls typography and spacing with icon
-        label.add_css_class("unixnotis-toggle-label");
+        label.add_css_class(hooks::toggle_card::LABEL);
         label.set_xalign(0.0);
         label.set_wrap(false);
 
