@@ -9,7 +9,9 @@
 .unixnotis-quick-slider {
   background-image: linear-gradient(160deg, alpha(@unixnotis-surface-soft, 0.92), alpha(@unixnotis-surface, 0.97));
   border-radius: 18px;
+  border-radius: var(--unixnotis-quick-slider-radius);
   padding: 8px 12px;
+  padding: var(--unixnotis-quick-slider-padding-y) var(--unixnotis-quick-slider-padding-x);
   border: 1px solid alpha(@unixnotis-accent, 0.26);
   box-shadow:
     0 12px 24px -20px @unixnotis-shadow-soft,
@@ -45,7 +47,9 @@
   border: 1px solid alpha(@unixnotis-accent, 0.3);
   padding: 4px;
   min-width: 32px;
+  min-width: var(--unixnotis-quick-slider-icon-size);
   min-height: 32px;
+  min-height: var(--unixnotis-quick-slider-icon-size);
   box-shadow:
     0 6px 12px -10px @unixnotis-shadow-soft,
     inset 0 0 0 1px alpha(#ffffff, 0.05);
@@ -84,7 +88,9 @@
   background-image: linear-gradient(140deg, alpha(@unixnotis-accent-2, 0.92), alpha(@unixnotis-accent, 0.66));
   border-radius: 999px;
   min-width: 16px;
+  min-width: var(--unixnotis-quick-slider-knob-size);
   min-height: 16px;
+  min-height: var(--unixnotis-quick-slider-knob-size);
   border: 1px solid alpha(@unixnotis-accent, 0.6);
   margin: 0;
   padding: 0;
@@ -108,10 +114,14 @@
   /* Base toggle: "glass pill" with a consistent outline and subtle 3D depth. */
   background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.94), alpha(@unixnotis-surface, 0.98));
   border-radius: 18px;
+  border-radius: calc(var(--unixnotis-quick-slider-radius));
   padding: 10px 12px;
+  padding: var(--unixnotis-toggle-padding-y) var(--unixnotis-toggle-padding-x);
   border: 1px solid alpha(@unixnotis-outline, 0.9);
   min-height: 56px;
+  min-height: var(--unixnotis-toggle-min-height);
   min-width: 104px;
+  min-width: var(--unixnotis-toggle-min-width);
   box-shadow:
     0 16px 28px -22px alpha(#000000, 0.40),
     0 0 0 1px alpha(@unixnotis-accent, 0.10),
@@ -312,6 +322,10 @@
   letter-spacing: 0.04em;
 }
 
+.unixnotis-toggle-has-icon .unixnotis-toggle-content {
+  min-width: calc(var(--unixnotis-toggle-min-width) - 24px);
+}
+
 .unixnotis-stat-header,
 .unixnotis-info-header {
   margin-bottom: 6px;
@@ -353,11 +367,14 @@
 .unixnotis-stat-card {
   background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.95), alpha(@unixnotis-surface, 0.98));
   border-radius: 18px;
+  border-radius: var(--unixnotis-stat-card-radius);
   padding: 10px 12px;
+  padding: var(--unixnotis-stat-card-padding-y) var(--unixnotis-stat-card-padding-x);
   /* Keep the outline always visible so the stat grid reads as "cards"
    * even when not hovered. */
   border: 1px solid alpha(@unixnotis-outline, 0.88);
   min-height: 56px;
+  min-height: var(--unixnotis-stat-card-min-height);
   box-shadow:
     0 18px 30px -22px alpha(#000000, 0.35),
     0 0 0 1px alpha(@unixnotis-accent, 0.1),
@@ -398,6 +415,14 @@
   color: @unixnotis-muted;
 }
 
+.unixnotis-stat-card-plugin .unixnotis-stat-title {
+  color: alpha(@unixnotis-accent, 0.9);
+}
+
+.unixnotis-stat-card-no-icon .unixnotis-stat-title {
+  letter-spacing: 0.1em;
+}
+
 .unixnotis-stat-value {
   font-size: 15px;
   font-weight: 600;
@@ -417,9 +442,12 @@
 .unixnotis-info-card {
   background-image: linear-gradient(165deg, alpha(@unixnotis-surface-soft, 0.92), alpha(@unixnotis-surface, 0.98));
   border-radius: 22px;
+  border-radius: var(--unixnotis-info-card-radius);
   padding: 12px;
+  padding: var(--unixnotis-info-card-padding);
   border: 1px solid alpha(@unixnotis-outline, 0.7);
   min-height: 56px;
+  min-height: var(--unixnotis-info-card-min-height);
   box-shadow:
     0 20px 32px -24px alpha(#000000, 0.4),
     0 0 0 1px alpha(@unixnotis-accent-2, 0.1),
@@ -461,6 +489,10 @@
   font-family: "CaskaydiaCove Nerd Font Mono", "JetBrains Mono", monospace;
 }
 
+.unixnotis-info-card-calendar .unixnotis-info-title {
+  color: alpha(@unixnotis-accent, 0.88);
+}
+
 /*
  * Calendar: "Neon Glass Ledger"
  *
@@ -472,7 +504,9 @@
     linear-gradient(160deg, alpha(@unixnotis-card, 0.96), alpha(@unixnotis-surface, 0.98));
   border: 1px solid alpha(@unixnotis-outline, 0.6);
   border-radius: 18px;
+  border-radius: var(--unixnotis-calendar-radius);
   padding: 10px 12px;
+  padding: var(--unixnotis-info-card-padding);
   color: @unixnotis-text;
   box-shadow:
     0 18px 28px -22px alpha(#000000, 0.6),
@@ -643,6 +677,10 @@
 .unixnotis-info-card-weather .unixnotis-info-body {
   font-size: 13px;
   font-weight: 600;
+}
+
+.unixnotis-info-card-has-icon .unixnotis-info-title {
+  min-height: 18px;
 }
 
 .unixnotis-info-icon-weather {

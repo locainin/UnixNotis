@@ -9,7 +9,9 @@
   background-image: linear-gradient(155deg, @unixnotis-panel-grad-1 0%, @unixnotis-panel-grad-2 55%, @unixnotis-panel-grad-3 100%);
   color: @unixnotis-text;
   border-radius: 30px;
+  border-radius: var(--unixnotis-panel-radius);
   padding: 16px;
+  padding: var(--unixnotis-panel-padding);
   border: 1px solid @unixnotis-outline;
   box-shadow:
     0 28px 70px -38px @unixnotis-glow-cyan,
@@ -22,7 +24,9 @@
 .unixnotis-panel-header {
   margin-bottom: 12px;
   padding: 12px;
+  padding: var(--unixnotis-panel-header-padding);
   border-radius: 18px;
+  border-radius: var(--unixnotis-panel-header-radius);
   background-image: linear-gradient(160deg, alpha(@unixnotis-surface-soft, 0.7), alpha(@unixnotis-surface, 0.9));
   border: 1px solid alpha(@unixnotis-accent, 0.16);
   box-shadow:
@@ -78,6 +82,7 @@
   color: @unixnotis-text;
   border-radius: 999px;
   padding: 6px 10px;
+  padding: var(--unixnotis-panel-action-gap) calc(var(--unixnotis-panel-action-gap) + 4px);
   border: 1px solid alpha(@unixnotis-accent, 0.18);
   min-height: 28px;
   box-shadow:
@@ -106,6 +111,8 @@
 .unixnotis-panel-action-with-icon {
   padding-left: 9px;
   padding-right: 9px;
+  padding-left: calc(var(--unixnotis-panel-action-gap) + 3px);
+  padding-right: calc(var(--unixnotis-panel-action-gap) + 3px);
 }
 
 .unixnotis-panel-action-content {
@@ -171,10 +178,12 @@
 
 .unixnotis-panel-search {
   min-height: 34px;
+  min-height: var(--unixnotis-panel-search-min-height);
   border-radius: 12px;
   background-image: linear-gradient(150deg, alpha(@unixnotis-surface-soft, 0.84), alpha(@unixnotis-surface-strong, 0.92));
   border: 1px solid alpha(@unixnotis-accent, 0.18);
   padding: 0 10px;
+  padding: 0 var(--unixnotis-panel-search-padding-x);
   box-shadow: inset 0 0 0 1px alpha(#ffffff, 0.03);
 }
 
@@ -185,19 +194,19 @@
     0 0 20px -16px @unixnotis-glow-cyan;
 }
 
-.unixnotis-panel-close,
-.unixnotis-popup-close {
+.unixnotis-panel-close {
   background: alpha(#0b111d, 0.5);
   border-radius: 999px;
   border: 1px solid alpha(@unixnotis-accent, 0.18);
   padding: 2px;
   min-width: 28px;
+  min-width: var(--unixnotis-panel-close-size);
   min-height: 28px;
+  min-height: var(--unixnotis-panel-close-size);
   box-shadow: 0 0 16px -14px @unixnotis-glow-cyan;
 }
 
-.unixnotis-panel-close:hover,
-.unixnotis-popup-close:hover {
+.unixnotis-panel-close:hover {
   background: alpha(@unixnotis-urgent, 0.2);
   border-color: alpha(@unixnotis-urgent, 0.6);
 }
@@ -276,13 +285,21 @@
   margin-top: 4px;
 }
 
-.unixnotis-group.collapsed .unixnotis-group-cards {
+.unixnotis-group-row-collapsed .unixnotis-group-cards {
   margin-left: 4px;
   margin-right: 4px;
   padding-bottom: 2px;
 }
 
-.unixnotis-group.collapsed .unixnotis-panel-card {
+.unixnotis-group-row-collapsed .unixnotis-group-count {
+  border-color: alpha(@unixnotis-accent-2, 0.3);
+}
+
+.unixnotis-group-row-no-icon .unixnotis-group-title {
+  margin-left: 2px;
+}
+
+.unixnotis-group-row-collapsed .unixnotis-panel-card {
   margin-bottom: 6px;
 }
 
@@ -297,7 +314,9 @@
   background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
   border: 1px solid @unixnotis-card-border;
   border-radius: 20px;
+  border-radius: var(--unixnotis-notification-card-radius);
   padding: 10px 12px;
+  padding: var(--unixnotis-panel-card-padding-y) var(--unixnotis-panel-card-padding-x);
   margin-bottom: 8px;
   box-shadow:
     0 12px 26px -20px @unixnotis-shadow-strong,
@@ -357,6 +376,18 @@
     inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
+.unixnotis-panel-card-has-actions .unixnotis-notification-actions {
+  margin-top: calc(var(--unixnotis-panel-action-gap) - 4px);
+}
+
+.unixnotis-panel-card-no-actions .unixnotis-panel-body {
+  margin-bottom: 2px;
+}
+
+.unixnotis-panel-card-has-summary .unixnotis-panel-summary {
+  color: @unixnotis-text;
+}
+
 /*
  * Empty-state
  *
@@ -403,6 +434,7 @@
   color: @unixnotis-text;
   border-radius: 10px;
   padding: 4px 10px;
+  padding: var(--unixnotis-notification-action-padding-y) var(--unixnotis-notification-action-padding-x);
   border: 1px solid alpha(@unixnotis-accent, 0.18);
   min-height: 28px;
   font-size: 12px;

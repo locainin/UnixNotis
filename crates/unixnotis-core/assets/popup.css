@@ -7,7 +7,9 @@
   border: 1px solid alpha(@unixnotis-accent, 0.18);
   padding: 3px;
   min-width: 24px;
+  min-width: var(--unixnotis-popup-close-size);
   min-height: 24px;
+  min-height: var(--unixnotis-popup-close-size);
   box-shadow: 0 0 14px -12px @unixnotis-glow-cyan;
 }
 
@@ -19,7 +21,9 @@
 /* Popup stack */
 .unixnotis-popup-stack {
   padding: 8px;
+  padding: var(--unixnotis-popup-stack-padding);
   border-radius: 16px;
+  border-radius: calc(var(--unixnotis-popup-card-radius) - 4px);
   background: transparent;
 }
 
@@ -31,7 +35,9 @@
   background-image: linear-gradient(155deg, @unixnotis-popup-bg-1, @unixnotis-popup-bg-2);
   color: @unixnotis-text;
   border-radius: 20px;
+  border-radius: var(--unixnotis-popup-card-radius);
   padding: 14px 16px;
+  padding: var(--unixnotis-popup-card-padding-y) var(--unixnotis-popup-card-padding-x);
   border: 1px solid alpha(@unixnotis-card-border, 0.85);
   box-shadow:
     0 18px 32px -18px @unixnotis-shadow-strong,
@@ -76,6 +82,20 @@
 
 .unixnotis-popup-actions {
   margin-top: 8px;
+  margin-top: var(--unixnotis-popup-actions-gap);
+}
+
+.unixnotis-popup-card-has-summary .unixnotis-popup-summary {
+  color: @unixnotis-text;
+}
+
+.unixnotis-popup-card-has-actions .unixnotis-popup-actions {
+  border-top: 1px solid alpha(@unixnotis-card-border, 0.24);
+  padding-top: calc(var(--unixnotis-popup-actions-gap) - 2px);
+}
+
+.unixnotis-popup-card-no-icon .unixnotis-popup-header-row {
+  padding-left: 0;
 }
 
 .unixnotis-popup-action {

@@ -52,6 +52,9 @@ fn base_overrides_can_emit_modern_custom_properties() {
     assert!(overrides.contains("--unixnotis-border-width: 3px;"));
     assert!(overrides.contains("--unixnotis-card-radius: 18px;"));
     assert!(overrides.contains("--unixnotis-card-alpha: 0.52;"));
+    assert!(overrides.contains("--unixnotis-panel-header-radius: 18px;"));
+    assert!(overrides.contains("--unixnotis-notification-card-radius: 20px;"));
+    assert!(overrides.contains("--unixnotis-stat-card-radius: 18px;"));
     assert!(overrides.contains("--unixnotis-panel-card-padding-y: 10px;"));
     assert!(overrides.contains("--unixnotis-popup-reveal-duration: 200ms;"));
     assert!(overrides.contains("--unixnotis-accent-color: @unixnotis-accent;"));
