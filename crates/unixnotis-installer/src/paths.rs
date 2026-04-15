@@ -8,7 +8,6 @@ use anyhow::{anyhow, Result};
 
 pub struct InstallPaths {
     pub repo_root: PathBuf,
-    pub release_dir: PathBuf,
     pub bin_dir: PathBuf,
     pub unit_dir: PathBuf,
     pub unit_path: PathBuf,
@@ -16,15 +15,16 @@ pub struct InstallPaths {
 
 impl InstallPaths {
     pub fn discover() -> Result<Self> {
+        // Repo root anchors cargo metadata lookups and all local asset paths
         let repo_root = find_repo_root()?;
-        let release_dir = repo_root.join("target").join("release");
+        // User binaries live under ~/.local/bin for install and uninstall
         let bin_dir = home_dir()?.join(".local").join("bin");
+        // Systemd user units follow XDG config rules when that override is set
         let unit_dir = systemd_user_dir()?;
         let unit_path = unit_dir.join("unixnotis-daemon.service");
 
         Ok(Self {
             repo_root,
-            release_dir,
             bin_dir,
             unit_dir,
             unit_path,
@@ -74,6 +74,7 @@ fn find_repo_root() -> Result<PathBuf> {
     if let Ok(root) = env::var("UNIXNOTIS_REPO_ROOT") {
         let root_path = PathBuf::from(root);
         let cargo = root_path.join("Cargo.toml");
+        // Keep the override strict so install does not wander into the wrong workspace
         if cargo.is_file() && is_unixnotis_repo(&cargo) {
             return Ok(root_path);
         }
@@ -82,6 +83,7 @@ fn find_repo_root() -> Result<PathBuf> {
     let mut dir = env::current_dir()?;
     loop {
         let cargo = dir.join("Cargo.toml");
+        // Walk upward until the real workspace root is found
         if cargo.is_file() && is_unixnotis_repo(&cargo) {
             return Ok(dir);
         }

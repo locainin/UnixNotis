@@ -20,7 +20,7 @@ use tracing::warn;
 use unixnotis_core::Config;
 use wait_timeout::ChildExt;
 
-use super::command_parse::parse_simple_command;
+use super::command_parse::{parse_simple_command, ParsedCommand};
 
 // Bound captured command output to prevent large stdout/stderr from ballooning memory.
 const MAX_CAPTURE_BYTES: usize = 1024 * 1024;
@@ -244,10 +244,11 @@ pub(super) fn spawn_capture_command(cmd: &str) -> io::Result<Child> {
 }
 
 pub(super) fn build_command(cmd: &str) -> Command {
-    if let Some((program, args)) = parse_simple_command(cmd) {
-        // Simple commands avoid shell invocation for safety and performance.
-        let mut command = Command::new(resolve_simple_program(&program));
-        command.args(args);
+    if let Some(parsed) = parse_simple_command(cmd) {
+        // Simple commands avoid shell invocation for safety and performance
+        let mut command = Command::new(resolve_simple_program(&parsed.program));
+        apply_parsed_command_env(&mut command, &parsed);
+        command.args(&parsed.args);
         configure_command(&mut command);
         return command;
     }
@@ -267,10 +268,11 @@ pub(super) fn spawn_capture_command_async(cmd: &str) -> io::Result<tokio::proces
 }
 
 pub(super) fn build_tokio_command(cmd: &str) -> TokioCommand {
-    if let Some((program, args)) = parse_simple_command(cmd) {
-        // Tokio command mirrors the blocking path for consistent behavior.
-        let mut command = TokioCommand::new(resolve_simple_program(&program));
-        command.args(args);
+    if let Some(parsed) = parse_simple_command(cmd) {
+        // Tokio command mirrors the blocking path for consistent behavior
+        let mut command = TokioCommand::new(resolve_simple_program(&parsed.program));
+        apply_parsed_command_env_tokio(&mut command, &parsed);
+        command.args(&parsed.args);
         configure_command_tokio(&mut command);
         return command;
     }
@@ -288,11 +290,25 @@ fn configure_command(command: &mut Command) {
     command.process_group(0);
 }
 
+fn apply_parsed_command_env(command: &mut Command, parsed: &ParsedCommand) {
+    // Do not touch process-global env state; only this child gets the overrides
+    for (name, value) in &parsed.env {
+        command.env(name, value);
+    }
+}
+
 fn configure_command_tokio(command: &mut TokioCommand) {
     // Use a dedicated process group so timeouts can kill the whole subtree.
     command.stdin(Stdio::null());
     #[cfg(unix)]
     command.process_group(0);
+}
+
+fn apply_parsed_command_env_tokio(command: &mut TokioCommand, parsed: &ParsedCommand) {
+    // Match the blocking path so timeout and capture code see the same process setup
+    for (name, value) in &parsed.env {
+        command.env(name, value);
+    }
 }
 
 fn resolve_simple_program(program: &str) -> PathBuf {

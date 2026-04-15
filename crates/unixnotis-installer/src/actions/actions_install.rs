@@ -19,13 +19,14 @@ use super::{
 };
 
 pub fn install_binaries(ctx: &mut ActionContext) -> Result<()> {
-    // Resolve the installable binaries from workspace metadata to avoid hardcoded duplication.
+    // Read the installable binary list from cargo metadata so install and uninstall stay in sync
     let binaries = resolve_install_binaries(ctx.paths)?;
-    let release_dir = resolve_release_dir(ctx);
+    // Stop before touching ~/.local/bin if cargo cannot point at the real target dir
+    let release_dir = resolve_release_dir(ctx)?;
 
     fs::create_dir_all(&ctx.paths.bin_dir).with_context(|| "failed to create bin directory")?;
 
-    // Preflight validation ensures all build artifacts exist before any replacements occur.
+    // Check every source binary first so install never leaves a half-updated bin dir
     let mut missing = Vec::new();
     for binary in &binaries {
         let source = release_dir.join(binary);
@@ -169,22 +170,15 @@ pub fn remove_binaries(ctx: &mut ActionContext) -> Result<()> {
     Ok(())
 }
 
-fn resolve_release_dir(ctx: &mut ActionContext) -> PathBuf {
-    match resolve_target_directory(ctx.paths) {
-        Ok(target_dir) => target_dir.join("release"),
-        Err(err) => {
-            let fallback = ctx.paths.release_dir.clone();
-            log_line(
-                ctx,
-                format!(
-                    "Warning: failed to resolve cargo target directory ({}); using fallback {}",
-                    err,
-                    format_with_home(&fallback)
-                ),
-            );
-            fallback
-        }
-    }
+fn resolve_release_dir(ctx: &mut ActionContext) -> Result<PathBuf> {
+    // Cargo metadata is the only reliable place to ask for the active target dir
+    let target_dir = resolve_target_directory(ctx.paths).with_context(|| {
+        format!(
+            "failed to resolve cargo target directory for {}",
+            format_with_home(&ctx.paths.repo_root)
+        )
+    })?;
+    Ok(target_dir.join("release"))
 }
 
 fn copy_binary(ctx: &mut ActionContext, source: &Path, destination: &Path) -> Result<()> {
@@ -288,7 +282,7 @@ mod tests {
             "unixnotis-center",
             "noticenterctl",
         ] {
-            let source = paths.release_dir.join(binary);
+            let source = paths.repo_root.join("target").join("release").join(binary);
             fs::create_dir_all(source.parent().expect("release dir")).expect("make release dir");
             fs::write(&source, format!("binary:{binary}")).expect("write fake binary");
         }
@@ -398,7 +392,6 @@ mod tests {
     fn test_paths(root: &std::path::Path) -> InstallPaths {
         InstallPaths {
             repo_root: root.to_path_buf(),
-            release_dir: root.join("target").join("release"),
             bin_dir: root.join("home").join(".local").join("bin"),
             unit_dir: root
                 .join("home")

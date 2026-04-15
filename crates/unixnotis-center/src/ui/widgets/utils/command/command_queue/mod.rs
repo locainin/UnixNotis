@@ -69,8 +69,22 @@ impl CommandWorker {
             }
         }
         if spawned == 0 {
-            // Last resort when no worker could start
-            warn!("no command worker threads available; falling back to inline execution");
+            // Try one last shared worker before giving up and running commands inline
+            match std::thread::Builder::new()
+                .name("unixnotis-command-worker-fallback".to_string())
+                .spawn(move || run_worker(rx))
+            {
+                Ok(_) => {
+                    spawned = 1;
+                    warn!("main command workers unavailable; using a single fallback worker");
+                }
+                Err(err) => {
+                    warn!(
+                        ?err,
+                        "no command worker threads available; using inline execution"
+                    );
+                }
+            }
         }
         Self {
             tx,
@@ -88,31 +102,16 @@ pub(super) fn enqueue_command(
     let metrics = CommandQueueMetrics::global();
     metrics.record_enqueued();
     if worker.inline_fallback {
-        // Try one extra thread before using inline work
-        if std::thread::Builder::new()
-            .name("unixnotis-command-fallback".to_string())
-            .spawn({
-                let job_for_thread = CommandJob {
-                    cmd: cmd.clone(),
-                    plan,
-                    respond: respond.clone(),
-                    queued_at: Instant::now(),
-                };
-                move || handle_job(job_for_thread, None)
-            })
-            .is_err()
-        {
-            warn!("failed to spawn fallback command worker; running inline");
-            handle_job(
-                CommandJob {
-                    cmd,
-                    plan,
-                    respond,
-                    queued_at: Instant::now(),
-                },
-                None,
-            );
-        }
+        // This path only runs after both normal and fallback worker startup failed
+        handle_job(
+            CommandJob {
+                cmd,
+                plan,
+                respond,
+                queued_at: Instant::now(),
+            },
+            None,
+        );
         return;
     }
 
@@ -168,13 +167,26 @@ pub(super) fn dispatch_ready_job(worker: &CommandWorker, job: CommandJob) {
                         "command queue full; routing action to fallback worker"
                     );
                 }
-                if FallbackWorker::global().submit(job).is_err() {
-                    metrics.record_action_dropped();
-                    if should_warn_queue_full() {
-                        warn!(
-                            snapshot = %metrics.snapshot().summary(),
-                            "fallback command queue full; dropping action"
-                        );
+                match FallbackWorker::global().submit(job) {
+                    Ok(()) => {}
+                    Err(FallbackSubmitError::Full(_job)) => {
+                        metrics.record_action_dropped();
+                        if should_warn_queue_full() {
+                            warn!(
+                                snapshot = %metrics.snapshot().summary(),
+                                "fallback command queue full; dropping action"
+                            );
+                        }
+                    }
+                    Err(FallbackSubmitError::Unavailable(job)) => {
+                        // Do not silently drop user actions when the fallback worker cannot run
+                        if should_warn_queue_full() {
+                            warn!(
+                                snapshot = %metrics.snapshot().summary(),
+                                "fallback command worker unavailable; running action inline"
+                            );
+                        }
+                        handle_job(job, None);
                     }
                 }
             } else {
@@ -203,7 +215,12 @@ pub(super) fn dispatch_ready_job(worker: &CommandWorker, job: CommandJob) {
 }
 
 struct FallbackWorker {
-    tx: channel::Sender<CommandJob>,
+    tx: Option<channel::Sender<CommandJob>>,
+}
+
+enum FallbackSubmitError {
+    Full(CommandJob),
+    Unavailable(CommandJob),
 }
 
 impl FallbackWorker {
@@ -214,7 +231,7 @@ impl FallbackWorker {
     }
 
     fn new(capacity: usize) -> Self {
-        // Keep overflow work off the GTK thread
+        // Keep overflow action work off the caller thread when the helper worker can start
         let (tx, rx) = channel::bounded(capacity);
         if std::thread::Builder::new()
             .name("unixnotis-command-fallback".to_string())
@@ -222,12 +239,23 @@ impl FallbackWorker {
             .is_err()
         {
             warn!("failed to spawn fallback command worker");
+            return Self { tx: None };
         }
-        Self { tx }
+        Self { tx: Some(tx) }
     }
 
-    fn submit(&self, job: CommandJob) -> Result<(), channel::TrySendError<CommandJob>> {
-        self.tx.try_send(job)
+    fn submit(&self, job: CommandJob) -> Result<(), FallbackSubmitError> {
+        let Some(tx) = &self.tx else {
+            // Worker startup failed, so the caller must decide the last-resort path
+            return Err(FallbackSubmitError::Unavailable(job));
+        };
+        match tx.try_send(job) {
+            Ok(()) => Ok(()),
+            Err(channel::TrySendError::Full(job)) => Err(FallbackSubmitError::Full(job)),
+            Err(channel::TrySendError::Disconnected(job)) => {
+                Err(FallbackSubmitError::Unavailable(job))
+            }
+        }
     }
 }
 
