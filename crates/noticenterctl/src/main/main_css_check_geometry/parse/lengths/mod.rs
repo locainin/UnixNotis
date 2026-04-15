@@ -1,7 +1,15 @@
 use super::super::model::HorizontalEdges;
 use super::CssCustomProperties;
 
-// Length parsing stays in one file so calc and var handling do not leak into selector logic
+mod resolve_calc;
+mod resolve_var;
+mod tokenize;
+mod units;
+
+use self::tokenize::{consume_balanced_group, split_css_value_tokens};
+use self::units::parse_atomic_value;
+
+// Length parsing stays local to the geometry parser so calc and var rules do not leak outward
 pub(in super::super) fn set_edge(
     edge: &mut f32,
     value: &str,
@@ -69,7 +77,7 @@ fn parse_length_tokens(value: &str, custom_properties: &CssCustomProperties) -> 
         .collect()
 }
 
-fn parse_length_expression(
+pub(super) fn parse_length_expression(
     value: &str,
     custom_properties: &CssCustomProperties,
     depth: usize,
@@ -84,7 +92,7 @@ fn parse_length_expression(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum ResolvedCssValue {
+pub(super) enum ResolvedCssValue {
     Length(f32),
     Scalar(f32),
 }
@@ -93,6 +101,7 @@ impl ResolvedCssValue {
     fn into_length(self) -> Option<f32> {
         match self {
             Self::Length(value) => Some(value),
+            // Plain scalars only make sense while calc math is still in progress
             Self::Scalar(_) => None,
         }
     }
@@ -161,6 +170,7 @@ impl<'a> LengthExpressionParser<'a> {
     fn parse(mut self) -> Option<ResolvedCssValue> {
         let value = self.parse_additive_expression()?;
         self.skip_whitespace();
+        // Partial parses are rejected so geometry only trusts whole expressions
         (self.cursor == self.input.len()).then_some(value)
     }
 
@@ -169,6 +179,7 @@ impl<'a> LengthExpressionParser<'a> {
         loop {
             self.skip_whitespace();
             if self.consume_char('+') {
+                // Addition stays left-associative like normal CSS calc evaluation
                 value = value.add(self.parse_multiplicative_expression()?)?;
                 continue;
             }
@@ -238,6 +249,7 @@ impl<'a> LengthExpressionParser<'a> {
             }
 
             if byte == b'(' {
+                // Nested groups are consumed whole so inner operators do not split the token
                 self.cursor = consume_balanced_group(self.input, self.cursor)?;
                 continue;
             }
@@ -268,200 +280,4 @@ impl<'a> LengthExpressionParser<'a> {
         self.cursor += ch.len_utf8();
         true
     }
-}
-
-fn parse_atomic_value(
-    token: &str,
-    custom_properties: &CssCustomProperties,
-    depth: usize,
-) -> Option<ResolvedCssValue> {
-    let trimmed = token.trim().trim_end_matches(',');
-    if trimmed.is_empty() || trimmed.contains('%') {
-        // Percentages still depend on parent geometry that this lint does not model
-        return None;
-    }
-
-    if trimmed.starts_with("var(") {
-        return resolve_custom_property_value(trimmed, custom_properties, depth);
-    }
-    if trimmed.starts_with("calc(") {
-        return evaluate_calc_value(trimmed, custom_properties, depth);
-    }
-
-    parse_numeric_or_length(trimmed)
-}
-
-fn parse_numeric_or_length(token: &str) -> Option<ResolvedCssValue> {
-    let trimmed = token.trim();
-    // Geometry only needs px lengths and plain scalars for calc math
-    let numeric = trimmed
-        .strip_suffix("px")
-        .or_else(|| trimmed.strip_suffix("PX"));
-
-    if let Some(value) = numeric.and_then(|value| value.parse::<f32>().ok()) {
-        return Some(ResolvedCssValue::Length(value));
-    }
-
-    trimmed.parse::<f32>().ok().map(ResolvedCssValue::Scalar)
-}
-
-fn resolve_custom_property_value(
-    expression: &str,
-    custom_properties: &CssCustomProperties,
-    depth: usize,
-) -> Option<ResolvedCssValue> {
-    // var(--name, fallback) should keep working for nested calc and fallback chains
-    let inner = expression
-        .trim()
-        .strip_prefix("var(")?
-        .strip_suffix(')')?
-        .trim();
-    let (name, fallback) = split_top_level_once(inner, ',');
-    let name = name.trim();
-    if let Some(value) = custom_properties.get(name) {
-        return parse_length_expression(value, custom_properties, depth + 1);
-    }
-    fallback.and_then(|value| parse_length_expression(value.trim(), custom_properties, depth + 1))
-}
-
-fn evaluate_calc_value(
-    expression: &str,
-    custom_properties: &CssCustomProperties,
-    depth: usize,
-) -> Option<ResolvedCssValue> {
-    // calc() delegates back into the same expression parser so nested math stays consistent
-    let inner = expression
-        .trim()
-        .strip_prefix("calc(")?
-        .strip_suffix(')')?
-        .trim();
-    parse_length_expression(inner, custom_properties, depth + 1)
-}
-
-fn consume_balanced_group(input: &str, start: usize) -> Option<usize> {
-    let bytes = input.as_bytes();
-    let mut cursor = start;
-    let mut paren_depth = 0u32;
-    let mut bracket_depth = 0u32;
-    let mut in_string = None::<char>;
-
-    while cursor < bytes.len() {
-        let ch = input[cursor..].chars().next()?;
-        cursor += ch.len_utf8();
-
-        if let Some(quote) = in_string {
-            if ch == quote {
-                in_string = None;
-            }
-            continue;
-        }
-
-        match ch {
-            '"' | '\'' => in_string = Some(ch),
-            '(' => paren_depth = paren_depth.saturating_add(1),
-            ')' => {
-                paren_depth = paren_depth.saturating_sub(1);
-                if paren_depth == 0 && bracket_depth == 0 {
-                    return Some(cursor);
-                }
-            }
-            '[' => bracket_depth = bracket_depth.saturating_add(1),
-            ']' => bracket_depth = bracket_depth.saturating_sub(1),
-            _ => {}
-        }
-    }
-
-    None
-}
-
-fn split_css_value_tokens(value: &str) -> Vec<&str> {
-    let mut tokens = Vec::new();
-    let mut start = None::<usize>;
-    let mut paren_depth = 0u32;
-    let mut bracket_depth = 0u32;
-    let mut in_string = None::<char>;
-
-    for (index, ch) in value.char_indices() {
-        if let Some(quote) = in_string {
-            if ch == quote {
-                in_string = None;
-            }
-            if start.is_none() {
-                start = Some(index);
-            }
-            continue;
-        }
-
-        match ch {
-            '"' | '\'' => {
-                if start.is_none() {
-                    start = Some(index);
-                }
-                in_string = Some(ch);
-            }
-            '(' => {
-                if start.is_none() {
-                    start = Some(index);
-                }
-                paren_depth = paren_depth.saturating_add(1);
-            }
-            ')' => paren_depth = paren_depth.saturating_sub(1),
-            '[' => {
-                if start.is_none() {
-                    start = Some(index);
-                }
-                bracket_depth = bracket_depth.saturating_add(1);
-            }
-            ']' => bracket_depth = bracket_depth.saturating_sub(1),
-            _ if ch.is_whitespace() && paren_depth == 0 && bracket_depth == 0 => {
-                if let Some(token_start) = start.take() {
-                    tokens.push(value[token_start..index].trim());
-                }
-            }
-            _ => {
-                if start.is_none() {
-                    start = Some(index);
-                }
-            }
-        }
-    }
-
-    if let Some(token_start) = start {
-        tokens.push(value[token_start..].trim());
-    }
-
-    tokens
-        .into_iter()
-        .filter(|token| !token.is_empty())
-        .collect()
-}
-
-fn split_top_level_once(input: &str, separator: char) -> (&str, Option<&str>) {
-    let mut paren_depth = 0u32;
-    let mut bracket_depth = 0u32;
-    let mut in_string = None::<char>;
-
-    for (index, ch) in input.char_indices() {
-        if let Some(quote) = in_string {
-            if ch == quote {
-                in_string = None;
-            }
-            continue;
-        }
-
-        match ch {
-            '"' | '\'' => in_string = Some(ch),
-            '(' => paren_depth = paren_depth.saturating_add(1),
-            ')' => paren_depth = paren_depth.saturating_sub(1),
-            '[' => bracket_depth = bracket_depth.saturating_add(1),
-            ']' => bracket_depth = bracket_depth.saturating_sub(1),
-            _ if ch == separator && paren_depth == 0 && bracket_depth == 0 => {
-                let right = index + ch.len_utf8();
-                return (&input[..index], Some(&input[right..]));
-            }
-            _ => {}
-        }
-    }
-
-    (input, None)
 }

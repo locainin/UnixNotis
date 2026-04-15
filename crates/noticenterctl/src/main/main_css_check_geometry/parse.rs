@@ -15,7 +15,7 @@ use super::stock::known_unixnotis_classes;
 // Split the parser by job so width parsing, selector checks, and token collection stay separate
 #[path = "parse/custom_properties.rs"]
 mod custom_properties;
-#[path = "parse/lengths.rs"]
+#[path = "parse/lengths/mod.rs"]
 mod lengths;
 #[path = "parse/selectors.rs"]
 mod selectors;
