@@ -121,6 +121,49 @@ fn lint_css_contents_reports_line_for_duplicate_property() {
 }
 
 #[test]
+fn lint_css_contents_warns_on_non_px_layout_units() {
+    // Valid GTK units still need a warning when geometry cannot turn them into px
+    let css = r#"
+        .unixnotis-toggle {
+            min-width: 10rem;
+        }
+    "#;
+
+    let warnings = lint_css_contents(css);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].message.contains("non-px length units"));
+}
+
+#[test]
+fn lint_css_contents_warns_when_unresolved_modern_override_replaces_legacy_value() {
+    // Broken modern fallbacks should still report that they override the safe legacy value
+    let css = r#"
+        .unixnotis-toggle {
+            min-width: 104px;
+            min-width: var(--missing-width);
+        }
+    "#;
+
+    let warnings = lint_css_contents(css);
+    assert!(warnings.iter().any(|warning| warning.code == "LINT003"));
+    assert!(warnings.iter().any(|warning| warning.code == "LINT004"));
+}
+
+#[test]
+fn lint_css_contents_accepts_resolved_compare_length_functions() {
+    // compare functions should stay quiet once geometry can resolve the full value
+    let css = r#"
+        .unixnotis-toggle {
+            min-width: max(84px, 104px);
+            padding-left: clamp(8px, 10px, 12px);
+        }
+    "#;
+
+    let warnings = lint_css_contents(css);
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
 fn panel_width_floor_warning_skips_safe_widths() {
     // Width at or above the runtime floor should stay quiet
     let mut config = Config::default();

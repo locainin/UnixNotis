@@ -227,7 +227,13 @@ fn lint_css_properties(
             let context_note = context
                 .map(|ctx| format!(" within {ctx}"))
                 .unwrap_or_default();
-            if !is_deliberate_modern_fallback(previous_value, &value) {
+            if !should_suppress_duplicate_property_warning(
+                &prop,
+                previous_value,
+                &value,
+                selector,
+                custom_properties,
+            ) {
                 warnings.push(CssCheckLintFinding {
                     code: "LINT003",
                     line: Some(lint_line),
@@ -255,7 +261,13 @@ fn lint_css_properties(
     warnings
 }
 
-fn is_deliberate_modern_fallback(previous: &str, current: &str) -> bool {
+fn should_suppress_duplicate_property_warning(
+    property: &str,
+    previous: &str,
+    current: &str,
+    selector: &str,
+    custom_properties: &CssCustomPropertyScopes,
+) -> bool {
     let previous = previous.trim();
     let current = current.trim();
 
@@ -266,7 +278,17 @@ fn is_deliberate_modern_fallback(previous: &str, current: &str) -> bool {
     let previous_is_modern = previous.contains("var(") || previous.contains("calc(");
     let current_is_modern = current.contains("var(") || current.contains("calc(");
 
-    !previous_is_modern && current_is_modern
+    if previous_is_modern || !current_is_modern {
+        return false;
+    }
+
+    if !is_horizontal_size_property(property) {
+        // Non-layout properties keep the old quiet fallback path because geometry does not own them
+        return true;
+    }
+
+    // Width-driving properties only suppress duplicates when the modern override is actually understood
+    can_model_horizontal_size_value(selector, property, current, custom_properties)
 }
 
 fn generated_theme_token_css() -> Option<String> {
@@ -299,6 +321,12 @@ fn web_length_value_warning(
     let hint = if value.contains('%') {
         // Percentages still depend on parent geometry that css-check does not model
         Some("uses percentage lengths, so geometry estimates may be incomplete")
+    } else if contains_unmodeled_length_unit(value) {
+        // GTK accepts several absolute and font-based units that geometry still cannot turn into px
+        Some("uses non-px length units that css-check could not resolve reliably")
+    } else if contains_compare_length_function(value) {
+        // min(), max(), and clamp() are valid GTK CSS, so unresolved cases should still be visible
+        Some("uses min(), max(), or clamp() in a layout value that css-check could not resolve reliably")
     } else if value.contains("calc(") {
         // This stays noisy only when the shared geometry parser could not follow the math
         Some("uses calc() in a layout value that css-check could not resolve reliably")
@@ -316,6 +344,67 @@ fn web_length_value_warning(
         "property '{}' in selector '{}'{} {}",
         property, selector, context_note, hint
     ))
+}
+
+fn contains_compare_length_function(value: &str) -> bool {
+    let lowered = value.to_ascii_lowercase();
+    lowered.contains("min(") || lowered.contains("max(") || lowered.contains("clamp(")
+}
+
+fn contains_unmodeled_length_unit(value: &str) -> bool {
+    let lowered = value.to_ascii_lowercase();
+    let chars = lowered.char_indices().collect::<Vec<_>>();
+    let mut index = 0usize;
+
+    while index < chars.len() {
+        let (_, ch) = chars[index];
+        let next_is_digit = chars
+            .get(index + 1)
+            .map(|(_, next)| next.is_ascii_digit())
+            .unwrap_or(false);
+
+        if !(ch.is_ascii_digit() || (ch == '.' && next_is_digit)) {
+            index += 1;
+            continue;
+        }
+
+        // Scan the numeric part first so the next byte range can be treated like one unit token
+        index += 1;
+        while let Some((_, current)) = chars.get(index) {
+            if current.is_ascii_digit() || *current == '.' {
+                index += 1;
+                continue;
+            }
+            break;
+        }
+
+        let unit_start = index;
+        while let Some((_, current)) = chars.get(index) {
+            if current.is_ascii_alphabetic() {
+                index += 1;
+                continue;
+            }
+            break;
+        }
+
+        if unit_start == index {
+            continue;
+        }
+
+        let start_byte = chars[unit_start].0;
+        let end_byte = chars
+            .get(index)
+            .map(|(offset, _)| *offset)
+            .unwrap_or_else(|| lowered.len());
+        let unit = &lowered[start_byte..end_byte];
+
+        if unit != "px" {
+            // GTK accepts several units here, but geometry still only knows how to estimate px
+            return true;
+        }
+    }
+
+    false
 }
 
 fn selector_part_locations(selector: &str) -> Vec<(String, usize)> {

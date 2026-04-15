@@ -17,7 +17,7 @@ use anyhow::{Context, Result};
 use unixnotis_core::Config;
 
 use self::model::GeometryModel;
-use self::parse::collect_geometry_from_contents;
+use self::parse::collect_geometry_from_contents_with_properties;
 pub(super) use self::parse::{
     can_model_horizontal_size_value, collect_custom_property_scopes, CssCustomPropertyScopes,
 };
@@ -42,12 +42,30 @@ pub(super) fn lint_geometry_css_files(
     // One shared model lets multiple files build one layout estimate
     let mut model = GeometryModel::default();
     let mut diagnostics = Vec::new();
+    let mut file_contents = Vec::new();
     for path in files {
-        let display_path = format_display_path(config_dir, display_root, path);
-        // Raw text is needed here so rules from different files can be merged first
         let contents = fs::read_to_string(path)
             .with_context(|| format!("read css file {}", path.display()))?;
-        let report = collect_geometry_from_contents(&contents, &mut model);
+        file_contents.push((path, contents));
+    }
+
+    // Theme tokens can be declared in one file and consumed in another
+    let shared_custom_properties = collect_custom_property_scopes(
+        &file_contents
+            .iter()
+            .map(|(_, contents)| contents.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+
+    for (path, contents) in file_contents {
+        let display_path = format_display_path(config_dir, display_root, path);
+        // Raw text is still parsed per file, but the token view now spans the whole theme set
+        let report = collect_geometry_from_contents_with_properties(
+            &contents,
+            &shared_custom_properties,
+            &mut model,
+        );
         for warning in report {
             diagnostics.push(CssCheckDiagnostic::warning(
                 CssCheckCategory::Geometry,

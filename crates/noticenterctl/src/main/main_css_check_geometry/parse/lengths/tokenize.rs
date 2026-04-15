@@ -130,3 +130,44 @@ pub(super) fn split_top_level_once(input: &str, separator: char) -> (&str, Optio
 
     (input, None)
 }
+
+pub(super) fn split_top_level_list(input: &str, separator: char) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut paren_depth = 0u32;
+    let mut bracket_depth = 0u32;
+    let mut in_string = None::<char>;
+
+    for (index, ch) in input.char_indices() {
+        if let Some(quote) = in_string {
+            if ch == quote {
+                in_string = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => in_string = Some(ch),
+            '(' => paren_depth = paren_depth.saturating_add(1),
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth = bracket_depth.saturating_add(1),
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            _ if ch == separator && paren_depth == 0 && bracket_depth == 0 => {
+                // Top-level commas split function arguments without breaking nested math
+                let part = input[start..index].trim();
+                if !part.is_empty() {
+                    parts.push(part);
+                }
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    let tail = input[start..].trim();
+    if !tail.is_empty() {
+        parts.push(tail);
+    }
+
+    parts
+}

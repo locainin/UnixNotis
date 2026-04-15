@@ -31,19 +31,26 @@ pub(super) fn collect_geometry_from_contents(
     contents: &str,
     model: &mut GeometryModel,
 ) -> Vec<String> {
+    // Single-file callers still get the old behavior through this small wrapper
+    let stripped = strip_css_comments(contents);
+    let custom_properties = collect_custom_properties(&stripped);
+    collect_geometry_from_contents_with_properties(&stripped, &custom_properties, model)
+}
+
+pub(super) fn collect_geometry_from_contents_with_properties(
+    contents: &str,
+    custom_properties: &CssCustomPropertyScopes,
+    model: &mut GeometryModel,
+) -> Vec<String> {
     let mut warnings = Vec::new();
     let mut warned_classes = HashSet::new();
+    let stripped_contents = strip_css_comments(contents);
 
-    // One custom-property pass keeps later selector walks cheap
-    // Strip comments first so selector scanning only sees live CSS
-    let stripped = strip_css_comments(contents);
-    // Last-write-wins custom properties let geometry lint follow modern theme tokens too
-    let custom_properties = collect_custom_properties(&stripped);
     // Walk the full sheet so nested blocks still contribute width data
     collect_geometry_block(
-        &stripped,
+        &stripped_contents,
         model,
-        &custom_properties,
+        custom_properties,
         &mut warnings,
         &mut warned_classes,
     );

@@ -2,7 +2,10 @@
 //!
 //! Keeps the root geometry entry file focused on runtime behavior
 
-use super::{collect_geometry_from_contents, GeometryModel};
+use super::parse::{
+    collect_geometry_from_contents, collect_geometry_from_contents_with_properties,
+};
+use super::{collect_custom_property_scopes, GeometryModel};
 use unixnotis_core::{build_modern_theme_custom_properties, gtk_css_features_for_version};
 use unixnotis_core::{
     Config, MediaLayout, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS,
@@ -247,4 +250,62 @@ fn warns_for_complex_unixnotis_size_selector() {
     let warnings = collect_geometry_from_contents(css, &mut model);
     assert_eq!(warnings.len(), 1);
     assert!(warnings[0].contains("complex UnixNotis selector"));
+}
+
+#[test]
+fn geometry_can_follow_cross_file_root_custom_properties() {
+    let mut config = Config::default();
+    config.panel.width = 320;
+
+    let base_css = r#"
+        :root {
+            --toggle-width: 104px;
+            --toggle-pad: 12px;
+        }
+    "#;
+    let widgets_css = r#"
+        .unixnotis-panel { padding: 16px; }
+        .unixnotis-toggle {
+            min-width: var(--toggle-width);
+            padding: 10px var(--toggle-pad);
+            border: 1px solid red;
+        }
+    "#;
+
+    let shared_properties = collect_custom_property_scopes(&format!("{base_css}\n{widgets_css}"));
+    let mut model = GeometryModel::default();
+    let base_warnings =
+        collect_geometry_from_contents_with_properties(base_css, &shared_properties, &mut model);
+    let widget_warnings =
+        collect_geometry_from_contents_with_properties(widgets_css, &shared_properties, &mut model);
+    assert!(base_warnings.is_empty(), "{base_warnings:?}");
+    assert!(widget_warnings.is_empty(), "{widget_warnings:?}");
+
+    let warnings = model.finalize_warnings(&config);
+    assert!(warnings
+        .iter()
+        .any(|warning| warning.contains("toggle grid")));
+}
+
+#[test]
+fn geometry_can_follow_compare_length_functions() {
+    let mut config = Config::default();
+    config.panel.width = 320;
+    let css = r#"
+        .unixnotis-panel { padding: clamp(8px, 12px, 16px); }
+        .unixnotis-toggle {
+            min-width: max(96px, 104px);
+            padding: 10px min(12px, 16px);
+            border: 1px solid red;
+        }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let file_warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(file_warnings.is_empty(), "{file_warnings:?}");
+
+    let warnings = model.finalize_warnings(&config);
+    assert!(warnings
+        .iter()
+        .any(|warning| warning.contains("toggle grid")));
 }

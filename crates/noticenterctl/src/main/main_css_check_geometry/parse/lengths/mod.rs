@@ -2,6 +2,7 @@ use super::super::model::HorizontalEdges;
 use super::CssCustomProperties;
 
 mod resolve_calc;
+mod resolve_compare;
 mod resolve_var;
 mod tokenize;
 mod units;
@@ -145,6 +146,27 @@ impl ResolvedCssValue {
             Self::Length(value) => Self::Length(value * sign),
             Self::Scalar(value) => Self::Scalar(value * sign),
         }
+    }
+
+    fn min_with(self, rhs: Self) -> Option<Self> {
+        match (self, rhs) {
+            (Self::Length(left), Self::Length(right)) => Some(Self::Length(left.min(right))),
+            (Self::Scalar(left), Self::Scalar(right)) => Some(Self::Scalar(left.min(right))),
+            _ => None,
+        }
+    }
+
+    fn max_with(self, rhs: Self) -> Option<Self> {
+        match (self, rhs) {
+            (Self::Length(left), Self::Length(right)) => Some(Self::Length(left.max(right))),
+            (Self::Scalar(left), Self::Scalar(right)) => Some(Self::Scalar(left.max(right))),
+            _ => None,
+        }
+    }
+
+    fn clamp_between(self, lower: Self, upper: Self) -> Option<Self> {
+        // clamp() keeps the value inside the two bounds once all three share one type
+        lower.max_with(self)?.min_with(upper)
     }
 }
 

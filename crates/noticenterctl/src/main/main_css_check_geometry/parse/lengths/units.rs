@@ -1,8 +1,8 @@
 //! Atomic value parsing for geometry length expressions
 
 use super::{
-    resolve_calc::evaluate_calc_value, resolve_var::resolve_custom_property_value,
-    CssCustomProperties, ResolvedCssValue,
+    resolve_calc::evaluate_calc_value, resolve_compare::resolve_compare_function,
+    resolve_var::resolve_custom_property_value, CssCustomProperties, ResolvedCssValue,
 };
 
 pub(super) fn parse_atomic_value(
@@ -22,6 +22,10 @@ pub(super) fn parse_atomic_value(
     }
     if trimmed.starts_with("calc(") {
         return evaluate_calc_value(trimmed, custom_properties, depth);
+    }
+    if trimmed.starts_with("min(") || trimmed.starts_with("max(") || trimmed.starts_with("clamp(") {
+        // Compare functions are valid GTK lengths and can still drive panel width
+        return resolve_compare_function(trimmed, custom_properties, depth);
     }
 
     parse_numeric_or_length(trimmed)
