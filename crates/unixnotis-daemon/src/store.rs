@@ -51,6 +51,8 @@ pub struct NotificationStore {
     expirations: HashMap<u32, Instant>,
     // Effective DND switch after loading persisted state
     dnd_enabled: bool,
+    // Monotonic in-memory revision for DND writes
+    dnd_revision: u64,
     // Optional persistence layer for DND; absent store keeps behavior in-memory
     dnd_state_store: Option<DndStateStore>,
     // Token counter for inhibitors; never reused in a process
@@ -75,6 +77,19 @@ pub struct InsertOutcome {
     pub evicted: Vec<u32>,
     // True when payload was intentionally dropped by inhibit mode
     pub dropped: bool,
+}
+
+pub(crate) struct DndWrite {
+    // True when the in-memory DND value changed
+    pub(crate) changed: bool,
+    // Value seen before this write
+    pub(crate) previous: bool,
+    // Value written by this operation
+    pub(crate) current: bool,
+    // Monotonic revision captured for guarded rollback
+    pub(crate) revision: u64,
+    // Persistence backend used outside the store lock
+    pub(crate) persist: Option<DndStateStore>,
 }
 
 pub struct DismissOutcome {
@@ -134,6 +149,7 @@ impl NotificationStore {
             // IDs start at 1 to preserve protocol expectations
             next_id: 1,
             dnd_enabled,
+            dnd_revision: 0,
             config,
             active: IndexMap::new(),
             history: HistoryStore::new(),
@@ -154,14 +170,53 @@ impl NotificationStore {
         self.dnd_enabled
     }
 
-    pub fn set_dnd(&mut self, enabled: bool) -> (bool, Option<DndStateStore>) {
-        if self.dnd_enabled == enabled {
-            // Returning false lets callers skip unnecessary state writes
-            return (false, None);
+    pub fn set_dnd(&mut self, enabled: bool) -> DndWrite {
+        // Shared mutation path keeps set and toggle behavior aligned
+        self.write_dnd(enabled)
+    }
+
+    pub fn toggle_dnd(&mut self) -> DndWrite {
+        // Toggle and write happen under one lock at the call site
+        self.write_dnd(!self.dnd_enabled)
+    }
+
+    pub(crate) fn rollback_dnd_write_if_current(&mut self, write: &DndWrite) -> bool {
+        // No-op writes do not need rollback
+        if !write.changed {
+            return false;
+        }
+        // Guarded rollback avoids clobbering newer successful writes
+        if self.dnd_revision != write.revision || self.dnd_enabled != write.current {
+            return false;
+        }
+        self.dnd_enabled = write.previous;
+        // Rollback is also a state transition
+        self.dnd_revision = self.dnd_revision.saturating_add(1);
+        true
+    }
+
+    fn write_dnd(&mut self, enabled: bool) -> DndWrite {
+        let previous = self.dnd_enabled;
+        if previous == enabled {
+            // Returning unchanged avoids unnecessary disk writes and state signals
+            return DndWrite {
+                changed: false,
+                previous,
+                current: previous,
+                revision: self.dnd_revision,
+                persist: None,
+            };
         }
         self.dnd_enabled = enabled;
+        self.dnd_revision = self.dnd_revision.saturating_add(1);
         // Persist outside the store lock so notification flow stays responsive
-        (true, self.dnd_state_store.clone())
+        DndWrite {
+            changed: true,
+            previous,
+            current: enabled,
+            revision: self.dnd_revision,
+            persist: self.dnd_state_store.clone(),
+        }
     }
 
     pub fn inhibited(&self) -> bool {

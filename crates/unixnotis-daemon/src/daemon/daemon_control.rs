@@ -4,7 +4,8 @@
 
 use std::sync::Arc;
 
-use tracing::warn;
+use crate::store::DndWrite;
+use tracing::{debug, warn};
 use unixnotis_core::{
     CloseReason, ControlState, InhibitorInfo, NotificationView, PanelDebugLevel, PanelRequest,
     PopupGateState, CONTROL_OBJECT_PATH,
@@ -56,6 +57,15 @@ impl ControlServer {
         auth::authorize_control_call(&self.state, header, method).await
     }
 
+    async fn authorize_panel_readiness_call(
+        &self,
+        header: &Header<'_>,
+        method: &'static str,
+    ) -> zbus::fdo::Result<()> {
+        // Panel readiness is restricted to unixnotis-center identity
+        auth::authorize_panel_readiness_call(&self.state, header, method).await
+    }
+
     fn ensure_panel_available(&self) -> zbus::fdo::Result<()> {
         // Rejecting here makes panel outages visible instead of silent
         if self.state.panel_ready() {
@@ -67,31 +77,58 @@ impl ControlServer {
     }
 
     async fn apply_dnd_state(&self, enabled: bool) -> zbus::fdo::Result<()> {
-        // Capture the previous state so persistence failures can roll back cleanly
-        let (changed, persist, previous) = {
+        let write = {
             let mut store = self.state.store.lock().await;
-            let previous = store.dnd_enabled();
-            let (changed, persist) = store.set_dnd(enabled);
-            (changed, persist, previous)
+            // Set request mutates once under lock and records rollback guards
+            store.set_dnd(enabled)
         };
-        if let Some(store) = persist {
+        self.finalize_dnd_write(write).await
+    }
+
+    async fn apply_toggle_dnd(&self) -> zbus::fdo::Result<()> {
+        let write = {
+            let mut store = self.state.store.lock().await;
+            // Toggle computation and write stay in one critical section
+            store.toggle_dnd()
+        };
+        self.finalize_dnd_write(write).await
+    }
+
+    async fn finalize_dnd_write(&self, write: DndWrite) -> zbus::fdo::Result<()> {
+        if let Some(store) = write.persist.as_ref() {
             // Persist outside the main store lock to avoid blocking notify paths on I/O
-            if let Err(err) = store.persist(enabled) {
+            if let Err(err) = store.persist(write.current) {
                 warn!(?err, "failed to persist do-not-disturb state");
-                // Undo the in-memory change
+                // Only rollback if this failing write is still the latest in-memory value
                 let mut state = self.state.store.lock().await;
-                let _ = state.set_dnd(previous);
+                let rolled_back = state.rollback_dnd_write_if_current(&write);
+                if rolled_back {
+                    debug!(
+                        revision = write.revision,
+                        current = write.current,
+                        previous = write.previous,
+                        "rolled back do-not-disturb state after persistence failure"
+                    );
+                } else {
+                    debug!(
+                        revision = write.revision,
+                        current = write.current,
+                        "skipped do-not-disturb rollback because newer state already exists"
+                    );
+                }
                 return Err(zbus::fdo::Error::Failed(
                     "failed to persist do-not-disturb state".to_string(),
                 ));
             }
         }
-        if changed {
-            // Emit state updates only when the value changes to avoid log noise.
-            self.state
-                .emit_state_changed()
-                .await
-                .map_err(to_fdo_error)?;
+        if write.changed {
+            // Mutation is already committed; signal fanout is best-effort.
+            if let Err(err) = self.state.emit_state_changed().await {
+                warn!(
+                    ?err,
+                    "do-not-disturb state changed but post-commit signal fanout failed"
+                );
+            }
         }
         Ok(())
     }
@@ -210,11 +247,7 @@ impl ControlServer {
 
     async fn toggle_dnd(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ToggleDnd").await?;
-        let next = {
-            let store = self.state.store.lock().await;
-            !store.dnd_enabled()
-        };
-        self.apply_dnd_state(next).await
+        self.apply_toggle_dnd().await
     }
 
     async fn inhibit(
@@ -244,16 +277,31 @@ impl ControlServer {
             let count = store.inhibitor_count();
             (id, active, count)
         };
-        let ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
-        // Emit inhibitors_changed before state_changed so UIs can update counts immediately.
-        ControlServer::inhibitors_changed(&ctx, active, count)
-            .await
-            .map_err(to_fdo_error)?;
-        self.state
-            .emit_state_changed()
-            .await
-            .map_err(to_fdo_error)?;
+        match SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH) {
+            Ok(ctx) => {
+                // Emit inhibitors_changed before state_changed so UIs can update counts immediately.
+                if let Err(err) = ControlServer::inhibitors_changed(&ctx, active, count).await {
+                    warn!(
+                        ?err,
+                        inhibitor_count = count,
+                        "inhibitor added but inhibitors_changed signal fanout failed"
+                    );
+                }
+            }
+            Err(err) => {
+                warn!(
+                    ?err,
+                    "inhibitor added but failed to build signal context for inhibitors_changed"
+                );
+            }
+        }
+        // Mutation is already committed; signal fanout is best-effort.
+        if let Err(err) = self.state.emit_state_changed().await {
+            warn!(
+                ?err,
+                "inhibitor added but post-commit state_changed signal fanout failed"
+            );
+        }
         Ok(id)
     }
 
@@ -285,16 +333,31 @@ impl ControlServer {
             // Unknown IDs are treated as a no-op to keep clients resilient.
             return Ok(());
         }
-        let ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
-        // Broadcast inhibitor updates so UI clients can refresh badges.
-        ControlServer::inhibitors_changed(&ctx, active, count)
-            .await
-            .map_err(to_fdo_error)?;
-        self.state
-            .emit_state_changed()
-            .await
-            .map_err(to_fdo_error)?;
+        match SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH) {
+            Ok(ctx) => {
+                // Broadcast inhibitor updates so UI clients can refresh badges.
+                if let Err(err) = ControlServer::inhibitors_changed(&ctx, active, count).await {
+                    warn!(
+                        ?err,
+                        inhibitor_count = count,
+                        "inhibitor removed but inhibitors_changed signal fanout failed"
+                    );
+                }
+            }
+            Err(err) => {
+                warn!(
+                    ?err,
+                    "inhibitor removed but failed to build signal context for inhibitors_changed"
+                );
+            }
+        }
+        // Mutation is already committed; signal fanout is best-effort.
+        if let Err(err) = self.state.emit_state_changed().await {
+            warn!(
+                ?err,
+                "inhibitor removed but post-commit state_changed signal fanout failed"
+            );
+        }
         Ok(())
     }
 
@@ -352,7 +415,7 @@ impl ControlServer {
     }
 
     async fn mark_panel_ready(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
-        self.authorize_control_call(&header, "MarkPanelReady")
+        self.authorize_panel_readiness_call(&header, "MarkPanelReady")
             .await?;
         // Center calls this only after it is subscribed to panel_requested
         self.state.set_panel_ready(true);
@@ -363,7 +426,7 @@ impl ControlServer {
         &self,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
-        self.authorize_control_call(&header, "MarkPanelNotReady")
+        self.authorize_panel_readiness_call(&header, "MarkPanelNotReady")
             .await?;
         // Clearing readiness avoids stale success during reconnect windows
         self.state.set_panel_ready(false);

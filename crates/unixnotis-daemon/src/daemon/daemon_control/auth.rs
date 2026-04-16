@@ -24,6 +24,8 @@ const TRUSTED_CONTROL_EXECUTABLES: [&str; 4] = [
     "unixnotis-popups",
     "unixnotis-daemon",
 ];
+// Only the center process may announce panel readiness transitions
+const TRUSTED_PANEL_READINESS_EXECUTABLES: [&str; 1] = ["unixnotis-center"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct TrustedExecutableSnapshot {
@@ -80,6 +82,30 @@ pub(super) async fn authorize_control_call(
     header: &Header<'_>,
     method: &'static str,
 ) -> zbus::fdo::Result<()> {
+    authorize_control_call_for_executables(state, header, method, &TRUSTED_CONTROL_EXECUTABLES)
+        .await
+}
+
+pub(super) async fn authorize_panel_readiness_call(
+    state: &Arc<DaemonState>,
+    header: &Header<'_>,
+    method: &'static str,
+) -> zbus::fdo::Result<()> {
+    authorize_control_call_for_executables(
+        state,
+        header,
+        method,
+        &TRUSTED_PANEL_READINESS_EXECUTABLES,
+    )
+    .await
+}
+
+async fn authorize_control_call_for_executables(
+    state: &Arc<DaemonState>,
+    header: &Header<'_>,
+    method: &'static str,
+    allowed_executables: &[&str],
+) -> zbus::fdo::Result<()> {
     // One guard for all control calls
     let sender = header
         .sender()
@@ -113,10 +139,12 @@ pub(super) async fn authorize_control_call(
     // The caller path must match a trusted sibling binary
     let pid = proxy.get_connection_unix_process_id(bus_name).await?;
     let exe_path = read_process_executable_path(pid).await;
-    if !exe_path
-        .as_deref()
-        .is_some_and(is_trusted_control_executable_path)
-    {
+    if !exe_path.as_deref().is_some_and(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| allowed_executables.contains(&name))
+            && is_trusted_control_executable_path(path)
+    }) {
         warn!(
             method,
             sender = %sender_name,
