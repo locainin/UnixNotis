@@ -18,7 +18,6 @@ mod tracking;
 
 pub(super) use self::box_metrics::{HorizontalBoxMetrics, HorizontalEdges};
 use self::constants::WIDTH_WARNING_TOLERANCE_PX;
-pub(super) use self::tracking::is_tracked_class;
 
 #[derive(Default)]
 pub(super) struct GeometryModel {
@@ -57,6 +56,9 @@ impl GeometryModel {
     pub(super) fn finalize_warnings(&self, config: &Config) -> Vec<String> {
         let mut warnings = Vec::new();
 
+        // The file-level scan only gathers numbers
+        // The actual panel budget check happens here once every selector has had a chance
+        // to update the model
         // Each section is checked on its own so the warning stays easy to read
         if let Some(warning) = self.toggle_grid_warning(config) {
             warnings.push(warning);
@@ -89,6 +91,8 @@ fn width_warning(
         return None;
     }
 
+    // The message keeps both numbers visible so a theme author can see whether the issue is
+    // a tiny overshoot or a layout that is far outside the configured panel budget
     Some(format!(
         "{label} looks like it needs about {required_panel_width_px}px of panel width, but [panel].width={panel_width_px}; {natural_width_note}"
     ))

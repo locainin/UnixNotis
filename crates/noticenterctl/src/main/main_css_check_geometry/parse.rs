@@ -10,7 +10,7 @@ use super::super::main_css_check_policy::{
     is_complex_geometry_warning_property, is_horizontal_size_property,
 };
 use super::model::GeometryModel;
-use super::stock::known_unixnotis_classes;
+use super::stock::{known_unixnotis_classes, should_warn_for_unmodeled_known_class};
 
 // Split the parser by job so width parsing, selector checks, and token collection stay separate
 #[path = "parse/custom_properties.rs"]
@@ -32,6 +32,7 @@ pub(super) fn collect_geometry_from_contents(
     model: &mut GeometryModel,
 ) -> Vec<String> {
     // Single-file callers still get the old behavior through this small wrapper
+    // This path is still used by unit tests and by stock-baseline helpers
     let stripped = strip_css_comments(contents);
     let custom_properties = collect_custom_properties(&stripped);
     collect_geometry_from_contents_with_properties(&stripped, &custom_properties, model)
@@ -46,6 +47,8 @@ pub(super) fn collect_geometry_from_contents_with_properties(
     let mut warned_classes = HashSet::new();
     let stripped_contents = strip_css_comments(contents);
 
+    // Comments are removed before both selector walking and custom-property resolution so the
+    // parser and the stock-baseline cache see the same token stream
     // Walk the full sheet so nested blocks still contribute width data
     collect_geometry_block(
         &stripped_contents,
@@ -109,6 +112,8 @@ fn collect_geometry_block(
 
         if selector.starts_with('@') {
             if should_recurse_at_rule(&selector) {
+                // Width-relevant selectors can live under nested rules, so the block still gets
+                // walked even though the at-rule itself is not modeled directly
                 // Nested blocks still matter for final width math
                 collect_geometry_block(&block, model, custom_properties, warnings, warned_classes);
             }
@@ -153,8 +158,11 @@ fn collect_geometry_selector(
         .any(|(name, _)| is_complex_geometry_warning_property(name));
     // Keep selector matching strict so width math does not drift from real widgets
     let Some(class_name) = simple_class_selector(selector) else {
+        // This branch is where descendant, pseudo, and compound selectors stay visible
+        // instead of failing silently
         maybe_warn_for_complex_unixnotis_selector(
             selector,
+            &properties,
             has_complex_width_driver_rules,
             warnings,
             warned_classes,
@@ -175,13 +183,29 @@ fn collect_geometry_selector(
     }
 
     let Some(target) = model.target_mut(class_name) else {
-        // Unknown non-UnixNotis classes are ignored because the lint has no widget map for them
+        if has_horizontal_size_rules
+            && class_name.starts_with(".unixnotis-")
+            && known_unixnotis_classes().contains(class_name)
+            && should_warn_for_unmodeled_known_class(class_name, &properties)
+            && warned_classes.insert(format!("unmodeled:{class_name}"))
+        {
+            // The class is real, but there is no direct width math for it yet
+            // Once the rules differ from stock, the change needs to stay visible
+            // Only custom size changes on major unmodeled layout hooks should stay loud
+            warnings.push(format!(
+                "size rules target known UnixNotis class '{}', but geometry lint does not model its width yet; width pressure may be missed",
+                class_name
+            ));
+        }
+        // Known non-modeled classes otherwise stay quiet so stock theme selectors do not spam output
         return;
     };
     let custom_properties = custom_properties.for_selector(class_name);
 
     for (name, value) in properties {
         if is_horizontal_size_property(&name) {
+            // Every supported property is reduced into one horizontal box model so the final
+            // budget check only has to compare plain numbers
             // Geometry lint only tracks properties that change horizontal width
             target.apply_property(&name, &value, &custom_properties);
         }

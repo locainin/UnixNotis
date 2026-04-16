@@ -14,7 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use unixnotis_core::Config;
+use unixnotis_core::{build_modern_theme_custom_properties, gtk_css_features_for_version, Config};
 
 use self::model::GeometryModel;
 use self::parse::collect_geometry_from_contents_with_properties;
@@ -30,6 +30,8 @@ pub(super) fn lint_geometry_css_files(
     config_dir: &Path,
     display_root: &str,
 ) -> Result<Vec<CssCheckDiagnostic>> {
+    // Geometry warnings depend on the live panel width, so there is nothing useful to do
+    // until the real config can be loaded
     let config_path = Config::default_config_path()?;
     if !config_path.exists() {
         // Geometry lint needs the live config because panel width still matters
@@ -49,11 +51,16 @@ pub(super) fn lint_geometry_css_files(
         file_contents.push((path, contents));
     }
 
+    // Runtime theme overrides inject modern tokens that may never appear in the css files
+    let generated_tokens =
+        build_modern_theme_custom_properties(&config.theme, gtk_css_features_for_version(4, 16));
+
+    // Runtime tokens are stitched in before the file scan so token-only themes do not hide
+    // width pressure from the checker
     // Theme tokens can be declared in one file and consumed in another
     let shared_custom_properties = collect_custom_property_scopes(
-        &file_contents
-            .iter()
-            .map(|(_, contents)| contents.as_str())
+        &std::iter::once(generated_tokens.as_str())
+            .chain(file_contents.iter().map(|(_, contents)| contents.as_str()))
             .collect::<Vec<_>>()
             .join("\n"),
     );

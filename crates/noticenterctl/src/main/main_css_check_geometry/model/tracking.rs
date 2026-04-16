@@ -5,6 +5,9 @@ impl GeometryModel {
         &mut self,
         class_name: &str,
     ) -> Option<&mut HorizontalBoxMetrics> {
+        // This table is intentionally small
+        // Only selectors that own meaningful horizontal budget get modeled directly
+        // Everything else is either checked against stock baselines or warned as unmodeled
         // Only selectors that map to real width-owning widgets are tracked here
         match class_name {
             ".unixnotis-panel" => Some(&mut self.panel),
@@ -46,47 +49,4 @@ impl GeometryModel {
             _ => None,
         }
     }
-}
-
-pub(in super::super) fn is_tracked_class(class_name: &str) -> bool {
-    // Keep selector warnings in sync with the same widget map used by the model
-    matches!(
-        class_name,
-        ".unixnotis-panel"
-            | ".unixnotis-toggle-section"
-            | ".unixnotis-toggle-grid"
-            | ".unixnotis-toggle"
-            | ".unixnotis-stat-section"
-            | ".unixnotis-stat-grid"
-            | ".unixnotis-stat-card"
-            | ".unixnotis-card-section"
-            | ".unixnotis-card-grid"
-            | ".unixnotis-info-card"
-            | ".unixnotis-media-container"
-            | ".unixnotis-media-stack"
-            | ".unixnotis-media-stack-carousel"
-            | ".unixnotis-media-stack-inline"
-            | ".unixnotis-media-stack-stacked"
-            | ".unixnotis-media-stack-showcase"
-            | ".unixnotis-media-row"
-            | ".unixnotis-media-row-carousel"
-            | ".unixnotis-media-row-inline"
-            | ".unixnotis-media-row-stacked"
-            | ".unixnotis-media-row-showcase"
-            | ".unixnotis-media-main"
-            | ".unixnotis-media-meta"
-            | ".unixnotis-media-nav"
-            | ".unixnotis-media-nav-strip"
-            | ".unixnotis-media-card"
-            | ".unixnotis-media-card-carousel"
-            | ".unixnotis-media-card-inline"
-            | ".unixnotis-media-card-stacked"
-            | ".unixnotis-media-card-showcase"
-            | ".unixnotis-media-art"
-            | ".unixnotis-media-art-frame"
-            | ".unixnotis-media-control-strip"
-            | ".unixnotis-media-action-rail"
-            | ".unixnotis-media-controls"
-            | ".unixnotis-media-button"
-    )
 }
