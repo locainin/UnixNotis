@@ -142,12 +142,13 @@ async fn run_dbus_loop(
                         break;
                     };
                     if let Ok(args) = signal.args() {
-                        let _ = sender
-                            .send(UiEvent::NotificationAdded(
-                                args.notification().clone(),
-                                *args.show_popup(),
-                            ))
-                            .await;
+                        push_active_notification_event(
+                            &proxy,
+                            &sender,
+                            *args.id(),
+                            *args.show_popup(),
+                            true,
+                        ).await;
                     }
                 }
                 signal = updated_stream.next() => {
@@ -156,12 +157,13 @@ async fn run_dbus_loop(
                         break;
                     };
                     if let Ok(args) = signal.args() {
-                        let _ = sender
-                            .send(UiEvent::NotificationUpdated(
-                                args.notification().clone(),
-                                *args.show_popup(),
-                            ))
-                            .await;
+                        push_active_notification_event(
+                            &proxy,
+                            &sender,
+                            *args.id(),
+                            *args.show_popup(),
+                            false,
+                        ).await;
                     }
                 }
                 signal = closed_stream.next() => {
@@ -211,5 +213,33 @@ async fn run_dbus_loop(
         let _ = proxy.mark_panel_not_ready().await;
         stash_offline_commands(&mut command_rx, &mut offline_commands);
         tokio::time::sleep(subscribe_backoff.next_sleep()).await;
+    }
+}
+
+async fn push_active_notification_event(
+    proxy: &ControlProxy<'_>,
+    sender: &async_channel::Sender<UiEvent>,
+    id: u32,
+    show_popup: bool,
+    is_add: bool,
+) {
+    // Trusted UIs fetch the current payload through the authorized control method
+    // This keeps full notification content off the broadcast signal channel
+    match proxy.get_active_notification(id).await {
+        Ok(mut notifications) => {
+            // The row may already be gone by the time the follow-up fetch completes
+            let Some(notification) = notifications.pop() else {
+                return;
+            };
+            let event = if is_add {
+                UiEvent::NotificationAdded(notification, show_popup)
+            } else {
+                UiEvent::NotificationUpdated(notification, show_popup)
+            };
+            let _ = sender.send(event).await;
+        }
+        Err(err) => {
+            warn!(?err, id, "failed to fetch active notification after signal");
+        }
     }
 }

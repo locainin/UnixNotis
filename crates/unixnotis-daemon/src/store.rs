@@ -186,6 +186,14 @@ impl NotificationStore {
         self.history.list_views()
     }
 
+    pub fn active_notification_view(&self, id: u32) -> Option<NotificationView> {
+        // Active rows use the richer popup-oriented view because add/update signals
+        // are consumed by trusted UIs that may need current image payloads
+        self.active
+            .get(&id)
+            .map(|notification| notification.to_view())
+    }
+
     pub fn history_len(&self) -> usize {
         // Exposed for diagnostics and test assertions
         self.history.len()

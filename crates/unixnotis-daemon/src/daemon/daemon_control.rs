@@ -125,6 +125,18 @@ impl ControlServer {
         Ok(store.list_history())
     }
 
+    async fn get_active_notification(
+        &self,
+        id: u32,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<Vec<NotificationView>> {
+        // Per-notification fetch keeps full content on an authenticated pull path
+        self.authorize_control_call(&header, "GetActiveNotification")
+            .await?;
+        let store = self.state.store.lock().await;
+        Ok(store.active_notification_view(id).into_iter().collect())
+    }
+
     async fn open_panel(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "OpenPanel").await?;
         self.ensure_panel_available()?;
@@ -434,14 +446,14 @@ impl ControlServer {
     #[zbus(signal)]
     pub(crate) async fn notification_added(
         ctx: &SignalContext<'_>,
-        notification: NotificationView,
+        id: u32,
         show_popup: bool,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
     pub(crate) async fn notification_updated(
         ctx: &SignalContext<'_>,
-        notification: NotificationView,
+        id: u32,
         show_popup: bool,
     ) -> zbus::Result<()>;
 

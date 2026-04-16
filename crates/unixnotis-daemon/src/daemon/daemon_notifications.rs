@@ -14,7 +14,9 @@ use zbus::{interface, SignalContext};
 
 use crate::expire::ExpirationScheduler;
 
-use super::{to_fdo_error, ControlServer, DaemonState, NOTIFICATIONS_OBJECT_PATH};
+use super::{
+    to_fdo_error, ControlServer, DaemonState, NotificationSignalMode, NOTIFICATIONS_OBJECT_PATH,
+};
 
 // Split hard limits into a dedicated file so security bounds are easy to review
 #[path = "daemon_notifications/limits.rs"]
@@ -154,24 +156,44 @@ impl NotificationServer {
 
         let control_ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
             .map_err(to_fdo_error)?;
-        if outcome.replaced {
-            // Replacement emits update signal so UI can reuse existing rows
-            ControlServer::notification_updated(
-                &control_ctx,
-                outcome.notification.to_view(),
-                outcome.show_popup,
-            )
-            .await
-            .map_err(to_fdo_error)?;
-        } else {
-            // New notification emits add signal so UI can animate new entries
-            ControlServer::notification_added(
-                &control_ctx,
-                outcome.notification.to_view(),
-                outcome.show_popup,
-            )
-            .await
-            .map_err(to_fdo_error)?;
+        match self
+            .state
+            .notification_signal_mode(outcome.notification.sender_name.as_deref())
+        {
+            NotificationSignalMode::Direct => {
+                if outcome.replaced {
+                    // Only the id crosses the broadcast signal
+                    // Trusted UIs fetch the live payload through the authorized control API
+                    ControlServer::notification_updated(
+                        &control_ctx,
+                        outcome.notification.id,
+                        outcome.show_popup,
+                    )
+                    .await
+                    .map_err(to_fdo_error)?;
+                } else {
+                    // New notification broadcasts only the id for the same confidentiality reason
+                    ControlServer::notification_added(
+                        &control_ctx,
+                        outcome.notification.id,
+                        outcome.show_popup,
+                    )
+                    .await
+                    .map_err(to_fdo_error)?;
+                }
+            }
+            NotificationSignalMode::SnapshotOnly => {
+                debug!(
+                    id = outcome.notification.id,
+                    sender = outcome.notification.sender_name.as_deref().unwrap_or("unknown"),
+                    "notification burst detected; using snapshot invalidation instead of per-row signal"
+                );
+                self.state
+                    .emit_snapshot_invalidated()
+                    .await
+                    .map_err(to_fdo_error)?;
+            }
+            NotificationSignalMode::Suppress => {}
         }
 
         // Evicted items are announced so UIs can remove stale rows

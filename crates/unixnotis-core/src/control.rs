@@ -239,6 +239,11 @@ trait Control {
     /// History notifications for the panel.
     fn list_history(&self) -> zbus::Result<Vec<NotificationView>>;
 
+    /// Fetch one currently active notification by identifier.
+    ///
+    /// Returns either an empty vector or one notification view.
+    fn get_active_notification(&self, id: u32) -> zbus::Result<Vec<NotificationView>>;
+
     /// Open the control center panel.
     fn open_panel(&self) -> zbus::Result<()>;
 
@@ -279,18 +284,10 @@ trait Control {
     fn mark_panel_not_ready(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    fn notification_added(
-        &self,
-        notification: NotificationView,
-        show_popup: bool,
-    ) -> zbus::Result<()>;
+    fn notification_added(&self, id: u32, show_popup: bool) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    fn notification_updated(
-        &self,
-        notification: NotificationView,
-        show_popup: bool,
-    ) -> zbus::Result<()>;
+    fn notification_updated(&self, id: u32, show_popup: bool) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn notification_closed(&self, id: u32, reason: CloseReason) -> zbus::Result<()>;

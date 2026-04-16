@@ -169,13 +169,13 @@ async fn run_connection_once(
                     break;
                 };
                 if let Ok(args) = signal.args() {
-                    // Clone once at the edge so the GTK side owns a stable payload
-                    let _ = sender
-                        .send(UiEvent::NotificationAdded(
-                            args.notification().clone(),
-                            *args.show_popup(),
-                        ))
-                        .await;
+                    push_active_notification_event(
+                        &proxy,
+                        sender,
+                        *args.id(),
+                        *args.show_popup(),
+                        true,
+                    ).await;
                 }
             }
             signal = updated_stream.next() => {
@@ -184,13 +184,13 @@ async fn run_connection_once(
                     break;
                 };
                 if let Ok(args) = signal.args() {
-                    // Update payload stays lightweight for the same parse-cost reason
-                    let _ = sender
-                        .send(UiEvent::NotificationUpdated(
-                            args.notification().clone(),
-                            *args.show_popup(),
-                        ))
-                        .await;
+                    push_active_notification_event(
+                        &proxy,
+                        sender,
+                        *args.id(),
+                        *args.show_popup(),
+                        false,
+                    ).await;
                 }
             }
             signal = closed_stream.next() => {
@@ -231,4 +231,31 @@ async fn run_connection_once(
     }
 
     subscribe_backoff.next_sleep()
+}
+
+async fn push_active_notification_event(
+    proxy: &ControlProxy<'_>,
+    sender: &async_channel::Sender<UiEvent>,
+    id: u32,
+    show_popup: bool,
+    is_add: bool,
+) {
+    // Full popup payloads now stay on the authorized pull path instead of the shared signal
+    match proxy.get_active_notification(id).await {
+        Ok(mut notifications) => {
+            // Close fanout can win the race, so a missing row is a normal no-op here
+            let Some(notification) = notifications.pop() else {
+                return;
+            };
+            let event = if is_add {
+                UiEvent::NotificationAdded(notification, show_popup)
+            } else {
+                UiEvent::NotificationUpdated(notification, show_popup)
+            };
+            let _ = sender.send(event).await;
+        }
+        Err(err) => {
+            warn!(?err, id, "failed to fetch popup notification after signal");
+        }
+    }
 }

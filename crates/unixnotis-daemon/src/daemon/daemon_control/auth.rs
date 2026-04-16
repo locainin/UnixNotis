@@ -199,6 +199,9 @@ fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
     if !metadata.is_file() {
         return None;
     }
+    if !trusted_control_file_metadata_is_safe(&metadata) {
+        return None;
+    }
 
     // Hash the whole file
     let mut file = File::open(path).ok()?;
@@ -221,4 +224,25 @@ fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
 fn canonicalize_best_effort(path: &Path) -> PathBuf {
     // Fall back to the raw path
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+#[cfg(unix)]
+fn trusted_control_file_metadata_is_safe(metadata: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    // Trusted sibling binaries should not be writable by group or world
+    let mode = metadata.mode();
+    if mode & 0o022 != 0 {
+        return false;
+    }
+
+    // Local user installs should be owned by the desktop user, while system packages may be root
+    let uid = metadata.uid();
+    let expected_uid = geteuid().as_raw();
+    uid == expected_uid || uid == 0
+}
+
+#[cfg(not(unix))]
+fn trusted_control_file_metadata_is_safe(_metadata: &std::fs::Metadata) -> bool {
+    true
 }

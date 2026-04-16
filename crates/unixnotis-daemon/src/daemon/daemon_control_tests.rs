@@ -94,6 +94,28 @@ fn accepts_trusted_sibling_binary_only() {
     let _ = fs::remove_dir_all(other_dir);
 }
 
+#[cfg(unix)]
+#[test]
+fn rejects_group_writable_trusted_binary() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let trusted_dir = temp_dir("rejects-group-writable");
+    let trusted = trusted_dir.join("noticenterctl");
+    fs::write(&trusted, "#!/bin/sh\n").expect("write trusted sibling");
+    let mut permissions = fs::metadata(&trusted).expect("metadata").permissions();
+    permissions.set_mode(0o775);
+    fs::set_permissions(&trusted, permissions).expect("set permissions");
+
+    let snapshots = build_trusted_control_snapshots(&trusted_dir);
+    assert!(!is_trusted_control_executable_path_in_dir(
+        &trusted,
+        &trusted_dir,
+        &snapshots,
+    ));
+
+    let _ = fs::remove_dir_all(trusted_dir);
+}
+
 #[test]
 fn sanitize_inhibit_reason_trims_and_bounds() {
     // Empty falls back
