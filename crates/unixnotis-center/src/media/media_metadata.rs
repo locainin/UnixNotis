@@ -18,11 +18,9 @@ pub(super) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {
     let art_source = metadata_string(&metadata, "mpris:artUrl")
         .and_then(|value| normalize_art_source(&value, state.remote_art_allowed));
 
-    let playback_status: String = state
-        .player
-        .get_property("PlaybackStatus")
-        .await
-        .unwrap_or_else(|_| "Stopped".to_string());
+    // PlaybackStatus drives whether the player stays visible
+    // If that read fails, keep the previous snapshot instead of inventing a fake stop event
+    let playback_status: String = state.player.get_property("PlaybackStatus").await.ok()?;
     let can_play: bool = state.player.get_property("CanPlay").await.unwrap_or(false);
     let can_pause: bool = state.player.get_property("CanPause").await.unwrap_or(false);
     let can_next: bool = state

@@ -13,13 +13,19 @@ pub(super) async fn refresh_cache(
     players: &HashMap<String, PlayerState>,
     cache: &mut HashMap<String, MediaInfo>,
 ) {
-    cache.clear();
+    let previous = cache.clone();
+    let mut next = HashMap::with_capacity(players.len());
     let states: Vec<PlayerState> = players.values().cloned().collect();
     for state in states {
-        if let Some(info) = fetch_media_info(&state).await {
-            cache.insert(state.bus_name.clone(), info);
+        // A transient DBus read error should not blank a live player card
+        // Keep the last good snapshot until a fresh read succeeds or the player disappears
+        if let Some(info) =
+            merge_media_info(previous.get(&state.bus_name), fetch_media_info(&state).await)
+        {
+            next.insert(state.bus_name.clone(), info);
         }
     }
+    *cache = next;
 }
 
 pub(super) async fn refresh_player_cache(
@@ -31,11 +37,13 @@ pub(super) async fn refresh_player_cache(
         cache.remove(bus_name);
         return;
     };
-    if let Some(info) = fetch_media_info(&state).await {
+    if let Some(info) = merge_media_info(cache.get(bus_name), fetch_media_info(&state).await) {
         cache.insert(bus_name.to_string(), info);
-    } else {
-        cache.remove(bus_name);
     }
+}
+
+fn merge_media_info(existing: Option<&MediaInfo>, fetched: Option<MediaInfo>) -> Option<MediaInfo> {
+    fetched.or_else(|| existing.cloned())
 }
 
 pub(super) async fn send_snapshot_if_changed(
@@ -246,6 +254,25 @@ mod tests {
         let token = normalize_token("  Foo--Bar\tBaz  ");
         // Hyphens are treated as punctuation; only whitespace yields word boundaries.
         assert_eq!(token, "foobar baz");
+    }
+
+    #[test]
+    fn merge_media_info_keeps_last_good_entry_when_fetch_fails() {
+        let existing = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", true, None);
+        let merged = merge_media_info(Some(&existing), None).expect("merged info");
+
+        assert_eq!(merged.playback_status, "Playing");
+        assert!(merged.art_source.is_some());
+    }
+
+    #[test]
+    fn merge_media_info_prefers_new_snapshot_when_fetch_succeeds() {
+        let existing = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Paused", false, None);
+        let fetched = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", true, None);
+        let merged = merge_media_info(Some(&existing), Some(fetched)).expect("merged info");
+
+        assert_eq!(merged.playback_status, "Playing");
+        assert!(merged.art_source.is_some());
     }
 
     #[test]
