@@ -124,7 +124,7 @@ fn rebase_relative_asset_ref_to_file_uri(asset_ref: &str, css_path: &Path) -> Op
         || lowered.starts_with("https://")
         || lowered.starts_with("file://")
     {
-        // Data, remote, and already-absolute file URLs should pass through exactly as written
+        // Embedded data, remote URLs, and absolute file URLs already carry their own target
         return None;
     }
 

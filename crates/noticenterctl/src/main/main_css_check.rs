@@ -84,7 +84,6 @@ pub(crate) fn run_css_check() -> Result<()> {
         let mut diagnostics = parse_errors_clone.lock().expect("parse error lock");
         diagnostics.push(CssCheckDiagnostic::error(
             CssCheckCategory::Parse,
-            "PARSE001",
             file,
             Some(location.lines() + 1),
             Some(location.line_chars() + 1),
@@ -101,7 +100,6 @@ pub(crate) fn run_css_check() -> Result<()> {
             let display_path = format_display_path(&config_dir, &display_root, path);
             diagnostics.push(CssCheckDiagnostic::error(
                 CssCheckCategory::Parse,
-                "PARSE002",
                 display_path,
                 None,
                 None,
@@ -115,7 +113,6 @@ pub(crate) fn run_css_check() -> Result<()> {
             let display_path = format_display_path(&config_dir, &display_root, path);
             diagnostics.push(CssCheckDiagnostic::error(
                 CssCheckCategory::Parse,
-                "PARSE003",
                 display_path,
                 None,
                 None,

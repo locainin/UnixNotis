@@ -91,7 +91,6 @@ fn collect_css_check_inputs_from(
         if !target.path.exists() {
             diagnostics.push(CssCheckDiagnostic::warning(
                 CssCheckCategory::Theme,
-                "THEME001",
                 target.display_path(config_dir, display_root),
                 format!(
                     "configured {} target is missing; UnixNotis will create a default theme file there on startup, so css-check is validating less than the live UI expects",
@@ -104,7 +103,6 @@ fn collect_css_check_inputs_from(
         if !target.path.is_file() {
             diagnostics.push(CssCheckDiagnostic::warning(
                 CssCheckCategory::Theme,
-                "THEME002",
                 target.display_path(config_dir, display_root),
                 format!(
                     "configured {} target is not a regular file",
@@ -125,7 +123,6 @@ fn collect_css_check_inputs_from(
     for command in outside_commands {
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Theme,
-            "THEME005",
             config_display.clone(),
             format!(
                 "{} points outside {display_root}; shared presets should keep explicit command paths inside the UnixNotis config directory ({})",
@@ -139,7 +136,6 @@ fn collect_css_check_inputs_from(
     for command in host_specific_commands {
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Theme,
-            "THEME006",
             config_display.clone(),
             format!(
                 "{} uses a host-local command path inside {display_root}; export should rewrite it before sharing: {}",
@@ -150,15 +146,17 @@ fn collect_css_check_inputs_from(
     // CSS can still pull assets from outside the config root
     let external_css_refs = collect_external_css_asset_refs_from_paths(config_dir, &files)?;
     let external_css_asset_refs = external_css_refs.len();
+    let remote_css_asset_refs = external_css_refs
+        .iter()
+        .filter(|asset_ref| asset_ref.reason == "remote url")
+        .count();
+    let local_external_css_asset_refs = external_css_asset_refs - remote_css_asset_refs;
     for asset_ref in external_css_refs {
+        let message = format_external_css_asset_ref_message(display_root, &asset_ref);
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Theme,
-            "THEME007",
             format_display_path(config_dir, display_root, &asset_ref.css_file),
-            format!(
-                "css asset reference points outside {display_root}: {} ({})",
-                asset_ref.asset_ref, asset_ref.reason
-            ),
+            message,
         ));
     }
 
@@ -170,7 +168,6 @@ fn collect_css_check_inputs_from(
         // One file loaded into multiple theme slots can look much stronger than expected
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Theme,
-            "THEME003",
             config_display.clone(),
             format!(
                 "{} all resolve to the same file; that stylesheet will be loaded into multiple UnixNotis theme slots",
@@ -191,7 +188,6 @@ fn collect_css_check_inputs_from(
         ));
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Theme,
-            "THEME004",
             config_display.clone(),
             format!(
                 "{outside_root} configured theme file(s) point outside {display_root}; that makes the setup less portable and means those files are loaded from outside the UnixNotis config directory"
@@ -209,9 +205,14 @@ fn collect_css_check_inputs_from(
         ));
     }
     // Keep the live css-check notes aligned with the preset safety prompts
-    if external_css_asset_refs > 0 {
+    if local_external_css_asset_refs > 0 {
         notes.push(format!(
-            "{external_css_asset_refs} css asset reference(s) point outside {display_root}"
+            "{local_external_css_asset_refs} css asset reference(s) leave {display_root}"
+        ));
+    }
+    if remote_css_asset_refs > 0 {
+        notes.push(format!(
+            "{remote_css_asset_refs} css asset reference(s) use remote URLs"
         ));
     }
     if non_css_targets > 0 {
@@ -232,6 +233,23 @@ fn collect_css_check_inputs_from(
         notes,
         diagnostics,
     })
+}
+
+fn format_external_css_asset_ref_message(
+    display_root: &str,
+    asset_ref: &crate::preset::css_asset_refs::ExternalCssAssetRef,
+) -> String {
+    if asset_ref.reason == "remote url" {
+        return format!(
+            "css asset reference uses a remote URL: {}",
+            asset_ref.asset_ref
+        );
+    }
+
+    format!(
+        "css asset reference leaves {display_root}: {} ({})",
+        asset_ref.asset_ref, asset_ref.reason
+    )
 }
 
 fn theme_targets(theme_paths: ThemePaths) -> [ThemeTarget; 5] {

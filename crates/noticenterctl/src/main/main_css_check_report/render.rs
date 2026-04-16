@@ -159,7 +159,6 @@ fn collect_grouped_diagnostics(
             .then_with(|| left.display_path.cmp(&right.display_path))
             .then_with(|| left.line.cmp(&right.line))
             .then_with(|| left.column.cmp(&right.column))
-            .then_with(|| left.code.cmp(right.code))
             .then_with(|| left.message.cmp(&right.message))
     });
 
@@ -204,11 +203,7 @@ fn append_diagnostic_section(
             };
             lines.push(format!(
                 "    {}{} {}",
-                style.diagnostic_code(format!(
-                    "[{}][{}]",
-                    diagnostic.code,
-                    diagnostic.category.label()
-                )),
+                style.diagnostic_code(format!("{}:", diagnostic.category.label())),
                 location,
                 diagnostic.message
             ));

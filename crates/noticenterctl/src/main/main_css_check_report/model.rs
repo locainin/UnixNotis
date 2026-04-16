@@ -58,8 +58,6 @@ pub(in super::super) struct CssCheckDiagnostic {
     pub(in super::super) severity: CssCheckSeverity,
     // Category keeps related warnings grouped together
     pub(in super::super) category: CssCheckCategory,
-    // Stable codes make docs and tests easier to pin down
-    pub(in super::super) code: &'static str,
     // This is already formatted for terminal display
     pub(in super::super) display_path: String,
     // Source locations show up when lint or parsing can point at a real spot
@@ -73,17 +71,15 @@ pub(in super::super) struct CssCheckDiagnostic {
 impl CssCheckDiagnostic {
     pub(in super::super) fn warning(
         category: CssCheckCategory,
-        code: &'static str,
         display_path: String,
         message: impl Into<String>,
     ) -> Self {
         // Most warnings still read cleanly without a source location
-        Self::warning_at(category, code, display_path, None, None, message)
+        Self::warning_at(category, display_path, None, None, message)
     }
 
     pub(in super::super) fn warning_at(
         category: CssCheckCategory,
-        code: &'static str,
         display_path: String,
         line: Option<usize>,
         column: Option<usize>,
@@ -93,7 +89,6 @@ impl CssCheckDiagnostic {
         Self {
             severity: CssCheckSeverity::Warning,
             category,
-            code,
             display_path,
             line,
             column,
@@ -104,7 +99,6 @@ impl CssCheckDiagnostic {
 
     pub(in super::super) fn error(
         category: CssCheckCategory,
-        code: &'static str,
         display_path: String,
         line: Option<usize>,
         column: Option<usize>,
@@ -115,7 +109,6 @@ impl CssCheckDiagnostic {
         Self {
             severity: CssCheckSeverity::Error,
             category,
-            code,
             display_path,
             line,
             column,

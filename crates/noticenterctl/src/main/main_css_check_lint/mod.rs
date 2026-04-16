@@ -16,7 +16,6 @@ mod values;
 
 #[derive(Debug)]
 pub(super) struct CssCheckLintFinding {
-    pub(super) code: &'static str,
     // Lint can point at the source when the scanner has a stable offset
     pub(super) line: Option<usize>,
     pub(super) column: Option<usize>,
@@ -55,7 +54,6 @@ pub(super) fn lint_css_files(
         for finding in report {
             diagnostics.push(CssCheckDiagnostic::warning_at(
                 CssCheckCategory::Lint,
-                finding.code,
                 display_path.clone(),
                 finding.line,
                 finding.column,

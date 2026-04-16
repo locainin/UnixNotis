@@ -22,7 +22,6 @@ pub(super) fn lint_runtime_config(
         // Runtime warnings should point at config.toml instead of a css file
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Runtime,
-            "RUNTIME001",
             display_config_path(config_dir, display_root, &config_path),
             message,
         ));

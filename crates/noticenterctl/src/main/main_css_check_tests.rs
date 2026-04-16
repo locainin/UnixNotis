@@ -114,7 +114,7 @@ fn lint_css_contents_reports_line_for_duplicate_property() {
     let warnings = lint_css_contents(css);
     let duplicate = warnings
         .iter()
-        .find(|warning| warning.code == "LINT003")
+        .find(|warning| warning.message.contains("duplicate property 'padding'"))
         .expect("duplicate property warning");
     assert_eq!(duplicate.line, Some(4));
     assert!(duplicate.column.is_some());
@@ -145,8 +145,12 @@ fn lint_css_contents_warns_when_unresolved_modern_override_replaces_legacy_value
     "#;
 
     let warnings = lint_css_contents(css);
-    assert!(warnings.iter().any(|warning| warning.code == "LINT003"));
-    assert!(warnings.iter().any(|warning| warning.code == "LINT004"));
+    assert!(warnings
+        .iter()
+        .any(|warning| warning.message.contains("duplicate property 'min-width'")));
+    assert!(warnings
+        .iter()
+        .any(|warning| warning.message.contains("uses var() in a layout value")));
 }
 
 #[test]

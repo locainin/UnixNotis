@@ -20,7 +20,7 @@ fn confirm_external_css_refs_err(
 ) -> anyhow::Result<()> {
     // Test helper that simulates non-interactive rejection
     Err(anyhow!(
-        "preset export found CSS asset references outside the UnixNotis config directory"
+        "preset export found CSS asset references that leave the UnixNotis config directory or use remote URLs"
     ))
 }
 
@@ -274,9 +274,9 @@ fn export_rejects_outside_css_asset_refs_in_noninteractive_runs() {
     )
     .expect_err("reject outside css asset refs without confirmation");
 
-    assert!(error
-        .to_string()
-        .contains("CSS asset references outside the UnixNotis config directory"));
+    assert!(error.to_string().contains(
+        "CSS asset references that leave the UnixNotis config directory or use remote URLs"
+    ));
     assert!(!bundle_path.exists());
 }
 

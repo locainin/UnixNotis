@@ -34,7 +34,6 @@ pub(super) fn lint_css_contents_with_properties(
                     let (lint_line, lint_column) =
                         line_column_for_offset(&stripped, offset + trimmed_start);
                     warnings.push(CssCheckLintFinding {
-                        code: "LINT001",
                         line: Some(lint_line),
                         column: Some(lint_column),
                         message: format!(
@@ -124,7 +123,6 @@ fn lint_css_block(
                     base_offset + css_block.selector_start + selector_offset,
                 );
                 warnings.push(CssCheckLintFinding {
-                    code: "LINT002",
                     line: Some(lint_line),
                     column: Some(lint_column),
                     message: format!(
@@ -174,7 +172,6 @@ fn lint_css_properties(
                 custom_properties,
             ) {
                 warnings.push(CssCheckLintFinding {
-                    code: "LINT003",
                     line: Some(lint_line),
                     column: Some(lint_column),
                     message: format!(
@@ -191,7 +188,6 @@ fn lint_css_properties(
             web_length_value_warning(&prop, &value, selector, context, custom_properties)
         {
             warnings.push(CssCheckLintFinding {
-                code: "LINT004",
                 line: Some(lint_line),
                 column: Some(lint_column),
                 message,

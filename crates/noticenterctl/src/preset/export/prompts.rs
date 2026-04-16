@@ -30,7 +30,7 @@ pub(super) fn confirm_export_external_css_refs(
     // Print full context before asking to continue
     let details = format_external_css_ref_lines(external_refs);
     eprintln!(
-        "preset export warning: found {} CSS asset reference(s) outside the UnixNotis config directory",
+        "preset export warning: found {} CSS asset reference(s) that leave the UnixNotis config directory or use remote URLs",
         external_refs.len()
     );
     for line in &details {
@@ -40,7 +40,7 @@ pub(super) fn confirm_export_external_css_refs(
     confirm_continue_or_abort(
         "External CSS asset references were found; continue exporting anyway?",
         &format!(
-            "preset export found CSS asset references outside the UnixNotis config directory; rerun interactively to confirm anyway\n{}",
+            "preset export found CSS asset references that leave the UnixNotis config directory or use remote URLs; rerun interactively to confirm anyway\n{}",
             details.join("\n")
         ),
     )
@@ -218,12 +218,17 @@ fn format_external_css_ref_lines(external_refs: &[ExternalCssAssetRef]) -> Vec<S
     external_refs
         .iter()
         .map(|asset_ref| {
+            let detail = if asset_ref.reason == "remote url" {
+                "remote URL".to_string()
+            } else {
+                asset_ref.reason.clone()
+            };
             // One warning line per found reference
             format!(
                 "  - {} -> {} ({})",
                 asset_ref.css_file.display(),
                 asset_ref.asset_ref,
-                asset_ref.reason
+                detail
             )
         })
         .collect()

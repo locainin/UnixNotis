@@ -84,3 +84,21 @@ fn finds_relative_parent_escape_in_live_css() {
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].reason, "relative path leaves the config root");
 }
+
+#[test]
+fn finds_remote_url_in_live_css() {
+    // Remote URLs stay valid css syntax, but they are still called out as non-local asset refs
+    let root = TempDirGuard::new("remote");
+    let config_dir = root.path.join("xdg/unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config dir");
+    let css_path = root.write(
+        "xdg/unixnotis/base.css",
+        ".panel { background-image: url(\"https://example.com/panel.png\"); }\n",
+    );
+
+    let refs =
+        collect_external_css_asset_refs_from_paths(&config_dir, &[css_path]).expect("scan css");
+
+    assert_eq!(refs.len(), 1);
+    assert_eq!(refs[0].reason, "remote url");
+}

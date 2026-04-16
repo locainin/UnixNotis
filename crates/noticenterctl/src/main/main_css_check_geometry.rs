@@ -76,7 +76,6 @@ pub(super) fn lint_geometry_css_files(
         for warning in report {
             diagnostics.push(CssCheckDiagnostic::warning(
                 CssCheckCategory::Geometry,
-                "GEOM001",
                 display_path.clone(),
                 warning,
             ));
@@ -87,7 +86,6 @@ pub(super) fn lint_geometry_css_files(
     for warning in model.finalize_warnings(&config) {
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Geometry,
-            "GEOM002",
             config_display.clone(),
             warning,
         ));
