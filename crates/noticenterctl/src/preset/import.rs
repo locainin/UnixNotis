@@ -323,5 +323,5 @@ fn format_external_css_ref_lines(external_refs: &[ExternalCssAssetRef]) -> Vec<S
 }
 
 #[cfg(test)]
-#[path = "import/tests.rs"]
+#[path = "import/tests/mod.rs"]
 mod tests;
