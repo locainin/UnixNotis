@@ -54,6 +54,7 @@ pub struct ControlServer {
 }
 // Cap inhibitor count so memory use stays bounded even under abusive clients
 const MAX_ACTIVE_INHIBITORS: u32 = 128;
+#[cfg(test)]
 use clear::clear_all_signal_plan;
 
 impl ControlServer {

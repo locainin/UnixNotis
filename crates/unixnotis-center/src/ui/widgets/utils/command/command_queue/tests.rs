@@ -5,7 +5,7 @@ use super::coalesced::{insert_coalesced_job, CoalescedRefreshState};
 use super::delayed::{
     next_delayed_wake, next_ready_delayed_job_index, try_enqueue_delayed_job, DelayedState,
 };
-use super::{CommandJob, CommandKind, CommandPlan};
+use super::{should_warn_queue_full_from, CommandJob, CommandKind, CommandPlan};
 
 fn job(cmd: &str, kind: CommandKind) -> CommandJob {
     // Keep test jobs small
@@ -138,4 +138,30 @@ fn delayed_wake_reports_zero_for_due_jobs() {
     // Due work wakes right away
     let delay = next_delayed_wake(&state.pending, now).expect("expected wake delay");
     assert_eq!(delay, Duration::ZERO);
+}
+
+#[test]
+fn queue_full_warning_throttle_blocks_repeats_inside_window() {
+    let start = Instant::now();
+    let mut last_warn = None;
+
+    assert!(should_warn_queue_full_from(&mut last_warn, start));
+    // Second warning inside the throttle interval should stay quiet
+    assert!(!should_warn_queue_full_from(
+        &mut last_warn,
+        start + Duration::from_secs(1)
+    ));
+}
+
+#[test]
+fn queue_full_warning_throttle_allows_after_window() {
+    let start = Instant::now();
+    let mut last_warn = None;
+
+    assert!(should_warn_queue_full_from(&mut last_warn, start));
+    // Warning should be allowed once the configured interval has passed
+    assert!(should_warn_queue_full_from(
+        &mut last_warn,
+        start + Duration::from_secs(6)
+    ));
 }

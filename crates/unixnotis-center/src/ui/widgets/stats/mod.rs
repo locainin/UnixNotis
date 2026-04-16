@@ -57,6 +57,16 @@ struct BuiltinStatWorker {
     receiver_guard: crossbeam_channel::Receiver<BuiltinStatJob>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BuiltinSubmitOutcome {
+    // Job was accepted by the worker queue
+    Submitted,
+    // Queue is healthy but currently saturated
+    QueueFull,
+    // Worker is unavailable and caller must use inline fallback
+    WorkerUnavailable,
+}
+
 fn apply_cached_value(label: &gtk::Label, cache: &Rc<RefCell<Option<String>>>) {
     if let Some(value) = cache.borrow().as_ref() {
         if label.text().as_str() != value {

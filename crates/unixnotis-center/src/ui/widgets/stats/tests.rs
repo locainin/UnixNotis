@@ -1,6 +1,6 @@
 //! Stat worker tests
 
-use super::{BuiltinStat, BuiltinStatJob, BuiltinStatWorker};
+use super::{BuiltinStat, BuiltinStatJob, BuiltinStatWorker, BuiltinSubmitOutcome};
 
 #[test]
 fn builtin_worker_queue_full_falls_back() {
@@ -11,13 +11,19 @@ fn builtin_worker_queue_full_falls_back() {
     let (tx_b, _rx_b) = async_channel::bounded(1);
 
     // First job fits in the bounded queue
-    assert!(worker.submit(BuiltinStatJob {
-        stat: stat_a,
-        respond: tx_a,
-    }));
+    assert_eq!(
+        worker.submit(BuiltinStatJob {
+            stat: stat_a,
+            respond: tx_a,
+        }),
+        BuiltinSubmitOutcome::Submitted
+    );
     // Second job proves the submit path reports saturation instead of blocking
-    assert!(!worker.submit(BuiltinStatJob {
-        stat: stat_b,
-        respond: tx_b,
-    }));
+    assert_eq!(
+        worker.submit(BuiltinStatJob {
+            stat: stat_b,
+            respond: tx_b,
+        }),
+        BuiltinSubmitOutcome::QueueFull
+    );
 }

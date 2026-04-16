@@ -7,7 +7,7 @@ mod metrics;
 mod tests;
 
 use std::sync::OnceLock;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use crossbeam_channel as channel;
 use tracing::warn;
@@ -260,21 +260,24 @@ impl FallbackWorker {
 }
 
 fn should_warn_queue_full() -> bool {
-    use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+    static LAST_WARN: OnceLock<std::sync::Mutex<Option<Instant>>> = OnceLock::new();
+    let lock = LAST_WARN.get_or_init(|| std::sync::Mutex::new(None));
+    // Warning path is cold, so a small mutex here is fine and keeps timing monotonic
+    let mut last_warn = match lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    should_warn_queue_full_from(&mut last_warn, Instant::now())
+}
 
-    static LAST_WARN: AtomicU64 = AtomicU64::new(0);
-    // Best-effort warning throttle
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let last = LAST_WARN.load(AtomicOrdering::Relaxed);
-    if now.saturating_sub(last) >= COMMAND_QUEUE_WARN_INTERVAL_SECS {
-        // Ordering does not matter here
-        LAST_WARN.store(now, AtomicOrdering::Relaxed);
-        return true;
+fn should_warn_queue_full_from(last_warn: &mut Option<Instant>, now: Instant) -> bool {
+    if let Some(last) = *last_warn {
+        if now.duration_since(last) < Duration::from_secs(COMMAND_QUEUE_WARN_INTERVAL_SECS) {
+            return false;
+        }
     }
-    false
+    *last_warn = Some(now);
+    true
 }
 
 fn run_worker(rx: channel::Receiver<CommandJob>) {

@@ -3,10 +3,14 @@
 use std::thread;
 use std::time::Instant;
 
+use crossbeam_channel::TrySendError;
 use gtk::glib;
 use tracing::warn;
 
-use super::{apply_cached_value, BuiltinStat, BuiltinStatJob, BuiltinStatWorker, StatItem};
+use super::{
+    apply_cached_value, BuiltinStat, BuiltinStatJob, BuiltinStatWorker, BuiltinSubmitOutcome,
+    StatItem,
+};
 
 impl BuiltinStatWorker {
     // Limit queued jobs to avoid unbounded growth if refresh is faster than the worker
@@ -52,12 +56,17 @@ impl BuiltinStatWorker {
         }
     }
 
-    pub(super) fn submit(&self, job: BuiltinStatJob) -> bool {
+    pub(super) fn submit(&self, job: BuiltinStatJob) -> BuiltinSubmitOutcome {
         if self.inline_fallback {
-            return false;
+            return BuiltinSubmitOutcome::WorkerUnavailable;
         }
         // Avoid blocking the UI thread when the worker queue is saturated
-        self.tx.try_send(job).is_ok()
+        match self.tx.try_send(job) {
+            Ok(()) => BuiltinSubmitOutcome::Submitted,
+            Err(TrySendError::Full(_job)) => BuiltinSubmitOutcome::QueueFull,
+            // Disconnected queue means the worker path is no longer usable
+            Err(TrySendError::Disconnected(_job)) => BuiltinSubmitOutcome::WorkerUnavailable,
+        }
     }
 }
 
@@ -80,19 +89,33 @@ impl StatItem {
         let (tx, rx) = async_channel::bounded(1);
         let mut fallback = builtin.clone();
         let worker = BuiltinStatWorker::global();
-        if !worker.submit(BuiltinStatJob {
+        match worker.submit(BuiltinStatJob {
             stat: builtin,
             respond: tx,
         }) {
-            self.inflight.set(false);
-            // Inline fallback keeps builtin stats readable when the worker is missing
-            let value = fallback.read().unwrap_or_else(|| "n/a".to_string());
-            *self.builtin.borrow_mut() = Some(fallback);
-            let changed = self.apply_value(&value);
-            self.refresh_backoff
-                .borrow_mut()
-                .note_success(Instant::now(), base_interval, changed);
-            return;
+            BuiltinSubmitOutcome::Submitted => {}
+            BuiltinSubmitOutcome::QueueFull => {
+                // Queue saturation should stay non-blocking on the GTK thread
+                self.inflight.set(false);
+                *self.builtin.borrow_mut() = Some(fallback);
+                self.refresh_backoff
+                    .borrow_mut()
+                    .note_error(Instant::now(), base_interval);
+                return;
+            }
+            BuiltinSubmitOutcome::WorkerUnavailable => {
+                self.inflight.set(false);
+                // Inline fallback keeps builtin stats readable when the worker is missing
+                let value = fallback.read().unwrap_or_else(|| "n/a".to_string());
+                *self.builtin.borrow_mut() = Some(fallback);
+                let changed = self.apply_value(&value);
+                self.refresh_backoff.borrow_mut().note_success(
+                    Instant::now(),
+                    base_interval,
+                    changed,
+                );
+                return;
+            }
         }
 
         let label = self.value_label.clone();
