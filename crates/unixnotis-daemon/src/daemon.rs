@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{info, warn};
 use unixnotis_core::{
     CloseReason, Config, ControlState, PopupGateState, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH,
 };
@@ -41,6 +41,8 @@ pub struct DaemonState {
     popups_running: AtomicBool,
     // Scheduler is installed after state startup so close paths can cancel timers
     scheduler: OnceLock<ExpirationScheduler>,
+    // Warn once if scheduler-backed operations happen before install
+    scheduler_missing_warned: AtomicBool,
     // Cache the last control-state snapshot so no-op signals can be skipped
     last_emitted_state: StdMutex<Option<ControlState>>,
     // Popup UIs only care about the gate, not panel history counters
@@ -79,6 +81,7 @@ impl DaemonState {
             panel_ready: AtomicBool::new(false),
             popups_running: AtomicBool::new(false),
             scheduler: OnceLock::new(),
+            scheduler_missing_warned: AtomicBool::new(false),
             last_emitted_state: StdMutex::new(None),
             last_emitted_popup_gate: StdMutex::new(None),
             notification_signal_bursts: StdMutex::new(std::collections::HashMap::new()),
@@ -87,12 +90,20 @@ impl DaemonState {
 
     pub fn set_scheduler(&self, scheduler: ExpirationScheduler) {
         // Scheduler is wired once during daemon startup
-        let _ = self.scheduler.set(scheduler);
+        if self.scheduler.set(scheduler).is_err() {
+            warn!("expiration scheduler was already installed; ignoring duplicate initialization");
+            return;
+        }
+        self.scheduler_missing_warned.store(false, Ordering::SeqCst);
     }
 
     fn scheduler(&self) -> Option<ExpirationScheduler> {
         // Cloning the sender handle is cheap and keeps await points simple
-        self.scheduler.get().cloned()
+        let scheduler = self.scheduler.get().cloned();
+        if scheduler.is_none() && !self.scheduler_missing_warned.swap(true, Ordering::SeqCst) {
+            warn!("expiration scheduler is unavailable during live daemon operation");
+        }
+        scheduler
     }
 
     async fn cancel_expiration(&self, id: u32) {
@@ -125,13 +136,14 @@ impl DaemonState {
         // Timer cancel happens before signal fanout so stale wakeups stop right away
         self.cancel_expiration(id).await;
 
-        let notif_ctx = SignalContext::new(&self.connection, NOTIFICATIONS_OBJECT_PATH)?;
-        NotificationServer::notification_closed(&notif_ctx, id, reason as u32).await?;
-
-        let control_ctx = SignalContext::new(&self.connection, CONTROL_OBJECT_PATH)?;
-        ControlServer::notification_closed(&control_ctx, id, reason).await?;
-        self.emit_state_changed().await?;
-
+        if let Err(err) = self.emit_close_fanout(id, reason).await {
+            warn!(
+                ?err,
+                id,
+                reason = reason as u32,
+                "notification close committed but one or more D-Bus signals failed"
+            );
+        }
         Ok(())
     }
 
@@ -148,6 +160,27 @@ impl DaemonState {
         if outcome.removed_active {
             // Panel dismiss removes the active entry, so its timer must go too
             self.cancel_expiration(id).await;
+        }
+        if let Err(err) = self.emit_dismiss_fanout(id, outcome.removed_active).await {
+            warn!(
+                ?err,
+                id, "panel dismiss committed but one or more D-Bus signals failed"
+            );
+        }
+        Ok(())
+    }
+
+    async fn emit_close_fanout(&self, id: u32, reason: CloseReason) -> zbus::Result<()> {
+        let notif_ctx = SignalContext::new(&self.connection, NOTIFICATIONS_OBJECT_PATH)?;
+        NotificationServer::notification_closed(&notif_ctx, id, reason as u32).await?;
+
+        let control_ctx = SignalContext::new(&self.connection, CONTROL_OBJECT_PATH)?;
+        ControlServer::notification_closed(&control_ctx, id, reason).await?;
+        self.emit_state_changed().await
+    }
+
+    async fn emit_dismiss_fanout(&self, id: u32, removed_active: bool) -> zbus::Result<()> {
+        if removed_active {
             let notif_ctx = SignalContext::new(&self.connection, NOTIFICATIONS_OBJECT_PATH)?;
             NotificationServer::notification_closed(
                 &notif_ctx,
@@ -159,9 +192,7 @@ impl DaemonState {
 
         let control_ctx = SignalContext::new(&self.connection, CONTROL_OBJECT_PATH)?;
         ControlServer::notification_closed(&control_ctx, id, CloseReason::DismissedByUser).await?;
-        self.emit_state_changed().await?;
-
-        Ok(())
+        self.emit_state_changed().await
     }
 
     async fn emit_state_changed(&self) -> zbus::Result<()> {

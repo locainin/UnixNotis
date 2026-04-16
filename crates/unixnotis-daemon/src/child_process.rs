@@ -157,7 +157,7 @@ async fn supervise_process(
     let mut backoff = RestartBackoff::new();
 
     loop {
-        if *shutdown.borrow() {
+        if shutdown_is_terminal(None, &mut shutdown) {
             kind.mark_running(&state, false);
             return;
         }
@@ -189,7 +189,9 @@ async fn supervise_process(
             status = child.wait() => {
                 kind.mark_running(&state, false);
                 let runtime = started_at.elapsed();
-                log_exit(label, pid, runtime, status);
+                if !handle_wait_result(&mut child, label, pid, runtime, status).await {
+                    return;
+                }
                 let delay = backoff.next_delay(runtime);
                 warn!(
                     delay_ms = delay.as_millis() as u64,
@@ -201,9 +203,8 @@ async fn supervise_process(
                 }
             }
             changed = shutdown.changed() => {
-                let _ = changed;
                 kind.mark_running(&state, false);
-                if *shutdown.borrow() {
+                if shutdown_is_terminal(Some(changed), &mut shutdown) {
                     terminate_child(&mut child, label).await;
                     return;
                 }
@@ -235,17 +236,74 @@ fn log_exit(label: &str, pid: u32, runtime: Duration, status: std::io::Result<Ex
     }
 }
 
+async fn handle_wait_result(
+    child: &mut Child,
+    label: &str,
+    pid: u32,
+    runtime: Duration,
+    status: std::io::Result<ExitStatus>,
+) -> bool {
+    match status {
+        Ok(status) => {
+            log_exit(label, pid, runtime, Ok(status));
+            true
+        }
+        Err(err) => {
+            let probe = child.try_wait().map(|status| status.is_some());
+            // Restart only after the child is known dead
+            // An unknown wait state can leave two UI processes alive at once
+            if wait_error_needs_recovery(&probe) {
+                warn!(
+                    ?err,
+                    pid,
+                    process = label,
+                    runtime_ms = runtime.as_millis() as u64,
+                    "ui process wait failed before exit was confirmed; terminating child before restart"
+                );
+                terminate_child(child, label).await;
+                return true;
+            }
+            warn!(
+                ?err,
+                pid,
+                process = label,
+                runtime_ms = runtime.as_millis() as u64,
+                "ui process wait failed but exit was confirmed"
+            );
+            true
+        }
+    }
+}
+
+fn wait_error_needs_recovery(probe: &std::io::Result<bool>) -> bool {
+    matches!(probe, Ok(false) | Err(_))
+}
+
+fn shutdown_is_terminal(
+    changed: Option<Result<(), watch::error::RecvError>>,
+    shutdown: &mut watch::Receiver<bool>,
+) -> bool {
+    // A closed watch channel means the supervisor owner is gone
+    // That should stop restarts the same way as an explicit true flag
+    if changed.is_some_and(|result| result.is_err()) {
+        return true;
+    }
+    if *shutdown.borrow() {
+        return true;
+    }
+    shutdown.has_changed().is_err()
+}
+
 async fn wait_for_retry_or_shutdown(delay: Duration, shutdown: &mut watch::Receiver<bool>) -> bool {
     // Zero-delay restarts recover fast after a long healthy run
     if delay.is_zero() {
-        return *shutdown.borrow();
+        return shutdown_is_terminal(None, shutdown);
     }
 
     tokio::select! {
         _ = sleep(delay) => false,
         changed = shutdown.changed() => {
-            let _ = changed;
-            *shutdown.borrow()
+            shutdown_is_terminal(Some(changed), shutdown)
         }
     }
 }
@@ -339,6 +397,7 @@ fn apply_parent_death_signal(_command: &mut Command) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::sync::watch;
 
     #[test]
     fn crash_loop_backoff_starts_at_base() {
@@ -366,5 +425,29 @@ mod tests {
             backoff.next_delay(Duration::from_secs(HEALTHY_RUNTIME_SECS)),
             Duration::ZERO
         );
+    }
+
+    #[test]
+    fn wait_error_needs_recovery_when_child_state_is_unknown() {
+        assert!(wait_error_needs_recovery(&Ok(false)));
+        assert!(wait_error_needs_recovery(&Err(std::io::Error::other(
+            "probe failed"
+        ))));
+        assert!(!wait_error_needs_recovery(&Ok(true)));
+    }
+
+    #[test]
+    fn shutdown_is_terminal_when_channel_is_closed() {
+        let (tx, rx) = watch::channel(false);
+        drop(tx);
+        let mut rx = rx;
+        assert!(shutdown_is_terminal(None, &mut rx));
+    }
+
+    #[test]
+    fn shutdown_is_terminal_when_flag_is_true() {
+        let (_tx, rx) = watch::channel(true);
+        let mut rx = rx;
+        assert!(shutdown_is_terminal(None, &mut rx));
     }
 }
