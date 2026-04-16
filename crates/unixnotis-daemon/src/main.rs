@@ -10,7 +10,6 @@ use tracing::{error, info, warn};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
-#[path = "child_process.rs"]
 mod child_process;
 mod daemon;
 #[path = "dbus_owner.rs"]

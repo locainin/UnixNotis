@@ -5,27 +5,31 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
-use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
-use tracing::{info, warn};
-use unixnotis_core::{
-    CloseReason, Config, ControlState, PopupGateState, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH,
-};
-use zbus::fdo::{RequestNameFlags, RequestNameReply};
+use tracing::warn;
+use unixnotis_core::{CloseReason, Config, ControlState, PopupGateState, CONTROL_OBJECT_PATH};
 use zbus::{Connection, SignalContext};
 
 use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
 use crate::store::NotificationStore;
 
+#[path = "daemon/bus_names.rs"]
+mod bus_names;
 #[path = "daemon/daemon_control.rs"]
 mod daemon_control;
 #[path = "daemon/daemon_notifications.rs"]
 mod daemon_notifications;
+#[path = "daemon/signal_burst.rs"]
+mod signal_burst;
 
+pub use bus_names::{log_name_reply, request_control_name, request_well_known_name};
 pub use daemon_control::{spawn_inhibitor_owner_watch, ControlServer};
 pub use daemon_notifications::NotificationServer;
+use signal_burst::{
+    notification_signal_mode_for_sender, NotificationBurstState, NotificationSignalMode,
+};
 
 pub(crate) const NOTIFICATIONS_OBJECT_PATH: &str = "/org/freedesktop/Notifications";
 
@@ -51,25 +55,6 @@ pub struct DaemonState {
     // instead of forcing a storm of full add/update fanout
     notification_signal_bursts: StdMutex<std::collections::HashMap<String, NotificationBurstState>>,
 }
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum NotificationSignalMode {
-    Direct,
-    SnapshotOnly,
-    Suppress,
-}
-
-#[derive(Clone, Debug)]
-struct NotificationBurstState {
-    window_started: Instant,
-    last_seen: Instant,
-    count: u16,
-    snapshot_emitted: bool,
-}
-
-const NOTIFICATION_SIGNAL_WINDOW: Duration = Duration::from_secs(1);
-const NOTIFICATION_DIRECT_SIGNAL_LIMIT: u16 = 8;
-const NOTIFICATION_SIGNAL_TRACK_LIMIT: usize = 128;
 
 impl DaemonState {
     pub fn new(connection: Connection, config: Config, sound: SoundSettings) -> Arc<Self> {
@@ -263,45 +248,6 @@ impl DaemonState {
     }
 }
 
-pub async fn request_well_known_name(
-    connection: &Connection,
-    replace_existing: bool,
-) -> zbus::Result<RequestNameReply> {
-    let flags = if replace_existing {
-        zbus::fdo::RequestNameFlags::ReplaceExisting | zbus::fdo::RequestNameFlags::AllowReplacement
-    } else {
-        // Avoid being replaceable in non-trial mode to prevent silent takeovers.
-        zbus::fdo::RequestNameFlags::DoNotQueue.into()
-    };
-    connection
-        .request_name_with_flags("org.freedesktop.Notifications", flags)
-        .await
-}
-
-pub async fn request_control_name(connection: &Connection) -> zbus::Result<RequestNameReply> {
-    let flags = RequestNameFlags::DoNotQueue;
-    connection
-        .request_name_with_flags(CONTROL_BUS_NAME, flags.into())
-        .await
-}
-
-pub fn log_name_reply(reply: &RequestNameReply) {
-    match reply {
-        RequestNameReply::PrimaryOwner => {
-            info!("acquired org.freedesktop.Notifications");
-        }
-        RequestNameReply::InQueue => {
-            info!("queued for org.freedesktop.Notifications");
-        }
-        RequestNameReply::AlreadyOwner => {
-            info!("already owns org.freedesktop.Notifications");
-        }
-        RequestNameReply::Exists => {
-            info!("org.freedesktop.Notifications is already owned");
-        }
-    }
-}
-
 pub(crate) fn to_fdo_error(err: zbus::Error) -> zbus::fdo::Error {
     zbus::fdo::Error::Failed(err.to_string())
 }
@@ -322,78 +268,4 @@ fn should_emit_cached<T: Clone + PartialEq>(cache: &StdMutex<Option<T>>, value: 
     // Clone once on change so later comparisons stay allocation-free for equal values
     *last_value = Some(value.clone());
     true
-}
-
-fn notification_signal_mode_for_sender(
-    cache: &StdMutex<std::collections::HashMap<String, NotificationBurstState>>,
-    sender: &str,
-) -> NotificationSignalMode {
-    let now = Instant::now();
-    let mut cache = match cache.lock() {
-        Ok(cache) => cache,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-
-    cache.retain(|_, state| now.duration_since(state.last_seen) <= NOTIFICATION_SIGNAL_WINDOW);
-    if cache.len() >= NOTIFICATION_SIGNAL_TRACK_LIMIT && !cache.contains_key(sender) {
-        // Unknown senders beyond the small tracking cap fall back to snapshot mode
-        return NotificationSignalMode::SnapshotOnly;
-    }
-
-    let state = cache
-        .entry(sender.to_string())
-        .or_insert_with(|| NotificationBurstState {
-            window_started: now,
-            last_seen: now,
-            count: 0,
-            snapshot_emitted: false,
-        });
-    if now.duration_since(state.window_started) > NOTIFICATION_SIGNAL_WINDOW {
-        state.window_started = now;
-        state.count = 0;
-        state.snapshot_emitted = false;
-    }
-    state.last_seen = now;
-    state.count = state.count.saturating_add(1);
-
-    if state.count <= NOTIFICATION_DIRECT_SIGNAL_LIMIT {
-        return NotificationSignalMode::Direct;
-    }
-    if !state.snapshot_emitted {
-        // One snapshot invalidation tells trusted UIs to resync once without replaying the whole burst
-        state.snapshot_emitted = true;
-        return NotificationSignalMode::SnapshotOnly;
-    }
-    // Extra events inside the same burst window add no value once the snapshot refresh is queued
-    NotificationSignalMode::Suppress
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        notification_signal_mode_for_sender, NotificationBurstState, NotificationSignalMode,
-        NOTIFICATION_DIRECT_SIGNAL_LIMIT,
-    };
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    #[test]
-    fn notification_signal_mode_falls_back_after_burst_limit() {
-        let cache = Mutex::new(HashMap::<String, NotificationBurstState>::new());
-
-        for _ in 0..NOTIFICATION_DIRECT_SIGNAL_LIMIT {
-            assert_eq!(
-                notification_signal_mode_for_sender(&cache, ":1.55"),
-                NotificationSignalMode::Direct
-            );
-        }
-        assert_eq!(
-            notification_signal_mode_for_sender(&cache, ":1.55"),
-            NotificationSignalMode::SnapshotOnly
-        );
-        assert_eq!(
-            notification_signal_mode_for_sender(&cache, ":1.55"),
-            NotificationSignalMode::Suppress
-        );
-    }
 }
