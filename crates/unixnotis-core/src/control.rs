@@ -258,6 +258,8 @@ trait Control {
 
     /// Update the Do Not Disturb state.
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
+    /// Toggle the Do Not Disturb state atomically in the daemon.
+    fn toggle_dnd(&self) -> zbus::Result<()>;
 
     /// Register an inhibitor to suppress notification output and return its token.
     fn inhibit(&self, reason: &str, scope: u32) -> zbus::Result<u64>;

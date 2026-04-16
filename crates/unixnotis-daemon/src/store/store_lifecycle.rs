@@ -193,7 +193,11 @@ impl NotificationStore {
         if notification.suppress_sound {
             return false;
         }
-        // Inhibitors suppress popups only, while sound follows DND and rule flags
+        // Inhibitors should suppress sound too so focus/presentation mode stays quiet.
+        if self.inhibited {
+            return false;
+        }
+        // DND still keeps critical notification sounds enabled.
         if self.dnd_enabled {
             return notification.urgency == Urgency::Critical;
         }

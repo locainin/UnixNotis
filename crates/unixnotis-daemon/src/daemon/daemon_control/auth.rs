@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use rustix::process::geteuid;
 use sha2::{Digest, Sha256};
@@ -40,6 +40,40 @@ struct FileFingerprint {
     // Content hash blocks exact-name swaps inside a writable sibling directory
     sha256: [u8; 32],
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FileFingerprintSignature {
+    // Signature fields let unchanged files skip repeat hashing across control calls
+    len: u64,
+    #[cfg(unix)]
+    dev: u64,
+    #[cfg(unix)]
+    ino: u64,
+    #[cfg(unix)]
+    mode: u32,
+    #[cfg(unix)]
+    uid: u32,
+    #[cfg(unix)]
+    gid: u32,
+    #[cfg(unix)]
+    mtime: i64,
+    #[cfg(unix)]
+    mtime_nsec: i64,
+    #[cfg(unix)]
+    ctime: i64,
+    #[cfg(unix)]
+    ctime_nsec: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct FingerprintCacheEntry {
+    path: PathBuf,
+    signature: FileFingerprintSignature,
+    fingerprint: FileFingerprint,
+}
+
+// Small bounded cache is enough because trusted control callers come from a tiny fixed set.
+const FINGERPRINT_CACHE_CAPACITY: usize = 32;
 
 pub(super) async fn authorize_control_call(
     state: &Arc<DaemonState>,
@@ -202,6 +236,10 @@ fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
     if !trusted_control_file_metadata_is_safe(&metadata) {
         return None;
     }
+    let signature = file_fingerprint_signature(&metadata)?;
+    if let Some(cached) = load_cached_fingerprint(path, signature) {
+        return Some(cached);
+    }
 
     // Hash the whole file
     let mut file = File::open(path).ok()?;
@@ -215,10 +253,84 @@ fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
         hasher.update(&buf[..read]);
     }
 
-    Some(FileFingerprint {
+    let fingerprint = FileFingerprint {
         len: metadata.len(),
         sha256: hasher.finalize().into(),
-    })
+    };
+    store_cached_fingerprint(path, signature, fingerprint.clone());
+    Some(fingerprint)
+}
+
+fn file_fingerprint_signature(metadata: &std::fs::Metadata) -> Option<FileFingerprintSignature> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+
+        return Some(FileFingerprintSignature {
+            len: metadata.len(),
+            dev: metadata.dev(),
+            ino: metadata.ino(),
+            mode: metadata.mode(),
+            uid: metadata.uid(),
+            gid: metadata.gid(),
+            mtime: metadata.mtime(),
+            mtime_nsec: metadata.mtime_nsec(),
+            ctime: metadata.ctime(),
+            ctime_nsec: metadata.ctime_nsec(),
+        });
+    }
+
+    #[cfg(not(unix))]
+    {
+        Some(FileFingerprintSignature {
+            len: metadata.len(),
+        })
+    }
+}
+
+fn fingerprint_cache() -> &'static Mutex<Vec<FingerprintCacheEntry>> {
+    static CACHE: OnceLock<Mutex<Vec<FingerprintCacheEntry>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn load_cached_fingerprint(
+    path: &Path,
+    signature: FileFingerprintSignature,
+) -> Option<FileFingerprint> {
+    let cache = fingerprint_cache();
+    let cache = match cache.lock() {
+        Ok(cache) => cache,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    cache
+        .iter()
+        .find(|entry| entry.path == path && entry.signature == signature)
+        .map(|entry| entry.fingerprint.clone())
+}
+
+fn store_cached_fingerprint(
+    path: &Path,
+    signature: FileFingerprintSignature,
+    fingerprint: FileFingerprint,
+) {
+    let cache = fingerprint_cache();
+    let mut cache = match cache.lock() {
+        Ok(cache) => cache,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    // Refresh existing entry in place when the same path is checked again.
+    if let Some(index) = cache.iter().position(|entry| entry.path == path) {
+        cache.remove(index);
+    }
+    if cache.len() >= FINGERPRINT_CACHE_CAPACITY {
+        cache.remove(0);
+    }
+    cache.push(FingerprintCacheEntry {
+        path: path.to_path_buf(),
+        signature,
+        fingerprint,
+    });
 }
 
 fn canonicalize_best_effort(path: &Path) -> PathBuf {

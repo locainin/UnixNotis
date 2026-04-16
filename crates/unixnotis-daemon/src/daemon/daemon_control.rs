@@ -65,6 +65,36 @@ impl ControlServer {
             "unixnotis-center is unavailable".to_string(),
         ))
     }
+
+    async fn apply_dnd_state(&self, enabled: bool) -> zbus::fdo::Result<()> {
+        // Capture the previous state so persistence failures can roll back cleanly
+        let (changed, persist, previous) = {
+            let mut store = self.state.store.lock().await;
+            let previous = store.dnd_enabled();
+            let (changed, persist) = store.set_dnd(enabled);
+            (changed, persist, previous)
+        };
+        if let Some(store) = persist {
+            // Persist outside the main store lock to avoid blocking notify paths on I/O
+            if let Err(err) = store.persist(enabled) {
+                warn!(?err, "failed to persist do-not-disturb state");
+                // Undo the in-memory change
+                let mut state = self.state.store.lock().await;
+                let _ = state.set_dnd(previous);
+                return Err(zbus::fdo::Error::Failed(
+                    "failed to persist do-not-disturb state".to_string(),
+                ));
+            }
+        }
+        if changed {
+            // Emit state updates only when the value changes to avoid log noise.
+            self.state
+                .emit_state_changed()
+                .await
+                .map_err(to_fdo_error)?;
+        }
+        Ok(())
+    }
 }
 
 #[interface(name = "com.unixnotis.Control")]
@@ -175,33 +205,16 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "SetDnd").await?;
-        // Capture the previous state so persistence failures can roll back cleanly
-        let (changed, persist, previous) = {
-            let mut store = self.state.store.lock().await;
-            let previous = store.dnd_enabled();
-            let (changed, persist) = store.set_dnd(enabled);
-            (changed, persist, previous)
+        self.apply_dnd_state(enabled).await
+    }
+
+    async fn toggle_dnd(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "ToggleDnd").await?;
+        let next = {
+            let store = self.state.store.lock().await;
+            !store.dnd_enabled()
         };
-        if let Some(store) = persist {
-            // Persist outside the main store lock to avoid blocking notify paths on I/O
-            if let Err(err) = store.persist(enabled) {
-                warn!(?err, "failed to persist do-not-disturb state");
-                // Undo the in-memory change
-                let mut state = self.state.store.lock().await;
-                let _ = state.set_dnd(previous);
-                return Err(zbus::fdo::Error::Failed(
-                    "failed to persist do-not-disturb state".to_string(),
-                ));
-            }
-        }
-        if changed {
-            // Emit state updates only when the value changes to avoid log noise.
-            self.state
-                .emit_state_changed()
-                .await
-                .map_err(to_fdo_error)?;
-        }
-        Ok(())
+        self.apply_dnd_state(next).await
     }
 
     async fn inhibit(
