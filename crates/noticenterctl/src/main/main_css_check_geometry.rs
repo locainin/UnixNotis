@@ -4,10 +4,10 @@
 mod model;
 #[path = "main_css_check_geometry/parse.rs"]
 mod parse;
-#[path = "main_css_check_geometry/stock.rs"]
+#[path = "main_css_check_geometry/stock/mod.rs"]
 mod stock;
 #[cfg(test)]
-#[path = "main_css_check_geometry/tests.rs"]
+#[path = "main_css_check_geometry/tests/mod.rs"]
 mod tests;
 
 use std::fs;

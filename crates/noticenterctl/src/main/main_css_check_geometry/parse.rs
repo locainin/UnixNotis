@@ -10,7 +10,8 @@ use super::super::main_css_check_policy::{
     is_complex_geometry_warning_property, is_horizontal_size_property,
 };
 use super::model::GeometryModel;
-use super::stock::{known_unixnotis_classes, should_warn_for_unmodeled_known_class};
+use super::stock::classes::known_unixnotis_classes;
+use super::stock::should_warn_for_unmodeled_known_class;
 
 // Split the parser by job so width parsing, selector checks, and token collection stay separate
 #[path = "parse/custom_properties.rs"]

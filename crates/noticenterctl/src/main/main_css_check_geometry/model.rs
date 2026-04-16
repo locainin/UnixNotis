@@ -2,7 +2,7 @@
 
 use unixnotis_core::Config;
 
-use super::stock::{stock_config, stock_geometry_model};
+use super::stock::baselines::{stock_config, stock_geometry_model};
 
 // Keep the geometry model split by job so width math changes stay easy to trace
 #[path = "model/box_metrics.rs"]

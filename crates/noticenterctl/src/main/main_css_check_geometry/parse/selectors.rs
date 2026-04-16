@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::super::stock::stock_matches_complex_selector_rules;
+use super::super::stock::baselines::stock_matches_complex_selector_rules;
 
 // Selector checks stay separate so the width parser only deals with declarations
 pub(super) fn maybe_warn_for_complex_unixnotis_selector(
