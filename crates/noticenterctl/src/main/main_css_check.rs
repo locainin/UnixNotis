@@ -4,7 +4,7 @@
 mod main_css_check_files;
 #[path = "main_css_check_geometry.rs"]
 mod main_css_check_geometry;
-#[path = "main_css_check_lint.rs"]
+#[path = "main_css_check_lint/mod.rs"]
 mod main_css_check_lint;
 #[path = "main_css_check_parse.rs"]
 mod main_css_check_parse;
