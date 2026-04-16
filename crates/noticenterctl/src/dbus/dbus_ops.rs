@@ -18,7 +18,10 @@ pub(crate) async fn handle_command(proxy: &ControlProxy<'_>, command: Command) -
             // Debug mode opens the panel and streams daemon logs for real-time triage.
             if let Some(level) = debug {
                 proxy.open_panel_debug(level.into()).await?;
-                follow_debug_logs()?;
+                // Panel open should still succeed when journal follow is unavailable.
+                if let Err(err) = follow_debug_logs() {
+                    eprintln!("debug log follow unavailable: {err}");
+                }
             } else {
                 proxy.open_panel().await?;
             }
@@ -65,9 +68,8 @@ pub(crate) async fn handle_command(proxy: &ControlProxy<'_>, command: Command) -
                 proxy.set_dnd(false).await?;
             }
             DndState::Toggle => {
-                // Read current state from the daemon to avoid local drift.
-                let current = proxy.get_state().await?;
-                proxy.set_dnd(!current.dnd_enabled).await?;
+                // Toggle must happen atomically in the daemon to avoid read-modify-write races.
+                proxy.toggle_dnd().await?;
             }
         },
         Command::Inhibit { reason, scope } => {

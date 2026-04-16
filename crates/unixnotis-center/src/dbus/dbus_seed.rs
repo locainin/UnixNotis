@@ -73,9 +73,9 @@ pub(crate) async fn seed_state(
     proxy: &ControlProxy<'_>,
     sender: &async_channel::Sender<UiEvent>,
 ) -> Result<(), SeedError> {
-    let state = proxy.get_state().await;
-    let active = proxy.list_active().await;
-    let history = proxy.list_history().await;
+    // Fetch in parallel so startup waits on the slowest call instead of the sum of all calls.
+    let (state, active, history) =
+        tokio::join!(proxy.get_state(), proxy.list_active(), proxy.list_history());
 
     match (state, active, history) {
         (Ok(state), Ok(active), Ok(history)) => {
