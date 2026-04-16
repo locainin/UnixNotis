@@ -19,9 +19,10 @@ pub(super) async fn refresh_cache(
     for state in states {
         // A transient DBus read error should not blank a live player card
         // Keep the last good snapshot until a fresh read succeeds or the player disappears
-        if let Some(info) =
-            merge_media_info(previous.get(&state.bus_name), fetch_media_info(&state).await)
-        {
+        if let Some(info) = merge_media_info(
+            previous.get(&state.bus_name),
+            fetch_media_info(&state).await,
+        ) {
             next.insert(state.bus_name.clone(), info);
         }
     }
