@@ -9,6 +9,7 @@ use std::os::unix::process::CommandExt;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 #[cfg(unix)]
@@ -26,6 +27,8 @@ use super::command_parse::{parse_simple_command, ParsedCommand};
 const MAX_CAPTURE_BYTES: usize = 1024 * 1024;
 // Missing target used when a command tries to leave the config dir
 const BLOCKED_OUTSIDE_ROOT_PROGRAM: &str = ".unixnotis-blocked-command-path";
+// Keep warning memory bounded while still suppressing repeat shell-fallback spam
+const SHELL_FALLBACK_CACHE_LIMIT: usize = 64;
 
 pub(super) fn build_command_runtime() -> Option<Runtime> {
     // A lightweight runtime enables async pipe reads without spawning extra threads,
@@ -253,6 +256,7 @@ pub(super) fn build_command(cmd: &str) -> Command {
         return command;
     }
 
+    log_shell_fallback_once(cmd);
     let mut command = Command::new("sh");
     // Non-login shell avoids profile sourcing on every widget refresh.
     command.arg("-c").arg(cmd);
@@ -278,10 +282,50 @@ pub(super) fn build_tokio_command(cmd: &str) -> TokioCommand {
     }
 
     // Shell fallback keeps behavior consistent with previous implementation.
+    log_shell_fallback_once(cmd);
     let mut command = TokioCommand::new("sh");
     command.arg("-c").arg(cmd);
     configure_command_tokio(&mut command);
     command
+}
+
+fn log_shell_fallback_once(cmd: &str) {
+    let hash = shell_fallback_hash(cmd);
+    let cache = shell_fallback_cache();
+    let mut cache = match cache.lock() {
+        Ok(cache) => cache,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    if cache.contains(&hash) {
+        return;
+    }
+    if cache.len() >= SHELL_FALLBACK_CACHE_LIMIT {
+        cache.remove(0);
+    }
+    cache.push(hash);
+    drop(cache);
+
+    // Shell-backed commands are expected for some widgets, but shared configs should surface them
+    // so dangerous presets do not silently hide behind the fallback path
+    warn!(
+        command = %unixnotis_core::util::log_snippet(cmd),
+        command_hash = format_args!("{hash:016x}"),
+        "widget command is using shell fallback"
+    );
+}
+
+fn shell_fallback_cache() -> &'static Mutex<Vec<u64>> {
+    static CACHE: OnceLock<Mutex<Vec<u64>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn shell_fallback_hash(cmd: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    cmd.hash(&mut hasher);
+    hasher.finish()
 }
 
 fn configure_command(command: &mut Command) {

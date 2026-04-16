@@ -7,6 +7,8 @@
 mod apply;
 #[path = "import/checks.rs"]
 mod checks;
+#[path = "import/exec_review.rs"]
+mod exec_review;
 #[path = "import/plan.rs"]
 mod plan;
 
@@ -18,9 +20,11 @@ use crate::main_css_check::run_css_check;
 
 use self::apply::{apply_import_plan, finalize_import_transaction, rollback_import_transaction};
 use self::checks::{
-    validate_config_command_paths_for_import, validate_config_theme_paths_stay_in_root,
-    validate_imported_command_paths_stay_in_root, validate_imported_theme_paths_stay_in_root,
+    collect_imported_exec_content, validate_config_command_paths_for_import,
+    validate_config_theme_paths_stay_in_root, validate_imported_command_paths_stay_in_root,
+    validate_imported_theme_paths_stay_in_root, ImportedExecContent,
 };
+use self::exec_review::confirm_import_exec_content;
 use self::plan::{build_import_plan, ImportPlan};
 use super::archive::read_bundle;
 use super::css_asset_refs::{collect_external_css_asset_refs_from_bundle, ExternalCssAssetRef};
@@ -51,7 +55,12 @@ struct PreparedImport {
     plan: ImportPlan,
 }
 
-pub(super) fn run_import(input_path: &Path, except: &[String], dry_run: bool) -> Result<()> {
+pub(super) fn run_import(
+    input_path: &Path,
+    except: &[String],
+    dry_run: bool,
+    allow_exec: bool,
+) -> Result<()> {
     // Resolve the live config root once for the CLI path
     let config_dir = Config::default_config_dir().context("resolve config directory")?;
     // CLI import accepts a missing extension and can append it after confirmation
@@ -60,7 +69,9 @@ pub(super) fn run_import(input_path: &Path, except: &[String], dry_run: bool) ->
         &config_dir,
         &input_path,
         except,
+        allow_exec,
         confirm_import_external_css_refs,
+        confirm_import_exec_content,
     )?;
 
     if dry_run {
@@ -123,23 +134,35 @@ pub(super) fn import_preset_into(
         input_path,
         except,
         dry_run,
+        false,
         confirm_import_external_css_refs,
+        confirm_import_exec_content,
     )
 }
 
 #[cfg(test)]
-pub(super) fn import_preset_into_with_confirm<F>(
+pub(super) fn import_preset_into_with_confirm<F, G>(
     config_dir: &Path,
     input_path: &Path,
     except: &[String],
     dry_run: bool,
+    allow_exec: bool,
     confirm_external_css_refs: F,
+    confirm_exec_content: G,
 ) -> Result<ImportSummary>
 where
     F: FnOnce(&[ExternalCssAssetRef]) -> Result<()>,
+    G: FnOnce(&ImportedExecContent, bool) -> Result<()>,
 {
     // Tests inject a fixed answer here so the import plan can be checked without terminal prompts
-    let prepared = prepare_import(config_dir, input_path, except, confirm_external_css_refs)?;
+    let prepared = prepare_import(
+        config_dir,
+        input_path,
+        except,
+        allow_exec,
+        confirm_external_css_refs,
+        confirm_exec_content,
+    )?;
 
     if dry_run {
         // Dry-run reports the exact write plan without creating backups or files
@@ -156,7 +179,9 @@ fn prepare_import(
     config_dir: &Path,
     input_path: &Path,
     except: &[String],
+    allow_exec: bool,
     confirm_external_css_refs: impl FnOnce(&[ExternalCssAssetRef]) -> Result<()>,
+    confirm_exec_content: impl FnOnce(&ImportedExecContent, bool) -> Result<()>,
 ) -> Result<PreparedImport> {
     validate_preset_bundle_path(input_path)?;
     // The whole config-root path must be free of symlink hops before any write plan is built
@@ -206,9 +231,14 @@ fn prepare_import(
     validate_imported_theme_paths_stay_in_root(config_dir, &effective_config_bytes)?;
     // Explicit path commands should stay inside the shared config root too
     validate_imported_command_paths_stay_in_root(config_dir, &effective_config_bytes)?;
+    // Shared presets default to data-only imports unless the caller explicitly trusts exec content
+    let exec_content = collect_imported_exec_content(&effective_config_bytes, &bundle.files)?;
+    // The exec review prompt must run before the CSS prompt so trust comes first
+    confirm_exec_content(&exec_content, allow_exec)?;
     // CSS asset refs are warning-only, but the prompt still needs to happen before any write starts
     let external_css_refs = collect_external_css_asset_refs_from_bundle(config_dir, &bundle.files);
     confirm_external_css_refs(&external_css_refs)?;
+    // The write plan is built last so prompts cannot leave behind partial staging state
     let plan = build_import_plan(config_dir, bundle.files, &exclusions)?;
     Ok(PreparedImport { plan })
 }
@@ -246,7 +276,7 @@ fn confirm_import_external_css_refs(external_refs: &[ExternalCssAssetRef]) -> Re
     // The caller needs the concrete file and ref before deciding whether portability matters here
     let details = format_external_css_ref_lines(external_refs);
     eprintln!(
-        "preset import warning: found {} CSS asset reference(s) outside the UnixNotis config directory",
+        "preset import warning: found {} CSS asset reference(s) that leave the UnixNotis config directory or use remote URLs",
         external_refs.len()
     );
     for line in &details {
@@ -256,7 +286,7 @@ fn confirm_import_external_css_refs(external_refs: &[ExternalCssAssetRef]) -> Re
     confirm_continue_or_abort(
         "External CSS asset references were found; continue importing anyway?",
         &format!(
-            "preset import found CSS asset references outside the UnixNotis config directory; rerun interactively to confirm anyway\n{}",
+            "preset import found CSS asset references that leave the UnixNotis config directory or use remote URLs; rerun interactively to confirm anyway\n{}",
             details.join("\n")
         ),
     )
@@ -266,12 +296,17 @@ fn format_external_css_ref_lines(external_refs: &[ExternalCssAssetRef]) -> Vec<S
     external_refs
         .iter()
         .map(|asset_ref| {
+            let detail = if asset_ref.reason == "remote url" {
+                "remote URL".to_string()
+            } else {
+                asset_ref.reason.clone()
+            };
             // One-line rows make the warning easy to scan before the prompt is shown
             format!(
                 "  - {} -> {} ({})",
                 asset_ref.css_file.display(),
                 asset_ref.asset_ref,
-                asset_ref.reason
+                detail
             )
         })
         .collect()

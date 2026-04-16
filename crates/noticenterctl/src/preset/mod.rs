@@ -31,7 +31,8 @@ pub(crate) fn run_preset(command: PresetCommand) -> Result<()> {
             input,
             except,
             dry_run,
-        } => import::run_import(Path::new(&input), &except, dry_run),
+            allow_exec,
+        } => import::run_import(Path::new(&input), &except, dry_run, allow_exec),
         PresetCommand::Inspect { input } => inspect::run_inspect(Path::new(&input)),
     }
 }

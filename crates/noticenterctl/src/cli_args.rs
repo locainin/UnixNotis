@@ -88,6 +88,8 @@ pub(crate) enum PresetCommand {
         except: Vec<String>,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        allow_exec: bool,
     },
     // Print bundle metadata and included files without writing anything.
     Inspect {
@@ -278,11 +280,13 @@ mod tests {
                         input,
                         except,
                         dry_run,
+                        allow_exec,
                     },
             } => {
                 assert_eq!(input, "anime.unixnotis");
                 assert!(except.is_empty());
                 assert!(dry_run);
+                assert!(!allow_exec);
             }
             other => panic!("unexpected command: {other:?}"),
         }
