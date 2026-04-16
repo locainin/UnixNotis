@@ -227,16 +227,26 @@ fn prepare_import(
         })?
     };
 
+    let included_bundle_files = bundle
+        .files
+        .iter()
+        // Warning and review prompts should only talk about files that will actually be applied
+        .filter(|file| !relative_path_matches_exclusion(&file.relative_path, &exclusions))
+        .cloned()
+        .collect::<Vec<_>>();
+
     // This closes both bundled and kept-local config chains before any file is written
     validate_imported_theme_paths_stay_in_root(config_dir, &effective_config_bytes)?;
     // Explicit path commands should stay inside the shared config root too
     validate_imported_command_paths_stay_in_root(config_dir, &effective_config_bytes)?;
     // Shared presets default to data-only imports unless the caller explicitly trusts exec content
-    let exec_content = collect_imported_exec_content(&effective_config_bytes, &bundle.files)?;
+    let exec_content =
+        collect_imported_exec_content(&effective_config_bytes, &included_bundle_files)?;
     // The exec review prompt must run before the CSS prompt so trust comes first
     confirm_exec_content(&exec_content, allow_exec)?;
     // CSS asset refs are warning-only, but the prompt still needs to happen before any write starts
-    let external_css_refs = collect_external_css_asset_refs_from_bundle(config_dir, &bundle.files);
+    let external_css_refs =
+        collect_external_css_asset_refs_from_bundle(config_dir, &included_bundle_files);
     confirm_external_css_refs(&external_css_refs)?;
     // The write plan is built last so prompts cannot leave behind partial staging state
     let plan = build_import_plan(config_dir, bundle.files, &exclusions)?;

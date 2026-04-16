@@ -272,6 +272,70 @@ fn import_rejects_outside_css_asset_refs_in_noninteractive_runs() {
 }
 
 #[test]
+fn import_skips_css_asset_warning_for_excluded_stylesheet() {
+    let export_root = TempDirGuard::new("excluded-css-warning-export");
+    export_root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    export_root.write("base.css", ".panel { color: red; }\n");
+    export_root.write(
+        "assets.css",
+        ".panel { background-image: url(\"../outside.png\"); }\n",
+    );
+    let bundle_path = export_root.path.join("demo.unixnotis");
+    let collected = CollectedConfigFiles {
+        files: [
+            ("config.toml", "config.toml"),
+            ("base.css", "base.css"),
+            ("assets.css", "assets.css"),
+        ]
+        .into_iter()
+        .map(|(relative_path, source_path)| {
+            let source_path = export_root.path.join(source_path);
+            PresetFileSource {
+                relative_path: PathBuf::from(relative_path),
+                size: fs::metadata(&source_path).expect("metadata").len(),
+                source_path,
+                mode: 0o644,
+                contents_override: None,
+            }
+        })
+        .collect(),
+        ..Default::default()
+    };
+    let manifest = PresetManifest::new(
+        "demo".to_string(),
+        "2026-04-16T00:00:00Z".to_string(),
+        env!("CARGO_PKG_VERSION").to_string(),
+        collected
+            .files
+            .iter()
+            .map(|file| PresetManifestFile {
+                path: file.relative_path.display().to_string(),
+                size: file.size,
+            })
+            .collect(),
+    );
+    write_bundle(&bundle_path, &manifest, &collected).expect("write bundle");
+
+    let import_root = TempDirGuard::new("excluded-css-warning-import");
+    let summary = import_preset_into_with_confirm(
+        &import_root.path,
+        &bundle_path,
+        &["assets.css".to_string()],
+        false,
+        false,
+        |refs| {
+            assert!(refs.is_empty());
+            Ok(())
+        },
+        |_exec_content, _allow_exec| Ok(()),
+    )
+    .expect("ignore excluded stylesheet warning");
+
+    assert_eq!(summary.file_count, 2);
+    assert!(!import_root.path.join("assets.css").exists());
+}
+
+#[test]
 fn import_rejects_command_bearing_bundle_by_default() {
     let export_root = TempDirGuard::new("command-bearing-export");
     export_root.write(
@@ -296,6 +360,36 @@ cmd = "scripts/probe.sh"
         .to_string()
         .contains("rerun interactively to inspect them or use --allow-exec"));
     assert!(!import_root.path.join("config.toml").exists());
+}
+
+#[test]
+fn import_skips_exec_review_for_excluded_script_payload() {
+    let export_root = TempDirGuard::new("excluded-script-export");
+    export_root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    export_root.write("base.css", ".probe { color: red; }");
+    export_root.write("scripts/probe.sh", "#!/bin/sh\necho ok\n");
+    let bundle_path = export_root.path.join("demo.unixnotis");
+    export_preset_from(&export_root.path, &bundle_path, &[], false).expect("export bundle");
+
+    let import_root = TempDirGuard::new("excluded-script-import");
+    let summary = import_preset_into_with_confirm(
+        &import_root.path,
+        &bundle_path,
+        &["scripts".to_string()],
+        false,
+        false,
+        |_refs| Ok(()),
+        |exec_content, allow_exec| {
+            assert!(!allow_exec);
+            assert!(exec_content.commands.is_empty());
+            assert!(exec_content.files.is_empty());
+            Ok(())
+        },
+    )
+    .expect("ignore excluded script payload");
+
+    assert_eq!(summary.file_count, 2);
+    assert!(!import_root.path.join("scripts/probe.sh").exists());
 }
 
 #[test]
