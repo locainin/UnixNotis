@@ -55,15 +55,13 @@ pub(in crate::main_css_check) fn stock_geometry_model() -> &'static GeometryMode
         );
         let shared_custom_properties = collect_custom_property_scopes(
             &std::iter::once(generated_tokens.as_str())
-                .chain(
-                    [
-                        DEFAULT_BASE_CSS,
-                        DEFAULT_PANEL_CSS,
-                        DEFAULT_POPUP_CSS,
-                        DEFAULT_WIDGETS_CSS,
-                        DEFAULT_MEDIA_CSS,
-                    ],
-                )
+                .chain([
+                    DEFAULT_BASE_CSS,
+                    DEFAULT_PANEL_CSS,
+                    DEFAULT_POPUP_CSS,
+                    DEFAULT_WIDGETS_CSS,
+                    DEFAULT_MEDIA_CSS,
+                ])
                 .collect::<Vec<_>>()
                 .join("\n"),
         );
