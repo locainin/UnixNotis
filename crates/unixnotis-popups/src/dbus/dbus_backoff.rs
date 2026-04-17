@@ -36,7 +36,8 @@ impl Backoff {
         let jitter = jitter_duration(BACKOFF_JITTER_MS);
         let sleep = self.current;
         self.current = (self.current * 2).min(self.max);
-        sleep + jitter
+        // Clamp after jitter so the public max stays a real ceiling
+        (sleep + jitter).min(self.max)
     }
 }
 
@@ -113,7 +114,7 @@ fn next_jitter_seed() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::jitter_duration;
+    use super::{jitter_duration, Backoff};
     use std::time::Duration;
 
     #[test]
@@ -127,5 +128,13 @@ mod tests {
         // Jitter must always stay within the configured bound
         let jitter = jitter_duration(5);
         assert!(jitter < Duration::from_millis(5));
+    }
+
+    #[test]
+    fn backoff_sleep_never_exceeds_max() {
+        let mut backoff = Backoff::new(250, 5000);
+        for _ in 0..32 {
+            assert!(backoff.next_sleep() <= Duration::from_millis(5000));
+        }
     }
 }

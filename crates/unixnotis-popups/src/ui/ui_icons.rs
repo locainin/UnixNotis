@@ -112,7 +112,7 @@ impl UiState {
             // Decoded file:// paths allow loading icon files with escaped characters.
             if file_path.is_file() {
                 // Reuse a cached texture when available to avoid repeated decode work.
-                if let Some(texture) = self.icon_texture_cache.borrow_mut().get(&file_path) {
+                if let Some(texture) = self.icon_texture_cache.borrow_mut().get(&file_path, size) {
                     let widget = gtk::Image::new();
                     widget.set_paintable(Some(&texture));
                     set_popup_icon_size(&widget, size);
@@ -150,9 +150,11 @@ impl UiState {
                         .upcast::<gdk::Texture>();
                         // Cache only modestly sized textures to limit resident memory.
                         if icon.bytes.len() <= ICON_TEXTURE_CACHE_MAX_BYTES {
-                            cache
-                                .borrow_mut()
-                                .insert(path_clone.clone(), texture.clone());
+                            cache.borrow_mut().insert(
+                                path_clone.clone(),
+                                target_size,
+                                texture.clone(),
+                            );
                         }
                         widget_clone.set_paintable(Some(&texture));
                         set_popup_icon_size(&widget_clone, target_size);
