@@ -7,6 +7,7 @@ use gtk::{Align, Overflow};
 use crate::media::MediaHandle;
 
 use super::super::marquee::MarqueeLabel;
+use super::super::media_art::MediaArtState;
 use super::card::MediaCardWidgets;
 use super::format::MediaDisplayConfig;
 use super::selection::MediaSelection;
@@ -84,7 +85,7 @@ pub(super) fn build_media_card_parts(
     connect_playback_buttons(handle, selection, &play_button, &next_button, &prev_button);
 
     // The art key lets async art loads ignore stale completions
-    let art_key = Rc::new(RefCell::new(None));
+    let art_state = Rc::new(RefCell::new(MediaArtState::default()));
     // Display config stays shared so reloads can re-render the visible player in place
     let display = Rc::new(RefCell::new(MediaDisplayConfig::from_config(config)));
     let player_total = Rc::new(Cell::new(0usize));
@@ -105,7 +106,7 @@ pub(super) fn build_media_card_parts(
             play_button,
             next_button,
             prev_button,
-            art_key,
+            art_state,
             display,
             player_total,
         },

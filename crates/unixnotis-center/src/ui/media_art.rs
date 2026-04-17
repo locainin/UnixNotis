@@ -4,8 +4,6 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gdk_pixbuf::Pixbuf;
-use gio::MemoryInputStream;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use image::ImageReader;
@@ -21,49 +19,78 @@ const MAX_REMOTE_ART_BYTES: usize = 2 * 1024 * 1024;
 const MAX_MEDIA_ART_DIMENSION: u32 = 2048;
 const MAX_MEDIA_ART_PIXELS: u32 = 4_194_304;
 
+#[derive(Debug, Default)]
+pub(super) struct MediaArtState {
+    // Tracks the art key that is actually visible right now
+    displayed_key: Option<String>,
+    // Tracks the latest key still loading in the background
+    pending_key: Option<String>,
+    // Bumps every time a fresh request takes ownership of the slot
+    pending_gen: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MediaArtCompletion {
+    Ignore,
+    Apply,
+    Clear,
+}
+
 pub(super) fn apply_media_art(
     picture: &gtk::Picture,
-    current_key: &Rc<RefCell<Option<String>>>,
+    art_state: &Rc<RefCell<MediaArtState>>,
     source: Option<&MediaArtSource>,
 ) {
     let next_key = source.map(MediaArtSource::stable_key);
-    // Matching keys mean the same art request is already visible or in flight
-    if *current_key.borrow() == next_key {
-        return;
+
+    {
+        let mut art_state = art_state.borrow_mut();
+        // If the current picture already matches the requested art, keep it and
+        // cancel any stale in-flight replacement
+        if art_state.keep_displayed_if_current(&next_key) {
+            return;
+        }
+        // Matching pending keys mean the same replacement is already loading
+        if art_state.pending_key_matches(&next_key) {
+            return;
+        }
     }
 
-    // Update the request key first so stale async completions can be ignored later
-    *current_key.borrow_mut() = next_key.clone();
-    clear_picture(picture);
-
     let Some(source) = source.cloned() else {
-        picture.add_css_class("empty");
+        // A real None means the player no longer has art, so clear right away
+        art_state.borrow_mut().clear_displayed_now();
+        show_empty_picture(picture);
         return;
     };
 
     // Invalid local files fail fast before any async work is queued
     if matches!(&source, MediaArtSource::LocalFile(path) if !local_art_file_allowed(path)) {
-        picture.add_css_class("empty");
+        // Bad sources should not poison later retries for the same key
+        art_state.borrow_mut().clear_displayed_now();
+        show_empty_picture(picture);
         return;
     }
 
+    let request_gen = art_state.borrow_mut().begin_request(next_key.clone());
     let picture_weak = picture.downgrade();
-    let current_key = current_key.clone();
+    let art_state = art_state.clone();
     glib::MainContext::default().spawn_local(async move {
         let texture = load_art_texture(&source).await;
-        // Late completions must not overwrite a newer request
-        if *current_key.borrow() != next_key {
-            return;
-        }
         let Some(picture) = picture_weak.upgrade() else {
             return;
         };
-        if let Some(texture) = texture {
-            picture.set_paintable(Some(&texture));
-            picture.remove_css_class("empty");
-            return;
+
+        // Completion is ignored when a newer request already claimed the slot
+        let completion =
+            art_state
+                .borrow_mut()
+                .finish_request(request_gen, next_key.clone(), texture.is_some());
+
+        match (completion, texture) {
+            (MediaArtCompletion::Apply, Some(texture)) => show_loaded_texture(&picture, &texture),
+            (MediaArtCompletion::Clear, _) => show_empty_picture(&picture),
+            _ => {}
         }
-        picture.add_css_class("empty");
     });
 }
 
@@ -71,6 +98,19 @@ fn clear_picture(picture: &gtk::Picture) {
     // Clearing both file and paintable avoids mixing old and new loading paths
     picture.set_file(None::<&gio::File>);
     picture.set_paintable(None::<&gdk::Texture>);
+}
+
+fn show_loaded_texture(picture: &gtk::Picture, texture: &gdk::Texture) {
+    // Keep the previous art on screen until the replacement is fully ready
+    picture.set_file(None::<&gio::File>);
+    picture.set_paintable(Some(texture));
+    picture.remove_css_class("empty");
+}
+
+fn show_empty_picture(picture: &gtk::Picture) {
+    // Empty state is only shown when there is truly no art or the replacement failed
+    clear_picture(picture);
+    picture.add_css_class("empty");
 }
 
 fn local_art_file_allowed(path: &Path) -> bool {
@@ -86,14 +126,12 @@ async fn load_art_texture(source: &MediaArtSource) -> Option<gdk::Texture> {
     let bytes = glib::future_with_timeout(MEDIA_ART_TIMEOUT, load_art_bytes(source))
         .await
         .ok()??;
-    if !art_dimensions_allowed(&bytes) {
-        debug!("media artwork rejected because dimensions were too large");
-        return None;
-    }
-    let bytes = glib::Bytes::from_owned(bytes);
-    let stream = MemoryInputStream::from_bytes(&bytes);
-    let pixbuf = Pixbuf::from_stream(&stream, None::<&gio::Cancellable>).ok()?;
-    Some(gdk::Texture::for_pixbuf(&pixbuf))
+
+    // Decode runs on the Gio worker pool so track skips do not block GTK
+    let raster = gio::spawn_blocking(move || decode_art_raster(bytes))
+        .await
+        .ok()??;
+    Some(texture_from_raster(raster))
 }
 
 async fn load_art_bytes(source: &MediaArtSource) -> Option<Vec<u8>> {
@@ -138,15 +176,36 @@ async fn read_file_bytes_limited(file: &gio::File, max_bytes: usize) -> Option<V
     Some(out)
 }
 
-fn art_dimensions_allowed(bytes: &[u8]) -> bool {
+fn decode_art_raster(bytes: Vec<u8>) -> Option<DecodedArt> {
+    let (width, height) = art_dimensions_from_bytes(&bytes)?;
+    if !art_dimensions_allowed(width, height) {
+        debug!("media artwork rejected because dimensions were too large");
+        return None;
+    }
+
+    let rgba = image::load_from_memory(&bytes).ok()?.to_rgba8();
+    let width = rgba.width();
+    let height = rgba.height();
+    let width = i32::try_from(width).ok()?;
+    let height = i32::try_from(height).ok()?;
+    let stride = width.checked_mul(4)?;
+
+    Some(DecodedArt {
+        bytes: rgba.into_raw(),
+        width,
+        height,
+        stride,
+    })
+}
+
+fn art_dimensions_from_bytes(bytes: &[u8]) -> Option<(u32, u32)> {
     let cursor = Cursor::new(bytes);
-    let Ok(reader) = ImageReader::new(cursor).with_guessed_format() else {
-        return false;
-    };
-    // Dimension checks happen before GTK decodes the full image into memory
-    let Ok((width, height)) = reader.into_dimensions() else {
-        return false;
-    };
+    let reader = ImageReader::new(cursor).with_guessed_format().ok()?;
+    // Dimension checks happen before the full decode work runs
+    reader.into_dimensions().ok()
+}
+
+fn art_dimensions_allowed(width: u32, height: u32) -> bool {
     if width == 0 || height == 0 {
         return false;
     }
@@ -156,12 +215,154 @@ fn art_dimensions_allowed(bytes: &[u8]) -> bool {
     width.saturating_mul(height) <= MAX_MEDIA_ART_PIXELS
 }
 
+fn texture_from_raster(raster: DecodedArt) -> gdk::Texture {
+    // MemoryTexture lets GTK keep the decoded RGBA bytes without re-decoding the source
+    let bytes = glib::Bytes::from_owned(raster.bytes);
+    gdk::MemoryTexture::new(
+        raster.width,
+        raster.height,
+        gdk::MemoryFormat::R8g8b8a8,
+        &bytes,
+        raster.stride as usize,
+    )
+    .upcast::<gdk::Texture>()
+}
+
+#[derive(Debug)]
+struct DecodedArt {
+    bytes: Vec<u8>,
+    width: i32,
+    height: i32,
+    stride: i32,
+}
+
+impl MediaArtState {
+    fn keep_displayed_if_current(&mut self, next_key: &Option<String>) -> bool {
+        if self.displayed_key != *next_key {
+            return false;
+        }
+        // A revert back to the currently shown art should invalidate stale in-flight work
+        if self.pending_key.is_some() {
+            self.pending_gen = self.pending_gen.wrapping_add(1);
+            self.pending_key = None;
+        }
+        true
+    }
+
+    fn pending_key_matches(&self, next_key: &Option<String>) -> bool {
+        self.pending_key == *next_key
+    }
+
+    fn begin_request(&mut self, next_key: Option<String>) -> u64 {
+        self.pending_gen = self.pending_gen.wrapping_add(1);
+        self.pending_key = next_key;
+        self.pending_gen
+    }
+
+    fn clear_displayed_now(&mut self) {
+        self.pending_gen = self.pending_gen.wrapping_add(1);
+        self.pending_key = None;
+        self.displayed_key = None;
+    }
+
+    fn finish_request(
+        &mut self,
+        request_gen: u64,
+        request_key: Option<String>,
+        success: bool,
+    ) -> MediaArtCompletion {
+        if self.pending_gen != request_gen {
+            return MediaArtCompletion::Ignore;
+        }
+
+        self.pending_key = None;
+        if success {
+            self.displayed_key = request_key;
+            return MediaArtCompletion::Apply;
+        }
+
+        // Failed replacements clear the slot, but they do not claim the key
+        self.displayed_key = None;
+        MediaArtCompletion::Clear
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::art_dimensions_allowed;
+    use super::{art_dimensions_allowed, MediaArtCompletion, MediaArtState};
 
     #[test]
     fn art_dimensions_allowed_rejects_non_images() {
-        assert!(!art_dimensions_allowed(b"not-an-image"));
+        assert!(!super::art_dimensions_from_bytes(b"not-an-image").is_some());
+    }
+
+    #[test]
+    fn art_dimensions_allowed_rejects_oversized_images() {
+        assert!(!art_dimensions_allowed(4096, 1024));
+    }
+
+    #[test]
+    fn same_displayed_key_cancels_pending_work() {
+        let mut state = MediaArtState {
+            displayed_key: Some("cover-a".to_string()),
+            pending_key: Some("cover-b".to_string()),
+            pending_gen: 7,
+        };
+
+        assert!(state.keep_displayed_if_current(&Some("cover-a".to_string())));
+        assert_eq!(state.displayed_key.as_deref(), Some("cover-a"));
+        assert_eq!(state.pending_key, None);
+        assert_eq!(state.pending_gen, 8);
+    }
+
+    #[test]
+    fn changed_key_failure_does_not_poison_same_key_retry() {
+        let mut state = MediaArtState::default();
+        let key = Some("cover-b".to_string());
+
+        let request_gen = state.begin_request(key.clone());
+        assert_eq!(
+            state.finish_request(request_gen, key.clone(), false),
+            MediaArtCompletion::Clear
+        );
+        assert_eq!(state.displayed_key, None);
+        assert_eq!(state.pending_key, None);
+        assert!(!state.keep_displayed_if_current(&key));
+        assert!(!state.pending_key_matches(&key));
+    }
+
+    #[test]
+    fn stale_completion_cannot_overwrite_newer_request() {
+        let mut state = MediaArtState::default();
+        let old_key = Some("cover-a".to_string());
+        let new_key = Some("cover-b".to_string());
+
+        let old_gen = state.begin_request(old_key.clone());
+        let new_gen = state.begin_request(new_key.clone());
+
+        assert_eq!(
+            state.finish_request(old_gen, old_key, true),
+            MediaArtCompletion::Ignore
+        );
+        assert_eq!(
+            state.finish_request(new_gen, new_key.clone(), true),
+            MediaArtCompletion::Apply
+        );
+        assert_eq!(state.displayed_key, new_key);
+    }
+
+    #[test]
+    fn clear_now_invalidates_inflight_requests() {
+        let mut state = MediaArtState {
+            displayed_key: Some("cover-a".to_string()),
+            pending_key: Some("cover-b".to_string()),
+            pending_gen: 11,
+        };
+
+        state.clear_displayed_now();
+
+        assert_eq!(state.displayed_key, None);
+        assert_eq!(state.pending_key, None);
+        assert_eq!(state.pending_gen, 12);
     }
 }

@@ -42,6 +42,16 @@ pub struct PanelWidgets {
     pub close_button: gtk::Button,
 }
 
+pub fn live_panel_width(root: &gtk::Box) -> i32 {
+    // Allocated width is the real live size once GTK has laid the panel out
+    let allocated = root.allocated_width();
+    if allocated > 0 {
+        return allocated;
+    }
+    // Requested width is only a fallback for early startup and cold rebuild paths
+    root.width_request().max(1)
+}
+
 pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidgets {
     let window = gtk::ApplicationWindow::new(app);
     window.set_decorated(false);

@@ -46,7 +46,7 @@ impl UiState {
         let dnd_guard = Rc::new(Cell::new(false));
         let panel_visible_flag = Arc::new(AtomicBool::new(false));
         // Read the effective panel width after monitor-aware sizing is applied.
-        let panel_width = panel.root.width_request().max(1);
+        let panel_width = panel::live_panel_width(&panel.root);
         // Media widget is optional; keep the container hidden when no media handle exists.
         let media = init.media_handle.as_ref().map(|handle| {
             media_widget::MediaWidget::new(

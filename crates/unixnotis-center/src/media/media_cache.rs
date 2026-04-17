@@ -120,9 +120,15 @@ pub(super) async fn send_snapshot_if_changed(
     }
     *last_snapshot = snapshot.clone();
     if snapshot.is_empty() {
-        let _ = sender.send(UiEvent::MediaCleared).await;
+        if let Err(err) = sender.send(UiEvent::MediaCleared).await {
+            // Closed UI channels are normal during teardown, but the drop should stay visible
+            debug!(?err, "failed to send media cleared snapshot");
+        }
     } else {
-        let _ = sender.send(UiEvent::MediaUpdated(snapshot)).await;
+        if let Err(err) = sender.send(UiEvent::MediaUpdated(snapshot)).await {
+            // Lost snapshot sends leave the media view stale, so keep a debug breadcrumb here
+            debug!(?err, "failed to send media updated snapshot");
+        }
     }
 }
 

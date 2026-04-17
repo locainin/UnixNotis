@@ -6,7 +6,7 @@ use gtk::prelude::*;
 use crate::media::MediaInfo;
 
 use super::super::marquee::MarqueeLabel;
-use super::super::media_art::apply_media_art;
+use super::super::media_art::{apply_media_art, MediaArtState};
 use super::format::{position_text_for, source_text_for, title_text_for, MediaDisplayConfig};
 use unixnotis_core::{hooks, MediaConfig};
 
@@ -24,7 +24,7 @@ pub(super) struct MediaCardWidgets {
     pub(super) play_button: gtk::Button,
     pub(super) next_button: gtk::Button,
     pub(super) prev_button: gtk::Button,
-    pub(super) art_key: Rc<RefCell<Option<String>>>,
+    pub(super) art_state: Rc<RefCell<MediaArtState>>,
     pub(super) display: Rc<RefCell<MediaDisplayConfig>>,
     pub(super) player_total: Rc<Cell<usize>>,
 }
@@ -60,7 +60,7 @@ impl MediaCardWidgets {
         update_control_sensitivity(self, info);
 
         // Artwork loading is centralized so remote and local sources share one safety path
-        apply_media_art(&self.art, &self.art_key, info.art_source.as_ref());
+        apply_media_art(&self.art, &self.art_state, info.art_source.as_ref());
         update_art_classes(&self.root, info.art_source.is_some());
         update_player_count_classes(&self.root, total);
         if !self.art.is_visible() {
