@@ -256,6 +256,10 @@ mod tests {
     use std::io;
     use std::path::PathBuf;
     use std::process::Command;
+    use std::sync::Mutex;
+
+    // Pager tests mutate one process-global env var, so they need one tiny lock
+    static PAGER_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn exec_review_renders_commands_and_files() {
@@ -285,6 +289,7 @@ mod tests {
 
     #[test]
     fn pager_command_adds_raw_control_for_less() {
+        let _guard = PAGER_ENV_LOCK.lock().expect("lock pager env");
         let original = env::var_os("PAGER");
         unsafe {
             env::set_var("PAGER", "less -F");
@@ -322,6 +327,7 @@ mod tests {
 
     #[test]
     fn pager_command_respects_quoted_arguments() {
+        let _guard = PAGER_ENV_LOCK.lock().expect("lock pager env");
         let original = env::var_os("PAGER");
         unsafe {
             env::set_var("PAGER", "less --prompt='unixnotis review'");
