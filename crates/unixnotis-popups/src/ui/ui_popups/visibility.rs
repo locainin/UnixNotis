@@ -27,9 +27,6 @@ impl UiState {
             return;
         }
 
-        // Hide the top-level window when there are no active popups
-        self.popup_window.set_visible(!self.popup_order.is_empty());
-
         // Only the leading visible slice should pay GTK visibility churn on every update
         let desired_visible = self
             .popup_order
@@ -38,6 +35,10 @@ impl UiState {
             .copied()
             .collect::<Vec<u32>>();
         let update = self.apply_visible_popups(desired_visible);
+        // Window visibility follows the rows GTK actually represents, not just the
+        // logical popup order that was requested upstream
+        self.popup_window
+            .set_visible(!self.visible_popups.is_empty());
         // Tick while transitions run so interactive area tracks animation frames
         let has_active_transitions = popup_stack_has_active_transitions(&self.popup_stack);
         if force_region_refresh || update.stack_changed || has_active_transitions {

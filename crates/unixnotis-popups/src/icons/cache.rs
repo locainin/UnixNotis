@@ -30,10 +30,23 @@ struct IconDecodeJob {
     target_size: i32,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct IconRequestKey {
+    // Path alone is not enough because one file can be requested at different popup sizes
+    path: PathBuf,
+    target_size: i32,
+}
+
+impl IconRequestKey {
+    fn new(path: PathBuf, target_size: i32) -> Self {
+        Self { path, target_size }
+    }
+}
+
 // Arc shares decoded bytes across waiters without cloning large buffers
 pub(crate) type IconDecodeResult = Result<Arc<RasterIcon>, String>;
 type IconReply = async_channel::Sender<IconDecodeResult>;
-type IconWaiters = Arc<Mutex<HashMap<PathBuf, Vec<IconReply>>>>;
+type IconWaiters = Arc<Mutex<HashMap<IconRequestKey, Vec<IconReply>>>>;
 
 pub(crate) struct IconDecodePool {
     tx: async_channel::Sender<IconDecodeJob>,
@@ -86,6 +99,7 @@ impl IconDecodePool {
     }
 
     pub(crate) fn submit(&self, path: PathBuf, target_size: i32, reply: IconReply) {
+        let key = IconRequestKey::new(path.clone(), target_size);
         // Deduplicate in-flight requests so repeated icon paths share a single decode
         {
             let mut in_flight = match self.in_flight.lock() {
@@ -93,13 +107,13 @@ impl IconDecodePool {
                 // Poisoned mutexes still give back the stored waiters
                 Err(poisoned) => poisoned.into_inner(),
             };
-            if let Some(waiters) = in_flight.get_mut(&path) {
-                // Extra callers wait on the first decode instead of queuing another job
+            if let Some(waiters) = in_flight.get_mut(&key) {
+                // Extra callers wait on the first decode only when both file and size match
                 waiters.push(reply);
                 return;
             }
             // First caller owns the actual worker submission
-            in_flight.insert(path.clone(), vec![reply]);
+            in_flight.insert(key.clone(), vec![reply]);
         }
 
         // Avoid blocking the GTK thread; drop on overflow and signal failure to the caller
@@ -112,22 +126,25 @@ impl IconDecodePool {
                 let reason = match ICON_DECODE_DROP_POLICY {
                     IconDecodeDropPolicy::DropNewest => "icon decode queue full (drop-newest)",
                 };
-                self.drop_in_flight(&job.path, reason);
+                self.drop_in_flight(&IconRequestKey::new(job.path, job.target_size), reason);
             }
             Err(async_channel::TrySendError::Closed(job)) => {
-                self.drop_in_flight(&job.path, "icon decode queue closed");
+                self.drop_in_flight(
+                    &IconRequestKey::new(job.path, job.target_size),
+                    "icon decode queue closed",
+                );
             }
         }
     }
 
-    fn drop_in_flight(&self, path: &PathBuf, reason: &str) {
+    fn drop_in_flight(&self, key: &IconRequestKey, reason: &str) {
         // Pull the waiter list out first so sends happen without holding the mutex
         let waiters = {
             let mut in_flight = match self.in_flight.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            in_flight.remove(path)
+            in_flight.remove(key)
         };
         let Some(waiters) = waiters else {
             return;
@@ -137,7 +154,7 @@ impl IconDecodePool {
             let _ = waiter.try_send(Err(reason.to_string()));
         }
         if matches!(ICON_DECODE_DROP_POLICY, IconDecodeDropPolicy::DropNewest) {
-            debug!(path = ?path, "dropped newest icon decode request");
+            debug!(path = ?key.path, size = key.target_size, "dropped newest icon decode request");
         }
     }
 }
@@ -152,13 +169,13 @@ impl IconDecodePool {
         self.tx.len()
     }
 
-    fn waiter_count(&self, path: &PathBuf) -> usize {
+    fn waiter_count(&self, path: &Path, target_size: i32) -> usize {
         let in_flight = match self.in_flight.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
         in_flight
-            .get(path)
+            .get(&IconRequestKey::new(path.to_path_buf(), target_size))
             .map(|waiters| waiters.len())
             .unwrap_or(0)
     }
@@ -166,8 +183,9 @@ impl IconDecodePool {
 
 // Small LRU cache for decoded file textures to avoid repeated decoding
 pub(crate) struct TextureCache {
-    entries: HashMap<PathBuf, gdk::Texture>,
-    order: VecDeque<PathBuf>,
+    // File path and requested size both shape the resulting texture bytes
+    entries: HashMap<IconRequestKey, gdk::Texture>,
+    order: VecDeque<IconRequestKey>,
     max_entries: usize,
 }
 
@@ -185,32 +203,34 @@ impl TextureCache {
         Self::new(ICON_TEXTURE_CACHE_MAX_ENTRIES)
     }
 
-    pub(crate) fn get(&mut self, path: &Path) -> Option<gdk::Texture> {
-        let texture = self.entries.get(path).cloned();
+    pub(crate) fn get(&mut self, path: &Path, target_size: i32) -> Option<gdk::Texture> {
+        let key = IconRequestKey::new(path.to_path_buf(), target_size);
+        let texture = self.entries.get(&key).cloned();
         if texture.is_some() {
             // Hits move to the back so hot icons stay cached
-            self.bump(path);
+            self.bump(&key);
         }
         texture
     }
 
-    pub(crate) fn insert(&mut self, path: PathBuf, texture: gdk::Texture) {
-        if self.entries.contains_key(&path) {
+    pub(crate) fn insert(&mut self, path: PathBuf, target_size: i32, texture: gdk::Texture) {
+        let key = IconRequestKey::new(path, target_size);
+        if self.entries.contains_key(&key) {
             // Replacing the texture also refreshes the recency position
-            self.entries.insert(path.clone(), texture);
-            self.bump(&path);
+            self.entries.insert(key.clone(), texture);
+            self.bump(&key);
             return;
         }
 
         // First insert keeps the same key in the map and the LRU queue
-        self.entries.insert(path.clone(), texture);
-        self.order.push_back(path.clone());
+        self.entries.insert(key.clone(), texture);
+        self.order.push_back(key);
         self.enforce_limit();
     }
 
-    fn bump(&mut self, path: &Path) {
+    fn bump(&mut self, key: &IconRequestKey) {
         // Move the key to the back to reflect recent use
-        if let Some(pos) = self.order.iter().position(|entry| entry == path) {
+        if let Some(pos) = self.order.iter().position(|entry| entry == key) {
             let key = self.order.remove(pos).expect("position checked");
             self.order.push_back(key);
         }
@@ -236,7 +256,7 @@ fn worker_loop(rx: async_channel::Receiver<IconDecodeJob>, in_flight: IconWaiter
                 Err(poisoned) => poisoned.into_inner(),
             };
             // Remove the path before waking waiters so later requests can queue again
-            in_flight.remove(&job.path)
+            in_flight.remove(&IconRequestKey::new(job.path.clone(), job.target_size))
         };
         let Some(waiters) = waiters else {
             continue;
@@ -252,7 +272,11 @@ fn worker_loop(rx: async_channel::Receiver<IconDecodeJob>, in_flight: IconWaiter
 mod tests {
     use std::path::PathBuf;
 
-    use super::IconDecodePool;
+    use gtk::gdk;
+    use gtk::glib;
+    use gtk::glib::object::Cast;
+
+    use super::{IconDecodePool, TextureCache};
 
     #[test]
     fn icon_decode_deduplicates_in_flight_requests() {
@@ -265,7 +289,22 @@ mod tests {
         pool.submit(path.clone(), 20, tx_b);
 
         assert_eq!(pool.queue_len(), 1);
-        assert_eq!(pool.waiter_count(&path), 2);
+        assert_eq!(pool.waiter_count(&path, 20), 2);
+    }
+
+    #[test]
+    fn icon_decode_keeps_different_sizes_separate() {
+        let pool = IconDecodePool::new_for_tests(0, 4);
+        let path = PathBuf::from("icon-test.png");
+        let (tx_a, _rx_a) = async_channel::bounded(1);
+        let (tx_b, _rx_b) = async_channel::bounded(1);
+
+        pool.submit(path.clone(), 20, tx_a);
+        pool.submit(path.clone(), 32, tx_b);
+
+        assert_eq!(pool.queue_len(), 2);
+        assert_eq!(pool.waiter_count(&path, 20), 1);
+        assert_eq!(pool.waiter_count(&path, 32), 1);
     }
 
     #[test]
@@ -281,6 +320,23 @@ mod tests {
 
         let result = rx_b.recv_blocking().expect("reply expected");
         assert!(result.is_err());
-        assert_eq!(pool.waiter_count(&path_b), 0);
+        assert_eq!(pool.waiter_count(&path_b, 20), 0);
+    }
+
+    #[test]
+    fn texture_cache_keeps_sizes_separate() {
+        let mut cache = TextureCache::new(4);
+        let path = PathBuf::from("icon-test.png");
+        let bytes = glib::Bytes::from_owned(vec![255; 4]);
+        let small = gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &bytes, 4)
+            .upcast::<gdk::Texture>();
+        let large = gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &bytes, 4)
+            .upcast::<gdk::Texture>();
+
+        cache.insert(path.clone(), 20, small.clone());
+        cache.insert(path.clone(), 32, large.clone());
+
+        assert!(cache.get(&path, 20).is_some());
+        assert!(cache.get(&path, 32).is_some());
     }
 }

@@ -19,6 +19,7 @@ const SEED_RETRY_LOG_INTERVAL_SECS: u64 = 10;
 struct SeedError {
     state_error: Option<String>,
     active_error: Option<String>,
+    send_error: Option<String>,
 }
 
 pub(crate) async fn seed_state_with_retry(
@@ -53,19 +54,31 @@ async fn seed_state(
     proxy: &ControlProxy<'_>,
     sender: &async_channel::Sender<UiEvent>,
 ) -> Result<(), SeedError> {
-    let state = proxy.get_state().await;
-    let active = proxy.list_active().await;
+    // Best-effort seeding still uses two daemon RPCs, so fetch both together to shrink skew
+    // A fully atomic seed would need one daemon method that returns both pieces at once
+    let (state, active) = tokio::join!(proxy.get_state(), proxy.list_active());
 
     match (state, active) {
-        (Ok(state), Ok(active)) => {
-            let _ = sender.send(UiEvent::Seed { state, active }).await;
-            Ok(())
-        }
+        (Ok(state), Ok(active)) => send_seed_event(sender, UiEvent::Seed { state, active }).await,
         (state, active) => Err(SeedError {
             state_error: state.err().map(|err| err.to_string()),
             active_error: active.err().map(|err| err.to_string()),
+            send_error: None,
         }),
     }
+}
+
+async fn send_seed_event(
+    sender: &async_channel::Sender<UiEvent>,
+    event: UiEvent,
+) -> Result<(), SeedError> {
+    // Closed receiver means startup never applied the seed, so this must stay retryable
+    sender.send(event).await.map_err(|err| SeedError {
+        state_error: None,
+        active_error: None,
+        // Closed channel means the seed never reached the UI, so retry state should stay failed
+        send_error: Some(err.to_string()),
+    })
 }
 
 fn log_seed_retry(log: &mut RetryLog, err: &SeedError, message: &str) {
@@ -74,6 +87,7 @@ fn log_seed_retry(log: &mut RetryLog, err: &SeedError, message: &str) {
             warn!(
                 state_error = ?err.state_error,
                 active_error = ?err.active_error,
+                send_error = ?err.send_error,
                 "{message}"
             );
         },
@@ -81,8 +95,37 @@ fn log_seed_retry(log: &mut RetryLog, err: &SeedError, message: &str) {
             debug!(
                 state_error = ?err.state_error,
                 active_error = ?err.active_error,
+                send_error = ?err.send_error,
                 "{message}"
             );
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use async_channel::bounded;
+    use unixnotis_core::ControlState;
+
+    use crate::dbus::UiEvent;
+
+    use super::send_seed_event;
+
+    #[tokio::test]
+    async fn closed_seed_channel_returns_error() {
+        let (tx, rx) = bounded(1);
+        drop(rx);
+
+        let err = send_seed_event(
+            &tx,
+            UiEvent::Seed {
+                state: ControlState::default(),
+                active: Vec::new(),
+            },
+        )
+        .await
+        .expect_err("closed seed channel should fail");
+
+        assert!(err.send_error.is_some());
+    }
 }

@@ -5,6 +5,7 @@
 
 use gtk::prelude::*;
 use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
+use tracing::warn;
 use unixnotis_core::Config;
 
 mod anchor;
@@ -112,7 +113,16 @@ pub(super) fn apply_popup_config(
 ) {
     let monitor = if let Some(output) = config.popups.output.as_ref() {
         // Explicit output is attempted first
-        find_monitor(output).or_else(default_monitor)
+        let monitor = find_monitor(output);
+        if monitor.is_none() {
+            // Bad output names should fall back safely, but the config mistake
+            // still needs to be visible in logs
+            warn!(
+                output = %output,
+                "configured popup output was not found; falling back to default monitor"
+            );
+        }
+        monitor.or_else(default_monitor)
     } else {
         // Fallback monitor selection keeps behavior stable without explicit output
         default_monitor()
