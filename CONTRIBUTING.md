@@ -68,6 +68,23 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 If a full run is not practical, say what was tested and what was not.
 
+## Branch workflow
+
+UnixNotis uses two main branches:
+
+- `dev` is the branch for active work
+- `master` is the stable branch
+
+New work should start on `dev`.
+
+If a fix lands on `master`, bring `dev` back in sync before continuing work there.
+
+This repository has a GitHub Actions workflow that handles that sync automatically:
+
+- a push to `master` triggers a `master -> dev` sync attempt
+- if the merge is clean, the workflow updates `dev`
+- if the sync cannot be completed cleanly, the workflow opens follow-up work instead of failing quietly
+
 ## Pull requests
 
 Please try to keep pull requests easy to review.
