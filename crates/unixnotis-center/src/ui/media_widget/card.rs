@@ -7,7 +7,8 @@ use crate::media::MediaInfo;
 
 use super::super::marquee::MarqueeLabel;
 use super::super::media_art::apply_media_art;
-use unixnotis_core::hooks;
+use super::format::{position_text_for, source_text_for, title_text_for, MediaDisplayConfig};
+use unixnotis_core::{hooks, MediaConfig};
 
 #[derive(Clone)]
 pub(super) struct MediaCardWidgets {
@@ -17,46 +18,43 @@ pub(super) struct MediaCardWidgets {
     pub(super) meta_row: gtk::Box,
     pub(super) source_label: gtk::Label,
     pub(super) position_label: gtk::Label,
+    pub(super) title_widget: gtk::Fixed,
     pub(super) title_label: MarqueeLabel,
     pub(super) artist_label: gtk::Label,
     pub(super) play_button: gtk::Button,
     pub(super) next_button: gtk::Button,
     pub(super) prev_button: gtk::Button,
     pub(super) art_key: Rc<RefCell<Option<String>>>,
-    pub(super) show_source_pref: Rc<Cell<bool>>,
-    pub(super) show_position_pref: Rc<Cell<bool>>,
+    pub(super) display: Rc<RefCell<MediaDisplayConfig>>,
     pub(super) player_total: Rc<Cell<usize>>,
 }
 
 impl MediaCardWidgets {
-    pub(super) fn apply_metadata_visibility(&self, show_source: bool, show_position: bool) {
-        // Keep config intent cached so live player count can refine visibility later
-        self.show_source_pref.set(show_source);
-        self.show_position_pref.set(show_position);
+    pub(super) fn apply_display_config(&self, config: &MediaConfig) {
+        // Keep the latest config snapshot so live updates and reloads render the same rules
+        *self.display.borrow_mut() = MediaDisplayConfig::from_config(config);
         self.sync_metadata_visibility();
     }
 
     pub(super) fn update(&self, info: &MediaInfo, current: usize, total: usize) {
-        // Skip text work when the value already matches the visible label
-        if self.source_label.text() != info.identity.as_str() {
-            self.source_label.set_text(&info.identity);
-        }
-        let position = format!("{current}/{total}");
-        if self.position_label.text() != position.as_str() {
-            self.position_label.set_text(&position);
-        }
+        let display = self.display.borrow().clone();
         self.player_total.set(total);
-        self.sync_metadata_visibility();
 
-        let title = if info.title.is_empty() {
-            // Missing titles fall back to the player name instead of a blank line
-            info.identity.clone()
-        } else {
-            info.title.clone()
-        };
-        // The marquee handles its own internal caching
-        self.title_label.set_text(&title);
-        update_artist_label(&self.artist_label, &info.artist);
+        update_optional_label(
+            &self.source_label,
+            source_text_for(info, total, &display).as_deref(),
+        );
+        update_optional_label(
+            &self.position_label,
+            position_text_for(current, total, &display).as_deref(),
+        );
+        update_title_label(
+            &self.title_widget,
+            &self.title_label,
+            title_text_for(info, &display).as_deref(),
+        );
+        update_artist_label(&self.artist_label, &info.artist, display.show_artist);
+        self.sync_metadata_visibility();
         update_artist_classes(&self.root, &info.artist);
         update_play_button(&self.play_button, &info.playback_status);
         update_control_sensitivity(self, info);
@@ -73,18 +71,55 @@ impl MediaCardWidgets {
     }
 
     fn sync_metadata_visibility(&self) {
-        // The source follows config directly
-        let show_source = self.show_source_pref.get();
-        self.source_label.set_visible(show_source);
-
-        // The position badge only matters when more than one player can be cycled
-        let show_position = self.show_position_pref.get() && self.player_total.get() > 1;
-        self.position_label.set_visible(show_position);
+        let show_source = self.source_label.is_visible();
+        let show_position = self.position_label.is_visible();
         self.meta_row.set_visible(show_source || show_position);
+        set_class_state(&self.root, hooks::media_shell::HAS_SOURCE, show_source);
+        set_class_state(&self.root, hooks::media_shell::NO_SOURCE, !show_source);
+        set_class_state(&self.root, hooks::media_shell::HAS_POSITION, show_position);
+        set_class_state(&self.root, hooks::media_shell::NO_POSITION, !show_position);
+        set_class_state(
+            &self.root,
+            hooks::media_shell::HAS_TITLE,
+            self.title_widget.is_visible(),
+        );
+        set_class_state(
+            &self.root,
+            hooks::media_shell::NO_TITLE,
+            !self.title_widget.is_visible(),
+        );
     }
 }
 
-fn update_artist_label(label: &gtk::Label, artist: &str) {
+fn update_optional_label(label: &gtk::Label, value: Option<&str>) {
+    if let Some(value) = value {
+        if label.text() != value {
+            label.set_text(value);
+        }
+        label.set_visible(true);
+        return;
+    }
+    if label.text() != "" {
+        label.set_text("");
+    }
+    label.set_visible(false);
+}
+
+fn update_title_label(title_widget: &gtk::Fixed, title_label: &MarqueeLabel, title: Option<&str>) {
+    let Some(title) = title else {
+        title_label.set_text("");
+        title_widget.set_visible(false);
+        return;
+    };
+    title_label.set_text(title);
+    title_widget.set_visible(true);
+}
+
+fn update_artist_label(label: &gtk::Label, artist: &str, show_artist: bool) {
+    if !show_artist {
+        label.set_visible(false);
+        return;
+    }
     if artist.is_empty() {
         // A blank placeholder keeps the card height from jumping
         if label.text() != " " {

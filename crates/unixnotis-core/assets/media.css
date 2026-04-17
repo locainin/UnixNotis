@@ -24,6 +24,9 @@
 .unixnotis-media-row-inline,
 .unixnotis-media-row-stacked,
 .unixnotis-media-row-showcase,
+.unixnotis-media-header,
+.unixnotis-media-body,
+.unixnotis-media-text,
 .unixnotis-media-main,
 .unixnotis-media-meta,
 .unixnotis-media-control-strip,
@@ -49,6 +52,11 @@
 .unixnotis-media-nav:hover {
   background-image: linear-gradient(150deg, @unixnotis-action-bg-hover, alpha(@unixnotis-accent-2, 0.16));
   border-color: alpha(@unixnotis-accent, 0.5);
+}
+
+.unixnotis-media-nav-prev,
+.unixnotis-media-nav-next {
+  min-width: 22px;
 }
 
 .unixnotis-media-position {
@@ -91,6 +99,29 @@
 
 .unixnotis-media-card.playing {
   border-left: 1px solid @unixnotis-card-border;
+}
+
+/*
+ * Shell state hooks
+ *
+ * These keep the default theme sensible even when users move art, controls,
+ * or navigation away from the stock preset
+ */
+.unixnotis-media-art-top .unixnotis-media-art-frame,
+.unixnotis-media-art-hidden .unixnotis-media-art-frame {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.unixnotis-media-controls-hidden .unixnotis-media-controls,
+.unixnotis-media-nav-hidden .unixnotis-media-nav-strip,
+.unixnotis-media-nav-hidden .unixnotis-media-nav {
+  opacity: 0.94;
+}
+
+.unixnotis-media-no-source .unixnotis-media-meta,
+.unixnotis-media-no-position .unixnotis-media-meta {
+  min-height: 0;
 }
 
 .unixnotis-media-art {

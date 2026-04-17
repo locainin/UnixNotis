@@ -1,12 +1,12 @@
 //! Runtime adjustments for slider widget backends.
 
-use super::{NumericParseMode, SliderWidgetConfig};
+use super::super::{NumericParseMode, SliderWidgetConfig};
 use crate::program_in_path;
 use tracing::warn;
 
 const LEGACY_WPCTL_WATCH: &str = "wpctl subscribe";
 
-pub(super) fn apply_volume_backend(volume: &mut SliderWidgetConfig) {
+pub(in super::super) fn apply_volume_backend(volume: &mut SliderWidgetConfig) {
     if !volume.enabled {
         return;
     }
@@ -53,7 +53,7 @@ pub(super) fn apply_volume_backend(volume: &mut SliderWidgetConfig) {
     }
 }
 
-pub(super) fn apply_brightness_backend(brightness: &mut SliderWidgetConfig) {
+pub(in super::super) fn apply_brightness_backend(brightness: &mut SliderWidgetConfig) {
     if !brightness.enabled {
         return;
     }

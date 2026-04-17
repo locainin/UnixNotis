@@ -84,6 +84,54 @@ fn warns_when_stacked_media_layout_outgrows_panel_budget() {
 }
 
 #[test]
+fn custom_media_geometry_is_accounted_for_in_width_budget() {
+    let mut config = Config::default();
+    config.panel.width = 360;
+    config.media.layout = MediaLayout::Inline;
+    config.media.art_size_px = 88;
+    config.media.content_spacing_px = 16;
+    let css = r#"
+        .unixnotis-panel { padding: 16px; }
+        .unixnotis-media-card { padding: 12px 16px; border: 1px solid red; }
+        .unixnotis-media-header { padding: 0 12px; }
+        .unixnotis-media-body { padding: 0 12px; }
+        .unixnotis-media-text { padding: 0 18px; }
+        .unixnotis-media-art-frame { min-width: 92px; padding: 4px; border: 1px solid red; }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let file_warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(file_warnings.is_empty());
+
+    let warnings = model.finalize_warnings(&config);
+    assert!(warnings.iter().any(|warning| warning.contains("media row")));
+}
+
+#[test]
+fn hidden_media_art_and_controls_reduce_width_pressure() {
+    let mut config = Config::default();
+    config.panel.width = 340;
+    config.media.layout = MediaLayout::Showcase;
+    config.media.show_art = false;
+    config.media.show_controls = false;
+    config.media.show_navigation = false;
+    let css = r#"
+        .unixnotis-panel { padding: 16px; }
+        .unixnotis-media-card { padding: 10px 12px; border: 1px solid red; }
+        .unixnotis-media-header { padding: 0 8px; }
+        .unixnotis-media-body { padding: 0 8px; }
+        .unixnotis-media-text { padding: 0 10px; }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let file_warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(file_warnings.is_empty());
+
+    let warnings = model.finalize_warnings(&config);
+    assert!(!warnings.iter().any(|warning| warning.contains("media row")));
+}
+
+#[test]
 fn warns_when_media_art_outgrows_its_frame() {
     let config = Config::default();
     let css = r#"

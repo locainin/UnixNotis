@@ -1,4 +1,4 @@
-use super::{GeometryModel, HorizontalBoxMetrics};
+use super::{GeometryModel, HorizontalBoxMetrics, VerticalBoxMetrics};
 
 impl GeometryModel {
     pub(in super::super) fn target_mut(
@@ -31,9 +31,14 @@ impl GeometryModel {
             ".unixnotis-media-row-inline" => Some(&mut self.media_row),
             ".unixnotis-media-row-stacked" => Some(&mut self.media_row),
             ".unixnotis-media-row-showcase" => Some(&mut self.media_row),
+            ".unixnotis-media-header" => Some(&mut self.media_header),
+            ".unixnotis-media-body" => Some(&mut self.media_body),
+            ".unixnotis-media-text" => Some(&mut self.media_text),
             ".unixnotis-media-main" => Some(&mut self.media_main),
             ".unixnotis-media-meta" => Some(&mut self.media_meta),
             ".unixnotis-media-nav" => Some(&mut self.media_nav),
+            ".unixnotis-media-nav-prev" => Some(&mut self.media_nav),
+            ".unixnotis-media-nav-next" => Some(&mut self.media_nav),
             ".unixnotis-media-nav-strip" => Some(&mut self.media_nav_strip),
             ".unixnotis-media-card" => Some(&mut self.media_card),
             ".unixnotis-media-card-carousel" => Some(&mut self.media_card),
@@ -46,6 +51,44 @@ impl GeometryModel {
             ".unixnotis-media-action-rail" => Some(&mut self.media_action_rail),
             ".unixnotis-media-controls" => Some(&mut self.media_controls),
             ".unixnotis-media-button" => Some(&mut self.media_button),
+            ".unixnotis-media-button-prev" => Some(&mut self.media_button),
+            ".unixnotis-media-button-play" => Some(&mut self.media_button),
+            ".unixnotis-media-button-next" => Some(&mut self.media_button),
+            _ => None,
+        }
+    }
+
+    pub(in super::super) fn target_vertical_mut(
+        &mut self,
+        class_name: &str,
+    ) -> Option<&mut VerticalBoxMetrics> {
+        match class_name {
+            ".unixnotis-media-header" => Some(&mut self.media_vertical.header),
+            ".unixnotis-media-body" => Some(&mut self.media_vertical.body),
+            ".unixnotis-media-text" => Some(&mut self.media_vertical.text),
+            ".unixnotis-media-main" => Some(&mut self.media_vertical.main),
+            ".unixnotis-media-meta" => Some(&mut self.media_vertical.meta),
+            ".unixnotis-media-source" => Some(&mut self.media_vertical.source),
+            ".unixnotis-media-position" => Some(&mut self.media_vertical.position),
+            ".unixnotis-media-title" => Some(&mut self.media_vertical.title),
+            ".unixnotis-media-artist" => Some(&mut self.media_vertical.artist),
+            ".unixnotis-media-nav" => Some(&mut self.media_vertical.nav),
+            ".unixnotis-media-nav-prev" => Some(&mut self.media_vertical.nav),
+            ".unixnotis-media-nav-next" => Some(&mut self.media_vertical.nav),
+            ".unixnotis-media-nav-strip" => Some(&mut self.media_vertical.nav_strip),
+            ".unixnotis-media-card" => Some(&mut self.media_vertical.card),
+            ".unixnotis-media-card-carousel" => Some(&mut self.media_vertical.card),
+            ".unixnotis-media-card-inline" => Some(&mut self.media_vertical.card),
+            ".unixnotis-media-card-stacked" => Some(&mut self.media_vertical.card),
+            ".unixnotis-media-card-showcase" => Some(&mut self.media_vertical.card),
+            ".unixnotis-media-art-frame" => Some(&mut self.media_vertical.art_frame),
+            ".unixnotis-media-control-strip" => Some(&mut self.media_vertical.control_strip),
+            ".unixnotis-media-action-rail" => Some(&mut self.media_vertical.action_rail),
+            ".unixnotis-media-controls" => Some(&mut self.media_vertical.controls),
+            ".unixnotis-media-button" => Some(&mut self.media_vertical.button),
+            ".unixnotis-media-button-prev" => Some(&mut self.media_vertical.button),
+            ".unixnotis-media-button-play" => Some(&mut self.media_vertical.button),
+            ".unixnotis-media-button-next" => Some(&mut self.media_vertical.button),
             _ => None,
         }
     }

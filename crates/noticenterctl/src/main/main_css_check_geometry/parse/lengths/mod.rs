@@ -1,4 +1,4 @@
-use super::super::model::HorizontalEdges;
+use super::super::model::{HorizontalEdges, VerticalEdges};
 use super::CssCustomProperties;
 
 mod resolve_calc;
@@ -47,6 +47,34 @@ pub(in super::super) fn parse_box_edges(
         [_, right, left] => Some(HorizontalEdges {
             left: *left,
             right: *right,
+        }),
+        _ => None,
+    }
+}
+
+pub(in super::super) fn parse_box_vertical_edges(
+    value: &str,
+    custom_properties: &CssCustomProperties,
+) -> Option<VerticalEdges> {
+    // CSS shorthands map to top and bottom edges based on token count
+    let values = parse_length_tokens(value, custom_properties);
+    match values.as_slice() {
+        [] => None,
+        [all] => Some(VerticalEdges {
+            top: *all,
+            bottom: *all,
+        }),
+        [vertical, _horizontal] => Some(VerticalEdges {
+            top: *vertical,
+            bottom: *vertical,
+        }),
+        [top, _horizontal, bottom] => Some(VerticalEdges {
+            top: *top,
+            bottom: *bottom,
+        }),
+        [top, _, bottom, _left] => Some(VerticalEdges {
+            top: *top,
+            bottom: *bottom,
         }),
         _ => None,
     }

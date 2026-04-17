@@ -11,12 +11,14 @@ mod box_metrics;
 mod constants;
 #[path = "model/fixed_grid.rs"]
 mod fixed_grid;
-#[path = "model/media.rs"]
+#[path = "media/mod.rs"]
 mod media;
 #[path = "model/tracking.rs"]
 mod tracking;
 
-pub(super) use self::box_metrics::{HorizontalBoxMetrics, HorizontalEdges};
+pub(super) use self::box_metrics::{
+    HorizontalBoxMetrics, HorizontalEdges, VerticalBoxMetrics, VerticalEdges,
+};
 use self::constants::WIDTH_WARNING_TOLERANCE_PX;
 
 #[derive(Default)]
@@ -39,6 +41,9 @@ pub(super) struct GeometryModel {
     media_container: HorizontalBoxMetrics,
     media_stack: HorizontalBoxMetrics,
     media_row: HorizontalBoxMetrics,
+    media_header: HorizontalBoxMetrics,
+    media_body: HorizontalBoxMetrics,
+    media_text: HorizontalBoxMetrics,
     media_main: HorizontalBoxMetrics,
     media_meta: HorizontalBoxMetrics,
     media_nav: HorizontalBoxMetrics,
@@ -50,6 +55,8 @@ pub(super) struct GeometryModel {
     media_action_rail: HorizontalBoxMetrics,
     media_controls: HorizontalBoxMetrics,
     media_button: HorizontalBoxMetrics,
+    // Media height feasibility uses a separate vertical box model to avoid disturbing width math
+    media_vertical: media::MediaVerticalModel,
 }
 
 impl GeometryModel {
@@ -70,6 +77,9 @@ impl GeometryModel {
             warnings.push(warning);
         }
         if let Some(warning) = self.media_width_warning(config) {
+            warnings.push(warning);
+        }
+        if let Some(warning) = self.media_height_warning(config) {
             warnings.push(warning);
         }
         if let Some(warning) = self.media_art_target_warning() {

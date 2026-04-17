@@ -5,17 +5,16 @@
 mod config_commands;
 mod config_io;
 mod config_layout;
+mod config_media;
 mod config_rules;
 mod config_runtime;
-mod config_runtime_sanitize;
-mod config_runtime_toggles;
-mod config_runtime_widgets;
 mod config_theme;
 mod config_types;
 mod config_widgets;
 
 pub use config_io::{ConfigError, ThemePaths};
 pub use config_layout::*;
+pub use config_media::*;
 pub use config_rules::*;
 pub use config_theme::*;
 pub use config_types::*;

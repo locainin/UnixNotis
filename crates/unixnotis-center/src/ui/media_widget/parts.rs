@@ -8,7 +8,10 @@ use crate::media::MediaHandle;
 
 use super::super::marquee::MarqueeLabel;
 use super::card::MediaCardWidgets;
+use super::format::MediaDisplayConfig;
 use super::selection::MediaSelection;
+use super::shell::MediaShellConfig;
+use unixnotis_core::{hooks, MediaConfig};
 
 pub(super) struct MediaCardLayoutParts {
     pub(super) card: MediaCardWidgets,
@@ -20,33 +23,34 @@ pub(super) fn build_media_card_parts(
     handle: &MediaHandle,
     selection: Rc<RefCell<MediaSelection>>,
     marquee_width: i32,
-    title_char_limit: usize,
+    config: &MediaConfig,
+    shell: &MediaShellConfig,
 ) -> MediaCardLayoutParts {
     // The shared card starts neutral and gets arranged later by each layout shell
-    let root = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    root.add_css_class("unixnotis-media-card");
+    let root = gtk::Box::new(gtk::Orientation::Vertical, shell.content_spacing_px);
+    root.add_css_class(hooks::media_shell::CARD);
     root.set_hexpand(true);
     root.set_halign(Align::Fill);
     root.set_valign(Align::Center);
 
-    let art = build_art_picture();
+    let art = build_art_picture(shell.art_size_px);
     // The frame owns the visible slot size even when artwork is missing
-    let art_frame = build_art_frame(&art);
+    let art_frame = build_art_frame(&art, shell.art_size_px.saturating_add(4));
 
     let text_box = build_text_box(marquee_width);
     // The meta row keeps source and counter grouped so one visibility toggle can hide both
     let meta_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    meta_row.add_css_class("unixnotis-media-meta");
+    meta_row.add_css_class(hooks::media_shell::META);
     meta_row.set_hexpand(true);
     meta_row.set_halign(Align::Fill);
 
     let source_label = gtk::Label::new(Some(""));
     source_label.set_xalign(0.0);
-    source_label.add_css_class("unixnotis-media-source");
+    source_label.add_css_class(hooks::media_shell::SOURCE);
 
     let position_label = gtk::Label::new(Some(""));
     position_label.set_xalign(1.0);
-    position_label.add_css_class("unixnotis-media-position");
+    position_label.add_css_class(hooks::media_shell::POSITION);
 
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
     spacer.set_hexpand(true);
@@ -56,7 +60,11 @@ pub(super) fn build_media_card_parts(
     meta_row.append(&position_label);
 
     // The marquee widget owns title truncation and scrolling rules in one place
-    let title_label = MarqueeLabel::new("unixnotis-media-title", marquee_width, title_char_limit);
+    let title_label = MarqueeLabel::new(
+        hooks::media_shell::TITLE,
+        marquee_width,
+        config.title_char_limit,
+    );
     let title_widget = title_label.widget();
     title_widget.set_hexpand(false);
     title_widget.set_halign(Align::Start);
@@ -64,21 +72,21 @@ pub(super) fn build_media_card_parts(
     let artist_label = gtk::Label::new(None);
     artist_label.set_xalign(0.0);
     artist_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    artist_label.add_css_class("unixnotis-media-artist");
+    artist_label.add_css_class(hooks::media_shell::ARTIST);
 
     text_box.append(&meta_row);
     text_box.append(&title_widget);
     text_box.append(&artist_label);
 
     // Transport buttons are shared across every shell preset
-    let (controls, prev_button, play_button, next_button) = build_controls();
+    let (controls, prev_button, play_button, next_button) =
+        build_controls(shell.control_spacing_px);
     connect_playback_buttons(handle, selection, &play_button, &next_button, &prev_button);
 
     // The art key lets async art loads ignore stale completions
     let art_key = Rc::new(RefCell::new(None));
-    // Metadata visibility depends on both config and current player count
-    let show_source_pref = Rc::new(Cell::new(true));
-    let show_position_pref = Rc::new(Cell::new(true));
+    // Display config stays shared so reloads can re-render the visible player in place
+    let display = Rc::new(RefCell::new(MediaDisplayConfig::from_config(config)));
     let player_total = Rc::new(Cell::new(0usize));
 
     MediaCardLayoutParts {
@@ -91,25 +99,25 @@ pub(super) fn build_media_card_parts(
             meta_row,
             source_label,
             position_label,
+            title_widget,
             title_label,
             artist_label,
             play_button,
             next_button,
             prev_button,
             art_key,
-            show_source_pref,
-            show_position_pref,
+            display,
             player_total,
         },
     }
 }
 
-fn build_art_picture() -> gtk::Picture {
+fn build_art_picture(art_size_px: i32) -> gtk::Picture {
     // Artwork starts hidden so empty players do not leave a blank image box
     let art = gtk::Picture::new();
-    art.add_css_class("unixnotis-media-art");
+    art.add_css_class(hooks::media_shell::ART);
     art.set_can_shrink(true);
-    art.set_size_request(50, 50);
+    art.set_size_request(art_size_px, art_size_px);
     art.set_keep_aspect_ratio(true);
     art.set_hexpand(false);
     art.set_vexpand(false);
@@ -120,11 +128,11 @@ fn build_art_picture() -> gtk::Picture {
     art
 }
 
-fn build_art_frame(art: &gtk::Picture) -> gtk::Box {
+fn build_art_frame(art: &gtk::Picture, frame_size_px: i32) -> gtk::Box {
     // The frame keeps the slot size stable even when the art widget is hidden
     let art_frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    art_frame.add_css_class("unixnotis-media-art-frame");
-    art_frame.set_size_request(54, 54);
+    art_frame.add_css_class(hooks::media_shell::ART_FRAME);
+    art_frame.set_size_request(frame_size_px, frame_size_px);
     art_frame.set_hexpand(false);
     art_frame.set_vexpand(false);
     art_frame.set_halign(Align::Center);
@@ -137,6 +145,7 @@ fn build_art_frame(art: &gtk::Picture) -> gtk::Box {
 fn build_text_box(marquee_width: i32) -> gtk::Box {
     // The title lane gets an explicit width so relayout math stays predictable
     let text_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    text_box.add_css_class(hooks::media_shell::TEXT);
     text_box.set_hexpand(false);
     text_box.set_halign(Align::Fill);
     text_box.set_valign(Align::Center);
@@ -144,10 +153,10 @@ fn build_text_box(marquee_width: i32) -> gtk::Box {
     text_box
 }
 
-fn build_controls() -> (gtk::Box, gtk::Button, gtk::Button, gtk::Button) {
+fn build_controls(spacing_px: i32) -> (gtk::Box, gtk::Button, gtk::Button, gtk::Button) {
     // Controls stay grouped so shells can move them as one block
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    controls.add_css_class("unixnotis-media-controls");
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, spacing_px);
+    controls.add_css_class(hooks::media_shell::CONTROLS);
     controls.set_halign(Align::End);
     controls.set_valign(Align::Center);
 
@@ -155,11 +164,14 @@ fn build_controls() -> (gtk::Box, gtk::Button, gtk::Button, gtk::Button) {
     let play_button = gtk::Button::from_icon_name("media-playback-start-symbolic");
     let next_button = gtk::Button::from_icon_name("media-skip-forward-symbolic");
 
-    prev_button.add_css_class("unixnotis-media-button");
-    play_button.add_css_class("unixnotis-media-button");
+    prev_button.add_css_class(hooks::media_shell::BUTTON);
+    prev_button.add_css_class(hooks::media_shell::BUTTON_PREV);
+    play_button.add_css_class(hooks::media_shell::BUTTON);
+    play_button.add_css_class(hooks::media_shell::BUTTON_PLAY);
     // The primary class gives themes one hook for the play or pause button
     play_button.add_css_class("primary");
-    next_button.add_css_class("unixnotis-media-button");
+    next_button.add_css_class(hooks::media_shell::BUTTON);
+    next_button.add_css_class(hooks::media_shell::BUTTON_NEXT);
 
     controls.append(&prev_button);
     controls.append(&play_button);

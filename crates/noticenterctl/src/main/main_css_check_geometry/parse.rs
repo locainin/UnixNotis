@@ -7,7 +7,7 @@ use super::super::main_css_check_parse::{
     split_selectors, strip_css_comments,
 };
 use super::super::main_css_check_policy::{
-    is_complex_geometry_warning_property, is_horizontal_size_property,
+    is_complex_geometry_warning_property, is_horizontal_size_property, is_vertical_size_property,
 };
 use super::model::GeometryModel;
 use super::stock::classes::known_unixnotis_classes;
@@ -25,7 +25,9 @@ pub(super) type CssCustomProperties = HashMap<String, String>;
 
 use self::custom_properties::collect_custom_properties;
 pub(in crate::main_css_check) use self::custom_properties::CssCustomPropertyScopes;
-pub(super) use self::lengths::{parse_box_edges, parse_single_length, set_edge};
+pub(super) use self::lengths::{
+    parse_box_edges, parse_box_vertical_edges, parse_single_length, set_edge,
+};
 use self::selectors::{maybe_warn_for_complex_unixnotis_selector, simple_class_selector};
 
 pub(super) fn collect_geometry_from_contents(
@@ -154,6 +156,9 @@ fn collect_geometry_selector(
     let has_horizontal_size_rules = properties
         .iter()
         .any(|(name, _)| is_horizontal_size_property(name));
+    let has_vertical_size_rules = properties
+        .iter()
+        .any(|(name, _)| is_vertical_size_property(name));
     let has_complex_width_driver_rules = properties
         .iter()
         .any(|(name, _)| is_complex_geometry_warning_property(name));
@@ -183,31 +188,49 @@ fn collect_geometry_selector(
         ));
     }
 
-    let Some(target) = model.target_mut(class_name) else {
-        if has_horizontal_size_rules
-            && class_name.starts_with(".unixnotis-")
-            && known_unixnotis_classes().contains(class_name)
-            && should_warn_for_unmodeled_known_class(class_name, &properties)
-            && warned_classes.insert(format!("unmodeled:{class_name}"))
-        {
-            // The class is real, but there is no direct width math for it yet
-            // Once the rules differ from stock, the change needs to stay visible
-            // Only custom size changes on major unmodeled layout hooks should stay loud
-            warnings.push(format!(
-                "size rules target known UnixNotis class '{}', but geometry lint does not model its width yet; width pressure may be missed",
-                class_name
-            ));
+    if has_horizontal_size_rules {
+        let Some(target) = model.target_mut(class_name) else {
+            if has_horizontal_size_rules
+                && class_name.starts_with(".unixnotis-")
+                && known_unixnotis_classes().contains(class_name)
+                && should_warn_for_unmodeled_known_class(class_name, &properties)
+                && warned_classes.insert(format!("unmodeled:{class_name}"))
+            {
+                // The class is real, but there is no direct width math for it yet
+                // Once the rules differ from stock, the change needs to stay visible
+                // Only custom size changes on major unmodeled layout hooks should stay loud
+                warnings.push(format!(
+                    "size rules target known UnixNotis class '{}', but geometry lint does not model its width yet; width pressure may be missed",
+                    class_name
+                ));
+            }
+            // Known non-modeled classes otherwise stay quiet so stock theme selectors do not spam output
+            return;
+        };
+        let custom_properties = custom_properties.for_selector(class_name);
+
+        for (name, value) in &properties {
+            if is_horizontal_size_property(name) {
+                // Every supported property is reduced into one horizontal box model so the final
+                // budget check only has to compare plain numbers
+                // Geometry lint only tracks properties that change horizontal width
+                target.apply_property(name, value, &custom_properties);
+            }
         }
-        // Known non-modeled classes otherwise stay quiet so stock theme selectors do not spam output
+    }
+
+    if !has_vertical_size_rules {
+        return;
+    }
+
+    let Some(target) = model.target_vertical_mut(class_name) else {
         return;
     };
     let custom_properties = custom_properties.for_selector(class_name);
 
     for (name, value) in properties {
-        if is_horizontal_size_property(&name) {
-            // Every supported property is reduced into one horizontal box model so the final
-            // budget check only has to compare plain numbers
-            // Geometry lint only tracks properties that change horizontal width
+        if is_vertical_size_property(&name) {
+            // Media height warnings need top and bottom box math without widening the existing width path
             target.apply_property(&name, &value, &custom_properties);
         }
     }

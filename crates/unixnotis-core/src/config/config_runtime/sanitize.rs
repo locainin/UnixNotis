@@ -1,6 +1,6 @@
 //! Runtime sanitization and validation for configuration values.
 
-use super::{
+use super::super::{
     Config, PanelConfig, PopupConfig, ThemeConfig, WidgetPluginConfig, PANEL_HEIGHT_PERCENT_DEFAULT,
 };
 use crate::{program_in_path, util};
@@ -16,6 +16,11 @@ const MAX_POPUP_WIDTH: i32 = 2048;
 const MAX_SPACING: i32 = 256;
 const MAX_MARGIN: i32 = 512;
 const MAX_CARD_HEIGHT: i32 = 2048;
+const MAX_MEDIA_ART_SIZE: i32 = 512;
+const MIN_MEDIA_TITLE_CHAR_LIMIT: usize = 1;
+const MAX_MEDIA_TITLE_CHAR_LIMIT: usize = 256;
+const MIN_MEDIA_TEXT_WIDTH_FLOOR: i32 = 48;
+const MAX_MEDIA_TEXT_WIDTH_FLOOR: i32 = 2048;
 const MAX_HISTORY_ENTRIES: usize = 5_000;
 // Match the daemon-side active cap so config, docs, and runtime all agree
 const MAX_HISTORY_ACTIVE: usize = 12;
@@ -27,7 +32,7 @@ const MAX_PLUGIN_TIMEOUT_MS: u64 = 30_000;
 const MIN_PLUGIN_OUTPUT_BYTES: usize = 128;
 const MAX_PLUGIN_OUTPUT_BYTES: usize = 128 * 1024;
 
-pub(super) fn sanitize_config(config: &mut Config) {
+pub(in super::super) fn sanitize_config(config: &mut Config) {
     // Clean config before use
     // Clamp refresh intervals to avoid busy loops or runaway timers.
     // A value of 0 disables polling and must be preserved for UI correctness.
@@ -88,6 +93,32 @@ pub(super) fn sanitize_config(config: &mut Config) {
     config.media.allowlist = normalize_media_tokens(&config.media.allowlist);
     config.media.denylist = normalize_media_tokens(&config.media.denylist);
     config.media.browser_tokens = normalize_media_tokens(&config.media.browser_tokens);
+    config.media.source_aliases = normalize_media_aliases(&config.media.source_aliases);
+    config.media.title_char_limit = config
+        .media
+        .title_char_limit
+        .clamp(MIN_MEDIA_TITLE_CHAR_LIMIT, MAX_MEDIA_TITLE_CHAR_LIMIT);
+    if config.media.art_size_px <= 0 {
+        config.media.art_size_px = super::super::MediaConfig::default().art_size_px;
+    }
+    config.media.art_size_px = config.media.art_size_px.clamp(1, MAX_MEDIA_ART_SIZE);
+    if config.media.text_width_floor_px <= 0 {
+        config.media.text_width_floor_px = super::super::MediaConfig::default().text_width_floor_px;
+    }
+    config.media.text_width_floor_px = config
+        .media
+        .text_width_floor_px
+        .clamp(MIN_MEDIA_TEXT_WIDTH_FLOOR, MAX_MEDIA_TEXT_WIDTH_FLOOR);
+    config.media.content_spacing_px = config.media.content_spacing_px.clamp(0, MAX_SPACING);
+    config.media.control_spacing_px = config.media.control_spacing_px.clamp(0, MAX_SPACING);
+    config.media.navigation_spacing_px = config.media.navigation_spacing_px.clamp(0, MAX_SPACING);
+    if let Some(card_height_px) = config.media.card_height_px {
+        if card_height_px <= 0 {
+            config.media.card_height_px = None;
+        } else {
+            config.media.card_height_px = Some(card_height_px.clamp(1, MAX_CARD_HEIGHT));
+        }
+    }
 
     // Match the daemon cap
     config.history.max_active = config.history.max_active.min(MAX_HISTORY_ACTIVE);
@@ -149,6 +180,23 @@ fn normalize_media_tokens(tokens: &[String]) -> Vec<String> {
         .iter()
         .map(|token| token.trim().to_lowercase())
         .filter(|token| !token.is_empty())
+        .collect()
+}
+
+fn normalize_media_aliases(
+    aliases: &std::collections::BTreeMap<String, String>,
+) -> std::collections::BTreeMap<String, String> {
+    // Empty tokens or empty labels only add confusing branches at render time
+    aliases
+        .iter()
+        .filter_map(|(token, label)| {
+            let token = token.trim().to_lowercase();
+            let label = label.trim().to_string();
+            if token.is_empty() || label.is_empty() {
+                return None;
+            }
+            Some((token, label))
+        })
         .collect()
 }
 
@@ -313,5 +361,5 @@ fn command_requires_shell(cmd: &str) -> bool {
 }
 
 #[cfg(test)]
-#[path = "config_runtime_sanitize_tests.rs"]
+#[path = "tests/sanitize.rs"]
 mod tests;

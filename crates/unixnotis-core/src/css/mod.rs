@@ -4,7 +4,6 @@
 #[path = "features.rs"]
 pub mod features;
 // Shared class names stop theme hooks from drifting between widgets
-#[path = "hooks.rs"]
 pub mod hooks;
 // Token builders keep legacy colors and newer custom properties in sync
 #[path = "tokens.rs"]

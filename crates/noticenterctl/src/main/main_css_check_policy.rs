@@ -23,6 +23,27 @@ pub(super) fn is_horizontal_size_property(name: &str) -> bool {
     )
 }
 
+pub(super) fn is_vertical_size_property(name: &str) -> bool {
+    // Only height-driving properties belong here
+    matches!(
+        name.trim(),
+        "height"
+            | "min-height"
+            | "margin"
+            | "margin-top"
+            | "margin-bottom"
+            | "padding"
+            | "padding-top"
+            | "padding-bottom"
+            | "border"
+            | "border-width"
+            | "border-top"
+            | "border-top-width"
+            | "border-bottom"
+            | "border-bottom-width"
+    )
+}
+
 pub(super) fn is_complex_geometry_warning_property(name: &str) -> bool {
     // Border-only tweaks are common state styling and usually do not drive row width by themselves
     matches!(

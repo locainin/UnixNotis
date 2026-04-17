@@ -2,14 +2,14 @@
 
 use std::env;
 
-use super::config_commands::*;
-use super::ToggleWidgetConfig;
+use super::super::config_commands::*;
+use super::super::ToggleWidgetConfig;
 use crate::program_in_path;
 
 // Toggle command templates used when normalizing runtime defaults.
 const LEGACY_AIRPLANE_STATE_CMD: &str = "rfkill list all | grep -q \"Soft blocked: yes\"";
 
-pub(super) fn apply_toggle_backends(toggles: &mut [ToggleWidgetConfig]) {
+pub(in super::super) fn apply_toggle_backends(toggles: &mut [ToggleWidgetConfig]) {
     let gammastep_available = program_in_path("gammastep");
     let wlsunset_available = program_in_path("wlsunset");
     let bluetoothctl_available = program_in_path("bluetoothctl");

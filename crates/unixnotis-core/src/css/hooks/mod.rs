@@ -145,116 +145,56 @@ pub mod media_card {
     pub const STOPPED: &str = "unixnotis-media-card-stopped";
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{
-        empty_row, ghost_row, group_row, info_card, media_card, panel_action, panel_card,
-        panel_shell, popup_card, shared_state, stat_card, toggle_card,
-    };
-    use std::collections::HashSet;
-
-    #[test]
-    fn hook_names_stay_unique() {
-        let names = [
-            shared_state::ACTIVE,
-            shared_state::CRITICAL,
-            shared_state::EMPTY,
-            shared_state::PLAYING,
-            shared_state::STACKED,
-            panel_action::FOCUS,
-            panel_action::PRIMARY,
-            panel_action::MUTED,
-            panel_action::SEARCH,
-            panel_action::CLOSE,
-            panel_action::WITH_ICON,
-            panel_action::ICON_ONLY,
-            panel_action::ROW,
-            panel_action::GROUP,
-            panel_action::ROOT,
-            panel_action::CONTENT,
-            panel_action::GLYPH,
-            panel_action::LABEL,
-            panel_shell::WINDOW,
-            panel_shell::ROOT,
-            panel_shell::HEADER,
-            panel_shell::HEADER_TOP,
-            panel_shell::TITLE_STACK,
-            panel_shell::TITLE_ROW,
-            panel_shell::TITLE,
-            panel_shell::COUNT,
-            panel_shell::SEARCH,
-            panel_shell::SEARCH_REVEALER,
-            panel_shell::MEDIA_CONTAINER,
-            panel_shell::QUICK_CONTROLS,
-            panel_shell::WIDGET_STACK,
-            panel_shell::WIDGET_REVEALER,
-            panel_shell::TOGGLE_SECTION,
-            panel_shell::STAT_SECTION,
-            panel_shell::CARD_SECTION,
-            panel_card::HAS_ACTIONS,
-            panel_card::HAS_BODY,
-            panel_card::HAS_SUMMARY,
-            panel_card::NO_ACTIONS,
-            toggle_card::GRID,
-            toggle_card::ROOT,
-            toggle_card::CONTENT,
-            toggle_card::ICON,
-            toggle_card::LABEL,
-            toggle_card::HAS_ICON,
-            toggle_card::NO_ICON,
-            stat_card::GRID,
-            stat_card::ROOT,
-            stat_card::HEADER,
-            stat_card::ICON,
-            stat_card::TITLE,
-            stat_card::VALUE,
-            stat_card::BUILTIN,
-            stat_card::PLUGIN,
-            stat_card::HAS_ICON,
-            stat_card::NO_ICON,
-            info_card::GRID,
-            info_card::ROOT,
-            info_card::HEADER,
-            info_card::ICON,
-            info_card::TITLE,
-            info_card::BODY,
-            info_card::CALENDAR_WIDGET,
-            info_card::CALENDAR,
-            info_card::WEATHER,
-            info_card::MONO,
-            info_card::HAS_ICON,
-            info_card::NO_ICON,
-            popup_card::HAS_ACTIONS,
-            popup_card::HAS_BODY,
-            popup_card::HAS_ICON,
-            popup_card::HAS_SUMMARY,
-            popup_card::NO_ICON,
-            group_row::ROOT,
-            group_row::CONTAINER,
-            group_row::HEADER,
-            group_row::ICON,
-            group_row::TITLE,
-            group_row::COUNT,
-            group_row::CHEVRON,
-            group_row::COLLAPSED,
-            group_row::EXPANDED,
-            group_row::HAS_ICON,
-            group_row::NO_ICON,
-            empty_row::ROOT,
-            empty_row::LABEL,
-            ghost_row::ROOT,
-            ghost_row::DEPTH_PREFIX,
-            media_card::EMPTY_ARTIST,
-            media_card::HAS_ART,
-            media_card::HAS_ARTIST,
-            media_card::MULTI_PLAYER,
-            media_card::NO_ART,
-            media_card::PAUSED,
-            media_card::PLAYING,
-            media_card::SINGLE_PLAYER,
-            media_card::STOPPED,
-        ];
-        let unique = names.iter().copied().collect::<HashSet<_>>();
-        assert_eq!(unique.len(), names.len());
-    }
+pub mod media_shell {
+    // Media shell hooks expose structure so CSS can target roles instead of guessing layout
+    pub const STACK: &str = "unixnotis-media-stack";
+    pub const ROW: &str = "unixnotis-media-row";
+    pub const CARD: &str = "unixnotis-media-card";
+    pub const HEADER: &str = "unixnotis-media-header";
+    pub const BODY: &str = "unixnotis-media-body";
+    pub const TEXT: &str = "unixnotis-media-text";
+    pub const META: &str = "unixnotis-media-meta";
+    pub const SOURCE: &str = "unixnotis-media-source";
+    pub const POSITION: &str = "unixnotis-media-position";
+    pub const TITLE: &str = "unixnotis-media-title";
+    pub const ARTIST: &str = "unixnotis-media-artist";
+    pub const ART: &str = "unixnotis-media-art";
+    pub const ART_FRAME: &str = "unixnotis-media-art-frame";
+    pub const MAIN: &str = "unixnotis-media-main";
+    pub const CONTROLS: &str = "unixnotis-media-controls";
+    pub const CONTROL_STRIP: &str = "unixnotis-media-control-strip";
+    pub const ACTION_RAIL: &str = "unixnotis-media-action-rail";
+    pub const NAV_STRIP: &str = "unixnotis-media-nav-strip";
+    pub const NAV: &str = "unixnotis-media-nav";
+    pub const NAV_PREV: &str = "unixnotis-media-nav-prev";
+    pub const NAV_NEXT: &str = "unixnotis-media-nav-next";
+    pub const BUTTON: &str = "unixnotis-media-button";
+    pub const BUTTON_PREV: &str = "unixnotis-media-button-prev";
+    pub const BUTTON_PLAY: &str = "unixnotis-media-button-play";
+    pub const BUTTON_NEXT: &str = "unixnotis-media-button-next";
+    pub const HAS_TITLE: &str = "unixnotis-media-has-title";
+    pub const NO_TITLE: &str = "unixnotis-media-no-title";
+    pub const HAS_SOURCE: &str = "unixnotis-media-has-source";
+    pub const NO_SOURCE: &str = "unixnotis-media-no-source";
+    pub const HAS_POSITION: &str = "unixnotis-media-has-position";
+    pub const NO_POSITION: &str = "unixnotis-media-no-position";
+    pub const HAS_CONTROLS: &str = "unixnotis-media-has-controls";
+    pub const NO_CONTROLS: &str = "unixnotis-media-no-controls";
+    pub const HAS_NAV: &str = "unixnotis-media-has-nav";
+    pub const NO_NAV: &str = "unixnotis-media-no-nav";
+    pub const ART_START: &str = "unixnotis-media-art-start";
+    pub const ART_TOP: &str = "unixnotis-media-art-top";
+    pub const ART_HIDDEN: &str = "unixnotis-media-art-hidden";
+    pub const CONTROLS_INLINE: &str = "unixnotis-media-controls-inline";
+    pub const CONTROLS_BOTTOM: &str = "unixnotis-media-controls-bottom";
+    pub const CONTROLS_SIDE: &str = "unixnotis-media-controls-side";
+    pub const CONTROLS_HIDDEN: &str = "unixnotis-media-controls-hidden";
+    pub const NAV_EXTERNAL: &str = "unixnotis-media-nav-external";
+    pub const NAV_INLINE: &str = "unixnotis-media-nav-inline";
+    pub const NAV_BOTTOM: &str = "unixnotis-media-nav-bottom";
+    pub const NAV_SIDE: &str = "unixnotis-media-nav-side";
+    pub const NAV_HIDDEN: &str = "unixnotis-media-nav-hidden";
 }
+
+#[cfg(test)]
+mod tests;

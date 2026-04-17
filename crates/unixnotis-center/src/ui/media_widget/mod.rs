@@ -1,8 +1,10 @@
 mod build;
 mod card;
+mod format;
 mod layout;
 mod parts;
 mod selection;
+mod shell;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,12 +13,13 @@ use glib::clone;
 use gtk::prelude::*;
 
 use crate::media::{MediaHandle, MediaInfo};
-use unixnotis_core::{MediaConfig, MediaLayout};
+use unixnotis_core::MediaConfig;
 
 use self::build::build_media_widget;
 use self::card::MediaCardWidgets;
-use self::layout::marquee_width_for_layout;
+use self::layout::marquee_width_for_shell;
 use self::selection::{MediaSelection, MediaSelectionSnapshot};
+use self::shell::MediaShellConfig;
 
 pub struct MediaWidget {
     // The outer stack is what gets attached to the panel container
@@ -28,8 +31,8 @@ pub struct MediaWidget {
     card: MediaCardWidgets,
     // Selection state is shared with button handlers and update calls
     selection: Rc<RefCell<MediaSelection>>,
-    // The current shell preset decides whether a rebuild is needed on reload
-    layout: MediaLayout,
+    // The resolved shell captures structure and geometry that need a rebuild when changed
+    shell: MediaShellConfig,
 }
 
 impl MediaWidget {
@@ -40,8 +43,9 @@ impl MediaWidget {
         config: &MediaConfig,
     ) -> Self {
         let selection = Rc::new(RefCell::new(MediaSelection::default()));
+        let shell = MediaShellConfig::from_config(config);
         // One build call assembles the shared card parts into the requested preset
-        let built = build_media_widget(&handle, selection.clone(), panel_width, config);
+        let built = build_media_widget(&handle, selection.clone(), panel_width, config, &shell);
         let root = built.root;
         let nav_prev = built.nav_prev;
         let nav_next = built.nav_next;
@@ -59,7 +63,7 @@ impl MediaWidget {
             nav_next,
             card,
             selection,
-            layout: config.layout,
+            shell,
         }
     }
 
@@ -82,7 +86,7 @@ impl MediaWidget {
     }
 
     pub(super) fn matches_layout(&self, config: &MediaConfig) -> bool {
-        self.layout == config.layout
+        self.shell == MediaShellConfig::from_config(config)
     }
 
     pub(super) fn snapshot(&self) -> MediaSelectionSnapshot {
@@ -104,15 +108,21 @@ impl MediaWidget {
 
     pub(super) fn apply_layout(&mut self, panel_width: i32, config: &MediaConfig) {
         // Width updates stay lightweight when the structural preset is unchanged
-        let marquee_width = marquee_width_for_layout(self.layout, panel_width);
-        // These flags can change without rebuilding the whole shell
-        self.card
-            .apply_metadata_visibility(config.show_source, config.show_position);
+        let marquee_width = marquee_width_for_shell(&self.shell, panel_width);
+        // Metadata formatting and visibility are light enough to update in place
+        self.card.apply_display_config(config);
         // Text width stays the only size request that changes on a light relayout
         self.card.text_box.set_size_request(marquee_width, -1);
         self.card
             .title_label
             .update_limits(marquee_width, config.title_char_limit);
+        apply_selection(
+            &self.selection.borrow(),
+            &self.card,
+            &self.root,
+            &self.nav_prev,
+            &self.nav_next,
+        );
     }
 }
 
