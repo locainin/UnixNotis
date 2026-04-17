@@ -1,9 +1,53 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use super::super::lint_geometry_css_files_with_config;
 use super::super::parse::collect_geometry_from_contents;
 use super::super::GeometryModel;
 use unixnotis_core::{
     Config, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS,
     DEFAULT_WIDGETS_CSS,
 };
+
+static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+struct TempDirGuard {
+    path: PathBuf,
+}
+
+impl TempDirGuard {
+    fn new(name: &str) -> Self {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock moved backwards")
+            .as_nanos();
+        let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("unixnotis-geometry-{name}-{stamp}-{serial}"));
+        fs::create_dir_all(&path).expect("create temp dir");
+        Self { path }
+    }
+
+    fn write(&self, relative_path: &str, contents: &str) -> PathBuf {
+        let path = self.path.join(relative_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dirs");
+        }
+        fs::write(&path, contents).expect("write file");
+        path
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
 
 #[test]
 fn stock_theme_geometry_is_quiet() {
@@ -24,6 +68,29 @@ fn stock_theme_geometry_is_quiet() {
 
     let warnings = model.finalize_warnings(&config);
     assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn shipped_default_theme_is_quiet_through_file_based_geometry_path() {
+    let root = TempDirGuard::new("stock-default");
+    let files = vec![
+        root.write("base.css", DEFAULT_BASE_CSS),
+        root.write("panel.css", DEFAULT_PANEL_CSS),
+        root.write("popup.css", DEFAULT_POPUP_CSS),
+        root.write("widgets.css", DEFAULT_WIDGETS_CSS),
+        root.write("media.css", DEFAULT_MEDIA_CSS),
+    ];
+
+    let diagnostics = lint_geometry_css_files_with_config(
+        &files,
+        root.path(),
+        "$XDG_CONFIG_HOME/unixnotis",
+        "$XDG_CONFIG_HOME/unixnotis/config.toml",
+        &Config::default(),
+    )
+    .expect("geometry diagnostics");
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
 }
 
 #[test]

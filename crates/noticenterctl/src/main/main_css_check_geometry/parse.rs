@@ -30,6 +30,7 @@ pub(super) use self::lengths::{
 };
 use self::selectors::{maybe_warn_for_complex_unixnotis_selector, simple_class_selector};
 
+#[cfg(test)]
 pub(super) fn collect_geometry_from_contents(
     contents: &str,
     model: &mut GeometryModel,

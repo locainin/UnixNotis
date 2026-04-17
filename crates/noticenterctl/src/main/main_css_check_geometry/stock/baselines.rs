@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use unixnotis_core::{
-    Config, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS,
-    DEFAULT_WIDGETS_CSS,
+    build_modern_theme_custom_properties, gtk_css_features_for_version, Config, DEFAULT_BASE_CSS,
+    DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
 };
 
 use super::super::super::main_css_check_parse::{
@@ -11,7 +11,9 @@ use super::super::super::main_css_check_parse::{
 };
 use super::super::super::main_css_check_policy::is_horizontal_size_property;
 use super::super::model::GeometryModel;
-use super::super::parse::collect_geometry_from_contents;
+use super::super::parse::{
+    collect_custom_property_scopes, collect_geometry_from_contents_with_properties,
+};
 use super::normalized_horizontal_size_rules;
 
 pub(in crate::main_css_check) fn stock_matches_complex_selector_rules(
@@ -47,6 +49,26 @@ pub(in crate::main_css_check) fn stock_geometry_model() -> &'static GeometryMode
     static MODEL: OnceLock<GeometryModel> = OnceLock::new();
     MODEL.get_or_init(|| {
         let mut model = GeometryModel::default();
+        let generated_tokens = build_modern_theme_custom_properties(
+            &stock_config().theme,
+            gtk_css_features_for_version(4, 16),
+        );
+        let shared_custom_properties = collect_custom_property_scopes(
+            &std::iter::once(generated_tokens.as_str())
+                .chain(
+                    [
+                        DEFAULT_BASE_CSS,
+                        DEFAULT_PANEL_CSS,
+                        DEFAULT_POPUP_CSS,
+                        DEFAULT_WIDGETS_CSS,
+                        DEFAULT_MEDIA_CSS,
+                    ]
+                    .into_iter(),
+                )
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+
         // Merge every shipped CSS file into one baseline geometry model
         for css in [
             DEFAULT_BASE_CSS,
@@ -56,7 +78,11 @@ pub(in crate::main_css_check) fn stock_geometry_model() -> &'static GeometryMode
             DEFAULT_MEDIA_CSS,
         ] {
             // The shipped theme is the baseline used to keep false positives low
-            let _ = collect_geometry_from_contents(css, &mut model);
+            let _ = collect_geometry_from_contents_with_properties(
+                css,
+                &shared_custom_properties,
+                &mut model,
+            );
         }
         model
     })

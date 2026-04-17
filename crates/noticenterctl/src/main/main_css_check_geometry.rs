@@ -40,7 +40,16 @@ pub(super) fn lint_geometry_css_files(
 
     let config = Config::load_from_path(&config_path)?;
     let config_display = display_config_path(config_dir, display_root, &config_path);
+    lint_geometry_css_files_with_config(files, config_dir, display_root, &config_display, &config)
+}
 
+pub(super) fn lint_geometry_css_files_with_config(
+    files: &[PathBuf],
+    config_dir: &Path,
+    display_root: &str,
+    config_display: &str,
+    config: &Config,
+) -> Result<Vec<CssCheckDiagnostic>> {
     // One shared model lets multiple files build one layout estimate
     let mut model = GeometryModel::default();
     let mut diagnostics = Vec::new();
@@ -86,7 +95,7 @@ pub(super) fn lint_geometry_css_files(
     for warning in model.finalize_warnings(&config) {
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Geometry,
-            config_display.clone(),
+            config_display.to_string(),
             warning,
         ));
     }
