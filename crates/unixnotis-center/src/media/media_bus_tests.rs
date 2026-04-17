@@ -40,6 +40,25 @@ fn is_allowed_player_respects_lists() {
 }
 
 #[test]
+fn browser_token_matching_avoids_inner_substring_hits() {
+    let mut config = MediaConfig::default();
+    config.include_browsers = false;
+    config.allowlist.clear();
+    config.denylist.clear();
+    config.browser_tokens = vec!["zen".to_string(), "edge".to_string()];
+
+    assert!(is_allowed_player("org.mpris.MediaPlayer2.zenity", &config));
+    assert!(is_allowed_player(
+        "org.mpris.MediaPlayer2.knowledge",
+        &config
+    ));
+    assert!(!is_allowed_player(
+        "org.mpris.MediaPlayer2.microsoft-edge",
+        &config
+    ));
+}
+
+#[test]
 fn relevant_media_change_detects_updates() {
     let mut changed = HashMap::new();
     // Metadata changes are enough to rebuild the visible card

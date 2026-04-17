@@ -112,6 +112,18 @@ fn sanitize_clamps_history_limits() {
 }
 
 #[test]
+fn sanitize_keeps_active_history_within_total_history() {
+    let mut config = Config::default();
+    config.history.max_active = 12;
+    config.history.max_entries = 1;
+
+    sanitize_config(&mut config);
+
+    assert_eq!(config.history.max_entries, 1);
+    assert_eq!(config.history.max_active, 1);
+}
+
+#[test]
 fn sanitize_clamps_margins_and_card_heights() {
     // Ensure the config has enough widgets for min-height coverage.
     let mut config = Config::default();
@@ -156,11 +168,16 @@ fn sanitize_clamps_margins_and_card_heights() {
 
 #[test]
 fn sanitize_normalizes_media_tokens() {
-    // Normalize case and drop empty entries to keep media matching stable.
+    // Normalize case, drop empty entries, and remove repeats from token lists.
     let mut config = Config::default();
-    config.media.allowlist = vec!["Spotify".to_string(), " ".to_string()];
-    config.media.denylist = vec!["Playerctld".to_string()];
-    config.media.browser_tokens = vec!["FireFox".to_string(), "".to_string()];
+    config.media.allowlist = vec![
+        "Spotify".to_string(),
+        " ".to_string(),
+        "spotify".to_string(),
+    ];
+    config.media.denylist = vec!["Playerctld".to_string(), "playerctld".to_string()];
+    config.media.browser_tokens =
+        vec!["FireFox".to_string(), "".to_string(), "firefox".to_string()];
     sanitize_config(&mut config);
 
     assert_eq!(config.media.allowlist, vec!["spotify".to_string()]);
@@ -294,6 +311,65 @@ fn sanitize_clamps_media_geometry_and_aliases() {
             .get("spotify")
             .map(String::as_str),
         Some("Spotify App")
+    );
+}
+
+#[test]
+fn sanitize_keeps_first_alias_when_lowercase_keys_collide() {
+    let mut config = Config::default();
+    config
+        .media
+        .source_aliases
+        .insert("Spotify".to_string(), "Spotify Desktop".to_string());
+    config
+        .media
+        .source_aliases
+        .insert("spotify".to_string(), "Spotify Web".to_string());
+
+    sanitize_config(&mut config);
+
+    assert_eq!(config.media.source_aliases.len(), 1);
+    assert_eq!(
+        config
+            .media
+            .source_aliases
+            .get("spotify")
+            .map(String::as_str),
+        Some("Spotify Desktop")
+    );
+}
+
+#[test]
+fn media_allowlist_and_whitelist_together_fail_to_parse() {
+    let err = toml::from_str::<Config>(
+        r#"
+        [media]
+        allowlist = ["spotify"]
+        whitelist = ["firefox"]
+        "#,
+    )
+    .expect_err("duplicate logical media field should fail");
+
+    assert!(
+        err.to_string().to_lowercase().contains("duplicate"),
+        "error should mention duplicate field semantics: {err}"
+    );
+}
+
+#[test]
+fn media_denylist_and_blacklist_together_fail_to_parse() {
+    let err = toml::from_str::<Config>(
+        r#"
+        [media]
+        denylist = ["playerctld"]
+        blacklist = ["spotify"]
+        "#,
+    )
+    .expect_err("duplicate logical media field should fail");
+
+    assert!(
+        err.to_string().to_lowercase().contains("duplicate"),
+        "error should mention duplicate field semantics: {err}"
     );
 }
 

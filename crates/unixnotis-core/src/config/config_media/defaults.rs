@@ -3,6 +3,9 @@ use super::types::{
     MediaPositionFormat, MediaRemoteArtPolicy, MediaTitleFallback,
 };
 
+pub const DEFAULT_MEDIA_ART_SIZE_PX: i32 = 50;
+pub const DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX: i32 = 140;
+
 impl Default for MediaConfig {
     fn default() -> Self {
         Self {
@@ -26,8 +29,8 @@ impl Default for MediaConfig {
             art_position: MediaArtPosition::Auto,
             controls_position: MediaControlsPosition::Auto,
             navigation_position: MediaNavigationPosition::Auto,
-            art_size_px: 50,
-            text_width_floor_px: 140,
+            art_size_px: DEFAULT_MEDIA_ART_SIZE_PX,
+            text_width_floor_px: DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX,
             card_height_px: None,
             content_spacing_px: 10,
             control_spacing_px: 6,

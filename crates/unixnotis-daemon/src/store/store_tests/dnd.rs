@@ -46,9 +46,10 @@ fn dnd_state_persists_on_change() {
 
 #[test]
 fn dnd_toggle_flips_state_in_one_store_mutation() {
+    let state_dir = make_temp_state_dir("dnd-toggle");
     let mut config = Config::default();
     config.general.dnd_default = false;
-    let mut store = NotificationStore::new(config);
+    let mut store = NotificationStore::new_with_state_dir(config, state_dir.clone());
 
     let first = store.toggle_dnd();
     assert!(first.changed);
@@ -61,13 +62,16 @@ fn dnd_toggle_flips_state_in_one_store_mutation() {
     assert!(second.previous);
     assert!(!second.current);
     assert!(!store.dnd_enabled());
+
+    cleanup_temp_dir(&state_dir);
 }
 
 #[test]
 fn stale_dnd_rollback_cannot_overwrite_newer_write() {
+    let state_dir = make_temp_state_dir("dnd-stale-rollback");
     let mut config = Config::default();
     config.general.dnd_default = false;
-    let mut store = NotificationStore::new(config);
+    let mut store = NotificationStore::new_with_state_dir(config, state_dir.clone());
 
     let write_a = store.set_dnd(true);
     assert!(store.dnd_enabled());
@@ -80,13 +84,16 @@ fn stale_dnd_rollback_cannot_overwrite_newer_write() {
     let rolled_back = store.rollback_dnd_write_if_current(&write_a);
     assert!(!rolled_back);
     assert!(!store.dnd_enabled());
+
+    cleanup_temp_dir(&state_dir);
 }
 
 #[test]
 fn dnd_rollback_restores_state_when_write_is_still_current() {
+    let state_dir = make_temp_state_dir("dnd-rollback");
     let mut config = Config::default();
     config.general.dnd_default = false;
-    let mut store = NotificationStore::new(config);
+    let mut store = NotificationStore::new_with_state_dir(config, state_dir.clone());
 
     let write = store.set_dnd(true);
     assert!(store.dnd_enabled());
@@ -95,4 +102,6 @@ fn dnd_rollback_restores_state_when_write_is_still_current() {
     let rolled_back = store.rollback_dnd_write_if_current(&write);
     assert!(rolled_back);
     assert!(!store.dnd_enabled());
+
+    cleanup_temp_dir(&state_dir);
 }

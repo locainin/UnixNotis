@@ -1,7 +1,10 @@
 //! Runtime sanitization and validation for configuration values.
 
+use std::collections::{BTreeMap, HashSet};
+
 use super::super::{
-    Config, PanelConfig, PopupConfig, ThemeConfig, WidgetPluginConfig, PANEL_HEIGHT_PERCENT_DEFAULT,
+    Config, PanelConfig, PopupConfig, ThemeConfig, WidgetPluginConfig, DEFAULT_MEDIA_ART_SIZE_PX,
+    DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX, PANEL_HEIGHT_PERCENT_DEFAULT,
 };
 use crate::{program_in_path, util};
 use tracing::warn;
@@ -89,7 +92,7 @@ pub(in super::super) fn sanitize_config(config: &mut Config) {
     config.panel.margin.left = config.panel.margin.left.clamp(0, MAX_MARGIN);
     config.panel.empty_offset_top = config.panel.empty_offset_top.clamp(0, MAX_MARGIN);
 
-    // Normalize media identifiers to lowercase for consistent substring matching.
+    // Normalize media identifiers once so later runtime checks see one stable shape
     config.media.allowlist = normalize_media_tokens(&config.media.allowlist);
     config.media.denylist = normalize_media_tokens(&config.media.denylist);
     config.media.browser_tokens = normalize_media_tokens(&config.media.browser_tokens);
@@ -99,11 +102,13 @@ pub(in super::super) fn sanitize_config(config: &mut Config) {
         .title_char_limit
         .clamp(MIN_MEDIA_TITLE_CHAR_LIMIT, MAX_MEDIA_TITLE_CHAR_LIMIT);
     if config.media.art_size_px <= 0 {
-        config.media.art_size_px = super::super::MediaConfig::default().art_size_px;
+        // Pull the scalar default directly instead of building a full MediaConfig
+        config.media.art_size_px = DEFAULT_MEDIA_ART_SIZE_PX;
     }
     config.media.art_size_px = config.media.art_size_px.clamp(1, MAX_MEDIA_ART_SIZE);
     if config.media.text_width_floor_px <= 0 {
-        config.media.text_width_floor_px = super::super::MediaConfig::default().text_width_floor_px;
+        // Same rule here so sanitize stays cheap and explicit
+        config.media.text_width_floor_px = DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX;
     }
     config.media.text_width_floor_px = config
         .media
@@ -124,6 +129,8 @@ pub(in super::super) fn sanitize_config(config: &mut Config) {
     config.history.max_active = config.history.max_active.min(MAX_HISTORY_ACTIVE);
     // Keep history bounded too
     config.history.max_entries = config.history.max_entries.min(MAX_HISTORY_ENTRIES);
+    // Active notifications live inside the same history pool
+    config.history.max_active = config.history.max_active.min(config.history.max_entries);
 
     // Clamp min-height values directly; clamp covers negative inputs.
     for stat in &mut config.widgets.stats {
@@ -175,29 +182,74 @@ pub(in super::super) fn sanitize_config(config: &mut Config) {
 }
 
 fn normalize_media_tokens(tokens: &[String]) -> Vec<String> {
-    // Drop empty entries and enforce lowercase so comparisons stay case-insensitive.
-    tokens
-        .iter()
-        .map(|token| token.trim().to_lowercase())
-        .filter(|token| !token.is_empty())
-        .collect()
+    let mut normalized = Vec::with_capacity(tokens.len());
+    let mut seen = HashSet::with_capacity(tokens.len());
+
+    for token in tokens {
+        let trimmed = token.trim();
+        if trimmed.is_empty() {
+            // Empty tokens cannot match anything useful later
+            warn!(raw_token = token, "discarding empty media token");
+            continue;
+        }
+
+        let normalized_token = trimmed.to_lowercase();
+        if !seen.insert(normalized_token.clone()) {
+            // Duplicate tokens only repeat the same later comparison
+            warn!(token = normalized_token, "discarding duplicate media token");
+            continue;
+        }
+
+        normalized.push(normalized_token);
+    }
+
+    normalized
 }
 
-fn normalize_media_aliases(
-    aliases: &std::collections::BTreeMap<String, String>,
-) -> std::collections::BTreeMap<String, String> {
-    // Empty tokens or empty labels only add confusing branches at render time
-    aliases
-        .iter()
-        .filter_map(|(token, label)| {
-            let token = token.trim().to_lowercase();
-            let label = label.trim().to_string();
-            if token.is_empty() || label.is_empty() {
-                return None;
-            }
-            Some((token, label))
-        })
-        .collect()
+fn normalize_media_aliases(aliases: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let mut normalized = BTreeMap::new();
+    let mut original_keys: BTreeMap<String, String> = BTreeMap::new();
+
+    for (token, label) in aliases {
+        let trimmed_token = token.trim();
+        let trimmed_label = label.trim();
+
+        if trimmed_token.is_empty() {
+            // Empty alias keys never match a player name or identity
+            warn!(
+                raw_key = token,
+                raw_label = label,
+                "discarding media alias with empty key"
+            );
+            continue;
+        }
+        if trimmed_label.is_empty() {
+            // Empty labels render like missing metadata and only confuse the result
+            warn!(
+                raw_key = token,
+                raw_label = label,
+                "discarding media alias with empty label"
+            );
+            continue;
+        }
+
+        let normalized_token = trimmed_token.to_lowercase();
+        if let Some(existing_key) = original_keys.get(&normalized_token) {
+            // Lowercasing can collapse two user keys into the same runtime key
+            warn!(
+                normalized_key = normalized_token,
+                kept_key = existing_key.as_str(),
+                dropped_key = token.as_str(),
+                "discarding colliding media alias after normalization"
+            );
+            continue;
+        }
+
+        original_keys.insert(normalized_token.clone(), token.clone());
+        normalized.insert(normalized_token, trimmed_label.to_string());
+    }
+
+    normalized
 }
 
 fn clamp_alpha(value: &mut f32, fallback: f32) {

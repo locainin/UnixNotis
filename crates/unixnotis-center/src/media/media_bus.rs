@@ -303,8 +303,10 @@ pub(super) fn is_allowed_player(name: &str, config: &MediaConfig) -> bool {
 }
 
 fn is_browser_name(lower: &str, browser_tokens: &[String]) -> bool {
-    // Tokens are config-driven to allow browser matching without hardcoded lists.
-    browser_tokens.iter().any(|token| lower.contains(token))
+    // Browser tokens match whole segments so short defaults do not overfire
+    browser_tokens
+        .iter()
+        .any(|token| super::media_policy::token_matches_segment(lower, token))
 }
 
 #[cfg(test)]

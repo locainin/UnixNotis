@@ -127,12 +127,24 @@ fn is_blocked_ip(addr: &IpAddr) -> bool {
 
 fn browser_family_from_value(value: &str, browser_tokens: &[String]) -> Option<String> {
     for token in browser_tokens {
-        // Simple token matching is enough for config-driven browser families
-        if value.contains(token) {
+        // Browser tokens should match name segments, not random inner substrings
+        if token_matches_segment(value, token) {
             return Some(token.clone());
         }
     }
     None
+}
+
+pub(super) fn token_matches_segment(value: &str, token: &str) -> bool {
+    if token.is_empty() {
+        return false;
+    }
+
+    // Split on non-word-ish separators so tokens like "edge" still match
+    // "microsoft-edge", but not unrelated names like "knowledge"
+    value
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .any(|segment| segment == token)
 }
 
 fn mpris_suffix(bus_name: &str) -> Option<&str> {
@@ -197,5 +209,31 @@ mod tests {
             None,
             MediaRemoteArtPolicy::BrowsersToo
         ));
+    }
+
+    #[test]
+    fn detect_browser_family_does_not_match_inner_substrings() {
+        let tokens = vec!["zen".to_string(), "edge".to_string()];
+
+        assert_eq!(
+            detect_browser_family("Zenity Helper", "org.mpris.MediaPlayer2.zenity", &tokens),
+            None
+        );
+        assert_eq!(
+            detect_browser_family(
+                "Knowledge Player",
+                "org.mpris.MediaPlayer2.knowledge",
+                &tokens
+            ),
+            None
+        );
+        assert_eq!(
+            detect_browser_family(
+                "Microsoft Edge",
+                "org.mpris.MediaPlayer2.microsoft-edge",
+                &tokens
+            ),
+            Some("edge".to_string())
+        );
     }
 }
