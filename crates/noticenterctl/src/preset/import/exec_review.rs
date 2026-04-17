@@ -67,11 +67,39 @@ fn show_exec_content_in_pager(exec_content: &ImportedExecContent) -> Result<()> 
         .with_context(|| format!("launch pager '{}'", pager.join(" ")))?;
 
     let review = render_exec_content_review(exec_content);
-    if let Some(mut stdin) = child.stdin.take() {
+    let write_result = if let Some(mut stdin) = child.stdin.take() {
         // Closing stdin after the write lets the pager reach EOF and quit normally
-        stdin
-            .write_all(review.as_bytes())
-            .context("write executable content review to pager")?;
+        stdin.write_all(review.as_bytes())
+    } else {
+        Ok(())
+    };
+
+    finish_pager(child, &pager, write_result)
+}
+
+fn pager_command_parts() -> Result<Vec<String>> {
+    // `$PAGER` wins so local pager setup keeps working during import review too
+    let configured = env::var("PAGER").unwrap_or_else(|_| "less".to_string());
+    let mut parts = shell_words::split(&configured).context("parse pager command")?;
+    if parts.is_empty() {
+        return Err(anyhow!("pager command is empty"));
+    }
+    if pager_looks_like_less(&parts) && !pager_enables_raw_control(&parts) {
+        // `less -R` keeps ANSI colors visible instead of printing escape bytes
+        parts.push("-R".to_string());
+    }
+    Ok(parts)
+}
+
+fn finish_pager(
+    mut child: std::process::Child,
+    pager: &[String],
+    write_result: io::Result<()>,
+) -> Result<()> {
+    if let Err(err) = write_result {
+        // A spawned pager still needs reaping even if stdin broke early
+        let _ = child.wait();
+        return Err(err).context("write executable content review to pager");
     }
 
     let status = child.wait().context("wait for pager")?;
@@ -84,23 +112,6 @@ fn show_exec_content_in_pager(exec_content: &ImportedExecContent) -> Result<()> 
         pager.join(" "),
         status
     ))
-}
-
-fn pager_command_parts() -> Result<Vec<String>> {
-    // `$PAGER` wins so local pager setup keeps working during import review too
-    let configured = env::var("PAGER").unwrap_or_else(|_| "less".to_string());
-    let mut parts = configured
-        .split_whitespace()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    if parts.is_empty() {
-        return Err(anyhow!("pager command is empty"));
-    }
-    if pager_looks_like_less(&parts) && !pager_enables_raw_control(&parts) {
-        // `less -R` keeps ANSI colors visible instead of printing escape bytes
-        parts.push("-R".to_string());
-    }
-    Ok(parts)
 }
 
 fn render_exec_content_review(exec_content: &ImportedExecContent) -> String {
@@ -165,7 +176,9 @@ fn pager_enables_raw_control(parts: &[String]) -> bool {
     parts.iter().skip(1).any(|part| {
         part == "-R"
             || part == "-r"
-            || (part.starts_with('-') && part.chars().skip(1).any(|flag| matches!(flag, 'R' | 'r')))
+            || (part.starts_with('-')
+                && !part.starts_with("--")
+                && part.chars().skip(1).any(|flag| matches!(flag, 'R' | 'r')))
     })
 }
 
@@ -233,13 +246,16 @@ impl ReviewStyle {
 #[cfg(test)]
 mod tests {
     use super::{
-        pager_command_parts, pager_enables_raw_control, render_exec_content_review, ReviewStyle,
+        finish_pager, pager_command_parts, pager_enables_raw_control, render_exec_content_review,
+        ReviewStyle,
     };
     use crate::preset::import::checks::{
         ImportedExecCommand, ImportedExecContent, ImportedExecFile,
     };
     use std::env;
+    use std::io;
     use std::path::PathBuf;
+    use std::process::Command;
 
     #[test]
     fn exec_review_renders_commands_and_files() {
@@ -302,5 +318,54 @@ mod tests {
             "less".to_string(),
             "-F".to_string()
         ]));
+    }
+
+    #[test]
+    fn pager_command_respects_quoted_arguments() {
+        let original = env::var_os("PAGER");
+        unsafe {
+            env::set_var("PAGER", "less --prompt='unixnotis review'");
+        }
+
+        let pager = pager_command_parts().expect("build pager");
+
+        match original {
+            Some(value) => unsafe {
+                env::set_var("PAGER", value);
+            },
+            None => unsafe {
+                env::remove_var("PAGER");
+            },
+        }
+
+        assert_eq!(
+            pager,
+            vec![
+                "less".to_string(),
+                "--prompt=unixnotis review".to_string(),
+                "-R".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn finish_pager_reaps_child_after_stdin_failure() {
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("exit 0")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn pager");
+
+        let error = finish_pager(
+            child,
+            &["sh".to_string(), "-c".to_string(), "exit 0".to_string()],
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "broken pipe")),
+        )
+        .expect_err("stdin failure should surface");
+
+        assert!(error
+            .to_string()
+            .contains("write executable content review to pager"));
     }
 }

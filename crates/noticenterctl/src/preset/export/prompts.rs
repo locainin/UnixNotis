@@ -16,7 +16,8 @@ use crate::preset::css_asset_refs::{
     rewrite_host_specific_css_asset_refs_in_sources, ExternalCssAssetRef, HostSpecificCssAssetRef,
 };
 use crate::preset::export::checks::{
-    clear_script_overrides, rewrite_host_specific_script_paths_in_sources, HostSpecificScriptLeak,
+    capture_file_overrides, restore_file_overrides, rewrite_host_specific_script_paths_in_sources,
+    HostSpecificScriptLeak,
 };
 use crate::preset::pathing::{confirm_continue_or_abort, prompt_yes_no};
 
@@ -88,6 +89,8 @@ pub(super) fn rewrite_host_specific_css_asset_refs_if_requested<G>(
 where
     G: FnOnce(&[HostSpecificCssAssetRef]) -> Result<bool>,
 {
+    let snapshots = capture_file_overrides(&collected.files);
+
     // CSS rewrite happens in-memory only
     let leaked_refs =
         rewrite_host_specific_css_asset_refs_in_sources(config_dir, &mut collected.files)?;
@@ -105,28 +108,25 @@ where
         eprintln!("{line}");
     }
 
-    if prompt_fix_host_specific_css_asset_refs(&leaked_refs)? {
-        // Keep staged rewrite bytes
-        return Ok(leaked_refs);
-    }
-
-    // Drop staged rewrite bytes and keep original CSS content
-    for leaked_ref in &leaked_refs {
-        if let Some(file) = collected
-            .files
-            .iter_mut()
-            .find(|file| file.source_path == leaked_ref.css_file)
-        {
-            file.contents_override = None;
-            if let Ok(metadata) = std::fs::metadata(&file.source_path) {
-                file.size = metadata.len();
-            }
+    match prompt_fix_host_specific_css_asset_refs(&leaked_refs) {
+        Ok(true) => {
+            // Keep staged rewrite bytes
+            return Ok(leaked_refs);
+        }
+        Ok(false) => {
+            // Declining rewrite restores the exact staged file state from before the rewrite pass
+            restore_file_overrides(&mut collected.files, &snapshots);
+            eprintln!(
+                "preset export warning: leaving host-specific CSS asset references unchanged in the bundle"
+            );
+            Ok(Vec::new())
+        }
+        Err(err) => {
+            // Prompt failures must not leak half-rewritten staged bytes into later export logic
+            restore_file_overrides(&mut collected.files, &snapshots);
+            Err(err)
         }
     }
-    eprintln!(
-        "preset export warning: leaving host-specific CSS asset references unchanged in the bundle"
-    );
-    Ok(Vec::new())
 }
 
 pub(super) fn rewrite_host_specific_script_paths_if_requested<G>(
@@ -137,6 +137,8 @@ pub(super) fn rewrite_host_specific_script_paths_if_requested<G>(
 where
     G: FnOnce(&[HostSpecificScriptLeak]) -> Result<bool>,
 {
+    let snapshots = capture_file_overrides(&collected.files);
+
     // Script rewrite also stays in-memory so live scripts are not touched
     let leaked_refs =
         rewrite_host_specific_script_paths_in_sources(config_dir, &mut collected.files)?;
@@ -154,17 +156,25 @@ where
         eprintln!("{line}");
     }
 
-    if prompt_fix_host_specific_script_paths(&leaked_refs)? {
-        // Keep staged script rewrites
-        return Ok(leaked_refs);
+    match prompt_fix_host_specific_script_paths(&leaked_refs) {
+        Ok(true) => {
+            // Keep staged script rewrites
+            return Ok(leaked_refs);
+        }
+        Ok(false) => {
+            // Declining rewrite keeps the original script bytes and size in the staged archive
+            restore_file_overrides(&mut collected.files, &snapshots);
+            eprintln!(
+                "preset export warning: leaving host-specific script path references unchanged in the bundle"
+            );
+            Ok(Vec::new())
+        }
+        Err(err) => {
+            // Prompt failures must roll back staged rewrites too
+            restore_file_overrides(&mut collected.files, &snapshots);
+            Err(err)
+        }
     }
-
-    // Drop staged script rewrites and archive original bytes
-    clear_script_overrides(&mut collected.files, &leaked_refs);
-    eprintln!(
-        "preset export warning: leaving host-specific script path references unchanged in the bundle"
-    );
-    Ok(Vec::new())
 }
 
 pub(super) fn prompt_to_fix_host_specific_command_paths(
@@ -270,13 +280,132 @@ fn format_host_specific_script_path_lines(leaked_refs: &[HostSpecificScriptLeak]
     leaked_refs
         .iter()
         .map(|leak| {
+            let matched = leak.needles.join(", ");
             // Include replacement text to show final form
             format!(
                 "  - {} contains {} (let noticenterctl rewrite it to {})",
                 leak.script_path.display(),
-                leak.needle,
+                matched,
                 leak.rewritten_to
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        rewrite_host_specific_css_asset_refs_if_requested,
+        rewrite_host_specific_script_paths_if_requested,
+    };
+    use crate::preset::config_root::CollectedConfigFiles;
+    use crate::preset::config_root::PresetFileSource;
+    use anyhow::anyhow;
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    struct TempDirGuard {
+        path: PathBuf,
+    }
+
+    impl TempDirGuard {
+        fn new(name: &str) -> Self {
+            let stamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock moved backwards")
+                .as_nanos();
+            let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir()
+                .join(format!("unixnotis-export-prompts-{name}-{stamp}-{serial}"));
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self { path }
+        }
+
+        fn write(&self, relative_path: &str, contents: &[u8]) -> PresetFileSource {
+            let source_path = self.path.join(relative_path);
+            if let Some(parent) = source_path.parent() {
+                fs::create_dir_all(parent).expect("create parent dirs");
+            }
+            fs::write(&source_path, contents).expect("write file");
+            let metadata = fs::metadata(&source_path).expect("metadata");
+            #[cfg(unix)]
+            let mode = metadata.permissions().mode() & 0o777;
+            #[cfg(not(unix))]
+            let mode = 0o644;
+
+            PresetFileSource {
+                relative_path: PathBuf::from(relative_path),
+                source_path,
+                size: metadata.len(),
+                mode,
+                contents_override: None,
+            }
+        }
+    }
+
+    impl Drop for TempDirGuard {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn css_prompt_error_restores_staged_bytes_and_size() {
+        let root = TempDirGuard::new("css-restore");
+        let asset_path = root.path.join("assets/example.png");
+        fs::create_dir_all(asset_path.parent().expect("asset parent")).expect("create asset dir");
+        fs::write(&asset_path, b"png").expect("write asset");
+        let original = format!(
+            ".panel {{ background-image: url(\"file://{}\"); }}\n",
+            asset_path.display()
+        );
+        let file = root.write("base.css", original.as_bytes());
+        let original_size = file.size;
+        let mut collected = CollectedConfigFiles {
+            files: vec![file],
+            ..CollectedConfigFiles::default()
+        };
+
+        let error = rewrite_host_specific_css_asset_refs_if_requested(
+            &root.path,
+            &mut collected,
+            |_leaks| Err(anyhow!("prompt failed")),
+        )
+        .expect_err("prompt should fail");
+
+        assert!(error.to_string().contains("prompt failed"));
+        assert!(collected.files[0].contents_override.is_none());
+        assert_eq!(collected.files[0].size, original_size);
+    }
+
+    #[test]
+    fn script_prompt_error_restores_staged_bytes_and_size() {
+        let root = TempDirGuard::new("script-restore");
+        let original = format!(
+            "#!/bin/sh\necho \"{}/assets/example.png\"\n",
+            root.path.display()
+        );
+        let file = root.write("scripts/demo-widget", original.as_bytes());
+        let original_size = file.size;
+        let mut collected = CollectedConfigFiles {
+            files: vec![file],
+            ..CollectedConfigFiles::default()
+        };
+
+        let error =
+            rewrite_host_specific_script_paths_if_requested(&root.path, &mut collected, |_leaks| {
+                Err(anyhow!("prompt failed"))
+            })
+            .expect_err("prompt should fail");
+
+        assert!(error.to_string().contains("prompt failed"));
+        assert!(collected.files[0].contents_override.is_none());
+        assert_eq!(collected.files[0].size, original_size);
+    }
 }
