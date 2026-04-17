@@ -13,7 +13,9 @@ use super::media_bus::{
     build_player_state, handle_command, is_allowed_player, refresh_players,
     spawn_properties_listener, PlayerState,
 };
-use super::media_cache::{refresh_cache, refresh_player_cache, send_snapshot_if_changed};
+use super::media_cache::{
+    refresh_cache, refresh_player_cache, send_snapshot_if_changed, MediaCacheMergeMode,
+};
 use super::media_runtime::MEDIA_SIGNAL_CAPACITY;
 use super::media_schedule::{
     cancel_delayed_refresh, prune_delayed_refreshes, schedule_command_refresh,
@@ -188,10 +190,19 @@ async fn handle_runtime_command(
     sender: &async_channel::Sender<UiEvent>,
     command: MediaCommand,
 ) {
+    let publish_immediately = should_publish_immediate_command_snapshot(&command);
     if let Ok(Some(name)) = handle_command(&state.players, command).await {
-        // After a transport command, refresh the touched player right away
-        refresh_player_cache(&state.players, &mut state.cache, &name).await;
-        send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
+        if publish_immediately {
+            // Play and pause changes are simple enough to reflect without waiting for retries
+            refresh_player_cache(
+                &state.players,
+                &mut state.cache,
+                &name,
+                MediaCacheMergeMode::Transitioning,
+            )
+            .await;
+            send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
+        }
         schedule_command_refresh(
             &mut state.delayed_refreshes,
             &state.cache,
@@ -209,7 +220,13 @@ async fn handle_runtime_signal(
 ) {
     let MediaSignal::PropertiesChanged { bus_name, origin } = signal;
     // Property changes refresh one player only, which keeps updates cheap
-    refresh_player_cache(&state.players, &mut state.cache, &bus_name).await;
+    refresh_player_cache(
+        &state.players,
+        &mut state.cache,
+        &bus_name,
+        merge_mode_for_signal(origin),
+    )
+    .await;
     send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
     if should_schedule_metadata_fallback(origin) {
         // Bus-driven changes can need one bounded late-art sweep
@@ -263,7 +280,13 @@ async fn apply_owner_change(
         );
         state.players.insert(name.to_string(), player_state);
         // A late-joining player still needs one snapshot pass through the cache
-        refresh_player_cache(&state.players, &mut state.cache, name).await;
+        refresh_player_cache(
+            &state.players,
+            &mut state.cache,
+            name,
+            MediaCacheMergeMode::Stable,
+        )
+        .await;
         send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
         schedule_metadata_fallback(
             &mut state.delayed_refreshes,
@@ -314,10 +337,28 @@ fn should_schedule_metadata_fallback(origin: MediaRefreshOrigin) -> bool {
     origin == MediaRefreshOrigin::Bus
 }
 
+fn should_publish_immediate_command_snapshot(command: &MediaCommand) -> bool {
+    // Track skip commands often produce one partial metadata frame before the real update settles
+    // Let the bus event or bounded retry publish those instead of flashing a blank card
+    matches!(command, MediaCommand::PlayPause { .. })
+}
+
+fn merge_mode_for_signal(origin: MediaRefreshOrigin) -> MediaCacheMergeMode {
+    match origin {
+        // Native property bursts can still be mid-transition
+        MediaRefreshOrigin::Bus => MediaCacheMergeMode::Transitioning,
+        // Delayed retries are where sparse snapshots get reconciled to their final state
+        MediaRefreshOrigin::Fallback => MediaCacheMergeMode::Stable,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::should_schedule_metadata_fallback;
-    use crate::media::MediaRefreshOrigin;
+    use super::{
+        merge_mode_for_signal, should_publish_immediate_command_snapshot,
+        should_schedule_metadata_fallback, MediaCacheMergeMode,
+    };
+    use crate::media::{MediaCommand, MediaRefreshOrigin};
 
     #[test]
     fn fallback_generated_refreshes_do_not_rearm_followup_sweeps() {
@@ -329,5 +370,40 @@ mod tests {
     #[test]
     fn bus_generated_refreshes_still_allow_one_bounded_followup_sweep() {
         assert!(should_schedule_metadata_fallback(MediaRefreshOrigin::Bus));
+    }
+
+    #[test]
+    fn skip_commands_wait_for_followup_refreshes() {
+        assert!(!should_publish_immediate_command_snapshot(
+            &MediaCommand::Next {
+                bus_name: "org.mpris.MediaPlayer2.spotify".to_string(),
+            }
+        ));
+        assert!(!should_publish_immediate_command_snapshot(
+            &MediaCommand::Previous {
+                bus_name: "org.mpris.MediaPlayer2.spotify".to_string(),
+            }
+        ));
+    }
+
+    #[test]
+    fn play_pause_still_refreshes_immediately() {
+        assert!(should_publish_immediate_command_snapshot(
+            &MediaCommand::PlayPause {
+                bus_name: "org.mpris.MediaPlayer2.spotify".to_string(),
+            }
+        ));
+    }
+
+    #[test]
+    fn bus_updates_use_transition_merge_but_fallbacks_commit_final_state() {
+        assert_eq!(
+            merge_mode_for_signal(MediaRefreshOrigin::Bus),
+            MediaCacheMergeMode::Transitioning
+        );
+        assert_eq!(
+            merge_mode_for_signal(MediaRefreshOrigin::Fallback),
+            MediaCacheMergeMode::Stable
+        );
     }
 }

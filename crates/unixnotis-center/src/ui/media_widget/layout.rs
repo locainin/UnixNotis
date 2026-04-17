@@ -20,6 +20,7 @@ pub(super) fn stack_layout_class(layout: MediaLayout) -> &'static str {
         MediaLayout::Inline => "unixnotis-media-stack-inline",
         MediaLayout::Stacked => "unixnotis-media-stack-stacked",
         MediaLayout::Showcase => "unixnotis-media-stack-showcase",
+        MediaLayout::Player => "unixnotis-media-stack-player",
     }
 }
 
@@ -30,6 +31,7 @@ pub(super) fn row_layout_class(layout: MediaLayout) -> &'static str {
         MediaLayout::Inline => "unixnotis-media-row-inline",
         MediaLayout::Stacked => "unixnotis-media-row-stacked",
         MediaLayout::Showcase => "unixnotis-media-row-showcase",
+        MediaLayout::Player => "unixnotis-media-row-player",
     }
 }
 
@@ -40,6 +42,7 @@ pub(super) fn card_layout_class(layout: MediaLayout) -> &'static str {
         MediaLayout::Inline => "unixnotis-media-card-inline",
         MediaLayout::Stacked => "unixnotis-media-card-stacked",
         MediaLayout::Showcase => "unixnotis-media-card-showcase",
+        MediaLayout::Player => "unixnotis-media-card-player",
     }
 }
 

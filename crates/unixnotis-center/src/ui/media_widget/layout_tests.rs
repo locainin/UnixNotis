@@ -18,12 +18,15 @@ fn media_layout_reserve_budgets_stay_ordered() {
     let inline = marquee_width_for_shell(&shell_for(MediaLayout::Inline), panel_width);
     let stacked = marquee_width_for_shell(&shell_for(MediaLayout::Stacked), panel_width);
     let showcase = marquee_width_for_shell(&shell_for(MediaLayout::Showcase), panel_width);
+    let player = marquee_width_for_shell(&shell_for(MediaLayout::Player), panel_width);
 
     // Carousel spends width on both inline controls and outer navigation
     assert!(carousel < showcase);
     // Showcase still keeps a side rail, so stacked keeps the most text room
     assert!(showcase < inline);
     assert!(inline < stacked);
+    // The centered player preset keeps art on top, so it should free more width than inline
+    assert!(inline < player);
 }
 
 #[test]
@@ -32,6 +35,7 @@ fn media_layout_height_presets_match_expected_profiles() {
     assert_eq!(card_height_for_shell(&shell_for(MediaLayout::Inline)), 92);
     assert_eq!(card_height_for_shell(&shell_for(MediaLayout::Stacked)), 112);
     assert_eq!(card_height_for_shell(&shell_for(MediaLayout::Showcase)), 96);
+    assert_eq!(card_height_for_shell(&shell_for(MediaLayout::Player)), 208);
 }
 
 #[test]
@@ -41,6 +45,7 @@ fn marquee_width_never_drops_below_text_floor() {
         MediaLayout::Inline,
         MediaLayout::Stacked,
         MediaLayout::Showcase,
+        MediaLayout::Player,
     ] {
         let shell = shell_for(layout);
         assert_eq!(
@@ -90,4 +95,20 @@ fn larger_navigation_gap_reduces_inline_title_budget() {
     let wide_gap = MediaShellConfig::from_config(&config);
 
     assert!(marquee_width_for_shell(&wide_gap, 520) < marquee_width_for_shell(&tight_gap, 520));
+}
+
+#[test]
+fn compact_player_shell_keeps_a_small_but_stable_title_budget() {
+    let mut config = MediaConfig::default();
+    config.layout = MediaLayout::Player;
+    config.art_size_px = 40;
+    config.text_width_floor_px = 92;
+    config.card_height_px = Some(156);
+    config.content_spacing_px = 4;
+    config.control_spacing_px = 4;
+    config.navigation_spacing_px = 4;
+    let shell = MediaShellConfig::from_config(&config);
+
+    assert_eq!(card_height_for_shell(&shell), 156);
+    assert!(marquee_width_for_shell(&shell, 320) >= 92);
 }

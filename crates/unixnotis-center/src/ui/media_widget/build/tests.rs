@@ -50,3 +50,38 @@ fn composition_plan_tracks_hidden_controls_and_top_art() {
     assert!(!plan.bottom_controls);
     assert!(plan.bottom_nav);
 }
+
+#[test]
+fn composition_plan_tracks_player_preset_defaults() {
+    // The dedicated player preset should stay centered and self-contained by default
+    let mut config = MediaConfig::default();
+    config.layout = MediaLayout::Player;
+    let plan = ShellCompositionPlan::from_shell(&MediaShellConfig::from_config(&config));
+
+    assert!(plan.top_art);
+    assert!(!plan.start_art);
+    assert!(!plan.inline_controls);
+    assert!(plan.bottom_controls);
+    assert!(!plan.inline_nav);
+    assert!(!plan.bottom_nav);
+    assert!(!plan.external_nav);
+}
+
+#[test]
+fn compact_player_overrides_keep_the_shell_self_contained() {
+    // Smaller player cards should keep the same routing rules instead of drifting into carousel flow
+    let mut config = MediaConfig::default();
+    config.layout = MediaLayout::Player;
+    config.art_size_px = 40;
+    config.text_width_floor_px = 92;
+    config.card_height_px = Some(156);
+    config.content_spacing_px = 4;
+    config.control_spacing_px = 4;
+    let plan = ShellCompositionPlan::from_shell(&MediaShellConfig::from_config(&config));
+
+    assert!(plan.top_art);
+    assert!(!plan.start_art);
+    assert!(plan.bottom_controls);
+    assert!(!plan.inline_controls);
+    assert!(!plan.external_nav);
+}
