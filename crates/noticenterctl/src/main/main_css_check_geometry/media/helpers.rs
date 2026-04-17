@@ -20,13 +20,11 @@ pub(super) fn append_vertical(
 pub(super) fn stack_visible_heights(heights: &[Option<i32>], spacing_px: i32) -> i32 {
     // Text rows share one spacing rule and ignore rows that are hidden
     let mut total_px = 0;
-    let mut visible = 0;
-    for height in heights.iter().flatten() {
+    for (visible, height) in heights.iter().flatten().enumerate() {
         if visible > 0 {
             total_px += spacing_px;
         }
         total_px += *height;
-        visible += 1;
     }
     total_px
 }

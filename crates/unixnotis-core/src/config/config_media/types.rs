@@ -67,21 +67,23 @@ pub struct MediaConfig {
     pub remote_art_policy: MediaRemoteArtPolicy,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MediaRemoteArtPolicy {
     /// Disable remote artwork fetches for every player
     Disabled,
     /// Allow remote artwork only for non-browser players
+    #[default]
     NativeOnly,
     /// Allow remote artwork for browsers too
     BrowsersToo,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MediaLayout {
     /// Existing carousel layout with navigation buttons outside the card
+    #[default]
     Carousel,
     /// Single card layout with nav buttons folded into the transport strip
     Inline,
@@ -93,10 +95,11 @@ pub enum MediaLayout {
     Player,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MediaTitleFallback {
     /// Missing titles fall back to the player identity
+    #[default]
     Identity,
     /// Missing titles fall back to the artist name when present
     Artist,
@@ -104,19 +107,21 @@ pub enum MediaTitleFallback {
     Empty,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MediaPositionFormat {
     /// Show the active slot and total count as `current/total`
+    #[default]
     Fraction,
     /// Show only the active slot number
     Current,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MediaArtPosition {
     /// Use the preset-defined placement
+    #[default]
     Auto,
     /// Keep artwork at the start of the card content
     Start,
@@ -126,10 +131,11 @@ pub enum MediaArtPosition {
     Hidden,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MediaControlsPosition {
     /// Use the preset-defined placement
+    #[default]
     Auto,
     /// Keep controls beside the main text lane
     Inline,
@@ -141,10 +147,11 @@ pub enum MediaControlsPosition {
     Hidden,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MediaNavigationPosition {
     /// Use the preset-defined placement
+    #[default]
     Auto,
     /// Keep player navigation outside the card shell
     External,

@@ -3,48 +3,6 @@ use super::types::{
     MediaPositionFormat, MediaRemoteArtPolicy, MediaTitleFallback,
 };
 
-impl Default for MediaRemoteArtPolicy {
-    fn default() -> Self {
-        Self::NativeOnly
-    }
-}
-
-impl Default for MediaLayout {
-    fn default() -> Self {
-        Self::Carousel
-    }
-}
-
-impl Default for MediaTitleFallback {
-    fn default() -> Self {
-        Self::Identity
-    }
-}
-
-impl Default for MediaPositionFormat {
-    fn default() -> Self {
-        Self::Fraction
-    }
-}
-
-impl Default for MediaArtPosition {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
-
-impl Default for MediaControlsPosition {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
-
-impl Default for MediaNavigationPosition {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
-
 impl Default for MediaConfig {
     fn default() -> Self {
         Self {

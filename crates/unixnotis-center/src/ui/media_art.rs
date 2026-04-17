@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn art_dimensions_allowed_rejects_non_images() {
-        assert!(!super::art_dimensions_from_bytes(b"not-an-image").is_some());
+        assert!(super::art_dimensions_from_bytes(b"not-an-image").is_none());
     }
 
     #[test]

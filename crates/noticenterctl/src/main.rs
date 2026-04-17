@@ -1,4 +1,12 @@
-//! Command-line control surface for the UnixNotis D-Bus interface.
+#![allow(
+    clippy::blanket_clippy_restriction_lints,
+    clippy::nursery,
+    clippy::pedantic,
+    clippy::restriction,
+    reason = "workspace clippy runs use these groups as review signals, not as zero-tolerance policy gates"
+)]
+
+//! Command-line control surface for the UnixNotis D-Bus interface
 
 mod cli_args;
 #[path = "dbus/dbus_ops.rs"]
@@ -19,11 +27,11 @@ use zbus::Connection;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Parse CLI arguments first so early-return commands can skip D-Bus setup.
+    // Parse CLI arguments first so local-only commands can stop here
     let args = Args::parse();
 
     if args.command.is_local_only() {
-        // Local-only commands intentionally run without a D-Bus connection.
+        // Local-only commands skip D-Bus setup on purpose
         match args.command {
             cli_args::Command::CssCheck => {
                 main_css_check::run_css_check()?;
@@ -36,7 +44,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Connect to the session bus and proxy the control interface.
+    // Connect to the session bus before proxying control commands
     let connection = Connection::session()
         .await
         .context("connect to session bus")?;
@@ -44,7 +52,7 @@ async fn main() -> Result<()> {
         .await
         .context("connect to unixnotis control interface")?;
 
-    // Delegate command execution to keep main focused on setup/teardown.
+    // Hand command execution to the D-Bus operation layer
     dbus_ops::handle_command(&proxy, args.command).await?;
     Ok(())
 }

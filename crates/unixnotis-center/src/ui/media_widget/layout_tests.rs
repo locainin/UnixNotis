@@ -6,8 +6,10 @@ use super::super::shell::MediaShellConfig;
 use super::{card_height_for_shell, marquee_width_for_shell, media_content_width};
 
 fn shell_for(layout: MediaLayout) -> MediaShellConfig {
-    let mut config = MediaConfig::default();
-    config.layout = layout;
+    let config = MediaConfig {
+        layout,
+        ..MediaConfig::default()
+    };
     MediaShellConfig::from_config(&config)
 }
 
@@ -63,10 +65,12 @@ fn media_content_width_reserves_panel_surface_chrome() {
 
 #[test]
 fn hidden_art_and_bottom_controls_free_title_width() {
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Showcase;
-    config.art_position = MediaArtPosition::Hidden;
-    config.controls_position = MediaControlsPosition::Bottom;
+    let config = MediaConfig {
+        layout: MediaLayout::Showcase,
+        art_position: MediaArtPosition::Hidden,
+        controls_position: MediaControlsPosition::Bottom,
+        ..MediaConfig::default()
+    };
     let shell = MediaShellConfig::from_config(&config);
 
     assert_eq!(marquee_width_for_shell(&shell, 420), 384);
@@ -74,9 +78,11 @@ fn hidden_art_and_bottom_controls_free_title_width() {
 
 #[test]
 fn larger_art_slot_reduces_marquee_budget() {
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Inline;
-    config.art_size_px = 88;
+    let config = MediaConfig {
+        layout: MediaLayout::Inline,
+        art_size_px: 88,
+        ..MediaConfig::default()
+    };
     let shell = MediaShellConfig::from_config(&config);
 
     assert_eq!(marquee_width_for_shell(&shell, 420), 282);
@@ -84,11 +90,13 @@ fn larger_art_slot_reduces_marquee_budget() {
 
 #[test]
 fn larger_navigation_gap_reduces_inline_title_budget() {
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Inline;
-    config.controls_position = MediaControlsPosition::Inline;
-    config.navigation_position = MediaNavigationPosition::WithControls;
-    config.navigation_spacing_px = 6;
+    let mut config = MediaConfig {
+        layout: MediaLayout::Inline,
+        controls_position: MediaControlsPosition::Inline,
+        navigation_position: MediaNavigationPosition::WithControls,
+        navigation_spacing_px: 6,
+        ..MediaConfig::default()
+    };
     let tight_gap = MediaShellConfig::from_config(&config);
 
     config.navigation_spacing_px = 30;
@@ -99,14 +107,16 @@ fn larger_navigation_gap_reduces_inline_title_budget() {
 
 #[test]
 fn compact_player_shell_keeps_a_small_but_stable_title_budget() {
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Player;
-    config.art_size_px = 40;
-    config.text_width_floor_px = 92;
-    config.card_height_px = Some(156);
-    config.content_spacing_px = 4;
-    config.control_spacing_px = 4;
-    config.navigation_spacing_px = 4;
+    let config = MediaConfig {
+        layout: MediaLayout::Player,
+        art_size_px: 40,
+        text_width_floor_px: 92,
+        card_height_px: Some(156),
+        content_spacing_px: 4,
+        control_spacing_px: 4,
+        navigation_spacing_px: 4,
+        ..MediaConfig::default()
+    };
     let shell = MediaShellConfig::from_config(&config);
 
     assert_eq!(card_height_for_shell(&shell), 156);

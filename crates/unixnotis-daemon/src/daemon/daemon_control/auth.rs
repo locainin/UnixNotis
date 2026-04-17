@@ -294,7 +294,7 @@ fn file_fingerprint_signature(metadata: &std::fs::Metadata) -> Option<FileFinger
     {
         use std::os::unix::fs::MetadataExt;
 
-        return Some(FileFingerprintSignature {
+        Some(FileFingerprintSignature {
             len: metadata.len(),
             dev: metadata.dev(),
             ino: metadata.ino(),
@@ -305,7 +305,7 @@ fn file_fingerprint_signature(metadata: &std::fs::Metadata) -> Option<FileFinger
             mtime_nsec: metadata.mtime_nsec(),
             ctime: metadata.ctime(),
             ctime_nsec: metadata.ctime_nsec(),
-        });
+        })
     }
 
     #[cfg(not(unix))]

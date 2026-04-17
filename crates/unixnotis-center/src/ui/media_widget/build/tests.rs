@@ -22,10 +22,12 @@ fn composition_plan_matches_carousel_defaults() {
 #[test]
 fn composition_plan_tracks_bottom_strip_overrides() {
     // Showcase defaults get replaced here so the lower strip routing can be checked directly
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Showcase;
-    config.controls_position = MediaControlsPosition::Bottom;
-    config.navigation_position = MediaNavigationPosition::WithControls;
+    let config = MediaConfig {
+        layout: MediaLayout::Showcase,
+        controls_position: MediaControlsPosition::Bottom,
+        navigation_position: MediaNavigationPosition::WithControls,
+        ..MediaConfig::default()
+    };
     let plan = ShellCompositionPlan::from_shell(&MediaShellConfig::from_config(&config));
 
     assert!(plan.bottom_controls);
@@ -37,11 +39,13 @@ fn composition_plan_tracks_bottom_strip_overrides() {
 #[test]
 fn composition_plan_tracks_hidden_controls_and_top_art() {
     // Hidden controls should still keep in-card nav instead of reviving the external shell
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Inline;
-    config.art_position = MediaArtPosition::Top;
-    config.controls_position = MediaControlsPosition::Hidden;
-    config.navigation_position = MediaNavigationPosition::WithControls;
+    let config = MediaConfig {
+        layout: MediaLayout::Inline,
+        art_position: MediaArtPosition::Top,
+        controls_position: MediaControlsPosition::Hidden,
+        navigation_position: MediaNavigationPosition::WithControls,
+        ..MediaConfig::default()
+    };
     let plan = ShellCompositionPlan::from_shell(&MediaShellConfig::from_config(&config));
 
     assert!(plan.top_art);
@@ -54,8 +58,10 @@ fn composition_plan_tracks_hidden_controls_and_top_art() {
 #[test]
 fn composition_plan_tracks_player_preset_defaults() {
     // The dedicated player preset should stay centered and self-contained by default
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Player;
+    let config = MediaConfig {
+        layout: MediaLayout::Player,
+        ..MediaConfig::default()
+    };
     let plan = ShellCompositionPlan::from_shell(&MediaShellConfig::from_config(&config));
 
     assert!(plan.top_art);
@@ -70,13 +76,15 @@ fn composition_plan_tracks_player_preset_defaults() {
 #[test]
 fn compact_player_overrides_keep_the_shell_self_contained() {
     // Smaller player cards should keep the same routing rules instead of drifting into carousel flow
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Player;
-    config.art_size_px = 40;
-    config.text_width_floor_px = 92;
-    config.card_height_px = Some(156);
-    config.content_spacing_px = 4;
-    config.control_spacing_px = 4;
+    let config = MediaConfig {
+        layout: MediaLayout::Player,
+        art_size_px: 40,
+        text_width_floor_px: 92,
+        card_height_px: Some(156),
+        content_spacing_px: 4,
+        control_spacing_px: 4,
+        ..MediaConfig::default()
+    };
     let plan = ShellCompositionPlan::from_shell(&MediaShellConfig::from_config(&config));
 
     assert!(plan.top_art);

@@ -4,8 +4,10 @@ use super::{
 
 #[test]
 fn preset_defaults_stay_stable() {
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Carousel;
+    let mut config = MediaConfig {
+        layout: MediaLayout::Carousel,
+        ..MediaConfig::default()
+    };
     assert_eq!(config.effective_art_position(), MediaArtPosition::Start);
     assert_eq!(
         config.effective_controls_position(),
@@ -30,11 +32,13 @@ fn preset_defaults_stay_stable() {
 
 #[test]
 fn hidden_feature_flags_override_layout_defaults() {
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Player;
-    config.show_art = false;
-    config.show_controls = false;
-    config.show_navigation = false;
+    let config = MediaConfig {
+        layout: MediaLayout::Player,
+        show_art: false,
+        show_controls: false,
+        show_navigation: false,
+        ..MediaConfig::default()
+    };
 
     assert_eq!(config.effective_art_position(), MediaArtPosition::Hidden);
     assert_eq!(
@@ -49,9 +53,11 @@ fn hidden_feature_flags_override_layout_defaults() {
 
 #[test]
 fn explicit_card_height_override_wins_over_preset_default() {
-    let mut config = MediaConfig::default();
-    config.layout = MediaLayout::Player;
-    config.card_height_px = Some(164);
+    let config = MediaConfig {
+        layout: MediaLayout::Player,
+        card_height_px: Some(164),
+        ..MediaConfig::default()
+    };
 
     assert_eq!(config.effective_card_height_px(), 164);
 }

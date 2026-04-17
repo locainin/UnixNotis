@@ -5,7 +5,7 @@ use unixnotis_core::{
     Config, MediaArtPosition, MediaControlsPosition, MediaLayout, MediaNavigationPosition,
 };
 
-fn media_height_warning<'a>(warnings: &'a [String]) -> Option<&'a String> {
+fn media_height_warning(warnings: &[String]) -> Option<&String> {
     warnings
         .iter()
         .find(|warning| warning.contains("media card shell"))

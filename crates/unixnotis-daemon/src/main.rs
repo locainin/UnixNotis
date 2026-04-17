@@ -1,5 +1,13 @@
 //! Daemon entrypoint and service bootstrap.
 
+#![allow(
+    clippy::blanket_clippy_restriction_lints,
+    clippy::nursery,
+    clippy::pedantic,
+    clippy::restriction,
+    reason = "workspace clippy runs use these groups as review signals, not as zero-tolerance policy gates"
+)]
+
 use std::path::PathBuf;
 use std::time::Duration;
 
