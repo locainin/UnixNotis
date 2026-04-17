@@ -1,0 +1,118 @@
+name: Sync dev from master
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync-dev:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch master and dev
+        run: |
+          git fetch origin master dev
+
+      - name: Merge master into dev
+        id: merge
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          # Start from the tracked remote branch so each run sees the real dev head
+          git checkout -B dev origin/dev
+
+          # Merge the pushed master state into dev using a normal merge commit when needed
+          git merge --no-edit origin/master
+
+      - name: Push updated dev
+        id: push
+        if: steps.merge.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git push origin HEAD:dev
+
+      - name: Mark successful sync in workflow summary
+        if: steps.merge.outcome == 'success' && steps.push.outcome == 'success'
+        run: |
+          {
+            echo "## dev sync"
+            echo
+            echo "master was merged into dev and pushed successfully"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open sync PR or issue when sync fails
+        if: steps.merge.outcome != 'success' || steps.push.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Keep the failure reason short so the fallback PR or issue is readable
+          if [ "${{ steps.merge.outcome }}" != "success" ]; then
+            reason="automatic merge from master into dev failed"
+          else
+            reason="automatic push of merged dev branch failed"
+          fi
+
+          body_file="$(mktemp)"
+          {
+            echo "## dev sync needs attention"
+            echo
+            echo "${reason}"
+            echo
+            echo "- workflow: ${{ github.workflow }}"
+            echo "- run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- master sha: ${{ github.sha }}"
+            echo
+            echo "This was triggered by a push to \`master\` and did not complete the expected \`master -> dev\` sync"
+          } > "${body_file}"
+
+          existing_pr="$(gh pr list --base dev --head master --state open --json number --jq '.[0].number // empty')"
+          if [ -n "${existing_pr}" ]; then
+            gh pr comment "${existing_pr}" --body-file "${body_file}" || true
+            echo "Opened work already exists as PR #${existing_pr}" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          if gh pr create \
+            --base dev \
+            --head master \
+            --title "Sync dev from master" \
+            --body-file "${body_file}"
+          then
+            echo "Opened a sync PR from master into dev" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          existing_issue="$(gh issue list --state open --search 'in:title \"Sync dev from master\" repo:${{ github.repository }}' --json number --jq '.[0].number // empty')"
+          if [ -n "${existing_issue}" ]; then
+            gh issue comment "${existing_issue}" --body-file "${body_file}" || true
+            echo "Opened work already exists as issue #${existing_issue}" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          gh issue create \
+            --title "Sync dev from master failed" \
+            --body-file "${body_file}"
+
+          echo "Opened a sync issue because the PR path was not available" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
