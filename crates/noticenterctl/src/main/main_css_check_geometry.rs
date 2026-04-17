@@ -92,7 +92,7 @@ pub(super) fn lint_geometry_css_files_with_config(
     }
 
     // Final warnings need the full css picture plus the live config
-    for warning in model.finalize_warnings(&config) {
+    for warning in model.finalize_warnings(config) {
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Geometry,
             config_display.to_string(),

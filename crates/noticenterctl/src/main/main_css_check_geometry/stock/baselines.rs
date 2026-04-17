@@ -62,8 +62,7 @@ pub(in crate::main_css_check) fn stock_geometry_model() -> &'static GeometryMode
                         DEFAULT_POPUP_CSS,
                         DEFAULT_WIDGETS_CSS,
                         DEFAULT_MEDIA_CSS,
-                    ]
-                    .into_iter(),
+                    ],
                 )
                 .collect::<Vec<_>>()
                 .join("\n"),
