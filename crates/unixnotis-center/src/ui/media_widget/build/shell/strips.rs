@@ -2,69 +2,11 @@ use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::hooks;
 
-use super::super::parts::MediaCardLayoutParts;
-use super::super::shell::MediaShellConfig;
-use super::plan::{nav_cluster_spacing_px, ShellCompositionPlan};
+use super::super::super::shell::MediaShellConfig;
+use super::super::plan::{nav_cluster_spacing_px, ShellCompositionPlan};
+use super::alignment::uses_centered_player_layout;
 
-pub(super) fn compose_card_shell(
-    shell: &MediaShellConfig,
-    plan: &ShellCompositionPlan,
-    parts: &MediaCardLayoutParts,
-    nav_prev: &gtk::Button,
-    nav_next: &gtk::Button,
-) {
-    // The card root is always vertical once the shell starts assembling sections
-    parts.card.root.set_orientation(gtk::Orientation::Vertical);
-    parts.card.root.set_spacing(shell.content_spacing_px);
-
-    if plan.top_art {
-        // Top art gets its own row so wide text and side rails stay independent below it
-        parts.card.root.append(&parts.art_frame);
-    }
-
-    let header = build_shell_box(
-        gtk::Orientation::Horizontal,
-        shell.content_spacing_px,
-        hooks::media_shell::HEADER,
-    );
-    let main = build_shell_box(
-        gtk::Orientation::Vertical,
-        shell.content_spacing_px,
-        hooks::media_shell::MAIN,
-    );
-    let body = build_shell_box(
-        gtk::Orientation::Horizontal,
-        shell.content_spacing_px,
-        hooks::media_shell::BODY,
-    );
-
-    // Text stays as the left-side anchor for every shell variant
-    body.append(&parts.card.text_box);
-    if let Some(inline_strip) = build_inline_strip(shell, plan, &parts.controls, nav_prev, nav_next)
-    {
-        // Keep text spacing independent from the inner spacing between controls and nav
-        body.append(&inline_strip);
-    }
-    if let Some(side_rail) = build_side_rail(shell, plan, &parts.controls, nav_prev, nav_next) {
-        body.append(&side_rail);
-    }
-
-    // Main owns the text lane and any lower control rail that follows it
-    main.append(&body);
-    if let Some(bottom_strip) = build_bottom_strip(shell, plan, &parts.controls, nav_prev, nav_next)
-    {
-        main.append(&bottom_strip);
-    }
-
-    // Header is the shared top-level row whether art sits beside or above the main section
-    if plan.start_art {
-        header.append(&parts.art_frame);
-    }
-    header.append(&main);
-    parts.card.root.append(&header);
-}
-
-fn build_inline_strip(
+pub(super) fn build_inline_strip(
     shell: &MediaShellConfig,
     plan: &ShellCompositionPlan,
     controls: &gtk::Box,
@@ -97,7 +39,7 @@ fn build_inline_strip(
     Some(inline_strip)
 }
 
-fn build_bottom_strip(
+pub(super) fn build_bottom_strip(
     shell: &MediaShellConfig,
     plan: &ShellCompositionPlan,
     controls: &gtk::Box,
@@ -117,7 +59,13 @@ fn build_bottom_strip(
         nav_cluster_spacing_px(include_controls, include_nav, shell),
         hooks::media_shell::CONTROL_STRIP,
     );
-    control_strip.set_halign(Align::Fill);
+    if uses_centered_player_layout(shell, plan) {
+        // The player preset keeps the transport dock on the same center line as the cover art
+        control_strip.set_hexpand(false);
+        control_strip.set_halign(Align::Center);
+    } else {
+        control_strip.set_halign(Align::Fill);
+    }
     if include_controls {
         // Bottom shells keep transport width visible before any nav gets appended
         control_strip.append(controls);
@@ -128,7 +76,7 @@ fn build_bottom_strip(
     Some(control_strip)
 }
 
-fn build_side_rail(
+pub(super) fn build_side_rail(
     shell: &MediaShellConfig,
     plan: &ShellCompositionPlan,
     controls: &gtk::Box,
@@ -159,7 +107,7 @@ fn build_side_rail(
     Some(action_rail)
 }
 
-fn build_navigation_strip(
+pub(super) fn build_navigation_strip(
     shell: &MediaShellConfig,
     nav_prev: &gtk::Button,
     nav_next: &gtk::Button,
@@ -176,7 +124,11 @@ fn build_navigation_strip(
     nav_strip
 }
 
-fn build_shell_box(orientation: gtk::Orientation, spacing: i32, class_name: &str) -> gtk::Box {
+pub(super) fn build_shell_box(
+    orientation: gtk::Orientation,
+    spacing: i32,
+    class_name: &str,
+) -> gtk::Box {
     // Every structural shell box gets the same fill behavior so css only decides the look
     let shell_box = gtk::Box::new(orientation, spacing);
     shell_box.add_css_class(class_name);
