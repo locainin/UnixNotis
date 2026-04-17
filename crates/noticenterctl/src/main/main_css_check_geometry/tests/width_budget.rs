@@ -132,6 +132,58 @@ fn hidden_media_art_and_controls_reduce_width_pressure() {
 }
 
 #[test]
+fn player_layout_stays_quiet_with_compact_top_art_budget() {
+    let mut config = Config::default();
+    config.panel.width = 420;
+    config.media.layout = MediaLayout::Player;
+    let css = r#"
+        .unixnotis-panel { padding: 16px; }
+        .unixnotis-media-card-player { padding: 8px 10px; border: 1px solid red; }
+        .unixnotis-media-header { padding: 0 8px; }
+        .unixnotis-media-body { padding: 0 8px; }
+        .unixnotis-media-text { padding: 0 10px; }
+        .unixnotis-media-art-frame { min-width: 64px; padding: 3px; border: 1px solid red; }
+        .unixnotis-media-button { min-width: 33px; padding: 5px 7px; border: 1px solid red; }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let file_warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(file_warnings.is_empty());
+
+    let warnings = model.finalize_warnings(&config);
+    assert!(!warnings.iter().any(|warning| warning.contains("media row")));
+}
+
+#[test]
+fn compact_player_layout_stays_quiet_on_small_panel_widths() {
+    let mut config = Config::default();
+    config.panel.width = 320;
+    config.media.layout = MediaLayout::Player;
+    config.media.art_size_px = 40;
+    config.media.text_width_floor_px = 92;
+    config.media.card_height_px = Some(156);
+    config.media.content_spacing_px = 4;
+    config.media.control_spacing_px = 4;
+    config.media.navigation_spacing_px = 4;
+    let css = r#"
+        .unixnotis-panel { padding: 14px; }
+        .unixnotis-media-card-player { padding: 6px 8px; border: 1px solid red; }
+        .unixnotis-media-header { padding: 0 4px; }
+        .unixnotis-media-body { padding: 0 4px; }
+        .unixnotis-media-text { padding: 0 6px; }
+        .unixnotis-media-art-frame { min-width: 44px; padding: 2px; border: 1px solid red; }
+        .unixnotis-media-button { min-width: 28px; padding: 4px 6px; border: 1px solid red; }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let file_warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(file_warnings.is_empty());
+
+    let warnings = model.finalize_warnings(&config);
+    assert!(!warnings.iter().any(|warning| warning.contains("media row")));
+}
+
+#[test]
 fn warns_when_media_art_outgrows_its_frame() {
     let config = Config::default();
     let css = r#"

@@ -49,7 +49,7 @@ fn collect_unixnotis_classes(css: &'static str, classes: &mut HashSet<&'static s
     }
 }
 
-fn hook_unixnotis_classes() -> [&'static str; 21] {
+fn hook_unixnotis_classes() -> [&'static str; 27] {
     // Hook-only classes can be real live selectors before the stock theme gives them rules
     [
         ".unixnotis-panel-actions",
@@ -73,5 +73,25 @@ fn hook_unixnotis_classes() -> [&'static str; 21] {
         ".unixnotis-group-count",
         ".unixnotis-group-chevron",
         ".unixnotis-empty",
+        ".unixnotis-media-stack-player",
+        ".unixnotis-media-row-player",
+        ".unixnotis-media-card-player",
+        ".unixnotis-media-button-prev",
+        ".unixnotis-media-button-play",
+        ".unixnotis-media-button-next",
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::known_unixnotis_classes;
+
+    #[test]
+    fn player_button_hooks_are_treated_as_known_public_classes() {
+        let classes = known_unixnotis_classes();
+
+        assert!(classes.contains(".unixnotis-media-button-prev"));
+        assert!(classes.contains(".unixnotis-media-button-play"));
+        assert!(classes.contains(".unixnotis-media-button-next"));
+    }
 }
