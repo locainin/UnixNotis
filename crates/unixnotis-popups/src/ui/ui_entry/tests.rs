@@ -39,6 +39,15 @@ fn popup_body_row_hides_when_text_is_only_whitespace() {
 }
 
 #[test]
+fn popup_body_row_hides_when_clamp_intentionally_blanks_text() {
+    // Zero-char clamps should collapse the row instead of leaving an empty label behind
+    let state = optional_label_state("hello", 0);
+
+    assert!(!state.visible);
+    assert!(state.text.is_empty());
+}
+
+#[test]
 fn popup_summary_row_shows_when_text_has_real_content() {
     // Real text should stay intact even when it has leading whitespace
     let state = optional_label_state("  hello  ", POPUP_SUMMARY_MAX_CHARS);

@@ -40,10 +40,12 @@ pub(super) fn optional_label_state(text: &str, max_chars: usize) -> OptionalLabe
             text: Cow::Borrowed(""),
         };
     }
+    let text = clamp_label_text(text, max_chars);
     OptionalLabelState {
-        visible: true,
+        // Clamped-empty text should collapse the row the same way raw empty text does
+        visible: has_visible_text(text.as_ref()),
         // Clamp before the label sees the text so layout work stays bounded
-        text: clamp_label_text(text, max_chars),
+        text,
     }
 }
 
