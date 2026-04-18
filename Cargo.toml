@@ -57,3 +57,9 @@ rustix = { version = "1.1", features = ["fs", "process"] }
 # Installer-managed binaries live in workspace metadata to avoid duplication between build and install logic.
 # This list is the single source of truth for unixnotis-installer binary deployment.
 binaries = ["unixnotis-daemon", "unixnotis-popups", "unixnotis-center", "noticenterctl"]
+
+[profile.release]
+# Keep release builds optimized across crate boundaries
+lto = "fat"
+# Favor runtime performance over parallel codegen speed
+codegen-units = 1
