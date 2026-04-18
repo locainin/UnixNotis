@@ -1,4 +1,4 @@
-//! Popup input-region shaping and animation tracking
+//! Popup input-region shaping for the popup surface
 //!
 //! This module keeps pointer hit-region behavior independent from window layout wiring
 
@@ -6,7 +6,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gtk::cairo;
-use gtk::glib::ControlFlow;
 use gtk::prelude::*;
 
 #[derive(Clone)]
@@ -15,8 +14,6 @@ pub(in super::super) struct PopupInputRegionState {
     allow_click_through: Rc<Cell<bool>>,
     // Dirty bit avoids rebuilding the region when nothing changed
     dirty: Rc<Cell<bool>>,
-    // Guard prevents duplicate tick callbacks
-    ticking: Rc<Cell<bool>>,
     // Last applied signature skips no-op compositor region updates
     last_signature: Rc<RefCell<Option<InputRegionSignature>>>,
 }
@@ -26,7 +23,7 @@ struct InputRegionSignature {
     // Surface dimensions are part of identity so scale/output shifts are detected
     surface_width: i32,
     surface_height: i32,
-    // Ordered source rectangles represent clickable popup regions
+    // Ordered rectangles keep signature comparisons simple and deterministic
     reactive_rects: Vec<cairo::RectangleInt>,
 }
 
@@ -36,7 +33,6 @@ impl PopupInputRegionState {
         Self {
             allow_click_through: Rc::new(Cell::new(allow_click_through)),
             dirty: Rc::new(Cell::new(true)),
-            ticking: Rc::new(Cell::new(false)),
             last_signature: Rc::new(RefCell::new(None)),
         }
     }
@@ -49,19 +45,12 @@ impl PopupInputRegionState {
     }
 
     pub(super) fn reset_runtime_state(&self) {
-        // Hidden windows should not keep the old tick guard alive
-        self.ticking.set(false);
+        // Hidden windows should rebuild the region cleanly on the next map
         self.mark_dirty();
     }
 
     fn allow_click_through(&self) -> bool {
         self.allow_click_through.get()
-    }
-
-    fn tracks_geometry(&self) -> bool {
-        // Interactive popups now use the full mapped surface as the hit region
-        // so animation ticks are no longer needed to chase child geometry
-        false
     }
 
     fn mark_dirty(&self) {
@@ -78,72 +67,10 @@ pub(in super::super) fn refresh_popup_input_region(
     window: &gtk::ApplicationWindow,
     stack: &gtk::Box,
     input_region: &PopupInputRegionState,
-    keep_ticking: bool,
 ) {
     // Any caller here observed a geometry or visibility change
     input_region.mark_dirty();
-    let needs_retry = apply_popup_input_region_if_dirty(window, stack, input_region);
-
-    if !input_region.tracks_geometry() {
-        // Click-through mode keeps an empty region, so animation ticks would be wasted work
-        return;
-    }
-
-    // Keep ticking only during animations or when geometry is still settling
-    if window.is_visible() && (keep_ticking || needs_retry) {
-        // Tick callback self-terminates once transitions and retries are complete
-        ensure_popup_input_region_tick(window, stack, input_region);
-    }
-}
-
-pub(in super::super) fn popup_stack_has_active_transitions(stack: &gtk::Box) -> bool {
-    let mut child = stack.first_child();
-    while let Some(widget) = child {
-        let next = widget.next_sibling();
-
-        // Revealers animate between these two states
-        if let Ok(revealer) = widget.clone().downcast::<gtk::Revealer>() {
-            // Transition is active while target and current child reveal states differ
-            if revealer.reveals_child() != revealer.is_child_revealed() {
-                return true;
-            }
-        }
-
-        child = next;
-    }
-    false
-}
-
-fn ensure_popup_input_region_tick(
-    window: &gtk::ApplicationWindow,
-    stack: &gtk::Box,
-    input_region: &PopupInputRegionState,
-) {
-    // Avoid duplicate callback loops when many updates arrive in one frame
-    if input_region.ticking.replace(true) {
-        return;
-    }
-
-    let stack = stack.clone();
-    let input_region = input_region.clone();
-
-    window.add_tick_callback(move |window, _| {
-        // Animation-aware refresh keeps hitboxes aligned with revealer motion
-        let active_transitions = popup_stack_has_active_transitions(&stack);
-        if active_transitions {
-            // Animated revealers shift geometry frame-by-frame
-            input_region.mark_dirty();
-        }
-
-        let needs_retry = apply_popup_input_region_if_dirty(window, &stack, &input_region);
-        if active_transitions || needs_retry {
-            ControlFlow::Continue
-        } else {
-            // Reset guard so future animations can re-arm the tick callback
-            input_region.ticking.set(false);
-            ControlFlow::Break
-        }
-    });
+    let _ = apply_popup_input_region_if_dirty(window, stack, input_region);
 }
 
 fn apply_popup_input_region_if_dirty(
@@ -226,7 +153,7 @@ fn popup_stack_has_visible_widgets(stack: &gtk::Box) -> bool {
     let mut child = stack.first_child();
     while let Some(widget) = child {
         let next = widget.next_sibling();
-        if widget.is_visible() {
+        if widget.get_visible() {
             return true;
         }
         child = next;
@@ -236,7 +163,7 @@ fn popup_stack_has_visible_widgets(stack: &gtk::Box) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_popup_input_region, popup_stack_has_visible_widgets, PopupInputRegionState};
+    use super::{build_popup_input_region, popup_stack_has_visible_widgets};
     use gtk::cairo;
     use gtk::prelude::{BoxExt, WidgetExt};
 
@@ -261,12 +188,6 @@ mod tests {
     fn hidden_stack_region_stays_empty() {
         let (_, signature) = build_popup_input_region(320, 180, false, false);
         assert!(signature.reactive_rects.is_empty());
-    }
-
-    #[test]
-    fn popup_input_state_tracks_geometry_is_disabled() {
-        let state = PopupInputRegionState::new(false);
-        assert!(!state.tracks_geometry());
     }
 
     #[test]

@@ -61,11 +61,11 @@ impl UiState {
         }
         let (volume, brightness) = build_quick_controls(&panel, &init.config);
         let (toggles, stats, cards) = build_extra_widgets(&panel, &init.config);
-        let has_widgets = panel.quick_controls.is_visible()
-            || panel.media_container.is_visible()
-            || panel.toggle_container.is_visible()
-            || panel.stat_container.is_visible()
-            || panel.card_container.is_visible();
+        let has_widgets = panel.quick_controls.get_visible()
+            || panel.media_container.get_visible()
+            || panel.toggle_container.get_visible()
+            || panel.stat_container.get_visible()
+            || panel.card_container.get_visible();
         list.set_empty_layout(has_widgets);
 
         let dnd_guard_clone = dnd_guard.clone();

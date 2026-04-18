@@ -33,6 +33,15 @@ fn panel_summary_row_shows_when_text_has_real_content() {
 }
 
 #[test]
+fn panel_summary_row_hides_when_clamp_intentionally_blanks_text() {
+    // Zero-char clamps should collapse the row instead of leaving an empty label
+    let state = optional_label_state("hello", 0);
+
+    assert!(!state.visible);
+    assert!(state.text.is_empty());
+}
+
+#[test]
 fn panel_action_labels_are_clamped_before_button_build() {
     // Long labels should be shortened before the action row sees them
     let long_label = "This action label is much longer than the row should allow";
