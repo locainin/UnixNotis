@@ -114,44 +114,63 @@ pub(super) fn update_group_row(
         .unwrap_or_else(|| data.group_key.as_ref());
     // Display the original app label while the normalized key drives grouping behavior.
     // Fall back to the group key if no sample notification is available.
-    group.title.set_text(display_name);
-    group.count.set_text(&format!("{}", data.count));
+    set_label_text_if_changed(&group.title, display_name);
+    let next_count = data.count.to_string();
+    set_label_text_if_changed(&group.count, &next_count);
     let chevron_name = if data.expanded {
         "pan-up-symbolic"
     } else {
         "pan-down-symbolic"
     };
-    group.chevron.set_icon_name(Some(chevron_name));
-    if data.expanded {
-        root.remove_css_class(hooks::group_row::COLLAPSED);
-        if !root.has_css_class(hooks::group_row::EXPANDED) {
-            root.add_css_class(hooks::group_row::EXPANDED);
-        }
-    } else {
-        root.add_css_class(hooks::group_row::COLLAPSED);
-        if root.has_css_class(hooks::group_row::EXPANDED) {
-            root.remove_css_class(hooks::group_row::EXPANDED);
-        }
-    }
+    set_icon_name_if_changed(&group.chevron, chevron_name);
+    set_class_state(root, hooks::group_row::COLLAPSED, !data.expanded);
+    set_class_state(root, hooks::group_row::EXPANDED, data.expanded);
 
     *group.group_key.borrow_mut() = data.group_key.clone();
 
     if let Some(notification) = data.notification.as_ref() {
         let scale = root.scale_factor();
         icon_resolver.apply_icon(&group.icon, notification.as_ref(), 18, scale);
-        if !root.has_css_class(hooks::group_row::HAS_ICON) {
-            root.add_css_class(hooks::group_row::HAS_ICON);
-        }
-        if root.has_css_class(hooks::group_row::NO_ICON) {
-            root.remove_css_class(hooks::group_row::NO_ICON);
-        }
+        set_class_state(root, hooks::group_row::HAS_ICON, true);
+        set_class_state(root, hooks::group_row::NO_ICON, false);
     } else {
-        group.icon.set_visible(false);
-        if !root.has_css_class(hooks::group_row::NO_ICON) {
-            root.add_css_class(hooks::group_row::NO_ICON);
+        set_widget_visible_if_changed(&group.icon, false);
+        set_class_state(root, hooks::group_row::NO_ICON, true);
+        set_class_state(root, hooks::group_row::HAS_ICON, false);
+    }
+}
+
+fn set_label_text_if_changed(label: &gtk::Label, text: &str) {
+    // Repeated model refreshes often land on the same text
+    // Skip the setter when the rendered value already matches
+    if label.text().as_str() != text {
+        label.set_text(text);
+    }
+}
+
+fn set_icon_name_if_changed(image: &gtk::Image, icon_name: &str) {
+    // Chevron updates are common while grouping changes settle
+    // Avoid reassigning the same symbolic icon over and over
+    if image.icon_name().as_deref() != Some(icon_name) {
+        image.set_icon_name(Some(icon_name));
+    }
+}
+
+fn set_widget_visible_if_changed<W: IsA<gtk::Widget>>(widget: &W, visible: bool) {
+    // Visibility flips trigger GTK work even when the value is unchanged
+    // Guard the setter so empty groups do not keep re-hiding the same widget
+    if widget.is_visible() != visible {
+        widget.set_visible(visible);
+    }
+}
+
+fn set_class_state(widget: &gtk::Box, class_name: &str, enabled: bool) {
+    // CSS state stays cheap when no-op toggles are skipped
+    if enabled {
+        if !widget.has_css_class(class_name) {
+            widget.add_css_class(class_name);
         }
-        if root.has_css_class(hooks::group_row::HAS_ICON) {
-            root.remove_css_class(hooks::group_row::HAS_ICON);
-        }
+    } else if widget.has_css_class(class_name) {
+        widget.remove_css_class(class_name);
     }
 }
