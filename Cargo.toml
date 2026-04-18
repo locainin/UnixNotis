@@ -42,6 +42,7 @@ zbus = { version = "4", default-features = false, features = ["tokio"] }
 
 gio = "0.21"
 gdk-pixbuf = "0.21"
+gdk4-wayland = { version = "0.10.3", features = ["v4_18"] }
 glib = "0.21"
 gtk = { package = "gtk4", version = "0.10" }
 gtk4-layer-shell = "0.7.1"
