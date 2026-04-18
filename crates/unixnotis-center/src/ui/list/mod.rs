@@ -62,8 +62,8 @@ pub struct NotificationList {
     needs_rebuild: bool,
     // Groups with pending content/visibility changes since the last flush.
     dirty_groups: HashSet<Rc<str>>,
-    // Lowercased filter query for notification search in the panel header.
-    filter_query: Option<String>,
+    // Normalized filter query for notification search in the panel header.
+    filter_query: Option<FilterQuery>,
     // Local close handling needs the same transient history rule as the daemon
     transient_to_history: bool,
     max_active: usize,
@@ -90,6 +90,14 @@ struct NotificationEntry {
 struct GroupRange {
     start: usize,
     len: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FilterQuery {
+    // Keep the normalized text compact because this value is cloned and compared
+    text: Box<str>,
+    // ASCII queries can use a byte-wise fast path without allocating a lowered haystack
+    ascii_only: bool,
 }
 
 impl NotificationList {
