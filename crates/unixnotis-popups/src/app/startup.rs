@@ -39,7 +39,7 @@ pub(super) fn init_tracing(config: &Config) {
                 .log_level
                 .clone()
                 .unwrap_or_else(|| "info".to_string());
-            let filter = EnvFilter::try_new(configured.clone()).unwrap_or_else(|err| {
+            let filter = EnvFilter::try_new(configured.as_str()).unwrap_or_else(|err| {
                 // Bad config should fall back to a safe default instead of crashing
                 eprintln!(
                     "unixnotis-popups: invalid log level '{}': {err}; falling back to info",

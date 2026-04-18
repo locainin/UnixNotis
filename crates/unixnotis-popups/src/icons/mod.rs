@@ -79,8 +79,9 @@ pub(super) fn collect_icon_candidates(notification: &NotificationView) -> Vec<St
     if !notification.app_name.is_empty() {
         candidates.push(notification.app_name.clone());
         let lower = notification.app_name.to_lowercase();
-        candidates.push(lower.clone());
-        candidates.push(lower.replace(' ', "-"));
+        let dashed = lower.replace(' ', "-");
+        candidates.push(lower);
+        candidates.push(dashed);
     }
 
     let mut seen = HashSet::new();
