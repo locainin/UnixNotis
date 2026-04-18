@@ -54,6 +54,26 @@ pub(super) fn build_popup_window(
             // Realize can happen before first map, so initialize region immediately
             // Realize is the first safe point for surface input-region calls
             refresh_popup_input_region(window, &stack, &input_region);
+
+            let Some(surface) = window.surface() else {
+                return;
+            };
+
+            let window_weak = window.downgrade();
+            let stack_weak = stack.downgrade();
+            let input_region = input_region.clone();
+            surface.connect_layout(move |_, _, _| {
+                let Some(window) = window_weak.upgrade() else {
+                    return;
+                };
+                let Some(stack) = stack_weak.upgrade() else {
+                    return;
+                };
+
+                // The first popup often grows during the revealer transition
+                // Refresh here so the input region follows the real mapped size
+                refresh_popup_input_region(&window, &stack, &input_region);
+            });
         }
     });
 
