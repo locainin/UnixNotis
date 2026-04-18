@@ -164,7 +164,7 @@ fn set_icon_name_if_changed(image: &gtk::Image, icon_name: &str) {
 fn set_widget_visible_if_changed<W: IsA<gtk::Widget>>(widget: &W, visible: bool) {
     // Visibility flips trigger GTK work even when the value is unchanged
     // Guard the setter so empty groups do not keep re-hiding the same widget
-    if widget.is_visible() != visible {
+    if widget.get_visible() != visible {
         widget.set_visible(visible);
     }
 }

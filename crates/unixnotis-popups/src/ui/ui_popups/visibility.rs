@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use super::super::ui_window::{popup_stack_has_active_transitions, refresh_popup_input_region};
+use super::super::ui_window::refresh_popup_input_region;
 use super::{UiState, VisiblePopupUpdate};
 use gtk::prelude::*;
 use tracing::{debug, warn};
@@ -20,7 +20,6 @@ impl UiState {
                     &self.popup_window,
                     &self.popup_stack,
                     &self.popup_input_region,
-                    false,
                 );
             }
             debug!("popups disabled by max_visible = 0");
@@ -39,14 +38,11 @@ impl UiState {
         // logical popup order that was requested upstream
         self.popup_window
             .set_visible(!self.visible_popups.is_empty());
-        // Tick while transitions run so interactive area tracks animation frames
-        let has_active_transitions = popup_stack_has_active_transitions(&self.popup_stack);
-        if force_region_refresh || update.stack_changed || has_active_transitions {
+        if force_region_refresh || update.stack_changed {
             refresh_popup_input_region(
                 &self.popup_window,
                 &self.popup_stack,
                 &self.popup_input_region,
-                has_active_transitions,
             );
         }
         debug!(

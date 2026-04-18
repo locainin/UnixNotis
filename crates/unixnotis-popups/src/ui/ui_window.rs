@@ -13,9 +13,7 @@ mod input_region;
 mod monitor;
 
 use self::anchor::apply_anchor;
-pub(super) use self::input_region::{
-    popup_stack_has_active_transitions, refresh_popup_input_region, PopupInputRegionState,
-};
+pub(super) use self::input_region::{refresh_popup_input_region, PopupInputRegionState};
 use self::monitor::{default_monitor, find_monitor};
 
 // Keep popup width proportional on compact displays to avoid oversized cards.
@@ -55,12 +53,7 @@ pub(super) fn build_popup_window(
         move |window| {
             // Realize can happen before first map, so initialize region immediately
             // Realize is the first safe point for surface input-region calls
-            refresh_popup_input_region(
-                window,
-                &stack,
-                &input_region,
-                popup_stack_has_active_transitions(&stack),
-            );
+            refresh_popup_input_region(window, &stack, &input_region);
         }
     });
 
@@ -70,12 +63,7 @@ pub(super) fn build_popup_window(
         move |window| {
             // Map callbacks catch compositor-side geometry changes at show time
             // Mapping can change surface geometry after realize
-            refresh_popup_input_region(
-                window,
-                &stack,
-                &input_region,
-                popup_stack_has_active_transitions(&stack),
-            );
+            refresh_popup_input_region(window, &stack, &input_region);
         }
     });
 
@@ -93,12 +81,7 @@ pub(super) fn build_popup_window(
         move |window| {
             // DPI/scale changes move logical bounds, so hit regions must be regenerated
             // Scale changes alter pixel bounds so hit regions must be rebuilt
-            refresh_popup_input_region(
-                window,
-                &stack,
-                &input_region,
-                popup_stack_has_active_transitions(&stack),
-            );
+            refresh_popup_input_region(window, &stack, &input_region);
         }
     });
 
@@ -153,12 +136,7 @@ pub(super) fn apply_popup_config(
 
     // Apply passthrough mode changes immediately on config reload
     input_region.set_allow_click_through(config.popups.allow_click_through);
-    refresh_popup_input_region(
-        window,
-        stack,
-        input_region,
-        popup_stack_has_active_transitions(stack),
-    );
+    refresh_popup_input_region(window, stack, input_region);
 }
 
 fn resolve_popup_width(config: &Config, monitor: Option<&gtk::gdk::Monitor>) -> i32 {

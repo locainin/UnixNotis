@@ -99,6 +99,13 @@ pub(super) fn optional_label_state(text: &str, max_chars: usize) -> OptionalLabe
             text: Cow::Borrowed(""),
         };
     }
+    if max_chars == 0 {
+        // Zero-char clamps are an explicit request to collapse the row
+        return OptionalLabelState {
+            visible: false,
+            text: Cow::Borrowed(""),
+        };
+    }
     OptionalLabelState {
         visible: true,
         // Notification text stays plain so layout cannot be changed by markup
@@ -150,7 +157,7 @@ fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {
 fn set_label_visible_if_changed(label: &gtk::Label, visible: bool) {
     // Reused rows often receive the same visibility decision on every pass
     // Skip the setter so hidden and shown states stay quiet when unchanged
-    if label.is_visible() != visible {
+    if label.get_visible() != visible {
         label.set_visible(visible);
     }
 }
