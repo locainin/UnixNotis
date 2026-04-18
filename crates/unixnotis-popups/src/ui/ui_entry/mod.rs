@@ -199,8 +199,18 @@ impl UiState {
             .map(|action| action.key.clone());
         if let Some(action_key) = default_action {
             let gesture = gtk::GestureClick::new();
+            // Default card actions only belong to plain card clicks
+            // Real buttons should keep their own handlers without also triggering the card action
+            gesture.set_button(1);
+            let root_weak = root.downgrade();
             let tx = self.command_tx.clone();
-            gesture.connect_released(move |_, _, _, _| {
+            gesture.connect_released(move |_, _, x, y| {
+                let Some(root) = root_weak.upgrade() else {
+                    return;
+                };
+                if picked_widget_blocks_default_action(root.pick(x, y, gtk::PickFlags::DEFAULT)) {
+                    return;
+                }
                 // Card clicks mirror the default action button behavior
                 try_send_command(
                     &tx,
@@ -240,6 +250,21 @@ fn build_popup_header_spacer() -> gtk::Box {
 pub(super) const fn popup_header_spacer_expands() -> bool {
     // Keep the alignment rule easy to test without constructing full GTK rows
     true
+}
+
+fn picked_widget_blocks_default_action(mut widget: Option<gtk::Widget>) -> bool {
+    while let Some(current) = widget {
+        if widget_type_blocks_default_action(current.type_()) {
+            return true;
+        }
+        widget = current.parent();
+    }
+    false
+}
+
+fn widget_type_blocks_default_action(widget_type: gtk::glib::Type) -> bool {
+    // Button clicks should always stay owned by the button widget subtree
+    widget_type.is_a(gtk::Button::static_type())
 }
 
 fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {
