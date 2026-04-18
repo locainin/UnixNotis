@@ -184,21 +184,21 @@ pub(super) fn update_notification_row(
 
     if notification.urgency == Urgency::Critical as u8 {
         // CSS class toggles are explicit to avoid stale visual state
-        root.add_css_class(hooks::shared_state::CRITICAL);
+        set_class_state(root, hooks::shared_state::CRITICAL, true);
     } else {
-        root.remove_css_class(hooks::shared_state::CRITICAL);
+        set_class_state(root, hooks::shared_state::CRITICAL, false);
     }
     if data.is_active {
         // Active rows can be styled differently from history rows
-        root.add_css_class(hooks::shared_state::ACTIVE);
+        set_class_state(root, hooks::shared_state::ACTIVE, true);
     } else {
-        root.remove_css_class(hooks::shared_state::ACTIVE);
+        set_class_state(root, hooks::shared_state::ACTIVE, false);
     }
     if data.stacked {
         // Stacked class indicates collapsed entries in grouped mode
-        root.add_css_class(hooks::shared_state::STACKED);
+        set_class_state(root, hooks::shared_state::STACKED, true);
     } else {
-        root.remove_css_class(hooks::shared_state::STACKED);
+        set_class_state(root, hooks::shared_state::STACKED, false);
     }
 
     // Extra state classes give themes better hooks without changing old selectors
@@ -223,7 +223,7 @@ pub(super) fn update_notification_row(
         notification.actions.is_empty(),
     );
     // App name always renders, even when summary or body are missing
-    row.app_label.set_text(&notification.app_name);
+    set_label_text_if_changed(&row.app_label, &notification.app_name);
     // Clamp before GTK rendering to avoid giant layout passes
     update_summary_label(&row.summary_label, &notification.summary);
     update_body_label(&row.body_label, &notification.body);
@@ -259,8 +259,8 @@ fn update_body_label(label: &gtk::Label, body: &str) {
 fn update_optional_label(label: &gtk::Label, text: &str, max_chars: usize) {
     // Build the shared row state first so summary and body stay in sync
     let state = optional_label_state(text, max_chars);
-    label.set_visible(state.visible);
-    label.set_text(state.text.as_ref());
+    set_label_visible_if_changed(label, state.visible);
+    set_label_text_if_changed(label, state.text.as_ref());
 }
 
 fn optional_label_state(text: &str, max_chars: usize) -> OptionalLabelState<'_> {
@@ -290,6 +290,22 @@ fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {
         }
     } else if root.has_css_class(class_name) {
         root.remove_css_class(class_name);
+    }
+}
+
+fn set_label_visible_if_changed(label: &gtk::Label, visible: bool) {
+    // Reused rows often receive the same visibility decision on every pass
+    // Skip the setter so hidden and shown states stay quiet when unchanged
+    if label.is_visible() != visible {
+        label.set_visible(visible);
+    }
+}
+
+fn set_label_text_if_changed(label: &gtk::Label, text: &str) {
+    // Summary and body updates can be replayed many times while the row is stable
+    // Compare against the current label so GTK only sees real text changes
+    if label.text().as_str() != text {
+        label.set_text(text);
     }
 }
 
