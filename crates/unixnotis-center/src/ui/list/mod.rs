@@ -7,10 +7,7 @@ mod list_blocks;
 mod list_grouping;
 mod list_index;
 mod list_item;
-mod list_row_empty;
-mod list_row_ghost;
-mod list_row_group;
-mod list_row_notification;
+mod list_row;
 mod list_state;
 mod list_update;
 mod list_widgets;
@@ -29,7 +26,7 @@ use unixnotis_core::NotificationView;
 use crate::dbus::{UiCommand, UiEvent};
 
 use self::list_item::{RowItem, RowKind};
-use self::list_row_empty::{build_empty_row, update_empty_row};
+use self::list_row::empty::{build_empty_row, update_empty_row};
 use self::list_widgets::{
     bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets,
 };
