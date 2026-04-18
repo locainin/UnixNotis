@@ -30,7 +30,11 @@ pub(in crate::ui::list) fn update_empty_row(root: &gtk::Box, text: &str) {
     if let Some(child) = root.first_child() {
         if let Ok(label) = child.downcast::<gtk::Label>() {
             // Config reloads can change the empty-state copy without rebuilding the row
-            label.set_text(text);
+            // Skip the setter when the placeholder text already matches
+            // This keeps config reloads from poking GTK for no visible change
+            if label.text().as_str() != text {
+                label.set_text(text);
+            }
         }
     }
 }
