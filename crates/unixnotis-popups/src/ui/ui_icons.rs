@@ -56,7 +56,7 @@ impl UiState {
                     if let Some(widget) =
                         self.resolve_icon_widget(icon_name.as_str(), POPUP_ICON_SIZE)
                     {
-                        resolved = Some((icon_name.clone(), widget));
+                        resolved = Some((icon_name, widget));
                         break;
                     }
                 }
@@ -67,9 +67,9 @@ impl UiState {
         }
 
         if resolved.is_none() {
-            for candidate in &candidates {
-                if let Some(widget) = self.resolve_icon_widget(candidate, POPUP_ICON_SIZE) {
-                    resolved = Some((candidate.clone(), widget));
+            for candidate in candidates {
+                if let Some(widget) = self.resolve_icon_widget(&candidate, POPUP_ICON_SIZE) {
+                    resolved = Some((candidate, widget));
                     break;
                 }
             }
@@ -148,16 +148,12 @@ impl UiState {
                             icon.stride as usize,
                         )
                         .upcast::<gdk::Texture>();
-                        // Cache only modestly sized textures to limit resident memory.
-                        if icon.bytes.len() <= ICON_TEXTURE_CACHE_MAX_BYTES {
-                            cache.borrow_mut().insert(
-                                path_clone.clone(),
-                                target_size,
-                                texture.clone(),
-                            );
-                        }
                         widget_clone.set_paintable(Some(&texture));
                         set_popup_icon_size(&widget_clone, target_size);
+                        // Cache only modestly sized textures to limit resident memory.
+                        if icon.bytes.len() <= ICON_TEXTURE_CACHE_MAX_BYTES {
+                            cache.borrow_mut().insert(path_clone, target_size, texture);
+                        }
                     }
                     Err(err) => {
                         debug!(?err, "popup icon decode failed");

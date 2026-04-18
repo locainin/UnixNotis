@@ -8,8 +8,6 @@ mod value;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 
 use gtk::prelude::*;
 use gtk::Align;
@@ -41,7 +39,7 @@ pub struct CommandSlider {
     // Guard blocks recursive value-changed signals during internal updates
     updating: Rc<Cell<bool>>,
     // Generation token avoids stale async refresh races
-    refresh_gen: Arc<AtomicU64>,
+    refresh_gen: Rc<Cell<u64>>,
     // Local gate keeps refresh bursts bounded
     refresh_gate: SliderRefreshGate,
     // Optional watch command handle for event-driven refresh
@@ -88,7 +86,9 @@ impl CommandSlider {
         // Debounce state coalesces slider drags into fewer set_cmd executions
         let pending = Rc::new(RefCell::new(None));
         let pending_value = Rc::new(Cell::new(None));
-        let refresh_gen = Arc::new(AtomicU64::new(0));
+        // Refresh generation only lives on the GTK main loop
+        // Rc<Cell<_>> keeps this path lighter than Arc<AtomicU64>
+        let refresh_gen = Rc::new(Cell::new(0_u64));
         let refresh_gate = SliderRefreshGate::new();
         let icon_muted = config
             .icon_muted
@@ -109,11 +109,7 @@ impl CommandSlider {
 
         if let Some(toggle_cmd) = config.toggle_cmd.as_ref() {
             let cmd = toggle_cmd.clone();
-            let icon_button = gtk::Button::new();
-            icon_button.set_child(Some(&icon_image));
-            icon_button.add_css_class("unixnotis-quick-slider-icon");
-            icon_button.set_valign(Align::Center);
-            icon_button.set_halign(Align::Center);
+            let icon_button = build_icon_shell(&icon_image, true);
             root.prepend(&icon_button);
 
             let scale_weak = scale.downgrade();
@@ -154,13 +150,10 @@ impl CommandSlider {
                 );
             });
         } else {
-            // Non-toggle sliders still get the same icon shell without disabled button styling
-            let icon_frame = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            icon_frame.add_css_class("unixnotis-quick-slider-icon");
-            icon_frame.set_valign(Align::Center);
-            icon_frame.set_halign(Align::Center);
-            icon_frame.append(&icon_image);
-            root.prepend(&icon_frame);
+            // Static sliders still use the same shell widget as clickable sliders
+            // This keeps default template alignment stable between volume and brightness rows
+            let icon_shell = build_icon_shell(&icon_image, false);
+            root.prepend(&icon_shell);
         }
 
         let set_cmd = config.set_cmd.clone();
@@ -306,6 +299,19 @@ impl CommandSlider {
             gate: self.refresh_gate.clone(),
         }
     }
+}
+
+fn build_icon_shell(icon_image: &gtk::Image, interactive: bool) -> gtk::Button {
+    let button = gtk::Button::new();
+    button.set_child(Some(icon_image));
+    button.add_css_class("unixnotis-quick-slider-icon");
+    button.set_valign(Align::Center);
+    button.set_halign(Align::Center);
+    // Only clickable sliders should take pointer or focus events
+    // Static shells still use the same GTK node so row metrics stay aligned
+    button.set_focusable(interactive);
+    button.set_can_target(interactive);
+    button
 }
 
 fn build_refresh_state_from_weak(

@@ -75,7 +75,7 @@ fn schedule_refresh_sequence(
     tasks: &mut DelayedRefreshTasks,
     signal_tx: Sender<MediaSignal>,
     bus_name: &str,
-    delays_ms: &[u64],
+    delays_ms: &'static [u64],
 ) {
     cancel_delayed_refresh(tasks, bus_name);
     if delays_ms.is_empty() {
@@ -83,19 +83,16 @@ fn schedule_refresh_sequence(
     }
     let key = bus_name.to_string();
     let target_name = key.clone();
-    let delays: Vec<Duration> = delays_ms
-        .iter()
-        .copied()
-        .map(Duration::from_millis)
-        .collect();
-    // One task per player keeps retries bounded under noisy update streams.
+    // Retry plans are static arrays, so the task can walk the borrowed slice
+    // directly instead of allocating a fresh delay list every time
+    // One task per player keeps retries bounded under noisy update streams
     let task = tokio::spawn(async move {
-        let mut previous = Duration::from_millis(0);
-        for delay in delays {
-            let step = delay.saturating_sub(previous);
-            previous = delay;
-            if !step.is_zero() {
-                tokio::time::sleep(step).await;
+        let mut previous_ms = 0_u64;
+        for &delay_ms in delays_ms {
+            let step_ms = delay_ms.saturating_sub(previous_ms);
+            previous_ms = delay_ms;
+            if step_ms != 0 {
+                tokio::time::sleep(Duration::from_millis(step_ms)).await;
             }
             if signal_tx
                 .send(MediaSignal::PropertiesChanged {

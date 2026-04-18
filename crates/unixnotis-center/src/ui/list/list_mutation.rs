@@ -1,66 +1,13 @@
-//! Notification list mutation and bookkeeping.
+//! Notification list update and close mutation logic
 //!
-//! Keeps state updates and list mutations separate from rendering logic.
-
-use std::rc::Rc;
+//! These paths own entry-level changes after the list has already been constructed
 
 use tracing::debug;
 use unixnotis_core::{should_archive_closed_notification, CloseReason, NotificationView};
 
-use super::list_item::{RowData, RowItem};
-use super::{NotificationEntry, NotificationList};
+use super::types::NotificationList;
 
 impl NotificationList {
-    pub fn apply_limits(&mut self, max_active: usize, max_entries: usize) {
-        let mut changed = false;
-        if self.max_active != max_active {
-            self.max_active = max_active;
-            changed = true;
-        }
-        if self.max_entries != max_entries {
-            self.max_entries = max_entries;
-            changed = true;
-        }
-        if changed {
-            // Trim and rebuild when limits change so list size is immediately correct.
-            self.trim_to_limits();
-            self.request_rebuild();
-        }
-    }
-
-    pub fn seed(&mut self, active: Vec<NotificationView>, history: Vec<NotificationView>) {
-        // Reset caches before rebuilding to avoid stale list store content.
-        self.entries.clear();
-        self.active_order.clear();
-        self.history_order.clear();
-        self.group_headers.clear();
-        self.group_order.clear();
-        self.group_order_scratch.clear();
-        self.clear_group_indices();
-        self.group_ranges.clear();
-        self.ghost_items.clear();
-        self.interned.clear();
-        self.current_keys.clear();
-        self.keys_scratch.clear();
-        self.store.remove_all();
-        self.dirty_groups.clear();
-
-        for notification in active {
-            self.insert_entry(notification, true);
-        }
-        for notification in history {
-            self.insert_entry(notification, false);
-        }
-        self.trim_to_limits();
-
-        debug!(
-            active = self.active_order.len(),
-            history = self.history_order.len(),
-            "seeded notification list"
-        );
-        self.request_rebuild();
-    }
-
     pub fn add_or_update(&mut self, notification: NotificationView, is_active: bool) {
         let id = notification.id;
         let existing_entry = self.entries.get(&id);
@@ -68,7 +15,7 @@ impl NotificationList {
         let was_in_active = existing_entry.map(|entry| entry.is_active).unwrap_or(false);
         let was_in_history = existing_entry.is_some() && !was_in_active;
         // Snapshot ordering state before any mutations; used to decide whether a full rebuild
-        // is necessary (rebuilds are expensive for large histories).
+        // is necessary because rebuilds are expensive for large histories
         let was_front = self.active_order.front().copied() == Some(id);
         let needs_new_key = existing_entry
             .map(|entry| entry.view.app_name != notification.app_name)
@@ -79,7 +26,7 @@ impl NotificationList {
             None
         };
 
-        // Track whether this update changes grouping or ordering. If not, update in place.
+        // Track whether this update changes grouping or ordering. If not, update in place
         let mut existing = false;
         let mut old_is_active = None;
         let mut group_changed = false;
@@ -90,7 +37,7 @@ impl NotificationList {
                 entry.app_key = key;
                 group_changed = true;
             }
-            entry.view = Rc::new(notification);
+            entry.view = std::rc::Rc::new(notification);
             entry.is_active = is_active;
         } else {
             self.insert_entry(notification, is_active);
@@ -98,7 +45,7 @@ impl NotificationList {
 
         let mut ordering_changed = false;
         if is_active {
-            // Reorder only when the notification is not already at the front.
+            // Reorder only when the notification is not already at the front
             if was_in_history || !was_in_active || !was_front {
                 self.history_order.retain(|entry| *entry != id);
                 self.active_order.retain(|entry| *entry != id);
@@ -107,7 +54,7 @@ impl NotificationList {
             }
         }
 
-        // Fast path: when the group and ordering are unchanged, update the row and header only.
+        // Fast path: when the group and ordering are unchanged, update the row and header only
         if existing
             && !group_changed
             && old_is_active == Some(is_active)
@@ -116,7 +63,7 @@ impl NotificationList {
             && !self.needs_rebuild
         {
             if let Some(entry) = self.entries.get(&id) {
-                // Compute stacked state from the cached grouping instead of rebuilding it.
+                // Compute stacked state from the cached grouping instead of rebuilding it
                 let stacked = self
                     .grouped_cache
                     .get(&entry.app_key)
@@ -129,8 +76,8 @@ impl NotificationList {
                             && ids.len() > 1
                     })
                     .unwrap_or(false);
-                // Update the row object in-place to avoid ListStore churn.
-                entry.item.update(RowData::notification(
+                // Update the row object in-place to avoid ListStore churn
+                entry.item.update(super::list_item::RowData::notification(
                     entry.app_key.clone(),
                     entry.view.clone(),
                     stacked,
@@ -144,8 +91,8 @@ impl NotificationList {
                             .copied()
                             .unwrap_or(false);
                         if let Some(header) = self.group_headers.get(&entry.app_key) {
-                            // Refresh the group header count and sample notification.
-                            header.update(RowData::group_header(
+                            // Refresh the group header count and sample notification
+                            header.update(super::list_item::RowData::group_header(
                                 entry.app_key.clone(),
                                 ids.len(),
                                 expanded,
@@ -165,8 +112,8 @@ impl NotificationList {
                 let current_active = entry.is_active;
                 if let (Some(old_key), Some(old_active)) = (old_group.as_ref(), old_is_active) {
                     if old_key.as_ref() != current_key.as_ref() {
-                        // App-name changes can move the notification between groups.
-                        // Rebuild only the two affected group indices.
+                        // App-name changes can move the notification between groups
+                        // Rebuild only the two affected group indices
                         self.rebuild_group_index_for_key(old_key);
                         self.rebuild_group_index_for_key(&current_key);
                     } else if old_active != current_active {
@@ -219,7 +166,7 @@ impl NotificationList {
         }
         self.active_order.retain(|entry| *entry != id);
         self.history_order.retain(|entry| *entry != id);
-        // Closed notifications are moved to history front to preserve recency ordering.
+        // Closed notifications are moved to history front to preserve recency ordering
         self.history_order.push_front(id);
         if let Some(key) = group_key {
             self.index_remove(&key, id, true);
@@ -250,86 +197,10 @@ impl NotificationList {
             return false;
         }
         self.filter_query = normalized;
-        // Filter changes affect every group; force a full pass to avoid stale ranges.
+        // Filter changes affect every group; force a full pass to avoid stale ranges
         self.group_ranges.clear();
         self.request_rebuild();
         true
-    }
-
-    fn trim_to_limits(&mut self) {
-        if self.max_active == 0 {
-            // Zero active capacity behaves like hard-drop for active notifications.
-            let drained: Vec<u32> = self.active_order.drain(..).collect();
-            for id in drained {
-                if let Some(entry) = self.entries.remove(&id) {
-                    self.index_remove(&entry.app_key, id, entry.is_active);
-                    self.dirty_groups.insert(entry.app_key);
-                }
-            }
-        } else {
-            while self.active_order.len() > self.max_active {
-                if let Some(id) = self.active_order.pop_back() {
-                    if let Some(entry) = self.entries.remove(&id) {
-                        self.index_remove(&entry.app_key, id, entry.is_active);
-                        self.dirty_groups.insert(entry.app_key);
-                    }
-                }
-            }
-        }
-
-        if self.max_entries == 0 {
-            // Zero history capacity keeps history storage fully disabled.
-            let drained: Vec<u32> = self.history_order.drain(..).collect();
-            for id in drained {
-                if let Some(entry) = self.entries.remove(&id) {
-                    self.index_remove(&entry.app_key, id, entry.is_active);
-                    self.dirty_groups.insert(entry.app_key);
-                }
-            }
-        } else {
-            while self.history_order.len() > self.max_entries {
-                if let Some(id) = self.history_order.pop_back() {
-                    if let Some(entry) = self.entries.remove(&id) {
-                        self.index_remove(&entry.app_key, id, entry.is_active);
-                        self.dirty_groups.insert(entry.app_key);
-                    }
-                }
-            }
-        }
-    }
-
-    fn insert_entry(&mut self, notification: NotificationView, is_active: bool) -> Rc<str> {
-        let id = notification.id;
-        let app_key = self.intern_key(&notification.app_name);
-        let view = Rc::new(notification);
-        let item = RowItem::new(RowData::notification(
-            app_key.clone(),
-            view.clone(),
-            false,
-            is_active,
-        ));
-        let entry = NotificationEntry {
-            view,
-            is_active,
-            app_key: app_key.clone(),
-            item,
-        };
-        self.entries.insert(id, entry);
-        if is_active {
-            self.active_order.push_front(id);
-        } else {
-            self.history_order.push_front(id);
-        }
-        self.index_insert_front(&app_key, id, is_active);
-        app_key
-    }
-
-    fn remove_entry(&mut self, id: u32) {
-        if let Some(entry) = self.entries.remove(&id) {
-            self.index_remove(&entry.app_key, id, entry.is_active);
-        }
-        self.active_order.retain(|entry| *entry != id);
-        self.history_order.retain(|entry| *entry != id);
     }
 }
 

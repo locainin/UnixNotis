@@ -9,7 +9,7 @@ use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::NotificationView;
 
-use super::ui_window::{popup_stack_has_active_transitions, refresh_popup_input_region};
+use super::ui_window::refresh_popup_input_region;
 use super::{PopupEntry, UiState};
 
 pub(super) struct ReconcilePlan {
@@ -115,13 +115,7 @@ impl UiState {
                         stack.remove(revealer);
                     }
                     // Re-sync clickable shape after each reveal step
-                    let has_active_transitions = popup_stack_has_active_transitions(&stack);
-                    refresh_popup_input_region(
-                        &popup_window,
-                        &stack,
-                        &popup_input_region,
-                        has_active_transitions,
-                    );
+                    refresh_popup_input_region(&popup_window, &stack, &popup_input_region);
                 });
             }
         }

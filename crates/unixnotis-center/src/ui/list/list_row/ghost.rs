@@ -1,17 +1,19 @@
-//! Ghost row widget construction and updates.
+//! Ghost row widget construction and updates
+//!
+//! Ghost rows reserve space for stacked notifications without binding full content
 
 use std::cell::RefCell;
 
 use gtk::prelude::*;
 use unixnotis_core::css::hooks;
 
-use super::list_item::RowData;
+use super::super::list_item::RowData;
 
-pub(super) struct GhostRowWidgets {
+pub(in crate::ui::list) struct GhostRowWidgets {
     pub(super) depth: RefCell<u8>,
 }
 
-pub(super) fn build_ghost_row() -> (gtk::Box, GhostRowWidgets) {
+pub(in crate::ui::list) fn build_ghost_row() -> (gtk::Box, GhostRowWidgets) {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.add_css_class("unixnotis-panel-card");
     root.add_css_class(hooks::ghost_row::ROOT);
@@ -25,7 +27,11 @@ pub(super) fn build_ghost_row() -> (gtk::Box, GhostRowWidgets) {
     )
 }
 
-pub(super) fn update_ghost_row(ghost: &GhostRowWidgets, root: &gtk::Box, data: &RowData) {
+pub(in crate::ui::list) fn update_ghost_row(
+    ghost: &GhostRowWidgets,
+    root: &gtk::Box,
+    data: &RowData,
+) {
     let mut depth = ghost.depth.borrow_mut();
     if *depth == data.ghost_depth {
         return;

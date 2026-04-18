@@ -2,8 +2,6 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 
 use gtk::prelude::*;
 use tracing::warn;
@@ -25,7 +23,7 @@ pub(super) struct SliderRefreshState {
     // Guard stops refresh writes from triggering another set command
     pub(super) updating: Rc<Cell<bool>>,
     // Generation drops stale async refresh results
-    pub(super) refresh_gen: Arc<AtomicU64>,
+    pub(super) refresh_gen: Rc<Cell<u64>>,
     // Normal icon shown when not muted
     pub(super) icon_name: String,
     // Optional icon used when muted
@@ -39,7 +37,7 @@ pub(super) struct SliderRefreshMeta {
     // Non-widget refresh state that is safe to hold across signal closures
     pub(super) updating: Rc<Cell<bool>>,
     // Generation drops stale async refresh results
-    pub(super) refresh_gen: Arc<AtomicU64>,
+    pub(super) refresh_gen: Rc<Cell<u64>>,
     // Normal icon shown when not muted
     pub(super) icon_name: String,
     // Optional icon used when muted
@@ -113,7 +111,7 @@ fn start_refresh(
     refresh: SliderRefreshState,
 ) {
     // New refresh id makes older async results stale
-    let gen = refresh.refresh_gen.fetch_add(1, Ordering::Relaxed) + 1;
+    let gen = next_refresh_generation(&refresh.refresh_gen);
 
     let rx = run_command_capture_status_async(&cmd);
     let refresh_cmd = cmd.clone();
@@ -127,7 +125,7 @@ fn start_refresh(
                 return;
             }
         };
-        if refresh_gen.load(Ordering::Relaxed) == gen {
+        if refresh_gen.get() == gen {
             match output {
                 Ok(output) => {
                     if !output.status.success() {
@@ -207,4 +205,11 @@ fn finish_refresh(
         });
         request_refresh(cmd, min, max, step, parse_mode, refresh);
     }
+}
+
+fn next_refresh_generation(refresh_gen: &Rc<Cell<u64>>) -> u64 {
+    // Wrap naturally so stale-result checks stay monotonic enough for UI refresh work
+    let next = refresh_gen.get().wrapping_add(1);
+    refresh_gen.set(next);
+    next
 }
