@@ -6,7 +6,8 @@ use gtk::glib;
 use gtk::glib::object::Cast;
 
 use super::list_item::RowData;
-use super::{NotificationList, RowItem, RowKey};
+use super::types::{NotificationList, RowKey};
+use super::RowItem;
 
 impl NotificationList {
     pub(super) fn build_group_block(
