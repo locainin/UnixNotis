@@ -246,6 +246,9 @@ impl NotificationList {
 
     fn update_empty_overlay(&self) {
         let is_empty = self.store.n_items() == 0;
-        self.empty_overlay.set_visible(is_empty);
+        // Skip reveal work when the empty state did not actually change
+        if self.empty_overlay.is_visible() != is_empty {
+            self.empty_overlay.set_visible(is_empty);
+        }
     }
 }
