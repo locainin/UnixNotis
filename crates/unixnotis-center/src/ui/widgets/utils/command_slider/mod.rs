@@ -8,8 +8,6 @@ mod value;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 
 use gtk::prelude::*;
 use gtk::Align;
@@ -41,7 +39,7 @@ pub struct CommandSlider {
     // Guard blocks recursive value-changed signals during internal updates
     updating: Rc<Cell<bool>>,
     // Generation token avoids stale async refresh races
-    refresh_gen: Arc<AtomicU64>,
+    refresh_gen: Rc<Cell<u64>>,
     // Local gate keeps refresh bursts bounded
     refresh_gate: SliderRefreshGate,
     // Optional watch command handle for event-driven refresh
@@ -88,7 +86,9 @@ impl CommandSlider {
         // Debounce state coalesces slider drags into fewer set_cmd executions
         let pending = Rc::new(RefCell::new(None));
         let pending_value = Rc::new(Cell::new(None));
-        let refresh_gen = Arc::new(AtomicU64::new(0));
+        // Refresh generation only lives on the GTK main loop
+        // Rc<Cell<_>> keeps this path lighter than Arc<AtomicU64>
+        let refresh_gen = Rc::new(Cell::new(0_u64));
         let refresh_gate = SliderRefreshGate::new();
         let icon_muted = config
             .icon_muted

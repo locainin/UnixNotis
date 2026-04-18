@@ -4,8 +4,6 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 
 use gtk::glib;
@@ -54,7 +52,7 @@ pub(super) fn refresh_toggle_state(
     cmd: &str,
     button: &gtk::ToggleButton,
     guard: &Rc<Cell<bool>>,
-    refresh_gen: &Arc<AtomicU64>,
+    refresh_gen: &Rc<Cell<u64>>,
     refresh_gate: &ToggleRefreshGate,
 ) {
     // Bursty watch events only need one running probe and one trailing probe
@@ -70,10 +68,10 @@ pub(super) fn refresh_toggle_state(
     let cmd = cmd.to_string();
 
     // Each refresh claims a generation so stale tasks cannot overwrite newer state
-    let gen = refresh_gen.fetch_add(1, Ordering::Relaxed) + 1;
+    let gen = next_refresh_generation(refresh_gen);
     let button = button.clone();
     let guard = guard.clone();
-    let refresh_gen = Arc::clone(refresh_gen);
+    let refresh_gen = refresh_gen.clone();
     let refresh_gate = refresh_gate.clone();
     let refresh_cmd = cmd.clone();
     let cmd_snip = util::log_snippet(&cmd);
@@ -89,7 +87,7 @@ pub(super) fn refresh_toggle_state(
         };
 
         // Drop stale result when a newer refresh has already started
-        if refresh_gen.load(Ordering::Relaxed) != gen {
+        if refresh_gen.get() != gen {
             finish_toggle_refresh(refresh_cmd, button, guard, refresh_gen, refresh_gate);
             return;
         }
@@ -111,16 +109,16 @@ pub(super) fn schedule_toggle_refresh_with_retry(
     expected: bool,
     button: gtk::ToggleButton,
     guard: Rc<Cell<bool>>,
-    refresh_gen: Arc<AtomicU64>,
+    refresh_gen: Rc<Cell<u64>>,
 ) {
     // Post-action retry path closes race windows where backend state lags UI input
     // Bounded retries reconcile optimistic UI state with eventually-consistent commands
-    let gen = refresh_gen.fetch_add(1, Ordering::Relaxed) + 1;
+    let gen = next_refresh_generation(&refresh_gen);
 
     // Weak refs avoid extending widget lifetimes from detached async tasks
     let button_weak = button.downgrade();
     let guard_weak = Rc::downgrade(&guard);
-    let refresh_gen_weak = Arc::downgrade(&refresh_gen);
+    let refresh_gen_weak = Rc::downgrade(&refresh_gen);
 
     glib::MainContext::default().spawn_local(async move {
         // Retry cadence is short and bounded to avoid long-running background churn
@@ -134,7 +132,7 @@ pub(super) fn schedule_toggle_refresh_with_retry(
                 // Parent state dropped, stop work immediately
                 return;
             };
-            if refresh_gen.load(Ordering::Relaxed) != gen {
+            if refresh_gen.get() != gen {
                 return;
             }
 
@@ -145,7 +143,7 @@ pub(super) fn schedule_toggle_refresh_with_retry(
                 continue;
             };
 
-            if refresh_gen.load(Ordering::Relaxed) != gen {
+            if refresh_gen.get() != gen {
                 return;
             }
 
@@ -219,7 +217,7 @@ fn finish_toggle_refresh(
     cmd: String,
     button: gtk::ToggleButton,
     guard: Rc<Cell<bool>>,
-    refresh_gen: Arc<AtomicU64>,
+    refresh_gen: Rc<Cell<u64>>,
     refresh_gate: ToggleRefreshGate,
 ) {
     // One queued refresh is enough to bring the toggle back to the newest state
@@ -230,6 +228,13 @@ fn finish_toggle_refresh(
         });
         refresh_toggle_state(&cmd, &button, &guard, &refresh_gen, &refresh_gate);
     }
+}
+
+fn next_refresh_generation(refresh_gen: &Rc<Cell<u64>>) -> u64 {
+    // Wrap naturally so very long sessions keep the same stale-result semantics
+    let next = refresh_gen.get().wrapping_add(1);
+    refresh_gen.set(next);
+    next
 }
 
 fn parse_toggle_state(output: &str) -> bool {
