@@ -1,10 +1,12 @@
 mod media_bus;
 mod media_cache;
 mod media_loop;
+mod media_loop_events;
 mod media_metadata;
 mod media_policy;
 mod media_runtime;
 mod media_schedule;
+mod media_snapshot;
 
 use std::path::PathBuf;
 
