@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use tracing::debug;
@@ -13,7 +14,7 @@ impl UiState {
         let local = self
             .popups
             .iter()
-            .map(|(id, entry)| (*id, entry.notification.clone()))
+            .map(|(id, entry)| (*id, &entry.notification))
             .collect();
         let plan = build_reconcile_plan(&local, &self.popup_order, &desired);
 
@@ -24,8 +25,8 @@ impl UiState {
 
         // Walk oldest to newest so front insertion lands in daemon order
         let mut force_region_refresh = false;
-        for notification in plan.updates.iter().rev() {
-            force_region_refresh |= self.update_popup_internal(notification.clone(), true, false);
+        for notification in plan.updates.into_iter().rev() {
+            force_region_refresh |= self.update_popup_internal(notification, true, false);
         }
 
         // Seed order wins even if local insert timing was different before reconnect
@@ -54,11 +55,14 @@ impl UiState {
     }
 }
 
-pub(super) fn build_reconcile_plan(
-    local: &HashMap<u32, NotificationView>,
+pub(super) fn build_reconcile_plan<T>(
+    local: &HashMap<u32, T>,
     local_order: &VecDeque<u32>,
     desired: &[NotificationView],
-) -> ReconcilePlan {
+) -> ReconcilePlan
+where
+    T: Borrow<NotificationView>,
+{
     // Desired order comes straight from the daemon snapshot
     let desired_order = desired
         .iter()
@@ -80,7 +84,7 @@ pub(super) fn build_reconcile_plan(
         .iter()
         .filter(|notification| match local.get(&notification.id) {
             // Identical rows can stay as they are while visibility fixes order later
-            Some(existing) => existing != *notification,
+            Some(existing) => existing.borrow() != *notification,
             // Missing rows must be inserted from seed
             None => true,
         })

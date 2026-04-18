@@ -12,7 +12,8 @@ use gtk::prelude::WidgetExt;
 use tracing::debug;
 
 use super::list_blocks;
-use super::{GroupRange, NotificationList, RowItem, RowKey};
+use super::types::{GroupRange, NotificationList, RowKey};
+use super::RowItem;
 
 impl NotificationList {
     pub fn flush_rebuild(&mut self) {
@@ -246,6 +247,10 @@ impl NotificationList {
 
     fn update_empty_overlay(&self) {
         let is_empty = self.store.n_items() == 0;
-        self.empty_overlay.set_visible(is_empty);
+        // Compare against the widget's own visible flag
+        // Effective visibility can flip with parent state and leave the overlay logically stale
+        if self.empty_overlay.get_visible() != is_empty {
+            self.empty_overlay.set_visible(is_empty);
+        }
     }
 }

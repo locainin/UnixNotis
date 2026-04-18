@@ -27,9 +27,9 @@ pub(super) fn update_optional_label(label: &gtk::Label, text: &str, max_chars: u
     // for both summary and body rows
     let state = optional_label_state(text, max_chars);
     // Hidden labels collapse their space in the popup box
-    label.set_visible(state.visible);
+    set_label_visible_if_changed(label, state.visible);
     // Text assignment happens after the visibility decision so empty rows stay blank
-    label.set_text(state.text.as_ref());
+    set_label_text_if_changed(label, state.text.as_ref());
 }
 
 pub(super) fn optional_label_state(text: &str, max_chars: usize) -> OptionalLabelState<'_> {
@@ -40,10 +40,12 @@ pub(super) fn optional_label_state(text: &str, max_chars: usize) -> OptionalLabe
             text: Cow::Borrowed(""),
         };
     }
+    let text = clamp_label_text(text, max_chars);
     OptionalLabelState {
-        visible: true,
+        // Clamped-empty text should collapse the row the same way raw empty text does
+        visible: has_visible_text(text.as_ref()),
         // Clamp before the label sees the text so layout work stays bounded
-        text: clamp_label_text(text, max_chars),
+        text,
     }
 }
 
@@ -70,4 +72,20 @@ pub(super) fn clamp_label_text(text: &str, max_chars: usize) -> Cow<'_, str> {
     }
     // Borrow the original text when no clamp is needed
     Cow::Borrowed(text)
+}
+
+fn set_label_visible_if_changed(label: &gtk::Label, visible: bool) {
+    // Popup rows are refreshed often while the data stays the same
+    // Skip the setter when the row is already in the right state
+    if label.is_visible() != visible {
+        label.set_visible(visible);
+    }
+}
+
+fn set_label_text_if_changed(label: &gtk::Label, text: &str) {
+    // Reapplying identical text still makes GTK walk the update path
+    // Compare first so stable popup rows stay quiet
+    if label.text().as_str() != text {
+        label.set_text(text);
+    }
 }

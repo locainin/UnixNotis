@@ -38,7 +38,7 @@ pub(super) enum IconKey {
 }
 
 impl IconKey {
-    fn size_and_scale(&self) -> (i32, i32) {
+    pub(super) fn size_and_scale(&self) -> (i32, i32) {
         match self {
             IconKey::ImageData { size, scale, .. }
             | IconKey::Path { size, scale, .. }

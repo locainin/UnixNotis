@@ -13,6 +13,7 @@ use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{hooks, NotificationView, Urgency};
 
+use super::ui_window::refresh_popup_input_region;
 use super::UiState;
 use crate::dbus::UiCommand;
 use commands::try_send_command;
@@ -51,7 +52,7 @@ impl UiState {
     pub(super) fn build_popup_entry(&mut self, notification: &NotificationView) -> PopupEntry {
         // Build the GTK row first so the revealer always wraps a ready child
         let root = self.build_popup_root(notification);
-        let revealer = build_popup_revealer(&root);
+        let revealer = self.build_popup_revealer(&root);
 
         PopupEntry {
             // Store the payload used to build this row so later seeds can compare safely
@@ -199,8 +200,18 @@ impl UiState {
             .map(|action| action.key.clone());
         if let Some(action_key) = default_action {
             let gesture = gtk::GestureClick::new();
+            // Default card actions only belong to plain card clicks
+            // Real buttons should keep their own handlers without also triggering the card action
+            gesture.set_button(1);
+            let root_weak = root.downgrade();
             let tx = self.command_tx.clone();
-            gesture.connect_released(move |_, _, _, _| {
+            gesture.connect_released(move |_, _, x, y| {
+                let Some(root) = root_weak.upgrade() else {
+                    return;
+                };
+                if picked_widget_blocks_default_action(root.pick(x, y, gtk::PickFlags::DEFAULT)) {
+                    return;
+                }
                 // Card clicks mirror the default action button behavior
                 try_send_command(
                     &tx,
@@ -215,18 +226,28 @@ impl UiState {
 
         root
     }
-}
 
-fn build_popup_revealer(root: &gtk::Box) -> gtk::Revealer {
-    // Revealers keep entry animations out of the popup list bookkeeping
-    let revealer = gtk::Revealer::new();
-    revealer.add_css_class("unixnotis-popup-revealer");
-    revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    revealer.set_transition_duration(200);
-    revealer.set_child(Some(root));
-    // Visibility is driven centrally so only rows inside max_visible animate in
-    revealer.set_reveal_child(false);
-    revealer
+    fn build_popup_revealer(&self, root: &gtk::Box) -> gtk::Revealer {
+        // Revealers keep entry animations out of the popup list bookkeeping
+        let revealer = gtk::Revealer::new();
+        revealer.add_css_class("unixnotis-popup-revealer");
+        revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+        revealer.set_transition_duration(200);
+        revealer.set_child(Some(root));
+        // Visibility is driven centrally so only rows inside max_visible animate in
+        revealer.set_reveal_child(false);
+
+        let popup_window = self.popup_window.clone();
+        let popup_stack = self.popup_stack.clone();
+        let popup_input_region = self.popup_input_region.clone();
+        revealer.connect_notify_local(Some("child-revealed"), move |_, _| {
+            // The first popup can finish revealing after the only earlier refresh ran
+            // Refresh again here so action rows do not inherit an old empty region
+            refresh_popup_input_region(&popup_window, &popup_stack, &popup_input_region);
+        });
+
+        revealer
+    }
 }
 
 fn build_popup_header_spacer() -> gtk::Box {
@@ -240,6 +261,21 @@ fn build_popup_header_spacer() -> gtk::Box {
 pub(super) const fn popup_header_spacer_expands() -> bool {
     // Keep the alignment rule easy to test without constructing full GTK rows
     true
+}
+
+fn picked_widget_blocks_default_action(mut widget: Option<gtk::Widget>) -> bool {
+    while let Some(current) = widget {
+        if widget_type_blocks_default_action(current.type_()) {
+            return true;
+        }
+        widget = current.parent();
+    }
+    false
+}
+
+fn widget_type_blocks_default_action(widget_type: gtk::glib::Type) -> bool {
+    // Button clicks should always stay owned by the button widget subtree
+    widget_type.is_a(gtk::Button::static_type())
 }
 
 fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {

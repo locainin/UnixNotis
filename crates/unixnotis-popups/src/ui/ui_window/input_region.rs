@@ -1,12 +1,13 @@
-//! Popup input-region shaping and animation tracking
+//! Popup input-region shaping for the popup surface
 //!
 //! This module keeps pointer hit-region behavior independent from window layout wiring
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use gdk4_wayland::prelude::WaylandSurfaceExt;
 use gtk::cairo;
-use gtk::glib::ControlFlow;
+use gtk::glib::object::Cast;
 use gtk::prelude::*;
 
 #[derive(Clone)]
@@ -15,8 +16,8 @@ pub(in super::super) struct PopupInputRegionState {
     allow_click_through: Rc<Cell<bool>>,
     // Dirty bit avoids rebuilding the region when nothing changed
     dirty: Rc<Cell<bool>>,
-    // Guard prevents duplicate tick callbacks
-    ticking: Rc<Cell<bool>>,
+    // First-map retries stay bounded to one tick callback at a time
+    retry_armed: Rc<Cell<bool>>,
     // Last applied signature skips no-op compositor region updates
     last_signature: Rc<RefCell<Option<InputRegionSignature>>>,
 }
@@ -26,7 +27,7 @@ struct InputRegionSignature {
     // Surface dimensions are part of identity so scale/output shifts are detected
     surface_width: i32,
     surface_height: i32,
-    // Ordered source rectangles represent clickable popup regions
+    // Ordered rectangles keep signature comparisons simple and deterministic
     reactive_rects: Vec<cairo::RectangleInt>,
 }
 
@@ -36,7 +37,7 @@ impl PopupInputRegionState {
         Self {
             allow_click_through: Rc::new(Cell::new(allow_click_through)),
             dirty: Rc::new(Cell::new(true)),
-            ticking: Rc::new(Cell::new(false)),
+            retry_armed: Rc::new(Cell::new(false)),
             last_signature: Rc::new(RefCell::new(None)),
         }
     }
@@ -49,18 +50,16 @@ impl PopupInputRegionState {
     }
 
     pub(super) fn reset_runtime_state(&self) {
-        // Hidden windows should not keep the old tick guard alive
-        self.ticking.set(false);
+        // Hidden windows should rebuild the region cleanly on the next map
+        self.retry_armed.set(false);
+        // Unmap can invalidate compositor-side surface state even when our last
+        // in-process signature still looks current
+        *self.last_signature.borrow_mut() = None;
         self.mark_dirty();
     }
 
     fn allow_click_through(&self) -> bool {
         self.allow_click_through.get()
-    }
-
-    fn tracks_geometry(&self) -> bool {
-        // Empty click-through regions do not need per-frame geometry work
-        !self.allow_click_through()
     }
 
     fn mark_dirty(&self) {
@@ -77,49 +76,24 @@ pub(in super::super) fn refresh_popup_input_region(
     window: &gtk::ApplicationWindow,
     stack: &gtk::Box,
     input_region: &PopupInputRegionState,
-    keep_ticking: bool,
 ) {
     // Any caller here observed a geometry or visibility change
     input_region.mark_dirty();
     let needs_retry = apply_popup_input_region_if_dirty(window, stack, input_region);
-
-    if !input_region.tracks_geometry() {
-        // Click-through mode keeps an empty region, so animation ticks would be wasted work
-        return;
-    }
-
-    // Keep ticking only during animations or when geometry is still settling
-    if window.is_visible() && (keep_ticking || needs_retry) {
-        // Tick callback self-terminates once transitions and retries are complete
-        ensure_popup_input_region_tick(window, stack, input_region);
+    if needs_retry {
+        // The first refresh can land before GTK considers the window visible
+        // Arm the retry anyway so the next mapped frame can finish the region update
+        ensure_popup_input_region_retry(window, stack, input_region);
     }
 }
 
-pub(in super::super) fn popup_stack_has_active_transitions(stack: &gtk::Box) -> bool {
-    let mut child = stack.first_child();
-    while let Some(widget) = child {
-        let next = widget.next_sibling();
-
-        // Revealers animate between these two states
-        if let Ok(revealer) = widget.clone().downcast::<gtk::Revealer>() {
-            // Transition is active while target and current child reveal states differ
-            if revealer.reveals_child() != revealer.is_child_revealed() {
-                return true;
-            }
-        }
-
-        child = next;
-    }
-    false
-}
-
-fn ensure_popup_input_region_tick(
+fn ensure_popup_input_region_retry(
     window: &gtk::ApplicationWindow,
     stack: &gtk::Box,
     input_region: &PopupInputRegionState,
 ) {
-    // Avoid duplicate callback loops when many updates arrive in one frame
-    if input_region.ticking.replace(true) {
+    // One retry loop is enough to bridge the first map and first real allocation
+    if input_region.retry_armed.replace(true) {
         return;
     }
 
@@ -127,20 +101,13 @@ fn ensure_popup_input_region_tick(
     let input_region = input_region.clone();
 
     window.add_tick_callback(move |window, _| {
-        // Animation-aware refresh keeps hitboxes aligned with revealer motion
-        let active_transitions = popup_stack_has_active_transitions(&stack);
-        if active_transitions {
-            // Animated revealers shift geometry frame-by-frame
-            input_region.mark_dirty();
-        }
-
         let needs_retry = apply_popup_input_region_if_dirty(window, &stack, &input_region);
-        if active_transitions || needs_retry {
-            ControlFlow::Continue
+        if needs_retry {
+            // Keep retrying until the popup surface reports real interactive bounds
+            gtk::glib::ControlFlow::Continue
         } else {
-            // Reset guard so future animations can re-arm the tick callback
-            input_region.ticking.set(false);
-            ControlFlow::Break
+            input_region.retry_armed.set(false);
+            gtk::glib::ControlFlow::Break
         }
     });
 }
@@ -164,38 +131,26 @@ fn apply_popup_input_region_if_dirty(
     let surface_width = surface.width().max(0);
     let surface_height = surface.height().max(0);
 
-    // Signature includes surface size so monitor/scale changes are detected
-    let (mut region, mut signature, visible_widgets) = if input_region.allow_click_through() {
-        (
-            cairo::Region::create(),
-            InputRegionSignature {
-                surface_width,
-                surface_height,
-                reactive_rects: Vec::new(),
-            },
-            0,
-        )
-    } else {
-        build_popup_input_region(window, stack, surface_width, surface_height)
-    };
-
-    // Visible children with no rectangles usually means allocation is still in flight
-    let needs_layout_retry = !input_region.allow_click_through()
-        && visible_widgets > 0
-        && signature.reactive_rects.is_empty();
-    if needs_layout_retry {
-        if let Some((previous_region, previous_signature)) =
-            reusable_signature(input_region, surface_width, surface_height)
-        {
-            // Reuse the last good region while the next frame finishes layout
-            region = previous_region;
-            signature = previous_signature;
-        }
-    }
-    if needs_layout_retry {
-        // Retry next frame when widgets are visible but bounds have not landed yet
+    let has_visible_widgets = popup_stack_has_visible_widgets(stack);
+    if popup_surface_needs_retry(
+        surface_width,
+        surface_height,
+        input_region.allow_click_through(),
+        has_visible_widgets,
+    ) {
+        // First map can run before the layer-shell surface has a usable size
+        // Keep the region dirty until the compositor reports real bounds
         input_region.mark_dirty();
+        return true;
     }
+
+    // Signature includes surface size so monitor/scale changes are detected
+    let (region, signature) = build_popup_input_region(
+        surface_width,
+        surface_height,
+        input_region.allow_click_through(),
+        has_visible_widgets,
+    );
 
     let unchanged = input_region
         .last_signature
@@ -204,37 +159,58 @@ fn apply_popup_input_region_if_dirty(
         .is_some_and(|prev| *prev == signature);
     if unchanged {
         // No compositor call is needed when geometry signature did not move
-        return needs_layout_retry;
+        return false;
     }
 
-    // Apply the new union region so empty overlay areas stay click-through
+    // In interactive mode the whole popup surface is reactive
+    // In click-through mode the region stays empty so the compositor ignores it
     surface.set_input_region(&region);
+    force_wayland_commit_if_available(&surface);
+    // Wayland surface state is pending until the next commit
+    // Queue a redraw so the compositor sees the updated input region promptly
+    surface.queue_render();
     *input_region.last_signature.borrow_mut() = Some(signature);
-    needs_layout_retry
+    false
+}
+
+fn force_wayland_commit_if_available(surface: &gtk::gdk::Surface) {
+    // Wayland keeps surface state double-buffered until commit
+    // For the first popup that can leave the new input region pending until some later change
+    if let Ok(surface) = surface.clone().downcast::<gdk4_wayland::WaylandSurface>() {
+        surface.force_next_commit();
+    }
+}
+
+fn popup_surface_needs_retry(
+    surface_width: i32,
+    surface_height: i32,
+    allow_click_through: bool,
+    has_visible_widgets: bool,
+) -> bool {
+    // Interactive popups need a real mapped surface before they can own pointer input
+    !allow_click_through && has_visible_widgets && (surface_width <= 0 || surface_height <= 0)
 }
 
 fn build_popup_input_region(
-    window: &gtk::ApplicationWindow,
-    stack: &gtk::Box,
     surface_width: i32,
     surface_height: i32,
-) -> (cairo::Region, InputRegionSignature, usize) {
-    // Region starts empty and is expanded by visible child rectangles
+    allow_click_through: bool,
+    has_visible_widgets: bool,
+) -> (cairo::Region, InputRegionSignature) {
     let region = cairo::Region::create();
-    let mut reactive_rects = Vec::new();
-    let mut visible_widgets = 0usize;
-
-    let mut child = stack.first_child();
-    while let Some(widget) = child {
-        let next = widget.next_sibling();
-        if widget.is_visible() {
-            visible_widgets += 1;
-            // Only currently visible popup widgets should capture input
-            union_widget_bounds(&region, &widget, window, &mut reactive_rects);
-        }
-        // Capture next first to stay robust if current node gets detached
-        child = next;
-    }
+    let reactive_rects =
+        if allow_click_through || !has_visible_widgets || surface_width <= 0 || surface_height <= 0
+        {
+            // Click-through mode should never intercept pointer events
+            // Hidden stacks also keep an empty region so stale hit boxes cannot survive
+            Vec::new()
+        } else {
+            // Interactive popups use the whole mapped surface as their hit region
+            // This avoids stale partial masks that can make action buttons unclickable
+            let rect = cairo::RectangleInt::new(0, 0, surface_width, surface_height);
+            let _ = region.union_rectangle(&rect);
+            vec![rect]
+        };
 
     (
         region,
@@ -243,145 +219,74 @@ fn build_popup_input_region(
             surface_height,
             reactive_rects,
         },
-        visible_widgets,
     )
 }
 
-fn reusable_signature(
-    input_region: &PopupInputRegionState,
-    surface_width: i32,
-    surface_height: i32,
-) -> Option<(cairo::Region, InputRegionSignature)> {
-    let previous = input_region.last_signature.borrow().clone()?;
-    if previous.surface_width != surface_width || previous.surface_height != surface_height {
-        return None;
+fn popup_stack_has_visible_widgets(stack: &gtk::Box) -> bool {
+    let mut child = stack.first_child();
+    while let Some(widget) = child {
+        let next = widget.next_sibling();
+        if widget.get_visible() {
+            return true;
+        }
+        child = next;
     }
-    if previous.reactive_rects.is_empty() {
-        return None;
-    }
-
-    let region = cairo::Region::create();
-    for rect in &previous.reactive_rects {
-        let _ = region.union_rectangle(rect);
-    }
-    Some((region, previous))
-}
-
-fn union_widget_bounds(
-    region: &cairo::Region,
-    widget: &gtk::Widget,
-    window: &gtk::ApplicationWindow,
-    reactive_rects: &mut Vec<cairo::RectangleInt>,
-) {
-    let Some(rect) = widget_rect_in_window(widget, window) else {
-        // Geometry may be temporarily unavailable during lifecycle transitions
-        return;
-    };
-
-    // Unioned rectangles produce a single compositor input region
-    let _ = region.union_rectangle(&rect);
-    // Raw rectangles are retained for stable signature comparisons
-    reactive_rects.push(rect);
-}
-
-fn widget_rect_in_window(
-    widget: &gtk::Widget,
-    window: &gtk::ApplicationWindow,
-) -> Option<cairo::RectangleInt> {
-    // Allocation provides stable logical size once widget measurement is done
-    let alloc = widget.allocation();
-    let width = alloc.width();
-    let height = alloc.height();
-    if width <= 0 || height <= 0 {
-        // Hidden or not-yet-sized widgets cannot contribute valid hit boxes
-        return None;
-    }
-
-    // Prefer translate_coordinates because it directly maps widget origin to window space
-    let translated = widget
-        .translate_coordinates(window, 0.0, 0.0)
-        .map(|(x, y)| {
-            (
-                clamp_floor_nonneg(x),
-                clamp_floor_nonneg(y),
-                clamp_ceil_nonneg(x + f64::from(width)),
-                clamp_ceil_nonneg(y + f64::from(height)),
-            )
-        });
-
-    let (x0, y0, x1, y1) = if let Some(values) = translated {
-        values
-    } else {
-        // Fallback covers transient coordinate-mapping failures
-        let bounds = widget.compute_bounds(window)?;
-        (
-            clamp_floor_nonneg(f64::from(bounds.x())),
-            clamp_floor_nonneg(f64::from(bounds.y())),
-            clamp_ceil_nonneg(f64::from(bounds.x() + bounds.width())),
-            clamp_ceil_nonneg(f64::from(bounds.y() + bounds.height())),
-        )
-    };
-
-    if x1 <= x0 || y1 <= y0 {
-        // Guard against degenerate coordinates from transient layout states
-        return None;
-    }
-
-    Some(cairo::RectangleInt::new(x0, y0, x1 - x0, y1 - y0))
-}
-
-fn clamp_floor_nonneg(value: f64) -> i32 {
-    if !value.is_finite() {
-        // Defensive clamp for NaN and infinities
-        return 0;
-    }
-    // Floor keeps origin inside widget bounds while clamping negative drift
-    value.floor().clamp(0.0, f64::from(i32::MAX)) as i32
-}
-
-fn clamp_ceil_nonneg(value: f64) -> i32 {
-    if !value.is_finite() {
-        // Defensive clamp for NaN and infinities
-        return 0;
-    }
-    // Ceil keeps width and height inclusive of fractional trailing edges
-    value.ceil().clamp(0.0, f64::from(i32::MAX)) as i32
+    false
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{reusable_signature, InputRegionSignature, PopupInputRegionState};
+    use super::{
+        build_popup_input_region, popup_surface_needs_retry, InputRegionSignature,
+        PopupInputRegionState,
+    };
     use gtk::cairo;
 
     #[test]
-    fn reusable_signature_reuses_last_non_empty_region_for_same_surface() {
-        let state = PopupInputRegionState::new(false);
-        *state.last_signature.borrow_mut() = Some(InputRegionSignature {
-            surface_width: 320,
-            surface_height: 180,
-            reactive_rects: vec![cairo::RectangleInt::new(10, 20, 30, 40)],
-        });
-
-        let Some((_, signature)) = reusable_signature(&state, 320, 180) else {
-            panic!("expected reusable signature");
-        };
+    fn interactive_region_uses_full_surface_bounds() {
+        let (_, signature) = build_popup_input_region(320, 180, false, true);
 
         assert_eq!(signature.reactive_rects.len(), 1);
         assert_eq!(
             signature.reactive_rects[0],
-            cairo::RectangleInt::new(10, 20, 30, 40)
+            cairo::RectangleInt::new(0, 0, 320, 180)
         );
     }
 
     #[test]
-    fn reusable_signature_rejects_surface_changes() {
+    fn click_through_region_stays_empty() {
+        let (_, signature) = build_popup_input_region(320, 180, true, true);
+        assert!(signature.reactive_rects.is_empty());
+    }
+
+    #[test]
+    fn hidden_stack_region_stays_empty() {
+        let (_, signature) = build_popup_input_region(320, 180, false, false);
+        assert!(signature.reactive_rects.is_empty());
+    }
+
+    #[test]
+    fn interactive_surface_retries_until_real_bounds_exist() {
+        assert!(popup_surface_needs_retry(0, 180, false, true));
+        assert!(popup_surface_needs_retry(320, 0, false, true));
+        assert!(!popup_surface_needs_retry(320, 180, false, true));
+        assert!(!popup_surface_needs_retry(0, 180, true, true));
+        assert!(!popup_surface_needs_retry(0, 180, false, false));
+    }
+
+    #[test]
+    fn reset_runtime_state_clears_cached_signature() {
         let state = PopupInputRegionState::new(false);
         *state.last_signature.borrow_mut() = Some(InputRegionSignature {
             surface_width: 320,
             surface_height: 180,
-            reactive_rects: vec![cairo::RectangleInt::new(1, 2, 3, 4)],
+            reactive_rects: vec![cairo::RectangleInt::new(0, 0, 320, 180)],
         });
 
-        assert!(reusable_signature(&state, 321, 180).is_none());
+        state.reset_runtime_state();
+
+        assert!(state.last_signature.borrow().is_none());
+        assert!(state.dirty.get());
+        assert!(!state.retry_armed.get());
     }
 }

@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use super::NotificationList;
+use super::types::{FilterQuery, NotificationList};
 
 impl NotificationList {
     pub(super) fn intern_key(&mut self, key: &str) -> Rc<str> {
@@ -92,16 +92,28 @@ impl NotificationList {
         Cow::Owned(out)
     }
 
-    pub(super) fn normalize_filter_query(&self, query: &str) -> Option<String> {
+    pub(super) fn normalize_filter_query(&self, query: &str) -> Option<FilterQuery> {
         let trimmed = query.trim();
         if trimmed.is_empty() {
             return None;
         }
-        Some(trimmed.to_lowercase())
+        if trimmed.is_ascii() {
+            // ASCII queries are the common case for app names and quick search input
+            // Keep that path cheap and avoid full Unicode lowercasing work
+            return Some(FilterQuery {
+                text: trimmed.to_ascii_lowercase().into_boxed_str(),
+                ascii_only: true,
+            });
+        }
+        // Non-ASCII queries still use full Unicode lowercasing so matching stays correct
+        Some(FilterQuery {
+            text: trimmed.to_lowercase().into_boxed_str(),
+            ascii_only: false,
+        })
     }
 
     fn entry_matches_filter(&self, view: &unixnotis_core::NotificationView) -> bool {
-        let Some(query) = self.filter_query.as_deref() else {
+        let Some(query) = self.filter_query.as_ref() else {
             return true;
         };
         contains_casefold(&view.app_name, query)
@@ -119,8 +131,77 @@ fn is_ignorable_group_char(ch: char) -> bool {
         )
 }
 
-fn contains_casefold(haystack: &str, needle_lower: &str) -> bool {
-    // Full Unicode lowercasing keeps filter matching behavior predictable
-    // for non-ASCII notification text.
-    haystack.to_lowercase().contains(needle_lower)
+fn contains_casefold(haystack: &str, query: &FilterQuery) -> bool {
+    if query.ascii_only {
+        // Most search input is plain ASCII, so scan the existing bytes directly
+        // This avoids allocating a lowered copy of every app, summary, and body string
+        return contains_ascii_casefold(haystack.as_bytes(), query.text.as_bytes());
+    }
+    // Unicode queries still need full lowercasing so non-ASCII matches keep the same behavior
+    haystack.to_lowercase().contains(query.text.as_ref())
+}
+
+fn contains_ascii_casefold(haystack: &[u8], needle_lower: &[u8]) -> bool {
+    if needle_lower.is_empty() {
+        return true;
+    }
+    if needle_lower.len() > haystack.len() {
+        return false;
+    }
+    // Byte windows are enough here because the query itself is ASCII-only
+    // Any non-ASCII bytes in the haystack simply compare as-is
+    haystack
+        .windows(needle_lower.len())
+        .any(|window| window.eq_ignore_ascii_case(needle_lower))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn normalize_filter_query(query: &str) -> Option<FilterQuery> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if trimmed.is_ascii() {
+            return Some(FilterQuery {
+                text: trimmed.to_ascii_lowercase().into_boxed_str(),
+                ascii_only: true,
+            });
+        }
+        Some(FilterQuery {
+            text: trimmed.to_lowercase().into_boxed_str(),
+            ascii_only: false,
+        })
+    }
+
+    #[test]
+    fn normalize_filter_query_marks_ascii_fast_path() {
+        let query = normalize_filter_query("  Spotify  ").expect("query");
+        assert!(query.ascii_only);
+        assert_eq!(query.text.as_ref(), "spotify");
+    }
+
+    #[test]
+    fn normalize_filter_query_keeps_unicode_lowercasing() {
+        let query = normalize_filter_query("  ÄPF  ").expect("query");
+        assert!(!query.ascii_only);
+        assert_eq!(query.text.as_ref(), "äpf");
+    }
+
+    #[test]
+    fn ascii_filter_matches_without_allocating_a_lowered_copy() {
+        let query = normalize_filter_query("spotify").expect("query");
+        assert!(contains_casefold("SPOTIFY", &query));
+        assert!(contains_casefold("spotifyd", &query));
+        assert!(!contains_casefold("Firefox", &query));
+    }
+
+    #[test]
+    fn unicode_filter_still_matches_non_ascii_text() {
+        let query = normalize_filter_query("äpf").expect("query");
+        assert!(contains_casefold("Äpfel und Birnen", &query));
+        assert!(!contains_casefold("Cafe", &query));
+    }
 }

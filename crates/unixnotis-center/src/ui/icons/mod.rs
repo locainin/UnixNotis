@@ -105,8 +105,10 @@ impl IconResolverInner {
                     image.set_paintable(Some(paintable.paintable()));
                     image.set_visible(true);
                 }
-                IconResolution::Async { key, request } => {
-                    set_image_key(image, key.clone());
+                IconResolution::Async { request } => {
+                    // The async request already owns the cache key, so the widget
+                    // only needs one cheap clone before the request moves away
+                    set_image_key(image, request.key.clone());
                     self.enqueue(request, image);
                     image.set_visible(false);
                 }
@@ -149,7 +151,6 @@ impl IconResolverInner {
                         // Route them through the async byte loader so texture creation happens on
                         // the main loop without blocking disk reads.
                         return Some(IconResolution::Async {
-                            key: key.clone(),
                             request: IconDecodeRequest {
                                 key,
                                 path,
@@ -160,7 +161,6 @@ impl IconResolverInner {
                         });
                     }
                     return Some(IconResolution::Async {
-                        key: key.clone(),
                         request: IconDecodeRequest {
                             key,
                             path,
@@ -244,7 +244,6 @@ impl IconResolverInner {
                     return Some(IconResolution::Ready { key, paintable });
                 }
                 Some(IconResolution::Async {
-                    key: key.clone(),
                     request: IconDecodeRequest {
                         key,
                         path,
@@ -258,53 +257,54 @@ impl IconResolverInner {
     }
 
     fn enqueue(&self, request: IconDecodeRequest, image: &gtk::Image) {
+        // Split the request here so the owned pieces can move into the worker
+        // instead of cloning the same path and key again on the hot path
+        let IconDecodeRequest {
+            key,
+            path,
+            size,
+            scale,
+            mode,
+        } = request;
         let mut inflight = self.inflight.borrow_mut();
-        if let Some(waiters) = inflight.get_mut(&request.key) {
+        if let Some(waiters) = inflight.get_mut(&key) {
             waiters.push(image.downgrade());
             return;
         }
-        inflight.insert(request.key.clone(), vec![image.downgrade()]);
+        inflight.insert(key.clone(), vec![image.downgrade()]);
         // Release the inflight borrow before handling synchronous errors.
         drop(inflight);
-        if let Err(err) = self.worker.submit_decode(
-            request.key.clone(),
-            request.path.clone(),
-            request.size,
-            request.scale,
-            request.mode,
-        ) {
+        // Keep one local key around so a failed submit can clear the same inflight
+        // entry without rebuilding a second owned key from raw inputs
+        if let Err(err) = self
+            .worker
+            .submit_decode(key.clone(), path, size, scale, mode)
+        {
             // Keep the inflight map consistent by issuing an immediate failure update.
             self.handle_update(IconUpdate {
-                key: request.key.clone(),
+                key,
                 result: IconResult::Failed(err.reason().to_string()),
             });
         }
     }
 
     fn handle_update(&self, update: IconUpdate) {
-        let waiters = self
-            .inflight
-            .borrow_mut()
-            .remove(&update.key)
-            .unwrap_or_default();
+        let IconUpdate { key, result } = update;
+        let waiters = self.inflight.borrow_mut().remove(&key).unwrap_or_default();
 
-        let paintable = match update.result {
+        let paintable = match result {
             IconResult::Raster(image) => {
                 let texture = texture_from_raster(&image);
                 Some(
                     self.cache
                         .borrow_mut()
-                        .insert(update.key.clone(), CachedPaintable::from_texture(texture)),
+                        .insert(key.clone(), CachedPaintable::from_texture(texture)),
                 )
             }
             IconResult::Bytes(bytes) => {
                 // Create textures on the GTK thread to keep GDK/GIO object use thread-safe.
                 // The bytes were loaded off-thread to avoid synchronous disk I/O here.
-                let (size, scale) = match &update.key {
-                    IconKey::ImageData { size, scale, .. }
-                    | IconKey::Path { size, scale, .. }
-                    | IconKey::Name { size, scale, .. } => (*size, *scale),
-                };
+                let (size, scale) = key.size_and_scale();
                 let target = size.max(1).saturating_mul(scale.max(1)).max(1);
                 // Decode at the target size to avoid large SVG rasterization on the UI thread.
                 let bytes = glib::Bytes::from_owned(bytes);
@@ -321,7 +321,7 @@ impl IconResolverInner {
                         Some(
                             self.cache
                                 .borrow_mut()
-                                .insert(update.key.clone(), CachedPaintable::from_texture(texture)),
+                                .insert(key.clone(), CachedPaintable::from_texture(texture)),
                         )
                     }
                     Err(err) => {
@@ -332,9 +332,9 @@ impl IconResolverInner {
             }
             IconResult::Failed(err) => {
                 debug!(?err, "icon decode failed");
-                match &update.key {
+                match &key {
                     IconKey::Path { path, .. } => resolve_path_texture(Path::new(path))
-                        .map(|texture| self.cache.borrow_mut().insert(update.key.clone(), texture)),
+                        .map(|texture| self.cache.borrow_mut().insert(key.clone(), texture)),
                     _ => None,
                 }
             }
@@ -347,7 +347,7 @@ impl IconResolverInner {
             let Some(image) = waiter.upgrade() else {
                 continue;
             };
-            if image_key_matches(&image, &update.key) {
+            if image_key_matches(&image, &key) {
                 image.set_paintable(Some(paintable.paintable()));
                 image.set_visible(true);
             }
@@ -404,12 +404,15 @@ impl MissingIconCache {
     fn purge_expired(&mut self) {
         let ttl = Duration::from_secs(30);
         let now = Instant::now();
-        while let Some((key, timestamp)) = self.order.front() {
+        while let Some((_, timestamp)) = self.order.front() {
             if now.duration_since(*timestamp) < ttl {
                 break;
             }
-            let key = key.clone();
-            self.order.pop_front();
+            // Pop the expired key out of the queue first so the owned key can move
+            // straight into the set removal without another clone
+            let Some((key, _)) = self.order.pop_front() else {
+                break;
+            };
             self.set.remove(&key);
         }
     }
@@ -428,7 +431,6 @@ enum IconResolution {
         paintable: Rc<CachedPaintable>,
     },
     Async {
-        key: IconKey,
         request: IconDecodeRequest,
     },
 }

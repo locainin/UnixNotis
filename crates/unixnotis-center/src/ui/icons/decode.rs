@@ -166,7 +166,9 @@ impl IconWorker {
     ) -> Result<(), IconSubmitError> {
         // Non-blocking submit; overload handling is delegated to the caller.
         let job = IconJob::Decode {
-            key: key.clone(),
+            // Move the owned key straight into the job so the caller does not pay
+            // for an extra deep clone before the worker even starts
+            key,
             path,
             size,
             scale,

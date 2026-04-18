@@ -5,8 +5,6 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 
 use gtk::prelude::*;
 use gtk::Align;
@@ -39,7 +37,7 @@ struct ToggleItem {
     // Guard blocks signal recursion when state updates set the button programmatically
     guard: Rc<Cell<bool>>,
     // Monotonic generation token drops stale async refresh completions
-    refresh_gen: Arc<AtomicU64>,
+    refresh_gen: Rc<Cell<u64>>,
     // Local gate keeps poll and watch bursts bounded
     refresh_gate: ToggleRefreshGate,
     // Optional long-lived watch command handle for event-driven refresh paths
@@ -112,7 +110,9 @@ impl ToggleItem {
     fn new(config: ToggleWidgetConfig, show_tooltips: bool) -> Self {
         // Guard and generation tokens are per-item to isolate async updates
         let guard = Rc::new(Cell::new(false));
-        let refresh_gen = Arc::new(AtomicU64::new(0));
+        // Refresh generation only lives on the GTK main loop
+        // Rc<Cell<_>> avoids atomic refcount and atomic integer traffic here
+        let refresh_gen = Rc::new(Cell::new(0_u64));
         let refresh_gate = ToggleRefreshGate::new();
 
         // Build base toggle card

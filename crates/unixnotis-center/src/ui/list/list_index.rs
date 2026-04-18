@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
-use super::NotificationList;
+use super::types::NotificationList;
 
 impl NotificationList {
     pub(super) fn clear_group_indices(&mut self) {
