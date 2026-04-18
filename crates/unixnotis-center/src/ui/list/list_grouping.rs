@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use super::{FilterQuery, NotificationList};
+use super::types::{FilterQuery, NotificationList};
 
 impl NotificationList {
     pub(super) fn intern_key(&mut self, key: &str) -> Rc<str> {

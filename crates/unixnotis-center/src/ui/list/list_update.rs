@@ -12,7 +12,8 @@ use gtk::prelude::WidgetExt;
 use tracing::debug;
 
 use super::list_blocks;
-use super::{GroupRange, NotificationList, RowItem, RowKey};
+use super::types::{GroupRange, NotificationList, RowKey};
+use super::RowItem;
 
 impl NotificationList {
     pub fn flush_rebuild(&mut self) {
