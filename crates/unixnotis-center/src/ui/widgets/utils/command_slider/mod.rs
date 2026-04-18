@@ -109,11 +109,7 @@ impl CommandSlider {
 
         if let Some(toggle_cmd) = config.toggle_cmd.as_ref() {
             let cmd = toggle_cmd.clone();
-            let icon_button = gtk::Button::new();
-            icon_button.set_child(Some(&icon_image));
-            icon_button.add_css_class("unixnotis-quick-slider-icon");
-            icon_button.set_valign(Align::Center);
-            icon_button.set_halign(Align::Center);
+            let icon_button = build_icon_shell(&icon_image, true);
             root.prepend(&icon_button);
 
             let scale_weak = scale.downgrade();
@@ -154,13 +150,10 @@ impl CommandSlider {
                 );
             });
         } else {
-            // Non-toggle sliders still get the same icon shell without disabled button styling
-            let icon_frame = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            icon_frame.add_css_class("unixnotis-quick-slider-icon");
-            icon_frame.set_valign(Align::Center);
-            icon_frame.set_halign(Align::Center);
-            icon_frame.append(&icon_image);
-            root.prepend(&icon_frame);
+            // Static sliders still use the same shell widget as clickable sliders
+            // This keeps default template alignment stable between volume and brightness rows
+            let icon_shell = build_icon_shell(&icon_image, false);
+            root.prepend(&icon_shell);
         }
 
         let set_cmd = config.set_cmd.clone();
@@ -306,6 +299,19 @@ impl CommandSlider {
             gate: self.refresh_gate.clone(),
         }
     }
+}
+
+fn build_icon_shell(icon_image: &gtk::Image, interactive: bool) -> gtk::Button {
+    let button = gtk::Button::new();
+    button.set_child(Some(icon_image));
+    button.add_css_class("unixnotis-quick-slider-icon");
+    button.set_valign(Align::Center);
+    button.set_halign(Align::Center);
+    // Only clickable sliders should take pointer or focus events
+    // Static shells still use the same GTK node so row metrics stay aligned
+    button.set_focusable(interactive);
+    button.set_can_target(interactive);
+    button
 }
 
 fn build_refresh_state_from_weak(
