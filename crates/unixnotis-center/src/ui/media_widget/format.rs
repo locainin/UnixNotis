@@ -84,6 +84,11 @@ pub(super) fn position_text_for(
 }
 
 fn resolve_source_label(info: &MediaInfo, aliases: &BTreeMap<String, String>) -> String {
+    // The common config leaves aliases empty, so skip normalization work on that fast path
+    if aliases.is_empty() {
+        return default_source_label(info);
+    }
+
     let identity = info.identity.trim();
     let bus_name = info.bus_name.trim().to_lowercase();
     let identity_lower = identity.to_lowercase();
@@ -227,6 +232,16 @@ mod tests {
         assert_eq!(
             source_text_for(&info, 2, &display()).as_deref(),
             Some("instance123")
+        );
+    }
+
+    #[test]
+    fn empty_alias_map_keeps_default_source_label_behavior() {
+        let info = media_info("Spotify", "Track", "Artist");
+
+        assert_eq!(
+            source_text_for(&info, 2, &display()).as_deref(),
+            Some("Spotify")
         );
     }
 }
