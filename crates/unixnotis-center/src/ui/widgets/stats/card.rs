@@ -9,11 +9,54 @@ use unixnotis_core::{PanelDebugLevel, WidgetPluginConfig};
 
 use super::super::plugin::{parse_stat_plugin_payload, PluginOutputLimits};
 use super::super::utils::{run_command_capture_async, run_command_capture_with_timeout_async};
-use super::apply_cached_value;
-use super::StatItem;
+use super::{apply_cached_value, BuiltinStat, BuiltinStatKey, StatItem};
 use crate::debug;
 
 impl StatItem {
+    pub(super) fn has_builtin_source(&self) -> bool {
+        self.config.plugin.is_none() && self.builtin.borrow().is_some()
+    }
+
+    pub(super) fn is_grouped_builtin(&self, now: Instant, force: bool) -> bool {
+        if !self.has_builtin_source() {
+            return false;
+        }
+
+        if !self.root.is_visible() {
+            return false;
+        }
+
+        if self.inflight.get() {
+            // Builtin groups keep their own in-flight guard, so grouped items can skip the fallback path
+            return true;
+        }
+
+        self.refresh_backoff.borrow().should_refresh(now, force)
+    }
+
+    pub(super) fn take_builtin_refresh(
+        &self,
+        now: Instant,
+        force: bool,
+    ) -> Option<(BuiltinStatKey, BuiltinStat)> {
+        if !self.root.is_visible() {
+            return None;
+        }
+        if self.config.plugin.is_some() {
+            return None;
+        }
+        if !self.refresh_backoff.borrow().should_refresh(now, force) {
+            return None;
+        }
+        if self.inflight.get() {
+            return None;
+        }
+
+        let builtin = self.builtin.borrow_mut().take()?;
+        self.inflight.set(true);
+        Some((builtin.key(), builtin))
+    }
+
     pub(super) fn refresh(&self, base_interval: Duration, force: bool) {
         if !self.root.is_visible() {
             return;
@@ -119,6 +162,40 @@ impl StatItem {
             .borrow()
             .next_due_in(now)
             .or(Some(Duration::ZERO))
+    }
+
+    pub(super) fn restore_builtin_error(&self, builtin: BuiltinStat, base_interval: Duration) {
+        self.inflight.set(false);
+        *self.builtin.borrow_mut() = Some(builtin);
+        self.refresh_backoff
+            .borrow_mut()
+            .note_error(Instant::now(), base_interval);
+    }
+
+    pub(super) fn restore_builtin_value(
+        &self,
+        builtin: BuiltinStat,
+        value: &str,
+        base_interval: Duration,
+    ) {
+        self.inflight.set(false);
+        *self.builtin.borrow_mut() = Some(builtin);
+        if value.is_empty() {
+            apply_cached_value(&self.value_label, &self.last_value);
+            self.refresh_backoff
+                .borrow_mut()
+                .note_success(Instant::now(), base_interval, false);
+            return;
+        }
+
+        let changed = self.last_value.borrow().as_deref() != Some(value);
+        if changed {
+            self.value_label.set_text(value);
+            *self.last_value.borrow_mut() = Some(value.to_string());
+        }
+        self.refresh_backoff
+            .borrow_mut()
+            .note_success(Instant::now(), base_interval, changed);
     }
 
     fn refresh_plugin(&self, plugin: &WidgetPluginConfig, base_interval: Duration) {
