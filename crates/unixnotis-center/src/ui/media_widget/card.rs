@@ -63,17 +63,17 @@ impl MediaCardWidgets {
         apply_media_art(&self.art, &self.art_state, info.art_source.as_ref());
         update_art_classes(&self.root, info.art_source.is_some());
         update_player_count_classes(&self.root, total);
-        if !self.art.is_visible() {
-            self.art.set_visible(true);
-        }
+        // The art slot stays visible once the card is active, even when the picture is empty
+        set_widget_visible_if_changed(&self.art, true);
 
         update_playing_class(&self.root, &info.playback_status);
     }
 
     fn sync_metadata_visibility(&self) {
-        let show_source = self.source_label.is_visible();
-        let show_position = self.position_label.is_visible();
-        self.meta_row.set_visible(show_source || show_position);
+        // The card only cares about each widget's own visible flag here
+        let show_source = self.source_label.property::<bool>("visible");
+        let show_position = self.position_label.property::<bool>("visible");
+        set_widget_visible_if_changed(&self.meta_row, show_source || show_position);
         set_class_state(&self.root, hooks::media_shell::HAS_SOURCE, show_source);
         set_class_state(&self.root, hooks::media_shell::NO_SOURCE, !show_source);
         set_class_state(&self.root, hooks::media_shell::HAS_POSITION, show_position);
@@ -81,13 +81,20 @@ impl MediaCardWidgets {
         set_class_state(
             &self.root,
             hooks::media_shell::HAS_TITLE,
-            self.title_widget.is_visible(),
+            self.title_widget.property::<bool>("visible"),
         );
         set_class_state(
             &self.root,
             hooks::media_shell::NO_TITLE,
-            !self.title_widget.is_visible(),
+            !self.title_widget.property::<bool>("visible"),
         );
+    }
+}
+
+fn set_widget_visible_if_changed<W: IsA<gtk::Widget>>(widget: &W, visible: bool) {
+    // Visibility writes can trigger GTK work, so skip them when the flag is already current
+    if widget.as_ref().property::<bool>("visible") != visible {
+        widget.as_ref().set_visible(visible);
     }
 }
 
@@ -96,28 +103,29 @@ fn update_optional_label(label: &gtk::Label, value: Option<&str>) {
         if label.text() != value {
             label.set_text(value);
         }
-        label.set_visible(true);
+        set_widget_visible_if_changed(label, true);
         return;
     }
     if label.text() != "" {
         label.set_text("");
     }
-    label.set_visible(false);
+    set_widget_visible_if_changed(label, false);
 }
 
 fn update_title_label(title_widget: &gtk::Fixed, title_label: &MarqueeLabel, title: Option<&str>) {
     let Some(title) = title else {
+        // MarqueeLabel already skips no-op text updates on its own
         title_label.set_text("");
-        title_widget.set_visible(false);
+        set_widget_visible_if_changed(title_widget, false);
         return;
     };
     title_label.set_text(title);
-    title_widget.set_visible(true);
+    set_widget_visible_if_changed(title_widget, true);
 }
 
 fn update_artist_label(label: &gtk::Label, artist: &str, show_artist: bool) {
     if !show_artist {
-        label.set_visible(false);
+        set_widget_visible_if_changed(label, false);
         return;
     }
     if artist.is_empty() {
@@ -136,7 +144,7 @@ fn update_artist_label(label: &gtk::Label, artist: &str, show_artist: bool) {
             label.remove_css_class(hooks::shared_state::EMPTY);
         }
     }
-    label.set_visible(true);
+    set_widget_visible_if_changed(label, true);
 }
 
 fn update_artist_classes(root: &gtk::Box, artist: &str) {
