@@ -1,6 +1,6 @@
 //! CSS validation and lint helpers for UnixNotis themes
 
-#[path = "main_css_check_cache.rs"]
+#[path = "main_css_check_cache/mod.rs"]
 mod main_css_check_cache;
 #[path = "main_css_check_files.rs"]
 mod main_css_check_files;
@@ -8,7 +8,7 @@ mod main_css_check_files;
 mod main_css_check_geometry;
 #[path = "main_css_check_lint/mod.rs"]
 mod main_css_check_lint;
-#[path = "main_css_check_parse.rs"]
+#[path = "main_css_check_parse/mod.rs"]
 mod main_css_check_parse;
 #[path = "main_css_check_policy.rs"]
 mod main_css_check_policy;
@@ -16,7 +16,7 @@ mod main_css_check_policy;
 mod main_css_check_report;
 #[path = "main_css_check_runtime.rs"]
 mod main_css_check_runtime;
-#[path = "main_css_check_theme.rs"]
+#[path = "main_css_check_theme/mod.rs"]
 mod main_css_check_theme;
 
 use anyhow::{anyhow, Context, Result};
