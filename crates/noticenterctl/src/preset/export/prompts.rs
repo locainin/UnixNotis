@@ -111,7 +111,7 @@ where
     match prompt_fix_host_specific_css_asset_refs(&leaked_refs) {
         Ok(true) => {
             // Keep staged rewrite bytes
-            return Ok(leaked_refs);
+            Ok(leaked_refs)
         }
         Ok(false) => {
             // Declining rewrite restores the exact staged file state from before the rewrite pass
@@ -159,7 +159,7 @@ where
     match prompt_fix_host_specific_script_paths(&leaked_refs) {
         Ok(true) => {
             // Keep staged script rewrites
-            return Ok(leaked_refs);
+            Ok(leaked_refs)
         }
         Ok(false) => {
             // Declining rewrite keeps the original script bytes and size in the staged archive

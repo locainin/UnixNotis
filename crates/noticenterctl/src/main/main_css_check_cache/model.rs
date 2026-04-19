@@ -71,12 +71,12 @@ impl CssFileIdentity {
         {
             use std::os::unix::fs::MetadataExt;
 
-            return Ok(Self {
+            Ok(Self {
                 size: metadata.len(),
                 modified_nanos,
                 device: metadata.dev(),
                 inode: metadata.ino(),
-            });
+            })
         }
 
         #[cfg(not(unix))]

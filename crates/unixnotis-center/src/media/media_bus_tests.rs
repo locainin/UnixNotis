@@ -6,11 +6,13 @@ use super::{is_allowed_player, is_relevant_media_change};
 
 #[test]
 fn is_allowed_player_respects_lists() {
-    let mut config = MediaConfig::default();
-    // This matches the default hardening where browser players stay opt-in
-    config.include_browsers = false;
-    config.allowlist = vec!["spotify".to_string()];
-    config.denylist = vec!["playerctld".to_string()];
+    let mut config = MediaConfig {
+        // This matches the default hardening where browser players stay opt-in
+        include_browsers: false,
+        allowlist: vec!["spotify".to_string()],
+        denylist: vec!["playerctld".to_string()],
+        ..MediaConfig::default()
+    };
     // Lowercasing here mirrors the runtime sanitize path
     config.allowlist = config
         .allowlist
@@ -41,11 +43,13 @@ fn is_allowed_player_respects_lists() {
 
 #[test]
 fn browser_token_matching_avoids_inner_substring_hits() {
-    let mut config = MediaConfig::default();
-    config.include_browsers = false;
-    config.allowlist.clear();
-    config.denylist.clear();
-    config.browser_tokens = vec!["zen".to_string(), "edge".to_string()];
+    let config = MediaConfig {
+        include_browsers: false,
+        allowlist: Vec::new(),
+        denylist: Vec::new(),
+        browser_tokens: vec!["zen".to_string(), "edge".to_string()],
+        ..MediaConfig::default()
+    };
 
     assert!(is_allowed_player("org.mpris.MediaPlayer2.zenity", &config));
     assert!(is_allowed_player(

@@ -9,8 +9,13 @@ fn unchanged_files_reuse_cached_parse_diagnostics() {
     let cache_path = root.path().join("cache.json");
     let invocations = Cell::new(0usize);
 
-    let first = validate_with_counter(&invocations, &[css_path.clone()], root.path(), &cache_path)
-        .expect("first parse");
+    let first = validate_with_counter(
+        &invocations,
+        std::slice::from_ref(&css_path),
+        root.path(),
+        &cache_path,
+    )
+    .expect("first parse");
     let second = validate_with_counter(&invocations, &[css_path], root.path(), &cache_path)
         .expect("second parse");
 
@@ -27,8 +32,13 @@ fn unchanged_clean_files_do_not_reparse() {
     let cache_path = root.path().join("cache.json");
     let invocations = Cell::new(0usize);
 
-    validate_with_counter(&invocations, &[css_path.clone()], root.path(), &cache_path)
-        .expect("first parse");
+    validate_with_counter(
+        &invocations,
+        std::slice::from_ref(&css_path),
+        root.path(),
+        &cache_path,
+    )
+    .expect("first parse");
     let second = validate_with_counter(&invocations, &[css_path], root.path(), &cache_path)
         .expect("second parse");
 
