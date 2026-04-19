@@ -91,7 +91,8 @@ pub fn enable_service(ctx: &mut ActionContext) -> Result<()> {
     let mut daemon_reload = Command::new("systemctl");
     daemon_reload.args(["--user", "daemon-reload"]);
     run_command(ctx, "systemctl --user daemon-reload", daemon_reload, None)?;
-    // Sync environment before starting the service to avoid startup race conditions.
+    // Import the live session env first so the first service start picks it up.
+    // This avoids an extra restart that can launch the full UI tree twice during install.
     sync_user_environment(ctx)?;
     let mut enable = Command::new("systemctl");
     enable.args(["--user", "enable", "--now", "unixnotis-daemon.service"]);

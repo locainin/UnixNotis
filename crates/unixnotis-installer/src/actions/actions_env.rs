@@ -1,6 +1,7 @@
 //! Session environment synchronization helpers.
 //!
-//! Keeps user-session environment propagation in one place so install actions can reuse it.
+//! Keeps user-session environment propagation separate from service lifecycle work
+//! so install steps can import fresh variables before they start or restart units.
 
 use std::env;
 use std::fs;
@@ -27,6 +28,8 @@ pub(super) const HYPR_REQUIRED_VARS: [&str; 2] = ["WAYLAND_DISPLAY", "XDG_RUNTIM
 const PATH_BLOCK_MARKER: &str = "# unixnotis-installer path entry";
 
 pub(super) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
+    // This step only updates manager env
+    // Service start or restart is handled by the caller
     if !program_in_path("systemctl") {
         let message = "systemctl not found; cannot sync user environment";
         log_line(ctx, format!("Error: {}", message));
@@ -103,24 +106,8 @@ pub(super) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
         return Err(anyhow!(message));
     }
 
-    if updated {
-        // Refresh the daemon so newly imported environment variables are picked up.
-        let mut command = Command::new("systemctl");
-        command.args([
-            "--user",
-            "--no-pager",
-            "restart",
-            "unixnotis-daemon.service",
-        ]);
-        if let Err(err) = run_command(
-            ctx,
-            "systemctl --user --no-pager restart unixnotis-daemon.service",
-            command,
-            None,
-        ) {
-            log_line(ctx, format!("Warning: {}", err));
-        }
-    }
+    // Service start or restart is owned by the caller so install flows do not boot
+    // the daemon twice after environment import.
     Ok(())
 }
 
