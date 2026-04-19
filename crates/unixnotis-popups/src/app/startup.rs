@@ -1,26 +1,43 @@
 //! Startup helpers for config loading and process-wide setup
 
 use std::env;
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use anyhow::Context;
 use tracing_subscriber::EnvFilter;
-use unixnotis_core::Config;
+use unixnotis_core::{util::CONFIG_PATH_ENV, Config};
 
 use super::Args;
 
-pub(super) fn load_config(args: &Args) -> anyhow::Result<(Config, PathBuf)> {
-    if let Some(path) = args.config.as_ref() {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ConfigSource {
+    // Explicit CLI or daemon-provided path
+    Custom,
+    // Config loaded from the default on-disk location
+    Default,
+    // Builtin fallback used because no config file exists yet
+    Builtin,
+}
+
+pub(super) fn load_config(args: &Args) -> anyhow::Result<(Config, PathBuf, ConfigSource)> {
+    if let Some(path) = config_override_path(args, env::var_os(CONFIG_PATH_ENV)) {
         // Explicit config paths should bypass the default lookup completely
         return Ok((
-            Config::load_from_path(path).context("read config from path")?,
-            path.clone(),
+            Config::load_from_path(&path).context("read config from path")?,
+            path,
+            ConfigSource::Custom,
         ));
     }
     // Default-path startup keeps existing popup behavior unchanged for normal runs
     let path = Config::default_config_path().context("resolve default config path")?;
     let config = Config::load_default().context("read default config")?;
-    Ok((config, path))
+    let source = if path.exists() {
+        ConfigSource::Default
+    } else {
+        ConfigSource::Builtin
+    };
+    Ok((config, path, source))
 }
 
 pub(super) fn init_tracing(config: &Config) {
@@ -65,4 +82,53 @@ pub(super) fn is_wayland_session() -> bool {
         }
     }
     env::var("WAYLAND_DISPLAY").is_ok()
+}
+
+fn config_override_path(args: &Args, env_path: Option<OsString>) -> Option<PathBuf> {
+    if let Some(path) = args.config.as_ref() {
+        // CLI flags still win so direct popup launches stay consistent
+        return Some(path.clone());
+    }
+
+    let path = env_path?;
+    if path.is_empty() {
+        return None;
+    }
+
+    // Daemon-spawned child apps read the exact config file path from this env value
+    Some(PathBuf::from(path))
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use std::ffi::OsString;
+    use std::path::PathBuf;
+
+    use super::{config_override_path, Args};
+
+    #[test]
+    fn config_override_prefers_cli_arg() {
+        let args = Args {
+            config: Some(PathBuf::from("/tmp/cli.toml")),
+        };
+        assert_eq!(
+            config_override_path(&args, Some(OsString::from("/tmp/env.toml"))),
+            Some(PathBuf::from("/tmp/cli.toml"))
+        );
+    }
+
+    #[test]
+    fn config_override_accepts_env_path() {
+        let args = Args { config: None };
+        assert_eq!(
+            config_override_path(&args, Some(OsString::from("/tmp/env.toml"))),
+            Some(PathBuf::from("/tmp/env.toml"))
+        );
+    }
+
+    #[test]
+    fn config_override_ignores_empty_env_path() {
+        let args = Args { config: None };
+        assert_eq!(config_override_path(&args, Some(OsString::new())), None);
+    }
 }

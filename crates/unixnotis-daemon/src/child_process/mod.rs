@@ -2,6 +2,7 @@
 //!
 //! Keeps spawn, restart, and shutdown logic for popups and center processes in one place
 
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -9,6 +10,7 @@ use anyhow::{anyhow, Result};
 use tokio::process::{Child, Command};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use unixnotis_core::util::CONFIG_PATH_ENV;
 
 use super::Args;
 use crate::daemon::DaemonState;
@@ -80,7 +82,11 @@ impl UiProcessKind {
         apply_parent_death_signal(&mut command);
 
         if let Some(config) = args.config.as_ref() {
-            command.arg("--config").arg(config);
+            // GTK re-parses argv in child apps, so custom config paths travel by env instead
+            command.env(CONFIG_PATH_ENV, child_config_env_path(config));
+        } else {
+            // Clear inherited overrides so default child launches stay predictable
+            command.env_remove(CONFIG_PATH_ENV);
         }
 
         command
@@ -93,6 +99,17 @@ impl UiProcessKind {
             anyhow!("failed to start {label} ({err}); build it or install it on PATH")
         })
     }
+}
+
+fn child_config_env_path(config: &Path) -> PathBuf {
+    if config.is_absolute() {
+        return config.to_path_buf();
+    }
+
+    // Child processes may start from a different working dir later, so make the path stable now
+    std::env::current_dir()
+        .map(|cwd| cwd.join(config))
+        .unwrap_or_else(|_| config.to_path_buf())
 }
 
 #[derive(Debug)]
@@ -145,4 +162,59 @@ pub(super) fn spawn_center_supervisor(
     tokio::spawn(async move {
         supervise_process(UiProcessKind::Center, args, state, shutdown).await;
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+
+    use clap::Parser;
+    use unixnotis_core::util::CONFIG_PATH_ENV;
+
+    use super::{child_config_env_path, Args, UiProcessKind};
+
+    #[test]
+    fn child_config_env_path_keeps_absolute_paths() {
+        let path = Path::new("/tmp/unixnotis/config.toml");
+        assert_eq!(child_config_env_path(path), PathBuf::from(path));
+    }
+
+    #[test]
+    fn build_command_sets_config_env_instead_of_forwarding_flag() {
+        let args = Args::parse_from(["unixnotis-daemon", "--config", "fixtures/config.toml"]);
+        let command = UiProcessKind::Center.build_command(&args);
+        let std_command = command.as_std();
+        let args: Vec<_> = std_command.get_args().map(OsString::from).collect();
+        let envs: Vec<_> = std_command
+            .get_envs()
+            .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value.to_owned())))
+            .collect();
+
+        assert!(
+            !args.iter().any(|arg| arg == "--config"),
+            "child argv should stay free of UnixNotis-only flags"
+        );
+        assert!(
+            envs.iter().any(|(key, value)| {
+                key == CONFIG_PATH_ENV
+                    && value == child_config_env_path(Path::new("fixtures/config.toml")).as_os_str()
+            }),
+            "custom config path should be handed to child apps by env"
+        );
+    }
+
+    #[test]
+    fn build_command_clears_inherited_config_override_without_custom_path() {
+        let args = Args::parse_from(["unixnotis-daemon"]);
+        let command = UiProcessKind::Popups.build_command(&args);
+        let std_command = command.as_std();
+
+        assert!(
+            std_command
+                .get_envs()
+                .any(|(key, value)| key == CONFIG_PATH_ENV && value.is_none()),
+            "default child launches should clear stale config overrides"
+        );
+    }
 }

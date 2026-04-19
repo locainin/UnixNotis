@@ -20,6 +20,7 @@ static PROGRAM_CACHE: OnceLock<Mutex<ProgramCache>> = OnceLock::new();
 pub const SHELL_META_CHARS: [char; 15] = [
     '|', '&', ';', '<', '>', '$', '`', '(', ')', '{', '}', '[', ']', '*', '?',
 ];
+pub const CONFIG_PATH_ENV: &str = "UNIXNOTIS_CONFIG_PATH";
 const DEFAULT_LOG_LIMIT: usize = 160;
 const DIAGNOSTIC_LOG_LIMIT: usize = 512;
 
