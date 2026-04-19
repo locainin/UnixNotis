@@ -162,7 +162,11 @@ fn start_refresh(
                                 } else {
                                     &refresh.icon_name
                                 };
-                                refresh.icon_image.set_icon_name(Some(icon));
+                                // Slider refreshes can be frequent, so skip icon churn when nothing changed
+                                if refresh.icon_image.icon_name().as_deref() != Some(icon.as_str())
+                                {
+                                    refresh.icon_image.set_icon_name(Some(icon));
+                                }
                             }
                         } else {
                             let snippet = util::log_snippet(stdout.trim());
