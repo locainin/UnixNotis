@@ -5,7 +5,8 @@ use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::atomic::AtomicBool;
+use std::sync::{mpsc, Arc};
 
 #[test]
 fn prune_old_backups_keeps_newest() {
@@ -39,6 +40,7 @@ fn prune_old_backups_keeps_newest() {
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: None,
+        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
     };
     prune_old_backups(&mut ctx, &root, 2).expect("prune should succeed");
 
@@ -107,6 +109,7 @@ media_css = "themes/custom/media.css"
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: Some(backup_dir.clone()),
+        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
     };
 
     super::restore_config(&mut ctx).expect("restore should succeed");
@@ -180,6 +183,7 @@ fn restore_config_skips_absolute_theme_targets() {
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: Some(backup_dir.clone()),
+        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
     };
 
     super::restore_config(&mut ctx).expect("restore should succeed");

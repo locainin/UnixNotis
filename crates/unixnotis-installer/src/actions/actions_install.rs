@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::Ordering;
 
 use anyhow::{anyhow, Context, Result};
 
@@ -54,54 +55,42 @@ pub fn install_service(ctx: &mut ActionContext) -> Result<()> {
     fs::create_dir_all(&ctx.paths.unit_dir)
         .with_context(|| "failed to create systemd user directory")?;
 
-    let exec_start = format_exec_start(ctx.paths);
-    let unit_contents = [
-        "[Unit]".to_string(),
-        "Description=UnixNotis Notification Daemon".to_string(),
-        "After=graphical-session.target".to_string(),
-        "Wants=graphical-session.target".to_string(),
-        "".to_string(),
-        "[Service]".to_string(),
-        "Type=simple".to_string(),
-        format!("ExecStart={}", exec_start),
-        "Restart=on-failure".to_string(),
-        "RestartSec=1".to_string(),
-        "".to_string(),
-        "[Install]".to_string(),
-        "WantedBy=default.target".to_string(),
-        "".to_string(),
-    ]
-    .join("\n");
-
-    write_atomic(&ctx.paths.unit_path, &unit_contents)
-        .with_context(|| "failed to write systemd user unit")?;
-
-    log_line(
-        ctx,
-        format!(
-            "Installed systemd unit to {}",
-            format_with_home(&ctx.paths.unit_path)
-        ),
-    );
+    match write_service_unit(ctx)? {
+        ServiceUnitWrite::CreatedOrUpdated => {
+            log_line(
+                ctx,
+                format!(
+                    "Installed systemd unit to {}",
+                    format_with_home(&ctx.paths.unit_path)
+                ),
+            );
+        }
+        ServiceUnitWrite::Unchanged => {
+            log_line(ctx, "Systemd unit already up to date");
+        }
+    }
 
     Ok(())
 }
 
 pub fn enable_service(ctx: &mut ActionContext) -> Result<()> {
-    let mut daemon_reload = Command::new("systemctl");
-    daemon_reload.args(["--user", "daemon-reload"]);
-    run_command(ctx, "systemctl --user daemon-reload", daemon_reload, None)?;
+    if ctx.service_unit_reload_required.load(Ordering::Acquire) {
+        // A full user-manager reload is expensive on some setups, so only run
+        // it when install actually changed the unixnotis unit file.
+        log_line(ctx, "Reloading systemd user manager");
+        let mut daemon_reload = Command::new("systemctl");
+        daemon_reload.args(["--user", "daemon-reload"]);
+        run_command(ctx, "systemctl --user daemon-reload", daemon_reload, None)?;
+    } else {
+        log_line(
+            ctx,
+            "Skipping systemd user reload because unit is unchanged",
+        );
+    }
     // Import the live session env first so the first service start picks it up.
     // This avoids an extra restart that can launch the full UI tree twice during install.
     sync_user_environment(ctx)?;
-    let mut enable = Command::new("systemctl");
-    enable.args(["--user", "enable", "--now", "unixnotis-daemon.service"]);
-    run_command(
-        ctx,
-        "systemctl --user enable --now unixnotis-daemon.service",
-        enable,
-        None,
-    )?;
+    run_service_start(ctx)?;
     // Startup files are updated so new terminals can resolve commands
     if let Err(err) = ensure_shell_path_entry(ctx) {
         log_line(
@@ -249,10 +238,108 @@ fn format_exec_start(paths: &InstallPaths) -> String {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ServiceUnitWrite {
+    CreatedOrUpdated,
+    Unchanged,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ServiceStartMode {
+    EnableAndStart,
+    StartOnly,
+}
+
+fn render_service_unit(paths: &InstallPaths) -> String {
+    let exec_start = format_exec_start(paths);
+    [
+        "[Unit]".to_string(),
+        "Description=UnixNotis Notification Daemon".to_string(),
+        "After=graphical-session.target".to_string(),
+        "Wants=graphical-session.target".to_string(),
+        "".to_string(),
+        "[Service]".to_string(),
+        "Type=simple".to_string(),
+        format!("ExecStart={}", exec_start),
+        "Restart=on-failure".to_string(),
+        "RestartSec=1".to_string(),
+        "".to_string(),
+        "[Install]".to_string(),
+        "WantedBy=default.target".to_string(),
+        "".to_string(),
+    ]
+    .join("\n")
+}
+
+fn write_service_unit(ctx: &mut ActionContext) -> Result<ServiceUnitWrite> {
+    // Render first so the compare and write paths always use the same bytes
+    let unit_contents = render_service_unit(ctx.paths);
+    let existed_before = ctx.paths.unit_path.exists();
+    let write_outcome = match fs::read_to_string(&ctx.paths.unit_path) {
+        Ok(existing) if existing == unit_contents => ServiceUnitWrite::Unchanged,
+        Ok(_) | Err(_) => {
+            write_atomic(&ctx.paths.unit_path, &unit_contents)
+                .with_context(|| "failed to write systemd user unit")?;
+            ServiceUnitWrite::CreatedOrUpdated
+        }
+    };
+    // Reload only matters when systemd has new unit file contents to pick up
+    let reload_required =
+        matches!(write_outcome, ServiceUnitWrite::CreatedOrUpdated) || !existed_before;
+    ctx.service_unit_reload_required
+        .store(reload_required, Ordering::Release);
+    Ok(write_outcome)
+}
+
+fn service_start_mode(ctx: &ActionContext) -> ServiceStartMode {
+    // Cached install state keeps the reinstall branch stable within one run
+    service_start_mode_from_enabled(ctx.install_state.as_ref().map(|state| state.unit_enabled()))
+}
+
+fn service_start_mode_from_enabled(unit_enabled: Option<bool>) -> ServiceStartMode {
+    if unit_enabled == Some(true) {
+        // Reinstalls do not need another `enable`, which would trigger a full
+        // user-manager reload on some desktops even when the unit is unchanged.
+        ServiceStartMode::StartOnly
+    } else {
+        ServiceStartMode::EnableAndStart
+    }
+}
+
+fn run_service_start(ctx: &mut ActionContext) -> Result<()> {
+    match service_start_mode(ctx) {
+        ServiceStartMode::EnableAndStart => {
+            // First install still needs the symlink creation done by `enable`
+            log_line(ctx, "Enabling and starting unixnotis-daemon.service");
+            let mut enable = Command::new("systemctl");
+            enable.args(["--user", "enable", "--now", "unixnotis-daemon.service"]);
+            run_command(
+                ctx,
+                "systemctl --user enable --now unixnotis-daemon.service",
+                enable,
+                None,
+            )
+        }
+        ServiceStartMode::StartOnly => {
+            // Reinstall can start directly because the unit is already enabled
+            log_line(ctx, "Starting unixnotis-daemon.service");
+            let mut start = Command::new("systemctl");
+            start.args(["--user", "start", "unixnotis-daemon.service"]);
+            run_command(
+                ctx,
+                "systemctl --user start unixnotis-daemon.service",
+                start,
+                None,
+            )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::sync::mpsc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{mpsc, Arc};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::detect::Detection;
@@ -260,7 +347,10 @@ mod tests {
     use crate::model::ActionMode;
     use crate::paths::InstallPaths;
 
-    use super::{install_binaries, remove_binaries, ActionContext};
+    use super::{
+        install_binaries, install_service, remove_binaries, service_start_mode_from_enabled,
+        ActionContext, ServiceStartMode,
+    };
 
     #[test]
     fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
@@ -300,6 +390,7 @@ mod tests {
             log_tx: tx,
             action_mode: ActionMode::Install,
             restore_backup: None,
+            service_unit_reload_required: Arc::new(AtomicBool::new(false)),
         };
 
         install_binaries(&mut ctx).expect("install should copy binaries");
@@ -359,6 +450,7 @@ mod tests {
             log_tx: tx,
             action_mode: ActionMode::Uninstall,
             restore_backup: None,
+            service_unit_reload_required: Arc::new(AtomicBool::new(false)),
         };
 
         remove_binaries(&mut ctx).expect("remove should delete binaries");
@@ -420,5 +512,90 @@ mod tests {
             "[workspace]\nmembers = []\n\n[workspace.metadata.unixnotis.installer]\nbinaries = [{quoted}]\n"
         );
         fs::write(root.join("Cargo.toml"), cargo_toml).expect("write fake Cargo.toml");
+    }
+
+    #[test]
+    fn install_service_skips_rewrite_when_unit_is_already_current() {
+        let root = test_root("install-service-unchanged");
+        let paths = test_paths(&root);
+        fs::create_dir_all(&paths.unit_dir).expect("make unit dir");
+        let expected = super::render_service_unit(&paths);
+        fs::write(&paths.unit_path, &expected).expect("write current unit");
+
+        let detection = Detection {
+            owner: None,
+            daemons: Vec::new(),
+        };
+        let (tx, _rx) = mpsc::sync_channel::<UiMessage>(32);
+        let reload_required = Arc::new(AtomicBool::new(true));
+        let mut ctx = ActionContext {
+            detection: &detection,
+            paths: &paths,
+            install_state: None,
+            log_tx: tx,
+            action_mode: ActionMode::Install,
+            restore_backup: None,
+            service_unit_reload_required: reload_required.clone(),
+        };
+
+        install_service(&mut ctx).expect("install service should succeed");
+
+        assert_eq!(
+            fs::read_to_string(&paths.unit_path).expect("read unit"),
+            expected
+        );
+        assert!(!reload_required.load(Ordering::Acquire));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn install_service_marks_reload_when_unit_changes() {
+        let root = test_root("install-service-changed");
+        let paths = test_paths(&root);
+        fs::create_dir_all(&paths.unit_dir).expect("make unit dir");
+        fs::write(&paths.unit_path, "[Unit]\nDescription=old\n").expect("write old unit");
+
+        let detection = Detection {
+            owner: None,
+            daemons: Vec::new(),
+        };
+        let (tx, _rx) = mpsc::sync_channel::<UiMessage>(32);
+        let reload_required = Arc::new(AtomicBool::new(false));
+        let mut ctx = ActionContext {
+            detection: &detection,
+            paths: &paths,
+            install_state: None,
+            log_tx: tx,
+            action_mode: ActionMode::Install,
+            restore_backup: None,
+            service_unit_reload_required: reload_required.clone(),
+        };
+
+        install_service(&mut ctx).expect("install service should succeed");
+
+        assert!(reload_required.load(Ordering::Acquire));
+        assert_eq!(
+            fs::read_to_string(&paths.unit_path).expect("read unit"),
+            super::render_service_unit(&paths)
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn service_start_mode_uses_start_for_enabled_reinstalls() {
+        assert_eq!(
+            service_start_mode_from_enabled(Some(true)),
+            ServiceStartMode::StartOnly
+        );
+        assert_eq!(
+            service_start_mode_from_enabled(Some(false)),
+            ServiceStartMode::EnableAndStart
+        );
+        assert_eq!(
+            service_start_mode_from_enabled(None),
+            ServiceStartMode::EnableAndStart
+        );
     }
 }

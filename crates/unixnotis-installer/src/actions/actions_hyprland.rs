@@ -71,12 +71,8 @@ pub(super) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     // Only append missing exec-once directives; existing lines remain untouched.
     // Build the minimal set of exec-once directives required for a clean login sync.
     let mut additions = Vec::new();
-    if !has_exec_once_command(
-        &stripped,
-        "dbus-update-activation-environment --systemd --all",
-    ) {
-        additions
-            .push("exec-once = dbus-update-activation-environment --systemd --all".to_string());
+    if !has_exec_once_dbus_update(&stripped) {
+        additions.push(hyprland_dbus_update_line());
     }
     // Detect existing exec-once imports that already cover the required variables.
     let has_import = has_exec_once_import(&stripped, &HYPR_IMPORT_VARS);
@@ -227,6 +223,11 @@ fn hyprland_import_line() -> String {
     )
 }
 
+fn hyprland_dbus_update_line() -> String {
+    // Keep login-time D-Bus env sync aligned with the installer runtime path.
+    format!("exec-once = {}", hyprland_dbus_update_command())
+}
+
 fn has_exec_once_command(contents: &str, needle: &str) -> bool {
     // Only consider non-comment exec-once lines to avoid false positives.
     contents.lines().any(|line| {
@@ -236,6 +237,23 @@ fn has_exec_once_command(contents: &str, needle: &str) -> bool {
         }
         trimmed.starts_with("exec-once") && trimmed.contains(needle)
     })
+}
+
+fn has_exec_once_dbus_update(contents: &str) -> bool {
+    // Accept both the new explicit import list and the older `--systemd --all`
+    // form so existing manual setups do not grow duplicate exec-once lines.
+    // That keeps upgrades quiet without forcing an immediate config rewrite
+    has_exec_once_command(
+        contents,
+        "dbus-update-activation-environment --systemd --all",
+    ) || has_exec_once_command(contents, &hyprland_dbus_update_command())
+}
+
+fn hyprland_dbus_update_command() -> String {
+    format!(
+        "dbus-update-activation-environment {}",
+        HYPR_IMPORT_VARS.join(" ")
+    )
 }
 
 fn has_exec_once_import(contents: &str, vars: &[&str]) -> bool {
