@@ -54,15 +54,14 @@ pub(super) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
     // Track whether any environment sync step completed successfully.
     let mut updated = false;
     if program_in_path("dbus-update-activation-environment") {
-        // Prefer dbus-update-activation-environment to keep systemd --user in sync with the session.
+        // Keep D-Bus activation env aligned with the live session.
+        // Avoid `--systemd` here because the installer already updates systemd
+        // with `systemctl import-environment`, and the duplicate systemd path
+        // can block for several seconds during install.
+        log_line(ctx, "Syncing D-Bus activation environment");
         let mut command = Command::new("dbus-update-activation-environment");
-        command.args(["--systemd", "--all"]);
-        if let Err(err) = run_command(
-            ctx,
-            "dbus-update-activation-environment --systemd --all",
-            command,
-            None,
-        ) {
+        command.args(HYPR_IMPORT_VARS);
+        if let Err(err) = run_command(ctx, "dbus-update-activation-environment", command, None) {
             log_line(ctx, format!("Warning: {}", err));
         } else {
             updated = true;
@@ -85,6 +84,9 @@ pub(super) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
         log_line(ctx, format!("Error: {}", message));
         return Err(anyhow!(message));
     } else {
+        // Keep the systemd manager env narrow and explicit so install does not
+        // spend time copying unrelated shell variables.
+        log_line(ctx, "Syncing systemd user environment");
         let mut command = Command::new("systemctl");
         command.args(["--user", "--no-pager", "import-environment"]);
         command.args(&vars);

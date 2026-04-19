@@ -4,7 +4,8 @@
 
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::mpsc::SyncSender;
+use std::sync::atomic::AtomicBool;
+use std::sync::{mpsc::SyncSender, Arc};
 
 use anyhow::Result;
 
@@ -22,6 +23,9 @@ pub struct ActionContext<'a> {
     pub log_tx: SyncSender<UiMessage>,
     pub action_mode: ActionMode,
     pub restore_backup: Option<PathBuf>,
+    // Tracks whether install changed the unit file so later steps can skip
+    // a full user-manager reload when the on-disk unit already matched
+    pub service_unit_reload_required: Arc<AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -35,7 +39,9 @@ struct BinaryState {
 pub struct InstallState {
     binaries: Vec<BinaryState>,
     unit_exists: bool,
+    unit_enabled: bool,
     unit_active: bool,
+    unit_enabled_error: Option<String>,
     unit_active_error: Option<String>,
     binary_warning: Option<String>,
 }
@@ -50,6 +56,10 @@ impl InstallState {
 
     pub fn is_fully_installed(&self) -> bool {
         self.is_installed() && self.unit_active
+    }
+
+    pub fn unit_enabled(&self) -> bool {
+        self.unit_enabled
     }
 }
 
@@ -70,6 +80,24 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         .collect::<Vec<_>>();
 
     let unit_exists = paths.unit_path.exists();
+    // Enabled state decides whether reinstall can skip `enable --now`
+    let mut unit_enabled_error = None;
+    let unit_enabled = match Command::new("systemctl")
+        .args([
+            "--user",
+            "is-enabled",
+            "--quiet",
+            "unixnotis-daemon.service",
+        ])
+        .status()
+    {
+        Ok(status) => status.success(),
+        Err(err) => {
+            unit_enabled_error = Some(err.to_string());
+            false
+        }
+    };
+    // Active state still matters for the install summary shown in the UI
     let mut unit_active_error = None;
     let unit_active = match Command::new("systemctl")
         .args(["--user", "is-active", "--quiet", "unixnotis-daemon.service"])
@@ -85,7 +113,9 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
     InstallState {
         binaries,
         unit_exists,
+        unit_enabled,
         unit_active,
+        unit_enabled_error,
         unit_active_error,
         binary_warning: warning,
     }
@@ -136,6 +166,16 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     if let Some(err) = state.unit_active_error.as_ref() {
         log_line(ctx, format!("- systemd status check failed: {}", err));
     }
+    if let Some(err) = state.unit_enabled_error.as_ref() {
+        log_line(ctx, format!("- systemd enable check failed: {}", err));
+    }
+    log_line(
+        ctx,
+        format!(
+            "- service enabled: {}",
+            if state.unit_enabled { "yes" } else { "no" }
+        ),
+    );
     log_line(
         ctx,
         format!(
