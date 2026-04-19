@@ -128,15 +128,16 @@ pub(super) fn import_preset_into(
     except: &[String],
     dry_run: bool,
 ) -> Result<ImportSummary> {
-    // The shared helper keeps tests off stdin while the real CLI still uses the prompt path
+    // Tests should stay deterministic even when `cargo test` owns a real terminal
+    // Reuse the same shared import flow, but swap the prompt hooks for fixed answers
     import_preset_into_with_confirm(
         config_dir,
         input_path,
         except,
         dry_run,
         false,
-        confirm_import_external_css_refs,
-        confirm_import_exec_content,
+        confirm_import_external_css_refs_for_tests,
+        confirm_import_exec_content_for_tests,
     )
 }
 
@@ -320,6 +321,42 @@ fn format_external_css_ref_lines(external_refs: &[ExternalCssAssetRef]) -> Vec<S
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+fn confirm_import_external_css_refs_for_tests(external_refs: &[ExternalCssAssetRef]) -> Result<()> {
+    // Most tests do not care about the warning path, so empty input should stay quiet
+    if external_refs.is_empty() {
+        return Ok(());
+    }
+
+    // Test runs should fail fast instead of waiting for a terminal answer
+    let details = format_external_css_ref_lines(external_refs);
+    Err(anyhow!(
+        "preset import found CSS asset references that leave the UnixNotis config directory or use remote URLs; rerun interactively to confirm anyway\n{}",
+        details.join("\n")
+    ))
+}
+
+#[cfg(test)]
+fn confirm_import_exec_content_for_tests(
+    exec_content: &ImportedExecContent,
+    allow_exec: bool,
+) -> Result<()> {
+    // Explicit trust should keep the shared helper aligned with the real import path
+    if allow_exec {
+        return Ok(());
+    }
+
+    // Empty bundles should stay on the normal import path
+    if exec_content.commands.is_empty() && exec_content.files.is_empty() {
+        return Ok(());
+    }
+
+    // Test runs should surface the same guidance every time instead of prompting
+    Err(anyhow!(
+        "preset import found executable commands or bundled scripts; rerun interactively to inspect them or use --allow-exec only if the preset is trusted"
+    ))
 }
 
 #[cfg(test)]
