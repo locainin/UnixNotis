@@ -112,8 +112,12 @@ fn collect_css_check_inputs_from(
             continue;
         }
 
-        // One parse and one lint pass per unique file is enough
-        if seen_files.insert(target.path.clone()) {
+        // One parse and one lint pass per real file is enough
+        //
+        // Canonical paths collapse symlink aliases and repeated logical paths
+        // back onto the same on-disk file before GTK sees them
+        let dedupe_key = dedupe_key_for_theme_file(&target.path);
+        if seen_files.insert(dedupe_key) {
             files.push(target.path.clone());
         }
     }
@@ -290,6 +294,14 @@ fn has_css_extension(path: &Path) -> bool {
 }
 
 fn normalize_target_key(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn dedupe_key_for_theme_file(path: &Path) -> PathBuf {
+    // Real-file dedupe should follow symlinks when that works
+    //
+    // Falling back to the configured path keeps css-check usable even when
+    // canonicalize cannot read every directory in the path yet
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
