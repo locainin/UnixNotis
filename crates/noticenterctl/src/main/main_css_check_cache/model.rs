@@ -21,6 +21,10 @@ pub(in super::super) struct CssParseWorkItem {
     pub(in super::super) canonical_path: PathBuf,
     // Stable identity keeps stale success and stale failure entries out
     pub(in super::super) identity: CssFileIdentity,
+    // Exact bytes are cached up front so lookup does not need extra file reads
+    pub(in super::super) content_hash: String,
+    // Imported CSS has to participate in cache reuse or stale findings survive after fixes
+    pub(in super::super) dependencies: Vec<CssDependencyState>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,6 +58,15 @@ pub(in super::super) struct CachedParseDiagnostic {
     pub(in super::super) column: Option<usize>,
     pub(in super::super) message: String,
     pub(in super::super) hint: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(in super::super) struct CssDependencyState {
+    // Existing imports use canonical paths so aliases collapse onto one dependency slot
+    pub(in super::super) path: PathBuf,
+    // Missing imports still stay in the key so later file creation invalidates the cache
+    pub(in super::super) identity: Option<CssFileIdentity>,
+    pub(in super::super) content_hash: Option<String>,
 }
 
 impl CssFileIdentity {

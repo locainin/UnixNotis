@@ -1,5 +1,6 @@
 //! Cache-aware GTK parse stage for css-check
 
+mod dependencies;
 mod model;
 mod parse;
 mod session;
