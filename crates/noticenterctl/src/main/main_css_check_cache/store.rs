@@ -1,11 +1,11 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::model::{CachedParseDiagnostic, CssFileIdentity, CssParseWorkItem};
+use super::model::{CachedParseDiagnostic, CssDependencyState, CssFileIdentity, CssParseWorkItem};
 
 const CSS_PARSE_CACHE_VERSION: u32 = 2;
 const CSS_PARSE_CACHE_FILE: &str = "css-check-parse-cache-v2.json";
@@ -20,8 +20,9 @@ struct CssParseCacheFile {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct CssParseCacheEntry {
     identity: CssFileIdentity,
-    // Hashing cached hits closes the coarse-mtime false-hit edge
     content_hash: String,
+    // Imported files have to match too or stale findings leak through later runs
+    dependencies: Vec<CssDependencyState>,
     diagnostics: Vec<CachedParseDiagnostic>,
 }
 
@@ -64,14 +65,14 @@ impl CssParseCacheState {
         if entry.identity != work_item.identity {
             return Ok(None);
         }
-
-        // A would-be hit still proves the current bytes before reuse
-        let current_hash = hash_css_file_bytes(&work_item.load_path)?;
-        if current_hash == entry.content_hash {
-            return Ok(Some(&entry.diagnostics));
+        if entry.content_hash != work_item.content_hash {
+            return Ok(None);
+        }
+        if entry.dependencies != work_item.dependencies {
+            return Ok(None);
         }
 
-        Ok(None)
+        Ok(Some(&entry.diagnostics))
     }
 
     pub(in super::super) fn store(
@@ -83,7 +84,8 @@ impl CssParseCacheState {
         let key = cache_key_for_path(&work_item.canonical_path);
         let entry = CssParseCacheEntry {
             identity: work_item.identity.clone(),
-            content_hash: hash_css_file_bytes(&work_item.load_path)?,
+            content_hash: work_item.content_hash.clone(),
+            dependencies: work_item.dependencies.clone(),
             diagnostics,
         };
         if self.file.entries.get(&key) == Some(&entry) {
@@ -151,10 +153,4 @@ pub(in super::super) fn default_css_parse_cache_path() -> Option<PathBuf> {
 fn cache_key_for_path(path: &Path) -> String {
     // Canonicalized paths are stored as plain strings for stable json keys
     path.to_string_lossy().into_owned()
-}
-
-fn hash_css_file_bytes(path: &Path) -> Result<String> {
-    // Hash the exact bytes GTK would read so cached hits stay honest
-    let bytes = fs::read(path).with_context(|| format!("read css file {}", path.display()))?;
-    Ok(blake3::hash(&bytes).to_hex().to_string())
 }

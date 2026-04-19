@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use super::dependencies::{collect_import_dependency_states, hash_css_file_bytes};
 use super::model::{CachedParseDiagnostic, CssFileIdentity, CssParseReport, CssParseWorkItem};
 use super::parse::{parse_css_file_with_gtk, render_cached_diagnostics};
 use super::store::{default_css_parse_cache_path, CssParseCacheState};
@@ -93,6 +94,8 @@ fn build_parse_work_items(files: &[PathBuf]) -> Result<Vec<CssParseWorkItem>> {
             load_path: path.clone(),
             canonical_path,
             identity: CssFileIdentity::from_metadata(&metadata)?,
+            content_hash: hash_css_file_bytes(path)?,
+            dependencies: collect_import_dependency_states(path)?,
         });
     }
     Ok(work_items)
