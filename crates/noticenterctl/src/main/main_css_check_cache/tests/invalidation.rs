@@ -10,8 +10,13 @@ fn edited_files_always_revalidate() {
     let cache_path = root.path().join("cache.json");
     let invocations = Cell::new(0usize);
 
-    validate_with_counter(&invocations, &[css_path.clone()], root.path(), &cache_path)
-        .expect("first parse");
+    validate_with_counter(
+        &invocations,
+        std::slice::from_ref(&css_path),
+        root.path(),
+        &cache_path,
+    )
+    .expect("first parse");
 
     pause_for_metadata_tick();
     fs::write(&css_path, "broken-two").expect("rewrite file");
@@ -30,8 +35,13 @@ fn deleting_and_recreating_a_file_misses_the_cache() {
     let cache_path = root.path().join("cache.json");
     let invocations = Cell::new(0usize);
 
-    validate_with_counter(&invocations, &[css_path.clone()], root.path(), &cache_path)
-        .expect("first parse");
+    validate_with_counter(
+        &invocations,
+        std::slice::from_ref(&css_path),
+        root.path(),
+        &cache_path,
+    )
+    .expect("first parse");
 
     pause_for_metadata_tick();
     fs::remove_file(&css_path).expect("remove file");
@@ -51,8 +61,13 @@ fn replacing_a_path_with_a_new_inode_misses_the_cache() {
     let cache_path = root.path().join("cache.json");
     let invocations = Cell::new(0usize);
 
-    validate_with_counter(&invocations, &[css_path.clone()], root.path(), &cache_path)
-        .expect("first parse");
+    validate_with_counter(
+        &invocations,
+        std::slice::from_ref(&css_path),
+        root.path(),
+        &cache_path,
+    )
+    .expect("first parse");
 
     pause_for_metadata_tick();
     let old_path = root.path().join("config/base.old.css");
@@ -81,7 +96,7 @@ fn symlink_target_changes_miss_the_cache() {
 
     validate_with_counter(
         &invocations,
-        &[symlink_path.clone()],
+        std::slice::from_ref(&symlink_path),
         root.path(),
         &cache_path,
     )
@@ -106,8 +121,13 @@ fn renaming_the_real_path_creates_a_new_cache_key() {
     let cache_path = root.path().join("cache.json");
     let invocations = Cell::new(0usize);
 
-    validate_with_counter(&invocations, &[old_path.clone()], root.path(), &cache_path)
-        .expect("first parse");
+    validate_with_counter(
+        &invocations,
+        std::slice::from_ref(&old_path),
+        root.path(),
+        &cache_path,
+    )
+    .expect("first parse");
 
     pause_for_metadata_tick();
     fs::rename(&old_path, &new_path).expect("rename file");
@@ -168,8 +188,13 @@ fn same_size_same_inode_same_mtime_still_misses_when_contents_change() {
     let cache_path = root.path().join("cache.json");
     let invocations = Cell::new(0usize);
 
-    validate_with_counter(&invocations, &[css_path.clone()], root.path(), &cache_path)
-        .expect("first parse");
+    validate_with_counter(
+        &invocations,
+        std::slice::from_ref(&css_path),
+        root.path(),
+        &cache_path,
+    )
+    .expect("first parse");
 
     let before = fs::metadata(&css_path).expect("metadata before rewrite");
     let original_mtime = before.modified().expect("mtime before rewrite");

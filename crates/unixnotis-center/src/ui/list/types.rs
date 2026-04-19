@@ -5,8 +5,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
-use gio;
-use gtk;
 use gtk::glib;
 use unixnotis_core::NotificationView;
 

@@ -2,10 +2,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::model::{
-    CachedDiagnosticSource, CachedParseDiagnostic, CssFileIdentity, CssParseReport,
-    CssParseWorkItem,
-};
+use super::model::{CachedParseDiagnostic, CssFileIdentity, CssParseReport, CssParseWorkItem};
 use super::parse::{parse_css_file_with_gtk, render_cached_diagnostics};
 use super::store::{default_css_parse_cache_path, CssParseCacheState};
 
@@ -125,7 +122,7 @@ pub(in super::super) fn parse_diagnostic_for_test(
 ) -> Vec<CachedParseDiagnostic> {
     // Tests only need one stable top-level parser finding shape
     vec![CachedParseDiagnostic {
-        source: CachedDiagnosticSource::TopLevel,
+        source: super::model::CachedDiagnosticSource::TopLevel,
         line: Some(1),
         column: Some(1),
         message: message.into(),
