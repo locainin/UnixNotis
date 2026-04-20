@@ -66,7 +66,7 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     if !has_exec_once_dbus_update(&stripped) {
         additions.push(hyprland_dbus_update_line());
     }
-    if !has_exec_once_import(&stripped, &super::super::actions_env::HYPR_IMPORT_VARS) {
+    if !has_exec_once_import(&stripped, &super::super::HYPR_IMPORT_VARS) {
         additions.push(hyprland_import_line());
     }
     if !has_exec_once_restart(&stripped) {
