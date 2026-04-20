@@ -27,6 +27,7 @@ mod marquee;
 mod media_art;
 mod media_widget;
 mod panel;
+mod perf_probe;
 mod refresh;
 mod visibility;
 mod widget_builders;

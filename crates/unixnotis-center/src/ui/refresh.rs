@@ -15,6 +15,8 @@ use super::UiState;
 
 impl UiState {
     pub(super) fn refresh_widgets(&mut self, force: bool) {
+        // Global refresh entry counter helps compare open vs settled churn
+        super::perf_probe::refresh_widgets_called();
         let now = Instant::now();
         let fast_ms = self.config.widgets.refresh_interval_ms;
         let slow_ms = self.config.widgets.refresh_interval_slow_ms;
@@ -26,16 +28,19 @@ impl UiState {
         // (for example volume/backlight values).
         let fast_due = force
             || interval_due(now, self.last_fast_refresh, fast_ms)
-                .map(|delay| delay.is_zero())
+                .map(is_due_delay)
                 .unwrap_or(false);
         if fast_due {
+            super::perf_probe::refresh_fast_lane_due();
             if let Some(volume) = self.volume.as_ref() {
                 if force || volume.needs_polling() {
+                    super::perf_probe::refresh_volume_called();
                     volume.refresh();
                 }
             }
             if let Some(brightness) = self.brightness.as_ref() {
                 if force || brightness.needs_polling() {
+                    super::perf_probe::refresh_brightness_called();
                     brightness.refresh();
                 }
             }
@@ -45,11 +50,13 @@ impl UiState {
         // Slow cadence is reserved for less dynamic controls to keep idle CPU low.
         let toggles_due = force
             || interval_due(now, self.last_slow_refresh, slow_ms)
-                .map(|delay| delay.is_zero())
+                .map(is_due_delay)
                 .unwrap_or(false);
         if toggles_due {
+            super::perf_probe::refresh_slow_lane_due();
             if let Some(toggles) = self.toggles.as_ref() {
                 if force || toggles.needs_polling() {
+                    super::perf_probe::refresh_toggles_called();
                     toggles.refresh();
                 }
             }
@@ -60,11 +67,13 @@ impl UiState {
         let slow_base = Duration::from_millis(slow_ms.max(1));
         if let Some(stats) = self.stats.as_ref() {
             if force || stats.is_due(now) {
+                super::perf_probe::refresh_stats_called();
                 stats.refresh(slow_base, force);
             }
         }
         if let Some(cards) = self.cards.as_ref() {
             if force || cards.is_due(now) {
+                super::perf_probe::refresh_cards_called();
                 cards.refresh(slow_base, force);
             }
         }
@@ -80,7 +89,9 @@ impl UiState {
         let Some(mut delay) = self.next_refresh_delay(now) else {
             return;
         };
-        if delay.is_zero() {
+        // GLib timeout granularity is millisecond-based
+        // Any sub-millisecond delay can collapse into immediate re-fire churn
+        if delay < Duration::from_millis(1) {
             delay = Duration::from_millis(1);
         }
         let event_tx = self.event_tx.clone();
@@ -88,6 +99,7 @@ impl UiState {
             let _ = event_tx.try_send(UiEvent::RefreshWidgets);
         });
         self.refresh_source = Some(id);
+        super::perf_probe::refresh_timer_armed();
         self.log_debug(PanelDebugLevel::Info, move || {
             format!("refresh timer armed for {} ms", delay.as_millis())
         });
@@ -184,6 +196,11 @@ fn update_next_delay(next: &mut Option<Duration>, candidate: Option<Duration>) {
         Some(current) if candidate >= *current => {}
         _ => *next = Some(candidate),
     }
+}
+
+fn is_due_delay(delay: Duration) -> bool {
+    // Treat sub-millisecond jitter as due so one-shot scheduling does not spin
+    delay <= Duration::from_millis(1)
 }
 
 #[cfg(test)]
