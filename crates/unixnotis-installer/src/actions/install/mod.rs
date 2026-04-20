@@ -9,9 +9,4 @@ pub(crate) use binaries::{install_binaries, remove_binaries};
 pub(crate) use service::{enable_service, install_service, uninstall_service};
 
 #[cfg(test)]
-pub(in crate::actions::install) use service::{
-    render_service_unit, service_start_mode_from_enabled, ServiceStartMode,
-};
-
-#[cfg(test)]
 mod tests;

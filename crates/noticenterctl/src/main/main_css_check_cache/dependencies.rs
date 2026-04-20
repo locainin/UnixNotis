@@ -21,8 +21,8 @@ fn collect_import_dependency_states_from(
     visited: &mut HashSet<PathBuf>,
     dependencies: &mut BTreeMap<String, CssDependencyState>,
 ) -> Result<()> {
-    let contents =
-        fs::read_to_string(css_path).with_context(|| format!("read css file {}", css_path.display()))?;
+    let contents = fs::read_to_string(css_path)
+        .with_context(|| format!("read css file {}", css_path.display()))?;
 
     for import_path in imported_css_paths(&contents, css_path) {
         let dependency = CssDependencyState::from_resolved_path(&import_path)?;
@@ -34,7 +34,9 @@ fn collect_import_dependency_states_from(
             continue;
         }
 
-        dependencies.entry(dependency_sort_key).or_insert(dependency);
+        dependencies
+            .entry(dependency_sort_key)
+            .or_insert(dependency);
 
         if recurse {
             collect_import_dependency_states_from(&import_path, visited, dependencies)?;
