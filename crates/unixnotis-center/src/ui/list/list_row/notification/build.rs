@@ -4,6 +4,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::time::Duration;
 
 use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
@@ -11,9 +12,12 @@ use tokio::sync::mpsc;
 use tracing::debug;
 
 use crate::dbus::UiCommand;
+use crate::ui::input_guard::ClickCooldown;
 use crate::ui::try_send_command;
 
 use super::state::NotificationRowWidgets;
+
+const ROW_BUTTON_GUARD_MS: u64 = 180;
 
 pub(in crate::ui::list) fn build_notification_row(
     command_tx: mpsc::Sender<UiCommand>,
@@ -86,7 +90,11 @@ pub(in crate::ui::list) fn build_notification_row(
     // Close click always targets the latest id assigned to this row
     let close_tx = command_tx.clone();
     let notify_id_clone = notify_id.clone();
+    let close_gate = ClickCooldown::new(Duration::from_millis(ROW_BUTTON_GUARD_MS));
     close_button.connect_clicked(move |_| {
+        if !close_gate.try_start() {
+            return;
+        }
         let id = notify_id_clone.get();
         if id == 0 {
             // Ignore clicks before first binding

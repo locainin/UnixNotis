@@ -1,10 +1,12 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::time::Duration;
 
 use gtk::prelude::*;
 use gtk::{Align, Overflow};
 
 use crate::media::MediaHandle;
+use crate::ui::input_guard::ClickCooldown;
 
 use super::super::marquee::MarqueeLabel;
 use super::super::media_art::MediaArtState;
@@ -13,6 +15,8 @@ use super::format::MediaDisplayConfig;
 use super::selection::MediaSelection;
 use super::shell::MediaShellConfig;
 use unixnotis_core::{hooks, MediaConfig};
+
+const MEDIA_CLICK_GUARD_MS: u64 = 120;
 
 pub(super) struct MediaCardLayoutParts {
     pub(super) card: MediaCardWidgets,
@@ -189,7 +193,11 @@ fn connect_playback_buttons(
 ) {
     let selection_play = selection.clone();
     let handle_play = handle.clone();
+    let play_gate = ClickCooldown::new(Duration::from_millis(MEDIA_CLICK_GUARD_MS));
     play_button.connect_clicked(move |_| {
+        if !play_gate.try_start() {
+            return;
+        }
         // The current card decides which player receives transport commands
         if let Some(bus_name) = selection_play.borrow().current_bus() {
             handle_play.play_pause(&bus_name);
@@ -198,7 +206,11 @@ fn connect_playback_buttons(
 
     let selection_next = selection.clone();
     let handle_next = handle.clone();
+    let next_gate = ClickCooldown::new(Duration::from_millis(MEDIA_CLICK_GUARD_MS));
     next_button.connect_clicked(move |_| {
+        if !next_gate.try_start() {
+            return;
+        }
         // Next only targets the currently selected player
         if let Some(bus_name) = selection_next.borrow().current_bus() {
             handle_next.next(&bus_name);
@@ -207,7 +219,11 @@ fn connect_playback_buttons(
 
     let selection_prev = selection;
     let handle_prev = handle.clone();
+    let prev_gate = ClickCooldown::new(Duration::from_millis(MEDIA_CLICK_GUARD_MS));
     prev_button.connect_clicked(move |_| {
+        if !prev_gate.try_start() {
+            return;
+        }
         // Previous only targets the currently selected player
         if let Some(bus_name) = selection_prev.borrow().current_bus() {
             handle_prev.previous(&bus_name);
