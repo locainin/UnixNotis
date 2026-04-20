@@ -159,8 +159,12 @@ impl UiState {
             self.panel.window.set_visible(false);
             // Reset transient search UI so each open starts from the full notification list.
             if self.panel.search_toggle.is_active() {
+                // Programmatic close should not be treated as a user click.
+                self.search_toggle_guard.set(true);
                 self.panel.search_toggle.set_active(false);
-            } else if !self.panel.search_entry.text().is_empty() {
+                self.search_toggle_guard.set(false);
+            }
+            if !self.panel.search_entry.text().is_empty() {
                 // Clearing text also removes any active list filter.
                 self.panel.search_entry.set_text("");
             }

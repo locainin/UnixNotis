@@ -49,6 +49,8 @@ impl UiState {
 
         // DND updates are triggered from both UI and daemon; guard prevents feedback loops.
         let dnd_guard = Rc::new(Cell::new(false));
+        // Programmatic search-toggle changes (close/reset) use this guard.
+        let search_toggle_guard = Rc::new(Cell::new(false));
         let panel_visible_flag = Arc::new(AtomicBool::new(false));
         // Read the effective panel width after monitor-aware sizing is applied.
         let panel_width = panel::live_panel_width(&panel.root);
@@ -163,11 +165,15 @@ impl UiState {
 
         let search_revealer = panel.search_revealer.clone();
         let search_entry = panel.search_entry.clone();
+        let search_toggle_guard_clone = search_toggle_guard.clone();
         let search_click_gate =
             ClickCooldown::new(Duration::from_millis(panel::SEARCH_REVEAL_TRANSITION_MS));
         let accepted_search_reveal = Rc::new(Cell::new(false));
         let search_restore = Rc::new(Cell::new(false));
         panel.search_toggle.connect_toggled(move |button| {
+            if search_toggle_guard_clone.get() {
+                return;
+            }
             // Local rollback should not be treated as a fresh user request
             if search_restore.replace(false) {
                 return;
@@ -314,6 +320,7 @@ impl UiState {
             list,
             icon_resolver,
             dnd_guard,
+            search_toggle_guard,
             panel_visible: false,
             panel_visible_flag,
             work_area: None,
