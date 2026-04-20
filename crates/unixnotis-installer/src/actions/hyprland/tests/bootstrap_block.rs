@@ -1,4 +1,4 @@
-use super::{strip_hyprland_bootstrap_block, HYPR_BOOTSTRAP_END, HYPR_BOOTSTRAP_START};
+use super::super::{strip_hyprland_bootstrap_block, HYPR_BOOTSTRAP_END, HYPR_BOOTSTRAP_START};
 use crate::detect::Detection;
 use crate::events::UiMessage;
 use crate::model::ActionMode;

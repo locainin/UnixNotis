@@ -1,4 +1,4 @@
-use super::{format_daemon_status, summarize_owner};
+use super::super::{format_daemon_status, summarize_owner};
 use crate::detect::{DetectedDaemon, OwnerInfo};
 
 #[test]
