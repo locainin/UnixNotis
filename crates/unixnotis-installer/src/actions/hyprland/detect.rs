@@ -1,6 +1,6 @@
 //! Detection helpers for existing Hyprland exec-once lines
 
-use super::super::actions_env::HYPR_IMPORT_VARS;
+use super::super::HYPR_IMPORT_VARS;
 
 pub(in crate::actions::hyprland) const HYPR_RESTART_CMD: &str =
     "exec-once = systemctl --user --no-block restart unixnotis-daemon.service";

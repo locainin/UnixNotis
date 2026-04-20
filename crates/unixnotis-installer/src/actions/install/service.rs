@@ -9,10 +9,10 @@ use anyhow::{Context, Result};
 use crate::paths::{format_with_home, InstallPaths};
 
 use super::super::{
-    actions_env::{ensure_shell_path_entry, sync_user_environment},
     config::backup::write_atomic,
+    ensure_shell_path_entry,
     hyprland::{ensure_hyprland_autostart, remove_hyprland_autostart},
-    log_line, run_command, ActionContext,
+    log_line, run_command, sync_user_environment, ActionContext,
 };
 
 pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
