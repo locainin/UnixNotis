@@ -1,6 +1,9 @@
 //! Stat worker tests
 
-use super::{BuiltinStat, BuiltinStatJob, BuiltinStatWorker, BuiltinSubmitOutcome};
+use super::{
+    stats_builtin::BuiltinStatKey, BuiltinStat, BuiltinStatJob, BuiltinStatWorker,
+    BuiltinSubmitOutcome,
+};
 
 #[test]
 fn builtin_worker_queue_full_falls_back() {
@@ -25,5 +28,21 @@ fn builtin_worker_queue_full_falls_back() {
             respond: tx_b,
         }),
         BuiltinSubmitOutcome::QueueFull
+    );
+}
+
+#[test]
+fn builtin_stat_keys_dedupe_matching_sources() {
+    let cpu_a = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
+    let cpu_b = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
+    let net = BuiltinStat::from_command("builtin:net:wlan0").expect("builtin stat");
+
+    assert_eq!(cpu_a.key(), BuiltinStatKey::Cpu);
+    assert_eq!(cpu_a.key(), cpu_b.key());
+    assert_eq!(
+        net.key(),
+        BuiltinStatKey::Network {
+            iface: Some("wlan0".to_string()),
+        }
     );
 }

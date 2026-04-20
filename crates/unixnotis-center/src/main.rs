@@ -22,14 +22,13 @@ mod ui;
 
 fn main() -> Result<()> {
     let args = startup::Args::parse();
-    let (config, config_path) = startup::load_config(&args).context("load config")?;
+    let (config, config_path, config_source) =
+        startup::load_config(&args).context("load config")?;
     startup::init_tracing(&config);
-    let config_source = if args.config.is_some() {
-        "custom"
-    } else if config_path.exists() {
-        "default"
-    } else {
-        "builtin"
+    let config_source = match config_source {
+        startup::ConfigSource::Custom => "custom",
+        startup::ConfigSource::Default => "default",
+        startup::ConfigSource::Builtin => "builtin",
     };
     info!(config_source, "center configuration loaded");
     if unixnotis_core::util::diagnostic_mode() {

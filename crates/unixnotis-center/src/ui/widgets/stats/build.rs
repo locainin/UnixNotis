@@ -4,7 +4,7 @@ use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{css::hooks, StatWidgetConfig};
 
-use super::{stats_builtin::BuiltinStat, StatGrid, StatItem};
+use super::{collect_builtin_groups, stats_builtin::BuiltinStat, StatGrid, StatItem};
 
 impl StatGrid {
     pub fn new(configs: &[StatWidgetConfig]) -> Option<Self> {
@@ -44,9 +44,21 @@ impl StatGrid {
     }
 
     pub fn refresh(&self, base_interval: std::time::Duration, force: bool) {
+        let now = std::time::Instant::now();
+        let builtin_groups = collect_builtin_groups(&self.items, now, force);
+
         for item in &self.items {
+            if item.is_grouped_builtin(now, force) {
+                // Grouped builtin cards are refreshed once per source below
+                continue;
+            }
             // Per-item refresh keeps slow widgets from blocking the grid
             item.refresh(base_interval, force);
+        }
+
+        for group in builtin_groups.into_values() {
+            // One sampled builtin value fans out to every matching stat card in the grid
+            group.refresh(base_interval);
         }
     }
 

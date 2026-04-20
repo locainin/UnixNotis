@@ -238,7 +238,7 @@ mod tests {
             "noticenterctl",
             "preset",
             "export",
-            "anime.unixnotis",
+            "bundle.unixnotis",
             "--except",
             "installer.toml",
             "--except",
@@ -254,7 +254,7 @@ mod tests {
                         force,
                     },
             } => {
-                assert_eq!(output, "anime.unixnotis");
+                assert_eq!(output, "bundle.unixnotis");
                 assert_eq!(except, vec!["installer.toml", "assets/bg.png"]);
                 assert!(!force);
             }
@@ -269,7 +269,7 @@ mod tests {
             "noticenterctl",
             "preset",
             "import",
-            "anime.unixnotis",
+            "bundle.unixnotis",
             "--dry-run",
         ])
         .expect("parse args");
@@ -283,7 +283,7 @@ mod tests {
                         allow_exec,
                     },
             } => {
-                assert_eq!(input, "anime.unixnotis");
+                assert_eq!(input, "bundle.unixnotis");
                 assert!(except.is_empty());
                 assert!(dry_run);
                 assert!(!allow_exec);
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn preset_commands_are_local_only() {
         // Preset commands should bypass D-Bus setup like css-check does.
-        let args = Args::try_parse_from(["noticenterctl", "preset", "inspect", "anime.unixnotis"])
+        let args = Args::try_parse_from(["noticenterctl", "preset", "inspect", "bundle.unixnotis"])
             .expect("parse args");
         assert!(args.command.is_local_only());
     }

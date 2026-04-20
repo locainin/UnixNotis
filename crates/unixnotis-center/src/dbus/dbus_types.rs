@@ -35,7 +35,7 @@ pub enum UiEvent {
 }
 
 /// Commands sent from GTK handlers to the D-Bus runtime.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiCommand {
     Dismiss(u32),
     InvokeAction { id: u32, action_key: String },

@@ -1,14 +1,13 @@
 //! Builtin stat worker and builtin refresh helpers
 
 use std::thread;
-use std::time::Instant;
 
 use crossbeam_channel::TrySendError;
 use gtk::glib;
 use tracing::warn;
 
 use super::{
-    apply_cached_value, BuiltinStat, BuiltinStatJob, BuiltinStatWorker, BuiltinSubmitOutcome,
+    BuiltinRefreshGroup, BuiltinStat, BuiltinStatJob, BuiltinStatWorker, BuiltinSubmitOutcome,
     StatItem,
 };
 
@@ -96,60 +95,70 @@ impl StatItem {
             BuiltinSubmitOutcome::Submitted => {}
             BuiltinSubmitOutcome::QueueFull => {
                 // Queue saturation should stay non-blocking on the GTK thread
-                self.inflight.set(false);
-                *self.builtin.borrow_mut() = Some(fallback);
-                self.refresh_backoff
-                    .borrow_mut()
-                    .note_error(Instant::now(), base_interval);
+                self.restore_builtin_error(fallback, base_interval);
                 return;
             }
             BuiltinSubmitOutcome::WorkerUnavailable => {
-                self.inflight.set(false);
                 // Inline fallback keeps builtin stats readable when the worker is missing
                 let value = fallback.read().unwrap_or_else(|| "n/a".to_string());
-                *self.builtin.borrow_mut() = Some(fallback);
-                let changed = self.apply_value(&value);
-                self.refresh_backoff.borrow_mut().note_success(
-                    Instant::now(),
-                    base_interval,
-                    changed,
-                );
+                self.restore_builtin_value(fallback, &value, base_interval);
                 return;
             }
         }
 
-        let label = self.value_label.clone();
-        let inflight = self.inflight.clone();
-        let builtin_cell = self.builtin.clone();
-        let last_value = self.last_value.clone();
-        let refresh_backoff = self.refresh_backoff.clone();
+        let item = self.clone();
         glib::MainContext::default().spawn_local(async move {
             // Restore builtin state on every exit path so later refreshes can keep working
             let result = rx.recv().await;
-            inflight.set(false);
             let Ok((builtin, value)) = result else {
-                *builtin_cell.borrow_mut() = Some(fallback);
-                refresh_backoff
-                    .borrow_mut()
-                    .note_error(Instant::now(), base_interval);
+                item.restore_builtin_error(fallback, base_interval);
                 return;
             };
-            *builtin_cell.borrow_mut() = Some(builtin);
-            if value.is_empty() {
-                apply_cached_value(&label, &last_value);
-                refresh_backoff
-                    .borrow_mut()
-                    .note_success(Instant::now(), base_interval, false);
-            } else if last_value.borrow().as_deref() != Some(&value) {
-                label.set_text(&value);
-                *last_value.borrow_mut() = Some(value);
-                refresh_backoff
-                    .borrow_mut()
-                    .note_success(Instant::now(), base_interval, true);
-            } else {
-                refresh_backoff
-                    .borrow_mut()
-                    .note_success(Instant::now(), base_interval, false);
+            item.restore_builtin_value(builtin, &value, base_interval);
+        });
+    }
+}
+
+impl BuiltinRefreshGroup {
+    pub(super) fn refresh(self, base_interval: std::time::Duration) {
+        let (tx, rx) = async_channel::bounded(1);
+        let mut fallback = self.stat.clone();
+        let worker = BuiltinStatWorker::global();
+
+        match worker.submit(BuiltinStatJob {
+            stat: self.stat,
+            respond: tx,
+        }) {
+            BuiltinSubmitOutcome::Submitted => {}
+            BuiltinSubmitOutcome::QueueFull => {
+                // Restore every grouped item so the next refresh wave can retry cleanly
+                for item in self.items {
+                    item.restore_builtin_error(fallback.clone(), base_interval);
+                }
+                return;
+            }
+            BuiltinSubmitOutcome::WorkerUnavailable => {
+                // Inline fallback still samples the source once, then fans the value out to every card
+                let value = fallback.read().unwrap_or_else(|| "n/a".to_string());
+                for item in self.items {
+                    item.restore_builtin_value(fallback.clone(), &value, base_interval);
+                }
+                return;
+            }
+        }
+
+        glib::MainContext::default().spawn_local(async move {
+            let result = rx.recv().await;
+            let Ok((builtin, value)) = result else {
+                for item in self.items {
+                    item.restore_builtin_error(fallback.clone(), base_interval);
+                }
+                return;
+            };
+
+            // Every grouped card receives the same value and updated reader state clone
+            for item in self.items {
+                item.restore_builtin_value(builtin.clone(), &value, base_interval);
             }
         });
     }

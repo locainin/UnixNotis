@@ -150,6 +150,58 @@ fn warns_when_theme_slots_share_one_file() {
         .contains("[theme].base_css, [theme].panel_css")));
 }
 
+#[cfg(unix)]
+#[test]
+fn dedupes_theme_slots_that_resolve_to_the_same_real_file() {
+    use std::os::unix::fs::symlink;
+
+    let root = TempDirGuard::new("canonical-dedupe");
+    let config_dir = root.path().join("xdg").join("unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config dir");
+
+    root.write("xdg/unixnotis/base.css", ".unixnotis-panel { color: red; }");
+    root.write(
+        "xdg/unixnotis/widgets.css",
+        ".unixnotis-toggle { color: red; }",
+    );
+    root.write(
+        "xdg/unixnotis/media.css",
+        ".unixnotis-media-card { color: red; }",
+    );
+    root.write(
+        "xdg/unixnotis/shared/popup.css",
+        ".unixnotis-popup { color: red; }",
+    );
+    fs::create_dir_all(config_dir.join("aliases")).expect("create alias dir");
+    symlink(
+        "../shared/popup.css",
+        config_dir.join("aliases/popup-link.css"),
+    )
+    .expect("create symlink");
+    root.write(
+        "xdg/unixnotis/config.toml",
+        "[theme]\npanel_css = \"shared/popup.css\"\npopup_css = \"aliases/popup-link.css\"\n",
+    );
+
+    let config_path = config_dir.join("config.toml");
+    let config = Config::load_from_path(&config_path).expect("load config");
+    let inputs = collect_css_check_inputs_from(
+        &config_dir,
+        "$XDG_CONFIG_HOME/unixnotis",
+        &config_path,
+        &config,
+    )
+    .expect("inputs");
+
+    let popup_paths = inputs
+        .files
+        .iter()
+        .filter(|path| path.ends_with("popup.css") || path.ends_with("popup-link.css"))
+        .collect::<Vec<_>>();
+    assert_eq!(popup_paths.len(), 1);
+    assert_eq!(inputs.files.len(), 4);
+}
+
 #[test]
 fn warns_when_configured_theme_target_is_missing() {
     let root = TempDirGuard::new("missing");

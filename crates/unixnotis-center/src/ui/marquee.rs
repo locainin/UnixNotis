@@ -8,6 +8,8 @@ use glib::clone;
 use gtk::prelude::*;
 use gtk::{glib, Align, Overflow};
 
+use super::perf_probe;
+
 const MARQUEE_SPEED_CHARS_PER_SEC: f64 = 8.0;
 const MARQUEE_PAUSE_MS: u64 = 900;
 // Lower tick rate keeps CPU usage minimal while still providing smooth enough motion.
@@ -113,6 +115,7 @@ impl MarqueeLabel {
                     state.is_ticking = false;
                     state.last_tick = None;
                     state.hold_until = None;
+                    perf_probe::marquee_stop();
                 }
             }
         ));
@@ -200,6 +203,7 @@ impl MarqueeLabel {
         state.is_ticking = false;
         state.last_tick = None;
         state.hold_until = None;
+        perf_probe::marquee_stop();
     }
 }
 
@@ -210,11 +214,13 @@ fn start_ticking_inner(state: Rc<RefCell<MarqueeState>>, label: gtk::Label) {
             return;
         }
         state.is_ticking = true;
+        perf_probe::marquee_start();
     }
 
     let state_tick = state.clone();
     let label_tick = label.clone();
     let source_id = glib::timeout_add_local(Duration::from_millis(MARQUEE_TICK_MS), move || {
+        perf_probe::marquee_tick();
         let mut state = state_tick.borrow_mut();
 
         if !state.enabled || !state.is_mapped {
@@ -245,6 +251,7 @@ fn start_ticking_inner(state: Rc<RefCell<MarqueeState>>, label: gtk::Label) {
 
         if let Some(hold_until) = state.hold_until {
             if now < hold_until {
+                perf_probe::marquee_hold_skip();
                 return glib::ControlFlow::Continue;
             }
         }
@@ -260,6 +267,7 @@ fn start_ticking_inner(state: Rc<RefCell<MarqueeState>>, label: gtk::Label) {
         let offset = state.offset.floor() as usize;
         if offset != state.last_rendered_offset {
             render_visible(&mut state, offset);
+            perf_probe::marquee_label_write();
             label_tick.set_text(&state.render_buf);
             state.last_rendered_offset = offset;
         }

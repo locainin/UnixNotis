@@ -26,7 +26,7 @@ mod tests;
 
 use self::reload::{start_reload_timer, ReloadGate};
 use self::runtime::handle_ui_event;
-use self::startup::{init_tracing, is_wayland_session, load_config};
+use self::startup::{init_tracing, is_wayland_session, load_config, ConfigSource};
 
 const UI_EVENT_QUEUE_CAPACITY: usize = 512;
 
@@ -40,14 +40,12 @@ pub(crate) struct Args {
 
 pub(crate) fn run(args: Args) -> Result<()> {
     // Load and validate config before GTK starts so startup failures stay clear
-    let (config, config_path) = load_config(&args).context("load config")?;
+    let (config, config_path, config_source) = load_config(&args).context("load config")?;
     init_tracing(&config);
-    let config_source = if args.config.is_some() {
-        "custom"
-    } else if config_path.exists() {
-        "default"
-    } else {
-        "builtin"
+    let config_source = match config_source {
+        ConfigSource::Custom => "custom",
+        ConfigSource::Default => "default",
+        ConfigSource::Builtin => "builtin",
     };
     info!(config_source, "popup configuration loaded");
     if unixnotis_core::util::diagnostic_mode() {

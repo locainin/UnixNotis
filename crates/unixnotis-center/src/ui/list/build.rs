@@ -142,12 +142,20 @@ impl NotificationList {
     pub fn set_empty_layout(&self, has_widgets: bool) {
         if has_widgets {
             // When widgets are visible, align the empty state beneath them
-            self.empty_overlay.set_valign(Align::Start);
-            self.empty_overlay.set_margin_top(self.empty_offset_top);
+            if self.empty_overlay.valign() != Align::Start {
+                self.empty_overlay.set_valign(Align::Start);
+            }
+            if self.empty_overlay.margin_top() != self.empty_offset_top {
+                self.empty_overlay.set_margin_top(self.empty_offset_top);
+            }
         } else {
             // When no widgets are visible, center the empty state in the list area
-            self.empty_overlay.set_valign(Align::Center);
-            self.empty_overlay.set_margin_top(0);
+            if self.empty_overlay.valign() != Align::Center {
+                self.empty_overlay.set_valign(Align::Center);
+            }
+            if self.empty_overlay.margin_top() != 0 {
+                self.empty_overlay.set_margin_top(0);
+            }
         }
     }
 }

@@ -277,5 +277,6 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
         info!("unixnotis-center running");
     });
 
+    // GTK can use the real process argv here because daemon-launched config paths now travel by env
     app.run();
 }

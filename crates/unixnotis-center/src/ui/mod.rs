@@ -22,11 +22,13 @@ mod events;
 mod hyprland;
 mod icons;
 mod init;
+mod input_guard;
 mod list;
 mod marquee;
 mod media_art;
 mod media_widget;
 mod panel;
+mod perf_probe;
 mod refresh;
 mod visibility;
 mod widget_builders;
@@ -42,6 +44,7 @@ pub struct UiState {
     // Shared resolver keeps icon cache and inflight decode tracking centralized.
     icon_resolver: Rc<icons::IconResolver>,
     dnd_guard: Rc<Cell<bool>>,
+    search_toggle_guard: Rc<Cell<bool>>,
     panel_visible: bool,
     panel_visible_flag: Arc<AtomicBool>,
     work_area: Option<Margins>,
