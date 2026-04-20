@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::detect::Detection;
 use crate::model::ActionMode;
 
-use super::super::{
+use super::super::service::{
     install_service, render_service_unit, service_start_mode_from_enabled, ServiceStartMode,
 };
 use super::support::{test_context, test_paths, test_root};

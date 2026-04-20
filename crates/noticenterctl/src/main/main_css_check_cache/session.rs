@@ -47,12 +47,8 @@ where
             .transpose()?
             .flatten()
         {
-            let cached_diagnostics = render_cached_diagnostics(
-                cached_diagnostics,
-                work_item,
-                config_dir,
-                display_root,
-            );
+            let cached_diagnostics =
+                render_cached_diagnostics(cached_diagnostics, work_item, config_dir, display_root);
             error_count += cached_diagnostics.len();
             diagnostics.extend(cached_diagnostics);
             continue;
