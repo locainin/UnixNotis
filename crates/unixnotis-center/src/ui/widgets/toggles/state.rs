@@ -13,6 +13,7 @@ use unixnotis_core::{css::hooks, util, PanelDebugLevel};
 
 use super::super::utils::run_command_capture_status_async;
 use crate::debug;
+use crate::ui::perf_probe;
 
 // Staggered retry delays keep UI responsive without long-lived polling loops
 const TOGGLE_REFRESH_DELAYS_MS: &[u64] = &[0, 50, 100, 200, 400, 800];
@@ -57,12 +58,14 @@ pub(super) fn refresh_toggle_state(
 ) {
     // Bursty watch events only need one running probe and one trailing probe
     if !refresh_gate.begin_or_queue() {
+        perf_probe::toggle_refresh_queued();
         let cmd_snip = util::log_snippet(cmd);
         debug::log(PanelDebugLevel::Verbose, || {
             format!("toggle refresh queued while in flight cmd=\"{cmd_snip}\"")
         });
         return;
     }
+    perf_probe::toggle_refresh_start();
 
     // Periodic refresh path keeps UI aligned with external command state
     let cmd = cmd.to_string();
@@ -95,6 +98,7 @@ pub(super) fn refresh_toggle_state(
         if button.is_active() != active {
             // Guard blocks feedback loops through connect_toggled
             guard.set(true);
+            perf_probe::toggle_state_write();
             button.set_active(active);
             guard.set(false);
         }
@@ -155,6 +159,7 @@ pub(super) fn schedule_toggle_refresh_with_retry(
             if button.is_active() != active {
                 // Apply corrected state without retriggering command dispatch
                 guard.set(true);
+                perf_probe::toggle_state_write();
                 button.set_active(active);
                 guard.set(false);
             }
@@ -171,9 +176,11 @@ pub(super) fn schedule_toggle_refresh_with_retry(
 fn apply_active_class(button: &gtk::ToggleButton, active: bool) {
     if active {
         if !button.has_css_class(hooks::shared_state::ACTIVE) {
+            perf_probe::toggle_class_write();
             button.add_css_class(hooks::shared_state::ACTIVE);
         }
     } else if button.has_css_class(hooks::shared_state::ACTIVE) {
+        perf_probe::toggle_class_write();
         button.remove_css_class(hooks::shared_state::ACTIVE);
     }
 }

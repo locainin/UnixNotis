@@ -11,6 +11,7 @@ use super::super::run_command_capture_status_async;
 use super::super::slider_parse::{format_value, parse_muted, parse_numeric};
 use super::value::slider_value_changed;
 use crate::debug;
+use crate::ui::perf_probe;
 
 #[derive(Clone)]
 pub(super) struct SliderRefreshState {
@@ -88,6 +89,7 @@ pub(super) fn request_refresh(
 ) {
     // Collapse bursty requests into one running refresh and one trailing refresh
     if !refresh.gate.begin_or_queue() {
+        perf_probe::slider_refresh_queued();
         let cmd_snip = util::log_snippet(&cmd);
         debug::log(PanelDebugLevel::Verbose, || {
             format!("slider refresh queued while in flight cmd=\"{}\"", cmd_snip)
@@ -95,6 +97,7 @@ pub(super) fn request_refresh(
         return;
     }
 
+    perf_probe::slider_refresh_start();
     let cmd_snip = util::log_snippet(&cmd);
     debug::log(PanelDebugLevel::Verbose, || {
         format!("slider refresh start cmd=\"{}\"", cmd_snip)
@@ -142,9 +145,11 @@ fn start_refresh(
                             if value_changed || label_changed {
                                 refresh.updating.set(true);
                                 if value_changed {
+                                    perf_probe::slider_value_write();
                                     refresh.scale.set_value(value);
                                 }
                                 if label_changed {
+                                    perf_probe::slider_label_write();
                                     refresh.label.set_text(&formatted);
                                 }
                                 refresh.updating.set(false);
@@ -165,6 +170,7 @@ fn start_refresh(
                                 // Slider refreshes can be frequent, so skip icon churn when nothing changed
                                 if refresh.icon_image.icon_name().as_deref() != Some(icon.as_str())
                                 {
+                                    perf_probe::slider_icon_write();
                                     refresh.icon_image.set_icon_name(Some(icon));
                                 }
                             }

@@ -93,6 +93,8 @@ impl UiState {
             format!("panel visibility set to {visible}")
         });
         if visible {
+            // Start a new probe window each time panel becomes visible
+            super::perf_probe::on_panel_open(self.panel_visible_flag.clone());
             // Activate watches so widgets only poll while the panel is open.
             if let Some(volume) = self.volume.as_ref() {
                 volume.set_watch_active(true);
@@ -149,6 +151,8 @@ impl UiState {
             let message = format!("panel allocated size: {width}x{height}");
             self.log_debug(PanelDebugLevel::Verbose, move || message);
         } else {
+            // Emit a final snapshot before timers and watches are torn down
+            super::perf_probe::on_panel_close();
             // Hide first so any teardown work does not trigger visible reflow.
             self.panel.window.set_visible(false);
             // Reset transient search UI so each open starts from the full notification list.

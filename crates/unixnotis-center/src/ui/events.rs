@@ -156,6 +156,8 @@ impl UiState {
             UiEvent::RefreshWidgets => {
                 // One-shot timers are re-armed after each refresh tick.
                 self.refresh_source = None;
+                // Track actual timer fire count to spot reschedule churn
+                super::perf_probe::refresh_timer_fired();
                 if self.panel_visible {
                     self.refresh_widgets(false);
                     self.start_refresh_timer();
