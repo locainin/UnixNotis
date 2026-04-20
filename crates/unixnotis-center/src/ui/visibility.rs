@@ -30,7 +30,9 @@ impl UiState {
             // Mirror external collapse requests into the header toggle state.
             self.panel.focus_toggle.set_active(collapsed);
         }
-        self.panel.widget_revealer.set_reveal_child(!collapsed);
+        if self.panel.widget_revealer.reveals_child() == collapsed {
+            self.panel.widget_revealer.set_reveal_child(!collapsed);
+        }
         self.list
             .set_empty_layout(!collapsed && self.has_any_widgets());
     }

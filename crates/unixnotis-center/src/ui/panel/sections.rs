@@ -4,6 +4,8 @@ use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::css::hooks;
 
+pub(crate) const WIDGET_REVEAL_TRANSITION_MS: u64 = 180;
+
 pub(super) struct PanelSectionWidgets {
     pub(super) widget_revealer: gtk::Revealer,
     pub(super) quick_controls: gtk::Box,
@@ -40,7 +42,7 @@ pub(super) fn build_panel_sections(width: i32) -> PanelSectionWidgets {
     let widget_revealer = gtk::Revealer::new();
     widget_revealer.add_css_class(hooks::panel_shell::WIDGET_REVEALER);
     widget_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    widget_revealer.set_transition_duration(180);
+    widget_revealer.set_transition_duration(WIDGET_REVEAL_TRANSITION_MS as u32);
     widget_revealer.set_reveal_child(true);
     // Keep child widgets mounted so collapse does not rebuild stateful controls
     widget_revealer.set_child(Some(&widget_stack));

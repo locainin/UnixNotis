@@ -37,14 +37,9 @@ pub(crate) fn stash_offline_commands(
 ) {
     let mut drained = 0usize;
     while let Ok(command) = command_rx.try_recv() {
-        if offline.len() >= MAX_OFFLINE_COMMANDS {
-            // Drop the oldest buffered command first so recent intent wins
-            offline.pop_front();
-            warn!("dropping control command while interface is unavailable");
+        if enqueue_offline_command(offline, command) {
+            drained += 1;
         }
-        // Preserve command order so replay matches the original user actions
-        offline.push_back(command);
-        drained += 1;
     }
     if drained > 0 {
         debug::log(PanelDebugLevel::Info, || {
@@ -54,6 +49,33 @@ pub(crate) fn stash_offline_commands(
             )
         });
     }
+}
+
+fn enqueue_offline_command(offline: &mut VecDeque<UiCommand>, command: UiCommand) -> bool {
+    match &command {
+        // Close and clear are one-shot intents, so one buffered copy is enough
+        UiCommand::ClearAll | UiCommand::ClosePanel => {
+            if offline.iter().any(|queued| queued == &command) {
+                // Duplicate one-shot replay adds no user value after reconnect
+                return false;
+            }
+        }
+        // DND should replay only the newest requested state after reconnect
+        UiCommand::SetDnd(_) => {
+            // Older states are stale once a newer DND request exists
+            offline.retain(|queued| !matches!(queued, UiCommand::SetDnd(_)));
+        }
+        UiCommand::Dismiss(_) | UiCommand::InvokeAction { .. } => {}
+    }
+
+    if offline.len() >= MAX_OFFLINE_COMMANDS {
+        // Drop the oldest buffered command first so recent intent wins
+        offline.pop_front();
+        warn!("dropping control command while interface is unavailable");
+    }
+    // Preserve command order so replay matches the original user actions
+    offline.push_back(command);
+    true
 }
 
 pub(crate) async fn flush_offline_commands(
@@ -121,5 +143,39 @@ mod tests {
         assert!(offline
             .iter()
             .any(|cmd| matches!(cmd, UiCommand::ClosePanel)));
+    }
+
+    #[test]
+    fn enqueue_offline_command_drops_duplicate_one_shot_commands() {
+        let mut offline = VecDeque::new();
+
+        assert!(enqueue_offline_command(&mut offline, UiCommand::ClosePanel));
+        assert!(!enqueue_offline_command(
+            &mut offline,
+            UiCommand::ClosePanel
+        ));
+        assert!(enqueue_offline_command(&mut offline, UiCommand::ClearAll));
+        assert!(!enqueue_offline_command(&mut offline, UiCommand::ClearAll));
+
+        assert_eq!(offline.len(), 2);
+        assert_eq!(offline[0], UiCommand::ClosePanel);
+        assert_eq!(offline[1], UiCommand::ClearAll);
+    }
+
+    #[test]
+    fn enqueue_offline_command_keeps_latest_dnd_state_only() {
+        let mut offline = VecDeque::new();
+
+        assert!(enqueue_offline_command(
+            &mut offline,
+            UiCommand::SetDnd(true)
+        ));
+        assert!(enqueue_offline_command(
+            &mut offline,
+            UiCommand::SetDnd(false)
+        ));
+
+        assert_eq!(offline.len(), 1);
+        assert_eq!(offline[0], UiCommand::SetDnd(false));
     }
 }

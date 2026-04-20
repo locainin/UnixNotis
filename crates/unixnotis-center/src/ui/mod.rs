@@ -22,6 +22,7 @@ mod events;
 mod hyprland;
 mod icons;
 mod init;
+mod input_guard;
 mod list;
 mod marquee;
 mod media_art;
