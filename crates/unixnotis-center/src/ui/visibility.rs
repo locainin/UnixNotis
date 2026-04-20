@@ -30,7 +30,9 @@ impl UiState {
             // Mirror external collapse requests into the header toggle state.
             self.panel.focus_toggle.set_active(collapsed);
         }
-        self.panel.widget_revealer.set_reveal_child(!collapsed);
+        if self.panel.widget_revealer.reveals_child() == collapsed {
+            self.panel.widget_revealer.set_reveal_child(!collapsed);
+        }
         self.list
             .set_empty_layout(!collapsed && self.has_any_widgets());
     }
@@ -93,6 +95,8 @@ impl UiState {
             format!("panel visibility set to {visible}")
         });
         if visible {
+            // Start a new probe window each time panel becomes visible
+            super::perf_probe::on_panel_open(self.panel_visible_flag.clone());
             // Activate watches so widgets only poll while the panel is open.
             if let Some(volume) = self.volume.as_ref() {
                 volume.set_watch_active(true);
@@ -149,12 +153,18 @@ impl UiState {
             let message = format!("panel allocated size: {width}x{height}");
             self.log_debug(PanelDebugLevel::Verbose, move || message);
         } else {
+            // Emit a final snapshot before timers and watches are torn down
+            super::perf_probe::on_panel_close();
             // Hide first so any teardown work does not trigger visible reflow.
             self.panel.window.set_visible(false);
             // Reset transient search UI so each open starts from the full notification list.
             if self.panel.search_toggle.is_active() {
+                // Programmatic close should not be treated as a user click.
+                self.search_toggle_guard.set(true);
                 self.panel.search_toggle.set_active(false);
-            } else if !self.panel.search_entry.text().is_empty() {
+                self.search_toggle_guard.set(false);
+            }
+            if !self.panel.search_entry.text().is_empty() {
                 // Clearing text also removes any active list filter.
                 self.panel.search_entry.set_text("");
             }

@@ -7,6 +7,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_channel::TrySendError;
 use gtk::gdk;
@@ -17,8 +18,12 @@ use unixnotis_core::PanelDebugLevel;
 use crate::dbus::{UiCommand, UiEvent};
 use crate::debug;
 
+use super::input_guard::{ClickCooldown, LatestBoolEventGate};
 use super::widget_builders::{build_extra_widgets, build_quick_controls};
 use super::{hyprland, icons, list, media_widget, panel, try_send_command, UiState, UiStateInit};
+
+const CONTROL_CLICK_GUARD_MS: u64 = 180;
+const WIDGETS_TOGGLE_COALESCE_MS: u64 = 16;
 
 impl UiState {
     pub fn new(init: UiStateInit) -> Self {
@@ -44,6 +49,8 @@ impl UiState {
 
         // DND updates are triggered from both UI and daemon; guard prevents feedback loops.
         let dnd_guard = Rc::new(Cell::new(false));
+        // Programmatic search-toggle changes (close/reset) use this guard.
+        let search_toggle_guard = Rc::new(Cell::new(false));
         let panel_visible_flag = Arc::new(AtomicBool::new(false));
         // Read the effective panel width after monitor-aware sizing is applied.
         let panel_width = panel::live_panel_width(&panel.root);
@@ -81,33 +88,63 @@ impl UiState {
         });
 
         let clear_tx = init.command_tx.clone();
+        let clear_gate = ClickCooldown::new(Duration::from_millis(CONTROL_CLICK_GUARD_MS));
         panel.clear_button.connect_clicked(move |_| {
+            if !clear_gate.try_start() {
+                return;
+            }
             debug!("clear all clicked");
             // Non-blocking send avoids UI stalls on D-Bus backpressure.
             try_send_command(&clear_tx, UiCommand::ClearAll);
         });
 
         let close_tx = init.command_tx.clone();
+        let close_gate = ClickCooldown::new(Duration::from_millis(CONTROL_CLICK_GUARD_MS));
         panel.close_button.connect_clicked(move |_| {
+            if !close_gate.try_start() {
+                return;
+            }
             debug!("close panel clicked");
             // Best-effort enqueue keeps close behavior immediate.
             try_send_command(&close_tx, UiCommand::ClosePanel);
         });
 
         let collapse_tx = init.event_tx.clone();
+        let collapse_gate =
+            LatestBoolEventGate::new(Duration::from_millis(WIDGETS_TOGGLE_COALESCE_MS));
+        let collapse_click_gate =
+            ClickCooldown::new(Duration::from_millis(panel::WIDGET_REVEAL_TRANSITION_MS));
+        let accepted_collapsed = Rc::new(Cell::new(false));
+        let collapse_restore = Rc::new(Cell::new(false));
         panel.focus_toggle.connect_toggled(move |button| {
-            let event = UiEvent::WidgetsCollapsed(button.is_active());
-            match collapse_tx.try_send(event) {
-                Ok(()) => {}
-                Err(TrySendError::Full(event)) => {
-                    // Preserve the latest toggle intent by enqueueing asynchronously.
-                    let collapse_tx = collapse_tx.clone();
-                    gtk::glib::MainContext::default().spawn_local(async move {
-                        let _ = collapse_tx.send(event).await;
-                    });
-                }
-                Err(TrySendError::Closed(_)) => {}
+            // Local rollback should not be treated as a fresh user request
+            if collapse_restore.replace(false) {
+                return;
             }
+
+            let collapsed = button.is_active();
+            if !collapse_click_gate.try_start() {
+                let accepted = accepted_collapsed.get();
+                if collapsed != accepted {
+                    // Keep the toggle aligned with the transition already in progress
+                    collapse_restore.set(true);
+                    button.set_active(accepted);
+                }
+                return;
+            }
+
+            accepted_collapsed.set(collapsed);
+            // Keep the button quiet until the revealer finishes its current slide
+            button.set_sensitive(false);
+            let button_enable = button.clone();
+            gtk::glib::timeout_add_local_once(
+                Duration::from_millis(panel::WIDGET_REVEAL_TRANSITION_MS),
+                move || {
+                    button_enable.set_sensitive(true);
+                },
+            );
+            // Rapid clicks only need the newest collapsed state once the queue clears
+            collapse_gate.request_widgets_collapsed(&collapse_tx, collapsed);
         });
 
         let filter_tx = init.event_tx.clone();
@@ -128,8 +165,41 @@ impl UiState {
 
         let search_revealer = panel.search_revealer.clone();
         let search_entry = panel.search_entry.clone();
+        let search_toggle_guard_clone = search_toggle_guard.clone();
+        let search_click_gate =
+            ClickCooldown::new(Duration::from_millis(panel::SEARCH_REVEAL_TRANSITION_MS));
+        let accepted_search_reveal = Rc::new(Cell::new(false));
+        let search_restore = Rc::new(Cell::new(false));
         panel.search_toggle.connect_toggled(move |button| {
+            if search_toggle_guard_clone.get() {
+                return;
+            }
+            // Local rollback should not be treated as a fresh user request
+            if search_restore.replace(false) {
+                return;
+            }
+
             let reveal = button.is_active();
+            if !search_click_gate.try_start() {
+                let accepted = accepted_search_reveal.get();
+                if reveal != accepted {
+                    // Keep the toggle aligned with the transition already in progress
+                    search_restore.set(true);
+                    button.set_active(accepted);
+                }
+                return;
+            }
+
+            accepted_search_reveal.set(reveal);
+            // Keep the button quiet until the revealer finishes its current slide
+            button.set_sensitive(false);
+            let button_enable = button.clone();
+            gtk::glib::timeout_add_local_once(
+                Duration::from_millis(panel::SEARCH_REVEAL_TRANSITION_MS),
+                move || {
+                    button_enable.set_sensitive(true);
+                },
+            );
             // Search reveal animation keeps the header compact until explicit use.
             search_revealer.set_reveal_child(reveal);
             if reveal {
@@ -250,6 +320,7 @@ impl UiState {
             list,
             icon_resolver,
             dnd_guard,
+            search_toggle_guard,
             panel_visible: false,
             panel_visible_flag,
             work_area: None,

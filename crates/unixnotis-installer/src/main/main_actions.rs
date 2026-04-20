@@ -2,7 +2,9 @@
 
 use anyhow::{anyhow, Result};
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -78,6 +80,8 @@ fn run_action_worker(
     ui_tx: mpsc::SyncSender<UiMessage>,
 ) {
     // Run plan steps on the worker thread and stream progress events to the UI.
+    // The flag lives across steps so install can decide later whether reload is needed
+    let service_unit_reload_required = Arc::new(AtomicBool::new(true));
     for (index, step) in plan.iter().enumerate() {
         // Index maps to app.steps in the UI state.
         let _ = ui_tx.send(UiMessage::Worker(WorkerEvent::StepStarted(index)));
@@ -91,6 +95,7 @@ fn run_action_worker(
                 log_tx: ui_tx.clone(),
                 action_mode: mode,
                 restore_backup: restore_backup.clone(),
+                service_unit_reload_required: service_unit_reload_required.clone(),
             };
             run_step(*step, &mut ctx)
         };

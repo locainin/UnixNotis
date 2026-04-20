@@ -13,6 +13,7 @@ use tracing::warn;
 use unixnotis_core::{util, PanelDebugLevel};
 
 use crate::debug;
+use crate::ui::perf_probe;
 
 use super::command::{resolve_command_plan, CommandKind};
 use super::watch_reaper::enqueue_watch_cleanup;
@@ -110,6 +111,7 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
                     let snippet = util::log_snippet(&cmd);
                     format!("watch event: {snippet}")
                 });
+                perf_probe::watch_event();
                 on_event();
             }
         }

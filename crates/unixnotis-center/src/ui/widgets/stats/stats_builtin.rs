@@ -50,6 +50,20 @@ enum BuiltinState {
     },
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(super) enum BuiltinStatKey {
+    // Every CPU card reads the same procfs source
+    Cpu,
+    // Every memory card reads the same procfs source
+    Memory,
+    // Load average is shared across cards too
+    Load,
+    // Battery cards share one aggregated battery snapshot
+    Battery,
+    // Network cards only share reads when they target the same interface
+    Network { iface: Option<String> },
+}
+
 impl BuiltinStat {
     pub(super) fn from_command(cmd: &str) -> Option<Self> {
         let trimmed = cmd.trim();
@@ -83,6 +97,18 @@ impl BuiltinStat {
             BuiltinStatKind::Load => read_loadavg(),
             BuiltinStatKind::Battery => read_battery(),
             BuiltinStatKind::Network { iface } => read_network(&mut self.state, iface),
+        }
+    }
+
+    pub(super) fn key(&self) -> BuiltinStatKey {
+        match &self.kind {
+            BuiltinStatKind::Cpu => BuiltinStatKey::Cpu,
+            BuiltinStatKind::Memory => BuiltinStatKey::Memory,
+            BuiltinStatKind::Load => BuiltinStatKey::Load,
+            BuiltinStatKind::Battery => BuiltinStatKey::Battery,
+            BuiltinStatKind::Network { iface } => BuiltinStatKey::Network {
+                iface: iface.clone(),
+            },
         }
     }
 

@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::time::Duration;
 
 use gtk::prelude::*;
 use tokio::sync::mpsc;
@@ -12,6 +13,7 @@ use unixnotis_core::{hooks, NotificationView, Urgency};
 
 use crate::dbus::UiCommand;
 use crate::ui::icons::IconResolver;
+use crate::ui::input_guard::ClickCooldown;
 use crate::ui::try_send_command;
 
 use super::super::super::list_item::RowData;
@@ -19,6 +21,8 @@ use super::state::{
     IconSignature, NotificationRowWidgets, OptionalLabelState, MAX_ACTION_LABEL_CHARS,
     MAX_BODY_LABEL_CHARS, MAX_SUMMARY_LABEL_CHARS,
 };
+
+const ACTION_BUTTON_GUARD_MS: u64 = 180;
 
 pub(in crate::ui::list) fn update_notification_row(
     row: &NotificationRowWidgets,
@@ -238,7 +242,11 @@ fn update_actions(
         let action_key = action.key.clone();
         let tx = command_tx.clone();
         let id = notification.id;
+        let action_gate = ClickCooldown::new(Duration::from_millis(ACTION_BUTTON_GUARD_MS));
         button.connect_clicked(move |_| {
+            if !action_gate.try_start() {
+                return;
+            }
             debug!(id, action = %action_key, "action invoked");
             // Action execution is best-effort and non-blocking
             // Best-effort enqueue keeps action handling responsive

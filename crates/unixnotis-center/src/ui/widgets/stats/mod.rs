@@ -8,11 +8,13 @@ mod tests;
 mod worker;
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::Instant;
 
 use unixnotis_core::StatWidgetConfig;
 
-use self::stats_builtin::BuiltinStat;
+use self::stats_builtin::{BuiltinStat, BuiltinStatKey};
 use super::utils::RefreshBackoff;
 
 pub struct StatGrid {
@@ -22,6 +24,7 @@ pub struct StatGrid {
     items: Vec<StatItem>,
 }
 
+#[derive(Clone)]
 struct StatItem {
     // Raw config is retained for command and plugin selection plus labels
     config: StatWidgetConfig,
@@ -75,4 +78,41 @@ fn apply_cached_value(label: &gtk::Label, cache: &Rc<RefCell<Option<String>>>) {
     } else if label.text().as_str() != "n/a" {
         label.set_text("n/a");
     }
+}
+
+struct BuiltinRefreshGroup {
+    // One live builtin reader is enough for all cards that point at the same source
+    stat: BuiltinStat,
+    // Every item in the group receives the same sampled value and updated reader state
+    items: Vec<StatItem>,
+}
+
+fn collect_builtin_groups(
+    items: &[StatItem],
+    now: Instant,
+    force: bool,
+) -> HashMap<BuiltinStatKey, BuiltinRefreshGroup> {
+    let mut groups: HashMap<BuiltinStatKey, BuiltinRefreshGroup> = HashMap::new();
+
+    for item in items {
+        let Some((key, stat)) = item.take_builtin_refresh(now, force) else {
+            continue;
+        };
+
+        // Keep one reader per unique builtin source, then fan the result out to every card
+        match groups.get_mut(&key) {
+            Some(group) => group.items.push(item.clone()),
+            None => {
+                groups.insert(
+                    key,
+                    BuiltinRefreshGroup {
+                        stat,
+                        items: vec![item.clone()],
+                    },
+                );
+            }
+        }
+    }
+
+    groups
 }
