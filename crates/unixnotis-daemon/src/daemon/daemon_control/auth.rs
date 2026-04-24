@@ -2,7 +2,6 @@
 //!
 //! This file isolates caller validation so the interface file can focus on D-Bus methods
 
-#[cfg(test)]
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -73,8 +72,7 @@ struct FingerprintCacheEntry {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct TrustedSnapshotCacheEntry {
     trusted_dir: PathBuf,
-    executable: String,
-    snapshot: TrustedExecutableSnapshot,
+    snapshots: HashMap<String, TrustedExecutableSnapshot>,
 }
 
 // Small bounded cache is enough because trusted control callers come from a tiny fixed set.
@@ -321,12 +319,13 @@ fn trusted_control_snapshot(
         return Some(snapshot);
     }
 
-    let snapshot = build_trusted_control_snapshot(trusted_dir, executable)?;
-    store_cached_trusted_snapshot(trusted_dir, executable, snapshot.clone());
+    // Strict auth pins the whole sibling trust set together
+    let snapshots = build_trusted_control_snapshots(trusted_dir);
+    let snapshot = snapshots.get(executable).cloned()?;
+    store_cached_trusted_snapshots(trusted_dir, snapshots);
     Some(snapshot)
 }
 
-#[cfg(test)]
 pub(super) fn build_trusted_control_snapshots(
     trusted_dir: &Path,
 ) -> HashMap<String, TrustedExecutableSnapshot> {
@@ -466,14 +465,13 @@ fn load_cached_trusted_snapshot(
     };
     cache
         .iter()
-        .find(|entry| entry.trusted_dir == trusted_dir && entry.executable == executable)
-        .map(|entry| entry.snapshot.clone())
+        .find(|entry| entry.trusted_dir == trusted_dir)
+        .and_then(|entry| entry.snapshots.get(executable).cloned())
 }
 
-fn store_cached_trusted_snapshot(
+fn store_cached_trusted_snapshots(
     trusted_dir: &Path,
-    executable: &str,
-    snapshot: TrustedExecutableSnapshot,
+    snapshots: HashMap<String, TrustedExecutableSnapshot>,
 ) {
     let cache = trusted_snapshot_cache();
     let mut cache = match cache.lock() {
@@ -481,10 +479,10 @@ fn store_cached_trusted_snapshot(
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    // Refresh existing entry when this executable was already checked for the same dir
+    // Refresh existing entry when this dir was already checked
     if let Some(index) = cache
         .iter()
-        .position(|entry| entry.trusted_dir == trusted_dir && entry.executable == executable)
+        .position(|entry| entry.trusted_dir == trusted_dir)
     {
         cache.remove(index);
     }
@@ -493,8 +491,7 @@ fn store_cached_trusted_snapshot(
     }
     cache.push(TrustedSnapshotCacheEntry {
         trusted_dir: trusted_dir.to_path_buf(),
-        executable: executable.to_string(),
-        snapshot,
+        snapshots,
     });
 }
 
