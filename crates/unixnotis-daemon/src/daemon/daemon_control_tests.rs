@@ -4,7 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use unixnotis_core::{INHIBIT_SCOPE_ALL, INHIBIT_SCOPE_POPUPS};
 
-use super::auth::{build_trusted_control_snapshots, is_trusted_control_executable_path_in_dir};
+use super::auth::{
+    build_trusted_control_snapshots, is_trusted_control_executable_path_in_dir,
+    is_trusted_control_executable_path_relaxed_in_dir,
+};
 use super::clear_all_signal_plan;
 use super::sanitize::{normalize_inhibit_scope, sanitize_inhibit_reason};
 
@@ -94,6 +97,32 @@ fn accepts_trusted_sibling_binary_only() {
     let _ = fs::remove_dir_all(other_dir);
 }
 
+#[test]
+fn all_trusted_siblings_are_pinned_by_initial_snapshot() {
+    let trusted_dir = temp_dir("pins-all-siblings");
+    let ctl = trusted_dir.join("noticenterctl");
+    let center = trusted_dir.join("unixnotis-center");
+    fs::write(&ctl, "#!/bin/sh\necho ctl\n").expect("write ctl");
+    fs::write(&center, "#!/bin/sh\necho center\n").expect("write center");
+
+    let snapshots = build_trusted_control_snapshots(&trusted_dir);
+    assert!(is_trusted_control_executable_path_in_dir(
+        &ctl,
+        &trusted_dir,
+        &snapshots,
+    ));
+
+    // A sibling that has not called yet is still pinned by the initial snapshot
+    fs::write(&center, "#!/bin/sh\necho replaced\n").expect("replace center");
+    assert!(!is_trusted_control_executable_path_in_dir(
+        &center,
+        &trusted_dir,
+        &snapshots,
+    ));
+
+    let _ = fs::remove_dir_all(trusted_dir);
+}
+
 #[cfg(unix)]
 #[test]
 fn rejects_group_writable_trusted_binary() {
@@ -114,6 +143,85 @@ fn rejects_group_writable_trusted_binary() {
     ));
 
     let _ = fs::remove_dir_all(trusted_dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn relaxed_trial_auth_accepts_replaced_sibling_binary() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let trusted_dir = temp_dir("relaxed-accepts-replaced");
+    let trusted = trusted_dir.join("noticenterctl");
+    fs::write(&trusted, "#!/bin/sh\necho original\n").expect("write trusted sibling");
+    let mut permissions = fs::metadata(&trusted).expect("metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&trusted, permissions).expect("set permissions");
+
+    let snapshots = build_trusted_control_snapshots(&trusted_dir);
+    assert!(is_trusted_control_executable_path_in_dir(
+        &trusted,
+        &trusted_dir,
+        &snapshots,
+    ));
+
+    // Trial mode should keep trusting this path after local debug rebuilds
+    fs::write(&trusted, "#!/bin/sh\necho rebuilt\n").expect("overwrite trusted sibling");
+    assert!(!is_trusted_control_executable_path_in_dir(
+        &trusted,
+        &trusted_dir,
+        &snapshots,
+    ));
+    assert!(is_trusted_control_executable_path_relaxed_in_dir(
+        &trusted,
+        &trusted_dir,
+    ));
+
+    let _ = fs::remove_dir_all(trusted_dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn relaxed_trial_auth_still_rejects_group_writable_sibling_binary() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let trusted_dir = temp_dir("relaxed-rejects-group-writable");
+    let trusted = trusted_dir.join("noticenterctl");
+    fs::write(&trusted, "#!/bin/sh\n").expect("write trusted sibling");
+    let mut permissions = fs::metadata(&trusted).expect("metadata").permissions();
+    permissions.set_mode(0o775);
+    fs::set_permissions(&trusted, permissions).expect("set permissions");
+
+    assert!(!is_trusted_control_executable_path_relaxed_in_dir(
+        &trusted,
+        &trusted_dir,
+    ));
+
+    let _ = fs::remove_dir_all(trusted_dir);
+}
+
+#[test]
+fn relaxed_trial_auth_accepts_debug_release_siblings_for_same_target_root() {
+    let target_root = temp_dir("relaxed-target-root");
+    let debug_dir = target_root.join("debug");
+    let release_dir = target_root.join("release");
+    fs::create_dir_all(&debug_dir).expect("create debug dir");
+    fs::create_dir_all(&release_dir).expect("create release dir");
+
+    let debug_ctl = debug_dir.join("noticenterctl");
+    fs::write(&debug_ctl, "#!/bin/sh\n").expect("write debug ctl");
+    let release_ctl = release_dir.join("noticenterctl");
+    fs::write(&release_ctl, "#!/bin/sh\n").expect("write release ctl");
+
+    assert!(is_trusted_control_executable_path_relaxed_in_dir(
+        &debug_ctl,
+        &release_dir,
+    ));
+    assert!(is_trusted_control_executable_path_relaxed_in_dir(
+        &release_ctl,
+        &debug_dir,
+    ));
+
+    let _ = fs::remove_dir_all(target_root);
 }
 
 #[test]
