@@ -55,6 +55,10 @@ const KNOWN_DAEMONS: &[KnownDaemon] = &[
         name: "notify-osd",
         unit: "notify-osd.service",
     },
+    KnownDaemon {
+        name: "quickshell",
+        unit: "quickshell.service",
+    },
 ];
 
 pub fn detect() -> Detection {
@@ -293,7 +297,19 @@ fn read_cmdline_program(pid: u32) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_busctl_json, parse_busctl_status};
+    use super::{parse_busctl_json, parse_busctl_status, KNOWN_DAEMONS};
+
+    #[test]
+    fn known_daemons_include_quickshell_owner() {
+        // Installer detection should match daemon trial-mode owner handling
+        let quickshell = KNOWN_DAEMONS
+            .iter()
+            .find(|daemon| daemon.name == "quickshell")
+            .expect("quickshell should be known");
+
+        // Unit metadata keeps status output and restore hints consistent
+        assert_eq!(quickshell.unit, "quickshell.service");
+    }
 
     #[test]
     fn parse_busctl_status_reads_indented_fields() {
