@@ -1,6 +1,6 @@
-//! Action execution, worker coordination, and state transitions for the installer.
+//! Action workflow, worker coordination, and state transitions for the installer
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
@@ -25,7 +25,9 @@ pub(crate) fn start_action(
     ui_tx: &mpsc::SyncSender<UiMessage>,
     mode: ActionMode,
 ) -> Result<()> {
+    // Resolve paths once so every step in this action uses the same install target
     let paths = InstallPaths::discover()?;
+    // Install state is only needed for install decisions like service start mode
     let install_state = if mode == ActionMode::Install {
         Some(check_install_state(&paths))
     } else {
@@ -34,14 +36,17 @@ pub(crate) fn start_action(
 
     let (plan, restore_backup) = match mode {
         ActionMode::Reset => match &app.reset_action {
+            // Default reset uses the normal reset plan
             crate::model::ResetAction::ResetDefaults => (build_plan(mode), None),
             crate::model::ResetAction::RestoreBackup { path } => {
+                // Restore runs only the restore step and carries the chosen backup path
                 (vec![StepKind::RestoreConfig], Some(path.clone()))
             }
         },
         _ => (build_plan(mode), None),
     };
 
+    // Reset visible progress state before the worker starts sending events
     app.steps = steps_from_plan(&plan);
     app.logs.clear();
     app.last_error = None;
@@ -53,6 +58,7 @@ pub(crate) fn start_action(
         .terminal_mut()
         .draw(|frame| ui::draw(frame, app))?;
 
+    // Detection is cloned so the worker can run without borrowing UI state
     let detection = app.detection.clone();
     let ui_tx = ui_tx.clone();
     thread::spawn(move || {
@@ -79,14 +85,14 @@ fn run_action_worker(
     restore_backup: Option<PathBuf>,
     ui_tx: mpsc::SyncSender<UiMessage>,
 ) {
-    // Run plan steps on the worker thread and stream progress events to the UI.
+    // Run plan steps on the worker thread and stream progress events to the UI
     // The flag lives across steps so install can decide later whether reload is needed
     let service_unit_reload_required = Arc::new(AtomicBool::new(true));
     for (index, step) in plan.iter().enumerate() {
-        // Index maps to app.steps in the UI state.
+        // Index maps to app.steps in the UI state
         let _ = ui_tx.send(UiMessage::Worker(WorkerEvent::StepStarted(index)));
 
-        // Build per-step context; clone install_state to avoid borrow issues.
+        // Build per-step context; clone install_state to avoid borrow issues
         let result = {
             let mut ctx = ActionContext {
                 detection: &detection,
@@ -102,9 +108,11 @@ fn run_action_worker(
 
         match result {
             Ok(()) => {
+                // Successful steps advance the progress list in order
                 let _ = ui_tx.send(UiMessage::Worker(WorkerEvent::StepCompleted(index)));
             }
             Err(err) => {
+                // Stop the worker after the first failed step so later steps cannot compound damage
                 let _ = ui_tx.send(UiMessage::Worker(WorkerEvent::StepFailed(
                     index,
                     err.to_string(),
@@ -121,16 +129,19 @@ fn run_action_worker(
 pub(crate) fn apply_worker_event(app: &mut App, event: WorkerEvent) {
     match event {
         WorkerEvent::StepStarted(index) => {
+            // Missing indices are ignored because UI state may have reset after worker start
             if let Some(step) = app.steps.get_mut(index) {
                 step.status = StepStatus::Running;
             }
         }
         WorkerEvent::StepCompleted(index) => {
+            // Step completion is best-effort because the worker is decoupled from UI state
             if let Some(step) = app.steps.get_mut(index) {
                 step.status = StepStatus::Done;
             }
         }
         WorkerEvent::StepFailed(index, err) => {
+            // Preserve the error message for the progress screen
             if let Some(step) = app.steps.get_mut(index) {
                 step.status = StepStatus::Failed;
             }
@@ -140,9 +151,11 @@ pub(crate) fn apply_worker_event(app: &mut App, event: WorkerEvent) {
             app.progress_ready_at = Some(std::time::Instant::now() + Duration::from_millis(400));
         }
         WorkerEvent::LogLine(line) => {
+            // Worker logs are bounded by append_log
             append_log(app, line);
         }
         WorkerEvent::Finished => {
+            // Finished should not overwrite a failed progress state
             if matches!(app.progress_state, ProgressState::Running) {
                 app.progress_state = ProgressState::Completed;
                 app.progress_ready_at =
@@ -153,13 +166,13 @@ pub(crate) fn apply_worker_event(app: &mut App, event: WorkerEvent) {
 }
 
 fn append_log(app: &mut App, line: String) {
-    // Bound log memory usage by trimming old entries.
+    // Bound log memory usage by trimming old entries
     const MAX_LINES: usize = 200;
 
     app.logs.push_back(line);
 
     if app.logs.len() > MAX_LINES {
-        // VecDeque allows O(1) removal from the front.
+        // VecDeque allows O(1) removal from the front
         while app.logs.len() > MAX_LINES {
             app.logs.pop_front();
         }
@@ -167,6 +180,7 @@ fn append_log(app: &mut App, line: String) {
 }
 
 pub(crate) fn reset_to_menu(app: &mut App) {
+    // Return every transient menu and progress field to the welcome state
     app.screen = Screen::Welcome;
     app.last_error = None;
     app.logs.clear();
@@ -183,7 +197,7 @@ pub(crate) fn reset_to_menu(app: &mut App) {
 }
 
 pub(crate) fn prepare_build_accel_prompt(app: &mut App) {
-    // Snapshot detection so the prompt remains stable while the user decides.
+    // Snapshot detection so the prompt remains stable while the user decides
     let detection = match InstallPaths::discover() {
         Ok(paths) => detect_build_accel(&paths.repo_root),
         Err(err) => detect_build_accel_without_repo(err.to_string()),
@@ -196,7 +210,7 @@ pub(crate) fn prepare_build_accel_prompt(app: &mut App) {
 }
 
 fn apply_build_accel_setup(app: &mut App) {
-    // Writes per-repository Cargo config only when explicitly requested.
+    // Writes per-repository Cargo config only when explicitly requested
     let Some(state) = app.build_accel.as_mut() else {
         return;
     };
@@ -209,18 +223,20 @@ fn apply_build_accel_setup(app: &mut App) {
     };
     let outcome = write_build_accel_config(&paths.repo_root, &state.detection);
     state.outcome = Some(outcome);
-    // Keep selection on the only available action once a result is shown.
+    // Keep selection on the only available action once a result is shown
     app.build_accel_menu_index = 0;
-    // Refresh detection so config state is reflected in the prompt immediately.
+    // Refresh detection so config state is reflected in the prompt immediately
     state.detection = detect_build_accel(&paths.repo_root);
 }
 
 pub(crate) fn handle_build_accel_enter(app: &mut App) {
     match app.build_accel_menu_mode() {
         crate::app::BuildAccelMenuMode::ReturnOnly => {
+            // Completed prompt returns directly to the main menu
             reset_to_menu(app);
         }
         crate::app::BuildAccelMenuMode::EnableOrSkip => {
+            // First entry enables acceleration, second entry skips it
             if app.build_accel_menu_index == 0 {
                 apply_build_accel_setup(app);
             } else {
@@ -228,38 +244,12 @@ pub(crate) fn handle_build_accel_enter(app: &mut App) {
             }
         }
         crate::app::BuildAccelMenuMode::Reinstall => {
+            // Reinstall mode keeps return first and setup second
             if app.build_accel_menu_index == 0 {
                 reset_to_menu(app);
             } else {
                 apply_build_accel_setup(app);
             }
         }
-    }
-}
-
-pub(crate) fn run_trial(repo_root: PathBuf) -> Result<()> {
-    println!("Starting UnixNotis trial run.");
-    println!("Press Ctrl+C to stop and restore the previous daemon.");
-
-    let status = std::process::Command::new("cargo")
-        .args([
-            "run",
-            "--release",
-            "-p",
-            "unixnotis-daemon",
-            "--",
-            "--trial",
-            "--restore",
-            "auto",
-            "--yes",
-        ])
-        .current_dir(&repo_root)
-        .status()
-        .map_err(|err| anyhow!("failed to run trial: {}", err))?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(anyhow!("trial run exited with failure"))
     }
 }

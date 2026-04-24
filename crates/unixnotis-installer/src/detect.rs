@@ -29,12 +29,12 @@ pub struct Detection {
     pub daemons: Vec<DetectedDaemon>,
 }
 
-struct KnownDaemon {
-    name: &'static str,
-    unit: &'static str,
+pub(crate) struct KnownDaemon {
+    pub(crate) name: &'static str,
+    pub(crate) unit: &'static str,
 }
 
-const KNOWN_DAEMONS: &[KnownDaemon] = &[
+pub(crate) const KNOWN_DAEMONS: &[KnownDaemon] = &[
     KnownDaemon {
         name: "unixnotis-daemon",
         unit: "unixnotis-daemon.service",
@@ -55,6 +55,10 @@ const KNOWN_DAEMONS: &[KnownDaemon] = &[
         name: "notify-osd",
         unit: "notify-osd.service",
     },
+    KnownDaemon {
+        name: "quickshell",
+        unit: "quickshell.service",
+    },
 ];
 
 pub fn detect() -> Detection {
@@ -63,7 +67,7 @@ pub fn detect() -> Detection {
     Detection { owner, daemons }
 }
 
-fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
+pub(crate) fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
     // Parses `busctl --user status` output and tolerates the indented key/value format.
     let mut comm = None;
     let mut pid = None;
@@ -104,7 +108,7 @@ fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
     Some(OwnerInfo { pid, comm })
 }
 
-fn parse_busctl_json(status: &str) -> Option<OwnerInfo> {
+pub(crate) fn parse_busctl_json(status: &str) -> Option<OwnerInfo> {
     // Accept loosely structured JSON and search for PID/Comm fields anywhere in the tree.
     let value: Value = serde_json::from_str(status).ok()?;
     let mut comm = None;
@@ -288,78 +292,5 @@ fn read_cmdline_program(pid: u32) -> Option<String> {
         None
     } else {
         Some(name.to_string())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{parse_busctl_json, parse_busctl_status};
-
-    #[test]
-    fn parse_busctl_status_reads_indented_fields() {
-        // Confirms indented output with spaced separators still yields PID and command name.
-        let output = "\
-Status of org.freedesktop.Notifications:
-   Name=org.freedesktop.Notifications
-   PID = 4242
-   UID=1000
-   User=user
-   Comm = unixnotis-daemon
-";
-        let owner = parse_busctl_status(output).expect("expected parsed owner info");
-        assert_eq!(owner.pid, Some(4242));
-        assert_eq!(owner.comm.as_deref(), Some("unixnotis-daemon"));
-    }
-
-    #[test]
-    fn parse_busctl_status_handles_comm_only() {
-        // Verifies comm-only output remains useful when PID is absent.
-        let output = "\
-Status of org.freedesktop.Notifications:
-    Comm=dunst
-";
-        let owner = parse_busctl_status(output).expect("expected parsed owner info");
-        assert_eq!(owner.pid, None);
-        assert_eq!(owner.comm.as_deref(), Some("dunst"));
-    }
-
-    #[test]
-    fn parse_busctl_status_ignores_invalid_pid() {
-        // Ensures invalid PID values do not produce a false-positive owner.
-        let output = "\
-Status of org.freedesktop.Notifications:
-    PID=not-a-number
-";
-        let owner = parse_busctl_status(output);
-        assert!(owner.is_none());
-    }
-
-    #[test]
-    fn parse_busctl_status_ignores_zero_pid() {
-        // Treats PID 0 as invalid while still preserving the command name.
-        let output = "\
-Status of org.freedesktop.Notifications:
-    PID=0
-    Comm=notify-osd
-";
-        let owner = parse_busctl_status(output).expect("expected parsed owner info");
-        assert_eq!(owner.pid, None);
-        assert_eq!(owner.comm.as_deref(), Some("notify-osd"));
-    }
-
-    #[test]
-    fn parse_busctl_json_reads_pid_and_comm() {
-        // Confirms JSON parsing extracts PID and command name when present.
-        let output = r#"
-{
-  "Status": {
-    "PID": 4242,
-    "Comm": "unixnotis-daemon"
-  }
-}
-"#;
-        let owner = parse_busctl_json(output).expect("expected parsed owner info");
-        assert_eq!(owner.pid, Some(4242));
-        assert_eq!(owner.comm.as_deref(), Some("unixnotis-daemon"));
     }
 }

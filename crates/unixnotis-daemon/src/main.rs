@@ -131,7 +131,7 @@ async fn main() -> Result<()> {
 
     // Resolve sound settings once to avoid repeated filesystem work.
     let sound_settings = SoundSettings::from_config(&config);
-    let state = DaemonState::new(connection.clone(), config, sound_settings);
+    let state = DaemonState::new(connection.clone(), config, sound_settings, args.trial);
     let scheduler = ExpirationScheduler::start(state.clone());
     // Close and clear paths need the scheduler handle so timers can be canceled early
     state.set_scheduler(scheduler.clone());
