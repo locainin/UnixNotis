@@ -54,10 +54,17 @@ pub struct DaemonState {
     // Burst tracking lets one noisy sender fall back to snapshot invalidation
     // instead of forcing a storm of full add/update fanout
     notification_signal_bursts: StdMutex<std::collections::HashMap<String, NotificationBurstState>>,
+    // Trial mode allows local rebuild loops without forcing daemon restarts for control auth
+    trial_mode: bool,
 }
 
 impl DaemonState {
-    pub fn new(connection: Connection, config: Config, sound: SoundSettings) -> Arc<Self> {
+    pub fn new(
+        connection: Connection,
+        config: Config,
+        sound: SoundSettings,
+        trial_mode: bool,
+    ) -> Arc<Self> {
         let store = NotificationStore::new(config);
         Arc::new(Self {
             store: Mutex::new(store),
@@ -70,6 +77,7 @@ impl DaemonState {
             last_emitted_state: StdMutex::new(None),
             last_emitted_popup_gate: StdMutex::new(None),
             notification_signal_bursts: StdMutex::new(std::collections::HashMap::new()),
+            trial_mode,
         })
     }
 
@@ -245,6 +253,10 @@ impl DaemonState {
             &self.notification_signal_bursts,
             sender_name.unwrap_or("<unknown>"),
         )
+    }
+
+    pub(crate) fn trial_mode(&self) -> bool {
+        self.trial_mode
     }
 }
 
