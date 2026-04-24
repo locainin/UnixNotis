@@ -97,6 +97,32 @@ fn accepts_trusted_sibling_binary_only() {
     let _ = fs::remove_dir_all(other_dir);
 }
 
+#[test]
+fn all_trusted_siblings_are_pinned_by_initial_snapshot() {
+    let trusted_dir = temp_dir("pins-all-siblings");
+    let ctl = trusted_dir.join("noticenterctl");
+    let center = trusted_dir.join("unixnotis-center");
+    fs::write(&ctl, "#!/bin/sh\necho ctl\n").expect("write ctl");
+    fs::write(&center, "#!/bin/sh\necho center\n").expect("write center");
+
+    let snapshots = build_trusted_control_snapshots(&trusted_dir);
+    assert!(is_trusted_control_executable_path_in_dir(
+        &ctl,
+        &trusted_dir,
+        &snapshots,
+    ));
+
+    // A sibling that has not called yet is still pinned by the initial snapshot
+    fs::write(&center, "#!/bin/sh\necho replaced\n").expect("replace center");
+    assert!(!is_trusted_control_executable_path_in_dir(
+        &center,
+        &trusted_dir,
+        &snapshots,
+    ));
+
+    let _ = fs::remove_dir_all(trusted_dir);
+}
+
 #[cfg(unix)]
 #[test]
 fn rejects_group_writable_trusted_binary() {
