@@ -2,15 +2,13 @@
 //!
 //! This file isolates caller validation so the interface file can focus on D-Bus methods
 
+#[cfg(test)]
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 
 use rustix::process::geteuid;
-use sha2::{Digest, Sha256};
 use tracing::warn;
 use zbus::fdo::DBusProxy;
 use zbus::message::Header;
@@ -37,10 +35,8 @@ pub(super) struct TrustedExecutableSnapshot {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct FileFingerprint {
-    // File length catches most replacement attempts before hashing even matters
-    len: u64,
-    // Content hash blocks exact-name swaps inside a writable sibling directory
-    sha256: [u8; 32],
+    // Stable metadata signature catches path swaps and in-place rewrites cheaply
+    signature: FileFingerprintSignature,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -74,8 +70,16 @@ struct FingerprintCacheEntry {
     fingerprint: FileFingerprint,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TrustedSnapshotCacheEntry {
+    trusted_dir: PathBuf,
+    executable: String,
+    snapshot: TrustedExecutableSnapshot,
+}
+
 // Small bounded cache is enough because trusted control callers come from a tiny fixed set.
 const FINGERPRINT_CACHE_CAPACITY: usize = 32;
+const TRUSTED_SNAPSHOT_CACHE_CAPACITY: usize = 32;
 
 pub(super) async fn authorize_control_call(
     state: &Arc<DaemonState>,
@@ -143,7 +147,7 @@ async fn authorize_control_call_for_executables(
         path.file_name()
             .and_then(|name| name.to_str())
             .is_some_and(|name| allowed_executables.contains(&name))
-            && is_trusted_control_executable_path(path)
+            && is_trusted_control_executable_path(path, state.trial_mode())
     }) {
         warn!(
             method,
@@ -176,15 +180,40 @@ async fn read_process_executable_path(_pid: u32) -> Option<PathBuf> {
     None
 }
 
-pub(super) fn is_trusted_control_executable_path(path: &Path) -> bool {
+pub(super) fn is_trusted_control_executable_path(path: &Path, relaxed: bool) -> bool {
     // Trust only sibling binaries
     let Some(trusted_dir) = trusted_control_directory() else {
         return false;
     };
-    let snapshots = trusted_control_snapshots(&trusted_dir);
-    is_trusted_control_executable_path_in_dir(path, &trusted_dir, snapshots)
+
+    // Canonicalize observed path first so comparisons use a stable filesystem identity
+    let observed = canonicalize_best_effort(path);
+    // Require an exact trusted binary name, not a suffix-alike alias
+    let Some(observed_name) = observed.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    if !TRUSTED_CONTROL_EXECUTABLES.contains(&observed_name) {
+        return false;
+    }
+
+    if relaxed {
+        return is_trusted_control_executable_path_relaxed_in_dir(&observed, &trusted_dir);
+    }
+
+    let Some(snapshot) = trusted_control_snapshot(&trusted_dir, observed_name) else {
+        return false;
+    };
+
+    // Exact path match keeps trust scoped to the daemon's own sibling binary set.
+    if snapshot.canonical_path != observed {
+        return false;
+    }
+
+    // Recompute the live fingerprint so on-disk swaps after daemon startup are detected.
+    file_fingerprint(&observed).is_some_and(|fingerprint| fingerprint == snapshot.fingerprint)
 }
 
+#[cfg(test)]
 pub(super) fn is_trusted_control_executable_path_in_dir(
     path: &Path,
     _trusted_dir: &Path,
@@ -214,6 +243,69 @@ pub(super) fn is_trusted_control_executable_path_in_dir(
     file_fingerprint(&observed).is_some_and(|fingerprint| fingerprint == snapshot.fingerprint)
 }
 
+pub(super) fn is_trusted_control_executable_path_relaxed_in_dir(
+    path: &Path,
+    trusted_dir: &Path,
+) -> bool {
+    // Relaxed mode is only used for trial runs where local rebuilds are expected
+    let Some(executable) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    if !TRUSTED_CONTROL_EXECUTABLES.contains(&executable) {
+        return false;
+    }
+
+    // Keep unsafe permission layouts out of the trial trust path
+    let metadata = match std::fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(_) => return false,
+    };
+    if !metadata.is_file() || !trusted_control_file_metadata_is_safe(&metadata) {
+        return false;
+    }
+
+    // Keep trust scoped to known local build/install locations in trial mode
+    trusted_path_matches_executable(trusted_dir, executable, path)
+        || trusted_profile_sibling_matches_executable(trusted_dir, executable, path)
+        || trusted_local_bin_matches_executable(executable, path)
+}
+
+fn trusted_path_matches_executable(trusted_dir: &Path, executable: &str, observed: &Path) -> bool {
+    let candidate = trusted_dir.join(executable);
+    canonicalize_best_effort(&candidate) == observed
+}
+
+fn trusted_profile_sibling_matches_executable(
+    trusted_dir: &Path,
+    executable: &str,
+    observed: &Path,
+) -> bool {
+    // Developer trial runs often mix target/debug and target/release tools
+    let profile = trusted_dir.file_name().and_then(|name| name.to_str());
+    if !matches!(profile, Some("debug" | "release")) {
+        return false;
+    }
+    let Some(target_root) = trusted_dir.parent() else {
+        return false;
+    };
+    ["debug", "release"]
+        .iter()
+        .map(|variant| target_root.join(variant).join(executable))
+        .any(|candidate| canonicalize_best_effort(&candidate) == observed)
+}
+
+fn trusted_local_bin_matches_executable(executable: &str, observed: &Path) -> bool {
+    // Installed keybinds usually point to ~/.local/bin during trial sessions
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+    let candidate = PathBuf::from(home)
+        .join(".local")
+        .join("bin")
+        .join(executable);
+    canonicalize_best_effort(&candidate) == observed
+}
+
 fn trusted_control_directory() -> Option<PathBuf> {
     // Use the daemon install dir
     let current_exe = std::env::current_exe().ok()?;
@@ -221,39 +313,50 @@ fn trusted_control_directory() -> Option<PathBuf> {
     current_exe.parent().map(|parent| parent.to_path_buf())
 }
 
-fn trusted_control_snapshots(
+fn trusted_control_snapshot(
     trusted_dir: &Path,
-) -> &'static HashMap<String, TrustedExecutableSnapshot> {
-    static SNAPSHOTS: OnceLock<HashMap<String, TrustedExecutableSnapshot>> = OnceLock::new();
-    // Build the snapshot once
-    SNAPSHOTS.get_or_init(|| build_trusted_control_snapshots(trusted_dir))
+    executable: &str,
+) -> Option<TrustedExecutableSnapshot> {
+    if let Some(snapshot) = load_cached_trusted_snapshot(trusted_dir, executable) {
+        return Some(snapshot);
+    }
+
+    let snapshot = build_trusted_control_snapshot(trusted_dir, executable)?;
+    store_cached_trusted_snapshot(trusted_dir, executable, snapshot.clone());
+    Some(snapshot)
 }
 
+#[cfg(test)]
 pub(super) fn build_trusted_control_snapshots(
     trusted_dir: &Path,
 ) -> HashMap<String, TrustedExecutableSnapshot> {
     // Read trusted files once
     let mut snapshots = HashMap::new();
     for executable in TRUSTED_CONTROL_EXECUTABLES {
-        // Missing file means not trusted
-        let candidate = trusted_dir.join(executable);
-        if !candidate.is_file() {
-            continue;
-        }
-
-        let canonical = canonicalize_best_effort(&candidate);
-        let Some(fingerprint) = file_fingerprint(&canonical) else {
+        let Some(snapshot) = build_trusted_control_snapshot(trusted_dir, executable) else {
             continue;
         };
-        snapshots.insert(
-            executable.to_string(),
-            TrustedExecutableSnapshot {
-                canonical_path: canonical,
-                fingerprint,
-            },
-        );
+        snapshots.insert(executable.to_string(), snapshot);
     }
     snapshots
+}
+
+fn build_trusted_control_snapshot(
+    trusted_dir: &Path,
+    executable: &str,
+) -> Option<TrustedExecutableSnapshot> {
+    // Missing file means not trusted
+    let candidate = trusted_dir.join(executable);
+    if !candidate.is_file() {
+        return None;
+    }
+
+    let canonical = canonicalize_best_effort(&candidate);
+    let fingerprint = file_fingerprint(&canonical)?;
+    Some(TrustedExecutableSnapshot {
+        canonical_path: canonical,
+        fingerprint,
+    })
 }
 
 fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
@@ -269,22 +372,8 @@ fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
         return Some(cached);
     }
 
-    // Hash the whole file
-    let mut file = File::open(path).ok()?;
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 16 * 1024];
-    loop {
-        let read = file.read(&mut buf).ok()?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buf[..read]);
-    }
-
-    let fingerprint = FileFingerprint {
-        len: metadata.len(),
-        sha256: hasher.finalize().into(),
-    };
+    // Metadata signature is fast and still detects replacement and rewrite events
+    let fingerprint = FileFingerprint { signature };
     store_cached_fingerprint(path, signature, fingerprint.clone());
     Some(fingerprint)
 }
@@ -358,6 +447,54 @@ fn store_cached_fingerprint(
         path: path.to_path_buf(),
         signature,
         fingerprint,
+    });
+}
+
+fn trusted_snapshot_cache() -> &'static Mutex<Vec<TrustedSnapshotCacheEntry>> {
+    static CACHE: OnceLock<Mutex<Vec<TrustedSnapshotCacheEntry>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn load_cached_trusted_snapshot(
+    trusted_dir: &Path,
+    executable: &str,
+) -> Option<TrustedExecutableSnapshot> {
+    let cache = trusted_snapshot_cache();
+    let cache = match cache.lock() {
+        Ok(cache) => cache,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    cache
+        .iter()
+        .find(|entry| entry.trusted_dir == trusted_dir && entry.executable == executable)
+        .map(|entry| entry.snapshot.clone())
+}
+
+fn store_cached_trusted_snapshot(
+    trusted_dir: &Path,
+    executable: &str,
+    snapshot: TrustedExecutableSnapshot,
+) {
+    let cache = trusted_snapshot_cache();
+    let mut cache = match cache.lock() {
+        Ok(cache) => cache,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    // Refresh existing entry when this executable was already checked for the same dir
+    if let Some(index) = cache
+        .iter()
+        .position(|entry| entry.trusted_dir == trusted_dir && entry.executable == executable)
+    {
+        cache.remove(index);
+    }
+    if cache.len() >= TRUSTED_SNAPSHOT_CACHE_CAPACITY {
+        cache.remove(0);
+    }
+    cache.push(TrustedSnapshotCacheEntry {
+        trusted_dir: trusted_dir.to_path_buf(),
+        executable: executable.to_string(),
+        snapshot,
     });
 }
 
