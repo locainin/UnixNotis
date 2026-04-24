@@ -14,8 +14,8 @@ mod checks;
 mod detect;
 mod events;
 // Keep installer entrypoint lean by delegating to modules stored under src/main/.
-#[path = "main/main_actions.rs"]
-mod main_actions;
+#[path = "main/action_workflow.rs"]
+mod action_workflow;
 #[path = "main/main_flow.rs"]
 mod main_flow;
 #[path = "main/main_handlers.rs"]
@@ -23,14 +23,19 @@ mod main_handlers;
 mod model;
 mod paths;
 mod terminal;
+#[cfg(test)]
+#[path = "main/tests.rs"]
+mod tests;
+#[path = "main/trial.rs"]
+mod trial;
 mod ui;
 
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::main_actions::run_trial;
 use crate::main_flow::run_app;
 use crate::terminal::TerminalGuard;
+use crate::trial::run_trial;
 
 fn main() -> Result<()> {
     let mut app = app::App::new();

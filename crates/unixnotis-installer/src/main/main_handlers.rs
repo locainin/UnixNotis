@@ -5,11 +5,11 @@ use crossterm::event::{KeyCode, KeyEvent};
 use std::sync::mpsc;
 use std::time::Instant;
 
-use crate::app::{App, MenuItem, ProgressState, Screen};
-use crate::events::UiMessage;
-use crate::main_actions::{
+use crate::action_workflow::{
     handle_build_accel_enter, prepare_build_accel_prompt, reset_to_menu, start_action,
 };
+use crate::app::{App, MenuItem, ProgressState, Screen};
+use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::terminal::TerminalGuard;
