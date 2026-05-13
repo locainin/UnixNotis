@@ -48,6 +48,11 @@ pub(in crate::ui::list) fn update_notification_row(
     set_class_state(root, hooks::shared_state::ACTIVE, data.is_active);
     // Stacked class indicates collapsed entries in grouped mode
     set_class_state(root, hooks::shared_state::STACKED, data.stacked);
+    // Grouped cards are separate ListView rows, so direct hooks replace dead descendant CSS
+    set_class_state(root, hooks::panel_card::GROUPED, true);
+    // Collapsed and expanded hooks let themes space grouped cards directly
+    set_class_state(root, hooks::panel_card::GROUP_COLLAPSED, data.stacked);
+    set_class_state(root, hooks::panel_card::GROUP_EXPANDED, data.expanded);
 
     // Extra state classes give themes better hooks without changing old selectors
     set_class_state(

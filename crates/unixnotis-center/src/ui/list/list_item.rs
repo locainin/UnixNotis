@@ -69,6 +69,7 @@ impl RowData {
         group_key: Rc<str>,
         notification: Rc<NotificationView>,
         stacked: bool,
+        expanded: bool,
         is_active: bool,
     ) -> Self {
         Self {
@@ -76,7 +77,7 @@ impl RowData {
             id: notification.id,
             group_key,
             count: 0,
-            expanded: false,
+            expanded,
             stacked,
             ghost_depth: 0,
             is_active,

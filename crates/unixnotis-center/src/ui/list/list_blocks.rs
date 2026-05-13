@@ -53,6 +53,7 @@ impl NotificationList {
                 entry.app_key.clone(),
                 entry.view.clone(),
                 stacked,
+                expanded,
                 entry.is_active,
             ));
             items.push(entry.item.clone());
