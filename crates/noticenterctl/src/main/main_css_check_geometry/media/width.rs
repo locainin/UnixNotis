@@ -16,8 +16,8 @@ impl GeometryModel {
             // No media widget means no media width pressure
             return None;
         }
-        // Width warnings compare the final shell pressure to the configured panel width
-        let required_panel_width_px = self.media_required_panel_width_px(config);
+        // Width warnings compare the minimum shell pressure to the configured panel width
+        let required_panel_width_px = self.media_minimum_panel_width_px(config);
         width_warning(
             "media row",
             required_panel_width_px,
@@ -42,26 +42,22 @@ impl GeometryModel {
         ))
     }
 
-    fn media_required_panel_width_px(&self, config: &Config) -> i32 {
-        // Stock pressure is used as the baseline because the final warning talks in panel width
-        let pressure = self.media_pressure_px(config);
+    fn media_minimum_panel_width_px(&self, config: &Config) -> i32 {
+        let pressure = self.media_minimum_pressure_px(config);
         let stock = stock_geometry_model();
         let stock_config = stock_config();
-        let stock_pressure = stock.media_pressure_px(stock_config);
+        let stock_pressure = stock.media_minimum_pressure_px(stock_config);
 
-        // The delta from stock is easier to reason about than an absolute guess
         stock_config.panel.width + (pressure - stock_pressure)
     }
 
-    fn media_pressure_px(&self, config: &Config) -> i32 {
+    fn media_minimum_pressure_px(&self, config: &Config) -> i32 {
         // The shell snapshot keeps the width math deterministic across helper calls
         let shell = ModeledMediaShell::from_config(&config.media);
-        let text_width_px = config
-            .panel
-            .width
-            .saturating_sub(media_text_reserve_px(shell))
-            .max(shell.text_width_floor_px.max(MEDIA_TEXT_WIDTH_FLOOR_PX));
-        // The text lane is fixed by the widget builder, but meta padding can still widen it
+        // The runtime title lane grows with the panel, but minimum-width lint must stay
+        // actionable. Using the floor prevents required width from growing with panel.width
+        let text_width_px = shell.text_width_floor_px.max(MEDIA_TEXT_WIDTH_FLOOR_PX);
+        // The text lane has a configured minimum, but meta padding can still widen it
         let meta_width_px = self
             .media_meta
             .outer_width_px(text_width_px)
@@ -192,6 +188,7 @@ impl GeometryModel {
     }
 }
 
+#[cfg(test)]
 pub(super) fn media_text_reserve_px(shell: ModeledMediaShell) -> i32 {
     // Reserve math mirrors the runtime shell so marquee width stays in sync with widget layout
     let mut reserve_px = 0;

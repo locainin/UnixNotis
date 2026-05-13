@@ -41,6 +41,29 @@ fn skips_toggle_warning_when_budget_is_safe() {
 }
 
 #[test]
+fn stat_grid_warning_uses_configured_column_count() {
+    let mut config = Config::default();
+    config.panel.width = 360;
+    config.widgets.stat_columns = 4;
+    while config.widgets.stats.len() < 4 {
+        let mut stat = config.widgets.stats[0].clone();
+        stat.label = format!("stat {}", config.widgets.stats.len());
+        config.widgets.stats.push(stat);
+    }
+    let css = r#"
+        .unixnotis-panel { padding: 12px; }
+        .unixnotis-stat-card { min-width: 96px; padding: 8px; border: 1px solid red; }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let file_warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(file_warnings.is_empty());
+
+    let warnings = model.finalize_warnings(&config);
+    assert!(warnings.iter().any(|warning| warning.contains("stat grid")));
+}
+
+#[test]
 fn warns_when_media_row_budget_is_exceeded() {
     let mut config = Config::default();
     config.panel.width = 340;
@@ -63,7 +86,7 @@ fn warns_when_media_row_budget_is_exceeded() {
 #[test]
 fn warns_when_stacked_media_layout_outgrows_panel_budget() {
     let mut config = Config::default();
-    config.panel.width = 340;
+    config.panel.width = 260;
     config.media.layout = MediaLayout::Stacked;
     let css = r#"
         .unixnotis-panel { padding: 16px; }
@@ -86,7 +109,7 @@ fn warns_when_stacked_media_layout_outgrows_panel_budget() {
 #[test]
 fn custom_media_geometry_is_accounted_for_in_width_budget() {
     let mut config = Config::default();
-    config.panel.width = 360;
+    config.panel.width = 300;
     config.media.layout = MediaLayout::Inline;
     config.media.art_size_px = 88;
     config.media.content_spacing_px = 16;

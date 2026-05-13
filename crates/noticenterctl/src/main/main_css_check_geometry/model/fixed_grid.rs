@@ -1,9 +1,8 @@
 use unixnotis_core::Config;
 
 use super::constants::{
-    CARD_FALLBACK_CONTENT_WIDTH_PX, CARD_GRID_COLUMNS, CARD_GRID_SPACING_PX,
-    STAT_FALLBACK_CONTENT_WIDTH_PX, STAT_GRID_COLUMNS, STAT_GRID_SPACING_PX,
-    TOGGLE_FALLBACK_CONTENT_WIDTH_PX, TOGGLE_GRID_COLUMNS, TOGGLE_GRID_SPACING_PX,
+    CARD_FALLBACK_CONTENT_WIDTH_PX, CARD_GRID_SPACING_PX, STAT_FALLBACK_CONTENT_WIDTH_PX,
+    STAT_GRID_SPACING_PX, TOGGLE_FALLBACK_CONTENT_WIDTH_PX, TOGGLE_GRID_SPACING_PX,
 };
 use super::{
     stock_config, stock_geometry_model, width_warning, GeometryModel, HorizontalBoxMetrics,
@@ -27,7 +26,7 @@ impl GeometryModel {
             "stat grid",
             required_panel_width_px,
             config.panel.width,
-            "GTK natural width can still widen the panel when two-column cards ask for more room",
+            "GTK natural width can still widen the panel when configured stat columns ask for more room",
         )
     }
 
@@ -37,7 +36,7 @@ impl GeometryModel {
             "card grid",
             required_panel_width_px,
             config.panel.width,
-            "GTK natural width can still widen the panel when two-column cards ask for more room",
+            "GTK natural width can still widen the panel when configured card columns ask for more room",
         )
     }
 
@@ -49,7 +48,7 @@ impl GeometryModel {
             .iter()
             .filter(|widget| widget.enabled)
             .count()
-            .min(TOGGLE_GRID_COLUMNS);
+            .min(config.widgets.toggle_columns);
         if columns == 0 {
             return None;
         }
@@ -64,38 +63,40 @@ impl GeometryModel {
                 .outer_width_px(TOGGLE_FALLBACK_CONTENT_WIDTH_PX),
         );
 
-        // Compare against the shipped theme so stock CSS stays quiet
-        let stock = stock_geometry_model();
-        let stock_config = stock_config();
-        let stock_columns = stock_config
-            .widgets
-            .toggles
-            .iter()
-            .filter(|widget| widget.enabled)
-            .count()
-            .min(TOGGLE_GRID_COLUMNS);
-        let stock_pressure = stock.fixed_grid_pressure_px(
-            stock_columns,
-            TOGGLE_GRID_SPACING_PX,
-            stock.toggle_section,
-            stock.toggle_grid,
-            stock
-                .toggle_item
-                .outer_width_px(TOGGLE_FALLBACK_CONTENT_WIDTH_PX),
-        );
-
-        Some(stock_config.panel.width + (pressure - stock_pressure))
+        Some(self.required_width_from_pressure(
+            pressure,
+            config.widgets.toggle_columns,
+            stock_config().widgets.toggle_columns,
+            |stock, stock_config| {
+                let stock_columns = stock_config
+                    .widgets
+                    .toggles
+                    .iter()
+                    .filter(|widget| widget.enabled)
+                    .count()
+                    .min(stock_config.widgets.toggle_columns);
+                stock.fixed_grid_pressure_px(
+                    stock_columns,
+                    TOGGLE_GRID_SPACING_PX,
+                    stock.toggle_section,
+                    stock.toggle_grid,
+                    stock
+                        .toggle_item
+                        .outer_width_px(TOGGLE_FALLBACK_CONTENT_WIDTH_PX),
+                )
+            },
+        ))
     }
 
     fn stat_required_panel_width_px(&self, config: &Config) -> Option<i32> {
-        // Stats render as a fixed two-column grid, so enabled items decide the live column count
+        // Enabled stats decide how much of the configured column budget is actually used
         let columns = config
             .widgets
             .stats
             .iter()
             .filter(|widget| widget.enabled)
             .count()
-            .min(STAT_GRID_COLUMNS);
+            .min(config.widgets.stat_columns);
         if columns == 0 {
             return None;
         }
@@ -109,26 +110,29 @@ impl GeometryModel {
                 .outer_width_px(STAT_FALLBACK_CONTENT_WIDTH_PX),
         );
 
-        let stock = stock_geometry_model();
-        let stock_config = stock_config();
-        let stock_columns = stock_config
-            .widgets
-            .stats
-            .iter()
-            .filter(|widget| widget.enabled)
-            .count()
-            .min(STAT_GRID_COLUMNS);
-        let stock_pressure = stock.fixed_grid_pressure_px(
-            stock_columns,
-            STAT_GRID_SPACING_PX,
-            stock.stat_section,
-            stock.stat_grid,
-            stock
-                .stat_item
-                .outer_width_px(STAT_FALLBACK_CONTENT_WIDTH_PX),
-        );
-
-        Some(stock_config.panel.width + (pressure - stock_pressure))
+        Some(self.required_width_from_pressure(
+            pressure,
+            config.widgets.stat_columns,
+            stock_config().widgets.stat_columns,
+            |stock, stock_config| {
+                let stock_columns = stock_config
+                    .widgets
+                    .stats
+                    .iter()
+                    .filter(|widget| widget.enabled)
+                    .count()
+                    .min(stock_config.widgets.stat_columns);
+                stock.fixed_grid_pressure_px(
+                    stock_columns,
+                    STAT_GRID_SPACING_PX,
+                    stock.stat_section,
+                    stock.stat_grid,
+                    stock
+                        .stat_item
+                        .outer_width_px(STAT_FALLBACK_CONTENT_WIDTH_PX),
+                )
+            },
+        ))
     }
 
     fn card_required_panel_width_px(&self, config: &Config) -> Option<i32> {
@@ -139,7 +143,7 @@ impl GeometryModel {
             .iter()
             .filter(|widget| widget.enabled)
             .count()
-            .min(CARD_GRID_COLUMNS);
+            .min(config.widgets.card_columns);
         if columns == 0 {
             return None;
         }
@@ -153,26 +157,29 @@ impl GeometryModel {
                 .outer_width_px(CARD_FALLBACK_CONTENT_WIDTH_PX),
         );
 
-        let stock = stock_geometry_model();
-        let stock_config = stock_config();
-        let stock_columns = stock_config
-            .widgets
-            .cards
-            .iter()
-            .filter(|widget| widget.enabled)
-            .count()
-            .min(CARD_GRID_COLUMNS);
-        let stock_pressure = stock.fixed_grid_pressure_px(
-            stock_columns,
-            CARD_GRID_SPACING_PX,
-            stock.card_section,
-            stock.card_grid,
-            stock
-                .card_item
-                .outer_width_px(CARD_FALLBACK_CONTENT_WIDTH_PX),
-        );
-
-        Some(stock_config.panel.width + (pressure - stock_pressure))
+        Some(self.required_width_from_pressure(
+            pressure,
+            config.widgets.card_columns,
+            stock_config().widgets.card_columns,
+            |stock, stock_config| {
+                let stock_columns = stock_config
+                    .widgets
+                    .cards
+                    .iter()
+                    .filter(|widget| widget.enabled)
+                    .count()
+                    .min(stock_config.widgets.card_columns);
+                stock.fixed_grid_pressure_px(
+                    stock_columns,
+                    CARD_GRID_SPACING_PX,
+                    stock.card_section,
+                    stock.card_grid,
+                    stock
+                        .card_item
+                        .outer_width_px(CARD_FALLBACK_CONTENT_WIDTH_PX),
+                )
+            },
+        ))
     }
 
     fn fixed_grid_pressure_px(
@@ -192,5 +199,25 @@ impl GeometryModel {
             + (columns as i32 * item_outer_width_px)
             // Spacing only exists between neighbors, never after the last item
             + ((columns.saturating_sub(1)) as i32 * spacing_px)
+    }
+
+    fn required_width_from_pressure<F>(
+        &self,
+        pressure: i32,
+        configured_columns: usize,
+        stock_columns: usize,
+        stock_pressure_for_default: F,
+    ) -> i32
+    where
+        F: FnOnce(&GeometryModel, &Config) -> i32,
+    {
+        if configured_columns != stock_columns {
+            return pressure;
+        }
+
+        let stock = stock_geometry_model();
+        let stock_config = stock_config();
+        let stock_pressure = stock_pressure_for_default(stock, stock_config);
+        stock_config.panel.width + (pressure - stock_pressure)
     }
 }
