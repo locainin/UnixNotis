@@ -9,6 +9,11 @@ use std::rc::Rc;
 use unixnotis_core::NotificationView;
 
 pub(in crate::ui::list) struct NotificationRowWidgets {
+    // Styled notification card inside the ListView row wrapper
+    pub(super) card: gtk::Box,
+    // Internal stack depth cards keep collapsed stacks in the same row update
+    pub(super) stack_ghost_1: gtk::Box,
+    pub(super) stack_ghost_2: gtk::Box,
     // Main icon shown at the top-left of the row
     pub(super) icon: gtk::Image,
     // App name text shown beside the icon

@@ -50,6 +50,7 @@ fn hook_names_stay_unique() {
         panel_shell::TOGGLE_SECTION,
         panel_shell::STAT_SECTION,
         panel_shell::CARD_SECTION,
+        panel_card::ROW,
         panel_card::GROUP_COLLAPSED,
         panel_card::GROUP_EXPANDED,
         panel_card::GROUPED,
