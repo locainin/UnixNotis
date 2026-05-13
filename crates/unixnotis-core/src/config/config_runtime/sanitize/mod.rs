@@ -1,13 +1,16 @@
 //! Runtime sanitization and validation for configuration values
 
 use super::super::{
-    Config, PanelConfig, PopupConfig, ThemeConfig, DEFAULT_MEDIA_ART_SIZE_PX,
-    DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX, PANEL_HEIGHT_PERCENT_DEFAULT,
+    default_panel_widget_order, Config, PanelConfig, PanelWidgetSection, PopupConfig, ThemeConfig,
+    DEFAULT_MEDIA_ART_SIZE_PX, DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX, PANEL_HEIGHT_PERCENT_DEFAULT,
 };
 
 mod media;
+mod panel;
 mod plugins;
+mod refresh;
 mod shell;
+mod theme;
 
 const MIN_REFRESH_MS: u64 = 100;
 const MAX_REFRESH_MS: u64 = 60_000;
@@ -30,15 +33,17 @@ const MAX_HISTORY_ACTIVE: usize = 12;
 // Theme guard rails keep layout values within reasonable bounds
 const MAX_BORDER_WIDTH: u8 = 16;
 const MAX_CARD_RADIUS: u8 = 64;
+const MIN_WIDGET_COLUMNS: usize = 1;
+const MAX_WIDGET_COLUMNS: usize = 8;
 
 pub(in super::super) fn sanitize_config(config: &mut Config) {
     // Clamp refresh intervals before any runtime worker reads them
-    let fast = clamp_refresh_interval(
+    let fast = refresh::clamp_refresh_interval(
         config.widgets.refresh_interval_ms,
         MIN_REFRESH_MS,
         MAX_REFRESH_MS,
     );
-    let mut slow = clamp_refresh_interval(
+    let mut slow = refresh::clamp_refresh_interval(
         config.widgets.refresh_interval_slow_ms,
         MIN_REFRESH_MS,
         MAX_REFRESH_SLOW_MS,
@@ -66,6 +71,9 @@ pub(in super::super) fn sanitize_config(config: &mut Config) {
             config.panel.height_override = Some(height_override.clamp(1, MAX_PANEL_HEIGHT));
         }
     }
+    panel::sanitize_panel_text(&mut config.panel);
+    panel::sanitize_panel_widget_order(&mut config.panel.widget_order);
+    panel::sanitize_widget_columns(config);
 
     // Popup width and spacing feed the live geometry path, so clamp them early
     if config.popups.width <= 0 {
@@ -96,68 +104,8 @@ pub(in super::super) fn sanitize_config(config: &mut Config) {
     // Widget cards and stats share the same height and plugin guard rails
     plugins::sanitize_widget_configs(config);
 
-    sanitize_theme_config(config);
+    theme::sanitize_theme_config(config);
     shell::warn_missing_shell(config);
-}
-
-fn sanitize_theme_config(config: &mut Config) {
-    let theme = &mut config.theme;
-    let needs_theme_defaults = !theme.surface_alpha.is_finite()
-        || !theme.surface_strong_alpha.is_finite()
-        || !theme.card_alpha.is_finite()
-        || !theme.shadow_soft_alpha.is_finite()
-        || !theme.shadow_strong_alpha.is_finite();
-
-    // Only allocate theme defaults when a fallback for bad alpha values is needed
-    if needs_theme_defaults {
-        let theme_defaults = ThemeConfig::default();
-        clamp_alpha(&mut theme.surface_alpha, theme_defaults.surface_alpha);
-        clamp_alpha(
-            &mut theme.surface_strong_alpha,
-            theme_defaults.surface_strong_alpha,
-        );
-        clamp_alpha(&mut theme.card_alpha, theme_defaults.card_alpha);
-        clamp_alpha(
-            &mut theme.shadow_soft_alpha,
-            theme_defaults.shadow_soft_alpha,
-        );
-        clamp_alpha(
-            &mut theme.shadow_strong_alpha,
-            theme_defaults.shadow_strong_alpha,
-        );
-    } else {
-        clamp_alpha_finite(&mut theme.surface_alpha);
-        clamp_alpha_finite(&mut theme.surface_strong_alpha);
-        clamp_alpha_finite(&mut theme.card_alpha);
-        clamp_alpha_finite(&mut theme.shadow_soft_alpha);
-        clamp_alpha_finite(&mut theme.shadow_strong_alpha);
-    }
-
-    // Border styling feeds generated CSS, so keep it inside sane guard rails
-    config.theme.border_width = config.theme.border_width.min(MAX_BORDER_WIDTH);
-    config.theme.card_radius = config.theme.card_radius.min(MAX_CARD_RADIUS);
-}
-
-fn clamp_alpha(value: &mut f32, fallback: f32) {
-    // Bad alpha falls back to the shipped default
-    if !value.is_finite() {
-        *value = fallback;
-        return;
-    }
-    *value = value.clamp(0.0, 1.0);
-}
-
-fn clamp_alpha_finite(value: &mut f32) {
-    // Finite alpha values still need range checks
-    *value = value.clamp(0.0, 1.0);
-}
-
-fn clamp_refresh_interval(value: u64, min: u64, max: u64) -> u64 {
-    // Zero keeps the interval disabled instead of forcing polling back on
-    if value == 0 {
-        return 0;
-    }
-    value.clamp(min, max)
 }
 
 #[cfg(test)]

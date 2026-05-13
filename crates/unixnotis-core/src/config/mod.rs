@@ -1,6 +1,6 @@
 //! Configuration module wiring for UnixNotis.
 //!
-//! Keeps config types, I/O, and runtime defaults in separate files.
+//! Keeps config types, I/O, and runtime cleanup in separate files
 
 mod config_commands;
 mod config_io;
