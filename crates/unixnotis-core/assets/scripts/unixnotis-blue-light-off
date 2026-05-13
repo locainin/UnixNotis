@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=crates/unixnotis-core/assets/scripts/unixnotis-blue-light-lib
+. "$script_dir/unixnotis-blue-light-lib"
+
+if backend=$(remembered_backend); then
+    stop_backend "$backend"
+    forget_backend
+fi
+
+stop_active_backends
