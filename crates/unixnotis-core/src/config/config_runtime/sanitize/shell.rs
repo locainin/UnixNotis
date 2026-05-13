@@ -38,6 +38,7 @@ fn config_requires_shell(config: &Config) -> bool {
 
     if config.widgets.toggles.iter().any(|toggle| {
         command_requires_shell_opt(&toggle.state_cmd)
+            || command_requires_shell_opt(&toggle.toggle_cmd)
             || command_requires_shell_opt(&toggle.on_cmd)
             || command_requires_shell_opt(&toggle.off_cmd)
             || command_requires_shell_opt(&toggle.watch_cmd)

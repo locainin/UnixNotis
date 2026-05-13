@@ -15,9 +15,7 @@ use crate::{
     DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
 };
 
-use super::config_runtime::{
-    apply_brightness_backend, apply_toggle_backends, apply_volume_backend, sanitize_config,
-};
+use super::config_runtime::{apply_brightness_backend, apply_volume_backend, sanitize_config};
 use super::Config;
 
 static LEGACY_RENAME_WARNED: AtomicBool = AtomicBool::new(false);
@@ -161,7 +159,6 @@ impl Config {
     fn apply_runtime_defaults(&mut self) {
         apply_volume_backend(&mut self.widgets.volume);
         apply_brightness_backend(&mut self.widgets.brightness);
-        apply_toggle_backends(&mut self.widgets.toggles);
         sanitize_config(self);
     }
 

@@ -1,6 +1,6 @@
 use super::super::super::super::config_widgets::{CardWidgetConfig, StatWidgetConfig};
 use super::super::*;
-use crate::{Config, PanelConfig, PopupConfig};
+use crate::{Config, PanelConfig, PanelWidgetSection, PopupConfig, ToggleLayout};
 
 #[test]
 fn sanitize_clamps_refresh_intervals_and_preserves_ordering() {
@@ -79,6 +79,51 @@ fn sanitize_clamps_panel_and_popup_sizes() {
 }
 
 #[test]
+fn sanitize_preserves_optional_panel_labels_and_repairs_widget_order() {
+    let mut config = Config::default();
+    config.panel.title = " ".to_string();
+    config.panel.search_placeholder.clear();
+    config.panel.quick_actions_label.clear();
+    config.panel.system_status_label.clear();
+    config.panel.recent_notifications_label.clear();
+    config.panel.clear_label.clear();
+    config.panel.action_row_visible = false;
+    config.panel.widget_order = vec![PanelWidgetSection::Stats, PanelWidgetSection::Stats];
+
+    sanitize_config(&mut config);
+
+    assert_eq!(config.panel.title, PanelConfig::default().title);
+    assert!(config.panel.search_placeholder.is_empty());
+    assert!(config.panel.quick_actions_label.is_empty());
+    assert!(config.panel.system_status_label.is_empty());
+    assert!(config.panel.recent_notifications_label.is_empty());
+    assert_eq!(config.panel.clear_label, PanelConfig::default().clear_label);
+    assert!(!config.panel.action_row_visible);
+    assert_eq!(config.panel.widget_order[0], PanelWidgetSection::Stats);
+    assert_eq!(config.panel.widget_order.len(), 5);
+}
+
+#[test]
+fn sanitize_clamps_widget_grid_columns() {
+    let mut config = Config::default();
+    config.widgets.toggle_columns = 0;
+    config.widgets.stat_columns = MAX_WIDGET_COLUMNS + 10;
+    config.widgets.card_columns = 0;
+
+    sanitize_config(&mut config);
+
+    assert_eq!(
+        config.widgets.toggle_columns,
+        crate::WidgetsConfig::default().toggle_columns
+    );
+    assert_eq!(config.widgets.stat_columns, MAX_WIDGET_COLUMNS);
+    assert_eq!(
+        config.widgets.card_columns,
+        crate::WidgetsConfig::default().card_columns
+    );
+}
+
+#[test]
 fn sanitize_clamps_history_limits() {
     // History limits should respect both hard caps
     let mut config = Config::default();
@@ -149,10 +194,28 @@ fn widget_toggle_tooltips_parse_cleanly() {
         r#"
         [widgets]
         toggle_tooltips = true
+        toggle_layout = "vertical"
+        toggle_columns = 3
+        stat_columns = 4
+        card_columns = 1
+
+        [[widgets.toggles]]
+        enabled = true
+        label = "Custom Action"
+        icon = "applications-system-symbolic"
+        toggle_cmd = "scripts/custom-action"
         "#,
     )
     .expect("config should parse");
     sanitize_config(&mut config);
 
     assert!(config.widgets.toggle_tooltips);
+    assert_eq!(config.widgets.toggle_layout, ToggleLayout::Vertical);
+    assert_eq!(config.widgets.toggle_columns, 3);
+    assert_eq!(config.widgets.stat_columns, 4);
+    assert_eq!(config.widgets.card_columns, 1);
+    assert_eq!(
+        config.widgets.toggles[0].toggle_cmd.as_deref(),
+        Some("scripts/custom-action")
+    );
 }
