@@ -208,6 +208,9 @@ impl NotificationList {
             } else {
                 // Rebuild changed groups into a contiguous insertion batch.
                 let (items, keys) = self.build_group_block(key, &visible_ids);
+                let start = pending_start + pending_items.len();
+                let len = items.len();
+                new_ranges.insert(key.clone(), GroupRange { start, len });
                 pending_items.extend(items);
                 pending_keys.extend(keys);
             }
@@ -232,6 +235,26 @@ impl NotificationList {
         self.update_empty_overlay();
 
         // Cross-check the cached grouping against the GTK store after incremental edits.
+        let expected_ranges = self
+            .group_order
+            .iter()
+            .filter(|key| {
+                self.grouped_cache
+                    .get(*key)
+                    .map(|ids| !self.visible_ids_for_group(ids).is_empty())
+                    .unwrap_or(false)
+            })
+            .count();
+        if self.group_ranges.len() != expected_ranges {
+            // Missing ranges leave later stack edits dependent on a full expand/collapse rebuild
+            debug!(
+                expected_ranges,
+                actual_ranges = self.group_ranges.len(),
+                "group range mismatch; rebuilding"
+            );
+            self.rebuild_list();
+            return;
+        }
         let expected_len = self.expected_list_len();
         let actual_len = self.store.n_items() as usize;
         if actual_len != expected_len {

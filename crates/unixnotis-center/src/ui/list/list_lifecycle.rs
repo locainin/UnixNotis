@@ -115,6 +115,7 @@ impl NotificationList {
             app_key.clone(),
             view.clone(),
             false,
+            false,
             is_active,
         ));
         let entry = NotificationEntry {

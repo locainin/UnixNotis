@@ -63,6 +63,15 @@ impl NotificationList {
             && !self.needs_rebuild
         {
             if let Some(entry) = self.entries.get(&id) {
+                if !self.group_span_matches_visible_shape(&entry.app_key) {
+                    // Header counts can change before the stack rows are inserted.
+                    // Rebuild instead of leaving the collapsed iOS-style cards half-updated
+                    self.dirty_groups.insert(entry.app_key.clone());
+                    self.request_rebuild();
+                    debug!(id, active = is_active, "notification stack shape changed");
+                    return;
+                }
+
                 // Compute stacked state from the cached grouping instead of rebuilding it
                 let stacked = self
                     .grouped_cache
@@ -81,6 +90,10 @@ impl NotificationList {
                     entry.app_key.clone(),
                     entry.view.clone(),
                     stacked,
+                    self.group_expanded
+                        .get(&entry.app_key)
+                        .copied()
+                        .unwrap_or(false),
                     entry.is_active,
                 ));
                 if let Some(ids) = self.grouped_cache.get(&entry.app_key) {
@@ -201,6 +214,20 @@ impl NotificationList {
         self.group_ranges.clear();
         self.request_rebuild();
         true
+    }
+}
+
+impl NotificationList {
+    fn group_span_matches_visible_shape(&self, key: &std::rc::Rc<str>) -> bool {
+        let Some(ids) = self.grouped_cache.get(key) else {
+            return false;
+        };
+        let visible_ids = self.visible_ids_for_group(ids);
+        let desired_len = self.group_block_len(key, visible_ids.as_ref());
+        self.group_ranges
+            .get(key)
+            .map(|range| range.len == desired_len)
+            .unwrap_or(false)
     }
 }
 
