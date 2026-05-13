@@ -3,10 +3,14 @@
 //! Keeps dynamic configuration changes isolated from event handling and
 //! visibility logic.
 
+use gtk::prelude::*;
 use tracing::debug;
-use unixnotis_core::{Config, PanelDebugLevel, ThemePaths};
+use unixnotis_core::{
+    css::hooks, Config, PanelClearButtonPlacement, PanelDebugLevel, PanelWidgetSection, ThemePaths,
+};
 
 use super::list;
+use super::panel::notification_header_row_visible;
 use super::widget_builders::{build_extra_widgets, build_quick_controls, clear_container};
 use super::{panel, UiState};
 
@@ -78,9 +82,104 @@ impl UiState {
     fn apply_reloaded_panel(&mut self, config: &Config) {
         // Geometry goes first so later sections can size themselves from the final panel width
         panel::apply_panel_config(&self.panel, config, self.work_area);
+        self.panel.header_title.set_label(&config.panel.title);
+        self.panel.header_subtitle.set_label(&config.panel.subtitle);
+        self.panel
+            .header_subtitle
+            .set_visible(!config.panel.subtitle.is_empty());
+        self.panel
+            .search_entry
+            .set_placeholder_text(Some(&config.panel.search_placeholder));
+        self.panel
+            .search_revealer
+            .set_reveal_child(config.panel.search_visible || self.panel.search_toggle.is_active());
+        self.panel
+            .header_action_row
+            .set_visible(config.panel.action_row_visible);
+        self.panel
+            .notification_header
+            .set_label(&config.panel.recent_notifications_label);
+        self.panel.notification_header.set_visible(
+            config.panel.notification_section_visible
+                && !config.panel.recent_notifications_label.is_empty(),
+        );
+        self.panel
+            .notification_header_row
+            .set_visible(notification_header_row_visible(&config.panel));
+        self.update_section_header(
+            &self.panel.toggle_section_header,
+            &config.panel.quick_actions_label,
+        );
+        self.update_section_header(
+            &self.panel.stat_section_header,
+            &config.panel.system_status_label,
+        );
+        if config.panel.notification_section_visible {
+            self.panel
+                .notification_container
+                .add_css_class(hooks::panel_shell::RECENT_SECTION);
+        } else {
+            self.panel
+                .notification_container
+                .remove_css_class(hooks::panel_shell::RECENT_SECTION);
+        }
+        self.panel
+            .scroller
+            .set_vexpand(config.panel.notification_list_expand);
+        self.panel
+            .notification_container
+            .set_vexpand(config.panel.notification_list_expand);
+        self.apply_widget_order(&config.panel.widget_order);
+        self.update_clear_buttons(config);
+        self.panel
+            .footer_label
+            .set_label(&config.panel.footer_label);
+        self.panel
+            .footer_label
+            .set_visible(!config.panel.footer_label.is_empty());
         self.log_debug(PanelDebugLevel::Info, || {
             "panel config applied after reload".to_string()
         });
+    }
+
+    fn update_clear_buttons(&self, config: &Config) {
+        self.panel
+            .clear_action_button
+            .set_label(&config.panel.clear_label);
+        self.panel
+            .clear_header_button
+            .set_label(&config.panel.clear_label);
+        self.panel.clear_action_button.set_visible(matches!(
+            config.panel.clear_button_placement,
+            PanelClearButtonPlacement::ActionRow
+        ));
+        self.panel.clear_header_button.set_visible(matches!(
+            config.panel.clear_button_placement,
+            PanelClearButtonPlacement::NotificationHeader
+        ));
+    }
+
+    fn update_section_header(&self, header: &gtk::Label, label: &str) {
+        // Section headers are built once and updated in place on config reload
+        header.set_label(label);
+        header.set_visible(!label.is_empty());
+    }
+
+    fn apply_widget_order(&self, order: &[PanelWidgetSection]) {
+        let mut previous: Option<gtk::Widget> = None;
+        for section in order {
+            let child: gtk::Widget = match section {
+                PanelWidgetSection::Media => self.panel.media_container.clone().upcast(),
+                PanelWidgetSection::Toggles => self.panel.toggle_container.clone().upcast(),
+                PanelWidgetSection::Sliders => self.panel.quick_controls.clone().upcast(),
+                PanelWidgetSection::Stats => self.panel.stat_container.clone().upcast(),
+                PanelWidgetSection::Cards => self.panel.card_container.clone().upcast(),
+            };
+            self.panel
+                .widget_stack
+                .reorder_child_after(&child, previous.as_ref());
+            previous = Some(child);
+        }
     }
 
     fn apply_widget_sections_after_reload(&mut self, config: &Config, widgets_changed: bool) {

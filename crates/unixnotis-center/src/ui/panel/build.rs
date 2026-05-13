@@ -56,12 +56,13 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     // Keep the panel width stable regardless of child content
     root.set_size_request(width, -1);
 
-    let header = build_panel_header();
-    let sections = build_panel_sections(width);
+    let header = build_panel_header(&config.panel);
+    let sections = build_panel_sections(&config.panel);
 
     root.append(&header.root);
     root.append(&sections.widget_revealer);
-    root.append(&sections.scroller);
+    root.append(&sections.notification_container);
+    root.append(&sections.footer);
 
     window.set_child(Some(&root));
     window.set_visible(false);
@@ -70,6 +71,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
         window,
         root,
         widget_revealer: sections.widget_revealer,
+        widget_stack: sections.widget_stack,
         quick_controls: sections.quick_controls,
         toggle_container: sections.toggle_container,
         stat_container: sections.stat_container,
@@ -79,10 +81,20 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
         search_revealer: header.search.revealer,
         search_entry: header.search.entry,
         search_toggle: header.actions.search_toggle,
+        header_title: header.title,
+        header_subtitle: header.subtitle,
         header_count: header.count,
+        header_action_row: header.action_row,
+        notification_container: sections.notification_container,
+        notification_header_row: sections.notification_header_row,
+        notification_header: sections.notification_header,
+        toggle_section_header: sections.toggle_section_header,
+        stat_section_header: sections.stat_section_header,
+        footer_label: sections.footer,
         focus_toggle: header.actions.focus_toggle,
         dnd_toggle: header.actions.dnd_toggle,
-        clear_button: header.actions.clear_button,
+        clear_action_button: header.actions.clear_button,
+        clear_header_button: sections.clear_header_button,
         close_button: header.actions.close_button,
     }
 }

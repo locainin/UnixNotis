@@ -5,7 +5,7 @@
 
 use gtk::prelude::*;
 
-use unixnotis_core::Config;
+use unixnotis_core::{css::hooks, Config};
 
 use super::{panel, widgets};
 
@@ -49,8 +49,12 @@ pub(super) fn build_extra_widgets(
     Option<widgets::cards::CardGrid>,
 ) {
     // Toggle widgets represent binary state controls and their watchers.
-    let toggles =
-        widgets::toggles::ToggleGrid::new(&config.widgets.toggles, config.widgets.toggle_tooltips);
+    let toggles = widgets::toggles::ToggleGrid::new(
+        &config.widgets.toggles,
+        config.widgets.toggle_tooltips,
+        config.widgets.toggle_layout,
+        config.widgets.toggle_columns,
+    );
     if let Some(grid) = toggles.as_ref() {
         panel.toggle_container.set_visible(true);
         panel.toggle_container.append(grid.root());
@@ -59,7 +63,7 @@ pub(super) fn build_extra_widgets(
     }
 
     // Stats widgets expose periodic metrics like CPU and memory usage.
-    let stats = widgets::stats::StatGrid::new(&config.widgets.stats);
+    let stats = widgets::stats::StatGrid::new(&config.widgets.stats, config.widgets.stat_columns);
     if let Some(grid) = stats.as_ref() {
         panel.stat_container.set_visible(true);
         panel.stat_container.append(grid.root());
@@ -68,7 +72,7 @@ pub(super) fn build_extra_widgets(
     }
 
     // Card widgets are larger, multi-line information tiles.
-    let cards = widgets::cards::CardGrid::new(&config.widgets.cards);
+    let cards = widgets::cards::CardGrid::new(&config.widgets.cards, config.widgets.card_columns);
     if let Some(grid) = cards.as_ref() {
         panel.card_container.set_visible(true);
         panel.card_container.append(grid.root());
@@ -81,7 +85,10 @@ pub(super) fn build_extra_widgets(
 
 pub(super) fn clear_container(container: &gtk::Box) {
     // Clear children before repopulating to avoid duplicates on reload.
-    while let Some(child) = container.first_child() {
+    while let Some(child) = container.last_child() {
+        if child.has_css_class(hooks::panel_shell::SECTION_HEADER) {
+            break;
+        }
         container.remove(&child);
     }
 }

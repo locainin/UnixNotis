@@ -109,8 +109,8 @@ pub fn apply_panel_config(panel: &PanelWidgets, config: &Config, reserved: Optio
         panel.window.set_size_request(width, -1);
     }
     panel.root.set_size_request(width, -1);
-    panel.scroller.set_min_content_width(width);
-    panel.scroller.set_max_content_width(width);
+    // Child content sits inside theme-controlled padding and optional section
+    // margins, so only the outer shell receives an exact width request
 }
 
 pub(super) fn map_keyboard_mode(mode: PanelKeyboardInteractivity) -> KeyboardMode {

@@ -34,6 +34,7 @@ fn hook_names_stay_unique() {
         panel_shell::TITLE_STACK,
         panel_shell::TITLE_ROW,
         panel_shell::TITLE,
+        panel_shell::SUBTITLE,
         panel_shell::COUNT,
         panel_shell::SEARCH,
         panel_shell::SEARCH_REVEALER,
@@ -41,9 +42,17 @@ fn hook_names_stay_unique() {
         panel_shell::QUICK_CONTROLS,
         panel_shell::WIDGET_STACK,
         panel_shell::WIDGET_REVEALER,
+        panel_shell::SECTION_HEADER,
+        panel_shell::RECENT_SECTION,
+        panel_shell::RECENT_HEADER,
+        panel_shell::RECENT_HEADER_ROW,
+        panel_shell::FOOTER,
         panel_shell::TOGGLE_SECTION,
         panel_shell::STAT_SECTION,
         panel_shell::CARD_SECTION,
+        panel_card::GROUP_COLLAPSED,
+        panel_card::GROUP_EXPANDED,
+        panel_card::GROUPED,
         panel_card::HAS_ACTIONS,
         panel_card::HAS_BODY,
         panel_card::HAS_SUMMARY,
@@ -156,4 +165,19 @@ fn hook_names_stay_unique() {
     ];
     let unique = names.iter().copied().collect::<HashSet<_>>();
     assert_eq!(unique.len(), names.len());
+}
+
+#[test]
+fn stock_panel_css_targets_real_group_card_hooks() {
+    let css = crate::theme::DEFAULT_PANEL_CSS;
+
+    // Group headers and notification cards are sibling ListView rows, not nested widgets
+    // Stock CSS must target direct card hooks so grouped spacing actually applies
+    assert!(css.contains(&format!(".{}", panel_card::GROUPED)));
+    assert!(css.contains(&format!(".{}", panel_card::GROUP_COLLAPSED)));
+
+    // These selectors belonged to an older nested-card idea and do not match the real tree
+    assert!(!css.contains("unixnotis-group-cards"));
+    assert!(!css.contains(".unixnotis-group .unixnotis-panel-card"));
+    assert!(!css.contains(".unixnotis-group-row-collapsed .unixnotis-panel-card"));
 }

@@ -2,19 +2,22 @@
 
 use gtk::prelude::*;
 use gtk::Align;
-use unixnotis_core::css::hooks;
+use unixnotis_core::{css::hooks, PanelConfig};
 
 use super::actions::{build_panel_actions, PanelActionWidgets};
 use super::search::{build_panel_search, PanelSearchWidgets};
 
 pub(super) struct PanelHeaderWidgets {
     pub(super) root: gtk::Box,
+    pub(super) action_row: gtk::Box,
+    pub(super) title: gtk::Label,
+    pub(super) subtitle: gtk::Label,
     pub(super) count: gtk::Label,
     pub(super) search: PanelSearchWidgets,
     pub(super) actions: PanelActionWidgets,
 }
 
-pub(super) fn build_panel_header() -> PanelHeaderWidgets {
+pub(super) fn build_panel_header(config: &PanelConfig) -> PanelHeaderWidgets {
     let header = gtk::Box::new(gtk::Orientation::Vertical, 8);
     header.add_css_class(hooks::panel_shell::HEADER);
 
@@ -25,7 +28,7 @@ pub(super) fn build_panel_header() -> PanelHeaderWidgets {
     let title_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
     title_box.add_css_class(hooks::panel_shell::TITLE_STACK);
 
-    let title = gtk::Label::new(Some("Notifications"));
+    let title = gtk::Label::new(Some(&config.title));
     title.set_xalign(0.0);
     title.add_css_class(hooks::panel_shell::TITLE);
 
@@ -42,7 +45,14 @@ pub(super) fn build_panel_header() -> PanelHeaderWidgets {
     title_row.append(&count);
     title_box.append(&title_row);
 
-    let action_area = build_panel_actions();
+    let subtitle = gtk::Label::new(Some(&config.subtitle));
+    subtitle.set_xalign(0.0);
+    subtitle.add_css_class(hooks::panel_shell::SUBTITLE);
+    subtitle.set_visible(!config.subtitle.is_empty());
+    title_box.append(&subtitle);
+
+    let action_area = build_panel_actions(config);
+    action_area.row.set_visible(config.action_row_visible);
 
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
     // Spacer absorbs the flexible width between the title stack and close action
@@ -56,11 +66,14 @@ pub(super) fn build_panel_header() -> PanelHeaderWidgets {
     // Action row sits below the title so narrow panels stay stable
     header.append(&action_area.row);
 
-    let search = build_panel_search();
+    let search = build_panel_search(config);
     header.append(&search.revealer);
 
     PanelHeaderWidgets {
         root: header,
+        action_row: action_area.row,
+        title,
+        subtitle,
         count,
         search,
         actions: action_area.widgets,

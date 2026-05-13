@@ -281,16 +281,6 @@
   color: @unixnotis-muted;
 }
 
-.unixnotis-group-cards {
-  margin-top: 4px;
-}
-
-.unixnotis-group-row-collapsed .unixnotis-group-cards {
-  margin-left: 4px;
-  margin-right: 4px;
-  padding-bottom: 2px;
-}
-
 .unixnotis-group-row-collapsed .unixnotis-group-count {
   border-color: alpha(@unixnotis-accent-2, 0.3);
 }
@@ -299,11 +289,7 @@
   margin-left: 2px;
 }
 
-.unixnotis-group-row-collapsed .unixnotis-panel-card {
-  margin-bottom: 6px;
-}
-
-.unixnotis-group .unixnotis-panel-card {
+.unixnotis-panel-card-grouped {
   margin-left: 8px;
 }
 
@@ -330,6 +316,14 @@
     0 16px 0 -8px alpha(@unixnotis-accent, 0.14),
     0 0 0 1px alpha(@unixnotis-accent, 0.16),
     0 24px 32px -22px @unixnotis-shadow-soft;
+}
+
+.unixnotis-panel-card-group-collapsed {
+  margin-bottom: 6px;
+}
+
+.unixnotis-panel-card-group-expanded {
+  margin-bottom: var(--unixnotis-panel-card-gap);
 }
 
 .unixnotis-stack-ghost {
