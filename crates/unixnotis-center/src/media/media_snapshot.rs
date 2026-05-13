@@ -95,12 +95,27 @@ fn dedupe_players(infos: Vec<MediaInfo>) -> Vec<MediaInfo> {
 }
 
 fn dedupe_key(info: &MediaInfo) -> Option<String> {
+    let title = info.title.trim();
     if let Some(family) = info.browser_family.as_deref() {
-        // Browser-backed players can emit several MPRIS identities for one real session
-        // Group them by detected family before falling back to track metadata
+        if let Some(pid) = info.owner_pid {
+            // Browser bridges can publish the same tab under different MPRIS names
+            // The source PID is the strongest signal that both cards mirror one source
+            return Some(format!("browser-pid:{pid}"));
+        }
+        if !title.is_empty() {
+            // Browser-backed players can expose one webpage through multiple MPRIS names
+            // Track metadata is the stable key across Brave, Chromium, and browser instances
+            let artist = info.artist.trim();
+            return Some(format!(
+                "browser-track\n{}\n{}",
+                normalize_token(title),
+                normalize_token(artist)
+            ));
+        }
+        // Empty browser metadata is too weak for cross-browser matching
+        // Keep the old family fallback so duplicate instances still collapse
         return Some(format!("browser:{family}"));
     }
-    let title = info.title.trim();
     if title.is_empty() {
         // Empty titles are too weak to build a stable cross-player key
         return None;
@@ -118,6 +133,8 @@ fn dedupe_key(info: &MediaInfo) -> Option<String> {
 }
 
 fn media_score(info: &MediaInfo) -> (u8, u8) {
+    // Duplicate groups keep the most useful card for the panel
+    // Playing state matters first, then artwork breaks otherwise equal entries
     let status = playback_rank(&info.playback_status);
     let art_rank = if info.art_source.is_some() { 0 } else { 1 };
     (status, art_rank)
@@ -160,11 +177,13 @@ mod tests {
         playback_status: &str,
         has_art: bool,
         browser_family: Option<&str>,
+        owner_pid: Option<u32>,
     ) -> MediaInfo {
         MediaInfo {
             bus_name: bus_name.to_string(),
             identity: identity.to_string(),
             browser_family: browser_family.map(|family| family.to_string()),
+            owner_pid,
             title: "title".to_string(),
             artist: "artist".to_string(),
             playback_status: playback_status.to_string(),
@@ -181,15 +200,36 @@ mod tests {
         let mut cache = HashMap::new();
         cache.insert(
             "org.mpris.MediaPlayer2.b".to_string(),
-            make_info("org.mpris.MediaPlayer2.b", "Zeta", "Paused", false, None),
+            make_info(
+                "org.mpris.MediaPlayer2.b",
+                "Zeta",
+                "Paused",
+                false,
+                None,
+                None,
+            ),
         );
         cache.insert(
             "org.mpris.MediaPlayer2.a".to_string(),
-            make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", false, None),
+            make_info(
+                "org.mpris.MediaPlayer2.a",
+                "Alpha",
+                "Playing",
+                false,
+                None,
+                None,
+            ),
         );
         cache.insert(
             "org.mpris.MediaPlayer2.c".to_string(),
-            make_info("org.mpris.MediaPlayer2.c", "Beta", "Playing", false, None),
+            make_info(
+                "org.mpris.MediaPlayer2.c",
+                "Beta",
+                "Playing",
+                false,
+                None,
+                None,
+            ),
         );
 
         let snapshot = build_snapshot(&cache);
@@ -208,6 +248,7 @@ mod tests {
                 "Paused",
                 true,
                 Some("firefox"),
+                None,
             ),
         );
         cache.insert(
@@ -218,12 +259,73 @@ mod tests {
                 "Playing",
                 false,
                 Some("firefox"),
+                None,
             ),
         );
 
         let snapshot = build_snapshot(&cache);
         assert_eq!(snapshot.len(), 1);
         assert_eq!(snapshot[0].playback_status, "Playing");
+    }
+
+    #[test]
+    fn build_snapshot_dedupes_browser_bridge_with_same_source_pid() {
+        let mut cache = HashMap::new();
+        let mut brave = make_info(
+            "org.mpris.MediaPlayer2.brave.instance",
+            "Brave Origin",
+            "Playing",
+            false,
+            Some("brave"),
+            Some(103_380),
+        );
+        brave.title = "Rumble".to_string();
+        brave.artist.clear();
+        let mut plasma_bridge = make_info(
+            "org.mpris.MediaPlayer2.plasma-browser-integration",
+            "Chromium",
+            "Playing",
+            true,
+            Some("chromium"),
+            Some(103_380),
+        );
+        plasma_bridge.title =
+            "LA Mayor Karen Bass suffers POLITICAL EXPLOSION as DEMS CRY RACISM".to_string();
+        plasma_bridge.artist = "DeVory Darkins".to_string();
+        cache.insert(brave.bus_name.clone(), brave);
+        cache.insert(plasma_bridge.bus_name.clone(), plasma_bridge);
+
+        let snapshot = build_snapshot(&cache);
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].identity, "Chromium");
+    }
+
+    #[test]
+    fn build_snapshot_keeps_distinct_browser_tracks() {
+        let mut cache = HashMap::new();
+        let mut brave = make_info(
+            "org.mpris.MediaPlayer2.brave.instance",
+            "Brave",
+            "Playing",
+            false,
+            Some("brave"),
+            Some(11),
+        );
+        brave.title = "first track".to_string();
+        let mut chromium = make_info(
+            "org.mpris.MediaPlayer2.chromium.instance",
+            "Chromium",
+            "Playing",
+            false,
+            Some("chromium"),
+            Some(22),
+        );
+        chromium.title = "second track".to_string();
+        cache.insert(brave.bus_name.clone(), brave);
+        cache.insert(chromium.bus_name.clone(), chromium);
+
+        let snapshot = build_snapshot(&cache);
+        assert_eq!(snapshot.len(), 2);
     }
 
     #[test]
@@ -245,7 +347,14 @@ mod tests {
             let mut last_snapshot = Vec::new();
             cache.insert(
                 "org.mpris.MediaPlayer2.a".to_string(),
-                make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", true, None),
+                make_info(
+                    "org.mpris.MediaPlayer2.a",
+                    "Alpha",
+                    "Playing",
+                    true,
+                    None,
+                    None,
+                ),
             );
 
             send_snapshot_if_changed(&tx, &cache, &mut last_snapshot).await;
@@ -273,6 +382,7 @@ mod tests {
                 "Alpha",
                 "Playing",
                 true,
+                None,
                 None,
             )];
 
