@@ -115,7 +115,7 @@ fn infer_toggle_icon_kind(config: &ToggleWidgetConfig, requested: &str) -> Toggl
     ) {
         return ToggleIconKind::Airplane;
     }
-    // Night detection includes backend names used in toggle runtime defaults
+    // Backend aliases only affect icon choice; commands still come from config
     if matches_any(
         &sources,
         &["night", "sunset", "gamma", "wlsunset", "hyprsunset"],
@@ -247,6 +247,7 @@ mod tests {
             label: label.to_string(),
             icon: icon.to_string(),
             state_cmd: None,
+            toggle_cmd: None,
             on_cmd: None,
             off_cmd: None,
             watch_cmd: None,

@@ -12,7 +12,7 @@ use super::weather::{apply_card_kind_classes, configure_card_icon};
 use super::{CardGrid, CardItem, RefreshBackoff};
 
 impl CardGrid {
-    pub fn new(configs: &[CardWidgetConfig]) -> Option<Self> {
+    pub fn new(configs: &[CardWidgetConfig], columns: usize) -> Option<Self> {
         let mut items = Vec::new();
         for config in configs {
             if !config.enabled {
@@ -29,8 +29,9 @@ impl CardGrid {
         let root = gtk::FlowBox::new();
         root.add_css_class(hooks::info_card::GRID);
         root.set_selection_mode(gtk::SelectionMode::None);
-        root.set_max_children_per_line(2);
-        root.set_min_children_per_line(2);
+        let columns = flowbox_columns(columns);
+        root.set_max_children_per_line(columns);
+        root.set_min_children_per_line(columns);
         root.set_row_spacing(8);
         root.set_column_spacing(8);
         root.set_halign(Align::Fill);
@@ -67,6 +68,10 @@ impl CardGrid {
             .map(|delay| delay.is_zero())
             .unwrap_or(false)
     }
+}
+
+fn flowbox_columns(columns: usize) -> u32 {
+    u32::try_from(columns.max(1)).unwrap_or(u32::MAX)
 }
 
 impl CardItem {

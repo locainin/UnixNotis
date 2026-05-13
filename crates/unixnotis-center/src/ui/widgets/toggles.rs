@@ -9,7 +9,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::Align;
 use tracing::warn;
-use unixnotis_core::{css::hooks, PanelDebugLevel, ToggleWidgetConfig};
+use unixnotis_core::{css::hooks, PanelDebugLevel, ToggleLayout, ToggleWidgetConfig};
 
 use super::utils::{run_action_command_with_completion, start_command_watch, CommandWatch};
 use crate::debug;
@@ -45,14 +45,19 @@ struct ToggleItem {
 }
 
 impl ToggleGrid {
-    pub fn new(configs: &[ToggleWidgetConfig], show_tooltips: bool) -> Option<Self> {
+    pub fn new(
+        configs: &[ToggleWidgetConfig],
+        show_tooltips: bool,
+        layout: ToggleLayout,
+        columns: usize,
+    ) -> Option<Self> {
         // Keep only enabled entries so UI wiring stays small and deterministic
         let mut items = Vec::new();
         for config in configs {
             if !config.enabled {
                 continue;
             }
-            items.push(ToggleItem::new(config.clone(), show_tooltips));
+            items.push(ToggleItem::new(config.clone(), show_tooltips, layout));
         }
         if items.is_empty() {
             // Caller skips widget wiring entirely when no toggles are enabled
@@ -64,8 +69,9 @@ impl ToggleGrid {
         // Class hook drives card sizing and spacing from theme css
         root.add_css_class(hooks::toggle_card::GRID);
         root.set_selection_mode(gtk::SelectionMode::None);
-        root.set_max_children_per_line(4);
-        root.set_min_children_per_line(4);
+        let columns = flowbox_columns(columns);
+        root.set_max_children_per_line(columns);
+        root.set_min_children_per_line(columns);
         root.set_row_spacing(8);
         root.set_column_spacing(8);
         root.set_halign(Align::Fill);
@@ -106,8 +112,38 @@ impl ToggleGrid {
     }
 }
 
+fn flowbox_columns(columns: usize) -> u32 {
+    u32::try_from(columns.max(1)).unwrap_or(u32::MAX)
+}
+
+fn toggle_action_command<'a>(
+    toggle_cmd: Option<&'a String>,
+    on_cmd: Option<&'a String>,
+    off_cmd: Option<&'a String>,
+    active: bool,
+) -> Option<&'a String> {
+    toggle_cmd.or(if active { on_cmd } else { off_cmd })
+}
+
+fn should_reset_after_action(toggle_cmd: Option<&String>, state_cmd: Option<&String>) -> bool {
+    // Without a state command, the card cannot know whether the action changed system state
+    toggle_cmd.is_some() && state_cmd.is_none()
+}
+
+fn reset_toggle_visual_state(button: &gtk::ToggleButton, guard: &Rc<Cell<bool>>) {
+    if button.is_active() {
+        // Guard blocks the reset from dispatching the same action again
+        guard.set(true);
+        button.set_active(false);
+        guard.set(false);
+    }
+    if button.has_css_class(hooks::shared_state::ACTIVE) {
+        button.remove_css_class(hooks::shared_state::ACTIVE);
+    }
+}
+
 impl ToggleItem {
-    fn new(config: ToggleWidgetConfig, show_tooltips: bool) -> Self {
+    fn new(config: ToggleWidgetConfig, show_tooltips: bool, layout: ToggleLayout) -> Self {
         // Guard and generation tokens are per-item to isolate async updates
         let guard = Rc::new(Cell::new(false));
         // Refresh generation only lives on the GTK main loop
@@ -134,7 +170,11 @@ impl ToggleItem {
             }
         }
 
-        let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let content_orientation = match layout {
+            ToggleLayout::Horizontal => gtk::Orientation::Horizontal,
+            ToggleLayout::Vertical => gtk::Orientation::Vertical,
+        };
+        let content = gtk::Box::new(content_orientation, 8);
         // Centered content keeps icon and label aligned across theme variants
         content.set_halign(Align::Center);
         content.set_valign(Align::Center);
@@ -157,7 +197,14 @@ impl ToggleItem {
         let label = gtk::Label::new(Some(&config.label));
         // Label class controls typography and spacing with icon
         label.add_css_class(hooks::toggle_card::LABEL);
-        label.set_xalign(0.0);
+        label.set_xalign(match layout {
+            ToggleLayout::Horizontal => 0.0,
+            ToggleLayout::Vertical => 0.5,
+        });
+        label.set_justify(match layout {
+            ToggleLayout::Horizontal => gtk::Justification::Left,
+            ToggleLayout::Vertical => gtk::Justification::Center,
+        });
         label.set_wrap(false);
 
         content.append(&icon);
@@ -167,6 +214,7 @@ impl ToggleItem {
         // Clone command fields once so toggle callback stays allocation-light
         let guard_clone = guard.clone();
         let state_cmd = config.state_cmd.clone();
+        let toggle_cmd = config.toggle_cmd.clone();
         let on_cmd = config.on_cmd.clone();
         let off_cmd = config.off_cmd.clone();
         let refresh_gen_for_toggle = refresh_gen.clone();
@@ -182,16 +230,21 @@ impl ToggleItem {
                 format!("toggle '{}' set to {}", label, button.is_active())
             });
 
-            let command = if button.is_active() {
-                on_cmd.as_ref()
-            } else {
-                off_cmd.as_ref()
-            };
+            // Single-command toggles let custom buttons run one user-defined action
+            // instead of forcing every button into separate on/off commands
+            let command = toggle_action_command(
+                toggle_cmd.as_ref(),
+                on_cmd.as_ref(),
+                off_cmd.as_ref(),
+                button.is_active(),
+            );
             // Expected tracks the immediate UI state chosen by the user
             let expected = button.is_active();
             let guard = guard_clone.clone();
             let refresh_gen = refresh_gen_for_toggle.clone();
             let button = button.clone();
+            let reset_after_action =
+                should_reset_after_action(toggle_cmd.as_ref(), state_cmd.as_ref());
 
             if let Some(cmd) = command.cloned() {
                 let state_cmd_for_retry = state_cmd.clone();
@@ -215,11 +268,17 @@ impl ToggleItem {
                             guard.clone(),
                             refresh_gen.clone(),
                         );
+                    } else if reset_after_action {
+                        // Stateless custom actions should not leave the card visually checked
+                        reset_toggle_visual_state(&button, &guard);
                     }
                 });
             } else if let Some(state_cmd) = state_cmd.clone() {
                 // Command-free toggles still use the same reconcile path
                 schedule_toggle_refresh_with_retry(state_cmd, expected, button, guard, refresh_gen);
+            } else {
+                // No command and no state is inert, so undo the visual edge immediately
+                reset_toggle_visual_state(&button, &guard);
             }
         });
 
@@ -300,5 +359,60 @@ impl ToggleItem {
         start_command_watch(watch_cmd, move || {
             refresh_toggle_state(&state_cmd, &button, &guard, &refresh_gen, &refresh_gate);
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{should_reset_after_action, toggle_action_command};
+
+    #[test]
+    fn toggle_action_command_prefers_custom_toggle_command() {
+        let toggle_cmd = "scripts/do-anything".to_string();
+        let on_cmd = "turn-on".to_string();
+        let off_cmd = "turn-off".to_string();
+
+        assert_eq!(
+            toggle_action_command(Some(&toggle_cmd), Some(&on_cmd), Some(&off_cmd), true),
+            Some(&toggle_cmd)
+        );
+        assert_eq!(
+            toggle_action_command(Some(&toggle_cmd), Some(&on_cmd), Some(&off_cmd), false),
+            Some(&toggle_cmd)
+        );
+    }
+
+    #[test]
+    fn toggle_action_command_uses_on_off_when_custom_command_is_absent() {
+        let on_cmd = "turn-on".to_string();
+        let off_cmd = "turn-off".to_string();
+
+        assert_eq!(
+            toggle_action_command(None, Some(&on_cmd), Some(&off_cmd), true),
+            Some(&on_cmd)
+        );
+        assert_eq!(
+            toggle_action_command(None, Some(&on_cmd), Some(&off_cmd), false),
+            Some(&off_cmd)
+        );
+    }
+
+    #[test]
+    fn toggle_action_command_allows_state_only_custom_buttons() {
+        assert_eq!(toggle_action_command(None, None, None, true), None);
+        assert_eq!(toggle_action_command(None, None, None, false), None);
+    }
+
+    #[test]
+    fn stateless_toggle_command_resets_after_action() {
+        let toggle_cmd = "scripts/do-anything".to_string();
+        let state_cmd = "scripts/state".to_string();
+
+        assert!(should_reset_after_action(Some(&toggle_cmd), None));
+        assert!(!should_reset_after_action(
+            Some(&toggle_cmd),
+            Some(&state_cmd)
+        ));
+        assert!(!should_reset_after_action(None, Some(&state_cmd)));
     }
 }
