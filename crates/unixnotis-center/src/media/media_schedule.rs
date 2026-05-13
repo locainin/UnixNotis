@@ -131,6 +131,7 @@ mod tests {
             bus_name: "org.mpris.MediaPlayer2.spotify".to_string(),
             identity: "Spotify".to_string(),
             browser_family: None,
+            owner_pid: None,
             title: "track".to_string(),
             artist: "artist".to_string(),
             playback_status: status.to_string(),

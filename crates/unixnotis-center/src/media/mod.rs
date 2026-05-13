@@ -29,6 +29,8 @@ pub struct MediaInfo {
     pub identity: String,
     /// Browser family tag used for grouping browser-backed players
     pub browser_family: Option<String>,
+    /// Browser/source PID from MPRIS metadata or the owning bus process
+    pub owner_pid: Option<u32>,
     pub title: String,
     pub artist: String,
     pub playback_status: String,

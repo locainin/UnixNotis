@@ -15,6 +15,8 @@ pub(super) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {
         .unwrap_or_default();
     let title = metadata_string(&metadata, "xesam:title").unwrap_or_default();
     let artist = metadata_artist(&metadata).unwrap_or_default();
+    // Metadata PID wins because browser bridges publish the real browser process there
+    let owner_pid = metadata_pid(&metadata).or(state.owner_pid);
     let art_source = metadata_string(&metadata, "mpris:artUrl")
         .and_then(|value| normalize_art_source(&value, state.remote_art_allowed));
 
@@ -39,6 +41,9 @@ pub(super) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {
         identity: state.identity.clone(),
         // Browser family is decided once when the player is admitted.
         browser_family: state.browser_family.clone(),
+        // Plasma browser integration reports the real browser PID as kde:pid
+        // That PID is stronger than the bridge process owner for duplicate checks
+        owner_pid,
         title,
         artist,
         playback_status,
@@ -69,4 +74,44 @@ fn metadata_artist(map: &HashMap<String, OwnedValue>) -> Option<String> {
         }
     }
     None
+}
+
+fn metadata_pid(map: &HashMap<String, OwnedValue>) -> Option<u32> {
+    let value = map.get("kde:pid")?;
+    // KDE currently sends this as an integer PID, but bindings may expose signed values
+    let owned = value.try_clone().ok()?;
+    if let Ok(pid) = i32::try_from(owned) {
+        return u32::try_from(pid).ok();
+    }
+    // Accept unsigned variants too so callers do not depend on one zvariant shape
+    let owned = value.try_clone().ok()?;
+    if let Ok(pid) = u32::try_from(owned) {
+        return Some(pid);
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use zbus::zvariant::OwnedValue;
+
+    use super::metadata_pid;
+
+    #[test]
+    fn metadata_pid_reads_unsigned_kde_pid() {
+        let mut metadata = HashMap::new();
+        metadata.insert("kde:pid".to_string(), OwnedValue::from(103_380_u32));
+
+        assert_eq!(metadata_pid(&metadata), Some(103_380));
+    }
+
+    #[test]
+    fn metadata_pid_rejects_negative_kde_pid() {
+        let mut metadata = HashMap::new();
+        metadata.insert("kde:pid".to_string(), OwnedValue::from(-1_i32));
+
+        assert_eq!(metadata_pid(&metadata), None);
+    }
 }

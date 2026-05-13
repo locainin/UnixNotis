@@ -19,6 +19,7 @@ pub(super) struct PlayerState {
     pub(super) bus_name: String,
     pub(super) identity: String,
     pub(super) browser_family: Option<String>,
+    pub(super) owner_pid: Option<u32>,
     pub(super) remote_art_allowed: bool,
     pub(super) player: Proxy<'static>,
     pub(super) properties: PropertiesProxy<'static>,
@@ -219,7 +220,9 @@ pub(super) async fn build_player_state(
     let identity = fetch_identity(connection, name)
         .await
         .unwrap_or_else(|| name.to_string());
-    let owner_executable = resolve_player_owner_executable(connection, name).await;
+    // DBus owner data is captured once so snapshots do not need another bus round trip
+    // Browser bridges may later override this PID with a stronger metadata source PID
+    let (owner_pid, owner_executable) = resolve_player_owner(connection, name).await;
     let browser_family = detect_browser_family(&identity, name, &config.browser_tokens);
     let remote_art_allowed = remote_art_allowed(
         browser_family.as_deref(),
@@ -243,6 +246,7 @@ pub(super) async fn build_player_state(
         bus_name: name.to_string(),
         identity,
         browser_family,
+        owner_pid,
         remote_art_allowed,
         player,
         properties,
@@ -264,13 +268,28 @@ async fn fetch_identity(connection: &Connection, name: &str) -> Option<String> {
     proxy.get_property("Identity").await.ok()
 }
 
-async fn resolve_player_owner_executable(connection: &Connection, name: &str) -> Option<String> {
-    let bus_name = zbus::names::BusName::try_from(name).ok()?;
-    let proxy = DBusProxy::new(connection).await.ok()?;
-    let pid = proxy.get_connection_unix_process_id(bus_name).await.ok()?;
-    read_process_executable_path(pid)
-        .await
-        .map(|path| path.display().to_string())
+async fn resolve_player_owner(
+    connection: &Connection,
+    name: &str,
+) -> (Option<u32>, Option<String>) {
+    // Some synthetic names cannot be converted into a DBus bus name
+    // Treat those as unknown instead of rejecting the whole media player
+    let Ok(bus_name) = zbus::names::BusName::try_from(name) else {
+        return (None, None);
+    };
+    let Ok(proxy) = DBusProxy::new(connection).await else {
+        return (None, None);
+    };
+    // The bus owner PID is useful for normal players and art trust policy
+    // It is weaker than bridge metadata when a helper owns the MPRIS name
+    let pid = proxy.get_connection_unix_process_id(bus_name).await.ok();
+    let executable = match pid {
+        Some(pid) => read_process_executable_path(pid)
+            .await
+            .map(|path| path.display().to_string()),
+        None => None,
+    };
+    (pid, executable)
 }
 
 #[cfg(target_os = "linux")]
