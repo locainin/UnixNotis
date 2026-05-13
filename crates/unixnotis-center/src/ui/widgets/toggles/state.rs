@@ -116,7 +116,7 @@ pub(super) fn schedule_toggle_refresh_with_retry(
     refresh_gen: Rc<Cell<u64>>,
 ) {
     // Post-action retry path closes race windows where backend state lags UI input
-    // Bounded retries reconcile optimistic UI state with eventually-consistent commands
+    // Bounded retries let slow backend state settle after the click command runs
     let gen = next_refresh_generation(&refresh_gen);
 
     // Weak refs avoid extending widget lifetimes from detached async tasks
