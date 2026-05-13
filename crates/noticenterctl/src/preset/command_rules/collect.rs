@@ -30,6 +30,11 @@ pub(crate) fn collect_command_references_from_config(config: &Config) -> Vec<Com
         );
         push_optional_command(
             &mut commands,
+            &format!("widgets.toggles[{index}].toggle_cmd"),
+            toggle.toggle_cmd.as_deref(),
+        );
+        push_optional_command(
+            &mut commands,
             &format!("widgets.toggles[{index}].on_cmd"),
             toggle.on_cmd.as_deref(),
         );

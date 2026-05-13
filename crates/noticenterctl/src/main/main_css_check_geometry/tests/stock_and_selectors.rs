@@ -148,6 +148,33 @@ fn warns_for_stateful_unixnotis_size_selector() {
 }
 
 #[test]
+fn warns_for_descendant_selector_targeting_unixnotis_width_owner() {
+    let css = r#"
+        .unixnotis-panel .unixnotis-group-row {
+            min-width: 480px;
+        }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let warnings = collect_geometry_from_contents(css, &mut model);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("complex UnixNotis selector"));
+}
+
+#[test]
+fn suppresses_descendant_selector_targeting_plain_gtk_subnode() {
+    let css = r#"
+        .unixnotis-quick-slider trough {
+            min-width: 280px;
+        }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
 fn warns_for_panel_action_width_override_on_unmodeled_hook() {
     let css = r#"
         .unixnotis-panel-action {
@@ -197,10 +224,26 @@ fn warns_for_panel_count_width_override_on_known_class() {
 }
 
 #[test]
+fn suppresses_small_panel_count_badge_width_override() {
+    let css = r#"
+        .unixnotis-panel-count {
+            min-width: 26px;
+            padding: 2px 10px;
+            border: 1px solid red;
+        }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(warnings.is_empty());
+}
+
+#[test]
 fn warns_for_quick_slider_width_override_on_known_class() {
     // Widget-side hooks need the same loud custom behavior as panel and popup hooks
     let css = r#"
         .unixnotis-quick-slider {
+            min-width: 280px;
             padding: 12px 32px;
             border: 1px solid red;
         }
@@ -225,6 +268,20 @@ fn warns_for_popup_icon_width_override_on_known_class() {
     let warnings = collect_geometry_from_contents(css, &mut model);
     assert_eq!(warnings.len(), 1);
     assert!(warnings[0].contains("does not model its width yet"));
+}
+
+#[test]
+fn suppresses_small_popup_icon_width_override() {
+    let css = r#"
+        .unixnotis-popup-icon {
+            min-width: 24px;
+            margin-right: 12px;
+        }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(warnings.is_empty());
 }
 
 #[test]

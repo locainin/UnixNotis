@@ -49,7 +49,7 @@ fn collect_unixnotis_classes(css: &'static str, classes: &mut HashSet<&'static s
     }
 }
 
-fn hook_unixnotis_classes() -> [&'static str; 27] {
+fn hook_unixnotis_classes() -> [&'static str; 33] {
     // Hook-only classes can be real live selectors before the stock theme gives them rules
     [
         ".unixnotis-panel-actions",
@@ -65,6 +65,12 @@ fn hook_unixnotis_classes() -> [&'static str; 27] {
         ".unixnotis-panel-action-close",
         ".unixnotis-panel-action-with-icon",
         ".unixnotis-panel-action-icon",
+        ".unixnotis-panel-subtitle",
+        ".unixnotis-section-header",
+        ".unixnotis-recent-section",
+        ".unixnotis-recent-header",
+        ".unixnotis-recent-header-row",
+        ".unixnotis-panel-footer",
         ".unixnotis-group",
         ".unixnotis-group-row",
         ".unixnotis-group-header",
@@ -93,5 +99,16 @@ mod tests {
         assert!(classes.contains(".unixnotis-media-button-prev"));
         assert!(classes.contains(".unixnotis-media-button-play"));
         assert!(classes.contains(".unixnotis-media-button-next"));
+    }
+
+    #[test]
+    fn section_header_hooks_are_treated_as_known_public_classes() {
+        let classes = known_unixnotis_classes();
+
+        assert!(classes.contains(".unixnotis-section-header"));
+        assert!(classes.contains(".unixnotis-recent-section"));
+        assert!(classes.contains(".unixnotis-recent-header"));
+        assert!(classes.contains(".unixnotis-recent-header-row"));
+        assert!(classes.contains(".unixnotis-panel-footer"));
     }
 }
