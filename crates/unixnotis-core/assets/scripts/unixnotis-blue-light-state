@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=crates/unixnotis-core/assets/scripts/unixnotis-blue-light-lib
+. "$script_dir/unixnotis-blue-light-lib"
+
+# The toggle is checked when any supported backend owns night-light state
+active_backend >/dev/null

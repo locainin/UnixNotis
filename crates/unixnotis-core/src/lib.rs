@@ -8,6 +8,7 @@
     reason = "workspace clippy runs use these groups as review signals, not as zero-tolerance policy gates"
 )]
 
+pub mod assets;
 pub mod config;
 pub mod control;
 pub mod css;
@@ -15,6 +16,7 @@ pub mod model;
 pub mod theme;
 pub mod util;
 
+pub use assets::*;
 pub use config::*;
 pub use control::*;
 pub use css::*;

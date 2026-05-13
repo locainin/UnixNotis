@@ -1,6 +1,7 @@
 //! Config and theme file creation or reset logic
 
 use std::fs;
+use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 use unixnotis_core::Config;
@@ -41,6 +42,7 @@ pub(crate) fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
     }
 
     ensure_installer_config(ctx, &config_dir)?;
+    ensure_default_scripts(ctx, &config_dir)?;
 
     let theme_paths = config
         .resolve_theme_paths()
@@ -137,6 +139,7 @@ pub(crate) fn reset_config(ctx: &mut ActionContext) -> Result<()> {
         "media.css",
         backup_dir.as_deref(),
     )?;
+    backup_default_scripts(ctx, &config_dir, backup_dir.as_deref())?;
 
     write_atomic(&theme_paths.base_css, unixnotis_core::DEFAULT_BASE_CSS)
         .with_context(|| "failed to write base.css")?;
@@ -151,11 +154,78 @@ pub(crate) fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     .with_context(|| "failed to write widgets.css")?;
     write_atomic(&theme_paths.media_css, unixnotis_core::DEFAULT_MEDIA_CSS)
         .with_context(|| "failed to write media.css")?;
+    write_default_scripts(&config_dir)?;
 
     log_line(
         ctx,
         format!("Reset theme files in {}", format_with_home(&config_dir)),
     );
+    Ok(())
+}
+
+fn ensure_default_scripts(ctx: &mut ActionContext, config_dir: &Path) -> Result<()> {
+    for script in unixnotis_core::DEFAULT_SCRIPTS {
+        let path = config_dir.join(script.relative_path);
+        if path.exists() {
+            log_line(
+                ctx,
+                format!("Default script present: {}", format_with_home(&path)),
+            );
+            continue;
+        }
+
+        write_default_script(&path, script.contents)?;
+        log_line(
+            ctx,
+            format!("Default script created: {}", format_with_home(&path)),
+        );
+    }
+    Ok(())
+}
+
+fn backup_default_scripts(
+    ctx: &mut ActionContext,
+    config_dir: &Path,
+    backup_dir: Option<&Path>,
+) -> Result<()> {
+    for script in unixnotis_core::DEFAULT_SCRIPTS {
+        let path = config_dir.join(script.relative_path);
+        backup_existing_file(ctx, &path, script.relative_path, backup_dir)?;
+    }
+    Ok(())
+}
+
+pub(in crate::actions::config) fn write_default_scripts(config_dir: &Path) -> Result<()> {
+    for script in unixnotis_core::DEFAULT_SCRIPTS {
+        let path = config_dir.join(script.relative_path);
+        write_default_script(&path, script.contents)?;
+    }
+    Ok(())
+}
+
+fn write_default_script(path: &Path, contents: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| "failed to create scripts directory")?;
+    }
+    write_atomic(path, contents).with_context(|| "failed to write default script")?;
+    set_executable(path)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_executable(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)
+        .with_context(|| "failed to read default script metadata")?
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)
+        .with_context(|| "failed to mark default script executable")
+}
+
+#[cfg(not(unix))]
+fn set_executable(_path: &Path) -> Result<()> {
     Ok(())
 }
 
