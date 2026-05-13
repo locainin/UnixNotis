@@ -101,9 +101,6 @@ impl NotificationList {
         old_group_order.clear();
         self.group_order_scratch = old_group_order;
         self.group_ranges = group_ranges;
-        self.ghost_items
-            .retain(|(key, _), _| self.grouped_cache.contains_key(key));
-
         // Prune interned keys that are no longer referenced by any list state.
         self.interned.retain(|key| Rc::strong_count(key) > 1);
         self.dirty_groups.clear();
@@ -177,6 +174,8 @@ impl NotificationList {
         let mut new_ranges = HashMap::with_capacity(group_order.len());
         let mut pending_items: Vec<RowItem> = Vec::new();
         let mut pending_keys: Vec<RowKey> = Vec::new();
+        // Rebuilt groups must record ranges before insertion updates the GTK store
+        let mut pending_ranges: Vec<(Rc<str>, GroupRange)> = Vec::new();
         let mut pending_start = 0usize;
 
         for key in &group_order {
@@ -192,6 +191,10 @@ impl NotificationList {
                 if !pending_items.is_empty() {
                     let inserted_len =
                         self.insert_block(pending_start, &pending_items, &pending_keys);
+                    // Inserted dirty groups need ranges just like kept groups
+                    for (key, range) in pending_ranges.drain(..) {
+                        new_ranges.insert(key, range);
+                    }
                     cursor += inserted_len;
                     pending_items.clear();
                     pending_keys.clear();
@@ -207,10 +210,11 @@ impl NotificationList {
                 pending_start = cursor;
             } else {
                 // Rebuild changed groups into a contiguous insertion batch.
-                let (items, keys) = self.build_group_block(key, &visible_ids);
+                // The pending start is the final position after earlier removals
                 let start = pending_start + pending_items.len();
+                let (items, keys) = self.build_group_block(key, &visible_ids);
                 let len = items.len();
-                new_ranges.insert(key.clone(), GroupRange { start, len });
+                pending_ranges.push((key.clone(), GroupRange { start, len }));
                 pending_items.extend(items);
                 pending_keys.extend(keys);
             }
@@ -218,6 +222,10 @@ impl NotificationList {
 
         if !pending_items.is_empty() {
             let _inserted_len = self.insert_block(pending_start, &pending_items, &pending_keys);
+            // Final dirty batch also owns valid ranges for the next incremental pass
+            for (key, range) in pending_ranges.drain(..) {
+                new_ranges.insert(key, range);
+            }
         }
 
         self.group_ranges = new_ranges;
@@ -225,9 +233,6 @@ impl NotificationList {
         old_group_order.clear();
         self.group_order_scratch = old_group_order;
         self.dirty_groups.clear();
-
-        self.ghost_items
-            .retain(|(key, _), _| self.grouped_cache.contains_key(key));
 
         // Prune interned keys that are no longer referenced by any list state.
         self.interned.retain(|key| Rc::strong_count(key) > 1);

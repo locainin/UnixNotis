@@ -54,6 +54,7 @@ pub mod panel_shell {
 }
 
 pub mod panel_card {
+    pub const ROW: &str = "unixnotis-panel-card-row";
     pub const GROUP_COLLAPSED: &str = "unixnotis-panel-card-group-collapsed";
     pub const GROUP_EXPANDED: &str = "unixnotis-panel-card-group-expanded";
     pub const GROUPED: &str = "unixnotis-panel-card-grouped";

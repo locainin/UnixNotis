@@ -16,7 +16,6 @@ use crate::dbus::{UiCommand, UiEvent};
 
 use super::super::icons::IconResolver;
 use super::list_item::{RowData, RowItem, RowKind};
-use super::list_row::ghost::{build_ghost_row, update_ghost_row, GhostRowWidgets};
 use super::list_row::group::{build_group_row, update_group_row, GroupRowWidgets};
 use super::list_row::notification::{
     build_notification_row, update_notification_row, NotificationRowWidgets,
@@ -28,7 +27,6 @@ pub(super) struct RowWidgets {
     root: gtk::Box,
     group: Option<GroupRowWidgets>,
     notification: Option<NotificationRowWidgets>,
-    ghost: Option<GhostRowWidgets>,
     handler: RefCell<Option<(RowItem, gtk::glib::SignalHandlerId)>>,
     command_tx: mpsc::Sender<UiCommand>,
 }
@@ -47,7 +45,6 @@ impl RowWidgets {
         match kind {
             RowKind::GroupHeader => Self::new_group(command_tx, event_tx),
             RowKind::Notification => Self::new_notification(command_tx),
-            RowKind::Ghost => Self::new_ghost(command_tx),
         }
     }
 
@@ -59,7 +56,6 @@ impl RowWidgets {
             root,
             group: Some(group),
             notification: None,
-            ghost: None,
             handler: RefCell::new(None),
             command_tx,
         }
@@ -73,21 +69,6 @@ impl RowWidgets {
             root,
             group: None,
             notification: Some(notification),
-            ghost: None,
-            handler: RefCell::new(None),
-            command_tx,
-        }
-    }
-
-    fn new_ghost(command_tx: mpsc::Sender<UiCommand>) -> Self {
-        let (root, ghost) = build_ghost_row();
-
-        Self {
-            kind: RowKind::Ghost,
-            root,
-            group: None,
-            notification: None,
-            ghost: Some(ghost),
             handler: RefCell::new(None),
             command_tx,
         }
@@ -102,18 +83,7 @@ impl RowWidgets {
             }
             RowKind::Notification => {
                 if let Some(notification) = &self.notification {
-                    update_notification_row(
-                        notification,
-                        &self.root,
-                        data,
-                        icon_resolver,
-                        &self.command_tx,
-                    );
-                }
-            }
-            RowKind::Ghost => {
-                if let Some(ghost) = &self.ghost {
-                    update_ghost_row(ghost, &self.root, data);
+                    update_notification_row(notification, data, icon_resolver, &self.command_tx);
                 }
             }
         }
@@ -143,7 +113,6 @@ pub(super) fn ensure_row_widgets(
     }
 
     let widgets = Rc::new(RowWidgets::new(kind, command_tx, event_tx));
-    list_item.set_child(Some(&widgets.root));
     set_row_widgets(list_item, widgets.clone());
     debug!(?kind, "row widgets created");
     widgets
@@ -169,6 +138,9 @@ pub(super) fn bind_row(
 }
 
 pub(super) fn set_row_widgets(list_item: &gtk::ListItem, widgets: Rc<RowWidgets>) {
+    // Attach the actual row root whenever the cached widget bundle changes
+    // Setup also uses this so GTK never keeps an empty placeholder child
+    list_item.set_child(Some(&widgets.root));
     unsafe {
         // SAFETY: gtk::ListItem stays on the GTK main thread and never crosses threads.
         // RowWidgets uses Rc and is only accessed from list factory callbacks on the

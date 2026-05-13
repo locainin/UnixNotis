@@ -56,11 +56,8 @@ impl NotificationList {
         let command_tx_clone = command_tx.clone();
         let event_tx_clone = event_tx.clone();
         factory.connect_setup(move |_, list_item| {
-            let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            list_item.set_child(Some(&root));
-
             let widgets = RowWidgets::new(
-                RowKind::Ghost,
+                RowKind::Notification,
                 command_tx_clone.clone(),
                 event_tx_clone.clone(),
             );
@@ -110,7 +107,6 @@ impl NotificationList {
             group_active_index: std::collections::HashMap::new(),
             group_history_index: std::collections::HashMap::new(),
             group_ranges: std::collections::HashMap::new(),
-            ghost_items: std::collections::HashMap::new(),
             interned: std::collections::HashSet::new(),
             current_keys: Vec::new(),
             keys_scratch: Vec::new(),

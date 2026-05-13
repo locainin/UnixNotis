@@ -9,6 +9,7 @@ use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use tokio::sync::mpsc;
 use tracing::debug;
+use unixnotis_core::css::hooks;
 
 use crate::dbus::UiCommand;
 use crate::ui::try_send_command;
@@ -18,9 +19,15 @@ use super::state::NotificationRowWidgets;
 pub(in crate::ui::list) fn build_notification_row(
     command_tx: mpsc::Sender<UiCommand>,
 ) -> (gtk::Box, NotificationRowWidgets) {
-    // Root card uses vertical layout: header, summary, body, then actions
-    let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    root.add_css_class("unixnotis-panel-card");
+    // Root owns the full collapsed-stack shape as one ListView row
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    root.add_css_class(hooks::panel_card::ROW);
+    root.set_hexpand(true);
+
+    // Card uses vertical layout: header, summary, body, then actions
+    let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    card.add_css_class("unixnotis-panel-card");
+    card.set_hexpand(true);
 
     // Header packs icon + app label + close button
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -77,10 +84,18 @@ pub(in crate::ui::list) fn build_notification_row(
 
     // Keep the card tree fully built up front
     // Row refreshes then only replace content instead of rebuilding containers
-    root.append(&header);
-    root.append(&summary_label);
-    root.append(&body_label);
-    root.append(&actions_box);
+    card.append(&header);
+    card.append(&summary_label);
+    card.append(&body_label);
+    card.append(&actions_box);
+
+    let stack_ghost_1 = build_stack_ghost(1);
+    let stack_ghost_2 = build_stack_ghost(2);
+
+    // Ghost cards are part of the same row so stack depth updates in one bind pass
+    root.append(&card);
+    root.append(&stack_ghost_1);
+    root.append(&stack_ghost_2);
 
     let notify_id = Rc::new(Cell::new(0));
     // Close click always targets the latest id assigned to this row
@@ -102,6 +117,9 @@ pub(in crate::ui::list) fn build_notification_row(
     (
         root,
         NotificationRowWidgets {
+            card,
+            stack_ghost_1,
+            stack_ghost_2,
             icon,
             app_label,
             summary_label,
@@ -112,4 +130,15 @@ pub(in crate::ui::list) fn build_notification_row(
             icon_sig: RefCell::new(None),
         },
     )
+}
+
+fn build_stack_ghost(depth: u8) -> gtk::Box {
+    let ghost = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    // The real card and its shadows share theme hooks for consistent colors
+    ghost.add_css_class("unixnotis-panel-card");
+    ghost.add_css_class("unixnotis-stack-ghost");
+    ghost.add_css_class(&format!("unixnotis-stack-ghost-{depth}"));
+    ghost.set_hexpand(true);
+    ghost.set_visible(false);
+    ghost
 }

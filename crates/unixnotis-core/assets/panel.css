@@ -296,6 +296,11 @@
 /*
  * Notification cards (panel)
  */
+.unixnotis-panel-card-row {
+  margin: 0;
+  padding: 0;
+}
+
 .unixnotis-panel-card {
   background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
   border: 1px solid @unixnotis-card-border;
@@ -327,29 +332,30 @@
 }
 
 .unixnotis-stack-ghost {
+  /* Internal ghost cards create stack depth without extra ListView rows */
   background-image: linear-gradient(165deg, alpha(@unixnotis-notification-bg-1, 0.88), alpha(@unixnotis-notification-bg-2, 0.82));
   border-radius: 18px;
   padding: 0;
-  min-height: 30px;
-  opacity: 0.7;
-  margin-left: 12px;
-  margin-right: 12px;
-  margin-top: -18px;
+  min-height: 18px;
+  opacity: 0.58;
+  margin-left: 14px;
+  margin-right: 14px;
+  margin-top: -12px;
   border: 1px solid alpha(@unixnotis-card-border, 0.75);
   box-shadow:
-    0 12px 22px -18px @unixnotis-shadow-soft,
+    0 10px 18px -16px @unixnotis-shadow-soft,
     0 0 0 1px alpha(@unixnotis-accent, 0.12),
     inset 0 0 0 1px alpha(#ffffff, 0.07);
 }
 
 .unixnotis-stack-ghost-2 {
-  min-height: 26px;
-  opacity: 0.48;
-  margin-left: 20px;
-  margin-right: 20px;
-  margin-top: -20px;
+  min-height: 14px;
+  opacity: 0.34;
+  margin-left: 24px;
+  margin-right: 24px;
+  margin-top: -13px;
   box-shadow:
-    0 14px 24px -20px @unixnotis-shadow-soft,
+    0 12px 20px -18px @unixnotis-shadow-soft,
     0 0 0 1px alpha(@unixnotis-accent, 0.08),
     inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
@@ -364,6 +370,29 @@
 
 .unixnotis-panel-card.critical {
   box-shadow:
+    0 0 0 1px alpha(@unixnotis-urgent, 0.35),
+    0 12px 26px -20px @unixnotis-shadow-strong,
+    0 0 26px -20px alpha(@unixnotis-urgent, 0.35),
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
+}
+
+.unixnotis-panel-card.stacked.active {
+  /* Active state should not erase the collapsed-stack shadow */
+  box-shadow:
+    0 8px 0 -4px alpha(@unixnotis-accent, 0.18),
+    0 16px 0 -8px alpha(@unixnotis-accent, 0.14),
+    0 0 0 1px alpha(@unixnotis-accent, 0.28),
+    0 12px 26px -20px @unixnotis-shadow-strong,
+    0 0 26px -20px @unixnotis-glow-cyan,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
+}
+
+.unixnotis-panel-card.stacked.critical,
+.unixnotis-panel-card.stacked.active.critical {
+  /* Urgent stacks keep the same depth while using the urgent border color */
+  box-shadow:
+    0 8px 0 -4px alpha(@unixnotis-urgent, 0.20),
+    0 16px 0 -8px alpha(@unixnotis-urgent, 0.14),
     0 0 0 1px alpha(@unixnotis-urgent, 0.35),
     0 12px 26px -20px @unixnotis-shadow-strong,
     0 0 26px -20px alpha(@unixnotis-urgent, 0.35),

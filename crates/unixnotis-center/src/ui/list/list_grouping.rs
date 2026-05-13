@@ -51,7 +51,7 @@ impl NotificationList {
     }
 
     pub(super) fn expected_list_len(&self) -> usize {
-        // Sum group block sizes to mirror the visible list length (headers + rows + ghosts).
+        // Sum visible group block sizes so incremental updates can detect stale spans
         self.group_order
             .iter()
             .filter_map(|key| self.grouped_cache.get(key).map(|ids| (key, ids)))

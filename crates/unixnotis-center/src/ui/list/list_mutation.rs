@@ -64,36 +64,34 @@ impl NotificationList {
         {
             if let Some(entry) = self.entries.get(&id) {
                 if !self.group_span_matches_visible_shape(&entry.app_key) {
-                    // Header counts can change before the stack rows are inserted.
-                    // Rebuild instead of leaving the collapsed iOS-style cards half-updated
+                    // Span changes still need the rebuild path
+                    // Header count and card depth must move as one visible update
                     self.dirty_groups.insert(entry.app_key.clone());
                     self.request_rebuild();
                     debug!(id, active = is_active, "notification stack shape changed");
                     return;
                 }
 
-                // Compute stacked state from the cached grouping instead of rebuilding it
-                let stacked = self
-                    .grouped_cache
+                // Compute stack state from cached grouping instead of rebuilding the store
+                let expanded = self
+                    .group_expanded
                     .get(&entry.app_key)
-                    .map(|ids| {
-                        !self
-                            .group_expanded
-                            .get(&entry.app_key)
-                            .copied()
-                            .unwrap_or(false)
-                            && ids.len() > 1
-                    })
+                    .copied()
                     .unwrap_or(false);
-                // Update the row object in-place to avoid ListStore churn
+                let group_len = self.grouped_cache.get(&entry.app_key).map_or(0, Vec::len);
+                let stacked = !expanded && group_len > 1;
+                let stack_depth = if expanded {
+                    0
+                } else {
+                    group_len.saturating_sub(1).min(2) as u8
+                };
+                // Update the row object in-place when the visible span stays identical
                 entry.item.update(super::list_item::RowData::notification(
                     entry.app_key.clone(),
                     entry.view.clone(),
                     stacked,
-                    self.group_expanded
-                        .get(&entry.app_key)
-                        .copied()
-                        .unwrap_or(false),
+                    stack_depth,
+                    expanded,
                     entry.is_active,
                 ));
                 if let Some(ids) = self.grouped_cache.get(&entry.app_key) {
