@@ -112,5 +112,5 @@ impl MediaSelection {
 }
 
 #[cfg(test)]
-#[path = "selection_tests.rs"]
+#[path = "tests/selection.rs"]
 mod tests;

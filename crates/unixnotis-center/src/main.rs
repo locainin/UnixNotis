@@ -51,6 +51,8 @@ fn main() -> Result<()> {
     config
         .ensure_theme_files(&theme_paths)
         .context("ensure theme files")?;
+    // Built-in defaults can run without the installer, so helper scripts are owned here too
+    Config::ensure_default_scripts_in(&theme_base).context("ensure default scripts")?;
 
     info!("center startup checks passed");
     runtime::run_center(config, config_path, theme_paths);

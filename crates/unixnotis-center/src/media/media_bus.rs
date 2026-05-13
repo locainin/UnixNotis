@@ -329,5 +329,5 @@ fn is_browser_name(lower: &str, browser_tokens: &[String]) -> bool {
 }
 
 #[cfg(test)]
-#[path = "media_bus_tests.rs"]
+#[path = "tests/bus.rs"]
 mod tests;
