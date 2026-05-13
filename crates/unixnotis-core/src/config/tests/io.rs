@@ -1,7 +1,9 @@
 use super::Config;
 use std::env;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -24,6 +26,17 @@ fn restore_env(key: &str, previous: Option<String>) {
         Some(value) => env::set_var(key, value),
         None => env::remove_var(key),
     }
+}
+
+fn test_root(name: &str) -> PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    std::env::current_dir()
+        .expect("current dir")
+        .join("target")
+        .join(format!("unixnotis-{name}-{}-{unique}", std::process::id()))
 }
 
 #[test]
@@ -110,4 +123,105 @@ fn resolve_theme_paths_from_includes_media_css() {
         .expect("theme paths should resolve");
 
     assert_eq!(paths.media_css, base.join("rice").join("media.css"));
+}
+
+#[test]
+fn ensure_default_scripts_in_creates_every_shipped_script() {
+    let root = test_root("default-scripts");
+    let _ = fs::remove_dir_all(&root);
+
+    Config::ensure_default_scripts_in(&root).expect("default scripts");
+
+    for script in crate::DEFAULT_SCRIPTS {
+        let path = root.join(script.relative_path);
+        let contents = fs::read_to_string(&path).expect("read default script");
+        assert_eq!(contents, script.contents);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mode = fs::metadata(&path)
+                .expect("script metadata")
+                .permissions()
+                .mode();
+            assert_ne!(mode & 0o111, 0, "script should be executable: {path:?}");
+        }
+    }
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn ensure_default_scripts_in_preserves_user_edited_script_contents() {
+    let root = test_root("default-script-preserve");
+    let _ = fs::remove_dir_all(&root);
+    let script = crate::DEFAULT_SCRIPTS
+        .iter()
+        .find(|script| script.relative_path.ends_with("unixnotis-blue-light-on"))
+        .expect("blue light on script");
+    let path = root.join(script.relative_path);
+    fs::create_dir_all(path.parent().expect("script parent")).expect("script parent dir");
+    fs::write(&path, "#!/bin/sh\nexit 42\n").expect("custom script");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("clear exec bit");
+    }
+
+    Config::ensure_default_scripts_in(&root).expect("default scripts");
+
+    assert_eq!(
+        fs::read_to_string(&path).expect("read custom script"),
+        "#!/bin/sh\nexit 42\n"
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = fs::metadata(&path)
+            .expect("script metadata")
+            .permissions()
+            .mode();
+        assert_ne!(mode & 0o111, 0, "custom script should be executable");
+    }
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn enabled_default_script_commands_have_shipped_files() {
+    let shipped = crate::DEFAULT_SCRIPTS
+        .iter()
+        .map(|script| script.relative_path)
+        .collect::<Vec<_>>();
+    let config = Config::default();
+
+    for toggle in config
+        .widgets
+        .toggles
+        .iter()
+        .filter(|toggle| toggle.enabled)
+    {
+        for command in [
+            toggle.state_cmd.as_deref(),
+            toggle.toggle_cmd.as_deref(),
+            toggle.on_cmd.as_deref(),
+            toggle.off_cmd.as_deref(),
+            toggle.watch_cmd.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if command.starts_with("scripts/") {
+                assert!(
+                    shipped.contains(&command),
+                    "default command must be shipped: {command}"
+                );
+            }
+        }
+    }
 }

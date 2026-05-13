@@ -12,7 +12,8 @@ use tracing::warn;
 
 use crate::util::expand_tilde;
 use crate::{
-    DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
+    DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_SCRIPTS,
+    DEFAULT_WIDGETS_CSS,
 };
 
 use super::config_runtime::{apply_brightness_backend, apply_volume_backend, sanitize_config};
@@ -156,6 +157,28 @@ impl Config {
         Ok(())
     }
 
+    /// Ensure helper scripts used by the shipped default config exist.
+    pub fn ensure_default_scripts_in(config_dir: &Path) -> Result<(), ConfigError> {
+        for script in DEFAULT_SCRIPTS {
+            let path = config_dir.join(script.relative_path);
+            // Existing files are preserved so user-edited helpers are not overwritten
+            if !path.exists() {
+                write_default_script(&path, script.contents)?;
+            }
+            // Relative commands run the helper directly, so execute bits must be present
+            set_executable(&path)?;
+        }
+        Ok(())
+    }
+
+    /// Overwrite helper scripts with the built-in defaults.
+    pub fn write_default_scripts_in(config_dir: &Path) -> Result<(), ConfigError> {
+        for script in DEFAULT_SCRIPTS {
+            write_default_script(&config_dir.join(script.relative_path), script.contents)?;
+        }
+        Ok(())
+    }
+
     fn apply_runtime_defaults(&mut self) {
         apply_volume_backend(&mut self.widgets.volume);
         apply_brightness_backend(&mut self.widgets.brightness);
@@ -205,13 +228,54 @@ fn write_if_missing(path: &Path, contents: &str) -> Result<(), ConfigError> {
     fs::write(path, contents).map_err(|err| ConfigError::ReadFailed(err.to_string()))
 }
 
+fn write_default_script(path: &Path, contents: &str) -> Result<(), ConfigError> {
+    ensure_parent_dir(path)?;
+    // Script reset uses the same atomic path as startup provisioning
+    // This keeps installer resets from leaving half-written helpers behind
+    write_file_atomic(path, contents)?;
+    set_executable(path)
+}
+
+fn write_file_atomic(path: &Path, contents: &str) -> Result<(), ConfigError> {
+    let parent = path.parent().ok_or_else(|| {
+        ConfigError::ReadFailed("missing default script parent directory".to_string())
+    })?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| ConfigError::ReadFailed("invalid default script file name".to_string()))?;
+    // Temp lives beside the target so rename stays on the same filesystem
+    let tmp = parent.join(format!(".{name}.tmp-{}", std::process::id()));
+    fs::write(&tmp, contents).map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
+    fs::rename(&tmp, path).map_err(|err| {
+        let _ = fs::remove_file(&tmp);
+        ConfigError::ReadFailed(err.to_string())
+    })
+}
+
+#[cfg(unix)]
+fn set_executable(path: &Path) -> Result<(), ConfigError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)
+        .map_err(|err| ConfigError::ReadFailed(err.to_string()))?
+        .permissions();
+    permissions.set_mode(permissions.mode() | 0o111);
+    fs::set_permissions(path, permissions).map_err(|err| ConfigError::ReadFailed(err.to_string()))
+}
+
+#[cfg(not(unix))]
+fn set_executable(_path: &Path) -> Result<(), ConfigError> {
+    Ok(())
+}
+
 fn ensure_parent_dir(path: &Path) -> Result<(), ConfigError> {
     let parent = path.parent().ok_or_else(|| {
-        ConfigError::ReadFailed("missing theme file parent directory".to_string())
+        ConfigError::ReadFailed("missing default file parent directory".to_string())
     })?;
     fs::create_dir_all(parent).map_err(|err| ConfigError::ReadFailed(err.to_string()))
 }
 
 #[cfg(test)]
-#[path = "config_io_tests.rs"]
+#[path = "tests/io.rs"]
 mod tests;

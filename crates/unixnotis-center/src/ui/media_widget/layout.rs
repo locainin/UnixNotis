@@ -107,5 +107,5 @@ fn media_text_reserve_px(shell: &MediaShellConfig) -> i32 {
 }
 
 #[cfg(test)]
-#[path = "layout_tests.rs"]
+#[path = "tests/layout.rs"]
 mod tests;

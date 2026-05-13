@@ -164,20 +164,24 @@ pub(crate) fn reset_config(ctx: &mut ActionContext) -> Result<()> {
 }
 
 fn ensure_default_scripts(ctx: &mut ActionContext, config_dir: &Path) -> Result<()> {
-    for script in unixnotis_core::DEFAULT_SCRIPTS {
-        let path = config_dir.join(script.relative_path);
-        if path.exists() {
-            log_line(
-                ctx,
-                format!("Default script present: {}", format_with_home(&path)),
-            );
-            continue;
-        }
+    // Snapshot presence first so logs can say created without duplicating write logic
+    let pre_existing = unixnotis_core::DEFAULT_SCRIPTS
+        .iter()
+        .map(|script| config_dir.join(script.relative_path).exists())
+        .collect::<Vec<_>>();
 
-        write_default_script(&path, script.contents)?;
+    // Core owns script provisioning because center startup needs the same guarantee
+    Config::ensure_default_scripts_in(config_dir).map_err(|err| anyhow!(err.to_string()))?;
+
+    for (script, existed) in unixnotis_core::DEFAULT_SCRIPTS
+        .iter()
+        .zip(pre_existing.iter())
+    {
+        let path = config_dir.join(script.relative_path);
+        let status = if *existed { "present" } else { "created" };
         log_line(
             ctx,
-            format!("Default script created: {}", format_with_home(&path)),
+            format!("Default script {status}: {}", format_with_home(&path)),
         );
     }
     Ok(())
@@ -196,37 +200,7 @@ fn backup_default_scripts(
 }
 
 pub(in crate::actions::config) fn write_default_scripts(config_dir: &Path) -> Result<()> {
-    for script in unixnotis_core::DEFAULT_SCRIPTS {
-        let path = config_dir.join(script.relative_path);
-        write_default_script(&path, script.contents)?;
-    }
-    Ok(())
-}
-
-fn write_default_script(path: &Path, contents: &str) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| "failed to create scripts directory")?;
-    }
-    write_atomic(path, contents).with_context(|| "failed to write default script")?;
-    set_executable(path)?;
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_executable(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path)
-        .with_context(|| "failed to read default script metadata")?
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions)
-        .with_context(|| "failed to mark default script executable")
-}
-
-#[cfg(not(unix))]
-fn set_executable(_path: &Path) -> Result<()> {
-    Ok(())
+    Config::write_default_scripts_in(config_dir).map_err(|err| anyhow!(err.to_string()))
 }
 
 pub(in crate::actions::config) fn render_default_config_toml(config: &Config) -> Result<String> {
