@@ -13,14 +13,16 @@ use async_channel::TrySendError;
 use gtk::gdk;
 use gtk::prelude::*;
 use tracing::debug;
-use unixnotis_core::PanelDebugLevel;
+use unixnotis_core::{Config, PanelDebugLevel};
 
 use crate::dbus::{UiCommand, UiEvent};
 use crate::debug;
 
 use super::input_guard::{ClickCooldown, LatestBoolEventGate};
 use super::widget_builders::{build_extra_widgets, build_quick_controls};
-use super::{hyprland, icons, list, media_widget, panel, try_send_command, UiState, UiStateInit};
+use super::{
+    hyprland, icons, list, media_widget, panel, try_send_command, widgets, UiState, UiStateInit,
+};
 
 const CONTROL_CLICK_GUARD_MS: u64 = 180;
 const WIDGETS_TOGGLE_COALESCE_MS: u64 = 16;
@@ -292,6 +294,10 @@ fn connect_keyboard_shortcuts(
 
 impl UiState {
     pub fn new(init: UiStateInit) -> Self {
+        if let Ok(config_dir) = Config::config_dir_for_path(&init.config_path) {
+            widgets::configure_command_config_dir(config_dir);
+        }
+
         // Build the panel widget tree first so child widgets can be attached safely
         let panel = panel::build_panel_widgets(&init.app, &init.config);
         let icon_resolver = Rc::new(icons::IconResolver::new());
