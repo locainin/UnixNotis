@@ -1,7 +1,7 @@
 //! D-Bus server for org.freedesktop.Notifications
 //!
 //! The interface methods live here while parsing/sanitizing helpers are split into
-//! focused submodules under `daemon_notifications/`
+//! focused submodules under `notifications/`
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,13 +19,13 @@ use super::{
 };
 
 // Split hard limits into a dedicated file so security bounds are easy to review
-#[path = "daemon_notifications/limits.rs"]
+#[path = "notifications/limits.rs"]
 mod limits;
 // Split payload construction into a dedicated file to keep interface code compact
-#[path = "daemon_notifications/payload.rs"]
+#[path = "notifications/payload.rs"]
 mod payload;
 // Split sender metadata helpers so ownership logic is reused consistently
-#[path = "daemon_notifications/sender.rs"]
+#[path = "notifications/sender.rs"]
 mod sender;
 
 use payload::{build_notification, resolve_expiration, NotificationInput};
