@@ -81,3 +81,7 @@ fn sanitize_widget_plugin(
         .max_output_bytes
         .clamp(MIN_PLUGIN_OUTPUT_BYTES, MAX_PLUGIN_OUTPUT_BYTES);
 }
+
+#[cfg(test)]
+#[path = "../../tests/runtime/plugins.rs"]
+mod tests;

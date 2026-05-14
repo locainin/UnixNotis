@@ -57,3 +57,7 @@ impl Default for WidgetsConfig {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/widgets.rs"]
+mod tests;

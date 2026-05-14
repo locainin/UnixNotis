@@ -65,4 +65,5 @@ pub(in super::super) fn apply_brightness_backend(brightness: &mut SliderWidgetCo
 }
 
 #[cfg(test)]
+#[path = "../tests/runtime_widgets.rs"]
 mod tests;

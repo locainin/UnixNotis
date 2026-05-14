@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, HashSet};
 use tracing::warn;
 
 use super::{
-    Config, DEFAULT_MEDIA_ART_SIZE_PX, DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX, MAX_CARD_HEIGHT,
-    MAX_MEDIA_ART_SIZE, MAX_MEDIA_TEXT_WIDTH_FLOOR, MAX_MEDIA_TITLE_CHAR_LIMIT, MAX_SPACING,
-    MIN_MEDIA_TEXT_WIDTH_FLOOR, MIN_MEDIA_TITLE_CHAR_LIMIT,
+    MAX_CARD_HEIGHT, MAX_MEDIA_ART_SIZE, MAX_MEDIA_TEXT_WIDTH_FLOOR, MAX_MEDIA_TITLE_CHAR_LIMIT,
+    MAX_SPACING, MIN_MEDIA_TEXT_WIDTH_FLOOR, MIN_MEDIA_TITLE_CHAR_LIMIT,
 };
+use crate::{Config, DEFAULT_MEDIA_ART_SIZE_PX, DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX};
 
 pub(super) fn sanitize_media_config(config: &mut Config) {
     // Normalize token lists once so the hot path does not keep trimming and folding case
@@ -115,3 +115,7 @@ fn normalize_media_aliases(aliases: &BTreeMap<String, String>) -> BTreeMap<Strin
 
     normalized
 }
+
+#[cfg(test)]
+#[path = "../../tests/runtime/media.rs"]
+mod tests;
