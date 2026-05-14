@@ -8,17 +8,17 @@ use zbus::Connection;
 
 use crate::dbus::UiEvent;
 
-use super::media_bus::{
+use super::bus::{
     build_player_state, handle_command, is_allowed_player, refresh_players,
     spawn_properties_listener, PlayerState,
 };
-use super::media_cache::{refresh_cache, refresh_player_cache, MediaCacheMergeMode};
-use super::media_loop::MediaRuntimeState;
-use super::media_schedule::{
+use super::cache::{refresh_cache, refresh_player_cache, MediaCacheMergeMode};
+use super::event_loop::MediaRuntimeState;
+use super::schedule::{
     cancel_delayed_refresh, prune_delayed_refreshes, schedule_command_refresh,
     schedule_metadata_fallback, schedule_metadata_fallbacks, DelayedRefreshTasks,
 };
-use super::media_snapshot::send_snapshot_if_changed;
+use super::snapshot::send_snapshot_if_changed;
 use super::{MediaCommand, MediaRefreshOrigin, MediaSignal, MPRIS_PREFIX};
 
 pub(super) async fn refresh_all_players(

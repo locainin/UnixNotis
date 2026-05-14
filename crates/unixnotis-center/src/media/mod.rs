@@ -1,12 +1,12 @@
-mod media_bus;
-mod media_cache;
-mod media_loop;
-mod media_loop_events;
-mod media_metadata;
-mod media_policy;
-mod media_runtime;
-mod media_schedule;
-mod media_snapshot;
+mod bus;
+mod cache;
+mod event_loop;
+mod events;
+mod metadata;
+mod policy;
+mod runtime;
+mod schedule;
+mod snapshot;
 
 use std::path::PathBuf;
 
@@ -138,7 +138,7 @@ pub fn start_media_task(
     sender: async_channel::Sender<UiEvent>,
 ) -> Option<MediaHandle> {
     // The heavy runtime loop lives in its own file so this module can stay type-focused
-    media_runtime::start_media_task(runtime, connection, config, sender)
+    runtime::start_media_task(runtime, connection, config, sender)
 }
 
 #[cfg(test)]

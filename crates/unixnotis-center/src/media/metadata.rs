@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use zbus::zvariant::OwnedValue;
 
-use super::media_bus::PlayerState;
-use super::media_policy::normalize_art_source;
+use super::bus::PlayerState;
+use super::policy::normalize_art_source;
 use super::MediaInfo;
 
 pub(super) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {

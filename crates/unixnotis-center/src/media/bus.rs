@@ -7,7 +7,7 @@ use unixnotis_core::{MediaConfig, PanelDebugLevel};
 use zbus::fdo::{DBusProxy, PropertiesProxy};
 use zbus::{Connection, Proxy, ProxyBuilder};
 
-use super::media_policy::{detect_browser_family, remote_art_allowed};
+use super::policy::{detect_browser_family, remote_art_allowed};
 use super::{
     MediaCommand, MediaRefreshOrigin, MediaSignal, MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER,
     MPRIS_PREFIX,
@@ -325,7 +325,7 @@ fn is_browser_name(lower: &str, browser_tokens: &[String]) -> bool {
     // Browser tokens match whole segments so short defaults do not overfire
     browser_tokens
         .iter()
-        .any(|token| super::media_policy::token_matches_segment(lower, token))
+        .any(|token| super::policy::token_matches_segment(lower, token))
 }
 
 #[cfg(test)]

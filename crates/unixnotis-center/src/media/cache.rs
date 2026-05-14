@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use super::media_bus::PlayerState;
-use super::media_metadata::fetch_media_info;
+use super::bus::PlayerState;
+use super::metadata::fetch_media_info;
 use super::MediaInfo;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
