@@ -196,4 +196,5 @@ fn set_class_state(widget: &gtk::Widget, class_name: &str, enabled: bool) {
 }
 
 #[cfg(test)]
+#[path = "tests/shell.rs"]
 mod tests;

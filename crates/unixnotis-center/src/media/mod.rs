@@ -140,3 +140,7 @@ pub fn start_media_task(
     // The heavy runtime loop lives in its own file so this module can stay type-focused
     media_runtime::start_media_task(runtime, connection, config, sender)
 }
+
+#[cfg(test)]
+#[path = "tests/types.rs"]
+mod tests;

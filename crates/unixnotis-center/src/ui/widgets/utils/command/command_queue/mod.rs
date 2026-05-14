@@ -4,6 +4,7 @@ mod coalesced;
 mod delayed;
 mod metrics;
 #[cfg(test)]
+#[path = "tests/queue.rs"]
 mod tests;
 
 use std::sync::OnceLock;

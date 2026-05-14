@@ -55,3 +55,7 @@ fn normalize_media_config(mut config: MediaConfig) -> MediaConfig {
         .collect();
     config
 }
+
+#[cfg(test)]
+#[path = "tests/runtime.rs"]
+mod tests;
