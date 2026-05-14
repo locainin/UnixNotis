@@ -41,6 +41,7 @@ pub(super) async fn refresh_players(
         if !name.starts_with(MPRIS_PREFIX) {
             continue;
         }
+        // Apply allow/deny/browser policy before creating proxies or listener tasks
         if !is_allowed_player(&name, config) {
             continue;
         }
@@ -70,6 +71,7 @@ pub(super) async fn refresh_players(
         if players.contains_key(&name) {
             continue;
         }
+        // New players are probed once before entering the live cache
         let state = match build_player_state(connection, &name, config).await {
             Ok(state) => state,
             Err(err) => {
@@ -164,6 +166,7 @@ fn is_relevant_media_change(
         "CanGoPrevious",
     ];
 
+    // Ignore unrelated property churn so browser players do not wake the panel constantly
     if changed.keys().any(|key| KEYS.contains(key)) {
         return true;
     }

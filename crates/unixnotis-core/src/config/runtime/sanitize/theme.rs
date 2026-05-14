@@ -3,6 +3,7 @@ use crate::{Config, ThemeConfig};
 
 pub(super) fn sanitize_theme_config(config: &mut Config) {
     let theme = &mut config.theme;
+    // NaN and infinity cannot be clamped reliably, so reset the whole alpha set together
     let needs_theme_defaults = !theme.surface_alpha.is_finite()
         || !theme.surface_strong_alpha.is_finite()
         || !theme.card_alpha.is_finite()
@@ -26,6 +27,7 @@ pub(super) fn sanitize_theme_config(config: &mut Config) {
             theme_defaults.shadow_strong_alpha,
         );
     } else {
+        // Finite values keep user intent and only trim the unsafe range
         clamp_alpha_finite(&mut theme.surface_alpha);
         clamp_alpha_finite(&mut theme.surface_strong_alpha);
         clamp_alpha_finite(&mut theme.card_alpha);

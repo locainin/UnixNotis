@@ -17,6 +17,7 @@ impl Urgency {
         let Some(value) = value else {
             return Self::Normal;
         };
+        // Some clients send byte hints and others send wider integers
         let level = if let Ok(v) = u8::try_from(value) {
             v as u32
         } else if let Ok(v) = u32::try_from(value) {
@@ -28,6 +29,7 @@ impl Urgency {
         match level {
             0 => Self::Low,
             2 => Self::Critical,
+            // Unknown values fall back to normal per freedesktop-friendly behavior
             _ => Self::Normal,
         }
     }

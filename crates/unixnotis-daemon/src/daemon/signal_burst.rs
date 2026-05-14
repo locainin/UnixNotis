@@ -6,8 +6,11 @@ use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NotificationSignalMode {
+    // Normal path: send the precise notification signal
     Direct,
+    // Burst path: send one invalidation so clients can rebuild from state
     SnapshotOnly,
+    // Extra burst events are skipped until the window resets
     Suppress,
 }
 
@@ -20,7 +23,9 @@ pub(super) struct NotificationBurstState {
 }
 
 const NOTIFICATION_SIGNAL_WINDOW: Duration = Duration::from_secs(1);
+// Keep a small direct burst so ordinary app batches still feel immediate
 const NOTIFICATION_DIRECT_SIGNAL_LIMIT: u16 = 8;
+// Cap tracked senders so hostile unique names cannot grow memory without bound
 const NOTIFICATION_SIGNAL_TRACK_LIMIT: usize = 128;
 
 pub(super) fn notification_signal_mode_for_sender(
