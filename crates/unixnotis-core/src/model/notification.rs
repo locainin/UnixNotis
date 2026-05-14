@@ -6,8 +6,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::{OwnedValue, Type};
 
-use super::model_image::NotificationImage;
-use super::model_types::{Action, Urgency};
+use super::image::NotificationImage;
+use super::types::{Action, Urgency};
 
 /// Full notification record stored by the daemon.
 #[derive(Debug)]
