@@ -3,6 +3,7 @@
 mod refresh;
 mod schedule;
 #[cfg(test)]
+#[path = "tests/slider.rs"]
 mod tests;
 mod value;
 

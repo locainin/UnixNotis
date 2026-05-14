@@ -7,6 +7,7 @@ mod shell;
 mod widgets;
 
 #[cfg(test)]
+#[path = "tests/build.rs"]
 mod tests;
 
 // Widget assembly is the public entry for the surrounding media widget module
