@@ -15,35 +15,35 @@ use super::{to_fdo_error, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_
 
 // Split auth logic out so this file stays focused on control interface behavior
 // Auth checks live there
-#[path = "daemon_control/auth.rs"]
+#[path = "control/auth.rs"]
 mod auth;
 // Split clear-all fanout out so signal planning does not crowd the interface methods
 // Clear-all logic lives there
-#[path = "daemon_control/clear.rs"]
+#[path = "control/clear.rs"]
 mod clear;
 // Split input normalization out so validation is shared and easy to test
 // Input cleanup lives there
-#[path = "daemon_control/sanitize.rs"]
+#[path = "control/sanitize.rs"]
 mod sanitize;
 // Split owner-watch logic out so background cleanup code is isolated
 // Owner watch lives there
-#[path = "daemon_control/watch.rs"]
+#[path = "control/watch.rs"]
 mod watch;
 // Split DND mutation/persistence flow out so control interface methods stay small
 // DND helpers live there
-#[path = "daemon_control/dnd.rs"]
+#[path = "control/dnd.rs"]
 mod dnd;
 // Split query/read methods out so interface declarations stay compact
 // Query helpers live there
-#[path = "daemon_control/query.rs"]
+#[path = "control/query.rs"]
 mod query;
 // Split panel request/readiness flow out so panel lifecycle behavior is isolated
 // Panel helpers live there
-#[path = "daemon_control/panel.rs"]
+#[path = "control/panel.rs"]
 mod panel;
 // Split inhibitor mutation/fanout flow out so concurrency behavior is isolated
 // Inhibitor helpers live there
-#[path = "daemon_control/inhibit.rs"]
+#[path = "control/inhibit.rs"]
 mod inhibit;
 
 /// D-Bus server for com.unixnotis.Control.
@@ -297,5 +297,5 @@ pub async fn spawn_inhibitor_owner_watch(state: Arc<DaemonState>) -> zbus::Resul
 }
 
 #[cfg(test)]
-#[path = "daemon_control_tests.rs"]
+#[path = "control_tests.rs"]
 mod tests;
