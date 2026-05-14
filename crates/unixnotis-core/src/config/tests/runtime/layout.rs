@@ -104,6 +104,15 @@ fn sanitize_preserves_optional_panel_labels_and_repairs_widget_order() {
 }
 
 #[test]
+fn default_panel_section_labels_do_not_force_widget_headings() {
+    let config = PanelConfig::default();
+
+    // Widget section headings are config-owned and hidden unless explicitly set
+    assert!(config.quick_actions_label.is_empty());
+    assert!(config.system_status_label.is_empty());
+}
+
+#[test]
 fn sanitize_clamps_widget_grid_columns() {
     let mut config = Config::default();
     config.widgets.toggle_columns = 0;

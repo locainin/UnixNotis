@@ -182,3 +182,15 @@ fn stock_panel_css_targets_real_group_card_hooks() {
     assert!(!css.contains(".unixnotis-group .unixnotis-panel-card"));
     assert!(!css.contains(".unixnotis-group-row-collapsed .unixnotis-panel-card"));
 }
+
+#[test]
+fn stock_panel_css_keeps_internal_stack_ghosts_compact() {
+    let css = crate::theme::DEFAULT_PANEL_CSS;
+
+    // Ghosts live inside the row and should look like depth, not full cards
+    assert!(css.contains(".unixnotis-stack-ghost"));
+    assert!(css.contains("min-height: 8px;"));
+    assert!(css.contains("margin-bottom: 0;"));
+    assert!(css.contains(".unixnotis-stack-ghost-2"));
+    assert!(css.contains("min-height: 7px;"));
+}

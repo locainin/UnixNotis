@@ -116,7 +116,13 @@ fn finish_pager(
 
 fn render_exec_content_review(exec_content: &ImportedExecContent) -> String {
     // Styling is applied at render time so the gathered review model stays plain
-    let style = ReviewStyle::for_terminal();
+    render_exec_content_review_with_style(exec_content, ReviewStyle::for_terminal())
+}
+
+fn render_exec_content_review_with_style(
+    exec_content: &ImportedExecContent,
+    style: ReviewStyle,
+) -> String {
     let mut lines = vec![
         style.title("UnixNotis preset executable content review"),
         String::new(),
@@ -246,8 +252,8 @@ impl ReviewStyle {
 #[cfg(test)]
 mod tests {
     use super::{
-        finish_pager, pager_command_parts, pager_enables_raw_control, render_exec_content_review,
-        ReviewStyle,
+        finish_pager, pager_command_parts, pager_enables_raw_control,
+        render_exec_content_review_with_style, ReviewStyle,
     };
     use crate::preset::import::checks::{
         ImportedExecCommand, ImportedExecContent, ImportedExecFile,
@@ -263,17 +269,20 @@ mod tests {
 
     #[test]
     fn exec_review_renders_commands_and_files() {
-        let review = render_exec_content_review(&ImportedExecContent {
-            commands: vec![ImportedExecCommand {
-                slot: "widgets.stats[0].cmd".to_string(),
-                command: "scripts/check.sh".to_string(),
-            }],
-            files: vec![ImportedExecFile {
-                relative_path: PathBuf::from("scripts/check.sh"),
-                contents: b"#!/bin/sh\necho ok\n".to_vec(),
-                mode: 0o755,
-            }],
-        });
+        let review = render_exec_content_review_with_style(
+            &ImportedExecContent {
+                commands: vec![ImportedExecCommand {
+                    slot: "widgets.stats[0].cmd".to_string(),
+                    command: "scripts/check.sh".to_string(),
+                }],
+                files: vec![ImportedExecFile {
+                    relative_path: PathBuf::from("scripts/check.sh"),
+                    contents: b"#!/bin/sh\necho ok\n".to_vec(),
+                    mode: 0o755,
+                }],
+            },
+            ReviewStyle { color: false },
+        );
 
         assert!(review.contains("widgets.stats[0].cmd = scripts/check.sh"));
         assert!(review.contains("== scripts/check.sh (mode 755) =="));
