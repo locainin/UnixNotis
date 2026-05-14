@@ -21,6 +21,7 @@ pub(in super::super) fn apply_volume_backend(volume: &mut SliderWidgetConfig) {
     let pactl_available = program_in_path("pactl");
     let wpctl_available = program_in_path("wpctl");
 
+    // Only stock volume commands are migrated; custom slider commands remain config-owned
     let watch_needs_stock_backfill = is_wpctl_default && volume.watch_cmd.is_none();
     if watch_needs_stock_backfill || watch_is_legacy {
         if pactl_available {
@@ -39,6 +40,7 @@ pub(in super::super) fn apply_volume_backend(volume: &mut SliderWidgetConfig) {
         return;
     }
     if pactl_available {
+        // pactl is the compatible fallback when wpctl is not installed
         volume.get_cmd = SliderWidgetConfig::PACTL_GET.to_string();
         volume.set_cmd = SliderWidgetConfig::PACTL_SET.to_string();
         volume.toggle_cmd = Some(SliderWidgetConfig::PACTL_TOGGLE.to_string());

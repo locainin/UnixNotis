@@ -22,6 +22,7 @@ impl StatWidgetConfig {
             label: "CPU".to_string(),
             icon: Some("utilities-system-monitor-symbolic".to_string()),
             kind: None,
+            // Builtins avoid shelling out for common fast-refresh stats
             cmd: Some("builtin:cpu".to_string()),
             plugin: None,
             min_height: 72,
@@ -34,6 +35,7 @@ impl StatWidgetConfig {
             label: "RAM".to_string(),
             icon: Some("drive-harddisk-symbolic".to_string()),
             kind: None,
+            // Memory comes from the same builtin path so defaults stay cheap to poll
             cmd: Some("builtin:memory".to_string()),
             plugin: None,
             min_height: 72,
@@ -46,6 +48,7 @@ impl StatWidgetConfig {
             label: "Battery".to_string(),
             icon: Some("battery-full-symbolic".to_string()),
             kind: None,
+            // Battery remains optional at runtime; systems without a battery render fallback text
             cmd: Some("builtin:battery".to_string()),
             plugin: None,
             min_height: 72,

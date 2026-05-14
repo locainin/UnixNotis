@@ -25,6 +25,7 @@ impl CardWidgetConfig {
             title: "Calendar".to_string(),
             subtitle: None,
             icon: Some("x-office-calendar-symbolic".to_string()),
+            // No command means the center renders the built-in GTK calendar widget
             cmd: None,
             plugin: None,
             min_height: 180,
@@ -39,6 +40,7 @@ impl CardWidgetConfig {
             title: "Weather".to_string(),
             subtitle: Some("No data".to_string()),
             icon: Some("weather-clear-symbolic".to_string()),
+            // Weather is a styled placeholder until the user supplies a command or plugin
             cmd: None,
             plugin: None,
             min_height: 160,

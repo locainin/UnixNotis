@@ -60,17 +60,20 @@ fn sanitize_refresh_intervals(config: &mut Config) {
 
 fn sanitize_panel_geometry(config: &mut Config) {
     if config.panel.width <= 0 {
+        // Negative or zero width cannot map to a usable layer-shell surface
         config.panel.width = PanelConfig::default().width;
     }
     config.panel.width = config.panel.width.clamp(1, MAX_PANEL_WIDTH);
 
     if config.panel.height <= 0 {
+        // Height is a percentage unless height_override is set
         config.panel.height = PANEL_HEIGHT_PERCENT_DEFAULT;
     }
     config.panel.height = config.panel.height.clamp(1, MAX_PANEL_HEIGHT_PERCENT);
 
     if let Some(height_override) = config.panel.height_override {
         if height_override <= 0 {
+            // Invalid overrides are removed so percentage height can take over again
             config.panel.height_override = None;
         } else {
             config.panel.height_override = Some(height_override.clamp(1, MAX_PANEL_HEIGHT));
@@ -102,6 +105,7 @@ fn sanitize_popup_geometry(config: &mut Config) {
 }
 
 fn sanitize_history(config: &mut Config) {
+    // Active notifications are bounded tighter than history to protect panel layout and memory
     config.history.max_active = config.history.max_active.min(MAX_HISTORY_ACTIVE);
     config.history.max_entries = config.history.max_entries.min(MAX_HISTORY_ENTRIES);
     config.history.max_active = config.history.max_active.min(config.history.max_entries);

@@ -41,6 +41,7 @@ pub(super) async fn refresh_player_cache(
     merge_mode: MediaCacheMergeMode,
 ) {
     let Some(state) = players.get(bus_name) else {
+        // A command may race with player removal, so clear only that stale cache entry
         cache.remove(bus_name);
         return;
     };
@@ -59,6 +60,7 @@ fn merge_media_info(
     merge_mode: MediaCacheMergeMode,
 ) -> Option<MediaInfo> {
     let Some(fetched) = fetched else {
+        // Keep the old card during short D-Bus read failures
         return existing.cloned();
     };
     let Some(existing) = existing else {

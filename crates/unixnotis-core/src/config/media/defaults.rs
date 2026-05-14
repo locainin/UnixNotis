@@ -11,6 +11,7 @@ impl Default for MediaConfig {
         Self {
             enabled: true,
             layout: MediaLayout::Carousel,
+            // Browser MPRIS is useful by default, but remote artwork is still gated below
             include_browsers: true,
             browser_tokens: default_browser_tokens(),
             title_char_limit: 32,
@@ -44,6 +45,7 @@ impl Default for MediaConfig {
 }
 
 pub fn default_art_position_for_layout(layout: MediaLayout) -> MediaArtPosition {
+    // Presets own their natural shape; explicit config can override this later
     match layout {
         MediaLayout::Stacked | MediaLayout::Player => MediaArtPosition::Top,
         MediaLayout::Carousel | MediaLayout::Inline | MediaLayout::Showcase => {
@@ -53,6 +55,7 @@ pub fn default_art_position_for_layout(layout: MediaLayout) -> MediaArtPosition 
 }
 
 pub fn default_controls_position_for_layout(layout: MediaLayout) -> MediaControlsPosition {
+    // Control placement follows the shell shape so each preset remains balanced
     match layout {
         MediaLayout::Carousel => MediaControlsPosition::Inline,
         MediaLayout::Inline | MediaLayout::Stacked | MediaLayout::Player => {
@@ -63,6 +66,7 @@ pub fn default_controls_position_for_layout(layout: MediaLayout) -> MediaControl
 }
 
 pub fn default_navigation_position_for_layout(layout: MediaLayout) -> MediaNavigationPosition {
+    // Player hides navigation by default because it is designed as a focused single-card shell
     match layout {
         MediaLayout::Carousel => MediaNavigationPosition::External,
         MediaLayout::Player => MediaNavigationPosition::Hidden,
@@ -83,6 +87,7 @@ pub fn default_card_height_for_layout(layout: MediaLayout) -> i32 {
 }
 
 fn default_browser_tokens() -> Vec<String> {
+    // Tokens are lowercase because runtime matching normalizes player names before comparison
     vec![
         "firefox".to_string(),
         "librewolf".to_string(),
