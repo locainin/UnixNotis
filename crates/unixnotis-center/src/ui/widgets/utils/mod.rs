@@ -16,6 +16,7 @@ mod watch_reaper;
 mod watch;
 
 // Shared command helpers are scoped to widget internals
+pub(crate) use command::configure_command_config_dir;
 pub(super) use command::{
     run_action_command_with_completion, run_command_capture_async,
     run_command_capture_status_async, run_command_capture_with_timeout_async,

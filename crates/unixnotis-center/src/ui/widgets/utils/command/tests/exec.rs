@@ -1,7 +1,10 @@
 use std::io::{self, Cursor};
 use std::path::Path;
 
-use super::{read_to_end_limited, resolve_simple_program_from_root, MAX_CAPTURE_BYTES};
+use super::{
+    read_to_end_limited, resolve_simple_program, resolve_simple_program_from_root,
+    set_command_config_dir, MAX_CAPTURE_BYTES,
+};
 
 #[test]
 fn read_to_end_limited_accepts_small_payloads() {
@@ -24,6 +27,17 @@ fn resolve_simple_program_roots_relative_script_paths_in_config_dir() {
     assert_eq!(
         resolve_simple_program_from_root(Some(config_dir), "scripts/demo-widget"),
         config_dir.join("scripts/demo-widget")
+    );
+}
+
+#[test]
+fn resolve_simple_program_uses_active_config_dir_for_relative_scripts() {
+    let config_dir = Path::new("/tmp/unixnotis-custom-config-root").to_path_buf();
+    set_command_config_dir(config_dir.clone());
+
+    assert_eq!(
+        resolve_simple_program("scripts/unixnotis-blue-light-state"),
+        config_dir.join("scripts/unixnotis-blue-light-state")
     );
 }
 
