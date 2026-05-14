@@ -30,6 +30,19 @@ const BLOCKED_OUTSIDE_ROOT_PROGRAM: &str = ".unixnotis-blocked-command-path";
 // Keep warning memory bounded while still suppressing repeat shell-fallback spam
 const SHELL_FALLBACK_CACHE_LIMIT: usize = 64;
 
+static COMMAND_CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+pub(super) fn set_command_config_dir(config_dir: PathBuf) {
+    // Widget commands are built long after startup, so capture the active config root once
+    // instead of falling back to the default XDG directory for custom config paths
+    if COMMAND_CONFIG_DIR.get() == Some(&config_dir) {
+        return;
+    }
+    if COMMAND_CONFIG_DIR.set(config_dir).is_err() {
+        warn!("widget command config directory was already initialized");
+    }
+}
+
 pub(super) fn build_command_runtime() -> Option<Runtime> {
     // A lightweight runtime enables async pipe reads without spawning extra threads,
     // which keeps per-command overhead low for frequent widget refreshes.
@@ -357,7 +370,15 @@ fn apply_parsed_command_env_tokio(command: &mut TokioCommand, parsed: &ParsedCom
 
 fn resolve_simple_program(program: &str) -> PathBuf {
     // Runtime lookup keeps shared presets working after export rewrites host-local paths
-    resolve_simple_program_from_root(Config::default_config_dir().ok().as_deref(), program)
+    resolve_simple_program_from_root(command_config_dir().as_deref(), program)
+}
+
+fn command_config_dir() -> Option<PathBuf> {
+    if let Some(config_dir) = COMMAND_CONFIG_DIR.get() {
+        return Some(config_dir.clone());
+    }
+
+    Config::default_config_dir().ok()
 }
 
 fn resolve_simple_program_from_root(config_dir: Option<&Path>, program: &str) -> PathBuf {
@@ -432,43 +453,5 @@ pub(in crate::ui::widgets) fn kill_process_group(pid: i32) {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::io::{self, Cursor};
-    use std::path::Path;
-
-    use super::{read_to_end_limited, resolve_simple_program_from_root, MAX_CAPTURE_BYTES};
-
-    #[test]
-    fn read_to_end_limited_accepts_small_payloads() {
-        let payload = b"ok".to_vec();
-        let result = read_to_end_limited(Cursor::new(payload.clone())).expect("small payload");
-        assert_eq!(result, payload);
-    }
-
-    #[test]
-    fn read_to_end_limited_rejects_oversized_payloads() {
-        let payload = vec![0u8; MAX_CAPTURE_BYTES + 1];
-        let err = read_to_end_limited(Cursor::new(payload)).expect_err("oversized payload");
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-    }
-
-    #[test]
-    fn resolve_simple_program_roots_relative_script_paths_in_config_dir() {
-        let config_dir = Path::new("/tmp/demo/unixnotis");
-
-        assert_eq!(
-            resolve_simple_program_from_root(Some(config_dir), "scripts/demo-widget"),
-            config_dir.join("scripts/demo-widget")
-        );
-    }
-
-    #[test]
-    fn resolve_simple_program_blocks_parent_traversal_paths() {
-        let config_dir = Path::new("/tmp/demo/unixnotis");
-
-        assert_eq!(
-            resolve_simple_program_from_root(Some(config_dir), "../outside-script"),
-            config_dir.join(".unixnotis-blocked-command-path")
-        );
-    }
-}
+#[path = "tests/exec.rs"]
+mod tests;

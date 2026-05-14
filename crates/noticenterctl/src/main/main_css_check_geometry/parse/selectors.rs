@@ -23,6 +23,13 @@ pub(super) fn maybe_warn_for_complex_unixnotis_selector(
         // Shipped complex selectors already have a known baseline and should stay quiet
         return;
     }
+    if selector_targets_descendant(selector) && !selector_target_mentions_unixnotis_class(selector)
+    {
+        // Descendant rules aimed at GTK subnodes usually affect an inner allocation
+        // Rules whose final target is a UnixNotis hook still need a warning because they can
+        // resize a real widget that this lightweight model cannot update from a complex selector
+        return;
+    }
 
     let warning_key = format!("complex:{selector}");
     if !warned_classes.insert(warning_key) {
@@ -34,6 +41,32 @@ pub(super) fn maybe_warn_for_complex_unixnotis_selector(
         "size rules target complex UnixNotis selector '{}'; geometry lint only models single-class selectors, so width pressure may be missed",
         selector
     ));
+}
+
+fn selector_targets_descendant(selector: &str) -> bool {
+    selector.contains(' ')
+        || selector.contains('>')
+        || selector.contains('+')
+        || selector.contains('~')
+}
+
+fn selector_target_mentions_unixnotis_class(selector: &str) -> bool {
+    selector_mentions_unixnotis_class(rightmost_selector_segment(selector))
+}
+
+fn rightmost_selector_segment(selector: &str) -> &str {
+    let split_at = selector
+        .char_indices()
+        .filter_map(|(index, ch)| {
+            if ch.is_ascii_whitespace() || matches!(ch, '>' | '+' | '~') {
+                Some(index + ch.len_utf8())
+            } else {
+                None
+            }
+        })
+        .next_back()
+        .unwrap_or(0);
+    selector[split_at..].trim()
 }
 
 pub(super) fn simple_class_selector(selector: &str) -> Option<&str> {

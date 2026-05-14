@@ -109,8 +109,8 @@ pub fn apply_panel_config(panel: &PanelWidgets, config: &Config, reserved: Optio
         panel.window.set_size_request(width, -1);
     }
     panel.root.set_size_request(width, -1);
-    panel.scroller.set_min_content_width(width);
-    panel.scroller.set_max_content_width(width);
+    // Child content sits inside theme-controlled padding and optional section
+    // margins, so only the outer shell receives an exact width request
 }
 
 pub(super) fn map_keyboard_mode(mode: PanelKeyboardInteractivity) -> KeyboardMode {
@@ -182,18 +182,5 @@ fn height_from_percent(usable_height: i32, percent: i32) -> i32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::height_from_percent;
-
-    #[test]
-    fn height_from_percent_scales_usable_height() {
-        assert_eq!(height_from_percent(1000, 84), 840);
-        assert_eq!(height_from_percent(701, 84), 589);
-    }
-
-    #[test]
-    fn height_from_percent_keeps_a_positive_floor() {
-        assert_eq!(height_from_percent(1, 1), 1);
-        assert_eq!(height_from_percent(40, 1), 1);
-    }
-}
+#[path = "tests/layout.rs"]
+mod tests;

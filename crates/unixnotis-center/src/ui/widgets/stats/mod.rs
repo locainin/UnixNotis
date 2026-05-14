@@ -4,6 +4,7 @@ mod build;
 mod card;
 mod stats_builtin;
 #[cfg(test)]
+#[path = "tests/grid.rs"]
 mod tests;
 mod worker;
 

@@ -15,11 +15,15 @@ use unixnotis_core::PanelDebugLevel;
 use crate::debug;
 
 pub(in crate::ui::widgets) use action::run_action_command_with_completion;
-use command_exec::build_command;
+use command_exec::{build_command, set_command_config_dir};
 use command_parse::is_probably_slow;
 use command_queue::enqueue_command;
 
 pub(in crate::ui::widgets) use command_exec::kill_process_group;
+
+pub(crate) fn configure_command_config_dir(config_dir: std::path::PathBuf) {
+    set_command_config_dir(config_dir);
+}
 
 // Timeout budgets are tuned to keep UI responsive while allowing slow shell
 // commands enough time to finish without spamming retries.

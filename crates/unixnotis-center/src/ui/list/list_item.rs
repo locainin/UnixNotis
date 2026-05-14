@@ -13,7 +13,6 @@ use unixnotis_core::NotificationView;
 pub enum RowKind {
     GroupHeader,
     Notification,
-    Ghost,
 }
 
 #[derive(Debug, Clone)]
@@ -23,8 +22,10 @@ pub struct RowData {
     pub group_key: Rc<str>,
     pub count: u32,
     pub expanded: bool,
+    // True when this notification is the visible card for a collapsed group
     pub stacked: bool,
-    pub ghost_depth: u8,
+    // Number of internal ghost cards shown under the visible notification card
+    pub stack_depth: u8,
     pub is_active: bool,
     pub notification: Option<Rc<NotificationView>>,
 }
@@ -32,13 +33,13 @@ pub struct RowData {
 impl Default for RowData {
     fn default() -> Self {
         Self {
-            kind: RowKind::Ghost,
+            kind: RowKind::Notification,
             id: 0,
             group_key: Rc::from(""),
             count: 0,
             expanded: false,
             stacked: false,
-            ghost_depth: 0,
+            stack_depth: 0,
             is_active: false,
             notification: None,
         }
@@ -59,7 +60,7 @@ impl RowData {
             count: count as u32,
             expanded,
             stacked: false,
-            ghost_depth: 0,
+            stack_depth: 0,
             is_active: false,
             notification: Some(sample),
         }
@@ -69,6 +70,8 @@ impl RowData {
         group_key: Rc<str>,
         notification: Rc<NotificationView>,
         stacked: bool,
+        stack_depth: u8,
+        expanded: bool,
         is_active: bool,
     ) -> Self {
         Self {
@@ -76,25 +79,11 @@ impl RowData {
             id: notification.id,
             group_key,
             count: 0,
-            expanded: false,
+            expanded,
             stacked,
-            ghost_depth: 0,
+            stack_depth,
             is_active,
             notification: Some(notification),
-        }
-    }
-
-    pub fn ghost(group_key: Rc<str>, depth: u8) -> Self {
-        Self {
-            kind: RowKind::Ghost,
-            id: 0,
-            group_key,
-            count: 0,
-            expanded: false,
-            stacked: false,
-            ghost_depth: depth,
-            is_active: false,
-            notification: None,
         }
     }
 
@@ -105,7 +94,7 @@ impl RowData {
             && self.count == other.count
             && self.expanded == other.expanded
             && self.stacked == other.stacked
-            && self.ghost_depth == other.ghost_depth
+            && self.stack_depth == other.stack_depth
             && self.is_active == other.is_active
             && Self::same_notification(&self.notification, &other.notification)
     }

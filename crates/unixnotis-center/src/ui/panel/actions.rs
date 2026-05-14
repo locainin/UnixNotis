@@ -1,7 +1,7 @@
 //! Panel action row construction
 
 use gtk::prelude::*;
-use unixnotis_core::css::hooks;
+use unixnotis_core::{css::hooks, PanelClearButtonPlacement, PanelConfig};
 
 pub(super) struct PanelActionWidgets {
     pub(super) focus_toggle: gtk::ToggleButton,
@@ -16,7 +16,7 @@ pub(super) struct PanelActionArea {
     pub(super) widgets: PanelActionWidgets,
 }
 
-pub(super) fn build_panel_actions() -> PanelActionArea {
+pub(super) fn build_panel_actions(config: &PanelConfig) -> PanelActionArea {
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     actions.add_css_class(hooks::panel_action::ROW);
 
@@ -41,9 +41,13 @@ pub(super) fn build_panel_actions() -> PanelActionArea {
     let clear_button = build_text_button_action(
         hooks::panel_action::MUTED,
         "user-trash-symbolic",
-        "Clear",
+        &config.clear_label,
         "Clear all notifications",
     );
+    clear_button.set_visible(matches!(
+        config.clear_button_placement,
+        PanelClearButtonPlacement::ActionRow
+    ));
 
     let search_toggle = build_icon_toggle_action(
         hooks::panel_action::SEARCH,
@@ -74,6 +78,15 @@ pub(super) fn build_panel_actions() -> PanelActionArea {
             close_button,
         },
     }
+}
+
+pub(super) fn build_clear_button(config: &PanelConfig) -> gtk::Button {
+    build_text_button_action(
+        hooks::panel_action::MUTED,
+        "user-trash-symbolic",
+        &config.clear_label,
+        "Clear all notifications",
+    )
 }
 
 fn build_text_toggle_action(

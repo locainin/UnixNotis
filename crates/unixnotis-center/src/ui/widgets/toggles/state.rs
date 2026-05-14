@@ -116,7 +116,7 @@ pub(super) fn schedule_toggle_refresh_with_retry(
     refresh_gen: Rc<Cell<u64>>,
 ) {
     // Post-action retry path closes race windows where backend state lags UI input
-    // Bounded retries reconcile optimistic UI state with eventually-consistent commands
+    // Bounded retries let slow backend state settle after the click command runs
     let gen = next_refresh_generation(&refresh_gen);
 
     // Weak refs avoid extending widget lifetimes from detached async tasks
@@ -293,37 +293,5 @@ fn parse_toggle_state(output: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::ToggleRefreshGate;
-
-    #[test]
-    fn refresh_gate_queues_one_trailing_refresh() {
-        let gate = ToggleRefreshGate::new();
-
-        assert!(gate.begin_or_queue());
-        assert!(!gate.begin_or_queue());
-        assert!(gate.finish());
-    }
-
-    #[test]
-    fn refresh_gate_clears_pending_after_finish() {
-        let gate = ToggleRefreshGate::new();
-
-        assert!(gate.begin_or_queue());
-        assert!(!gate.begin_or_queue());
-        assert!(gate.finish());
-        assert!(!gate.finish());
-        assert!(gate.begin_or_queue());
-    }
-
-    #[test]
-    fn refresh_gate_does_not_stack_multiple_pending_runs() {
-        let gate = ToggleRefreshGate::new();
-
-        assert!(gate.begin_or_queue());
-        assert!(!gate.begin_or_queue());
-        assert!(!gate.begin_or_queue());
-        assert!(gate.finish());
-        assert!(!gate.finish());
-    }
-}
+#[path = "tests/state.rs"]
+mod tests;

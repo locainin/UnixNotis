@@ -63,24 +63,35 @@ impl NotificationList {
             && !self.needs_rebuild
         {
             if let Some(entry) = self.entries.get(&id) {
-                // Compute stacked state from the cached grouping instead of rebuilding it
-                let stacked = self
-                    .grouped_cache
+                if !self.group_span_matches_visible_shape(&entry.app_key) {
+                    // Span changes still need the rebuild path
+                    // Header count and card depth must move as one visible update
+                    self.dirty_groups.insert(entry.app_key.clone());
+                    self.request_rebuild();
+                    debug!(id, active = is_active, "notification stack shape changed");
+                    return;
+                }
+
+                // Compute stack state from cached grouping instead of rebuilding the store
+                let expanded = self
+                    .group_expanded
                     .get(&entry.app_key)
-                    .map(|ids| {
-                        !self
-                            .group_expanded
-                            .get(&entry.app_key)
-                            .copied()
-                            .unwrap_or(false)
-                            && ids.len() > 1
-                    })
+                    .copied()
                     .unwrap_or(false);
-                // Update the row object in-place to avoid ListStore churn
+                let group_len = self.grouped_cache.get(&entry.app_key).map_or(0, Vec::len);
+                let stacked = !expanded && group_len > 1;
+                let stack_depth = if expanded {
+                    0
+                } else {
+                    group_len.saturating_sub(1).min(2) as u8
+                };
+                // Update the row object in-place when the visible span stays identical
                 entry.item.update(super::list_item::RowData::notification(
                     entry.app_key.clone(),
                     entry.view.clone(),
                     stacked,
+                    stack_depth,
+                    expanded,
                     entry.is_active,
                 ));
                 if let Some(ids) = self.grouped_cache.get(&entry.app_key) {
@@ -204,6 +215,20 @@ impl NotificationList {
     }
 }
 
+impl NotificationList {
+    fn group_span_matches_visible_shape(&self, key: &std::rc::Rc<str>) -> bool {
+        let Some(ids) = self.grouped_cache.get(key) else {
+            return false;
+        };
+        let visible_ids = self.visible_ids_for_group(ids);
+        let desired_len = self.group_block_len(key, visible_ids.as_ref());
+        self.group_ranges
+            .get(key)
+            .map(|range| range.len == desired_len)
+            .unwrap_or(false)
+    }
+}
+
 fn should_archive_entry(
     notification: &NotificationView,
     reason: CloseReason,
@@ -214,52 +239,5 @@ fn should_archive_entry(
 }
 
 #[cfg(test)]
-mod tests {
-    use unixnotis_core::{Action, NotificationImage};
-
-    use super::*;
-
-    fn make_view(is_transient: bool) -> NotificationView {
-        NotificationView {
-            id: 7,
-            app_name: "Test".to_string(),
-            summary: "summary".to_string(),
-            body: "body".to_string(),
-            actions: vec![Action {
-                key: "default".to_string(),
-                label: "Open".to_string(),
-            }],
-            urgency: 1,
-            is_transient,
-            image: NotificationImage::default(),
-        }
-    }
-
-    #[test]
-    fn transient_rows_follow_config_when_closed() {
-        assert!(!should_archive_entry(
-            &make_view(true),
-            CloseReason::Expired,
-            false
-        ));
-        assert!(should_archive_entry(
-            &make_view(true),
-            CloseReason::Expired,
-            true
-        ));
-    }
-
-    #[test]
-    fn user_dismiss_never_archives_locally() {
-        assert!(!should_archive_entry(
-            &make_view(false),
-            CloseReason::DismissedByUser,
-            true
-        ));
-        assert!(!should_archive_entry(
-            &make_view(true),
-            CloseReason::DismissedByUser,
-            true
-        ));
-    }
-}
+#[path = "tests/mutation.rs"]
+mod tests;

@@ -1,0 +1,129 @@
+#!/bin/sh
+set -eu
+
+: "${UNIXNOTIS_BLUE_LIGHT_TEMP:=4500}"
+: "${UNIXNOTIS_BLUE_LIGHT_GAMMA:=90}"
+
+STATE_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/unixnotis"
+STATE_FILE="$STATE_DIR/blue-light-backend"
+
+has_backend() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+backend_running() {
+    pgrep -x "$1" >/dev/null 2>&1
+}
+
+active_backend() {
+    # Prefer the backend already in charge so the toggle does not switch tools
+    for candidate in hyprsunset gammastep wlsunset sunsetr; do
+        if backend_running "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+installed_backend() {
+    # Fall back to the first supported tool installed on the system
+    for candidate in hyprsunset gammastep wlsunset sunsetr; do
+        if has_backend "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+selected_backend() {
+    active_backend || installed_backend
+}
+
+remember_backend() {
+    # Runtime state keeps off clicks paired with the backend started by on
+    mkdir -p "$STATE_DIR"
+    printf '%s\n' "$1" > "$STATE_FILE"
+}
+
+remembered_backend() {
+    if [ -r "$STATE_FILE" ]; then
+        read -r backend < "$STATE_FILE"
+        if [ "$backend" != "" ]; then
+            printf '%s\n' "$backend"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+forget_backend() {
+    rm -f "$STATE_FILE"
+}
+
+stop_backend() {
+    case "$1" in
+        hyprsunset)
+            pkill -x hyprsunset >/dev/null 2>&1 || true
+            ;;
+        gammastep)
+            if has_backend gammastep; then
+                gammastep -x >/dev/null 2>&1 || true
+            fi
+            pkill -x gammastep >/dev/null 2>&1 || true
+            ;;
+        wlsunset)
+            pkill -x wlsunset >/dev/null 2>&1 || true
+            ;;
+        sunsetr)
+            if has_backend sunsetr; then
+                sunsetr stop >/dev/null 2>&1 || true
+            fi
+            pkill -x sunsetr >/dev/null 2>&1 || true
+            ;;
+    esac
+}
+
+stop_conflicting_backends() {
+    active="$1"
+
+    # Only one color-temperature process should own the display pipeline
+    for candidate in hyprsunset gammastep wlsunset sunsetr; do
+        if [ "$candidate" != "$active" ] && backend_running "$candidate"; then
+            stop_backend "$candidate"
+        fi
+    done
+}
+
+stop_active_backends() {
+    # Off should clean stale state and any active supported backend
+    for candidate in hyprsunset gammastep wlsunset sunsetr; do
+        if backend_running "$candidate"; then
+            stop_backend "$candidate"
+        fi
+    done
+}
+
+start_backend() {
+    case "$1" in
+        hyprsunset)
+            nohup hyprsunset --temperature "$UNIXNOTIS_BLUE_LIGHT_TEMP" >/dev/null 2>&1 &
+            ;;
+        gammastep)
+            nohup gammastep -m wayland -l 0:0 -t "$UNIXNOTIS_BLUE_LIGHT_TEMP:$UNIXNOTIS_BLUE_LIGHT_TEMP" -P >/dev/null 2>&1 &
+            ;;
+        wlsunset)
+            nohup wlsunset -t "$UNIXNOTIS_BLUE_LIGHT_TEMP" -T "$UNIXNOTIS_BLUE_LIGHT_TEMP" -l 0 -L 0 >/dev/null 2>&1 &
+            ;;
+        sunsetr)
+            nohup sunsetr test "$UNIXNOTIS_BLUE_LIGHT_TEMP" "$UNIXNOTIS_BLUE_LIGHT_GAMMA" >/dev/null 2>&1 &
+            ;;
+        *)
+            return 127
+            ;;
+    esac
+}

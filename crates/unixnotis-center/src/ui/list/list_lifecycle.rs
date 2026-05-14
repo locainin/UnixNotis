@@ -38,7 +38,6 @@ impl NotificationList {
         self.group_order_scratch.clear();
         self.clear_group_indices();
         self.group_ranges.clear();
-        self.ghost_items.clear();
         self.interned.clear();
         self.current_keys.clear();
         self.keys_scratch.clear();
@@ -114,6 +113,8 @@ impl NotificationList {
         let item = RowItem::new(RowData::notification(
             app_key.clone(),
             view.clone(),
+            false,
+            0,
             false,
             is_active,
         ));

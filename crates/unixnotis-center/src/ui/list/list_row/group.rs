@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use async_channel::{Sender, TrySendError};
+use gtk::pango;
 use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::{css::hooks, util};
@@ -45,6 +46,8 @@ pub(in crate::ui::list) fn build_group_row(
 
     let title = gtk::Label::new(None);
     title.set_xalign(0.0);
+    title.set_hexpand(true);
+    title.set_ellipsize(pango::EllipsizeMode::End);
     title.add_css_class(hooks::group_row::TITLE);
 
     let count = gtk::Label::new(Some("0"));

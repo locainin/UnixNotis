@@ -173,5 +173,5 @@ impl BuiltinStat {
 }
 
 #[cfg(test)]
-#[path = "stats_builtin_tests.rs"]
+#[path = "tests/builtin.rs"]
 mod tests;

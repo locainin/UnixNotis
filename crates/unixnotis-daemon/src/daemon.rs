@@ -17,16 +17,16 @@ use crate::store::NotificationStore;
 
 #[path = "daemon/bus_names.rs"]
 mod bus_names;
-#[path = "daemon/daemon_control.rs"]
-mod daemon_control;
-#[path = "daemon/daemon_notifications.rs"]
-mod daemon_notifications;
+#[path = "daemon/control.rs"]
+mod control;
+#[path = "daemon/notifications.rs"]
+mod notifications;
 #[path = "daemon/signal_burst.rs"]
 mod signal_burst;
 
 pub use bus_names::{log_name_reply, request_control_name, request_well_known_name};
-pub use daemon_control::{spawn_inhibitor_owner_watch, ControlServer};
-pub use daemon_notifications::NotificationServer;
+pub use control::{spawn_inhibitor_owner_watch, ControlServer};
+pub use notifications::NotificationServer;
 use signal_burst::{
     notification_signal_mode_for_sender, NotificationBurstState, NotificationSignalMode,
 };

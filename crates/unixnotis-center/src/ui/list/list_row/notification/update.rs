@@ -26,7 +26,6 @@ const ACTION_BUTTON_GUARD_MS: u64 = 180;
 
 pub(in crate::ui::list) fn update_notification_row(
     row: &NotificationRowWidgets,
-    root: &gtk::Box,
     data: &RowData,
     icon_resolver: &IconResolver,
     command_tx: &mpsc::Sender<UiCommand>,
@@ -37,36 +36,46 @@ pub(in crate::ui::list) fn update_notification_row(
         return;
     };
     let notification = notification.as_ref();
+    let card = &row.card;
 
+    // State classes belong on the card, not the outer ListView row wrapper
     // CSS state toggles stay explicit so stale visual state cannot linger
     set_class_state(
-        root,
+        card,
         hooks::shared_state::CRITICAL,
         notification.urgency == Urgency::Critical as u8,
     );
     // Active rows can be styled differently from history rows
-    set_class_state(root, hooks::shared_state::ACTIVE, data.is_active);
+    set_class_state(card, hooks::shared_state::ACTIVE, data.is_active);
     // Stacked class indicates collapsed entries in grouped mode
-    set_class_state(root, hooks::shared_state::STACKED, data.stacked);
+    set_class_state(card, hooks::shared_state::STACKED, data.stacked);
+    // Grouped cards are separate ListView rows, so direct hooks replace dead descendant CSS
+    set_class_state(card, hooks::panel_card::GROUPED, true);
+    // Collapsed and expanded hooks let themes space grouped cards directly
+    set_class_state(card, hooks::panel_card::GROUP_COLLAPSED, data.stacked);
+    set_class_state(card, hooks::panel_card::GROUP_EXPANDED, data.expanded);
+    // Stack ghosts are internal card shadows and must follow the same row update
+    set_widget_visible_if_changed(&row.stack_ghost_1, data.stack_depth >= 1);
+    set_widget_visible_if_changed(&row.stack_ghost_2, data.stack_depth >= 2);
 
     // Extra state classes give themes better hooks without changing old selectors
     set_class_state(
-        root,
+        card,
         hooks::panel_card::HAS_SUMMARY,
         has_visible_text(&notification.summary),
     );
     set_class_state(
-        root,
+        card,
         hooks::panel_card::HAS_BODY,
         has_visible_text(&notification.body),
     );
     set_class_state(
-        root,
+        card,
         hooks::panel_card::HAS_ACTIONS,
         !notification.actions.is_empty(),
     );
     set_class_state(
-        root,
+        card,
         hooks::panel_card::NO_ACTIONS,
         notification.actions.is_empty(),
     );
@@ -89,7 +98,7 @@ pub(in crate::ui::list) fn update_notification_row(
     let next_sig = IconSignature::from(notification);
     let mut sig_guard = row.icon_sig.borrow_mut();
     if sig_guard.as_ref() != Some(&next_sig) {
-        let scale = root.scale_factor();
+        let scale = card.scale_factor();
         icon_resolver.apply_icon(&row.icon, notification, 22, scale);
         *sig_guard = Some(next_sig);
     }
@@ -171,6 +180,13 @@ fn set_label_text_if_changed(label: &gtk::Label, text: &str) {
     // Compare against the current label so GTK only sees real text changes
     if label.text().as_str() != text {
         label.set_text(text);
+    }
+}
+
+fn set_widget_visible_if_changed<W: IsA<gtk::Widget>>(widget: &W, visible: bool) {
+    // Stack ghost visibility can be replayed often while grouped counts change
+    if widget.get_visible() != visible {
+        widget.set_visible(visible);
     }
 }
 

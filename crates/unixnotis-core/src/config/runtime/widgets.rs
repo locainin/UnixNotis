@@ -1,0 +1,71 @@
+//! Runtime adjustments for slider widget backends
+
+use super::super::{NumericParseMode, SliderWidgetConfig};
+use crate::program_in_path;
+use tracing::warn;
+
+const LEGACY_WPCTL_WATCH: &str = "wpctl subscribe";
+
+pub(in super::super) fn apply_volume_backend(volume: &mut SliderWidgetConfig) {
+    if !volume.enabled {
+        return;
+    }
+    let is_wpctl_default = volume.get_cmd == SliderWidgetConfig::WPCTL_GET
+        && volume.set_cmd == SliderWidgetConfig::WPCTL_SET
+        && volume
+            .toggle_cmd
+            .as_deref()
+            .map(|cmd| cmd == SliderWidgetConfig::WPCTL_TOGGLE)
+            .unwrap_or(false);
+    let watch_is_legacy = volume.watch_cmd.as_deref() == Some(LEGACY_WPCTL_WATCH);
+    let pactl_available = program_in_path("pactl");
+    let wpctl_available = program_in_path("wpctl");
+
+    // Only stock volume commands are migrated; custom slider commands remain config-owned
+    let watch_needs_stock_backfill = is_wpctl_default && volume.watch_cmd.is_none();
+    if watch_needs_stock_backfill || watch_is_legacy {
+        if pactl_available {
+            // Prefer the documented long-running `pactl subscribe` watcher when available
+            volume.watch_cmd = Some(SliderWidgetConfig::PACTL_WATCH.to_string());
+        } else if watch_is_legacy {
+            // Avoid spawning the legacy wpctl watcher that is not part of `wpctl` CLI
+            volume.watch_cmd = None;
+        }
+    }
+
+    if !is_wpctl_default {
+        return;
+    }
+    if wpctl_available {
+        return;
+    }
+    if pactl_available {
+        // pactl is the compatible fallback when wpctl is not installed
+        volume.get_cmd = SliderWidgetConfig::PACTL_GET.to_string();
+        volume.set_cmd = SliderWidgetConfig::PACTL_SET.to_string();
+        volume.toggle_cmd = Some(SliderWidgetConfig::PACTL_TOGGLE.to_string());
+        // Fall back to auto parsing because pactl output differs from wpctl ratios
+        volume.parse_mode = NumericParseMode::Auto;
+        if volume.watch_cmd.is_none() {
+            volume.watch_cmd = Some(SliderWidgetConfig::PACTL_WATCH.to_string());
+        }
+    } else {
+        // Disable the widget explicitly when no supported backend is present
+        warn!("volume widget disabled: missing wpctl and pactl backends");
+        volume.enabled = false;
+    }
+}
+
+pub(in super::super) fn apply_brightness_backend(brightness: &mut SliderWidgetConfig) {
+    if !brightness.enabled {
+        return;
+    }
+    if brightness.watch_cmd.as_deref() == Some("brightnessctl -w") {
+        // Remove the legacy watch flag because brightnessctl has no watch mode
+        brightness.watch_cmd = None;
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/runtime_widgets.rs"]
+mod tests;

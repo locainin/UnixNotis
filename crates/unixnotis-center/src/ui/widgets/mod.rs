@@ -12,3 +12,7 @@ pub mod volume;
 
 // Re-export keeps existing call sites stable while internals stay modular
 pub use utils::CommandSlider;
+
+pub(crate) fn configure_command_config_dir(config_dir: std::path::PathBuf) {
+    utils::configure_command_config_dir(config_dir);
+}

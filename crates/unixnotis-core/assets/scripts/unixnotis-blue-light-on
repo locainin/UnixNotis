@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=crates/unixnotis-core/assets/scripts/unixnotis-blue-light-lib
+. "$script_dir/unixnotis-blue-light-lib"
+
+# Keep the user's active backend when possible, otherwise use the first installed one
+backend=$(selected_backend)
+stop_conflicting_backends "$backend"
+stop_backend "$backend"
+start_backend "$backend"
+remember_backend "$backend"

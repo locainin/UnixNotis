@@ -2,16 +2,13 @@
 pub(super) const WIDTH_WARNING_TOLERANCE_PX: i32 = 8;
 pub(super) const HEIGHT_WARNING_TOLERANCE_PX: i32 = 12;
 
-// Fixed-grid widgets share column counts, spacing, and fallback content widths
-pub(super) const TOGGLE_GRID_COLUMNS: usize = 4;
+// Fixed-grid widgets share spacing and fallback content widths
 pub(super) const TOGGLE_GRID_SPACING_PX: i32 = 8;
 pub(super) const TOGGLE_FALLBACK_CONTENT_WIDTH_PX: i32 = 80;
 
-pub(super) const STAT_GRID_COLUMNS: usize = 2;
 pub(super) const STAT_GRID_SPACING_PX: i32 = 8;
 pub(super) const STAT_FALLBACK_CONTENT_WIDTH_PX: i32 = 96;
 
-pub(super) const CARD_GRID_COLUMNS: usize = 2;
 pub(super) const CARD_GRID_SPACING_PX: i32 = 8;
 pub(super) const CARD_FALLBACK_CONTENT_WIDTH_PX: i32 = 104;
 

@@ -4,6 +4,7 @@ mod build;
 mod calendar;
 mod common;
 #[cfg(test)]
+#[path = "tests/cards.rs"]
 mod tests;
 mod weather;
 

@@ -20,6 +20,7 @@ pub(crate) fn rewrite_host_specific_command_paths(
     rewrite_slider_commands(config_dir, &mut config.widgets.brightness);
     for toggle in &mut config.widgets.toggles {
         rewrite_optional_command(config_dir, &mut toggle.state_cmd);
+        rewrite_optional_command(config_dir, &mut toggle.toggle_cmd);
         rewrite_optional_command(config_dir, &mut toggle.on_cmd);
         rewrite_optional_command(config_dir, &mut toggle.off_cmd);
         rewrite_optional_command(config_dir, &mut toggle.watch_cmd);

@@ -30,6 +30,7 @@ fn collects_widget_command_references() {
     let config: Config = toml::from_str(
         "\
 [theme]\nbase_css = \"base.css\"\n\
+[[widgets.toggles]]\nlabel = \"Action\"\nicon = \"applications-system-symbolic\"\ntoggle_cmd = \"scripts/action.sh\"\n\
 [[widgets.stats]]\nlabel = \"Probe\"\n\
 [widgets.stats.plugin]\napi_version = 1\ncommand = \"scripts/fetch.sh\"\n",
     )
@@ -40,6 +41,9 @@ fn collects_widget_command_references() {
     assert!(commands
         .iter()
         .any(|command| command.slot == "widgets.stats[0].plugin.command"));
+    assert!(commands
+        .iter()
+        .any(|command| command.slot == "widgets.toggles[0].toggle_cmd"));
 }
 
 #[test]
@@ -114,4 +118,44 @@ fn rewrite_host_specific_command_paths_makes_commands_config_relative() {
             .command,
         "scripts/unixnotis-thermal-stat --json"
     );
+}
+
+#[test]
+fn rewrite_host_specific_toggle_command_paths_makes_commands_config_relative() {
+    let config_dir = temp_root("rewrite-toggle-command");
+    let script_path = config_dir.join("scripts/unixnotis-toggle-action");
+    let config = format!(
+        "\
+[theme]\nbase_css = \"base.css\"\n\
+[[widgets.toggles]]\nlabel = \"Probe\"\nicon = \"applications-system-symbolic\"\ntoggle_cmd = {:?}\n",
+        format!("{} --json", script_path.display())
+    );
+
+    let mut parsed: Config = toml::from_str(&config).expect("parse config");
+    let rewritten = rewrite_host_specific_command_paths(&config_dir, &mut parsed);
+
+    assert_eq!(rewritten.len(), 1);
+    assert_eq!(
+        parsed.widgets.toggles[0].toggle_cmd.as_deref(),
+        Some("scripts/unixnotis-toggle-action --json")
+    );
+}
+
+#[test]
+fn host_specific_command_paths_include_toggle_command() {
+    let config_dir = temp_root("toggle-command-host-specific");
+    let script_path = config_dir.join("scripts/unixnotis-toggle-action");
+    let config = format!(
+        "\
+[theme]\nbase_css = \"base.css\"\n\
+[[widgets.toggles]]\nlabel = \"Probe\"\nicon = \"applications-system-symbolic\"\ntoggle_cmd = {:?}\n",
+        script_path.display().to_string()
+    );
+
+    let parsed = toml::from_str(&config).expect("parse config");
+    let leaks = collect_host_specific_command_paths(&config_dir, &parsed);
+
+    assert_eq!(leaks.len(), 1);
+    assert_eq!(leaks[0].slot, "widgets.toggles[0].toggle_cmd");
+    assert_eq!(leaks[0].command, script_path.display().to_string());
 }

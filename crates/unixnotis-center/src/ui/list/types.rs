@@ -31,7 +31,6 @@ pub struct NotificationList {
     pub(super) group_history_index: HashMap<Rc<str>, VecDeque<u32>>,
     // Tracks the row span for each group to support incremental list updates
     pub(super) group_ranges: HashMap<Rc<str>, GroupRange>,
-    pub(super) ghost_items: HashMap<(Rc<str>, u8), RowItem>,
     pub(super) interned: HashSet<Rc<str>>,
     pub(super) current_keys: Vec<RowKey>,
     pub(super) keys_scratch: Vec<RowKey>,
@@ -82,5 +81,4 @@ pub(super) struct FilterQuery {
 pub(super) enum RowKey {
     GroupHeader { group: Rc<str> },
     Notification { id: u32 },
-    Ghost { group: Rc<str>, depth: u8 },
 }

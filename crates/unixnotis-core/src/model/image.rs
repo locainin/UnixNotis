@@ -1,0 +1,374 @@
+//! Image handling for notification hints and icon metadata.
+
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+use serde::{Deserialize, Serialize};
+use zbus::zvariant::{Array, OwnedValue, Structure, Type, Value};
+
+/// Raw image data payload from hints.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq, Eq)]
+pub struct ImageData {
+    pub width: i32,
+    pub height: i32,
+    pub rowstride: i32,
+    pub has_alpha: bool,
+    pub bits_per_sample: i32,
+    pub channels: i32,
+    pub data: Vec<u8>,
+}
+
+/// Image information derived from standard hints and app_icon.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq, Eq)]
+pub struct NotificationImage {
+    pub has_image_data: bool,
+    pub image_data: ImageData,
+    pub image_path: String,
+    pub icon_name: String,
+}
+
+// Bound untrusted image payloads to keep daemon/UI memory predictable under floods.
+const MAX_IMAGE_BYTES: usize = 256 * 1024;
+const MAX_IMAGE_DIMENSION: i32 = 256;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn has_ssse3() -> bool {
+    // Cache the CPU feature probe to avoid repeated CPUID checks per image.
+    static HAS_SSSE3: OnceLock<bool> = OnceLock::new();
+    *HAS_SSSE3.get_or_init(|| std::is_x86_feature_detected!("ssse3"))
+}
+
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+fn has_ssse3() -> bool {
+    false
+}
+
+impl NotificationImage {
+    pub fn from_hints(app_name: &str, app_icon: &str, hints: &HashMap<String, OwnedValue>) -> Self {
+        // The spec prefers image-data over image-path and app_icon.
+        let image_data = hints
+            .get("image-data")
+            .and_then(Self::parse_image_data)
+            .or_else(|| hints.get("image_data").and_then(Self::parse_image_data))
+            .or_else(|| hints.get("icon_data").and_then(Self::parse_image_data));
+        let image_data = image_data.filter(Self::is_image_data_usable);
+
+        let mut image_path = hints
+            .get("image-path")
+            .and_then(owned_to_string)
+            .or_else(|| hints.get("image_path").and_then(owned_to_string))
+            .unwrap_or_default();
+
+        // Normalize desktop-entry values to icon theme names by stripping ".desktop".
+        let desktop_entry = hints
+            .get("desktop-entry")
+            .and_then(owned_to_string)
+            .map(|entry| strip_desktop_suffix(&entry));
+        let app_icon_path = if app_icon.starts_with('/') || app_icon.starts_with("file://") {
+            Some(app_icon.to_string())
+        } else {
+            None
+        };
+        if image_path.is_empty() {
+            if let Some(path) = app_icon_path.as_ref() {
+                image_path = path.clone();
+            }
+        }
+        let icon_name = if app_icon_path.is_some() {
+            String::new()
+        } else if !app_icon.is_empty() {
+            strip_desktop_suffix(app_icon)
+        } else if let Some(desktop_entry) = desktop_entry {
+            desktop_entry
+        } else if !app_name.is_empty() {
+            app_name.to_string()
+        } else {
+            String::new()
+        };
+
+        Self {
+            has_image_data: image_data.is_some(),
+            image_data: image_data.unwrap_or_default(),
+            image_path,
+            icon_name,
+        }
+    }
+
+    pub fn for_listing(&self) -> Self {
+        if self.image_data.data.is_empty() {
+            return self.clone();
+        }
+        Self {
+            has_image_data: false,
+            image_data: ImageData::default(),
+            image_path: self.image_path.clone(),
+            icon_name: self.icon_name.clone(),
+        }
+    }
+
+    pub fn for_history(&self) -> NotificationImage {
+        if self.has_image_data && (!self.image_path.is_empty() || !self.icon_name.is_empty()) {
+            let mut trimmed = self.clone();
+            trimmed.has_image_data = false;
+            trimmed.image_data = ImageData::default();
+            return trimmed;
+        }
+        self.clone()
+    }
+
+    fn is_image_data_usable(data: &ImageData) -> bool {
+        // Strict validation keeps downstream GTK texture creation safe.
+        if data.width <= 0 || data.height <= 0 {
+            return false;
+        }
+        if data.width > MAX_IMAGE_DIMENSION || data.height > MAX_IMAGE_DIMENSION {
+            return false;
+        }
+        if data.bits_per_sample != 8 || data.channels != 4 {
+            return false;
+        }
+        // Reject invalid rowstride/data lengths early to avoid unsafe downstream consumers.
+        Self::normalized_rowstride(
+            data.width,
+            data.height,
+            data.rowstride,
+            data.bits_per_sample,
+            data.channels,
+            data.data.len(),
+        )
+        .is_some()
+    }
+
+    fn parse_image_data(value: &OwnedValue) -> Option<ImageData> {
+        // The image-data hint is a struct of (iiibiiay) per the spec.
+        let structure = <&Structure>::try_from(value).ok()?;
+        let fields = structure.fields();
+        if fields.len() != 7 {
+            return None;
+        }
+        // Treat all fields as untrusted; malformed values should fail closed.
+        let width = i32::try_from(&fields[0]).ok()?;
+        let height = i32::try_from(&fields[1]).ok()?;
+        let rowstride = i32::try_from(&fields[2]).ok()?;
+        let has_alpha = bool::try_from(&fields[3]).ok()?;
+        let bits_per_sample = i32::try_from(&fields[4]).ok()?;
+        let channels = i32::try_from(&fields[5]).ok()?;
+        // Copy array contents into an owned buffer, enforcing size limits.
+        let data = Self::array_to_bytes(&fields[6])?;
+        let image = ImageData {
+            width,
+            height,
+            rowstride,
+            has_alpha,
+            bits_per_sample,
+            channels,
+            data,
+        };
+        Self::normalize_image_data(image)
+    }
+
+    fn normalize_image_data(image: ImageData) -> Option<ImageData> {
+        if image.bits_per_sample != 8 {
+            return None;
+        }
+        // Normalize rowstride to a safe, non-zero value and reject invalid layouts.
+        let rowstride = Self::normalized_rowstride(
+            image.width,
+            image.height,
+            image.rowstride,
+            image.bits_per_sample,
+            image.channels,
+            image.data.len(),
+        )?;
+        let rowstride = i32::try_from(rowstride).ok()?;
+        let image = ImageData { rowstride, ..image };
+        match image.channels {
+            4 => Some(image),
+            3 => Self::expand_rgb_to_rgba(&image),
+            _ => None,
+        }
+    }
+
+    fn array_to_bytes(value: &Value<'_>) -> Option<Vec<u8>> {
+        let array = <&Array>::try_from(value).ok()?;
+        let elements = array.inner();
+        // Cap allocation to the maximum allowed payload to avoid oversized hint buffers.
+        if elements.is_empty() || elements.len() > MAX_IMAGE_BYTES {
+            return None;
+        }
+        let mut bytes = Vec::with_capacity(elements.len());
+        for element in elements {
+            bytes.push(u8::try_from(element).ok()?);
+        }
+        Some(bytes)
+    }
+
+    fn normalized_rowstride(
+        width: i32,
+        height: i32,
+        rowstride: i32,
+        bits_per_sample: i32,
+        channels: i32,
+        data_len: usize,
+    ) -> Option<usize> {
+        // Ensure rowstride covers at least one full pixel row and the backing buffer is large enough.
+        if data_len == 0 || data_len > MAX_IMAGE_BYTES {
+            return None;
+        }
+        // Negative rowstride is invalid for memory buffers.
+        if rowstride < 0 {
+            return None;
+        }
+        let width = usize::try_from(width).ok()?;
+        let height = usize::try_from(height).ok()?;
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let bytes_per_pixel = Self::bytes_per_pixel(bits_per_sample, channels)?;
+        let min_rowstride = width.checked_mul(bytes_per_pixel)?;
+        let stride = if rowstride > 0 {
+            usize::try_from(rowstride).ok()?
+        } else {
+            min_rowstride
+        };
+        if stride < min_rowstride {
+            return None;
+        }
+        let required = stride.checked_mul(height)?;
+        if data_len < required {
+            return None;
+        }
+        Some(stride)
+    }
+
+    fn bytes_per_pixel(bits_per_sample: i32, channels: i32) -> Option<usize> {
+        // Require a whole number of bytes per pixel to avoid fractional layouts.
+        if bits_per_sample <= 0 || channels <= 0 {
+            return None;
+        }
+        let bits_per_pixel = bits_per_sample.checked_mul(channels)?;
+        if bits_per_pixel % 8 != 0 {
+            return None;
+        }
+        usize::try_from(bits_per_pixel / 8).ok()
+    }
+
+    fn expand_rgb_to_rgba(image: &ImageData) -> Option<ImageData> {
+        // Expand RGB to RGBA while preserving row semantics and size limits.
+        let width = image.width.max(1) as usize;
+        let height = image.height.max(1) as usize;
+        let rowstride = if image.rowstride > 0 {
+            image.rowstride as usize
+        } else {
+            width.checked_mul(3)?
+        };
+        let pixel_count = width.checked_mul(height)?;
+        let output_len = pixel_count.checked_mul(4)?;
+        // Cap expanded output to the same limit as the raw image payload.
+        if output_len > MAX_IMAGE_BYTES {
+            return None;
+        }
+        let mut rgba = vec![0u8; output_len];
+
+        // SSSE3 path is opt-in per CPU to accelerate RGB->RGBA expansion.
+        let use_simd = has_ssse3();
+        for y in 0..height {
+            let row_start = y.saturating_mul(rowstride);
+            let row_bytes = width.checked_mul(3)?;
+            let row_end = row_start.checked_add(row_bytes)?;
+            if row_end > image.data.len() {
+                return None;
+            }
+            let row = &image.data[row_start..row_end];
+            let dst_start = (y * width) * 4;
+            let dst_end = dst_start + width * 4;
+            let dst_row = &mut rgba[dst_start..dst_end];
+            if use_simd {
+                #[cfg(target_arch = "x86_64")]
+                // SAFETY: Guarded by SSSE3 detection; row slices are bounded to full pixels.
+                unsafe {
+                    expand_rgb_row_ssse3(row, dst_row);
+                }
+                #[cfg(not(target_arch = "x86_64"))]
+                expand_rgb_row_scalar(row, dst_row);
+            } else {
+                expand_rgb_row_scalar(row, dst_row);
+            }
+        }
+
+        Some(ImageData {
+            width: image.width,
+            height: image.height,
+            rowstride: (width * 4) as i32,
+            has_alpha: true,
+            bits_per_sample: image.bits_per_sample,
+            channels: 4,
+            data: rgba,
+        })
+    }
+}
+
+fn expand_rgb_row_scalar(src: &[u8], dst: &mut [u8]) {
+    for (x, chunk) in src.chunks_exact(3).enumerate() {
+        let dst_index = x * 4;
+        // Pack RGBA bytes to reduce bounds checks and stores.
+        let packed = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], 255]);
+        dst[dst_index..dst_index + 4].copy_from_slice(&packed.to_le_bytes());
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "ssse3")]
+unsafe fn expand_rgb_row_ssse3(src: &[u8], dst: &mut [u8]) {
+    // SSSE3 shuffles 12-byte RGB quads into 16-byte RGBA blocks with a fixed alpha mask.
+    use std::arch::x86_64::{
+        __m128i, _mm_loadu_si128, _mm_or_si128, _mm_setr_epi8, _mm_shuffle_epi8, _mm_storeu_si128,
+    };
+
+    let mut s = 0usize;
+    let mut d = 0usize;
+
+    let mask: __m128i = _mm_setr_epi8(0, 1, 2, -128, 3, 4, 5, -128, 6, 7, 8, -128, 9, 10, 11, -128);
+    let alpha: __m128i = _mm_setr_epi8(0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, -1);
+
+    // Process 4 pixels at a time (12 bytes -> 16 bytes). Read requires 16 bytes.
+    while s + 16 <= src.len() {
+        let chunk = unsafe { _mm_loadu_si128(src.as_ptr().add(s) as *const __m128i) };
+        let shuffled = _mm_shuffle_epi8(chunk, mask);
+        let with_alpha = _mm_or_si128(shuffled, alpha);
+        unsafe { _mm_storeu_si128(dst.as_mut_ptr().add(d) as *mut __m128i, with_alpha) };
+        s += 12;
+        d += 16;
+    }
+
+    // Tail for remaining pixels.
+    let remaining_pixels = (src.len().saturating_sub(s)) / 3;
+    for index in 0..remaining_pixels {
+        let s = s + index * 3;
+        let d = d + index * 4;
+        dst[d] = src[s];
+        dst[d + 1] = src[s + 1];
+        dst[d + 2] = src[s + 2];
+        dst[d + 3] = 255;
+    }
+}
+
+fn owned_to_string(value: &OwnedValue) -> Option<String> {
+    value
+        .try_clone()
+        .ok()
+        .and_then(|owned| String::try_from(owned).ok())
+}
+
+fn strip_desktop_suffix(value: &str) -> String {
+    // Desktop entries may include ".desktop"; icon themes typically omit the suffix.
+    if let Some(stripped) = value.strip_suffix(".desktop") {
+        stripped.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/image.rs"]
+mod tests;

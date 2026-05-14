@@ -40,8 +40,10 @@ impl NotificationList {
         items.push(header.clone());
         keys.push(RowKey::GroupHeader { group: key.clone() });
 
-        // Collapsed groups render the first notification plus up to two ghosts to hint stack depth.
+        // Collapsed groups render one notification row
+        // The row owns stack decoration so GTK does not virtualize it separately
         let stacked = !expanded && ids.len() > 1;
+        let stack_depth = collapsed_stack_depth(ids.len(), expanded);
         for (index, id) in ids.iter().enumerate() {
             if !expanded && index > 0 {
                 break;
@@ -53,27 +55,12 @@ impl NotificationList {
                 entry.app_key.clone(),
                 entry.view.clone(),
                 stacked,
+                stack_depth,
+                expanded,
                 entry.is_active,
             ));
             items.push(entry.item.clone());
             keys.push(RowKey::Notification { id: *id });
-        }
-
-        if stacked {
-            let ghost_count = ids.len().saturating_sub(1).min(2);
-            for depth in 1..=ghost_count {
-                let ghost_key = (key.clone(), depth as u8);
-                let ghost = self
-                    .ghost_items
-                    .entry(ghost_key)
-                    .or_insert_with(|| RowItem::new(RowData::ghost(key.clone(), depth as u8)));
-                ghost.update(RowData::ghost(key.clone(), depth as u8));
-                items.push(ghost.clone());
-                keys.push(RowKey::Ghost {
-                    group: key.clone(),
-                    depth: depth as u8,
-                });
-            }
         }
 
         (items, keys)
@@ -86,9 +73,6 @@ impl NotificationList {
             len += ids.len();
         } else if !ids.is_empty() {
             len += 1;
-        }
-        if !expanded && ids.len() > 1 {
-            len += ids.len().saturating_sub(1).min(2);
         }
         len
     }
@@ -140,6 +124,14 @@ impl NotificationList {
             }
         }
     }
+}
+
+fn collapsed_stack_depth(count: usize, expanded: bool) -> u8 {
+    if expanded {
+        return 0;
+    }
+    // One extra notification shows one shadow, larger stacks cap at two
+    count.saturating_sub(1).min(2) as u8
 }
 
 pub(super) fn common_prefix_suffix(current: &[RowKey], next: &[RowKey]) -> (usize, usize) {
