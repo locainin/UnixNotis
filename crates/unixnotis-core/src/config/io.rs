@@ -16,7 +16,7 @@ use crate::{
     DEFAULT_WIDGETS_CSS,
 };
 
-use super::config_runtime::{apply_brightness_backend, apply_volume_backend, sanitize_config};
+use super::runtime::{apply_brightness_backend, apply_volume_backend, sanitize_config};
 use super::Config;
 
 static LEGACY_RENAME_WARNED: AtomicBool = AtomicBool::new(false);
