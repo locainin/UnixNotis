@@ -7,12 +7,12 @@ use zbus::Connection;
 
 use crate::dbus::UiEvent;
 
-use super::media_bus::PlayerState;
-use super::media_loop_events::{
+use super::bus::PlayerState;
+use super::events::{
     apply_owner_change, handle_runtime_command, handle_runtime_signal, refresh_all_players,
 };
-use super::media_runtime::MEDIA_SIGNAL_CAPACITY;
-use super::media_schedule::DelayedRefreshTasks;
+use super::runtime::MEDIA_SIGNAL_CAPACITY;
+use super::schedule::DelayedRefreshTasks;
 use super::{MediaCommand, MediaInfo, MediaSignal};
 
 pub(super) struct MediaRuntimeState {
@@ -38,7 +38,7 @@ impl MediaRuntimeState {
     }
 }
 
-pub(super) async fn run_media_loop(
+pub(super) async fn run_event_loop(
     connection: Connection,
     config: MediaConfig,
     sender: async_channel::Sender<UiEvent>,

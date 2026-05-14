@@ -4,7 +4,7 @@ use zbus::Connection;
 
 use crate::dbus::UiEvent;
 
-use super::media_loop::run_media_loop;
+use super::event_loop::run_event_loop;
 use super::MediaHandle;
 
 pub(super) const MEDIA_COMMAND_CAPACITY: usize = 32;
@@ -26,7 +26,7 @@ pub(super) fn start_media_task(
     // The command channel stays small because button presses arrive in short bursts
     let (command_tx, command_rx) = mpsc::channel(MEDIA_COMMAND_CAPACITY);
     // The runtime task owns player state and feeds snapshots back to the UI
-    runtime.spawn(run_media_loop(connection, config, sender, command_rx));
+    runtime.spawn(run_event_loop(connection, config, sender, command_rx));
 
     Some(MediaHandle {
         command_tx: Some(command_tx),
