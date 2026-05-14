@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::config::config_commands;
+use crate::config::commands;
 
 /// Icon and label orientation for toggle cards
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
@@ -35,51 +35,51 @@ impl ToggleWidgetConfig {
     pub(super) fn default_wifi() -> Self {
         Self {
             enabled: true,
-            kind: Some(config_commands::TOGGLE_KIND_WIFI.to_string()),
+            kind: Some(commands::TOGGLE_KIND_WIFI.to_string()),
             label: "Wi-Fi".to_string(),
             icon: "network-wireless-signal-excellent-symbolic".to_string(),
-            state_cmd: Some(config_commands::WIFI_STATE_NMCLI.to_string()),
+            state_cmd: Some(commands::WIFI_STATE_NMCLI.to_string()),
             toggle_cmd: None,
-            on_cmd: Some(config_commands::WIFI_ON_NMCLI.to_string()),
-            off_cmd: Some(config_commands::WIFI_OFF_NMCLI.to_string()),
-            watch_cmd: Some(config_commands::WIFI_WATCH_NMCLI.to_string()),
+            on_cmd: Some(commands::WIFI_ON_NMCLI.to_string()),
+            off_cmd: Some(commands::WIFI_OFF_NMCLI.to_string()),
+            watch_cmd: Some(commands::WIFI_WATCH_NMCLI.to_string()),
         }
     }
 
     pub(super) fn default_bluetooth() -> Self {
         Self {
             enabled: true,
-            kind: Some(config_commands::TOGGLE_KIND_BLUETOOTH.to_string()),
+            kind: Some(commands::TOGGLE_KIND_BLUETOOTH.to_string()),
             label: "Bluetooth".to_string(),
             icon: "bluetooth-active-symbolic".to_string(),
-            state_cmd: Some(config_commands::BLUETOOTH_STATE_BLUETOOTHCTL.to_string()),
+            state_cmd: Some(commands::BLUETOOTH_STATE_BLUETOOTHCTL.to_string()),
             toggle_cmd: None,
-            on_cmd: Some(config_commands::BLUETOOTH_ON_BLUETOOTHCTL.to_string()),
-            off_cmd: Some(config_commands::BLUETOOTH_OFF_BLUETOOTHCTL.to_string()),
+            on_cmd: Some(commands::BLUETOOTH_ON_BLUETOOTHCTL.to_string()),
+            off_cmd: Some(commands::BLUETOOTH_OFF_BLUETOOTHCTL.to_string()),
             // D-Bus monitoring avoids TTY requirements and follows BlueZ state changes
-            watch_cmd: Some(config_commands::BLUETOOTH_WATCH_DBUS.to_string()),
+            watch_cmd: Some(commands::BLUETOOTH_WATCH_DBUS.to_string()),
         }
     }
 
     pub(super) fn default_airplane() -> Self {
         Self {
             enabled: true,
-            kind: Some(config_commands::TOGGLE_KIND_AIRPLANE.to_string()),
+            kind: Some(commands::TOGGLE_KIND_AIRPLANE.to_string()),
             label: "Airplane".to_string(),
             icon: "airplane-mode-symbolic".to_string(),
             // Airplane reads active only when every rfkill device is soft-blocked
-            state_cmd: Some(config_commands::AIRPLANE_STATE_CMD.to_string()),
+            state_cmd: Some(commands::AIRPLANE_STATE_CMD.to_string()),
             toggle_cmd: None,
-            on_cmd: Some(config_commands::AIRPLANE_ON_CMD.to_string()),
-            off_cmd: Some(config_commands::AIRPLANE_OFF_CMD.to_string()),
-            watch_cmd: Some(config_commands::AIRPLANE_WATCH_CMD.to_string()),
+            on_cmd: Some(commands::AIRPLANE_ON_CMD.to_string()),
+            off_cmd: Some(commands::AIRPLANE_OFF_CMD.to_string()),
+            watch_cmd: Some(commands::AIRPLANE_WATCH_CMD.to_string()),
         }
     }
 
     pub(super) fn default_night() -> Self {
         Self {
             enabled: true,
-            kind: Some(config_commands::TOGGLE_KIND_NIGHT.to_string()),
+            kind: Some(commands::TOGGLE_KIND_NIGHT.to_string()),
             label: "Night".to_string(),
             icon: "weather-clear-night-symbolic".to_string(),
             // Shipped scripts keep backend fallback logic in editable files

@@ -1,4 +1,4 @@
-use super::super::super::super::config_widgets::WidgetPluginConfig;
+use super::super::super::super::widget_config::WidgetPluginConfig;
 use super::super::*;
 use crate::Config;
 

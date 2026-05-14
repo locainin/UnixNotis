@@ -5,11 +5,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::config_layout::{PanelConfig, PopupConfig};
-use super::config_media::MediaConfig;
-use super::config_rules::RuleConfig;
-use super::config_theme::ThemeConfig;
-use super::config_widgets::WidgetsConfig;
+use super::layout::{PanelConfig, PopupConfig};
+use super::media::MediaConfig;
+use super::rules::RuleConfig;
+use super::theme::ThemeConfig;
+use super::widget_config::WidgetsConfig;
 
 /// Top-level configuration loaded from config.toml.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

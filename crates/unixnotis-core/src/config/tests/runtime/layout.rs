@@ -1,4 +1,4 @@
-use super::super::super::super::config_widgets::{CardWidgetConfig, StatWidgetConfig};
+use super::super::super::super::widget_config::{CardWidgetConfig, StatWidgetConfig};
 use super::*;
 use crate::{Config, PanelConfig, PanelWidgetSection, PopupConfig, ToggleLayout};
 
