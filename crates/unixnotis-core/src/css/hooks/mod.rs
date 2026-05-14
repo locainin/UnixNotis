@@ -8,4 +8,5 @@ pub use self::classes::{
 };
 
 #[cfg(test)]
+#[path = "../tests/hooks.rs"]
 mod tests;

@@ -1,4 +1,4 @@
-use super::{
+use crate::{
     MediaArtPosition, MediaConfig, MediaControlsPosition, MediaLayout, MediaNavigationPosition,
 };
 
@@ -31,6 +31,27 @@ fn preset_defaults_stay_stable() {
 }
 
 #[test]
+fn explicit_media_positions_win_over_layout_defaults() {
+    let config = MediaConfig {
+        layout: MediaLayout::Showcase,
+        art_position: MediaArtPosition::Top,
+        controls_position: MediaControlsPosition::Bottom,
+        navigation_position: MediaNavigationPosition::External,
+        ..MediaConfig::default()
+    };
+
+    assert_eq!(config.effective_art_position(), MediaArtPosition::Top);
+    assert_eq!(
+        config.effective_controls_position(),
+        MediaControlsPosition::Bottom
+    );
+    assert_eq!(
+        config.effective_navigation_position(),
+        MediaNavigationPosition::External
+    );
+}
+
+#[test]
 fn hidden_feature_flags_override_layout_defaults() {
     let config = MediaConfig {
         layout: MediaLayout::Player,
@@ -49,6 +70,25 @@ fn hidden_feature_flags_override_layout_defaults() {
         config.effective_navigation_position(),
         MediaNavigationPosition::Hidden
     );
+}
+
+#[test]
+fn preset_card_heights_follow_the_selected_layout() {
+    let carousel = MediaConfig {
+        layout: MediaLayout::Carousel,
+        ..MediaConfig::default()
+    };
+    let showcase = MediaConfig {
+        layout: MediaLayout::Showcase,
+        ..MediaConfig::default()
+    };
+
+    assert_ne!(
+        carousel.effective_card_height_px(),
+        showcase.effective_card_height_px()
+    );
+    assert_eq!(carousel.effective_card_height_px(), 72);
+    assert_eq!(showcase.effective_card_height_px(), 96);
 }
 
 #[test]

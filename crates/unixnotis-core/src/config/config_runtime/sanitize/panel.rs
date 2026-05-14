@@ -1,9 +1,7 @@
 use std::collections::HashSet;
 
-use super::{
-    default_panel_widget_order, Config, PanelConfig, PanelWidgetSection, MAX_WIDGET_COLUMNS,
-    MIN_WIDGET_COLUMNS,
-};
+use super::{MAX_WIDGET_COLUMNS, MIN_WIDGET_COLUMNS};
+use crate::{default_panel_widget_order, Config, PanelConfig, PanelWidgetSection};
 
 pub(super) fn sanitize_panel_text(panel: &mut PanelConfig) {
     if panel.title.trim().is_empty() {

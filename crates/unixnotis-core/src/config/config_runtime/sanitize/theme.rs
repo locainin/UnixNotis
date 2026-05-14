@@ -1,4 +1,5 @@
-use super::{Config, ThemeConfig, MAX_BORDER_WIDTH, MAX_CARD_RADIUS};
+use super::{MAX_BORDER_WIDTH, MAX_CARD_RADIUS};
+use crate::{Config, ThemeConfig};
 
 pub(super) fn sanitize_theme_config(config: &mut Config) {
     let theme = &mut config.theme;
@@ -48,3 +49,7 @@ fn clamp_alpha(value: &mut f32, fallback: f32) {
 fn clamp_alpha_finite(value: &mut f32) {
     *value = value.clamp(0.0, 1.0);
 }
+
+#[cfg(test)]
+#[path = "../../tests/runtime/theme.rs"]
+mod tests;
