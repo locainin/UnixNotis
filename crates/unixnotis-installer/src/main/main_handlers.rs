@@ -18,13 +18,13 @@ use crate::ExitAction;
 pub(crate) fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => Ok(Some(ExitAction::None)),
-        KeyCode::Up | KeyCode::Char('k')=> {
+        KeyCode::Up | KeyCode::Char('k') => {
             if app.menu_index > 0 {
                 app.menu_index -= 1;
             }
             Ok(None)
         }
-        KeyCode::Down | KeyCode::Char('j')=> {
+        KeyCode::Down | KeyCode::Char('j') => {
             if app.menu_index + 1 < App::menu_items().len() {
                 app.menu_index += 1;
             }
@@ -57,14 +57,14 @@ pub(crate) fn handle_reset_menu_key(app: &mut App, key: KeyEvent) -> Result<Opti
             app.screen = Screen::Welcome;
             Ok(None)
         }
-        KeyCode::Up | KeyCode::Char('k')=> {
+        KeyCode::Up | KeyCode::Char('k') => {
             // Clamp selection to keep navigation predictable in small terminals.
             if app.reset_menu_index > 0 {
                 app.reset_menu_index -= 1;
             }
             Ok(None)
         }
-        KeyCode::Down | KeyCode::Char('j')=> {
+        KeyCode::Down | KeyCode::Char('j') => {
             // Reset menu has three entries; enforce bounds.
             if app.reset_menu_index < 2 {
                 app.reset_menu_index += 1;
@@ -102,14 +102,14 @@ pub(crate) fn handle_restore_select_key(
             app.screen = Screen::ResetMenu;
             Ok(None)
         }
-        KeyCode::Up | KeyCode::Char('k')=> {
+        KeyCode::Up | KeyCode::Char('k') => {
             // Backup selection should never underflow.
             if app.restore_menu_index > 0 {
                 app.restore_menu_index -= 1;
             }
             Ok(None)
         }
-        KeyCode::Down | KeyCode::Char('j')=> {
+        KeyCode::Down | KeyCode::Char('j') => {
             // Only advance selection when there are backup entries.
             if app.restore_menu_index + 1 < app.restore_backups.len() {
                 app.restore_menu_index += 1;
@@ -202,13 +202,13 @@ pub(crate) fn handle_progress_key(app: &mut App, key: KeyEvent) -> Result<Option
 pub(crate) fn handle_build_accel_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => Ok(Some(ExitAction::None)),
-        KeyCode::Up | KeyCode::Char('k')=> {
+        KeyCode::Up | KeyCode::Char('k') => {
             if app.build_accel_menu_index > 0 {
                 app.build_accel_menu_index -= 1;
             }
             Ok(None)
         }
-        KeyCode::Down | KeyCode::Char('j')=> {
+        KeyCode::Down | KeyCode::Char('j') => {
             if app.build_accel_menu_index + 1 < app.build_accel_menu_len() {
                 app.build_accel_menu_index += 1;
             }
