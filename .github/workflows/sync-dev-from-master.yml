@@ -30,47 +30,58 @@ jobs:
         run: |
           git fetch origin master dev
 
-      - name: Merge master into dev
-        id: merge
+      - name: Fast-forward dev to master
+        id: sync
         continue-on-error: true
         run: |
           set -euo pipefail
 
-          # Start from the tracked remote branch so each run sees the real dev head
+          # Start from the tracked remote branch so each run sees the real dev head.
           git checkout -B dev origin/dev
 
-          # Merge the pushed master state into dev using a normal merge commit when needed
-          git merge --no-edit origin/master
+          # Release merges should already contain dev. If they do, keep dev as a
+          # simple fast-forward of master instead of creating an extra merge commit.
+          if ! git merge-base --is-ancestor origin/dev origin/master; then
+            echo "origin/dev is not an ancestor of origin/master"
+            exit 1
+          fi
+
+          git merge --ff-only origin/master
 
       - name: Push updated dev
         id: push
-        if: steps.merge.outcome == 'success'
+        if: steps.sync.outcome == 'success'
         continue-on-error: true
         run: |
           set -euo pipefail
           git push origin HEAD:dev
 
       - name: Mark successful sync in workflow summary
-        if: steps.merge.outcome == 'success' && steps.push.outcome == 'success'
+        if: steps.sync.outcome == 'success' && steps.push.outcome == 'success'
         run: |
           {
             echo "## dev sync"
             echo
-            echo "master was merged into dev and pushed successfully"
+            echo "dev was fast-forwarded to master and pushed successfully"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Open sync PR or issue when sync fails
-        if: steps.merge.outcome != 'success' || steps.push.outcome != 'success'
+        if: steps.sync.outcome != 'success' || steps.push.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYNC_OUTCOME: ${{ steps.sync.outcome }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MASTER_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
 
           # Keep the failure reason short so the fallback PR or issue is readable
-          if [ "${{ steps.merge.outcome }}" != "success" ]; then
-            reason="automatic merge from master into dev failed"
+          if [ "${SYNC_OUTCOME}" != "success" ]; then
+            reason="automatic fast-forward from master into dev failed"
           else
-            reason="automatic push of merged dev branch failed"
+            reason="automatic push of synced dev branch failed"
           fi
 
           body_file="$(mktemp)"
@@ -79,11 +90,11 @@ jobs:
             echo
             echo "${reason}"
             echo
-            echo "- workflow: ${{ github.workflow }}"
-            echo "- run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "- master sha: ${{ github.sha }}"
+            echo "- workflow: ${WORKFLOW_NAME}"
+            echo "- run: ${RUN_URL}"
+            echo "- master sha: ${MASTER_SHA}"
             echo
-            echo "This was triggered by a push to \`master\` and did not complete the expected \`master -> dev\` sync"
+            echo "This was triggered by a push to \`master\` and did not complete the expected fast-forward \`master -> dev\` sync"
           } > "${body_file}"
 
           existing_pr="$(gh pr list --base dev --head master --state open --json number --jq '.[0].number // empty')"
@@ -103,7 +114,7 @@ jobs:
             exit 1
           fi
 
-          existing_issue="$(gh issue list --state open --search 'in:title \"Sync dev from master\" repo:${{ github.repository }}' --json number --jq '.[0].number // empty')"
+          existing_issue="$(gh issue list --state open --search "in:title \"Sync dev from master\" repo:${REPOSITORY}" --json number --jq '.[0].number // empty')"
           if [ -n "${existing_issue}" ]; then
             gh issue comment "${existing_issue}" --body-file "${body_file}" || true
             echo "Opened work already exists as issue #${existing_issue}" >> "$GITHUB_STEP_SUMMARY"
