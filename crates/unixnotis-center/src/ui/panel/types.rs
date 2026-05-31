@@ -5,6 +5,7 @@
 /// GTK widgets backing the notification center panel window.
 pub struct PanelWidgets {
     pub window: gtk::ApplicationWindow,
+    pub surface: gtk::Overlay,
     pub root: gtk::Box,
     pub body_stack: gtk::Box,
     pub widget_revealer: gtk::Revealer,

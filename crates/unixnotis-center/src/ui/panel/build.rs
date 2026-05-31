@@ -60,6 +60,11 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     let sections = build_panel_sections(&config.panel);
     let body_chrome = build_panel_body_chrome(&sections.body_stack);
     let overlay = gtk::Overlay::new();
+    overlay.set_hexpand(false);
+    overlay.set_vexpand(true);
+    // The overlay is the real window child, so it must carry the same width
+    // request as the root panel box
+    overlay.set_size_request(width, -1);
     overlay.set_child(Some(&root));
 
     // Chrome nodes intentionally carry no behavior
@@ -76,6 +81,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
 
     PanelWidgets {
         window,
+        surface: overlay,
         root,
         body_stack: sections.body_stack,
         widget_revealer: sections.widget_revealer,
