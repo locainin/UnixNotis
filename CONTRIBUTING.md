@@ -64,7 +64,7 @@ At a minimum, all code changes should pass the following:
 
 ```sh
 cargo test --workspace
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::restriction
 ```
 If a full run is not practical, say what was tested and what was not.
 
@@ -76,6 +76,36 @@ UnixNotis uses two main branches:
 - `master` is the stable branch
 
 New work should start on `dev`.
+
+Before starting work, make sure local branches are current:
+
+```sh
+git fetch origin
+git switch dev
+git pull --ff-only origin dev
+```
+
+Before opening a pull request, check that the branch still contains the latest target branch.
+Use `origin/dev` for normal contribution PRs, or `origin/master` for `dev -> master` release PRs:
+
+```sh
+git fetch origin
+git merge-base --is-ancestor origin/dev HEAD
+```
+
+If that command fails, update from the target branch before opening the pull request:
+
+```sh
+git rebase origin/dev
+```
+
+If the branch is `dev` itself, prefer a fast-forward update instead:
+
+```sh
+git pull --ff-only origin dev
+```
+
+If the update is not clean, stop and resolve the branch state before adding more commits.
 
 If a fix lands on `master`, bring `dev` back in sync before continuing work there.
 

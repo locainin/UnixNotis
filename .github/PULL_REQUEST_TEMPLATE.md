@@ -38,13 +38,23 @@ Run the full workspace checks and list any extra verification that was done
 
 ```sh
 cargo test --workspace
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::restriction
 ```
 
 Extra verification:
 
 - manual checks:
 - screenshots or terminal output:
+
+## Branch Freshness
+
+Make sure this branch contains the latest target branch before review.
+Use `origin/dev` for normal contribution PRs, or `origin/master` for `dev -> master` release PRs.
+
+```sh
+git fetch origin
+git merge-base --is-ancestor origin/dev HEAD
+```
 
 ## Config / Docs
 
@@ -64,12 +74,14 @@ If docs were not updated in this PR, note what should be updated later
 Call out anything reviewers should pay extra attention to
 
 - main files to review:
+- branch freshness checked:
 - edge cases checked:
 - tradeoffs or limitations:
 
 ## Checklist
 
 - [ ] The change stays focused on one problem or one closely related set of problems
+- [ ] The branch was updated against the latest target branch before opening this PR
 - [ ] The problem and root cause are explained clearly
 - [ ] Full workspace tests passed
 - [ ] Full workspace clippy passed
