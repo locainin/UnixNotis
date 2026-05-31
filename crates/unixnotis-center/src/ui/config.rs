@@ -96,6 +96,7 @@ impl UiState {
         self.panel
             .header_action_row
             .set_visible(config.panel.action_row_visible);
+        panel::apply_reloaded_panel_chrome(&self.panel, &config.panel);
         self.panel
             .notification_header
             .set_label(&config.panel.recent_notifications_label);
@@ -129,8 +130,9 @@ impl UiState {
         self.panel
             .notification_container
             .set_vexpand(config.panel.notification_list_expand);
+        panel::apply_reloaded_body_order(&self.panel, &config.panel.section_order);
         self.apply_widget_order(&config.panel.widget_order);
-        self.update_clear_buttons(config);
+        self.update_clear_button_visibility(config);
         self.panel
             .footer_label
             .set_label(&config.panel.footer_label);
@@ -142,13 +144,7 @@ impl UiState {
         });
     }
 
-    fn update_clear_buttons(&self, config: &Config) {
-        self.panel
-            .clear_action_button
-            .set_label(&config.panel.clear_label);
-        self.panel
-            .clear_header_button
-            .set_label(&config.panel.clear_label);
+    fn update_clear_button_visibility(&self, config: &Config) {
         self.panel.clear_action_button.set_visible(matches!(
             config.panel.clear_button_placement,
             PanelClearButtonPlacement::ActionRow
@@ -196,6 +192,8 @@ impl UiState {
             max_active: config.history.max_active,
             max_entries: config.history.max_entries,
             transient_to_history: config.history.transient_to_history,
+            show_notification_metadata: config.panel.notification_metadata_visible,
+            show_notification_thumbnails: config.panel.notification_thumbnails_visible,
             empty_text: config.panel.empty_text.clone(),
             empty_offset_top: config.panel.empty_offset_top,
         };

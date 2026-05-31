@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use gtk::prelude::*;
 use gtk::Align;
-use unixnotis_core::{css::hooks, CardWidgetConfig};
+use unixnotis_core::{css::hooks, CardLayout, CardWidgetConfig};
 
 use super::weather::{apply_card_kind_classes, configure_card_icon};
 use super::{CardGrid, CardItem, RefreshBackoff};
@@ -81,6 +81,7 @@ impl CardItem {
         root.add_css_class(hooks::info_card::ROOT);
         // Kind classes are applied early so header and body nodes inherit the final card state
         apply_card_kind_classes(&root, &config);
+        apply_card_layout_classes(&root, config.layout);
         if config.min_height > 0 {
             root.set_size_request(-1, config.min_height);
         }
@@ -109,6 +110,9 @@ impl CardItem {
         body_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
 
         root.append(&header);
+        if matches!(config.layout, CardLayout::Banner | CardLayout::ImageRow) {
+            root.append(&build_card_media_slot(&config));
+        }
         let calendar = if is_calendar {
             let calendar = gtk::Calendar::new();
             calendar.add_css_class(hooks::info_card::CALENDAR_WIDGET);
@@ -139,4 +143,56 @@ impl CardItem {
             calendar_next_due: Rc::new(Cell::new(None)),
         }
     }
+}
+
+fn apply_card_layout_classes(root: &gtk::Box, layout: CardLayout) {
+    match layout {
+        CardLayout::Default => {}
+        CardLayout::Banner => root.add_css_class(hooks::info_card::LAYOUT_BANNER),
+        CardLayout::ImageRow => root.add_css_class(hooks::info_card::LAYOUT_IMAGE_ROW),
+    }
+}
+
+fn build_card_media_slot(config: &CardWidgetConfig) -> gtk::Box {
+    let media = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    media.add_css_class(hooks::info_card::MEDIA);
+    media.set_hexpand(true);
+
+    if config.carousel_arrows || config.carousel_dots > 0 {
+        media.append(&build_card_chrome(config));
+    }
+    media
+}
+
+fn build_card_chrome(config: &CardWidgetConfig) -> gtk::Box {
+    let chrome = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    chrome.add_css_class(hooks::info_card::CHROME);
+    chrome.set_hexpand(true);
+
+    let prev = gtk::Button::from_icon_name("go-previous-symbolic");
+    prev.add_css_class(hooks::info_card::NAV_PREV);
+    prev.set_can_target(false);
+    prev.set_focusable(false);
+    prev.set_visible(config.carousel_arrows);
+
+    let dots = gtk::Box::new(gtk::Orientation::Horizontal, 3);
+    dots.add_css_class(hooks::info_card::DOTS);
+    dots.set_hexpand(true);
+    dots.set_halign(Align::Center);
+    for _ in 0..config.carousel_dots {
+        let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        dot.add_css_class(hooks::info_card::DOT);
+        dots.append(&dot);
+    }
+
+    let next = gtk::Button::from_icon_name("go-next-symbolic");
+    next.add_css_class(hooks::info_card::NAV_NEXT);
+    next.set_can_target(false);
+    next.set_focusable(false);
+    next.set_visible(config.carousel_arrows);
+
+    chrome.append(&prev);
+    chrome.append(&dots);
+    chrome.append(&next);
+    chrome
 }

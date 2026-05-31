@@ -5,6 +5,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use gtk::prelude::*;
 use tokio::sync::mpsc;
@@ -79,8 +80,13 @@ pub(in crate::ui::list) fn update_notification_row(
         hooks::panel_card::NO_ACTIONS,
         notification.actions.is_empty(),
     );
+    let has_thumbnail =
+        data.presentation.show_thumbnail && notification_has_thumbnail(notification);
+    set_class_state(card, hooks::panel_card::HAS_THUMBNAIL, has_thumbnail);
+    set_class_state(card, hooks::panel_card::NO_THUMBNAIL, !has_thumbnail);
     // App name always renders, even when summary or body are missing
     set_label_text_if_changed(&row.app_label, &notification.app_name);
+    update_metadata_labels(row, data, notification);
     // Clamp before GTK rendering to avoid giant layout passes
     update_summary_label(&row.summary_label, &notification.summary);
     update_body_label(&row.body_label, &notification.body);
@@ -97,11 +103,18 @@ pub(in crate::ui::list) fn update_notification_row(
     // Text and action changes should not trigger another icon pipeline round
     let next_sig = IconSignature::from(notification);
     let mut sig_guard = row.icon_sig.borrow_mut();
-    if sig_guard.as_ref() != Some(&next_sig) {
+    let signature_changed = sig_guard.as_ref() != Some(&next_sig);
+    if signature_changed {
         let scale = card.scale_factor();
         icon_resolver.apply_icon(&row.icon, notification, 22, scale);
         *sig_guard = Some(next_sig);
     }
+    if has_thumbnail && (signature_changed || !row.thumbnail.get_visible()) {
+        // Thumbnail visibility can change from config reload without changing the app icon source
+        let scale = card.scale_factor();
+        icon_resolver.apply_icon(&row.thumbnail, notification, 56, scale);
+    }
+    set_widget_visible_if_changed(&row.thumbnail, has_thumbnail);
 }
 
 pub(super) fn optional_label_state(text: &str, max_chars: usize) -> OptionalLabelState<'_> {
@@ -140,6 +153,85 @@ fn update_summary_label(label: &gtk::Label, summary: &str) {
 fn update_body_label(label: &gtk::Label, body: &str) {
     // Body rows follow the same empty-text rule as summary rows
     update_optional_label(label, body, MAX_BODY_LABEL_CHARS);
+}
+
+fn update_metadata_labels(
+    row: &NotificationRowWidgets,
+    data: &RowData,
+    notification: &NotificationView,
+) {
+    set_widget_visible_if_changed(&row.meta_top, data.presentation.show_metadata);
+    set_widget_visible_if_changed(&row.footer, data.presentation.show_metadata);
+    if !data.presentation.show_metadata {
+        // Disabled lanes collapse fully so default cards keep the older compact shape
+        set_label_visible_if_changed(&row.meta_label, false);
+        set_label_visible_if_changed(&row.time_badge, false);
+        set_label_visible_if_changed(&row.footer_left, false);
+        set_label_visible_if_changed(&row.footer_right, false);
+        return;
+    }
+
+    let meta = notification_meta_label(notification);
+    set_label_visible_if_changed(&row.meta_label, true);
+    set_label_text_if_changed(&row.meta_label, &meta);
+
+    let time_badge = relative_time_badge(data.presentation.received_at_ms);
+    set_label_visible_if_changed(&row.time_badge, !time_badge.is_empty());
+    set_label_text_if_changed(&row.time_badge, &time_badge);
+
+    let footer_left = if notification.is_transient {
+        "TRANSIENT"
+    } else if data.is_active {
+        "LIVE"
+    } else {
+        "HISTORY"
+    };
+    set_label_visible_if_changed(&row.footer_left, true);
+    set_label_text_if_changed(&row.footer_left, footer_left);
+
+    let footer_right = if notification.actions.is_empty() {
+        Cow::Borrowed("")
+    } else {
+        Cow::Owned(format!("{} ACTIONS", notification.actions.len()))
+    };
+    set_label_visible_if_changed(&row.footer_right, !footer_right.is_empty());
+    set_label_text_if_changed(&row.footer_right, footer_right.as_ref());
+}
+
+pub(super) fn notification_meta_label(notification: &NotificationView) -> String {
+    match notification.urgency {
+        value if value == Urgency::Critical as u8 => "ALERT".to_string(),
+        value if value == Urgency::Low as u8 => "LOW".to_string(),
+        _ => "NOTICE".to_string(),
+    }
+}
+
+pub(super) fn relative_time_badge(received_at_ms: i64) -> String {
+    if received_at_ms <= 0 {
+        return String::new();
+    }
+    let Some(now_ms) = now_millis() else {
+        return String::new();
+    };
+    let age_ms = now_ms.saturating_sub(received_at_ms.max(0) as u128);
+    let age_secs = age_ms / 1_000;
+    match age_secs {
+        0..=59 => "now".to_string(),
+        60..=3_599 => format!("{}m", age_secs / 60),
+        3_600..=86_399 => format!("{}h", age_secs / 3_600),
+        _ => format!("{}d", age_secs / 86_400),
+    }
+}
+
+fn now_millis() -> Option<u128> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_millis())
+}
+
+pub(super) fn notification_has_thumbnail(notification: &NotificationView) -> bool {
+    notification.image.has_image_data || !notification.image.image_path.trim().is_empty()
 }
 
 fn update_optional_label(label: &gtk::Label, text: &str, max_chars: usize) {

@@ -14,6 +14,11 @@ fn custom_volume_without_watch_stays_config_owned() {
         min: 0.0,
         max: 100.0,
         step: 1.0,
+        show_value: true,
+        segments: 0,
+        show_sublabels: false,
+        sublabel_min: String::new(),
+        sublabel_max: String::new(),
         parse_mode: NumericParseMode::Auto,
     };
 
@@ -36,6 +41,11 @@ fn legacy_brightness_watch_is_removed() {
         min: 1.0,
         max: 100.0,
         step: 1.0,
+        show_value: true,
+        segments: 0,
+        show_sublabels: false,
+        sublabel_min: String::new(),
+        sublabel_max: String::new(),
         parse_mode: NumericParseMode::Auto,
     };
 

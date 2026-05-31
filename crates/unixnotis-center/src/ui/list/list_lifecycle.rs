@@ -3,11 +3,12 @@
 //! These helpers own the base storage lifecycle so mutation code can stay focused on updates
 
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing::debug;
 use unixnotis_core::NotificationView;
 
-use super::list_item::{RowData, RowItem};
+use super::list_item::{RowData, RowItem, RowPresentation};
 use super::types::{NotificationEntry, NotificationList};
 
 impl NotificationList {
@@ -110,6 +111,12 @@ impl NotificationList {
         let id = notification.id;
         let app_key = self.intern_key(&notification.app_name);
         let view = Rc::new(notification);
+        let received_at_ms = now_millis();
+        let presentation = RowPresentation {
+            received_at_ms,
+            show_metadata: self.show_notification_metadata,
+            show_thumbnail: self.show_notification_thumbnails,
+        };
         let item = RowItem::new(RowData::notification(
             app_key.clone(),
             view.clone(),
@@ -117,10 +124,12 @@ impl NotificationList {
             0,
             false,
             is_active,
+            presentation,
         ));
         let entry = NotificationEntry {
             view,
             is_active,
+            received_at_ms,
             app_key: app_key.clone(),
             item,
         };
@@ -141,4 +150,13 @@ impl NotificationList {
         self.active_order.retain(|entry| *entry != id);
         self.history_order.retain(|entry| *entry != id);
     }
+}
+
+fn now_millis() -> i64 {
+    // Local receipt time avoids adding timestamp fields to the D-Bus model
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+        .unwrap_or(0)
 }

@@ -23,6 +23,10 @@ pub(super) fn maybe_warn_for_complex_unixnotis_selector(
         // Shipped complex selectors already have a known baseline and should stay quiet
         return;
     }
+    if is_safe_internal_panel_card_selector(selector) {
+        // This selector only collapses a thumbnail that the row already marked absent
+        return;
+    }
     if selector_targets_descendant(selector) && !selector_target_mentions_unixnotis_class(selector)
     {
         // Descendant rules aimed at GTK subnodes usually affect an inner allocation
@@ -41,6 +45,10 @@ pub(super) fn maybe_warn_for_complex_unixnotis_selector(
         "size rules target complex UnixNotis selector '{}'; geometry lint only models single-class selectors, so width pressure may be missed",
         selector
     ));
+}
+
+fn is_safe_internal_panel_card_selector(selector: &str) -> bool {
+    selector.trim() == ".unixnotis-panel-card-no-thumbnail .unixnotis-panel-card-thumbnail"
 }
 
 fn selector_targets_descendant(selector: &str) -> bool {

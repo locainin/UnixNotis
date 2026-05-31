@@ -29,8 +29,30 @@ pub(in crate::ui::list) fn build_notification_row(
     card.add_css_class("unixnotis-panel-card");
     card.set_hexpand(true);
 
+    let meta_top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    meta_top.add_css_class(hooks::panel_card::META_TOP);
+    meta_top.set_hexpand(true);
+    meta_top.set_visible(false);
+
+    let meta_label = gtk::Label::new(None);
+    meta_label.add_css_class(hooks::panel_card::META_LABEL);
+    meta_label.set_xalign(0.0);
+    meta_label.set_single_line_mode(true);
+
+    let meta_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
+    meta_spacer.set_hexpand(true);
+
+    let time_badge = gtk::Label::new(None);
+    time_badge.add_css_class(hooks::panel_card::TIME_BADGE);
+    time_badge.set_xalign(0.5);
+    time_badge.set_single_line_mode(true);
+    meta_top.append(&meta_label);
+    meta_top.append(&meta_spacer);
+    meta_top.append(&time_badge);
+
     // Header packs icon + app label + close button
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    header.add_css_class(hooks::panel_card::HEADER);
     let icon = gtk::Image::new();
     icon.set_pixel_size(22);
     icon.add_css_class("unixnotis-panel-icon");
@@ -56,6 +78,19 @@ pub(in crate::ui::list) fn build_notification_row(
     header.append(&spacer);
     header.append(&close_button);
 
+    let body_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    body_row.set_hexpand(true);
+
+    let thumbnail = gtk::Image::new();
+    thumbnail.add_css_class(hooks::panel_card::THUMBNAIL);
+    thumbnail.set_pixel_size(56);
+    thumbnail.set_size_request(56, 56);
+    thumbnail.set_visible(false);
+
+    let text_stack = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    text_stack.add_css_class(hooks::panel_card::TEXT);
+    text_stack.set_hexpand(true);
+
     // Summary is optional, so the update path decides later if the row should exist
     let summary_label = gtk::Label::new(None);
     summary_label.set_xalign(0.0);
@@ -78,15 +113,42 @@ pub(in crate::ui::list) fn build_notification_row(
     body_label.set_max_width_chars(112);
     body_label.add_css_class("unixnotis-panel-body");
 
+    text_stack.append(&summary_label);
+    text_stack.append(&body_label);
+    body_row.append(&thumbnail);
+    body_row.append(&text_stack);
+
+    let footer = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    footer.add_css_class(hooks::panel_card::FOOTER);
+    footer.set_hexpand(true);
+    footer.set_visible(false);
+
+    let footer_left = gtk::Label::new(None);
+    footer_left.add_css_class(hooks::panel_card::FOOTER_LEFT);
+    footer_left.set_xalign(0.0);
+    footer_left.set_single_line_mode(true);
+
+    let footer_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
+    footer_spacer.set_hexpand(true);
+
+    let footer_right = gtk::Label::new(None);
+    footer_right.add_css_class(hooks::panel_card::FOOTER_RIGHT);
+    footer_right.set_xalign(1.0);
+    footer_right.set_single_line_mode(true);
+    footer.append(&footer_left);
+    footer.append(&footer_spacer);
+    footer.append(&footer_right);
+
     let actions_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     // Action buttons are added on demand during row updates
     actions_box.add_css_class("unixnotis-notification-actions");
 
     // Keep the card tree fully built up front
     // Row refreshes then only replace content instead of rebuilding containers
+    card.append(&meta_top);
     card.append(&header);
-    card.append(&summary_label);
-    card.append(&body_label);
+    card.append(&body_row);
+    card.append(&footer);
     card.append(&actions_box);
 
     let stack_ghost_1 = build_stack_ghost(1);
@@ -122,8 +184,15 @@ pub(in crate::ui::list) fn build_notification_row(
             stack_ghost_2,
             icon,
             app_label,
+            meta_top,
+            meta_label,
+            time_badge,
+            thumbnail,
             summary_label,
             body_label,
+            footer,
+            footer_left,
+            footer_right,
             actions_box,
             notify_id,
             action_cache: RefCell::new(Vec::new()),

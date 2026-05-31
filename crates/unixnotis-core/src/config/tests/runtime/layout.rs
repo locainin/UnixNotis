@@ -1,6 +1,9 @@
 use super::super::super::super::widget_config::{CardWidgetConfig, StatWidgetConfig};
 use super::*;
-use crate::{Config, PanelConfig, PanelWidgetSection, PopupConfig, ToggleLayout};
+use crate::{
+    Config, PanelActionConfig, PanelActionId, PanelConfig, PanelSection, PanelWidgetSection,
+    PopupConfig, ToggleLayout,
+};
 
 #[test]
 fn sanitize_clamps_refresh_intervals_and_preserves_ordering() {
@@ -88,7 +91,12 @@ fn sanitize_preserves_optional_panel_labels_and_repairs_widget_order() {
     config.panel.recent_notifications_label.clear();
     config.panel.clear_label.clear();
     config.panel.action_row_visible = false;
+    config.panel.section_order = vec![PanelSection::Notifications, PanelSection::Notifications];
     config.panel.widget_order = vec![PanelWidgetSection::Stats, PanelWidgetSection::Stats];
+    config.panel.action_order = vec![PanelActionId::Search, PanelActionId::Search];
+    config.panel.search_action.icon.clear();
+    config.panel.search_action.tooltip.clear();
+    config.panel.close_action = PanelActionConfig::default();
 
     sanitize_config(&mut config);
 
@@ -99,8 +107,21 @@ fn sanitize_preserves_optional_panel_labels_and_repairs_widget_order() {
     assert!(config.panel.recent_notifications_label.is_empty());
     assert_eq!(config.panel.clear_label, PanelConfig::default().clear_label);
     assert!(!config.panel.action_row_visible);
+    assert_eq!(config.panel.section_order[0], PanelSection::Notifications);
+    assert_eq!(config.panel.section_order.len(), 2);
     assert_eq!(config.panel.widget_order[0], PanelWidgetSection::Stats);
     assert_eq!(config.panel.widget_order.len(), 5);
+    assert_eq!(config.panel.action_order[0], PanelActionId::Search);
+    assert_eq!(config.panel.action_order.len(), 4);
+    assert_eq!(
+        config.panel.search_action.icon,
+        PanelActionConfig::search().icon
+    );
+    assert_eq!(
+        config.panel.search_action.tooltip,
+        PanelActionConfig::search().tooltip
+    );
+    assert_eq!(config.panel.close_action, PanelActionConfig::close());
 }
 
 #[test]
@@ -110,6 +131,31 @@ fn default_panel_section_labels_do_not_force_widget_headings() {
     // Widget section headings are config-owned and hidden unless explicitly set
     assert!(config.quick_actions_label.is_empty());
     assert!(config.system_status_label.is_empty());
+}
+
+#[test]
+fn sanitize_preserves_icon_only_action_blocks_with_default_chrome() {
+    let mut config = Config::default();
+    config.panel.clear_action = PanelActionConfig {
+        icon_only: true,
+        ..PanelActionConfig::default()
+    };
+
+    sanitize_config(&mut config);
+
+    assert!(config.panel.clear_action.icon_only);
+    assert_eq!(
+        config.panel.clear_action.icon,
+        PanelActionConfig::clear().icon
+    );
+    assert_eq!(
+        config.panel.clear_action.tooltip,
+        PanelActionConfig::clear().tooltip
+    );
+    assert!(
+        config.panel.clear_action.label.is_empty(),
+        "icon-only actions may intentionally hide text labels"
+    );
 }
 
 #[test]

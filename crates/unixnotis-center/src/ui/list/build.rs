@@ -116,6 +116,8 @@ impl NotificationList {
             dirty_groups: std::collections::HashSet::new(),
             filter_query: None,
             transient_to_history: config.transient_to_history,
+            show_notification_metadata: config.show_notification_metadata,
+            show_notification_thumbnails: config.show_notification_thumbnails,
             max_active: config.max_active,
             max_entries: config.max_entries,
         }
@@ -124,6 +126,11 @@ impl NotificationList {
     pub fn apply_config(&mut self, config: &NotificationListConfig, has_widgets: bool) {
         // Future close handling should use the latest runtime policy
         self.transient_to_history = config.transient_to_history;
+        let presentation_changed = self.show_notification_metadata
+            != config.show_notification_metadata
+            || self.show_notification_thumbnails != config.show_notification_thumbnails;
+        self.show_notification_metadata = config.show_notification_metadata;
+        self.show_notification_thumbnails = config.show_notification_thumbnails;
         if self.empty_text != config.empty_text {
             update_empty_row(&self.empty_overlay, &config.empty_text);
             self.empty_text = config.empty_text.clone();
@@ -133,6 +140,10 @@ impl NotificationList {
         }
         self.set_empty_layout(has_widgets);
         self.apply_limits(config.max_active, config.max_entries);
+        if presentation_changed {
+            // Existing rows need fresh RowData so optional lanes hide or show immediately
+            self.request_rebuild();
+        }
     }
 
     pub fn set_empty_layout(&self, has_widgets: bool) {

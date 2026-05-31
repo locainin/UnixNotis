@@ -85,6 +85,11 @@ impl NotificationList {
                 } else {
                     group_len.saturating_sub(1).min(2) as u8
                 };
+                let presentation = super::list_item::RowPresentation {
+                    received_at_ms: entry.received_at_ms,
+                    show_metadata: self.show_notification_metadata,
+                    show_thumbnail: self.show_notification_thumbnails,
+                };
                 // Update the row object in-place when the visible span stays identical
                 entry.item.update(super::list_item::RowData::notification(
                     entry.app_key.clone(),
@@ -93,6 +98,7 @@ impl NotificationList {
                     stack_depth,
                     expanded,
                     entry.is_active,
+                    presentation,
                 ));
                 if let Some(ids) = self.grouped_cache.get(&entry.app_key) {
                     if ids.first().copied() == Some(id) {

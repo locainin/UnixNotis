@@ -14,6 +14,16 @@ pub struct SliderWidgetConfig {
     pub min: f64,
     pub max: f64,
     pub step: f64,
+    /// Show the current numeric value at the end of the row
+    pub show_value: bool,
+    /// Optional decorative segment count below the slider track
+    pub segments: usize,
+    /// Show min/max sublabels below the slider track
+    pub show_sublabels: bool,
+    /// Left sublabel. Empty uses the slider min value
+    pub sublabel_min: String,
+    /// Right sublabel. Empty uses the slider max value
+    pub sublabel_max: String,
     /// Controls how numeric command output is interpreted for slider values
     pub parse_mode: NumericParseMode,
 }
@@ -52,6 +62,11 @@ impl SliderWidgetConfig {
             min: 0.0,
             max: 100.0,
             step: 1.0,
+            show_value: true,
+            segments: 0,
+            show_sublabels: false,
+            sublabel_min: String::new(),
+            sublabel_max: String::new(),
             parse_mode: NumericParseMode::Auto,
         }
     }
@@ -71,6 +86,11 @@ impl SliderWidgetConfig {
             min: 0.0,
             max: 100.0,
             step: 1.0,
+            show_value: true,
+            segments: 0,
+            show_sublabels: false,
+            sublabel_min: String::new(),
+            sublabel_max: String::new(),
             parse_mode: NumericParseMode::Auto,
         }
     }

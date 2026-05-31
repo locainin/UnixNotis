@@ -5,7 +5,7 @@ use std::rc::Rc;
 use gtk::glib;
 use gtk::glib::object::Cast;
 
-use super::list_item::RowData;
+use super::list_item::{RowData, RowPresentation};
 use super::types::{NotificationList, RowKey};
 use super::RowItem;
 
@@ -51,6 +51,11 @@ impl NotificationList {
             let Some(entry) = self.entries.get(id) else {
                 continue;
             };
+            let presentation = RowPresentation {
+                received_at_ms: entry.received_at_ms,
+                show_metadata: self.show_notification_metadata,
+                show_thumbnail: self.show_notification_thumbnails,
+            };
             entry.item.update(RowData::notification(
                 entry.app_key.clone(),
                 entry.view.clone(),
@@ -58,6 +63,7 @@ impl NotificationList {
                 stack_depth,
                 expanded,
                 entry.is_active,
+                presentation,
             ));
             items.push(entry.item.clone());
             keys.push(RowKey::Notification { id: *id });

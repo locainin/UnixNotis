@@ -108,6 +108,10 @@ pub fn apply_panel_config(panel: &PanelWidgets, config: &Config, reserved: Optio
     } else {
         panel.window.set_size_request(width, -1);
     }
+    // The overlay is the direct window child. Keep it pinned to the same
+    // request as the panel root so decorative overlay hooks cannot let wide
+    // children renegotiate the layer surface
+    panel.surface.set_size_request(width, -1);
     panel.root.set_size_request(width, -1);
     // Child content sits inside theme-controlled padding and optional section
     // margins, so only the outer shell receives an exact width request

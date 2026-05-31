@@ -48,6 +48,8 @@ fn build_notification_list(
         max_active: init.config.history.max_active,
         max_entries: init.config.history.max_entries,
         transient_to_history: init.config.history.transient_to_history,
+        show_notification_metadata: init.config.panel.notification_metadata_visible,
+        show_notification_thumbnails: init.config.panel.notification_thumbnails_visible,
         empty_text: init.config.panel.empty_text.clone(),
         empty_offset_top: init.config.panel.empty_offset_top,
     };

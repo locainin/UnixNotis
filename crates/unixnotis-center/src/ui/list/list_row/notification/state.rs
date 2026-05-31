@@ -18,10 +18,22 @@ pub(in crate::ui::list) struct NotificationRowWidgets {
     pub(super) icon: gtk::Image,
     // App name text shown beside the icon
     pub(super) app_label: gtk::Label,
+    // Optional metadata rows are present for themes but hidden unless config enables them
+    pub(super) meta_top: gtk::Box,
+    // Optional top metadata label for category/urgency styling
+    pub(super) meta_label: gtk::Label,
+    // Compact relative time badge shown on the top metadata lane
+    pub(super) time_badge: gtk::Label,
+    // Optional large image preview for notifications with image hints
+    pub(super) thumbnail: gtk::Image,
     // Summary line with stronger visual weight
     pub(super) summary_label: gtk::Label,
     // Body text section that can span multiple lines
     pub(super) body_label: gtk::Label,
+    pub(super) footer: gtk::Box,
+    // Optional footer metadata hooks for theme-specific chips
+    pub(super) footer_left: gtk::Label,
+    pub(super) footer_right: gtk::Label,
     // Container for optional action buttons
     pub(super) actions_box: gtk::Box,
     // Current notification id bound to this reused row widget

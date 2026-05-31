@@ -57,7 +57,20 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
             } else {
                 format!("systemctl --user disable --now {}", daemon.unit)
             };
-            run_command(ctx, &label, command, None)?;
+            if let Err(err) = run_command(ctx, &label, command, None) {
+                if is_systemd_unit_inactive(&daemon.unit)? {
+                    // A canceled stop job can still leave the unit stopped, which satisfies reinstall
+                    log_line(
+                        ctx,
+                        format!(
+                            "Systemd unit {} is inactive after stop error; continuing.",
+                            daemon.unit
+                        ),
+                    );
+                    return Ok(());
+                }
+                return Err(err);
+            }
             return Ok(());
         }
 
@@ -162,4 +175,51 @@ fn pid_matches_comm(pid: u32, expected: &str) -> Result<bool> {
         return Ok(false);
     }
     Ok(comm == expected)
+}
+
+fn is_systemd_unit_inactive(unit: &str) -> Result<bool> {
+    let output = Command::new("systemctl")
+        .args(["--user", "is-active", unit])
+        .output()
+        .with_context(|| format!("failed to check systemd unit state for {unit}"))?;
+    let state = String::from_utf8_lossy(&output.stdout);
+    let state = state.trim();
+    if state.is_empty() && !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "failed to read systemd unit state for {unit}: {}",
+            stderr.trim()
+        ));
+    }
+    Ok(systemd_stop_error_is_satisfied_by_state(state))
+}
+
+fn systemd_stop_error_is_satisfied_by_state(state: &str) -> bool {
+    // Only known non-running states should turn a failed stop command into success
+    matches!(state.trim(), "inactive" | "failed" | "unknown")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::systemd_stop_error_is_satisfied_by_state;
+
+    #[test]
+    fn systemd_stop_error_can_continue_when_unit_is_inactive() {
+        assert!(systemd_stop_error_is_satisfied_by_state("inactive"));
+    }
+
+    #[test]
+    fn systemd_stop_error_can_continue_when_unit_is_failed() {
+        assert!(systemd_stop_error_is_satisfied_by_state("failed"));
+    }
+
+    #[test]
+    fn systemd_stop_error_still_fails_when_unit_stays_active() {
+        assert!(!systemd_stop_error_is_satisfied_by_state("active"));
+    }
+
+    #[test]
+    fn systemd_stop_error_still_fails_when_unit_is_transitioning() {
+        assert!(!systemd_stop_error_is_satisfied_by_state("deactivating"));
+    }
 }
