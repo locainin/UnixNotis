@@ -7,7 +7,7 @@ mod sliders;
 mod stats;
 mod toggles;
 
-pub use self::cards::CardWidgetConfig;
+pub use self::cards::{CardLayout, CardWidgetConfig};
 pub use self::plugin::WidgetPluginConfig;
 pub use self::root::WidgetsConfig;
 pub use self::sliders::{NumericParseMode, SliderWidgetConfig};

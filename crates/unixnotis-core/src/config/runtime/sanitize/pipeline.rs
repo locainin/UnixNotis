@@ -81,7 +81,9 @@ fn sanitize_panel_geometry(config: &mut Config) {
     }
 
     panel::sanitize_panel_text(&mut config.panel);
+    panel::sanitize_panel_section_order(&mut config.panel.section_order);
     panel::sanitize_panel_widget_order(&mut config.panel.widget_order);
+    panel::sanitize_panel_action_order(&mut config.panel.action_order);
     panel::sanitize_widget_columns(config);
 
     config.panel.margin.top = config.panel.margin.top.clamp(0, MAX_MARGIN);

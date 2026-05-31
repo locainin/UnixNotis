@@ -24,6 +24,7 @@ pub mod panel_action {
     pub const CLOSE: &str = "unixnotis-panel-action-close";
     pub const WITH_ICON: &str = "unixnotis-panel-action-with-icon";
     pub const ICON_ONLY: &str = "unixnotis-panel-action-icon";
+    pub const LABEL_HIDDEN: &str = "unixnotis-panel-action-label-hidden";
 }
 
 pub mod panel_shell {
@@ -38,7 +39,19 @@ pub mod panel_shell {
     pub const SUBTITLE: &str = "unixnotis-panel-subtitle";
     pub const COUNT: &str = "unixnotis-panel-count";
     pub const SEARCH: &str = "unixnotis-panel-search";
+    pub const SEARCH_SHELL: &str = "unixnotis-panel-search-shell";
+    pub const SEARCH_ACCENT: &str = "unixnotis-panel-search-accent";
+    pub const SEARCH_STAR: &str = "unixnotis-panel-search-star";
     pub const SEARCH_REVEALER: &str = "unixnotis-panel-search-revealer";
+    pub const BODY_STACK: &str = "unixnotis-panel-body-stack";
+    pub const EDGE_TOP: &str = "unixnotis-panel-edge-top";
+    pub const EDGE_BOTTOM: &str = "unixnotis-panel-edge-bottom";
+    pub const RAIL_LEFT: &str = "unixnotis-panel-rail-left";
+    pub const RAIL_RIGHT: &str = "unixnotis-panel-rail-right";
+    pub const TICK_TOP_LEFT: &str = "unixnotis-panel-tick-top-left";
+    pub const TICK_TOP_RIGHT: &str = "unixnotis-panel-tick-top-right";
+    pub const TICK_BOTTOM_LEFT: &str = "unixnotis-panel-tick-bottom-left";
+    pub const TICK_BOTTOM_RIGHT: &str = "unixnotis-panel-tick-bottom-right";
     pub const MEDIA_CONTAINER: &str = "unixnotis-media-container";
     pub const QUICK_CONTROLS: &str = "unixnotis-quick-controls";
     pub const WIDGET_STACK: &str = "unixnotis-widget-stack";
@@ -55,13 +68,37 @@ pub mod panel_shell {
 
 pub mod panel_card {
     pub const ROW: &str = "unixnotis-panel-card-row";
+    pub const HEADER: &str = "unixnotis-panel-card-header";
+    pub const TEXT: &str = "unixnotis-panel-card-text";
+    pub const META_TOP: &str = "unixnotis-panel-card-meta-top";
+    pub const META_LABEL: &str = "unixnotis-panel-card-meta-label";
+    pub const TIME_BADGE: &str = "unixnotis-panel-card-time-badge";
+    pub const FOOTER: &str = "unixnotis-panel-card-footer";
+    pub const FOOTER_LEFT: &str = "unixnotis-panel-card-footer-left";
+    pub const FOOTER_RIGHT: &str = "unixnotis-panel-card-footer-right";
+    pub const THUMBNAIL: &str = "unixnotis-panel-card-thumbnail";
     pub const GROUP_COLLAPSED: &str = "unixnotis-panel-card-group-collapsed";
     pub const GROUP_EXPANDED: &str = "unixnotis-panel-card-group-expanded";
     pub const GROUPED: &str = "unixnotis-panel-card-grouped";
     pub const HAS_ACTIONS: &str = "unixnotis-panel-card-has-actions";
     pub const HAS_BODY: &str = "unixnotis-panel-card-has-body";
     pub const HAS_SUMMARY: &str = "unixnotis-panel-card-has-summary";
+    pub const HAS_THUMBNAIL: &str = "unixnotis-panel-card-has-thumbnail";
     pub const NO_ACTIONS: &str = "unixnotis-panel-card-no-actions";
+    pub const NO_THUMBNAIL: &str = "unixnotis-panel-card-no-thumbnail";
+}
+
+pub mod slider {
+    pub const ROOT: &str = "unixnotis-quick-slider";
+    pub const ICON: &str = "unixnotis-quick-slider-icon";
+    pub const SCALE: &str = "unixnotis-quick-slider-scale";
+    pub const VALUE: &str = "unixnotis-quick-slider-value";
+    pub const STACK: &str = "unixnotis-quick-slider-stack";
+    pub const SEGMENTS: &str = "unixnotis-quick-slider-segments";
+    pub const SEGMENT: &str = "unixnotis-quick-slider-segment";
+    pub const SUBLABEL_ROW: &str = "unixnotis-quick-slider-sublabel-row";
+    pub const SUBLABEL_MIN: &str = "unixnotis-quick-slider-sublabel-min";
+    pub const SUBLABEL_MAX: &str = "unixnotis-quick-slider-sublabel-max";
 }
 
 pub mod toggle_card {
@@ -94,10 +131,18 @@ pub mod info_card {
     pub const ICON: &str = "unixnotis-info-icon";
     pub const TITLE: &str = "unixnotis-info-title";
     pub const BODY: &str = "unixnotis-info-body";
+    pub const MEDIA: &str = "unixnotis-info-media";
+    pub const CHROME: &str = "unixnotis-info-chrome";
+    pub const DOTS: &str = "unixnotis-info-dots";
+    pub const DOT: &str = "unixnotis-info-dot";
+    pub const NAV_PREV: &str = "unixnotis-info-nav-prev";
+    pub const NAV_NEXT: &str = "unixnotis-info-nav-next";
     pub const CALENDAR_WIDGET: &str = "unixnotis-calendar";
     pub const CALENDAR: &str = "unixnotis-info-card-calendar";
     pub const WEATHER: &str = "unixnotis-info-card-weather";
     pub const MONO: &str = "unixnotis-info-card-mono";
+    pub const LAYOUT_BANNER: &str = "unixnotis-info-card-banner";
+    pub const LAYOUT_IMAGE_ROW: &str = "unixnotis-info-card-image-row";
     pub const HAS_ICON: &str = "unixnotis-info-card-has-icon";
     pub const NO_ICON: &str = "unixnotis-info-card-no-icon";
 }

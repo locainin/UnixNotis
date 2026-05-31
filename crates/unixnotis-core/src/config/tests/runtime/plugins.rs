@@ -40,3 +40,20 @@ fn sanitize_widget_plugin_rejects_shell_meta_commands() {
     sanitize_config(&mut config);
     assert!(config.widgets.cards[0].plugin.is_none());
 }
+
+#[test]
+fn sanitize_widget_options_caps_decorative_layout_counts() {
+    let mut config = Config::default();
+    config.widgets.volume.segments = 999;
+    config.widgets.volume.sublabel_min = "  abcdefghijklmnopqrstuvwxyz0123456789  ".to_string();
+    config.widgets.cards[0].carousel_dots = 999;
+
+    sanitize_config(&mut config);
+
+    assert_eq!(config.widgets.volume.segments, 64);
+    assert_eq!(
+        config.widgets.volume.sublabel_min,
+        "abcdefghijklmnopqrstuvwxyz012345"
+    );
+    assert_eq!(config.widgets.cards[0].carousel_dots, 12);
+}

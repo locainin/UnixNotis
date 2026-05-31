@@ -1,7 +1,7 @@
 use tracing::warn;
 
 use super::{
-    super::super::{Config, WidgetPluginConfig},
+    super::super::{Config, SliderWidgetConfig, WidgetPluginConfig},
     MAX_CARD_HEIGHT,
 };
 use crate::util;
@@ -10,8 +10,13 @@ pub(super) const MIN_PLUGIN_TIMEOUT_MS: u64 = 100;
 pub(super) const MAX_PLUGIN_TIMEOUT_MS: u64 = 30_000;
 pub(super) const MIN_PLUGIN_OUTPUT_BYTES: usize = 128;
 pub(super) const MAX_PLUGIN_OUTPUT_BYTES: usize = 128 * 1024;
+const MAX_SLIDER_SEGMENTS: usize = 64;
+const MAX_SLIDER_SUBLABEL_CHARS: usize = 32;
+const MAX_CARD_CAROUSEL_DOTS: usize = 12;
 
 pub(super) fn sanitize_widget_configs(config: &mut Config) {
+    sanitize_slider_widget(&mut config.widgets.volume);
+    sanitize_slider_widget(&mut config.widgets.brightness);
     // Stats and cards share the same geometry and plugin contract
     for stat in &mut config.widgets.stats {
         stat.min_height = stat.min_height.clamp(0, MAX_CARD_HEIGHT);
@@ -19,8 +24,24 @@ pub(super) fn sanitize_widget_configs(config: &mut Config) {
     }
     for card in &mut config.widgets.cards {
         card.min_height = card.min_height.clamp(0, MAX_CARD_HEIGHT);
+        card.carousel_dots = card.carousel_dots.min(MAX_CARD_CAROUSEL_DOTS);
         sanitize_widget_plugin(&mut card.plugin, "card", &card.title);
     }
+}
+
+fn sanitize_slider_widget(slider: &mut SliderWidgetConfig) {
+    // Segment widgets are decorative, so cap them tightly to avoid large GTK trees
+    slider.segments = slider.segments.min(MAX_SLIDER_SEGMENTS);
+    trim_slider_label(&mut slider.sublabel_min);
+    trim_slider_label(&mut slider.sublabel_max);
+}
+
+fn trim_slider_label(label: &mut String) {
+    *label = label
+        .trim()
+        .chars()
+        .take(MAX_SLIDER_SUBLABEL_CHARS)
+        .collect();
 }
 
 fn sanitize_widget_plugin(
