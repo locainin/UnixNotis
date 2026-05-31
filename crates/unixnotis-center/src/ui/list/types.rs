@@ -43,6 +43,9 @@ pub struct NotificationList {
     pub(super) filter_query: Option<FilterQuery>,
     // Local close handling needs the same transient history rule as the daemon
     pub(super) transient_to_history: bool,
+    // Optional metadata lanes stay config-owned so the stock row remains compact
+    pub(super) show_notification_metadata: bool,
+    pub(super) show_notification_thumbnails: bool,
     pub(super) max_active: usize,
     pub(super) max_entries: usize,
 }
@@ -52,6 +55,8 @@ pub struct NotificationListConfig {
     pub max_active: usize,
     pub max_entries: usize,
     pub transient_to_history: bool,
+    pub show_notification_metadata: bool,
+    pub show_notification_thumbnails: bool,
     pub empty_text: String,
     pub empty_offset_top: i32,
 }
@@ -59,6 +64,7 @@ pub struct NotificationListConfig {
 pub(super) struct NotificationEntry {
     pub(super) view: Rc<NotificationView>,
     pub(super) is_active: bool,
+    pub(super) received_at_ms: i64,
     pub(super) app_key: Rc<str>,
     pub(super) item: RowItem,
 }

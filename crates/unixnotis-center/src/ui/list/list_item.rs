@@ -15,6 +15,15 @@ pub enum RowKind {
     Notification,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RowPresentation {
+    // Local receipt timestamp supports relative badges without changing D-Bus payloads
+    pub received_at_ms: i64,
+    // Optional lanes are disabled by default to preserve the compact stock card
+    pub show_metadata: bool,
+    pub show_thumbnail: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct RowData {
     pub kind: RowKind,
@@ -27,6 +36,7 @@ pub struct RowData {
     // Number of internal ghost cards shown under the visible notification card
     pub stack_depth: u8,
     pub is_active: bool,
+    pub presentation: RowPresentation,
     pub notification: Option<Rc<NotificationView>>,
 }
 
@@ -41,6 +51,7 @@ impl Default for RowData {
             stacked: false,
             stack_depth: 0,
             is_active: false,
+            presentation: RowPresentation::default(),
             notification: None,
         }
     }
@@ -62,6 +73,7 @@ impl RowData {
             stacked: false,
             stack_depth: 0,
             is_active: false,
+            presentation: RowPresentation::default(),
             notification: Some(sample),
         }
     }
@@ -73,6 +85,7 @@ impl RowData {
         stack_depth: u8,
         expanded: bool,
         is_active: bool,
+        presentation: RowPresentation,
     ) -> Self {
         Self {
             kind: RowKind::Notification,
@@ -83,6 +96,7 @@ impl RowData {
             stacked,
             stack_depth,
             is_active,
+            presentation,
             notification: Some(notification),
         }
     }
@@ -96,6 +110,7 @@ impl RowData {
             && self.stacked == other.stacked
             && self.stack_depth == other.stack_depth
             && self.is_active == other.is_active
+            && self.presentation == other.presentation
             && Self::same_notification(&self.notification, &other.notification)
     }
 
