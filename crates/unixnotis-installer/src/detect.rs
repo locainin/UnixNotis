@@ -66,7 +66,7 @@ pub(crate) const KNOWN_DAEMONS: &[KnownDaemon] = &[
     KnownDaemon {
         name: "fnott",
         unit: "fnott.service",
-    }
+    },
 ];
 
 pub fn detect() -> Detection {
