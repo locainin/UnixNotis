@@ -40,7 +40,7 @@ pub(in crate::actions::config) fn create_backup_dir(
         format!("Backup directory created: {}", format_with_home(&candidate)),
     );
 
-    prune_old_backups(ctx, config_dir, keep)?;
+    prune_old_backups_except(ctx, config_dir, keep, Some(candidate.as_path()))?;
     Ok(Some(candidate))
 }
 
@@ -66,10 +66,20 @@ pub(in crate::actions::config::backup) fn list_backup_dirs(config_dir: &Path) ->
         .collect()
 }
 
+#[cfg(test)]
 pub(in crate::actions::config::backup) fn prune_old_backups(
     ctx: &mut ActionContext,
     config_dir: &Path,
     keep: usize,
+) -> Result<()> {
+    prune_old_backups_except(ctx, config_dir, keep, None)
+}
+
+fn prune_old_backups_except(
+    ctx: &mut ActionContext,
+    config_dir: &Path,
+    keep: usize,
+    protected_backup: Option<&Path>,
 ) -> Result<()> {
     if keep == 0 {
         return Ok(());
@@ -83,8 +93,14 @@ pub(in crate::actions::config::backup) fn prune_old_backups(
         return Ok(());
     }
 
-    let excess = backups.len().saturating_sub(keep);
-    for path in backups.into_iter().take(excess) {
+    let mut excess = backups.len().saturating_sub(keep);
+    for path in backups {
+        if excess == 0 {
+            break;
+        }
+        if protected_backup.is_some_and(|protected| protected == path) {
+            continue;
+        }
         if let Err(err) = fs::remove_dir_all(&path) {
             log_line(
                 ctx,
@@ -100,6 +116,7 @@ pub(in crate::actions::config::backup) fn prune_old_backups(
                 format!("Removed old backup {}", format_with_home(&path)),
             );
         }
+        excess -= 1;
     }
 
     Ok(())
