@@ -59,6 +59,14 @@ pub(crate) const KNOWN_DAEMONS: &[KnownDaemon] = &[
         name: "quickshell",
         unit: "quickshell.service",
     },
+    KnownDaemon {
+        name: "hyprnotify",
+        unit: "hyprnotify.service",
+    },
+    KnownDaemon {
+        name: "fnott",
+        unit: "fnott.service",
+    },
 ];
 
 pub fn detect() -> Detection {

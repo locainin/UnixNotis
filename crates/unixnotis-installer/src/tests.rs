@@ -13,6 +13,24 @@ fn known_daemons_include_quickshell_owner() {
 }
 
 #[test]
+fn known_daemons_include_recent_wayland_notifiers() {
+    // These daemons are common enough to deserve explicit regression coverage
+    let expected = [
+        ("hyprnotify", "hyprnotify.service"),
+        ("fnott", "fnott.service"),
+    ];
+
+    for (name, unit) in expected {
+        let daemon = KNOWN_DAEMONS
+            .iter()
+            .find(|daemon| daemon.name == name)
+            .expect("daemon should be known");
+
+        assert_eq!(daemon.unit, unit);
+    }
+}
+
+#[test]
 fn parse_busctl_status_reads_indented_fields() {
     // Confirms indented output with spaced separators still yields PID and command name
     let output = "\

@@ -84,6 +84,16 @@ body:
         If a screenshot helps explain the problem, include it here too.
       placeholder: Paste logs here
 
+  - type: textarea
+    id: css_check_output
+    attributes:
+      label: CSS check output
+      description: |
+        If the bug involves styling, layout, themes, padding, colors, or anything
+        related to a custom config, please paste the output of `noticenterctl css-check`.
+      placeholder: |
+        noticenterctl css-check
+
   - type: checkboxes
     id: checks
     attributes:
