@@ -2,13 +2,16 @@
 
 use gtk::prelude::*;
 use gtk::Align;
-use unixnotis_core::{css::hooks, PanelClearButtonPlacement, PanelConfig, PanelWidgetSection};
+use unixnotis_core::{
+    css::hooks, PanelClearButtonPlacement, PanelConfig, PanelSection, PanelWidgetSection,
+};
 
 use super::actions::build_clear_button;
 
 pub(crate) const WIDGET_REVEAL_TRANSITION_MS: u64 = 180;
 
 pub(super) struct PanelSectionWidgets {
+    pub(super) body_stack: gtk::Box,
     pub(super) widget_revealer: gtk::Revealer,
     pub(super) widget_stack: gtk::Box,
     pub(super) quick_controls: gtk::Box,
@@ -27,6 +30,11 @@ pub(super) struct PanelSectionWidgets {
 }
 
 pub(super) fn build_panel_sections(config: &PanelConfig) -> PanelSectionWidgets {
+    let body_stack = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    body_stack.add_css_class(hooks::panel_shell::BODY_STACK);
+    body_stack.set_hexpand(true);
+    body_stack.set_vexpand(true);
+
     let media_container = gtk::Box::new(gtk::Orientation::Vertical, 8);
     media_container.add_css_class(hooks::panel_shell::MEDIA_CONTAINER);
     media_container.set_hexpand(true);
@@ -106,6 +114,12 @@ pub(super) fn build_panel_sections(config: &PanelConfig) -> PanelSectionWidgets 
     recent_header_row.append(&clear_header_button);
     notification_container.append(&recent_header_row);
     notification_container.append(&scroller);
+    append_panel_body_sections(
+        &body_stack,
+        &widget_revealer,
+        &notification_container,
+        &config.section_order,
+    );
 
     let footer = gtk::Label::new(Some(&config.footer_label));
     footer.add_css_class(hooks::panel_shell::FOOTER);
@@ -113,6 +127,7 @@ pub(super) fn build_panel_sections(config: &PanelConfig) -> PanelSectionWidgets 
     footer.set_visible(!config.footer_label.is_empty());
 
     PanelSectionWidgets {
+        body_stack,
         widget_revealer,
         widget_stack,
         quick_controls,
@@ -128,6 +143,37 @@ pub(super) fn build_panel_sections(config: &PanelConfig) -> PanelSectionWidgets 
         stat_section_header,
         footer,
         media_container,
+    }
+}
+
+pub(in crate::ui::panel) fn apply_panel_body_section_order(
+    body_stack: &gtk::Box,
+    widget_revealer: &gtk::Revealer,
+    notification_container: &gtk::Box,
+    order: &[PanelSection],
+) {
+    let mut previous: Option<gtk::Widget> = None;
+    for section in order {
+        let child: gtk::Widget = match section {
+            PanelSection::Widgets => widget_revealer.clone().upcast(),
+            PanelSection::Notifications => notification_container.clone().upcast(),
+        };
+        body_stack.reorder_child_after(&child, previous.as_ref());
+        previous = Some(child);
+    }
+}
+
+fn append_panel_body_sections(
+    body_stack: &gtk::Box,
+    widget_revealer: &gtk::Revealer,
+    notification_container: &gtk::Box,
+    order: &[PanelSection],
+) {
+    for section in order {
+        match section {
+            PanelSection::Widgets => body_stack.append(widget_revealer),
+            PanelSection::Notifications => body_stack.append(notification_container),
+        }
     }
 }
 

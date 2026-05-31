@@ -58,18 +58,26 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
 
     let header = build_panel_header(&config.panel);
     let sections = build_panel_sections(&config.panel);
+    let body_chrome = build_panel_body_chrome(&sections.body_stack);
+    let overlay = gtk::Overlay::new();
+    overlay.set_child(Some(&root));
 
+    // Chrome nodes intentionally carry no behavior
+    // Themes can turn them into rails, corner ticks, or hidden no-op nodes
+    // Overlay-only edge chrome avoids adding GTK box spacing to compact themes
+    append_panel_edge_chrome(&overlay, true);
     root.append(&header.root);
-    root.append(&sections.widget_revealer);
-    root.append(&sections.notification_container);
+    root.append(&body_chrome);
     root.append(&sections.footer);
+    append_panel_edge_chrome(&overlay, false);
 
-    window.set_child(Some(&root));
+    window.set_child(Some(&overlay));
     window.set_visible(false);
 
     PanelWidgets {
         window,
         root,
+        body_stack: sections.body_stack,
         widget_revealer: sections.widget_revealer,
         widget_stack: sections.widget_stack,
         quick_controls: sections.quick_controls,
@@ -85,6 +93,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
         header_subtitle: header.subtitle,
         header_count: header.count,
         header_action_row: header.action_row,
+        header_action_group: header.actions.group,
         notification_container: sections.notification_container,
         notification_header_row: sections.notification_header_row,
         notification_header: sections.notification_header,
@@ -97,4 +106,39 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
         clear_header_button: sections.clear_header_button,
         close_button: header.actions.close_button,
     }
+}
+
+fn build_panel_body_chrome(body_stack: &gtk::Box) -> gtk::Box {
+    let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    body.set_hexpand(true);
+    body.set_vexpand(true);
+
+    let left_rail = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    left_rail.add_css_class(hooks::panel_shell::RAIL_LEFT);
+
+    let right_rail = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    right_rail.add_css_class(hooks::panel_shell::RAIL_RIGHT);
+
+    body.append(&left_rail);
+    body.append(body_stack);
+    body.append(&right_rail);
+    body
+}
+
+fn append_panel_edge_chrome(overlay: &gtk::Overlay, top: bool) {
+    let edge = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    edge.set_hexpand(true);
+    edge.set_halign(gtk::Align::Fill);
+    if top {
+        edge.add_css_class(hooks::panel_shell::EDGE_TOP);
+        edge.add_css_class(hooks::panel_shell::TICK_TOP_LEFT);
+        edge.add_css_class(hooks::panel_shell::TICK_TOP_RIGHT);
+        edge.set_valign(gtk::Align::Start);
+    } else {
+        edge.add_css_class(hooks::panel_shell::EDGE_BOTTOM);
+        edge.add_css_class(hooks::panel_shell::TICK_BOTTOM_LEFT);
+        edge.add_css_class(hooks::panel_shell::TICK_BOTTOM_RIGHT);
+        edge.set_valign(gtk::Align::End);
+    }
+    overlay.add_overlay(&edge);
 }
