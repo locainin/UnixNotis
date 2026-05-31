@@ -58,8 +58,9 @@ fn sanitize_action_config(config: &mut PanelActionConfig, default: PanelActionCo
     if config.label.trim().is_empty()
         && config.icon.trim().is_empty()
         && config.tooltip.trim().is_empty()
+        && !config.icon_only
     {
-        // Fully missing action blocks are upgraded to the stock action config
+        // Empty blocks from partial config files mean "use stock" when no mode was set
         *config = default;
         return;
     }

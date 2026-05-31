@@ -134,6 +134,31 @@ fn default_panel_section_labels_do_not_force_widget_headings() {
 }
 
 #[test]
+fn sanitize_preserves_icon_only_action_blocks_with_default_chrome() {
+    let mut config = Config::default();
+    config.panel.clear_action = PanelActionConfig {
+        icon_only: true,
+        ..PanelActionConfig::default()
+    };
+
+    sanitize_config(&mut config);
+
+    assert!(config.panel.clear_action.icon_only);
+    assert_eq!(
+        config.panel.clear_action.icon,
+        PanelActionConfig::clear().icon
+    );
+    assert_eq!(
+        config.panel.clear_action.tooltip,
+        PanelActionConfig::clear().tooltip
+    );
+    assert!(
+        config.panel.clear_action.label.is_empty(),
+        "icon-only actions may intentionally hide text labels"
+    );
+}
+
+#[test]
 fn sanitize_clamps_widget_grid_columns() {
     let mut config = Config::default();
     config.widgets.toggle_columns = 0;
