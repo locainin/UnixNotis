@@ -175,6 +175,19 @@ fn suppresses_descendant_selector_targeting_plain_gtk_subnode() {
 }
 
 #[test]
+fn suppresses_absent_thumbnail_collapse_selector() {
+    let css = r#"
+        .unixnotis-panel-card-no-thumbnail .unixnotis-panel-card-thumbnail {
+            margin: 0;
+        }
+    "#;
+
+    let mut model = GeometryModel::default();
+    let warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
 fn warns_for_panel_action_width_override_on_unmodeled_hook() {
     let css = r#"
         .unixnotis-panel-action {

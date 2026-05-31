@@ -20,7 +20,7 @@ pub(in crate::main_css_check) fn known_unixnotis_classes() -> &'static HashSet<&
             collect_unixnotis_classes(css, &mut classes);
         }
         // Hook-only classes are still real live widget classes even before the stock theme styles them
-        classes.extend(hook_unixnotis_classes());
+        classes.extend(hook_unixnotis_classes().iter().copied());
         classes
     })
 }
@@ -49,9 +49,9 @@ fn collect_unixnotis_classes(css: &'static str, classes: &mut HashSet<&'static s
     }
 }
 
-fn hook_unixnotis_classes() -> [&'static str; 33] {
+fn hook_unixnotis_classes() -> &'static [&'static str] {
     // Hook-only classes can be real live selectors before the stock theme gives them rules
-    [
+    &[
         ".unixnotis-panel-actions",
         ".unixnotis-panel-action-group",
         ".unixnotis-panel-action",
@@ -78,6 +78,17 @@ fn hook_unixnotis_classes() -> [&'static str; 33] {
         ".unixnotis-group-title",
         ".unixnotis-group-count",
         ".unixnotis-group-chevron",
+        ".unixnotis-panel-card-header",
+        ".unixnotis-panel-card-meta-top",
+        ".unixnotis-panel-card-meta-label",
+        ".unixnotis-panel-card-time-badge",
+        ".unixnotis-panel-card-footer",
+        ".unixnotis-panel-card-footer-left",
+        ".unixnotis-panel-card-footer-right",
+        ".unixnotis-panel-card-text",
+        ".unixnotis-panel-card-thumbnail",
+        ".unixnotis-panel-card-has-thumbnail",
+        ".unixnotis-panel-card-no-thumbnail",
         ".unixnotis-empty",
         ".unixnotis-media-stack-player",
         ".unixnotis-media-row-player",
@@ -110,5 +121,14 @@ mod tests {
         assert!(classes.contains(".unixnotis-recent-header"));
         assert!(classes.contains(".unixnotis-recent-header-row"));
         assert!(classes.contains(".unixnotis-panel-footer"));
+    }
+
+    #[test]
+    fn notification_metadata_hooks_are_treated_as_known_public_classes() {
+        let classes = known_unixnotis_classes();
+
+        assert!(classes.contains(".unixnotis-panel-card-meta-top"));
+        assert!(classes.contains(".unixnotis-panel-card-time-badge"));
+        assert!(classes.contains(".unixnotis-panel-card-thumbnail"));
     }
 }
