@@ -1,3 +1,4 @@
+use super::layout::slider_sublabel;
 use super::refresh::SliderRefreshGate;
 use super::value::{format_command_value, slider_value_changed, slider_value_tolerance};
 
@@ -19,6 +20,18 @@ fn slider_value_changed_uses_step_sized_tolerance() {
     assert_eq!(slider_value_tolerance(0.1), 0.05);
     assert!(!slider_value_changed(50.0, 50.04, 0.1));
     assert!(slider_value_changed(50.0, 50.06, 0.1));
+}
+
+#[test]
+fn slider_sublabel_uses_numeric_fallback_when_unset() {
+    assert_eq!(slider_sublabel("", 25.0), "25%");
+}
+
+#[test]
+fn slider_sublabel_trims_and_clamps_configured_text() {
+    let label = slider_sublabel("  abcdefghijklmnopqrstuvwxyz0123456789  ", 0.0);
+
+    assert_eq!(label, "abcdefghijklmnopqrstuvwxyz012345");
 }
 
 #[test]

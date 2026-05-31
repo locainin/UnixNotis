@@ -1,5 +1,6 @@
 //! Command-backed slider widget and refresh wiring
 
+mod layout;
 mod refresh;
 mod schedule;
 #[cfg(test)]
@@ -12,9 +13,9 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::Align;
-use unixnotis_core::PanelDebugLevel;
-use unixnotis_core::SliderWidgetConfig;
+use unixnotis_core::{css::hooks, PanelDebugLevel, SliderWidgetConfig};
 
+use self::layout::{build_icon_shell, build_slider_stack};
 use self::refresh::{request_refresh, SliderRefreshGate, SliderRefreshMeta, SliderRefreshState};
 use self::schedule::schedule_command;
 use super::slider_icons::resolve_slider_icon_name;
@@ -51,7 +52,7 @@ impl CommandSlider {
     pub fn new(config: SliderWidgetConfig, extra_class: &str) -> Self {
         // Root combines base style with caller-provided variant class
         let root = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        root.add_css_class("unixnotis-quick-slider");
+        root.add_css_class(hooks::slider::ROOT);
         root.add_css_class(extra_class);
 
         // Resolve icon upfront so themes without exact names still render valid glyphs
@@ -72,15 +73,17 @@ impl CommandSlider {
         scale.set_valign(Align::Center);
         // One size request is enough here and keeps the layout less rigid
         scale.set_size_request(180, 24);
-        scale.add_css_class("unixnotis-quick-slider-scale");
+        scale.add_css_class(hooks::slider::SCALE);
 
         // Keep the first frame neutral so generic sliders do not imply a percent value
         let value_label = gtk::Label::new(Some("----"));
-        value_label.add_css_class("unixnotis-quick-slider-value");
+        value_label.add_css_class(hooks::slider::VALUE);
         value_label.set_valign(Align::Center);
         value_label.set_xalign(1.0);
         value_label.set_width_chars(4);
-        root.append(&scale);
+        value_label.set_visible(config.show_value);
+        let slider_stack = build_slider_stack(&scale, &config);
+        root.append(&slider_stack);
         root.append(&value_label);
 
         let updating = Rc::new(Cell::new(false));
@@ -300,19 +303,6 @@ impl CommandSlider {
             gate: self.refresh_gate.clone(),
         }
     }
-}
-
-fn build_icon_shell(icon_image: &gtk::Image, interactive: bool) -> gtk::Button {
-    let button = gtk::Button::new();
-    button.set_child(Some(icon_image));
-    button.add_css_class("unixnotis-quick-slider-icon");
-    button.set_valign(Align::Center);
-    button.set_halign(Align::Center);
-    // Only clickable sliders should take pointer or focus events
-    // Static shells still use the same GTK node so row metrics stay aligned
-    button.set_focusable(interactive);
-    button.set_can_target(interactive);
-    button
 }
 
 fn build_refresh_state_from_weak(
