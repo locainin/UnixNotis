@@ -1,7 +1,6 @@
-//! Service unit install and lifecycle helpers
+//! Service artifact install and lifecycle helpers
 
 use std::fs;
-use std::process::Command;
 use std::sync::atomic::Ordering;
 
 use anyhow::{Context, Result};
@@ -16,21 +15,29 @@ use super::super::{
 };
 
 pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
-    fs::create_dir_all(&ctx.paths.unit_dir)
-        .with_context(|| "failed to create systemd user directory")?;
+    fs::create_dir_all(ctx.paths.service.artifact_dir()).with_context(|| {
+        format!(
+            "failed to create {} directory",
+            ctx.paths.service.artifact_label()
+        )
+    })?;
 
-    match write_service_unit(ctx)? {
-        ServiceUnitWrite::CreatedOrUpdated => {
+    match write_service_artifact(ctx)? {
+        ServiceArtifactWrite::CreatedOrUpdated => {
             log_line(
                 ctx,
                 format!(
-                    "Installed systemd unit to {}",
-                    format_with_home(&ctx.paths.unit_path)
+                    "Installed {} to {}",
+                    ctx.paths.service.artifact_label(),
+                    format_with_home(ctx.paths.service.artifact_path())
                 ),
             );
         }
-        ServiceUnitWrite::Unchanged => {
-            log_line(ctx, "Systemd unit already up to date");
+        ServiceArtifactWrite::Unchanged => {
+            log_line(
+                ctx,
+                format!("{} already up to date", ctx.paths.service.artifact_label()),
+            );
         }
     }
 
@@ -38,16 +45,22 @@ pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
 }
 
 pub(crate) fn enable_service(ctx: &mut ActionContext) -> Result<()> {
-    if ctx.service_unit_reload_required.load(Ordering::Acquire) {
+    if ctx.service_reload_required.load(Ordering::Acquire) {
         // A full user-manager reload is expensive on some setups, so run it only when needed
-        log_line(ctx, "Reloading systemd user manager");
-        let mut daemon_reload = Command::new("systemctl");
-        daemon_reload.args(["--user", "daemon-reload"]);
-        run_command(ctx, "systemctl --user daemon-reload", daemon_reload, None)?;
+        log_line(
+            ctx,
+            format!("Reloading {}", ctx.paths.service.manager_label()),
+        );
+        let (label, command) = ctx.paths.service.daemon_reload_command();
+        run_command(ctx, &label, command, None)?;
     } else {
         log_line(
             ctx,
-            "Skipping systemd user reload because unit is unchanged",
+            format!(
+                "Skipping {} reload because {} is unchanged",
+                ctx.paths.service.manager_label(),
+                ctx.paths.service.artifact_label()
+            ),
         );
     }
 
@@ -69,28 +82,36 @@ pub(crate) fn enable_service(ctx: &mut ActionContext) -> Result<()> {
 }
 
 pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
-    let unit = &ctx.paths.unit_path;
-    let unit_display = format_with_home(unit);
+    let artifact_path = ctx.paths.service.artifact_path();
+    let artifact_display = format_with_home(artifact_path);
 
-    if unit.exists() {
-        let mut disable = Command::new("systemctl");
-        disable.args(["--user", "disable", "--now", "unixnotis-daemon.service"]);
-        if let Err(err) = run_command(
-            ctx,
-            "systemctl --user disable --now unixnotis-daemon.service",
-            disable,
-            None,
-        ) {
+    if artifact_path.exists() {
+        let (label, command) = ctx.paths.service.disable_now_command();
+        if let Err(err) = run_command(ctx, &label, command, None) {
             log_line(ctx, format!("Warning: {}", err));
         }
 
-        let mut daemon_reload = Command::new("systemctl");
-        daemon_reload.args(["--user", "daemon-reload"]);
-        fs::remove_file(unit).with_context(|| "failed to remove systemd unit")?;
-        run_command(ctx, "systemctl --user daemon-reload", daemon_reload, None)?;
-        log_line(ctx, format!("Removed systemd unit at {}", unit_display));
+        fs::remove_file(artifact_path)
+            .with_context(|| format!("failed to remove {}", ctx.paths.service.artifact_label()))?;
+        let (label, command) = ctx.paths.service.daemon_reload_command();
+        run_command(ctx, &label, command, None)?;
+        log_line(
+            ctx,
+            format!(
+                "Removed {} at {}",
+                ctx.paths.service.artifact_label(),
+                artifact_display
+            ),
+        );
     } else {
-        log_line(ctx, format!("Systemd unit not found at {}", unit_display));
+        log_line(
+            ctx,
+            format!(
+                "{} not found at {}",
+                ctx.paths.service.artifact_label(),
+                artifact_display
+            ),
+        );
     }
 
     remove_hyprland_autostart(ctx);
@@ -108,7 +129,7 @@ fn format_exec_start(paths: &InstallPaths) -> String {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::actions::install) enum ServiceUnitWrite {
+pub(in crate::actions::install) enum ServiceArtifactWrite {
     CreatedOrUpdated,
     Unchanged,
 }
@@ -140,36 +161,42 @@ pub(in crate::actions::install) fn render_service_unit(paths: &InstallPaths) -> 
     .join("\n")
 }
 
-fn write_service_unit(ctx: &mut ActionContext) -> Result<ServiceUnitWrite> {
+fn write_service_artifact(ctx: &mut ActionContext) -> Result<ServiceArtifactWrite> {
     // Render first so both compare and write paths operate on the exact same bytes
-    let unit_contents = render_service_unit(ctx.paths);
-    let existed_before = ctx.paths.unit_path.exists();
-    let write_outcome = match fs::read_to_string(&ctx.paths.unit_path) {
-        Ok(existing) if existing == unit_contents => ServiceUnitWrite::Unchanged,
+    let artifact_contents = render_service_unit(ctx.paths);
+    let artifact_path = ctx.paths.service.artifact_path();
+    let existed_before = artifact_path.exists();
+    let write_outcome = match fs::read_to_string(artifact_path) {
+        Ok(existing) if existing == artifact_contents => ServiceArtifactWrite::Unchanged,
         Ok(_) | Err(_) => {
-            write_atomic(&ctx.paths.unit_path, &unit_contents)
-                .with_context(|| "failed to write systemd user unit")?;
-            ServiceUnitWrite::CreatedOrUpdated
+            write_atomic(artifact_path, &artifact_contents).with_context(|| {
+                format!("failed to write {}", ctx.paths.service.artifact_label())
+            })?;
+            ServiceArtifactWrite::CreatedOrUpdated
         }
     };
 
-    // Reload only matters when systemd has new unit bytes to pick up
+    // Reload only matters when the active service manager has new bytes to pick up
     let reload_required =
-        matches!(write_outcome, ServiceUnitWrite::CreatedOrUpdated) || !existed_before;
-    ctx.service_unit_reload_required
+        matches!(write_outcome, ServiceArtifactWrite::CreatedOrUpdated) || !existed_before;
+    ctx.service_reload_required
         .store(reload_required, Ordering::Release);
     Ok(write_outcome)
 }
 
 fn service_start_mode(ctx: &ActionContext) -> ServiceStartMode {
     // Cached install state keeps the reinstall branch stable for one installer run
-    service_start_mode_from_enabled(ctx.install_state.as_ref().map(|state| state.unit_enabled()))
+    service_start_mode_from_enabled(
+        ctx.install_state
+            .as_ref()
+            .map(|state| state.service_enabled()),
+    )
 }
 
 pub(in crate::actions::install) fn service_start_mode_from_enabled(
-    unit_enabled: Option<bool>,
+    service_enabled: Option<bool>,
 ) -> ServiceStartMode {
-    if unit_enabled == Some(true) {
+    if service_enabled == Some(true) {
         // Reinstalls do not need another enable step, which can trigger a costly reload
         ServiceStartMode::StartOnly
     } else {
@@ -181,27 +208,21 @@ fn run_service_start(ctx: &mut ActionContext) -> Result<()> {
     match service_start_mode(ctx) {
         ServiceStartMode::EnableAndStart => {
             // First install still needs the symlink creation done by `enable`
-            log_line(ctx, "Enabling and starting unixnotis-daemon.service");
-            let mut enable = Command::new("systemctl");
-            enable.args(["--user", "enable", "--now", "unixnotis-daemon.service"]);
-            run_command(
+            log_line(
                 ctx,
-                "systemctl --user enable --now unixnotis-daemon.service",
-                enable,
-                None,
-            )
+                format!("Enabling and starting {}", ctx.paths.service.service_name()),
+            );
+            let (label, command) = ctx.paths.service.enable_now_command();
+            run_command(ctx, &label, command, None)
         }
         ServiceStartMode::StartOnly => {
-            // Reinstall can start directly because the unit is already enabled
-            log_line(ctx, "Starting unixnotis-daemon.service");
-            let mut start = Command::new("systemctl");
-            start.args(["--user", "start", "unixnotis-daemon.service"]);
-            run_command(
+            // Reinstall can start directly because the service is already enabled
+            log_line(
                 ctx,
-                "systemctl --user start unixnotis-daemon.service",
-                start,
-                None,
-            )
+                format!("Starting {}", ctx.paths.service.service_name()),
+            );
+            let (label, command) = ctx.paths.service.start_command();
+            run_command(ctx, &label, command, None)
         }
     }
 }

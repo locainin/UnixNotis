@@ -14,9 +14,9 @@ use super::support::{test_context, test_paths, test_root};
 fn install_service_skips_rewrite_when_unit_is_already_current() {
     let root = test_root("install-service-unchanged");
     let paths = test_paths(&root);
-    fs::create_dir_all(&paths.unit_dir).expect("make unit dir");
+    fs::create_dir_all(paths.service.artifact_dir()).expect("make service artifact dir");
     let expected = render_service_unit(&paths);
-    fs::write(&paths.unit_path, &expected).expect("write current unit");
+    fs::write(paths.service.artifact_path(), &expected).expect("write current service artifact");
 
     let detection = Detection {
         owner: None,
@@ -24,12 +24,12 @@ fn install_service_skips_rewrite_when_unit_is_already_current() {
     };
     let mut ctx = test_context(&detection, &paths, ActionMode::Install);
     let reload_required = Arc::new(AtomicBool::new(true));
-    ctx.service_unit_reload_required = reload_required.clone();
+    ctx.service_reload_required = reload_required.clone();
 
     install_service(&mut ctx).expect("install service should succeed");
 
     assert_eq!(
-        fs::read_to_string(&paths.unit_path).expect("read unit"),
+        fs::read_to_string(paths.service.artifact_path()).expect("read service artifact"),
         expected
     );
     assert!(!reload_required.load(Ordering::Acquire));
@@ -41,8 +41,9 @@ fn install_service_skips_rewrite_when_unit_is_already_current() {
 fn install_service_marks_reload_when_unit_changes() {
     let root = test_root("install-service-changed");
     let paths = test_paths(&root);
-    fs::create_dir_all(&paths.unit_dir).expect("make unit dir");
-    fs::write(&paths.unit_path, "[Unit]\nDescription=old\n").expect("write old unit");
+    fs::create_dir_all(paths.service.artifact_dir()).expect("make service artifact dir");
+    fs::write(paths.service.artifact_path(), "[Unit]\nDescription=old\n")
+        .expect("write old service artifact");
 
     let detection = Detection {
         owner: None,
@@ -50,13 +51,13 @@ fn install_service_marks_reload_when_unit_changes() {
     };
     let mut ctx = test_context(&detection, &paths, ActionMode::Install);
     let reload_required = Arc::new(AtomicBool::new(false));
-    ctx.service_unit_reload_required = reload_required.clone();
+    ctx.service_reload_required = reload_required.clone();
 
     install_service(&mut ctx).expect("install service should succeed");
 
     assert!(reload_required.load(Ordering::Acquire));
     assert_eq!(
-        fs::read_to_string(&paths.unit_path).expect("read unit"),
+        fs::read_to_string(paths.service.artifact_path()).expect("read service artifact"),
         render_service_unit(&paths)
     );
 

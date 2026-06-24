@@ -25,6 +25,7 @@ mod main_handlers;
 mod main_tests;
 mod model;
 mod paths;
+mod service_manager;
 mod terminal;
 #[cfg(test)]
 mod tests;

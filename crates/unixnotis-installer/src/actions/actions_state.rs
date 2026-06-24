@@ -3,7 +3,6 @@
 //! Separates read-only state inspection from the execution steps.
 
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc::SyncSender, Arc};
 
@@ -23,9 +22,9 @@ pub struct ActionContext<'a> {
     pub log_tx: SyncSender<UiMessage>,
     pub action_mode: ActionMode,
     pub restore_backup: Option<PathBuf>,
-    // Tracks whether install changed the unit file so later steps can skip
-    // a full user-manager reload when the on-disk unit already matched
-    pub service_unit_reload_required: Arc<AtomicBool>,
+    // Tracks whether install changed the service artifact so later steps can skip reloads
+    // A skipped reload keeps reinstall cheap when the on-disk artifact already matched
+    pub service_reload_required: Arc<AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -38,28 +37,28 @@ struct BinaryState {
 #[derive(Clone)]
 pub struct InstallState {
     binaries: Vec<BinaryState>,
-    unit_exists: bool,
-    unit_enabled: bool,
-    unit_active: bool,
-    unit_enabled_error: Option<String>,
-    unit_active_error: Option<String>,
+    service_artifact_exists: bool,
+    service_enabled: bool,
+    service_active: bool,
+    service_enabled_error: Option<String>,
+    service_active_error: Option<String>,
     binary_warning: Option<String>,
 }
 
 impl InstallState {
     pub fn is_installed(&self) -> bool {
-        // Treat installed as binaries + unit present; runtime status tracked separately.
+        // Treat installed as binaries plus the service artifact; runtime status is separate
         !self.binaries.is_empty()
             && self.binaries.iter().all(|binary| binary.exists)
-            && self.unit_exists
+            && self.service_artifact_exists
     }
 
     pub fn is_fully_installed(&self) -> bool {
-        self.is_installed() && self.unit_active
+        self.is_installed() && self.service_active
     }
 
-    pub fn unit_enabled(&self) -> bool {
-        self.unit_enabled
+    pub fn service_enabled(&self) -> bool {
+        self.service_enabled
     }
 }
 
@@ -79,44 +78,33 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         })
         .collect::<Vec<_>>();
 
-    let unit_exists = paths.unit_path.exists();
+    let service_artifact_exists = paths.service.artifact_path().exists();
     // Enabled state decides whether reinstall can skip `enable --now`
-    let mut unit_enabled_error = None;
-    let unit_enabled = match Command::new("systemctl")
-        .args([
-            "--user",
-            "is-enabled",
-            "--quiet",
-            "unixnotis-daemon.service",
-        ])
-        .status()
-    {
+    let mut service_enabled_error = None;
+    let service_enabled = match paths.service.is_enabled_command().status() {
         Ok(status) => status.success(),
         Err(err) => {
-            unit_enabled_error = Some(err.to_string());
+            service_enabled_error = Some(err.to_string());
             false
         }
     };
     // Active state still matters for the install summary shown in the UI
-    let mut unit_active_error = None;
-    let unit_active = match Command::new("systemctl")
-        .args(["--user", "is-active", "--quiet", "unixnotis-daemon.service"])
-        .status()
-    {
+    let mut service_active_error = None;
+    let service_active = match paths.service.is_active_command().status() {
         Ok(status) => status.success(),
         Err(err) => {
-            unit_active_error = Some(err.to_string());
+            service_active_error = Some(err.to_string());
             false
         }
     };
 
     InstallState {
         binaries,
-        unit_exists,
-        unit_enabled,
-        unit_active,
-        unit_enabled_error,
-        unit_active_error,
+        service_artifact_exists,
+        service_enabled,
+        service_active,
+        service_enabled_error,
+        service_active_error,
         binary_warning: warning,
     }
 }
@@ -150,7 +138,7 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
         );
     }
 
-    let unit_status = if state.unit_exists {
+    let service_artifact_status = if state.service_artifact_exists {
         "present"
     } else {
         "missing"
@@ -158,29 +146,30 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     log_line(
         ctx,
         format!(
-            "- systemd unit: {} ({})",
-            unit_status,
-            format_with_home(&ctx.paths.unit_path)
+            "- {}: {} ({})",
+            ctx.paths.service.artifact_label(),
+            service_artifact_status,
+            format_with_home(ctx.paths.service.artifact_path())
         ),
     );
-    if let Some(err) = state.unit_active_error.as_ref() {
-        log_line(ctx, format!("- systemd status check failed: {}", err));
+    if let Some(err) = state.service_active_error.as_ref() {
+        log_line(ctx, format!("- service status check failed: {}", err));
     }
-    if let Some(err) = state.unit_enabled_error.as_ref() {
-        log_line(ctx, format!("- systemd enable check failed: {}", err));
+    if let Some(err) = state.service_enabled_error.as_ref() {
+        log_line(ctx, format!("- service enable check failed: {}", err));
     }
     log_line(
         ctx,
         format!(
             "- service enabled: {}",
-            if state.unit_enabled { "yes" } else { "no" }
+            if state.service_enabled { "yes" } else { "no" }
         ),
     );
     log_line(
         ctx,
         format!(
             "- service active: {}",
-            if state.unit_active { "yes" } else { "no" }
+            if state.service_active { "yes" } else { "no" }
         ),
     );
 
@@ -197,7 +186,10 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
         // Service inactivity is flagged without blocking installation workflows.
         log_line(
             ctx,
-            "Warning: installation is present but unixnotis-daemon.service is inactive",
+            format!(
+                "Warning: installation is present but {} is inactive",
+                ctx.paths.service.service_name()
+            ),
         );
         log_line(
             ctx,

@@ -62,8 +62,11 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
             .unwrap_or(false)
     {
         lines.push(Line::from(""));
+        let service_artifact = crate::paths::InstallPaths::discover()
+            .map(|paths| paths.service.artifact_label())
+            .unwrap_or("service artifact");
         lines.push(Line::from(Span::styled(
-            "Reinstall will overwrite binaries and the systemd unit.",
+            format!("Reinstall will overwrite binaries and the {service_artifact}."),
             Style::default().fg(Color::Yellow),
         )));
     }

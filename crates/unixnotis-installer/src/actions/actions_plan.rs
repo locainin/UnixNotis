@@ -90,9 +90,9 @@ pub fn step_label(kind: StepKind) -> &'static str {
         StepKind::ResetConfig => "Reset config files",
         StepKind::RestoreConfig => "Restore config backup",
         StepKind::InstallBinaries => "Install binaries",
-        StepKind::InstallService => "Install systemd unit",
+        StepKind::InstallService => "Install service artifact",
         StepKind::EnableService => "Enable user service",
-        StepKind::UninstallService => "Remove systemd unit",
+        StepKind::UninstallService => "Remove service artifact",
         StepKind::RemoveBinaries => "Remove binaries",
         StepKind::RemoveState => "Remove persisted state",
     }

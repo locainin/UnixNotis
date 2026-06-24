@@ -42,10 +42,7 @@ pub(in crate::actions::hyprland) fn strip_hyprland_bootstrap_block(
     let mut remaining = contents.to_string();
     let mut block_found = false;
 
-    loop {
-        let Some(start) = remaining.find(HYPR_BOOTSTRAP_START) else {
-            break;
-        };
+    while let Some(start) = remaining.find(HYPR_BOOTSTRAP_START) {
         let Some(end_rel) = remaining[start..].find(HYPR_BOOTSTRAP_END) else {
             return HyprlandStripResult {
                 stripped: remaining,

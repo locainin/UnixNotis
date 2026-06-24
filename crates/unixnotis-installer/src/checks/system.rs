@@ -8,6 +8,7 @@ use std::process::Command;
 use unixnotis_core::program_in_path;
 
 use crate::paths::InstallPaths;
+use crate::service_manager::ServiceManagerKind;
 
 use super::CheckItem;
 
@@ -40,10 +41,11 @@ pub(super) fn hyprland_check() -> CheckItem {
 }
 
 pub(super) fn systemd_user_check() -> CheckItem {
-    match command_success("systemctl", &["--user", "show-environment"]) {
-        Ok(true) => CheckItem::ok("systemd --user", "session available"),
-        Ok(false) => CheckItem::fail("systemd --user", "session unavailable"),
-        Err(err) => CheckItem::fail("systemd --user", &format!("check failed: {err}")),
+    let manager = ServiceManagerKind::SystemdUser;
+    match manager.availability_check().status() {
+        Ok(status) if status.success() => CheckItem::ok(manager.label(), "session available"),
+        Ok(_) => CheckItem::fail(manager.label(), "session unavailable"),
+        Err(err) => CheckItem::fail(manager.label(), &format!("check failed: {err}")),
     }
 }
 
@@ -118,10 +120,10 @@ fn command_success(program: &str, args: &[&str]) -> Result<bool, String> {
 }
 
 fn install_paths_writable(paths: &InstallPaths) -> bool {
-    // Validate both binary and unit directories because install and uninstall touch both
+    // Validate both binary and service directories because install and uninstall touch both
     let bin_ok = path_is_writable(&paths.bin_dir);
-    let unit_ok = path_is_writable(&paths.unit_dir);
-    bin_ok && unit_ok
+    let service_ok = path_is_writable(paths.service.artifact_dir());
+    bin_ok && service_ok
 }
 
 fn path_is_writable(path: &Path) -> bool {

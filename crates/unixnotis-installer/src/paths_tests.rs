@@ -86,7 +86,10 @@ fn install_paths_use_xdg_config_home_for_systemd_units() {
     let previous = set_env("XDG_CONFIG_HOME", Some(xdg_root.to_string_lossy().as_ref()));
 
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
-    assert_eq!(paths.unit_dir, xdg_root.join("systemd").join("user"));
+    assert_eq!(
+        paths.service.artifact_dir(),
+        xdg_root.join("systemd").join("user")
+    );
 
     restore_env("XDG_CONFIG_HOME", previous);
 }

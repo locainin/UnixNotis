@@ -40,7 +40,7 @@ fn prune_old_backups_keeps_newest() {
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: None,
-        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
     };
     prune_old_backups(&mut ctx, &root, 2).expect("prune should succeed");
 
@@ -97,7 +97,7 @@ fn create_backup_dir_keeps_new_directory_when_retention_is_full() {
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: None,
-        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
     };
 
     let backup_dir = create_backup_dir(&mut ctx, &root, 3)

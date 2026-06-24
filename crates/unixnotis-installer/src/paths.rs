@@ -6,11 +6,12 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 
+use crate::service_manager::ServiceManagerPaths;
+
 pub struct InstallPaths {
     pub repo_root: PathBuf,
     pub bin_dir: PathBuf,
-    pub unit_dir: PathBuf,
-    pub unit_path: PathBuf,
+    pub service: ServiceManagerPaths,
 }
 
 impl InstallPaths {
@@ -19,15 +20,13 @@ impl InstallPaths {
         let repo_root = find_repo_root()?;
         // User binaries live under ~/.local/bin for install and uninstall
         let bin_dir = home_dir()?.join(".local").join("bin");
-        // Systemd user units follow XDG config rules when that override is set
-        let unit_dir = systemd_user_dir()?;
-        let unit_path = unit_dir.join("unixnotis-daemon.service");
+        // The current backend is systemd, but service metadata stays behind one boundary.
+        let service = ServiceManagerPaths::systemd_user(systemd_user_dir()?);
 
         Ok(Self {
             repo_root,
             bin_dir,
-            unit_dir,
-            unit_path,
+            service,
         })
     }
 }

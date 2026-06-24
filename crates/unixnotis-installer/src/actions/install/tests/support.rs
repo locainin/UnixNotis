@@ -7,6 +7,7 @@ use crate::detect::Detection;
 use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
+use crate::service_manager::ServiceManagerPaths;
 
 use super::super::super::ActionContext;
 
@@ -23,20 +24,15 @@ pub(super) fn test_root(name: &str) -> std::path::PathBuf {
 }
 
 pub(super) fn test_paths(root: &std::path::Path) -> InstallPaths {
+    let service_artifact_dir = root
+        .join("home")
+        .join(".config")
+        .join("systemd")
+        .join("user");
     InstallPaths {
         repo_root: root.to_path_buf(),
         bin_dir: root.join("home").join(".local").join("bin"),
-        unit_dir: root
-            .join("home")
-            .join(".config")
-            .join("systemd")
-            .join("user"),
-        unit_path: root
-            .join("home")
-            .join(".config")
-            .join("systemd")
-            .join("user")
-            .join("unixnotis-daemon.service"),
+        service: ServiceManagerPaths::systemd_user(service_artifact_dir),
     }
 }
 
@@ -67,6 +63,6 @@ pub(super) fn test_context<'a>(
         log_tx: tx,
         action_mode,
         restore_backup: None,
-        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
     }
 }
