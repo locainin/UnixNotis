@@ -32,7 +32,7 @@ pub use build::{
 pub use format::{format_daemon_status, summarize_owner};
 
 pub(super) use actions_daemon::stop_active_daemon;
-pub(super) use actions_process::{log_line, run_command};
+pub(super) use actions_process::{log_line, run_command, run_command_without_stdout};
 pub(super) use actions_state::check_install_state_step;
 pub(super) use build::run_build;
 pub(crate) use config::backup::{list_backup_dirs_for_ui, restore_config};

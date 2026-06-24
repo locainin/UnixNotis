@@ -25,13 +25,44 @@ pub fn run_command(
     mut command: Command,
     cwd: Option<&PathBuf>,
 ) -> Result<()> {
+    run_command_with_output(ctx, label, &mut command, cwd, CommandOutput::StreamStdout)
+}
+
+pub fn run_command_without_stdout(
+    ctx: &mut ActionContext,
+    label: &str,
+    mut command: Command,
+    cwd: Option<&PathBuf>,
+) -> Result<()> {
+    run_command_with_output(ctx, label, &mut command, cwd, CommandOutput::SuppressStdout)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CommandOutput {
+    StreamStdout,
+    SuppressStdout,
+}
+
+fn run_command_with_output(
+    ctx: &mut ActionContext,
+    label: &str,
+    command: &mut Command,
+    cwd: Option<&PathBuf>,
+    output: CommandOutput,
+) -> Result<()> {
     if let Some(dir) = cwd {
         command.current_dir(dir);
     }
 
+    // Some commands echo imported session variables on stdout.
+    // Keep those out of the TUI unless a caller explicitly needs command output.
+    let stdout = match output {
+        CommandOutput::StreamStdout => Stdio::piped(),
+        CommandOutput::SuppressStdout => Stdio::null(),
+    };
     let mut child = command
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
+        .stdout(stdout)
         .stderr(Stdio::piped())
         .spawn()
         .with_context(|| format!("command failed to start: {}", label))?;

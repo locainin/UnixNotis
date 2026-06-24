@@ -7,9 +7,10 @@ use anyhow::{anyhow, Result};
 
 use unixnotis_core::program_in_path;
 
-use super::super::{log_line, run_command, ActionContext};
+use super::super::{log_line, run_command_without_stdout, ActionContext};
 
 pub(crate) const HYPR_IMPORT_VARS: [&str; 7] = [
+    // Keep this list narrow so debug output and service environments do not inherit full shells
     "WAYLAND_DISPLAY",
     "XDG_CURRENT_DESKTOP",
     "XDG_SESSION_TYPE",
@@ -30,6 +31,7 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
     }
 
     // Require the minimum Wayland session state before import is attempted
+    // Without these two values, a started daemon cannot find the compositor or runtime bus
     let missing_required = HYPR_REQUIRED_VARS
         .iter()
         .copied()
@@ -52,9 +54,13 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
         log_line(ctx, "Syncing D-Bus activation environment");
         let mut command = Command::new("dbus-update-activation-environment");
         command.args(HYPR_IMPORT_VARS);
-        if let Err(err) = run_command(ctx, "dbus-update-activation-environment", command, None) {
+        // Some implementations print every imported variable, which is noisy and can expose local state
+        if let Err(err) =
+            run_command_without_stdout(ctx, "dbus-update-activation-environment", command, None)
+        {
             log_line(ctx, format!("Warning: {}", err));
         } else {
+            log_line(ctx, "D-Bus activation environment synced");
             updated = true;
         }
     } else {
@@ -65,6 +71,7 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
     }
 
     // Import only the known session variables that are actually present in this process
+    // Missing optional values are left alone so SSH, nested, and unusual sessions still work
     let vars = HYPR_IMPORT_VARS
         .iter()
         .copied()
@@ -80,7 +87,8 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
         let mut command = Command::new("systemctl");
         command.args(["--user", "--no-pager", "import-environment"]);
         command.args(&vars);
-        if let Err(err) = run_command(
+        // systemctl import-environment may echo names or values on stdout on some setups
+        if let Err(err) = run_command_without_stdout(
             ctx,
             "systemctl --user --no-pager import-environment",
             command,
@@ -88,11 +96,13 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
         ) {
             log_line(ctx, format!("Warning: {}", err));
         } else {
+            log_line(ctx, "systemd user environment synced");
             updated = true;
         }
     }
 
     if !updated {
+        // At least one manager must accept the import or the next service start can inherit stale env
         let message = "failed to synchronize systemd --user environment";
         log_line(ctx, format!("Error: {}", message));
         return Err(anyhow!(message));
