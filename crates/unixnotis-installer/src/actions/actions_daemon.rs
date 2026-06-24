@@ -48,12 +48,22 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
             log_line(ctx, format!("Stopping systemd unit {}", daemon.unit));
             let mut command = Command::new("systemctl");
             if is_unixnotis {
-                command.args(["--user", "stop", daemon.unit.as_str()]);
+                // Reinstall can race with session hooks that start the daemon when the bus name drops
+                // The irreversible stop job keeps that start request from canceling the stop in flight
+                command.args([
+                    "--user",
+                    "--job-mode=replace-irreversibly",
+                    "stop",
+                    daemon.unit.as_str(),
+                ]);
             } else {
                 command.args(["--user", "disable", "--now", daemon.unit.as_str()]);
             }
             let label = if is_unixnotis {
-                format!("systemctl --user stop {}", daemon.unit)
+                format!(
+                    "systemctl --user --job-mode=replace-irreversibly stop {}",
+                    daemon.unit
+                )
             } else {
                 format!("systemctl --user disable --now {}", daemon.unit)
             };
@@ -178,6 +188,7 @@ fn pid_matches_comm(pid: u32, expected: &str) -> Result<bool> {
 }
 
 fn is_systemd_unit_inactive(unit: &str) -> Result<bool> {
+    // A failed stop command is only recoverable when systemd agrees the unit is no longer running
     let output = Command::new("systemctl")
         .args(["--user", "is-active", unit])
         .output()

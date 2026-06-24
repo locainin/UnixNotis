@@ -40,12 +40,17 @@ pub(super) fn hyprland_check() -> CheckItem {
     }
 }
 
-pub(super) fn systemd_user_check() -> CheckItem {
+pub(super) fn service_manager_check() -> CheckItem {
     let manager = ServiceManagerKind::SystemdUser;
     match manager.availability_check().status() {
-        Ok(status) if status.success() => CheckItem::ok(manager.label(), "session available"),
-        Ok(_) => CheckItem::fail(manager.label(), "session unavailable"),
-        Err(err) => CheckItem::fail(manager.label(), &format!("check failed: {err}")),
+        Ok(status) if status.success() => {
+            CheckItem::ok("Service manager", &format!("{} available", manager.label()))
+        }
+        Ok(_) => CheckItem::fail(
+            "Service manager",
+            &format!("{} unavailable", manager.label()),
+        ),
+        Err(err) => CheckItem::fail("Service manager", &format!("check failed: {err}")),
     }
 }
 

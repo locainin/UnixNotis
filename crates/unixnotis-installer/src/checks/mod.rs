@@ -24,7 +24,7 @@ pub struct CheckItem {
 pub struct Checks {
     pub wayland: CheckItem,
     pub hyprland: CheckItem,
-    pub systemd_user: CheckItem,
+    pub service_manager: CheckItem,
     pub cargo: CheckItem,
     pub pkg_config: CheckItem,
     pub gtk4_css_features: CheckItem,
@@ -39,7 +39,7 @@ impl Checks {
     pub fn run() -> Self {
         let wayland = system::wayland_check();
         let hyprland = system::hyprland_check();
-        let systemd_user = system::systemd_user_check();
+        let service_manager = system::service_manager_check();
         let cargo = system::cargo_check();
         let pkg_config = system::pkg_config_check();
         let gtk4_css_features = gtk::gtk4_css_features_check(&pkg_config);
@@ -63,7 +63,7 @@ impl Checks {
         Self {
             wayland,
             hyprland,
-            systemd_user,
+            service_manager,
             cargo,
             pkg_config,
             gtk4_css_features,
@@ -97,8 +97,8 @@ impl Checks {
                 if self.wayland.state == CheckState::Fail {
                     return Err("Wayland session required".to_string());
                 }
-                if self.systemd_user.state == CheckState::Fail {
-                    return Err("systemd --user session required".to_string());
+                if self.service_manager.state == CheckState::Fail {
+                    return Err("supported service manager session required".to_string());
                 }
                 if self.cargo.state == CheckState::Fail {
                     return Err("cargo is required for installation".to_string());
@@ -114,9 +114,9 @@ impl Checks {
                 }
             }
             ActionMode::Uninstall => {
-                // Uninstall still needs systemd and writable paths to stop units cleanly
-                if self.systemd_user.state == CheckState::Fail {
-                    return Err("systemd --user session required".to_string());
+                // Uninstall still needs the active backend and writable paths to stop cleanly
+                if self.service_manager.state == CheckState::Fail {
+                    return Err("supported service manager session required".to_string());
                 }
                 if self.install_paths.state == CheckState::Fail {
                     return Err("install paths are not writable".to_string());

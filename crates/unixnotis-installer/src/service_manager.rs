@@ -1,7 +1,7 @@
 //! Service-manager metadata for installer-owned daemon startup.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 // Keep the managed daemon name in one place so command builders and paths stay aligned
 pub const UNIXNOTIS_DAEMON_SERVICE: &str = "unixnotis-daemon.service";
@@ -38,9 +38,16 @@ impl ServiceManagerKind {
     pub fn availability_check(self) -> Command {
         match self {
             Self::SystemdUser => {
-                // show-environment proves the user manager is reachable without changing state
+                // list-units proves the user manager is reachable without exposing its environment
                 let mut command = Command::new("systemctl");
-                command.args(["--user", "show-environment"]);
+                command.args([
+                    "--user",
+                    "--no-pager",
+                    "--plain",
+                    "list-units",
+                    "--type=service",
+                ]);
+                command.stdout(Stdio::null()).stderr(Stdio::null());
                 command
             }
         }
