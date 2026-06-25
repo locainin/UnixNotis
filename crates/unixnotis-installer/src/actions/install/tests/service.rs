@@ -194,6 +194,71 @@ fn write_and_remove_dinit_artifacts_preserves_boot_symlink_contract() {
 }
 
 #[test]
+fn write_and_remove_runit_artifacts_preserves_directory_contract() {
+    let root = test_root("install-service-runit-artifacts");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let manager = ServiceManager::runit_user(root.join("home").join(".config").join("service"));
+    let artifacts = manager.artifacts(&paths.bin_dir);
+    let env_vars = [
+        ("WAYLAND_DISPLAY", "wayland-1".to_string()),
+        ("XDG_RUNTIME_DIR", "/run/user/1000".to_string()),
+    ];
+    let env_artifacts = manager.environment_sync_artifacts(&env_vars);
+
+    for artifact in artifacts.iter().chain(env_artifacts.iter()) {
+        write_service_artifact(&ctx, artifact).expect("runit artifact should be written");
+    }
+
+    let service_dir = root
+        .join("home")
+        .join(".config")
+        .join("service")
+        .join("unixnotis-daemon");
+    let run_path = service_dir.join("run");
+    let wayland_env = service_dir.join("env").join("WAYLAND_DISPLAY");
+    assert_eq!(
+        fs::read_to_string(&run_path).expect("read runit run script"),
+        format!(
+            "#!/bin/sh\nexec chpst -e ./env '{}'\n",
+            paths.bin_dir.join("unixnotis-daemon").display()
+        )
+    );
+    assert_eq!(
+        fs::metadata(&run_path)
+            .expect("run script metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o755
+    );
+    assert_eq!(
+        fs::read_to_string(&wayland_env).expect("read wayland envdir file"),
+        "wayland-1\n"
+    );
+    assert_eq!(
+        fs::metadata(&wayland_env)
+            .expect("envdir metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+
+    for artifact in artifacts.iter().rev() {
+        remove_service_artifact(artifact).expect("runit artifact should be removed");
+    }
+
+    assert!(fs::symlink_metadata(&service_dir).is_err());
+    assert!(manager.artifact_root().exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn install_replaces_regular_owned_artifact_but_rejects_unsafe_existing_path() {
     let root = test_root("install-service-owned-replace");
     let paths = test_paths(&root);
