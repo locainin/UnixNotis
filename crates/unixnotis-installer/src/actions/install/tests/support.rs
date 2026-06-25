@@ -7,7 +7,7 @@ use crate::detect::Detection;
 use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
-use crate::service_manager::ServiceManagerPaths;
+use crate::service_manager::ServiceManager;
 
 use super::super::super::ActionContext;
 
@@ -32,7 +32,7 @@ pub(super) fn test_paths(root: &std::path::Path) -> InstallPaths {
     InstallPaths {
         repo_root: root.to_path_buf(),
         bin_dir: root.join("home").join(".local").join("bin"),
-        service: ServiceManagerPaths::systemd_user(service_artifact_dir),
+        service: ServiceManager::systemd_user(service_artifact_dir),
     }
 }
 
