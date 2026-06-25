@@ -301,6 +301,15 @@ fn remove_managed_directory(path: &Path) -> Result<()> {
             format_with_home(path)
         ));
     }
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect {}", format_with_home(path)))?;
+    // Recheck the root immediately before deletion so a swapped symlink is not removed
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
+        return Err(anyhow!(
+            "refusing to recursively remove unsafe service directory at {}",
+            format_with_home(path)
+        ));
+    }
     fs::remove_dir_all(path).with_context(|| format!("failed to remove {}", format_with_home(path)))
 }
 
