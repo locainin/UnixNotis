@@ -104,15 +104,15 @@ fn runit_user_dir() -> Result<PathBuf> {
 }
 
 fn s6_user_dir() -> Result<PathBuf> {
-    if let Some(path) = absolute_env_path("UNIXNOTIS_S6_DATA_DIR")? {
-        // Explicit project override wins because it is the safest way to test experimental s6
-        return Ok(path);
-    }
-    if let Some(base) = absolute_env_path("XDG_DATA_HOME")? {
-        // XDG_DATA_HOME support keeps custom user data roots from falling back to $HOME
-        return Ok(base.join("s6"));
+    if absolute_env_path("UNIXNOTIS_S6_DATA_DIR")?.is_some() {
+        // s6-db-reload -u assumes ~/.local/share/s6/sv on Artix local user services
+        // Refuse custom roots until reload/start commands can be proven against that layout
+        return Err(anyhow!(
+            "UNIXNOTIS_S6_DATA_DIR is not supported yet; s6 uses $HOME/.local/share/s6"
+        ));
     }
     // Artix documents local user s6 data under ~/.local/share/s6
+    // XDG_DATA_HOME is intentionally ignored until s6-db-reload can target custom roots
     Ok(home_dir()?.join(".local").join("share").join("s6"))
 }
 

@@ -333,7 +333,7 @@ fn install_paths_use_home_local_share_for_s6_services_when_overrides_unset() {
 }
 
 #[test]
-fn install_paths_use_xdg_data_home_for_s6_services_when_explicit_unset() {
+fn install_paths_ignore_xdg_data_home_for_s6_services() {
     let _guard = env_lock();
     let Ok(home) = env::var("HOME") else {
         return;
@@ -350,10 +350,18 @@ fn install_paths_use_xdg_data_home_for_s6_services_when_explicit_unset() {
 
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
 
-    assert_eq!(paths.service.artifact_root(), xdg_data.join("s6"));
+    assert_eq!(
+        paths.service.artifact_root(),
+        PathBuf::from(&home).join(".local").join("share").join("s6")
+    );
     assert_eq!(
         paths.service.primary_artifact_path(),
-        xdg_data.join("s6").join("sv").join("unixnotis-daemon")
+        PathBuf::from(&home)
+            .join(".local")
+            .join("share")
+            .join("s6")
+            .join("sv")
+            .join("unixnotis-daemon")
     );
 
     restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
@@ -364,7 +372,7 @@ fn install_paths_use_xdg_data_home_for_s6_services_when_explicit_unset() {
 }
 
 #[test]
-fn install_paths_use_explicit_s6_roots() {
+fn install_paths_reject_explicit_s6_data_root() {
     let _guard = env_lock();
     let Ok(home) = env::var("HOME") else {
         return;
@@ -384,12 +392,39 @@ fn install_paths_use_explicit_s6_roots() {
     );
     let previous_manager = set_env("UNIXNOTIS_SERVICE_MANAGER", Some("s6"));
 
+    let Err(err) = InstallPaths::discover() else {
+        panic!("custom s6 data root should fail until reload commands support it");
+    };
+
+    assert!(err.to_string().contains("UNIXNOTIS_S6_DATA_DIR"));
+
+    restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
+    restore_env("UNIXNOTIS_S6RC_LIVE_DIR", previous_live);
+    restore_env("UNIXNOTIS_S6_DATA_DIR", previous_data);
+}
+
+#[test]
+fn install_paths_allow_explicit_s6_live_root_with_default_data_root() {
+    let _guard = env_lock();
+    let Ok(home) = env::var("HOME") else {
+        return;
+    };
+    if home.is_empty() {
+        return;
+    }
+    let live_root = PathBuf::from(&home).join(".local-s6-live-test");
+    let previous_data = set_env("UNIXNOTIS_S6_DATA_DIR", None);
+    let previous_live = set_env(
+        "UNIXNOTIS_S6RC_LIVE_DIR",
+        Some(live_root.to_string_lossy().as_ref()),
+    );
+    let previous_manager = set_env("UNIXNOTIS_SERVICE_MANAGER", Some("s6"));
+
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
 
-    assert_eq!(paths.service.artifact_root(), data_root);
     assert_eq!(
-        paths.service.primary_artifact_path(),
-        data_root.join("sv").join("unixnotis-daemon")
+        paths.service.artifact_root(),
+        PathBuf::from(&home).join(".local").join("share").join("s6")
     );
 
     restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
