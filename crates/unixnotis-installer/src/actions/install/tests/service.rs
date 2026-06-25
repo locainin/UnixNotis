@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
-use crate::service_manager::{ServiceArtifact, ServiceArtifactKind};
+use crate::service_manager::{ServiceArtifact, ServiceArtifactKind, ServiceManager};
 
 use super::super::service::{
     install_service, remove_service_artifact, service_start_mode_from_enabled,
@@ -141,6 +141,55 @@ fn write_service_artifact_sets_executable_file_mode() {
             & 0o777,
         0o755
     );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn write_and_remove_dinit_artifacts_preserves_boot_symlink_contract() {
+    let root = test_root("install-service-dinit-artifacts");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let manager = ServiceManager::dinit_user(root.join("home").join(".config").join("dinit.d"));
+    let artifacts = manager.artifacts(&paths.bin_dir);
+
+    for artifact in &artifacts {
+        write_service_artifact(&ctx, artifact).expect("dinit artifact should be written");
+    }
+
+    let service_path = root
+        .join("home")
+        .join(".config")
+        .join("dinit.d")
+        .join("unixnotis-daemon");
+    let boot_link = root
+        .join("home")
+        .join(".config")
+        .join("dinit.d")
+        .join("boot.d")
+        .join("unixnotis-daemon");
+    assert_eq!(
+        fs::read_to_string(&service_path).expect("read dinit service"),
+        format!(
+            "type = process\ncommand = {}/unixnotis-daemon\nrestart = on-failure\n",
+            paths.bin_dir.display()
+        )
+    );
+    assert_eq!(
+        fs::read_link(&boot_link).expect("read dinit boot link"),
+        std::path::Path::new("../unixnotis-daemon")
+    );
+
+    for artifact in artifacts.iter().rev() {
+        remove_service_artifact(artifact).expect("dinit artifact should be removed");
+    }
+
+    assert!(fs::symlink_metadata(&boot_link).is_err());
+    assert!(fs::symlink_metadata(&service_path).is_err());
+    assert!(fs::symlink_metadata(manager.artifact_root().join("boot.d")).is_err());
     let _ = fs::remove_dir_all(&root);
 }
 

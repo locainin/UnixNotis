@@ -99,8 +99,8 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
             );
         }
 
-        for artifact in artifacts {
-            remove_service_artifact(&artifact).with_context(|| {
+        for artifact in artifacts.iter().rev() {
+            remove_service_artifact(artifact).with_context(|| {
                 format!(
                     "failed to remove {} at {}",
                     ctx.paths.service.artifact_label(),
