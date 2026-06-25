@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::artifact::{ServiceArtifact, ServiceArtifactKind};
@@ -22,6 +23,7 @@ pub fn primary_artifact_path(artifact_root: &Path) -> PathBuf {
 
 pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     let service_dir = service_dir(artifact_root);
+    // Directory comes first so later file artifacts can be written without parent races
     vec![
         ServiceArtifact {
             path: service_dir.clone(),
@@ -57,7 +59,9 @@ pub fn is_enabled_command() -> Option<CommandSpec> {
 pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
     let service = service_dir(artifact_root);
     // A down file means runsv should not start the service automatically
-    service.is_dir() && service.join(RUN_SCRIPT).is_file() && !service.join("down").exists()
+    is_directory(&service)
+        && is_regular_file(&service.join(RUN_SCRIPT))
+        && !service.join("down").exists()
 }
 
 pub fn is_active_command(artifact_root: &Path) -> Option<CommandSpec> {
@@ -93,6 +97,7 @@ pub fn stop_for_reinstall_command(artifact_root: &Path) -> Option<CommandSpec> {
 pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> Vec<String> {
     let service = service_dir(artifact_root);
     let env_dir = service.join(ENV_DIR);
+    // Hyprland needs one line, so join shell steps with semicolons instead of newlines
     let mut steps = vec![format!("mkdir -p {} || exit", shell_quote_path(&env_dir))];
     for var in import_vars {
         // `printenv` writes an empty file when the variable is missing, which makes chpst unset it
@@ -106,6 +111,7 @@ pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> 
         shell_quote_path(&service),
         shell_quote_path(&service)
     ));
+    // Values are read from the live session at runtime, never embedded in config text
     let script = steps.join("; ");
     vec![format!("sh -lc {}", shell_quote(&script))]
 }
@@ -136,6 +142,7 @@ pub fn environment_sync_artifacts(
 }
 
 fn render_run_script(bin_dir: &Path) -> String {
+    // runsv enters the service directory before executing ./run, so ./env is stable
     [
         "#!/bin/sh".to_string(),
         format!(
@@ -150,6 +157,7 @@ fn render_run_script(bin_dir: &Path) -> String {
 
 fn sv_command(command: &'static str, artifact_root: &Path) -> CommandSpec {
     let service = service_dir_arg(artifact_root);
+    // Pass the full service path so callers do not depend on SVDIR being exported
     CommandSpec::new(format!("sv {command} {service}"), "sv", [command, &service])
 }
 
@@ -183,6 +191,7 @@ fn shell_quote(raw: &str) -> String {
     quoted.push('\'');
     for ch in raw.chars() {
         if ch == '\'' {
+            // POSIX single-quote escape: close, emit escaped quote, reopen
             quoted.push_str("'\\''");
         } else {
             quoted.push(ch);
@@ -190,4 +199,16 @@ fn shell_quote(raw: &str) -> String {
     }
     quoted.push('\'');
     quoted
+}
+
+fn is_regular_file(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_file())
+        .unwrap_or(false)
+}
+
+fn is_directory(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_dir())
+        .unwrap_or(false)
 }

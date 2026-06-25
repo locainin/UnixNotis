@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use super::{dinit, runit, systemd};
 use super::{CommandSpec, ServiceArtifact};
 
+// Test exports keep exact legacy names visible without making them production API
 #[cfg(test)]
 pub const UNIXNOTIS_DAEMON_SERVICE: &str = systemd::SERVICE_NAME;
 #[cfg(test)]
@@ -33,7 +34,7 @@ impl ServiceManagerKind {
 pub struct ServiceManager {
     // Backend choice is stored beside paths so callers do not branch on path layout
     kind: ServiceManagerKind,
-    // Root directory that receives backend-owned startup artifacts
+    // Root directory receives only artifacts owned by this backend
     artifact_root: PathBuf,
 }
 
@@ -60,10 +61,12 @@ impl ServiceManager {
     }
 
     pub fn label(&self) -> &'static str {
+        // Labels are used in user-facing checks and logs, not command construction
         self.kind.label()
     }
 
     pub fn service_name(&self) -> &'static str {
+        // Backends can choose names that match their manager's normal service naming
         match self.kind {
             ServiceManagerKind::Systemd => systemd::SERVICE_NAME,
             ServiceManagerKind::Dinit => dinit::SERVICE_NAME,
@@ -88,10 +91,12 @@ impl ServiceManager {
     }
 
     pub fn artifact_root(&self) -> &Path {
+        // Exposed for installer summaries and tests, not for ad hoc writes
         &self.artifact_root
     }
 
     pub fn primary_artifact_path(&self) -> PathBuf {
+        // Summaries need one stable path even when the backend owns several artifacts
         match self.kind {
             ServiceManagerKind::Systemd => systemd::primary_artifact_path(&self.artifact_root),
             ServiceManagerKind::Dinit => dinit::primary_artifact_path(&self.artifact_root),
@@ -100,6 +105,7 @@ impl ServiceManager {
     }
 
     pub fn artifacts(&self, bin_dir: &Path) -> Vec<ServiceArtifact> {
+        // Artifact rendering is backend-owned so non-systemd managers are not unit-shaped
         match self.kind {
             ServiceManagerKind::Systemd => systemd::artifacts(&self.artifact_root, bin_dir),
             ServiceManagerKind::Dinit => dinit::artifacts(&self.artifact_root, bin_dir),
@@ -108,6 +114,7 @@ impl ServiceManager {
     }
 
     pub fn availability_command(&self) -> Option<CommandSpec> {
+        // Availability probes should be cheap and safe to run before install
         match self.kind {
             ServiceManagerKind::Systemd => systemd::availability_command(),
             ServiceManagerKind::Dinit => dinit::availability_command(),
@@ -116,6 +123,7 @@ impl ServiceManager {
     }
 
     pub fn is_enabled_command(&self) -> Option<CommandSpec> {
+        // Only managers with a native enabled-state command return one here
         match self.kind {
             ServiceManagerKind::Systemd => systemd::is_enabled_command(),
             ServiceManagerKind::Dinit => dinit::is_enabled_command(),
@@ -123,7 +131,8 @@ impl ServiceManager {
         }
     }
 
-    pub fn enabled_by_artifacts(&self, _bin_dir: &Path) -> Option<bool> {
+    pub fn enabled_by_artifacts(&self) -> Option<bool> {
+        // Artifact-backed managers treat installer-owned files as persistent enablement
         match self.kind {
             ServiceManagerKind::Systemd => None,
             ServiceManagerKind::Dinit => Some(dinit::enabled_by_artifacts(&self.artifact_root)),
@@ -140,6 +149,7 @@ impl ServiceManager {
     }
 
     pub fn reload_after_artifact_change(&self) -> Option<CommandSpec> {
+        // Reload is optional because several managers discover artifacts on start
         match self.kind {
             ServiceManagerKind::Systemd => systemd::reload_after_artifact_change(),
             ServiceManagerKind::Dinit => dinit::reload_after_artifact_change(),
@@ -180,6 +190,7 @@ impl ServiceManager {
     }
 
     pub fn hyprland_startup_commands(&self, import_vars: &[&str]) -> Vec<String> {
+        // Session bootstrap belongs to the same backend that owns daemon lifecycle commands
         match self.kind {
             ServiceManagerKind::Systemd => systemd::hyprland_startup_commands(import_vars),
             ServiceManagerKind::Dinit => dinit::hyprland_startup_commands(import_vars),
@@ -194,6 +205,7 @@ impl ServiceManager {
         import_vars: &[(&str, String)],
         dbus_update_available: bool,
     ) -> Vec<CommandSpec> {
+        // Command-backed imports use argv only; artifact-backed imports return no command
         match self.kind {
             ServiceManagerKind::Systemd => {
                 systemd::environment_sync_commands(import_vars, dbus_update_available)
@@ -207,6 +219,7 @@ impl ServiceManager {
         &self,
         import_vars: &[(&str, String)],
     ) -> Vec<ServiceArtifact> {
+        // Runit needs envdir files because sv does not import environment into runsv
         match self.kind {
             ServiceManagerKind::Systemd | ServiceManagerKind::Dinit => Vec::new(),
             ServiceManagerKind::Runit => {
@@ -216,6 +229,7 @@ impl ServiceManager {
     }
 
     pub fn readiness_warnings(&self) -> Vec<String> {
+        // Readiness warnings are advisory and must never rewrite user-owned manager config
         match self.kind {
             ServiceManagerKind::Systemd | ServiceManagerKind::Runit => Vec::new(),
             ServiceManagerKind::Dinit => dinit::readiness_warnings(&self.artifact_root),

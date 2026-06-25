@@ -21,6 +21,7 @@ pub fn primary_artifact_path(artifact_root: &Path) -> PathBuf {
 
 pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     let boot_dir = artifact_root.join("boot.d");
+    // The boot.d link mirrors dinitctl enable without letting dinit mutate user config
     vec![
         ServiceArtifact {
             path: boot_dir.clone(),
@@ -94,6 +95,7 @@ pub fn stop_for_reinstall_command() -> Option<CommandSpec> {
 }
 
 pub fn hyprland_startup_commands(import_vars: &[&str]) -> Vec<String> {
+    // Restart updates an already running service; start covers fresh login sessions
     vec![
         format!("dinitctl --user setenv {}", import_vars.join(" ")),
         format!("dinitctl --user restart --ignore-unstarted {SERVICE_NAME}"),
@@ -103,6 +105,7 @@ pub fn hyprland_startup_commands(import_vars: &[&str]) -> Vec<String> {
 
 pub fn environment_sync_commands(import_vars: &[(&str, String)]) -> Vec<CommandSpec> {
     let mut args = vec!["--user".to_string(), "setenv".to_string()];
+    // dinitctl receives concrete values so newly started services inherit this session
     args.extend(
         import_vars
             .iter()
@@ -122,14 +125,15 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
     let expected_target = PathBuf::from(format!("../{SERVICE_NAME}"));
 
     // The boot link is the persistent enablement state, so verify the link itself
-    service_path.is_file()
-        && boot_dir.is_dir()
+    is_regular_file(&service_path)
+        && is_directory(&boot_dir)
         && fs::read_link(&boot_link)
             .map(|target| target == expected_target)
             .unwrap_or(false)
 }
 
 pub fn readiness_warnings(artifact_root: &Path) -> Vec<String> {
+    // Dinit's user boot service is user-owned; installers should warn, not rewrite it
     if boot_service_includes_boot_dir(&artifact_root.join("boot")) {
         return Vec::new();
     }
@@ -149,6 +153,7 @@ fn stop_ignoring_unstarted() -> CommandSpec {
 
 fn render_service(bin_dir: &Path) -> String {
     let command = escape_command_token(&bin_dir.join("unixnotis-daemon"));
+    // Keep the first dinit service artifact minimal until backend behavior is proven
     [
         "type = process".to_string(),
         format!("command = {command}"),
@@ -160,6 +165,7 @@ fn render_service(bin_dir: &Path) -> String {
 
 fn escape_command_token(path: &Path) -> String {
     let raw = path.display().to_string();
+    // Bare tokens are easier to read, but only when dinit will not reinterpret them
     if raw
         .chars()
         .all(|ch| !ch.is_whitespace() && !matches!(ch, '"' | '\\' | '#' | '$'))
@@ -172,9 +178,11 @@ fn escape_command_token(path: &Path) -> String {
     for ch in raw.chars() {
         match ch {
             '"' | '\\' => {
+                // dinit treats backslash as an escape even inside quotes
                 escaped.push('\\');
                 escaped.push(ch);
             }
+            // dinit expands $NAME in command values unless $ is doubled
             '$' => escaped.push_str("$$"),
             _ => escaped.push(ch),
         }
@@ -188,6 +196,7 @@ fn boot_service_includes_boot_dir(path: &Path) -> bool {
         return false;
     };
     contents.lines().any(|line| {
+        // The readiness check is intentionally shallow; it should never rewrite user config
         let stripped = line
             .split_once('#')
             .map_or(line, |(before, _)| before)
@@ -203,4 +212,16 @@ fn boot_service_includes_boot_dir(path: &Path) -> bool {
                 .split_whitespace()
                 .any(|entry| entry.trim_matches('"') == "boot.d")
     })
+}
+
+fn is_regular_file(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_file())
+        .unwrap_or(false)
+}
+
+fn is_directory(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_dir())
+        .unwrap_or(false)
 }

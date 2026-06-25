@@ -1,7 +1,15 @@
 //! Service-manager backend contract for installer-owned daemon startup.
+//!
+//! Installer actions call this facade instead of branching on systemd,
+//! dinit, or runit directly. Each backend owns its artifacts, command
+//! shapes, and session-startup lines so new init systems do not inherit
+//! systemd assumptions by accident.
 
+// Artifact data stays separate from writer code so tests can inspect planned writes
 mod artifact;
+// CommandSpec stores argv as data so lifecycle commands never require shell parsing
 mod command;
+// Backend modules own manager-specific behavior and keep manager.rs as a dispatcher
 mod dinit;
 mod manager;
 mod runit;
@@ -10,11 +18,14 @@ mod systemd;
 pub use artifact::{ServiceArtifact, ServiceArtifactKind};
 pub use command::CommandSpec;
 pub use manager::ServiceManager;
+
+// Tests assert exact service names to keep refactors behavior-preserving
 #[cfg(test)]
 pub use manager::{
     UNIXNOTIS_DAEMON_DINIT_SERVICE, UNIXNOTIS_DAEMON_RUNIT_SERVICE, UNIXNOTIS_DAEMON_SERVICE,
 };
 
+// Unit tests live under service_manager/tests so backend modules do not become test dumps
 #[cfg(test)]
 #[path = "service_manager/tests/artifacts.rs"]
 mod artifact_tests;

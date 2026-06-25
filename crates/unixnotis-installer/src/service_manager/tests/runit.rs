@@ -1,3 +1,5 @@
+use std::fs;
+use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
 use crate::service_manager::{ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_RUNIT_SERVICE};
@@ -101,6 +103,22 @@ fn runit_backend_environment_sync_uses_envdir_artifacts() {
 }
 
 #[test]
+fn runit_enabled_state_rejects_symlink_service_directory() {
+    let root = test_root("runit-symlink-service-dir");
+    let manager = ServiceManager::runit_user(root.join("service"));
+    let service = manager.artifact_root().join(UNIXNOTIS_DAEMON_RUNIT_SERVICE);
+    let foreign_service = root.join("foreign-service");
+    fs::create_dir_all(foreign_service.join("env")).expect("foreign service dir");
+    fs::write(foreign_service.join("run"), "#!/bin/sh\n").expect("foreign run script");
+    fs::create_dir_all(manager.artifact_root()).expect("service root");
+    symlink(&foreign_service, &service).expect("service symlink");
+
+    assert_eq!(manager.enabled_by_artifacts(), Some(false));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn runit_backend_hyprland_startup_lines_update_envdir_and_restart() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service root"));
     let vars = ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"];
@@ -133,4 +151,10 @@ fn runit_backend_escapes_run_script_command_path_with_quotes() {
             .expect("runit run script should render contents"),
         "#!/bin/sh\nexec chpst -e ./env '/tmp/bin dir/quote'\\''and\\slash/unixnotis-daemon'\n"
     );
+}
+
+fn test_root(name: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    root
 }

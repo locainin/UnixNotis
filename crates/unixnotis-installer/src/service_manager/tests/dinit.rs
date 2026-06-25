@@ -112,10 +112,7 @@ fn dinit_enabled_state_uses_boot_symlink_artifact() {
     fs::write(&service, "type = process\n").expect("service file");
     symlink("../unixnotis-daemon", &boot_link).expect("boot symlink");
 
-    assert_eq!(
-        manager.enabled_by_artifacts(Path::new("/tmp/bin")),
-        Some(true)
-    );
+    assert_eq!(manager.enabled_by_artifacts(), Some(true));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -131,10 +128,25 @@ fn dinit_enabled_state_rejects_wrong_boot_symlink_target() {
     fs::write(&service, "type = process\n").expect("service file");
     symlink("../other-service", &boot_link).expect("boot symlink");
 
-    assert_eq!(
-        manager.enabled_by_artifacts(Path::new("/tmp/bin")),
-        Some(false)
-    );
+    assert_eq!(manager.enabled_by_artifacts(), Some(false));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn dinit_enabled_state_rejects_symlink_service_file() {
+    let root = test_root("dinit-symlink-service-file");
+    let manager = ServiceManager::dinit_user(root.join("dinit.d"));
+    let service = manager.artifact_root().join(UNIXNOTIS_DAEMON_DINIT_SERVICE);
+    let foreign_service = root.join("foreign-service");
+    let boot_dir = manager.artifact_root().join("boot.d");
+    let boot_link = boot_dir.join(UNIXNOTIS_DAEMON_DINIT_SERVICE);
+    fs::create_dir_all(&boot_dir).expect("boot dir");
+    fs::write(&foreign_service, "type = process\n").expect("foreign service file");
+    symlink(&foreign_service, &service).expect("service symlink");
+    symlink("../unixnotis-daemon", &boot_link).expect("boot symlink");
+
+    assert_eq!(manager.enabled_by_artifacts(), Some(false));
 
     let _ = fs::remove_dir_all(root);
 }

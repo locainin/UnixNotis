@@ -86,8 +86,7 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
     // Enabled state decides whether reinstall can skip `enable --now`
     // Some backends store enablement as installer-owned artifacts instead of manager state
     let mut service_enabled_error = None;
-    let service_enabled = if let Some(enabled) = paths.service.enabled_by_artifacts(&paths.bin_dir)
-    {
+    let service_enabled = if let Some(enabled) = paths.service.enabled_by_artifacts() {
         enabled
     } else {
         match paths.service.is_enabled_command() {
