@@ -6,7 +6,7 @@ mod shell;
 mod system;
 
 use crate::model::ActionMode;
-use crate::paths::InstallPaths;
+use crate::paths::{InstallPaths, ServiceManagerChoice};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CheckState {
@@ -36,10 +36,10 @@ pub struct Checks {
 }
 
 impl Checks {
-    pub fn run() -> Self {
+    pub fn run(service_manager: Option<ServiceManagerChoice>) -> Self {
         let wayland = system::wayland_check();
         let hyprland = system::hyprland_check();
-        let service_manager = system::service_manager_check();
+        let service_manager_check = system::service_manager_check(service_manager);
         let cargo = system::cargo_check();
         let pkg_config = system::pkg_config_check();
         let gtk4_css_features = gtk::gtk4_css_features_check(&pkg_config);
@@ -47,23 +47,24 @@ impl Checks {
         let busctl = system::busctl_check();
         let dbus_update_env = system::dbus_update_env_check();
 
-        let (install_paths, path_contains_bin) = match InstallPaths::discover() {
-            Ok(paths) => {
-                // Path discovery runs once so every later row reports the same install target
-                let install_paths = system::install_paths_check(&paths);
-                let path_contains_bin = shell::path_check_item(&paths);
-                (install_paths, path_contains_bin)
-            }
-            Err(err) => (
-                CheckItem::warn("Install paths", &format!("discovery failed: {err}")),
-                CheckItem::warn("Shell PATH", "could not determine install bin path"),
-            ),
-        };
+        let (install_paths, path_contains_bin) =
+            match InstallPaths::discover_with_service_manager(service_manager) {
+                Ok(paths) => {
+                    // Path discovery runs once so every later row reports the same install target
+                    let install_paths = system::install_paths_check(&paths);
+                    let path_contains_bin = shell::path_check_item(&paths);
+                    (install_paths, path_contains_bin)
+                }
+                Err(err) => (
+                    CheckItem::warn("Install paths", &format!("discovery failed: {err}")),
+                    CheckItem::warn("Shell PATH", "could not determine install bin path"),
+                ),
+            };
 
         Self {
             wayland,
             hyprland,
-            service_manager,
+            service_manager: service_manager_check,
             cargo,
             pkg_config,
             gtk4_css_features,

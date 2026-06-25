@@ -7,7 +7,7 @@ use std::process::Command;
 
 use unixnotis_core::program_in_path;
 
-use crate::paths::InstallPaths;
+use crate::paths::{InstallPaths, ServiceManagerChoice};
 
 use super::CheckItem;
 
@@ -39,8 +39,8 @@ pub(super) fn hyprland_check() -> CheckItem {
     }
 }
 
-pub(super) fn service_manager_check() -> CheckItem {
-    let Ok(paths) = InstallPaths::discover() else {
+pub(super) fn service_manager_check(service_manager: Option<ServiceManagerChoice>) -> CheckItem {
+    let Ok(paths) = InstallPaths::discover_with_service_manager(service_manager) else {
         return CheckItem::fail("Service manager", "install paths unavailable");
     };
     let manager = &paths.service;

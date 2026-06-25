@@ -5,7 +5,7 @@ use crate::actions::{BuildAccelConfigStatus, BuildAccelDetection, BuildAccelOutc
 use crate::checks::Checks;
 use crate::detect::Detection;
 use crate::model::{ActionMode, ActionStep, ResetAction};
-use crate::paths::InstallPaths;
+use crate::paths::{InstallPaths, ServiceManagerChoice};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -93,6 +93,9 @@ pub struct App {
     pub restore_backups: Vec<PathBuf>,
     // Selected backup index when restoring.
     pub restore_menu_index: usize,
+
+    // Explicit backend selected at startup; None keeps environment/default behavior.
+    pub service_manager: Option<ServiceManagerChoice>,
 }
 
 #[derive(Clone, Debug)]
@@ -109,9 +112,9 @@ pub enum BuildAccelMenuMode {
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(service_manager: Option<ServiceManagerChoice>) -> Self {
         // Initialize with current system state.
-        let (checks, detection, install_state) = Self::load_state();
+        let (checks, detection, install_state) = Self::load_state(service_manager);
 
         Self {
             checks,
@@ -130,6 +133,7 @@ impl App {
             reset_action: ResetAction::ResetDefaults,
             restore_backups: Vec::new(),
             restore_menu_index: 0,
+            service_manager,
         }
     }
 
@@ -150,7 +154,7 @@ impl App {
 
     pub fn refresh(&mut self) {
         // Refresh all state on demand to match the initial load path.
-        let (checks, detection, install_state) = Self::load_state();
+        let (checks, detection, install_state) = Self::load_state(self.service_manager);
         self.checks = checks;
         self.detection = detection;
         self.install_state = install_state;
@@ -216,12 +220,14 @@ impl App {
         }
     }
 
-    fn load_state() -> (Checks, Detection, Option<InstallState>) {
+    fn load_state(
+        service_manager: Option<ServiceManagerChoice>,
+    ) -> (Checks, Detection, Option<InstallState>) {
         // Keep initialization and refresh logic consistent in a single helper.
-        let checks = Checks::run();
+        let checks = Checks::run(service_manager);
         let detection = crate::detect::detect();
         // Install state remains optional so the UI can render even if discovery fails.
-        let install_state = InstallPaths::discover()
+        let install_state = InstallPaths::discover_with_service_manager(service_manager)
             .ok()
             .map(|paths| check_install_state(&paths));
         (checks, detection, install_state)
