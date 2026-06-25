@@ -1,13 +1,6 @@
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "future service-manager backends need non-file artifact shapes"
-    )
-)]
 pub enum ServiceArtifactKind {
     // Plain backend-owned file, such as a user service definition
     File,

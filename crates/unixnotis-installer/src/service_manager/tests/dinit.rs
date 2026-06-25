@@ -1,3 +1,5 @@
+use std::fs;
+use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
 use crate::service_manager::{ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_DINIT_SERVICE};
@@ -68,13 +70,7 @@ fn dinit_backend_commands_match_expected_behavior() {
         ]
     );
 
-    let reload = manager
-        .reload_after_artifact_change()
-        .expect("dinit reloads service descriptions");
-    assert_eq!(
-        reload.args(),
-        &["--user", "reload", UNIXNOTIS_DAEMON_DINIT_SERVICE]
-    );
+    assert!(manager.reload_after_artifact_change().is_none());
 
     let enable = manager
         .enable_now_command()
@@ -96,6 +92,70 @@ fn dinit_backend_commands_match_expected_behavior() {
             UNIXNOTIS_DAEMON_DINIT_SERVICE,
         ]
     );
+}
+
+#[test]
+fn dinit_first_install_does_not_require_loaded_service_reload() {
+    let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
+
+    assert!(manager.reload_after_artifact_change().is_none());
+}
+
+#[test]
+fn dinit_enabled_state_uses_boot_symlink_artifact() {
+    let root = test_root("dinit-enabled-artifacts");
+    let manager = ServiceManager::dinit_user(root.join("dinit.d"));
+    let service = manager.artifact_root().join(UNIXNOTIS_DAEMON_DINIT_SERVICE);
+    let boot_dir = manager.artifact_root().join("boot.d");
+    let boot_link = boot_dir.join(UNIXNOTIS_DAEMON_DINIT_SERVICE);
+    fs::create_dir_all(&boot_dir).expect("boot dir");
+    fs::write(&service, "type = process\n").expect("service file");
+    symlink("../unixnotis-daemon", &boot_link).expect("boot symlink");
+
+    assert_eq!(
+        manager.enabled_by_artifacts(Path::new("/tmp/bin")),
+        Some(true)
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn dinit_enabled_state_rejects_wrong_boot_symlink_target() {
+    let root = test_root("dinit-wrong-boot-link");
+    let manager = ServiceManager::dinit_user(root.join("dinit.d"));
+    let service = manager.artifact_root().join(UNIXNOTIS_DAEMON_DINIT_SERVICE);
+    let boot_dir = manager.artifact_root().join("boot.d");
+    let boot_link = boot_dir.join(UNIXNOTIS_DAEMON_DINIT_SERVICE);
+    fs::create_dir_all(&boot_dir).expect("boot dir");
+    fs::write(&service, "type = process\n").expect("service file");
+    symlink("../other-service", &boot_link).expect("boot symlink");
+
+    assert_eq!(
+        manager.enabled_by_artifacts(Path::new("/tmp/bin")),
+        Some(false)
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn dinit_warns_when_boot_service_missing_waits_for_boot_d() {
+    let root = test_root("dinit-missing-boot-waits-for");
+    let manager = ServiceManager::dinit_user(root.join("dinit.d"));
+    fs::create_dir_all(manager.artifact_root()).expect("dinit dir");
+    fs::write(
+        manager.artifact_root().join("boot"),
+        "type = internal\nwaits-for.d: other.d\n",
+    )
+    .expect("boot service");
+
+    let warnings = manager.readiness_warnings();
+
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("waits-for.d: boot.d"));
+
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]
@@ -139,6 +199,26 @@ fn dinit_backend_hyprland_startup_lines_use_dinitctl() {
 }
 
 #[test]
+fn dinit_backend_escapes_command_path_with_dollar() {
+    let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
+    let artifacts = manager.artifacts(std::path::Path::new("/tmp/price$HOME/bin"));
+    let service = artifacts
+        .iter()
+        .find(|artifact| artifact.path == Path::new("/tmp/dinit.d/unixnotis-daemon"))
+        .expect("dinit service artifact should exist");
+
+    assert_eq!(
+        service
+            .contents
+            .as_ref()
+            .expect("dinit service should render contents"),
+        "type = process\n\
+         command = \"/tmp/price$$HOME/bin/unixnotis-daemon\"\n\
+         restart = on-failure\n"
+    );
+}
+
+#[test]
 fn dinit_backend_escapes_command_path_with_spaces() {
     let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
     let artifacts = manager.artifacts(std::path::Path::new(
@@ -158,4 +238,10 @@ fn dinit_backend_escapes_command_path_with_spaces() {
          command = \"/tmp/dir with space/quote\\\"and\\\\slash/unixnotis-daemon\"\n\
          restart = on-failure\n"
     );
+}
+
+fn test_root(name: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    root
 }
