@@ -1,4 +1,4 @@
-use super::{format_with_home, is_unixnotis_repo, InstallPaths};
+use super::{format_with_home, is_unixnotis_repo, InstallPaths, ServiceManagerChoice};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -122,6 +122,27 @@ fn install_paths_use_xdg_config_home_for_dinit_services() {
 }
 
 #[test]
+fn explicit_service_manager_choice_overrides_environment() {
+    let _guard = env_lock();
+    let Ok(home) = env::var("HOME") else {
+        return;
+    };
+    if home.is_empty() {
+        return;
+    }
+    let xdg_root = PathBuf::from(&home).join(".config-explicit-service-manager-test");
+    let previous_xdg = set_env("XDG_CONFIG_HOME", Some(xdg_root.to_string_lossy().as_ref()));
+    let previous_manager = set_env("UNIXNOTIS_SERVICE_MANAGER", Some("systemd"));
+
+    let paths = InstallPaths::discover_with_service_manager(Some(ServiceManagerChoice::Dinit))
+        .expect("explicit choice should resolve");
+
+    assert_eq!(paths.service.artifact_root(), xdg_root.join("dinit.d"));
+    restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
+    restore_env("XDG_CONFIG_HOME", previous_xdg);
+}
+
+#[test]
 fn install_paths_use_home_config_for_dinit_services_when_xdg_unset() {
     let _guard = env_lock();
     let Ok(home) = env::var("HOME") else {
@@ -149,6 +170,26 @@ fn install_paths_use_home_config_for_dinit_services_when_xdg_unset() {
 
     restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
     restore_env("XDG_CONFIG_HOME", previous);
+}
+
+#[test]
+fn service_manager_choice_accepts_cli_names() {
+    assert_eq!(
+        ServiceManagerChoice::parse("systemd").expect("systemd"),
+        ServiceManagerChoice::Systemd
+    );
+    assert_eq!(
+        ServiceManagerChoice::parse("dinit").expect("dinit"),
+        ServiceManagerChoice::Dinit
+    );
+    assert_eq!(
+        ServiceManagerChoice::parse("runit").expect("runit"),
+        ServiceManagerChoice::Runit
+    );
+    assert_eq!(
+        ServiceManagerChoice::parse("s6").expect("s6"),
+        ServiceManagerChoice::S6
+    );
 }
 
 #[test]
@@ -251,6 +292,76 @@ fn install_paths_use_home_config_for_runit_services_when_overrides_unset() {
     restore_env("XDG_CONFIG_HOME", previous_xdg);
     restore_env("SVDIR", previous_svdir);
     restore_env("UNIXNOTIS_RUNIT_SERVICE_DIR", previous_explicit);
+}
+
+#[test]
+fn install_paths_use_home_local_share_for_s6_services_when_overrides_unset() {
+    let _guard = env_lock();
+    let Ok(home) = env::var("HOME") else {
+        return;
+    };
+    if home.is_empty() {
+        return;
+    }
+    let previous_data = set_env("UNIXNOTIS_S6_DATA_DIR", None);
+    let previous_live = set_env("UNIXNOTIS_S6RC_LIVE_DIR", None);
+    let previous_user = set_env("USER", Some("unixnotis-test-user"));
+    let previous_manager = set_env("UNIXNOTIS_SERVICE_MANAGER", Some("s6"));
+
+    let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+
+    assert_eq!(
+        paths.service.artifact_root(),
+        PathBuf::from(&home).join(".local").join("share").join("s6")
+    );
+    assert_eq!(
+        paths.service.primary_artifact_path(),
+        PathBuf::from(&home)
+            .join(".local")
+            .join("share")
+            .join("s6")
+            .join("sv")
+            .join("unixnotis-daemon")
+    );
+
+    restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
+    restore_env("USER", previous_user);
+    restore_env("UNIXNOTIS_S6RC_LIVE_DIR", previous_live);
+    restore_env("UNIXNOTIS_S6_DATA_DIR", previous_data);
+}
+
+#[test]
+fn install_paths_use_explicit_s6_roots() {
+    let _guard = env_lock();
+    let Ok(home) = env::var("HOME") else {
+        return;
+    };
+    if home.is_empty() {
+        return;
+    }
+    let data_root = PathBuf::from(&home).join(".local-s6-data-test");
+    let live_root = PathBuf::from(&home).join(".local-s6-live-test");
+    let previous_data = set_env(
+        "UNIXNOTIS_S6_DATA_DIR",
+        Some(data_root.to_string_lossy().as_ref()),
+    );
+    let previous_live = set_env(
+        "UNIXNOTIS_S6RC_LIVE_DIR",
+        Some(live_root.to_string_lossy().as_ref()),
+    );
+    let previous_manager = set_env("UNIXNOTIS_SERVICE_MANAGER", Some("s6"));
+
+    let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+
+    assert_eq!(paths.service.artifact_root(), data_root);
+    assert_eq!(
+        paths.service.primary_artifact_path(),
+        data_root.join("sv").join("unixnotis-daemon")
+    );
+
+    restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
+    restore_env("UNIXNOTIS_S6RC_LIVE_DIR", previous_live);
+    restore_env("UNIXNOTIS_S6_DATA_DIR", previous_data);
 }
 
 #[test]
