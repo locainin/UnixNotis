@@ -351,6 +351,58 @@ fn write_and_remove_runit_artifacts_preserves_directory_contract() {
 }
 
 #[test]
+fn write_and_remove_s6_artifacts_preserves_default_bundle_membership() {
+    let root = test_root("install-service-s6-artifacts");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let manager = ServiceManager::s6_user(root.join("s6"), root.join("run").join("s6-rc"));
+    let artifacts = manager.artifacts(&paths.bin_dir);
+
+    for artifact in &artifacts {
+        write_service_artifact(&ctx, artifact).expect("s6 artifact should be written");
+    }
+
+    let service_dir = root.join("s6").join("sv").join("unixnotis-daemon");
+    let default_member = root
+        .join("s6")
+        .join("sv")
+        .join("default")
+        .join("contents.d")
+        .join("unixnotis-daemon");
+    assert_eq!(
+        fs::read_to_string(service_dir.join(".unixnotis-managed")).expect("read marker"),
+        "unixnotis\n"
+    );
+    assert_eq!(
+        fs::read_to_string(service_dir.join("type")).expect("read type"),
+        "longrun\n"
+    );
+    assert_eq!(
+        fs::read_to_string(service_dir.join("run")).expect("read run"),
+        format!(
+            "#!/bin/sh\n\
+             PATH='/usr/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'; export PATH\n\
+             exec s6-envdir ./env '{}'\n",
+            paths.bin_dir.join("unixnotis-daemon").display()
+        )
+    );
+    assert!(default_member.exists());
+
+    for artifact in artifacts.iter().rev() {
+        remove_service_artifact(artifact).expect("s6 artifact should be removed");
+    }
+
+    assert!(!service_dir.exists());
+    assert!(!default_member.exists());
+    assert!(root.join("s6").join("sv").join("default").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn install_replaces_regular_owned_artifact_but_rejects_unsafe_existing_path() {
     let root = test_root("install-service-owned-replace");
     let paths = test_paths(&root);
@@ -513,6 +565,29 @@ fn uninstall_rejects_unmarked_managed_directory() {
 
     assert!(err.to_string().contains("unmarked service directory"));
     assert!(service_dir.join("foreign").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn uninstall_rejects_managed_directory_symlink_even_when_target_is_marked() {
+    let root = test_root("install-service-managed-symlink-remove");
+    let target_dir = root.join("target-service-dir");
+    let linked_dir = root.join("linked-service-dir");
+    fs::create_dir_all(&target_dir).expect("make target service dir");
+    fs::write(target_dir.join(".unixnotis-managed"), "unixnotis\n").expect("write marker");
+    fs::write(target_dir.join("foreign"), "do not remove").expect("write target file");
+    symlink(&target_dir, &linked_dir).expect("link service dir");
+    let artifact = ServiceArtifact {
+        path: linked_dir,
+        kind: ServiceArtifactKind::ManagedDirectory,
+        contents: None,
+        mode: None,
+    };
+
+    let err = remove_service_artifact(&artifact).expect_err("managed symlink should not remove");
+
+    assert!(err.to_string().contains("unsafe service directory"));
+    assert!(target_dir.join("foreign").exists());
     let _ = fs::remove_dir_all(&root);
 }
 
