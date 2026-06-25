@@ -7,7 +7,7 @@ use crate::detect::Detection;
 use crate::events::{UiMessage, WorkerEvent};
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
-use crate::service_manager::ServiceManagerPaths;
+use crate::service_manager::ServiceManager;
 
 #[test]
 fn env_sync_command_stdout_is_not_copied_into_logs() {
@@ -19,7 +19,7 @@ fn env_sync_command_stdout_is_not_copied_into_logs() {
     let paths = InstallPaths {
         repo_root: std::env::temp_dir(),
         bin_dir: std::env::temp_dir().join("bin"),
-        service: ServiceManagerPaths::systemd_user(std::env::temp_dir().join("systemd")),
+        service: ServiceManager::systemd_user(std::env::temp_dir().join("systemd")),
     };
     let mut ctx = ActionContext {
         detection: &detection,
