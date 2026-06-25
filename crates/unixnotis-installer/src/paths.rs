@@ -20,8 +20,8 @@ impl InstallPaths {
         let repo_root = find_repo_root()?;
         // User binaries live under ~/.local/bin for install and uninstall
         let bin_dir = home_dir()?.join(".local").join("bin");
-        // The current backend is systemd, but service metadata stays behind one boundary.
-        let service = ServiceManager::systemd_user(systemd_user_dir()?);
+        // Backend selection stays centralized so installer actions stay manager-agnostic
+        let service = service_manager_from_environment()?;
 
         Ok(Self {
             repo_root,
@@ -55,6 +55,27 @@ fn systemd_user_dir() -> Result<PathBuf> {
         Ok(base.join("systemd").join("user"))
     } else {
         Ok(home_dir()?.join(".config").join("systemd").join("user"))
+    }
+}
+
+fn dinit_user_dir() -> Result<PathBuf> {
+    if let Some(base) = xdg_config_home() {
+        Ok(base.join("dinit.d"))
+    } else {
+        Ok(home_dir()?.join(".config").join("dinit.d"))
+    }
+}
+
+fn service_manager_from_environment() -> Result<ServiceManager> {
+    match env::var("UNIXNOTIS_SERVICE_MANAGER") {
+        Ok(raw) => match raw.trim() {
+            "" | "systemd" | "systemd-user" => {
+                Ok(ServiceManager::systemd_user(systemd_user_dir()?))
+            }
+            "dinit" | "dinit-user" => Ok(ServiceManager::dinit_user(dinit_user_dir()?)),
+            other => Err(anyhow!("unsupported service manager '{other}'")),
+        },
+        Err(_) => Ok(ServiceManager::systemd_user(systemd_user_dir()?)),
     }
 }
 
