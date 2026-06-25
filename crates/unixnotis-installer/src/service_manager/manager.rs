@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::{dinit, runit, systemd};
+use super::{dinit, runit, s6, systemd};
 use super::{CommandSpec, ServiceArtifact, ServiceProbe};
 
 // Test exports keep exact legacy names visible without making them production API
@@ -10,6 +10,8 @@ pub const UNIXNOTIS_DAEMON_SERVICE: &str = systemd::SERVICE_NAME;
 pub const UNIXNOTIS_DAEMON_DINIT_SERVICE: &str = dinit::SERVICE_NAME;
 #[cfg(test)]
 pub const UNIXNOTIS_DAEMON_RUNIT_SERVICE: &str = runit::SERVICE_NAME;
+#[cfg(test)]
+pub const UNIXNOTIS_DAEMON_S6_SERVICE: &str = s6::SERVICE_NAME;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ServiceManagerKind {
@@ -19,6 +21,8 @@ enum ServiceManagerKind {
     Dinit,
     // Runit user mode uses a supervised service directory with an executable run script
     Runit,
+    // s6 user mode uses source directories plus a local s6-rc live database
+    S6,
 }
 
 impl ServiceManagerKind {
@@ -27,6 +31,7 @@ impl ServiceManagerKind {
             Self::Systemd => "systemd --user",
             Self::Dinit => "dinit --user",
             Self::Runit => "runit user services",
+            Self::S6 => "s6-rc user services",
         }
     }
 }
@@ -36,6 +41,8 @@ pub struct ServiceManager {
     kind: ServiceManagerKind,
     // Root directory receives only artifacts owned by this backend
     artifact_root: PathBuf,
+    // Some managers separate persistent source definitions from live control sockets/state
+    live_root: Option<PathBuf>,
 }
 
 impl ServiceManager {
@@ -43,6 +50,7 @@ impl ServiceManager {
         Self {
             kind: ServiceManagerKind::Systemd,
             artifact_root,
+            live_root: None,
         }
     }
 
@@ -50,6 +58,7 @@ impl ServiceManager {
         Self {
             kind: ServiceManagerKind::Dinit,
             artifact_root,
+            live_root: None,
         }
     }
 
@@ -57,6 +66,15 @@ impl ServiceManager {
         Self {
             kind: ServiceManagerKind::Runit,
             artifact_root,
+            live_root: None,
+        }
+    }
+
+    pub fn s6_user(artifact_root: PathBuf, live_root: PathBuf) -> Self {
+        Self {
+            kind: ServiceManagerKind::S6,
+            artifact_root,
+            live_root: Some(live_root),
         }
     }
 
@@ -71,6 +89,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::SERVICE_NAME,
             ServiceManagerKind::Dinit => dinit::SERVICE_NAME,
             ServiceManagerKind::Runit => runit::SERVICE_NAME,
+            ServiceManagerKind::S6 => s6::SERVICE_NAME,
         }
     }
 
@@ -79,6 +98,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::artifact_label(),
             ServiceManagerKind::Dinit => dinit::artifact_label(),
             ServiceManagerKind::Runit => runit::artifact_label(),
+            ServiceManagerKind::S6 => s6::artifact_label(),
         }
     }
 
@@ -87,6 +107,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::manager_label(),
             ServiceManagerKind::Dinit => dinit::manager_label(),
             ServiceManagerKind::Runit => runit::manager_label(),
+            ServiceManagerKind::S6 => s6::manager_label(),
         }
     }
 
@@ -101,6 +122,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::primary_artifact_path(&self.artifact_root),
             ServiceManagerKind::Dinit => dinit::primary_artifact_path(&self.artifact_root),
             ServiceManagerKind::Runit => runit::primary_artifact_path(&self.artifact_root),
+            ServiceManagerKind::S6 => s6::primary_artifact_path(&self.artifact_root),
         }
     }
 
@@ -110,6 +132,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::artifacts(&self.artifact_root, bin_dir),
             ServiceManagerKind::Dinit => dinit::artifacts(&self.artifact_root, bin_dir),
             ServiceManagerKind::Runit => runit::artifacts(&self.artifact_root, bin_dir),
+            ServiceManagerKind::S6 => s6::artifacts(&self.artifact_root, bin_dir),
         }
     }
 
@@ -119,6 +142,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::availability_command(),
             ServiceManagerKind::Dinit => dinit::availability_command(),
             ServiceManagerKind::Runit => runit::availability_command(),
+            ServiceManagerKind::S6 => s6::availability_command(),
         }
     }
 
@@ -128,6 +152,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::is_enabled_command(),
             ServiceManagerKind::Dinit => dinit::is_enabled_command(),
             ServiceManagerKind::Runit => runit::is_enabled_command(),
+            ServiceManagerKind::S6 => s6::is_enabled_command(),
         }
     }
 
@@ -137,6 +162,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => None,
             ServiceManagerKind::Dinit => Some(dinit::enabled_by_artifacts(&self.artifact_root)),
             ServiceManagerKind::Runit => Some(runit::enabled_by_artifacts(&self.artifact_root)),
+            ServiceManagerKind::S6 => Some(s6::enabled_by_artifacts(&self.artifact_root)),
         }
     }
 
@@ -147,6 +173,7 @@ impl ServiceManager {
             }
             ServiceManagerKind::Dinit => dinit::is_active_command().map(ServiceProbe::exit_status),
             ServiceManagerKind::Runit => runit::active_probe(&self.artifact_root),
+            ServiceManagerKind::S6 => s6::active_probe(self.live_root()),
         }
     }
 
@@ -156,6 +183,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::reload_after_artifact_change(),
             ServiceManagerKind::Dinit => dinit::reload_after_artifact_change(),
             ServiceManagerKind::Runit => runit::reload_after_artifact_change(),
+            ServiceManagerKind::S6 => s6::reload_after_artifact_change(),
         }
     }
 
@@ -164,6 +192,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::enable_now_command(),
             ServiceManagerKind::Dinit => dinit::enable_now_command(),
             ServiceManagerKind::Runit => runit::enable_now_command(&self.artifact_root),
+            ServiceManagerKind::S6 => s6::enable_now_command(self.live_root()),
         }
     }
 
@@ -172,6 +201,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::start_command(),
             ServiceManagerKind::Dinit => dinit::start_command(),
             ServiceManagerKind::Runit => runit::start_command(&self.artifact_root),
+            ServiceManagerKind::S6 => s6::start_command(self.live_root()),
         }
     }
 
@@ -180,6 +210,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::disable_now_command(),
             ServiceManagerKind::Dinit => dinit::disable_now_command(),
             ServiceManagerKind::Runit => runit::disable_now_command(&self.artifact_root),
+            ServiceManagerKind::S6 => s6::disable_now_command(self.live_root()),
         }
     }
 
@@ -188,6 +219,7 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => systemd::stop_for_reinstall_command(),
             ServiceManagerKind::Dinit => dinit::stop_for_reinstall_command(),
             ServiceManagerKind::Runit => runit::stop_for_reinstall_command(&self.artifact_root),
+            ServiceManagerKind::S6 => s6::stop_for_reinstall_command(self.live_root()),
         }
     }
 
@@ -198,6 +230,9 @@ impl ServiceManager {
             ServiceManagerKind::Dinit => dinit::hyprland_startup_commands(import_vars),
             ServiceManagerKind::Runit => {
                 runit::hyprland_startup_commands(&self.artifact_root, import_vars)
+            }
+            ServiceManagerKind::S6 => {
+                s6::hyprland_startup_commands(&self.artifact_root, self.live_root(), import_vars)
             }
         }
     }
@@ -214,6 +249,7 @@ impl ServiceManager {
             }
             ServiceManagerKind::Dinit => dinit::environment_sync_commands(import_vars),
             ServiceManagerKind::Runit => runit::environment_sync_commands(),
+            ServiceManagerKind::S6 => s6::environment_sync_commands(),
         }
     }
 
@@ -230,13 +266,18 @@ impl ServiceManager {
                 import_var_names,
                 import_vars,
             ),
+            ServiceManagerKind::S6 => {
+                s6::environment_sync_artifacts(&self.artifact_root, import_var_names, import_vars)
+            }
         }
     }
 
     pub fn pre_start_artifacts_to_remove(&self) -> Vec<ServiceArtifact> {
         // Runit starts watched service directories immediately unless a down file is present
         match self.kind {
-            ServiceManagerKind::Systemd | ServiceManagerKind::Dinit => Vec::new(),
+            ServiceManagerKind::Systemd | ServiceManagerKind::Dinit | ServiceManagerKind::S6 => {
+                Vec::new()
+            }
             ServiceManagerKind::Runit => runit::pre_start_artifacts_to_remove(&self.artifact_root),
         }
     }
@@ -244,7 +285,9 @@ impl ServiceManager {
     pub fn pre_start_artifacts_to_write(&self) -> Vec<ServiceArtifact> {
         // Start gates are temporary files and are not part of steady install state
         match self.kind {
-            ServiceManagerKind::Systemd | ServiceManagerKind::Dinit => Vec::new(),
+            ServiceManagerKind::Systemd | ServiceManagerKind::Dinit | ServiceManagerKind::S6 => {
+                Vec::new()
+            }
             ServiceManagerKind::Runit => runit::pre_start_artifacts_to_write(&self.artifact_root),
         }
     }
@@ -255,6 +298,13 @@ impl ServiceManager {
             ServiceManagerKind::Systemd => Vec::new(),
             ServiceManagerKind::Dinit => dinit::readiness_warnings(&self.artifact_root),
             ServiceManagerKind::Runit => runit::readiness_warnings(),
+            ServiceManagerKind::S6 => s6::readiness_warnings(&self.artifact_root, self.live_root()),
         }
+    }
+
+    fn live_root(&self) -> &Path {
+        self.live_root
+            .as_deref()
+            .expect("s6 manager should carry a live root")
     }
 }
