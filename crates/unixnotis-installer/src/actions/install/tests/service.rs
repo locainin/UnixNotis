@@ -145,6 +145,85 @@ fn write_service_artifact_sets_executable_file_mode() {
 }
 
 #[test]
+fn write_managed_directory_artifact_creates_ownership_marker() {
+    let root = test_root("install-service-managed-directory");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let artifact = ServiceArtifact {
+        path: root.join("managed-service"),
+        kind: ServiceArtifactKind::ManagedDirectory,
+        contents: None,
+        mode: None,
+    };
+
+    let changed = write_service_artifact(&ctx, &artifact).expect("managed dir should be created");
+
+    assert!(changed);
+    assert_eq!(
+        fs::read_to_string(artifact.path.join(".unixnotis-managed")).expect("read marker"),
+        "unixnotis\n"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn write_managed_directory_rejects_unmarked_existing_directory() {
+    let root = test_root("install-service-unmarked-directory");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let service_dir = root.join("preexisting-service");
+    fs::create_dir_all(&service_dir).expect("make preexisting service dir");
+    fs::write(service_dir.join("foreign"), "do not delete").expect("foreign file");
+    let artifact = ServiceArtifact {
+        path: service_dir.clone(),
+        kind: ServiceArtifactKind::ManagedDirectory,
+        contents: None,
+        mode: None,
+    };
+
+    let err = write_service_artifact(&ctx, &artifact).expect_err("unmarked dir is unsafe");
+
+    assert!(err.to_string().contains("refusing to manage unmarked"));
+    assert!(service_dir.join("foreign").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn write_service_artifact_rejects_symlink_parent_component() {
+    let root = test_root("install-service-symlink-parent");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let target = root.join("target");
+    let symlink_parent = root.join("linked-parent");
+    fs::create_dir_all(&target).expect("make target dir");
+    symlink(&target, &symlink_parent).expect("create parent link");
+    let artifact = ServiceArtifact {
+        path: symlink_parent.join("service-file"),
+        kind: ServiceArtifactKind::File,
+        contents: Some("contents".to_string()),
+        mode: None,
+    };
+
+    let err = write_service_artifact(&ctx, &artifact).expect_err("symlink parent is unsafe");
+
+    assert!(format!("{err:#}").contains("refusing symlink parent"));
+    assert!(!target.join("service-file").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn write_and_remove_dinit_artifacts_preserves_boot_symlink_contract() {
     let root = test_root("install-service-dinit-artifacts");
     let paths = test_paths(&root);
@@ -221,20 +300,12 @@ fn write_and_remove_runit_artifacts_preserves_directory_contract() {
         .join("service")
         .join("unixnotis-daemon");
     let run_path = service_dir.join("run");
-    let down_path = service_dir.join("down");
+    let marker_path = service_dir.join(".unixnotis-managed");
     let wayland_env = service_dir.join("env").join("WAYLAND_DISPLAY");
     let display_env = service_dir.join("env").join("DISPLAY");
     assert_eq!(
-        fs::read_to_string(&down_path).expect("read runit down file"),
-        ""
-    );
-    assert_eq!(
-        fs::metadata(&down_path)
-            .expect("down file metadata")
-            .permissions()
-            .mode()
-            & 0o777,
-        0o600
+        fs::read_to_string(&marker_path).expect("read runit marker"),
+        "unixnotis\n"
     );
     assert_eq!(
         fs::read_to_string(&run_path).expect("read runit run script"),
@@ -420,6 +491,26 @@ fn uninstall_rejects_symlink_file_artifact() {
 
     assert!(err.to_string().contains("refusing to remove symlink"));
     assert_eq!(fs::read_link(&link).expect("link should remain"), target);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn uninstall_rejects_unmarked_managed_directory() {
+    let root = test_root("install-service-unmarked-remove");
+    let service_dir = root.join("service-dir");
+    fs::create_dir_all(&service_dir).expect("make service dir");
+    fs::write(service_dir.join("foreign"), "do not remove").expect("foreign file");
+    let artifact = ServiceArtifact {
+        path: service_dir.clone(),
+        kind: ServiceArtifactKind::ManagedDirectory,
+        contents: None,
+        mode: None,
+    };
+
+    let err = remove_service_artifact(&artifact).expect_err("unmarked dir should not be removed");
+
+    assert!(err.to_string().contains("unmarked service directory"));
+    assert!(service_dir.join("foreign").exists());
     let _ = fs::remove_dir_all(&root);
 }
 

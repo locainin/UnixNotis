@@ -9,32 +9,20 @@ fn runit_backend_renders_service_directory_and_run_script() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
     let artifacts = manager.artifacts(Path::new("/tmp/bin"));
 
-    assert_eq!(artifacts.len(), 4);
+    assert_eq!(artifacts.len(), 2);
     assert_eq!(
         artifacts[0].path,
         PathBuf::from("/tmp/service").join(UNIXNOTIS_DAEMON_RUNIT_SERVICE)
     );
-    assert_eq!(artifacts[0].kind, ServiceArtifactKind::Directory);
+    assert_eq!(artifacts[0].kind, ServiceArtifactKind::ManagedDirectory);
     assert_eq!(
         artifacts[1].path,
-        PathBuf::from("/tmp/service/unixnotis-daemon/down")
-    );
-    assert_eq!(artifacts[1].kind, ServiceArtifactKind::File);
-    assert_eq!(artifacts[1].mode, Some(0o600));
-    assert_eq!(artifacts[1].contents.as_deref(), Some(""));
-    assert_eq!(
-        artifacts[2].path,
-        PathBuf::from("/tmp/service/unixnotis-daemon/env")
-    );
-    assert_eq!(artifacts[2].kind, ServiceArtifactKind::Directory);
-    assert_eq!(
-        artifacts[3].path,
         PathBuf::from("/tmp/service/unixnotis-daemon/run")
     );
-    assert_eq!(artifacts[3].kind, ServiceArtifactKind::ExecutableFile);
-    assert_eq!(artifacts[3].mode, Some(0o755));
+    assert_eq!(artifacts[1].kind, ServiceArtifactKind::ExecutableFile);
+    assert_eq!(artifacts[1].mode, Some(0o755));
     assert_eq!(
-        artifacts[3]
+        artifacts[1]
             .contents
             .as_ref()
             .expect("runit run script should render contents"),
@@ -127,8 +115,10 @@ fn runit_backend_environment_sync_uses_envdir_artifacts() {
 fn runit_backend_pre_start_removes_down_after_env_sync() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
     let gates = manager.pre_start_artifacts_to_remove();
+    let staged = manager.pre_start_artifacts_to_write();
 
     assert_eq!(gates.len(), 1);
+    assert_eq!(staged, gates);
     assert_eq!(
         gates[0].path,
         PathBuf::from("/tmp/service/unixnotis-daemon/down")
@@ -162,6 +152,23 @@ fn runit_enabled_state_rejects_down_symlink() {
     symlink("missing-target", service.join("down")).expect("down symlink");
 
     assert_eq!(manager.enabled_by_artifacts(), Some(false));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn runit_enabled_state_requires_managed_marker() {
+    let root = test_root("runit-managed-marker");
+    let manager = ServiceManager::runit_user(root.join("service"));
+    let service = manager.artifact_root().join(UNIXNOTIS_DAEMON_RUNIT_SERVICE);
+    fs::create_dir_all(service.join("env")).expect("env dir");
+    fs::write(service.join("run"), "#!/bin/sh\n").expect("run script");
+
+    assert_eq!(manager.enabled_by_artifacts(), Some(false));
+
+    fs::write(service.join(".unixnotis-managed"), "unixnotis\n").expect("marker");
+
+    assert_eq!(manager.enabled_by_artifacts(), Some(true));
 
     let _ = fs::remove_dir_all(root);
 }

@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::artifact::{ServiceArtifact, ServiceArtifactKind};
+use unixnotis_core::program_in_path;
+
+use super::artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER};
 use super::command::CommandSpec;
 use super::probe::ServiceProbe;
 
@@ -29,20 +31,7 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     vec![
         ServiceArtifact {
             path: service_dir.clone(),
-            kind: ServiceArtifactKind::Directory,
-            contents: None,
-            mode: None,
-        },
-        ServiceArtifact {
-            path: service_dir.join(DOWN_FILE),
-            kind: ServiceArtifactKind::File,
-            // runsv will not start ./run while this file exists
-            contents: Some(String::new()),
-            mode: Some(0o600),
-        },
-        ServiceArtifact {
-            path: service_dir.join(ENV_DIR),
-            kind: ServiceArtifactKind::Directory,
+            kind: ServiceArtifactKind::ManagedDirectory,
             contents: None,
             mode: None,
         },
@@ -69,6 +58,7 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
     let service = service_dir(artifact_root);
     // A down file means runsv should not start the service automatically
     is_directory(&service)
+        && is_regular_file(&service.join(MANAGED_DIRECTORY_MARKER))
         && is_regular_file(&service.join(RUN_SCRIPT))
         && path_is_missing(&service.join(DOWN_FILE))
 }
@@ -166,9 +156,26 @@ pub fn environment_sync_artifacts(
 }
 
 pub fn pre_start_artifacts_to_remove(artifact_root: &Path) -> Vec<ServiceArtifact> {
+    pre_start_artifacts(artifact_root)
+}
+
+pub fn pre_start_artifacts_to_write(artifact_root: &Path) -> Vec<ServiceArtifact> {
+    pre_start_artifacts(artifact_root)
+}
+
+pub fn readiness_warnings() -> Vec<String> {
+    if program_in_path("chpst") {
+        Vec::new()
+    } else {
+        vec!["chpst not found in PATH; runit service script cannot start UnixNotis".to_string()]
+    }
+}
+
+fn pre_start_artifacts(artifact_root: &Path) -> Vec<ServiceArtifact> {
     vec![ServiceArtifact {
         path: service_dir(artifact_root).join(DOWN_FILE),
         kind: ServiceArtifactKind::File,
+        // runsv will not start ./run while this file exists
         contents: Some(String::new()),
         mode: Some(0o600),
     }]

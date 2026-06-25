@@ -241,11 +241,20 @@ impl ServiceManager {
         }
     }
 
+    pub fn pre_start_artifacts_to_write(&self) -> Vec<ServiceArtifact> {
+        // Start gates are temporary files and are not part of steady install state
+        match self.kind {
+            ServiceManagerKind::Systemd | ServiceManagerKind::Dinit => Vec::new(),
+            ServiceManagerKind::Runit => runit::pre_start_artifacts_to_write(&self.artifact_root),
+        }
+    }
+
     pub fn readiness_warnings(&self) -> Vec<String> {
         // Readiness warnings are advisory and must never rewrite user-owned manager config
         match self.kind {
-            ServiceManagerKind::Systemd | ServiceManagerKind::Runit => Vec::new(),
+            ServiceManagerKind::Systemd => Vec::new(),
             ServiceManagerKind::Dinit => dinit::readiness_warnings(&self.artifact_root),
+            ServiceManagerKind::Runit => runit::readiness_warnings(),
         }
     }
 }

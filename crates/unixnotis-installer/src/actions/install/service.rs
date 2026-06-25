@@ -4,13 +4,15 @@ use std::fs;
 use std::io::ErrorKind;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::Ordering;
 
 use anyhow::{anyhow, Context, Result};
 
 use crate::paths::format_with_home;
-use crate::service_manager::{CommandSpec, ServiceArtifact, ServiceArtifactKind};
+use crate::service_manager::{
+    CommandSpec, ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER,
+};
 
 use super::super::{
     config::backup::write_atomic,
@@ -18,6 +20,8 @@ use super::super::{
     hyprland::{ensure_hyprland_autostart, remove_hyprland_autostart},
     log_line, run_command, sync_user_environment, ActionContext,
 };
+
+const MANAGED_DIRECTORY_MARKER_CONTENTS: &str = "unixnotis\n";
 
 pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
     match write_service_artifacts(ctx)? {
@@ -170,12 +174,8 @@ pub(crate) fn write_service_artifact(
     artifact: &ServiceArtifact,
 ) -> Result<bool> {
     if let Some(parent) = artifact.path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "failed to create {} directory",
-                ctx.paths.service.artifact_label()
-            )
-        })?;
+        ensure_directory_without_symlink(parent)
+            .with_context(|| format!("failed to prepare {}", ctx.paths.service.artifact_label()))?;
     }
 
     match &artifact.kind {
@@ -214,13 +214,60 @@ pub(crate) fn write_service_artifact(
         }
         ServiceArtifactKind::Directory => {
             let existed_before = ensure_artifact_directory_path(&artifact.path)?;
-            fs::create_dir_all(&artifact.path).with_context(|| {
+            ensure_directory_without_symlink(&artifact.path).with_context(|| {
                 format!("failed to create {}", format_with_home(&artifact.path))
             })?;
             Ok(!existed_before)
         }
+        ServiceArtifactKind::ManagedDirectory => write_managed_directory(&artifact.path),
         ServiceArtifactKind::Symlink { target } => write_service_symlink(&artifact.path, target),
     }
+}
+
+fn ensure_directory_without_symlink(path: &Path) -> Result<()> {
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => current.push(prefix.as_os_str()),
+            Component::RootDir => current.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                return Err(anyhow!(
+                    "refusing parent traversal in service artifact path {}",
+                    format_with_home(path)
+                ));
+            }
+            Component::Normal(part) => {
+                current.push(part);
+                match fs::symlink_metadata(&current) {
+                    Ok(metadata) if metadata.file_type().is_symlink() => {
+                        return Err(anyhow!(
+                            "refusing symlink parent component {}",
+                            format_with_home(&current)
+                        ));
+                    }
+                    Ok(metadata) if metadata.is_dir() => {}
+                    Ok(_) => {
+                        return Err(anyhow!(
+                            "refusing non-directory parent component {}",
+                            format_with_home(&current)
+                        ));
+                    }
+                    Err(err) if err.kind() == ErrorKind::NotFound => {
+                        fs::create_dir(&current).with_context(|| {
+                            format!("failed to create {}", format_with_home(&current))
+                        })?;
+                    }
+                    Err(err) => {
+                        return Err(err).with_context(|| {
+                            format!("failed to inspect {}", format_with_home(&current))
+                        });
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn ensure_regular_artifact_file_path(path: &Path) -> Result<bool> {
@@ -259,6 +306,31 @@ fn ensure_artifact_directory_path(path: &Path) -> Result<bool> {
     }
 }
 
+fn write_managed_directory(path: &Path) -> Result<bool> {
+    let existed_before = ensure_artifact_directory_path(path)?;
+    ensure_directory_without_symlink(path)
+        .with_context(|| format!("failed to create {}", format_with_home(path)))?;
+
+    let marker = managed_directory_marker(path);
+    if existed_before && !managed_marker_is_valid(&marker) {
+        return Err(anyhow!(
+            "refusing to manage unmarked service directory at {}",
+            format_with_home(path)
+        ));
+    }
+
+    ensure_regular_artifact_file_path(&marker)?;
+    let marker_changed = match fs::read_to_string(&marker) {
+        Ok(existing) if existing == MANAGED_DIRECTORY_MARKER_CONTENTS => false,
+        Ok(_) | Err(_) => {
+            write_atomic(&marker, MANAGED_DIRECTORY_MARKER_CONTENTS)
+                .with_context(|| format!("failed to write {}", format_with_home(&marker)))?;
+            true
+        }
+    };
+    Ok(!existed_before || marker_changed)
+}
+
 fn write_service_symlink(path: &Path, target: &Path) -> Result<bool> {
     if let Ok(existing) = fs::read_link(path) {
         if existing == target {
@@ -291,20 +363,72 @@ pub(in crate::actions::install) fn remove_service_artifact(
 ) -> Result<()> {
     match &artifact.kind {
         ServiceArtifactKind::Directory => {
-            if service_artifact_path_exists(artifact) {
-                // Only the backend-owned service directory is removed
-                // Parent supervision roots are never recursively cleaned up here
-                fs::remove_dir_all(&artifact.path)?;
+            if service_artifact_path_is_present(&artifact.path) {
+                remove_empty_service_directory(&artifact.path)?;
+            }
+        }
+        ServiceArtifactKind::ManagedDirectory => {
+            if service_artifact_path_is_present(&artifact.path) {
+                remove_managed_directory(&artifact.path)?;
             }
         }
         ServiceArtifactKind::File | ServiceArtifactKind::ExecutableFile => {
-            if service_artifact_path_exists(artifact) {
+            if service_artifact_path_is_present(&artifact.path) {
                 remove_regular_service_file(&artifact.path)?;
             }
         }
         ServiceArtifactKind::Symlink { target } => remove_service_symlink(&artifact.path, target)?,
     }
     Ok(())
+}
+
+fn service_artifact_path_is_present(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
+}
+
+fn remove_empty_service_directory(path: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect {}", format_with_home(path)))?;
+    if metadata.file_type().is_symlink() {
+        return Err(anyhow!(
+            "refusing to remove symlink service directory at {}",
+            format_with_home(path)
+        ));
+    }
+    if !metadata.file_type().is_dir() {
+        return Err(anyhow!(
+            "refusing to remove non-directory service artifact at {}",
+            format_with_home(path)
+        ));
+    }
+    fs::remove_dir(path).with_context(|| format!("failed to remove {}", format_with_home(path)))
+}
+
+fn remove_managed_directory(path: &Path) -> Result<()> {
+    let marker = managed_directory_marker(path);
+    if !managed_marker_is_valid(&marker) {
+        return Err(anyhow!(
+            "refusing to recursively remove unmarked service directory at {}",
+            format_with_home(path)
+        ));
+    }
+    fs::remove_dir_all(path).with_context(|| format!("failed to remove {}", format_with_home(path)))
+}
+
+fn managed_marker_is_valid(path: &Path) -> bool {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        return false;
+    }
+    fs::read_to_string(path)
+        .map(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
+        .unwrap_or(false)
+}
+
+fn managed_directory_marker(path: &Path) -> PathBuf {
+    path.join(MANAGED_DIRECTORY_MARKER)
 }
 
 fn remove_regular_service_file(path: &Path) -> Result<()> {
@@ -357,7 +481,25 @@ fn remove_service_symlink(path: &Path, expected_target: &Path) -> Result<()> {
 
 fn service_artifact_path_exists(artifact: &ServiceArtifact) -> bool {
     // symlink_metadata observes the artifact path itself instead of following service links
-    fs::symlink_metadata(&artifact.path).is_ok()
+    match &artifact.kind {
+        ServiceArtifactKind::File | ServiceArtifactKind::ExecutableFile => {
+            fs::symlink_metadata(&artifact.path)
+                .map(|metadata| metadata.file_type().is_file())
+                .unwrap_or(false)
+        }
+        ServiceArtifactKind::Directory => fs::symlink_metadata(&artifact.path)
+            .map(|metadata| metadata.file_type().is_dir())
+            .unwrap_or(false),
+        ServiceArtifactKind::ManagedDirectory => {
+            fs::symlink_metadata(&artifact.path)
+                .map(|metadata| metadata.file_type().is_dir())
+                .unwrap_or(false)
+                && managed_marker_is_valid(&managed_directory_marker(&artifact.path))
+        }
+        ServiceArtifactKind::Symlink { target } => fs::read_link(&artifact.path)
+            .map(|actual| actual == *target)
+            .unwrap_or(false),
+    }
 }
 
 fn service_start_mode(ctx: &ActionContext) -> ServiceStartMode {

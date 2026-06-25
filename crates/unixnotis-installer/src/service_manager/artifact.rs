@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+pub const MANAGED_DIRECTORY_MARKER: &str = ".unixnotis-managed";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ServiceArtifactKind {
     // Plain backend-owned file, such as a user service definition
@@ -8,6 +10,8 @@ pub enum ServiceArtifactKind {
     ExecutableFile,
     // Supervision trees can need a service directory rather than a single file
     Directory,
+    // Recursively removed service directories need a marker proving installer ownership
+    ManagedDirectory,
     // Activation trees often reference service directories through manager-owned links
     Symlink { target: PathBuf },
 }

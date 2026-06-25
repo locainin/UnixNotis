@@ -17,7 +17,7 @@ mod probe;
 mod runit;
 mod systemd;
 
-pub use artifact::{ServiceArtifact, ServiceArtifactKind};
+pub use artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER};
 pub use command::CommandSpec;
 pub use manager::ServiceManager;
 pub use probe::ServiceProbe;
