@@ -102,7 +102,9 @@ pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> 
     let mut steps = vec![
         "umask 077".to_string(),
         format!("envdir={}", shell_quote_path(&env_dir)),
-        "mkdir -p \"$envdir\" || exit".to_string(),
+        "[ ! -L \"$envdir\" ] || exit 1".to_string(),
+        "mkdir -p \"$envdir\" || exit 1".to_string(),
+        "[ -d \"$envdir\" ] && [ ! -L \"$envdir\" ] || exit 1".to_string(),
     ];
     for var in import_vars
         .iter()
