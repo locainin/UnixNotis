@@ -7,12 +7,14 @@ use super::command::CommandSpec;
 
 // Keep the managed daemon name in one place so command builders and paths stay aligned
 pub const UNIXNOTIS_DAEMON_SERVICE: &str = "unixnotis-daemon.service";
+pub const UNIXNOTIS_DAEMON_DINIT_SERVICE: &str = "unixnotis-daemon";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServiceManagerKind {
-    // User-level systemd is the only supported backend today
-    // Future variants must implement the same artifact and command contract before UI wiring
+    // User-level systemd remains the default backend for existing installs
     SystemdUser,
+    // Dinit user mode uses service files plus boot.d dependency links
+    DinitUser,
 }
 
 impl ServiceManagerKind {
@@ -20,6 +22,7 @@ impl ServiceManagerKind {
         match self {
             // Short label used in status rows and blocking messages
             Self::SystemdUser => "systemd --user",
+            Self::DinitUser => "dinit --user",
         }
     }
 }
@@ -42,6 +45,14 @@ impl ServiceManager {
         }
     }
 
+    pub fn dinit_user(artifact_root: PathBuf) -> Self {
+        Self {
+            kind: ServiceManagerKind::DinitUser,
+            service_name: UNIXNOTIS_DAEMON_DINIT_SERVICE,
+            artifact_root,
+        }
+    }
+
     pub fn label(&self) -> &'static str {
         self.kind.label()
     }
@@ -55,6 +66,7 @@ impl ServiceManager {
         match self.kind {
             // Artifact means the file or directory the installer owns for startup
             ServiceManagerKind::SystemdUser => "systemd unit",
+            ServiceManagerKind::DinitUser => "dinit service",
         }
     }
 
@@ -62,6 +74,7 @@ impl ServiceManager {
         match self.kind {
             // Manager label is separate from the artifact label for clearer install logs
             ServiceManagerKind::SystemdUser => "systemd user manager",
+            ServiceManagerKind::DinitUser => "dinit user manager",
         }
     }
 
@@ -73,6 +86,7 @@ impl ServiceManager {
         match self.kind {
             // Existing install summaries still display the primary artifact for the active backend
             ServiceManagerKind::SystemdUser => self.artifact_root.join(self.service_name),
+            ServiceManagerKind::DinitUser => self.artifact_root.join(self.service_name),
         }
     }
 
@@ -83,6 +97,29 @@ impl ServiceManager {
                 self.primary_artifact_path(),
                 self.render_systemd_unit(bin_dir),
             )],
+            ServiceManagerKind::DinitUser => {
+                let boot_dir = self.artifact_root.join("boot.d");
+                vec![
+                    ServiceArtifact {
+                        path: boot_dir.clone(),
+                        kind: super::artifact::ServiceArtifactKind::Directory,
+                        contents: None,
+                        mode: None,
+                    },
+                    ServiceArtifact::file(
+                        self.primary_artifact_path(),
+                        self.render_dinit_service(bin_dir),
+                    ),
+                    ServiceArtifact {
+                        path: boot_dir.join(self.service_name),
+                        kind: super::artifact::ServiceArtifactKind::Symlink {
+                            target: PathBuf::from(format!("../{}", self.service_name)),
+                        },
+                        contents: None,
+                        mode: None,
+                    },
+                ]
+            }
         }
     }
 
@@ -93,13 +130,21 @@ impl ServiceManager {
                 CommandSpec::new(
                     "systemctl --user --no-pager --plain list-units --type=service",
                     "systemctl",
-                    &[
+                    [
                         "--user",
                         "--no-pager",
                         "--plain",
                         "list-units",
                         "--type=service",
                     ],
+                )
+                .quiet(),
+            ),
+            ServiceManagerKind::DinitUser => Some(
+                CommandSpec::new(
+                    "dinitctl --user --quiet list",
+                    "dinitctl",
+                    ["--user", "--quiet", "list"],
                 )
                 .quiet(),
             ),
@@ -112,8 +157,10 @@ impl ServiceManager {
             ServiceManagerKind::SystemdUser => Some(CommandSpec::new(
                 format!("systemctl --user is-enabled --quiet {}", self.service_name),
                 "systemctl",
-                &["--user", "is-enabled", "--quiet", self.service_name],
+                ["--user", "is-enabled", "--quiet", self.service_name],
             )),
+            // Dinit enablement is represented by the installer-owned boot.d link
+            ServiceManagerKind::DinitUser => None,
         }
     }
 
@@ -123,7 +170,12 @@ impl ServiceManager {
             ServiceManagerKind::SystemdUser => Some(CommandSpec::new(
                 format!("systemctl --user is-active --quiet {}", self.service_name),
                 "systemctl",
-                &["--user", "is-active", "--quiet", self.service_name],
+                ["--user", "is-active", "--quiet", self.service_name],
+            )),
+            ServiceManagerKind::DinitUser => Some(CommandSpec::new(
+                format!("dinitctl --user --quiet is-started {}", self.service_name),
+                "dinitctl",
+                ["--user", "--quiet", "is-started", self.service_name],
             )),
         }
     }
@@ -134,7 +186,12 @@ impl ServiceManager {
             ServiceManagerKind::SystemdUser => Some(CommandSpec::new(
                 "systemctl --user daemon-reload",
                 "systemctl",
-                &["--user", "daemon-reload"],
+                ["--user", "daemon-reload"],
+            )),
+            ServiceManagerKind::DinitUser => Some(CommandSpec::new(
+                format!("dinitctl --user reload {}", self.service_name),
+                "dinitctl",
+                ["--user", "reload", self.service_name],
             )),
         }
     }
@@ -145,8 +202,10 @@ impl ServiceManager {
             ServiceManagerKind::SystemdUser => Some(CommandSpec::new(
                 format!("systemctl --user enable --now {}", self.service_name),
                 "systemctl",
-                &["--user", "enable", "--now", self.service_name],
+                ["--user", "enable", "--now", self.service_name],
             )),
+            // The boot.d artifact owns persistence; start only handles the live session
+            ServiceManagerKind::DinitUser => self.start_command(),
         }
     }
 
@@ -156,7 +215,12 @@ impl ServiceManager {
             ServiceManagerKind::SystemdUser => Some(CommandSpec::new(
                 format!("systemctl --user start {}", self.service_name),
                 "systemctl",
-                &["--user", "start", self.service_name],
+                ["--user", "start", self.service_name],
+            )),
+            ServiceManagerKind::DinitUser => Some(CommandSpec::new(
+                format!("dinitctl --user start {}", self.service_name),
+                "dinitctl",
+                ["--user", "start", self.service_name],
             )),
         }
     }
@@ -167,7 +231,16 @@ impl ServiceManager {
             ServiceManagerKind::SystemdUser => Some(CommandSpec::new(
                 format!("systemctl --user disable --now {}", self.service_name),
                 "systemctl",
-                &["--user", "disable", "--now", self.service_name],
+                ["--user", "disable", "--now", self.service_name],
+            )),
+            // Removing artifacts handles persistence; stop handles the current dinit session
+            ServiceManagerKind::DinitUser => Some(CommandSpec::new(
+                format!(
+                    "dinitctl --user stop --ignore-unstarted {}",
+                    self.service_name
+                ),
+                "dinitctl",
+                ["--user", "stop", "--ignore-unstarted", self.service_name],
             )),
         }
     }
@@ -181,12 +254,20 @@ impl ServiceManager {
                     self.service_name
                 ),
                 "systemctl",
-                &[
+                [
                     "--user",
                     "--job-mode=replace-irreversibly",
                     "stop",
                     self.service_name,
                 ],
+            )),
+            ServiceManagerKind::DinitUser => Some(CommandSpec::new(
+                format!(
+                    "dinitctl --user stop --ignore-unstarted {}",
+                    self.service_name
+                ),
+                "dinitctl",
+                ["--user", "stop", "--ignore-unstarted", self.service_name],
             )),
         }
     }
@@ -205,31 +286,56 @@ impl ServiceManager {
                 ),
                 format!("systemctl --user --no-block restart {}", self.service_name),
             ],
+            ServiceManagerKind::DinitUser => vec![
+                format!("dinitctl --user setenv {}", import_vars.join(" ")),
+                format!(
+                    "dinitctl --user restart --ignore-unstarted {}",
+                    self.service_name
+                ),
+                format!("dinitctl --user start {}", self.service_name),
+            ],
         }
     }
 
     pub fn environment_sync_commands(
         &self,
-        import_vars: &[&str],
+        import_vars: &[(&str, String)],
         dbus_update_available: bool,
     ) -> Vec<CommandSpec> {
         match self.kind {
             ServiceManagerKind::SystemdUser => {
                 let mut commands = Vec::new();
+                let names = import_vars
+                    .iter()
+                    .map(|(name, _value)| *name)
+                    .collect::<Vec<_>>();
                 if dbus_update_available {
                     // D-Bus activation and service-manager imports solve different env paths
                     commands.push(CommandSpec::new(
                         "dbus-update-activation-environment",
                         "dbus-update-activation-environment",
-                        import_vars,
+                        &names,
                     ));
                 }
                 let label = "systemctl --user --no-pager import-environment";
                 let mut args = vec!["--user", "--no-pager", "import-environment"];
                 // Only caller-filtered session keys are imported, never the whole process env
-                args.extend(import_vars);
+                args.extend(names);
                 commands.push(CommandSpec::new(label, "systemctl", &args));
                 commands
+            }
+            ServiceManagerKind::DinitUser => {
+                let mut args = vec!["--user".to_string(), "setenv".to_string()];
+                args.extend(
+                    import_vars
+                        .iter()
+                        .map(|(name, value)| format!("{name}={value}")),
+                );
+                vec![CommandSpec::new(
+                    "dinitctl --user setenv",
+                    "dinitctl",
+                    &args,
+                )]
             }
         }
     }
@@ -264,4 +370,36 @@ impl ServiceManager {
             path.display().to_string()
         }
     }
+
+    fn render_dinit_service(&self, bin_dir: &Path) -> String {
+        let command = dinit_escape_command_token(&bin_dir.join("unixnotis-daemon"));
+        [
+            "type = process".to_string(),
+            format!("command = {command}"),
+            "restart = on-failure".to_string(),
+            String::new(),
+        ]
+        .join("\n")
+    }
+}
+
+fn dinit_escape_command_token(path: &Path) -> String {
+    let raw = path.display().to_string();
+    if raw
+        .chars()
+        .all(|ch| !ch.is_whitespace() && !matches!(ch, '"' | '\\' | '#'))
+    {
+        return raw;
+    }
+
+    let mut escaped = String::with_capacity(raw.len() + 2);
+    escaped.push('"');
+    for ch in raw.chars() {
+        if matches!(ch, '"' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped.push('"');
+    escaped
 }

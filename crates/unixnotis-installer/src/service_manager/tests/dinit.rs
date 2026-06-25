@@ -1,0 +1,161 @@
+use std::path::{Path, PathBuf};
+
+use crate::service_manager::{ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_DINIT_SERVICE};
+
+#[test]
+fn dinit_backend_renders_exact_service_artifact() {
+    let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
+    let artifacts = manager.artifacts(std::path::Path::new("/tmp/bin"));
+    let service = artifacts
+        .iter()
+        .find(|artifact| artifact.path == Path::new("/tmp/dinit.d/unixnotis-daemon"))
+        .expect("dinit service artifact should exist");
+
+    assert_eq!(service.kind, ServiceArtifactKind::File);
+    assert_eq!(
+        service
+            .contents
+            .as_ref()
+            .expect("dinit service should render contents"),
+        "type = process\n\
+         command = /tmp/bin/unixnotis-daemon\n\
+         restart = on-failure\n"
+    );
+}
+
+#[test]
+fn dinit_backend_renders_boot_dependency_artifacts() {
+    let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
+    let artifacts = manager.artifacts(std::path::Path::new("/tmp/bin"));
+
+    assert_eq!(artifacts.len(), 3);
+    assert_eq!(artifacts[0].path, PathBuf::from("/tmp/dinit.d/boot.d"));
+    assert_eq!(artifacts[0].kind, ServiceArtifactKind::Directory);
+    assert_eq!(
+        artifacts[2].path,
+        PathBuf::from("/tmp/dinit.d/boot.d/unixnotis-daemon")
+    );
+    assert_eq!(
+        artifacts[2].kind,
+        ServiceArtifactKind::Symlink {
+            target: PathBuf::from("../unixnotis-daemon"),
+        }
+    );
+}
+
+#[test]
+fn dinit_backend_commands_match_expected_behavior() {
+    let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
+
+    let availability = manager
+        .availability_command()
+        .expect("dinit has an availability command");
+    assert_eq!(availability.program(), "dinitctl");
+    assert_eq!(availability.args(), &["--user", "--quiet", "list"]);
+
+    assert!(manager.is_enabled_command().is_none());
+
+    let active = manager
+        .is_active_command()
+        .expect("dinit has an active-state command");
+    assert_eq!(
+        active.args(),
+        &[
+            "--user",
+            "--quiet",
+            "is-started",
+            UNIXNOTIS_DAEMON_DINIT_SERVICE
+        ]
+    );
+
+    let reload = manager
+        .reload_after_artifact_change()
+        .expect("dinit reloads service descriptions");
+    assert_eq!(
+        reload.args(),
+        &["--user", "reload", UNIXNOTIS_DAEMON_DINIT_SERVICE]
+    );
+
+    let enable = manager
+        .enable_now_command()
+        .expect("dinit starts after artifacts handle persistence");
+    assert_eq!(
+        enable.args(),
+        &["--user", "start", UNIXNOTIS_DAEMON_DINIT_SERVICE]
+    );
+
+    let disable = manager
+        .disable_now_command()
+        .expect("dinit can stop during uninstall");
+    assert_eq!(
+        disable.args(),
+        &[
+            "--user",
+            "stop",
+            "--ignore-unstarted",
+            UNIXNOTIS_DAEMON_DINIT_SERVICE,
+        ]
+    );
+}
+
+#[test]
+fn dinit_backend_environment_sync_uses_setenv() {
+    let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
+    let vars = [
+        ("WAYLAND_DISPLAY", "wayland-1".to_string()),
+        ("XDG_RUNTIME_DIR", "/run/user/1000".to_string()),
+    ];
+
+    let commands = manager.environment_sync_commands(&vars, true);
+
+    assert_eq!(commands.len(), 1);
+    assert_eq!(commands[0].program(), "dinitctl");
+    assert_eq!(
+        commands[0].args(),
+        &[
+            "--user",
+            "setenv",
+            "WAYLAND_DISPLAY=wayland-1",
+            "XDG_RUNTIME_DIR=/run/user/1000",
+        ]
+    );
+}
+
+#[test]
+fn dinit_backend_hyprland_startup_lines_use_dinitctl() {
+    let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
+    let vars = ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"];
+
+    let commands = manager.hyprland_startup_commands(&vars);
+
+    assert_eq!(
+        commands,
+        vec![
+            "dinitctl --user setenv WAYLAND_DISPLAY XDG_RUNTIME_DIR".to_string(),
+            "dinitctl --user restart --ignore-unstarted unixnotis-daemon".to_string(),
+            "dinitctl --user start unixnotis-daemon".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn dinit_backend_escapes_command_path_with_spaces() {
+    let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
+    let artifacts = manager.artifacts(std::path::Path::new(
+        "/tmp/dir with space/quote\"and\\slash",
+    ));
+    let service = artifacts
+        .iter()
+        .find(|artifact| artifact.path == Path::new("/tmp/dinit.d/unixnotis-daemon"))
+        .expect("dinit service artifact should exist");
+
+    assert_eq!(
+        service
+            .contents
+            .as_ref()
+            .expect("dinit service should render contents"),
+        "type = process\n\
+         command = \"/tmp/dir with space/quote\\\"and\\\\slash/unixnotis-daemon\"\n\
+         restart = on-failure\n"
+    );
+}

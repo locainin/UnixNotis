@@ -14,11 +14,15 @@ pub struct CommandSpec {
 }
 
 impl CommandSpec {
-    pub(super) fn new(label: impl Into<String>, program: impl Into<String>, args: &[&str]) -> Self {
+    pub(super) fn new<I, S>(label: impl Into<String>, program: impl Into<String>, args: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: ToString,
+    {
         Self {
             label: label.into(),
             program: program.into(),
-            args: args.iter().map(|arg| (*arg).to_string()).collect(),
+            args: args.into_iter().map(|arg| arg.to_string()).collect(),
             suppress_stdout: false,
             suppress_stderr: false,
         }

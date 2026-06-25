@@ -54,7 +54,7 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
     let vars = HYPR_IMPORT_VARS
         .iter()
         .copied()
-        .filter(|var| env::var(var).is_ok())
+        .filter_map(|var| env::var(var).ok().map(|value| (var, value)))
         .collect::<Vec<_>>();
     if vars.is_empty() {
         let message = "no session environment variables found to import for the service manager";

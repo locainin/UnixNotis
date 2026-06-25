@@ -127,12 +127,15 @@ fn hyprland_startup_lines_come_from_selected_backend() {
 #[test]
 fn environment_sync_commands_come_from_selected_backend() {
     let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
-    let vars = ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"];
+    let vars = [
+        ("WAYLAND_DISPLAY", "wayland-1".to_string()),
+        ("XDG_RUNTIME_DIR", "/run/user/1000".to_string()),
+    ];
 
     let with_dbus = manager.environment_sync_commands(&vars, true);
     assert_eq!(with_dbus.len(), 2);
     assert_eq!(with_dbus[0].program(), "dbus-update-activation-environment");
-    assert_eq!(with_dbus[0].args(), &vars);
+    assert_eq!(with_dbus[0].args(), &["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"]);
     assert_eq!(with_dbus[1].program(), "systemctl");
     assert_eq!(
         with_dbus[1].args(),

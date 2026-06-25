@@ -8,7 +8,7 @@ pub use artifact::{ServiceArtifact, ServiceArtifactKind};
 pub use command::CommandSpec;
 pub use manager::ServiceManager;
 #[cfg(test)]
-pub use manager::UNIXNOTIS_DAEMON_SERVICE;
+pub use manager::{UNIXNOTIS_DAEMON_DINIT_SERVICE, UNIXNOTIS_DAEMON_SERVICE};
 
 #[cfg(test)]
 #[path = "service_manager/tests/artifacts.rs"]
@@ -17,3 +17,7 @@ mod artifact_tests;
 #[cfg(test)]
 #[path = "service_manager/tests/systemd.rs"]
 mod systemd_tests;
+
+#[cfg(test)]
+#[path = "service_manager/tests/dinit.rs"]
+mod dinit_tests;
