@@ -1,6 +1,8 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 pub const MANAGED_DIRECTORY_MARKER: &str = ".unixnotis-managed";
+pub const MANAGED_DIRECTORY_MARKER_CONTENTS: &str = "unixnotis\n";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ServiceArtifactKind {
@@ -30,6 +32,7 @@ pub struct ServiceArtifact {
 
 impl ServiceArtifact {
     pub(super) fn file(path: PathBuf, contents: String) -> Self {
+        // File artifacts are the simplest manager-owned shape, used by systemd and dinit
         Self {
             path,
             kind: ServiceArtifactKind::File,
@@ -37,4 +40,54 @@ impl ServiceArtifact {
             mode: None,
         }
     }
+
+    pub fn is_present_safely(&self) -> bool {
+        // State checks must match writer/remover ownership rules, not raw path existence
+        match &self.kind {
+            ServiceArtifactKind::File | ServiceArtifactKind::ExecutableFile => {
+                // A symlink at a file path is never counted as installed
+                path_is_regular_file(&self.path)
+            }
+            ServiceArtifactKind::Directory => path_is_directory(&self.path),
+            ServiceArtifactKind::ManagedDirectory => {
+                // Directory backends need the marker before state can call them installer-owned
+                path_is_directory(&self.path)
+                    && managed_directory_marker_is_valid(&managed_directory_marker(&self.path))
+            }
+            ServiceArtifactKind::Symlink { target } => fs::read_link(&self.path)
+                // Symlink state is exact because enablement can depend on the stored target
+                .map(|actual| actual == *target)
+                .unwrap_or(false),
+        }
+    }
+}
+
+fn path_is_regular_file(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_file())
+        .unwrap_or(false)
+}
+
+fn path_is_directory(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_dir())
+        .unwrap_or(false)
+}
+
+pub fn managed_directory_marker(path: &Path) -> PathBuf {
+    // Keep marker placement centralized so writer, remover, and state checks agree
+    path.join(MANAGED_DIRECTORY_MARKER)
+}
+
+pub fn managed_directory_marker_is_valid(path: &Path) -> bool {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    // A marker symlink is not ownership proof because it can point outside the service dir
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        return false;
+    }
+    fs::read_to_string(path)
+        .map(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
+        .unwrap_or(false)
 }
