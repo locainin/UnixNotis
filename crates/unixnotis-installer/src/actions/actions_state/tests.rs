@@ -3,7 +3,7 @@ use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
 use crate::paths::InstallPaths;
-use crate::service_manager::ServiceManager;
+use crate::service_manager::{ServiceManager, MANAGED_DIRECTORY_MARKER};
 
 use super::check_install_state;
 
@@ -30,6 +30,29 @@ fn dinit_artifact_backed_enablement_does_not_log_missing_enabled_command_error()
 
     assert!(state.service_enabled);
     assert!(state.service_enabled_error.is_none());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn install_state_rejects_foreign_runit_service_directory() {
+    let root = test_root("runit-foreign-install-state");
+    let service_root = root.join("service");
+    let service_dir = service_root.join("unixnotis-daemon");
+    fs::create_dir_all(&service_dir).expect("foreign service dir");
+    fs::write(service_dir.join("run"), "#!/bin/sh\n").expect("foreign run script");
+    fs::create_dir_all(root.join("bin")).expect("bin dir");
+
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::runit_user(service_root),
+    };
+
+    let state = check_install_state(&paths);
+
+    assert!(!state.service_artifact_exists);
+    assert!(!service_dir.join(MANAGED_DIRECTORY_MARKER).exists());
 
     let _ = fs::remove_dir_all(root);
 }

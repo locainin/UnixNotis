@@ -6,12 +6,13 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc::SyncSender, Arc};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use crate::detect::Detection;
 use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::{format_with_home, InstallPaths};
+use crate::service_manager::ReadinessIssue;
 
 use super::{actions_binaries::resolve_install_binaries_best_effort, log_line};
 
@@ -82,15 +83,18 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         .service
         .artifacts(&paths.bin_dir)
         .iter()
-        .all(|artifact| std::fs::symlink_metadata(&artifact.path).is_ok());
+        // Artifact presence must prove the expected file, directory marker, or link target
+        .all(crate::service_manager::ServiceArtifact::is_present_safely);
     // Enabled state decides whether reinstall can skip `enable --now`
     // Some backends store enablement as installer-owned artifacts instead of manager state
     let mut service_enabled_error = None;
     let service_enabled = if let Some(enabled) = paths.service.enabled_by_artifacts() {
+        // Artifact-backed managers prove enablement through installer-owned filesystem state
         enabled
     } else {
         match paths.service.is_enabled_command() {
             Some(spec) => match spec.to_command().status() {
+                // Command-backed managers still use the native manager status probe
                 Ok(status) => status.success(),
                 Err(err) => {
                     service_enabled_error = Some(err.to_string());
@@ -109,6 +113,7 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
     let mut service_active_error = None;
     let service_active = match paths.service.active_probe() {
         Some(probe) => match probe.evaluate() {
+            // Active probes can be plain exit status or stdout parsing, depending on backend
             Ok(active) => active,
             Err(err) => {
                 service_active_error = Some(err.to_string());
@@ -182,8 +187,25 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     if let Some(err) = state.service_enabled_error.as_ref() {
         log_line(ctx, format!("- service enable check failed: {}", err));
     }
-    for warning in ctx.paths.service.readiness_warnings() {
-        log_line(ctx, format!("Warning: {}", warning));
+    let mut readiness_errors = Vec::new();
+    for issue in ctx.paths.service.readiness_issues() {
+        match issue {
+            // Warnings are visible in logs but do not stop already-safe install flows
+            ReadinessIssue::Warning(message) => log_line(ctx, format!("Warning: {message}")),
+            ReadinessIssue::Error(message) => {
+                // Errors mean the backend would fail after writing files, so stop here
+                log_line(ctx, format!("Error: {message}"));
+                readiness_errors.push(message);
+            }
+        }
+    }
+    if !readiness_errors.is_empty() {
+        // Return one combined error so the progress screen has a concise failure summary
+        return Err(anyhow!(
+            "{} is not ready: {}",
+            ctx.paths.service.label(),
+            readiness_errors.join("; ")
+        ));
     }
     log_line(
         ctx,
