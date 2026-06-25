@@ -26,7 +26,9 @@ fn runit_backend_renders_service_directory_and_run_script() {
             .contents
             .as_ref()
             .expect("runit run script should render contents"),
-        "#!/bin/sh\nexec chpst -e ./env '/tmp/bin/unixnotis-daemon'\n"
+        "#!/bin/sh\n\
+         PATH='/usr/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'; export PATH\n\
+         exec chpst -e ./env '/tmp/bin/unixnotis-daemon'\n"
     );
 }
 
@@ -76,7 +78,7 @@ fn runit_backend_commands_match_expected_behavior() {
 #[test]
 fn runit_backend_environment_sync_uses_envdir_artifacts() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
-    let names = ["WAYLAND_DISPLAY", "DISPLAY", "XDG_RUNTIME_DIR"];
+    let names = ["WAYLAND_DISPLAY", "DISPLAY", "XDG_RUNTIME_DIR", "PATH"];
     let vars = [
         ("WAYLAND_DISPLAY", "wayland-1\nignored".to_string()),
         ("XDG_RUNTIME_DIR", "/run/user/1000\t ".to_string()),
@@ -109,6 +111,9 @@ fn runit_backend_environment_sync_uses_envdir_artifacts() {
         PathBuf::from("/tmp/service/unixnotis-daemon/env/XDG_RUNTIME_DIR")
     );
     assert_eq!(artifacts[3].contents.as_deref(), Some("/run/user/1000\n"));
+    assert!(!artifacts
+        .iter()
+        .any(|artifact| artifact.path.ends_with("PATH")));
 }
 
 #[test]
@@ -176,7 +181,7 @@ fn runit_enabled_state_requires_managed_marker() {
 #[test]
 fn runit_backend_hyprland_startup_lines_update_envdir_and_restart() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service root"));
-    let vars = ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"];
+    let vars = ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "PATH"];
 
     let commands = manager.hyprland_startup_commands(&vars);
 
@@ -191,6 +196,8 @@ fn runit_backend_hyprland_startup_lines_update_envdir_and_restart() {
     assert!(commands[0].contains("chmod 600 \"$tmp\""));
     assert!(commands[0].contains("mv -f \"$tmp\" \"$envdir/WAYLAND_DISPLAY\""));
     assert!(commands[0].contains("\"$envdir/WAYLAND_DISPLAY\""));
+    assert!(!commands[0].contains(".PATH.XXXXXX"));
+    assert!(!commands[0].contains("$envdir/PATH"));
     assert!(commands[0].contains("sv restart"));
     assert!(commands[0].contains("|| sv start"));
 }
@@ -208,7 +215,9 @@ fn runit_backend_escapes_run_script_command_path_with_quotes() {
         run.contents
             .as_ref()
             .expect("runit run script should render contents"),
-        "#!/bin/sh\nexec chpst -e ./env '/tmp/bin dir/quote'\\''and\\slash/unixnotis-daemon'\n"
+        "#!/bin/sh\n\
+         PATH='/usr/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'; export PATH\n\
+         exec chpst -e ./env '/tmp/bin dir/quote'\\''and\\slash/unixnotis-daemon'\n"
     );
 }
 

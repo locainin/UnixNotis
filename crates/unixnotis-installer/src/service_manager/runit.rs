@@ -12,6 +12,7 @@ pub const SERVICE_NAME: &str = "unixnotis-daemon";
 const RUN_SCRIPT: &str = "run";
 const ENV_DIR: &str = "env";
 const DOWN_FILE: &str = "down";
+const SAFE_RUN_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 
 pub fn artifact_label() -> &'static str {
     "runit service directory"
@@ -106,7 +107,7 @@ pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> 
     for var in import_vars
         .iter()
         .copied()
-        .filter(|name| is_safe_env_name(name))
+        .filter(|name| is_runit_envdir_name(name))
     {
         // mktemp avoids following a preexisting envdir symlink; mv replaces the final path itself
         steps.push(render_envdir_shell_update(var));
@@ -138,7 +139,7 @@ pub fn environment_sync_artifacts(
         mode: None,
     }];
     artifacts.extend(import_var_names.iter().filter_map(|name| {
-        if !is_safe_env_name(name) {
+        if !is_runit_envdir_name(name) {
             return None;
         }
         let value = import_vars
@@ -185,6 +186,7 @@ fn render_run_script(bin_dir: &Path) -> String {
     // runsv enters the service directory before executing ./run, so ./env is stable
     [
         "#!/bin/sh".to_string(),
+        format!("PATH={}; export PATH", shell_quote(SAFE_RUN_PATH)),
         format!(
             "exec chpst -e ./{} {}",
             ENV_DIR,
@@ -240,6 +242,11 @@ fn is_safe_env_name(name: &str) -> bool {
     };
     (first == '_' || first.is_ascii_alphabetic())
         && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+fn is_runit_envdir_name(name: &str) -> bool {
+    // The run script sets PATH before chpst, so session PATH is not imported into envdir
+    name != "PATH" && is_safe_env_name(name)
 }
 
 fn shell_quote_path(path: &Path) -> String {

@@ -68,7 +68,10 @@ pub(crate) fn enable_service(ctx: &mut ActionContext) -> Result<()> {
     }
 
     // Import the live session env first so the first daemon start picks it up
-    sync_user_environment(ctx)?;
+    if let Err(err) = sync_user_environment(ctx) {
+        warn_pre_start_artifacts_left(ctx);
+        return Err(err);
+    }
     remove_pre_start_artifacts(ctx)?;
     run_service_start(ctx)?;
 
@@ -157,6 +160,10 @@ fn write_service_artifacts(ctx: &mut ActionContext) -> Result<ServiceArtifactWri
     for artifact in &artifacts {
         // Each artifact decides its own filesystem shape so backends are not forced into unit files
         changed |= write_service_artifact(ctx, artifact)?;
+    }
+    for artifact in ctx.paths.service.pre_start_artifacts_to_write() {
+        // Start gates are temporary and should not affect steady install-state checks
+        write_service_artifact(ctx, &artifact)?;
     }
 
     // Reload only matters when the active service manager has new bytes to pick up
@@ -565,6 +572,20 @@ fn remove_pre_start_artifacts(ctx: &mut ActionContext) -> Result<()> {
         })?;
     }
     Ok(())
+}
+
+fn warn_pre_start_artifacts_left(ctx: &mut ActionContext) {
+    for artifact in ctx.paths.service.pre_start_artifacts_to_remove() {
+        if service_artifact_path_exists(&artifact) {
+            log_line(
+                ctx,
+                format!(
+                    "Warning: service start gate remains at {}; autostart is disabled until it is removed",
+                    format_with_home(&artifact.path)
+                ),
+            );
+        }
+    }
 }
 
 fn run_command_spec(ctx: &mut ActionContext, spec: &CommandSpec) -> Result<()> {

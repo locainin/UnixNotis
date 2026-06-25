@@ -310,7 +310,9 @@ fn write_and_remove_runit_artifacts_preserves_directory_contract() {
     assert_eq!(
         fs::read_to_string(&run_path).expect("read runit run script"),
         format!(
-            "#!/bin/sh\nexec chpst -e ./env '{}'\n",
+            "#!/bin/sh\n\
+             PATH='/usr/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'; export PATH\n\
+             exec chpst -e ./env '{}'\n",
             paths.bin_dir.join("unixnotis-daemon").display()
         )
     );
