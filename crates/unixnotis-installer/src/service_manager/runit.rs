@@ -33,7 +33,7 @@ pub fn primary_artifact_path(artifact_root: &Path) -> PathBuf {
 
 pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     let service_dir = service_dir(artifact_root);
-    // Directory comes first so later file artifacts can be written without parent races
+    // Steady artifacts describe the installed service after the temporary down gate is removed
     vec![
         ServiceArtifact {
             path: service_dir.clone(),
@@ -41,6 +41,27 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
             contents: None,
             mode: None,
         },
+        ServiceArtifact {
+            path: service_dir.join(RUN_SCRIPT),
+            kind: ServiceArtifactKind::ExecutableFile,
+            contents: Some(render_run_script(bin_dir)),
+            mode: Some(0o755),
+        },
+    ]
+}
+
+pub fn install_artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
+    let service_dir = service_dir(artifact_root);
+    // Directory comes first so later file artifacts can be written without parent races
+    // The down gate must come before ./run so runsv cannot start before envdir sync
+    vec![
+        ServiceArtifact {
+            path: service_dir.clone(),
+            kind: ServiceArtifactKind::ManagedDirectory,
+            contents: None,
+            mode: None,
+        },
+        start_gate_artifact(artifact_root),
         ServiceArtifact {
             path: service_dir.join(RUN_SCRIPT),
             kind: ServiceArtifactKind::ExecutableFile,
@@ -162,11 +183,12 @@ pub fn environment_sync_artifacts(
 }
 
 pub fn pre_start_artifacts_to_remove(artifact_root: &Path) -> Vec<ServiceArtifact> {
-    pre_start_artifacts(artifact_root)
+    vec![start_gate_artifact(artifact_root)]
 }
 
-pub fn pre_start_artifacts_to_write(artifact_root: &Path) -> Vec<ServiceArtifact> {
-    pre_start_artifacts(artifact_root)
+pub fn pre_start_artifacts_to_write(_artifact_root: &Path) -> Vec<ServiceArtifact> {
+    // The gate is part of the ordered backend artifact list so it lands before ./run
+    Vec::new()
 }
 
 pub fn readiness_issues() -> Vec<ReadinessIssue> {
@@ -179,14 +201,14 @@ pub fn readiness_issues() -> Vec<ReadinessIssue> {
     }
 }
 
-fn pre_start_artifacts(artifact_root: &Path) -> Vec<ServiceArtifact> {
-    vec![ServiceArtifact {
+fn start_gate_artifact(artifact_root: &Path) -> ServiceArtifact {
+    ServiceArtifact {
         path: service_dir(artifact_root).join(DOWN_FILE),
         kind: ServiceArtifactKind::File,
         // runsv will not start ./run while this file exists
         contents: Some(String::new()),
         mode: Some(0o600),
-    }]
+    }
 }
 
 fn render_run_script(bin_dir: &Path) -> String {

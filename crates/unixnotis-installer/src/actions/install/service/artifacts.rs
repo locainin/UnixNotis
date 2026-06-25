@@ -18,7 +18,7 @@ pub(in crate::actions::install) enum ServiceArtifactWrite {
 pub(in crate::actions::install) fn write_service_artifacts(
     ctx: &mut ActionContext,
 ) -> Result<ServiceArtifactWrite> {
-    let artifacts = ctx.paths.service.artifacts(&ctx.paths.bin_dir);
+    let artifacts = ctx.paths.service.install_artifacts(&ctx.paths.bin_dir);
     let mut changed = false;
     for artifact in &artifacts {
         // Each artifact decides its own filesystem shape so backends are not forced into unit files

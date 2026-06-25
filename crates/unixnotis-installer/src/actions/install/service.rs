@@ -96,7 +96,7 @@ pub(crate) fn enable_service(ctx: &mut ActionContext) -> Result<()> {
 }
 
 pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
-    let artifacts = ctx.paths.service.artifacts(&ctx.paths.bin_dir);
+    let artifacts = ctx.paths.service.install_artifacts(&ctx.paths.bin_dir);
     let artifact_exists = artifacts.iter().any(service_artifact_path_exists);
 
     if artifact_exists {

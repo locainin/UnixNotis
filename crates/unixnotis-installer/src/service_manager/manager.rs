@@ -127,11 +127,21 @@ impl ServiceManager {
     }
 
     pub fn artifacts(&self, bin_dir: &Path) -> Vec<ServiceArtifact> {
-        // Artifact rendering is backend-owned so non-systemd managers are not unit-shaped
+        // Steady artifacts describe the installed state after temporary start gates are removed
         match self.kind {
             ServiceManagerKind::Systemd => systemd::artifacts(&self.artifact_root, bin_dir),
             ServiceManagerKind::Dinit => dinit::artifacts(&self.artifact_root, bin_dir),
             ServiceManagerKind::Runit => runit::artifacts(&self.artifact_root, bin_dir),
+            ServiceManagerKind::S6 => s6::artifacts(&self.artifact_root, bin_dir),
+        }
+    }
+
+    pub fn install_artifacts(&self, bin_dir: &Path) -> Vec<ServiceArtifact> {
+        // Install-order artifacts may include temporary gates needed before the first start
+        match self.kind {
+            ServiceManagerKind::Systemd => systemd::artifacts(&self.artifact_root, bin_dir),
+            ServiceManagerKind::Dinit => dinit::artifacts(&self.artifact_root, bin_dir),
+            ServiceManagerKind::Runit => runit::install_artifacts(&self.artifact_root, bin_dir),
             ServiceManagerKind::S6 => s6::artifacts(&self.artifact_root, bin_dir),
         }
     }
