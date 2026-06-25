@@ -164,7 +164,7 @@ fn write_service_artifacts(ctx: &mut ActionContext) -> Result<ServiceArtifactWri
     }
 }
 
-pub(in crate::actions::install) fn write_service_artifact(
+pub(crate) fn write_service_artifact(
     ctx: &ActionContext,
     artifact: &ServiceArtifact,
 ) -> Result<bool> {

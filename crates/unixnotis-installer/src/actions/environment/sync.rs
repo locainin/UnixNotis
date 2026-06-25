@@ -6,7 +6,9 @@ use anyhow::{anyhow, Result};
 
 use unixnotis_core::program_in_path;
 
-use super::super::{log_line, run_command_without_stdout, ActionContext};
+use super::super::{
+    install::write_service_artifact, log_line, run_command_without_stdout, ActionContext,
+};
 
 pub(crate) const HYPR_IMPORT_VARS: [&str; 7] = [
     // Keep this list narrow so debug output and service environments do not inherit full shells
@@ -61,6 +63,16 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
         log_line(ctx, format!("Error: {}", message));
         return Err(anyhow!(message));
     } else {
+        let env_artifacts = ctx.paths.service.environment_sync_artifacts(&vars);
+        for artifact in &env_artifacts {
+            // Artifact-based managers persist a small envdir instead of importing into a daemon
+            write_service_artifact(ctx, artifact)?;
+            updated = true;
+        }
+        if !env_artifacts.is_empty() {
+            log_line(ctx, "Environment synced with service environment files");
+        }
+
         let specs = ctx
             .paths
             .service

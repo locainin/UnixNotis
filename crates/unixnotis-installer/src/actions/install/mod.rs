@@ -7,6 +7,7 @@ mod binaries;
 mod service;
 
 pub(crate) use binaries::{install_binaries, remove_binaries};
+pub(crate) use service::write_service_artifact;
 pub(crate) use service::{enable_service, install_service, uninstall_service};
 
 #[cfg(test)]
