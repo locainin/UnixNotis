@@ -67,11 +67,28 @@ fn dinit_user_dir() -> Result<PathBuf> {
 }
 
 fn runit_user_dir() -> Result<PathBuf> {
-    if let Some(base) = xdg_config_home() {
-        Ok(base.join("service"))
-    } else {
-        Ok(home_dir()?.join(".config").join("service"))
+    if let Some(path) = absolute_env_path("UNIXNOTIS_RUNIT_SERVICE_DIR")? {
+        return Ok(path);
     }
+    if let Some(path) = absolute_env_path("SVDIR")? {
+        return Ok(path);
+    }
+    Ok(home_dir()?.join(".config").join("service"))
+}
+
+fn absolute_env_path(name: &str) -> Result<Option<PathBuf>> {
+    let Ok(raw) = env::var(name) else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let path = PathBuf::from(trimmed);
+    if !path.is_absolute() {
+        return Err(anyhow!("{name} must be an absolute path"));
+    }
+    Ok(Some(path))
 }
 
 fn service_manager_from_environment() -> Result<ServiceManager> {
