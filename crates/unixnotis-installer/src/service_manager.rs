@@ -15,6 +15,9 @@ mod manager;
 // ServiceProbe separates exact exit-status checks from stdout-parsed service status
 mod probe;
 mod runit;
+mod s6;
+// Shell helpers are limited to generated Hyprland bootstrap snippets
+mod shell;
 mod systemd;
 
 pub use artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER};
@@ -25,7 +28,8 @@ pub use probe::ServiceProbe;
 // Tests assert exact service names to keep refactors behavior-preserving
 #[cfg(test)]
 pub use manager::{
-    UNIXNOTIS_DAEMON_DINIT_SERVICE, UNIXNOTIS_DAEMON_RUNIT_SERVICE, UNIXNOTIS_DAEMON_SERVICE,
+    UNIXNOTIS_DAEMON_DINIT_SERVICE, UNIXNOTIS_DAEMON_RUNIT_SERVICE, UNIXNOTIS_DAEMON_S6_SERVICE,
+    UNIXNOTIS_DAEMON_SERVICE,
 };
 
 // Unit tests live under service_manager/tests so backend modules do not become test dumps
@@ -44,3 +48,11 @@ mod dinit_tests;
 #[cfg(test)]
 #[path = "service_manager/tests/runit.rs"]
 mod runit_tests;
+
+#[cfg(test)]
+#[path = "service_manager/tests/s6.rs"]
+mod s6_tests;
+
+#[cfg(test)]
+#[path = "service_manager/tests/shell.rs"]
+mod shell_tests;
