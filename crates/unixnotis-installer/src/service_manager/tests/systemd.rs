@@ -62,10 +62,10 @@ fn systemd_backend_commands_match_existing_behavior() {
     );
 
     let active = manager
-        .is_active_command()
+        .active_probe()
         .expect("systemd has an active-state command");
     assert_eq!(
-        active.args(),
+        active.command().args(),
         &["--user", "is-active", "--quiet", UNIXNOTIS_DAEMON_SERVICE]
     );
 

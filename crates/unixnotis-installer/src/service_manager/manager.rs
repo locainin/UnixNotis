@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::{dinit, runit, systemd};
-use super::{CommandSpec, ServiceArtifact};
+use super::{CommandSpec, ServiceArtifact, ServiceProbe};
 
 // Test exports keep exact legacy names visible without making them production API
 #[cfg(test)]
@@ -140,11 +140,13 @@ impl ServiceManager {
         }
     }
 
-    pub fn is_active_command(&self) -> Option<CommandSpec> {
+    pub fn active_probe(&self) -> Option<ServiceProbe> {
         match self.kind {
-            ServiceManagerKind::Systemd => systemd::is_active_command(),
-            ServiceManagerKind::Dinit => dinit::is_active_command(),
-            ServiceManagerKind::Runit => runit::is_active_command(&self.artifact_root),
+            ServiceManagerKind::Systemd => {
+                systemd::is_active_command().map(ServiceProbe::exit_status)
+            }
+            ServiceManagerKind::Dinit => dinit::is_active_command().map(ServiceProbe::exit_status),
+            ServiceManagerKind::Runit => runit::active_probe(&self.artifact_root),
         }
     }
 

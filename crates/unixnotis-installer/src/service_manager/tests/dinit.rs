@@ -58,10 +58,10 @@ fn dinit_backend_commands_match_expected_behavior() {
     assert!(manager.is_enabled_command().is_none());
 
     let active = manager
-        .is_active_command()
+        .active_probe()
         .expect("dinit has an active-state command");
     assert_eq!(
-        active.args(),
+        active.command().args(),
         &[
             "--user",
             "--quiet",

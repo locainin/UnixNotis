@@ -12,12 +12,15 @@ mod command;
 // Backend modules own manager-specific behavior and keep manager.rs as a dispatcher
 mod dinit;
 mod manager;
+// ServiceProbe separates exact exit-status checks from stdout-parsed service status
+mod probe;
 mod runit;
 mod systemd;
 
 pub use artifact::{ServiceArtifact, ServiceArtifactKind};
 pub use command::CommandSpec;
 pub use manager::ServiceManager;
+pub use probe::ServiceProbe;
 
 // Tests assert exact service names to keep refactors behavior-preserving
 #[cfg(test)]

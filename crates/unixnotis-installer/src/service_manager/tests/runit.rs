@@ -57,9 +57,17 @@ fn runit_backend_commands_match_expected_behavior() {
     assert!(manager.reload_after_artifact_change().is_none());
 
     let active = manager
-        .is_active_command()
-        .expect("runit can check requested state");
-    assert_eq!(active.args(), &["check", service_path]);
+        .active_probe()
+        .expect("runit can parse current status");
+    assert_eq!(active.command().args(), &["status", service_path]);
+    assert_eq!(
+        active.parser_matches("run: /tmp/service/unixnotis-daemon: (pid 123) 2s"),
+        Some(true)
+    );
+    assert_eq!(
+        active.parser_matches("down: /tmp/service/unixnotis-daemon: 1s"),
+        Some(false)
+    );
 
     let enable = manager
         .enable_now_command()

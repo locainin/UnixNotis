@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::artifact::{ServiceArtifact, ServiceArtifactKind};
 use super::command::CommandSpec;
+use super::probe::ServiceProbe;
 
 // Runit service directories use the service name directly under the supervision root
 pub const SERVICE_NAME: &str = "unixnotis-daemon";
@@ -72,13 +73,14 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
         && path_is_missing(&service.join(DOWN_FILE))
 }
 
-pub fn is_active_command(artifact_root: &Path) -> Option<CommandSpec> {
+pub fn active_probe(artifact_root: &Path) -> Option<ServiceProbe> {
     let service = service_dir_arg(artifact_root);
-    Some(CommandSpec::new(
-        format!("sv check {service}"),
+    let command = CommandSpec::new(
+        format!("sv status {service}"),
         "sv",
-        ["check".to_string(), service],
-    ))
+        ["status".to_string(), service],
+    );
+    Some(ServiceProbe::stdout(command, status_output_is_running))
 }
 
 pub fn reload_after_artifact_change() -> Option<CommandSpec> {
@@ -271,4 +273,8 @@ fn path_is_missing(path: &Path) -> bool {
     fs::symlink_metadata(path)
         .map(|_| false)
         .unwrap_or_else(|err| err.kind() == std::io::ErrorKind::NotFound)
+}
+
+fn status_output_is_running(stdout: &str) -> bool {
+    stdout.trim_start().starts_with("run:")
 }

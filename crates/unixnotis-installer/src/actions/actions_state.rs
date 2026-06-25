@@ -107,9 +107,9 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
     };
     // Active state still matters for the install summary shown in the UI
     let mut service_active_error = None;
-    let service_active = match paths.service.is_active_command() {
-        Some(spec) => match spec.to_command().status() {
-            Ok(status) => status.success(),
+    let service_active = match paths.service.active_probe() {
+        Some(probe) => match probe.evaluate() {
+            Ok(active) => active,
             Err(err) => {
                 service_active_error = Some(err.to_string());
                 false
