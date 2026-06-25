@@ -6,6 +6,10 @@ use unixnotis_core::program_in_path;
 use super::artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER};
 use super::command::CommandSpec;
 use super::probe::ServiceProbe;
+use super::shell::{
+    envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
+    shell_quote, shell_quote_path,
+};
 
 // Runit service directories use the service name directly under the supervision root
 pub const SERVICE_NAME: &str = "unixnotis-daemon";
@@ -102,13 +106,7 @@ pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> 
     let env_dir = service.join(ENV_DIR);
     // Hyprland needs one line, so join shell steps with semicolons instead of newlines
     // The envdir checks mirror Rust-side symlink refusal before shell redirection runs
-    let mut steps = vec![
-        "umask 077".to_string(),
-        format!("envdir={}", shell_quote_path(&env_dir)),
-        "[ ! -L \"$envdir\" ] || exit 1".to_string(),
-        "mkdir -p \"$envdir\" || exit 1".to_string(),
-        "[ -d \"$envdir\" ] && [ ! -L \"$envdir\" ] || exit 1".to_string(),
-    ];
+    let mut steps = envdir_sync_prelude(&env_dir);
     for var in import_vars
         .iter()
         .copied()
@@ -218,67 +216,9 @@ fn service_dir_arg(artifact_root: &Path) -> String {
     service_dir(artifact_root).display().to_string()
 }
 
-fn envdir_value(value: &str) -> String {
-    // chpst only reads the first line, so keep that same behavior before writing
-    // Trimming trailing blanks matches envdir file semantics without keeping shell noise
-    value
-        .split(['\0', '\n'])
-        .next()
-        .unwrap_or_default()
-        .trim_end_matches([' ', '\t'])
-        .to_string()
-}
-
-fn envdir_file_contents(value: Option<&str>) -> String {
-    value.map_or_else(String::new, |value| format!("{}\n", envdir_value(value)))
-}
-
-fn render_envdir_shell_update(name: &str) -> String {
-    // Missing variables intentionally create empty files, which makes chpst unset stale values
-    [
-        format!("tmp=$(mktemp \"$envdir/.{name}.XXXXXX\") || exit"),
-        format!("printenv {name} > \"$tmp\" || : > \"$tmp\""),
-        "chmod 600 \"$tmp\" || { rm -f \"$tmp\"; exit 1; }".to_string(),
-        format!("mv -f \"$tmp\" \"$envdir/{name}\" || {{ rm -f \"$tmp\"; exit 1; }}"),
-    ]
-    .join("; ")
-}
-
-fn is_safe_env_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    // Envdir file names are limited to normal shell variable names for predictable scripts
-    (first == '_' || first.is_ascii_alphabetic())
-        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
-}
-
 fn is_runit_envdir_name(name: &str) -> bool {
     // The run script sets PATH before chpst, so session PATH is not imported into envdir
     name != "PATH" && is_safe_env_name(name)
-}
-
-fn shell_quote_path(path: &Path) -> String {
-    shell_quote(&path.display().to_string())
-}
-
-fn shell_quote(raw: &str) -> String {
-    if raw.is_empty() {
-        return "''".to_string();
-    }
-    let mut quoted = String::with_capacity(raw.len() + 2);
-    quoted.push('\'');
-    for ch in raw.chars() {
-        if ch == '\'' {
-            // POSIX single-quote escape: close, emit escaped quote, reopen
-            quoted.push_str("'\\''");
-        } else {
-            quoted.push(ch);
-        }
-    }
-    quoted.push('\'');
-    quoted
 }
 
 fn is_regular_file(path: &Path) -> bool {
