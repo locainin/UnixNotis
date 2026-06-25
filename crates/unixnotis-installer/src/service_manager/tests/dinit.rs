@@ -2,7 +2,9 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
-use crate::service_manager::{ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_DINIT_SERVICE};
+use crate::service_manager::{
+    ReadinessIssue, ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_DINIT_SERVICE,
+};
 
 #[test]
 fn dinit_backend_renders_exact_service_artifact() {
@@ -162,10 +164,11 @@ fn dinit_warns_when_boot_service_missing_waits_for_boot_d() {
     )
     .expect("boot service");
 
-    let warnings = manager.readiness_warnings();
+    let issues = manager.readiness_issues();
 
-    assert_eq!(warnings.len(), 1);
-    assert!(warnings[0].contains("waits-for.d: boot.d"));
+    assert_eq!(issues.len(), 1);
+    assert!(matches!(issues[0], ReadinessIssue::Warning(_)));
+    assert!(issues[0].message().contains("waits-for.d: boot.d"));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -206,7 +209,7 @@ fn dinit_boot_readiness_accepts_plus_equals_dependency_syntax() {
     )
     .expect("boot service");
 
-    assert!(manager.readiness_warnings().is_empty());
+    assert!(manager.readiness_issues().is_empty());
 
     let _ = fs::remove_dir_all(root);
 }

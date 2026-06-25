@@ -1,6 +1,9 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::service_manager::{ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_S6_SERVICE};
+use crate::service_manager::{
+    ReadinessIssue, ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_S6_SERVICE,
+};
 
 #[test]
 fn s6_backend_renders_service_source_and_default_bundle_member() {
@@ -151,4 +154,44 @@ fn s6_backend_hyprland_startup_lines_update_envdir_and_reload_database() {
     assert!(commands[0].contains("unixnotis-daemon"));
     assert!(commands[0].contains("s6-svc -r "));
     assert!(commands[0].contains("/run/user/s6 rc/servicedirs/unixnotis-daemon"));
+}
+
+#[test]
+fn s6_readiness_errors_when_default_bundle_type_is_missing() {
+    let root = test_root("s6-missing-default-type");
+    let live = root.join("run").join("s6-rc");
+    fs::create_dir_all(&live).expect("live dir");
+    let manager = ServiceManager::s6_user(root.join("s6"), live);
+
+    let issues = manager.readiness_issues();
+
+    assert!(issues.iter().any(|issue| {
+        matches!(issue, ReadinessIssue::Error(_))
+            && issue.message().contains("default bundle type file")
+    }));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn s6_readiness_errors_when_live_directory_is_missing() {
+    let root = test_root("s6-missing-live");
+    let default_dir = root.join("s6").join("sv").join("default");
+    fs::create_dir_all(&default_dir).expect("default bundle dir");
+    fs::write(default_dir.join("type"), "bundle\n").expect("default bundle type");
+    let manager = ServiceManager::s6_user(root.join("s6"), root.join("run").join("s6-rc"));
+
+    let issues = manager.readiness_issues();
+
+    assert!(issues.iter().any(|issue| {
+        matches!(issue, ReadinessIssue::Error(_)) && issue.message().contains("live directory")
+    }));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+fn test_root(name: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    root
 }

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::{dinit, runit, s6, systemd};
-use super::{CommandSpec, ServiceArtifact, ServiceProbe};
+use super::{CommandSpec, ReadinessIssue, ServiceArtifact, ServiceProbe};
 
 // Test exports keep exact legacy names visible without making them production API
 #[cfg(test)]
@@ -292,13 +292,13 @@ impl ServiceManager {
         }
     }
 
-    pub fn readiness_warnings(&self) -> Vec<String> {
-        // Readiness warnings are advisory and must never rewrite user-owned manager config
+    pub fn readiness_issues(&self) -> Vec<ReadinessIssue> {
+        // Backends classify setup problems so checks can block only on hard failures
         match self.kind {
             ServiceManagerKind::Systemd => Vec::new(),
-            ServiceManagerKind::Dinit => dinit::readiness_warnings(&self.artifact_root),
-            ServiceManagerKind::Runit => runit::readiness_warnings(),
-            ServiceManagerKind::S6 => s6::readiness_warnings(&self.artifact_root, self.live_root()),
+            ServiceManagerKind::Dinit => dinit::readiness_issues(&self.artifact_root),
+            ServiceManagerKind::Runit => runit::readiness_issues(),
+            ServiceManagerKind::S6 => s6::readiness_issues(&self.artifact_root, self.live_root()),
         }
     }
 

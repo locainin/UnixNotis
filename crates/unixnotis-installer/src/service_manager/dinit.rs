@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::artifact::{ServiceArtifact, ServiceArtifactKind};
 use super::command::CommandSpec;
+use super::readiness::ReadinessIssue;
 
 // Dinit service names are file names without the .service suffix used by systemd
 pub const SERVICE_NAME: &str = "unixnotis-daemon";
@@ -129,15 +130,14 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
             .unwrap_or(false)
 }
 
-pub fn readiness_warnings(artifact_root: &Path) -> Vec<String> {
+pub fn readiness_issues(artifact_root: &Path) -> Vec<ReadinessIssue> {
     // Dinit's user boot service is user-owned; installers should warn, not rewrite it
     if boot_service_includes_boot_dir(&artifact_root.join("boot")) {
         return Vec::new();
     }
-    vec![
+    vec![ReadinessIssue::warning(
         "dinit boot service does not appear to include waits-for.d: boot.d; UnixNotis can start now, but may not start automatically next login"
-            .to_string(),
-    ]
+    )]
 }
 
 fn stop_ignoring_unstarted() -> CommandSpec {

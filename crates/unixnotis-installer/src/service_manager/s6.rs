@@ -6,6 +6,7 @@ use unixnotis_core::program_in_path;
 use super::artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER};
 use super::command::CommandSpec;
 use super::probe::ServiceProbe;
+use super::readiness::ReadinessIssue;
 use super::shell::{
     envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
     shell_quote, shell_quote_path,
@@ -179,13 +180,14 @@ pub fn environment_sync_artifacts(
     artifacts
 }
 
-pub fn readiness_warnings(artifact_root: &Path, live_dir: &Path) -> Vec<String> {
-    let mut warnings = Vec::new();
+pub fn readiness_issues(artifact_root: &Path, live_dir: &Path) -> Vec<ReadinessIssue> {
+    let mut issues = Vec::new();
     for program in ["s6-db-reload", "s6-rc", "s6-envdir", "s6-svstat"] {
+        // Missing tools would fail after artifact writes, so treat them as hard blockers
         if !program_in_path(program) {
-            warnings.push(format!(
+            issues.push(ReadinessIssue::error(format!(
                 "{program} not found in PATH; s6 backend cannot fully run"
-            ));
+            )));
         }
     }
     let default_type = default_bundle_dir(artifact_root).join(TYPE_FILE);
@@ -193,18 +195,19 @@ pub fn readiness_warnings(artifact_root: &Path, live_dir: &Path) -> Vec<String> 
         .map(|contents| contents.trim() == "bundle")
         .unwrap_or(false)
     {
-        warnings.push(
-            "s6 default bundle type file is missing or not 'bundle'; autostart may need local s6 setup"
-                .to_string(),
-        );
-    }
-    if !live_dir.is_dir() {
-        warnings.push(format!(
-            "s6 live directory {} is missing; start local s6-rc before controlling UnixNotis",
-            live_dir.display()
+        // UnixNotis joins the user's default bundle but does not create that bundle silently
+        issues.push(ReadinessIssue::error(
+            "s6 default bundle type file is missing or not 'bundle'; initialize local s6 user services before installing UnixNotis",
         ));
     }
-    warnings
+    if !live_dir.is_dir() {
+        // Control commands need a live s6-rc tree before they can start or stop the service
+        issues.push(ReadinessIssue::error(format!(
+            "s6 live directory {} is missing; start local s6-rc before controlling UnixNotis",
+            live_dir.display()
+        )));
+    }
+    issues
 }
 
 fn render_run_script(bin_dir: &Path) -> String {

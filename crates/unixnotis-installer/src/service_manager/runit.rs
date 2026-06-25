@@ -6,6 +6,7 @@ use unixnotis_core::program_in_path;
 use super::artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER};
 use super::command::CommandSpec;
 use super::probe::ServiceProbe;
+use super::readiness::ReadinessIssue;
 use super::shell::{
     envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
     shell_quote, shell_quote_path,
@@ -168,11 +169,13 @@ pub fn pre_start_artifacts_to_write(artifact_root: &Path) -> Vec<ServiceArtifact
     pre_start_artifacts(artifact_root)
 }
 
-pub fn readiness_warnings() -> Vec<String> {
+pub fn readiness_issues() -> Vec<ReadinessIssue> {
     if program_in_path("chpst") {
         Vec::new()
     } else {
-        vec!["chpst not found in PATH; runit service script cannot start UnixNotis".to_string()]
+        vec![ReadinessIssue::error(
+            "chpst not found in PATH; runit service script cannot start UnixNotis",
+        )]
     }
 }
 

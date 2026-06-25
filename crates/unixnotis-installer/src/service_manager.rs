@@ -1,7 +1,7 @@
 //! Service-manager backend contract for installer-owned daemon startup.
 //!
 //! Installer actions call this facade instead of branching on systemd,
-//! dinit, or runit directly. Each backend owns its artifacts, command
+//! dinit, runit, or s6 directly. Each backend owns its artifacts, command
 //! shapes, and session-startup lines so new init systems do not inherit
 //! systemd assumptions by accident.
 
@@ -14,18 +14,26 @@ mod dinit;
 mod manager;
 // ServiceProbe separates exact exit-status checks from stdout-parsed service status
 mod probe;
+// ReadinessIssue lets backends separate hard blockers from setup hints
+mod readiness;
 mod runit;
 mod s6;
 // Shell helpers are limited to generated Hyprland bootstrap snippets
 mod shell;
 mod systemd;
 
-pub use artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER};
+pub use artifact::{
+    managed_directory_marker, managed_directory_marker_is_valid, MANAGED_DIRECTORY_MARKER_CONTENTS,
+};
+pub use artifact::{ServiceArtifact, ServiceArtifactKind};
 pub use command::CommandSpec;
 pub use manager::ServiceManager;
 pub use probe::ServiceProbe;
+pub use readiness::ReadinessIssue;
 
 // Tests assert exact service names to keep refactors behavior-preserving
+#[cfg(test)]
+pub use artifact::MANAGED_DIRECTORY_MARKER;
 #[cfg(test)]
 pub use manager::{
     UNIXNOTIS_DAEMON_DINIT_SERVICE, UNIXNOTIS_DAEMON_RUNIT_SERVICE, UNIXNOTIS_DAEMON_S6_SERVICE,
