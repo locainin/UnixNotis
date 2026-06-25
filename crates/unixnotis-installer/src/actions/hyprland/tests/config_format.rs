@@ -5,12 +5,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::super::super::HYPR_IMPORT_VARS;
 use super::super::block::render_hyprland_bootstrap_block;
 use super::super::detect::{
-    has_exec_once_dbus_update, has_exec_once_import, has_exec_once_restart,
-    hyprland_dbus_update_line, hyprland_import_line, hyprland_restart_line,
+    has_import_command_with_vars, has_legacy_dbus_update, has_startup_command,
+    hyprland_startup_line,
 };
 use super::super::paths::{
     existing_hyprland_config_targets_in, hyprland_config_target_in, HyprlandConfigSyntax,
 };
+use crate::service_manager::ServiceManager;
 
 #[test]
 fn hyprland_config_target_prefers_lua_when_lua_exists() {
@@ -73,19 +74,24 @@ fn existing_hyprland_config_targets_include_both_migration_formats() {
 
 #[test]
 fn rendered_lua_bootstrap_is_detected_as_complete() {
-    let lines = [
-        hyprland_dbus_update_line(HyprlandConfigSyntax::Lua),
-        hyprland_import_line(HyprlandConfigSyntax::Lua),
-        hyprland_restart_line(HyprlandConfigSyntax::Lua),
-    ];
+    let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
+    let commands = manager.hyprland_startup_commands(&HYPR_IMPORT_VARS);
+    let lines = commands
+        .iter()
+        .map(|command| hyprland_startup_line(HyprlandConfigSyntax::Lua, command))
+        .collect::<Vec<_>>();
     let block = render_hyprland_bootstrap_block(HyprlandConfigSyntax::Lua, &lines);
 
     assert!(block.contains("hl.on(\"hyprland.start\", function()"));
     assert!(block.contains("hl.exec_cmd(\"systemctl --user import-environment"));
     assert!(block.contains("end)"));
-    assert!(has_exec_once_dbus_update(&block));
-    assert!(has_exec_once_import(&block, &HYPR_IMPORT_VARS));
-    assert!(has_exec_once_restart(&block));
+    assert!(has_legacy_dbus_update(
+        "exec-once = dbus-update-activation-environment --systemd --all"
+    ));
+    assert!(commands
+        .iter()
+        .all(|command| has_startup_command(&block, command)
+            || has_import_command_with_vars(&block, &HYPR_IMPORT_VARS)));
 }
 
 #[test]
@@ -93,7 +99,10 @@ fn commented_lua_bootstrap_commands_are_ignored() {
     let contents =
         "-- hl.exec_cmd(\"systemctl --user --no-block restart unixnotis-daemon.service\")\n";
 
-    assert!(!has_exec_once_restart(contents));
+    assert!(!has_startup_command(
+        contents,
+        "systemctl --user --no-block restart unixnotis-daemon.service"
+    ));
 }
 
 fn temp_config_root(label: &str) -> PathBuf {

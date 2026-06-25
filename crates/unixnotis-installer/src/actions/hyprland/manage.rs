@@ -5,8 +5,8 @@ use std::fs;
 use super::super::{log_line, ActionContext};
 use super::block::strip_hyprland_bootstrap_block;
 use super::detect::{
-    has_exec_once_dbus_update, has_exec_once_import, has_exec_once_restart,
-    hyprland_dbus_update_line, hyprland_import_line, hyprland_restart_line,
+    has_import_command_with_vars, has_legacy_dbus_update, has_startup_command,
+    hyprland_startup_line,
 };
 use super::paths::{existing_hyprland_config_targets, hyprland_config_target};
 use crate::paths::format_with_home;
@@ -65,14 +65,15 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     // Add only the lines that are still missing from the live config
     let mut additions = Vec::new();
     // User-managed equivalents outside the installer block should not be duplicated
-    if !has_exec_once_dbus_update(&stripped) {
-        additions.push(hyprland_dbus_update_line(target.syntax));
-    }
-    if !has_exec_once_import(&stripped, &super::super::HYPR_IMPORT_VARS) {
-        additions.push(hyprland_import_line(target.syntax));
-    }
-    if !has_exec_once_restart(&stripped) {
-        additions.push(hyprland_restart_line(target.syntax));
+    for command in ctx
+        .paths
+        .service
+        .hyprland_startup_commands(&super::super::HYPR_IMPORT_VARS)
+    {
+        if hyprland_command_present(&stripped, &command) {
+            continue;
+        }
+        additions.push(hyprland_startup_line(target.syntax, &command));
     }
 
     if additions.is_empty() {
@@ -120,6 +121,16 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
             ),
         );
     }
+}
+
+fn hyprland_command_present(contents: &str, command: &str) -> bool {
+    if command.starts_with("dbus-update-activation-environment") {
+        return has_legacy_dbus_update(contents) || has_startup_command(contents, command);
+    }
+    if command.contains("import-environment") {
+        return has_import_command_with_vars(contents, &super::super::HYPR_IMPORT_VARS);
+    }
+    has_startup_command(contents, command)
 }
 
 pub(in crate::actions) fn remove_hyprland_autostart(ctx: &mut ActionContext) {
