@@ -58,6 +58,7 @@ pub fn is_enabled_command() -> Option<CommandSpec> {
 pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
     let service = service_dir(artifact_root);
     // A down file means runsv should not start the service automatically
+    // The managed marker prevents adopting a foreign service directory by accident
     is_directory(&service)
         && is_regular_file(&service.join(MANAGED_DIRECTORY_MARKER))
         && is_regular_file(&service.join(RUN_SCRIPT))
@@ -66,6 +67,7 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
 
 pub fn active_probe(artifact_root: &Path) -> Option<ServiceProbe> {
     let service = service_dir_arg(artifact_root);
+    // sv check can succeed for a requested down state, so parse status text instead
     let command = CommandSpec::new(
         format!("sv status {service}"),
         "sv",
@@ -99,6 +101,7 @@ pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> 
     let service = service_dir(artifact_root);
     let env_dir = service.join(ENV_DIR);
     // Hyprland needs one line, so join shell steps with semicolons instead of newlines
+    // The envdir checks mirror Rust-side symlink refusal before shell redirection runs
     let mut steps = vec![
         "umask 077".to_string(),
         format!("envdir={}", shell_quote_path(&env_dir)),
@@ -111,7 +114,7 @@ pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> 
         .copied()
         .filter(|name| is_runit_envdir_name(name))
     {
-        // mktemp avoids following a preexisting envdir symlink; mv replaces the final path itself
+        // mktemp writes a fresh file, and mv replaces the env file path without appending
         steps.push(render_envdir_shell_update(var));
     }
     steps.push(format!(
@@ -134,6 +137,7 @@ pub fn environment_sync_artifacts(
     import_vars: &[(&str, String)],
 ) -> Vec<ServiceArtifact> {
     let env_dir = service_dir(artifact_root).join(ENV_DIR);
+    // Installer-time sync goes through hardened artifact writes instead of shell redirects
     let mut artifacts = vec![ServiceArtifact {
         path: env_dir.clone(),
         kind: ServiceArtifactKind::Directory,
@@ -186,6 +190,7 @@ fn pre_start_artifacts(artifact_root: &Path) -> Vec<ServiceArtifact> {
 
 fn render_run_script(bin_dir: &Path) -> String {
     // runsv enters the service directory before executing ./run, so ./env is stable
+    // PATH is fixed before chpst so synced session PATH cannot change command lookup
     [
         "#!/bin/sh".to_string(),
         format!("PATH={}; export PATH", shell_quote(SAFE_RUN_PATH)),
@@ -215,6 +220,7 @@ fn service_dir_arg(artifact_root: &Path) -> String {
 
 fn envdir_value(value: &str) -> String {
     // chpst only reads the first line, so keep that same behavior before writing
+    // Trimming trailing blanks matches envdir file semantics without keeping shell noise
     value
         .split(['\0', '\n'])
         .next()
@@ -228,6 +234,7 @@ fn envdir_file_contents(value: Option<&str>) -> String {
 }
 
 fn render_envdir_shell_update(name: &str) -> String {
+    // Missing variables intentionally create empty files, which makes chpst unset stale values
     [
         format!("tmp=$(mktemp \"$envdir/.{name}.XXXXXX\") || exit"),
         format!("printenv {name} > \"$tmp\" || : > \"$tmp\""),
@@ -242,6 +249,7 @@ fn is_safe_env_name(name: &str) -> bool {
     let Some(first) = chars.next() else {
         return false;
     };
+    // Envdir file names are limited to normal shell variable names for predictable scripts
     (first == '_' || first.is_ascii_alphabetic())
         && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }

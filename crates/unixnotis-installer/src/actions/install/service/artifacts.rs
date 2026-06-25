@@ -51,6 +51,7 @@ pub(crate) fn write_service_artifact(
     artifact: &ServiceArtifact,
 ) -> Result<bool> {
     if let Some(parent) = artifact.path.parent() {
+        // Parent setup walks one component at a time so symlinks cannot redirect writes
         ensure_directory_without_symlink(parent)
             .with_context(|| format!("failed to prepare {}", ctx.paths.service.artifact_label()))?;
     }
@@ -63,6 +64,7 @@ pub(crate) fn write_service_artifact(
                 .ok_or_else(|| anyhow!("service file artifact missing contents"))?;
             let existed_before = ensure_regular_artifact_file_path(&artifact.path)?;
             let changed = match fs::read_to_string(&artifact.path) {
+                // Stable contents keep reinstall quiet and avoid unnecessary manager reloads
                 Ok(existing) if existing == *contents => false,
                 Ok(_) | Err(_) => {
                     write_atomic(&artifact.path, contents).with_context(|| {
@@ -74,6 +76,7 @@ pub(crate) fn write_service_artifact(
             if let Some(mode) = artifact.mode {
                 #[cfg(unix)]
                 {
+                    // Mode is explicit because service scripts must not depend on process umask
                     fs::set_permissions(&artifact.path, fs::Permissions::from_mode(mode))
                         .with_context(|| {
                             format!("failed to chmod {}", format_with_home(&artifact.path))
@@ -117,6 +120,7 @@ fn ensure_directory_without_symlink(path: &Path) -> Result<()> {
             Component::Normal(part) => {
                 current.push(part);
                 match fs::symlink_metadata(&current) {
+                    // symlink_metadata checks the path itself, not the linked target
                     Ok(metadata) if metadata.file_type().is_symlink() => {
                         return Err(anyhow!(
                             "refusing symlink parent component {}",
@@ -148,6 +152,7 @@ fn ensure_directory_without_symlink(path: &Path) -> Result<()> {
 }
 
 fn ensure_regular_artifact_file_path(path: &Path) -> Result<bool> {
+    // Existing service files may be replaced, but never through a symlink or directory
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => Err(anyhow!(
             "cannot replace symlink service artifact at {}",
@@ -166,6 +171,7 @@ fn ensure_regular_artifact_file_path(path: &Path) -> Result<bool> {
 }
 
 fn ensure_artifact_directory_path(path: &Path) -> Result<bool> {
+    // Directory artifacts are container paths, so replacing files or links would be surprising
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => Err(anyhow!(
             "cannot replace symlink service directory at {}",
@@ -190,6 +196,7 @@ fn write_managed_directory(path: &Path) -> Result<bool> {
 
     let marker = managed_directory_marker(path);
     if existed_before && !managed_marker_is_valid(&marker) {
+        // Existing service directories need proof of ownership before UnixNotis manages them
         return Err(anyhow!(
             "refusing to manage unmarked service directory at {}",
             format_with_home(path)
@@ -198,6 +205,7 @@ fn write_managed_directory(path: &Path) -> Result<bool> {
 
     ensure_regular_artifact_file_path(&marker)?;
     let marker_changed = match fs::read_to_string(&marker) {
+        // Marker contents stay tiny and exact so foreign files are not treated as ownership
         Ok(existing) if existing == MANAGED_DIRECTORY_MARKER_CONTENTS => false,
         Ok(_) | Err(_) => {
             write_atomic(&marker, MANAGED_DIRECTORY_MARKER_CONTENTS)
@@ -211,6 +219,7 @@ fn write_managed_directory(path: &Path) -> Result<bool> {
 fn write_service_symlink(path: &Path, target: &Path) -> Result<bool> {
     if let Ok(existing) = fs::read_link(path) {
         if existing == target {
+            // Relative links are compared as stored, matching how the backend declared them
             return Ok(false);
         }
         fs::remove_file(path)
@@ -238,6 +247,7 @@ fn write_service_symlink(path: &Path, target: &Path) -> Result<bool> {
 pub(in crate::actions::install) fn remove_service_artifact(
     artifact: &ServiceArtifact,
 ) -> Result<()> {
+    // Removal is shape-aware so uninstall never follows service-manager symlinks
     match &artifact.kind {
         ServiceArtifactKind::Directory => {
             if service_artifact_path_is_present(&artifact.path) {
@@ -264,6 +274,7 @@ fn service_artifact_path_is_present(path: &Path) -> bool {
 }
 
 fn remove_empty_service_directory(path: &Path) -> Result<()> {
+    // Plain directory artifacts are removed only when empty to preserve shared parent state
     let metadata = fs::symlink_metadata(path)
         .with_context(|| format!("failed to inspect {}", format_with_home(path)))?;
     if metadata.file_type().is_symlink() {
@@ -283,6 +294,7 @@ fn remove_empty_service_directory(path: &Path) -> Result<()> {
 
 fn remove_managed_directory(path: &Path) -> Result<()> {
     let marker = managed_directory_marker(path);
+    // Managed directories can contain backend files, so the marker gates recursive removal
     if !managed_marker_is_valid(&marker) {
         return Err(anyhow!(
             "refusing to recursively remove unmarked service directory at {}",
@@ -296,6 +308,7 @@ fn managed_marker_is_valid(path: &Path) -> bool {
     let Ok(metadata) = fs::symlink_metadata(path) else {
         return false;
     };
+    // A marker symlink is not ownership proof because it can point outside the service dir
     if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
         return false;
     }
@@ -309,6 +322,7 @@ fn managed_directory_marker(path: &Path) -> PathBuf {
 }
 
 fn remove_regular_service_file(path: &Path) -> Result<()> {
+    // File removal checks the final path again so links are not followed on uninstall
     let metadata = fs::symlink_metadata(path)
         .with_context(|| format!("failed to inspect {}", format_with_home(path)))?;
     if metadata.file_type().is_symlink() {
@@ -327,6 +341,7 @@ fn remove_regular_service_file(path: &Path) -> Result<()> {
 }
 
 fn remove_service_symlink(path: &Path, expected_target: &Path) -> Result<()> {
+    // Symlink artifacts are removed only when both the type and target still match
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
