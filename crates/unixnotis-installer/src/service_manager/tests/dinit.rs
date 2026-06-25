@@ -184,13 +184,31 @@ fn dinit_backend_environment_sync_uses_setenv() {
     assert_eq!(commands[0].program(), "dinitctl");
     assert_eq!(
         commands[0].args(),
+        &["--user", "setenv", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"]
+    );
+    assert_eq!(
+        commands[0].envs(),
         &[
-            "--user",
-            "setenv",
-            "WAYLAND_DISPLAY=wayland-1",
-            "XDG_RUNTIME_DIR=/run/user/1000",
+            ("WAYLAND_DISPLAY".to_string(), "wayland-1".to_string()),
+            ("XDG_RUNTIME_DIR".to_string(), "/run/user/1000".to_string()),
         ]
     );
+}
+
+#[test]
+fn dinit_boot_readiness_accepts_plus_equals_dependency_syntax() {
+    let root = test_root("dinit-boot-plus-equals");
+    let manager = ServiceManager::dinit_user(root.join("dinit.d"));
+    fs::create_dir_all(manager.artifact_root()).expect("dinit dir");
+    fs::write(
+        manager.artifact_root().join("boot"),
+        "type = internal\nwaits-for.d += boot.d\n",
+    )
+    .expect("boot service");
+
+    assert!(manager.readiness_warnings().is_empty());
+
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

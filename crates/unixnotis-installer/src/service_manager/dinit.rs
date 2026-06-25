@@ -105,17 +105,14 @@ pub fn hyprland_startup_commands(import_vars: &[&str]) -> Vec<String> {
 
 pub fn environment_sync_commands(import_vars: &[(&str, String)]) -> Vec<CommandSpec> {
     let mut args = vec!["--user".to_string(), "setenv".to_string()];
-    // dinitctl receives concrete values so newly started services inherit this session
-    args.extend(
-        import_vars
-            .iter()
-            .map(|(name, value)| format!("{name}={value}")),
-    );
-    vec![CommandSpec::new(
-        "dinitctl --user setenv",
-        "dinitctl",
-        &args,
-    )]
+    // dinitctl can read values from its own environment, which keeps values out of argv
+    args.extend(import_vars.iter().map(|(name, _value)| (*name).to_string()));
+    let mut spec = CommandSpec::new("dinitctl --user setenv", "dinitctl", &args);
+    for (name, value) in import_vars {
+        // Explicit env overrides avoid leaking session paths through installer logs or ps output
+        spec = spec.env(*name, value);
+    }
+    vec![spec]
 }
 
 pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
@@ -204,9 +201,10 @@ fn boot_service_includes_boot_dir(path: &Path) -> bool {
         if stripped.is_empty() {
             return false;
         }
-        let Some((key, value)) = stripped.split_once([':', '=']) else {
+        let Some((raw_key, value)) = stripped.split_once([':', '=']) else {
             return false;
         };
+        let key = raw_key.trim().trim_end_matches('+').trim();
         key.trim() == "waits-for.d"
             && value
                 .split_whitespace()
