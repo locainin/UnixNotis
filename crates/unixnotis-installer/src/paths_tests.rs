@@ -87,7 +87,7 @@ fn install_paths_use_xdg_config_home_for_systemd_units() {
 
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
     assert_eq!(
-        paths.service.artifact_dir(),
+        paths.service.artifact_root(),
         xdg_root.join("systemd").join("user")
     );
 

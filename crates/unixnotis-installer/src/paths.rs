@@ -6,12 +6,12 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 
-use crate::service_manager::ServiceManagerPaths;
+use crate::service_manager::ServiceManager;
 
 pub struct InstallPaths {
     pub repo_root: PathBuf,
     pub bin_dir: PathBuf,
-    pub service: ServiceManagerPaths,
+    pub service: ServiceManager,
 }
 
 impl InstallPaths {
@@ -21,7 +21,7 @@ impl InstallPaths {
         // User binaries live under ~/.local/bin for install and uninstall
         let bin_dir = home_dir()?.join(".local").join("bin");
         // The current backend is systemd, but service metadata stays behind one boundary.
-        let service = ServiceManagerPaths::systemd_user(systemd_user_dir()?);
+        let service = ServiceManager::systemd_user(systemd_user_dir()?);
 
         Ok(Self {
             repo_root,

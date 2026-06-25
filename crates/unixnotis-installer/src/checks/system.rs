@@ -8,7 +8,6 @@ use std::process::Command;
 use unixnotis_core::program_in_path;
 
 use crate::paths::InstallPaths;
-use crate::service_manager::ServiceManagerKind;
 
 use super::CheckItem;
 
@@ -41,8 +40,18 @@ pub(super) fn hyprland_check() -> CheckItem {
 }
 
 pub(super) fn service_manager_check() -> CheckItem {
-    let manager = ServiceManagerKind::SystemdUser;
-    match manager.availability_check().status() {
+    let Ok(paths) = InstallPaths::discover() else {
+        return CheckItem::fail("Service manager", "install paths unavailable");
+    };
+    let manager = &paths.service;
+    let Some(spec) = manager.availability_command() else {
+        // Some service managers do not have a cheap global availability probe
+        return CheckItem::warn(
+            "Service manager",
+            &format!("{} availability check unavailable", manager.label()),
+        );
+    };
+    match spec.to_command().status() {
         Ok(status) if status.success() => {
             CheckItem::ok("Service manager", &format!("{} available", manager.label()))
         }
@@ -127,7 +136,7 @@ fn command_success(program: &str, args: &[&str]) -> Result<bool, String> {
 fn install_paths_writable(paths: &InstallPaths) -> bool {
     // Validate both binary and service directories because install and uninstall touch both
     let bin_ok = path_is_writable(&paths.bin_dir);
-    let service_ok = path_is_writable(paths.service.artifact_dir());
+    let service_ok = path_is_writable(paths.service.artifact_root());
     bin_ok && service_ok
 }
 

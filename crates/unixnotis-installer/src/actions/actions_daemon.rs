@@ -46,26 +46,24 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
         if daemon.systemd_active {
             let is_unixnotis = daemon.name == "unixnotis-daemon";
             log_line(ctx, format!("Stopping systemd unit {}", daemon.unit));
-            let mut command = Command::new("systemctl");
-            if is_unixnotis {
+            let (label, command) = if is_unixnotis {
                 // Reinstall can race with session hooks that start the daemon when the bus name drops
                 // The irreversible stop job keeps that start request from canceling the stop in flight
-                command.args([
-                    "--user",
-                    "--job-mode=replace-irreversibly",
-                    "stop",
-                    daemon.unit.as_str(),
-                ]);
+                let spec = ctx
+                    .paths
+                    .service
+                    .stop_for_reinstall_command()
+                    .ok_or_else(|| {
+                        anyhow!("service manager cannot stop unixnotis for reinstall")
+                    })?;
+                (spec.label().to_string(), spec.to_command())
             } else {
+                let mut command = Command::new("systemctl");
                 command.args(["--user", "disable", "--now", daemon.unit.as_str()]);
-            }
-            let label = if is_unixnotis {
-                format!(
-                    "systemctl --user --job-mode=replace-irreversibly stop {}",
-                    daemon.unit
+                (
+                    format!("systemctl --user disable --now {}", daemon.unit),
+                    command,
                 )
-            } else {
-                format!("systemctl --user disable --now {}", daemon.unit)
             };
             if let Err(err) = run_command(ctx, &label, command, None) {
                 if is_systemd_unit_inactive(&daemon.unit)? {

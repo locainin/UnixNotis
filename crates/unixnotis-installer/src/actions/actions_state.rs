@@ -78,22 +78,41 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         })
         .collect::<Vec<_>>();
 
-    let service_artifact_exists = paths.service.artifact_path().exists();
+    let service_artifact_exists = paths
+        .service
+        .artifacts(&paths.bin_dir)
+        .iter()
+        .all(|artifact| std::fs::symlink_metadata(&artifact.path).is_ok());
     // Enabled state decides whether reinstall can skip `enable --now`
     let mut service_enabled_error = None;
-    let service_enabled = match paths.service.is_enabled_command().status() {
-        Ok(status) => status.success(),
-        Err(err) => {
-            service_enabled_error = Some(err.to_string());
+    let service_enabled = match paths.service.is_enabled_command() {
+        Some(spec) => match spec.to_command().status() {
+            Ok(status) => status.success(),
+            Err(err) => {
+                service_enabled_error = Some(err.to_string());
+                false
+            }
+        },
+        None => {
+            // Backends without enable state are treated as not enabled for reinstall planning
+            service_enabled_error =
+                Some("service manager has no enabled-state command".to_string());
             false
         }
     };
     // Active state still matters for the install summary shown in the UI
     let mut service_active_error = None;
-    let service_active = match paths.service.is_active_command().status() {
-        Ok(status) => status.success(),
-        Err(err) => {
-            service_active_error = Some(err.to_string());
+    let service_active = match paths.service.is_active_command() {
+        Some(spec) => match spec.to_command().status() {
+            Ok(status) => status.success(),
+            Err(err) => {
+                service_active_error = Some(err.to_string());
+                false
+            }
+        },
+        None => {
+            // Backends without active state still allow install, but cannot claim a running service
+            service_active_error = Some("service manager has no active-state command".to_string());
             false
         }
     };
@@ -149,7 +168,7 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
             "- {}: {} ({})",
             ctx.paths.service.artifact_label(),
             service_artifact_status,
-            format_with_home(ctx.paths.service.artifact_path())
+            format_with_home(&ctx.paths.service.primary_artifact_path())
         ),
     );
     if let Some(err) = state.service_active_error.as_ref() {
