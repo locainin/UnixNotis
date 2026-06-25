@@ -33,6 +33,31 @@ fn runit_backend_renders_service_directory_and_run_script() {
 }
 
 #[test]
+fn runit_backend_install_artifacts_write_down_before_run_script() {
+    let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
+    let artifacts = manager.install_artifacts(Path::new("/tmp/bin"));
+
+    assert_eq!(artifacts.len(), 3);
+    assert_eq!(
+        artifacts[0].path,
+        PathBuf::from("/tmp/service/unixnotis-daemon")
+    );
+    assert_eq!(artifacts[0].kind, ServiceArtifactKind::ManagedDirectory);
+    assert_eq!(
+        artifacts[1].path,
+        PathBuf::from("/tmp/service/unixnotis-daemon/down")
+    );
+    assert_eq!(artifacts[1].kind, ServiceArtifactKind::File);
+    assert_eq!(artifacts[1].mode, Some(0o600));
+    assert_eq!(artifacts[1].contents.as_deref(), Some(""));
+    assert_eq!(
+        artifacts[2].path,
+        PathBuf::from("/tmp/service/unixnotis-daemon/run")
+    );
+    assert_eq!(artifacts[2].kind, ServiceArtifactKind::ExecutableFile);
+}
+
+#[test]
 fn runit_backend_commands_match_expected_behavior() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
     let service_path = "/tmp/service/unixnotis-daemon";
@@ -121,14 +146,16 @@ fn runit_backend_pre_start_removes_down_after_env_sync() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
     let gates = manager.pre_start_artifacts_to_remove();
     let staged = manager.pre_start_artifacts_to_write();
+    let artifacts = manager.install_artifacts(Path::new("/tmp/bin"));
 
     assert_eq!(gates.len(), 1);
-    assert_eq!(staged, gates);
+    assert!(staged.is_empty());
     assert_eq!(
         gates[0].path,
         PathBuf::from("/tmp/service/unixnotis-daemon/down")
     );
     assert_eq!(gates[0].kind, ServiceArtifactKind::File);
+    assert_eq!(artifacts[1], gates[0]);
 }
 
 #[test]
