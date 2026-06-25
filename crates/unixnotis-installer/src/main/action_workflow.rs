@@ -26,7 +26,7 @@ pub(crate) fn start_action(
     mode: ActionMode,
 ) -> Result<()> {
     // Resolve paths once so every step in this action uses the same install target
-    let paths = InstallPaths::discover()?;
+    let paths = InstallPaths::discover_with_service_manager(app.service_manager)?;
     // Install state is only needed for install decisions like service start mode
     let install_state = if mode == ActionMode::Install {
         Some(check_install_state(&paths))
@@ -198,7 +198,7 @@ pub(crate) fn reset_to_menu(app: &mut App) {
 
 pub(crate) fn prepare_build_accel_prompt(app: &mut App) {
     // Snapshot detection so the prompt remains stable while the user decides
-    let detection = match InstallPaths::discover() {
+    let detection = match InstallPaths::discover_with_service_manager(app.service_manager) {
         Ok(paths) => detect_build_accel(&paths.repo_root),
         Err(err) => detect_build_accel_without_repo(err.to_string()),
     };
@@ -214,7 +214,7 @@ fn apply_build_accel_setup(app: &mut App) {
     let Some(state) = app.build_accel.as_mut() else {
         return;
     };
-    let paths = match InstallPaths::discover() {
+    let paths = match InstallPaths::discover_with_service_manager(app.service_manager) {
         Ok(paths) => paths,
         Err(err) => {
             state.outcome = Some(BuildAccelOutcome::Failed(err.to_string()));

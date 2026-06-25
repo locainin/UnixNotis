@@ -152,7 +152,7 @@ pub(crate) fn handle_confirm_key(
 
             match mode {
                 ActionMode::Test => {
-                    let paths = InstallPaths::discover()?;
+                    let paths = InstallPaths::discover_with_service_manager(app.service_manager)?;
                     return Ok(Some(ExitAction::RunTrial {
                         repo_root: paths.repo_root.clone(),
                     }));
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn vim_keys_move_welcome_menu_like_arrow_keys() {
         // j/k should mirror Down/Up without changing menu bounds
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         handle_welcome_key(&mut app, key(KeyCode::Char('j'))).expect("j should be handled");
         assert_eq!(app.menu_index, 1);
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn vim_keys_move_reset_menu_like_arrow_keys() {
         // Reset has a fixed three-entry menu, so j/k must stay within 0..=2
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         handle_reset_menu_key(&mut app, key(KeyCode::Char('j'))).expect("j should be handled");
         handle_reset_menu_key(&mut app, key(KeyCode::Char('j'))).expect("j should be handled");
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn vim_keys_move_restore_selection_only_when_backups_exist() {
         // Empty restore lists should not underflow or invent a selection
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         handle_restore_select_key(&mut app, key(KeyCode::Char('j'))).expect("j should be handled");
         assert_eq!(app.restore_menu_index, 0);
@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn vim_keys_move_build_accel_menu_like_arrow_keys() {
         // Build acceleration uses dynamic menu length, so j/k must respect that mode
-        let mut app = App::new();
+        let mut app = App::new(None);
         app.build_accel = Some(BuildAccelState {
             detection: BuildAccelDetection {
                 sccache_installed: true,
