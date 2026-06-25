@@ -29,6 +29,7 @@ mod paths;
 mod service_manager;
 mod terminal;
 #[cfg(test)]
+#[path = "tests/mod.rs"]
 mod tests;
 #[path = "main/trial.rs"]
 mod trial;

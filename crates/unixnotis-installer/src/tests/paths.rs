@@ -304,6 +304,7 @@ fn install_paths_use_home_local_share_for_s6_services_when_overrides_unset() {
         return;
     }
     let previous_data = set_env("UNIXNOTIS_S6_DATA_DIR", None);
+    let previous_xdg_data = set_env("XDG_DATA_HOME", None);
     let previous_live = set_env("UNIXNOTIS_S6RC_LIVE_DIR", None);
     let previous_user = set_env("USER", Some("unixnotis-test-user"));
     let previous_manager = set_env("UNIXNOTIS_SERVICE_MANAGER", Some("s6"));
@@ -327,6 +328,38 @@ fn install_paths_use_home_local_share_for_s6_services_when_overrides_unset() {
     restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
     restore_env("USER", previous_user);
     restore_env("UNIXNOTIS_S6RC_LIVE_DIR", previous_live);
+    restore_env("XDG_DATA_HOME", previous_xdg_data);
+    restore_env("UNIXNOTIS_S6_DATA_DIR", previous_data);
+}
+
+#[test]
+fn install_paths_use_xdg_data_home_for_s6_services_when_explicit_unset() {
+    let _guard = env_lock();
+    let Ok(home) = env::var("HOME") else {
+        return;
+    };
+    if home.is_empty() {
+        return;
+    }
+    let xdg_data = PathBuf::from(&home).join(".local-xdg-data-s6-test");
+    let previous_data = set_env("UNIXNOTIS_S6_DATA_DIR", None);
+    let previous_xdg_data = set_env("XDG_DATA_HOME", Some(xdg_data.to_string_lossy().as_ref()));
+    let previous_live = set_env("UNIXNOTIS_S6RC_LIVE_DIR", None);
+    let previous_user = set_env("USER", Some("unixnotis-test-user"));
+    let previous_manager = set_env("UNIXNOTIS_SERVICE_MANAGER", Some("s6"));
+
+    let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+
+    assert_eq!(paths.service.artifact_root(), xdg_data.join("s6"));
+    assert_eq!(
+        paths.service.primary_artifact_path(),
+        xdg_data.join("s6").join("sv").join("unixnotis-daemon")
+    );
+
+    restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
+    restore_env("USER", previous_user);
+    restore_env("UNIXNOTIS_S6RC_LIVE_DIR", previous_live);
+    restore_env("XDG_DATA_HOME", previous_xdg_data);
     restore_env("UNIXNOTIS_S6_DATA_DIR", previous_data);
 }
 

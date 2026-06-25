@@ -105,8 +105,14 @@ fn runit_user_dir() -> Result<PathBuf> {
 
 fn s6_user_dir() -> Result<PathBuf> {
     if let Some(path) = absolute_env_path("UNIXNOTIS_S6_DATA_DIR")? {
+        // Explicit project override wins because it is the safest way to test experimental s6
         return Ok(path);
     }
+    if let Some(base) = absolute_env_path("XDG_DATA_HOME")? {
+        // XDG_DATA_HOME support keeps custom user data roots from falling back to $HOME
+        return Ok(base.join("s6"));
+    }
+    // Artix documents local user s6 data under ~/.local/share/s6
     Ok(home_dir()?.join(".local").join("share").join("s6"))
 }
 
@@ -205,5 +211,5 @@ fn is_unixnotis_repo(cargo_toml: &Path) -> bool {
 }
 
 #[cfg(test)]
-#[path = "paths_tests.rs"]
+#[path = "tests/paths.rs"]
 mod tests;

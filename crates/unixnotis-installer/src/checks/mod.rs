@@ -15,12 +15,18 @@ pub enum CheckState {
     Fail,
 }
 
+#[cfg(test)]
+#[path = "tests/system.rs"]
+mod system_tests;
+
+#[derive(Clone, Debug)]
 pub struct CheckItem {
     pub label: &'static str,
     pub state: CheckState,
     pub detail: String,
 }
 
+#[derive(Clone, Debug)]
 pub struct Checks {
     pub wayland: CheckItem,
     pub hyprland: CheckItem,
