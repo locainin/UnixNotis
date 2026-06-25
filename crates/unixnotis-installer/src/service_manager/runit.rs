@@ -8,6 +8,7 @@ use super::command::CommandSpec;
 pub const SERVICE_NAME: &str = "unixnotis-daemon";
 const RUN_SCRIPT: &str = "run";
 const ENV_DIR: &str = "env";
+const DOWN_FILE: &str = "down";
 
 pub fn artifact_label() -> &'static str {
     "runit service directory"
@@ -30,6 +31,13 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
             kind: ServiceArtifactKind::Directory,
             contents: None,
             mode: None,
+        },
+        ServiceArtifact {
+            path: service_dir.join(DOWN_FILE),
+            kind: ServiceArtifactKind::File,
+            // runsv will not start ./run while this file exists
+            contents: Some(String::new()),
+            mode: Some(0o600),
         },
         ServiceArtifact {
             path: service_dir.join(ENV_DIR),
@@ -61,7 +69,7 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
     // A down file means runsv should not start the service automatically
     is_directory(&service)
         && is_regular_file(&service.join(RUN_SCRIPT))
-        && !service.join("down").exists()
+        && path_is_missing(&service.join(DOWN_FILE))
 }
 
 pub fn is_active_command(artifact_root: &Path) -> Option<CommandSpec> {
@@ -98,13 +106,18 @@ pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> 
     let service = service_dir(artifact_root);
     let env_dir = service.join(ENV_DIR);
     // Hyprland needs one line, so join shell steps with semicolons instead of newlines
-    let mut steps = vec![format!("mkdir -p {} || exit", shell_quote_path(&env_dir))];
-    for var in import_vars {
-        // `printenv` writes an empty file when the variable is missing, which makes chpst unset it
-        steps.push(format!(
-            "printenv {var} > {} || :",
-            shell_quote_path(&env_dir.join(var))
-        ));
+    let mut steps = vec![
+        "umask 077".to_string(),
+        format!("envdir={}", shell_quote_path(&env_dir)),
+        "mkdir -p \"$envdir\" || exit".to_string(),
+    ];
+    for var in import_vars
+        .iter()
+        .copied()
+        .filter(|name| is_safe_env_name(name))
+    {
+        // mktemp avoids following a preexisting envdir symlink; mv replaces the final path itself
+        steps.push(render_envdir_shell_update(var));
     }
     steps.push(format!(
         "sv restart {} || sv start {}",
@@ -122,6 +135,7 @@ pub fn environment_sync_commands() -> Vec<CommandSpec> {
 
 pub fn environment_sync_artifacts(
     artifact_root: &Path,
+    import_var_names: &[&str],
     import_vars: &[(&str, String)],
 ) -> Vec<ServiceArtifact> {
     let env_dir = service_dir(artifact_root).join(ENV_DIR);
@@ -131,14 +145,31 @@ pub fn environment_sync_artifacts(
         contents: None,
         mode: None,
     }];
-    artifacts.extend(import_vars.iter().map(|(name, value)| ServiceArtifact {
-        path: env_dir.join(name),
-        kind: ServiceArtifactKind::File,
-        // chpst reads only the first line and strips trailing spaces and tabs
-        contents: Some(format!("{}\n", envdir_value(value))),
-        mode: Some(0o600),
+    artifacts.extend(import_var_names.iter().filter_map(|name| {
+        if !is_safe_env_name(name) {
+            return None;
+        }
+        let value = import_vars
+            .iter()
+            .find_map(|(candidate, value)| (*candidate == *name).then_some(value.as_str()));
+        Some(ServiceArtifact {
+            path: env_dir.join(name),
+            kind: ServiceArtifactKind::File,
+            // Empty files make chpst remove stale variables from the service environment
+            contents: Some(envdir_file_contents(value)),
+            mode: Some(0o600),
+        })
     }));
     artifacts
+}
+
+pub fn pre_start_artifacts_to_remove(artifact_root: &Path) -> Vec<ServiceArtifact> {
+    vec![ServiceArtifact {
+        path: service_dir(artifact_root).join(DOWN_FILE),
+        kind: ServiceArtifactKind::File,
+        contents: Some(String::new()),
+        mode: Some(0o600),
+    }]
 }
 
 fn render_run_script(bin_dir: &Path) -> String {
@@ -179,6 +210,29 @@ fn envdir_value(value: &str) -> String {
         .to_string()
 }
 
+fn envdir_file_contents(value: Option<&str>) -> String {
+    value.map_or_else(String::new, |value| format!("{}\n", envdir_value(value)))
+}
+
+fn render_envdir_shell_update(name: &str) -> String {
+    [
+        format!("tmp=$(mktemp \"$envdir/.{name}.XXXXXX\") || exit"),
+        format!("printenv {name} > \"$tmp\" || : > \"$tmp\""),
+        "chmod 600 \"$tmp\" || { rm -f \"$tmp\"; exit 1; }".to_string(),
+        format!("mv -f \"$tmp\" \"$envdir/{name}\" || {{ rm -f \"$tmp\"; exit 1; }}"),
+    ]
+    .join("; ")
+}
+
+fn is_safe_env_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
 fn shell_quote_path(path: &Path) -> String {
     shell_quote(&path.display().to_string())
 }
@@ -211,4 +265,10 @@ fn is_directory(path: &Path) -> bool {
     fs::symlink_metadata(path)
         .map(|metadata| metadata.file_type().is_dir())
         .unwrap_or(false)
+}
+
+fn path_is_missing(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|_| false)
+        .unwrap_or_else(|err| err.kind() == std::io::ErrorKind::NotFound)
 }

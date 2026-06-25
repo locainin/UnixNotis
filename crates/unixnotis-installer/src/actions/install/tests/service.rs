@@ -208,7 +208,8 @@ fn write_and_remove_runit_artifacts_preserves_directory_contract() {
         ("WAYLAND_DISPLAY", "wayland-1".to_string()),
         ("XDG_RUNTIME_DIR", "/run/user/1000".to_string()),
     ];
-    let env_artifacts = manager.environment_sync_artifacts(&env_vars);
+    let env_names = ["WAYLAND_DISPLAY", "DISPLAY", "XDG_RUNTIME_DIR"];
+    let env_artifacts = manager.environment_sync_artifacts(&env_names, &env_vars);
 
     for artifact in artifacts.iter().chain(env_artifacts.iter()) {
         write_service_artifact(&ctx, artifact).expect("runit artifact should be written");
@@ -220,7 +221,21 @@ fn write_and_remove_runit_artifacts_preserves_directory_contract() {
         .join("service")
         .join("unixnotis-daemon");
     let run_path = service_dir.join("run");
+    let down_path = service_dir.join("down");
     let wayland_env = service_dir.join("env").join("WAYLAND_DISPLAY");
+    let display_env = service_dir.join("env").join("DISPLAY");
+    assert_eq!(
+        fs::read_to_string(&down_path).expect("read runit down file"),
+        ""
+    );
+    assert_eq!(
+        fs::metadata(&down_path)
+            .expect("down file metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
     assert_eq!(
         fs::read_to_string(&run_path).expect("read runit run script"),
         format!(
@@ -239,6 +254,10 @@ fn write_and_remove_runit_artifacts_preserves_directory_contract() {
     assert_eq!(
         fs::read_to_string(&wayland_env).expect("read wayland envdir file"),
         "wayland-1\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&display_env).expect("read stale display envdir file"),
+        ""
     );
     assert_eq!(
         fs::metadata(&wayland_env)
@@ -379,6 +398,28 @@ fn uninstall_does_not_remove_non_matching_symlink() {
         actual_target
     );
     assert!(expected_target.exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn uninstall_rejects_symlink_file_artifact() {
+    let root = test_root("install-service-keep-file-symlink");
+    fs::create_dir_all(&root).expect("make root");
+    let target = root.join("target");
+    let link = root.join("service-file");
+    fs::write(&target, "target").expect("write target");
+    symlink(&target, &link).expect("create file link");
+    let artifact = ServiceArtifact {
+        path: link.clone(),
+        kind: ServiceArtifactKind::File,
+        contents: Some(String::new()),
+        mode: None,
+    };
+
+    let err = remove_service_artifact(&artifact).expect_err("file link should not be removed");
+
+    assert!(err.to_string().contains("refusing to remove symlink"));
+    assert_eq!(fs::read_link(&link).expect("link should remain"), target);
     let _ = fs::remove_dir_all(&root);
 }
 

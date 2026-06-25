@@ -63,7 +63,10 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
         log_line(ctx, format!("Error: {}", message));
         return Err(anyhow!(message));
     } else {
-        let env_artifacts = ctx.paths.service.environment_sync_artifacts(&vars);
+        let env_artifacts = ctx
+            .paths
+            .service
+            .environment_sync_artifacts(&HYPR_IMPORT_VARS, &vars);
         for artifact in &env_artifacts {
             // Artifact-based managers persist a small envdir instead of importing into a daemon
             write_service_artifact(ctx, artifact)?;

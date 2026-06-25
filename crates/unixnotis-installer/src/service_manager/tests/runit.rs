@@ -9,7 +9,7 @@ fn runit_backend_renders_service_directory_and_run_script() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
     let artifacts = manager.artifacts(Path::new("/tmp/bin"));
 
-    assert_eq!(artifacts.len(), 3);
+    assert_eq!(artifacts.len(), 4);
     assert_eq!(
         artifacts[0].path,
         PathBuf::from("/tmp/service").join(UNIXNOTIS_DAEMON_RUNIT_SERVICE)
@@ -17,17 +17,24 @@ fn runit_backend_renders_service_directory_and_run_script() {
     assert_eq!(artifacts[0].kind, ServiceArtifactKind::Directory);
     assert_eq!(
         artifacts[1].path,
-        PathBuf::from("/tmp/service/unixnotis-daemon/env")
+        PathBuf::from("/tmp/service/unixnotis-daemon/down")
     );
-    assert_eq!(artifacts[1].kind, ServiceArtifactKind::Directory);
+    assert_eq!(artifacts[1].kind, ServiceArtifactKind::File);
+    assert_eq!(artifacts[1].mode, Some(0o600));
+    assert_eq!(artifacts[1].contents.as_deref(), Some(""));
     assert_eq!(
         artifacts[2].path,
+        PathBuf::from("/tmp/service/unixnotis-daemon/env")
+    );
+    assert_eq!(artifacts[2].kind, ServiceArtifactKind::Directory);
+    assert_eq!(
+        artifacts[3].path,
         PathBuf::from("/tmp/service/unixnotis-daemon/run")
     );
-    assert_eq!(artifacts[2].kind, ServiceArtifactKind::ExecutableFile);
-    assert_eq!(artifacts[2].mode, Some(0o755));
+    assert_eq!(artifacts[3].kind, ServiceArtifactKind::ExecutableFile);
+    assert_eq!(artifacts[3].mode, Some(0o755));
     assert_eq!(
-        artifacts[2]
+        artifacts[3]
             .contents
             .as_ref()
             .expect("runit run script should render contents"),
@@ -73,16 +80,17 @@ fn runit_backend_commands_match_expected_behavior() {
 #[test]
 fn runit_backend_environment_sync_uses_envdir_artifacts() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
+    let names = ["WAYLAND_DISPLAY", "DISPLAY", "XDG_RUNTIME_DIR"];
     let vars = [
         ("WAYLAND_DISPLAY", "wayland-1\nignored".to_string()),
         ("XDG_RUNTIME_DIR", "/run/user/1000\t ".to_string()),
     ];
 
     let commands = manager.environment_sync_commands(&vars, true);
-    let artifacts = manager.environment_sync_artifacts(&vars);
+    let artifacts = manager.environment_sync_artifacts(&names, &vars);
 
     assert!(commands.is_empty());
-    assert_eq!(artifacts.len(), 3);
+    assert_eq!(artifacts.len(), 4);
     assert_eq!(
         artifacts[0].path,
         PathBuf::from("/tmp/service/unixnotis-daemon/env")
@@ -97,9 +105,27 @@ fn runit_backend_environment_sync_uses_envdir_artifacts() {
     assert_eq!(artifacts[1].contents.as_deref(), Some("wayland-1\n"));
     assert_eq!(
         artifacts[2].path,
+        PathBuf::from("/tmp/service/unixnotis-daemon/env/DISPLAY")
+    );
+    assert_eq!(artifacts[2].contents.as_deref(), Some(""));
+    assert_eq!(
+        artifacts[3].path,
         PathBuf::from("/tmp/service/unixnotis-daemon/env/XDG_RUNTIME_DIR")
     );
-    assert_eq!(artifacts[2].contents.as_deref(), Some("/run/user/1000\n"));
+    assert_eq!(artifacts[3].contents.as_deref(), Some("/run/user/1000\n"));
+}
+
+#[test]
+fn runit_backend_pre_start_removes_down_after_env_sync() {
+    let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
+    let gates = manager.pre_start_artifacts_to_remove();
+
+    assert_eq!(gates.len(), 1);
+    assert_eq!(
+        gates[0].path,
+        PathBuf::from("/tmp/service/unixnotis-daemon/down")
+    );
+    assert_eq!(gates[0].kind, ServiceArtifactKind::File);
 }
 
 #[test]
@@ -119,6 +145,20 @@ fn runit_enabled_state_rejects_symlink_service_directory() {
 }
 
 #[test]
+fn runit_enabled_state_rejects_down_symlink() {
+    let root = test_root("runit-down-symlink");
+    let manager = ServiceManager::runit_user(root.join("service"));
+    let service = manager.artifact_root().join(UNIXNOTIS_DAEMON_RUNIT_SERVICE);
+    fs::create_dir_all(service.join("env")).expect("env dir");
+    fs::write(service.join("run"), "#!/bin/sh\n").expect("run script");
+    symlink("missing-target", service.join("down")).expect("down symlink");
+
+    assert_eq!(manager.enabled_by_artifacts(), Some(false));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn runit_backend_hyprland_startup_lines_update_envdir_and_restart() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service root"));
     let vars = ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"];
@@ -128,10 +168,14 @@ fn runit_backend_hyprland_startup_lines_update_envdir_and_restart() {
     assert_eq!(commands.len(), 1);
     assert!(commands[0].starts_with("sh -lc "));
     assert!(!commands[0].contains('\n'));
+    assert!(commands[0].contains("umask 077"));
     assert!(commands[0].contains("mkdir -p"));
     assert!(commands[0].contains("/tmp/service root/unixnotis-daemon/env"));
-    assert!(commands[0].contains("printenv WAYLAND_DISPLAY >"));
-    assert!(commands[0].contains("/tmp/service root/unixnotis-daemon/env/WAYLAND_DISPLAY"));
+    assert!(commands[0].contains("mktemp \"$envdir/.WAYLAND_DISPLAY.XXXXXX\""));
+    assert!(commands[0].contains("printenv WAYLAND_DISPLAY > \"$tmp\" || : > \"$tmp\""));
+    assert!(commands[0].contains("chmod 600 \"$tmp\""));
+    assert!(commands[0].contains("mv -f \"$tmp\" \"$envdir/WAYLAND_DISPLAY\""));
+    assert!(commands[0].contains("\"$envdir/WAYLAND_DISPLAY\""));
     assert!(commands[0].contains("sv restart"));
     assert!(commands[0].contains("|| sv start"));
 }

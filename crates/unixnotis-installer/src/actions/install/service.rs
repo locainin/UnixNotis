@@ -65,6 +65,7 @@ pub(crate) fn enable_service(ctx: &mut ActionContext) -> Result<()> {
 
     // Import the live session env first so the first daemon start picks it up
     sync_user_environment(ctx)?;
+    remove_pre_start_artifacts(ctx)?;
     run_service_start(ctx)?;
 
     // Shell startup files are updated so new terminals can resolve the installed commands
@@ -298,12 +299,30 @@ pub(in crate::actions::install) fn remove_service_artifact(
         }
         ServiceArtifactKind::File | ServiceArtifactKind::ExecutableFile => {
             if service_artifact_path_exists(artifact) {
-                fs::remove_file(&artifact.path)?;
+                remove_regular_service_file(&artifact.path)?;
             }
         }
         ServiceArtifactKind::Symlink { target } => remove_service_symlink(&artifact.path, target)?,
     }
     Ok(())
+}
+
+fn remove_regular_service_file(path: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect {}", format_with_home(path)))?;
+    if metadata.file_type().is_symlink() {
+        return Err(anyhow!(
+            "refusing to remove symlink service file at {}",
+            format_with_home(path)
+        ));
+    }
+    if !metadata.file_type().is_file() {
+        return Err(anyhow!(
+            "refusing to remove non-file service artifact at {}",
+            format_with_home(path)
+        ));
+    }
+    fs::remove_file(path).with_context(|| format!("failed to remove {}", format_with_home(path)))
 }
 
 fn remove_service_symlink(path: &Path, expected_target: &Path) -> Result<()> {
@@ -390,6 +409,20 @@ fn run_service_start(ctx: &mut ActionContext) -> Result<()> {
             run_command_spec(ctx, &spec)
         }
     }
+}
+
+fn remove_pre_start_artifacts(ctx: &mut ActionContext) -> Result<()> {
+    let artifacts = ctx.paths.service.pre_start_artifacts_to_remove();
+    for artifact in &artifacts {
+        // Backend staging files are removed only after env sync has completed
+        remove_service_artifact(artifact).with_context(|| {
+            format!(
+                "failed to remove start gate at {}",
+                format_with_home(&artifact.path)
+            )
+        })?;
+    }
+    Ok(())
 }
 
 fn run_command_spec(ctx: &mut ActionContext, spec: &CommandSpec) -> Result<()> {

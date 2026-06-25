@@ -217,14 +217,25 @@ impl ServiceManager {
 
     pub fn environment_sync_artifacts(
         &self,
+        import_var_names: &[&str],
         import_vars: &[(&str, String)],
     ) -> Vec<ServiceArtifact> {
         // Runit needs envdir files because sv does not import environment into runsv
         match self.kind {
             ServiceManagerKind::Systemd | ServiceManagerKind::Dinit => Vec::new(),
-            ServiceManagerKind::Runit => {
-                runit::environment_sync_artifacts(&self.artifact_root, import_vars)
-            }
+            ServiceManagerKind::Runit => runit::environment_sync_artifacts(
+                &self.artifact_root,
+                import_var_names,
+                import_vars,
+            ),
+        }
+    }
+
+    pub fn pre_start_artifacts_to_remove(&self) -> Vec<ServiceArtifact> {
+        // Runit starts watched service directories immediately unless a down file is present
+        match self.kind {
+            ServiceManagerKind::Systemd | ServiceManagerKind::Dinit => Vec::new(),
+            ServiceManagerKind::Runit => runit::pre_start_artifacts_to_remove(&self.artifact_root),
         }
     }
 
