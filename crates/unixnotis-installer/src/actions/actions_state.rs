@@ -84,20 +84,26 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         .iter()
         .all(|artifact| std::fs::symlink_metadata(&artifact.path).is_ok());
     // Enabled state decides whether reinstall can skip `enable --now`
+    // Some backends store enablement as installer-owned artifacts instead of manager state
     let mut service_enabled_error = None;
-    let service_enabled = match paths.service.is_enabled_command() {
-        Some(spec) => match spec.to_command().status() {
-            Ok(status) => status.success(),
-            Err(err) => {
-                service_enabled_error = Some(err.to_string());
+    let service_enabled = if let Some(enabled) = paths.service.enabled_by_artifacts(&paths.bin_dir)
+    {
+        enabled
+    } else {
+        match paths.service.is_enabled_command() {
+            Some(spec) => match spec.to_command().status() {
+                Ok(status) => status.success(),
+                Err(err) => {
+                    service_enabled_error = Some(err.to_string());
+                    false
+                }
+            },
+            None => {
+                // This should only apply to future backends that have no state probe yet
+                service_enabled_error =
+                    Some("service manager has no enabled-state command".to_string());
                 false
             }
-        },
-        None => {
-            // Backends without enable state are treated as not enabled for reinstall planning
-            service_enabled_error =
-                Some("service manager has no enabled-state command".to_string());
-            false
         }
     };
     // Active state still matters for the install summary shown in the UI
@@ -177,6 +183,9 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     if let Some(err) = state.service_enabled_error.as_ref() {
         log_line(ctx, format!("- service enable check failed: {}", err));
     }
+    for warning in ctx.paths.service.readiness_warnings() {
+        log_line(ctx, format!("Warning: {}", warning));
+    }
     log_line(
         ctx,
         format!(
@@ -220,3 +229,7 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "actions_state/tests.rs"]
+mod tests;
