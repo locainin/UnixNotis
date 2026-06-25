@@ -66,6 +66,14 @@ fn dinit_user_dir() -> Result<PathBuf> {
     }
 }
 
+fn runit_user_dir() -> Result<PathBuf> {
+    if let Some(base) = xdg_config_home() {
+        Ok(base.join("service"))
+    } else {
+        Ok(home_dir()?.join(".config").join("service"))
+    }
+}
+
 fn service_manager_from_environment() -> Result<ServiceManager> {
     match env::var("UNIXNOTIS_SERVICE_MANAGER") {
         Ok(raw) => match raw.trim() {
@@ -73,6 +81,7 @@ fn service_manager_from_environment() -> Result<ServiceManager> {
                 Ok(ServiceManager::systemd_user(systemd_user_dir()?))
             }
             "dinit" | "dinit-user" => Ok(ServiceManager::dinit_user(dinit_user_dir()?)),
+            "runit" | "runit-user" => Ok(ServiceManager::runit_user(runit_user_dir()?)),
             other => Err(anyhow!("unsupported service manager '{other}'")),
         },
         Err(_) => Ok(ServiceManager::systemd_user(systemd_user_dir()?)),
