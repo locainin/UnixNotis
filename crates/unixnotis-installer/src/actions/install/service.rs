@@ -13,7 +13,10 @@ use super::super::{
 };
 
 mod artifacts;
+mod dirs;
+mod files;
 mod lifecycle;
+mod symlinks;
 
 pub(in crate::actions::install) use artifacts::remove_service_artifact;
 pub(crate) use artifacts::write_service_artifact;
