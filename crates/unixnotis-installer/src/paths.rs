@@ -8,6 +8,26 @@ use anyhow::{anyhow, Result};
 
 use crate::service_manager::ServiceManager;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ServiceManagerChoice {
+    Systemd,
+    Dinit,
+    Runit,
+    S6,
+}
+
+impl ServiceManagerChoice {
+    pub fn parse(raw: &str) -> Result<Self> {
+        match raw.trim() {
+            "" | "systemd" | "systemd-user" => Ok(Self::Systemd),
+            "dinit" | "dinit-user" => Ok(Self::Dinit),
+            "runit" | "runit-user" => Ok(Self::Runit),
+            "s6" | "s6-user" => Ok(Self::S6),
+            other => Err(anyhow!("unsupported service manager '{other}'")),
+        }
+    }
+}
+
 pub struct InstallPaths {
     pub repo_root: PathBuf,
     pub bin_dir: PathBuf,
@@ -15,13 +35,20 @@ pub struct InstallPaths {
 }
 
 impl InstallPaths {
+    #[cfg(test)]
     pub fn discover() -> Result<Self> {
+        Self::discover_with_service_manager(None)
+    }
+
+    pub fn discover_with_service_manager(
+        service_manager: Option<ServiceManagerChoice>,
+    ) -> Result<Self> {
         // Repo root anchors cargo metadata lookups and all local asset paths
         let repo_root = find_repo_root()?;
         // User binaries live under ~/.local/bin for install and uninstall
         let bin_dir = home_dir()?.join(".local").join("bin");
         // Backend selection stays centralized so installer actions stay manager-agnostic
-        let service = service_manager_from_environment()?;
+        let service = service_manager_from_selection(service_manager)?;
 
         Ok(Self {
             repo_root,
@@ -76,6 +103,21 @@ fn runit_user_dir() -> Result<PathBuf> {
     Ok(home_dir()?.join(".config").join("service"))
 }
 
+fn s6_user_dir() -> Result<PathBuf> {
+    if let Some(path) = absolute_env_path("UNIXNOTIS_S6_DATA_DIR")? {
+        return Ok(path);
+    }
+    Ok(home_dir()?.join(".local").join("share").join("s6"))
+}
+
+fn s6_live_dir() -> Result<PathBuf> {
+    if let Some(path) = absolute_env_path("UNIXNOTIS_S6RC_LIVE_DIR")? {
+        return Ok(path);
+    }
+    let user = env::var("USER").map_err(|_| anyhow!("USER is not set"))?;
+    Ok(PathBuf::from("/run").join(user).join("s6-rc"))
+}
+
 fn absolute_env_path(name: &str) -> Result<Option<PathBuf>> {
     let Ok(raw) = env::var(name) else {
         return Ok(None);
@@ -91,17 +133,24 @@ fn absolute_env_path(name: &str) -> Result<Option<PathBuf>> {
     Ok(Some(path))
 }
 
-fn service_manager_from_environment() -> Result<ServiceManager> {
+fn service_manager_from_selection(
+    service_manager: Option<ServiceManagerChoice>,
+) -> Result<ServiceManager> {
+    let choice = service_manager
+        .map(Ok)
+        .unwrap_or_else(service_manager_choice_from_environment)?;
+    match choice {
+        ServiceManagerChoice::Systemd => Ok(ServiceManager::systemd_user(systemd_user_dir()?)),
+        ServiceManagerChoice::Dinit => Ok(ServiceManager::dinit_user(dinit_user_dir()?)),
+        ServiceManagerChoice::Runit => Ok(ServiceManager::runit_user(runit_user_dir()?)),
+        ServiceManagerChoice::S6 => Ok(ServiceManager::s6_user(s6_user_dir()?, s6_live_dir()?)),
+    }
+}
+
+fn service_manager_choice_from_environment() -> Result<ServiceManagerChoice> {
     match env::var("UNIXNOTIS_SERVICE_MANAGER") {
-        Ok(raw) => match raw.trim() {
-            "" | "systemd" | "systemd-user" => {
-                Ok(ServiceManager::systemd_user(systemd_user_dir()?))
-            }
-            "dinit" | "dinit-user" => Ok(ServiceManager::dinit_user(dinit_user_dir()?)),
-            "runit" | "runit-user" => Ok(ServiceManager::runit_user(runit_user_dir()?)),
-            other => Err(anyhow!("unsupported service manager '{other}'")),
-        },
-        Err(_) => Ok(ServiceManager::systemd_user(systemd_user_dir()?)),
+        Ok(raw) => ServiceManagerChoice::parse(&raw),
+        Err(_) => Ok(ServiceManagerChoice::Systemd),
     }
 }
 
