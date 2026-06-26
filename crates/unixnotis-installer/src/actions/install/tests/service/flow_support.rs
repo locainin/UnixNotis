@@ -64,6 +64,24 @@ pub(super) fn run_install_and_enable(paths: &InstallPaths) -> anyhow::Result<()>
     enable_service(&mut ctx)
 }
 
+pub(super) fn run_install_only(paths: &InstallPaths) -> anyhow::Result<()> {
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, paths, ActionMode::Install);
+    install_service(&mut ctx)
+}
+
+pub(super) fn run_enable_only(paths: &InstallPaths) -> anyhow::Result<()> {
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, paths, ActionMode::Install);
+    enable_service(&mut ctx)
+}
+
 pub(super) fn flow_paths(root: &Path, service: ServiceManager) -> InstallPaths {
     // Only the service manager varies; binaries and repo roots stay under the temp home
     InstallPaths {
