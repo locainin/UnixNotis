@@ -8,10 +8,12 @@ use crate::model::ActionMode;
 use crate::service_manager::ServiceManager;
 
 use super::super::super::service::{
-    install_service, service_start_mode_from_enabled, write_service_artifact, ServiceStartMode,
+    install_service, service_start_mode_from_enabled, uninstall_service, write_service_artifact,
+    ServiceStartMode,
 };
 use super::super::support::{test_context, test_paths, test_root};
 use super::expected_primary_artifact_contents;
+use super::flow_support::{flow_env, write_fake_tools, FakeToolMode};
 
 // Lifecycle tests assert the installer-visible behavior around reload flags and user logs
 // Artifact byte tests live elsewhere so this file stays focused on install phase decisions
@@ -148,5 +150,60 @@ fn install_service_reports_runit_unchanged_when_only_start_gate_is_recreated() {
         )),
         "temporary runit start gate writes should not log a service reinstall"
     );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn uninstall_service_skips_removed_log_for_missing_runit_start_gate() {
+    let root = test_root("uninstall-runit-missing-temp-gate");
+    let fake_bin = root.join("fake-bin");
+    let fake_log = root.join("fake-calls.log");
+    write_fake_tools(&fake_bin, &fake_log, FakeToolMode::RunitSv);
+    let _env = flow_env(&root, &fake_bin);
+
+    let mut paths = test_paths(&root);
+    paths.service = ServiceManager::runit_user(root.join("home").join(".config").join("service"));
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let setup_ctx = test_context(&detection, &paths, ActionMode::Install);
+    for artifact in paths.service.artifacts(&paths.bin_dir) {
+        // Steady runit state keeps the service directory and run script, but not down
+        write_service_artifact(&setup_ctx, &artifact).expect("steady runit artifact should exist");
+    }
+
+    let service_dir = paths.service.primary_artifact_path();
+    let down_gate = service_dir.join("down");
+    assert!(
+        fs::symlink_metadata(&down_gate).is_err(),
+        "healthy runit service should not keep the temporary down gate"
+    );
+
+    let (log_tx, log_rx) = mpsc::sync_channel::<UiMessage>(16);
+    let mut ctx = test_context(&detection, &paths, ActionMode::Uninstall);
+    ctx.log_tx = log_tx;
+
+    uninstall_service(&mut ctx).expect("runit uninstall should remove steady artifacts");
+
+    let logs = log_rx.try_iter().collect::<Vec<_>>();
+    assert!(
+        !logs.iter().any(|event| matches!(
+            event,
+            UiMessage::Worker(WorkerEvent::LogLine(line))
+                if line.contains("Removed runit service directory") && line.contains("/down")
+        )),
+        "missing temporary runit down gate should not be logged as removed"
+    );
+    assert!(
+        logs.iter().any(|event| matches!(
+            event,
+            UiMessage::Worker(WorkerEvent::LogLine(line))
+                if line.contains("Removed runit service directory")
+                    && line.contains("unixnotis-daemon")
+        )),
+        "steady runit artifacts should still report real removals"
+    );
+
     let _ = fs::remove_dir_all(&root);
 }

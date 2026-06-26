@@ -124,6 +124,10 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
         }
 
         for artifact in artifacts.iter().rev() {
+            // Install-only gates, such as runit's temporary down file, normally do
+            // not exist once the service is running
+            let artifact_existed = service_artifact_path_exists(artifact);
+
             remove_service_artifact(artifact).with_context(|| {
                 format!(
                     "failed to remove {} at {}",
@@ -131,14 +135,17 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
                     format_with_home(&artifact.path)
                 )
             })?;
-            log_line(
-                ctx,
-                format!(
-                    "Removed {} at {}",
-                    ctx.paths.service.artifact_label(),
-                    format_with_home(&artifact.path)
-                ),
-            );
+
+            if artifact_existed {
+                log_line(
+                    ctx,
+                    format!(
+                        "Removed {} at {}",
+                        ctx.paths.service.artifact_label(),
+                        format_with_home(&artifact.path)
+                    ),
+                );
+            }
         }
         if let Some(spec) = ctx.paths.service.reload_after_artifact_change() {
             run_command_spec(ctx, &spec)?;
