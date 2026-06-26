@@ -6,28 +6,54 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 
+use crate::service_manager::ServiceManager;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ServiceManagerChoice {
+    Systemd,
+    Dinit,
+    Runit,
+    S6,
+}
+
+impl ServiceManagerChoice {
+    pub fn parse(raw: &str) -> Result<Self> {
+        match raw.trim() {
+            "" | "systemd" | "systemd-user" => Ok(Self::Systemd),
+            "dinit" | "dinit-user" => Ok(Self::Dinit),
+            "runit" | "runit-user" => Ok(Self::Runit),
+            "s6" | "s6-user" => Ok(Self::S6),
+            other => Err(anyhow!("unsupported service manager '{other}'")),
+        }
+    }
+}
+
 pub struct InstallPaths {
     pub repo_root: PathBuf,
     pub bin_dir: PathBuf,
-    pub unit_dir: PathBuf,
-    pub unit_path: PathBuf,
+    pub service: ServiceManager,
 }
 
 impl InstallPaths {
+    #[cfg(test)]
     pub fn discover() -> Result<Self> {
+        Self::discover_with_service_manager(None)
+    }
+
+    pub fn discover_with_service_manager(
+        service_manager: Option<ServiceManagerChoice>,
+    ) -> Result<Self> {
         // Repo root anchors cargo metadata lookups and all local asset paths
         let repo_root = find_repo_root()?;
         // User binaries live under ~/.local/bin for install and uninstall
         let bin_dir = home_dir()?.join(".local").join("bin");
-        // Systemd user units follow XDG config rules when that override is set
-        let unit_dir = systemd_user_dir()?;
-        let unit_path = unit_dir.join("unixnotis-daemon.service");
+        // Backend selection stays centralized so installer actions stay manager-agnostic
+        let service = service_manager_from_selection(service_manager)?;
 
         Ok(Self {
             repo_root,
             bin_dir,
-            unit_dir,
-            unit_path,
+            service,
         })
     }
 }
@@ -56,6 +82,81 @@ fn systemd_user_dir() -> Result<PathBuf> {
         Ok(base.join("systemd").join("user"))
     } else {
         Ok(home_dir()?.join(".config").join("systemd").join("user"))
+    }
+}
+
+fn dinit_user_dir() -> Result<PathBuf> {
+    if let Some(base) = xdg_config_home() {
+        Ok(base.join("dinit.d"))
+    } else {
+        Ok(home_dir()?.join(".config").join("dinit.d"))
+    }
+}
+
+fn runit_user_dir() -> Result<PathBuf> {
+    if let Some(path) = absolute_env_path("UNIXNOTIS_RUNIT_SERVICE_DIR")? {
+        return Ok(path);
+    }
+    if let Some(path) = absolute_env_path("SVDIR")? {
+        return Ok(path);
+    }
+    Ok(home_dir()?.join(".config").join("service"))
+}
+
+fn s6_user_dir() -> Result<PathBuf> {
+    if absolute_env_path("UNIXNOTIS_S6_DATA_DIR")?.is_some() {
+        // s6-db-reload -u assumes ~/.local/share/s6/sv on Artix local user services
+        // Refuse custom roots until reload/start commands can be proven against that layout
+        return Err(anyhow!(
+            "UNIXNOTIS_S6_DATA_DIR is not supported yet; s6 uses $HOME/.local/share/s6"
+        ));
+    }
+    // Artix documents local user s6 data under ~/.local/share/s6
+    // XDG_DATA_HOME is intentionally ignored until s6-db-reload can target custom roots
+    Ok(home_dir()?.join(".local").join("share").join("s6"))
+}
+
+fn s6_live_dir() -> Result<PathBuf> {
+    if let Some(path) = absolute_env_path("UNIXNOTIS_S6RC_LIVE_DIR")? {
+        return Ok(path);
+    }
+    let user = env::var("USER").map_err(|_| anyhow!("USER is not set"))?;
+    Ok(PathBuf::from("/run").join(user).join("s6-rc"))
+}
+
+fn absolute_env_path(name: &str) -> Result<Option<PathBuf>> {
+    let Ok(raw) = env::var(name) else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let path = PathBuf::from(trimmed);
+    if !path.is_absolute() {
+        return Err(anyhow!("{name} must be an absolute path"));
+    }
+    Ok(Some(path))
+}
+
+fn service_manager_from_selection(
+    service_manager: Option<ServiceManagerChoice>,
+) -> Result<ServiceManager> {
+    let choice = service_manager
+        .map(Ok)
+        .unwrap_or_else(service_manager_choice_from_environment)?;
+    match choice {
+        ServiceManagerChoice::Systemd => Ok(ServiceManager::systemd_user(systemd_user_dir()?)),
+        ServiceManagerChoice::Dinit => Ok(ServiceManager::dinit_user(dinit_user_dir()?)),
+        ServiceManagerChoice::Runit => Ok(ServiceManager::runit_user(runit_user_dir()?)),
+        ServiceManagerChoice::S6 => Ok(ServiceManager::s6_user(s6_user_dir()?, s6_live_dir()?)),
+    }
+}
+
+fn service_manager_choice_from_environment() -> Result<ServiceManagerChoice> {
+    match env::var("UNIXNOTIS_SERVICE_MANAGER") {
+        Ok(raw) => ServiceManagerChoice::parse(&raw),
+        Err(_) => Ok(ServiceManagerChoice::Systemd),
     }
 }
 
@@ -110,5 +211,5 @@ fn is_unixnotis_repo(cargo_toml: &Path) -> bool {
 }
 
 #[cfg(test)]
-#[path = "paths_tests.rs"]
+#[path = "tests/paths.rs"]
 mod tests;

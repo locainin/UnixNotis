@@ -90,34 +90,14 @@ pub fn step_label(kind: StepKind) -> &'static str {
         StepKind::ResetConfig => "Reset config files",
         StepKind::RestoreConfig => "Restore config backup",
         StepKind::InstallBinaries => "Install binaries",
-        StepKind::InstallService => "Install systemd unit",
+        StepKind::InstallService => "Install service artifact",
         StepKind::EnableService => "Enable user service",
-        StepKind::UninstallService => "Remove systemd unit",
+        StepKind::UninstallService => "Remove service artifact",
         StepKind::RemoveBinaries => "Remove binaries",
         StepKind::RemoveState => "Remove persisted state",
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::model::ActionMode;
-
-    use super::{build_plan, StepKind};
-
-    #[test]
-    fn install_plan_stays_focused_on_build_and_install() {
-        let plan = build_plan(ActionMode::Install);
-        assert_eq!(
-            plan,
-            vec![
-                StepKind::InstallCheck,
-                StepKind::Build,
-                StepKind::EnsureConfig,
-                StepKind::StopDaemon,
-                StepKind::InstallBinaries,
-                StepKind::InstallService,
-                StepKind::EnableService,
-            ]
-        );
-    }
-}
+#[path = "tests/plan.rs"]
+mod tests;

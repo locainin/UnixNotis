@@ -162,10 +162,34 @@ impl CommandWatch {
 }
 
 fn should_emit_watch_event(cmd: &str, line: &str) -> bool {
+    let cmd = cmd.trim();
+    let line = line.trim();
+    if line.is_empty() {
+        return false;
+    }
+
     // pactl subscribe emits events for all server activity; filter to sink/server changes.
-    if cmd.trim().starts_with("pactl subscribe") {
+    if cmd.starts_with("pactl subscribe") {
         let line = line.to_ascii_lowercase();
         return contains_token(&line, " on sink") || contains_token(&line, " on server");
+    }
+    if cmd.starts_with("nmcli") && cmd.contains(" monitor") {
+        // nmcli prints a startup status line before real NetworkManager events.
+        return !matches!(
+            line,
+            "NetworkManager is running" | "NetworkManager is not running"
+        );
+    }
+    if cmd.starts_with("udevadm monitor") {
+        // udevadm prints a banner describing the monitored source before events arrive.
+        return !line.starts_with("monitor will print the received events for:");
+    }
+    if cmd.starts_with("dbus-monitor") {
+        // dbus-monitor announces its own monitor connection before watched signals
+        let is_monitor_lifecycle = line.contains("sender=org.freedesktop.DBus")
+            && (line.contains("member=NameAcquired") || line.contains("member=NameLost"));
+
+        return !is_monitor_lifecycle;
     }
     true
 }

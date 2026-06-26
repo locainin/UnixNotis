@@ -7,7 +7,8 @@ use std::process::Command;
 
 use unixnotis_core::program_in_path;
 
-use crate::paths::InstallPaths;
+use crate::paths::{InstallPaths, ServiceManagerChoice};
+use crate::service_manager::{CommandSpec, ReadinessIssue, ServiceManager};
 
 use super::CheckItem;
 
@@ -39,12 +40,78 @@ pub(super) fn hyprland_check() -> CheckItem {
     }
 }
 
-pub(super) fn systemd_user_check() -> CheckItem {
-    match command_success("systemctl", &["--user", "show-environment"]) {
-        Ok(true) => CheckItem::ok("systemd --user", "session available"),
-        Ok(false) => CheckItem::fail("systemd --user", "session unavailable"),
-        Err(err) => CheckItem::fail("systemd --user", &format!("check failed: {err}")),
+pub(super) fn service_manager_check(service_manager: Option<ServiceManagerChoice>) -> CheckItem {
+    let Ok(paths) = InstallPaths::discover_with_service_manager(service_manager) else {
+        return CheckItem::fail("Service manager", "install paths unavailable");
+    };
+    service_manager_check_from(&paths.service)
+}
+
+fn service_manager_check_from(manager: &ServiceManager) -> CheckItem {
+    let issues = manager.readiness_issues();
+    if let Some(detail) = readiness_error_detail(&issues) {
+        // Hard readiness errors are shown before running optional availability probes
+        return CheckItem::fail("Service manager", &detail);
     }
+    if let Some(spec) = manager.availability_command() {
+        // Backends with a native availability command still report softer setup warnings
+        return availability_check_item(manager, &spec, &issues);
+    }
+    if let Some(detail) = readiness_warning_detail(manager, &issues) {
+        // Some experimental backends have no global probe, so warnings become the check result
+        return CheckItem::warn("Service manager", &detail);
+    }
+    // Some managers have no cheap global probe, so backend readiness is the availability check
+    CheckItem::ok("Service manager", &format!("{} ready", manager.label()))
+}
+
+fn availability_check_item(
+    manager: &ServiceManager,
+    spec: &CommandSpec,
+    issues: &[ReadinessIssue],
+) -> CheckItem {
+    match spec.to_command().status() {
+        Ok(status) if status.success() => match readiness_warning_detail(manager, issues) {
+            // A manager can be available while still needing user setup for autostart
+            Some(detail) => CheckItem::warn("Service manager", &detail),
+            None => CheckItem::ok("Service manager", &format!("{} available", manager.label())),
+        },
+        Ok(_) => CheckItem::fail(
+            "Service manager",
+            &format!("{} unavailable", manager.label()),
+        ),
+        Err(err) => CheckItem::fail("Service manager", &format!("check failed: {err}")),
+    }
+}
+
+pub(super) fn readiness_error_detail(issues: &[ReadinessIssue]) -> Option<String> {
+    // Errors are returned without a backend prefix because they are already specific
+    let errors = readiness_messages(issues, true);
+    (!errors.is_empty()).then(|| errors.join("; "))
+}
+
+pub(super) fn readiness_warning_detail(
+    manager: &ServiceManager,
+    issues: &[ReadinessIssue],
+) -> Option<String> {
+    // Warning detail names the backend so the setup hint is not detached from context
+    let warnings = readiness_messages(issues, false);
+    (!warnings.is_empty()).then(|| {
+        format!(
+            "{} ready with warnings: {}",
+            manager.label(),
+            warnings.join("; ")
+        )
+    })
+}
+
+pub(super) fn readiness_messages(issues: &[ReadinessIssue], errors: bool) -> Vec<String> {
+    issues
+        .iter()
+        // Severity filtering is kept pure for direct unit coverage
+        .filter(|issue| issue.is_error() == errors)
+        .map(|issue| issue.message().to_string())
+        .collect()
 }
 
 pub(super) fn cargo_check() -> CheckItem {
@@ -118,10 +185,10 @@ fn command_success(program: &str, args: &[&str]) -> Result<bool, String> {
 }
 
 fn install_paths_writable(paths: &InstallPaths) -> bool {
-    // Validate both binary and unit directories because install and uninstall touch both
+    // Validate both binary and service directories because install and uninstall touch both
     let bin_ok = path_is_writable(&paths.bin_dir);
-    let unit_ok = path_is_writable(&paths.unit_dir);
-    bin_ok && unit_ok
+    let service_ok = path_is_writable(paths.service.artifact_root());
+    bin_ok && service_ok
 }
 
 fn path_is_writable(path: &Path) -> bool {

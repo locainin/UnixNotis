@@ -49,7 +49,7 @@ media_css = "themes/custom/media.css"
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: Some(backup_dir.clone()),
-        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
     };
 
     restore_config(&mut ctx).expect("restore should succeed");
@@ -123,7 +123,7 @@ fn restore_config_skips_absolute_theme_targets() {
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: Some(backup_dir.clone()),
-        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
     };
 
     restore_config(&mut ctx).expect("restore should succeed");

@@ -1,4 +1,4 @@
-//! Shared CSS class hook facade
+//! Shared CSS class hook exports
 
 mod classes;
 

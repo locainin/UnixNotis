@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context, Result};
 use crate::paths::format_with_home;
 
 use super::super::{
-    actions_binaries::{
+    binaries::{
         resolve_install_binaries, resolve_install_binaries_best_effort, resolve_target_directory,
     },
     log_line, ActionContext,

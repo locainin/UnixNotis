@@ -23,7 +23,7 @@ fn strip_hyprland_bootstrap_block_handles_malformed_block() {
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: None,
-        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
     };
     let contents = format!("{start}\nexec-once = foo\n", start = HYPR_BOOTSTRAP_START);
     let result = strip_hyprland_bootstrap_block(&mut ctx, &contents, Path::new("hyprland.conf"));
@@ -48,7 +48,7 @@ fn strip_hyprland_bootstrap_block_removes_managed_block() {
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: None,
-        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
     };
     let contents = format!(
         "line-a\n{start}\nexec-once = foo\n{end}\nline-b\n",
@@ -76,7 +76,7 @@ fn strip_hyprland_bootstrap_block_removes_all_blocks() {
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: None,
-        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
     };
     let contents = format!(
         "line-a\n{start}\nexec-once = foo\n{end}\nline-b\n{start}\nexec-once = bar\n{end}\nline-c\n",

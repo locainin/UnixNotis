@@ -62,17 +62,22 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
             .unwrap_or(false)
     {
         lines.push(Line::from(""));
+        let service_artifact =
+            crate::paths::InstallPaths::discover_with_service_manager(app.service_manager)
+                .map(|paths| paths.service.artifact_label())
+                .unwrap_or("service artifact");
         lines.push(Line::from(Span::styled(
-            "Reinstall will overwrite binaries and the systemd unit.",
+            format!("Reinstall will overwrite binaries and the {service_artifact}."),
             Style::default().fg(Color::Yellow),
         )));
     }
     if matches!(mode, ActionMode::Install | ActionMode::Uninstall) {
         lines.push(Line::from(""));
         // Fall back to the default user bin path when discovery cannot run here
-        let bin_dir = crate::paths::InstallPaths::discover()
-            .map(|paths| format_with_home(&paths.bin_dir))
-            .unwrap_or_else(|_| "$HOME/.local/bin".to_string());
+        let bin_dir =
+            crate::paths::InstallPaths::discover_with_service_manager(app.service_manager)
+                .map(|paths| format_with_home(&paths.bin_dir))
+                .unwrap_or_else(|_| "$HOME/.local/bin".to_string());
         if matches!(mode, ActionMode::Install) {
             // Install builds release binaries and copies them into the user bin dir
             lines.push(Line::from(Span::styled(

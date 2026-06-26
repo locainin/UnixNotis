@@ -6,7 +6,7 @@ mod shell;
 mod system;
 
 use crate::model::ActionMode;
-use crate::paths::InstallPaths;
+use crate::paths::{InstallPaths, ServiceManagerChoice};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CheckState {
@@ -15,16 +15,22 @@ pub enum CheckState {
     Fail,
 }
 
+#[cfg(test)]
+#[path = "tests/system.rs"]
+mod system_tests;
+
+#[derive(Clone, Debug)]
 pub struct CheckItem {
     pub label: &'static str,
     pub state: CheckState,
     pub detail: String,
 }
 
+#[derive(Clone, Debug)]
 pub struct Checks {
     pub wayland: CheckItem,
     pub hyprland: CheckItem,
-    pub systemd_user: CheckItem,
+    pub service_manager: CheckItem,
     pub cargo: CheckItem,
     pub pkg_config: CheckItem,
     pub gtk4_css_features: CheckItem,
@@ -36,10 +42,10 @@ pub struct Checks {
 }
 
 impl Checks {
-    pub fn run() -> Self {
+    pub fn run(service_manager: Option<ServiceManagerChoice>) -> Self {
         let wayland = system::wayland_check();
         let hyprland = system::hyprland_check();
-        let systemd_user = system::systemd_user_check();
+        let service_manager_check = system::service_manager_check(service_manager);
         let cargo = system::cargo_check();
         let pkg_config = system::pkg_config_check();
         let gtk4_css_features = gtk::gtk4_css_features_check(&pkg_config);
@@ -47,23 +53,24 @@ impl Checks {
         let busctl = system::busctl_check();
         let dbus_update_env = system::dbus_update_env_check();
 
-        let (install_paths, path_contains_bin) = match InstallPaths::discover() {
-            Ok(paths) => {
-                // Path discovery runs once so every later row reports the same install target
-                let install_paths = system::install_paths_check(&paths);
-                let path_contains_bin = shell::path_check_item(&paths);
-                (install_paths, path_contains_bin)
-            }
-            Err(err) => (
-                CheckItem::warn("Install paths", &format!("discovery failed: {err}")),
-                CheckItem::warn("Shell PATH", "could not determine install bin path"),
-            ),
-        };
+        let (install_paths, path_contains_bin) =
+            match InstallPaths::discover_with_service_manager(service_manager) {
+                Ok(paths) => {
+                    // Path discovery runs once so every later row reports the same install target
+                    let install_paths = system::install_paths_check(&paths);
+                    let path_contains_bin = shell::path_check_item(&paths);
+                    (install_paths, path_contains_bin)
+                }
+                Err(err) => (
+                    CheckItem::warn("Install paths", &format!("discovery failed: {err}")),
+                    CheckItem::warn("Shell PATH", "could not determine install bin path"),
+                ),
+            };
 
         Self {
             wayland,
             hyprland,
-            systemd_user,
+            service_manager: service_manager_check,
             cargo,
             pkg_config,
             gtk4_css_features,
@@ -97,8 +104,8 @@ impl Checks {
                 if self.wayland.state == CheckState::Fail {
                     return Err("Wayland session required".to_string());
                 }
-                if self.systemd_user.state == CheckState::Fail {
-                    return Err("systemd --user session required".to_string());
+                if self.service_manager.state == CheckState::Fail {
+                    return Err("supported service manager session required".to_string());
                 }
                 if self.cargo.state == CheckState::Fail {
                     return Err("cargo is required for installation".to_string());
@@ -114,9 +121,9 @@ impl Checks {
                 }
             }
             ActionMode::Uninstall => {
-                // Uninstall still needs systemd and writable paths to stop units cleanly
-                if self.systemd_user.state == CheckState::Fail {
-                    return Err("systemd --user session required".to_string());
+                // Uninstall still needs the active backend and writable paths to stop cleanly
+                if self.service_manager.state == CheckState::Fail {
+                    return Err("supported service manager session required".to_string());
                 }
                 if self.install_paths.state == CheckState::Fail {
                     return Err("install paths are not writable".to_string());

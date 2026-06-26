@@ -46,16 +46,24 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
         if daemon.systemd_active {
             let is_unixnotis = daemon.name == "unixnotis-daemon";
             log_line(ctx, format!("Stopping systemd unit {}", daemon.unit));
-            let mut command = Command::new("systemctl");
-            if is_unixnotis {
-                command.args(["--user", "stop", daemon.unit.as_str()]);
+            let (label, command) = if is_unixnotis {
+                // Reinstall can race with session hooks that start the daemon when the bus name drops
+                // The irreversible stop job keeps that start request from canceling the stop in flight
+                let spec = ctx
+                    .paths
+                    .service
+                    .stop_for_reinstall_command()
+                    .ok_or_else(|| {
+                        anyhow!("service manager cannot stop unixnotis for reinstall")
+                    })?;
+                (spec.label().to_string(), spec.to_command())
             } else {
+                let mut command = Command::new("systemctl");
                 command.args(["--user", "disable", "--now", daemon.unit.as_str()]);
-            }
-            let label = if is_unixnotis {
-                format!("systemctl --user stop {}", daemon.unit)
-            } else {
-                format!("systemctl --user disable --now {}", daemon.unit)
+                (
+                    format!("systemctl --user disable --now {}", daemon.unit),
+                    command,
+                )
             };
             if let Err(err) = run_command(ctx, &label, command, None) {
                 if is_systemd_unit_inactive(&daemon.unit)? {
@@ -178,6 +186,7 @@ fn pid_matches_comm(pid: u32, expected: &str) -> Result<bool> {
 }
 
 fn is_systemd_unit_inactive(unit: &str) -> Result<bool> {
+    // A failed stop command is only recoverable when systemd agrees the unit is no longer running
     let output = Command::new("systemctl")
         .args(["--user", "is-active", unit])
         .output()
@@ -200,26 +209,5 @@ fn systemd_stop_error_is_satisfied_by_state(state: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::systemd_stop_error_is_satisfied_by_state;
-
-    #[test]
-    fn systemd_stop_error_can_continue_when_unit_is_inactive() {
-        assert!(systemd_stop_error_is_satisfied_by_state("inactive"));
-    }
-
-    #[test]
-    fn systemd_stop_error_can_continue_when_unit_is_failed() {
-        assert!(systemd_stop_error_is_satisfied_by_state("failed"));
-    }
-
-    #[test]
-    fn systemd_stop_error_still_fails_when_unit_stays_active() {
-        assert!(!systemd_stop_error_is_satisfied_by_state("active"));
-    }
-
-    #[test]
-    fn systemd_stop_error_still_fails_when_unit_is_transitioning() {
-        assert!(!systemd_stop_error_is_satisfied_by_state("deactivating"));
-    }
-}
+#[path = "tests/daemon.rs"]
+mod tests;
