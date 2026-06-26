@@ -18,11 +18,16 @@ pub(in crate::actions::install) enum ServiceArtifactWrite {
 pub(in crate::actions::install) fn write_service_artifacts(
     ctx: &mut ActionContext,
 ) -> Result<ServiceArtifactWrite> {
-    let artifacts = ctx.paths.service.install_artifacts(&ctx.paths.bin_dir);
-    let mut changed = false;
-    for artifact in &artifacts {
-        // Each artifact decides its own filesystem shape so backends are not forced into unit files
-        changed |= write_service_artifact(ctx, artifact)?;
+    let steady_artifacts = ctx.paths.service.artifacts(&ctx.paths.bin_dir);
+    let install_artifacts = ctx.paths.service.install_artifacts(&ctx.paths.bin_dir);
+    let mut steady_changed = false;
+    for artifact in &install_artifacts {
+        // Install artifacts can include short-lived ordering gates, such as runit's down file
+        // Only steady artifacts should make later reload/start logging claim service bytes changed
+        let changed = write_service_artifact(ctx, artifact)?;
+        if install_artifact_is_steady(&steady_artifacts, artifact) {
+            steady_changed |= changed;
+        }
     }
     for artifact in ctx.paths.service.pre_start_artifacts_to_write() {
         // Start gates are temporary and should not affect steady install-state checks
@@ -32,12 +37,21 @@ pub(in crate::actions::install) fn write_service_artifacts(
 
     // Reload only matters when the active service manager has new bytes to pick up
     ctx.service_reload_required
-        .store(changed, Ordering::Release);
-    if changed {
+        .store(steady_changed, Ordering::Release);
+    if steady_changed {
         Ok(ServiceArtifactWrite::CreatedOrUpdated)
     } else {
         Ok(ServiceArtifactWrite::Unchanged)
     }
+}
+
+fn install_artifact_is_steady(
+    steady_artifacts: &[ServiceArtifact],
+    artifact: &ServiceArtifact,
+) -> bool {
+    // Equality includes the expected path, shape, contents, and mode
+    // That keeps temporary install-only files from masquerading as service changes
+    steady_artifacts.iter().any(|steady| steady == artifact)
 }
 
 pub(crate) fn write_service_artifact(
