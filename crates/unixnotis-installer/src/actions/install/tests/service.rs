@@ -2,6 +2,7 @@ use crate::paths::InstallPaths;
 
 mod backend_artifacts;
 mod lifecycle;
+mod uninstall_safety;
 mod writes;
 
 fn expected_primary_artifact_contents(paths: &InstallPaths) -> String {
