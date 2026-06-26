@@ -17,9 +17,13 @@ pub(in crate::actions::install::service) fn write_service_symlink(
             // Relative links are compared as stored, matching how the backend declared them
             return Ok(false);
         }
-        // Only an existing symlink can be replaced by a new symlink target
-        fs::remove_file(path)
-            .with_context(|| format!("failed to replace {}", format_with_home(path)))?;
+        // A different target means another owner may be using this enablement path
+        return Err(anyhow!(
+            "cannot replace service symlink {} because it points to {} instead of {}",
+            format_with_home(path),
+            format_with_home(&existing),
+            format_with_home(target)
+        ));
     } else {
         // Existing non-links are left alone so enablement links cannot overwrite user files
         reject_existing_non_symlink(path)?;

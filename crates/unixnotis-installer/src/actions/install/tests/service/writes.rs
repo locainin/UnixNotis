@@ -158,6 +158,43 @@ fn write_service_artifact_rejects_symlink_parent_component() {
 }
 
 #[test]
+fn write_service_artifact_rejects_non_matching_symlink_target() {
+    let root = test_root("install-service-symlink-target-reject");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    fs::create_dir_all(&root).expect("make root");
+    let existing_target = root.join("existing-target");
+    let expected_target = root.join("expected-target");
+    let link_path = root.join("service-link");
+    fs::write(&existing_target, "existing").expect("write existing target");
+    fs::write(&expected_target, "expected").expect("write expected target");
+    // A symlink with a different target could belong to another manager or a user hand edit
+    symlink(&existing_target, &link_path).expect("create existing service link");
+    let artifact = ServiceArtifact {
+        path: link_path.clone(),
+        kind: ServiceArtifactKind::Symlink {
+            target: expected_target,
+        },
+        contents: None,
+        mode: None,
+    };
+
+    let err = write_service_artifact(&ctx, &artifact).expect_err("foreign symlink is not replaced");
+
+    // The existing link target stays intact, matching uninstall's conservative ownership check
+    assert!(err.to_string().contains("cannot replace service symlink"));
+    assert_eq!(
+        fs::read_link(&link_path).expect("service link should remain"),
+        existing_target
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn install_replaces_regular_owned_artifact_but_rejects_unsafe_existing_path() {
     let root = test_root("install-service-owned-replace");
     let paths = test_paths(&root);
