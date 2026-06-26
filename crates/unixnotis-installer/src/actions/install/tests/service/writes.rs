@@ -1,5 +1,6 @@
 use std::fs;
-use std::os::unix::fs::{symlink, PermissionsExt};
+use std::os::unix::fs::{symlink, FileTypeExt, PermissionsExt};
+use std::os::unix::net::UnixListener;
 
 use crate::detect::Detection;
 use crate::model::ActionMode;
@@ -227,5 +228,38 @@ fn install_replaces_regular_owned_artifact_but_rejects_unsafe_existing_path() {
         fs::read_to_string(&artifact.path).expect("regular file should remain"),
         "not a symlink"
     );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn write_service_artifact_rejects_socket_artifact_path() {
+    let root = test_root("install-service-special-file-reject");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    fs::create_dir_all(&root).expect("make root");
+    let socket_path = root.join("service.socket");
+    // A Unix socket is a simple special file that must never be read as service text
+    let _listener = UnixListener::bind(&socket_path).expect("create socket artifact path");
+    let artifact = ServiceArtifact {
+        path: socket_path.clone(),
+        kind: ServiceArtifactKind::File,
+        contents: Some("new contents".to_string()),
+        mode: None,
+    };
+
+    let err = write_service_artifact(&ctx, &artifact).expect_err("socket path is unsafe");
+
+    // The socket remains untouched and the writer fails before read_to_string can block on it
+    assert!(err
+        .to_string()
+        .contains("cannot replace non-regular service artifact"));
+    assert!(fs::symlink_metadata(&socket_path)
+        .expect("socket should remain")
+        .file_type()
+        .is_socket());
     let _ = fs::remove_dir_all(&root);
 }

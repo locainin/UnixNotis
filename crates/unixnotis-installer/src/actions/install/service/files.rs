@@ -54,7 +54,7 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
 pub(in crate::actions::install::service) fn ensure_regular_artifact_file_path(
     path: &Path,
 ) -> Result<bool> {
-    // Existing service files may be replaced, but never through a symlink or directory
+    // Existing service files may be replaced only when the old path is a plain file
     match fs::symlink_metadata(path) {
         // Replacing a symlink would write through attacker-controlled filesystem state
         Ok(metadata) if metadata.file_type().is_symlink() => Err(anyhow!(
@@ -66,7 +66,13 @@ pub(in crate::actions::install::service) fn ensure_regular_artifact_file_path(
             "cannot replace directory service artifact at {}",
             format_with_home(path)
         )),
-        Ok(_) => Ok(true),
+        // Regular files are safe to compare and replace through the atomic writer
+        Ok(metadata) if metadata.file_type().is_file() => Ok(true),
+        // Sockets, fifos, and device nodes can block or behave strangely when read
+        Ok(_) => Err(anyhow!(
+            "cannot replace non-regular service artifact at {}",
+            format_with_home(path)
+        )),
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(false),
         Err(err) => {
             Err(err).with_context(|| format!("failed to inspect {}", format_with_home(path)))
