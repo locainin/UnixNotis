@@ -55,13 +55,22 @@ pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
 
 pub(crate) fn enable_service(ctx: &mut ActionContext) -> Result<()> {
     if ctx.service_reload_required.load(Ordering::Acquire) {
-        // A full user-manager reload is expensive on some setups, so run it only when needed
-        log_line(
-            ctx,
-            format!("Reloading {}", ctx.paths.service.manager_label()),
-        );
         if let Some(spec) = ctx.paths.service.reload_after_artifact_change() {
+            // A full user-manager reload is expensive on some setups, so run it only when needed
+            log_line(
+                ctx,
+                format!("Reloading {}", ctx.paths.service.manager_label()),
+            );
             run_command_spec(ctx, &spec)?;
+        } else {
+            // Some managers discover changed artifacts during start and have no safe reload step
+            log_line(
+                ctx,
+                format!(
+                    "Skipping {} reload because this backend reloads on start",
+                    ctx.paths.service.manager_label()
+                ),
+            );
         }
     } else {
         log_line(
