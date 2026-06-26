@@ -129,7 +129,8 @@ pub(in crate::actions::install::service) fn remove_managed_directory(path: &Path
         ));
     }
 
-    fs::remove_dir_all(path).with_context(|| format!("failed to remove {}", format_with_home(path)))
+    remove_managed_directory_tree(path)
+        .with_context(|| format!("failed to remove {}", format_with_home(path)))
 }
 
 fn inspect_or_create_directory_component(full_path: &Path, current: &Path) -> Result<()> {
@@ -172,4 +173,54 @@ fn ensure_artifact_directory_path(path: &Path) -> Result<bool> {
             Err(err).with_context(|| format!("failed to inspect {}", format_with_home(path)))
         }
     }
+}
+
+fn remove_managed_directory_tree(path: &Path) -> Result<()> {
+    // Each level is inspected before reading children so symlink swaps do not get followed
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect {}", format_with_home(path)))?;
+    if metadata.file_type().is_symlink() {
+        return Err(anyhow!(
+            "refusing symlink inside managed service directory at {}",
+            format_with_home(path)
+        ));
+    }
+    if !metadata.file_type().is_dir() {
+        return Err(anyhow!(
+            "refusing non-directory inside managed service directory at {}",
+            format_with_home(path)
+        ));
+    }
+
+    for entry in
+        fs::read_dir(path).with_context(|| format!("failed to read {}", format_with_home(path)))?
+    {
+        let entry = entry.with_context(|| format!("failed to read {}", format_with_home(path)))?;
+        let child = entry.path();
+        let child_metadata = fs::symlink_metadata(&child)
+            .with_context(|| format!("failed to inspect {}", format_with_home(&child)))?;
+
+        if child_metadata.file_type().is_symlink() {
+            // Backend-owned service directories should not need symlink children
+            // Failing closed avoids deleting or traversing a path that changed under the installer
+            return Err(anyhow!(
+                "refusing symlink inside managed service directory at {}",
+                format_with_home(&child)
+            ));
+        }
+        if child_metadata.file_type().is_dir() {
+            remove_managed_directory_tree(&child)?;
+        } else if child_metadata.file_type().is_file() {
+            fs::remove_file(&child)
+                .with_context(|| format!("failed to remove {}", format_with_home(&child)))?;
+        } else {
+            // Sockets, fifos, and device nodes should not appear in installer-owned service trees
+            return Err(anyhow!(
+                "refusing special file inside managed service directory at {}",
+                format_with_home(&child)
+            ));
+        }
+    }
+
+    fs::remove_dir(path).with_context(|| format!("failed to remove {}", format_with_home(path)))
 }
