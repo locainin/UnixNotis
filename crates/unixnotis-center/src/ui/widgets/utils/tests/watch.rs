@@ -53,3 +53,20 @@ fn custom_watch_commands_emit_non_empty_lines() {
     assert!(should_emit_watch_event("echo test", "anything"));
     assert!(!should_emit_watch_event("echo test", ""));
 }
+
+#[test]
+fn custom_watch_commands_are_not_filtered_like_known_monitors() {
+    // The startup-noise filters are intentionally tied to known monitor commands
+    // Custom output can contain similar words and still be a real refresh event
+    assert!(should_emit_watch_event(
+        "echo dbus-monitor",
+        "signal time=1 sender=org.freedesktop.DBus member=NameAcquired"
+    ));
+
+    // Wrapper commands stay visible unless a future parser can prove their target
+    // This avoids dropping user-defined watcher output based on a name substring
+    assert!(should_emit_watch_event(
+        "my-nmcli-wrapper monitor",
+        "NetworkManager is running"
+    ));
+}
