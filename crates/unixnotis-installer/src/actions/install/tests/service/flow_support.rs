@@ -9,7 +9,7 @@ use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
 
-use super::super::super::service::{enable_service, install_service};
+use super::super::super::service::{enable_service, install_service, uninstall_service};
 use super::super::support::{test_context, test_root};
 
 pub(super) static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -80,6 +80,15 @@ pub(super) fn run_enable_only(paths: &InstallPaths) -> anyhow::Result<()> {
     };
     let mut ctx = test_context(&detection, paths, ActionMode::Install);
     enable_service(&mut ctx)
+}
+
+pub(super) fn run_uninstall_only(paths: &InstallPaths) -> anyhow::Result<()> {
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, paths, ActionMode::Uninstall);
+    uninstall_service(&mut ctx)
 }
 
 pub(super) fn flow_paths(root: &Path, service: ServiceManager) -> InstallPaths {
