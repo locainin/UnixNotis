@@ -1,5 +1,6 @@
 use std::fs;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{symlink, FileTypeExt};
+use std::os::unix::net::UnixListener;
 
 use crate::detect::Detection;
 use crate::model::ActionMode;
@@ -171,6 +172,40 @@ fn uninstall_rejects_symlink_inside_managed_directory() {
         fs::read_link(&child_link).expect("child link should remain untouched"),
         target
     );
+    assert!(service_dir.exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn uninstall_rejects_socket_inside_managed_directory() {
+    let root = test_root("sock");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    // Unix socket paths are small, so this fixture keeps filesystem names short
+    let service_dir = root.join("m");
+    let socket_path = service_dir.join("s");
+    let artifact = ServiceArtifact {
+        path: service_dir.clone(),
+        kind: ServiceArtifactKind::ManagedDirectory,
+        contents: None,
+        mode: None,
+    };
+    write_service_artifact(&ctx, &artifact).expect("managed directory should be written");
+    // Special files inside an owned tree are treated as tampering or unexpected runtime state
+    let _listener = UnixListener::bind(&socket_path).expect("create socket child");
+
+    let err = remove_service_artifact(&artifact).expect_err("socket child should be rejected");
+
+    // The recursive remover fails closed and does not delete the containing service directory
+    assert!(format!("{err:#}").contains("refusing special file inside managed service directory"));
+    assert!(fs::symlink_metadata(&socket_path)
+        .expect("socket child should remain")
+        .file_type()
+        .is_socket());
     assert!(service_dir.exists());
     let _ = fs::remove_dir_all(&root);
 }
