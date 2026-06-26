@@ -9,6 +9,7 @@ fn runit_backend_renders_service_directory_and_run_script() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
     let artifacts = manager.artifacts(Path::new("/tmp/bin"));
 
+    // Steady state is only the managed directory plus executable run script
     assert_eq!(artifacts.len(), 2);
     assert_eq!(
         artifacts[0].path,
@@ -37,6 +38,7 @@ fn runit_backend_install_artifacts_write_down_before_run_script() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
     let artifacts = manager.install_artifacts(Path::new("/tmp/bin"));
 
+    // Install-time state includes the temporary down gate to prevent runsvdir races
     assert_eq!(artifacts.len(), 3);
     assert_eq!(
         artifacts[0].path,
@@ -47,6 +49,7 @@ fn runit_backend_install_artifacts_write_down_before_run_script() {
         artifacts[1].path,
         PathBuf::from("/tmp/service/unixnotis-daemon/down")
     );
+    // The down gate is placed before ./run so a watching supervisor cannot start early
     assert_eq!(artifacts[1].kind, ServiceArtifactKind::File);
     assert_eq!(artifacts[1].mode, Some(0o600));
     assert_eq!(artifacts[1].contents.as_deref(), Some(""));
@@ -68,9 +71,11 @@ fn runit_backend_commands_match_expected_behavior() {
     assert_eq!(availability.program(), "sv");
     assert_eq!(availability.args(), &["-V"]);
 
+    // A watched service directory is the enablement source, not an sv query
     assert!(manager.is_enabled_command().is_none());
     assert!(manager.reload_after_artifact_change().is_none());
 
+    // sv check tracks the requested state, so active status must parse sv status output
     let active = manager
         .active_probe()
         .expect("runit can parse current status");
@@ -109,6 +114,7 @@ fn runit_backend_environment_sync_uses_envdir_artifacts() {
         ("XDG_RUNTIME_DIR", "/run/user/1000\t ".to_string()),
     ];
 
+    // runit has no manager environment import command, so sync is pure envdir artifacts
     let commands = manager.environment_sync_commands(&vars, true);
     let artifacts = manager.environment_sync_artifacts(&names, &vars);
 
@@ -136,6 +142,7 @@ fn runit_backend_environment_sync_uses_envdir_artifacts() {
         PathBuf::from("/tmp/service/unixnotis-daemon/env/XDG_RUNTIME_DIR")
     );
     assert_eq!(artifacts[3].contents.as_deref(), Some("/run/user/1000\n"));
+    // PATH is intentionally excluded because the run script sets a safe fixed PATH first
     assert!(!artifacts
         .iter()
         .any(|artifact| artifact.path.ends_with("PATH")));
@@ -148,6 +155,7 @@ fn runit_backend_pre_start_removes_down_after_env_sync() {
     let staged = manager.pre_start_artifacts_to_write();
     let artifacts = manager.install_artifacts(Path::new("/tmp/bin"));
 
+    // The same down file written during install is removed immediately before sv start
     assert_eq!(gates.len(), 1);
     assert!(staged.is_empty());
     assert_eq!(

@@ -13,6 +13,7 @@ fn s6_backend_renders_service_source_and_default_bundle_member() {
     );
     let artifacts = manager.artifacts(Path::new("/tmp/bin"));
 
+    // s6-rc source state includes the longrun, run script, and default bundle membership
     assert_eq!(artifacts.len(), 4);
     assert_eq!(
         artifacts[0].path,
@@ -51,8 +52,10 @@ fn s6_backend_commands_match_expected_behavior() {
         PathBuf::from("/run/user/s6-rc"),
     );
 
+    // Readiness checks own tool validation because availability needs several s6 programs
     assert!(manager.availability_command().is_none());
     assert!(manager.is_enabled_command().is_none());
+    // Database reload compiles the user source tree before s6-rc can change the live service
     assert_eq!(
         manager
             .reload_after_artifact_change()
@@ -93,6 +96,7 @@ fn s6_backend_active_probe_parses_s6_svstat_output() {
     );
     let active = manager.active_probe().expect("s6 active probe");
 
+    // s6-svstat -o up prints a boolean, so parsing stays exact and cheap
     assert_eq!(active.parser_matches("true\n"), Some(true));
     assert_eq!(active.parser_matches("false\n"), Some(false));
 }
@@ -109,6 +113,7 @@ fn s6_backend_environment_sync_uses_envdir_artifacts() {
         ("XDG_RUNTIME_DIR", "/run/user/1000\t ".to_string()),
     ];
 
+    // s6-envdir reads files at service start, so sync writes artifact files instead of commands
     let artifacts = manager.environment_sync_artifacts(&names, &vars);
 
     assert_eq!(artifacts.len(), 3);
@@ -126,6 +131,7 @@ fn s6_backend_environment_sync_uses_envdir_artifacts() {
         PathBuf::from("/tmp/s6-data/sv/unixnotis-daemon/env/XDG_RUNTIME_DIR")
     );
     assert_eq!(artifacts[2].contents.as_deref(), Some("/run/user/1000\n"));
+    // PATH is excluded for the same reason as runit: the run script fixes lookup first
     assert!(!artifacts
         .iter()
         .any(|artifact| artifact.path.ends_with("PATH")));
@@ -141,6 +147,7 @@ fn s6_backend_hyprland_startup_lines_update_envdir_and_reload_database() {
 
     let commands = manager.hyprland_startup_commands(&vars);
 
+    // Hyprland receives one shell line because it does not manage multi-step service hooks
     assert_eq!(commands.len(), 1);
     assert!(commands[0].starts_with("sh -lc "));
     assert!(commands[0].contains("[ ! -L \"$envdir\" ] || exit 1"));

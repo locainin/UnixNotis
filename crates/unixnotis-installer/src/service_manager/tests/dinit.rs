@@ -15,6 +15,7 @@ fn dinit_backend_renders_exact_service_artifact() {
         .find(|artifact| artifact.path == Path::new("/tmp/dinit.d/unixnotis-daemon"))
         .expect("dinit service artifact should exist");
 
+    // Dinit service descriptions are simple files, unlike runit and s6 service directories
     assert_eq!(service.kind, ServiceArtifactKind::File);
     assert_eq!(
         service
@@ -32,6 +33,7 @@ fn dinit_backend_renders_boot_dependency_artifacts() {
     let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
     let artifacts = manager.artifacts(std::path::Path::new("/tmp/bin"));
 
+    // Persistence is represented by UnixNotis-owned boot.d state instead of dinitctl enable
     assert_eq!(artifacts.len(), 3);
     assert_eq!(artifacts[0].path, PathBuf::from("/tmp/dinit.d/boot.d"));
     assert_eq!(artifacts[0].kind, ServiceArtifactKind::Directory);
@@ -57,6 +59,7 @@ fn dinit_backend_commands_match_expected_behavior() {
     assert_eq!(availability.program(), "dinitctl");
     assert_eq!(availability.args(), &["--user", "--quiet", "list"]);
 
+    // Enablement is artifact-backed, so no manager command should be required for install state
     assert!(manager.is_enabled_command().is_none());
 
     let active = manager
@@ -72,6 +75,7 @@ fn dinit_backend_commands_match_expected_behavior() {
         ]
     );
 
+    // First install should not reload a service that dinit has not loaded yet
     assert!(manager.reload_after_artifact_change().is_none());
 
     let enable = manager
@@ -114,6 +118,7 @@ fn dinit_enabled_state_uses_boot_symlink_artifact() {
     fs::write(&service, "type = process\n").expect("service file");
     symlink("../unixnotis-daemon", &boot_link).expect("boot symlink");
 
+    // Correct service file plus expected boot symlink proves startup persistence
     assert_eq!(manager.enabled_by_artifacts(), Some(true));
 
     let _ = fs::remove_dir_all(root);
@@ -130,6 +135,7 @@ fn dinit_enabled_state_rejects_wrong_boot_symlink_target() {
     fs::write(&service, "type = process\n").expect("service file");
     symlink("../other-service", &boot_link).expect("boot symlink");
 
+    // A boot link with the right name but wrong target is no longer installer-owned state
     assert_eq!(manager.enabled_by_artifacts(), Some(false));
 
     let _ = fs::remove_dir_all(root);

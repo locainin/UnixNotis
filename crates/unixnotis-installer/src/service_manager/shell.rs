@@ -22,10 +22,10 @@ pub(super) fn envdir_sync_prelude(env_dir: &Path) -> Vec<String> {
 /// s6-envdir treat empty envdir files as an unset request
 pub(super) fn render_envdir_shell_update(name: &str) -> String {
     [
-        format!("tmp=$(mktemp \"$envdir/.{name}.XXXXXX\") || exit"),
-        format!("printenv {name} > \"$tmp\" || : > \"$tmp\""),
-        "chmod 600 \"$tmp\" || { rm -f \"$tmp\"; exit 1; }".to_string(),
-        format!("mv -f \"$tmp\" \"$envdir/{name}\" || {{ rm -f \"$tmp\"; exit 1; }}"),
+        create_envdir_temp_file(name),
+        write_envdir_temp_file(name),
+        chmod_envdir_temp_file(),
+        replace_envdir_file(name),
     ]
     .join("; ")
 }
@@ -83,6 +83,30 @@ fn create_envdir() -> String {
 
 fn verify_real_envdir() -> String {
     r#"[ -d "$envdir" ] && [ ! -L "$envdir" ] || exit 1"#.to_string()
+}
+
+fn create_envdir_temp_file(name: &str) -> String {
+    // mktemp creates a fresh path under the already-verified envdir
+    // The hidden prefix keeps partial writes out of normal envdir reads
+    format!("tmp=$(mktemp \"$envdir/.{name}.XXXXXX\") || exit")
+}
+
+fn write_envdir_temp_file(name: &str) -> String {
+    // printenv failure means the variable is absent, not that sync should fail
+    // Empty envdir files intentionally unset stale values for chpst and s6-envdir
+    format!("printenv {name} > \"$tmp\" || : > \"$tmp\"")
+}
+
+fn chmod_envdir_temp_file() -> String {
+    // Keep session paths private even when the user's umask is permissive
+    // Cleanup on chmod failure avoids leaving a readable temp file behind
+    "chmod 600 \"$tmp\" || { rm -f \"$tmp\"; exit 1; }".to_string()
+}
+
+fn replace_envdir_file(name: &str) -> String {
+    // mv replaces the env file path instead of appending or following shell redirects
+    // Cleanup on mv failure keeps the envdir from filling with stale temp files
+    format!("mv -f \"$tmp\" \"$envdir/{name}\" || {{ rm -f \"$tmp\"; exit 1; }}")
 }
 
 fn envdir_value(value: &str) -> String {

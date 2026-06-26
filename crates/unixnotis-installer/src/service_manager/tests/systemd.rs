@@ -7,6 +7,7 @@ fn systemd_backend_renders_exact_unit_artifact() {
     let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
     let artifacts = manager.artifacts(std::path::Path::new("/tmp/bin"));
 
+    // Systemd is the stable default, so this refactor must keep the unit byte-for-byte stable
     assert_eq!(artifacts.len(), 1);
     assert_eq!(
         artifacts[0].path,
@@ -38,6 +39,7 @@ fn systemd_backend_renders_exact_unit_artifact() {
 fn systemd_backend_commands_match_existing_behavior() {
     let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
 
+    // Availability should remain a read-only user-manager query
     let availability = manager
         .availability_command()
         .expect("systemd has an availability command");
@@ -53,6 +55,7 @@ fn systemd_backend_commands_match_existing_behavior() {
         ]
     );
 
+    // Enabled and active probes intentionally use quiet status checks for fast install-state reads
     let enabled = manager
         .is_enabled_command()
         .expect("systemd has an enabled-state command");
@@ -69,6 +72,7 @@ fn systemd_backend_commands_match_existing_behavior() {
         &["--user", "is-active", "--quiet", UNIXNOTIS_DAEMON_SERVICE]
     );
 
+    // Unit file changes still require daemon-reload before enable/start
     let reload = manager
         .reload_after_artifact_change()
         .expect("systemd reloads after unit changes");
@@ -93,6 +97,7 @@ fn systemd_backend_commands_match_existing_behavior() {
         &["--user", "disable", "--now", UNIXNOTIS_DAEMON_SERVICE]
     );
 
+    // Reinstall uses replace-irreversibly so session autostart cannot cancel the stop job
     let stop = manager
         .stop_for_reinstall_command()
         .expect("systemd can stop during reinstall");
@@ -114,6 +119,7 @@ fn hyprland_startup_lines_come_from_selected_backend() {
 
     let commands = manager.hyprland_startup_commands(&vars);
 
+    // Hyprland systemd lines stay explicit because they run from a login-session config file
     assert_eq!(
         commands,
         vec![
@@ -132,6 +138,7 @@ fn environment_sync_commands_come_from_selected_backend() {
         ("XDG_RUNTIME_DIR", "/run/user/1000".to_string()),
     ];
 
+    // D-Bus sync runs first because systemd activation and DBus activation are separate stores
     let with_dbus = manager.environment_sync_commands(&vars, true);
     assert_eq!(with_dbus.len(), 2);
     assert_eq!(with_dbus[0].program(), "dbus-update-activation-environment");
