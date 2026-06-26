@@ -2,6 +2,7 @@ use crate::paths::InstallPaths;
 
 mod backend_artifacts;
 mod flow;
+mod flow_failures;
 mod flow_support;
 mod lifecycle;
 mod uninstall_safety;

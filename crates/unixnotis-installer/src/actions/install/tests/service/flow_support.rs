@@ -117,6 +117,13 @@ pub(super) fn write_fake_tools(fake_bin: &Path, log_path: &Path, mode: FakeToolM
     }
 }
 
+pub(super) fn fake_failure_env(program: &'static str, contains: &'static str) -> [EnvGuard; 2] {
+    [
+        EnvGuard::set("UNIXNOTIS_FAKE_FAIL_PROGRAM", program),
+        EnvGuard::set("UNIXNOTIS_FAKE_FAIL_CONTAINS", contains),
+    ]
+}
+
 pub(super) fn read_calls(log_path: &Path) -> Vec<String> {
     // Each fake process appends one line, making order assertions deterministic
     fs::read_to_string(log_path)
