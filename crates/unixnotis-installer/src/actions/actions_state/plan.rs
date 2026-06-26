@@ -99,25 +99,5 @@ pub fn step_label(kind: StepKind) -> &'static str {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::model::ActionMode;
-
-    use super::{build_plan, StepKind};
-
-    #[test]
-    fn install_plan_stays_focused_on_build_and_install() {
-        let plan = build_plan(ActionMode::Install);
-        assert_eq!(
-            plan,
-            vec![
-                StepKind::InstallCheck,
-                StepKind::Build,
-                StepKind::EnsureConfig,
-                StepKind::StopDaemon,
-                StepKind::InstallBinaries,
-                StepKind::InstallService,
-                StepKind::EnableService,
-            ]
-        );
-    }
-}
+#[path = "tests/plan.rs"]
+mod tests;

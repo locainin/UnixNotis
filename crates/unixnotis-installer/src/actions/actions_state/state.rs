@@ -14,7 +14,7 @@ use crate::model::ActionMode;
 use crate::paths::{format_with_home, InstallPaths};
 use crate::service_manager::ReadinessIssue;
 
-use super::{actions_binaries::resolve_install_binaries_best_effort, log_line};
+use super::{binaries::resolve_install_binaries_best_effort, log_line};
 
 pub struct ActionContext<'a> {
     pub detection: &'a Detection,
@@ -252,5 +252,5 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
 }
 
 #[cfg(test)]
-#[path = "actions_state/tests.rs"]
+#[path = "tests/state.rs"]
 mod tests;

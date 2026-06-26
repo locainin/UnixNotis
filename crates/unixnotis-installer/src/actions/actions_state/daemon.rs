@@ -209,26 +209,5 @@ fn systemd_stop_error_is_satisfied_by_state(state: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::systemd_stop_error_is_satisfied_by_state;
-
-    #[test]
-    fn systemd_stop_error_can_continue_when_unit_is_inactive() {
-        assert!(systemd_stop_error_is_satisfied_by_state("inactive"));
-    }
-
-    #[test]
-    fn systemd_stop_error_can_continue_when_unit_is_failed() {
-        assert!(systemd_stop_error_is_satisfied_by_state("failed"));
-    }
-
-    #[test]
-    fn systemd_stop_error_still_fails_when_unit_stays_active() {
-        assert!(!systemd_stop_error_is_satisfied_by_state("active"));
-    }
-
-    #[test]
-    fn systemd_stop_error_still_fails_when_unit_is_transitioning() {
-        assert!(!systemd_stop_error_is_satisfied_by_state("deactivating"));
-    }
-}
+#[path = "tests/daemon.rs"]
+mod tests;

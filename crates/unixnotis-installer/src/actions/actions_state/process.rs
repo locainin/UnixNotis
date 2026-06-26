@@ -183,3 +183,7 @@ fn flush_dropped_log_lines(tx: &SyncSender<UiMessage>) {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/process.rs"]
+mod tests;
