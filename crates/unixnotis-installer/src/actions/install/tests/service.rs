@@ -1,6 +1,7 @@
 use crate::paths::InstallPaths;
 
 mod backend_artifacts;
+mod flow;
 mod lifecycle;
 mod uninstall_safety;
 mod writes;
