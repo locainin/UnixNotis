@@ -16,6 +16,8 @@ mod manager;
 mod probe;
 // ReadinessIssue lets backends separate hard blockers from setup hints
 mod readiness;
+// Refresh plans cover simple reload commands and multi-step database updates
+mod refresh;
 mod runit;
 mod s6;
 // Shell helpers are limited to generated Hyprland bootstrap snippets
@@ -30,6 +32,7 @@ pub use command::CommandSpec;
 pub use manager::ServiceManager;
 pub use probe::ServiceProbe;
 pub use readiness::ReadinessIssue;
+pub use refresh::{S6DatabaseRefresh, ServiceArtifactRefresh};
 
 // Tests assert exact service names to keep refactors behavior-preserving
 #[cfg(test)]
