@@ -6,7 +6,7 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::service_manager::{ServiceArtifact, ServiceArtifactKind};
 
-use super::super::super::service::write_service_artifact;
+use super::super::super::service::{remove_service_artifact, write_service_artifact};
 use super::super::support::{test_context, test_paths, test_root};
 
 // Write-path tests cover the low-level artifact writer before backend-specific lists use it
@@ -235,6 +235,91 @@ fn write_service_artifact_rejects_non_matching_symlink_target() {
     assert_eq!(
         fs::read_link(&link_path).expect("service link should remain"),
         existing_target
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn write_shared_service_file_refuses_to_overwrite_user_content() {
+    let root = test_root("install-service-shared-file");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let artifact = ServiceArtifact {
+        // Shared files can seed manager layout but cannot overwrite existing user state
+        path: root.join("default").join("type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(root.join("default").join(".unixnotis-created-type")),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+
+    let changed = write_service_artifact(&ctx, &artifact).expect("missing shared file is seeded");
+
+    assert!(changed);
+    assert_eq!(
+        fs::read_to_string(&artifact.path).expect("read shared file"),
+        "bundle\n"
+    );
+
+    let unchanged =
+        write_service_artifact(&ctx, &artifact).expect("matching shared file is accepted");
+
+    assert!(!unchanged);
+    fs::write(&artifact.path, "longrun\n").expect("seed incompatible shared file");
+
+    let err =
+        write_service_artifact(&ctx, &artifact).expect_err("shared file must not be overwritten");
+
+    assert!(err.to_string().contains("refusing to overwrite"));
+    assert_eq!(
+        fs::read_to_string(&artifact.path).expect("read shared file after failure"),
+        "longrun\n"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn remove_shared_service_file_only_removes_marker_owned_file() {
+    let root = test_root("install-service-shared-file-remove");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let marker = root.join("default").join(".unixnotis-created-type");
+    let artifact = ServiceArtifact {
+        path: root.join("default").join("type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker.clone()),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+
+    write_service_artifact(&ctx, &artifact).expect("missing shared file is seeded");
+    fs::create_dir_all(root.join("default").join("contents.d")).expect("shared child dir");
+
+    let removed = remove_service_artifact(&artifact).expect("marker-owned file should remove");
+
+    assert!(removed);
+    assert!(!artifact.path.exists());
+    assert!(!marker.exists());
+    assert!(!root.join("default").exists());
+    fs::create_dir_all(artifact.path.parent().expect("shared file parent")).expect("parent dir");
+    fs::write(&artifact.path, "bundle\n").expect("seed user shared file");
+
+    let skipped = remove_service_artifact(&artifact).expect("unmarked shared file should stay");
+
+    assert!(!skipped);
+    assert_eq!(
+        fs::read_to_string(&artifact.path).expect("read unmarked shared file"),
+        "bundle\n"
     );
     let _ = fs::remove_dir_all(&root);
 }

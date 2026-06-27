@@ -78,6 +78,20 @@ pub(crate) fn write_service_artifact(
                 ctx.paths.service.artifact_label(),
             )
         }
+        ServiceArtifactKind::SharedFile { created_marker } => {
+            // Shared setup files are created only when absent and validated when present
+            let contents = artifact
+                .contents
+                .as_ref()
+                .ok_or_else(|| anyhow!("shared service file artifact missing contents"))?;
+            files::write_shared_service_file(
+                &artifact.path,
+                contents,
+                artifact.mode,
+                ctx.paths.service.artifact_label(),
+                created_marker.as_deref(),
+            )
+        }
         // Directory ownership rules live in dirs.rs so this coordinator stays readable
         ServiceArtifactKind::Directory => dirs::write_directory_artifact(&artifact.path),
         ServiceArtifactKind::ManagedDirectory => dirs::write_managed_directory(&artifact.path),
@@ -90,33 +104,44 @@ pub(crate) fn write_service_artifact(
 
 pub(in crate::actions::install) fn remove_service_artifact(
     artifact: &ServiceArtifact,
-) -> Result<()> {
+) -> Result<bool> {
     // Removal is shape-aware so uninstall never follows service-manager symlinks
     match &artifact.kind {
         ServiceArtifactKind::Directory => {
             // Plain directories are removed only when empty
             if dirs::service_artifact_path_is_present(&artifact.path) {
                 dirs::remove_empty_service_directory(&artifact.path)?;
+                return Ok(true);
             }
         }
         ServiceArtifactKind::ManagedDirectory => {
             // Managed directories can be recursive, so dirs.rs verifies the ownership marker
             if dirs::service_artifact_path_is_present(&artifact.path) {
                 dirs::remove_managed_directory(&artifact.path)?;
+                return Ok(true);
             }
         }
         ServiceArtifactKind::File | ServiceArtifactKind::ExecutableFile => {
             // File removal rejects symlinks even when the install state saw a path earlier
             if dirs::service_artifact_path_is_present(&artifact.path) {
                 files::remove_regular_service_file(&artifact.path)?;
+                return Ok(true);
+            }
+        }
+        ServiceArtifactKind::SharedFile { created_marker } => {
+            // Shared files are removed only when the marker proves UnixNotis created them
+            if let Some(marker) = created_marker {
+                return files::remove_shared_service_file(&artifact.path, marker);
             }
         }
         ServiceArtifactKind::Symlink { target } => {
             // Link removal requires the expected target to still match
+            let existed = dirs::service_artifact_path_is_present(&artifact.path);
             symlinks::remove_service_symlink(&artifact.path, target)?;
+            return Ok(existed);
         }
     }
-    Ok(())
+    Ok(false)
 }
 
 pub(in crate::actions::install) fn service_artifact_path_exists(

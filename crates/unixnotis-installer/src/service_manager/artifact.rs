@@ -8,6 +8,8 @@ pub const MANAGED_DIRECTORY_MARKER_CONTENTS: &str = "unixnotis\n";
 pub enum ServiceArtifactKind {
     // Plain backend-owned file, such as a user service definition
     File,
+    // Shared setup file created only when missing and never removed on uninstall
+    SharedFile { created_marker: Option<PathBuf> },
     // Script-style managers need an explicit executable bit on generated run files
     ExecutableFile,
     // Supervision trees can need a service directory rather than a single file
@@ -48,6 +50,14 @@ impl ServiceArtifact {
                 // A symlink at a file path is never counted as installed
                 path_is_regular_file(&self.path)
             }
+            ServiceArtifactKind::SharedFile { .. } => {
+                // Shared files are safe only when the existing bytes match the backend contract
+                path_is_regular_file(&self.path)
+                    && self
+                        .contents
+                        .as_ref()
+                        .is_some_and(|expected| file_contents_match(&self.path, expected))
+            }
             ServiceArtifactKind::Directory => path_is_directory(&self.path),
             ServiceArtifactKind::ManagedDirectory => {
                 // Directory backends need the marker before state can call them installer-owned
@@ -83,6 +93,13 @@ fn path_is_directory(path: &Path) -> bool {
 fn path_exists_without_following(path: &Path) -> bool {
     // symlink_metadata checks the artifact path itself, which is what safety diagnostics need
     fs::symlink_metadata(path).is_ok()
+}
+
+fn file_contents_match(path: &Path, expected: &str) -> bool {
+    // Shared setup files use exact tiny contents, such as s6 bundle type declarations
+    fs::read_to_string(path)
+        .map(|contents| contents == expected)
+        .unwrap_or(false)
 }
 
 pub fn managed_directory_marker(path: &Path) -> PathBuf {

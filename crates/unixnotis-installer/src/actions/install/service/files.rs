@@ -9,6 +9,7 @@ use std::path::Path;
 use anyhow::{anyhow, Context, Result};
 
 use crate::paths::format_with_home;
+use crate::service_manager::MANAGED_DIRECTORY_MARKER_CONTENTS;
 
 use super::super::super::config::backup::write_atomic;
 
@@ -63,6 +64,51 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
     Ok(changed || mode_changed || !existed_before)
 }
 
+pub(in crate::actions::install::service) fn write_shared_service_file(
+    path: &Path,
+    contents: &str,
+    mode: Option<u32>,
+    artifact_label: &str,
+    created_marker: Option<&Path>,
+) -> Result<bool> {
+    // Shared files are setup anchors, not UnixNotis-owned replacement targets
+    let existed_before = ensure_regular_artifact_file_path(path)?;
+    if existed_before {
+        let existing = fs::read_to_string(path)
+            .with_context(|| format!("failed to read {}", format_with_home(path)))?;
+        if existing != contents {
+            return Err(anyhow!(
+                "refusing to overwrite shared service artifact at {}",
+                format_with_home(path)
+            ));
+        }
+        apply_artifact_mode_if_needed(path, mode)?;
+        return Ok(false);
+    }
+
+    // Missing shared files can be seeded because no user contents are being replaced
+    write_atomic(path, contents).with_context(|| format!("failed to write {artifact_label}"))?;
+    apply_artifact_mode_if_needed(path, mode)?;
+    if let Some(marker) = created_marker {
+        write_shared_creation_marker(marker)?;
+    }
+    Ok(true)
+}
+
+pub(in crate::actions::install::service) fn remove_shared_service_file(
+    path: &Path,
+    created_marker: &Path,
+) -> Result<bool> {
+    if !shared_creation_marker_is_valid(created_marker) {
+        // No marker means the shared file predated UnixNotis or has unknown ownership
+        return Ok(false);
+    }
+    remove_regular_service_file(path)?;
+    remove_regular_service_file(created_marker)?;
+    remove_empty_shared_layout_dirs(path)?;
+    Ok(true)
+}
+
 #[cfg(unix)]
 fn current_mode(path: &Path) -> Result<Option<u32>> {
     match fs::symlink_metadata(path) {
@@ -70,6 +116,75 @@ fn current_mode(path: &Path) -> Result<Option<u32>> {
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
         Err(err) => {
             Err(err).with_context(|| format!("failed to inspect {}", format_with_home(path)))
+        }
+    }
+}
+
+fn apply_artifact_mode_if_needed(path: &Path, mode: Option<u32>) -> Result<()> {
+    let Some(mode) = mode else {
+        return Ok(());
+    };
+
+    #[cfg(unix)]
+    {
+        if current_mode(path)? != Some(mode) {
+            // Shared support files still need explicit modes when the backend requests one
+            fs::set_permissions(path, fs::Permissions::from_mode(mode))
+                .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    {
+        Err(anyhow!(
+            "cannot apply executable mode {} on non-Unix platforms",
+            mode
+        ))
+    }
+}
+
+fn write_shared_creation_marker(path: &Path) -> Result<()> {
+    ensure_regular_artifact_file_path(path)?;
+    write_atomic(path, MANAGED_DIRECTORY_MARKER_CONTENTS)
+        .with_context(|| format!("failed to write {}", format_with_home(path)))
+}
+
+fn shared_creation_marker_is_valid(path: &Path) -> bool {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        return false;
+    }
+    fs::read_to_string(path)
+        .map(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
+        .unwrap_or(false)
+}
+
+fn remove_empty_shared_layout_dirs(path: &Path) -> Result<()> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    // s6 default bundle initialization creates default/contents.d beside default/type
+    // These directories are removed only when empty so user bundle members are preserved
+    remove_dir_if_empty(&parent.join("contents.d"))?;
+    remove_dir_if_empty(parent)
+}
+
+fn remove_dir_if_empty(path: &Path) -> Result<()> {
+    match fs::remove_dir(path) {
+        Ok(()) => Ok(()),
+        Err(err)
+            if matches!(
+                err.kind(),
+                ErrorKind::NotFound | ErrorKind::DirectoryNotEmpty
+            ) =>
+        {
+            Ok(())
+        }
+        Err(err) => {
+            Err(err).with_context(|| format!("failed to remove {}", format_with_home(path)))
         }
     }
 }
