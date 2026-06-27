@@ -73,7 +73,7 @@ fn runit_backend_commands_match_expected_behavior() {
 
     // A watched service directory is the enablement source, not an sv query
     assert!(manager.is_enabled_command().is_none());
-    assert!(manager.reload_after_artifact_change().is_none());
+    assert!(manager.refresh_after_artifact_change().is_none());
 
     // sv check tracks the requested state, so active status must parse sv status output
     let active = manager

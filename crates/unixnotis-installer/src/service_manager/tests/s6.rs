@@ -1,8 +1,10 @@
 use std::fs;
+use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
 
 use crate::service_manager::{
-    ReadinessIssue, ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_S6_SERVICE,
+    ReadinessIssue, ServiceArtifactKind, ServiceArtifactRefresh, ServiceManager,
+    UNIXNOTIS_DAEMON_S6_SERVICE,
 };
 
 #[test]
@@ -14,7 +16,7 @@ fn s6_backend_renders_service_source_and_default_bundle_member() {
     let artifacts = manager.artifacts(Path::new("/tmp/bin"));
 
     // s6-rc source state includes the longrun, run script, and default bundle membership
-    assert_eq!(artifacts.len(), 4);
+    assert_eq!(artifacts.len(), 5);
     assert_eq!(
         artifacts[0].path,
         PathBuf::from("/tmp/s6-data/sv/unixnotis-daemon")
@@ -40,9 +42,22 @@ fn s6_backend_renders_service_source_and_default_bundle_member() {
     );
     assert_eq!(
         artifacts[3].path,
+        PathBuf::from("/tmp/s6-data/sv/default/type")
+    );
+    assert_eq!(
+        artifacts[3].kind,
+        ServiceArtifactKind::SharedFile {
+            created_marker: Some(PathBuf::from(
+                "/tmp/s6-data/sv/default/.unixnotis-created-type"
+            ))
+        }
+    );
+    assert_eq!(artifacts[3].contents.as_deref(), Some("bundle\n"));
+    assert_eq!(
+        artifacts[4].path,
         PathBuf::from("/tmp/s6-data/sv/default/contents.d/unixnotis-daemon")
     );
-    assert_eq!(artifacts[3].contents.as_deref(), Some(""));
+    assert_eq!(artifacts[4].contents.as_deref(), Some(""));
 }
 
 #[test]
@@ -55,13 +70,24 @@ fn s6_backend_commands_match_expected_behavior() {
     // Readiness checks own tool validation because availability needs several s6 programs
     assert!(manager.availability_command().is_none());
     assert!(manager.is_enabled_command().is_none());
-    // Database reload compiles the user source tree before s6-rc can change the live service
+    // Database refresh compiles the user source tree before s6-rc can change the live service
+    let Some(ServiceArtifactRefresh::S6Database(refresh)) = manager.refresh_after_artifact_change()
+    else {
+        panic!("s6 should refresh through a database plan");
+    };
+    assert_eq!(refresh.source_root(), PathBuf::from("/tmp/s6-data/sv"));
+    assert_eq!(refresh.rc_root(), PathBuf::from("/tmp/s6-data/rc"));
     assert_eq!(
-        manager
-            .reload_after_artifact_change()
-            .expect("s6 reload command")
+        refresh
+            .compile_command(Path::new("/tmp/s6-data/rc/compiled-next"))
             .args(),
-        &["-u"]
+        &["/tmp/s6-data/rc/compiled-next", "/tmp/s6-data/sv"]
+    );
+    assert_eq!(
+        refresh
+            .update_command(Path::new("/tmp/s6-data/rc/compiled-next"))
+            .args(),
+        &["-l", "/run/user/s6-rc", "/tmp/s6-data/rc/compiled-next"]
     );
     assert_eq!(
         manager.start_command().expect("s6 start command").args(),
@@ -138,7 +164,7 @@ fn s6_backend_environment_sync_uses_envdir_artifacts() {
 }
 
 #[test]
-fn s6_backend_hyprland_startup_lines_update_envdir_and_reload_database() {
+fn s6_backend_hyprland_startup_lines_update_envdir_and_start_service() {
     let manager = ServiceManager::s6_user(
         PathBuf::from("/tmp/s6 data"),
         PathBuf::from("/run/user/s6 rc"),
@@ -154,7 +180,8 @@ fn s6_backend_hyprland_startup_lines_update_envdir_and_reload_database() {
     assert!(commands[0].contains("mkdir -p \"$envdir\" || exit 1"));
     assert!(commands[0].contains("mktemp \"$envdir/.WAYLAND_DISPLAY.XXXXXX\""));
     assert!(!commands[0].contains(".PATH.XXXXXX"));
-    assert!(commands[0].contains("s6-db-reload -u || exit 1"));
+    assert!(!commands[0].contains("s6-db-reload"));
+    assert!(!commands[0].contains("s6-rc-compile"));
     assert!(commands[0].contains("s6-rc -l "));
     assert!(commands[0].contains("/run/user/s6 rc"));
     assert!(commands[0].contains("-u change"));
@@ -164,7 +191,7 @@ fn s6_backend_hyprland_startup_lines_update_envdir_and_reload_database() {
 }
 
 #[test]
-fn s6_readiness_errors_when_default_bundle_type_is_missing() {
+fn s6_readiness_warns_when_default_bundle_type_can_be_initialized() {
     let root = test_root("s6-missing-default-type");
     let live = root.join("run").join("s6-rc");
     fs::create_dir_all(&live).expect("live dir");
@@ -173,8 +200,28 @@ fn s6_readiness_errors_when_default_bundle_type_is_missing() {
     let issues = manager.readiness_issues();
 
     assert!(issues.iter().any(|issue| {
+        matches!(issue, ReadinessIssue::Warning(_))
+            && issue.message().contains("default bundle is missing")
+    }));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn s6_readiness_errors_when_default_bundle_type_is_not_bundle() {
+    let root = test_root("s6-invalid-default-type");
+    let live = root.join("run").join("s6-rc");
+    fs::create_dir_all(&live).expect("live dir");
+    let default_dir = root.join("s6").join("sv").join("default");
+    fs::create_dir_all(&default_dir).expect("default bundle dir");
+    fs::write(default_dir.join("type"), "longrun\n").expect("invalid default type");
+    let manager = ServiceManager::s6_user(root.join("s6"), live);
+
+    let issues = manager.readiness_issues();
+
+    assert!(issues.iter().any(|issue| {
         matches!(issue, ReadinessIssue::Error(_))
-            && issue.message().contains("default bundle type file")
+            && issue.message().contains("refusing to overwrite")
     }));
 
     let _ = fs::remove_dir_all(root);
@@ -187,6 +234,28 @@ fn s6_readiness_errors_when_live_directory_is_missing() {
     fs::create_dir_all(&default_dir).expect("default bundle dir");
     fs::write(default_dir.join("type"), "bundle\n").expect("default bundle type");
     let manager = ServiceManager::s6_user(root.join("s6"), root.join("run").join("s6-rc"));
+
+    let issues = manager.readiness_issues();
+
+    assert!(issues.iter().any(|issue| {
+        matches!(issue, ReadinessIssue::Error(_)) && issue.message().contains("live directory")
+    }));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn s6_readiness_errors_when_live_directory_is_symlink() {
+    let root = test_root("s6-symlink-live");
+    let real_live = root.join("real-live");
+    let linked_live = root.join("run").join("s6-rc");
+    let default_dir = root.join("s6").join("sv").join("default");
+    fs::create_dir_all(&real_live).expect("real live dir");
+    fs::create_dir_all(linked_live.parent().expect("linked live parent")).expect("run dir");
+    unix_fs::symlink(&real_live, &linked_live).expect("live symlink");
+    fs::create_dir_all(&default_dir).expect("default bundle dir");
+    fs::write(default_dir.join("type"), "bundle\n").expect("default bundle type");
+    let manager = ServiceManager::s6_user(root.join("s6"), linked_live);
 
     let issues = manager.readiness_issues();
 

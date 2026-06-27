@@ -76,7 +76,7 @@ fn dinit_backend_commands_match_expected_behavior() {
     );
 
     // First install should not reload a service that dinit has not loaded yet
-    assert!(manager.reload_after_artifact_change().is_none());
+    assert!(manager.refresh_after_artifact_change().is_none());
 
     let enable = manager
         .enable_now_command()
@@ -104,7 +104,7 @@ fn dinit_backend_commands_match_expected_behavior() {
 fn dinit_first_install_does_not_require_loaded_service_reload() {
     let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
 
-    assert!(manager.reload_after_artifact_change().is_none());
+    assert!(manager.refresh_after_artifact_change().is_none());
 }
 
 #[test]

@@ -7,6 +7,7 @@ use super::artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MA
 use super::command::CommandSpec;
 use super::probe::ServiceProbe;
 use super::readiness::ReadinessIssue;
+use super::refresh::{S6DatabaseRefresh, ServiceArtifactRefresh};
 use super::shell::{
     envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
     shell_quote, shell_quote_path,
@@ -17,6 +18,7 @@ const RUN_SCRIPT: &str = "run";
 const TYPE_FILE: &str = "type";
 const ENV_DIR: &str = "env";
 const DEFAULT_BUNDLE: &str = "default";
+const BUNDLE_TYPE: &str = "bundle\n";
 const SAFE_RUN_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 
 pub fn artifact_label() -> &'static str {
@@ -55,6 +57,15 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
             mode: Some(0o755),
         },
         ServiceArtifact {
+            path: default_bundle_type_file(artifact_root),
+            kind: ServiceArtifactKind::SharedFile {
+                created_marker: Some(default_bundle_type_marker(artifact_root)),
+            },
+            // The default bundle can be initialized safely only when missing or already valid
+            contents: Some(BUNDLE_TYPE.to_string()),
+            mode: Some(0o644),
+        },
+        ServiceArtifact {
             path: default_member,
             kind: ServiceArtifactKind::File,
             // Membership files are empty; the file name is the dependency edge
@@ -65,7 +76,7 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
 }
 
 pub fn availability_command() -> Option<CommandSpec> {
-    // s6-db-reload mutates the user database, so availability stays warning-based
+    // s6 readiness needs several tools and paths, so readiness_issues owns validation
     None
 }
 
@@ -80,6 +91,7 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
         && is_regular_file(&service.join(MANAGED_DIRECTORY_MARKER))
         && is_regular_file(&service.join(TYPE_FILE))
         && is_regular_file(&service.join(RUN_SCRIPT))
+        && is_matching_file(&default_bundle_type_file(artifact_root), BUNDLE_TYPE)
         && is_regular_file(&default_bundle_member(artifact_root))
 }
 
@@ -94,9 +106,15 @@ pub fn active_probe(live_dir: &Path) -> Option<ServiceProbe> {
     Some(ServiceProbe::stdout(command, status_output_is_running))
 }
 
-pub fn reload_after_artifact_change() -> Option<CommandSpec> {
-    // Artix local user s6 services use this helper to compile and switch databases
-    Some(CommandSpec::new("s6-db-reload -u", "s6-db-reload", ["-u"]))
+pub fn refresh_after_artifact_change(
+    artifact_root: &Path,
+    live_dir: &Path,
+) -> Option<ServiceArtifactRefresh> {
+    // s6 source changes must be compiled into a database before s6-rc can see them
+    Some(ServiceArtifactRefresh::S6Database(S6DatabaseRefresh::new(
+        artifact_root.to_path_buf(),
+        live_dir.to_path_buf(),
+    )))
 }
 
 pub fn enable_now_command(live_dir: &Path) -> Option<CommandSpec> {
@@ -132,7 +150,6 @@ pub fn hyprland_startup_commands(
         // Missing session vars intentionally become empty envdir files
         steps.push(render_envdir_shell_update(var));
     }
-    steps.push("s6-db-reload -u || exit 1".to_string());
     steps.push(format!(
         "s6-rc -l {} -u change {} || exit 1",
         shell_quote_path(live_dir),
@@ -182,7 +199,13 @@ pub fn environment_sync_artifacts(
 
 pub fn readiness_issues(artifact_root: &Path, live_dir: &Path) -> Vec<ReadinessIssue> {
     let mut issues = Vec::new();
-    for program in ["s6-db-reload", "s6-rc", "s6-envdir", "s6-svstat"] {
+    for program in [
+        "s6-rc-compile",
+        "s6-rc-update",
+        "s6-rc",
+        "s6-envdir",
+        "s6-svstat",
+    ] {
         // Missing tools would fail after artifact writes, so treat them as hard blockers
         if !program_in_path(program) {
             issues.push(ReadinessIssue::error(format!(
@@ -190,22 +213,39 @@ pub fn readiness_issues(artifact_root: &Path, live_dir: &Path) -> Vec<ReadinessI
             )));
         }
     }
-    let default_type = default_bundle_dir(artifact_root).join(TYPE_FILE);
-    if !fs::read_to_string(&default_type)
-        .map(|contents| contents.trim() == "bundle")
-        .unwrap_or(false)
-    {
-        // UnixNotis joins the user's default bundle but does not create that bundle silently
-        issues.push(ReadinessIssue::error(
-            "s6 default bundle type file is missing or not 'bundle'; initialize local s6 user services before installing UnixNotis",
+    let default_type = default_bundle_type_file(artifact_root);
+    match fs::read_to_string(&default_type) {
+        Ok(contents) if contents == BUNDLE_TYPE => {}
+        Ok(_) => {
+            // An existing default bundle with different contents is user-owned state
+            issues.push(ReadinessIssue::error(
+                "s6 default bundle type file exists but is not 'bundle'; refusing to overwrite user service layout",
+            ));
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            // Missing default bundle is safe to initialize because no existing file is replaced
+            issues.push(ReadinessIssue::warning(
+                "s6 default bundle is missing; installer will initialize a local default bundle",
+            ));
+        }
+        Err(err) => issues.push(ReadinessIssue::error(format!(
+            "failed to inspect s6 default bundle type file: {err}"
+        ))),
+    }
+    if !is_directory(&artifact_root.join("sv")) {
+        // The source root can be created on first install, but this hint explains the layout
+        issues.push(ReadinessIssue::warning(
+            "s6 source directory is missing; installer will create the local source tree",
         ));
     }
-    if !live_dir.is_dir() {
+    if !is_directory(live_dir) {
         // Control commands need a live s6-rc tree before they can start or stop the service
-        issues.push(ReadinessIssue::error(format!(
-            "s6 live directory {} is missing; start local s6-rc before controlling UnixNotis",
-            live_dir.display()
-        )));
+        issues.push(ReadinessIssue::error(
+            format!(
+                "s6 live directory {} is missing; start local s6 supervision or set UNIXNOTIS_S6RC_LIVE_DIR before controlling UnixNotis",
+                live_dir.display()
+            ),
+        ));
     }
     issues
 }
@@ -248,6 +288,14 @@ fn default_bundle_dir(artifact_root: &Path) -> PathBuf {
     artifact_root.join("sv").join(DEFAULT_BUNDLE)
 }
 
+fn default_bundle_type_file(artifact_root: &Path) -> PathBuf {
+    default_bundle_dir(artifact_root).join(TYPE_FILE)
+}
+
+fn default_bundle_type_marker(artifact_root: &Path) -> PathBuf {
+    default_bundle_dir(artifact_root).join(".unixnotis-created-type")
+}
+
 fn default_bundle_member(artifact_root: &Path) -> PathBuf {
     default_bundle_dir(artifact_root)
         .join("contents.d")
@@ -267,6 +315,13 @@ fn is_regular_file(path: &Path) -> bool {
     fs::symlink_metadata(path)
         .map(|metadata| metadata.file_type().is_file())
         .unwrap_or(false)
+}
+
+fn is_matching_file(path: &Path, expected: &str) -> bool {
+    is_regular_file(path)
+        && fs::read_to_string(path)
+            .map(|contents| contents == expected)
+            .unwrap_or(false)
 }
 
 fn is_directory(path: &Path) -> bool {

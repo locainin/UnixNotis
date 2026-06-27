@@ -128,7 +128,8 @@ pub(super) fn write_fake_tools(fake_bin: &Path, log_path: &Path, mode: FakeToolM
         "dinitctl",
         "sv",
         "chpst",
-        "s6-db-reload",
+        "s6-rc-compile",
+        "s6-rc-update",
         "s6-rc",
         "s6-svstat",
         "s6-envdir",
@@ -136,6 +137,7 @@ pub(super) fn write_fake_tools(fake_bin: &Path, log_path: &Path, mode: FakeToolM
         // Most fake tools only log argv and selected env; runit sv has extra ordering checks
         let script = match (tool, mode) {
             ("sv", FakeToolMode::RunitSv) => fake_runit_sv_script(tool, log_path),
+            ("s6-rc-compile", _) => fake_tool_script(tool, log_path, "mkdir -p \"$1\""),
             _ => fake_tool_script(tool, log_path, ""),
         };
         let path = fake_bin.join(tool);
@@ -179,7 +181,6 @@ fn fake_tool_script(tool: &str, log_path: &Path, extra: &str) -> String {
     // Shell scripts keep the integration harness close to real process execution
     format!(
         "#!/bin/sh\n\
-         {extra}\n\
          {{\n\
          printf 'program={tool} argv='\n\
          for arg in \"$@\"; do printf '[%s]' \"$arg\"; done\n\
@@ -187,7 +188,8 @@ fn fake_tool_script(tool: &str, log_path: &Path, extra: &str) -> String {
          }} >> {}\n\
          if [ \"${{UNIXNOTIS_FAKE_FAIL_PROGRAM-}}\" = '{tool}' ]; then\n\
          case \" $* \" in *\"${{UNIXNOTIS_FAKE_FAIL_CONTAINS-}}\"*) exit 42 ;; esac\n\
-         fi\n",
+         fi\n\
+         {extra}\n",
         sh_quote(log_path)
     )
 }

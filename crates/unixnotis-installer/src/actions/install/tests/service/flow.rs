@@ -119,14 +119,15 @@ fn runit_install_flow_syncs_envdir_before_removing_down_and_starting() {
 }
 
 #[test]
-fn s6_install_flow_reloads_database_then_changes_service() {
+fn s6_install_flow_compiles_database_then_changes_service() {
     let _lock = lock_env();
-    // s6 needs database reload before the live service change can see the new source tree
+    // s6 needs a compiled database before the live service change can see the new source tree
     let root = service_flow_root("install-flow-s6");
     let log_path = root.join("calls.log");
     let fake_bin = root.join("fake-bin");
     write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
     let _env = flow_env(&root, &fake_bin);
+    fs::create_dir_all(root.join("run").join("s6-rc")).expect("s6 live dir");
     let paths = flow_paths(
         &root,
         ServiceManager::s6_user(
@@ -147,10 +148,24 @@ fn s6_install_flow_reloads_database_then_changes_service() {
     let calls = read_calls(&log_path);
     assert_call_order(
         &calls,
-        &["program=s6-db-reload argv=[-u]", "program=s6-rc argv=[-l]"],
+        &[
+            "program=s6-rc-compile argv=",
+            "program=s6-rc-update argv=[-l]",
+            "program=s6-rc argv=[-l]",
+        ],
     );
     assert!(calls
         .iter()
         .any(|call| call.contains("[change][unixnotis-daemon]")));
+    assert!(
+        root.join("home")
+            .join(".local")
+            .join("share")
+            .join("s6")
+            .join("rc")
+            .join("compiled")
+            .exists(),
+        "s6 compiled symlink should be switched after database update"
+    );
     let _ = fs::remove_dir_all(&root);
 }

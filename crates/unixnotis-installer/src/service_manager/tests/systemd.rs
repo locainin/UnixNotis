@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use crate::service_manager::{ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_SERVICE};
+use crate::service_manager::{
+    ServiceArtifactKind, ServiceArtifactRefresh, ServiceManager, UNIXNOTIS_DAEMON_SERVICE,
+};
 
 #[test]
 fn systemd_backend_renders_exact_unit_artifact() {
@@ -73,9 +75,10 @@ fn systemd_backend_commands_match_existing_behavior() {
     );
 
     // Unit file changes still require daemon-reload before enable/start
-    let reload = manager
-        .reload_after_artifact_change()
-        .expect("systemd reloads after unit changes");
+    let Some(ServiceArtifactRefresh::Command(reload)) = manager.refresh_after_artifact_change()
+    else {
+        panic!("systemd should refresh through daemon-reload");
+    };
     assert_eq!(reload.args(), &["--user", "daemon-reload"]);
 
     let enable = manager

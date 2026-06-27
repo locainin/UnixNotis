@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::{dinit, runit, s6, systemd};
-use super::{CommandSpec, ReadinessIssue, ServiceArtifact, ServiceProbe};
+use super::{CommandSpec, ReadinessIssue, ServiceArtifact, ServiceArtifactRefresh, ServiceProbe};
 
 // Test exports keep exact legacy names visible without making them production API
 #[cfg(test)]
@@ -187,13 +187,21 @@ impl ServiceManager {
         }
     }
 
-    pub fn reload_after_artifact_change(&self) -> Option<CommandSpec> {
-        // Reload is optional because several managers discover artifacts on start
+    pub fn refresh_after_artifact_change(&self) -> Option<ServiceArtifactRefresh> {
+        // Refresh is optional because several managers discover artifacts on start
         match self.kind {
-            ServiceManagerKind::Systemd => systemd::reload_after_artifact_change(),
-            ServiceManagerKind::Dinit => dinit::reload_after_artifact_change(),
-            ServiceManagerKind::Runit => runit::reload_after_artifact_change(),
-            ServiceManagerKind::S6 => s6::reload_after_artifact_change(),
+            ServiceManagerKind::Systemd => {
+                systemd::reload_after_artifact_change().map(ServiceArtifactRefresh::Command)
+            }
+            ServiceManagerKind::Dinit => {
+                dinit::reload_after_artifact_change().map(ServiceArtifactRefresh::Command)
+            }
+            ServiceManagerKind::Runit => {
+                runit::reload_after_artifact_change().map(ServiceArtifactRefresh::Command)
+            }
+            ServiceManagerKind::S6 => {
+                s6::refresh_after_artifact_change(&self.artifact_root, self.live_root())
+            }
         }
     }
 

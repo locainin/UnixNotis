@@ -9,14 +9,15 @@ use super::super::flow_support::{
 };
 
 #[test]
-fn s6_install_fails_before_env_sync_when_database_reload_fails() {
+fn s6_install_fails_before_env_sync_when_database_compile_fails() {
     let _lock = lock_env();
-    let root = service_flow_root("install-fail-s6-db-reload");
+    let root = service_flow_root("install-fail-s6-compile");
     let log_path = root.join("calls.log");
     let fake_bin = root.join("fake-bin");
     write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
     let _env = flow_env(&root, &fake_bin);
-    let _failure = fake_failure_env("s6-db-reload", "-u");
+    fs::create_dir_all(root.join("run").join("s6-rc")).expect("s6 live dir");
+    let _failure = fake_failure_env("s6-rc-compile", "compiled-unixnotis");
     let paths = flow_paths(
         &root,
         ServiceManager::s6_user(
@@ -25,17 +26,64 @@ fn s6_install_fails_before_env_sync_when_database_reload_fails() {
         ),
     );
 
-    let err = run_install_and_enable(&paths).expect_err("s6 database reload should fail");
+    let err = run_install_and_enable(&paths).expect_err("s6 database compile should fail");
 
-    // A failed database reload means the live tree cannot know about the new service yet
+    // A failed compile means there is no safe database to switch into the live tree
     assert!(err.to_string().contains("command failed"));
     let calls = read_calls(&log_path);
     assert!(calls
         .iter()
-        .any(|call| call.contains("program=s6-db-reload argv=[-u]")));
+        .any(|call| call.contains("program=s6-rc-compile argv=")));
     assert!(
-        !calls.iter().any(|call| call.contains("program=s6-rc")),
-        "s6-rc change should not run after database reload failure"
+        !calls
+            .iter()
+            .any(|call| call.contains("program=s6-rc-update")),
+        "s6-rc-update should not run after database compile failure"
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|call| call.contains("program=s6-rc argv=")),
+        "s6-rc change should not run after database compile failure"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn s6_install_fails_before_env_sync_when_database_update_fails() {
+    let _lock = lock_env();
+    let root = service_flow_root("install-fail-s6-update");
+    let log_path = root.join("calls.log");
+    let fake_bin = root.join("fake-bin");
+    write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
+    let _env = flow_env(&root, &fake_bin);
+    fs::create_dir_all(root.join("run").join("s6-rc")).expect("s6 live dir");
+    let _failure = fake_failure_env("s6-rc-update", "compiled-unixnotis");
+    let paths = flow_paths(
+        &root,
+        ServiceManager::s6_user(
+            root.join("home").join(".local").join("share").join("s6"),
+            root.join("run").join("s6-rc"),
+        ),
+    );
+
+    let err = run_install_and_enable(&paths).expect_err("s6 database update should fail");
+
+    // Live update failures stop before env sync because s6-rc cannot see the new service safely
+    assert!(err.to_string().contains("command failed"));
+    let calls = read_calls(&log_path);
+    assert_call_order(
+        &calls,
+        &[
+            "program=s6-rc-compile argv=",
+            "program=s6-rc-update argv=[-l]",
+        ],
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|call| call.contains("program=s6-rc argv=")),
+        "s6-rc change should not run after database update failure"
     );
     let _ = fs::remove_dir_all(&root);
 }
@@ -48,6 +96,7 @@ fn s6_install_fails_after_env_sync_when_change_fails() {
     let fake_bin = root.join("fake-bin");
     write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
     let _env = flow_env(&root, &fake_bin);
+    fs::create_dir_all(root.join("run").join("s6-rc")).expect("s6 live dir");
     let _failure = fake_failure_env("s6-rc", "change");
     let paths = flow_paths(
         &root,
@@ -70,7 +119,11 @@ fn s6_install_fails_after_env_sync_when_change_fails() {
     let calls = read_calls(&log_path);
     assert_call_order(
         &calls,
-        &["program=s6-db-reload argv=[-u]", "program=s6-rc argv=[-l]"],
+        &[
+            "program=s6-rc-compile argv=",
+            "program=s6-rc-update argv=[-l]",
+            "program=s6-rc argv=[-l]",
+        ],
     );
     assert!(calls
         .iter()

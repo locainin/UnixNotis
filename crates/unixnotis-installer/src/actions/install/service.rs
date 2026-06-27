@@ -16,6 +16,7 @@ mod artifacts;
 mod dirs;
 mod files;
 mod lifecycle;
+mod refresh;
 mod symlinks;
 
 pub(in crate::actions::install) use artifacts::remove_service_artifact;
@@ -32,6 +33,7 @@ use artifacts::{
 use lifecycle::{
     remove_pre_start_artifacts, run_command_spec, run_service_start, warn_pre_start_artifacts_left,
 };
+use refresh::refresh_service_artifacts;
 
 pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
     match write_service_artifacts(ctx)? {
@@ -58,28 +60,13 @@ pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
 
 pub(crate) fn enable_service(ctx: &mut ActionContext) -> Result<()> {
     if ctx.service_reload_required.load(Ordering::Acquire) {
-        if let Some(spec) = ctx.paths.service.reload_after_artifact_change() {
-            // A full user-manager reload is expensive on some setups, so run it only when needed
-            log_line(
-                ctx,
-                format!("Reloading {}", ctx.paths.service.manager_label()),
-            );
-            run_command_spec(ctx, &spec)?;
-        } else {
-            // Some managers discover changed artifacts during start and have no safe reload step
-            log_line(
-                ctx,
-                format!(
-                    "Skipping {} reload because this backend reloads on start",
-                    ctx.paths.service.manager_label()
-                ),
-            );
-        }
+        // Refresh work can be a single reload command or a backend-owned database update
+        refresh_service_artifacts(ctx)?;
     } else {
         log_line(
             ctx,
             format!(
-                "Skipping {} reload because {} is unchanged",
+                "Skipping {} refresh because {} is unchanged",
                 ctx.paths.service.manager_label(),
                 ctx.paths.service.artifact_label()
             ),
@@ -132,11 +119,8 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
                 // Unsafe paths were already logged and must not be passed into removers
                 continue;
             }
-            // Install-only gates, such as runit's temporary down file, normally do
-            // not exist once the service is running
-            let artifact_existed = service_artifact_path_exists(artifact);
 
-            remove_service_artifact(artifact).with_context(|| {
+            let artifact_removed = remove_service_artifact(artifact).with_context(|| {
                 format!(
                     "failed to remove {} at {}",
                     ctx.paths.service.artifact_label(),
@@ -144,7 +128,7 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
                 )
             })?;
 
-            if artifact_existed {
+            if artifact_removed {
                 log_line(
                     ctx,
                     format!(
@@ -155,9 +139,7 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
                 );
             }
         }
-        if let Some(spec) = ctx.paths.service.reload_after_artifact_change() {
-            run_command_spec(ctx, &spec)?;
-        }
+        refresh_service_artifacts(ctx)?;
     } else if !unsafe_artifact_exists {
         log_line(
             ctx,

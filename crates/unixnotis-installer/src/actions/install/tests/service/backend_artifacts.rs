@@ -158,6 +158,10 @@ fn write_and_remove_s6_artifacts_preserves_default_bundle_membership() {
     };
     let ctx = test_context(&detection, &paths, ActionMode::Install);
     let manager = ServiceManager::s6_user(root.join("s6"), root.join("run").join("s6-rc"));
+    let default_type = root.join("s6").join("sv").join("default").join("type");
+    fs::create_dir_all(default_type.parent().expect("default type parent"))
+        .expect("default bundle dir");
+    fs::write(&default_type, "bundle\n").expect("seed user default bundle");
     let artifacts = manager.artifacts(&paths.bin_dir);
 
     for artifact in &artifacts {
