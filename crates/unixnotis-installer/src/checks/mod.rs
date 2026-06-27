@@ -19,6 +19,10 @@ pub enum CheckState {
 #[path = "tests/system.rs"]
 mod system_tests;
 
+#[cfg(test)]
+#[path = "tests/session.rs"]
+mod session_tests;
+
 #[derive(Clone, Debug)]
 pub struct CheckItem {
     pub label: &'static str,
