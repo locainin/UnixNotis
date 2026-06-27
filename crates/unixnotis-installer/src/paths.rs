@@ -104,24 +104,44 @@ fn runit_user_dir() -> Result<PathBuf> {
 }
 
 fn s6_user_dir() -> Result<PathBuf> {
-    if absolute_env_path("UNIXNOTIS_S6_DATA_DIR")?.is_some() {
-        // s6-db-reload -u assumes ~/.local/share/s6/sv on Artix local user services
-        // Refuse custom roots until reload/start commands can be proven against that layout
-        return Err(anyhow!(
-            "UNIXNOTIS_S6_DATA_DIR is not supported yet; s6 uses $HOME/.local/share/s6"
-        ));
+    if let Some(path) = absolute_env_path("UNIXNOTIS_S6_DATA_DIR")? {
+        // Custom roots are safe now that UnixNotis compiles the s6-rc database directly
+        return Ok(path);
     }
     // Artix documents local user s6 data under ~/.local/share/s6
-    // XDG_DATA_HOME is intentionally ignored until s6-db-reload can target custom roots
     Ok(home_dir()?.join(".local").join("share").join("s6"))
 }
 
-fn s6_live_dir() -> Result<PathBuf> {
+fn s6_live_dir(data_root: &Path) -> Result<PathBuf> {
     if let Some(path) = absolute_env_path("UNIXNOTIS_S6RC_LIVE_DIR")? {
+        // Explicit live roots are for testers and advanced users who already know their tree
         return Ok(path);
     }
     let user = env::var("USER").map_err(|_| anyhow!("USER is not set"))?;
-    Ok(PathBuf::from("/run").join(user).join("s6-rc"))
+    let integrated = PathBuf::from("/run").join(&user).join("s6-rc");
+    if path_is_plain_directory(&integrated) {
+        // Artix integrated local supervision wires the user s6-rc tree under /run/$USER
+        return Ok(integrated);
+    }
+    let standalone = PathBuf::from("/tmp").join(&user).join("s6-rc");
+    if path_is_plain_directory(&standalone) {
+        // Artix standalone local supervision uses /tmp/$USER/s6-rc in its documented setup
+        return Ok(standalone);
+    }
+    let local = data_root.join("rc").join("live");
+    if path_is_plain_directory(&local) {
+        // Test and custom layouts can keep a live tree beside the compiled database root
+        return Ok(local);
+    }
+    // Return the integrated path so readiness can show the normal setup hint
+    Ok(integrated)
+}
+
+fn path_is_plain_directory(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        // Auto-detected service roots must not follow symlinks into surprising locations
+        .map(|metadata| metadata.file_type().is_dir())
+        .unwrap_or(false)
 }
 
 fn absolute_env_path(name: &str) -> Result<Option<PathBuf>> {
@@ -149,7 +169,11 @@ fn service_manager_from_selection(
         ServiceManagerChoice::Systemd => Ok(ServiceManager::systemd_user(systemd_user_dir()?)),
         ServiceManagerChoice::Dinit => Ok(ServiceManager::dinit_user(dinit_user_dir()?)),
         ServiceManagerChoice::Runit => Ok(ServiceManager::runit_user(runit_user_dir()?)),
-        ServiceManagerChoice::S6 => Ok(ServiceManager::s6_user(s6_user_dir()?, s6_live_dir()?)),
+        ServiceManagerChoice::S6 => {
+            let data_root = s6_user_dir()?;
+            let live_root = s6_live_dir(&data_root)?;
+            Ok(ServiceManager::s6_user(data_root, live_root))
+        }
     }
 }
 
