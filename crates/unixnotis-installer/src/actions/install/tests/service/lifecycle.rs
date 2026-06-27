@@ -1,4 +1,5 @@
 use std::fs;
+use std::os::unix::fs::symlink;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 
@@ -203,6 +204,51 @@ fn uninstall_service_skips_removed_log_for_missing_runit_start_gate() {
                     && line.contains("unixnotis-daemon")
         )),
         "steady runit artifacts should still report real removals"
+    );
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn uninstall_service_warns_for_unsafe_artifact_path() {
+    let root = test_root("uninstall-unsafe-service-artifact");
+    let paths = test_paths(&root);
+    fs::create_dir_all(paths.service.artifact_root()).expect("make service artifact dir");
+    let foreign_target = root.join("foreign-unit");
+    fs::write(&foreign_target, "foreign").expect("foreign target");
+    // A symlink at a file artifact path is a real conflict, not a safe installed artifact
+    symlink(&foreign_target, paths.service.primary_artifact_path()).expect("unsafe unit symlink");
+
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let (log_tx, log_rx) = mpsc::sync_channel::<UiMessage>(16);
+    let mut ctx = test_context(&detection, &paths, ActionMode::Uninstall);
+    ctx.log_tx = log_tx;
+
+    uninstall_service(&mut ctx).expect("unsafe artifact should be diagnosed without removal");
+
+    let logs = log_rx.try_iter().collect::<Vec<_>>();
+    assert!(
+        logs.iter().any(|event| matches!(
+            event,
+            UiMessage::Worker(WorkerEvent::LogLine(line))
+                if line.contains("Warning: unsafe service artifact path exists at")
+                    && line.contains("refusing to remove it automatically")
+        )),
+        "unsafe artifact paths should be visible to the user"
+    );
+    assert!(
+        !logs.iter().any(|event| matches!(
+            event,
+            UiMessage::Worker(WorkerEvent::LogLine(line)) if line.contains("not found at")
+        )),
+        "unsafe artifact paths should not be reported as missing"
+    );
+    assert_eq!(
+        fs::read_link(paths.service.primary_artifact_path()).expect("unsafe link remains"),
+        foreign_target
     );
 
     let _ = fs::remove_dir_all(&root);

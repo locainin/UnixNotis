@@ -25,7 +25,10 @@ pub(in crate::actions::install) use lifecycle::{
     service_start_mode_from_enabled, ServiceStartMode,
 };
 
-use artifacts::{service_artifact_path_exists, write_service_artifacts, ServiceArtifactWrite};
+use artifacts::{
+    service_artifact_path_conflicts, service_artifact_path_exists, write_service_artifacts,
+    ServiceArtifactWrite,
+};
 use lifecycle::{
     remove_pre_start_artifacts, run_command_spec, run_service_start, warn_pre_start_artifacts_left,
 };
@@ -107,6 +110,7 @@ pub(crate) fn enable_service(ctx: &mut ActionContext) -> Result<()> {
 pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
     let artifacts = ctx.paths.service.install_artifacts(&ctx.paths.bin_dir);
     let artifact_exists = artifacts.iter().any(service_artifact_path_exists);
+    let unsafe_artifact_exists = log_unsafe_service_artifacts(ctx, &artifacts);
 
     if artifact_exists {
         if let Some(spec) = ctx.paths.service.disable_now_command() {
@@ -124,6 +128,10 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
         }
 
         for artifact in artifacts.iter().rev() {
+            if service_artifact_path_conflicts(artifact) {
+                // Unsafe paths were already logged and must not be passed into removers
+                continue;
+            }
             // Install-only gates, such as runit's temporary down file, normally do
             // not exist once the service is running
             let artifact_existed = service_artifact_path_exists(artifact);
@@ -150,7 +158,7 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
         if let Some(spec) = ctx.paths.service.reload_after_artifact_change() {
             run_command_spec(ctx, &spec)?;
         }
-    } else {
+    } else if !unsafe_artifact_exists {
         log_line(
             ctx,
             format!(
@@ -163,4 +171,24 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
 
     remove_hyprland_autostart(ctx);
     Ok(())
+}
+
+fn log_unsafe_service_artifacts(
+    ctx: &mut ActionContext,
+    artifacts: &[crate::service_manager::ServiceArtifact],
+) -> bool {
+    let mut found = false;
+    for artifact in artifacts {
+        if service_artifact_path_conflicts(artifact) {
+            found = true;
+            log_line(
+                ctx,
+                format!(
+                    "Warning: unsafe service artifact path exists at {}; refusing to remove it automatically",
+                    format_with_home(&artifact.path)
+                ),
+            );
+        }
+    }
+    found
 }

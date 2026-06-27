@@ -60,6 +60,12 @@ impl ServiceArtifact {
                 .unwrap_or(false),
         }
     }
+
+    pub fn exists_at_path_but_not_safely(&self) -> bool {
+        // Unsafe paths are real filesystem entries that do not match the expected artifact shape
+        // Reporting them separately avoids making symlinks or foreign directories look absent
+        path_exists_without_following(&self.path) && !self.is_present_safely()
+    }
 }
 
 fn path_is_regular_file(path: &Path) -> bool {
@@ -72,6 +78,11 @@ fn path_is_directory(path: &Path) -> bool {
     fs::symlink_metadata(path)
         .map(|metadata| metadata.file_type().is_dir())
         .unwrap_or(false)
+}
+
+fn path_exists_without_following(path: &Path) -> bool {
+    // symlink_metadata checks the artifact path itself, which is what safety diagnostics need
+    fs::symlink_metadata(path).is_ok()
 }
 
 pub fn managed_directory_marker(path: &Path) -> PathBuf {

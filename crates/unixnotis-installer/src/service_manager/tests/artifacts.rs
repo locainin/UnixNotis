@@ -73,6 +73,49 @@ fn managed_directory_presence_rejects_marker_symlink() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn artifact_conflict_detects_file_symlink_as_unsafe_presence() {
+    let root = test_root("artifact-conflict-file-symlink");
+    fs::create_dir_all(&root).expect("root");
+    let target = root.join("foreign-target");
+    let path = root.join("service-file");
+    fs::write(&target, "foreign").expect("target");
+    symlink(&target, &path).expect("file symlink");
+    let artifact = ServiceArtifact {
+        path,
+        kind: ServiceArtifactKind::File,
+        contents: Some("owned".to_string()),
+        mode: None,
+    };
+
+    assert!(!artifact.is_present_safely());
+    assert!(artifact.exists_at_path_but_not_safely());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn artifact_conflict_detects_wrong_symlink_target() {
+    let root = test_root("artifact-conflict-wrong-symlink");
+    fs::create_dir_all(&root).expect("root");
+    let actual = root.join("actual-target");
+    let expected = root.join("expected-target");
+    let path = root.join("service-link");
+    fs::write(&actual, "actual").expect("actual");
+    symlink(&actual, &path).expect("service link");
+    let artifact = ServiceArtifact {
+        path,
+        kind: ServiceArtifactKind::Symlink { target: expected },
+        contents: None,
+        mode: None,
+    };
+
+    assert!(!artifact.is_present_safely());
+    assert!(artifact.exists_at_path_but_not_safely());
+
+    let _ = fs::remove_dir_all(root);
+}
+
 fn test_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);

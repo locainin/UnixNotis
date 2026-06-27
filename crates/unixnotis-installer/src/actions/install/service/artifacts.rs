@@ -125,3 +125,10 @@ pub(in crate::actions::install) fn service_artifact_path_exists(
     // Callers use the same shape checks as install and uninstall safety gates
     artifact.is_present_safely()
 }
+
+pub(in crate::actions::install) fn service_artifact_path_conflicts(
+    artifact: &ServiceArtifact,
+) -> bool {
+    // Conflicts are real paths that fail the safe ownership/shape check
+    artifact.exists_at_path_but_not_safely()
+}
