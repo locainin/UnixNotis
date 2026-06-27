@@ -73,6 +73,51 @@ fn write_service_artifact_sets_executable_file_mode() {
 }
 
 #[test]
+fn write_service_artifact_reports_executable_mode_changes() {
+    let root = test_root("install-service-executable-mode-change");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let artifact = ServiceArtifact {
+        path: root.join("run"),
+        kind: ServiceArtifactKind::ExecutableFile,
+        contents: Some("#!/bin/sh\nexec unixnotis-daemon\n".to_string()),
+        mode: Some(0o755),
+    };
+    fs::create_dir_all(&root).expect("make service root");
+    fs::write(
+        &artifact.path,
+        artifact.contents.as_ref().expect("script contents"),
+    )
+    .expect("seed script");
+    fs::set_permissions(&artifact.path, fs::Permissions::from_mode(0o644))
+        .expect("seed non-executable mode");
+
+    let changed = write_service_artifact(&ctx, &artifact).expect("mode drift should be fixed");
+
+    // Matching bytes but wrong mode still require a reload/start-visible artifact change
+    assert!(changed);
+    assert_eq!(
+        fs::metadata(&artifact.path)
+            .expect("script metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o755
+    );
+
+    let changed_again =
+        write_service_artifact(&ctx, &artifact).expect("matching script should stay quiet");
+
+    // Reinstall should not look dirty once both contents and mode already match
+    assert!(!changed_again);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn write_managed_directory_artifact_creates_ownership_marker() {
     let root = test_root("install-service-managed-directory");
     let paths = test_paths(&root);

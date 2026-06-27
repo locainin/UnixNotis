@@ -20,6 +20,23 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
 ) -> Result<bool> {
     // Refuse unsafe existing paths before looking at file contents
     let existed_before = ensure_regular_artifact_file_path(path)?;
+    let mode_changed = match mode {
+        Some(mode) => {
+            #[cfg(unix)]
+            {
+                // Compare before chmod so reinstall stays quiet when both bytes and mode match
+                current_mode(path)? != Some(mode)
+            }
+            #[cfg(not(unix))]
+            {
+                return Err(anyhow!(
+                    "cannot apply executable mode {} on non-Unix platforms",
+                    mode
+                ));
+            }
+        }
+        None => false,
+    };
     let changed = match fs::read_to_string(path) {
         // Stable contents keep reinstall quiet and avoid unnecessary manager reloads
         Ok(existing) if existing == contents => false,
@@ -35,20 +52,26 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
         // Only artifacts that requested a mode receive chmod
         #[cfg(unix)]
         {
-            // Mode is explicit because service scripts must not depend on process umask
-            fs::set_permissions(path, fs::Permissions::from_mode(mode))
-                .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
-        }
-        #[cfg(not(unix))]
-        {
-            return Err(anyhow!(
-                "cannot apply executable mode {} on non-Unix platforms",
-                mode
-            ));
+            if changed || mode_changed || !existed_before {
+                // Mode is explicit because service scripts must not depend on process umask
+                fs::set_permissions(path, fs::Permissions::from_mode(mode))
+                    .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
+            }
         }
     }
 
-    Ok(changed || !existed_before)
+    Ok(changed || mode_changed || !existed_before)
+}
+
+#[cfg(unix)]
+fn current_mode(path: &Path) -> Result<Option<u32>> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(Some(metadata.permissions().mode() & 0o777)),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+        Err(err) => {
+            Err(err).with_context(|| format!("failed to inspect {}", format_with_home(path)))
+        }
+    }
 }
 
 pub(in crate::actions::install::service) fn ensure_regular_artifact_file_path(
