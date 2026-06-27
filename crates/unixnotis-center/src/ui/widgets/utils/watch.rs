@@ -185,13 +185,25 @@ fn should_emit_watch_event(cmd: &str, line: &str) -> bool {
         return !line.starts_with("monitor will print the received events for:");
     }
     if cmd.starts_with("dbus-monitor") {
-        // dbus-monitor announces its own monitor connection before watched signals
-        let is_monitor_lifecycle = line.contains("sender=org.freedesktop.DBus")
-            && (line.contains("member=NameAcquired") || line.contains("member=NameLost"));
-
-        return !is_monitor_lifecycle;
+        // dbus-monitor announces its own unique-name connection before watched signals
+        // Keep user-requested D-Bus name lifecycle events unless the line has that startup shape
+        return !is_dbus_monitor_startup_lifecycle(line);
     }
     true
+}
+
+fn is_dbus_monitor_startup_lifecycle(line: &str) -> bool {
+    let has_lifecycle_member =
+        line.contains("member=NameAcquired") || line.contains("member=NameLost");
+
+    // Startup chatter is about the monitor process receiving a unique bus name
+    // Other org.freedesktop.DBus lifecycle signals may be meaningful watch events
+    has_lifecycle_member
+        && line.contains("sender=org.freedesktop.DBus")
+        && line.contains("-> destination=:")
+        && line.contains("path=/org/freedesktop/DBus")
+        && line.contains("interface=org.freedesktop.DBus")
+        && line.contains("string \":")
 }
 
 fn contains_token(line: &str, token: &str) -> bool {

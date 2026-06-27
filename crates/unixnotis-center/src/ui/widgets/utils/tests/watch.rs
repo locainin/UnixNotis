@@ -24,7 +24,7 @@ fn monitor_startup_noise_does_not_emit_watch_events() {
     ));
     assert!(!should_emit_watch_event(
         "dbus-monitor --system type=signal,sender=org.bluez",
-        "signal time=1 sender=org.freedesktop.DBus -> destination=:1.1 serial=1 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameAcquired"
+        "signal time=1 sender=org.freedesktop.DBus -> destination=:1.1 serial=1 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameAcquired\n   string \":1.1\""
     ));
 }
 
@@ -45,6 +45,10 @@ fn monitor_real_events_still_emit() {
     assert!(should_emit_watch_event(
         "dbus-monitor --system type=signal,sender=org.bluez",
         "signal time=1 sender=org.bluez path=/org/bluez; interface=org.bluez.Adapter1; member=NameLost"
+    ));
+    assert!(should_emit_watch_event(
+        "dbus-monitor --system \"type=signal,interface=org.freedesktop.DBus\"",
+        "signal time=2 sender=org.freedesktop.DBus path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameLost\n   string \"org.example.Service\""
     ));
 }
 
