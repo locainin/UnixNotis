@@ -47,7 +47,7 @@ pub(super) fn service_manager_check(service_manager: Option<ServiceManagerChoice
     service_manager_check_from(&paths.service)
 }
 
-fn service_manager_check_from(manager: &ServiceManager) -> CheckItem {
+pub(super) fn service_manager_check_from(manager: &ServiceManager) -> CheckItem {
     let issues = manager.readiness_issues();
     if let Some(detail) = readiness_error_detail(&issues) {
         // Hard readiness errors are shown before running optional availability probes
