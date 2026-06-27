@@ -1,4 +1,6 @@
-use crate::detect::{parse_busctl_json, parse_busctl_status, KNOWN_DAEMONS};
+use std::io::{Error, ErrorKind};
+
+use crate::detect::{parse_busctl_json, parse_busctl_status, systemctl_spawn_error, KNOWN_DAEMONS};
 
 #[test]
 fn known_daemons_include_quickshell_owner() {
@@ -96,4 +98,11 @@ fn parse_busctl_json_reads_pid_and_comm() {
     let owner = parse_busctl_json(output).expect("expected parsed owner info");
     assert_eq!(owner.pid, Some(4242));
     assert_eq!(owner.comm.as_deref(), Some("unixnotis-daemon"));
+}
+
+#[test]
+fn missing_systemctl_does_not_emit_per_daemon_status_errors() {
+    // Non-systemd installs can still use D-Bus and process detection without systemctl
+    let err = Error::from(ErrorKind::NotFound);
+    assert!(systemctl_spawn_error(&err).is_none());
 }
