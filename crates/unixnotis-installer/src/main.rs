@@ -25,6 +25,7 @@ mod main_handlers;
 #[path = "main/tests.rs"]
 mod main_tests;
 mod model;
+#[path = "paths/index.rs"]
 mod paths;
 mod service_manager;
 mod terminal;

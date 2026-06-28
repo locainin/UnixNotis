@@ -27,13 +27,13 @@ fn restore_env(key: &str, previous: Option<String>) {
 }
 
 // Keep path discovery tests split by behavior so backend-specific rules do not pile up here
-#[path = "paths/general.rs"]
+#[path = "general.rs"]
 mod general;
-#[path = "paths/runit.rs"]
+#[path = "runit.rs"]
 mod runit;
-#[path = "paths/s6_data.rs"]
+#[path = "s6_data.rs"]
 mod s6_data;
-#[path = "paths/s6_live.rs"]
+#[path = "s6_live.rs"]
 mod s6_live;
-#[path = "paths/systemd_dinit.rs"]
+#[path = "systemd_dinit.rs"]
 mod systemd_dinit;
