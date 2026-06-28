@@ -1,6 +1,7 @@
 use crate::paths::InstallPaths;
 
 mod backend_artifacts;
+mod backend_idempotence;
 mod flow;
 mod flow_failures;
 mod flow_support;
