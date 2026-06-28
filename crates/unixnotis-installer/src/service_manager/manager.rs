@@ -290,6 +290,12 @@ impl ServiceManager {
         }
     }
 
+    pub fn uses_dbus_environment_helper(&self) -> bool {
+        // Only the systemd path benefits directly from dbus-update-activation-environment
+        // Dinit imports env through dinitctl, while runit and s6 use envdir artifacts
+        matches!(self.kind, ServiceManagerKind::Systemd)
+    }
+
     pub fn pre_start_artifacts_to_remove(&self) -> Vec<ServiceArtifact> {
         // Runit starts watched service directories immediately unless a down file is present
         match self.kind {

@@ -138,9 +138,14 @@ pub(super) fn busctl_check() -> CheckItem {
     }
 }
 
-pub(super) fn dbus_update_env_check() -> CheckItem {
+pub(super) fn dbus_update_env_check(manager: Option<&ServiceManager>) -> CheckItem {
     if program_in_path("dbus-update-activation-environment") {
         CheckItem::ok("dbus-update-activation-environment", "available")
+    } else if manager.is_some_and(|manager| !manager.uses_dbus_environment_helper()) {
+        CheckItem::ok(
+            "dbus-update-activation-environment",
+            "not required for selected service manager",
+        )
     } else {
         CheckItem::warn(
             "dbus-update-activation-environment",

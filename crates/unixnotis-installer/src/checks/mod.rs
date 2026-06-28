@@ -55,21 +55,24 @@ impl Checks {
         let gtk4_css_features = gtk::gtk4_css_features_check(&pkg_config);
         let gtk4_layer_shell = gtk::gtk4_layer_shell_check(&pkg_config);
         let busctl = system::busctl_check();
-        let dbus_update_env = system::dbus_update_env_check();
 
-        let (install_paths, path_contains_bin) =
-            match InstallPaths::discover_with_service_manager(service_manager) {
-                Ok(paths) => {
-                    // Path discovery runs once so every later row reports the same install target
-                    let install_paths = system::install_paths_check(&paths);
-                    let path_contains_bin = shell::path_check_item(&paths);
-                    (install_paths, path_contains_bin)
-                }
-                Err(err) => (
-                    CheckItem::warn("Install paths", &format!("discovery failed: {err}")),
-                    CheckItem::warn("Shell PATH", "could not determine install bin path"),
-                ),
-            };
+        let discovered_paths = InstallPaths::discover_with_service_manager(service_manager);
+        let dbus_update_env = match &discovered_paths {
+            Ok(paths) => system::dbus_update_env_check(Some(&paths.service)),
+            Err(_) => system::dbus_update_env_check(None),
+        };
+        let (install_paths, path_contains_bin) = match discovered_paths {
+            Ok(paths) => {
+                // Path discovery runs once so every later row reports the same install target
+                let install_paths = system::install_paths_check(&paths);
+                let path_contains_bin = shell::path_check_item(&paths);
+                (install_paths, path_contains_bin)
+            }
+            Err(err) => (
+                CheckItem::warn("Install paths", &format!("discovery failed: {err}")),
+                CheckItem::warn("Shell PATH", "could not determine install bin path"),
+            ),
+        };
 
         Self {
             wayland,

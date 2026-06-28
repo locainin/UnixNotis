@@ -2,7 +2,6 @@ use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::checks::CheckState;
@@ -15,11 +14,8 @@ use super::system::{
 };
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    // PATH is process-wide, so service-manager check tests need one shared guard
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("env lock")
+    // PATH is process-wide, so service-manager check tests use the crate-wide guard
+    crate::tests::env::test_env_lock()
 }
 
 struct EnvGuard {
@@ -185,10 +181,28 @@ fn dbus_update_env_check_warns_when_helper_is_not_on_path() {
     fs::create_dir_all(&fake_bin).expect("fake bin dir");
     let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
 
-    let item = dbus_update_env_check();
+    let manager = ServiceManager::systemd_user(root.join("systemd"));
+
+    let item = dbus_update_env_check(Some(&manager));
 
     assert_eq!(item.state, CheckState::Warn);
     assert!(item.detail.contains("not found"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn dbus_update_env_check_is_ok_when_selected_backend_does_not_need_helper() {
+    let _lock = env_lock();
+    let root = test_root("missing-dbus-update-env-non-systemd-check");
+    let fake_bin = root.join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let manager = ServiceManager::runit_user(root.join("service"));
+
+    let item = dbus_update_env_check(Some(&manager));
+
+    assert_eq!(item.state, CheckState::Ok);
+    assert!(item.detail.contains("not required"));
     let _ = fs::remove_dir_all(root);
 }
 
