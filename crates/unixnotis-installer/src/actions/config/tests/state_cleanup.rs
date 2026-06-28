@@ -105,6 +105,7 @@ fn cleanup_warning_message_flags_empty_directory_removal_failures() {
 #[test]
 fn format_with_state_env_uses_xdg_state_home_prefix() {
     // Ensures state paths are rendered with $XDG_STATE_HOME when available.
+    let _lock = crate::tests::env::test_env_lock();
     let key = "XDG_STATE_HOME";
     let original = std::env::var(key).ok();
     std::env::set_var(key, "state-root");

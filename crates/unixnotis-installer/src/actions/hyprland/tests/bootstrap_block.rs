@@ -9,6 +9,7 @@ use std::sync::{mpsc, Arc};
 
 #[test]
 fn strip_hyprland_bootstrap_block_handles_malformed_block() {
+    let _lock = crate::tests::env::test_env_lock();
     // Confirms malformed markers leave the original content intact for safe append.
     let detection = Detection {
         owner: None,
@@ -34,6 +35,7 @@ fn strip_hyprland_bootstrap_block_handles_malformed_block() {
 
 #[test]
 fn strip_hyprland_bootstrap_block_removes_managed_block() {
+    let _lock = crate::tests::env::test_env_lock();
     // Ensures a well-formed block is removed and the remaining content is preserved.
     let detection = Detection {
         owner: None,
@@ -63,6 +65,7 @@ fn strip_hyprland_bootstrap_block_removes_managed_block() {
 
 #[test]
 fn strip_hyprland_bootstrap_block_removes_all_blocks() {
+    let _lock = crate::tests::env::test_env_lock();
     let detection = Detection {
         owner: None,
         daemons: Vec::new(),

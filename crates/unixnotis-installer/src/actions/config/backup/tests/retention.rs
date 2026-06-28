@@ -10,6 +10,7 @@ use std::sync::{mpsc, Arc};
 
 #[test]
 fn prune_old_backups_keeps_newest() {
+    let _lock = crate::tests::env::test_env_lock();
     // Backup names are date-ordered, so lexical sort can drive retention
     let root = PathBuf::from("target").join(format!(
         "unixnotis-installer-backup-prune-test-{}",
@@ -70,6 +71,7 @@ fn backup_config_defaults_to_three() {
 
 #[test]
 fn create_backup_dir_keeps_new_directory_when_retention_is_full() {
+    let _lock = crate::tests::env::test_env_lock();
     let root = PathBuf::from("target").join(format!(
         "unixnotis-installer-backup-create-test-{}",
         std::process::id()

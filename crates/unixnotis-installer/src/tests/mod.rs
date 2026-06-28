@@ -2,6 +2,7 @@
 
 mod app;
 mod detect;
+pub(crate) mod env;
 mod events;
 mod model;
 mod terminal;

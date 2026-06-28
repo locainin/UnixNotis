@@ -9,6 +9,7 @@ use super::check_install_state;
 
 #[test]
 fn dinit_artifact_backed_enablement_does_not_log_missing_enabled_command_error() {
+    let _lock = crate::tests::env::test_env_lock();
     let root = test_root("dinit-artifact-enabled-state");
     let service_root = root.join("dinit.d");
     let boot_dir = service_root.join("boot.d");
@@ -36,6 +37,7 @@ fn dinit_artifact_backed_enablement_does_not_log_missing_enabled_command_error()
 
 #[test]
 fn install_state_rejects_foreign_runit_service_directory() {
+    let _lock = crate::tests::env::test_env_lock();
     let root = test_root("runit-foreign-install-state");
     let service_root = root.join("service");
     let service_dir = service_root.join("unixnotis-daemon");

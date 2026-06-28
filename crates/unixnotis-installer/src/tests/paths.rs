@@ -2,14 +2,10 @@ use super::{format_with_home, is_unixnotis_repo, InstallPaths, ServiceManagerCho
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    // Path discovery tests mutate process-wide env, so they must run under one lock
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("env lock")
+    // Path discovery tests share the crate-wide env lock with checks and flow tests
+    crate::tests::env::test_env_lock()
 }
 
 fn set_env(key: &str, value: Option<&str>) -> Option<String> {

@@ -10,6 +10,7 @@ use std::sync::{mpsc, Arc};
 
 #[test]
 fn restore_config_uses_restored_theme_paths() {
+    let _lock = crate::tests::env::test_env_lock();
     // Simulate a backup that points theme files into a custom relative folder
     let root = PathBuf::from("target").join(format!(
         "unixnotis-installer-restore-test-{}",
@@ -84,6 +85,7 @@ fn restore_target_guard_blocks_paths_outside_config_dir() {
 
 #[test]
 fn restore_config_skips_absolute_theme_targets() {
+    let _lock = crate::tests::env::test_env_lock();
     // Backup contains an absolute base_css path that must be ignored
     let root = PathBuf::from("target").join(format!(
         "unixnotis-installer-restore-guard-test-{}",

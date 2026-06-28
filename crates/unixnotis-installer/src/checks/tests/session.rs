@@ -1,16 +1,12 @@
 use std::env;
-use std::sync::{Mutex, OnceLock};
 
 use crate::checks::CheckState;
 
 use super::system::{hyprland_check, wayland_check};
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    // Session checks read process env directly, so tests serialize env mutation
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("env lock")
+    // Session checks read process env directly, so tests use the crate-wide guard
+    crate::tests::env::test_env_lock()
 }
 
 struct EnvGuard {
