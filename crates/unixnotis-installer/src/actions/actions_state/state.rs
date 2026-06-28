@@ -50,10 +50,15 @@ pub struct InstallState {
 
 #[derive(Clone)]
 struct ServiceManagerConflict {
+    // User-facing manager name for the backend that appears to own UnixNotis already
     manager_label: &'static str,
+    // Artifact wording stays backend-specific so errors are clear for s6/runit directories
     artifact_label: &'static str,
+    // Primary artifact path gives the user one concrete place to inspect
     artifact_path: PathBuf,
+    // Installed means every steady artifact for the other backend matches the safe shape
     installed: bool,
+    // Active means the other backend's native runtime probe says its daemon is running
     active: bool,
 }
 
@@ -160,6 +165,7 @@ fn detect_service_manager_conflict_state(
     let mut conflicts = Vec::new();
     let mut warnings = Vec::new();
 
+    // Selected-backend reinstall is valid, but sibling backends must not keep owning the daemon
     for manager in paths.alternate_service_managers() {
         let manager = match manager {
             Ok(manager) => manager,
@@ -176,6 +182,7 @@ fn detect_service_manager_conflict_state(
             && artifacts
                 .iter()
                 .all(crate::service_manager::ServiceArtifact::is_present_safely);
+        // Active probes are best-effort because missing tools should not become false conflicts
         let active = manager
             .active_probe()
             .and_then(|probe| probe.evaluate().ok())
@@ -253,6 +260,7 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
         );
     }
     if !state.service_conflicts.is_empty() {
+        // Block before build/copy/write steps so two managers never race to restart the daemon
         for conflict in &state.service_conflicts {
             if conflict.active {
                 log_line(

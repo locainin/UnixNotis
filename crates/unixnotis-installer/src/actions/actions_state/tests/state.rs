@@ -69,7 +69,9 @@ fn install_state_rejects_foreign_runit_service_directory() {
 fn selected_backend_artifacts_do_not_count_as_cross_backend_conflict() {
     let _lock = crate::tests::env::test_env_lock();
     let root = test_root("selected-backend-conflict");
+    // Discovery reads global HOME/XDG vars, so every path stays inside the test root
     let _env = service_scan_env(&root);
+    // Host managers must not affect whether this filesystem-only regression passes
     let _fake_commands = fake_inactive_manager_commands(&root);
     let service_root = root.join("home").join(".config").join("dinit.d");
     write_dinit_artifacts(&service_root);
@@ -93,7 +95,9 @@ fn selected_backend_artifacts_do_not_count_as_cross_backend_conflict() {
 fn different_backend_artifacts_are_reported_as_install_conflict() {
     let _lock = crate::tests::env::test_env_lock();
     let root = test_root("different-backend-artifact-conflict");
+    // Match real discovery paths so the conflict scanner sees the dinit artifacts
     let _env = service_scan_env(&root);
+    // Keep the test focused on artifact conflicts, not active runtime probes
     let _fake_commands = fake_inactive_manager_commands(&root);
     let dinit_root = root.join("home").join(".config").join("dinit.d");
     write_dinit_artifacts(&dinit_root);
@@ -128,6 +132,7 @@ fn install_check_blocks_when_different_backend_is_active() {
     let fake_systemctl = fake_bin.join("systemctl");
     fs::create_dir_all(&fake_bin).expect("fake bin");
     for command in ["dinitctl", "sv", "s6-svstat"] {
+        // Only systemd should look active; every other backend probe should stay inactive
         let path = fake_bin.join(command);
         fs::write(&path, "#!/bin/sh\nexit 1\n").expect("fake inactive command");
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
@@ -194,6 +199,7 @@ fn test_root(name: &str) -> PathBuf {
 fn write_dinit_artifacts(service_root: &Path) {
     let boot_dir = service_root.join("boot.d");
     fs::create_dir_all(&boot_dir).expect("boot dir");
+    // The file body only needs to satisfy the artifact shape check, not start a real daemon
     fs::write(
         service_root.join("unixnotis-daemon"),
         "type = process\ncommand = /tmp/bin/unixnotis-daemon\n",
@@ -203,6 +209,7 @@ fn write_dinit_artifacts(service_root: &Path) {
 }
 
 fn service_scan_env(root: &Path) -> Vec<EnvGuard> {
+    // Clear backend override env vars so alternate manager discovery uses normal user roots
     vec![
         EnvGuard::set("HOME", root.join("home").display().to_string()),
         EnvGuard::set("USER", "unixnotis-test"),
@@ -221,6 +228,7 @@ fn fake_inactive_manager_commands(root: &Path) -> impl Drop {
     let fake_bin = root.join("fake-inactive-bin");
     fs::create_dir_all(&fake_bin).expect("fake inactive bin");
     for command in ["systemctl", "dinitctl", "sv", "s6-svstat"] {
+        // Exit 1 models a healthy inactive service for every active-state probe style
         let path = fake_bin.join(command);
         fs::write(&path, "#!/bin/sh\nexit 1\n").expect("fake inactive command");
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755))

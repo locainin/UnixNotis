@@ -19,6 +19,7 @@ fn every_backend_reinstall_without_changes_clears_reload_flag() {
             daemons: Vec::new(),
         };
         let mut ctx = test_context(&detection, &paths, ActionMode::Install);
+        // Reload state is the user-visible sign that steady service artifacts changed
         let reload_required = Arc::new(AtomicBool::new(false));
         ctx.service_reload_required = reload_required.clone();
 
@@ -50,8 +51,10 @@ fn every_backend_uninstall_twice_is_safe() {
         let root = paths.repo_root.parent().expect("case root").to_path_buf();
         let fake_bin = root.join("fake-bin");
         let log_path = root.join("calls.log");
+        // Disable/refresh commands still execute during uninstall, so route them to fake tools
         let _fake_tools = write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
         let _env = flow_env(&root);
+        // s6 uninstall refresh checks the live root, even though no real supervisor is running
         fs::create_dir_all(root.join("run").join("s6-rc")).expect("s6 live dir");
         let detection = Detection {
             owner: None,
@@ -84,6 +87,7 @@ fn every_backend_wrong_primary_artifact_shape_fails_without_mutation() {
             .expect("case root")
             .join("foreign-target");
         fs::write(&foreign, "foreign").expect("foreign file");
+        // A symlink at the owned path is the common unsafe shape across all backend types
         symlink(&foreign, &primary).expect("foreign symlink at primary artifact");
         let detection = Detection {
             owner: None,
@@ -111,6 +115,7 @@ fn every_backend_wrong_primary_artifact_shape_fails_without_mutation() {
 }
 
 fn backend_cases(label: &str) -> Vec<(&'static str, crate::paths::InstallPaths)> {
+    // One table keeps the same regression assertions applied to every supported backend
     ["systemd", "dinit", "runit", "s6"]
         .into_iter()
         .map(|backend| {

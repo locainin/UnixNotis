@@ -68,9 +68,11 @@ impl InstallPaths {
     }
 
     pub fn alternate_service_managers(&self) -> Vec<Result<ServiceManager>> {
+        // This is used only for conflict scans; normal install still works through self.service
         ServiceManagerChoice::all()
             .into_iter()
             .filter_map(|choice| {
+                // Labels are stable across constructed managers and avoid exposing backend enums
                 let selected_label = self.service.label();
                 let manager = service_manager_from_choice(choice);
                 match manager {
@@ -205,6 +207,7 @@ fn service_manager_from_selection(
 }
 
 fn service_manager_from_choice(choice: ServiceManagerChoice) -> Result<ServiceManager> {
+    // Keep every backend constructor in one place so new manager roots stay easy to audit
     match choice {
         ServiceManagerChoice::Systemd => Ok(ServiceManager::systemd_user(systemd_user_dir()?)),
         ServiceManagerChoice::Dinit => Ok(ServiceManager::dinit_user(dinit_user_dir()?)),
