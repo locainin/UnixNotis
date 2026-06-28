@@ -1,4 +1,4 @@
-//! Trial run build, launch, PATH shim, and cleanup helpers
+//! Temporary `noticenterctl` PATH shim management for trial mode
 
 use std::env;
 use std::fs;
@@ -8,80 +8,16 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 
-pub(crate) fn run_trial(repo_root: PathBuf) -> Result<()> {
-    println!("Starting UnixNotis trial run.");
-    println!("Press Ctrl+C to stop and restore the previous daemon.");
+use super::paths::{
+    canonicalize_best_effort, find_command_on_path_with_index, path_dir_is_writable, path_entries,
+    path_entries_match, path_exists_no_follow,
+};
 
-    // Build every runtime binary before launching the daemon
-    // Trial auth depends on these paths existing in the same target tree
-    let build_status = std::process::Command::new("cargo")
-        .args([
-            "build",
-            "-p",
-            "unixnotis-daemon",
-            "-p",
-            "unixnotis-popups",
-            "-p",
-            "unixnotis-center",
-            "-p",
-            "noticenterctl",
-        ])
-        .current_dir(&repo_root)
-        .status()
-        .map_err(|err| anyhow!("failed to build trial binaries: {}", err))?;
-    if !build_status.success() {
-        // Stop here so a stale daemon binary is never launched by accident
-        return Err(anyhow!("trial build exited with failure"));
-    }
-
-    // Trial mode runs debug binaries because this path supports local edit-test loops
-    let daemon_bin = repo_root
-        .join("target")
-        .join("debug")
-        .join("unixnotis-daemon");
-    let ctl_bin = repo_root.join("target").join("debug").join("noticenterctl");
-    if !daemon_bin.is_file() {
-        // Missing build output means cargo did not produce what the trial launcher needs
-        return Err(anyhow!(
-            "trial daemon binary not found at {}",
-            daemon_bin.display()
-        ));
-    }
-    if !ctl_bin.is_file() {
-        // The control binary must exist so keybinds and manual calls can reach the trial daemon
-        return Err(anyhow!(
-            "trial control binary not found at {}",
-            ctl_bin.display()
-        ));
-    }
-
-    println!("Trial control binary: {}", ctl_bin.display());
-    // A temporary shim is optional; direct binary usage remains the fallback
-    let trial_ctl_shim = ensure_trial_control_access(&ctl_bin)?;
-
-    let status = if let Some(shim) = trial_ctl_shim.as_ref() {
-        // Use a shell wrapper only when there is a file that needs signal-time cleanup
-        run_trial_with_shim_cleanup(&daemon_bin, &shim.path, &shim.target)?
-    } else {
-        // No shim means no extra filesystem cleanup is needed
-        std::process::Command::new(&daemon_bin)
-            .args(["--trial", "--restore", "auto", "--yes"])
-            .status()
-            .map_err(|err| anyhow!("failed to run trial: {}", err))?
-    };
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(anyhow!("trial run exited with failure"))
-    }
-}
-
-struct TrialControlShim {
+pub(super) struct TrialControlShim {
     // Path is kept so Drop can remove exactly the trial-owned file
-    path: PathBuf,
+    pub(super) path: PathBuf,
     // Target proves the shim still points at the debug control binary created by this run
-    target: PathBuf,
+    pub(super) target: PathBuf,
 }
 
 impl Drop for TrialControlShim {
@@ -91,7 +27,7 @@ impl Drop for TrialControlShim {
     }
 }
 
-fn ensure_trial_control_access(ctl_bin: &Path) -> Result<Option<TrialControlShim>> {
+pub(super) fn ensure_trial_control_access(ctl_bin: &Path) -> Result<Option<TrialControlShim>> {
     // PATH order decides which noticenterctl a shell command will actually run
     let path_entries = path_entries();
     let existing = find_command_on_path_with_index("noticenterctl", &path_entries);
@@ -204,19 +140,7 @@ pub(super) fn select_trial_shim_dir(
     Some(preferred_dir.to_path_buf())
 }
 
-fn find_command_on_path_with_index(command: &str, entries: &[PathBuf]) -> Option<(usize, PathBuf)> {
-    // Return the first command because that is what shell lookup will execute
-    entries.iter().enumerate().find_map(|(index, entry)| {
-        let candidate = entry.join(command);
-        if candidate.is_file() {
-            Some((index, candidate))
-        } else {
-            None
-        }
-    })
-}
-
-fn trial_control_command_is_compatible(path: &Path, ctl_bin: &Path) -> bool {
+pub(super) fn trial_control_command_is_compatible(path: &Path, ctl_bin: &Path) -> bool {
     // Canonical comparison handles symlinks without trusting a raw path string
     let canonical = canonicalize_best_effort(path);
     if canonical == canonicalize_best_effort(ctl_bin) {
@@ -247,55 +171,6 @@ fn trial_control_command_is_compatible(path: &Path, ctl_bin: &Path) -> bool {
         .iter()
         .map(|profile| target_root.join(profile).join("noticenterctl"))
         .any(|candidate| canonicalize_best_effort(&candidate) == canonical)
-}
-
-fn path_entries() -> Vec<PathBuf> {
-    // Empty PATH is treated as no available shell command locations
-    let Ok(path_var) = env::var("PATH") else {
-        return Vec::new();
-    };
-    env::split_paths(&path_var).collect()
-}
-
-pub(super) fn path_entries_match(left: &Path, right: &Path) -> bool {
-    // Fast path avoids filesystem work for normal exact entries
-    if left == right {
-        return true;
-    }
-    // Canonical comparison lets symlinked PATH entries match the real directory
-    match (left.canonicalize(), right.canonicalize()) {
-        (Ok(lhs), Ok(rhs)) => lhs == rhs,
-        _ => false,
-    }
-}
-
-fn path_dir_is_writable(dir: &Path) -> bool {
-    // create_new avoids touching any existing file in the target directory
-    let probe = dir.join(format!(
-        ".unixnotis-trial-write-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or(0)
-    ));
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&probe)
-    {
-        Ok(_) => {
-            // Probe file is trial-only and should not outlive the writability check
-            let _ = fs::remove_file(probe);
-            true
-        }
-        Err(_) => false,
-    }
-}
-
-pub(super) fn path_exists_no_follow(path: &Path) -> bool {
-    // symlink_metadata catches dangling symlinks that exists() would miss
-    fs::symlink_metadata(path).is_ok()
 }
 
 pub(super) fn remove_trial_control_shim(path: &Path, expected_target: &Path) -> Result<bool> {
@@ -357,52 +232,10 @@ fn trial_shim_target_matches(path: &Path, raw_target: &Path, expected_target: &P
     let resolved = if raw_target.is_absolute() {
         raw_target.to_path_buf()
     } else {
+        // Relative symlink targets are resolved from the shim directory
         path.parent()
             .map(|parent| parent.join(raw_target))
             .unwrap_or_else(|| raw_target.to_path_buf())
     };
     canonicalize_best_effort(&resolved) == canonicalize_best_effort(expected_target)
-}
-
-fn canonicalize_best_effort(path: &Path) -> PathBuf {
-    // Missing paths still need stable comparison behavior
-    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
-}
-
-fn run_trial_with_shim_cleanup(
-    daemon_bin: &Path,
-    shim_path: &Path,
-    expected_target: &Path,
-) -> Result<std::process::ExitStatus> {
-    // Shell trap ensures shim cleanup still happens when Ctrl+C kills the installer process
-    let daemon = shell_quote(daemon_bin.display().to_string().as_str());
-    let shim = shell_quote(shim_path.display().to_string().as_str());
-    let target = shell_quote(expected_target.display().to_string().as_str());
-    // Trap cleanup covers the common signal path where Rust Drop may not run
-    let script = trial_launch_script(&daemon, &shim, &target);
-    std::process::Command::new("sh")
-        .arg("-c")
-        .arg(script)
-        .status()
-        .map_err(|err| anyhow!("failed to run trial: {}", err))
-}
-
-pub(super) fn trial_launch_script(daemon: &str, shim: &str, target: &str) -> String {
-    format!(
-        "cleanup() {{ if [ -L {shim} ] && [ \"$(readlink -- {shim})\" = {target} ]; then rm -f -- {shim}; fi; }}; trap cleanup EXIT INT TERM; {daemon} --trial --restore auto --yes"
-    )
-}
-
-fn shell_quote(value: &str) -> String {
-    // Single-quote shell escaping keeps paths with spaces or quotes intact
-    let mut quoted = String::from("'");
-    for ch in value.chars() {
-        if ch == '\'' {
-            quoted.push_str("'\"'\"'");
-        } else {
-            quoted.push(ch);
-        }
-    }
-    quoted.push('\'');
-    quoted
 }

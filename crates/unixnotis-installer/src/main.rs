@@ -21,9 +21,6 @@ mod action_workflow;
 mod main_flow;
 #[path = "main/main_handlers.rs"]
 mod main_handlers;
-#[cfg(test)]
-#[path = "main/tests.rs"]
-mod main_tests;
 mod model;
 mod paths;
 mod service_manager;
@@ -31,7 +28,7 @@ mod terminal;
 #[cfg(test)]
 #[path = "tests/mod.rs"]
 mod tests;
-#[path = "main/trial.rs"]
+#[path = "main/trial/index.rs"]
 mod trial;
 mod ui;
 

@@ -1,25 +1,9 @@
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::trial::{
-    path_entries_match, path_exists_no_follow, remove_trial_control_shim, select_trial_shim_dir,
-    trial_launch_script,
+use super::shim::{
+    remove_trial_control_shim, select_trial_shim_dir, trial_control_command_is_compatible,
 };
-
-fn temp_dir(label: &str) -> PathBuf {
-    // Unique paths keep parallel test runs from sharing trial shim state
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!(
-        "unixnotis-installer-main-{label}-{}-{unique}",
-        std::process::id()
-    ));
-    fs::create_dir_all(&dir).expect("temp dir");
-    dir
-}
+use super::test_support::temp_dir;
 
 #[test]
 fn trial_shim_dir_uses_local_bin_when_it_wins_path_resolution() {
@@ -35,6 +19,19 @@ fn trial_shim_dir_uses_local_bin_when_it_wins_path_resolution() {
     let selected = select_trial_shim_dir(&local_bin, &path_entries, None);
 
     assert_eq!(selected.as_deref(), Some(local_bin.as_path()));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn trial_shim_dir_creates_missing_local_bin_when_it_is_visible_on_path() {
+    let root = temp_dir("create-local-bin");
+    let local_bin = root.join("local").join("bin");
+
+    let selected = select_trial_shim_dir(&local_bin, std::slice::from_ref(&local_bin), None);
+
+    // The directory is created only after proving it can win PATH lookup
+    assert_eq!(selected.as_deref(), Some(local_bin.as_path()));
+    assert!(local_bin.is_dir());
     let _ = fs::remove_dir_all(root);
 }
 
@@ -75,30 +72,34 @@ fn trial_shim_dir_rejects_local_bin_when_not_on_path() {
 }
 
 #[test]
-fn path_entries_match_accepts_canonical_equivalents() {
-    // Symlinked PATH entries should behave like their real directory
-    let root = temp_dir("canonical");
-    let target = root.join("target");
-    let alias = root.join("alias");
-    fs::create_dir_all(&target).expect("target");
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&target, &alias).expect("symlink");
+#[cfg(unix)]
+fn trial_control_command_accepts_debug_and_release_siblings() {
+    let root = temp_dir("compatible-target-tree");
+    let debug = root.join("target").join("debug").join("noticenterctl");
+    let release = root.join("target").join("release").join("noticenterctl");
+    fs::create_dir_all(debug.parent().expect("debug parent")).expect("debug parent");
+    fs::create_dir_all(release.parent().expect("release parent")).expect("release parent");
+    fs::write(&debug, "#!/bin/sh\n").expect("debug ctl");
+    fs::write(&release, "#!/bin/sh\n").expect("release ctl");
 
-    #[cfg(unix)]
-    assert!(path_entries_match(Path::new(&alias), Path::new(&target)));
+    // Debug and release siblings are both trusted by trial daemon auth
+    assert!(trial_control_command_is_compatible(&release, &debug));
 
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-#[cfg(unix)]
-fn path_exists_no_follow_detects_dangling_trial_shim_symlink() {
-    let root = temp_dir("dangling-shim");
-    let shim = root.join("noticenterctl");
-    std::os::unix::fs::symlink(root.join("missing-target"), &shim).expect("dangling shim");
+fn trial_control_command_rejects_unrelated_path() {
+    let root = temp_dir("reject-unrelated");
+    let debug = root.join("target").join("debug").join("noticenterctl");
+    let unrelated = root.join("bin").join("noticenterctl");
+    fs::create_dir_all(debug.parent().expect("debug parent")).expect("debug parent");
+    fs::create_dir_all(unrelated.parent().expect("unrelated parent")).expect("unrelated parent");
+    fs::write(&debug, "#!/bin/sh\n").expect("debug ctl");
+    fs::write(&unrelated, "#!/bin/sh\n").expect("unrelated ctl");
 
-    // exists() would return false here, but trial mode must still refuse to overwrite it
-    assert!(path_exists_no_follow(&shim));
+    // Random commands should not be treated as trial-compatible control binaries
+    assert!(!trial_control_command_is_compatible(&unrelated, &debug));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -117,7 +118,7 @@ fn remove_trial_control_shim_removes_only_matching_symlink() {
     let removed = remove_trial_control_shim(&shim, &target).expect("cleanup should succeed");
 
     assert!(removed);
-    assert!(!path_exists_no_follow(&shim));
+    assert!(!super::paths::path_exists_no_follow(&shim));
     let _ = fs::remove_dir_all(root);
 }
 
@@ -143,16 +144,23 @@ fn remove_trial_control_shim_preserves_replaced_regular_file() {
 }
 
 #[test]
-fn trial_launch_script_guards_cleanup_with_expected_symlink_target() {
-    let script = trial_launch_script(
-        "'/tmp/unixnotis-daemon'",
-        "'/home/user/.local/bin/noticenterctl'",
-        "'/tmp/target/debug/noticenterctl'",
-    );
+#[cfg(unix)]
+fn remove_trial_control_shim_preserves_symlink_to_wrong_target() {
+    let root = temp_dir("preserve-wrong-shim");
+    let target = root.join("target").join("debug").join("noticenterctl");
+    let other = root.join("other").join("noticenterctl");
+    let shim = root.join("local").join("bin").join("noticenterctl");
+    fs::create_dir_all(target.parent().expect("target parent")).expect("target parent");
+    fs::create_dir_all(other.parent().expect("other parent")).expect("other parent");
+    fs::create_dir_all(shim.parent().expect("shim parent")).expect("shim parent");
+    fs::write(&target, "#!/bin/sh\n").expect("target");
+    fs::write(&other, "#!/bin/sh\n").expect("other target");
+    std::os::unix::fs::symlink(&other, &shim).expect("wrong shim");
 
-    // Signal-time cleanup must not be a blind rm of whatever is at the shim path
-    assert!(script.contains("[ -L '/home/user/.local/bin/noticenterctl' ]"));
-    assert!(script.contains("readlink -- '/home/user/.local/bin/noticenterctl'"));
-    assert!(script.contains("= '/tmp/target/debug/noticenterctl'"));
-    assert!(script.contains("rm -f -- '/home/user/.local/bin/noticenterctl'"));
+    let removed = remove_trial_control_shim(&shim, &target).expect("cleanup should not fail");
+
+    // Cleanup must not remove a user-replaced symlink just because the filename matches
+    assert!(!removed);
+    assert!(super::paths::path_exists_no_follow(&shim));
+    let _ = fs::remove_dir_all(root);
 }
