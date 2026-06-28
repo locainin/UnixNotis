@@ -8,7 +8,7 @@ pub const MANAGED_DIRECTORY_MARKER_CONTENTS: &str = "unixnotis\n";
 pub enum ServiceArtifactKind {
     // Plain backend-owned file, such as a user service definition
     File,
-    // Shared setup file created only when missing and never removed on uninstall
+    // Shared setup file seeded only when missing and removed only while still byte-for-byte owned
     SharedFile { created_marker: Option<PathBuf> },
     // Script-style managers need an explicit executable bit on generated run files
     ExecutableFile,
