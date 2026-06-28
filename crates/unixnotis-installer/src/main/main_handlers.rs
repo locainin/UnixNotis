@@ -152,10 +152,8 @@ pub(crate) fn handle_confirm_key(
 
             match mode {
                 ActionMode::Test => {
-                    let paths = InstallPaths::discover_with_service_manager(app.service_manager)?;
-                    return Ok(Some(ExitAction::RunTrial {
-                        repo_root: paths.repo_root.clone(),
-                    }));
+                    let repo_root = InstallPaths::discover_repo_root()?;
+                    return Ok(Some(ExitAction::RunTrial { repo_root }));
                 }
                 ActionMode::Install | ActionMode::Uninstall | ActionMode::Reset => {
                     start_action(app, terminal_guard, ui_tx, mode)?;

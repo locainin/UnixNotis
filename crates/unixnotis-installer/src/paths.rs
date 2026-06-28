@@ -40,6 +40,11 @@ impl InstallPaths {
         Self::discover_with_service_manager(None)
     }
 
+    pub fn discover_repo_root() -> Result<PathBuf> {
+        // Trial mode only needs the workspace root, not install or service-manager paths
+        find_repo_root()
+    }
+
     pub fn discover_with_service_manager(
         service_manager: Option<ServiceManagerChoice>,
     ) -> Result<Self> {

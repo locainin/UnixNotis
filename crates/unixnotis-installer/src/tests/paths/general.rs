@@ -65,3 +65,28 @@ fn service_manager_choice_accepts_cli_names() {
         ServiceManagerChoice::S6
     );
 }
+
+#[test]
+fn trial_repo_root_discovery_ignores_service_manager_environment() {
+    let _guard = env_lock();
+    let root = env::temp_dir().join(format!("unixnotis-trial-repo-root-{}", std::process::id()));
+    fs::create_dir_all(&root).expect("repo root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/unixnotis-daemon\", \"crates/unixnotis-core\"]\n",
+    )
+    .expect("repo Cargo.toml");
+    let previous_repo = set_env("UNIXNOTIS_REPO_ROOT", Some(root.to_string_lossy().as_ref()));
+    let previous_manager = set_env("UNIXNOTIS_SERVICE_MANAGER", Some("s6"));
+    let previous_user = set_env("USER", None);
+
+    let discovered = InstallPaths::discover_repo_root().expect("trial root should not need s6");
+
+    // Trial run launches from source, so backend-specific paths must not block this lookup
+    assert_eq!(discovered, root);
+
+    restore_env("USER", previous_user);
+    restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
+    restore_env("UNIXNOTIS_REPO_ROOT", previous_repo);
+    let _ = fs::remove_dir_all(root);
+}
