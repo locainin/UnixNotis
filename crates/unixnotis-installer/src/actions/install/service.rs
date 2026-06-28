@@ -34,6 +34,10 @@ use lifecycle::{
     remove_pre_start_artifacts, run_command_spec, run_service_start, warn_pre_start_artifacts_left,
 };
 use refresh::refresh_service_artifacts;
+#[cfg(test)]
+pub(in crate::actions::install) use refresh::{
+    s6_stderr_diagnostic, sanitize_diagnostic_line, truncate_diagnostic,
+};
 
 pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
     match write_service_artifacts(ctx)? {

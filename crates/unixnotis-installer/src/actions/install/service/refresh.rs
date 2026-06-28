@@ -131,17 +131,14 @@ fn run_s6_database_update(ctx: &mut ActionContext, spec: &CommandSpec) -> Result
         .with_context(|| format!("command failed to start: {}", spec.label()))?;
     let diagnostic = s6_stderr_diagnostic(&output.stderr);
 
-    if !output.status.success() {
-        log_s6_update_diagnostic(ctx, output.status, diagnostic.as_deref());
-    }
-
     match output.status.code() {
         Some(0) => Ok(S6UpdateOutcome::Clean),
         Some(1) => {
             // s6 docs: database switched, but some service transitions failed
-            log_line(
+            log_s6_switched_failure(
                 ctx,
-                "Warning: s6-rc-update switched database but some service transitions failed",
+                "some service transitions failed",
+                diagnostic.as_deref(),
             );
             Ok(S6UpdateOutcome::SwitchedWithTransitionFailure {
                 reason: "some service transitions failed",
@@ -150,36 +147,52 @@ fn run_s6_database_update(ctx: &mut ActionContext, spec: &CommandSpec) -> Result
         }
         Some(2) => {
             // s6 docs: database switched, but the transition timed out
-            log_line(
-                ctx,
-                "Warning: s6-rc-update switched database but service transition timed out",
-            );
+            log_s6_switched_failure(ctx, "service transition timed out", diagnostic.as_deref());
             Ok(S6UpdateOutcome::SwitchedWithTransitionFailure {
                 reason: "the service transition timed out",
                 diagnostic,
             })
         }
         Some(9) => {
+            log_s6_update_diagnostic(ctx, output.status, diagnostic.as_deref());
             let diagnostic = s6_diagnostic_suffix(diagnostic.as_deref());
             Err(anyhow!(
                 "s6-rc-update failed service transitions and did not switch the live database{diagnostic}"
             ))
         }
         Some(10) => {
+            log_s6_update_diagnostic(ctx, output.status, diagnostic.as_deref());
             let diagnostic = s6_diagnostic_suffix(diagnostic.as_deref());
             Err(anyhow!(
                 "s6-rc-update timed out and did not switch the live database{diagnostic}"
             ))
         }
-        Some(code) => Err(anyhow!(
-            "s6-rc-update failed with exit code {code}; live database switch state is unknown{}",
-            s6_diagnostic_suffix(diagnostic.as_deref())
-        )),
-        None => Err(anyhow!(
-            "s6-rc-update terminated without an exit code; live database switch state is unknown{}",
-            s6_diagnostic_suffix(diagnostic.as_deref())
-        )),
+        Some(code) => {
+            log_s6_update_diagnostic(ctx, output.status, diagnostic.as_deref());
+            Err(anyhow!(
+                "s6-rc-update failed with exit code {code}; live database switch state is unknown{}",
+                s6_diagnostic_suffix(diagnostic.as_deref())
+            ))
+        }
+        None => {
+            log_s6_update_diagnostic(ctx, output.status, diagnostic.as_deref());
+            Err(anyhow!(
+                "s6-rc-update terminated without an exit code; live database switch state is unknown{}",
+                s6_diagnostic_suffix(diagnostic.as_deref())
+            ))
+        }
     }
+}
+
+fn log_s6_switched_failure(ctx: &mut ActionContext, reason: &str, diagnostic: Option<&str>) {
+    // Known switched-database outcomes get one precise warning instead of a generic failure line
+    log_line(
+        ctx,
+        format!(
+            "Warning: s6-rc-update switched database but {reason}{}",
+            s6_diagnostic_suffix(diagnostic)
+        ),
+    );
 }
 
 fn log_s6_update_diagnostic(ctx: &mut ActionContext, status: ExitStatus, diagnostic: Option<&str>) {
@@ -201,17 +214,31 @@ fn s6_diagnostic_suffix(diagnostic: Option<&str>) -> String {
     diagnostic.map_or_else(String::new, |line| format!(": {line}"))
 }
 
-fn s6_stderr_diagnostic(stderr: &[u8]) -> Option<String> {
+pub(in crate::actions::install) fn s6_stderr_diagnostic(stderr: &[u8]) -> Option<String> {
     const MAX_DIAGNOSTIC_LEN: usize = 240;
 
     String::from_utf8_lossy(stderr)
         .lines()
-        .map(|line| line.replace('\r', "").trim().to_string())
+        .map(sanitize_diagnostic_line)
         .find(|line| !line.is_empty())
         .map(|line| truncate_diagnostic(line, MAX_DIAGNOSTIC_LEN))
 }
 
-fn truncate_diagnostic(mut line: String, max_len: usize) -> String {
+pub(in crate::actions::install) fn sanitize_diagnostic_line(line: &str) -> String {
+    line.chars()
+        .filter_map(|ch| match ch {
+            // Tabs are spacing, but raw tabs can still make compact TUI logs hard to scan
+            '\t' => Some(' '),
+            // Drop escape bytes and every other control character before the line hits the TUI
+            ch if ch.is_control() => None,
+            ch => Some(ch),
+        })
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+pub(in crate::actions::install) fn truncate_diagnostic(mut line: String, max_len: usize) -> String {
     if line.len() <= max_len {
         return line;
     }

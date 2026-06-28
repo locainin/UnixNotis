@@ -5,6 +5,7 @@ mod flow;
 mod flow_failures;
 mod flow_support;
 mod lifecycle;
+mod refresh;
 mod uninstall_safety;
 mod writes;
 
