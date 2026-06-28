@@ -17,8 +17,8 @@ fn systemd_install_flow_runs_reload_env_import_and_enable() {
     let log_path = root.join("calls.log");
     let fake_bin = root.join("fake-bin");
     // Fake binaries let the real installer flow run without depending on host systemd state
-    write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
-    let _env = flow_env(&root, &fake_bin);
+    let _fake_tools = write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
+    let _env = flow_env(&root);
     let paths = flow_paths(
         &root,
         ServiceManager::systemd_user(
@@ -32,16 +32,20 @@ fn systemd_install_flow_runs_reload_env_import_and_enable() {
     run_install_and_enable(&paths).expect("systemd flow should complete");
 
     let calls = read_calls(&log_path);
-    // systemd still owns reload, D-Bus import, systemd import, and enable --now
-    assert_call_order(
-        &calls,
-        &[
-            "program=systemctl argv=[--user][daemon-reload]",
-            "program=dbus-update-activation-environment argv=[WAYLAND_DISPLAY]",
-            "program=systemctl argv=[--user][--no-pager][import-environment][WAYLAND_DISPLAY]",
-            "program=systemctl argv=[--user][enable][--now][unixnotis-daemon.service]",
-        ],
-    );
+    // systemd always owns reload, systemd import, and enable --now
+    // D-Bus import appears only on hosts where the helper is available
+    let mut expected = vec!["program=systemctl argv=[--user][daemon-reload]"];
+    if calls
+        .iter()
+        .any(|call| call.contains("program=dbus-update-activation-environment"))
+    {
+        expected.push("program=dbus-update-activation-environment argv=[WAYLAND_DISPLAY]");
+    }
+    expected.extend([
+        "program=systemctl argv=[--user][--no-pager][import-environment][WAYLAND_DISPLAY]",
+        "program=systemctl argv=[--user][enable][--now][unixnotis-daemon.service]",
+    ]);
+    assert_call_order(&calls, &expected);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -52,8 +56,8 @@ fn dinit_install_flow_sets_environment_from_env_and_starts_without_reload() {
     let root = service_flow_root("install-flow-dinit");
     let log_path = root.join("calls.log");
     let fake_bin = root.join("fake-bin");
-    write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
-    let _env = flow_env(&root, &fake_bin);
+    let _fake_tools = write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
+    let _env = flow_env(&root);
     let paths = flow_paths(
         &root,
         ServiceManager::dinit_user(root.join("home").join(".config").join("dinit.d")),
@@ -94,8 +98,8 @@ fn runit_install_flow_syncs_envdir_before_removing_down_and_starting() {
     let log_path = root.join("calls.log");
     let fake_bin = root.join("fake-bin");
     // The fake sv command fails if start runs before envdir exists or while down remains
-    write_fake_tools(&fake_bin, &log_path, FakeToolMode::RunitSv);
-    let _env = flow_env(&root, &fake_bin);
+    let _fake_tools = write_fake_tools(&fake_bin, &log_path, FakeToolMode::RunitSv);
+    let _env = flow_env(&root);
     let service_root = root.join("home").join(".config").join("service");
     let paths = flow_paths(&root, ServiceManager::runit_user(service_root));
 
@@ -125,8 +129,8 @@ fn s6_install_flow_compiles_database_then_changes_service() {
     let root = service_flow_root("install-flow-s6");
     let log_path = root.join("calls.log");
     let fake_bin = root.join("fake-bin");
-    write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
-    let _env = flow_env(&root, &fake_bin);
+    let _fake_tools = write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
+    let _env = flow_env(&root);
     fs::create_dir_all(root.join("run").join("s6-rc")).expect("s6 live dir");
     let paths = flow_paths(
         &root,

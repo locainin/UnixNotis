@@ -1,5 +1,17 @@
 use std::process::{Command, Stdio};
 
+#[cfg(test)]
+use std::cell::RefCell;
+#[cfg(test)]
+use std::path::{Path, PathBuf};
+
+#[cfg(test)]
+thread_local! {
+    // Flow tests run real installer code with fake manager binaries
+    // Thread-local routing avoids changing PATH for the whole parallel test process
+    static FAKE_COMMAND_BIN: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommandSpec {
     // Human-readable command shown in logs without exposing inherited environment values
@@ -63,7 +75,7 @@ impl CommandSpec {
     }
 
     pub fn to_command(&self) -> Command {
-        let mut command = Command::new(&self.program);
+        let mut command = Command::new(command_program(&self.program));
         // CommandSpec never goes through a shell, which keeps service-manager commands predictable
         command.args(&self.args);
         for (name, value) in &self.envs {
@@ -78,4 +90,54 @@ impl CommandSpec {
         }
         command
     }
+}
+
+fn command_program(program: &str) -> std::ffi::OsString {
+    #[cfg(test)]
+    if let Some(fake_program) = fake_command_program(program) {
+        // Test-only fake routing keeps CommandSpec execution deterministic under cargo test
+        return fake_program.into_os_string();
+    }
+
+    // Production always executes the program name exactly as the backend provided it
+    program.into()
+}
+
+#[cfg(test)]
+fn fake_command_program(program: &str) -> Option<PathBuf> {
+    if program.contains(std::path::MAIN_SEPARATOR) {
+        return None;
+    }
+    FAKE_COMMAND_BIN.with(|fake_bin| {
+        let fake_bin = fake_bin.borrow();
+        let candidate = fake_bin.as_ref()?.join(program);
+        // Only route commands that the test explicitly provided
+        candidate.is_file().then_some(candidate)
+    })
+}
+
+#[cfg(test)]
+pub(crate) struct FakeCommandBinGuard {
+    // Previous routing supports nested helpers without leaking fake bins across tests
+    previous: Option<PathBuf>,
+}
+
+#[cfg(test)]
+impl Drop for FakeCommandBinGuard {
+    fn drop(&mut self) {
+        FAKE_COMMAND_BIN.with(|fake_bin| {
+            // Restore the previous test override so nested helpers stay scoped
+            *fake_bin.borrow_mut() = self.previous.take();
+        });
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn use_fake_command_bin(path: &Path) -> FakeCommandBinGuard {
+    FAKE_COMMAND_BIN.with(|fake_bin| {
+        let mut fake_bin = fake_bin.borrow_mut();
+        // replace() returns the old route so Drop can restore it exactly
+        let previous = fake_bin.replace(path.to_path_buf());
+        FakeCommandBinGuard { previous }
+    })
 }

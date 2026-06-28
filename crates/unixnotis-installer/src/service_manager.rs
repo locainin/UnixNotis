@@ -38,6 +38,8 @@ pub use refresh::{S6DatabaseRefresh, ServiceArtifactRefresh};
 #[cfg(test)]
 pub use artifact::MANAGED_DIRECTORY_MARKER;
 #[cfg(test)]
+pub(crate) use command::use_fake_command_bin;
+#[cfg(test)]
 pub use manager::{
     UNIXNOTIS_DAEMON_DINIT_SERVICE, UNIXNOTIS_DAEMON_RUNIT_SERVICE, UNIXNOTIS_DAEMON_S6_SERVICE,
     UNIXNOTIS_DAEMON_SERVICE,

@@ -14,8 +14,8 @@ fn runit_envdir_sync_failure_keeps_down_gate() {
     let root = service_flow_root("install-fail-runit-envdir");
     let log_path = root.join("calls.log");
     let fake_bin = root.join("fake-bin");
-    write_fake_tools(&fake_bin, &log_path, FakeToolMode::RunitSv);
-    let _env = flow_env(&root, &fake_bin);
+    let _fake_tools = write_fake_tools(&fake_bin, &log_path, FakeToolMode::RunitSv);
+    let _env = flow_env(&root);
     let service_root = root.join("home").join(".config").join("service");
     let paths = flow_paths(&root, ServiceManager::runit_user(service_root));
     run_install_only(&paths).expect("runit install artifacts should be written");
@@ -50,8 +50,8 @@ fn runit_start_failure_happens_after_down_gate_removal() {
     let root = service_flow_root("install-fail-runit-start");
     let log_path = root.join("calls.log");
     let fake_bin = root.join("fake-bin");
-    write_fake_tools(&fake_bin, &log_path, FakeToolMode::RunitSv);
-    let _env = flow_env(&root, &fake_bin);
+    let _fake_tools = write_fake_tools(&fake_bin, &log_path, FakeToolMode::RunitSv);
+    let _env = flow_env(&root);
     let _failure = fake_failure_env("sv", "start");
     let service_root = root.join("home").join(".config").join("service");
     let paths = flow_paths(&root, ServiceManager::runit_user(service_root));

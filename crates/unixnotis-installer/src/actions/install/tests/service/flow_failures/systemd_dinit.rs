@@ -13,8 +13,8 @@ fn systemd_install_fails_before_env_sync_when_daemon_reload_fails() {
     let root = service_flow_root("install-fail-systemd-reload");
     let log_path = root.join("calls.log");
     let fake_bin = root.join("fake-bin");
-    write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
-    let _env = flow_env(&root, &fake_bin);
+    let _fake_tools = write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
+    let _env = flow_env(&root);
     let _failure = fake_failure_env("systemctl", "daemon-reload");
     let paths = flow_paths(
         &root,
@@ -53,8 +53,8 @@ fn dinit_install_fails_before_start_when_setenv_fails() {
     let root = service_flow_root("install-fail-dinit-setenv");
     let log_path = root.join("calls.log");
     let fake_bin = root.join("fake-bin");
-    write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
-    let _env = flow_env(&root, &fake_bin);
+    let _fake_tools = write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
+    let _env = flow_env(&root);
     let _failure = fake_failure_env("dinitctl", "setenv");
     let paths = flow_paths(
         &root,

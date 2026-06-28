@@ -2,23 +2,19 @@ use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::MutexGuard;
 
 use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
-use crate::service_manager::ServiceManager;
+use crate::service_manager::{use_fake_command_bin, ServiceManager};
 
 use super::super::super::service::{enable_service, install_service, uninstall_service};
 use super::super::support::{test_context, test_root};
 
-pub(super) static ENV_LOCK: Mutex<()> = Mutex::new(());
-
 pub(super) fn lock_env() -> MutexGuard<'static, ()> {
-    // A failed test can poison the lock, but cleanup guards still restore env on drop
-    ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    // Flow tests share one crate-wide env lock with path and readiness tests
+    crate::tests::env::test_env_lock()
 }
 
 pub(super) struct EnvGuard {
@@ -100,16 +96,12 @@ pub(super) fn flow_paths(root: &Path, service: ServiceManager) -> InstallPaths {
     }
 }
 
-pub(super) fn flow_env(root: &Path, fake_bin: &Path) -> Vec<EnvGuard> {
-    let original_path = env::var("PATH").unwrap_or_default();
-    let mut path_entries = vec![fake_bin.to_path_buf()];
-    // Preserve the real PATH after fake tools so sh and coreutils still resolve normally
-    path_entries.extend(env::split_paths(&original_path));
-    let fake_path = env::join_paths(path_entries).expect("fake PATH");
+pub(super) fn flow_env(root: &Path) -> Vec<EnvGuard> {
+    // Fake manager binaries are routed through CommandSpec test hooks, not PATH
+    // This env setup only models the session values imported by each backend
     vec![
         EnvGuard::set("HOME", root.join("home").display().to_string()),
         EnvGuard::set("SHELL", "/bin/sh"),
-        EnvGuard::set("PATH", fake_path.to_string_lossy()),
         EnvGuard::set("WAYLAND_DISPLAY", "wayland-test"),
         EnvGuard::set("XDG_RUNTIME_DIR", root.join("run").display().to_string()),
         EnvGuard::set("XDG_CURRENT_DESKTOP", "Hyprland"),
@@ -119,7 +111,7 @@ pub(super) fn flow_env(root: &Path, fake_bin: &Path) -> Vec<EnvGuard> {
     ]
 }
 
-pub(super) fn write_fake_tools(fake_bin: &Path, log_path: &Path, mode: FakeToolMode) {
+pub(super) fn write_fake_tools(fake_bin: &Path, log_path: &Path, mode: FakeToolMode) -> impl Drop {
     fs::create_dir_all(fake_bin).expect("make fake bin");
     // All tools listed here are backends or helper commands used by the service install flow
     for tool in [
@@ -144,12 +136,27 @@ pub(super) fn write_fake_tools(fake_bin: &Path, log_path: &Path, mode: FakeToolM
         fs::write(&path, script).expect("write fake tool");
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("chmod fake tool");
     }
+    // Route CommandSpec-created processes to this temp bin without changing global PATH
+    // That keeps parallel tests from accidentally borrowing another flow's fake commands
+    use_fake_command_bin(fake_bin)
 }
 
 pub(super) fn fake_failure_env(program: &'static str, contains: &'static str) -> [EnvGuard; 2] {
     [
         EnvGuard::set("UNIXNOTIS_FAKE_FAIL_PROGRAM", program),
         EnvGuard::set("UNIXNOTIS_FAKE_FAIL_CONTAINS", contains),
+    ]
+}
+
+pub(super) fn fake_failure_env_with_code(
+    program: &'static str,
+    contains: &'static str,
+    code: u8,
+) -> [EnvGuard; 3] {
+    [
+        EnvGuard::set("UNIXNOTIS_FAKE_FAIL_PROGRAM", program),
+        EnvGuard::set("UNIXNOTIS_FAKE_FAIL_CONTAINS", contains),
+        EnvGuard::set("UNIXNOTIS_FAKE_FAIL_CODE", code.to_string()),
     ]
 }
 
@@ -187,7 +194,7 @@ fn fake_tool_script(tool: &str, log_path: &Path, extra: &str) -> String {
          printf ' WAYLAND_DISPLAY=%s XDG_RUNTIME_DIR=%s\\n' \"${{WAYLAND_DISPLAY-}}\" \"${{XDG_RUNTIME_DIR-}}\"\n\
          }} >> {}\n\
          if [ \"${{UNIXNOTIS_FAKE_FAIL_PROGRAM-}}\" = '{tool}' ]; then\n\
-         case \" $* \" in *\"${{UNIXNOTIS_FAKE_FAIL_CONTAINS-}}\"*) exit 42 ;; esac\n\
+         case \" $* \" in *\"${{UNIXNOTIS_FAKE_FAIL_CONTAINS-}}\"*) exit \"${{UNIXNOTIS_FAKE_FAIL_CODE:-42}}\" ;; esac\n\
          fi\n\
          {extra}\n",
         sh_quote(log_path)
@@ -213,7 +220,7 @@ fn fake_runit_sv_script(tool: &str, log_path: &Path) -> String {
          printf ' runit_ready=%s WAYLAND_DISPLAY=%s XDG_RUNTIME_DIR=%s\\n' \"$runit_ready\" \"${{WAYLAND_DISPLAY-}}\" \"${{XDG_RUNTIME_DIR-}}\"\n\
          }} >> {}\n\
          if [ \"${{UNIXNOTIS_FAKE_FAIL_PROGRAM-}}\" = '{tool}' ]; then\n\
-         case \" $* \" in *\"${{UNIXNOTIS_FAKE_FAIL_CONTAINS-}}\"*) exit 42 ;; esac\n\
+         case \" $* \" in *\"${{UNIXNOTIS_FAKE_FAIL_CONTAINS-}}\"*) exit \"${{UNIXNOTIS_FAKE_FAIL_CODE:-42}}\" ;; esac\n\
          fi\n\
          [ \"$runit_ready\" != no ]\n",
         sh_quote(log_path)

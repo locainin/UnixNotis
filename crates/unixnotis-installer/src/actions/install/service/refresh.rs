@@ -3,6 +3,7 @@
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
@@ -11,7 +12,7 @@ use anyhow::{anyhow, Context, Result};
 use std::os::unix::fs as unix_fs;
 
 use crate::paths::format_with_home;
-use crate::service_manager::{S6DatabaseRefresh, ServiceArtifactRefresh};
+use crate::service_manager::{CommandSpec, S6DatabaseRefresh, ServiceArtifactRefresh};
 
 use super::super::super::{log_line, ActionContext};
 use super::dirs::ensure_directory_without_symlink;
@@ -72,7 +73,7 @@ fn refresh_s6_database(ctx: &mut ActionContext, plan: &S6DatabaseRefresh) -> Res
     let compile = plan.compile_command(&compiled);
     run_command_spec(ctx, &compile)?;
 
-    if path_is_plain_directory(plan.live_root()) {
+    let update_outcome = if path_is_live_directory(plan.live_root()) {
         log_line(
             ctx,
             format!(
@@ -81,18 +82,84 @@ fn refresh_s6_database(ctx: &mut ActionContext, plan: &S6DatabaseRefresh) -> Res
             ),
         );
         let update = plan.update_command(&compiled);
-        run_command_spec(ctx, &update)?;
+        run_s6_database_update(ctx, &update)?
     } else {
         // Readiness normally blocks this path, but direct callers still get a precise failure
         return Err(anyhow!(
             "s6 live directory {} is missing; start local s6 supervision before refreshing UnixNotis",
             format_with_home(plan.live_root())
         ));
-    }
+    };
 
-    // Match the Artix script pattern: update live state, then switch the stable compiled link
+    // Match the Artix and upstream pattern: update live state, then switch the stable link
+    // Exit codes 1 and 2 still mean the live database moved, so the stable link must move too
     switch_s6_compiled_link(plan, &compiled)?;
+    update_outcome.into_result()?;
     Ok(())
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum S6UpdateOutcome {
+    Clean,
+    SwitchedWithTransitionFailure(&'static str),
+}
+
+impl S6UpdateOutcome {
+    fn into_result(self) -> Result<()> {
+        match self {
+            Self::Clean => Ok(()),
+            Self::SwitchedWithTransitionFailure(reason) => Err(anyhow!(
+                "s6-rc-update switched the live database, but {reason}"
+            )),
+        }
+    }
+}
+
+fn run_s6_database_update(ctx: &mut ActionContext, spec: &CommandSpec) -> Result<S6UpdateOutcome> {
+    let mut command = spec.to_command();
+    // Keep command output out of the TUI unless future callers add a structured log reader here
+    let status = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .with_context(|| format!("command failed to start: {}", spec.label()))?;
+
+    match status.code() {
+        Some(0) => Ok(S6UpdateOutcome::Clean),
+        Some(1) => {
+            // s6 docs: database switched, but some service transitions failed
+            log_line(
+                ctx,
+                "Warning: s6-rc-update switched database but some service transitions failed",
+            );
+            Ok(S6UpdateOutcome::SwitchedWithTransitionFailure(
+                "some service transitions failed",
+            ))
+        }
+        Some(2) => {
+            // s6 docs: database switched, but the transition timed out
+            log_line(
+                ctx,
+                "Warning: s6-rc-update switched database but service transition timed out",
+            );
+            Ok(S6UpdateOutcome::SwitchedWithTransitionFailure(
+                "the service transition timed out",
+            ))
+        }
+        Some(9) => Err(anyhow!(
+            "s6-rc-update failed service transitions and did not switch the live database"
+        )),
+        Some(10) => Err(anyhow!(
+            "s6-rc-update timed out and did not switch the live database"
+        )),
+        Some(code) => Err(anyhow!(
+            "s6-rc-update failed with exit code {code}; live database switch state is unknown"
+        )),
+        None => Err(anyhow!(
+            "s6-rc-update terminated without an exit code; live database switch state is unknown"
+        )),
+    }
 }
 
 fn next_s6_compiled_database(plan: &S6DatabaseRefresh) -> Result<PathBuf> {
@@ -179,9 +246,9 @@ fn remove_stale_temp_link(temp_link: &Path) -> Result<()> {
     }
 }
 
-fn path_is_plain_directory(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        // Refresh commands should never follow a live-root symlink chosen earlier in the flow
-        .map(|metadata| metadata.file_type().is_dir())
+fn path_is_live_directory(path: &Path) -> bool {
+    fs::metadata(path)
+        // s6 live roots are normally symlinks, and the symlink name is the command contract
+        .map(|metadata| metadata.is_dir())
         .unwrap_or(false)
 }

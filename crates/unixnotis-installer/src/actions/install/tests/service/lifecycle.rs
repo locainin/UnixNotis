@@ -14,7 +14,7 @@ use super::super::super::service::{
 };
 use super::super::support::{test_context, test_paths, test_root};
 use super::expected_primary_artifact_contents;
-use super::flow_support::{flow_env, write_fake_tools, FakeToolMode};
+use super::flow_support::{flow_env, lock_env, write_fake_tools, FakeToolMode};
 
 // Lifecycle tests assert the installer-visible behavior around reload flags and user logs
 // Artifact byte tests live elsewhere so this file stays focused on install phase decisions
@@ -156,11 +156,12 @@ fn install_service_reports_runit_unchanged_when_only_start_gate_is_recreated() {
 
 #[test]
 fn uninstall_service_skips_removed_log_for_missing_runit_start_gate() {
+    let _lock = lock_env();
     let root = test_root("uninstall-runit-missing-temp-gate");
     let fake_bin = root.join("fake-bin");
     let fake_log = root.join("fake-calls.log");
-    write_fake_tools(&fake_bin, &fake_log, FakeToolMode::RunitSv);
-    let _env = flow_env(&root, &fake_bin);
+    let _fake_tools = write_fake_tools(&fake_bin, &fake_log, FakeToolMode::RunitSv);
+    let _env = flow_env(&root);
 
     let mut paths = test_paths(&root);
     paths.service = ServiceManager::runit_user(root.join("home").join(".config").join("service"));
