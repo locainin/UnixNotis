@@ -245,7 +245,7 @@ fn s6_readiness_errors_when_live_directory_is_missing() {
 }
 
 #[test]
-fn s6_readiness_errors_when_live_directory_is_symlink() {
+fn s6_readiness_accepts_symlinked_live_directory() {
     let root = test_root("s6-symlink-live");
     let real_live = root.join("real-live");
     let linked_live = root.join("run").join("s6-rc");
@@ -259,7 +259,8 @@ fn s6_readiness_errors_when_live_directory_is_symlink() {
 
     let issues = manager.readiness_issues();
 
-    assert!(issues.iter().any(|issue| {
+    // s6-rc-init rotates the real live tree under a stable symlink, so this is valid
+    assert!(!issues.iter().any(|issue| {
         matches!(issue, ReadinessIssue::Error(_)) && issue.message().contains("live directory")
     }));
 

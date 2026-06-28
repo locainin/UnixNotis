@@ -119,8 +119,9 @@ fn s6_live_dir(data_root: &Path) -> Result<PathBuf> {
     }
     let user = env::var("USER").map_err(|_| anyhow!("USER is not set"))?;
     let integrated = PathBuf::from("/run").join(&user).join("s6-rc");
-    if path_is_plain_directory(&integrated) {
+    if path_is_directory_or_symlink_to_directory(&integrated) {
         // Artix integrated local supervision wires the user s6-rc tree under /run/$USER
+        // s6-rc-init normally exposes this live path as a symlink to a real live directory
         return Ok(integrated);
     }
     let standalone = PathBuf::from("/tmp").join(&user).join("s6-rc");
@@ -129,17 +130,25 @@ fn s6_live_dir(data_root: &Path) -> Result<PathBuf> {
         return Ok(standalone);
     }
     let local = data_root.join("rc").join("live");
-    if path_is_plain_directory(&local) {
+    if path_is_directory_or_symlink_to_directory(&local) {
         // Test and custom layouts can keep a live tree beside the compiled database root
+        // Keep the symlink name because s6-rc-update expects the original live argument
         return Ok(local);
     }
     // Return the integrated path so readiness can show the normal setup hint
     Ok(integrated)
 }
 
+fn path_is_directory_or_symlink_to_directory(path: &Path) -> bool {
+    fs::metadata(path)
+        // s6 live roots are expected to be symlinks that point at the current live tree
+        .map(|metadata| metadata.is_dir())
+        .unwrap_or(false)
+}
+
 fn path_is_plain_directory(path: &Path) -> bool {
     fs::symlink_metadata(path)
-        // Auto-detected service roots must not follow symlinks into surprising locations
+        // Auto-detected /tmp roots must not follow symlinks into surprising locations
         .map(|metadata| metadata.file_type().is_dir())
         .unwrap_or(false)
 }

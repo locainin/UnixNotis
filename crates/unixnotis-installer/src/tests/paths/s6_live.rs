@@ -46,6 +46,56 @@ fn install_paths_use_existing_local_s6_live_root_when_run_root_is_missing() {
 }
 
 #[test]
+fn install_paths_use_symlinked_local_s6_live_root() {
+    let _guard = env_lock();
+    let Ok(home) = env::var("HOME") else {
+        return;
+    };
+    if home.is_empty() {
+        return;
+    }
+    let data_root = env::temp_dir().join(format!(
+        "unixnotis-s6-local-live-symlink-{}",
+        std::process::id()
+    ));
+    let real_live = data_root.join("rc").join("live:initial");
+    let linked_live = data_root.join("rc").join("live");
+    fs::create_dir_all(&real_live).expect("real local live root");
+    std::os::unix::fs::symlink(&real_live, &linked_live).expect("local live symlink");
+    let previous_data = set_env(
+        "UNIXNOTIS_S6_DATA_DIR",
+        Some(data_root.to_string_lossy().as_ref()),
+    );
+    let previous_live = set_env("UNIXNOTIS_S6RC_LIVE_DIR", None);
+    let previous_user = set_env("USER", Some("unixnotis-test-user"));
+    let previous_manager = set_env("UNIXNOTIS_SERVICE_MANAGER", Some("s6"));
+
+    let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+
+    // s6-rc-update expects the live symlink name, not the resolved live:initial directory
+    assert_eq!(
+        paths
+            .service
+            .start_command()
+            .expect("s6 start command")
+            .args(),
+        &[
+            "-l",
+            linked_live.to_string_lossy().as_ref(),
+            "-u",
+            "change",
+            "unixnotis-daemon"
+        ]
+    );
+
+    restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
+    restore_env("USER", previous_user);
+    restore_env("UNIXNOTIS_S6RC_LIVE_DIR", previous_live);
+    restore_env("UNIXNOTIS_S6_DATA_DIR", previous_data);
+    let _ = fs::remove_dir_all(data_root);
+}
+
+#[test]
 fn install_paths_use_existing_tmp_s6_live_root_for_standalone_supervision() {
     let _guard = env_lock();
     let Ok(home) = env::var("HOME") else {
@@ -163,4 +213,45 @@ fn install_paths_allow_explicit_s6_live_root_with_default_data_root() {
     restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
     restore_env("UNIXNOTIS_S6RC_LIVE_DIR", previous_live);
     restore_env("UNIXNOTIS_S6_DATA_DIR", previous_data);
+}
+
+#[test]
+fn install_paths_allow_explicit_symlinked_s6_live_root() {
+    let _guard = env_lock();
+    let Ok(home) = env::var("HOME") else {
+        return;
+    };
+    if home.is_empty() {
+        return;
+    }
+    let root = env::temp_dir().join(format!(
+        "unixnotis-s6-explicit-live-symlink-{}",
+        std::process::id()
+    ));
+    let real_live = root.join("live:initial");
+    let linked_live = root.join("live");
+    fs::create_dir_all(&real_live).expect("real explicit live root");
+    std::os::unix::fs::symlink(&real_live, &linked_live).expect("explicit live symlink");
+    let previous_data = set_env("UNIXNOTIS_S6_DATA_DIR", None);
+    let previous_live = set_env(
+        "UNIXNOTIS_S6RC_LIVE_DIR",
+        Some(linked_live.to_string_lossy().as_ref()),
+    );
+    let previous_manager = set_env("UNIXNOTIS_SERVICE_MANAGER", Some("s6"));
+
+    let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+
+    assert_eq!(
+        paths
+            .service
+            .start_command()
+            .expect("s6 start command")
+            .args()[1],
+        linked_live.to_string_lossy()
+    );
+
+    restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
+    restore_env("UNIXNOTIS_S6RC_LIVE_DIR", previous_live);
+    restore_env("UNIXNOTIS_S6_DATA_DIR", previous_data);
+    let _ = fs::remove_dir_all(root);
 }

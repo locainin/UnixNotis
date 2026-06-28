@@ -238,8 +238,9 @@ pub fn readiness_issues(artifact_root: &Path, live_dir: &Path) -> Vec<ReadinessI
             "s6 source directory is missing; installer will create the local source tree",
         ));
     }
-    if !is_directory(live_dir) {
+    if !is_directory_or_symlink_to_directory(live_dir) {
         // Control commands need a live s6-rc tree before they can start or stop the service
+        // The public live path may be a symlink because s6-rc-init rotates the real tree
         issues.push(ReadinessIssue::error(
             format!(
                 "s6 live directory {} is missing; start local s6 supervision or set UNIXNOTIS_S6RC_LIVE_DIR before controlling UnixNotis",
@@ -327,6 +328,13 @@ fn is_matching_file(path: &Path, expected: &str) -> bool {
 fn is_directory(path: &Path) -> bool {
     fs::symlink_metadata(path)
         .map(|metadata| metadata.file_type().is_dir())
+        .unwrap_or(false)
+}
+
+fn is_directory_or_symlink_to_directory(path: &Path) -> bool {
+    fs::metadata(path)
+        // Only live-root readiness follows the final symlink because that is normal s6 state
+        .map(|metadata| metadata.is_dir())
         .unwrap_or(false)
 }
 
