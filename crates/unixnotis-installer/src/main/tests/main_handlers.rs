@@ -1,10 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::{
-    handle_build_accel_key, handle_reset_menu_key, handle_restore_select_key, handle_welcome_key,
-};
 use crate::actions::{BuildAccelConfigStatus, BuildAccelDetection};
 use crate::app::{App, BuildAccelState};
+use crate::main_handlers::{
+    handle_build_accel_key, handle_reset_menu_key, handle_restore_select_key, handle_welcome_key,
+};
 
 fn key(code: KeyCode) -> KeyEvent {
     // Tests build real crossterm key events so handler behavior matches the TUI path

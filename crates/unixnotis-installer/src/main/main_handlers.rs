@@ -223,7 +223,3 @@ pub(crate) fn handle_build_accel_key(app: &mut App, key: KeyEvent) -> Result<Opt
         _ => Ok(None),
     }
 }
-
-#[cfg(test)]
-#[path = "tests/main_handlers.rs"]
-mod tests;
