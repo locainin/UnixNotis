@@ -44,6 +44,17 @@ pub struct InstallState {
     service_enabled_error: Option<String>,
     service_active_error: Option<String>,
     binary_warning: Option<String>,
+    service_conflicts: Vec<ServiceManagerConflict>,
+    service_conflict_warnings: Vec<String>,
+}
+
+#[derive(Clone)]
+struct ServiceManagerConflict {
+    manager_label: &'static str,
+    artifact_label: &'static str,
+    artifact_path: PathBuf,
+    installed: bool,
+    active: bool,
 }
 
 impl InstallState {
@@ -127,6 +138,9 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         }
     };
 
+    let (service_conflicts, service_conflict_warnings) =
+        detect_service_manager_conflict_state(paths);
+
     InstallState {
         binaries,
         service_artifact_exists,
@@ -135,7 +149,51 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         service_enabled_error,
         service_active_error,
         binary_warning: warning,
+        service_conflicts,
+        service_conflict_warnings,
     }
+}
+
+fn detect_service_manager_conflict_state(
+    paths: &InstallPaths,
+) -> (Vec<ServiceManagerConflict>, Vec<String>) {
+    let mut conflicts = Vec::new();
+    let mut warnings = Vec::new();
+
+    for manager in paths.alternate_service_managers() {
+        let manager = match manager {
+            Ok(manager) => manager,
+            Err(err) => {
+                // A broken non-selected backend path should be visible but should not block install
+                warnings.push(err.to_string());
+                continue;
+            }
+        };
+
+        // Artifact ownership uses the same safe shape checks as selected-backend state
+        let artifacts = manager.artifacts(&paths.bin_dir);
+        let installed = !artifacts.is_empty()
+            && artifacts
+                .iter()
+                .all(crate::service_manager::ServiceArtifact::is_present_safely);
+        let active = manager
+            .active_probe()
+            .and_then(|probe| probe.evaluate().ok())
+            .unwrap_or(false);
+
+        // Only real evidence should block install; probe errors are treated as not active
+        if installed || active {
+            conflicts.push(ServiceManagerConflict {
+                manager_label: manager.label(),
+                artifact_label: manager.artifact_label(),
+                artifact_path: manager.primary_artifact_path(),
+                installed,
+                active,
+            });
+        }
+    }
+
+    (conflicts, warnings)
 }
 
 pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
@@ -186,6 +244,42 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     }
     if let Some(err) = state.service_enabled_error.as_ref() {
         log_line(ctx, format!("- service enable check failed: {}", err));
+    }
+    for warning in &state.service_conflict_warnings {
+        // Non-selected backend path issues are diagnostics, not blockers for the selected backend
+        log_line(
+            ctx,
+            format!("Warning: could not inspect another service manager ({warning})"),
+        );
+    }
+    if !state.service_conflicts.is_empty() {
+        for conflict in &state.service_conflicts {
+            if conflict.active {
+                log_line(
+                    ctx,
+                    format!(
+                        "Error: UnixNotis is active under {}; selected backend is {}",
+                        conflict.manager_label,
+                        ctx.paths.service.label()
+                    ),
+                );
+            }
+            if conflict.installed {
+                log_line(
+                    ctx,
+                    format!(
+                        "Error: {} already exists under {} at {}",
+                        conflict.artifact_label,
+                        conflict.manager_label,
+                        format_with_home(&conflict.artifact_path)
+                    ),
+                );
+            }
+        }
+        return Err(anyhow!(
+            "UnixNotis already appears managed by another service manager; uninstall or migrate it before installing with {}",
+            ctx.paths.service.label()
+        ));
     }
     let mut readiness_errors = Vec::new();
     for issue in ctx.paths.service.readiness_issues() {

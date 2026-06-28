@@ -17,6 +17,11 @@ pub enum ServiceManagerChoice {
 }
 
 impl ServiceManagerChoice {
+    fn all() -> [Self; 4] {
+        // Conflict scans need to inspect every supported backend, including experimental ones
+        [Self::Systemd, Self::Dinit, Self::Runit, Self::S6]
+    }
+
     pub fn parse(raw: &str) -> Result<Self> {
         match raw.trim() {
             "" | "systemd" | "systemd-user" => Ok(Self::Systemd),
@@ -60,6 +65,23 @@ impl InstallPaths {
             bin_dir,
             service,
         })
+    }
+
+    pub fn alternate_service_managers(&self) -> Vec<Result<ServiceManager>> {
+        ServiceManagerChoice::all()
+            .into_iter()
+            .filter_map(|choice| {
+                let selected_label = self.service.label();
+                let manager = service_manager_from_choice(choice);
+                match manager {
+                    // The selected backend is allowed to own existing artifacts for reinstall
+                    Ok(manager) if manager.label() == selected_label => None,
+                    Ok(manager) => Some(Ok(manager)),
+                    // Bad optional backend paths should be visible as scan warnings
+                    Err(err) => Some(Err(err)),
+                }
+            })
+            .collect()
     }
 }
 
@@ -179,6 +201,10 @@ fn service_manager_from_selection(
     let choice = service_manager
         .map(Ok)
         .unwrap_or_else(service_manager_choice_from_environment)?;
+    service_manager_from_choice(choice)
+}
+
+fn service_manager_from_choice(choice: ServiceManagerChoice) -> Result<ServiceManager> {
     match choice {
         ServiceManagerChoice::Systemd => Ok(ServiceManager::systemd_user(systemd_user_dir()?)),
         ServiceManagerChoice::Dinit => Ok(ServiceManager::dinit_user(dinit_user_dir()?)),
