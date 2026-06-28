@@ -61,7 +61,7 @@ pub(crate) fn run_trial(repo_root: PathBuf) -> Result<()> {
 
     let status = if let Some(shim) = trial_ctl_shim.as_ref() {
         // Use a shell wrapper only when there is a file that needs signal-time cleanup
-        run_trial_with_shim_cleanup(&daemon_bin, &shim.path)?
+        run_trial_with_shim_cleanup(&daemon_bin, &shim.path, &shim.target)?
     } else {
         // No shim means no extra filesystem cleanup is needed
         std::process::Command::new(&daemon_bin)
@@ -80,12 +80,14 @@ pub(crate) fn run_trial(repo_root: PathBuf) -> Result<()> {
 struct TrialControlShim {
     // Path is kept so Drop can remove exactly the trial-owned file
     path: PathBuf,
+    // Target proves the shim still points at the debug control binary created by this run
+    target: PathBuf,
 }
 
 impl Drop for TrialControlShim {
     fn drop(&mut self) {
         // Best-effort cleanup keeps trial-only shim files from lingering after exit
-        let _ = fs::remove_file(&self.path);
+        let _ = remove_trial_control_shim(&self.path, &self.target);
     }
 }
 
@@ -122,7 +124,7 @@ fn ensure_trial_control_access(ctl_bin: &Path) -> Result<Option<TrialControlShim
     };
 
     let shim_path = shim_dir.join("noticenterctl");
-    if shim_path.exists() {
+    if path_exists_no_follow(&shim_path) {
         // Never overwrite normal installed usage with a temporary trial link
         println!(
             "Trial control command is not visible on PATH, and {} already exists",
@@ -132,10 +134,12 @@ fn ensure_trial_control_access(ctl_bin: &Path) -> Result<Option<TrialControlShim
         return Ok(None);
     }
 
+    let target = canonicalize_best_effort(ctl_bin);
+
     #[cfg(unix)]
     {
         // Symlink keeps the shim small and follows rebuilds of the debug control binary
-        unix_fs::symlink(ctl_bin, &shim_path).map_err(|err| {
+        unix_fs::symlink(&target, &shim_path).map_err(|err| {
             anyhow!(
                 "failed to create trial noticenterctl shim at {}: {}",
                 shim_path.display(),
@@ -146,7 +150,7 @@ fn ensure_trial_control_access(ctl_bin: &Path) -> Result<Option<TrialControlShim
     #[cfg(not(unix))]
     {
         // Non-Unix targets do not have the same symlink assumptions
-        fs::copy(ctl_bin, &shim_path).map_err(|err| {
+        fs::copy(&target, &shim_path).map_err(|err| {
             anyhow!(
                 "failed to copy trial noticenterctl shim to {}: {}",
                 shim_path.display(),
@@ -160,7 +164,10 @@ fn ensure_trial_control_access(ctl_bin: &Path) -> Result<Option<TrialControlShim
         shim_path.display()
     );
 
-    Ok(Some(TrialControlShim { path: shim_path }))
+    Ok(Some(TrialControlShim {
+        path: shim_path,
+        target,
+    }))
 }
 
 pub(super) fn select_trial_shim_dir(
@@ -286,6 +293,77 @@ fn path_dir_is_writable(dir: &Path) -> bool {
     }
 }
 
+pub(super) fn path_exists_no_follow(path: &Path) -> bool {
+    // symlink_metadata catches dangling symlinks that exists() would miss
+    fs::symlink_metadata(path).is_ok()
+}
+
+pub(super) fn remove_trial_control_shim(path: &Path, expected_target: &Path) -> Result<bool> {
+    #[cfg(unix)]
+    {
+        let metadata = match fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(err) => {
+                return Err(anyhow!(
+                    "failed to inspect trial noticenterctl shim at {}: {}",
+                    path.display(),
+                    err
+                ));
+            }
+        };
+        if !metadata.file_type().is_symlink() {
+            // A replaced regular file is user state, not trial-owned cleanup state
+            return Ok(false);
+        }
+        let target = fs::read_link(path).map_err(|err| {
+            anyhow!(
+                "failed to inspect trial noticenterctl shim target at {}: {}",
+                path.display(),
+                err
+            )
+        })?;
+        if !trial_shim_target_matches(path, &target, expected_target) {
+            return Ok(false);
+        }
+        fs::remove_file(path).map_err(|err| {
+            anyhow!(
+                "failed to remove trial noticenterctl shim at {}: {}",
+                path.display(),
+                err
+            )
+        })?;
+        Ok(true)
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = expected_target;
+        // Non-Unix fallback creates a copied file, so normal Drop cleanup remains best-effort
+        match fs::remove_file(path) {
+            Ok(()) => Ok(true),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(err) => Err(anyhow!(
+                "failed to remove trial noticenterctl shim at {}: {}",
+                path.display(),
+                err
+            )),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn trial_shim_target_matches(path: &Path, raw_target: &Path, expected_target: &Path) -> bool {
+    let resolved = if raw_target.is_absolute() {
+        raw_target.to_path_buf()
+    } else {
+        path.parent()
+            .map(|parent| parent.join(raw_target))
+            .unwrap_or_else(|| raw_target.to_path_buf())
+    };
+    canonicalize_best_effort(&resolved) == canonicalize_best_effort(expected_target)
+}
+
 fn canonicalize_best_effort(path: &Path) -> PathBuf {
     // Missing paths still need stable comparison behavior
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
@@ -294,19 +372,25 @@ fn canonicalize_best_effort(path: &Path) -> PathBuf {
 fn run_trial_with_shim_cleanup(
     daemon_bin: &Path,
     shim_path: &Path,
+    expected_target: &Path,
 ) -> Result<std::process::ExitStatus> {
     // Shell trap ensures shim cleanup still happens when Ctrl+C kills the installer process
     let daemon = shell_quote(daemon_bin.display().to_string().as_str());
     let shim = shell_quote(shim_path.display().to_string().as_str());
+    let target = shell_quote(expected_target.display().to_string().as_str());
     // Trap cleanup covers the common signal path where Rust Drop may not run
-    let script = format!(
-        "cleanup() {{ rm -f -- {shim}; }}; trap cleanup EXIT INT TERM; {daemon} --trial --restore auto --yes"
-    );
+    let script = trial_launch_script(&daemon, &shim, &target);
     std::process::Command::new("sh")
         .arg("-c")
         .arg(script)
         .status()
         .map_err(|err| anyhow!("failed to run trial: {}", err))
+}
+
+pub(super) fn trial_launch_script(daemon: &str, shim: &str, target: &str) -> String {
+    format!(
+        "cleanup() {{ if [ -L {shim} ] && [ \"$(readlink -- {shim})\" = {target} ]; then rm -f -- {shim}; fi; }}; trap cleanup EXIT INT TERM; {daemon} --trial --restore auto --yes"
+    )
 }
 
 fn shell_quote(value: &str) -> String {
