@@ -71,6 +71,10 @@ fn s6_install_fails_before_env_sync_when_database_update_fails() {
 
     // Live update failures stop before env sync because s6-rc cannot see the new service safely
     assert!(err.to_string().contains("failed with exit code"));
+    assert!(
+        err.to_string().contains("fake s6-rc-update failed"),
+        "s6 stderr should be included in the failure diagnostic"
+    );
     let calls = read_calls(&log_path);
     assert_call_order(
         &calls,
@@ -109,6 +113,7 @@ fn s6_update_exit_one_switches_compiled_link_before_reporting_failure() {
 
     // Exit code 1 means the live database moved, so the boot compiled link must move too
     assert!(err.to_string().contains("switched the live database"));
+    assert!(err.to_string().contains("fake s6-rc-update failed"));
     let compiled_link = data_root.join("rc").join("compiled");
     assert!(fs::symlink_metadata(&compiled_link)
         .expect("compiled link should exist")
@@ -150,6 +155,7 @@ fn s6_update_exit_two_switches_compiled_link_before_reporting_timeout() {
     // Exit code 2 has the same database-switch semantics as code 1, just a timeout reason
     assert!(err.to_string().contains("switched the live database"));
     assert!(err.to_string().contains("timed out"));
+    assert!(err.to_string().contains("fake s6-rc-update failed"));
     assert!(fs::symlink_metadata(data_root.join("rc").join("compiled"))
         .expect("compiled link should exist")
         .file_type()
@@ -184,6 +190,7 @@ fn s6_update_exit_nine_does_not_switch_compiled_link() {
 
     // Exit code 9 means s6 did not switch the live database, so UnixNotis must not switch boot DB
     assert!(err.to_string().contains("did not switch"));
+    assert!(err.to_string().contains("fake s6-rc-update failed"));
     assert!(
         fs::symlink_metadata(data_root.join("rc").join("compiled")).is_err(),
         "compiled link should not move when s6 reports no database switch"
@@ -210,6 +217,7 @@ fn s6_update_exit_ten_does_not_switch_compiled_link() {
     let err = run_install_and_enable(&paths).expect_err("s6 update timeout should surface");
 
     assert!(err.to_string().contains("did not switch"));
+    assert!(err.to_string().contains("fake s6-rc-update failed"));
     assert!(fs::symlink_metadata(data_root.join("rc").join("compiled")).is_err());
     let _ = fs::remove_dir_all(&root);
 }

@@ -30,6 +30,18 @@ impl EnvGuard {
         env::set_var(key, value.as_ref());
         Self { key, old }
     }
+
+    pub(super) fn prepend_path(fake_bin: &Path) -> Self {
+        let old = env::var("PATH").ok();
+        let mut entries = vec![fake_bin.to_path_buf()];
+        if let Some(old) = &old {
+            // Preserve the real PATH after fake tools so shell scripts can still find coreutils
+            entries.extend(env::split_paths(old));
+        }
+        let value = env::join_paths(entries).expect("fake PATH should be joinable");
+        env::set_var("PATH", value);
+        Self { key: "PATH", old }
+    }
 }
 
 impl Drop for EnvGuard {
@@ -194,7 +206,7 @@ fn fake_tool_script(tool: &str, log_path: &Path, extra: &str) -> String {
          printf ' WAYLAND_DISPLAY=%s XDG_RUNTIME_DIR=%s\\n' \"${{WAYLAND_DISPLAY-}}\" \"${{XDG_RUNTIME_DIR-}}\"\n\
          }} >> {}\n\
          if [ \"${{UNIXNOTIS_FAKE_FAIL_PROGRAM-}}\" = '{tool}' ]; then\n\
-         case \" $* \" in *\"${{UNIXNOTIS_FAKE_FAIL_CONTAINS-}}\"*) exit \"${{UNIXNOTIS_FAKE_FAIL_CODE:-42}}\" ;; esac\n\
+         case \" $* \" in *\"${{UNIXNOTIS_FAKE_FAIL_CONTAINS-}}\"*) printf 'fake {tool} failed for %s\\n' \"$*\" >&2; exit \"${{UNIXNOTIS_FAKE_FAIL_CODE:-42}}\" ;; esac\n\
          fi\n\
          {extra}\n",
         sh_quote(log_path)
@@ -220,7 +232,7 @@ fn fake_runit_sv_script(tool: &str, log_path: &Path) -> String {
          printf ' runit_ready=%s WAYLAND_DISPLAY=%s XDG_RUNTIME_DIR=%s\\n' \"$runit_ready\" \"${{WAYLAND_DISPLAY-}}\" \"${{XDG_RUNTIME_DIR-}}\"\n\
          }} >> {}\n\
          if [ \"${{UNIXNOTIS_FAKE_FAIL_PROGRAM-}}\" = '{tool}' ]; then\n\
-         case \" $* \" in *\"${{UNIXNOTIS_FAKE_FAIL_CONTAINS-}}\"*) exit \"${{UNIXNOTIS_FAKE_FAIL_CODE:-42}}\" ;; esac\n\
+         case \" $* \" in *\"${{UNIXNOTIS_FAKE_FAIL_CONTAINS-}}\"*) printf 'fake {tool} failed for %s\\n' \"$*\" >&2; exit \"${{UNIXNOTIS_FAKE_FAIL_CODE:-42}}\" ;; esac\n\
          fi\n\
          [ \"$runit_ready\" != no ]\n",
         sh_quote(log_path)

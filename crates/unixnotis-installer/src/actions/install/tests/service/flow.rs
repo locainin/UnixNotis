@@ -18,6 +18,7 @@ fn systemd_install_flow_runs_reload_env_import_and_enable() {
     let fake_bin = root.join("fake-bin");
     // Fake binaries let the real installer flow run without depending on host systemd state
     let _fake_tools = write_fake_tools(&fake_bin, &log_path, FakeToolMode::Default);
+    let _path = super::flow_support::EnvGuard::prepend_path(&fake_bin);
     let _env = flow_env(&root);
     let paths = flow_paths(
         &root,
@@ -32,20 +33,16 @@ fn systemd_install_flow_runs_reload_env_import_and_enable() {
     run_install_and_enable(&paths).expect("systemd flow should complete");
 
     let calls = read_calls(&log_path);
-    // systemd always owns reload, systemd import, and enable --now
-    // D-Bus import appears only on hosts where the helper is available
-    let mut expected = vec!["program=systemctl argv=[--user][daemon-reload]"];
-    if calls
-        .iter()
-        .any(|call| call.contains("program=dbus-update-activation-environment"))
-    {
-        expected.push("program=dbus-update-activation-environment argv=[WAYLAND_DISPLAY]");
-    }
-    expected.extend([
-        "program=systemctl argv=[--user][--no-pager][import-environment][WAYLAND_DISPLAY]",
-        "program=systemctl argv=[--user][enable][--now][unixnotis-daemon.service]",
-    ]);
-    assert_call_order(&calls, &expected);
+    // PATH includes fake helper binaries, so availability probes are deterministic here
+    assert_call_order(
+        &calls,
+        &[
+            "program=systemctl argv=[--user][daemon-reload]",
+            "program=dbus-update-activation-environment argv=[WAYLAND_DISPLAY]",
+            "program=systemctl argv=[--user][--no-pager][import-environment][WAYLAND_DISPLAY]",
+            "program=systemctl argv=[--user][enable][--now][unixnotis-daemon.service]",
+        ],
+    );
     let _ = fs::remove_dir_all(&root);
 }
 

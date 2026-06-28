@@ -3,7 +3,7 @@
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
@@ -101,31 +101,41 @@ fn refresh_s6_database(ctx: &mut ActionContext, plan: &S6DatabaseRefresh) -> Res
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum S6UpdateOutcome {
     Clean,
-    SwitchedWithTransitionFailure(&'static str),
+    SwitchedWithTransitionFailure {
+        reason: &'static str,
+        diagnostic: Option<String>,
+    },
 }
 
 impl S6UpdateOutcome {
     fn into_result(self) -> Result<()> {
         match self {
             Self::Clean => Ok(()),
-            Self::SwitchedWithTransitionFailure(reason) => Err(anyhow!(
-                "s6-rc-update switched the live database, but {reason}"
-            )),
+            Self::SwitchedWithTransitionFailure { reason, diagnostic } => {
+                let diagnostic = s6_diagnostic_suffix(diagnostic.as_deref());
+                Err(anyhow!(
+                    "s6-rc-update switched the live database, but {reason}{diagnostic}"
+                ))
+            }
         }
     }
 }
 
 fn run_s6_database_update(ctx: &mut ActionContext, spec: &CommandSpec) -> Result<S6UpdateOutcome> {
     let mut command = spec.to_command();
-    // Keep command output out of the TUI unless future callers add a structured log reader here
-    let status = command
+    let output = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .stderr(Stdio::piped())
+        .output()
         .with_context(|| format!("command failed to start: {}", spec.label()))?;
+    let diagnostic = s6_stderr_diagnostic(&output.stderr);
 
-    match status.code() {
+    if !output.status.success() {
+        log_s6_update_diagnostic(ctx, output.status, diagnostic.as_deref());
+    }
+
+    match output.status.code() {
         Some(0) => Ok(S6UpdateOutcome::Clean),
         Some(1) => {
             // s6 docs: database switched, but some service transitions failed
@@ -133,9 +143,10 @@ fn run_s6_database_update(ctx: &mut ActionContext, spec: &CommandSpec) -> Result
                 ctx,
                 "Warning: s6-rc-update switched database but some service transitions failed",
             );
-            Ok(S6UpdateOutcome::SwitchedWithTransitionFailure(
-                "some service transitions failed",
-            ))
+            Ok(S6UpdateOutcome::SwitchedWithTransitionFailure {
+                reason: "some service transitions failed",
+                diagnostic,
+            })
         }
         Some(2) => {
             // s6 docs: database switched, but the transition timed out
@@ -143,23 +154,76 @@ fn run_s6_database_update(ctx: &mut ActionContext, spec: &CommandSpec) -> Result
                 ctx,
                 "Warning: s6-rc-update switched database but service transition timed out",
             );
-            Ok(S6UpdateOutcome::SwitchedWithTransitionFailure(
-                "the service transition timed out",
+            Ok(S6UpdateOutcome::SwitchedWithTransitionFailure {
+                reason: "the service transition timed out",
+                diagnostic,
+            })
+        }
+        Some(9) => {
+            let diagnostic = s6_diagnostic_suffix(diagnostic.as_deref());
+            Err(anyhow!(
+                "s6-rc-update failed service transitions and did not switch the live database{diagnostic}"
             ))
         }
-        Some(9) => Err(anyhow!(
-            "s6-rc-update failed service transitions and did not switch the live database"
-        )),
-        Some(10) => Err(anyhow!(
-            "s6-rc-update timed out and did not switch the live database"
-        )),
+        Some(10) => {
+            let diagnostic = s6_diagnostic_suffix(diagnostic.as_deref());
+            Err(anyhow!(
+                "s6-rc-update timed out and did not switch the live database{diagnostic}"
+            ))
+        }
         Some(code) => Err(anyhow!(
-            "s6-rc-update failed with exit code {code}; live database switch state is unknown"
+            "s6-rc-update failed with exit code {code}; live database switch state is unknown{}",
+            s6_diagnostic_suffix(diagnostic.as_deref())
         )),
         None => Err(anyhow!(
-            "s6-rc-update terminated without an exit code; live database switch state is unknown"
+            "s6-rc-update terminated without an exit code; live database switch state is unknown{}",
+            s6_diagnostic_suffix(diagnostic.as_deref())
         )),
     }
+}
+
+fn log_s6_update_diagnostic(ctx: &mut ActionContext, status: ExitStatus, diagnostic: Option<&str>) {
+    let Some(diagnostic) = diagnostic else {
+        return;
+    };
+    let status_label = status.code().map_or_else(
+        || "without exit code".to_string(),
+        |code| format!("with exit code {code}"),
+    );
+    // Keep the detailed s6 message available without dumping the full command stderr stream
+    log_line(
+        ctx,
+        format!("Warning: s6-rc-update failed {status_label}: {diagnostic}"),
+    );
+}
+
+fn s6_diagnostic_suffix(diagnostic: Option<&str>) -> String {
+    diagnostic.map_or_else(String::new, |line| format!(": {line}"))
+}
+
+fn s6_stderr_diagnostic(stderr: &[u8]) -> Option<String> {
+    const MAX_DIAGNOSTIC_LEN: usize = 240;
+
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .map(|line| line.replace('\r', "").trim().to_string())
+        .find(|line| !line.is_empty())
+        .map(|line| truncate_diagnostic(line, MAX_DIAGNOSTIC_LEN))
+}
+
+fn truncate_diagnostic(mut line: String, max_len: usize) -> String {
+    if line.len() <= max_len {
+        return line;
+    }
+
+    // truncate() requires a UTF-8 boundary, so walk back until the boundary is valid
+    let mut end = max_len;
+    while !line.is_char_boundary(end) {
+        end -= 1;
+    }
+    line.truncate(end);
+    line.push_str("...");
+    line
 }
 
 fn next_s6_compiled_database(plan: &S6DatabaseRefresh) -> Result<PathBuf> {
