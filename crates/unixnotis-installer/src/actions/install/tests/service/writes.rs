@@ -325,6 +325,42 @@ fn remove_shared_service_file_only_removes_marker_owned_file() {
 }
 
 #[test]
+fn remove_shared_service_file_preserves_marker_file_after_user_edit() {
+    let root = test_root("install-service-shared-file-edited-remove");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let marker = root.join("default").join(".unixnotis-created-type");
+    let artifact = ServiceArtifact {
+        path: root.join("default").join("type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker.clone()),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+    write_service_artifact(&ctx, &artifact).expect("missing shared file is seeded");
+    fs::write(&artifact.path, "longrun\n").expect("simulate user changing shared setup file");
+
+    let removed = remove_service_artifact(&artifact).expect("edited shared file should be skipped");
+
+    // The marker alone is not enough proof once the shared file contents no longer match
+    assert!(!removed);
+    assert_eq!(
+        fs::read_to_string(&artifact.path).expect("edited shared file should remain"),
+        "longrun\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&marker).expect("marker remains for manual cleanup context"),
+        "unixnotis\n"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn install_replaces_regular_owned_artifact_but_rejects_unsafe_existing_path() {
     let root = test_root("install-service-owned-replace");
     let paths = test_paths(&root);

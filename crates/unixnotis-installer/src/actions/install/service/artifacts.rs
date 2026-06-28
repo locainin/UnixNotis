@@ -129,9 +129,13 @@ pub(in crate::actions::install) fn remove_service_artifact(
             }
         }
         ServiceArtifactKind::SharedFile { created_marker } => {
-            // Shared files are removed only when the marker proves UnixNotis created them
+            // Shared files are removed only when marker and contents still prove ownership
             if let Some(marker) = created_marker {
-                return files::remove_shared_service_file(&artifact.path, marker);
+                let contents = artifact
+                    .contents
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("shared service file artifact missing contents"))?;
+                return files::remove_shared_service_file(&artifact.path, marker, contents);
             }
         }
         ServiceArtifactKind::Symlink { target } => {

@@ -98,9 +98,14 @@ pub(in crate::actions::install::service) fn write_shared_service_file(
 pub(in crate::actions::install::service) fn remove_shared_service_file(
     path: &Path,
     created_marker: &Path,
+    expected_contents: &str,
 ) -> Result<bool> {
     if !shared_creation_marker_is_valid(created_marker) {
         // No marker means the shared file predated UnixNotis or has unknown ownership
+        return Ok(false);
+    }
+    if !shared_file_contents_match(path, expected_contents)? {
+        // User edits after install turn the file back into shared user state
         return Ok(false);
     }
     remove_regular_service_file(path)?;
@@ -160,6 +165,27 @@ fn shared_creation_marker_is_valid(path: &Path) -> bool {
     fs::read_to_string(path)
         .map(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
         .unwrap_or(false)
+}
+
+fn shared_file_contents_match(path: &Path, expected_contents: &str) -> Result<bool> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
+        Err(err) => {
+            return Err(err)
+                .with_context(|| format!("failed to inspect {}", format_with_home(path)));
+        }
+    };
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        // A marker does not make a replaced symlink, socket, or directory removable
+        return Err(anyhow!(
+            "refusing to remove non-regular shared service artifact at {}",
+            format_with_home(path)
+        ));
+    }
+    fs::read_to_string(path)
+        .map(|contents| contents == expected_contents)
+        .with_context(|| format!("failed to read {}", format_with_home(path)))
 }
 
 fn remove_empty_shared_layout_dirs(path: &Path) -> Result<()> {
