@@ -1,5 +1,5 @@
 use super::super::super::service::{
-    s6_stderr_diagnostic, sanitize_diagnostic_line, truncate_diagnostic,
+    s6_stderr_diagnostic, sanitize_diagnostic_line, strip_ansi_csi_sequences, truncate_diagnostic,
 };
 
 #[test]
@@ -7,8 +7,8 @@ fn s6_update_diagnostic_strips_control_bytes() {
     let diagnostic = s6_stderr_diagnostic(b"\x1b[31mfailed\x1b[0m\tbad\r\n")
         .expect("diagnostic should remain after sanitizing controls");
 
-    // Escape control bytes are removed so the leftover ANSI text cannot control the terminal
-    assert_eq!(diagnostic, "[31mfailed[0m bad");
+    // Escape controls and their CSI payloads are removed before compact log rendering
+    assert_eq!(diagnostic, "failed bad");
 }
 
 #[test]
@@ -44,4 +44,12 @@ fn sanitize_diagnostic_line_trims_and_converts_tabs_to_spaces() {
 
     // Tabs become normal spaces so compact log layouts keep stable columns
     assert_eq!(sanitized, "alpha beta");
+}
+
+#[test]
+fn ansi_csi_stripper_removes_color_sequences_without_touching_text() {
+    let sanitized = strip_ansi_csi_sequences("\x1b[31mred\x1b[0m plain");
+
+    // CSI color escapes should not leave bracket fragments in the user-facing diagnostic
+    assert_eq!(sanitized, "red plain");
 }

@@ -226,7 +226,8 @@ pub(in crate::actions::install) fn s6_stderr_diagnostic(stderr: &[u8]) -> Option
 }
 
 pub(in crate::actions::install) fn sanitize_diagnostic_line(line: &str) -> String {
-    line.chars()
+    strip_ansi_csi_sequences(line)
+        .chars()
         .filter_map(|ch| match ch {
             // Tabs are spacing, but raw tabs can still make compact TUI logs hard to scan
             '\t' => Some(' '),
@@ -237,6 +238,28 @@ pub(in crate::actions::install) fn sanitize_diagnostic_line(line: &str) -> Strin
         .collect::<String>()
         .trim()
         .to_string()
+}
+
+pub(in crate::actions::install) fn strip_ansi_csi_sequences(line: &str) -> String {
+    let mut sanitized = String::new();
+    let mut chars = line.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            // CSI sequences are ASCII-only terminal controls like ESC[31m or ESC[0m
+            chars.next();
+            for csi_ch in chars.by_ref() {
+                // Final bytes end the CSI sequence; everything before that is parameter text
+                if ('\u{40}'..='\u{7e}').contains(&csi_ch) {
+                    break;
+                }
+            }
+            continue;
+        }
+        sanitized.push(ch);
+    }
+
+    sanitized
 }
 
 pub(in crate::actions::install) fn truncate_diagnostic(mut line: String, max_len: usize) -> String {

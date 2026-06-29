@@ -36,7 +36,7 @@ use lifecycle::{
 use refresh::refresh_service_artifacts;
 #[cfg(test)]
 pub(in crate::actions::install) use refresh::{
-    s6_stderr_diagnostic, sanitize_diagnostic_line, truncate_diagnostic,
+    s6_stderr_diagnostic, sanitize_diagnostic_line, strip_ansi_csi_sequences, truncate_diagnostic,
 };
 
 pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
