@@ -214,6 +214,7 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usiz
     let mut value = String::new();
     let mut value_end;
     let mut quote = None::<u8>;
+    let mut closed_quote = false;
     if matches!(bytes[index], b'\'' | b'"') {
         // Quoted URLs keep the quote out of the stored payload and later rewrite
         quote = Some(bytes[index]);
@@ -227,6 +228,7 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usiz
         if let Some(open_quote) = quote {
             if byte == open_quote {
                 quote = None;
+                closed_quote = true;
             } else {
                 value.push(byte as char);
                 value_end = index + 1;
@@ -246,6 +248,9 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usiz
                     },
                     index + 1,
                 ));
+            }
+            byte if closed_quote && byte.is_ascii_whitespace() => {
+                // Padding after a closing quote is CSS syntax, not part of the asset path
             }
             b'\'' | b'"' => {
                 // Malformed unquoted URLs still keep their bytes so the final CSS stays readable
@@ -288,28 +293,5 @@ fn normalize_lexical_path(path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::rebase_relative_css_asset_urls;
-    use std::path::Path;
-
-    #[test]
-    fn rebases_relative_css_asset_urls_to_file_uris() {
-        let css = ".card { background-image: url(\"../assets/example-image.png\"); }";
-        let css_path = Path::new("/tmp/unixnotis/themes/widgets.css");
-
-        let rebased = rebase_relative_css_asset_urls(css, css_path);
-
-        assert!(rebased.contains("file:///tmp/unixnotis/assets/example-image.png"));
-    }
-
-    #[test]
-    fn keeps_absolute_and_remote_css_asset_urls_unchanged() {
-        let css = ".a { background-image: url(\"file:///tmp/outside.png\"); }\n.b { background-image: url(\"https://example.com/test.png\"); }";
-        let css_path = Path::new("/tmp/unixnotis/widgets.css");
-
-        let rebased = rebase_relative_css_asset_urls(css, css_path);
-
-        assert!(rebased.contains("file:///tmp/outside.png"));
-        assert!(rebased.contains("https://example.com/test.png"));
-    }
-}
+#[path = "tests/loader.rs"]
+mod tests;
