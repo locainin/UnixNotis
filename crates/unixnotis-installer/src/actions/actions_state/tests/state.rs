@@ -9,7 +9,10 @@ use crate::detect::Detection;
 use crate::events::{UiMessage, WorkerEvent};
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
-use crate::service_manager::{use_fake_command_bin, ServiceManager, MANAGED_DIRECTORY_MARKER};
+use crate::service_manager::{
+    use_fake_command_bin, ServiceManager, MANAGED_DIRECTORY_MARKER,
+    MANAGED_DIRECTORY_MARKER_CONTENTS,
+};
 
 use super::{check_install_state, check_install_state_step, ActionContext};
 
@@ -124,6 +127,80 @@ fn different_backend_artifacts_are_reported_as_install_conflict() {
 }
 
 #[test]
+fn same_backend_different_root_artifacts_are_reported_as_install_conflict() {
+    let _lock = crate::tests::env::test_env_lock();
+    let root = test_root("same-backend-different-root-conflict");
+    let _env = service_scan_env(&root);
+    let selected_root = root.join("custom-runit-service");
+    // The selected root models a user testing runit through an override path
+    let _selected_override = EnvGuard::set(
+        "UNIXNOTIS_RUNIT_SERVICE_DIR",
+        selected_root.display().to_string(),
+    );
+    let _fake_commands = fake_inactive_manager_commands(&root);
+    let default_root = root.join("home").join(".config").join("service");
+    // The default root models the older same-backend install that used to be skipped by label
+    write_runit_artifacts(&default_root);
+
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::runit_user(selected_root),
+    };
+
+    let state = check_install_state(&paths);
+
+    assert_eq!(state.service_conflicts.len(), 1);
+    assert_eq!(
+        state.service_conflicts[0].manager_label,
+        "runit user services"
+    );
+    assert_eq!(
+        state.service_conflicts[0].artifact_path,
+        default_root.join("unixnotis-daemon")
+    );
+    assert!(state.service_conflicts[0].installed);
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn active_probe_errors_are_reported_as_conflict_warnings() {
+    let _lock = crate::tests::env::test_env_lock();
+    let root = test_root("active-probe-warning");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("fake-probe-bin");
+    fs::create_dir_all(&fake_bin).expect("fake probe bin");
+    let systemctl = fake_bin.join("systemctl");
+    fs::write(&systemctl, "#!/bin/sh\nexit 0\n").expect("fake systemctl");
+    // Non-executable command files force Command::status to return an io error
+    fs::set_permissions(&systemctl, fs::Permissions::from_mode(0o644))
+        .expect("chmod non-executable systemctl");
+    for command in ["sv", "s6-svstat"] {
+        let path = fake_bin.join(command);
+        fs::write(&path, "#!/bin/sh\nexit 1\n").expect("fake inactive command");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+            .expect("chmod fake inactive command");
+    }
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::dinit_user(root.join("home").join(".config").join("dinit.d")),
+    };
+
+    let state = check_install_state(&paths);
+
+    assert!(state.service_conflicts.is_empty());
+    assert!(state
+        .service_conflict_warnings
+        .iter()
+        .any(|warning| warning.contains("could not check whether systemd --user is active")));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn install_check_blocks_when_different_backend_is_active() {
     let _lock = crate::tests::env::test_env_lock();
     let root = test_root("different-backend-active-conflict");
@@ -206,6 +283,20 @@ fn write_dinit_artifacts(service_root: &Path) {
     )
     .expect("service file");
     symlink("../unixnotis-daemon", boot_dir.join("unixnotis-daemon")).expect("boot symlink");
+}
+
+fn write_runit_artifacts(service_root: &Path) {
+    let service_dir = service_root.join("unixnotis-daemon");
+    fs::create_dir_all(&service_dir).expect("runit service dir");
+    // The marker proves this directory is a UnixNotis-owned service tree
+    fs::write(
+        service_dir.join(MANAGED_DIRECTORY_MARKER),
+        MANAGED_DIRECTORY_MARKER_CONTENTS,
+    )
+    .expect("runit marker");
+    let run = service_dir.join("run");
+    fs::write(&run, "#!/bin/sh\nexec /tmp/bin/unixnotis-daemon\n").expect("runit run");
+    fs::set_permissions(&run, fs::Permissions::from_mode(0o755)).expect("chmod run");
 }
 
 fn service_scan_env(root: &Path) -> Vec<EnvGuard> {
