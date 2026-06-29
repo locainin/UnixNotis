@@ -116,9 +116,9 @@ where
                     .map(|(_, value)| value)
                     .unwrap_or_default();
 
-                // `ServiceManagerChoice::parse` owns the accepted value list and
-                // the error wording for unsupported managers
-                parsed.service_manager = Some(ServiceManagerChoice::parse(value)?);
+                // Explicit CLI values must not silently fall back to the
+                // default backend when the value is empty
+                parsed.service_manager = Some(ServiceManagerChoice::parse_explicit(value)?);
             }
 
             // Any other argument is currently unsupported. Failing closed keeps
@@ -145,7 +145,7 @@ fn parse_service_manager_arg(value: &OsString) -> Result<ServiceManagerChoice> {
         .ok_or_else(|| anyhow!("--service-manager value must be valid UTF-8"))?;
 
     // Keep accepted names centralized in `ServiceManagerChoice`
-    ServiceManagerChoice::parse(value)
+    ServiceManagerChoice::parse_explicit(value)
 }
 
 // CLI tests live beside this module instead of growing the production parser

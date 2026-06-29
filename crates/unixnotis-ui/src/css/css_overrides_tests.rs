@@ -180,11 +180,12 @@ fn css_provider_validator_binary() -> &'static std::path::PathBuf {
             .parent()
             .and_then(|path| path.parent())
             .expect("target debug dir");
+        let target_root = target_dir.parent().expect("target root dir");
         // Unit tests do not always prebuild sibling binaries, so build the validator on demand
         let candidate =
             target_dir.join(format!("css_provider_validate{}", env::consts::EXE_SUFFIX));
         if fs::metadata(&candidate).is_err() {
-            build_css_provider_validator();
+            build_css_provider_validator(target_root);
         }
         assert!(
             fs::metadata(&candidate).is_ok(),
@@ -195,12 +196,16 @@ fn css_provider_validator_binary() -> &'static std::path::PathBuf {
     })
 }
 
-fn build_css_provider_validator() {
+fn build_css_provider_validator(target_root: &std::path::Path) {
     // Build the helper lazily so normal cargo test output stays clean and local
+    //
+    // Coverage runs use a custom target directory, so the helper must be built
+    // into the same root that the current test binary came from
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
     let output = Command::new(cargo)
         .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .args(["build", "--bin", "css_provider_validate"])
+        .args(["build", "--bin", "css_provider_validate", "--target-dir"])
+        .arg(target_root)
         .output()
         .expect("run cargo build for css validator");
 

@@ -1,4 +1,4 @@
-use super::{parse_args, CliAction};
+use super::{parse_args, usage, CliAction};
 use crate::paths::ServiceManagerChoice;
 
 /// Convenience helper for building test argument vectors
@@ -65,6 +65,20 @@ fn help_short_circuits_tui_startup() {
 }
 
 #[test]
+fn usage_mentions_every_supported_service_manager() {
+    let text = usage();
+
+    // Keep help output tied to the actual public backend names. This catches
+    // empty or stale usage text before it reaches release builds
+    for expected in ["systemd", "dinit", "runit", "s6"] {
+        assert!(
+            text.contains(expected),
+            "usage text should mention {expected}"
+        );
+    }
+}
+
+#[test]
 fn service_manager_flag_rejects_unknown_value() {
     // Unsupported backends must fail loudly instead of silently falling back
     // to systemd or another default
@@ -73,4 +87,33 @@ fn service_manager_flag_rejects_unknown_value() {
     // The precise list of supported managers lives in `ServiceManagerChoice`,
     // but this test makes sure the error path is connected to CLI parsing
     assert!(err.to_string().contains("unsupported service manager"));
+}
+
+#[test]
+fn service_manager_equals_form_rejects_empty_value() {
+    let err = parse_args(args(&["--service-manager="])).expect_err("empty manager value");
+
+    // Empty equals-form values should stay attached to service-manager parsing
+    // so users get the backend-name error instead of a generic argument error
+    assert!(err.to_string().contains("unsupported service manager ''"));
+}
+
+#[test]
+fn unknown_equals_argument_is_not_treated_as_service_manager() {
+    let err = parse_args(args(&["--other=systemd"])).expect_err("unknown argument");
+
+    // This guards the `--service-manager=` prefix check. A loose match would
+    // incorrectly accept unrelated `--name=systemd` style flags
+    assert!(err
+        .to_string()
+        .contains("unsupported installer argument '--other=systemd'"));
+}
+
+#[test]
+fn unsupported_argument_reports_original_text() {
+    let err = parse_args(args(&["--bogus"])).expect_err("unknown argument");
+
+    // Keep unsupported argument diagnostics specific enough for TUI/CLI users
+    // to find the typo without guessing which parser branch handled it
+    assert_eq!(err.to_string(), "unsupported installer argument '--bogus'");
 }

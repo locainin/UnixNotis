@@ -21,7 +21,8 @@ impl ServiceManagerChoice {
     }
 
     pub fn parse(raw: &str) -> Result<Self> {
-        // Accept both short names and explicit user-backend names for CLI/env symmetry
+        // Environment-based selection treats an empty value like an unset value
+        // so old shell exports do not force an installer failure
         match raw.trim() {
             "" | "systemd" | "systemd-user" => Ok(Self::Systemd),
             "dinit" | "dinit-user" => Ok(Self::Dinit),
@@ -29,5 +30,18 @@ impl ServiceManagerChoice {
             "s6" | "s6-user" => Ok(Self::S6),
             other => Err(anyhow!("unsupported service manager '{other}'")),
         }
+    }
+
+    pub fn parse_explicit(raw: &str) -> Result<Self> {
+        let trimmed = raw.trim();
+
+        // CLI values are intentional user input. Empty values should be called
+        // out instead of being treated like the default backend
+        if trimmed.is_empty() {
+            return Err(anyhow!("unsupported service manager ''"));
+        }
+
+        // Reuse the shared backend name list after the explicit-value guard
+        Self::parse(trimmed)
     }
 }

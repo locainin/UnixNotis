@@ -91,6 +91,18 @@ fn service_manager_choice_accepts_cli_names() {
 }
 
 #[test]
+fn empty_service_manager_choice_keeps_env_default_but_rejects_explicit_cli_value() {
+    // Environment parsing keeps the historical fallback for an empty export
+    assert_eq!(
+        ServiceManagerChoice::parse("").expect("empty env fallback"),
+        ServiceManagerChoice::Systemd
+    );
+
+    // CLI parsing is stricter because an empty flag value is almost always a typo
+    assert!(ServiceManagerChoice::parse_explicit("").is_err());
+}
+
+#[test]
 fn trial_repo_root_discovery_ignores_service_manager_environment() {
     let _guard = env_lock();
     let root = env::temp_dir().join(format!("unixnotis-trial-repo-root-{}", std::process::id()));
