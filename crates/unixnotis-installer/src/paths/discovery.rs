@@ -128,10 +128,8 @@ pub(in crate::paths) fn is_unixnotis_repo(cargo_toml: &Path) -> bool {
     let Ok(contents) = fs::read_to_string(cargo_toml) else {
         return false;
     };
-    let markers = [
-        "crates/unixnotis-daemon",
-        "crates/unixnotis-core",
-        "name = \"unixnotis-daemon\"",
-    ];
-    markers.iter().any(|marker| contents.contains(marker))
+    // Repo-root discovery must identify the workspace, not a member crate with a matching name
+    contents.contains("[workspace]")
+        && contents.contains("crates/unixnotis-daemon")
+        && contents.contains("crates/unixnotis-core")
 }

@@ -217,6 +217,7 @@ fn s6_diagnostic_suffix(diagnostic: Option<&str>) -> String {
 pub(in crate::actions::install) fn s6_stderr_diagnostic(stderr: &[u8]) -> Option<String> {
     const MAX_DIAGNOSTIC_LEN: usize = 240;
 
+    // Only the first useful line is shown so noisy s6 tools do not flood the progress log
     String::from_utf8_lossy(stderr)
         .lines()
         .map(sanitize_diagnostic_line)
@@ -243,13 +244,21 @@ pub(in crate::actions::install) fn truncate_diagnostic(mut line: String, max_len
         return line;
     }
 
+    const ELLIPSIS: &str = "...";
+    if max_len <= ELLIPSIS.len() {
+        // Very small budgets still need valid UTF-8 and must not exceed the caller limit
+        return ELLIPSIS[..max_len].to_string();
+    }
+
+    // Reserve room for the ellipsis so max_len means final rendered bytes, not body bytes
+    let max_body_len = max_len - ELLIPSIS.len();
     // truncate() requires a UTF-8 boundary, so walk back until the boundary is valid
-    let mut end = max_len;
+    let mut end = max_body_len;
     while !line.is_char_boundary(end) {
         end -= 1;
     }
     line.truncate(end);
-    line.push_str("...");
+    line.push_str(ELLIPSIS);
     line
 }
 

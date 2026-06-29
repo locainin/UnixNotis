@@ -3,11 +3,11 @@ use super::super::super::service::{
 };
 
 #[test]
-fn s6_update_diagnostic_strips_control_sequences() {
+fn s6_update_diagnostic_strips_control_bytes() {
     let diagnostic = s6_stderr_diagnostic(b"\x1b[31mfailed\x1b[0m\tbad\r\n")
         .expect("diagnostic should remain after sanitizing controls");
 
-    // Escape bytes and carriage returns should not be able to reach the TUI log path
+    // Escape control bytes are removed so the leftover ANSI text cannot control the terminal
     assert_eq!(diagnostic, "[31mfailed[0m bad");
 }
 
@@ -25,8 +25,17 @@ fn s6_update_diagnostic_truncates_utf8_safely() {
     let source = format!("{}étail", "a".repeat(239));
     let diagnostic = truncate_diagnostic(source, 240);
 
-    // The helper must not split the two-byte `é` while enforcing the byte budget
-    assert_eq!(diagnostic, format!("{}...", "a".repeat(239)));
+    // The helper must not split the two-byte `é`, and the ellipsis stays inside the byte budget
+    assert_eq!(diagnostic, format!("{}...", "a".repeat(237)));
+    assert!(diagnostic.len() <= 240);
+}
+
+#[test]
+fn s6_update_diagnostic_handles_tiny_truncation_budget() {
+    let diagnostic = truncate_diagnostic("abcdef".to_string(), 2);
+
+    // Tiny limits still produce valid UTF-8 and never exceed the requested byte budget
+    assert_eq!(diagnostic, "..");
 }
 
 #[test]

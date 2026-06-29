@@ -47,6 +47,30 @@ members = ["crates/unixnotis-daemon", "crates/unixnotis-core"]
 }
 
 #[test]
+fn repo_detection_rejects_member_crate_manifest() {
+    let root = env::temp_dir().join(format!(
+        "unixnotis-member-crate-reject-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("test root");
+    let cargo_path = root.join("Cargo.toml");
+    fs::write(
+        &cargo_path,
+        r#"
+[package]
+name = "unixnotis-daemon"
+version = "0.1.0"
+"#,
+    )
+    .expect("member Cargo.toml");
+
+    // Package names are not enough; trial mode needs the workspace root for target/debug paths
+    assert!(!is_unixnotis_repo(&cargo_path));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn service_manager_choice_accepts_cli_names() {
     assert_eq!(
         ServiceManagerChoice::parse("systemd").expect("systemd"),

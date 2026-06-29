@@ -4,6 +4,9 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 pub(super) fn path_entries() -> Vec<PathBuf> {
     // Empty PATH is treated as no available shell command locations
     let Ok(path_var) = env::var("PATH") else {
@@ -19,12 +22,29 @@ pub(super) fn find_command_on_path_with_index(
     // Return the first command because that is what shell lookup will execute
     entries.iter().enumerate().find_map(|(index, entry)| {
         let candidate = entry.join(command);
-        if candidate.is_file() {
+        // PATH shadowing should follow executable commands, not plain files with matching names
+        if is_executable_file(&candidate) {
             Some((index, candidate))
         } else {
             None
         }
     })
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    // Shell lookup needs an executable regular file, not just a matching filename
+    // Any execute bit counts because the current user may be owner, group, or other
+    metadata.file_type().is_file() && metadata.permissions().mode() & 0o111 != 0
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> bool {
+    // Non-Unix test builds keep the old conservative regular-file behavior
+    path.is_file()
 }
 
 pub(super) fn path_entries_match(left: &Path, right: &Path) -> bool {

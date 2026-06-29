@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use crate::paths::InstallPaths;
+use crate::service_manager::ServiceArtifact;
 
 use super::binaries::resolve_install_binaries_best_effort;
 use super::conflicts::{detect_service_manager_conflict_state, ServiceManagerConflict};
@@ -71,12 +72,9 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         })
         .collect::<Vec<_>>();
 
-    let service_artifact_exists = paths
-        .service
-        .artifacts(&paths.bin_dir)
-        .iter()
-        // Artifact presence must prove the expected file, directory marker, or link target
-        .all(crate::service_manager::ServiceArtifact::is_present_safely);
+    // Capture the artifact list once so the empty-list guard and shape checks share one view
+    let service_artifacts = paths.service.artifacts(&paths.bin_dir);
+    let service_artifact_exists = service_artifacts_are_present(&service_artifacts);
     // Enabled state decides whether reinstall can skip `enable --now`
     // Some backends store enablement as installer-owned artifacts instead of manager state
     let mut service_enabled_error = None;
@@ -134,3 +132,16 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         service_conflict_warnings,
     }
 }
+
+fn service_artifacts_are_present(artifacts: &[ServiceArtifact]) -> bool {
+    // Empty artifact lists are never a real install, even though Iterator::all would return true
+    !artifacts.is_empty()
+        && artifacts
+            .iter()
+            // Artifact presence must prove the expected file, directory marker, or link target
+            .all(ServiceArtifact::is_present_safely)
+}
+
+#[cfg(test)]
+#[path = "tests/install_state.rs"]
+mod tests;
