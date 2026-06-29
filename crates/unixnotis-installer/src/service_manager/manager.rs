@@ -116,6 +116,11 @@ impl ServiceManager {
         &self.artifact_root
     }
 
+    pub fn manages_same_backend_root(&self, other: &Self) -> bool {
+        // UI labels can change, but kind plus artifact root is the real ownership identity
+        self.kind == other.kind && self.artifact_root == other.artifact_root
+    }
+
     pub fn primary_artifact_path(&self) -> PathBuf {
         // Summaries need one stable path even when the backend owns several artifacts
         match self.kind {
