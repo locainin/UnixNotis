@@ -1,6 +1,6 @@
 //! Stop and verify the currently running notification daemon.
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -163,6 +163,9 @@ fn wait_for_exit(ctx: &mut ActionContext, pid: u32, expected_comm: &str) -> Resu
 fn pid_alive(pid: u32) -> Result<bool> {
     let status = Command::new("kill")
         .args(["-0", &pid.to_string()])
+        // Dead-PID probes are expected during waits, so keep kill diagnostics out of the TUI
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .with_context(|| format!("failed to probe pid {pid}"))?;
     Ok(status.success())

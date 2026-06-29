@@ -1,4 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::time::{Duration, Instant};
 
 use crate::actions::{BuildAccelConfigStatus, BuildAccelDetection};
 use crate::app::{App, BuildAccelState, ProgressState, Screen};
@@ -172,6 +173,37 @@ fn progress_screen_quit_and_escape_work_after_action_finishes() {
 }
 
 #[test]
+fn progress_screen_respects_ready_delay_after_completion() {
+    let _lock = crate::tests::env::test_env_lock();
+    let mut app = App::new(None);
+    app.screen = Screen::Progress(ActionMode::Reset);
+    app.progress_state = ProgressState::Completed;
+    app.progress_ready_at = Some(Instant::now() + Duration::from_secs(60));
+
+    let action = handle_progress_key(&mut app, key(KeyCode::Enter)).expect("delayed enter");
+
+    // The short delay prevents fast key repeats from skipping the completion state
+    assert!(action.is_none());
+    assert_eq!(app.screen, Screen::Progress(ActionMode::Reset));
+    assert_eq!(app.progress_state, ProgressState::Completed);
+}
+
+#[test]
+fn completed_install_progress_enters_build_accel_prompt() {
+    let _lock = crate::tests::env::test_env_lock();
+    let mut app = App::new(None);
+    app.screen = Screen::Progress(ActionMode::Install);
+    app.progress_state = ProgressState::Completed;
+    app.progress_ready_at = None;
+
+    handle_progress_key(&mut app, key(KeyCode::Enter)).expect("completed install enter");
+
+    // Successful install should offer the optional build acceleration prompt before returning
+    assert_eq!(app.screen, Screen::BuildAccel);
+    assert!(app.build_accel.is_some());
+}
+
+#[test]
 fn vim_keys_move_build_accel_menu_like_arrow_keys() {
     let _lock = crate::tests::env::test_env_lock();
     let mut app = App::new(None);
@@ -191,4 +223,22 @@ fn vim_keys_move_build_accel_menu_like_arrow_keys() {
 
     handle_build_accel_key(&mut app, key(KeyCode::Char('k'))).expect("k should be handled");
     assert_eq!(app.build_accel_menu_index, 0);
+}
+
+#[test]
+fn build_accel_escape_and_quit_have_distinct_outcomes() {
+    let _lock = crate::tests::env::test_env_lock();
+    let mut app = App::new(None);
+    app.screen = Screen::BuildAccel;
+    app.progress_state = ProgressState::Completed;
+
+    let quit = handle_build_accel_key(&mut app, key(KeyCode::Char('q'))).expect("quit");
+    assert!(matches!(quit, Some(ExitAction::None)));
+    assert_eq!(app.screen, Screen::BuildAccel);
+
+    handle_build_accel_key(&mut app, key(KeyCode::Esc)).expect("escape");
+
+    // Escape returns to the menu and clears stale progress, unlike q which exits
+    assert_eq!(app.screen, Screen::Welcome);
+    assert_eq!(app.progress_state, ProgressState::Idle);
 }

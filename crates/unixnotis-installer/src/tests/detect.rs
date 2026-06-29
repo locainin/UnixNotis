@@ -1,6 +1,9 @@
 use std::io::{Error, ErrorKind};
 
-use crate::detect::{parse_busctl_json, parse_busctl_status, systemctl_spawn_error, KNOWN_DAEMONS};
+use crate::detect::{
+    parse_busctl_json, parse_busctl_status, read_cmdline_program, read_comm, systemctl_spawn_error,
+    KNOWN_DAEMONS,
+};
 
 #[test]
 fn known_daemons_include_quickshell_owner() {
@@ -157,6 +160,39 @@ fn parse_busctl_json_returns_none_for_invalid_json() {
     let owner = parse_busctl_json("not json");
 
     assert!(owner.is_none());
+}
+
+#[test]
+fn read_cmdline_program_reports_current_test_process_name() {
+    let program = read_cmdline_program(std::process::id()).expect("current process argv0");
+
+    // argv0 should always provide a non-empty executable basename for the current process
+    assert!(!program.trim().is_empty());
+    assert!(!program.contains('/'));
+}
+
+#[test]
+fn read_cmdline_program_returns_none_for_missing_process() {
+    let program = read_cmdline_program(u32::MAX);
+
+    // Missing /proc entries should be a clean absence, not an error-shaped owner
+    assert!(program.is_none());
+}
+
+#[test]
+fn read_comm_reports_current_test_process_name() {
+    let comm = read_comm(std::process::id()).expect("current process comm");
+
+    // comm is the fallback name used when busctl does not provide a reliable command
+    assert!(!comm.trim().is_empty());
+}
+
+#[test]
+fn read_comm_returns_none_for_missing_process() {
+    let comm = read_comm(u32::MAX);
+
+    // Missing processes must not produce placeholder names that could match a daemon
+    assert!(comm.is_none());
 }
 
 #[test]
