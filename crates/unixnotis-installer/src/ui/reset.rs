@@ -56,7 +56,7 @@ pub(super) fn draw_reset_menu(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(footer, layout[2]);
 }
 
-fn render_reset_menu(app: &App, width: u16) -> List<'static> {
+pub(super) fn render_reset_menu(app: &App, width: u16) -> List<'static> {
     let inner_width = width.saturating_sub(2) as usize;
     let items = ["Reset to defaults", "Restore backup", "Return to menu"];
 
@@ -134,7 +134,7 @@ pub(super) fn draw_restore_select(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(footer, layout[2]);
 }
 
-fn render_restore_menu(app: &App, width: u16) -> List<'static> {
+pub(super) fn render_restore_menu(app: &App, width: u16) -> List<'static> {
     let inner_width = width.saturating_sub(2) as usize;
     let mut items = Vec::new();
 
@@ -167,7 +167,7 @@ fn render_restore_menu(app: &App, width: u16) -> List<'static> {
     List::new(list_items)
 }
 
-fn build_reset_summary(app: &App) -> Vec<Line<'static>> {
+pub(super) fn build_reset_summary(app: &App) -> Vec<Line<'static>> {
     // Match summary to the highlighted action for quick visual feedback.
     let (title, body, accent) = match app.reset_menu_index {
         0 => (
