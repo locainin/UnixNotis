@@ -4,6 +4,9 @@ mod build_accel;
 mod confirm;
 mod header;
 mod progress;
+#[cfg(test)]
+#[path = "tests/rendering.rs"]
+mod rendering_tests;
 mod reset;
 mod welcome;
 mod widgets;
