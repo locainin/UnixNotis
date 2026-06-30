@@ -1,9 +1,36 @@
+use std::env;
+use std::fs;
 use std::io::{Error, ErrorKind};
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 use crate::detect::{
     parse_busctl_json, parse_busctl_status, read_cmdline_program, read_comm, systemctl_spawn_error,
     KNOWN_DAEMONS,
 };
+
+struct EnvGuard {
+    key: &'static str,
+    old: Option<String>,
+}
+
+impl EnvGuard {
+    fn set(key: &'static str, value: impl AsRef<str>) -> Self {
+        let old = env::var(key).ok();
+        env::set_var(key, value.as_ref());
+        Self { key, old }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        match &self.old {
+            // Restore global command lookup after fake process-detection tests
+            Some(value) => env::set_var(self.key, value),
+            None => env::remove_var(self.key),
+        }
+    }
+}
 
 #[test]
 fn known_daemons_include_quickshell_owner() {
@@ -200,4 +227,112 @@ fn missing_systemctl_does_not_emit_per_daemon_status_errors() {
     // Non-systemd installs can still use D-Bus and process detection without systemctl
     let err = Error::from(ErrorKind::NotFound);
     assert!(systemctl_spawn_error(&err).is_none());
+}
+
+#[test]
+fn detect_uses_bus_owner_systemd_status_and_pgrep_results() {
+    let _lock = crate::tests::env::test_env_lock();
+    let root = test_root("detect-fake-commands");
+    let fake_bin = root.join("bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    write_executable(
+        &fake_bin.join("busctl"),
+        "#!/bin/sh\n\
+         if [ \"$2\" = '--json=short' ]; then\n\
+         printf '{\"Status\":{\"Comm\":\"dunst\"}}\\n'\n\
+         exit 0\n\
+         fi\n\
+         exit 1\n",
+    );
+    write_executable(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\n\
+         if [ \"$4\" = 'dunst.service' ]; then exit 0; fi\n\
+         exit 3\n",
+    );
+    write_executable(
+        &fake_bin.join("pgrep"),
+        "#!/bin/sh\n\
+         if [ \"$4\" = 'unixnotis-daemon' ]; then\n\
+         printf '4321\\nnot-a-pid\\n'\n\
+         exit 0\n\
+         fi\n\
+         exit 1\n",
+    );
+    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+
+    let detection = crate::detect::detect();
+
+    // Fake commands exercise the full detection flow without touching host daemon state
+    assert_eq!(detection.owner.as_ref().and_then(|owner| owner.pid), None);
+    assert_eq!(
+        detection
+            .owner
+            .as_ref()
+            .and_then(|owner| owner.comm.as_deref()),
+        Some("dunst")
+    );
+    let dunst = detection
+        .daemons
+        .iter()
+        .find(|daemon| daemon.name == "dunst")
+        .expect("dunst entry should exist");
+    assert!(dunst.systemd_active);
+    assert!(dunst.systemd_error.is_none());
+    assert!(dunst.is_owner);
+
+    let unixnotis = detection
+        .daemons
+        .iter()
+        .find(|daemon| daemon.name == "unixnotis-daemon")
+        .expect("unixnotis entry should exist");
+    assert_eq!(unixnotis.running_pids, [4321]);
+    assert!(!unixnotis.systemd_active);
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn detect_falls_back_to_text_busctl_status_when_json_status_fails() {
+    let _lock = crate::tests::env::test_env_lock();
+    let root = test_root("detect-text-busctl-fallback");
+    let fake_bin = root.join("bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    write_executable(
+        &fake_bin.join("busctl"),
+        "#!/bin/sh\n\
+         if [ \"$2\" = '--json=short' ]; then exit 1; fi\n\
+         printf 'Status of org.freedesktop.Notifications:\\n   Comm=mako\\n'\n",
+    );
+    write_executable(&fake_bin.join("systemctl"), "#!/bin/sh\nexit 3\n");
+    write_executable(&fake_bin.join("pgrep"), "#!/bin/sh\nexit 1\n");
+    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+
+    let detection = crate::detect::detect();
+
+    // Older busctl versions may lack JSON output, so text fallback must still identify owners
+    assert_eq!(
+        detection
+            .owner
+            .as_ref()
+            .and_then(|owner| owner.comm.as_deref()),
+        Some("mako")
+    );
+    assert!(detection
+        .daemons
+        .iter()
+        .any(|daemon| daemon.name == "mako" && daemon.is_owner));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+fn write_executable(path: &Path, contents: &str) {
+    fs::write(path, contents).expect("write fake command");
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("fake command mode");
+}
+
+fn test_root(name: &str) -> std::path::PathBuf {
+    let root = env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    root
 }
