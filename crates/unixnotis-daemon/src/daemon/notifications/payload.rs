@@ -2,6 +2,7 @@
 //!
 //! This module turns raw D-Bus values into bounded internal model values
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -109,20 +110,21 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
 }
 
 pub(super) fn resolve_expiration(config: &Config, notification: &Notification) -> Option<Instant> {
-    // Explicit timeout=0 and resident notifications never auto-expire
-    if notification.expire_timeout == 0 || notification.is_resident {
+    // Resident notifications never auto-expire
+    if notification.is_resident {
         return None;
     }
 
-    // Positive values are caller-provided milliseconds
-    let timeout_ms = if notification.expire_timeout > 0 {
-        notification.expire_timeout as u64
-    } else {
+    let timeout_ms = match notification.expire_timeout.cmp(&0) {
+        // Explicit timeout=0 disables auto-expiration
+        Ordering::Equal => return None,
+        // Positive values are caller-provided milliseconds
+        Ordering::Greater => notification.expire_timeout as u64,
         // Negative values request defaults by urgency
-        match notification.urgency {
+        Ordering::Less => match notification.urgency {
             Urgency::Critical => config.popups.critical_timeout_ms?,
             _ => config.popups.default_timeout_ms,
-        }
+        },
     };
 
     if timeout_ms == 0 {
@@ -225,11 +227,14 @@ fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
         return value.to_string();
     }
 
-    // Move backward until UTF-8 stays valid
-    let mut end = max_bytes;
-    while end > 0 && !value.is_char_boundary(end) {
-        end -= 1;
-    }
+    // Walk character ends instead of decrementing a byte index; a mutated loop
+    // counter must not be able to hang while handling untrusted notification text
+    let end = value
+        .char_indices()
+        .map(|(index, ch)| index + ch.len_utf8())
+        .take_while(|end| *end <= max_bytes)
+        .last()
+        .unwrap_or(0);
     value[..end].to_string()
 }
 

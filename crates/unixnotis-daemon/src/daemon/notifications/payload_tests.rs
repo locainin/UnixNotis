@@ -1,18 +1,28 @@
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use zbus::zvariant::OwnedValue;
 
 use super::{
     build_notification, display_width, normalize_text_for_layout, owned_to_string, parse_actions,
-    sanitize_hints_for_storage, string_to_owned_value, truncate_utf8_bytes, NotificationInput,
-    SenderMetadata, MAX_ACTIONS, MAX_BODY_BYTES, MAX_SUMMARY_BYTES,
+    parse_urgency_hint, resolve_expiration, sanitize_hints_for_storage, string_to_owned_value,
+    truncate_utf8_bytes, NotificationInput, SenderMetadata, MAX_ACTIONS, MAX_BODY_BYTES,
+    MAX_SUMMARY_BYTES,
 };
+use unixnotis_core::{Config, NotificationImage, Urgency};
 
 #[test]
 fn truncate_utf8_bytes_preserves_character_boundaries() {
     let value = "abc🙂def";
     let truncated = truncate_utf8_bytes(value, 5);
     assert_eq!(truncated, "abc");
+}
+
+#[test]
+fn truncate_utf8_bytes_keeps_exact_boundary_and_handles_zero_limit() {
+    assert_eq!(truncate_utf8_bytes("abc", 3), "abc");
+    assert_eq!(truncate_utf8_bytes("abc", 0), "");
+    assert_eq!(truncate_utf8_bytes("éé", 3), "é");
 }
 
 #[test]
@@ -80,6 +90,7 @@ fn parse_actions_caps_pairs() {
 fn sanitize_hints_drops_untrusted_and_bounds_strings() {
     let mut hints = HashMap::<String, OwnedValue>::new();
     hints.insert("transient".to_string(), OwnedValue::from(true));
+    hints.insert("urgency".to_string(), OwnedValue::from(9u32));
     hints.insert(
         "sound-name".to_string(),
         string_to_owned_value(&"n".repeat(5000)).expect("sound-name"),
@@ -91,9 +102,13 @@ fn sanitize_hints_drops_untrusted_and_bounds_strings() {
     );
 
     let sanitized = sanitize_hints_for_storage(hints);
-    assert_eq!(sanitized.len(), 2);
+    assert_eq!(sanitized.len(), 3);
     assert!(sanitized.contains_key("transient"));
     assert!(sanitized.contains_key("sound-name"));
+    assert_eq!(
+        u32::try_from(sanitized.get("urgency").expect("urgency")),
+        Ok(2)
+    );
 
     let sound_name = owned_to_string(
         sanitized
@@ -102,6 +117,112 @@ fn sanitize_hints_drops_untrusted_and_bounds_strings() {
     )
     .expect("sound-name should be string");
     assert!(sound_name.len() <= 2048);
+}
+
+#[test]
+fn parse_urgency_hint_accepts_byte_and_integer_values_with_cap() {
+    assert_eq!(parse_urgency_hint(&OwnedValue::from(0u8)), Some(0));
+    assert_eq!(parse_urgency_hint(&OwnedValue::from(1u32)), Some(1));
+    assert_eq!(parse_urgency_hint(&OwnedValue::from(99u32)), Some(2));
+    assert_eq!(
+        parse_urgency_hint(&string_to_owned_value("high").expect("string")),
+        None
+    );
+}
+
+#[test]
+fn owned_to_string_accepts_only_string_values() {
+    assert_eq!(
+        owned_to_string(&string_to_owned_value("sound").expect("string")).as_deref(),
+        Some("sound")
+    );
+    assert_eq!(owned_to_string(&OwnedValue::from(7u32)), None);
+}
+
+#[test]
+fn resolve_expiration_respects_protocol_and_config_rules() {
+    let mut config = Config::default();
+    config.popups.default_timeout_ms = 5_000;
+    config.popups.critical_timeout_ms = Some(9_000);
+
+    let mut notification = unixnotis_core::Notification {
+        id: 1,
+        app_name: "app".to_string(),
+        app_icon: String::new(),
+        summary: "summary".to_string(),
+        body: String::new(),
+        actions: Vec::new(),
+        hints: HashMap::new(),
+        urgency: Urgency::Normal,
+        category: None,
+        is_transient: false,
+        is_resident: false,
+        suppress_popup: false,
+        suppress_sound: false,
+        image: NotificationImage::default(),
+        expire_timeout: -1,
+        received_at: chrono::Utc::now(),
+        sender_name: None,
+        sender_pid: None,
+        sender_start_time: None,
+        sender_executable: None,
+    };
+
+    assert!(resolve_expiration(&config, &notification).is_some());
+
+    notification.urgency = Urgency::Critical;
+    assert!(resolve_expiration(&config, &notification).is_some());
+
+    notification.expire_timeout = 0;
+    assert!(resolve_expiration(&config, &notification).is_none());
+
+    notification.expire_timeout = 100;
+    notification.is_resident = true;
+    assert!(resolve_expiration(&config, &notification).is_none());
+
+    notification.is_resident = false;
+    let before = Instant::now();
+    let deadline = resolve_expiration(&config, &notification).expect("explicit timeout");
+    assert!(deadline > before);
+    assert!(deadline <= Instant::now() + Duration::from_millis(500));
+
+    notification.expire_timeout = -1;
+    notification.urgency = Urgency::Critical;
+    config.popups.critical_timeout_ms = None;
+    assert!(resolve_expiration(&config, &notification).is_none());
+}
+
+#[test]
+fn resolve_expiration_treats_positive_timeout_as_caller_owned_even_when_default_is_zero() {
+    let mut config = Config::default();
+    config.popups.default_timeout_ms = 0;
+    let mut notification = unixnotis_core::Notification {
+        id: 1,
+        app_name: "app".to_string(),
+        app_icon: String::new(),
+        summary: "summary".to_string(),
+        body: String::new(),
+        actions: Vec::new(),
+        hints: HashMap::new(),
+        urgency: Urgency::Normal,
+        category: None,
+        is_transient: false,
+        is_resident: false,
+        suppress_popup: false,
+        suppress_sound: false,
+        image: NotificationImage::default(),
+        expire_timeout: 25,
+        received_at: chrono::Utc::now(),
+        sender_name: None,
+        sender_pid: None,
+        sender_start_time: None,
+        sender_executable: None,
+    };
+
+    assert!(resolve_expiration(&config, &notification).is_some());
+
+    notification.expire_timeout = -1;
+    assert!(resolve_expiration(&config, &notification).is_none());
 }
 
 #[test]
@@ -118,11 +239,36 @@ fn normalize_text_for_layout_folds_long_unbroken_tokens() {
 }
 
 #[test]
+fn normalize_text_for_layout_returns_input_when_limit_is_zero() {
+    assert_eq!(normalize_text_for_layout("unchanged", 0), "unchanged");
+}
+
+#[test]
+fn normalize_text_for_layout_keeps_exact_width_token_without_ellipsis() {
+    let input = "x".repeat(96);
+    let normalized = normalize_text_for_layout(&input, 96);
+    assert_eq!(normalized, input);
+}
+
+#[test]
+fn normalize_text_for_layout_resets_run_after_whitespace() {
+    let input = format!("{} {}", "x".repeat(96), "y".repeat(96));
+    let normalized = normalize_text_for_layout(&input, 96);
+    assert_eq!(normalized, input);
+}
+
+#[test]
 fn normalize_text_for_layout_keeps_char_count_bound_with_ellipsis() {
     let input = "x".repeat(200);
     let normalized = normalize_text_for_layout(&input, 96);
     assert!(normalized.contains('…'));
-    assert!(normalized.chars().count() <= 96);
+    // Ellipsis is width 2 in CJK width mode, so the text keeps 94 ASCII chars plus ellipsis
+    assert_eq!(normalized.chars().count(), 95);
+}
+
+#[test]
+fn normalize_text_for_layout_trims_only_as_much_as_needed_for_ellipsis() {
+    assert_eq!(normalize_text_for_layout("xxxx", 3), "x…");
 }
 
 #[test]
@@ -139,4 +285,10 @@ fn normalize_text_for_layout_limits_emoji_joiner_runs() {
     let normalized = normalize_text_for_layout(&input, 96);
     let width: usize = normalized.chars().map(display_width).sum();
     assert!(width <= 96);
+}
+
+#[test]
+fn display_width_counts_wide_and_joiner_characters_for_layout_safety() {
+    assert!(display_width('界') > 1);
+    assert_eq!(display_width('\u{200D}'), 1);
 }
