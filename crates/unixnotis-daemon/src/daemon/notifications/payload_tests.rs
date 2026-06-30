@@ -87,6 +87,20 @@ fn parse_actions_caps_pairs() {
 }
 
 #[test]
+fn parse_actions_ignores_dangling_key_without_label() {
+    let actions = parse_actions(vec![
+        "default".to_string(),
+        "Open".to_string(),
+        "orphan-key".to_string(),
+    ]);
+
+    // D-Bus action arrays are pairs; a trailing key cannot produce a safe button
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].key, "default");
+    assert_eq!(actions[0].label, "Open");
+}
+
+#[test]
 fn sanitize_hints_drops_untrusted_and_bounds_strings() {
     let mut hints = HashMap::<String, OwnedValue>::new();
     hints.insert("transient".to_string(), OwnedValue::from(true));
