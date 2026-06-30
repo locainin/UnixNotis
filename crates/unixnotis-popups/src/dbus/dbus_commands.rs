@@ -20,3 +20,7 @@ pub(crate) fn drain_offline_commands(command_rx: &mut mpsc::Receiver<UiCommand>)
         warn!("dropping control command while interface is unavailable");
     }
 }
+
+#[cfg(test)]
+#[path = "tests/commands.rs"]
+mod tests;
