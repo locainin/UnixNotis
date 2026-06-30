@@ -129,3 +129,7 @@ pub struct NotificationView {
     // Image metadata intended for UI usage.
     pub image: NotificationImage,
 }
+
+#[cfg(test)]
+#[path = "tests/notification.rs"]
+mod tests;
