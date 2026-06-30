@@ -72,5 +72,5 @@ fn current_gtk_css_features() -> GtkCssFeatures {
 }
 
 #[cfg(test)]
-#[path = "css_overrides_tests.rs"]
+#[path = "tests/overrides.rs"]
 mod tests;

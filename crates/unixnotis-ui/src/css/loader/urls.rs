@@ -1,99 +1,11 @@
-//! CSS file loading helpers with fallback and override handling.
+//! CSS url(...) asset rebasing helpers
 
-use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use gtk::gio;
 use gtk::prelude::FileExt;
-use tracing::warn;
 
-/// Load CSS into a provider, applying overrides and falling back to defaults.
-pub(crate) fn load_provider_with_overrides(
-    load_css_data: impl Fn(&str),
-    path: &Path,
-    fallback: &str,
-    overrides: &str,
-    inject_base_tokens: bool,
-) {
-    match fs::read_to_string(path) {
-        Ok(contents) => {
-            let contents = if inject_base_tokens {
-                ensure_base_tokens(&contents, path)
-            } else {
-                contents
-            };
-            if contents.trim().is_empty() {
-                // Empty files fall back to embedded defaults so windows stay styled.
-                let merged = merge_css_with_overrides(fallback, fallback, overrides);
-                // Relative url(...) assets break when CSS is loaded from raw bytes,
-                // so rebase them against the stylesheet path before GTK sees the data
-                load_css_data(&rebase_relative_css_asset_urls(&merged, path));
-                return;
-            }
-            let merged = merge_css_with_overrides(&contents, fallback, overrides);
-            // The provider still loads merged data, but the asset URLs now point at real files
-            load_css_data(&rebase_relative_css_asset_urls(&merged, path));
-        }
-        Err(err) => {
-            let file = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("css");
-            warn!(
-                ?err,
-                file, "failed to read css file; falling back to defaults"
-            );
-            let fallback = if inject_base_tokens {
-                ensure_base_tokens(fallback, path)
-            } else {
-                fallback.to_string()
-            };
-            if overrides.trim().is_empty() {
-                // Fallback CSS can carry relative assets too, so it needs the same rebasing path
-                load_css_data(&rebase_relative_css_asset_urls(&fallback, path));
-                return;
-            }
-            let merged = format!("{fallback}\n{overrides}");
-            // Overrides are merged before rebasing so later asset refs all see one final stylesheet
-            load_css_data(&rebase_relative_css_asset_urls(&merged, path));
-        }
-    }
-}
-
-fn merge_css_with_overrides(contents: &str, fallback: &str, overrides: &str) -> String {
-    if overrides.trim().is_empty() {
-        return contents.to_string();
-    }
-
-    // User overrides are appended to untouched defaults and prepended to user-edited files
-    if contents.trim() == fallback.trim() {
-        format!("{contents}\n{overrides}")
-    } else {
-        format!("{overrides}\n{contents}")
-    }
-}
-
-pub(crate) fn ensure_base_tokens(contents: &str, path: &Path) -> String {
-    if contents.contains("unixnotis-surface-base") && contents.contains("unixnotis-card-base") {
-        return contents.to_string();
-    }
-    let file = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("base.css");
-    warn!(
-        file,
-        "base css missing base color tokens; alpha overrides may be compounded until updated"
-    );
-    format!(
-        "{prefix}\n{contents}",
-        prefix = r#"@define-color unixnotis-surface-base @unixnotis-surface;
-@define-color unixnotis-surface-strong-base @unixnotis-surface-strong;
-@define-color unixnotis-card-base @unixnotis-card;"#,
-    )
-}
-
-fn rebase_relative_css_asset_urls(contents: &str, css_path: &Path) -> String {
+pub(super) fn rebase_relative_css_asset_urls(contents: &str, css_path: &Path) -> String {
     let mut rewritten = String::with_capacity(contents.len());
     let mut last_index = 0usize;
 
@@ -282,23 +194,14 @@ fn normalize_lexical_path(path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
-#[path = "tests/loader_merge.rs"]
-mod merge_tests;
-#[cfg(test)]
-#[path = "tests/loader_paths.rs"]
+#[path = "../tests/loader/paths.rs"]
 mod path_tests;
 #[cfg(test)]
-#[path = "tests/loader_provider.rs"]
-mod provider_tests;
-#[cfg(test)]
-#[path = "tests/loader_rebase.rs"]
+#[path = "../tests/loader/rebase.rs"]
 mod rebase_tests;
 #[cfg(test)]
-#[path = "tests/loader_spans.rs"]
+#[path = "../tests/loader/spans.rs"]
 mod span_tests;
 #[cfg(test)]
-#[path = "tests/loader_tokens.rs"]
-mod token_tests;
-#[cfg(test)]
-#[path = "tests/loader_url_parser.rs"]
+#[path = "../tests/loader/url_parser.rs"]
 mod url_parser_tests;

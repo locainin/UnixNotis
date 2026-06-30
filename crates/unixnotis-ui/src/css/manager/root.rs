@@ -7,47 +7,22 @@ use unixnotis_core::{
     DEFAULT_WIDGETS_CSS,
 };
 
-use super::css_loader::load_provider_with_overrides;
-use super::css_overrides::{
+use super::loader::load_provider_with_overrides;
+use super::overrides::{
     build_base_overrides, build_panel_overrides, build_popup_overrides, build_widgets_overrides,
 };
 
-/// Tiny provider boundary so reload behavior can be tested without GTK.
-trait CssProviderBackend: Clone {
-    fn load_css_data(&self, data: &str);
-    fn add_to_display(&self, display: &gdk::Display, priority: u32);
-}
+mod layers;
+mod provider;
 
-impl CssProviderBackend for CssProvider {
-    fn load_css_data(&self, data: &str) {
-        self.load_from_data(data);
-    }
-
-    fn add_to_display(&self, display: &gdk::Display, priority: u32) {
-        gtk::style_context_add_provider_for_display(display, self, priority);
-    }
-}
+use layers::{CssProviderLayer, CssProviderRegistration};
+use provider::CssProviderBackend;
 
 /// Identifies which UI surface is loading CSS.
 #[derive(Clone, Copy, Debug)]
 pub enum CssKind {
     Panel,
     Popup,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CssProviderLayer {
-    Base,
-    Panel,
-    Popup,
-    Widgets,
-    Media,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct CssProviderRegistration {
-    layer: CssProviderLayer,
-    priority: u32,
 }
 
 /// CSS provider stack for UnixNotis windows.
@@ -260,8 +235,8 @@ where
 }
 
 #[cfg(test)]
-#[path = "tests/manager_display.rs"]
+#[path = "../tests/manager/display.rs"]
 mod display_tests;
 #[cfg(test)]
-#[path = "tests/manager_reload.rs"]
+#[path = "../tests/manager/reload.rs"]
 mod reload_tests;
