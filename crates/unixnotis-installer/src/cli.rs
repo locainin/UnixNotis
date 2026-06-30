@@ -148,7 +148,15 @@ fn parse_service_manager_arg(value: &OsString) -> Result<ServiceManagerChoice> {
     ServiceManagerChoice::parse_explicit(value)
 }
 
-// CLI tests live beside this module instead of growing the production parser
 #[cfg(test)]
-#[path = "cli/tests.rs"]
-mod tests;
+#[path = "tests/cli/errors.rs"]
+mod error_tests;
+#[cfg(test)]
+#[path = "tests/cli/help.rs"]
+mod help_tests;
+#[cfg(test)]
+#[path = "tests/cli/service_manager.rs"]
+mod service_manager_tests;
+#[cfg(test)]
+#[path = "tests/cli/support.rs"]
+mod test_support;
