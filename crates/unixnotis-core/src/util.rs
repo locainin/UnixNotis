@@ -282,5 +282,17 @@ fn is_bidi_control(ch: char) -> bool {
 }
 
 #[cfg(test)]
-#[path = "util/tests.rs"]
-mod tests;
+#[path = "tests/util/commands.rs"]
+mod command_tests;
+#[cfg(test)]
+#[path = "tests/util/diagnostics.rs"]
+mod diagnostic_tests;
+#[cfg(test)]
+#[path = "tests/util/display.rs"]
+mod display_tests;
+#[cfg(test)]
+#[path = "tests/util/paths.rs"]
+mod path_tests;
+#[cfg(test)]
+#[path = "tests/util/programs.rs"]
+mod program_tests;
