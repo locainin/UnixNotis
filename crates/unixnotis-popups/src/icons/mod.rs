@@ -298,44 +298,5 @@ fn expand_rgb_to_rgba(data: &unixnotis_core::ImageData) -> Option<(Vec<u8>, usiz
 }
 
 #[cfg(test)]
-mod tests {
-    use super::expand_rgb_to_rgba;
-    use unixnotis_core::ImageData;
-
-    #[test]
-    fn expand_rgb_to_rgba_appends_alpha() {
-        // Ensures RGB input is expanded to RGBA with an opaque alpha channel.
-        let data = ImageData {
-            width: 2,
-            height: 1,
-            rowstride: 0,
-            has_alpha: false,
-            bits_per_sample: 8,
-            channels: 3,
-            data: vec![10, 20, 30, 40, 50, 60],
-        };
-        let (expanded, stride) = expand_rgb_to_rgba(&data).expect("rgb expansion");
-        assert_eq!(stride, 8);
-        assert_eq!(expanded, vec![10, 20, 30, 255, 40, 50, 60, 255]);
-    }
-
-    #[test]
-    fn expand_rgb_to_rgba_honors_row_padding() {
-        // Confirms per-row padding does not leak into the expanded RGBA output.
-        let data = ImageData {
-            width: 2,
-            height: 2,
-            rowstride: 8,
-            has_alpha: false,
-            bits_per_sample: 8,
-            channels: 3,
-            data: vec![1, 2, 3, 4, 5, 6, 0, 0, 7, 8, 9, 10, 11, 12, 0, 0],
-        };
-        let (expanded, stride) = expand_rgb_to_rgba(&data).expect("rgb expansion");
-        assert_eq!(stride, 8);
-        assert_eq!(
-            expanded,
-            vec![1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255]
-        );
-    }
-}
+#[path = "tests/icons.rs"]
+mod tests;
