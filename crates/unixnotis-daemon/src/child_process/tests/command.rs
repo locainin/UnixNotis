@@ -4,12 +4,27 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use unixnotis_core::util::CONFIG_PATH_ENV;
 
+use crate::test_support::daemon_state_for_test;
+
 use super::{child_config_env_path, Args, UiProcessKind};
 
 #[test]
 fn ui_process_kind_labels_match_binary_names() {
     assert_eq!(UiProcessKind::Popups.label(), "unixnotis-popups");
     assert_eq!(UiProcessKind::Center.label(), "unixnotis-center");
+}
+
+#[tokio::test]
+async fn mark_running_updates_popup_health_and_resets_center_readiness() {
+    let state = daemon_state_for_test(false).await;
+
+    UiProcessKind::Popups.mark_running(&state, true);
+    assert!(state.popups_running());
+
+    // Center process spawn is not readiness; readiness only flips after live subscriptions
+    state.set_panel_ready(true);
+    UiProcessKind::Center.mark_running(&state, true);
+    assert!(!state.panel_ready());
 }
 
 #[test]
