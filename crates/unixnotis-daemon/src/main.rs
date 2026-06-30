@@ -29,6 +29,8 @@ mod runtime_config;
 mod shutdown_signal;
 mod sound;
 mod store;
+#[cfg(test)]
+mod test_support;
 mod trial_mode;
 
 use crate::child_process::{spawn_center_supervisor, spawn_popups_supervisor};
