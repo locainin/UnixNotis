@@ -5,12 +5,11 @@ use std::path::{Component, Path, PathBuf};
 
 use gtk::gio;
 use gtk::prelude::FileExt;
-use gtk::CssProvider;
 use tracing::warn;
 
 /// Load CSS into a provider, applying overrides and falling back to defaults.
 pub(crate) fn load_provider_with_overrides(
-    provider: &CssProvider,
+    load_css_data: impl Fn(&str),
     path: &Path,
     fallback: &str,
     overrides: &str,
@@ -28,12 +27,12 @@ pub(crate) fn load_provider_with_overrides(
                 let merged = merge_css_with_overrides(fallback, fallback, overrides);
                 // Relative url(...) assets break when CSS is loaded from raw bytes,
                 // so rebase them against the stylesheet path before GTK sees the data
-                provider.load_from_data(&rebase_relative_css_asset_urls(&merged, path));
+                load_css_data(&rebase_relative_css_asset_urls(&merged, path));
                 return;
             }
             let merged = merge_css_with_overrides(&contents, fallback, overrides);
             // The provider still loads merged data, but the asset URLs now point at real files
-            provider.load_from_data(&rebase_relative_css_asset_urls(&merged, path));
+            load_css_data(&rebase_relative_css_asset_urls(&merged, path));
         }
         Err(err) => {
             let file = path
@@ -51,12 +50,12 @@ pub(crate) fn load_provider_with_overrides(
             };
             if overrides.trim().is_empty() {
                 // Fallback CSS can carry relative assets too, so it needs the same rebasing path
-                provider.load_from_data(&rebase_relative_css_asset_urls(&fallback, path));
+                load_css_data(&rebase_relative_css_asset_urls(&fallback, path));
                 return;
             }
             let merged = format!("{fallback}\n{overrides}");
             // Overrides are merged before rebasing so later asset refs all see one final stylesheet
-            provider.load_from_data(&rebase_relative_css_asset_urls(&merged, path));
+            load_css_data(&rebase_relative_css_asset_urls(&merged, path));
         }
     }
 }
@@ -207,6 +206,7 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usiz
     let mut value = String::new();
     let mut value_end;
     let mut quote = None::<u8>;
+    let mut closed_quote = false;
     if matches!(bytes[index], b'\'' | b'"') {
         // Quoted URLs keep the quote out of the stored payload and later rewrite
         quote = Some(bytes[index]);
@@ -219,6 +219,8 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usiz
         if let Some(open_quote) = quote {
             if byte == open_quote {
                 quote = None;
+                // Padding after a valid quoted URL is CSS syntax, not part of the asset path
+                closed_quote = true;
             } else {
                 value.push(byte as char);
                 value_end = index + 1;
@@ -237,6 +239,9 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usiz
                     },
                     index + 1,
                 ));
+            }
+            byte if closed_quote && byte.is_ascii_whitespace() => {
+                // Ignore normal whitespace between the closing quote and `)`
             }
             _ => {
                 value.push(byte as char);
@@ -273,5 +278,23 @@ fn normalize_lexical_path(path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
-#[path = "tests/loader.rs"]
-mod tests;
+#[path = "tests/loader_merge.rs"]
+mod merge_tests;
+#[cfg(test)]
+#[path = "tests/loader_paths.rs"]
+mod path_tests;
+#[cfg(test)]
+#[path = "tests/loader_provider.rs"]
+mod provider_tests;
+#[cfg(test)]
+#[path = "tests/loader_rebase.rs"]
+mod rebase_tests;
+#[cfg(test)]
+#[path = "tests/loader_spans.rs"]
+mod span_tests;
+#[cfg(test)]
+#[path = "tests/loader_tokens.rs"]
+mod token_tests;
+#[cfg(test)]
+#[path = "tests/loader_url_parser.rs"]
+mod url_parser_tests;
