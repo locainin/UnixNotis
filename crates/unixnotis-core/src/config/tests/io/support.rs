@@ -1,14 +1,12 @@
 use std::env;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::test_support::test_env_lock;
 
 pub(super) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     // Environment variables are process-global, so config path tests serialize access
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("env lock")
+    test_env_lock()
 }
 
 pub(super) fn set_env(key: &str, value: Option<&str>) -> Option<String> {

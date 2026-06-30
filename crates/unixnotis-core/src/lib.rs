@@ -13,6 +13,9 @@ pub mod config;
 pub mod control;
 pub mod css;
 pub mod model;
+#[cfg(test)]
+#[path = "tests/support.rs"]
+mod test_support;
 pub mod theme;
 pub mod util;
 

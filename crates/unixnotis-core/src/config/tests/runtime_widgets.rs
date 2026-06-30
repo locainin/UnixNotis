@@ -2,18 +2,16 @@ use super::*;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::test_support::test_env_lock;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     // PATH is process-global, so backend detection tests must not run over each other
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("env lock should not be poisoned")
+    test_env_lock()
 }
 
 fn test_root(name: &str) -> PathBuf {
