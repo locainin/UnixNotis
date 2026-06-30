@@ -1,7 +1,10 @@
 /target/
+**/target/
 /.cargo/
 /perf.data
 /perf.data.old
+/mutants.out/
+/mutants.out.old/
 **/*.rs.bk
 **/*.swp
 .nvimlog

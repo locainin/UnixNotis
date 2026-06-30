@@ -1,0 +1,25 @@
+{
+  // Keep Explorer colors and badges active without relying on manual folder refresh
+  "explorer.decorations.badges": true,
+  "explorer.decorations.colors": true,
+  "git.autorefresh": true,
+  "git.decorations.enabled": true,
+  "git.decorations.colors": true,
+  "git.autoRepositoryDetection": "subFolders",
+  "git.repositoryScanMaxDepth": 6,
+
+  // Generated Rust and mutation-test output can create thousands of files
+  // Excluding them keeps VS Code's file watcher and Git decorations responsive
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/target/**": true,
+    "**/mutants.out/**": true,
+    "**/mutants.out.old/**": true
+  },
+  "search.exclude": {
+    "**/target/**": true,
+    "**/mutants.out/**": true,
+    "**/mutants.out.old/**": true
+  }
+}
