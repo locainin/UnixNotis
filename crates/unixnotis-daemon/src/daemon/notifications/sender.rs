@@ -128,14 +128,5 @@ fn parse_process_start_time(stat: &str) -> Option<u64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::parse_process_start_time;
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn parse_process_start_time_handles_spaces_in_comm() {
-        let stat =
-            "42 (player with spaces) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 987654 20";
-        assert_eq!(parse_process_start_time(stat), Some(987654));
-    }
-}
+#[path = "tests/sender.rs"]
+mod tests;
