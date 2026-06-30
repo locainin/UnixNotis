@@ -196,40 +196,42 @@ struct UrlValueSpan {
 }
 
 fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usize)> {
-    let bytes = input.as_bytes();
-    let tail = bytes.get(open_index..)?;
+    let tail = input.get(open_index..)?;
 
     // Leading spaces after url( are ignored so stored payloads stay clean
-    let first_value_offset = tail.iter().position(|byte| !byte.is_ascii_whitespace())?;
+    let (first_value_offset, first_value) = tail
+        .char_indices()
+        .find(|(_, ch)| !ch.is_ascii_whitespace())?;
     let mut index = open_index + first_value_offset;
 
     let mut value = String::new();
     let mut value_end;
-    let mut quote = None::<u8>;
+    let mut quote = None::<char>;
     let mut closed_quote = false;
-    if matches!(bytes[index], b'\'' | b'"') {
+    if matches!(first_value, '\'' | '"') {
         // Quoted URLs keep the quote out of the stored payload and later rewrite
-        quote = Some(bytes[index]);
-        index += 1;
+        quote = Some(first_value);
+        index += first_value.len_utf8();
     }
     let value_start = index;
     value_end = index;
 
-    for (index, byte) in bytes.iter().copied().enumerate().skip(index) {
+    for (offset, ch) in input[index..].char_indices() {
+        let index = index + offset;
         if let Some(open_quote) = quote {
-            if byte == open_quote {
+            if ch == open_quote {
                 quote = None;
                 // Padding after a valid quoted URL is CSS syntax, not part of the asset path
                 closed_quote = true;
             } else {
-                value.push(byte as char);
-                value_end = index + 1;
+                value.push(ch);
+                value_end = index + ch.len_utf8();
             }
             continue;
         }
 
-        match byte {
-            b')' => {
+        match ch {
+            ')' => {
                 // Closing paren ends the payload and returns the exact slice that was replaced
                 return Some((
                     UrlValueSpan {
@@ -240,13 +242,15 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usiz
                     index + 1,
                 ));
             }
-            byte if closed_quote && byte.is_ascii_whitespace() => {
+            ch if closed_quote && ch.is_ascii_whitespace() => {
                 // Ignore normal whitespace between the closing quote and `)`
             }
             _ => {
-                value.push(byte as char);
-                if !byte.is_ascii_whitespace() {
-                    value_end = index + 1;
+                // Once malformed suffix text begins, later spaces are user bytes again
+                closed_quote = false;
+                value.push(ch);
+                if !ch.is_ascii_whitespace() {
+                    value_end = index + ch.len_utf8();
                 }
             }
         }

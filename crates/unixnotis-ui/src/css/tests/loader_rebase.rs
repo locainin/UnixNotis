@@ -27,6 +27,17 @@ fn rebase_relative_css_asset_urls_rewrites_single_quoted_and_unquoted_paths() {
 }
 
 #[test]
+fn rebase_relative_css_asset_urls_preserves_unicode_path() {
+    let css = ".card { background-image: url(\"icons/café.png\"); }";
+    let css_path = Path::new("/tmp/unixnotis/themes/widgets.css");
+
+    let rebased = rebase_relative_css_asset_urls(css, css_path);
+
+    // Non-ASCII asset names should survive parsing and then be percent-encoded in the URI
+    assert!(rebased.contains("file:///tmp/unixnotis/themes/icons/caf%C3%A9.png"));
+}
+
+#[test]
 fn rebase_relative_css_asset_urls_keeps_absolute_remote_data_and_file_urls() {
     let css = concat!(
         ".a { background-image: url(\"file:///tmp/outside.png\"); }\n",
