@@ -17,6 +17,8 @@ use crate::store::NotificationStore;
 
 #[path = "daemon/bus_names.rs"]
 mod bus_names;
+#[path = "daemon/auth.rs"]
+mod auth;
 #[path = "daemon/control.rs"]
 mod control;
 #[path = "daemon/notifications.rs"]
