@@ -57,9 +57,7 @@ pub(super) async fn supervise_process(
             status = child.wait() => {
                 kind.mark_running(&state, false);
                 let runtime = started_at.elapsed();
-                if !handle_wait_result(&mut child, label, pid, runtime, status).await {
-                    return;
-                }
+                handle_wait_result(&mut child, label, pid, runtime, status).await;
                 let delay = backoff.next_delay(runtime);
                 warn!(
                     delay_ms = delay.as_millis() as u64,
@@ -110,11 +108,10 @@ async fn handle_wait_result(
     pid: u32,
     runtime: Duration,
     status: std::io::Result<ExitStatus>,
-) -> bool {
+) {
     match status {
         Ok(status) => {
             log_exit(label, pid, runtime, Ok(status));
-            true
         }
         Err(err) => {
             let probe = child.try_wait().map(|status| status.is_some());
@@ -129,7 +126,7 @@ async fn handle_wait_result(
                     "ui process wait failed before exit was confirmed; terminating child before restart"
                 );
                 terminate_child(child, label).await;
-                return true;
+                return;
             }
             warn!(
                 ?err,
@@ -138,7 +135,6 @@ async fn handle_wait_result(
                 runtime_ms = runtime.as_millis() as u64,
                 "ui process wait failed but exit was confirmed"
             );
-            true
         }
     }
 }
@@ -222,64 +218,5 @@ async fn terminate_child(child: &mut Child, label: &str) {
 }
 
 #[cfg(test)]
-mod tests {
-    use tokio::sync::watch;
-
-    use super::{shutdown_is_terminal, wait_error_needs_recovery};
-    use crate::child_process::{
-        RestartBackoff, HEALTHY_RUNTIME_SECS, RESTART_BASE_MS, RESTART_MAX_MS,
-    };
-    use std::time::Duration;
-
-    #[test]
-    fn crash_loop_backoff_starts_at_base() {
-        let mut backoff = RestartBackoff::new();
-        assert_eq!(
-            backoff.next_delay(Duration::from_secs(0)),
-            Duration::from_millis(RESTART_BASE_MS)
-        );
-    }
-
-    #[test]
-    fn crash_loop_backoff_caps_at_max() {
-        let mut backoff = RestartBackoff::new();
-        for _ in 0..8 {
-            let _ = backoff.next_delay(Duration::from_secs(0));
-        }
-        assert_eq!(backoff.current, Duration::from_millis(RESTART_MAX_MS));
-    }
-
-    #[test]
-    fn healthy_runtime_restarts_immediately() {
-        let mut backoff = RestartBackoff::new();
-        let _ = backoff.next_delay(Duration::from_secs(0));
-        assert_eq!(
-            backoff.next_delay(Duration::from_secs(HEALTHY_RUNTIME_SECS)),
-            Duration::ZERO
-        );
-    }
-
-    #[test]
-    fn wait_error_needs_recovery_when_child_state_is_unknown() {
-        assert!(wait_error_needs_recovery(&Ok(false)));
-        assert!(wait_error_needs_recovery(&Err(std::io::Error::other(
-            "probe failed"
-        ))));
-        assert!(!wait_error_needs_recovery(&Ok(true)));
-    }
-
-    #[test]
-    fn shutdown_is_terminal_when_channel_is_closed() {
-        let (tx, rx) = watch::channel(false);
-        drop(tx);
-        let mut rx = rx;
-        assert!(shutdown_is_terminal(None, &mut rx));
-    }
-
-    #[test]
-    fn shutdown_is_terminal_when_flag_is_true() {
-        let (_tx, rx) = watch::channel(true);
-        let mut rx = rx;
-        assert!(shutdown_is_terminal(None, &mut rx));
-    }
-}
+#[path = "tests/supervisor.rs"]
+mod tests;
