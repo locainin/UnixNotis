@@ -110,7 +110,10 @@ pub(in crate::daemon) fn trusted_profile_sibling_matches_executable(
         .any(|candidate| canonicalize_best_effort(&candidate) == observed)
 }
 
-pub(in crate::daemon) fn trusted_local_bin_matches_executable(executable: &str, observed: &Path) -> bool {
+pub(in crate::daemon) fn trusted_local_bin_matches_executable(
+    executable: &str,
+    observed: &Path,
+) -> bool {
     // Installed keybinds usually point to ~/.local/bin during trial sessions
     let Some(home) = std::env::var_os("HOME") else {
         return false;

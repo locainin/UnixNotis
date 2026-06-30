@@ -41,7 +41,9 @@ pub(super) async fn emit_clear_all_signals(state: &Arc<DaemonState>, ids: Vec<u3
         }
         if control_ctx.is_none() {
             // The clear already happened
-            warn!("failed to build control signal context for clear_all; continuing with local state");
+            warn!(
+                "failed to build control signal context for clear_all; continuing with local state"
+            );
         }
 
         // Emit close signals with a bounded concurrency limit to avoid task spikes

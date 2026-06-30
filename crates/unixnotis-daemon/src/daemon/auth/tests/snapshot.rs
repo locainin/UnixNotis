@@ -102,9 +102,7 @@ fn strict_snapshot_rejects_group_writable_trusted_binary() {
     let trusted_dir = TempRoot::new("auth-rejects-group-writable");
     let trusted = trusted_dir.join("noticenterctl");
     write_executable(&trusted);
-    let mut permissions = std::fs::metadata(&trusted)
-        .expect("metadata")
-        .permissions();
+    let mut permissions = std::fs::metadata(&trusted).expect("metadata").permissions();
     permissions.set_mode(0o775);
     std::fs::set_permissions(&trusted, permissions).expect("set permissions");
 
