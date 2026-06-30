@@ -43,7 +43,7 @@ fn theme_paths(root: &str) -> ThemePaths {
 #[test]
 fn panel_manager_registers_base_panel_widgets_and_media_priorities() {
     let calls = Rc::new(RefCell::new(Vec::new()));
-    let manager = CssManager {
+    let manager = CssManagerInner {
         theme_paths: theme_paths("/tmp/unixnotis-panel-css"),
         theme_config: ThemeConfig::default(),
         base: RecordingProvider::new("base", Rc::clone(&calls)),
@@ -82,7 +82,7 @@ fn panel_manager_registers_base_panel_widgets_and_media_priorities() {
 #[test]
 fn popup_manager_registers_base_and_popup_at_popup_priority() {
     let calls = Rc::new(RefCell::new(Vec::new()));
-    let manager = CssManager {
+    let manager = CssManagerInner {
         theme_paths: theme_paths("/tmp/unixnotis-popup-css"),
         theme_config: ThemeConfig::default(),
         base: RecordingProvider::new("base", Rc::clone(&calls)),
@@ -112,7 +112,7 @@ fn popup_manager_registers_base_and_popup_at_popup_priority() {
 #[test]
 fn provider_lookup_returns_only_layers_owned_by_the_manager() {
     let calls = Rc::new(RefCell::new(Vec::new()));
-    let manager = CssManager {
+    let manager = CssManagerInner {
         theme_paths: theme_paths("/tmp/unixnotis-provider-lookup-css"),
         theme_config: ThemeConfig::default(),
         base: RecordingProvider::new("base", Rc::clone(&calls)),
