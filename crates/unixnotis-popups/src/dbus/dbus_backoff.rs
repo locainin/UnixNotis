@@ -11,6 +11,7 @@ pub(crate) const BACKOFF_MAX_MS: u64 = 5000;
 const BACKOFF_JITTER_MS: u64 = 120;
 // Retry warnings are rate-limited to avoid noisy logs during long outages
 pub(crate) const RETRY_WARN_INTERVAL_SECS: u64 = 30;
+static JITTER_STATE: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct Backoff {
     base: Duration,
@@ -34,6 +35,10 @@ impl Backoff {
 
     pub(crate) fn next_sleep(&mut self) -> Duration {
         let jitter = jitter_duration(BACKOFF_JITTER_MS);
+        self.next_sleep_with_jitter(jitter)
+    }
+
+    pub(super) fn next_sleep_with_jitter(&mut self, jitter: Duration) -> Duration {
         let sleep = self.current;
         self.current = (self.current * 2).min(self.max);
         // Clamp after jitter so the public max stays a real ceiling
@@ -62,11 +67,11 @@ impl RetryLog {
         self.last_warn = Instant::now() - self.interval;
     }
 
-    pub(crate) fn warn_or_debug<E: std::fmt::Debug>(&mut self, err: &E, message: &str) {
-        self.log_with(|| warn!(?err, "{message}"), || debug!(?err, "{message}"));
+    pub(crate) fn warn_or_debug<E: std::fmt::Debug>(&mut self, err: &E, message: &str) -> bool {
+        self.log_with(|| warn!(?err, "{message}"), || debug!(?err, "{message}"))
     }
 
-    pub(crate) fn log_with<F, G>(&mut self, warn_fn: F, debug_fn: G)
+    pub(crate) fn log_with<F, G>(&mut self, warn_fn: F, debug_fn: G) -> bool
     where
         F: FnOnce(),
         G: FnOnce(),
@@ -74,8 +79,10 @@ impl RetryLog {
         if self.last_warn.elapsed() >= self.interval {
             self.last_warn = Instant::now();
             warn_fn();
+            true
         } else {
             debug_fn();
+            false
         }
     }
 }
@@ -84,57 +91,44 @@ pub(crate) fn jitter_duration(max_ms: u64) -> Duration {
     if max_ms == 0 {
         return Duration::from_millis(0);
     }
-    // Simple xorshift-based jitter avoids deterministic alignment without extra dependencies
+    // A tiny deterministic generator avoids lock contention and extra runtime dependencies
     let jitter_ms = next_jitter_seed().wrapping_rem(max_ms);
     Duration::from_millis(jitter_ms)
 }
 
 fn next_jitter_seed() -> u64 {
-    static STATE: AtomicU64 = AtomicU64::new(0);
     // Seed from wall clock once, then evolve the state on each call
-    let seed = STATE.load(Ordering::Relaxed);
-    let mut value = if seed == 0 {
+    let seed = JITTER_STATE.load(Ordering::Relaxed);
+    let value = if seed == 0 {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .subsec_nanos() as u64;
-        // Avoid a zero seed so the xorshift cycle keeps moving
-        nanos | 1
+        seed_from_nanos(nanos)
     } else {
         seed
     };
-    // xorshift64* variant keeps jitter cheap and deterministic enough for backoff use
-    value ^= value >> 12;
-    value ^= value << 25;
-    value ^= value >> 27;
-    value = value.wrapping_mul(0x2545F4914F6CDD1D);
-    STATE.store(value, Ordering::Relaxed);
-    value
+    let next = evolve_jitter_seed(value);
+    JITTER_STATE.store(next, Ordering::Relaxed);
+    next
+}
+
+pub(super) fn seed_from_nanos(nanos: u64) -> u64 {
+    // Avoid a zero seed so the generator keeps moving
+    nanos | 1
+}
+
+pub(super) fn evolve_jitter_seed(seed: u64) -> u64 {
+    // LCG constants from Numerical Recipes; this only needs cheap decorrelation
+    seed.wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{jitter_duration, Backoff};
-    use std::time::Duration;
-
-    #[test]
-    fn jitter_zero_returns_zero() {
-        // Zero jitter should always return zero to avoid unexpected backoff delays
-        assert_eq!(jitter_duration(0), Duration::from_millis(0));
-    }
-
-    #[test]
-    fn jitter_duration_is_bounded() {
-        // Jitter must always stay within the configured bound
-        let jitter = jitter_duration(5);
-        assert!(jitter < Duration::from_millis(5));
-    }
-
-    #[test]
-    fn backoff_sleep_never_exceeds_max() {
-        let mut backoff = Backoff::new(250, 5000);
-        for _ in 0..32 {
-            assert!(backoff.next_sleep() <= Duration::from_millis(5000));
-        }
-    }
+pub(super) fn set_jitter_seed_for_test(seed: u64) {
+    JITTER_STATE.store(seed, Ordering::Relaxed);
 }
+
+#[cfg(test)]
+#[path = "tests/backoff.rs"]
+mod tests;
