@@ -4,7 +4,9 @@ use std::os::unix::fs::MetadataExt;
 
 use rustix::process::geteuid;
 
-pub(in crate::daemon) fn trusted_control_file_metadata_is_safe(metadata: &std::fs::Metadata) -> bool {
+pub(in crate::daemon) fn trusted_control_file_metadata_is_safe(
+    metadata: &std::fs::Metadata,
+) -> bool {
     // Group/world writable binaries can be replaced by accounts outside the trust boundary
     let mode = metadata.mode();
     if mode & 0o022 != 0 {

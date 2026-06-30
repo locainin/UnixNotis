@@ -57,7 +57,8 @@ fn build_trusted_control_snapshot(
     })
 }
 
-pub(in crate::daemon) fn trusted_snapshot_cache() -> &'static Mutex<Vec<TrustedSnapshotCacheEntry>> {
+pub(in crate::daemon) fn trusted_snapshot_cache() -> &'static Mutex<Vec<TrustedSnapshotCacheEntry>>
+{
     static CACHE: OnceLock<Mutex<Vec<TrustedSnapshotCacheEntry>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(Vec::new()))
 }

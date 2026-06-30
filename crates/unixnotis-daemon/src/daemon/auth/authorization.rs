@@ -126,9 +126,7 @@ pub(in crate::daemon) fn control_executable_error(
     allowed_executables: &[&str],
     relaxed: bool,
 ) -> Option<zbus::fdo::Error> {
-    if path.is_some_and(|path| {
-        control_executable_is_allowed(path, allowed_executables, relaxed)
-    }) {
+    if path.is_some_and(|path| control_executable_is_allowed(path, allowed_executables, relaxed)) {
         return None;
     }
     Some(zbus::fdo::Error::AccessDenied(

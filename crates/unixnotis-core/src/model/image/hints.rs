@@ -37,7 +37,8 @@ impl NotificationImage {
                 image_path = path.clone();
             }
         }
-        let icon_name = resolve_icon_name(app_name, app_icon, app_icon_path.as_ref(), desktop_entry);
+        let icon_name =
+            resolve_icon_name(app_name, app_icon, app_icon_path.as_ref(), desktop_entry);
 
         Self {
             has_image_data: image_data.is_some(),

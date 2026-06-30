@@ -1,8 +1,7 @@
 use super::filesystem::canonicalize_best_effort;
 use super::paths::{
-    is_trusted_control_executable_path_relaxed_in_dir,
-    trusted_local_bin_matches_executable, trusted_path_matches_executable,
-    trusted_profile_sibling_matches_executable,
+    is_trusted_control_executable_path_relaxed_in_dir, trusted_local_bin_matches_executable,
+    trusted_path_matches_executable, trusted_profile_sibling_matches_executable,
 };
 use super::support::write_executable;
 use crate::test_support::{env_lock, EnvVarGuard, TempRoot};
@@ -159,9 +158,7 @@ fn relaxed_path_check_rejects_group_writable_file() {
     let root = TempRoot::new("auth-relaxed-mode");
     let trusted = root.join("noticenterctl");
     write_executable(&trusted);
-    let mut permissions = std::fs::metadata(&trusted)
-        .expect("metadata")
-        .permissions();
+    let mut permissions = std::fs::metadata(&trusted).expect("metadata").permissions();
     permissions.set_mode(0o775);
     std::fs::set_permissions(&trusted, permissions).expect("set unsafe mode");
 
