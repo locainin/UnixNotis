@@ -59,12 +59,16 @@ fn popup_summary_row_shows_when_text_has_real_content() {
 
 #[test]
 fn default_card_action_is_blocked_for_button_widgets() {
+    let _guard = crate::test_support::gtk_test_lock();
+
     // Button clicks should never fall back to the card default-action handler
     assert!(widget_type_blocks_default_action(gtk::Button::static_type()));
 }
 
 #[test]
 fn default_card_action_is_allowed_for_plain_content_widgets() {
+    let _guard = crate::test_support::gtk_test_lock();
+
     // Plain content still belongs to the card-level default-action path
     assert!(!widget_type_blocks_default_action(gtk::Label::static_type()));
 }
