@@ -17,6 +17,8 @@ use backend::{detect_backend, SoundBackend};
 use command::{play_with_canberra, play_with_paplay, play_with_pw_play};
 use resolve::{hint_bool, resolve_default_file, resolve_hint_sound};
 
+const SOUND_MIN_INTERVAL: Duration = Duration::from_millis(150);
+
 /// Sound handling for notification playback
 pub struct SoundSettings {
     // Global on/off from config
@@ -43,7 +45,7 @@ impl SoundSettings {
         // Backend discovery is done once during startup to avoid repeated PATH scans
         let backend = detect_backend();
         debug!(?backend, "sound backend selected");
-        if config.sound.enabled && backend == SoundBackend::None {
+        if Self::should_warn_missing_backend(config.sound.enabled, backend) {
             warn!("sound enabled but no playback backend found in PATH");
         }
 
@@ -64,25 +66,30 @@ impl SoundSettings {
     }
 
     /// Resolve a sound source from hints or defaults and play if allowed
-    pub fn play_from_hints(&self, hints: &HashMap<String, OwnedValue>, allow_sound: bool) {
+    pub fn play_from_hints(&self, hints: &HashMap<String, OwnedValue>, allow_sound: bool) -> bool {
         // Hard gates first to keep the common no-sound path fast
         if !self.enabled || !allow_sound {
-            return;
+            return false;
         }
         // Per-notification hint can force silence even when daemon sound is enabled
         if hint_bool(hints, "suppress-sound").unwrap_or(false) {
-            return;
+            return false;
         }
         // Small cooldown avoids noisy bursts when apps spam fast updates
         if !self.should_play_now() {
-            return;
+            return false;
         }
 
         // Hint source wins, then fallback source from config
         let source = resolve_hint_sound(hints).or_else(|| self.default_source());
         if let Some(source) = source {
-            self.play(source);
+            return self.play(source);
         }
+        false
+    }
+
+    fn should_warn_missing_backend(sound_enabled: bool, backend: SoundBackend) -> bool {
+        sound_enabled && backend == SoundBackend::None
     }
 
     fn default_source(&self) -> Option<SoundSource> {
@@ -95,26 +102,37 @@ impl SoundSettings {
             .map(|name| SoundSource::Name(name.clone()))
     }
 
-    fn play(&self, source: SoundSource) {
+    fn play(&self, source: SoundSource) -> bool {
         // Backend-specific launcher keeps this method tiny and testable
         match self.backend {
-            SoundBackend::Canberra => play_with_canberra(source),
-            SoundBackend::PwPlay => play_with_pw_play(source),
-            SoundBackend::PaPlay => play_with_paplay(source),
-            SoundBackend::None => {}
+            SoundBackend::Canberra => {
+                play_with_canberra(source);
+                true
+            }
+            SoundBackend::PwPlay => {
+                play_with_pw_play(source);
+                true
+            }
+            SoundBackend::PaPlay => {
+                play_with_paplay(source);
+                true
+            }
+            SoundBackend::None => false,
         }
     }
 
     fn should_play_now(&self) -> bool {
-        const MIN_INTERVAL: Duration = Duration::from_millis(150);
+        self.should_play_at(Instant::now())
+    }
+
+    fn should_play_at(&self, now: Instant) -> bool {
         let Ok(mut guard) = self.last_played.lock() else {
             // A poisoned lock should not disable alerts forever
             return true;
         };
-        let now = Instant::now();
         if let Some(last) = *guard {
             // Skip playback if requests are too close together
-            if now.duration_since(last) < MIN_INTERVAL {
+            if now.duration_since(last) < SOUND_MIN_INTERVAL {
                 return false;
             }
         }
@@ -123,3 +141,7 @@ impl SoundSettings {
         true
     }
 }
+
+#[cfg(test)]
+#[path = "tests/settings.rs"]
+mod tests;
