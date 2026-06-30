@@ -25,25 +25,13 @@ pub(crate) fn load_provider_with_overrides(
             };
             if contents.trim().is_empty() {
                 // Empty files fall back to embedded defaults so windows stay styled.
-                let merged = if overrides.trim().is_empty() {
-                    fallback.to_string()
-                } else {
-                    format!("{fallback}\n{overrides}")
-                };
+                let merged = merge_css_with_overrides(fallback, fallback, overrides);
                 // Relative url(...) assets break when CSS is loaded from raw bytes,
                 // so rebase them against the stylesheet path before GTK sees the data
                 provider.load_from_data(&rebase_relative_css_asset_urls(&merged, path));
                 return;
             }
-            let is_default = contents.trim() == fallback.trim();
-            // User overrides should win when the file diverges from defaults.
-            let merged = if overrides.trim().is_empty() {
-                contents
-            } else if is_default {
-                format!("{contents}\n{overrides}")
-            } else {
-                format!("{overrides}\n{contents}")
-            };
+            let merged = merge_css_with_overrides(&contents, fallback, overrides);
             // The provider still loads merged data, but the asset URLs now point at real files
             provider.load_from_data(&rebase_relative_css_asset_urls(&merged, path));
         }
@@ -70,6 +58,19 @@ pub(crate) fn load_provider_with_overrides(
             // Overrides are merged before rebasing so later asset refs all see one final stylesheet
             provider.load_from_data(&rebase_relative_css_asset_urls(&merged, path));
         }
+    }
+}
+
+fn merge_css_with_overrides(contents: &str, fallback: &str, overrides: &str) -> String {
+    if overrides.trim().is_empty() {
+        return contents.to_string();
+    }
+
+    // User overrides are appended to untouched defaults and prepended to user-edited files
+    if contents.trim() == fallback.trim() {
+        format!("{contents}\n{overrides}")
+    } else {
+        format!("{overrides}\n{contents}")
     }
 }
 
@@ -144,25 +145,24 @@ fn rebase_relative_asset_ref_to_file_uri(asset_ref: &str, css_path: &Path) -> Op
 fn collect_url_spans(css_text: &str) -> Vec<UrlValueSpan> {
     let bytes = css_text.as_bytes();
     let mut spans = Vec::new();
-    let mut index = 0usize;
     let mut in_comment = false;
+    let mut skip_until = 0usize;
 
-    // Byte-based scanning keeps the rewrite ranges exact when the stylesheet is rebuilt
-    while index < bytes.len() {
+    // Byte-based scanning keeps rewrite ranges exact while `for` guarantees forward progress
+    for index in 0..bytes.len() {
+        if index < skip_until {
+            continue;
+        }
         if in_comment {
             // Comment bodies should never produce fake url(...) matches
-            if index + 1 < bytes.len() && bytes[index] == b'*' && bytes[index + 1] == b'/' {
+            if bytes.get(index..index.saturating_add(2)) == Some(b"*/") {
                 in_comment = false;
-                index += 2;
-                continue;
             }
-            index += 1;
             continue;
         }
 
-        if index + 1 < bytes.len() && bytes[index] == b'/' && bytes[index + 1] == b'*' {
+        if bytes.get(index..index.saturating_add(2)) == Some(b"/*") {
             in_comment = true;
-            index += 2;
             continue;
         }
 
@@ -172,11 +172,8 @@ fn collect_url_spans(css_text: &str) -> Vec<UrlValueSpan> {
                 break;
             };
             spans.push(span);
-            index = next_index;
-            continue;
+            skip_until = next_index;
         }
-
-        index += 1;
     }
 
     spans
@@ -201,20 +198,15 @@ struct UrlValueSpan {
 
 fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usize)> {
     let bytes = input.as_bytes();
-    let mut index = open_index;
+    let tail = bytes.get(open_index..)?;
 
     // Leading spaces after url( are ignored so stored payloads stay clean
-    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
-        index += 1;
-    }
-    if index >= bytes.len() {
-        return None;
-    }
+    let first_value_offset = tail.iter().position(|byte| !byte.is_ascii_whitespace())?;
+    let mut index = open_index + first_value_offset;
 
     let mut value = String::new();
     let mut value_end;
     let mut quote = None::<u8>;
-    let mut closed_quote = false;
     if matches!(bytes[index], b'\'' | b'"') {
         // Quoted URLs keep the quote out of the stored payload and later rewrite
         quote = Some(bytes[index]);
@@ -223,17 +215,14 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usiz
     let value_start = index;
     value_end = index;
 
-    while index < bytes.len() {
-        let byte = bytes[index];
+    for (index, byte) in bytes.iter().copied().enumerate().skip(index) {
         if let Some(open_quote) = quote {
             if byte == open_quote {
                 quote = None;
-                closed_quote = true;
             } else {
                 value.push(byte as char);
                 value_end = index + 1;
             }
-            index += 1;
             continue;
         }
 
@@ -249,22 +238,13 @@ fn parse_url_value(input: &str, open_index: usize) -> Option<(UrlValueSpan, usiz
                     index + 1,
                 ));
             }
-            byte if closed_quote && byte.is_ascii_whitespace() => {
-                // Padding after a closing quote is CSS syntax, not part of the asset path
-            }
-            b'\'' | b'"' => {
-                // Malformed unquoted URLs still keep their bytes so the final CSS stays readable
-                value.push(byte as char);
-                value_end = index + 1;
-            }
             _ => {
                 value.push(byte as char);
-                if !byte.is_ascii_whitespace() || !value.trim().is_empty() {
+                if !byte.is_ascii_whitespace() {
                     value_end = index + 1;
                 }
             }
         }
-        index += 1;
     }
 
     None

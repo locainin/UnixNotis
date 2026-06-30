@@ -3,6 +3,36 @@ use std::path::Path;
 use super::*;
 
 #[test]
+fn merge_css_with_overrides_appends_overrides_to_untouched_defaults() {
+    let fallback = ".panel { color: red; }";
+    let overrides = ".panel { color: blue; }";
+
+    let merged = merge_css_with_overrides(fallback, fallback, overrides);
+
+    assert_eq!(merged, ".panel { color: red; }\n.panel { color: blue; }");
+}
+
+#[test]
+fn merge_css_with_overrides_prepends_overrides_before_user_edited_css() {
+    let fallback = ".panel { color: red; }";
+    let user_css = ".panel { color: green; }";
+    let overrides = ".panel { color: blue; }";
+
+    let merged = merge_css_with_overrides(user_css, fallback, overrides);
+
+    assert_eq!(merged, ".panel { color: blue; }\n.panel { color: green; }");
+}
+
+#[test]
+fn merge_css_with_overrides_leaves_contents_unchanged_when_overrides_are_empty() {
+    let user_css = ".panel { color: green; }";
+
+    let merged = merge_css_with_overrides(user_css, ".panel { color: red; }", "  ");
+
+    assert_eq!(merged, user_css);
+}
+
+#[test]
 fn rebase_relative_css_asset_urls_rewrites_quoted_relative_path() {
     let css = ".card { background-image: url(\"../assets/example-image.png\"); }";
     let css_path = Path::new("/tmp/unixnotis/themes/widgets.css");
@@ -57,6 +87,28 @@ fn collect_url_spans_ignores_comment_bodies_and_handles_real_urls_afterward() {
 }
 
 #[test]
+fn collect_url_spans_tracks_multiple_urls_without_overlapping_matches() {
+    let css = ".a { background: url(one.png); }\n.b { mask: url(\"two.svg\"); }";
+
+    let spans = collect_url_spans(css);
+
+    assert_eq!(spans.len(), 2);
+    assert_eq!(spans[0].value, "one.png");
+    assert_eq!(spans[1].value, "two.svg");
+    assert!(spans[0].value_end < spans[1].value_start);
+}
+
+#[test]
+fn collect_url_spans_resumes_after_comment_close_on_same_line() {
+    let css = "/* url(ignored.png) */ .real { background: URL(real.svg); }";
+
+    let spans = collect_url_spans(css);
+
+    assert_eq!(spans.len(), 1);
+    assert_eq!(spans[0].value, "real.svg");
+}
+
+#[test]
 fn collect_url_spans_stops_safely_on_unclosed_url() {
     let css = ".bad { background: url(unclosed.png";
 
@@ -77,6 +129,48 @@ fn parse_url_value_trims_padding_and_strips_outer_quotes() {
     assert_eq!(span.value, "icons/a.png");
     assert_eq!(next_index, css.len());
     assert_eq!(&css[span.value_start..span.value_end], "icons/a.png");
+}
+
+#[test]
+fn parse_url_value_keeps_trailing_text_after_closed_quote_readable() {
+    let css = "url(\"icon.svg\"fallback)";
+    let open_index = css.find('(').expect("url open") + 1;
+
+    let (span, _) = parse_url_value(css, open_index).expect("url value");
+
+    assert_eq!(span.value, "icon.svgfallback");
+    assert_eq!(&css[span.value_start..span.value_end], "icon.svg\"fallback");
+}
+
+#[test]
+fn parse_url_value_rejects_unclosed_quoted_payload() {
+    let css = "url(\"icons/a.png)";
+    let open_index = css.find('(').expect("url open") + 1;
+
+    assert!(parse_url_value(css, open_index).is_none());
+}
+
+#[test]
+fn parse_url_value_preserves_unquoted_quotes_as_payload_bytes() {
+    let css = "url(icon'odd\"name.svg)";
+    let open_index = css.find('(').expect("url open") + 1;
+
+    let (span, next_index) = parse_url_value(css, open_index).expect("url value");
+
+    assert_eq!(span.value, "icon'odd\"name.svg");
+    assert_eq!(next_index, css.len());
+}
+
+#[test]
+fn parse_url_value_keeps_unquoted_trailing_padding_outside_replacement_range() {
+    let css = "url(icons/a.png   )";
+    let open_index = css.find('(').expect("url open") + 1;
+
+    let (span, _) = parse_url_value(css, open_index).expect("url value");
+
+    assert_eq!(span.value, "icons/a.png");
+    assert_eq!(&css[span.value_start..span.value_end], "icons/a.png");
+    assert_eq!(&css[span.value_end..], "   )");
 }
 
 #[test]
@@ -118,6 +212,18 @@ fn ensure_base_tokens_adds_missing_tokens_once() {
     assert!(first.contains("@define-color unixnotis-surface-base"));
     assert!(first.contains("@define-color unixnotis-card-base"));
     assert_eq!(first, second);
+}
+
+#[test]
+fn ensure_base_tokens_injects_when_only_one_required_token_is_present() {
+    let path = Path::new("/tmp/unixnotis/base.css");
+    let contents = "@define-color unixnotis-surface-base #111;";
+
+    let ensured = ensure_base_tokens(contents, path);
+
+    assert!(ensured.starts_with("@define-color unixnotis-surface-base @unixnotis-surface;"));
+    assert!(ensured.contains("@define-color unixnotis-card-base @unixnotis-card;"));
+    assert!(ensured.ends_with(contents));
 }
 
 #[test]
