@@ -31,6 +31,23 @@ fn preset_defaults_stay_stable() {
 }
 
 #[test]
+fn default_media_browser_tokens_cover_common_browser_players() {
+    let config = crate::MediaConfig::default();
+
+    assert!(config.browser_tokens.contains(&"firefox".to_string()));
+    assert!(config.browser_tokens.contains(&"chromium".to_string()));
+    assert!(config.browser_tokens.contains(&"zen".to_string()));
+    assert_eq!(
+        config.browser_tokens.first().map(String::as_str),
+        Some("firefox")
+    );
+    assert_eq!(
+        config.browser_tokens.last().map(String::as_str),
+        Some("zen")
+    );
+}
+
+#[test]
 fn explicit_media_positions_win_over_layout_defaults() {
     let config = MediaConfig {
         layout: MediaLayout::Showcase,
