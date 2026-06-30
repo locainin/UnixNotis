@@ -15,6 +15,17 @@ fn max_active_zero_archives_immediately() {
 }
 
 #[test]
+fn config_accessor_returns_runtime_config_snapshot() {
+    let mut config = Config::default();
+    config.history.max_entries = 77;
+    config.history.max_active = 3;
+    let store = NotificationStore::new(config);
+
+    assert_eq!(store.config().history.max_entries, 77);
+    assert_eq!(store.config().history.max_active, 3);
+}
+
+#[test]
 fn max_active_evicts_oldest_to_history() {
     let mut store = make_store_with_limits(1, 10);
 
@@ -131,4 +142,113 @@ fn next_id_skips_used_ids_within_used_window() {
 
     let id = store.next_id();
     assert_eq!(id, 2);
+}
+
+#[test]
+fn clear_history_removes_archived_notifications() {
+    let mut store = make_store_with_limits(10, 10);
+    let first = store.insert(make_notification("first"), 0);
+    store.close(first.notification.id, CloseReason::Expired);
+
+    assert_eq!(store.history_len(), 1);
+    store.clear_history();
+    assert_eq!(store.history_len(), 0);
+    assert!(store.list_history().is_empty());
+}
+
+#[test]
+fn dismiss_outcome_reports_any_removed_side() {
+    assert!(crate::store::DismissOutcome {
+        removed_active: true,
+        removed_history: false,
+    }
+    .removed_any());
+    assert!(crate::store::DismissOutcome {
+        removed_active: false,
+        removed_history: true,
+    }
+    .removed_any());
+    assert!(!crate::store::DismissOutcome {
+        removed_active: false,
+        removed_history: false,
+    }
+    .removed_any());
+}
+
+#[test]
+fn active_notification_view_returns_current_active_payload() {
+    let mut store = make_store_with_limits(10, 10);
+    let outcome = store.insert(make_notification("visible"), 0);
+
+    let view = store
+        .active_notification_view(outcome.notification.id)
+        .expect("active notification should be visible");
+
+    assert_eq!(view.id, outcome.notification.id);
+    assert_eq!(view.summary, "visible");
+}
+
+#[test]
+fn drain_active_ids_returns_newest_first_and_clears_expirations() {
+    let mut store = make_store_with_limits(10, 10);
+    let first = store.insert(make_notification("first"), 0);
+    let second = store.insert(make_notification("second"), 0);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    store.set_expiration(first.notification.id, Some(deadline));
+
+    let ids = store.drain_active_ids();
+
+    assert_eq!(ids, vec![second.notification.id, first.notification.id]);
+    assert!(store.list_active().is_empty());
+    assert_eq!(store.expiration_for(first.notification.id), None);
+}
+
+#[test]
+fn expiration_bookkeeping_sets_replaces_and_removes_deadlines() {
+    let mut store = make_store_with_limits(10, 10);
+    let outcome = store.insert(make_notification("timer"), 0);
+    let first = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    let second = std::time::Instant::now() + std::time::Duration::from_secs(2);
+
+    store.set_expiration(outcome.notification.id, Some(first));
+    assert_eq!(store.expiration_for(outcome.notification.id), Some(first));
+
+    store.set_expiration(outcome.notification.id, Some(second));
+    assert_eq!(store.expiration_for(outcome.notification.id), Some(second));
+
+    store.set_expiration(outcome.notification.id, None);
+    assert_eq!(store.expiration_for(outcome.notification.id), None);
+}
+
+#[test]
+fn insert_outcome_reflects_popup_and_sound_policy() {
+    let state_dir = make_temp_state_dir("insert-outcome-policy");
+    let mut config = Config::default();
+    config.general.dnd_default = false;
+    let mut store = NotificationStore::new_with_state_dir(config, state_dir.clone());
+    let allowed = store.insert(make_notification("normal"), 0);
+    assert!(allowed.show_popup);
+    assert!(allowed.allow_sound);
+
+    let dnd_state_dir = make_temp_state_dir("insert-outcome-dnd");
+    let mut dnd_config = Config::default();
+    dnd_config.general.dnd_default = true;
+    let mut dnd_store = NotificationStore::new_with_state_dir(dnd_config, dnd_state_dir.clone());
+    let normal = dnd_store.insert(make_notification("normal dnd"), 0);
+    assert!(!normal.show_popup);
+    assert!(!normal.allow_sound);
+
+    let mut critical = make_notification("critical dnd");
+    critical.urgency = unixnotis_core::Urgency::Critical;
+    let critical = dnd_store.insert(critical, 0);
+    assert!(critical.show_popup);
+    assert!(critical.allow_sound);
+
+    let mut silent = make_notification("silent");
+    silent.suppress_sound = true;
+    let silent = store.insert(silent, 0);
+    assert!(!silent.allow_sound);
+
+    cleanup_temp_dir(&state_dir);
+    cleanup_temp_dir(&dnd_state_dir);
 }
