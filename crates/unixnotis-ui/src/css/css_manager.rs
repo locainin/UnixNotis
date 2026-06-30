@@ -13,7 +13,7 @@ use super::css_overrides::{
 };
 
 /// Tiny provider boundary so reload behavior can be tested without GTK.
-pub trait CssProviderBackend: Clone {
+trait CssProviderBackend: Clone {
     fn load_css_data(&self, data: &str);
     fn add_to_display(&self, display: &gdk::Display, priority: u32);
 }
@@ -36,7 +36,7 @@ pub enum CssKind {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssProviderLayer {
+enum CssProviderLayer {
     Base,
     Panel,
     Popup,
@@ -45,14 +45,49 @@ pub enum CssProviderLayer {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssProviderRegistration {
-    pub layer: CssProviderLayer,
-    pub priority: u32,
+struct CssProviderRegistration {
+    layer: CssProviderLayer,
+    priority: u32,
 }
 
 /// CSS provider stack for UnixNotis windows.
 #[derive(Clone)]
-pub struct CssManager<P = CssProvider>
+pub struct CssManager {
+    inner: CssManagerInner<CssProvider>,
+}
+
+impl CssManager {
+    pub fn new_panel(theme_paths: ThemePaths, theme_config: ThemeConfig) -> Self {
+        Self {
+            inner: CssManagerInner::new_panel(theme_paths, theme_config),
+        }
+    }
+
+    pub fn new_popup(theme_paths: ThemePaths, theme_config: ThemeConfig) -> Self {
+        Self {
+            inner: CssManagerInner::new_popup(theme_paths, theme_config),
+        }
+    }
+
+    /// Register providers for the default display.
+    pub fn apply_to_display(&self) {
+        // Public callers only need the side effect; tests assert the returned internal plan
+        let _ = self.inner.apply_to_display();
+    }
+
+    /// Reload CSS from disk or fall back to embedded defaults.
+    pub fn reload(&self, fallback: &str) {
+        // Public callers only need provider reloads; tests assert the returned internal layer list
+        let _ = self.inner.reload(fallback);
+    }
+
+    pub fn update_theme(&mut self, theme_paths: ThemePaths, theme_config: ThemeConfig) {
+        self.inner.update_theme(theme_paths, theme_config);
+    }
+}
+
+#[derive(Clone)]
+struct CssManagerInner<P>
 where
     P: CssProviderBackend,
 {
@@ -65,8 +100,8 @@ where
     popup: Option<P>,
 }
 
-impl CssManager<CssProvider> {
-    pub fn new_panel(theme_paths: ThemePaths, theme_config: ThemeConfig) -> Self {
+impl CssManagerInner<CssProvider> {
+    fn new_panel(theme_paths: ThemePaths, theme_config: ThemeConfig) -> Self {
         Self {
             theme_paths,
             theme_config,
@@ -78,7 +113,7 @@ impl CssManager<CssProvider> {
         }
     }
 
-    pub fn new_popup(theme_paths: ThemePaths, theme_config: ThemeConfig) -> Self {
+    fn new_popup(theme_paths: ThemePaths, theme_config: ThemeConfig) -> Self {
         Self {
             theme_paths,
             theme_config,
@@ -91,12 +126,12 @@ impl CssManager<CssProvider> {
     }
 }
 
-impl<P> CssManager<P>
+impl<P> CssManagerInner<P>
 where
     P: CssProviderBackend,
 {
     /// Register providers for the default display and return the attempted layer plan.
-    pub fn apply_to_display(&self) -> Vec<CssProviderRegistration> {
+    fn apply_to_display(&self) -> Vec<CssProviderRegistration> {
         let registrations = self.provider_registrations();
         if let Some(display) = gdk::Display::default() {
             for registration in &registrations {
@@ -109,7 +144,7 @@ where
     }
 
     /// Reload CSS from disk or fall back to embedded defaults.
-    pub fn reload(&self, fallback: &str) -> Vec<CssProviderLayer> {
+    fn reload(&self, fallback: &str) -> Vec<CssProviderLayer> {
         let mut loaded = Vec::new();
         // Base CSS gets the token injection to preserve alpha calculations.
         let base_overrides = build_base_overrides(&self.theme_config);
@@ -172,7 +207,7 @@ where
         loaded
     }
 
-    pub fn update_theme(&mut self, theme_paths: ThemePaths, theme_config: ThemeConfig) {
+    fn update_theme(&mut self, theme_paths: ThemePaths, theme_config: ThemeConfig) {
         // Store inputs so the next reload picks up new paths and override settings.
         self.theme_paths = theme_paths;
         self.theme_config = theme_config;

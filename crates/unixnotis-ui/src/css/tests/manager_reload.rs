@@ -71,8 +71,8 @@ fn write_theme(paths: &ThemePaths, marker: &str) {
 fn panel_manager(
     paths: ThemePaths,
     loaded: Rc<RefCell<Vec<(&'static str, String)>>>,
-) -> CssManager<RecordingProvider> {
-    CssManager {
+) -> CssManagerInner<RecordingProvider> {
+    CssManagerInner {
         theme_paths: paths,
         theme_config: ThemeConfig::default(),
         base: RecordingProvider::new("base", Rc::clone(&loaded)),
