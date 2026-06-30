@@ -29,6 +29,19 @@ fn dnd_state_invalid_payload_falls_back_to_default() {
 }
 
 #[test]
+fn dnd_state_unsupported_version_falls_back_to_default() {
+    let state_dir = make_temp_state_dir("dnd-unsupported-version");
+    write_dnd_state(&state_dir, true, DND_STATE_VERSION + 1);
+
+    let mut config = Config::default();
+    config.general.dnd_default = false;
+    let store = NotificationStore::new_with_state_dir(config, state_dir.clone());
+    assert!(!store.dnd_enabled());
+
+    cleanup_temp_dir(&state_dir);
+}
+
+#[test]
 fn dnd_state_persists_on_change() {
     let state_dir = make_temp_state_dir("dnd-write");
     let mut config = Config::default();
@@ -84,6 +97,24 @@ fn stale_dnd_rollback_cannot_overwrite_newer_write() {
     let rolled_back = store.rollback_dnd_write_if_current(&write_a);
     assert!(!rolled_back);
     assert!(!store.dnd_enabled());
+
+    cleanup_temp_dir(&state_dir);
+}
+
+#[test]
+fn stale_dnd_rollback_cannot_overwrite_when_current_value_matches_old_write() {
+    let state_dir = make_temp_state_dir("dnd-stale-current-matches");
+    let mut config = Config::default();
+    config.general.dnd_default = false;
+    let mut store = NotificationStore::new_with_state_dir(config, state_dir.clone());
+
+    let write_a = store.set_dnd(true);
+    let _write_b = store.set_dnd(false);
+    let _write_c = store.set_dnd(true);
+
+    // Revision must win even when the current value happens to match the stale write
+    assert!(!store.rollback_dnd_write_if_current(&write_a));
+    assert!(store.dnd_enabled());
 
     cleanup_temp_dir(&state_dir);
 }
