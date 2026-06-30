@@ -26,17 +26,30 @@ fn parse_url_value_keeps_trailing_text_after_closed_quote_readable() {
 
 #[test]
 fn parse_url_value_ignores_closed_quote_padding_before_malformed_suffix() {
-    let css = "url(\"icon.svg\"  fallback)";
+    let css = "url(\"icon.svg\"  fallback with space)";
     let open_index = css.find('(').expect("url open") + 1;
 
     let (span, _) = parse_url_value(css, open_index).expect("url value");
 
-    // The padding belongs to quote syntax recovery, not the best-effort asset payload
-    assert_eq!(span.value, "icon.svgfallback");
+    // Only padding before the malformed suffix is ignored; suffix spaces remain user text
+    assert_eq!(span.value, "icon.svgfallback with space");
     assert_eq!(
         &css[span.value_start..span.value_end],
-        "icon.svg\"  fallback"
+        "icon.svg\"  fallback with space"
     );
+}
+
+#[test]
+fn parse_url_value_preserves_unicode_quoted_path() {
+    let css = "url(\"icons/café.png\")";
+    let open_index = css.find('(').expect("url open") + 1;
+
+    let (span, next_index) = parse_url_value(css, open_index).expect("url value");
+
+    // URL parsing must keep UTF-8 characters intact while still returning byte indexes
+    assert_eq!(span.value, "icons/café.png");
+    assert_eq!(&css[span.value_start..span.value_end], "icons/café.png");
+    assert_eq!(next_index, css.len());
 }
 
 #[test]
