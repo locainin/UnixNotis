@@ -1,4 +1,15 @@
-use super::{pid_alive, pid_matches_comm, systemd_stop_error_is_satisfied_by_state};
+use std::process::Command;
+use std::sync::atomic::AtomicBool;
+use std::sync::{mpsc, Arc};
+
+use crate::actions::ActionContext;
+use crate::detect::Detection;
+use crate::events::UiMessage;
+use crate::model::ActionMode;
+use crate::paths::InstallPaths;
+use crate::service_manager::ServiceManager;
+
+use super::{pid_alive, pid_matches_comm, systemd_stop_error_is_satisfied_by_state, wait_for_exit};
 
 #[test]
 fn systemd_stop_error_can_continue_when_unit_is_inactive() {
@@ -66,4 +77,54 @@ fn pid_matches_comm_rejects_wrong_process_name() {
 
     // PID reuse protection depends on rejecting mismatched command names
     assert!(!matches);
+}
+
+#[test]
+fn pid_matches_comm_accepts_current_process_name_from_ps() {
+    let pid = std::process::id();
+    let output = Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "comm="])
+        .output()
+        .expect("ps should inspect current process");
+    let expected = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    let matches = pid_matches_comm(pid, &expected).expect("comm probe");
+
+    // A matching process name is the only case where stop logic may signal the PID
+    assert!(matches);
+}
+
+#[test]
+fn wait_for_exit_aborts_immediately_when_pid_name_no_longer_matches() {
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = InstallPaths {
+        repo_root: std::env::temp_dir(),
+        bin_dir: std::env::temp_dir(),
+        service: ServiceManager::systemd_user(std::env::temp_dir()),
+    };
+    let (tx, _rx) = mpsc::sync_channel::<UiMessage>(4);
+    let mut ctx = ActionContext {
+        detection: &detection,
+        paths: &paths,
+        install_state: None,
+        log_tx: tx,
+        action_mode: ActionMode::Install,
+        restore_backup: None,
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
+
+    let err = wait_for_exit(
+        &mut ctx,
+        std::process::id(),
+        "definitely-not-current-process",
+    )
+    .expect_err("mismatched comm should abort");
+
+    // The wait loop must fail before sleeping when PID reuse is detected
+    assert!(err
+        .to_string()
+        .contains("no longer matches expected daemon"));
 }
