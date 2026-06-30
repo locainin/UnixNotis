@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::service_manager::{
     ReadinessIssue, ServiceArtifactKind, ServiceArtifactRefresh, ServiceManager,
-    UNIXNOTIS_DAEMON_S6_SERVICE,
+    MANAGED_DIRECTORY_MARKER, UNIXNOTIS_DAEMON_S6_SERVICE,
 };
 
 #[test]
@@ -265,6 +265,91 @@ fn s6_readiness_accepts_symlinked_live_directory() {
     }));
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn s6_enabled_state_requires_every_source_artifact() {
+    let root = test_root("s6-enabled-layout");
+    let data = root.join("s6");
+    let live = root.join("run").join("s6-rc");
+    let manager = ServiceManager::s6_user(data.clone(), live);
+    let service = data.join("sv").join("unixnotis-daemon");
+    let default = data.join("sv").join("default");
+
+    assert_eq!(manager.enabled_by_artifacts(), Some(false));
+
+    fs::create_dir_all(&service).expect("service dir");
+    fs::write(service.join(MANAGED_DIRECTORY_MARKER), "unixnotis\n").expect("marker");
+    fs::write(service.join("type"), "longrun\n").expect("type");
+    fs::write(service.join("run"), "#!/bin/sh\n").expect("run");
+    fs::create_dir_all(default.join("contents.d")).expect("contents dir");
+    fs::write(default.join("type"), "bundle\n").expect("default type");
+
+    // Missing bundle membership means the service is not part of the default graph
+    assert_eq!(manager.enabled_by_artifacts(), Some(false));
+
+    fs::write(default.join("contents.d").join("unixnotis-daemon"), "").expect("member");
+
+    assert_eq!(manager.enabled_by_artifacts(), Some(true));
+
+    fs::write(default.join("type"), "longrun\n").expect("wrong default type");
+
+    // A default bundle with the wrong type is not valid enablement
+    assert_eq!(manager.enabled_by_artifacts(), Some(false));
+
+    fs::write(default.join("type"), "bundle\n").expect("restore default type");
+    fs::remove_file(service.join("run")).expect("remove run");
+    fs::create_dir(service.join("run")).expect("directory at run path");
+
+    // The run artifact must be a regular file, not any existing path
+    assert_eq!(manager.enabled_by_artifacts(), Some(false));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn s6_environment_sync_rejects_unsafe_env_names_and_empty_names() {
+    let manager = ServiceManager::s6_user(
+        PathBuf::from("/tmp/s6-data"),
+        PathBuf::from("/run/user/s6-rc"),
+    );
+    let names = ["WAYLAND_DISPLAY", "", "BAD-NAME", "1BAD", "_SAFE"];
+    let vars = [
+        ("WAYLAND_DISPLAY", "wayland-1".to_string()),
+        ("_SAFE", "yes".to_string()),
+        ("BAD-NAME", "no".to_string()),
+    ];
+
+    let artifacts = manager.environment_sync_artifacts(&names, &vars);
+
+    // Envdir file names are shell-variable-shaped so generated shell cannot escape the envdir
+    assert_eq!(artifacts.len(), 3);
+    assert!(artifacts
+        .iter()
+        .any(|artifact| artifact.path.ends_with("WAYLAND_DISPLAY")));
+    assert!(artifacts
+        .iter()
+        .any(|artifact| artifact.path.ends_with("_SAFE")));
+    assert!(!artifacts
+        .iter()
+        .any(|artifact| artifact.path.ends_with("BAD-NAME")));
+    assert!(!artifacts
+        .iter()
+        .any(|artifact| artifact.path.ends_with("1BAD")));
+}
+
+#[test]
+fn s6_active_probe_rejects_truthy_but_non_exact_output() {
+    let manager = ServiceManager::s6_user(
+        PathBuf::from("/tmp/s6-data"),
+        PathBuf::from("/run/user/s6-rc"),
+    );
+    let active = manager.active_probe().expect("s6 active probe");
+
+    // s6-svstat -o up emits exact true/false, so loose text must not count as active
+    assert_eq!(active.parser_matches(" true\n"), Some(true));
+    assert_eq!(active.parser_matches("true enough\n"), Some(false));
+    assert_eq!(active.parser_matches("1\n"), Some(false));
 }
 
 fn test_root(name: &str) -> PathBuf {
