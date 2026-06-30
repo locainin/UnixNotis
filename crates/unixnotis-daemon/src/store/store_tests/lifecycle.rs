@@ -86,6 +86,23 @@ fn history_eviction_keeps_most_recent_entries() {
 }
 
 #[test]
+fn history_reinsert_replaces_existing_order_entry() {
+    let mut store = make_store_with_limits(0, 10);
+    let first = store.insert(make_notification("first"), 0);
+    assert_eq!(store.history_len(), 1);
+
+    let mut replacement = make_notification("replacement");
+    replacement.id = first.notification.id;
+    store.history.insert(Arc::new(replacement));
+
+    // Replacing an archived id must not leave a stale duplicate in history order
+    let history = store.list_history();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].id, first.notification.id);
+    assert_eq!(history[0].summary, "replacement");
+}
+
+#[test]
 fn max_entries_zero_drops_history_on_insert() {
     let mut store = make_store_with_limits(0, 0);
 
@@ -142,6 +159,29 @@ fn next_id_skips_used_ids_within_used_window() {
 
     let id = store.next_id();
     assert_eq!(id, 2);
+}
+
+#[test]
+fn next_id_skips_ids_that_exist_only_in_history() {
+    let mut store = make_store_with_limits(5, 5);
+    store.next_id = 7;
+
+    let mut history = make_notification("history-only");
+    history.id = 7;
+    store.history.insert(Arc::new(history));
+
+    // History IDs still belong to notification identity and must not be reused
+    assert_eq!(store.next_id(), 8);
+}
+
+#[test]
+fn next_id_wraps_internal_cursor_back_to_one_after_max_id() {
+    let mut store = make_store_with_limits(5, 5);
+    store.next_id = u32::MAX;
+
+    assert_eq!(store.next_id(), u32::MAX);
+    // The stored cursor must not remain zero after wrapping past u32::MAX
+    assert_eq!(store.next_id, 1);
 }
 
 #[test]
