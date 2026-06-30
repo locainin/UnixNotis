@@ -89,6 +89,10 @@ enum RestoreStrategy {
     Process,
 }
 
+#[cfg(test)]
+#[path = "tests/main_args.rs"]
+mod main_args_tests;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
