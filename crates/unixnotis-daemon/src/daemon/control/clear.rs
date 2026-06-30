@@ -32,55 +32,56 @@ pub(super) fn clear_all_signal_plan(ids: &[u32]) -> ClearAllSignalPlan {
 pub(super) async fn emit_clear_all_signals(state: &Arc<DaemonState>, ids: Vec<u32>) {
     let signal_plan = clear_all_signal_plan(&ids);
 
-    if !signal_plan.emit_close_signals {
-        emit_post_clear_refresh(state, signal_plan).await;
-        return;
-    }
+    if signal_plan.emit_close_signals {
+        let notif_ctx = SignalContext::new(state.connection(), NOTIFICATIONS_OBJECT_PATH).ok();
+        let control_ctx = SignalContext::new(state.connection(), CONTROL_OBJECT_PATH).ok();
+        if notif_ctx.is_none() {
+            // The clear already happened
+            warn!("failed to build notification signal context for clear_all; continuing with local state");
+        }
+        if control_ctx.is_none() {
+            // The clear already happened
+            warn!("failed to build control signal context for clear_all; continuing with local state");
+        }
 
-    let notif_ctx = SignalContext::new(state.connection(), NOTIFICATIONS_OBJECT_PATH).ok();
-    let control_ctx = SignalContext::new(state.connection(), CONTROL_OBJECT_PATH).ok();
-    if notif_ctx.is_none() || control_ctx.is_none() {
-        // The clear already happened
-        warn!("failed to build signal context for clear_all; continuing with local state");
-    }
-
-    // Emit close signals with a bounded concurrency limit to avoid task spikes
-    stream::iter(ids)
-        .for_each_concurrent(CLEAR_ALL_CONCURRENCY, move |id| {
-            let notif_ctx = notif_ctx.clone();
-            let control_ctx = control_ctx.clone();
-            async move {
-                if let Some(notif_ctx) = notif_ctx.as_ref() {
-                    if let Err(err) = NotificationServer::notification_closed(
-                        notif_ctx,
-                        id,
-                        CloseReason::DismissedByUser as u32,
-                    )
-                    .await
-                    {
-                        warn!(
-                            ?err,
-                            id, "failed to emit notification_closed during clear_all"
-                        );
+        // Emit close signals with a bounded concurrency limit to avoid task spikes
+        stream::iter(ids)
+            .for_each_concurrent(CLEAR_ALL_CONCURRENCY, move |id| {
+                let notif_ctx = notif_ctx.clone();
+                let control_ctx = control_ctx.clone();
+                async move {
+                    if let Some(notif_ctx) = notif_ctx.as_ref() {
+                        if let Err(err) = NotificationServer::notification_closed(
+                            notif_ctx,
+                            id,
+                            CloseReason::DismissedByUser as u32,
+                        )
+                        .await
+                        {
+                            warn!(
+                                ?err,
+                                id, "failed to emit notification_closed during clear_all"
+                            );
+                        }
+                    }
+                    if let Some(control_ctx) = control_ctx.as_ref() {
+                        if let Err(err) = ControlServer::notification_closed(
+                            control_ctx,
+                            id,
+                            CloseReason::DismissedByUser,
+                        )
+                        .await
+                        {
+                            warn!(
+                                ?err,
+                                id, "failed to emit control notification_closed during clear_all"
+                            );
+                        }
                     }
                 }
-                if let Some(control_ctx) = control_ctx.as_ref() {
-                    if let Err(err) = ControlServer::notification_closed(
-                        control_ctx,
-                        id,
-                        CloseReason::DismissedByUser,
-                    )
-                    .await
-                    {
-                        warn!(
-                            ?err,
-                            id, "failed to emit control notification_closed during clear_all"
-                        );
-                    }
-                }
-            }
-        })
-        .await;
+            })
+            .await;
+    }
 
     emit_post_clear_refresh(state, signal_plan).await;
 }
