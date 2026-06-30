@@ -116,6 +116,106 @@ fn artifact_conflict_detects_wrong_symlink_target() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn file_artifact_presence_rejects_directory_and_accepts_regular_file() {
+    let root = test_root("artifact-file-presence-shape");
+    fs::create_dir_all(&root).expect("root");
+    let path = root.join("service-file");
+    let artifact = ServiceArtifact {
+        path: path.clone(),
+        kind: ServiceArtifactKind::File,
+        contents: Some("owned".to_string()),
+        mode: None,
+    };
+
+    fs::create_dir_all(&path).expect("directory at file path");
+
+    // Directories at file artifact paths are conflicts, not valid installed files
+    assert!(!artifact.is_present_safely());
+    assert!(artifact.exists_at_path_but_not_safely());
+
+    fs::remove_dir(&path).expect("remove directory");
+    fs::write(&path, "foreign contents").expect("regular file");
+
+    // Regular files are the safe shape; content comparison belongs to shared artifacts
+    assert!(artifact.is_present_safely());
+    assert!(!artifact.exists_at_path_but_not_safely());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn shared_file_presence_requires_exact_contents() {
+    let root = test_root("artifact-shared-presence");
+    fs::create_dir_all(&root).expect("root");
+    let path = root.join("type");
+    let artifact = ServiceArtifact {
+        path: path.clone(),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: None,
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+
+    fs::write(&path, "longrun\n").expect("foreign shared file");
+
+    // Shared setup files count only when bytes still match the backend contract
+    assert!(!artifact.is_present_safely());
+    assert!(artifact.exists_at_path_but_not_safely());
+
+    fs::write(&path, "bundle\n").expect("matching shared file");
+
+    assert!(artifact.is_present_safely());
+    assert!(!artifact.exists_at_path_but_not_safely());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn managed_directory_marker_rejects_wrong_contents() {
+    let root = test_root("managed-marker-wrong-contents");
+    let service_dir = root.join("service");
+    fs::create_dir_all(&service_dir).expect("service dir");
+    fs::write(
+        service_dir.join(MANAGED_DIRECTORY_MARKER),
+        "not unixnotis\n",
+    )
+    .expect("marker");
+    let artifact = ServiceArtifact {
+        path: service_dir,
+        kind: ServiceArtifactKind::ManagedDirectory,
+        contents: None,
+        mode: None,
+    };
+
+    // The marker has to be exact so a random file name collision is not ownership proof
+    assert!(!artifact.is_present_safely());
+    assert!(artifact.exists_at_path_but_not_safely());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn plain_directory_presence_rejects_regular_file() {
+    let root = test_root("artifact-directory-presence");
+    fs::create_dir_all(&root).expect("root");
+    let path = root.join("env");
+    fs::write(&path, "not a directory").expect("file at directory path");
+    let artifact = ServiceArtifact {
+        path,
+        kind: ServiceArtifactKind::Directory,
+        contents: None,
+        mode: None,
+    };
+
+    // Plain directory artifacts are shared containers and must not adopt files
+    assert!(!artifact.is_present_safely());
+    assert!(artifact.exists_at_path_but_not_safely());
+
+    let _ = fs::remove_dir_all(root);
+}
+
 fn test_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);

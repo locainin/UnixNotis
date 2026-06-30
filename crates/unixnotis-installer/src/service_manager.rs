@@ -69,3 +69,7 @@ mod s6_tests;
 #[cfg(test)]
 #[path = "service_manager/tests/shell.rs"]
 mod shell_tests;
+
+#[cfg(test)]
+#[path = "service_manager/tests/probe.rs"]
+mod probe_tests;
