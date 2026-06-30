@@ -88,7 +88,7 @@ impl<'de> Deserialize<'de> for RuleUrgency {
             where
                 E: de::Error,
             {
-                if value < 0 || value > u8::MAX as i64 {
+                if !(0..=2).contains(&value) {
                     return Err(E::custom(
                         "urgency must be 0 (low), 1 (normal), or 2 (critical)",
                     ));
@@ -143,3 +143,7 @@ pub struct RuleConfig {
     /// Override transient flag when set.
     pub transient: Option<bool>,
 }
+
+#[cfg(test)]
+#[path = "tests/rules.rs"]
+mod tests;
