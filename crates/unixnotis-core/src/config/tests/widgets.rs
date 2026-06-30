@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use crate::{ToggleLayout, ToggleWidgetConfig, WidgetsConfig};
+use crate::{
+    CardWidgetConfig, SliderWidgetConfig, StatWidgetConfig, ToggleLayout, ToggleWidgetConfig,
+    WidgetPluginConfig, WidgetsConfig,
+};
 
 #[test]
 fn default_widgets_keep_expected_grid_shape() {
@@ -119,4 +122,106 @@ fn blank_toggle_default_is_disabled_and_action_free() {
     assert_eq!(toggle.on_cmd, None);
     assert_eq!(toggle.off_cmd, None);
     assert_eq!(toggle.watch_cmd, None);
+}
+
+#[test]
+fn default_panel_actions_keep_expected_labels_icons_and_modes() {
+    let actions = [
+        crate::PanelActionConfig::widgets(),
+        crate::PanelActionConfig::dnd(),
+        crate::PanelActionConfig::clear(),
+        crate::PanelActionConfig::search(),
+        crate::PanelActionConfig::close(),
+    ];
+
+    assert_eq!(actions[0].label, "Widgets");
+    assert_eq!(actions[0].icon, "applications-system-symbolic");
+    assert_eq!(actions[1].label, "DND");
+    assert_eq!(actions[1].tooltip, "Silence incoming notifications");
+    assert_eq!(actions[2].icon, "user-trash-symbolic");
+    assert_eq!(actions[3].label, "Search");
+    assert!(actions[3].icon_only);
+    assert_eq!(actions[4].label, "Close");
+    assert!(actions[4].icon_only);
+}
+
+#[test]
+fn default_card_widgets_keep_builtin_identity_and_layout() {
+    let widgets = WidgetsConfig::default();
+    let calendar = &widgets.cards[0];
+    let weather = &widgets.cards[1];
+
+    assert_eq!(calendar.kind.as_deref(), Some("calendar"));
+    assert_eq!(calendar.title, "Calendar");
+    assert_eq!(calendar.icon.as_deref(), Some("x-office-calendar-symbolic"));
+    assert_eq!(calendar.min_height, 180);
+    assert_eq!(calendar.cmd, None);
+
+    assert_eq!(weather.kind.as_deref(), Some("weather"));
+    assert_eq!(weather.title, "Weather");
+    assert_eq!(weather.subtitle.as_deref(), Some("No data"));
+    assert_eq!(weather.icon.as_deref(), Some("weather-clear-symbolic"));
+    assert_eq!(weather.min_height, 160);
+}
+
+#[test]
+fn default_slider_widgets_keep_stock_commands() {
+    let widgets = WidgetsConfig::default();
+
+    assert!(widgets.volume.enabled);
+    assert_eq!(widgets.volume.label, "Volume");
+    assert_eq!(widgets.volume.get_cmd, SliderWidgetConfig::WPCTL_GET);
+    assert_eq!(widgets.volume.set_cmd, SliderWidgetConfig::WPCTL_SET);
+    assert_eq!(
+        widgets.volume.toggle_cmd.as_deref(),
+        Some(SliderWidgetConfig::WPCTL_TOGGLE)
+    );
+    assert_eq!(widgets.volume.watch_cmd, None);
+
+    assert!(widgets.brightness.enabled);
+    assert_eq!(widgets.brightness.label, "Brightness");
+    assert_eq!(widgets.brightness.get_cmd, "brightnessctl -m");
+    assert_eq!(widgets.brightness.set_cmd, "brightnessctl s {value}%");
+    assert_eq!(widgets.brightness.watch_cmd, None);
+}
+
+#[test]
+fn default_stat_widgets_keep_builtin_commands() {
+    let widgets = WidgetsConfig::default();
+    let expected = [
+        ("CPU", "utilities-system-monitor-symbolic", "builtin:cpu"),
+        ("RAM", "drive-harddisk-symbolic", "builtin:memory"),
+        ("Battery", "battery-full-symbolic", "builtin:battery"),
+    ];
+
+    for (stat, (label, icon, command)) in widgets.stats.iter().zip(expected) {
+        assert!(stat.enabled);
+        assert_eq!(stat.label, label);
+        assert_eq!(stat.icon.as_deref(), Some(icon));
+        assert_eq!(stat.cmd.as_deref(), Some(command));
+        assert_eq!(stat.min_height, 72);
+    }
+}
+
+#[test]
+fn blank_card_and_stat_defaults_are_disabled_placeholders() {
+    let card = CardWidgetConfig::default();
+    let stat = StatWidgetConfig::default();
+
+    assert!(!card.enabled);
+    assert_eq!(card.title, "Card");
+    assert_eq!(card.min_height, 120);
+    assert!(!stat.enabled);
+    assert_eq!(stat.label, "Stat");
+    assert_eq!(stat.min_height, 72);
+}
+
+#[test]
+fn widget_plugin_defaults_keep_contract_limits() {
+    let plugin = WidgetPluginConfig::default();
+
+    assert_eq!(plugin.api_version, WidgetPluginConfig::API_VERSION_V1);
+    assert_eq!(plugin.command, "");
+    assert_eq!(plugin.timeout_ms, 2_000);
+    assert_eq!(plugin.max_output_bytes, 16 * 1024);
 }
