@@ -2,7 +2,7 @@ use std::fs;
 
 use crate::{Config, ConfigError};
 
-use super::support::{env_lock, restore_env, set_env, test_root};
+use super::support::{env_lock, test_root, EnvGuard};
 
 #[test]
 fn load_from_path_reads_toml_and_applies_runtime_defaults() {
@@ -67,16 +67,13 @@ fn load_default_reads_config_when_default_file_exists() {
     )
     .expect("default config file");
 
-    let prev_xdg = set_env("XDG_CONFIG_HOME", Some(root.to_string_lossy().as_ref()));
-    let prev_home = set_env("HOME", Some(root.to_string_lossy().as_ref()));
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", root.as_os_str());
+    let _home = EnvGuard::set("HOME", root.as_os_str());
     // This exercises the public default loader instead of the explicit-path helper
     let config = Config::load_default().expect("default config should load");
 
     assert_eq!(config.panel.title, "Default Path Title");
 
-    // Restore env immediately so later tests never inherit this fake config root
-    restore_env("XDG_CONFIG_HOME", prev_xdg);
-    restore_env("HOME", prev_home);
     let _ = fs::remove_dir_all(root);
 }
 
@@ -87,15 +84,13 @@ fn load_default_returns_sanitized_stock_config_when_file_is_missing() {
     // Missing config should not require creating the config directory first
     let _ = fs::remove_dir_all(&root);
 
-    let prev_xdg = set_env("XDG_CONFIG_HOME", Some(root.to_string_lossy().as_ref()));
-    let prev_home = set_env("HOME", Some(root.to_string_lossy().as_ref()));
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", root.as_os_str());
+    let _home = EnvGuard::set("HOME", root.as_os_str());
     let config = Config::load_default().expect("missing config should fall back");
 
     // Fallback config still passes through the runtime sanitizer
     assert_eq!(config.panel.title, crate::PanelConfig::default().title);
     assert_eq!(config.widgets.refresh_interval_ms, 1000);
 
-    restore_env("XDG_CONFIG_HOME", prev_xdg);
-    restore_env("HOME", prev_home);
     let _ = fs::remove_dir_all(root);
 }

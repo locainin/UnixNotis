@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::Config;
 
-use super::support::{env_lock, restore_env, set_env, test_root};
+use super::support::{env_lock, test_root, EnvGuard};
 
 #[test]
 fn default_config_dir_ignores_empty_xdg() {
@@ -13,14 +13,12 @@ fn default_config_dir_ignores_empty_xdg() {
         // Some CI shells can run without HOME; path fallback cannot be asserted there
         return;
     }
-    let prev_xdg = set_env("XDG_CONFIG_HOME", Some(""));
-    let prev_home = set_env("HOME", Some(&home));
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", "");
+    let _home = EnvGuard::set("HOME", home.as_str());
 
     let dir = Config::default_config_dir().expect("config dir");
 
     assert_eq!(dir, PathBuf::from(home).join(".config").join("unixnotis"));
-    restore_env("XDG_CONFIG_HOME", prev_xdg);
-    restore_env("HOME", prev_home);
 }
 
 #[test]
@@ -32,14 +30,12 @@ fn default_config_dir_ignores_whitespace_xdg() {
         return;
     }
     // Whitespace-only XDG values should behave the same as a missing value
-    let prev_xdg = set_env("XDG_CONFIG_HOME", Some("   "));
-    let prev_home = set_env("HOME", Some(&home));
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", "   ");
+    let _home = EnvGuard::set("HOME", home.as_str());
 
     let dir = Config::default_config_dir().expect("config dir");
 
     assert_eq!(dir, PathBuf::from(home).join(".config").join("unixnotis"));
-    restore_env("XDG_CONFIG_HOME", prev_xdg);
-    restore_env("HOME", prev_home);
 }
 
 #[test]
@@ -51,14 +47,12 @@ fn default_config_dir_ignores_relative_xdg() {
         return;
     }
     // Relative XDG roots are unsafe because callers may run from arbitrary directories
-    let prev_xdg = set_env("XDG_CONFIG_HOME", Some("relative/path"));
-    let prev_home = set_env("HOME", Some(&home));
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", "relative/path");
+    let _home = EnvGuard::set("HOME", home.as_str());
 
     let dir = Config::default_config_dir().expect("config dir");
 
     assert_eq!(dir, PathBuf::from(home).join(".config").join("unixnotis"));
-    restore_env("XDG_CONFIG_HOME", prev_xdg);
-    restore_env("HOME", prev_home);
 }
 
 #[test]
@@ -70,14 +64,12 @@ fn default_config_dir_accepts_absolute_xdg() {
         return;
     }
     let xdg = PathBuf::from(home.clone()).join(".config-test");
-    let prev_xdg = set_env("XDG_CONFIG_HOME", Some(xdg.to_string_lossy().as_ref()));
-    let prev_home = set_env("HOME", Some(&home));
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", xdg.as_os_str());
+    let _home = EnvGuard::set("HOME", home.as_str());
 
     let dir = Config::default_config_dir().expect("config dir");
 
     assert_eq!(dir, xdg.join("unixnotis"));
-    restore_env("XDG_CONFIG_HOME", prev_xdg);
-    restore_env("HOME", prev_home);
 }
 
 #[test]
@@ -87,14 +79,12 @@ fn default_config_path_joins_config_file_name() {
     // Use a clean fake XDG root so the exact final filename can be asserted
     let _ = std::fs::remove_dir_all(&root);
 
-    let prev_xdg = set_env("XDG_CONFIG_HOME", Some(root.to_string_lossy().as_ref()));
-    let prev_home = set_env("HOME", Some(root.to_string_lossy().as_ref()));
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", root.as_os_str());
+    let _home = EnvGuard::set("HOME", root.as_os_str());
     let path = Config::default_config_path().expect("default config path");
 
     assert_eq!(path, root.join("unixnotis").join("config.toml"));
 
-    restore_env("XDG_CONFIG_HOME", prev_xdg);
-    restore_env("HOME", prev_home);
     let _ = std::fs::remove_dir_all(root);
 }
 

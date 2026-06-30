@@ -14,13 +14,11 @@ fn diagnostic_mode_parses_expected_values() {
 #[test]
 fn diagnostic_mode_reads_environment_wrapper() {
     let _guard = crate::test_support::test_env_lock();
-    let previous = crate::test_support::set_env("UNIXNOTIS_DIAGNOSTIC", Some("yes"));
+    let _diagnostic = crate::test_support::EnvGuard::set("UNIXNOTIS_DIAGNOSTIC", "yes");
     assert!(diagnostic_mode());
 
     std::env::set_var("UNIXNOTIS_DIAGNOSTIC", "off");
     assert!(!diagnostic_mode());
-
-    crate::test_support::restore_env("UNIXNOTIS_DIAGNOSTIC", previous);
 }
 
 #[test]
@@ -32,7 +30,7 @@ fn log_limit_respects_mode() {
 #[test]
 fn log_limit_and_snippet_use_diagnostic_environment() {
     let _guard = crate::test_support::test_env_lock();
-    let previous = crate::test_support::set_env("UNIXNOTIS_DIAGNOSTIC", Some("true"));
+    let _diagnostic = crate::test_support::EnvGuard::set("UNIXNOTIS_DIAGNOSTIC", "true");
     assert_eq!(log_limit(), DIAGNOSTIC_LOG_LIMIT);
 
     std::env::set_var("UNIXNOTIS_DIAGNOSTIC", "false");
@@ -40,8 +38,6 @@ fn log_limit_and_snippet_use_diagnostic_environment() {
 
     let noisy = "value\nwith\rcontrols";
     assert_eq!(log_snippet(noisy), "value with controls");
-
-    crate::test_support::restore_env("UNIXNOTIS_DIAGNOSTIC", previous);
 }
 
 #[test]

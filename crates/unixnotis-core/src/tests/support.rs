@@ -1,6 +1,7 @@
 //! Shared helpers for core crate unit tests
 
 use std::env;
+use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -25,8 +26,27 @@ pub(crate) fn unique_temp_path(name: &str) -> PathBuf {
     ))
 }
 
-pub(crate) fn set_env(key: &str, value: Option<&str>) -> Option<String> {
-    let previous = env::var(key).ok();
+pub(crate) struct EnvGuard {
+    key: &'static str,
+    previous: Option<OsString>,
+}
+
+impl EnvGuard {
+    pub(crate) fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+        let previous = set_env(key, Some(value.as_ref()));
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        // Restore even after a panic so later tests see the original process env
+        restore_env(self.key, self.previous.take());
+    }
+}
+
+pub(crate) fn set_env(key: &str, value: Option<&OsStr>) -> Option<OsString> {
+    let previous = env::var_os(key);
     match value {
         Some(value) => env::set_var(key, value),
         None => env::remove_var(key),
@@ -34,7 +54,7 @@ pub(crate) fn set_env(key: &str, value: Option<&str>) -> Option<String> {
     previous
 }
 
-pub(crate) fn restore_env(key: &str, previous: Option<String>) {
+pub(crate) fn restore_env(key: &str, previous: Option<OsString>) {
     match previous {
         Some(value) => env::set_var(key, value),
         None => env::remove_var(key),
