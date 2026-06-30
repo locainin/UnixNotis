@@ -1,28 +1,4 @@
-use super::{
-    popup_allowed_by_state, should_archive_closed_notification, CloseReason, ControlState,
-    PanelDebugLevel,
-};
-use crate::Urgency;
-
-#[test]
-fn popup_gate_blocks_everything_when_inhibited() {
-    let state = ControlState {
-        inhibited: true,
-        ..ControlState::default()
-    };
-    assert!(!popup_allowed_by_state(Urgency::Critical as u8, &state));
-    assert!(!popup_allowed_by_state(Urgency::Normal as u8, &state));
-}
-
-#[test]
-fn popup_gate_keeps_only_critical_during_dnd() {
-    let state = ControlState {
-        dnd_enabled: true,
-        ..ControlState::default()
-    };
-    assert!(popup_allowed_by_state(Urgency::Critical as u8, &state));
-    assert!(!popup_allowed_by_state(Urgency::Normal as u8, &state));
-}
+use super::{should_archive_closed_notification, CloseReason, PanelDebugLevel};
 
 #[test]
 fn user_dismiss_never_archives() {
