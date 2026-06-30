@@ -97,7 +97,7 @@ fn program_lookup_cache_refreshes_when_path_changes() {
             .expect("second program permissions");
     }
 
-    let previous = crate::test_support::set_env("PATH", Some(bin_a.to_string_lossy().as_ref()));
+    let _path = crate::test_support::EnvGuard::set("PATH", bin_a.as_os_str());
     assert!(program_in_path(&program));
 
     // Removing the first file leaves a stale true result unless PATH changes clear the cache
@@ -109,6 +109,5 @@ fn program_lookup_cache_refreshes_when_path_changes() {
     std::env::set_var("PATH", root.to_string_lossy().as_ref());
     assert!(!program_in_path(&program));
 
-    crate::test_support::restore_env("PATH", previous);
     let _ = fs::remove_dir_all(root);
 }

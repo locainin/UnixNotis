@@ -5,6 +5,7 @@ use super::*;
 
 #[test]
 fn resolve_state_dir_prefers_xdg_when_absolute() {
+    let _guard = crate::test_support::test_env_lock();
     let Ok(home) = env::var("HOME") else {
         return;
     };
@@ -39,6 +40,7 @@ fn resolve_state_dir_ignores_blank_xdg_and_uses_absolute_home() {
 
 #[test]
 fn resolve_state_dir_ignores_relative_xdg() {
+    let _guard = crate::test_support::test_env_lock();
     let Ok(home) = env::var("HOME") else {
         return;
     };
@@ -55,18 +57,15 @@ fn resolve_state_dir_reads_environment_wrapper() {
     let root = crate::test_support::unique_temp_path("state-env");
     let state = root.join("state");
     let home = root.join("home");
-    let old_state =
-        crate::test_support::set_env("XDG_STATE_HOME", Some(state.to_string_lossy().as_ref()));
-    let old_home = crate::test_support::set_env("HOME", Some(home.to_string_lossy().as_ref()));
+    let _state_env = crate::test_support::EnvGuard::set("XDG_STATE_HOME", state.as_os_str());
+    let _home_env = crate::test_support::EnvGuard::set("HOME", home.as_os_str());
 
     assert_eq!(resolve_state_dir(), Some(state));
-
-    crate::test_support::restore_env("XDG_STATE_HOME", old_state);
-    crate::test_support::restore_env("HOME", old_home);
 }
 
 #[test]
 fn resolve_state_dir_falls_back_to_home() {
+    let _guard = crate::test_support::test_env_lock();
     let Ok(home) = env::var("HOME") else {
         return;
     };
@@ -79,6 +78,7 @@ fn resolve_state_dir_falls_back_to_home() {
 
 #[test]
 fn expand_tilde_expands_home_only_for_leading_shell_home_marker() {
+    let _guard = crate::test_support::test_env_lock();
     let Ok(home) = env::var("HOME") else {
         return;
     };
