@@ -121,5 +121,5 @@ fn config_override_path(args: &Args, env_path: Option<OsString>) -> Option<PathB
 }
 
 #[cfg(test)]
-#[path = "startup/tests.rs"]
-mod tests;
+#[path = "tests/startup/config.rs"]
+mod config_tests;
