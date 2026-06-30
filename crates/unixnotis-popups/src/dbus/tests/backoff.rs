@@ -17,12 +17,16 @@ fn jitter_test_lock() -> MutexGuard<'static, ()> {
 
 #[test]
 fn jitter_zero_returns_zero() {
+    let _guard = jitter_test_lock();
+
     // Zero jitter is used by tests and must never introduce a surprise delay
     assert_eq!(jitter_duration(0), Duration::from_millis(0));
 }
 
 #[test]
 fn jitter_duration_is_bounded() {
+    let _guard = jitter_test_lock();
+
     // A non-zero bound remains exclusive so the configured max is a true ceiling
     for bound in [1, 2, 5, 120] {
         assert!(jitter_duration(bound) < Duration::from_millis(bound));
