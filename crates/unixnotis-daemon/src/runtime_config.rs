@@ -179,5 +179,20 @@ fn apply_wayland_env(display: &str) {
 }
 
 #[cfg(test)]
-#[path = "runtime_config/tests.rs"]
-mod tests;
+#[path = "tests/runtime_config/async_wayland.rs"]
+mod async_wayland_tests;
+#[cfg(test)]
+#[path = "tests/runtime_config/config.rs"]
+mod config_tests;
+#[cfg(test)]
+#[path = "tests/runtime_config/detect_wayland.rs"]
+mod detect_wayland_tests;
+#[cfg(test)]
+#[path = "tests/runtime_config/support.rs"]
+mod test_support;
+#[cfg(test)]
+#[path = "tests/runtime_config/tracing.rs"]
+mod tracing_tests;
+#[cfg(test)]
+#[path = "tests/runtime_config/wayland_choice.rs"]
+mod wayland_choice_tests;
