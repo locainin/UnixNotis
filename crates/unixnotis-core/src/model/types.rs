@@ -45,3 +45,7 @@ pub struct Action {
     pub key: String,
     pub label: String,
 }
+
+#[cfg(test)]
+#[path = "tests/types.rs"]
+mod tests;
