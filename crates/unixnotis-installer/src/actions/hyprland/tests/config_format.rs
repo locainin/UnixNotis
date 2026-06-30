@@ -105,6 +105,39 @@ fn commented_lua_bootstrap_commands_are_ignored() {
     ));
 }
 
+#[test]
+fn partial_import_environment_command_is_not_complete() {
+    let contents = "exec-once = systemctl --user import-environment WAYLAND_DISPLAY\n";
+
+    // The installer needs every expected session variable before it can skip rebuilding the line
+    assert!(!has_import_command_with_vars(contents, &HYPR_IMPORT_VARS));
+}
+
+#[test]
+fn hyprlang_and_lua_startup_detection_ignore_comments_but_keep_active_lines() {
+    let command = "noticenterctl open-panel";
+    let contents = "\
+# exec-once = noticenterctl open-panel
+-- hl.exec_cmd(\"noticenterctl open-panel\")
+exec-once = noticenterctl open-panel
+";
+
+    // Only active startup lines count; examples and disabled commands must not suppress installs
+    assert!(has_startup_command(contents, command));
+    assert!(!has_startup_command(
+        "-- hl.exec_cmd(\"noticenterctl open-panel\")",
+        command
+    ));
+}
+
+#[test]
+fn lua_startup_line_escapes_quotes_and_backslashes() {
+    let line = hyprland_startup_line(HyprlandConfigSyntax::Lua, r#"sh -lc "printf '\\done'""#);
+
+    // Lua config strings need escaping because generated commands live inside a quoted literal
+    assert_eq!(line, r#"    hl.exec_cmd("sh -lc \"printf '\\\\done'\"")"#);
+}
+
 fn temp_config_root(label: &str) -> PathBuf {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
