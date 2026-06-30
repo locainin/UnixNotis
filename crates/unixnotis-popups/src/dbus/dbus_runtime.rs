@@ -13,11 +13,24 @@ use super::dbus_backoff::{
     Backoff, RetryLog, BACKOFF_BASE_MS, BACKOFF_MAX_MS, RETRY_WARN_INTERVAL_SECS,
 };
 use super::dbus_commands::{drain_offline_commands, handle_command};
-use super::dbus_seed::seed_state_with_retry;
+use super::dbus_seed::{seed_state_with_retry, PopupSeedSource, SeedError, SeedSnapshot};
 use super::dbus_types::{UiCommand, UiEvent};
 
 // Bound UI commands to avoid unbounded memory growth under a stuck UI event loop
 const UI_COMMAND_QUEUE_CAPACITY: usize = 64;
+
+struct ControlProxySeedSource<'proxy, 'conn> {
+    proxy: &'proxy ControlProxy<'conn>,
+}
+
+impl PopupSeedSource for ControlProxySeedSource<'_, '_> {
+    async fn seed_snapshot(&self) -> Result<SeedSnapshot, SeedError> {
+        // Both calls run together so startup seed data has the smallest possible skew
+        // A fully atomic seed would need one daemon method that returns both values
+        let (state, active) = tokio::join!(self.proxy.get_state(), self.proxy.list_active());
+        SeedSnapshot::from_fetch_results(state, active)
+    }
+}
 
 pub fn start_dbus_runtime(sender: async_channel::Sender<UiEvent>) -> mpsc::Sender<UiCommand> {
     let (command_tx, command_rx) = mpsc::channel(UI_COMMAND_QUEUE_CAPACITY);
@@ -151,7 +164,7 @@ async fn run_connection_once(
     };
 
     // Seed only after subscriptions are active so startup does not miss in-flight changes
-    seed_state_with_retry(&proxy, sender).await;
+    seed_state_with_retry(&ControlProxySeedSource { proxy: &proxy }, sender).await;
 
     loop {
         tokio::select! {
@@ -225,7 +238,7 @@ async fn run_connection_once(
                 };
                 // A fresh seed clears stale popups after remote clears or daemon restart drift
                 // Seed reconcile also updates same-id payload changes without trusting missed signals
-                seed_state_with_retry(&proxy, sender).await;
+                seed_state_with_retry(&ControlProxySeedSource { proxy: &proxy }, sender).await;
             }
         }
     }
