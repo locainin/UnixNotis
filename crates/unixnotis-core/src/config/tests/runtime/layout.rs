@@ -49,6 +49,13 @@ fn sanitize_clamps_refresh_intervals_and_preserves_ordering() {
     sanitize_config(&mut config);
     assert_eq!(config.widgets.refresh_interval_ms, 200);
     assert_eq!(config.widgets.refresh_interval_slow_ms, 200);
+
+    let mut config = Config::default();
+    config.widgets.refresh_interval_ms = MIN_REFRESH_MS;
+    config.widgets.refresh_interval_slow_ms = MIN_REFRESH_MS - 1;
+    sanitize_config(&mut config);
+    assert_eq!(config.widgets.refresh_interval_ms, MIN_REFRESH_MS);
+    assert_eq!(config.widgets.refresh_interval_slow_ms, MIN_REFRESH_MS);
 }
 
 #[test]
@@ -109,10 +116,33 @@ fn sanitize_preserves_optional_panel_labels_and_repairs_widget_order() {
     assert!(!config.panel.action_row_visible);
     assert_eq!(config.panel.section_order[0], PanelSection::Notifications);
     assert_eq!(config.panel.section_order.len(), 2);
+    assert_eq!(
+        config.panel.section_order,
+        vec![PanelSection::Notifications, PanelSection::Widgets]
+    );
     assert_eq!(config.panel.widget_order[0], PanelWidgetSection::Stats);
     assert_eq!(config.panel.widget_order.len(), 5);
+    assert_eq!(
+        config.panel.widget_order,
+        vec![
+            PanelWidgetSection::Stats,
+            PanelWidgetSection::Sliders,
+            PanelWidgetSection::Media,
+            PanelWidgetSection::Toggles,
+            PanelWidgetSection::Cards,
+        ]
+    );
     assert_eq!(config.panel.action_order[0], PanelActionId::Search);
     assert_eq!(config.panel.action_order.len(), 4);
+    assert_eq!(
+        config.panel.action_order,
+        vec![
+            PanelActionId::Search,
+            PanelActionId::Widgets,
+            PanelActionId::Dnd,
+            PanelActionId::Clear,
+        ]
+    );
     assert_eq!(
         config.panel.search_action.icon,
         PanelActionConfig::search().icon
