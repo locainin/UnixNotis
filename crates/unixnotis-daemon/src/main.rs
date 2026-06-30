@@ -19,6 +19,7 @@ use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
 mod child_process;
+#[path = "daemon/root.rs"]
 mod daemon;
 #[path = "dbus_owner.rs"]
 mod dbus_owner;

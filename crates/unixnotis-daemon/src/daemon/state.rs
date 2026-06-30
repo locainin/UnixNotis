@@ -1,7 +1,4 @@
-//! D-Bus server implementation and daemon state coordination.
-//!
-//! The notification and control interfaces are split into submodules to keep
-//! responsibilities clear and files smaller.
+//! Shared daemon state and signal fanout coordination
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
@@ -15,25 +12,10 @@ use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
 use crate::store::NotificationStore;
 
-#[path = "daemon/auth.rs"]
-mod auth;
-#[path = "daemon/bus_names.rs"]
-mod bus_names;
-#[path = "daemon/control.rs"]
-mod control;
-#[path = "daemon/notifications.rs"]
-mod notifications;
-#[path = "daemon/signal_burst.rs"]
-mod signal_burst;
-
-pub use bus_names::{log_name_reply, request_control_name, request_well_known_name};
-pub use control::{spawn_inhibitor_owner_watch, ControlServer};
-pub use notifications::NotificationServer;
-use signal_burst::{
+use super::signal_burst::{
     notification_signal_mode_for_sender, NotificationBurstState, NotificationSignalMode,
 };
-
-pub(crate) const NOTIFICATIONS_OBJECT_PATH: &str = "/org/freedesktop/Notifications";
+use super::{ControlServer, NotificationServer, NOTIFICATIONS_OBJECT_PATH};
 
 /// Shared daemon state guarded behind an async mutex.
 pub struct DaemonState {
@@ -50,9 +32,9 @@ pub struct DaemonState {
     // Warn once if scheduler-backed operations happen before install
     scheduler_missing_warned: AtomicBool,
     // Cache the last control-state snapshot so no-op signals can be skipped
-    last_emitted_state: StdMutex<Option<ControlState>>,
+    pub(in crate::daemon) last_emitted_state: StdMutex<Option<ControlState>>,
     // Popup UIs only care about the gate, not panel history counters
-    last_emitted_popup_gate: StdMutex<Option<PopupGateState>>,
+    pub(in crate::daemon) last_emitted_popup_gate: StdMutex<Option<PopupGateState>>,
     // Burst tracking lets one noisy sender fall back to snapshot invalidation
     // instead of forcing a storm of full add/update fanout
     notification_signal_bursts: StdMutex<std::collections::HashMap<String, NotificationBurstState>>,
@@ -190,7 +172,7 @@ impl DaemonState {
         self.emit_state_changed().await
     }
 
-    async fn emit_state_changed(&self) -> zbus::Result<()> {
+    pub(in crate::daemon) async fn emit_state_changed(&self) -> zbus::Result<()> {
         let state = {
             let store = self.store.lock().await;
             let history_count = store.history_len() as u32;
@@ -268,10 +250,6 @@ impl DaemonState {
     }
 }
 
-pub(crate) fn to_fdo_error(err: zbus::Error) -> zbus::fdo::Error {
-    zbus::fdo::Error::Failed(err.to_string())
-}
-
 fn should_emit_cached<T: Clone + PartialEq>(cache: &StdMutex<Option<T>>, value: &T) -> bool {
     // Sync mutex is enough here because this cache is tiny and never held across await points
     let mut last_value = match cache.lock() {
@@ -291,5 +269,5 @@ fn should_emit_cached<T: Clone + PartialEq>(cache: &StdMutex<Option<T>>, value: 
 }
 
 #[cfg(test)]
-#[path = "daemon/tests/state.rs"]
+#[path = "tests/state.rs"]
 mod state_tests;
