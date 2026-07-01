@@ -1,6 +1,7 @@
 //! Notification daemon detection for install workflows.
 
 use std::fs;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Command;
 
@@ -234,7 +235,16 @@ fn is_unit_active(unit: &str) -> (bool, Option<String>) {
         .status()
     {
         Ok(status) => (status.success(), None),
-        Err(err) => (false, Some(err.to_string())),
+        Err(err) => (false, systemctl_spawn_error(&err)),
+    }
+}
+
+pub(crate) fn systemctl_spawn_error(err: &std::io::Error) -> Option<String> {
+    if err.kind() == ErrorKind::NotFound {
+        // Non-systemd systems often do not install systemctl; pgrep/D-Bus still give signal
+        None
+    } else {
+        Some(err.to_string())
     }
 }
 
@@ -257,7 +267,7 @@ fn pgrep_exact(name: &str) -> Vec<u32> {
         .collect()
 }
 
-fn read_comm(pid: u32) -> Option<String> {
+pub(crate) fn read_comm(pid: u32) -> Option<String> {
     let path = format!("/proc/{}/comm", pid);
     if let Ok(contents) = fs::read_to_string(path) {
         let comm = contents.trim().to_string();
@@ -285,7 +295,7 @@ fn read_comm(pid: u32) -> Option<String> {
     }
 }
 
-fn read_cmdline_program(pid: u32) -> Option<String> {
+pub(crate) fn read_cmdline_program(pid: u32) -> Option<String> {
     let path = format!("/proc/{}/cmdline", pid);
     let contents = fs::read(path).ok()?;
     let mut parts = contents

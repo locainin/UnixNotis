@@ -18,17 +18,26 @@ use tracing::{error, info, warn};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
+#[path = "child_process/root.rs"]
 mod child_process;
+#[path = "daemon/root.rs"]
 mod daemon;
 #[path = "dbus_owner.rs"]
 mod dbus_owner;
 mod expire;
+#[cfg(test)]
+#[path = "tests/module_wiring.rs"]
+mod module_wiring_tests;
 #[path = "runtime_config.rs"]
 mod runtime_config;
 #[path = "shutdown_signal.rs"]
 mod shutdown_signal;
+#[path = "sound/root.rs"]
 mod sound;
 mod store;
+#[cfg(test)]
+mod test_support;
+#[path = "trial_mode/root.rs"]
 mod trial_mode;
 
 use crate::child_process::{spawn_center_supervisor, spawn_popups_supervisor};
@@ -85,6 +94,10 @@ enum RestoreStrategy {
     Systemd,
     Process,
 }
+
+#[cfg(test)]
+#[path = "tests/main_args.rs"]
+mod main_args_tests;
 
 #[tokio::main]
 async fn main() -> Result<()> {

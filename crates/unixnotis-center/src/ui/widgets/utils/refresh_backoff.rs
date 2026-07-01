@@ -2,6 +2,10 @@
 
 use std::time::{Duration, Instant};
 
+// Async widgets only need a slow health check while a previous read is still running
+// The completion path updates cached deadlines, so frequent rechecks only add timer churn
+pub(in crate::ui::widgets) const INFLIGHT_REFRESH_RECHECK: Duration = Duration::from_secs(1);
+
 // Backoff keeps stable widgets from re-running commands on every tick
 const REFRESH_BACKOFF_MAX_MULT: u64 = 4;
 const REFRESH_BACKOFF_STABLE_AFTER: u8 = 2;

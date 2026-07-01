@@ -14,6 +14,8 @@ use clap::Parser;
 #[path = "app/mod.rs"]
 mod app;
 mod dbus;
+#[cfg(test)]
+mod test_support;
 mod ui;
 
 fn main() -> Result<()> {

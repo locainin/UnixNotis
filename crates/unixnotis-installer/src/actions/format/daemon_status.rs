@@ -17,6 +17,16 @@ pub fn summarize_owner(owner: &Option<crate::detect::OwnerInfo>) -> String {
     }
 }
 
+pub fn daemon_has_displayable_status(daemon: &DetectedDaemon) -> bool {
+    // Welcome should show real ownership or runtime evidence, not inactive systemd probe noise
+    daemon.is_owner || daemon.systemd_active || !daemon.running_pids.is_empty()
+}
+
+pub fn daemon_status_is_warning(daemon: &DetectedDaemon) -> bool {
+    // A visible row with a probe error needs warning styling so it does not look healthy
+    daemon.systemd_error.is_some()
+}
+
 pub fn format_daemon_status(daemon: &DetectedDaemon) -> String {
     let mut status = Vec::new();
     // Add only the signals that are true so the summary stays short in the UI

@@ -2,9 +2,7 @@
 
 use anyhow::{anyhow, Result};
 
-use super::super::{
-    actions_binaries::resolve_install_binaries, log_line, run_command, ActionContext,
-};
+use super::super::{binaries::resolve_install_binaries, log_line, run_command, ActionContext};
 
 pub(crate) fn run_build(ctx: &mut ActionContext) -> Result<()> {
     // Build release artifacts before copying them into the user bin directory

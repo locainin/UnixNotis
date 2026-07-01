@@ -46,6 +46,8 @@ fn modern_theme_custom_properties_stay_additive() {
     assert!(overrides.contains("--unixnotis-panel-card-padding-y: 10px;"));
     assert!(overrides.contains("--unixnotis-popup-reveal-duration: 200ms;"));
     assert!(overrides.contains("--unixnotis-accent-color: @unixnotis-accent;"));
+    assert!(overrides.contains("--unixnotis-surface-alpha: 0.88;"));
+    assert!(overrides.contains("--unixnotis-card-alpha: 0.94;"));
 }
 
 #[test]
@@ -55,4 +57,24 @@ fn modern_theme_custom_properties_stay_off_on_older_gtk() {
         gtk_css_features_for_version(4, 15),
     );
     assert!(overrides.is_empty());
+}
+
+#[test]
+fn modern_theme_tokens_trim_float_values_without_losing_fraction() {
+    let overrides = build_modern_theme_custom_properties(
+        &ThemeConfig {
+            border_width: 3,
+            card_radius: 10,
+            surface_alpha: 0.5,
+            surface_strong_alpha: 1.0,
+            card_alpha: 0.125,
+            ..ThemeConfig::default()
+        },
+        gtk_css_features_for_version(4, 16),
+    );
+
+    assert!(overrides.contains("--unixnotis-border-width: 3px;"));
+    assert!(overrides.contains("--unixnotis-surface-alpha: 0.5;"));
+    assert!(overrides.contains("--unixnotis-surface-strong-alpha: 1;"));
+    assert!(overrides.contains("--unixnotis-card-alpha: 0.125;"));
 }

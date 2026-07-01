@@ -32,12 +32,49 @@ fn ensure_path_entry_in_file_is_idempotent() {
 }
 
 #[test]
+fn ensure_path_entry_in_file_detects_existing_absolute_path_entry() {
+    let root = test_root("path-entry-existing-absolute");
+    let home = root.join("home");
+    let bin_dir = home.join(".local").join("bin");
+    let startup = home.join(".profile");
+
+    fs::create_dir_all(&home).expect("create home");
+    fs::write(
+        &startup,
+        format!("export PATH=\"{}:$PATH\"\n", bin_dir.display()),
+    )
+    .expect("write existing path");
+
+    let changed = ensure_path_entry_in_file(&startup, &home, &bin_dir).expect("path check");
+
+    // Existing absolute entries should not gain a duplicate managed block
+    assert!(!changed);
+    assert!(!fs::read_to_string(&startup)
+        .expect("read startup")
+        .contains("# unixnotis-installer path entry"));
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn format_path_for_shell_line_uses_home_prefix_when_possible() {
     let home = std::path::PathBuf::from("/tmp/unixnotis-home");
     let bin_dir = home.join(".local").join("bin");
     assert_eq!(
         format_path_for_shell_line(&home, &bin_dir),
         "$HOME/.local/bin"
+    );
+}
+
+#[test]
+fn format_path_for_shell_line_handles_home_and_non_home_paths() {
+    let home = std::path::PathBuf::from("/tmp/unixnotis-home");
+
+    // Home itself stays portable, while unrelated paths are left absolute
+    assert_eq!(format_path_for_shell_line(&home, &home), "$HOME");
+    assert_eq!(
+        format_path_for_shell_line(&home, std::path::Path::new("/opt/unixnotis/bin")),
+        "/opt/unixnotis/bin"
     );
 }
 

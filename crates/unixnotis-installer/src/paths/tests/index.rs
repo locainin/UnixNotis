@@ -1,0 +1,39 @@
+use super::{format_with_home, is_unixnotis_repo, InstallPaths, ServiceManagerChoice};
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    // Path discovery tests share the crate-wide env lock with checks and flow tests
+    crate::tests::env::test_env_lock()
+}
+
+fn set_env(key: &str, value: Option<&str>) -> Option<String> {
+    let previous = env::var(key).ok();
+    match value {
+        // Store test values through std::env so InstallPaths uses the real production path
+        Some(value) => env::set_var(key, value),
+        None => env::remove_var(key),
+    }
+    previous
+}
+
+fn restore_env(key: &str, previous: Option<String>) {
+    match previous {
+        // Restore every variable explicitly to keep later path tests independent
+        Some(value) => env::set_var(key, value),
+        None => env::remove_var(key),
+    }
+}
+
+// Keep path discovery tests split by behavior so backend-specific rules do not pile up here
+#[path = "general.rs"]
+mod general;
+#[path = "runit.rs"]
+mod runit;
+#[path = "s6_data.rs"]
+mod s6_data;
+#[path = "s6_live.rs"]
+mod s6_live;
+#[path = "systemd_dinit.rs"]
+mod systemd_dinit;

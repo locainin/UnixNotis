@@ -7,7 +7,7 @@ use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use tracing_subscriber::EnvFilter;
@@ -71,18 +71,32 @@ pub(super) async fn ensure_wayland_session(timeout: Duration) -> Result<()> {
         }
     }
 
-    let start = Instant::now();
-    while start.elapsed() < timeout {
-        if let Some(display) = detect_wayland_display() {
-            apply_wayland_env(&display);
-            return Ok(());
-        }
-        tokio::time::sleep(Duration::from_millis(250)).await;
+    if let Some(display) = wait_for_wayland_display(timeout).await {
+        apply_wayland_env(&display);
+        return Ok(());
     }
 
     Err(anyhow::anyhow!(
         "Wayland session not detected; use --check for config validation"
     ))
+}
+
+async fn wait_for_wayland_display(timeout: Duration) -> Option<String> {
+    if timeout.is_zero() {
+        return None;
+    }
+
+    // Bound the retry loop with tokio's timer so a bad loop mutation cannot spin forever
+    tokio::time::timeout(timeout, async {
+        loop {
+            if let Some(display) = detect_wayland_display() {
+                break display;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+    })
+    .await
+    .ok()
 }
 
 fn detect_wayland_display() -> Option<String> {
@@ -165,26 +179,20 @@ fn apply_wayland_env(display: &str) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::choose_wayland_fallback;
-
-    #[test]
-    fn choose_wayland_fallback_prefers_wayland_zero() {
-        let chosen = choose_wayland_fallback(vec![
-            "wayland-2".to_string(),
-            "wayland-0".to_string(),
-            "wayland-1".to_string(),
-        ]);
-        assert_eq!(chosen.as_deref(), Some("wayland-0"));
-    }
-
-    #[test]
-    fn choose_wayland_fallback_sorts_nonzero_candidates() {
-        let chosen = choose_wayland_fallback(vec![
-            "wayland-7".to_string(),
-            "wayland-3".to_string(),
-            "wayland-5".to_string(),
-        ]);
-        assert_eq!(chosen.as_deref(), Some("wayland-3"));
-    }
-}
+#[path = "tests/runtime_config/async_wayland.rs"]
+mod async_wayland_tests;
+#[cfg(test)]
+#[path = "tests/runtime_config/config.rs"]
+mod config_tests;
+#[cfg(test)]
+#[path = "tests/runtime_config/detect_wayland.rs"]
+mod detect_wayland_tests;
+#[cfg(test)]
+#[path = "tests/runtime_config/support.rs"]
+mod test_support;
+#[cfg(test)]
+#[path = "tests/runtime_config/tracing.rs"]
+mod tracing_tests;
+#[cfg(test)]
+#[path = "tests/runtime_config/wayland_choice.rs"]
+mod wayland_choice_tests;

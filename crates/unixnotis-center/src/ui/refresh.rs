@@ -24,27 +24,36 @@ impl UiState {
             info!(force, fast_ms, slow_ms, "widget refresh tick");
         }
 
-        // Fast cadence is used for controls that can visibly drift quickly
-        // (for example volume/backlight values).
-        let fast_due = force
-            || interval_due(now, self.last_fast_refresh, fast_ms)
-                .map(is_due_delay)
-                .unwrap_or(false);
+        // Fast controls expose per-widget deadlines so stable sliders do not
+        // keep the whole panel on a one-second wakeup loop.
+        let fast_base = Duration::from_millis(fast_ms.max(1));
+        let volume_due = self
+            .volume
+            .as_ref()
+            .and_then(|widget| widget.next_poll_in(now, fast_base))
+            .map(is_due_delay)
+            .unwrap_or(false);
+        let brightness_due = self
+            .brightness
+            .as_ref()
+            .and_then(|widget| widget.next_poll_in(now, fast_base))
+            .map(is_due_delay)
+            .unwrap_or(false);
+        let fast_due = force || (fast_ms > 0 && (volume_due || brightness_due));
         if fast_due {
             super::perf_probe::refresh_fast_lane_due();
             if let Some(volume) = self.volume.as_ref() {
-                if force || volume.needs_polling() {
+                if force || volume_due {
                     super::perf_probe::refresh_volume_called();
-                    volume.refresh();
+                    volume.refresh(fast_base, force);
                 }
             }
             if let Some(brightness) = self.brightness.as_ref() {
-                if force || brightness.needs_polling() {
+                if force || brightness_due {
                     super::perf_probe::refresh_brightness_called();
-                    brightness.refresh();
+                    brightness.refresh(fast_base, force);
                 }
             }
-            self.last_fast_refresh = Some(now);
         }
 
         // Slow cadence is reserved for less dynamic controls to keep idle CPU low.
@@ -107,26 +116,14 @@ impl UiState {
 
     fn next_refresh_delay(&self, now: Instant) -> Option<Duration> {
         let mut next = None;
-        let volume_poll = self
-            .volume
-            .as_ref()
-            .map(|widget| widget.needs_polling())
-            .unwrap_or(false);
-        let brightness_poll = self
-            .brightness
-            .as_ref()
-            .map(|widget| widget.needs_polling())
-            .unwrap_or(false);
-        if volume_poll || brightness_poll {
-            // Fast lane only participates when at least one source is polling.
-            update_next_delay(
-                &mut next,
-                interval_due(
-                    now,
-                    self.last_fast_refresh,
-                    self.config.widgets.refresh_interval_ms,
-                ),
-            );
+        if self.config.widgets.refresh_interval_ms > 0 {
+            let fast_base = Duration::from_millis(self.config.widgets.refresh_interval_ms.max(1));
+            if let Some(volume) = self.volume.as_ref() {
+                update_next_delay(&mut next, volume.next_poll_in(now, fast_base));
+            }
+            if let Some(brightness) = self.brightness.as_ref() {
+                update_next_delay(&mut next, brightness.next_poll_in(now, fast_base));
+            }
         }
 
         let toggles_poll = self
@@ -160,7 +157,6 @@ impl UiState {
         if let Some(id) = self.refresh_source.take() {
             id.remove();
         }
-        self.last_fast_refresh = None;
         self.last_slow_refresh = None;
         self.log_debug(PanelDebugLevel::Info, || {
             "refresh timer stopped".to_string()

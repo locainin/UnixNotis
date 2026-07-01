@@ -325,6 +325,7 @@ mod tests {
 
     #[test]
     fn texture_cache_keeps_sizes_separate() {
+        let _guard = crate::test_support::gtk_test_lock();
         let mut cache = TextureCache::new(4);
         let path = PathBuf::from("icon-test.png");
         let bytes = glib::Bytes::from_owned(vec![255; 4]);

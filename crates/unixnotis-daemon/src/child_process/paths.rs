@@ -50,3 +50,7 @@ pub(super) fn apply_parent_death_signal(command: &mut Command) {
 
 #[cfg(not(target_os = "linux"))]
 pub(super) fn apply_parent_death_signal(_command: &mut Command) {}
+
+#[cfg(test)]
+#[path = "tests/paths.rs"]
+mod tests;

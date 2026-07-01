@@ -1,5 +1,7 @@
 //! Brightness slider widget wrapper.
 
+use std::time::{Duration, Instant};
+
 use unixnotis_core::SliderWidgetConfig;
 
 use super::CommandSlider;
@@ -23,12 +25,12 @@ impl BrightnessWidget {
         &self.slider.root
     }
 
-    pub fn refresh(&self) {
-        self.slider.refresh();
+    pub fn refresh(&self, base_interval: Duration, force: bool) {
+        self.slider.refresh(base_interval, force);
     }
 
-    pub fn needs_polling(&self) -> bool {
-        self.slider.needs_polling()
+    pub fn next_poll_in(&self, now: Instant, base_interval: Duration) -> Option<Duration> {
+        self.slider.next_poll_in(now, base_interval)
     }
 
     pub fn set_watch_active(&self, active: bool) {

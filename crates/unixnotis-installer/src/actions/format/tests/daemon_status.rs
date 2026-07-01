@@ -1,4 +1,4 @@
-use super::super::{format_daemon_status, summarize_owner};
+use super::super::{daemon_has_displayable_status, format_daemon_status, summarize_owner};
 use crate::detect::{DetectedDaemon, OwnerInfo};
 
 #[test]
@@ -50,4 +50,24 @@ fn format_daemon_status_reports_inactive_with_error() {
     let rendered = format_daemon_status(&daemon);
     assert!(rendered.contains("systemd-error: systemctl failure"));
     assert!(!rendered.contains("systemd-active"));
+    assert!(!daemon_has_displayable_status(&daemon));
+}
+
+#[test]
+fn daemon_display_status_requires_runtime_or_owner_signal() {
+    let inactive = DetectedDaemon {
+        name: "other".to_string(),
+        unit: "other.service".to_string(),
+        systemd_active: false,
+        systemd_error: None,
+        running_pids: Vec::new(),
+        is_owner: false,
+    };
+    assert!(!daemon_has_displayable_status(&inactive));
+
+    let running = DetectedDaemon {
+        running_pids: vec![8080],
+        ..inactive
+    };
+    assert!(daemon_has_displayable_status(&running));
 }

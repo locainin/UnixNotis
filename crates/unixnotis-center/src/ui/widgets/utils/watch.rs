@@ -162,12 +162,48 @@ impl CommandWatch {
 }
 
 fn should_emit_watch_event(cmd: &str, line: &str) -> bool {
+    let cmd = cmd.trim();
+    let line = line.trim();
+    if line.is_empty() {
+        return false;
+    }
+
     // pactl subscribe emits events for all server activity; filter to sink/server changes.
-    if cmd.trim().starts_with("pactl subscribe") {
+    if cmd.starts_with("pactl subscribe") {
         let line = line.to_ascii_lowercase();
         return contains_token(&line, " on sink") || contains_token(&line, " on server");
     }
+    if cmd.starts_with("nmcli") && cmd.contains(" monitor") {
+        // nmcli prints a startup status line before real NetworkManager events.
+        return !matches!(
+            line,
+            "NetworkManager is running" | "NetworkManager is not running"
+        );
+    }
+    if cmd.starts_with("udevadm monitor") {
+        // udevadm prints a banner describing the monitored source before events arrive.
+        return !line.starts_with("monitor will print the received events for:");
+    }
+    if cmd.starts_with("dbus-monitor") {
+        // dbus-monitor announces its own unique-name connection before watched signals
+        // Keep user-requested D-Bus name lifecycle events unless the line has that startup shape
+        return !is_dbus_monitor_startup_lifecycle(line);
+    }
     true
+}
+
+fn is_dbus_monitor_startup_lifecycle(line: &str) -> bool {
+    let has_lifecycle_member =
+        line.contains("member=NameAcquired") || line.contains("member=NameLost");
+
+    // Startup chatter is about the monitor process receiving a unique bus name
+    // Other org.freedesktop.DBus lifecycle signals may be meaningful watch events
+    has_lifecycle_member
+        && line.contains("sender=org.freedesktop.DBus")
+        && line.contains("-> destination=:")
+        && line.contains("path=/org/freedesktop/DBus")
+        && line.contains("interface=org.freedesktop.DBus")
+        && line.contains("string \":")
 }
 
 fn contains_token(line: &str, token: &str) -> bool {

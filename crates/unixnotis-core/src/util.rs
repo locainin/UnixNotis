@@ -46,22 +46,20 @@ pub fn program_in_path(program: &str) -> bool {
         if let Some(result) = cache.results.get(program) {
             return *result;
         }
+
+        let found = current_path
+            .as_ref()
+            .map(|paths| env::split_paths(paths).any(|dir| is_executable_path(&dir.join(program))))
+            .unwrap_or(false);
+
+        cache.results.insert(program.to_string(), found);
+        return found;
     }
 
-    let found = current_path
+    current_path
         .as_ref()
         .map(|paths| env::split_paths(paths).any(|dir| is_executable_path(&dir.join(program))))
-        .unwrap_or(false);
-
-    if let Ok(mut cache) = cache.lock() {
-        if cache.path.as_deref() != current_path.as_deref() {
-            cache.path = current_path.clone();
-            cache.results.clear();
-        }
-        cache.results.insert(program.to_string(), found);
-    }
-
-    found
+        .unwrap_or(false)
 }
 
 /// Resolve XDG_STATE_HOME with the specification defaults.
@@ -210,11 +208,7 @@ pub fn sanitize_log_value(value: &str, max_len: usize) -> String {
             continue;
         }
         // Replace control/newline bytes with spaces to keep logs single-line and safe.
-        let ch = if ch == '\n' || ch == '\r' || ch.is_control() {
-            ' '
-        } else {
-            ch
-        };
+        let ch = if ch.is_control() { ' ' } else { ch };
         cleaned.push(ch);
         count += 1;
         if count >= max_len {
@@ -259,10 +253,7 @@ fn sanitize_display_text_with(value: &str, keep_newlines: bool) -> String {
         let mapped = match ch {
             // Keep newlines only when asked
             '\n' if keep_newlines => '\n',
-            // Flatten spacing controls
-            '\t' => ' ',
-            '\r' => ' ',
-            // Drop other control behavior
+            // Flatten control behavior
             _ if ch.is_control() => ' ',
             _ => ch,
         };
@@ -291,5 +282,17 @@ fn is_bidi_control(ch: char) -> bool {
 }
 
 #[cfg(test)]
-#[path = "util/tests.rs"]
-mod tests;
+#[path = "tests/util/commands.rs"]
+mod command_tests;
+#[cfg(test)]
+#[path = "tests/util/diagnostics.rs"]
+mod diagnostic_tests;
+#[cfg(test)]
+#[path = "tests/util/display.rs"]
+mod display_tests;
+#[cfg(test)]
+#[path = "tests/util/paths.rs"]
+mod path_tests;
+#[cfg(test)]
+#[path = "tests/util/programs.rs"]
+mod program_tests;

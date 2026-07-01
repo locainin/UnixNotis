@@ -47,8 +47,7 @@ pub(super) async fn wait_for_owner_state(
                     .as_ref()
                     .map(|name| name.as_str())
                     .unwrap_or("");
-                let has_owner = !new_owner.is_empty();
-                if has_owner == expect_owner {
+                if owner_state_matches(Some(new_owner), expect_owner) {
                     return Ok(true);
                 }
             }
@@ -69,7 +68,7 @@ pub(super) async fn log_current_owner(
             return Ok(false);
         }
     };
-    let is_self = unique_name.as_deref() == Some(owner.as_str());
+    let is_self = owner_name_is_self(unique_name.as_deref(), owner.as_str());
     if is_self {
         info!(owner, "org.freedesktop.Notifications owner (self)");
     } else {
@@ -77,3 +76,18 @@ pub(super) async fn log_current_owner(
     }
     Ok(is_self)
 }
+
+fn owner_state_matches(new_owner: Option<&str>, expect_owner: bool) -> bool {
+    // D-Bus signals encode release as an empty owner name, not as a missing signal
+    let has_owner = new_owner.is_some_and(|name| !name.is_empty());
+    has_owner == expect_owner
+}
+
+fn owner_name_is_self(unique_name: Option<&str>, owner: &str) -> bool {
+    // Unique names come from the live connection and must match the queried owner exactly
+    unique_name == Some(owner)
+}
+
+#[cfg(test)]
+#[path = "tests/dbus_owner.rs"]
+mod tests;

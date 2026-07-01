@@ -1,4 +1,4 @@
-//! Public facade for widget configuration types
+//! Public widget configuration exports
 
 #[path = "widgets/mod.rs"]
 mod widgets;

@@ -3,6 +3,8 @@
 // Command execution and queueing internals
 mod command;
 // Command-driven slider widget implementation
+// The module root lives inside the folder so helper files stay grouped by topic
+#[path = "command_slider/root.rs"]
 mod command_slider;
 // Shared refresh backoff policy used by cards and stats
 mod refresh_backoff;
@@ -24,6 +26,6 @@ pub(super) use command::{
 // Public re-export keeps widget wrappers concise
 pub use command_slider::CommandSlider;
 // Backoff policy is reused by polling widgets
-pub(super) use refresh_backoff::RefreshBackoff;
+pub(super) use refresh_backoff::{RefreshBackoff, INFLIGHT_REFRESH_RECHECK};
 // Watcher helpers are reused by sliders and toggles
 pub(super) use watch::{start_command_watch, CommandWatch};

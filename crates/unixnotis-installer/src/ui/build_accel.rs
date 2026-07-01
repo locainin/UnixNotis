@@ -39,7 +39,7 @@ pub(super) fn draw_build_accel(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(choices.block(choices_block), body_layout[1]);
 }
 
-fn render_build_accel_body(app: &App) -> Text<'static> {
+pub(super) fn render_build_accel_body(app: &App) -> Text<'static> {
     // The body includes tool status, config status, and a compact install hint.
     let mut lines = vec![
         Line::from(vec![Span::styled(
@@ -100,7 +100,7 @@ fn render_build_accel_body(app: &App) -> Text<'static> {
     Text::from(lines)
 }
 
-fn package_status_line(name: &str, installed: bool, purpose: &str) -> Line<'static> {
+pub(super) fn package_status_line(name: &str, installed: bool, purpose: &str) -> Line<'static> {
     // Format: "pkg: status - purpose" to keep the list scannable.
     let status = if installed { "installed" } else { "missing" };
     let status_style = if installed {
@@ -121,7 +121,9 @@ fn package_status_line(name: &str, installed: bool, purpose: &str) -> Line<'stat
     ])
 }
 
-fn build_config_status_line(detection: &crate::actions::BuildAccelDetection) -> Line<'static> {
+pub(super) fn build_config_status_line(
+    detection: &crate::actions::BuildAccelDetection,
+) -> Line<'static> {
     // Config status is derived from installer-managed markers and tool availability.
     let (status_text, status_style) = match &detection.config_status {
         BuildAccelConfigStatus::Missing => {
@@ -160,7 +162,7 @@ fn build_config_status_line(detection: &crate::actions::BuildAccelDetection) -> 
     ])
 }
 
-fn render_build_accel_menu(app: &App, width: u16) -> List<'static> {
+pub(super) fn render_build_accel_menu(app: &App, width: u16) -> List<'static> {
     let inner_width = width.saturating_sub(2) as usize;
     // Menu choices depend on config state and tool availability to avoid invalid actions.
     let entries: Vec<&str> = match app.build_accel_menu_mode() {
@@ -194,7 +196,7 @@ fn render_build_accel_menu(app: &App, width: u16) -> List<'static> {
     List::new(list_items)
 }
 
-fn outcome_summary(outcome: &crate::actions::BuildAccelOutcome) -> String {
+pub(super) fn outcome_summary(outcome: &crate::actions::BuildAccelOutcome) -> String {
     // Outcome text is short so it fits within the body block without wrapping.
     match outcome {
         crate::actions::BuildAccelOutcome::SkippedMissingTools => {

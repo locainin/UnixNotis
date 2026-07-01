@@ -3,17 +3,18 @@ use tracing::warn;
 use super::super::super::Config;
 use crate::{program_in_path, util};
 
-pub(super) fn warn_missing_shell(config: &Config) {
+pub(super) fn warn_missing_shell(config: &Config) -> bool {
     // Only warn when the config actually depends on shell syntax
     if program_in_path("sh") {
-        return;
+        return false;
     }
     if !config_requires_shell(config) {
-        return;
+        return false;
     }
 
     // Shell-backed commands depend on sh for pipes, redirects, and control flow
     warn!("POSIX shell (sh) not found in PATH; widget commands using pipes or redirects will fail");
+    true
 }
 
 fn config_requires_shell(config: &Config) -> bool {
@@ -82,3 +83,7 @@ fn command_requires_shell(cmd: &str) -> bool {
     let cmd = cmd.replace("{value}", "0");
     !util::is_simple_command(&cmd)
 }
+
+#[cfg(test)]
+#[path = "../../tests/runtime/shell.rs"]
+mod tests;

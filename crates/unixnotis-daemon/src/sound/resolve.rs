@@ -74,26 +74,23 @@ fn decode_file_uri(value: &str) -> Option<PathBuf> {
 
 fn percent_decode_path(value: &str) -> Option<String> {
     // Invalid escape sequences and NUL bytes are rejected here
-    let bytes = value.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0usize;
-    while index < bytes.len() {
-        match bytes[index] {
+    let mut bytes = value.as_bytes().iter().copied();
+    let mut out = Vec::with_capacity(value.len());
+    while let Some(byte) = bytes.next() {
+        match byte {
             b'%' => {
-                let hi = *bytes.get(index + 1)?;
-                let lo = *bytes.get(index + 2)?;
+                let hi = bytes.next()?;
+                let lo = bytes.next()?;
                 let hi = char::from(hi).to_digit(16)?;
                 let lo = char::from(lo).to_digit(16)?;
-                let value = ((hi << 4) | lo) as u8;
+                let value = (hi * 16 + lo) as u8;
                 if value == 0 {
                     return None;
                 }
                 out.push(value);
-                index += 3;
             }
             byte => {
                 out.push(byte);
-                index += 1;
             }
         }
     }
@@ -163,45 +160,5 @@ fn hint_string(hints: &HashMap<String, OwnedValue>, key: &str) -> Option<String>
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn decode_file_uri_accepts_localhost() {
-        // HOME-based path keeps this test portable across machines
-        let Ok(home) = std::env::var("HOME") else {
-            return;
-        };
-        if home.is_empty() {
-            return;
-        }
-        let uri = format!("file://localhost{home}/sound%20file.ogg");
-        let expected = PathBuf::from(format!("{home}/sound file.ogg"));
-        assert_eq!(decode_file_uri(&uri), Some(expected));
-    }
-
-    #[test]
-    fn decode_file_uri_rejects_remote_hosts() {
-        // Remote hosts must not be accepted for local notification playback
-        let Ok(home) = std::env::var("HOME") else {
-            return;
-        };
-        if home.is_empty() {
-            return;
-        }
-        let uri = format!("file://example.com{home}/sound.ogg");
-        assert!(decode_file_uri(&uri).is_none());
-    }
-
-    #[test]
-    fn percent_decode_path_rejects_nul() {
-        // NUL is not valid inside filesystem paths
-        assert!(percent_decode_path("/%00.wav").is_none());
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn validate_sound_file_path_rejects_device_nodes() {
-        assert!(!validate_sound_file_path(Path::new("/dev/zero")));
-    }
-}
+#[path = "tests/resolve.rs"]
+mod tests;

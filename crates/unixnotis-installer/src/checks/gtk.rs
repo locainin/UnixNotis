@@ -55,30 +55,5 @@ pub(super) fn gtk4_layer_shell_check(pkg_config: &CheckItem) -> CheckItem {
 }
 
 #[cfg(test)]
-mod tests {
-    use unixnotis_core::gtk_css_features_from_version_string;
-
-    #[test]
-    fn gtk_css_feature_parser_handles_major_and_minor_checks() {
-        assert!(
-            gtk_css_features_from_version_string("4.16.2")
-                .expect("version")
-                .custom_properties
-        );
-        assert!(
-            gtk_css_features_from_version_string("4.18")
-                .expect("version")
-                .custom_properties
-        );
-        assert!(
-            !gtk_css_features_from_version_string("4.14.9")
-                .expect("version")
-                .custom_properties
-        );
-        assert!(
-            gtk_css_features_from_version_string("5.0.0")
-                .expect("version")
-                .custom_properties
-        );
-    }
-}
+#[path = "tests/gtk.rs"]
+mod tests;

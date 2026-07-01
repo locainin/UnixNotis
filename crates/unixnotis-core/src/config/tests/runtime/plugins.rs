@@ -57,3 +57,12 @@ fn sanitize_widget_options_caps_decorative_layout_counts() {
     );
     assert_eq!(config.widgets.cards[0].carousel_dots, 12);
 }
+
+#[test]
+fn plugin_contract_limits_stay_at_expected_byte_and_time_caps() {
+    // These limits are part of the runtime safety contract for external widget commands
+    assert_eq!(super::super::plugins::MIN_PLUGIN_TIMEOUT_MS, 100);
+    assert_eq!(super::super::plugins::MAX_PLUGIN_TIMEOUT_MS, 30_000);
+    assert_eq!(super::super::plugins::MIN_PLUGIN_OUTPUT_BYTES, 128);
+    assert_eq!(super::super::plugins::MAX_PLUGIN_OUTPUT_BYTES, 128 * 1024);
+}

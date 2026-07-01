@@ -8,7 +8,9 @@ use tracing::warn;
 use unixnotis_core::{PanelDebugLevel, WidgetPluginConfig};
 
 use super::super::plugin::{parse_stat_plugin_payload, PluginOutputLimits};
-use super::super::utils::{run_command_capture_async, run_command_capture_with_timeout_async};
+use super::super::utils::{
+    run_command_capture_async, run_command_capture_with_timeout_async, INFLIGHT_REFRESH_RECHECK,
+};
 use super::{apply_cached_value, BuiltinStat, BuiltinStatKey, StatItem};
 use crate::debug;
 
@@ -155,8 +157,8 @@ impl StatItem {
             return None;
         }
         if self.inflight.get() {
-            // Keep a short retry window while a command is still running
-            return Some(Duration::from_millis(250));
+            // A slow command should not turn into a four-times-per-second scheduler loop
+            return Some(INFLIGHT_REFRESH_RECHECK);
         }
         self.refresh_backoff
             .borrow()
