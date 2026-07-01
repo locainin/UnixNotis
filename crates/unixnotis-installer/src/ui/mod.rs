@@ -1,15 +1,33 @@
 //! Ratatui drawing helpers for installer screens.
 
 mod build_accel;
+#[cfg(test)]
+#[path = "tests/build_accel.rs"]
+mod build_accel_tests;
 mod confirm;
+#[cfg(test)]
+#[path = "tests/confirm.rs"]
+mod confirm_tests;
 mod header;
 mod progress;
 #[cfg(test)]
-#[path = "tests/rendering.rs"]
-mod rendering_tests;
+#[path = "tests/progress.rs"]
+mod progress_tests;
 mod reset;
+#[cfg(test)]
+#[path = "tests/reset.rs"]
+mod reset_tests;
+#[cfg(test)]
+#[path = "tests/support.rs"]
+mod test_support;
 mod welcome;
+#[cfg(test)]
+#[path = "tests/welcome.rs"]
+mod welcome_tests;
 mod widgets;
+#[cfg(test)]
+#[path = "tests/widgets.rs"]
+mod widgets_tests;
 
 use ratatui::widgets::Clear;
 use ratatui::Frame;
