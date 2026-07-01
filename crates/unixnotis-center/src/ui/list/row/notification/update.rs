@@ -17,7 +17,7 @@ use crate::ui::icons::IconResolver;
 use crate::ui::input_guard::ClickCooldown;
 use crate::ui::try_send_command;
 
-use super::super::super::list_item::RowData;
+use super::super::super::item::RowData;
 use super::state::{
     IconSignature, NotificationRowWidgets, OptionalLabelState, MAX_ACTION_LABEL_CHARS,
     MAX_BODY_LABEL_CHARS, MAX_SUMMARY_LABEL_CHARS,
@@ -109,8 +109,9 @@ pub(in crate::ui::list) fn update_notification_row(
         icon_resolver.apply_icon(&row.icon, notification, 22, scale);
         *sig_guard = Some(next_sig);
     }
-    if has_thumbnail && (signature_changed || !row.thumbnail.get_visible()) {
-        // Thumbnail visibility can change from config reload without changing the app icon source
+    if has_thumbnail {
+        // The icon cache handles repeat thumbnail lookups cheaply
+        // Reapply while visible so config reloads cannot leave a stale preview
         let scale = card.scale_factor();
         icon_resolver.apply_icon(&row.thumbnail, notification, 56, scale);
     }

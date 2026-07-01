@@ -140,3 +140,7 @@ fn remove_from_group_bucket(map: &mut HashMap<Rc<str>, VecDeque<u32>>, key: &Rc<
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/index.rs"]
+mod tests;

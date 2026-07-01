@@ -14,7 +14,7 @@ use unixnotis_core::{css::hooks, util};
 use crate::dbus::UiEvent;
 
 use super::super::super::icons::IconResolver;
-use super::super::list_item::RowData;
+use super::super::item::RowData;
 
 pub(in crate::ui::list) struct GroupRowWidgets {
     pub(super) icon: gtk::Image,
@@ -182,3 +182,7 @@ fn set_class_state(widget: &gtk::Box, class_name: &str, enabled: bool) {
         widget.remove_css_class(class_name);
     }
 }
+
+#[cfg(test)]
+#[path = "tests/group.rs"]
+mod tests;
