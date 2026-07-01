@@ -18,6 +18,7 @@ use tracing::{error, info, warn};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
+#[path = "child_process/root.rs"]
 mod child_process;
 #[path = "daemon/root.rs"]
 mod daemon;
@@ -28,10 +29,12 @@ mod expire;
 mod runtime_config;
 #[path = "shutdown_signal.rs"]
 mod shutdown_signal;
+#[path = "sound/root.rs"]
 mod sound;
 mod store;
 #[cfg(test)]
 mod test_support;
+#[path = "trial_mode/root.rs"]
 mod trial_mode;
 
 use crate::child_process::{spawn_center_supervisor, spawn_popups_supervisor};
