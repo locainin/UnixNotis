@@ -43,6 +43,7 @@ jobs:
             build-essential \
             ca-certificates \
             curl \
+            dbus \
             git \
             libgtk-4-dev \
             libgtk4-layer-shell-dev \
@@ -86,7 +87,7 @@ jobs:
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-off
 
       - name: Run workspace tests
-        run: cargo test --workspace
+        run: dbus-run-session -- cargo test --workspace
 
       - name: Run strict clippy
         run: >

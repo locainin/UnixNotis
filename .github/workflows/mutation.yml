@@ -44,6 +44,7 @@ jobs:
             build-essential \
             ca-certificates \
             curl \
+            dbus \
             git \
             libgtk-4-dev \
             libgtk4-layer-shell-dev \
@@ -77,9 +78,9 @@ jobs:
           fi
 
           if [ -n "${MUTATION_FILE}" ]; then
-            cargo mutants -f "${MUTATION_FILE}"
+            dbus-run-session -- cargo mutants -f "${MUTATION_FILE}"
           elif [ -n "${MUTATION_PACKAGE}" ]; then
-            cargo mutants -p "${MUTATION_PACKAGE}"
+            dbus-run-session -- cargo mutants -p "${MUTATION_PACKAGE}"
           else
-            cargo mutants --workspace
+            dbus-run-session -- cargo mutants --workspace
           fi
