@@ -1,4 +1,4 @@
-use super::RefreshBackoff;
+use super::{RefreshBackoff, INFLIGHT_REFRESH_RECHECK};
 use std::time::{Duration, Instant};
 
 #[test]
@@ -38,4 +38,10 @@ fn refresh_backoff_increases_on_errors() {
     backoff.note_error(now + base, base);
     // After repeated errors, backoff should delay retries
     assert!(!backoff.should_refresh(now + base, false));
+}
+
+#[test]
+fn in_flight_recheck_stays_slower_than_short_command_polling() {
+    // Async completion updates real deadlines, so rechecks should only be a safety net.
+    assert!(INFLIGHT_REFRESH_RECHECK >= Duration::from_secs(1));
 }

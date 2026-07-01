@@ -78,6 +78,23 @@ fn is_notification_owned_by_matches_sender() {
 }
 
 #[test]
+fn is_notification_owned_by_accepts_exact_sender_without_process_match() {
+    let mut store = make_store_with_limits(10, 10);
+    let outcome = store.insert(
+        make_notification_with_sender("owned", ":1.owner", 1234, 55),
+        0,
+    );
+
+    // Bus names are stronger than pid metadata, which may be absent or stale
+    assert!(store.is_notification_owned_by(
+        outcome.notification.id,
+        ":1.owner",
+        Some(5678),
+        Some(66)
+    ));
+}
+
+#[test]
 fn is_notification_owned_by_accepts_same_process_after_reconnect() {
     let mut store = make_store_with_limits(10, 10);
     let outcome = store.insert(
@@ -107,4 +124,40 @@ fn is_notification_owned_by_rejects_reused_pid_with_new_start_time() {
         Some(1234),
         Some(77)
     ));
+}
+
+#[test]
+fn is_notification_owned_by_rejects_pid_match_without_start_time() {
+    let mut store = make_store_with_limits(10, 10);
+    let outcome = store.insert(
+        make_notification_with_sender("owned", ":1.owner-a", 1234, 55),
+        0,
+    );
+
+    // Pid reuse is common enough that start time must be part of process ownership
+    assert!(!store.is_notification_owned_by(
+        outcome.notification.id,
+        ":1.owner-b",
+        Some(1234),
+        None
+    ));
+}
+
+#[test]
+fn replacement_allows_same_process_after_bus_reconnect() {
+    let mut store = make_store_with_limits(2, 10);
+
+    let first = store.insert(
+        make_notification_with_sender("first", ":1.owner-a", 1234, 55),
+        0,
+    );
+
+    let replacement = store.insert(
+        make_notification_with_sender("replacement", ":1.owner-b", 1234, 55),
+        first.notification.id,
+    );
+
+    // Same process lifetime can replace after the bus name changes
+    assert!(replacement.replaced);
+    assert_eq!(replacement.notification.id, first.notification.id);
 }

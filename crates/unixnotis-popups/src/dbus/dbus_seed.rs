@@ -3,7 +3,7 @@
 use std::time::{Duration, Instant};
 
 use tracing::{debug, warn};
-use unixnotis_core::ControlProxy;
+use unixnotis_core::{ControlState, NotificationView};
 
 use super::dbus_backoff::{Backoff, RetryLog};
 use super::dbus_types::UiEvent;
@@ -16,19 +16,58 @@ const SEED_RETRY_LOG_INTERVAL_SECS: u64 = 10;
 
 // Seed failures are tracked without forcing an immediate reconnect
 #[derive(Debug)]
-struct SeedError {
+pub(crate) struct SeedError {
     state_error: Option<String>,
     active_error: Option<String>,
     send_error: Option<String>,
 }
 
-pub(crate) async fn seed_state_with_retry(
-    proxy: &ControlProxy<'_>,
+#[derive(Debug)]
+pub(crate) struct SeedSnapshot {
+    // State and active rows are sent together so reconnect seeding cannot mix old and new data
+    state: ControlState,
+    active: Vec<NotificationView>,
+}
+
+impl SeedSnapshot {
+    pub(crate) fn from_fetch_results(
+        state: zbus::Result<ControlState>,
+        active: zbus::Result<Vec<NotificationView>>,
+    ) -> Result<Self, SeedError> {
+        // Convert both RPC results in one place so retry tests cover each failure shape
+        match (state, active) {
+            (Ok(state), Ok(active)) => Ok(Self { state, active }),
+            (state, active) => Err(SeedError {
+                state_error: state.err().map(|err| err.to_string()),
+                active_error: active.err().map(|err| err.to_string()),
+                send_error: None,
+            }),
+        }
+    }
+}
+
+pub(crate) trait PopupSeedSource {
+    async fn seed_snapshot(&self) -> Result<SeedSnapshot, SeedError>;
+}
+
+pub(crate) async fn seed_state_with_retry<S>(proxy: &S, sender: &async_channel::Sender<UiEvent>)
+where
+    S: PopupSeedSource,
+{
+    // Seed retries stay bounded so startup can recover without hanging forever
+    let deadline = seed_retry_deadline(Instant::now());
+    seed_state_with_retry_until(proxy, sender, deadline).await;
+}
+
+async fn seed_state_with_retry_until<S>(
+    proxy: &S,
     sender: &async_channel::Sender<UiEvent>,
-) {
+    deadline: Instant,
+) where
+    S: PopupSeedSource,
+{
     // Seed retries stay bounded so startup can recover without hanging forever
     let mut backoff = Backoff::new(SEED_RETRY_BASE_MS, SEED_RETRY_MAX_MS);
-    let deadline = Instant::now() + Duration::from_secs(SEED_RETRY_BUDGET_SECS);
     let mut log = RetryLog::new(Duration::from_secs(SEED_RETRY_LOG_INTERVAL_SECS));
 
     loop {
@@ -50,22 +89,23 @@ pub(crate) async fn seed_state_with_retry(
     }
 }
 
-async fn seed_state(
-    proxy: &ControlProxy<'_>,
-    sender: &async_channel::Sender<UiEvent>,
-) -> Result<(), SeedError> {
-    // Best-effort seeding still uses two daemon RPCs, so fetch both together to shrink skew
-    // A fully atomic seed would need one daemon method that returns both pieces at once
-    let (state, active) = tokio::join!(proxy.get_state(), proxy.list_active());
+fn seed_retry_deadline(now: Instant) -> Instant {
+    now + Duration::from_secs(SEED_RETRY_BUDGET_SECS)
+}
 
-    match (state, active) {
-        (Ok(state), Ok(active)) => send_seed_event(sender, UiEvent::Seed { state, active }).await,
-        (state, active) => Err(SeedError {
-            state_error: state.err().map(|err| err.to_string()),
-            active_error: active.err().map(|err| err.to_string()),
-            send_error: None,
-        }),
-    }
+async fn seed_state<S>(proxy: &S, sender: &async_channel::Sender<UiEvent>) -> Result<(), SeedError>
+where
+    S: PopupSeedSource,
+{
+    let snapshot = proxy.seed_snapshot().await?;
+    send_seed_event(
+        sender,
+        UiEvent::Seed {
+            state: snapshot.state,
+            active: snapshot.active,
+        },
+    )
+    .await
 }
 
 async fn send_seed_event(
@@ -81,7 +121,7 @@ async fn send_seed_event(
     })
 }
 
-fn log_seed_retry(log: &mut RetryLog, err: &SeedError, message: &str) {
+fn log_seed_retry(log: &mut RetryLog, err: &SeedError, message: &str) -> bool {
     log.log_with(
         || {
             warn!(
@@ -99,33 +139,9 @@ fn log_seed_retry(log: &mut RetryLog, err: &SeedError, message: &str) {
                 "{message}"
             );
         },
-    );
+    )
 }
 
 #[cfg(test)]
-mod tests {
-    use async_channel::bounded;
-    use unixnotis_core::ControlState;
-
-    use crate::dbus::UiEvent;
-
-    use super::send_seed_event;
-
-    #[tokio::test]
-    async fn closed_seed_channel_returns_error() {
-        let (tx, rx) = bounded(1);
-        drop(rx);
-
-        let err = send_seed_event(
-            &tx,
-            UiEvent::Seed {
-                state: ControlState::default(),
-                active: Vec::new(),
-            },
-        )
-        .await
-        .expect_err("closed seed channel should fail");
-
-        assert!(err.send_error.is_some());
-    }
-}
+#[path = "tests/seed.rs"]
+mod tests;

@@ -2,9 +2,9 @@
 
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use super::model::{BuildAccelConfigStatus, BuildAccelDetection};
+use unixnotis_core::program_in_path;
 
 pub fn detect_build_accel(repo_root: &Path) -> BuildAccelDetection {
     BuildAccelDetection {
@@ -49,11 +49,6 @@ pub(in crate::actions::build::accel) fn detect_build_accel_config_status(
 }
 
 fn command_exists(program: &str) -> bool {
-    // `command -v` matches normal shell lookup rules without spawning the target program
-    Command::new("sh")
-        .arg("-c")
-        .arg(format!("command -v {program} >/dev/null 2>&1"))
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+    // Check PATH directly because these probes only look for external tools
+    program_in_path(program)
 }

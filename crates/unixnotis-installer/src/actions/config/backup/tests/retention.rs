@@ -10,6 +10,7 @@ use std::sync::{mpsc, Arc};
 
 #[test]
 fn prune_old_backups_keeps_newest() {
+    let _lock = crate::tests::env::test_env_lock();
     // Backup names are date-ordered, so lexical sort can drive retention
     let root = PathBuf::from("target").join(format!(
         "unixnotis-installer-backup-prune-test-{}",
@@ -40,7 +41,7 @@ fn prune_old_backups_keeps_newest() {
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: None,
-        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
     };
     prune_old_backups(&mut ctx, &root, 2).expect("prune should succeed");
 
@@ -70,6 +71,7 @@ fn backup_config_defaults_to_three() {
 
 #[test]
 fn create_backup_dir_keeps_new_directory_when_retention_is_full() {
+    let _lock = crate::tests::env::test_env_lock();
     let root = PathBuf::from("target").join(format!(
         "unixnotis-installer-backup-create-test-{}",
         std::process::id()
@@ -97,7 +99,7 @@ fn create_backup_dir_keeps_new_directory_when_retention_is_full() {
         log_tx: tx,
         action_mode: ActionMode::Install,
         restore_backup: None,
-        service_unit_reload_required: Arc::new(AtomicBool::new(false)),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
     };
 
     let backup_dir = create_backup_dir(&mut ctx, &root, 3)
@@ -110,5 +112,63 @@ fn create_backup_dir_keeps_new_directory_when_retention_is_full() {
     );
     assert_eq!(list_backup_dirs(&root).len(), 3);
 
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn create_backup_dir_returns_none_when_retention_is_disabled() {
+    let _lock = crate::tests::env::test_env_lock();
+    let root = PathBuf::from("target").join(format!(
+        "unixnotis-installer-backup-disabled-test-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    let _ = fs::create_dir_all(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+    let (tx, rx) = mpsc::sync_channel::<UiMessage>(8);
+    let mut ctx = crate::actions::ActionContext {
+        detection: &detection,
+        paths: &paths,
+        install_state: None,
+        log_tx: tx,
+        action_mode: ActionMode::Install,
+        restore_backup: None,
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
+
+    let backup = create_backup_dir(&mut ctx, &root, 0).expect("disabled backups should succeed");
+
+    // keep = 0 is an explicit opt-out and must not create a backup directory
+    assert!(backup.is_none());
+    assert!(list_backup_dirs(&root).is_empty());
+    let log = rx.try_recv().expect("disabled backup log");
+    assert!(matches!(
+        log,
+        UiMessage::Worker(crate::events::WorkerEvent::LogLine(message))
+            if message.contains("Backups disabled")
+    ));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn list_backup_dirs_filters_non_backup_entries_and_files() {
+    let root = PathBuf::from("target").join(format!(
+        "unixnotis-installer-backup-list-test-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    let _ = fs::create_dir_all(&root);
+    fs::create_dir_all(root.join("Backup-2026-06-01")).expect("backup dir");
+    fs::create_dir_all(root.join("Other-2026-06-01")).expect("foreign dir");
+    fs::write(root.join("Backup-2026-06-02"), "not a dir").expect("backup-like file");
+
+    let backups = list_backup_dirs(&root);
+
+    // Restore UI must show only installer backup directories, not similarly named files
+    assert_eq!(backups, vec![root.join("Backup-2026-06-01")]);
     let _ = fs::remove_dir_all(&root);
 }

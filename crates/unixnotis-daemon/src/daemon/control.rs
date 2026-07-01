@@ -11,38 +11,27 @@ use unixnotis_core::{
 use zbus::message::Header;
 use zbus::{interface, SignalContext};
 
-use super::{to_fdo_error, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH};
+use super::{auth, to_fdo_error, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH};
 
-// Split auth logic out so this file stays focused on control interface behavior
-// Auth checks live there
-#[path = "control/auth.rs"]
-mod auth;
-// Split clear-all fanout out so signal planning does not crowd the interface methods
-// Clear-all logic lives there
+// Clear-all fanout stays separate so signal planning does not crowd interface methods
 #[path = "control/clear.rs"]
 mod clear;
-// Split input normalization out so validation is shared and easy to test
-// Input cleanup lives there
+// Input normalization is shared by inhibit methods and focused unit tests
 #[path = "control/sanitize.rs"]
 mod sanitize;
-// Split owner-watch logic out so background cleanup code is isolated
-// Owner watch lives there
+// Owner-watch cleanup runs in background tasks, so it stays isolated
 #[path = "control/watch.rs"]
 mod watch;
-// Split DND mutation/persistence flow out so control interface methods stay small
-// DND helpers live there
+// DND mutation and persistence flow stays out of the interface declaration
 #[path = "control/dnd.rs"]
 mod dnd;
-// Split query/read methods out so interface declarations stay compact
-// Query helpers live there
+// Query methods are read-heavy and do not need to sit beside mutating calls
 #[path = "control/query.rs"]
 mod query;
-// Split panel request/readiness flow out so panel lifecycle behavior is isolated
-// Panel helpers live there
+// Panel request and readiness checks have their own lifecycle rules
 #[path = "control/panel.rs"]
 mod panel;
-// Split inhibitor mutation/fanout flow out so concurrency behavior is isolated
-// Inhibitor helpers live there
+// Inhibitor mutation includes async owner cleanup and signal fanout
 #[path = "control/inhibit.rs"]
 mod inhibit;
 
@@ -54,8 +43,6 @@ pub struct ControlServer {
 }
 // Cap inhibitor count so memory use stays bounded even under abusive clients
 const MAX_ACTIVE_INHIBITORS: u32 = 128;
-#[cfg(test)]
-use clear::clear_all_signal_plan;
 
 impl ControlServer {
     pub fn new(state: Arc<DaemonState>) -> Self {
@@ -297,5 +284,8 @@ pub async fn spawn_inhibitor_owner_watch(state: Arc<DaemonState>) -> zbus::Resul
 }
 
 #[cfg(test)]
-#[path = "control_tests.rs"]
-mod tests;
+#[path = "control/tests/clear.rs"]
+mod clear_tests;
+#[cfg(test)]
+#[path = "control/tests/sanitize.rs"]
+mod sanitize_tests;

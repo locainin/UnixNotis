@@ -21,6 +21,8 @@ mod config_media;
 mod events;
 mod hyprland;
 mod icons;
+// Startup wiring lives outside `src/ui` but remains a child module for private UI access
+#[path = "../init/root.rs"]
 mod init;
 mod input_guard;
 mod list;
@@ -67,7 +69,6 @@ pub struct UiState {
     event_tx: async_channel::Sender<UiEvent>,
     widgets_collapsed: bool,
     refresh_source: Option<gtk::glib::SourceId>,
-    last_fast_refresh: Option<Instant>,
     last_slow_refresh: Option<Instant>,
     // Keeps the shared async runtime alive for D-Bus and media tasks.
     _runtime: Arc<tokio::runtime::Runtime>,

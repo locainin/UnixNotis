@@ -76,32 +76,5 @@ pub(super) fn notification_signal_mode_for_sender(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    use super::{
-        notification_signal_mode_for_sender, NotificationBurstState, NotificationSignalMode,
-        NOTIFICATION_DIRECT_SIGNAL_LIMIT,
-    };
-
-    #[test]
-    fn notification_signal_mode_falls_back_after_burst_limit() {
-        let cache = Mutex::new(HashMap::<String, NotificationBurstState>::new());
-
-        for _ in 0..NOTIFICATION_DIRECT_SIGNAL_LIMIT {
-            assert_eq!(
-                notification_signal_mode_for_sender(&cache, ":1.55"),
-                NotificationSignalMode::Direct
-            );
-        }
-        assert_eq!(
-            notification_signal_mode_for_sender(&cache, ":1.55"),
-            NotificationSignalMode::SnapshotOnly
-        );
-        assert_eq!(
-            notification_signal_mode_for_sender(&cache, ":1.55"),
-            NotificationSignalMode::Suppress
-        );
-    }
-}
+#[path = "tests/signal_burst.rs"]
+mod tests;

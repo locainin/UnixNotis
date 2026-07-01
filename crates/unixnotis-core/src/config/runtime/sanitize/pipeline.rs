@@ -50,8 +50,8 @@ fn sanitize_refresh_intervals(config: &mut Config) {
     );
 
     // Slow polling should never outrun the faster lane when both are enabled
-    if fast > 0 && slow > 0 && slow < fast {
-        slow = fast;
+    if fast != 0 && slow != 0 {
+        slow = slow.max(fast);
     }
 
     config.widgets.refresh_interval_ms = fast;

@@ -1,96 +1,39 @@
-//! Slider refresh state and async refresh execution
+//! Slider async refresh execution
 
 use std::cell::Cell;
+use std::io;
+use std::process::Output;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
-use gtk::prelude::*;
 use tracing::warn;
-use unixnotis_core::{util, NumericParseMode, PanelDebugLevel};
+use unixnotis_core::{util, PanelDebugLevel};
 
 use super::super::run_command_capture_status_async;
-use super::super::slider_parse::{format_value, parse_muted, parse_numeric};
-use super::value::slider_value_changed;
+use super::apply::{apply_successful_output, note_slider_error};
+use super::request::SliderRefreshRequest;
+use super::state::SliderRefreshState;
 use crate::debug;
 use crate::ui::perf_probe;
 
-#[derive(Clone)]
-pub(super) struct SliderRefreshState {
-    // Slider updated from command output
-    pub(super) scale: gtk::Scale,
-    // Label kept in sync with the slider
-    pub(super) label: gtk::Label,
-    // Icon image updated after refresh
-    pub(super) icon_image: gtk::Image,
-    // Guard stops refresh writes from triggering another set command
-    pub(super) updating: Rc<Cell<bool>>,
-    // Generation drops stale async refresh results
-    pub(super) refresh_gen: Rc<Cell<u64>>,
-    // Normal icon shown when not muted
-    pub(super) icon_name: String,
-    // Optional icon used when muted
-    pub(super) icon_muted: Option<String>,
-    // Local gate keeps refresh bursts bounded to one running and one pending
-    pub(super) gate: SliderRefreshGate,
-}
-
-#[derive(Clone)]
-pub(super) struct SliderRefreshMeta {
-    // Non-widget refresh state that is safe to hold across signal closures
-    pub(super) updating: Rc<Cell<bool>>,
-    // Generation drops stale async refresh results
-    pub(super) refresh_gen: Rc<Cell<u64>>,
-    // Normal icon shown when not muted
-    pub(super) icon_name: String,
-    // Optional icon used when muted
-    pub(super) icon_muted: Option<String>,
-    // Local gate keeps refresh bursts bounded to one running and one pending
-    pub(super) gate: SliderRefreshGate,
-}
-
-#[derive(Clone)]
-pub(super) struct SliderRefreshGate {
-    // True while one refresh command is already running
-    in_flight: Rc<Cell<bool>>,
-    // Remembers one trailing refresh request during bursts
-    pending: Rc<Cell<bool>>,
-}
-
-impl SliderRefreshGate {
-    pub(super) fn new() -> Self {
-        Self {
-            in_flight: Rc::new(Cell::new(false)),
-            pending: Rc::new(Cell::new(false)),
-        }
-    }
-
-    pub(super) fn begin_or_queue(&self) -> bool {
-        if self.in_flight.get() {
-            // One trailing refresh is enough to cover a burst of incoming requests
-            self.pending.set(true);
-            return false;
-        }
-        self.in_flight.set(true);
-        true
-    }
-
-    pub(super) fn finish(&self) -> bool {
-        self.in_flight.set(false);
-        self.pending.replace(false)
-    }
-}
-
 pub(super) fn request_refresh(
-    cmd: String,
-    min: f64,
-    max: f64,
-    step: f64,
-    parse_mode: NumericParseMode,
+    request: SliderRefreshRequest,
     refresh: SliderRefreshState,
+    base_interval: Duration,
+    force: bool,
 ) {
+    if !refresh
+        .backoff
+        .borrow()
+        .should_refresh(Instant::now(), force)
+    {
+        return;
+    }
+
     // Collapse bursty requests into one running refresh and one trailing refresh
     if !refresh.gate.begin_or_queue() {
         perf_probe::slider_refresh_queued();
-        let cmd_snip = util::log_snippet(&cmd);
+        let cmd_snip = util::log_snippet(&request.cmd);
         debug::log(PanelDebugLevel::Verbose, || {
             format!("slider refresh queued while in flight cmd=\"{}\"", cmd_snip)
         });
@@ -98,122 +41,78 @@ pub(super) fn request_refresh(
     }
 
     perf_probe::slider_refresh_start();
-    let cmd_snip = util::log_snippet(&cmd);
+    let cmd_snip = util::log_snippet(&request.cmd);
     debug::log(PanelDebugLevel::Verbose, || {
         format!("slider refresh start cmd=\"{}\"", cmd_snip)
     });
-    start_refresh(cmd, min, max, step, parse_mode, refresh);
+    start_refresh(request, refresh, base_interval);
 }
 
 fn start_refresh(
-    cmd: String,
-    min: f64,
-    max: f64,
-    step: f64,
-    parse_mode: NumericParseMode,
+    request: SliderRefreshRequest,
     refresh: SliderRefreshState,
+    base_interval: Duration,
 ) {
     // New refresh id makes older async results stale
     let gen = next_refresh_generation(&refresh.refresh_gen);
-
-    let rx = run_command_capture_status_async(&cmd);
-    let refresh_cmd = cmd.clone();
+    let rx = run_command_capture_status_async(&request.cmd);
     let refresh_gen = refresh.refresh_gen.clone();
+
     glib::MainContext::default().spawn_local(async move {
-        let output = match rx.recv().await {
-            Ok(output) => output,
+        match rx.recv().await {
+            Ok(output) if refresh_gen.get() == gen => {
+                handle_worker_result(&request, &refresh, output, base_interval);
+            }
+            Ok(_) => {
+                // Newer refresh work already won the race
+            }
             Err(_) => {
                 // Closed receivers still need to release the gate
-                finish_refresh(refresh_cmd, min, max, step, parse_mode, refresh);
-                return;
-            }
-        };
-        if refresh_gen.get() == gen {
-            match output {
-                Ok(output) => {
-                    if !output.status.success() {
-                        warn!(?cmd, "slider command returned error");
-                    } else {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        if let Some(value) = parse_numeric(&stdout, min, max, parse_mode) {
-                            let muted = parse_muted(&stdout);
-                            let formatted = format_value(value);
-                            // Skip widget writes when the visible state is already current
-                            let value_changed =
-                                slider_value_changed(refresh.scale.value(), value, step);
-                            let label_changed = refresh.label.text().as_str() != formatted;
-                            if value_changed || label_changed {
-                                refresh.updating.set(true);
-                                if value_changed {
-                                    perf_probe::slider_value_write();
-                                    refresh.scale.set_value(value);
-                                }
-                                if label_changed {
-                                    perf_probe::slider_label_write();
-                                    refresh.label.set_text(&formatted);
-                                }
-                                refresh.updating.set(false);
-                                debug::log(PanelDebugLevel::Verbose, || {
-                                    format!(
-                                        "slider updated cmd=\"{}\" value={value:.1} muted={muted}",
-                                        cmd
-                                    )
-                                });
-                            }
-                            if let Some(icon_muted) = refresh.icon_muted.as_ref() {
-                                // Not every slider has a muted icon pair
-                                let icon = if muted {
-                                    icon_muted
-                                } else {
-                                    &refresh.icon_name
-                                };
-                                // Slider refreshes can be frequent, so skip icon churn when nothing changed
-                                if refresh.icon_image.icon_name().as_deref() != Some(icon.as_str())
-                                {
-                                    perf_probe::slider_icon_write();
-                                    refresh.icon_image.set_icon_name(Some(icon));
-                                }
-                            }
-                        } else {
-                            let snippet = util::log_snippet(stdout.trim());
-                            debug::log(PanelDebugLevel::Warn, || {
-                                format!(
-                                    "slider parse failed cmd=\"{}\" output=\"{}\"",
-                                    cmd, snippet
-                                )
-                            });
-                        }
-                    }
-                }
-                Err(err) => {
-                    warn!(?err, "slider command failed");
-                }
+                note_slider_error(&refresh, base_interval);
             }
         }
 
         // Every exit path flows through one gate release
-        finish_refresh(refresh_cmd, min, max, step, parse_mode, refresh);
+        finish_refresh(request, refresh, base_interval);
     });
 }
 
+fn handle_worker_result(
+    request: &SliderRefreshRequest,
+    refresh: &SliderRefreshState,
+    output: io::Result<Output>,
+    base_interval: Duration,
+) {
+    match output {
+        Ok(output) if output.status.success() => {
+            apply_successful_output(request, refresh, &output.stdout, base_interval);
+        }
+        Ok(_) => {
+            warn!(cmd = ?request.cmd, "slider command returned error");
+            note_slider_error(refresh, base_interval);
+        }
+        Err(err) => {
+            warn!(?err, "slider command failed");
+            note_slider_error(refresh, base_interval);
+        }
+    }
+}
+
 fn finish_refresh(
-    cmd: String,
-    min: f64,
-    max: f64,
-    step: f64,
-    parse_mode: NumericParseMode,
+    request: SliderRefreshRequest,
     refresh: SliderRefreshState,
+    base_interval: Duration,
 ) {
     // One queued refresh is allowed to run after the current one finishes
     if refresh.gate.finish() {
-        let cmd_snip = util::log_snippet(&cmd);
+        let cmd_snip = util::log_snippet(&request.cmd);
         debug::log(PanelDebugLevel::Verbose, || {
             format!(
                 "slider refresh consumed pending request cmd=\"{}\"",
                 cmd_snip
             )
         });
-        request_refresh(cmd, min, max, step, parse_mode, refresh);
+        request_refresh(request, refresh, base_interval, true);
     }
 }
 

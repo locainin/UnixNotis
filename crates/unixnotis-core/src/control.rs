@@ -66,8 +66,11 @@ pub fn should_archive_closed_notification(
 }
 
 #[cfg(test)]
-#[path = "control/tests.rs"]
-mod tests;
+#[path = "tests/control/debug.rs"]
+mod debug_tests;
+#[cfg(test)]
+#[path = "tests/control/popups.rs"]
+mod popup_tests;
 
 /// Tuple layout for inhibitor listings: (id, reason, scope, owner).
 pub type InhibitorInfo = (u64, String, u32, String);

@@ -88,9 +88,8 @@ pub(super) fn read_battery_from(root: &Path) -> Option<String> {
             (charge_now_total.saturating_mul(100) + charge_full_total / 2) / charge_full_total;
         return Some(percent.to_string());
     }
-    if capacity_count > 0 {
+    if let Some(avg) = (capacity_sum + capacity_count / 2).checked_div(capacity_count) {
         // Average capacity is less accurate but avoids returning nothing on minimal systems.
-        let avg = (capacity_sum + capacity_count / 2) / capacity_count;
         return Some(avg.to_string());
     }
     None

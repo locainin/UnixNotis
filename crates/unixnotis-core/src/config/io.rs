@@ -55,10 +55,8 @@ impl Config {
             ignored_keys.push(path.to_string());
         })
         .map_err(|err| ConfigError::ParseFailed(err.to_string()))?;
-        if !ignored_keys.is_empty() {
-            for key in ignored_keys {
-                warn!(key = %key, "unknown config key ignored");
-            }
+        for key in ignored_keys {
+            warn!(key = %key, "unknown config key ignored");
         }
         config.apply_runtime_defaults();
         Ok(config)
@@ -142,7 +140,10 @@ impl Config {
                 if let Err(err) = fs::rename(&legacy, &backup) {
                     // Non-fatal: leave legacy style.css in place if backup fails (permissions,
                     // existing paths, or filesystem limitations).
-                    if !LEGACY_RENAME_WARNED.swap(true, Ordering::Relaxed) {
+                    if LEGACY_RENAME_WARNED
+                        .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+                        .is_ok()
+                    {
                         warn!(
                             ?err,
                             legacy = %legacy.display(),
@@ -196,7 +197,10 @@ impl Config {
                     return Ok(path.join("unixnotis"));
                 }
             }
-            if !INVALID_XDG_WARNED.swap(true, Ordering::Relaxed) {
+            if INVALID_XDG_WARNED
+                .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
                 warn!("invalid XDG_CONFIG_HOME; falling back to $HOME/.config");
             }
         }

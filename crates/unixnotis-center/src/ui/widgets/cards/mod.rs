@@ -21,6 +21,7 @@ use self::common::apply_cached_value;
 use super::plugin::{parse_card_plugin_payload, PluginOutputLimits};
 use super::utils::{
     run_command_capture_async, run_command_capture_with_timeout_async, RefreshBackoff,
+    INFLIGHT_REFRESH_RECHECK,
 };
 use crate::debug;
 
@@ -165,7 +166,8 @@ impl CardItem {
                 .or(Some(Duration::ZERO));
         }
         if self.inflight.get() {
-            return Some(Duration::from_millis(250));
+            // Keep the UI scheduler calm while async card commands are already in flight
+            return Some(INFLIGHT_REFRESH_RECHECK);
         }
         self.refresh_backoff
             .borrow()
