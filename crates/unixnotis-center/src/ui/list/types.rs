@@ -8,7 +8,7 @@ use std::rc::Rc;
 use gtk::glib;
 use unixnotis_core::NotificationView;
 
-use super::list_item::RowItem;
+use super::item::RowItem;
 
 /// Maintains notification data and renders grouped widgets into the panel list.
 pub struct NotificationList {
@@ -88,3 +88,7 @@ pub(super) enum RowKey {
     GroupHeader { group: Rc<str> },
     Notification { id: u32 },
 }
+
+#[cfg(test)]
+#[path = "tests/types.rs"]
+mod tests;

@@ -5,7 +5,7 @@ use std::rc::Rc;
 use gtk::glib;
 use gtk::glib::object::Cast;
 
-use super::list_item::{RowData, RowPresentation};
+use super::item::{RowData, RowPresentation};
 use super::types::{NotificationList, RowKey};
 use super::RowItem;
 
@@ -142,19 +142,24 @@ fn collapsed_stack_depth(count: usize, expanded: bool) -> u8 {
 
 pub(super) fn common_prefix_suffix(current: &[RowKey], next: &[RowKey]) -> (usize, usize) {
     // Compute shared prefix/suffix so list-store splices only touch the minimal changed window.
-    let mut prefix = 0;
-    let min_len = current.len().min(next.len());
-    while prefix < min_len && current[prefix] == next[prefix] {
-        prefix += 1;
-    }
+    let prefix = current
+        .iter()
+        .zip(next.iter())
+        .take_while(|(left, right)| left == right)
+        .count();
 
-    let mut suffix = 0;
-    while suffix < current.len().saturating_sub(prefix)
-        && suffix < next.len().saturating_sub(prefix)
-        && current[current.len() - 1 - suffix] == next[next.len() - 1 - suffix]
-    {
-        suffix += 1;
-    }
+    let suffix_limit = current.len().min(next.len()).saturating_sub(prefix);
+    let suffix = current
+        .iter()
+        .rev()
+        .zip(next.iter().rev())
+        .take(suffix_limit)
+        .take_while(|(left, right)| left == right)
+        .count();
 
     (prefix, suffix)
 }
+
+#[cfg(test)]
+#[path = "tests/blocks.rs"]
+mod tests;
