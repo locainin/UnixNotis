@@ -261,5 +261,5 @@ impl NotificationStore {
 }
 
 #[cfg(test)]
-#[path = "store/store_tests/mod.rs"]
+#[path = "store/store_tests/support.rs"]
 mod store_tests;
