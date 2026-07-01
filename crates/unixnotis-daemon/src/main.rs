@@ -25,6 +25,9 @@ mod daemon;
 #[path = "dbus_owner.rs"]
 mod dbus_owner;
 mod expire;
+#[cfg(test)]
+#[path = "tests/module_wiring.rs"]
+mod module_wiring_tests;
 #[path = "runtime_config.rs"]
 mod runtime_config;
 #[path = "shutdown_signal.rs"]
