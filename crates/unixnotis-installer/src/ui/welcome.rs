@@ -6,7 +6,9 @@ use ratatui::Frame;
 
 use super::header::draw_header;
 use super::widgets::truncate_to_width;
-use crate::actions::{format_daemon_status, summarize_owner};
+use crate::actions::{
+    daemon_has_displayable_status, daemon_status_is_warning, format_daemon_status, summarize_owner,
+};
 use crate::app::{App, MenuItem};
 use crate::checks::{CheckItem, CheckState};
 
@@ -83,30 +85,64 @@ fn render_status(app: &App) -> Text<'static> {
     lines.extend(render_check(&app.checks.install_paths));
     lines.extend(render_check(&app.checks.path_contains_bin));
 
-    // Visual separator between sections.
-    lines.push(Line::from(""));
+    render_daemon_section(app, &mut lines);
 
-    // Section heading: D-Bus owner and daemon detection.
+    Text::from(lines)
+}
+
+fn render_daemon_section(app: &App, lines: &mut Vec<Line<'static>>) {
+    let visible_daemons = app
+        .detection
+        .daemons
+        .iter()
+        .filter(|daemon| daemon_has_displayable_status(daemon))
+        .collect::<Vec<_>>();
+
+    if app.detection.owner.is_none() && visible_daemons.is_empty() {
+        // Empty owner plus inactive daemon probes should not burn the first screen
+        return;
+    }
+
+    // Visual separator appears only when there is a real second section to show
+    lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Notification daemons",
         Style::default().add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(vec![
         Span::styled("Owner: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(summarize_owner(&app.detection.owner)),
+        Span::styled(
+            summarize_owner(&app.detection.owner),
+            daemon_owner_style(app.detection.owner.is_some()),
+        ),
     ]));
-    // Each daemon entry includes a formatted status line.
-    for daemon in &app.detection.daemons {
+
+    for daemon in visible_daemons {
+        // Rows that survive filtering are useful signals, so color the result like checks
         lines.push(Line::from(vec![
             Span::styled(
                 format!("{}: ", daemon.name),
                 Style::default().fg(Color::Cyan),
             ),
-            Span::raw(format_daemon_status(daemon)),
+            Span::styled(format_daemon_status(daemon), daemon_status_style(daemon)),
         ]));
     }
+}
 
-    Text::from(lines)
+fn daemon_owner_style(has_owner: bool) -> Style {
+    if has_owner {
+        Style::default().fg(Color::Green)
+    } else {
+        Style::default().fg(Color::Yellow)
+    }
+}
+
+fn daemon_status_style(daemon: &crate::detect::DetectedDaemon) -> Style {
+    if daemon_status_is_warning(daemon) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default().fg(Color::Green)
+    }
 }
 
 fn render_check(item: &CheckItem) -> Vec<Line<'static>> {

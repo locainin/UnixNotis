@@ -34,7 +34,9 @@ pub use build::{
     BuildAccelConfigStatus, BuildAccelDetection, BuildAccelOutcome,
 };
 pub use context::ActionContext;
-pub use format::{format_daemon_status, summarize_owner};
+pub use format::{
+    daemon_has_displayable_status, daemon_status_is_warning, format_daemon_status, summarize_owner,
+};
 pub use install_state::{check_install_state, InstallState};
 pub use plan::{build_plan, run_step, steps_from_plan, StepKind};
 
