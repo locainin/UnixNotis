@@ -111,3 +111,21 @@ fn render_steps_reserves_width_for_status_prefix() {
     assert!(!rendered.contains("[ok] a..."));
     assert!(!rendered.contains("[ok] ab..."));
 }
+
+#[test]
+fn style_lookup_handles_multibyte_text_before_label() {
+    use ratatui::style::{Color, Style};
+    use ratatui::text::{Line, Span};
+    use ratatui::widgets::Paragraph;
+
+    let paragraph = Paragraph::new(Line::from(vec![
+        Span::raw("é "),
+        Span::styled("selected", Style::default().fg(Color::Cyan)),
+    ]));
+    let buffer = render_widget_buffer(paragraph, 20, 1);
+
+    let style = super::test_support::style_for_text(&buffer, "selected");
+
+    // Multibyte text before the label must not shift the style lookup by raw byte count
+    assert_eq!(style.fg, Some(Color::Cyan));
+}

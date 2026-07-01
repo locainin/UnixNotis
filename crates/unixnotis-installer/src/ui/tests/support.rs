@@ -130,8 +130,9 @@ fn find_text_start(buffer: &Buffer, needle: &str) -> Option<(u16, u16)> {
         }
 
         if let Some(index) = row.find(needle) {
-            // UI tests use ASCII needles, so the byte index matches the cell index
-            let x = u16::try_from(index).ok()?;
+            // Convert byte offset to rendered-cell offset so multibyte labels stay valid
+            let x = row[..index].chars().count();
+            let x = u16::try_from(x).ok()?;
             return Some((x, y));
         }
     }
