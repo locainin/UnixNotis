@@ -48,7 +48,9 @@ jobs:
             git \
             libgtk-4-dev \
             libgtk4-layer-shell-dev \
-            pkg-config
+            pkg-config \
+            xauth \
+            xvfb
 
       - name: Check out repository
         uses: actions/checkout@v5
@@ -78,9 +80,9 @@ jobs:
           fi
 
           if [ -n "${MUTATION_FILE}" ]; then
-            dbus-run-session -- cargo mutants -f "${MUTATION_FILE}"
+            xvfb-run -a dbus-run-session -- cargo mutants -f "${MUTATION_FILE}"
           elif [ -n "${MUTATION_PACKAGE}" ]; then
-            dbus-run-session -- cargo mutants -p "${MUTATION_PACKAGE}"
+            xvfb-run -a dbus-run-session -- cargo mutants -p "${MUTATION_PACKAGE}"
           else
-            dbus-run-session -- cargo mutants --workspace
+            xvfb-run -a dbus-run-session -- cargo mutants --workspace
           fi

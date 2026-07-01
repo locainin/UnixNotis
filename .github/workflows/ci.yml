@@ -48,7 +48,9 @@ jobs:
             libgtk-4-dev \
             libgtk4-layer-shell-dev \
             pkg-config \
-            shellcheck
+            shellcheck \
+            xauth \
+            xvfb
 
       - name: Check out repository
         uses: actions/checkout@v5
@@ -87,7 +89,7 @@ jobs:
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-off
 
       - name: Run workspace tests
-        run: dbus-run-session -- cargo test --workspace
+        run: xvfb-run -a dbus-run-session -- cargo test --workspace
 
       - name: Run strict clippy
         run: >
