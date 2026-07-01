@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: UnixNotis Wiki
+    url: https://github.com/locainin/UnixNotis/wiki
+    about: Check installation, configuration, styling, preset, and troubleshooting docs

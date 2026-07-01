@@ -34,7 +34,8 @@ For bug fixes, explain what was actually wrong
 
 ## Testing
 
-Run the full workspace checks and list any extra verification that was done
+Run the full workspace checks and list any extra verification that was done.
+For docs-only changes, say that no code regression run was needed.
 
 ```sh
 cargo test --workspace
@@ -45,6 +46,8 @@ Extra verification:
 
 - manual checks:
 - screenshots or terminal output:
+- mutation testing, if relevant:
+- service-manager/backend checks, if relevant:
 
 ## Branch Freshness
 
@@ -64,6 +67,8 @@ Note anything that needs to be called out for users or maintainers
 - [ ] CSS or theme behavior changed
 - [ ] CLI behavior or flags changed
 - [ ] D-Bus behavior changed
+- [ ] installer or service-manager behavior changed
+- [ ] preset import/export behavior changed
 - [ ] Wiki docs need an update
 - [ ] `README.md` or `CONTRIBUTING.md` need an update
 
@@ -77,6 +82,8 @@ Call out anything reviewers should pay extra attention to
 - branch freshness checked:
 - edge cases checked:
 - tradeoffs or limitations:
+- CI or workflow impact:
+- mutation-test scope or reason skipped:
 
 ## Checklist
 
@@ -89,3 +96,4 @@ Call out anything reviewers should pay extra attention to
 - [ ] Logs, errors, and warnings are still clear
 - [ ] No unnecessary background work, polling, or unbounded state was added
 - [ ] Any new config, CSS, or docs impact is noted above
+- [ ] Installer/service-manager, D-Bus, preset, and wiki impacts are called out when relevant

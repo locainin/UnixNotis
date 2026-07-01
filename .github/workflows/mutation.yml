@@ -1,0 +1,72 @@
+name: Mutation testing
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Cargo package to mutate, such as unixnotis-installer. Leave empty for workspace.
+        required: false
+        type: string
+      file:
+        description: Single Rust file to mutate. Leave empty unless reviewing one risky file.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  mutation:
+    name: Cargo mutants
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev \
+            libgtk4-layer-shell-dev \
+            pkg-config
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
+
+      - name: Run mutation tests
+        env:
+          MUTATION_PACKAGE: ${{ inputs.package }}
+          MUTATION_FILE: ${{ inputs.file }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${MUTATION_PACKAGE}" ] && [ -n "${MUTATION_FILE}" ]; then
+            echo "Choose either package or file, not both" >&2
+            exit 1
+          fi
+
+          if [ -n "${MUTATION_FILE}" ]; then
+            cargo mutants -f "${MUTATION_FILE}"
+          elif [ -n "${MUTATION_PACKAGE}" ]; then
+            cargo mutants -p "${MUTATION_PACKAGE}"
+          else
+            cargo mutants --workspace
+          fi
