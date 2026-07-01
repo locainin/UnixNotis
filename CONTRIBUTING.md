@@ -21,6 +21,8 @@ Good contributions usually do one or more of these:
 - Improve maintainability without changing behavior
 - Improve documentation, diagnostics, or test coverage
 - Keep behavior aligned with the project's Wayland-first scope
+- Improve installer reliability across supported user service managers
+- Harden preset import/export, D-Bus control paths, config loading, or filesystem writes
 
 ## Scope and design expectations
 
@@ -32,6 +34,12 @@ Please keep contributions in scope for the project.
 - Do not add background work, polling, or timers unless they are clearly necessary and bounded
 - Prefer event-driven behavior over periodic work when possible
 - Keep memory use predictable and avoid unbounded queues, caches, or retries
+- Keep installer behavior conservative. Service files, shell startup files, Hyprland config, and
+  preset imports touch user-owned state and must fail closed when ownership is unclear
+- Do not follow or overwrite symlinks in installer-owned paths unless the code is explicitly
+  handling a symlink artifact and checking the expected target
+- Keep command execution argv-based when possible. Use shell strings only where the target platform
+  requires one, such as compositor startup entries, and quote every user-controlled path
 
 ## Performance expectations
 
@@ -41,6 +49,8 @@ Performance matters here.
 - Repeated work should be coalesced, cached, or bounded where appropriate
 - Long-running processes should not slowly accumulate memory or CPU overhead
 - Shell commands, subprocesses, watchers, and async tasks should have a clear lifecycle
+- File watchers and `watch_cmd` integrations should filter startup noise or debounce bursts when
+  noisy command output is expected
 
 Good rules of thumb:
 
@@ -57,6 +67,9 @@ Good rules of thumb:
 - Add comments where they actually help future maintenance
 - Avoid drive-by refactors unless they are necessary for the change
 - Keep naming direct and consistent with the existing codebase
+- Keep backend-specific installer logic behind the service-manager abstraction instead of spreading
+  systemd, dinit, runit, or s6 branches through unrelated files
+- Keep D-Bus API changes explicit in code, docs, and compatibility notes
 
 ## Testing
 
@@ -67,6 +80,39 @@ cargo test --workspace
 cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::restriction
 ```
 If a full run is not practical, say what was tested and what was not.
+
+Tests should prove behavior, not just execute lines.
+
+- Cover the normal path, edge cases, and failure cases
+- Add regression coverage for the original bug when fixing one
+- Prefer real behavior over mocks when it is cheap and safe
+- Keep tests near the module being tested, under an organized `tests` module or folder
+- Use clear test names that say what condition is checked and what result is expected
+- Avoid tests that pass if the implementation is accidentally deleted or changed into a no-op
+
+For logic that is safety-critical, branch-heavy, or easy to fake with weak assertions, run mutation
+testing before asking for review:
+
+```sh
+cargo mutants --workspace
+```
+
+If a full mutation run is too expensive, scope it to the touched crate or file and explain the
+scope in the pull request:
+
+```sh
+cargo mutants -p unixnotis-installer
+cargo mutants -f crates/unixnotis-daemon/src/daemon/auth/authorization.rs
+```
+
+Mutation testing is especially useful for:
+
+- installer artifact write/remove safety
+- service-manager command construction
+- D-Bus authorization and notification ownership checks
+- config sanitization and path handling
+- preset import/export validation and rollback behavior
+- parser, tokenizer, and CSS diagnostic logic
 
 ## Branch workflow
 
@@ -125,6 +171,8 @@ Please try to keep pull requests easy to review.
 - Explain any behavior change, tradeoff, or limitation
 - Include before/after measurements when claiming performance improvements
 - Update docs when behavior or configuration changes
+- Mention service-manager impact when installer startup behavior changes
+- Mention D-Bus, CLI, config, CSS, preset, and wiki impacts when relevant
 
 If docs live in the Wiki and are not updated in the PR, note what needs to be updated.
 

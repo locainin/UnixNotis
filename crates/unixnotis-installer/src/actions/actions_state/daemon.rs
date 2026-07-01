@@ -161,6 +161,10 @@ fn wait_for_exit(ctx: &mut ActionContext, pid: u32, expected_comm: &str) -> Resu
 }
 
 fn pid_alive(pid: u32) -> Result<bool> {
+    if pid == 0 || pid > i32::MAX as u32 {
+        return Ok(false);
+    }
+
     let status = Command::new("kill")
         .args(["-0", &pid.to_string()])
         // Dead-PID probes are expected during waits, so keep kill diagnostics out of the TUI

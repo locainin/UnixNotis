@@ -1,0 +1,93 @@
+name: Installer or service-manager problem
+description: Report an installer, startup, uninstall, or service-manager failure
+title: "[Install]: "
+labels:
+  - bug
+  - installer
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when the installer, startup service, environment sync, Hyprland bootstrap,
+        trial mode, or uninstall behavior fails.
+
+  - type: dropdown
+    id: service_manager
+    attributes:
+      label: Selected service manager
+      options:
+        - systemd --user
+        - dinit --user
+        - runit user services
+        - s6-rc user services
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the system details needed to reproduce installer behavior.
+      placeholder: |
+        - Distro:
+        - Wayland compositor:
+        - Shell:
+        - Install command:
+        - UNIXNOTIS_SERVICE_MANAGER:
+        - UNIXNOTIS_RUNIT_SERVICE_DIR:
+        - UNIXNOTIS_S6_DATA_DIR:
+        - UNIXNOTIS_S6RC_LIVE_DIR:
+    validations:
+      required: true
+
+  - type: textarea
+    id: failure
+    attributes:
+      label: What failed?
+      description: Describe the failed action and what should have happened instead.
+      placeholder: |
+        Install failed while ...
+        Startup did not ...
+        Uninstall refused ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Installer output or service status
+      description: Paste terminal output, service status, or relevant logs as text.
+      render: shell
+      placeholder: |
+        cargo run --release -p unixnotis-installer -- --service-manager ...
+        systemctl --user status unixnotis-daemon.service
+        dinitctl --user status unixnotis-daemon
+        sv status "$HOME/.config/service/unixnotis-daemon"
+        s6-rc -l "$UNIXNOTIS_S6RC_LIVE_DIR" -a list
+    validations:
+      required: true
+
+  - type: textarea
+    id: filesystem
+    attributes:
+      label: Relevant paths
+      description: Include service artifact paths or config files mentioned by the installer.
+      placeholder: |
+        - $HOME/.local/bin:
+        - service artifact path:
+        - Hyprland config path:
+        - shell startup file:
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues before opening this report
+          required: true
+        - label: I included the selected service manager and install command
+          required: true
+        - label: I pasted terminal output as text instead of only attaching screenshots
+          required: true
