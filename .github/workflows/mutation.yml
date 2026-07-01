@@ -46,7 +46,7 @@ jobs:
             curl \
             git \
             libgtk-4-dev \
-            libgtk-layer-shell-dev \
+            libgtk4-layer-shell-dev \
             pkg-config
 
       - name: Check out repository
