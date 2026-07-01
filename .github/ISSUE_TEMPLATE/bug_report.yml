@@ -34,7 +34,9 @@ body:
       placeholder: |
         - Distro:
         - Wayland compositor (Hyprland, Sway, etc):
+        - Service manager (systemd, dinit, runit, s6, none/manual):
         - Install method:
+        - Config path if not the default:
         - Hardware details if relevant:
     validations:
       required: true
@@ -85,6 +87,19 @@ body:
       placeholder: Paste logs here
 
   - type: textarea
+    id: service_status
+    attributes:
+      label: Service or process status
+      description: |
+        If the bug involves startup, shutdown, missing UI processes, trial mode, or installer-managed services,
+        paste the matching service status or process information here.
+      placeholder: |
+        systemctl --user status unixnotis-daemon.service
+        dinitctl --user status unixnotis-daemon
+        sv status "$HOME/.config/service/unixnotis-daemon"
+        s6-rc -l "$UNIXNOTIS_S6RC_LIVE_DIR" -a list
+
+  - type: textarea
     id: css_check_output
     attributes:
       label: CSS check output
@@ -104,4 +119,6 @@ body:
         - label: I included enough detail for someone else to try to reproduce the issue
           required: true
         - label: I tested this on the current `master` branch or the latest release available to me, or explained why I could not
+          required: true
+        - label: I included service-manager or CSS diagnostics when those areas are involved
           required: true

@@ -70,6 +70,14 @@ fn pid_alive_reports_impossible_pid_as_not_alive() {
 }
 
 #[test]
+fn pid_alive_reports_zero_pid_as_not_alive() {
+    let alive = pid_alive(0).expect("zero pid probe should still run");
+
+    // PID 0 targets the caller's process group, not one daemon process
+    assert!(!alive);
+}
+
+#[test]
 fn pid_matches_comm_rejects_wrong_process_name() {
     let pid = std::process::id();
 
