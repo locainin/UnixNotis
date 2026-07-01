@@ -23,29 +23,42 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   mutation:
     name: Cargo mutants
     runs-on: ubuntu-24.04
+    container: debian:trixie-slim
     timeout-minutes: 120
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
       - name: Install system dependencies
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            bash \
+            build-essential \
+            ca-certificates \
+            curl \
+            git \
             libgtk-4-dev \
             libgtk-layer-shell-dev \
             pkg-config
 
+      - name: Check out repository
+        uses: actions/checkout@v5
+
       - name: Install Rust toolchain
         run: |
           set -euo pipefail
-          rustup toolchain install stable --profile minimal
+          curl --proto '=https' --tlsv1.2 -fsS https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+          source "${HOME}/.cargo/env"
           rustup default stable
 
       - name: Install cargo-mutants
