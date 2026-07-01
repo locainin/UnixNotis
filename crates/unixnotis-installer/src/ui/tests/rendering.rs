@@ -7,7 +7,7 @@ use ratatui::Terminal;
 use crate::actions::{BuildAccelConfigStatus, BuildAccelDetection, BuildAccelOutcome};
 use crate::app::{App, BuildAccelState, ProgressState, Screen};
 use crate::checks::{CheckItem, CheckState, Checks};
-use crate::detect::Detection;
+use crate::detect::{DetectedDaemon, Detection, OwnerInfo};
 use crate::model::{ActionMode, ActionStep, ResetAction, StepStatus};
 
 fn app_for_rendering(screen: Screen) -> App {
@@ -89,6 +89,48 @@ fn draw_welcome_renders_status_and_action_menu() {
 }
 
 #[test]
+fn draw_welcome_hides_daemon_section_when_only_probe_errors_exist() {
+    let mut app = app_for_rendering(Screen::Welcome);
+    app.detection.daemons = vec![detected_daemon_with_status(
+        "dunst",
+        false,
+        Some("systemctl failed".to_string()),
+        Vec::new(),
+        false,
+    )];
+
+    let screen = render_app(&app);
+
+    // Error-only systemd probe noise should not fill the first screen on non-systemd setups
+    assert!(!screen.contains("Notification daemons"));
+    assert!(!screen.contains("systemctl failed"));
+}
+
+#[test]
+fn draw_welcome_shows_daemon_section_when_runtime_signal_exists() {
+    let mut app = app_for_rendering(Screen::Welcome);
+    app.detection.owner = Some(OwnerInfo {
+        pid: Some(4242),
+        comm: Some("dunst".to_string()),
+    });
+    app.detection.daemons = vec![detected_daemon_with_status(
+        "dunst",
+        false,
+        None,
+        vec![4242],
+        true,
+    )];
+
+    let screen = render_app(&app);
+
+    // Real ownership or running PIDs still need to be visible for conflict debugging
+    assert!(screen.contains("Notification daemons"));
+    assert!(screen.contains("Owner: dunst"));
+    assert!(screen.contains("dbus-owner"));
+    assert!(screen.contains("pid 4242"));
+}
+
+#[test]
 fn draw_progress_renders_steps_logs_and_error_summary() {
     let mut app = app_for_rendering(Screen::Progress(ActionMode::Install));
     app.progress_state = ProgressState::Failed;
@@ -101,6 +143,23 @@ fn draw_progress_renders_steps_logs_and_error_summary() {
     assert!(screen.contains("Enable user service"));
     assert!(screen.contains("cargo command failed"));
     assert!(screen.contains("second log"));
+}
+
+fn detected_daemon_with_status(
+    name: &str,
+    systemd_active: bool,
+    systemd_error: Option<String>,
+    running_pids: Vec<u32>,
+    is_owner: bool,
+) -> DetectedDaemon {
+    DetectedDaemon {
+        name: name.to_string(),
+        unit: format!("{name}.service"),
+        systemd_active,
+        systemd_error,
+        running_pids,
+        is_owner,
+    }
 }
 
 #[test]
