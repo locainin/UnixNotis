@@ -1,0 +1,79 @@
+name: Question
+description: Ask a focused usage, configuration, install, or troubleshooting question
+title: "[Question]: "
+labels:
+  - question
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for focused UnixNotis questions.
+
+        For reproducible broken behavior, use the bug report template instead.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Pick the part of UnixNotis the question is about.
+      options:
+        - Installation or service manager
+        - Configuration
+        - Styling or CSS
+        - Widgets
+        - Presets
+        - D-Bus or noticenterctl
+        - Panel or popups
+        - Development or contribution workflow
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Ask the question directly and include the goal.
+      placeholder: |
+        I am trying to ...
+        I expected ...
+        I am unsure how to ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Include the relevant config, command, environment, or wiki page already checked.
+      placeholder: |
+        Distro:
+        Wayland compositor:
+        Service manager:
+        Install method:
+        Relevant config or command:
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you already tried?
+      description: List docs, commands, config changes, or troubleshooting steps already attempted.
+      placeholder: |
+        I checked ...
+        I ran ...
+        I changed ...
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues before opening this question
+          required: true
+        - label: I checked the wiki or README first
+          required: true
+        - label: This is about UnixNotis, not a general compositor or Linux support question
+          required: true

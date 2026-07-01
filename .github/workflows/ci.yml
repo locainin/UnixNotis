@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - master
+  push:
+    branches:
+      - dev
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  workspace:
+    name: Workspace checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev \
+            libgtk4-layer-shell-dev \
+            pkg-config \
+            shellcheck
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Cache Cargo state
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/git/db
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            target
+          key: ubuntu-24.04-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ubuntu-24.04-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check shipped shell scripts
+        run: |
+          set -euo pipefail
+          shellcheck \
+            crates/unixnotis-core/assets/scripts/unixnotis-blue-light-lib \
+            crates/unixnotis-core/assets/scripts/unixnotis-blue-light-state \
+            crates/unixnotis-core/assets/scripts/unixnotis-blue-light-on \
+            crates/unixnotis-core/assets/scripts/unixnotis-blue-light-off
+
+      - name: Run workspace tests
+        run: cargo test --workspace
+
+      - name: Run strict clippy
+        run: >
+          cargo clippy --all-targets --all-features --
+          -D warnings
+          -W clippy::pedantic
+          -W clippy::nursery
+          -W clippy::restriction
