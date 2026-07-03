@@ -165,6 +165,7 @@ fn passing_checks() -> Checks {
     };
 
     Checks {
+        release_archive: false,
         wayland: item.clone(),
         hyprland: item.clone(),
         service_manager: item.clone(),
