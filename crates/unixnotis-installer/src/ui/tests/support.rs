@@ -53,6 +53,7 @@ pub(super) fn app_for_rendering(screen: Screen) -> App {
             }),
         }),
         build_accel_menu_index: 1,
+        release_status: crate::release::ReleaseStatus::current_only(),
         reset_menu_index: 0,
         reset_action: ResetAction::RestoreBackup {
             path: PathBuf::from("/tmp/unixnotis-backup"),
