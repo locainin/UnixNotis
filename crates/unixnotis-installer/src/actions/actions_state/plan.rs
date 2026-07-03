@@ -85,7 +85,7 @@ pub fn step_label(kind: StepKind) -> &'static str {
     match kind {
         StepKind::InstallCheck => "Check existing install",
         StepKind::StopDaemon => "Stop existing daemon",
-        StepKind::Build => "Build release binaries",
+        StepKind::Build => "Prepare release binaries",
         StepKind::EnsureConfig => "Ensure config files",
         StepKind::ResetConfig => "Reset config files",
         StepKind::RestoreConfig => "Restore config backup",
