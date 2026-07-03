@@ -16,7 +16,7 @@ pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<Strin
     let cargo_available = program_in_path("cargo");
     if !metadata_list.is_empty() {
         // Validate against cargo metadata when available to catch stale entries.
-        if cargo_available {
+        if cargo_available && !paths.is_release_archive() {
             let available = load_install_binaries_from_cargo_metadata(paths)?;
             if !available.is_empty() {
                 let missing = metadata_list
@@ -50,6 +50,10 @@ pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<Strin
 }
 
 pub(super) fn resolve_target_directory(paths: &InstallPaths) -> Result<PathBuf> {
+    if paths.is_release_archive() {
+        // Release archives already contain built binaries under their local bin directory
+        return Ok(paths.repo_root.clone());
+    }
     let metadata = load_cargo_metadata(paths)?;
     Ok(metadata.target_directory)
 }
@@ -80,11 +84,30 @@ fn legacy_binaries() -> Vec<String> {
 }
 
 fn load_install_binaries_from_metadata(paths: &InstallPaths) -> Result<Vec<String>> {
+    if paths.is_release_archive() {
+        return load_install_binaries_from_release_manifest(paths);
+    }
+
     // Read the root Cargo.toml and extract the installer metadata list if present.
     let cargo_path = paths.repo_root.join("Cargo.toml");
     let contents =
         fs::read_to_string(&cargo_path).with_context(|| "failed to read workspace Cargo.toml")?;
     parse_install_binaries_metadata(&contents)
+}
+
+fn load_install_binaries_from_release_manifest(paths: &InstallPaths) -> Result<Vec<String>> {
+    // Release archives do not include Cargo metadata, so the manifest is the source of truth
+    let contents = fs::read_to_string(paths.release_manifest_path())
+        .with_context(|| "failed to read UnixNotis release manifest")?;
+    parse_release_manifest_binaries(&contents)
+}
+
+fn parse_release_manifest_binaries(contents: &str) -> Result<Vec<String>> {
+    // The release manifest intentionally stores only deployable runtime binary names
+    let manifest: ReleaseManifest = serde_json::from_str(contents)
+        .with_context(|| "failed to parse UnixNotis release manifest")?;
+    // Dedup here so a bad manifest cannot copy or remove the same path twice
+    Ok(dedup_binary_names(manifest.binaries))
 }
 
 fn parse_install_binaries_metadata(contents: &str) -> Result<Vec<String>> {
@@ -99,18 +122,24 @@ fn parse_install_binaries_metadata(contents: &str) -> Result<Vec<String>> {
         .and_then(|installer| installer.binaries)
         .unwrap_or_default();
 
+    Ok(dedup_binary_names(array))
+}
+
+fn dedup_binary_names(names: Vec<String>) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut binaries = Vec::new();
-    for name in array {
+    for name in names {
+        // Blank names cannot map to a real binary and should not create bad install paths
         let name = name.trim();
         if name.is_empty() {
             continue;
         }
         if seen.insert(name.to_string()) {
+            // First mention wins so release and workspace metadata keep stable order
             binaries.push(name.to_string());
         }
     }
-    Ok(binaries)
+    binaries
 }
 
 fn discover_installed_binaries(paths: &InstallPaths) -> Vec<String> {
@@ -161,6 +190,11 @@ struct UnixnotisMetadata {
 #[derive(serde::Deserialize)]
 struct InstallerMetadata {
     binaries: Option<Vec<String>>,
+}
+
+#[derive(serde::Deserialize)]
+struct ReleaseManifest {
+    binaries: Vec<String>,
 }
 
 fn load_install_binaries_from_cargo_metadata(paths: &InstallPaths) -> Result<Vec<String>> {
