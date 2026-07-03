@@ -1,5 +1,6 @@
 //! Install path discovery and service-manager construction
 
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,6 +14,9 @@ use super::dirs::{
     dinit_user_dir, home_dir, runit_user_dir, runit_user_dir_candidates, s6_live_dir, s6_user_dir,
     s6_user_dir_candidates, systemd_user_dir,
 };
+
+pub const RELEASE_MANIFEST_FILE: &str = "unixnotis-release.json";
+pub const RELEASE_BIN_DIR: &str = "bin";
 
 pub struct InstallPaths {
     pub repo_root: PathBuf,
@@ -62,6 +66,19 @@ impl InstallPaths {
                 Err(err) => Some(Err(err)),
             })
             .collect()
+    }
+
+    pub fn is_release_archive(&self) -> bool {
+        // Release archives carry a manifest beside the installer instead of a workspace Cargo.toml
+        self.release_manifest_path().is_file()
+    }
+
+    pub fn release_manifest_path(&self) -> PathBuf {
+        self.repo_root.join(RELEASE_MANIFEST_FILE)
+    }
+
+    pub fn release_binary_dir(&self) -> PathBuf {
+        self.repo_root.join(RELEASE_BIN_DIR)
     }
 }
 
@@ -122,6 +139,20 @@ fn service_manager_choice_from_environment() -> Result<ServiceManagerChoice> {
 }
 
 fn find_repo_root() -> Result<PathBuf> {
+    if let Ok(root) = env::var("UNIXNOTIS_RELEASE_ROOT") {
+        // Manual release testing can point the installer at an unpacked archive
+        let root_path = PathBuf::from(root);
+        // Validate the manifest and bundled binaries before trusting the override
+        if is_unixnotis_release_archive(&root_path) {
+            return Ok(root_path);
+        }
+    }
+
+    if let Some(root) = find_release_root_from_current_exe() {
+        // Downloaded archives should resolve here before the source checkout walk below
+        return Ok(root);
+    }
+
     if let Ok(root) = env::var("UNIXNOTIS_REPO_ROOT") {
         let root_path = PathBuf::from(root);
         let cargo = root_path.join("Cargo.toml");
@@ -144,7 +175,7 @@ fn find_repo_root() -> Result<PathBuf> {
     }
 
     Err(anyhow!(
-        "repository root not found (set UNIXNOTIS_REPO_ROOT or run from UnixNotis repo)"
+        "repository root or release archive not found (set UNIXNOTIS_REPO_ROOT, set UNIXNOTIS_RELEASE_ROOT, or run from UnixNotis repo/release)"
     ))
 }
 
@@ -156,4 +187,47 @@ pub(in crate::paths) fn is_unixnotis_repo(cargo_toml: &Path) -> bool {
     contents.contains("[workspace]")
         && contents.contains("crates/unixnotis-daemon")
         && contents.contains("crates/unixnotis-core")
+}
+
+fn find_release_root_from_current_exe() -> Option<PathBuf> {
+    // Installed tarballs run the installer from the archive root, next to the manifest
+    let exe = env::current_exe().ok()?;
+    let root = exe.parent()?.to_path_buf();
+    // This check prevents a random copied installer from pretending to be a full release
+    is_unixnotis_release_archive(&root).then_some(root)
+}
+
+pub(in crate::paths) fn is_unixnotis_release_archive(root: &Path) -> bool {
+    let manifest = root.join(RELEASE_MANIFEST_FILE);
+    let Ok(contents) = fs::read_to_string(manifest) else {
+        return false;
+    };
+    let Ok(manifest) = serde_json::from_str::<ReleaseArchiveManifest>(&contents) else {
+        return false;
+    };
+    let release_bin_dir = root.join(RELEASE_BIN_DIR);
+    // The archive layout is intentionally simple: installer at root, runtime tools in bin
+    if !release_bin_dir.is_dir() {
+        return false;
+    }
+
+    // All managed tools must be present so a downloaded installer fails before any file changes
+    let names = manifest.binaries.into_iter().collect::<BTreeSet<_>>();
+    release_archive_binaries()
+        .iter()
+        .all(|binary| names.contains(*binary) && release_bin_dir.join(binary).is_file())
+}
+
+fn release_archive_binaries() -> [&'static str; 4] {
+    [
+        "unixnotis-daemon",
+        "unixnotis-popups",
+        "unixnotis-center",
+        "noticenterctl",
+    ]
+}
+
+#[derive(serde::Deserialize)]
+struct ReleaseArchiveManifest {
+    binaries: Vec<String>,
 }
