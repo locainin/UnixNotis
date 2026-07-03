@@ -13,3 +13,4 @@
 /tools/
 /.ruff_cache
 /testing/
+/dist/
