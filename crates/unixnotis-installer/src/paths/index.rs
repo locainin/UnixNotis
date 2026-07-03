@@ -11,7 +11,7 @@ pub use discovery::InstallPaths;
 pub use format::format_with_home;
 
 #[cfg(test)]
-use discovery::is_unixnotis_repo;
+use discovery::{is_unixnotis_release_archive, is_unixnotis_repo};
 
 #[cfg(test)]
 #[path = "tests/index.rs"]
