@@ -1,0 +1,80 @@
+name: Release Package
+
+on:
+  # Release packaging is manual so maintainers can write the public changelog by hand
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to package, such as v1.0.0
+        required: true
+        type: string
+
+permissions:
+  # The workflow builds archives only; publishing a GitHub Release stays a manual action
+  contents: read
+
+concurrency:
+  # A release tag should produce one archive set, so do not cancel a run already packaging it
+  group: release-package-${{ github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    name: Build release tarball
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 45
+
+    steps:
+      - name: Install system dependencies
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            bash \
+            build-essential \
+            ca-certificates \
+            curl \
+            git \
+            libgtk-4-dev \
+            libgtk4-layer-shell-dev \
+            pkg-config \
+            shellcheck \
+            xz-utils \
+            zstd
+
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -fsS https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+          source "${HOME}/.cargo/env"
+          rustup default stable
+
+      - name: Check packaging script
+        run: shellcheck scripts/package-release.sh
+
+      - name: Build package archive
+        # The script checks that Cargo's version matches the requested release tag
+        run: scripts/package-release.sh "${{ inputs.tag }}"
+
+      - name: Upload package archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: unixnotis-${{ inputs.tag }}-release
+          path: |
+            dist/*.tar.zst
+            dist/*.sha256
+          if-no-files-found: error
