@@ -158,6 +158,7 @@ fn app_with_build_accel(detection: Option<BuildAccelDetection>) -> App {
         restore_backups: Vec::new(),
         restore_menu_index: 0,
         service_manager: None,
+        release_status: crate::release::ReleaseStatus::current_only(),
     }
 }
 

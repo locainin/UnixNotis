@@ -66,13 +66,26 @@ pub(super) fn draw_welcome(frame: &mut Frame<'_>, app: &App) {
 fn render_status(app: &App) -> Text<'static> {
     // Build a list of Lines that ratatui will render as a single Text block.
     // This is kept pure so rendering remains deterministic for any given App state.
-    let mut lines = Vec::new();
-
-    // Section heading: core environment checks.
-    lines.push(Line::from(Span::styled(
-        "Compatibility",
-        Style::default().add_modifier(Modifier::BOLD),
-    )));
+    let mut lines = vec![
+        // Section heading: release version and update status.
+        Line::from(Span::styled(
+            "Release",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(vec![
+            Span::styled("Version: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                app.release_status.display_line(),
+                release_status_style(app.release_status.state),
+            ),
+        ]),
+        Line::from(""),
+        // Section heading: core environment checks.
+        Line::from(Span::styled(
+            "Compatibility",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+    ];
     lines.extend(render_check(&app.checks.wayland));
     lines.extend(render_check(&app.checks.hyprland));
     lines.extend(render_check(&app.checks.service_manager));
@@ -134,6 +147,17 @@ fn daemon_owner_style(has_owner: bool) -> Style {
         Style::default().fg(Color::Green)
     } else {
         Style::default().fg(Color::Yellow)
+    }
+}
+
+fn release_status_style(state: crate::release::ReleaseUpdateState) -> Style {
+    match state {
+        // Green means the currently installed version matches the latest stable release
+        crate::release::ReleaseUpdateState::UpToDate => Style::default().fg(Color::Green),
+        // Yellow keeps updates visible without making the installer look blocked
+        crate::release::ReleaseUpdateState::UpdateAvailable => Style::default().fg(Color::Yellow),
+        // Unknown is expected offline, in CI, or when GitHub rate-limits the unauthenticated check
+        crate::release::ReleaseUpdateState::Unknown => Style::default().fg(Color::Gray),
     }
 }
 
