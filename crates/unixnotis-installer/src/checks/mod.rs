@@ -32,6 +32,7 @@ pub struct CheckItem {
 
 #[derive(Clone, Debug)]
 pub struct Checks {
+    pub release_archive: bool,
     pub wayland: CheckItem,
     pub hyprland: CheckItem,
     pub service_manager: CheckItem,
@@ -50,13 +51,18 @@ impl Checks {
         let wayland = system::wayland_check();
         let hyprland = system::hyprland_check();
         let service_manager_check = system::service_manager_check(service_manager);
-        let cargo = system::cargo_check();
+        let discovered_paths = InstallPaths::discover_with_service_manager(service_manager);
+        // Release archives do not require a Rust toolchain for install mode
+        let release_archive = discovered_paths
+            .as_ref()
+            .map(InstallPaths::is_release_archive)
+            .unwrap_or(false);
+        let cargo = system::cargo_check(release_archive);
         let pkg_config = system::pkg_config_check();
         let gtk4_css_features = gtk::gtk4_css_features_check(&pkg_config);
         let gtk4_layer_shell = gtk::gtk4_layer_shell_check(&pkg_config);
         let busctl = system::busctl_check();
 
-        let discovered_paths = InstallPaths::discover_with_service_manager(service_manager);
         let dbus_update_env = match &discovered_paths {
             Ok(paths) => system::dbus_update_env_check(Some(&paths.service)),
             Err(_) => system::dbus_update_env_check(None),
@@ -75,6 +81,7 @@ impl Checks {
         };
 
         Self {
+            release_archive,
             wayland,
             hyprland,
             service_manager: service_manager_check,
@@ -92,6 +99,10 @@ impl Checks {
     pub fn ready_for(&self, mode: ActionMode) -> Result<(), String> {
         match mode {
             ActionMode::Test => {
+                if self.release_archive {
+                    // Trial mode launches source-built binaries and cannot run from an archive
+                    return Err("trial mode requires a source checkout".to_string());
+                }
                 // Trial mode only needs the runtime pieces required to launch from source
                 if self.wayland.state == CheckState::Fail {
                     return Err("Wayland session required".to_string());
@@ -114,7 +125,7 @@ impl Checks {
                 if self.service_manager.state == CheckState::Fail {
                     return Err("supported service manager session required".to_string());
                 }
-                if self.cargo.state == CheckState::Fail {
+                if !self.release_archive && self.cargo.state == CheckState::Fail {
                     return Err("cargo is required for installation".to_string());
                 }
                 if self.gtk4_layer_shell.state == CheckState::Fail {

@@ -1,5 +1,6 @@
 use crate::app::Screen;
 use crate::detect::OwnerInfo;
+use crate::release::{ReleaseStatus, ReleaseUpdateState};
 use ratatui::style::{Color, Modifier};
 
 use super::test_support::{
@@ -16,6 +17,8 @@ fn draw_welcome_renders_status_and_action_menu() {
     assert!(screen.contains("UnixNotis Installer"));
     assert!(screen.contains("System status"));
     assert!(screen.contains("Actions"));
+    assert!(screen.contains("Release"));
+    assert!(screen.contains("Version: v1.0.0 installed"));
     assert!(screen.contains("Compatibility"));
     assert!(screen.contains("[ok]"));
     assert!(screen.contains("test - ok"));
@@ -127,4 +130,20 @@ fn draw_welcome_styles_warning_daemon_status_as_warning() {
 
     // Probe errors that are still displayable should stand out as warning state
     assert_eq!(status.fg, Some(Color::Yellow));
+}
+
+#[test]
+fn draw_welcome_styles_available_release_update_as_warning() {
+    let mut app = app_for_rendering(Screen::Welcome);
+    app.release_status = ReleaseStatus {
+        current: "v1.0.0".to_string(),
+        latest: Some("v1.0.1".to_string()),
+        state: ReleaseUpdateState::UpdateAvailable,
+    };
+
+    let buffer = render_app_buffer(&app);
+    let update = style_for_text(&buffer, "v1.0.1 available");
+
+    // Available updates should stand out without treating the installer as broken
+    assert_eq!(update.fg, Some(Color::Yellow));
 }

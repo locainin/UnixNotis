@@ -94,15 +94,11 @@ pub fn disable_now_command() -> Option<CommandSpec> {
 }
 
 pub fn stop_for_reinstall_command() -> Option<CommandSpec> {
+    // Stop only this unit during reinstall so systemd never treats the user session as disposable
     Some(CommandSpec::new(
-        format!("systemctl --user --job-mode=replace-irreversibly stop {SERVICE_NAME}"),
+        format!("systemctl --user stop {SERVICE_NAME}"),
         "systemctl",
-        [
-            "--user",
-            "--job-mode=replace-irreversibly",
-            "stop",
-            SERVICE_NAME,
-        ],
+        ["--user", "stop", SERVICE_NAME],
     ))
 }
 
@@ -150,8 +146,8 @@ fn render_unit(bin_dir: &Path) -> String {
     [
         "[Unit]".to_string(),
         "Description=UnixNotis Notification Daemon".to_string(),
+        // Order after the graphical session without pulling that target into the unit graph
         "After=graphical-session.target".to_string(),
-        "Wants=graphical-session.target".to_string(),
         String::new(),
         "[Service]".to_string(),
         "Type=simple".to_string(),

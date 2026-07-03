@@ -75,6 +75,73 @@ fn notification_view_keeps_ui_fields_and_transient_policy_flag() {
 }
 
 #[test]
+fn notification_view_strips_markup_from_ui_text() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.summary = "<b>Crash Reporting System</b>".to_string();
+    notification.body = "<html><tt>/usr/lib/drkonqi</tt> has encountered &quot;fatal&quot;<br>error &amp; closed.</html>".to_string();
+
+    let view = notification.to_view();
+
+    // UI labels render plain text, so notification markup must be normalized first
+    assert_eq!(view.summary, "Crash Reporting System");
+    assert_eq!(
+        view.body,
+        "/usr/lib/drkonqi has encountered \"fatal\"\nerror & closed."
+    );
+}
+
+#[test]
+fn notification_view_decodes_numeric_entities() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.body = "Temperature: &#45;5&#176;C &#x26; falling".to_string();
+
+    let view = notification.to_view();
+
+    // Numeric entities appear in real notification bodies from markup-aware senders
+    assert_eq!(view.body, "Temperature: -5°C & falling");
+}
+
+#[test]
+fn notification_view_decodes_common_named_entities() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.body = "Use &lt;tag&gt;&nbsp;and don&apos;t panic".to_string();
+
+    let view = notification.to_view();
+
+    assert_eq!(view.body, "Use <tag> and don't panic");
+}
+
+#[test]
+fn notification_view_treats_self_closing_break_as_newline() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.body = "Line one<br/>Line two".to_string();
+
+    let view = notification.to_view();
+
+    assert_eq!(view.body, "Line one\nLine two");
+}
+
+#[test]
+fn notification_view_collapses_repeated_block_tag_newlines() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.body = "Line one<br><br>Line two".to_string();
+
+    let view = notification.to_view();
+
+    assert_eq!(view.body, "Line one\nLine two");
+}
+
+#[test]
+fn notification_view_preserves_unterminated_entity_text() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.body = "Fish &chips".to_string();
+
+    let view = notification.to_view();
+
+    assert_eq!(view.body, "Fish &chips");
+}
+
+#[test]
 fn list_view_strips_raw_image_bytes_but_keeps_icon_identifiers() {
     let notification = notification_with_image(image_with_raw_bytes());
 

@@ -46,10 +46,18 @@ fn test_plan_has_no_worker_steps() {
 
 #[test]
 fn steps_from_plan_uses_user_visible_labels() {
-    let steps = steps_from_plan(&[StepKind::InstallCheck, StepKind::EnableService]);
+    let steps = steps_from_plan(&[
+        StepKind::InstallCheck,
+        StepKind::Build,
+        StepKind::EnableService,
+    ]);
     let labels = steps.into_iter().map(|step| step.name).collect::<Vec<_>>();
     assert_eq!(
         labels,
-        vec!["Check existing install", "Enable user service"]
+        vec![
+            "Check existing install",
+            "Prepare release binaries",
+            "Enable user service"
+        ]
     );
 }

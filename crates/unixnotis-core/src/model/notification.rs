@@ -51,8 +51,8 @@ impl Notification {
         NotificationView {
             id: self.id,
             app_name: self.app_name.clone(),
-            summary: self.summary.clone(),
-            body: self.body.clone(),
+            summary: notification_plain_text(&self.summary),
+            body: notification_plain_text(&self.body),
             actions: self.actions.clone(),
             urgency: self.urgency.as_u8(),
             // Center and popup policy both need the transient bit to stay in sync
@@ -68,8 +68,8 @@ impl Notification {
         NotificationView {
             id: self.id,
             app_name: self.app_name.clone(),
-            summary: self.summary.clone(),
-            body: self.body.clone(),
+            summary: notification_plain_text(&self.summary),
+            body: notification_plain_text(&self.body),
             actions: self.actions.clone(),
             urgency: self.urgency.as_u8(),
             // History policy still depends on the transient bit in panel rows
@@ -110,6 +110,141 @@ impl Notification {
             sender_executable: self.sender_executable.clone(),
         }
     }
+}
+
+fn notification_plain_text(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '<' => {
+                // Notification bodies may contain simple HTML-like tags from desktop senders
+                let mut tag = String::new();
+                let mut closed = false;
+                for next in chars.by_ref() {
+                    if next == '>' {
+                        // A closed tag is formatting, not text that belongs in a GTK label
+                        closed = true;
+                        break;
+                    }
+                    tag.push(next);
+                }
+                if closed {
+                    // Block-like tags get spacing so joined text still reads naturally
+                    push_tag_spacing(&mut output, &tag);
+                } else {
+                    // Broken markup stays visible so the sender's text is not silently lost
+                    output.push('<');
+                    output.push_str(&tag);
+                }
+            }
+            // Entities are decoded here because GTK labels receive plain text
+            '&' => output.push_str(&decode_entity(&mut chars)),
+            _ => output.push(ch),
+        }
+    }
+
+    // Tag stripping can leave noisy gaps, so normalize once at the end
+    collapse_notification_whitespace(&output)
+}
+
+fn push_tag_spacing(output: &mut String, tag: &str) {
+    // Trim "/" first so opening and closing tags use the same spacing rule
+    let tag_name = tag
+        .trim_start_matches('/')
+        .split(|ch: char| ch.is_whitespace() || ch == '/')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if matches!(tag_name.as_str(), "br" | "p" | "div" | "li" | "tr") {
+        // These tags normally separate chunks of text
+        output.push('\n');
+    } else {
+        // Inline tags still need a small break so words do not run together
+        output.push(' ');
+    }
+}
+
+fn decode_entity<I>(chars: &mut std::iter::Peekable<I>) -> String
+where
+    I: Iterator<Item = char>,
+{
+    let mut entity = String::new();
+    let mut terminated = false;
+    while let Some(&next) = chars.peek() {
+        chars.next();
+        if next == ';' {
+            // Only a semicolon-ended entity should be decoded
+            terminated = true;
+            break;
+        }
+        if entity.len() >= 16 {
+            // Very long entities are likely plain text or malformed sender data
+            return format!("&{entity}{next}");
+        }
+        entity.push(next);
+    }
+
+    if !terminated {
+        // Unterminated entities are kept literal, including common names like &amp
+        return format!("&{entity}");
+    }
+
+    match entity.as_str() {
+        // Keep the named set intentionally small and predictable
+        "amp" => "&".to_string(),
+        "apos" => "'".to_string(),
+        "gt" => ">".to_string(),
+        "lt" => "<".to_string(),
+        "nbsp" => " ".to_string(),
+        "quot" => "\"".to_string(),
+        _ => decode_numeric_entity(&entity).unwrap_or_else(|| format!("&{entity};")),
+    }
+}
+
+fn decode_numeric_entity(entity: &str) -> Option<String> {
+    // Desktop notifications can send both decimal and hex numeric entities
+    let value = if let Some(hex) = entity
+        .strip_prefix("#x")
+        .or_else(|| entity.strip_prefix("#X"))
+    {
+        u32::from_str_radix(hex, 16).ok()?
+    } else {
+        entity.strip_prefix('#')?.parse::<u32>().ok()?
+    };
+    // Invalid scalar values are not text, so the caller keeps the original entity
+    char::from_u32(value).map(|ch| ch.to_string())
+}
+
+fn collapse_notification_whitespace(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut saw_space = false;
+    let mut saw_newline = false;
+
+    for ch in input.chars() {
+        if ch == '\n' {
+            // Keep one newline for block boundaries, but avoid tall empty gaps
+            if !output.is_empty() && !saw_newline {
+                output.push('\n');
+            }
+            saw_space = false;
+            saw_newline = true;
+        } else if ch.is_whitespace() {
+            // Plain spaces collapse to one space unless a newline already separated text
+            if !output.is_empty() && !saw_space && !saw_newline {
+                output.push(' ');
+            }
+            saw_space = true;
+        } else {
+            // Any real character resets spacing guards
+            output.push(ch);
+            saw_space = false;
+            saw_newline = false;
+        }
+    }
+
+    output.trim().to_string()
 }
 
 /// Serializable view of a notification for D-Bus signals.

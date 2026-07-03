@@ -13,12 +13,10 @@ use tokio::sync::mpsc;
 use crate::dbus::{UiCommand, UiEvent};
 
 use super::super::icons::IconResolver;
-use super::list_item::RowKind;
-use super::list_row::empty::{build_empty_row, update_empty_row};
-use super::list_widgets::{
-    bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets,
-};
+use super::item::RowKind;
+use super::row::empty::{build_empty_row, update_empty_row};
 use super::types::{NotificationList, NotificationListConfig};
+use super::widgets::{bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets};
 
 impl NotificationList {
     pub fn new(
@@ -28,7 +26,7 @@ impl NotificationList {
         icon_resolver: Rc<IconResolver>,
         config: NotificationListConfig,
     ) -> Self {
-        let store = gio::ListStore::new::<super::list_item::RowItem>();
+        let store = gio::ListStore::new::<super::item::RowItem>();
         let selection = gtk::NoSelection::new(Some(store.clone()));
         let factory = gtk::SignalListItemFactory::new();
 
@@ -55,35 +53,35 @@ impl NotificationList {
 
         let command_tx_clone = command_tx.clone();
         let event_tx_clone = event_tx.clone();
-        factory.connect_setup(move |_, list_item| {
+        factory.connect_setup(move |_, gtk_item| {
             let widgets = RowWidgets::new(
                 RowKind::Notification,
                 command_tx_clone.clone(),
                 event_tx_clone.clone(),
             );
-            set_row_widgets(list_item, Rc::new(widgets));
+            set_row_widgets(gtk_item, Rc::new(widgets));
         });
 
         let command_tx_clone = command_tx.clone();
         let event_tx_clone = event_tx.clone();
         let icon_resolver_clone = icon_resolver.clone();
-        factory.connect_bind(move |_, list_item| {
-            let Some(item) = list_item.item().and_downcast::<super::list_item::RowItem>() else {
+        factory.connect_bind(move |_, gtk_item| {
+            let Some(row_item) = gtk_item.item().and_downcast::<super::item::RowItem>() else {
                 return;
             };
-            let data = item.data();
+            let data = row_item.data();
             let widgets = ensure_row_widgets(
-                list_item,
+                gtk_item,
                 data.kind,
                 command_tx_clone.clone(),
                 event_tx_clone.clone(),
             );
 
-            bind_row(widgets, &item, &data, icon_resolver_clone.clone());
+            bind_row(widgets, &row_item, &data, icon_resolver_clone.clone());
         });
 
-        factory.connect_unbind(move |_, list_item| {
-            if let Some(widgets) = get_row_widgets(list_item) {
+        factory.connect_unbind(move |_, gtk_item| {
+            if let Some(widgets) = get_row_widgets(gtk_item) {
                 widgets.unbind();
             }
             // Keep RowWidgets attached so GTK can recycle rows without rebuilding
@@ -166,3 +164,7 @@ impl NotificationList {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/build.rs"]
+mod tests;

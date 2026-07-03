@@ -71,6 +71,58 @@ version = "0.1.0"
 }
 
 #[test]
+fn release_archive_detection_requires_manifest_and_bundled_binaries() {
+    let root = env::temp_dir().join(format!(
+        "unixnotis-release-archive-detect-{}",
+        std::process::id()
+    ));
+    let bin_dir = root.join(RELEASE_BIN_DIR);
+    fs::create_dir_all(&bin_dir).expect("release bin dir");
+    fs::write(
+        root.join(RELEASE_MANIFEST_FILE),
+        r#"{"version":"1.0.0","binaries":["unixnotis-daemon","unixnotis-popups","unixnotis-center","noticenterctl"]}"#,
+    )
+    .expect("release manifest");
+
+    for binary in [
+        "unixnotis-daemon",
+        "unixnotis-popups",
+        "unixnotis-center",
+        "noticenterctl",
+    ] {
+        fs::write(bin_dir.join(binary), format!("binary:{binary}")).expect("release binary");
+    }
+
+    assert!(is_unixnotis_release_archive(&root));
+
+    fs::remove_file(bin_dir.join("noticenterctl")).expect("remove required binary");
+    assert!(!is_unixnotis_release_archive(&root));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn release_root_discovery_prefers_explicit_archive_override() {
+    let _guard = env_lock();
+    let root = env::temp_dir().join(format!("unixnotis-release-root-{}", std::process::id()));
+    write_release_archive(&root);
+    let previous_release = set_env(
+        "UNIXNOTIS_RELEASE_ROOT",
+        Some(root.to_string_lossy().as_ref()),
+    );
+    let previous_repo = set_env("UNIXNOTIS_REPO_ROOT", None);
+
+    let discovered = InstallPaths::discover_repo_root().expect("release root");
+
+    // Downloaded archives do not carry Cargo.toml, so release roots need their own lookup path
+    assert_eq!(discovered, root);
+
+    restore_env("UNIXNOTIS_REPO_ROOT", previous_repo);
+    restore_env("UNIXNOTIS_RELEASE_ROOT", previous_release);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn service_manager_choice_accepts_cli_names() {
     assert_eq!(
         ServiceManagerChoice::parse("systemd").expect("systemd"),
@@ -88,6 +140,25 @@ fn service_manager_choice_accepts_cli_names() {
         ServiceManagerChoice::parse("s6").expect("s6"),
         ServiceManagerChoice::S6
     );
+}
+
+fn write_release_archive(root: &std::path::Path) {
+    let bin_dir = root.join(RELEASE_BIN_DIR);
+    fs::create_dir_all(&bin_dir).expect("release bin dir");
+    fs::write(
+        root.join(RELEASE_MANIFEST_FILE),
+        r#"{"version":"1.0.0","binaries":["unixnotis-daemon","unixnotis-popups","unixnotis-center","noticenterctl"]}"#,
+    )
+    .expect("release manifest");
+
+    for binary in [
+        "unixnotis-daemon",
+        "unixnotis-popups",
+        "unixnotis-center",
+        "noticenterctl",
+    ] {
+        fs::write(bin_dir.join(binary), format!("binary:{binary}")).expect("release binary");
+    }
 }
 
 #[test]

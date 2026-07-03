@@ -27,6 +27,7 @@ mod main_tests;
 mod model;
 #[path = "paths/index.rs"]
 mod paths;
+mod release;
 mod service_manager;
 mod terminal;
 #[cfg(test)]

@@ -38,3 +38,7 @@ pub(in crate::ui::list) fn update_empty_row(root: &gtk::Box, text: &str) {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/empty.rs"]
+mod tests;

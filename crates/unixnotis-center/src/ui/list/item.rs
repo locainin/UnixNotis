@@ -176,3 +176,7 @@ impl RowItem {
         self.imp().data.borrow().clone()
     }
 }
+
+#[cfg(test)]
+#[path = "tests/item.rs"]
+mod tests;
