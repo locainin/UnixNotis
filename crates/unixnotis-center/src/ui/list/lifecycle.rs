@@ -2,13 +2,14 @@
 //!
 //! These helpers own the base storage lifecycle so mutation code can stay focused on updates
 
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing::debug;
 use unixnotis_core::NotificationView;
 
-use super::list_item::{RowData, RowItem, RowPresentation};
+use super::item::{RowData, RowItem, RowPresentation};
 use super::types::{NotificationEntry, NotificationList};
 
 impl NotificationList {
@@ -34,6 +35,7 @@ impl NotificationList {
         self.entries.clear();
         self.active_order.clear();
         self.history_order.clear();
+        clear_seed_group_expansion(&mut self.group_expanded);
         self.group_headers.clear();
         self.group_order.clear();
         self.group_order_scratch.clear();
@@ -62,43 +64,19 @@ impl NotificationList {
     }
 
     pub(super) fn trim_to_limits(&mut self) {
-        if self.max_active == 0 {
-            // Zero active capacity behaves like hard-drop for active notifications
-            let drained: Vec<u32> = self.active_order.drain(..).collect();
-            for id in drained {
-                if let Some(entry) = self.entries.remove(&id) {
-                    self.index_remove(&entry.app_key, id, entry.is_active);
-                    self.dirty_groups.insert(entry.app_key);
-                }
-            }
-        } else {
-            while self.active_order.len() > self.max_active {
-                if let Some(id) = self.active_order.pop_back() {
-                    if let Some(entry) = self.entries.remove(&id) {
-                        self.index_remove(&entry.app_key, id, entry.is_active);
-                        self.dirty_groups.insert(entry.app_key);
-                    }
-                }
+        // Active order is newest-first, so trimming from the back drops oldest rows
+        for id in drain_order_over_limit(&mut self.active_order, self.max_active) {
+            if let Some(entry) = self.entries.remove(&id) {
+                self.index_remove(&entry.app_key, id, entry.is_active);
+                self.dirty_groups.insert(entry.app_key);
             }
         }
 
-        if self.max_entries == 0 {
-            // Zero history capacity keeps history storage fully disabled
-            let drained: Vec<u32> = self.history_order.drain(..).collect();
-            for id in drained {
-                if let Some(entry) = self.entries.remove(&id) {
-                    self.index_remove(&entry.app_key, id, entry.is_active);
-                    self.dirty_groups.insert(entry.app_key);
-                }
-            }
-        } else {
-            while self.history_order.len() > self.max_entries {
-                if let Some(id) = self.history_order.pop_back() {
-                    if let Some(entry) = self.entries.remove(&id) {
-                        self.index_remove(&entry.app_key, id, entry.is_active);
-                        self.dirty_groups.insert(entry.app_key);
-                    }
-                }
+        // History uses the same newest-first order and capacity rule as active rows
+        for id in drain_order_over_limit(&mut self.history_order, self.max_entries) {
+            if let Some(entry) = self.entries.remove(&id) {
+                self.index_remove(&entry.app_key, id, entry.is_active);
+                self.dirty_groups.insert(entry.app_key);
             }
         }
     }
@@ -160,3 +138,31 @@ fn now_millis() -> i64 {
         .and_then(|duration| i64::try_from(duration.as_millis()).ok())
         .unwrap_or(0)
 }
+
+fn clear_seed_group_expansion(group_expanded: &mut HashMap<Rc<str>, bool>) {
+    group_expanded.clear();
+}
+
+fn drain_order_over_limit(order: &mut VecDeque<u32>, max_entries: usize) -> Vec<u32> {
+    if max_entries == 0 {
+        // A zero limit means the section is disabled, so every id must leave storage
+        return order.drain(..).collect();
+    }
+    if order.len() <= max_entries {
+        return Vec::new();
+    }
+
+    let remove_count = order.len() - max_entries;
+    let mut drained = Vec::with_capacity(remove_count);
+    for _ in 0..remove_count {
+        // Orders store newest at the front, so the back is always the oldest id
+        if let Some(id) = order.pop_back() {
+            drained.push(id);
+        }
+    }
+    drained
+}
+
+#[cfg(test)]
+#[path = "tests/lifecycle.rs"]
+mod tests;

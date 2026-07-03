@@ -83,6 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           shellcheck \
+            scripts/package-release.sh \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-lib \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-state \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-on \

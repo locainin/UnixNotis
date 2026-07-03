@@ -3,7 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
     discover_installed_binaries, extract_bins_from_metadata, legacy_binaries,
-    parse_install_binaries_metadata, resolve_install_binaries_best_effort, CargoMetadata,
+    parse_install_binaries_metadata, parse_release_manifest_binaries,
+    resolve_install_binaries_best_effort, CargoMetadata,
 };
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
@@ -59,6 +60,33 @@ binaries = ["unixnotis-popups", "unixnotis-daemon", "unixnotis-popups"]
             "unixnotis-daemon".to_string()
         ]
     );
+}
+
+#[test]
+fn parse_release_manifest_binaries_uses_release_archive_order() {
+    let input = r#"
+{
+  "version": "1.0.0",
+  "binaries": ["unixnotis-daemon", "noticenterctl", "unixnotis-daemon", "  "]
+}
+"#;
+
+    let binaries = parse_release_manifest_binaries(input).expect("release manifest");
+
+    // Release archives install the exact bundled list once, preserving manifest order
+    assert_eq!(
+        binaries,
+        vec!["unixnotis-daemon".to_string(), "noticenterctl".to_string()]
+    );
+}
+
+#[test]
+fn parse_release_manifest_binaries_rejects_missing_binary_list() {
+    let err = parse_release_manifest_binaries(r#"{"version":"1.0.0"}"#)
+        .expect_err("missing binaries should fail");
+
+    // A release without an explicit binary list cannot be safely installed
+    assert!(err.to_string().contains("release manifest"));
 }
 
 #[test]

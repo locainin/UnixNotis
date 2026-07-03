@@ -44,9 +44,9 @@ impl NotificationList {
         }
 
         let mut ordering_changed = false;
-        if is_active {
+        if existing && is_active {
             // Reorder only when the notification is not already at the front
-            if was_in_history || !was_in_active || !was_front {
+            if should_move_active_to_front(was_in_history, was_in_active, was_front) {
                 self.history_order.retain(|entry| *entry != id);
                 self.active_order.retain(|entry| *entry != id);
                 self.active_order.push_front(id);
@@ -79,19 +79,19 @@ impl NotificationList {
                     .copied()
                     .unwrap_or(false);
                 let group_len = self.grouped_cache.get(&entry.app_key).map_or(0, Vec::len);
-                let stacked = !expanded && group_len > 1;
+                let stacked = collapsed_group_is_stacked(expanded, group_len);
                 let stack_depth = if expanded {
                     0
                 } else {
                     group_len.saturating_sub(1).min(2) as u8
                 };
-                let presentation = super::list_item::RowPresentation {
+                let presentation = super::item::RowPresentation {
                     received_at_ms: entry.received_at_ms,
                     show_metadata: self.show_notification_metadata,
                     show_thumbnail: self.show_notification_thumbnails,
                 };
                 // Update the row object in-place when the visible span stays identical
-                entry.item.update(super::list_item::RowData::notification(
+                entry.item.update(super::item::RowData::notification(
                     entry.app_key.clone(),
                     entry.view.clone(),
                     stacked,
@@ -109,7 +109,7 @@ impl NotificationList {
                             .unwrap_or(false);
                         if let Some(header) = self.group_headers.get(&entry.app_key) {
                             // Refresh the group header count and sample notification
-                            header.update(super::list_item::RowData::group_header(
+                            header.update(super::item::RowData::group_header(
                                 entry.app_key.clone(),
                                 ids.len(),
                                 expanded,
@@ -233,6 +233,14 @@ impl NotificationList {
             .map(|range| range.len == desired_len)
             .unwrap_or(false)
     }
+}
+
+fn should_move_active_to_front(was_in_history: bool, was_in_active: bool, was_front: bool) -> bool {
+    was_in_history || !was_in_active || !was_front
+}
+
+fn collapsed_group_is_stacked(expanded: bool, group_len: usize) -> bool {
+    !expanded && group_len > 1
 }
 
 fn should_archive_entry(

@@ -2,18 +2,21 @@
 //!
 //! The folder root stays focused on module wiring and the public list surface
 
+mod blocks;
 mod build;
-mod list_blocks;
-mod list_grouping;
-mod list_index;
-mod list_item;
-mod list_lifecycle;
-mod list_mutation;
-mod list_row;
-mod list_update;
-mod list_widgets;
+mod grouping;
+mod index;
+mod item;
+mod lifecycle;
+mod mutation;
+mod row;
+#[cfg(test)]
+#[path = "tests/support.rs"]
+pub(super) mod test_support;
 mod types;
+mod update;
+mod widgets;
 
 pub use self::types::{NotificationList, NotificationListConfig};
 
-pub(super) use self::list_item::RowItem;
+pub(super) use self::item::RowItem;

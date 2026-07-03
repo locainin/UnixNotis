@@ -15,9 +15,9 @@ use tracing::debug;
 use crate::dbus::{UiCommand, UiEvent};
 
 use super::super::icons::IconResolver;
-use super::list_item::{RowData, RowItem, RowKind};
-use super::list_row::group::{build_group_row, update_group_row, GroupRowWidgets};
-use super::list_row::notification::{
+use super::item::{RowData, RowItem, RowKind};
+use super::row::group::{build_group_row, update_group_row, GroupRowWidgets};
+use super::row::notification::{
     build_notification_row, update_notification_row, NotificationRowWidgets,
 };
 
@@ -101,19 +101,19 @@ impl RowWidgets {
 }
 
 pub(super) fn ensure_row_widgets(
-    list_item: &gtk::ListItem,
+    item: &gtk::ListItem,
     kind: RowKind,
     command_tx: mpsc::Sender<UiCommand>,
     event_tx: Sender<UiEvent>,
 ) -> Rc<RowWidgets> {
-    if let Some(existing) = get_row_widgets(list_item) {
+    if let Some(existing) = get_row_widgets(item) {
         if existing.kind == kind {
             return existing.clone();
         }
     }
 
     let widgets = Rc::new(RowWidgets::new(kind, command_tx, event_tx));
-    set_row_widgets(list_item, widgets.clone());
+    set_row_widgets(item, widgets.clone());
     debug!(?kind, "row widgets created");
     widgets
 }
@@ -137,23 +137,26 @@ pub(super) fn bind_row(
     *widgets.handler.borrow_mut() = Some((item.clone(), handler));
 }
 
-pub(super) fn set_row_widgets(list_item: &gtk::ListItem, widgets: Rc<RowWidgets>) {
+pub(super) fn set_row_widgets(item: &gtk::ListItem, widgets: Rc<RowWidgets>) {
     // Attach the actual row root whenever the cached widget bundle changes
     // Setup also uses this so GTK never keeps an empty placeholder child
-    list_item.set_child(Some(&widgets.root));
+    item.set_child(Some(&widgets.root));
     unsafe {
         // SAFETY: gtk::ListItem stays on the GTK main thread and never crosses threads.
         // RowWidgets uses Rc and is only accessed from list factory callbacks on the
         // main thread. Data is replaced in ensure_row_widgets when the row kind changes
         // and otherwise kept to let GTK reuse the row widgets across scroll events.
-        list_item.set_qdata(row_widgets_quark(), widgets);
+        item.set_qdata(row_widgets_quark(), widgets);
     }
 }
 
-pub(super) fn get_row_widgets(list_item: &gtk::ListItem) -> Option<Rc<RowWidgets>> {
+pub(super) fn get_row_widgets(item: &gtk::ListItem) -> Option<Rc<RowWidgets>> {
     unsafe {
-        list_item
-            .qdata::<Rc<RowWidgets>>(row_widgets_quark())
+        item.qdata::<Rc<RowWidgets>>(row_widgets_quark())
             .map(|ptr| ptr.as_ref().clone())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/widgets.rs"]
+mod tests;

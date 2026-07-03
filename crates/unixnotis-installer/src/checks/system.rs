@@ -114,7 +114,13 @@ pub(super) fn readiness_messages(issues: &[ReadinessIssue], errors: bool) -> Vec
         .collect()
 }
 
-pub(super) fn cargo_check() -> CheckItem {
+pub(super) fn cargo_check(release_archive: bool) -> CheckItem {
+    if release_archive {
+        // Downloaded releases install bundled binaries and do not need a Rust toolchain
+        // Source checkouts still require cargo because the installer builds before copying
+        return CheckItem::ok("cargo", "not required for release archive");
+    }
+
     match command_success("cargo", &["--version"]) {
         Ok(true) => CheckItem::ok("cargo", "available"),
         Ok(false) => CheckItem::fail("cargo", "not installed"),

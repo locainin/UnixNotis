@@ -1,4 +1,8 @@
-use super::{format_with_home, is_unixnotis_repo, InstallPaths, ServiceManagerChoice};
+use super::{
+    discovery::{RELEASE_BIN_DIR, RELEASE_MANIFEST_FILE},
+    format_with_home, is_unixnotis_release_archive, is_unixnotis_repo, InstallPaths,
+    ServiceManagerChoice,
+};
 use std::env;
 use std::fs;
 use std::path::PathBuf;

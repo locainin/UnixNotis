@@ -158,6 +158,7 @@ fn app_with_build_accel(detection: Option<BuildAccelDetection>) -> App {
         restore_backups: Vec::new(),
         restore_menu_index: 0,
         service_manager: None,
+        release_status: crate::release::ReleaseStatus::current_only(),
     }
 }
 
@@ -177,6 +178,7 @@ fn passing_checks() -> Checks {
     };
 
     Checks {
+        release_archive: false,
         wayland: item.clone(),
         hyprland: item.clone(),
         service_manager: item.clone(),

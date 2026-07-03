@@ -3,6 +3,7 @@
 //! Keeps list-store mutation logic separate from data mutation methods.
 
 use std::collections::{HashMap, HashSet};
+use std::ops::Not;
 use std::rc::Rc;
 
 use gio::prelude::ListModelExt;
@@ -11,7 +12,7 @@ use gtk::glib::object::Cast;
 use gtk::prelude::WidgetExt;
 use tracing::debug;
 
-use super::list_blocks;
+use super::blocks;
 use super::types::{GroupRange, NotificationList, RowKey};
 use super::RowItem;
 
@@ -21,7 +22,7 @@ impl NotificationList {
             return;
         }
         self.needs_rebuild = false;
-        if self.store.n_items() == 0 || self.group_ranges.is_empty() {
+        if should_rebuild_from_scratch(self.store.n_items(), self.group_ranges.len()) {
             self.rebuild_list();
             return;
         }
@@ -70,8 +71,21 @@ impl NotificationList {
         }
 
         let mut current_keys = std::mem::take(&mut self.current_keys);
-        let (prefix, suffix) = list_blocks::common_prefix_suffix(&current_keys, &keys);
-        let current_mid = current_keys.len().saturating_sub(prefix + suffix);
+        let store_len = self.store.n_items() as usize;
+        let keys_match_store = store_len == current_keys.len();
+        // If the GTK store length drifted, cached keys can no longer define a safe splice window
+        // Replace the visible store from scratch while keeping the logical keys authoritative
+        let (prefix, suffix) = if keys_match_store {
+            blocks::common_prefix_suffix(&current_keys, &keys)
+        } else {
+            (0, 0)
+        };
+        let current_len = if keys_match_store {
+            current_keys.len()
+        } else {
+            store_len
+        };
+        let current_mid = current_len.saturating_sub(prefix + suffix);
         let next_mid = keys.len().saturating_sub(prefix + suffix);
         if current_mid != 0 || next_mid != 0 {
             let mut objects = std::mem::take(&mut self.objects_scratch);
@@ -102,7 +116,7 @@ impl NotificationList {
         self.group_order_scratch = old_group_order;
         self.group_ranges = group_ranges;
         // Prune interned keys that are no longer referenced by any list state.
-        self.interned.retain(|key| Rc::strong_count(key) > 1);
+        self.interned.retain(intern_key_is_live);
         self.dirty_groups.clear();
 
         self.update_empty_overlay();
@@ -141,7 +155,7 @@ impl NotificationList {
                 continue;
             }
             let desired_len = self.group_block_len(key, visible_ids.as_ref());
-            if !self.dirty_groups.contains(key) && range.len == desired_len {
+            if should_keep_group(&self.dirty_groups, key, range.len, desired_len) {
                 // Stable groups with identical span lengths are kept in place.
                 keep_groups.insert(key.clone());
             } else {
@@ -151,18 +165,7 @@ impl NotificationList {
             }
         }
 
-        remove_ranges.sort_by_key(|range| range.start);
-        let mut merged: Vec<GroupRange> = Vec::new();
-        for range in remove_ranges {
-            if let Some(last) = merged.last_mut() {
-                if last.start + last.len == range.start {
-                    // Adjacent removals are merged to reduce ListStore splice calls.
-                    last.len += range.len;
-                    continue;
-                }
-            }
-            merged.push(range);
-        }
+        let merged = merge_adjacent_ranges(remove_ranges);
         for range in merged.into_iter().rev() {
             self.remove_block(range.start, range.len);
         }
@@ -220,7 +223,7 @@ impl NotificationList {
             }
         }
 
-        if !pending_items.is_empty() {
+        if has_pending_items(pending_items.len()) {
             let _inserted_len = self.insert_block(pending_start, &pending_items, &pending_keys);
             // Final dirty batch also owns valid ranges for the next incremental pass
             for (key, range) in pending_ranges.drain(..) {
@@ -235,7 +238,7 @@ impl NotificationList {
         self.dirty_groups.clear();
 
         // Prune interned keys that are no longer referenced by any list state.
-        self.interned.retain(|key| Rc::strong_count(key) > 1);
+        self.interned.retain(intern_key_is_live);
 
         self.update_empty_overlay();
 
@@ -246,11 +249,11 @@ impl NotificationList {
             .filter(|key| {
                 self.grouped_cache
                     .get(*key)
-                    .map(|ids| !self.visible_ids_for_group(ids).is_empty())
+                    .map(|ids| self.group_ids_are_visible(ids))
                     .unwrap_or(false)
             })
             .count();
-        if self.group_ranges.len() != expected_ranges {
+        if range_count_mismatch(self.group_ranges.len(), expected_ranges) {
             // Missing ranges leave later stack edits dependent on a full expand/collapse rebuild
             debug!(
                 expected_ranges,
@@ -273,6 +276,10 @@ impl NotificationList {
         self.needs_rebuild = true;
     }
 
+    fn group_ids_are_visible(&self, ids: &[u32]) -> bool {
+        self.visible_ids_for_group(ids).is_empty().not()
+    }
+
     fn update_empty_overlay(&self) {
         let is_empty = self.store.n_items() == 0;
         // Compare against the widget's own visible flag
@@ -282,3 +289,48 @@ impl NotificationList {
         }
     }
 }
+
+fn should_rebuild_from_scratch(store_items: u32, group_range_count: usize) -> bool {
+    store_items == 0 || group_range_count == 0
+}
+
+fn has_pending_items(count: usize) -> bool {
+    count > 0
+}
+
+fn range_count_mismatch(actual: usize, expected: usize) -> bool {
+    actual.abs_diff(expected) > 0
+}
+
+fn intern_key_is_live(key: &Rc<str>) -> bool {
+    Rc::strong_count(key) > 1
+}
+
+fn should_keep_group(
+    dirty_groups: &HashSet<Rc<str>>,
+    key: &Rc<str>,
+    current_len: usize,
+    desired_len: usize,
+) -> bool {
+    !dirty_groups.contains(key) && current_len == desired_len
+}
+
+fn merge_adjacent_ranges(mut ranges: Vec<GroupRange>) -> Vec<GroupRange> {
+    ranges.sort_by_key(|range| range.start);
+    let mut merged: Vec<GroupRange> = Vec::new();
+    for range in ranges {
+        if let Some(last) = merged.last_mut() {
+            if last.start + last.len == range.start {
+                // Adjacent removals are merged to reduce ListStore splice calls
+                last.len += range.len;
+                continue;
+            }
+        }
+        merged.push(range);
+    }
+    merged
+}
+
+#[cfg(test)]
+#[path = "tests/update.rs"]
+mod tests;

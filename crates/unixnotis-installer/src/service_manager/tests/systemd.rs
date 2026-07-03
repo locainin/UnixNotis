@@ -24,7 +24,6 @@ fn systemd_backend_renders_exact_unit_artifact() {
         "[Unit]\n\
          Description=UnixNotis Notification Daemon\n\
          After=graphical-session.target\n\
-         Wants=graphical-session.target\n\
          \n\
          [Service]\n\
          Type=simple\n\
@@ -100,19 +99,11 @@ fn systemd_backend_commands_match_existing_behavior() {
         &["--user", "disable", "--now", UNIXNOTIS_DAEMON_SERVICE]
     );
 
-    // Reinstall uses replace-irreversibly so session autostart cannot cancel the stop job
+    // Reinstall should stop only UnixNotis and never broaden into user-session targets
     let stop = manager
         .stop_for_reinstall_command()
         .expect("systemd can stop during reinstall");
-    assert_eq!(
-        stop.args(),
-        &[
-            "--user",
-            "--job-mode=replace-irreversibly",
-            "stop",
-            UNIXNOTIS_DAEMON_SERVICE,
-        ]
-    );
+    assert_eq!(stop.args(), &["--user", "stop", UNIXNOTIS_DAEMON_SERVICE]);
 }
 
 #[test]

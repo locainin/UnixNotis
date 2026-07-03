@@ -176,6 +176,38 @@ Please try to keep pull requests easy to review.
 
 If docs live in the Wiki and are not updated in the PR, note what needs to be updated.
 
+## Releases
+
+UnixNotis releases are cut from `master` with tags such as `v1.0.0`.
+
+Before tagging a release:
+
+- Confirm `dev` has been reviewed and merged into `master`
+- Confirm config compatibility is documented, especially for renamed keys or changed defaults
+- Confirm installer upgrade behavior is covered for existing config, service files, shell startup
+  entries, and bundled binary replacement
+- Confirm release notes cover user-visible changes, known limitations, and any manual migration
+- Confirm the workspace version in `Cargo.toml` matches the tag without the `v` prefix
+
+Build the release archive manually before creating the GitHub release:
+
+```sh
+scripts/package-release.sh v1.0.0
+```
+
+The same packaging step can be run from the manual **Release Package** GitHub Actions workflow. It
+only builds and uploads workflow artifacts; it does not create tags, publish GitHub Releases, or
+write release notes.
+
+Upload the generated `.tar.zst` and `.sha256` files from `dist/` or from the workflow artifact to
+the GitHub release by hand. The tarball contains `unixnotis-installer`,
+`unixnotis-release.json`, and the bundled runtime binaries under `bin/`. Release archives are
+intentionally not distro packages and do not produce AppImage artifacts.
+
+The manually written GitHub release body is the changelog for that tag. Keep it focused on
+user-visible changes, compatibility notes, and any upgrade steps that generated PR summaries would
+miss.
+
 ## Bug reports and fixes
 
 If fixing a bug:

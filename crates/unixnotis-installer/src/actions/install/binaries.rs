@@ -40,6 +40,7 @@ pub(crate) fn install_binaries(ctx: &mut ActionContext) -> Result<()> {
     for binary in binaries {
         let source = release_dir.join(&binary);
         let destination = ctx.paths.bin_dir.join(&binary);
+        // One helper handles both source builds and downloaded archives after source resolution
         copy_binary(ctx, &source, &destination)?;
     }
 
@@ -76,6 +77,12 @@ pub(crate) fn remove_binaries(ctx: &mut ActionContext) -> Result<()> {
 }
 
 fn resolve_release_dir(ctx: &mut ActionContext) -> Result<PathBuf> {
+    if ctx.paths.is_release_archive() {
+        // Bundled releases copy from the archive bin dir instead of Cargo target output
+        // Keeping this branch here avoids leaking archive-specific paths into copy logic
+        return Ok(ctx.paths.release_binary_dir());
+    }
+
     // Ask cargo metadata for the target dir instead of assuming `target/release`
     let target_dir = resolve_target_directory(ctx.paths).with_context(|| {
         format!(

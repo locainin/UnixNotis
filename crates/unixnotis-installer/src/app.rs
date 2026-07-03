@@ -6,6 +6,7 @@ use crate::checks::Checks;
 use crate::detect::Detection;
 use crate::model::{ActionMode, ActionStep, ResetAction};
 use crate::paths::{InstallPaths, ServiceManagerChoice};
+use crate::release::ReleaseStatus;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -96,6 +97,9 @@ pub struct App {
 
     // Explicit backend selected at startup; None keeps environment/default behavior.
     pub service_manager: Option<ServiceManagerChoice>,
+
+    // Current installer version and best-effort latest release status.
+    pub release_status: ReleaseStatus,
 }
 
 #[derive(Clone, Debug)]
@@ -115,6 +119,7 @@ impl App {
     pub fn new(service_manager: Option<ServiceManagerChoice>) -> Self {
         // Initialize with current system state.
         let (checks, detection, install_state) = Self::load_state(service_manager);
+        let release_status = ReleaseStatus::detect();
 
         Self {
             checks,
@@ -134,6 +139,7 @@ impl App {
             restore_backups: Vec::new(),
             restore_menu_index: 0,
             service_manager,
+            release_status,
         }
     }
 
