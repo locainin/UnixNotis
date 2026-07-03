@@ -40,11 +40,24 @@ git clone https://github.com/locainin/UnixNotis.wiki.git
 - A supported user service manager for installer-managed startup.
   - Default: `systemd --user`.
   - Alternatives: `dinit --user`, user runit, or user s6-rc.
-- Rust toolchain for builds and the installer.
+- Rust toolchain for source builds.
+- `curl` for the installer's best-effort update check.
 
 ## Quick start
 
 ![Installer CLI](assets/images/InstallerCLI.png)
+
+Download the current release tarball from
+[GitHub Releases](https://github.com/locainin/UnixNotis/releases), extract it, then run:
+
+```sh
+./unixnotis-installer
+```
+
+Release archives include the installer and the bundled runtime binaries, so they do not require a
+Rust toolchain on the target system.
+
+Source checkouts can still run the installer directly:
 
 ```sh
 git clone https://github.com/locainin/UnixNotis
@@ -63,6 +76,16 @@ cargo run --release -p unixnotis-installer -- --service-manager s6
 The installer builds the release binaries, installs them under `$HOME/.local/bin`, writes the
 default config/theme files, syncs the live Wayland session environment, and enables the selected
 user service.
+
+When launched from a downloaded release, the installer verifies the bundled binaries and then copies
+them into `$HOME/.local/bin` instead of building from source. The TUI shows the installed version and
+reports when a newer GitHub release is available.
+
+Maintainers can build a local release archive manually:
+
+```sh
+scripts/package-release.sh v1.0.0
+```
 
 ## Development
 
