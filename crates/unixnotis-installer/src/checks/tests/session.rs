@@ -181,6 +181,7 @@ fn ready_for_uninstall_only_requires_backend_and_writable_paths() {
 #[test]
 fn ready_for_reset_never_blocks_on_environment_checks() {
     let checks = Checks {
+        release_archive: false,
         wayland: item("Wayland", CheckState::Fail),
         hyprland: item("Hyprland", CheckState::Fail),
         service_manager: item("Service manager", CheckState::Fail),
@@ -199,8 +200,22 @@ fn ready_for_reset_never_blocks_on_environment_checks() {
     assert!(checks.ready_for(ActionMode::Reset).is_ok());
 }
 
+#[test]
+fn release_archive_install_does_not_require_cargo_but_trial_still_does() {
+    let mut checks = passing_checks();
+    checks.release_archive = true;
+    checks.cargo = item("cargo", CheckState::Fail);
+
+    assert!(checks.ready_for(ActionMode::Install).is_ok());
+    assert_eq!(
+        checks.ready_for(ActionMode::Test),
+        Err("trial mode requires a source checkout".to_string())
+    );
+}
+
 fn passing_checks() -> Checks {
     Checks {
+        release_archive: false,
         wayland: item("Wayland", CheckState::Ok),
         hyprland: item("Hyprland", CheckState::Warn),
         service_manager: item("Service manager", CheckState::Ok),
