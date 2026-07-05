@@ -1,6 +1,6 @@
 use clap::Subcommand;
 
-use super::{DebugLevelArg, DndState, InhibitScopeArg, PresetCommand};
+use super::args::{DebugLevelArg, DndState, InhibitScopeArg, PresetCommand};
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum Command {
