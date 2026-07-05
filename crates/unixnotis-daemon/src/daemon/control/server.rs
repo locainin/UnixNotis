@@ -1,6 +1,4 @@
-//! D-Bus server for com.unixnotis.Control.
-//!
-//! Provides panel control, state queries, and inhibitor management.
+//! Control D-Bus interface implementation
 
 use std::sync::Arc;
 
@@ -11,38 +9,18 @@ use unixnotis_core::{
 use zbus::message::Header;
 use zbus::{interface, SignalContext};
 
-use super::{auth, to_fdo_error, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH};
+use crate::daemon::{
+    auth, to_fdo_error, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH,
+};
 
-// Clear-all fanout stays separate so signal planning does not crowd interface methods
-#[path = "control/clear.rs"]
-mod clear;
-// Input normalization is shared by inhibit methods and focused unit tests
-#[path = "control/sanitize.rs"]
-mod sanitize;
-// Owner-watch cleanup runs in background tasks, so it stays isolated
-#[path = "control/watch.rs"]
-mod watch;
-// DND mutation and persistence flow stays out of the interface declaration
-#[path = "control/dnd.rs"]
-mod dnd;
-// Query methods are read-heavy and do not need to sit beside mutating calls
-#[path = "control/query.rs"]
-mod query;
-// Panel request and readiness checks have their own lifecycle rules
-#[path = "control/panel.rs"]
-mod panel;
-// Inhibitor mutation includes async owner cleanup and signal fanout
-#[path = "control/inhibit.rs"]
-mod inhibit;
+use super::clear;
 
-/// D-Bus server for com.unixnotis.Control.
+/// D-Bus server for com.unixnotis.Control
 pub struct ControlServer {
     // Shared daemon state used by all control methods
     // The server stays thin
-    state: Arc<DaemonState>,
+    pub(super) state: Arc<DaemonState>,
 }
-// Cap inhibitor count so memory use stays bounded even under abusive clients
-const MAX_ACTIVE_INHIBITORS: u32 = 128;
 
 impl ControlServer {
     pub fn new(state: Arc<DaemonState>) -> Self {
@@ -50,7 +28,7 @@ impl ControlServer {
         Self { state }
     }
 
-    async fn authorize_control_call(
+    pub(super) async fn authorize_control_call(
         &self,
         header: &Header<'_>,
         method: &'static str,
@@ -59,7 +37,7 @@ impl ControlServer {
         auth::authorize_control_call(&self.state, header, method).await
     }
 
-    async fn authorize_panel_readiness_call(
+    pub(super) async fn authorize_panel_readiness_call(
         &self,
         header: &Header<'_>,
         method: &'static str,
@@ -68,7 +46,7 @@ impl ControlServer {
         auth::authorize_panel_readiness_call(&self.state, header, method).await
     }
 
-    fn ensure_panel_available(&self) -> zbus::fdo::Result<()> {
+    pub(super) fn ensure_panel_available(&self) -> zbus::fdo::Result<()> {
         // Rejecting here makes panel outages visible instead of silent
         if self.state.panel_ready() {
             return Ok(());
@@ -76,6 +54,20 @@ impl ControlServer {
         Err(zbus::fdo::Error::Failed(
             "unixnotis-center is unavailable".to_string(),
         ))
+    }
+
+    pub(super) async fn drain_active_notifications(&self) -> Vec<u32> {
+        let ids = {
+            let mut store = self.state.store.lock().await;
+            store.drain_active_ids()
+        };
+        self.state.cancel_expirations(&ids);
+        ids
+    }
+
+    pub(super) async fn clear_saved_history(&self) {
+        let mut store = self.state.store.lock().await;
+        store.clear_history();
     }
 }
 
@@ -191,7 +183,6 @@ impl ControlServer {
         // Reuse the freedesktop action signal path for compatibility with listeners
         let ctx = SignalContext::new(self.state.connection(), NOTIFICATIONS_OBJECT_PATH)
             .map_err(to_fdo_error)?;
-        // Action signals re-use the freedesktop notification interface path.
         NotificationServer::action_invoked(&ctx, id, action_key)
             .await
             .map_err(to_fdo_error)
@@ -199,18 +190,23 @@ impl ControlServer {
 
     async fn clear_all(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ClearAll").await?;
-        // Drain active notifications in one lock to avoid quadratic scans.
-        let ids = {
-            let mut store = self.state.store.lock().await;
-            let ids = store.drain_active_ids();
-            // Clear live and saved items
-            store.clear_history();
-            ids
-        };
-        // Active timers no longer matter once the list has been wiped
-        self.state.cancel_expirations(&ids).await;
-        // Signal fanout lives in a focused helper so the D-Bus method stays readable
+        let ids = self.drain_active_notifications().await;
+        self.clear_saved_history().await;
         clear::emit_clear_all_signals(&self.state, ids).await;
+        Ok(())
+    }
+
+    async fn clear_active(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "ClearActive").await?;
+        let ids = self.drain_active_notifications().await;
+        clear::emit_clear_all_signals(&self.state, ids).await;
+        Ok(())
+    }
+
+    async fn clear_history(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "ClearHistory").await?;
+        self.clear_saved_history().await;
+        clear::emit_clear_all_signals(&self.state, Vec::new()).await;
         Ok(())
     }
 
@@ -263,7 +259,7 @@ impl ControlServer {
     #[zbus(signal)]
     pub(crate) async fn snapshot_invalidated(ctx: &SignalContext<'_>) -> zbus::Result<()>;
 
-    /// Emitted when inhibitor state toggles or count changes.
+    /// Emitted when inhibitor state toggles or count changes
     #[zbus(signal)]
     pub(crate) async fn inhibitors_changed(
         ctx: &SignalContext<'_>,
@@ -277,15 +273,3 @@ impl ControlServer {
         request: PanelRequest,
     ) -> zbus::Result<()>;
 }
-
-pub async fn spawn_inhibitor_owner_watch(state: Arc<DaemonState>) -> zbus::Result<()> {
-    // Delegate to a focused module so the interface file stays small and readable.
-    watch::spawn_inhibitor_owner_watch(state).await
-}
-
-#[cfg(test)]
-#[path = "control/tests/clear.rs"]
-mod clear_tests;
-#[cfg(test)]
-#[path = "control/tests/sanitize.rs"]
-mod sanitize_tests;
