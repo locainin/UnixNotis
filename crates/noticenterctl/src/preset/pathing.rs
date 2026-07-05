@@ -179,7 +179,7 @@ pub(super) fn format_relative_path(path: &Path) -> String {
         .join("/")
 }
 
-fn resolve_cli_bundle_path_with_prompt<F>(path: &Path, mut prompt: F) -> Result<PathBuf>
+pub(super) fn resolve_cli_bundle_path_with_prompt<F>(path: &Path, mut prompt: F) -> Result<PathBuf>
 where
     F: FnMut(&Path, &Path) -> Result<bool>,
 {
@@ -232,45 +232,4 @@ pub(super) fn prompt_yes_no(prompt: &str) -> Result<bool> {
 
     let reply = reply.trim();
     Ok(reply.eq_ignore_ascii_case("y") || reply.eq_ignore_ascii_case("yes"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{normalize_relative_path, parse_except_paths, resolve_cli_bundle_path_with_prompt};
-    use std::path::Path;
-
-    #[test]
-    fn parse_except_rejects_parent_traversal() {
-        // Traversal should be blocked before any filesystem work starts
-        let error = parse_except_paths(&["../escape".to_string()]).expect_err("reject traversal");
-        assert!(error.to_string().contains("parent traversal"));
-    }
-
-    #[test]
-    fn normalize_relative_path_strips_dot_segments() {
-        // Leading `./` should not change the stored path
-        let normalized =
-            normalize_relative_path(Path::new("./assets/../assets/bg.png")).expect_err("reject ..");
-        assert!(normalized.to_string().contains("parent traversal"));
-    }
-
-    #[test]
-    fn resolve_cli_bundle_path_appends_extension_after_confirmation() {
-        // Missing extension should be fixable through the shared CLI path helper
-        let resolved =
-            resolve_cli_bundle_path_with_prompt(Path::new("dog"), |_original, _suggested| Ok(true))
-                .expect("resolve preset path");
-        assert_eq!(resolved, Path::new("dog.unixnotis"));
-    }
-
-    #[test]
-    fn resolve_cli_bundle_path_cancels_when_prompt_is_declined() {
-        // Declining the prompt should cancel the command instead of guessing
-        let error =
-            resolve_cli_bundle_path_with_prompt(Path::new("dog"), |_original, _suggested| {
-                Ok(false)
-            })
-            .expect_err("cancel preset path");
-        assert!(error.to_string().contains("canceled"));
-    }
 }
