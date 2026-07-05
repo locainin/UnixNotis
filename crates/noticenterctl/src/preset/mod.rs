@@ -17,7 +17,7 @@ mod pathing;
 use anyhow::Result;
 use std::path::Path;
 
-use crate::cli_args::PresetCommand;
+use crate::cli::PresetCommand;
 
 pub(crate) fn run_preset(command: PresetCommand) -> Result<()> {
     // Preset commands stay local so sharing configs does not depend on a running daemon
