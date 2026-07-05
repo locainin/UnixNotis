@@ -11,8 +11,11 @@ use zbus::fdo::DBusProxy;
 use super::dbus_owner::wait_for_owner_state;
 use super::{Args, RestoreStrategy};
 
+#[path = "control.rs"]
 mod control;
+#[path = "owner.rs"]
 mod owner;
+#[path = "prompt.rs"]
 mod prompt;
 
 // Re-export keeps main.rs call sites unchanged after the split
