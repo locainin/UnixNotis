@@ -37,6 +37,9 @@ pub(crate) enum CliAction {
 
     /// Print usage and exit before starting the TUI or doing detection work
     Help,
+
+    /// Print version and exit before starting the TUI or doing detection work
+    Version,
 }
 
 /// Parse arguments from the current process environment
@@ -54,7 +57,11 @@ pub(crate) fn parse_env_args() -> Result<CliAction> {
 ///
 /// Keep this as a plain static string so help output is cheap and cannot fail
 pub(crate) fn usage() -> &'static str {
-    "Usage: unixnotis-installer [--service-manager systemd|dinit|runit|s6]\n"
+    "Usage: unixnotis-installer [--service-manager systemd|dinit|runit|s6] [-h|--help] [-V|--version]\n"
+}
+
+pub(crate) fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
 }
 
 /// Parse a sequence of OS-native argument strings
@@ -89,6 +96,8 @@ where
             // detection, filesystem checks, or TUI initialization when the user
             // only wants usage text
             "-h" | "--help" => return Ok(CliAction::Help),
+
+            "-V" | "--version" => return Ok(CliAction::Version),
 
             // Support the split form:
             //

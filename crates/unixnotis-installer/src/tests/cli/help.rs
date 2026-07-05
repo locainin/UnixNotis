@@ -1,4 +1,4 @@
-use super::{parse_args, test_support, usage, CliAction};
+use super::{parse_args, test_support, usage, version, CliAction};
 
 #[test]
 fn help_short_circuits_tui_startup() {
@@ -7,6 +7,21 @@ fn help_short_circuits_tui_startup() {
     let parsed = parse_args(test_support::args(&["--help"])).expect("valid args");
 
     assert!(matches!(parsed, CliAction::Help));
+}
+
+#[test]
+fn short_help_short_circuits_tui_startup() {
+    let parsed = parse_args(test_support::args(&["-h"])).expect("valid args");
+
+    assert!(matches!(parsed, CliAction::Help));
+}
+
+#[test]
+fn version_short_circuits_tui_startup() {
+    let parsed = parse_args(test_support::args(&["--version"])).expect("valid args");
+
+    assert!(matches!(parsed, CliAction::Version));
+    assert_eq!(version(), env!("CARGO_PKG_VERSION"));
 }
 
 #[test]
@@ -21,4 +36,6 @@ fn usage_mentions_every_supported_service_manager() {
             "usage text should mention {expected}"
         );
     }
+    assert!(text.contains("-h|--help"));
+    assert!(text.contains("-V|--version"));
 }
