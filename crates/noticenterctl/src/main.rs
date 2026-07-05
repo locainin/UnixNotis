@@ -8,9 +8,8 @@
 
 //! Command-line control surface for the UnixNotis D-Bus interface
 
-mod cli_args;
-#[path = "dbus/dbus_ops.rs"]
-mod dbus_ops;
+mod cli;
+mod dbus;
 #[path = "main/main_css_check.rs"]
 mod main_css_check;
 #[path = "main/main_log_follow.rs"]
@@ -21,7 +20,7 @@ mod preset;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use cli_args::Args;
+use cli::Args;
 use unixnotis_core::ControlProxy;
 use zbus::Connection;
 
@@ -33,10 +32,10 @@ async fn main() -> Result<()> {
     if args.command.is_local_only() {
         // Local-only commands skip D-Bus setup on purpose
         match args.command {
-            cli_args::Command::CssCheck => {
+            cli::Command::CssCheck => {
                 main_css_check::run_css_check()?;
             }
-            cli_args::Command::Preset { command } => {
+            cli::Command::Preset { command } => {
                 preset::run_preset(command).context("preset command failed")?;
             }
             _ => {}
@@ -52,7 +51,7 @@ async fn main() -> Result<()> {
         .await
         .context("connect to unixnotis control interface")?;
 
-    // Hand command execution to the D-Bus operation layer
-    dbus_ops::handle_command(&proxy, args.command).await?;
+    // Hand command execution to the D-Bus command layer
+    dbus::handle_command(&proxy, args.command).await?;
     Ok(())
 }
