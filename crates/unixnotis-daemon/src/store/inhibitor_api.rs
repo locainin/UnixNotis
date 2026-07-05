@@ -1,6 +1,6 @@
 use unixnotis_core::InhibitMode;
 
-use super::store_inhibit::{inhibits_popups, Inhibitor, InhibitorOwnerMismatch};
+use super::inhibit::{inhibits_popups, Inhibitor, InhibitorOwnerMismatch};
 use super::NotificationStore;
 
 impl NotificationStore {

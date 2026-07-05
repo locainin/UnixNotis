@@ -1,6 +1,6 @@
 //! Store regression coverage and persistence validation
 
-use super::store_state::{PersistedDndState, DND_STATE_FILE, DND_STATE_VERSION};
+use super::state::{PersistedDndState, DND_STATE_FILE, DND_STATE_VERSION};
 use super::{contains_ci, NotificationStore};
 use chrono::Utc;
 use std::collections::HashMap;
