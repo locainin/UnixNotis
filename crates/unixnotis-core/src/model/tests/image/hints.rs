@@ -1,4 +1,7 @@
-use super::super::{owned_to_string, strip_desktop_suffix, NotificationImage};
+use super::super::{
+    owned_to_string, strip_desktop_suffix, NotificationImage, MAX_ICON_NAME_BYTES,
+    MAX_IMAGE_PATH_BYTES,
+};
 use super::{image_data_value, string_value};
 use std::collections::HashMap;
 use zbus::zvariant::{OwnedValue, Structure, Value};
@@ -57,6 +60,51 @@ fn from_hints_uses_app_name_when_no_icon_hints_exist() {
     assert_eq!(image.icon_name, "Fallback App");
     assert!(image.image_path.is_empty());
     assert!(!image.has_image_data);
+}
+
+#[test]
+fn from_hints_bounds_image_path_and_icon_name_without_splitting_utf8() {
+    let mut hints = HashMap::new();
+    let long_path = format!("/tmp/{}{}", "a".repeat(MAX_IMAGE_PATH_BYTES), "é");
+    let long_icon = format!("{}{}", "b".repeat(MAX_ICON_NAME_BYTES), "é");
+    hints.insert("image-path".to_string(), string_value(&long_path));
+
+    let image = NotificationImage::from_hints("App", &long_icon, &hints);
+
+    assert!(image.image_path.len() <= MAX_IMAGE_PATH_BYTES);
+    assert!(image.image_path.is_char_boundary(image.image_path.len()));
+    assert!(image.icon_name.len() <= MAX_ICON_NAME_BYTES);
+    assert!(image.icon_name.is_char_boundary(image.icon_name.len()));
+}
+
+#[test]
+fn from_hints_truncates_image_path_at_previous_utf8_boundary() {
+    let mut hints = HashMap::new();
+    let prefix = format!("/{}", "a".repeat(MAX_IMAGE_PATH_BYTES - 2));
+    hints.insert(
+        "image-path".to_string(),
+        string_value(&format!("{prefix}é-tail")),
+    );
+
+    let image = NotificationImage::from_hints("App", "", &hints);
+
+    assert_eq!(image.image_path, prefix);
+    assert_eq!(image.image_path.len(), MAX_IMAGE_PATH_BYTES - 1);
+    assert!(image.image_path.is_char_boundary(image.image_path.len()));
+}
+
+#[test]
+fn from_hints_normalizes_localhost_file_uri_and_ignores_remote_file_uri_path() {
+    let mut hints = HashMap::new();
+    hints.insert(
+        "image-path".to_string(),
+        string_value("file://localhost/tmp/icon%20name.png"),
+    );
+
+    let image = NotificationImage::from_hints("App", "file://example.com/tmp/app.png", &hints);
+
+    assert_eq!(image.image_path, "file:///tmp/icon%20name.png");
+    assert_eq!(image.icon_name, "App");
 }
 
 #[test]

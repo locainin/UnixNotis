@@ -4,7 +4,11 @@ use std::collections::HashMap;
 
 use zbus::zvariant::{Array, OwnedValue, Structure, Value};
 
-use super::{ImageData, NotificationImage, MAX_IMAGE_BYTES};
+use crate::util;
+
+use super::{
+    ImageData, NotificationImage, MAX_ICON_NAME_BYTES, MAX_IMAGE_BYTES, MAX_IMAGE_PATH_BYTES,
+};
 
 impl NotificationImage {
     pub fn from_hints(app_name: &str, app_icon: &str, hints: &HashMap<String, OwnedValue>) -> Self {
@@ -20,6 +24,7 @@ impl NotificationImage {
             .get("image-path")
             .and_then(owned_to_string)
             .or_else(|| hints.get("image_path").and_then(owned_to_string))
+            .map(|path| normalize_image_path(&path))
             .unwrap_or_default();
 
         // Desktop-entry values map to icon theme names after the suffix is removed
@@ -27,18 +32,18 @@ impl NotificationImage {
             .get("desktop-entry")
             .and_then(owned_to_string)
             .map(|entry| strip_desktop_suffix(&entry));
-        let app_icon_path = if app_icon.starts_with('/') || app_icon.starts_with("file://") {
-            Some(app_icon.to_string())
-        } else {
-            None
-        };
+        let app_icon_path = normalize_app_icon_path(app_icon);
         if image_path.is_empty() {
             if let Some(path) = app_icon_path.as_ref() {
                 image_path = path.clone();
             }
         }
-        let icon_name =
-            resolve_icon_name(app_name, app_icon, app_icon_path.as_ref(), desktop_entry);
+        let icon_name = bound_icon_name(&resolve_icon_name(
+            app_name,
+            app_icon,
+            app_icon_path.as_ref(),
+            desktop_entry,
+        ));
 
         Self {
             has_image_data: image_data.is_some(),
@@ -99,7 +104,7 @@ fn resolve_icon_name(
     if app_icon_path.is_some() {
         return String::new();
     }
-    if !app_icon.is_empty() {
+    if !app_icon.is_empty() && !app_icon.starts_with("file://") {
         return strip_desktop_suffix(app_icon);
     }
     if let Some(desktop_entry) = desktop_entry {
@@ -111,7 +116,85 @@ fn resolve_icon_name(
     String::new()
 }
 
+fn normalize_app_icon_path(app_icon: &str) -> Option<String> {
+    // Normalize the incoming icon path first so later checks operate on a cleaned,
+    // bounded value rather than raw metadata input.
+    let path = normalize_image_path(app_icon);
+
+    // Only accept paths that are already absolute filesystem paths or valid file URIs.
+    // Relative paths are rejected because app icons need to resolve unambiguously.
+    if path.starts_with('/') || path.starts_with("file://") {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+fn normalize_image_path(value: &str) -> String {
+    // Sanitize display-facing metadata and enforce the maximum byte length before
+    // doing any URI-specific normalization.
+    let bounded = sanitize_metadata_string(value, MAX_IMAGE_PATH_BYTES);
+
+    // File URIs get normalized into the accepted form when possible. Invalid or
+    // unsupported file URI shapes fall back to an empty string.
+    if bounded.starts_with("file://") {
+        return normalize_file_uri(&bounded).unwrap_or_default();
+    }
+
+    // Non-file URI values are returned after sanitization/truncation only.
+    bounded
+}
+
+fn normalize_file_uri(value: &str) -> Option<String> {
+    // This function only handles file:// URIs; anything else is rejected immediately.
+    let stripped = value.strip_prefix("file://")?;
+
+    // A file URI with an absolute path is already in the expected form.
+    if stripped.starts_with('/') {
+        return Some(value.to_string());
+    }
+
+    // Convert localhost-based file URIs into the canonical absolute-path form.
+    stripped
+        .strip_prefix("localhost/")
+        .map(|path| format!("file:///{path}"))
+}
+
+fn bound_icon_name(value: &str) -> String {
+    // Icon names use the same metadata sanitization path, but with the icon-name
+    // byte limit instead of the image-path byte limit.
+    sanitize_metadata_string(value, MAX_ICON_NAME_BYTES)
+}
+
+fn sanitize_metadata_string(value: &str, max_bytes: usize) -> String {
+    // Remove inline display control/problematic characters before trimming and
+    // applying the final UTF-8-safe byte limit.
+    let cleaned = util::sanitize_inline_display_text(value);
+    truncate_utf8_bytes(cleaned.trim(), max_bytes)
+}
+
+fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
+    // Fast path: avoid allocation/truncation work when the value already fits.
+    if value.len() <= max_bytes {
+        return value.to_string();
+    }
+
+    // Find the last valid UTF-8 character boundary that does not exceed max_bytes,
+    // so slicing never cuts through the middle of a multi-byte character.
+    let end = value
+        .char_indices()
+        .map(|(index, _)| index)
+        .take_while(|index| *index <= max_bytes)
+        .last()
+        .unwrap_or(0);
+
+    // Return only the byte-safe prefix.
+    value[..end].to_string()
+}
+
 pub(super) fn owned_to_string(value: &OwnedValue) -> Option<String> {
+    // Clone the owned D-Bus value first, then attempt to extract it as a String.
+    // Any clone or conversion failure is represented as None.
     value
         .try_clone()
         .ok()
