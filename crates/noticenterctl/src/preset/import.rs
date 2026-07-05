@@ -3,20 +3,16 @@
 //! Import validates the bundle first, builds a write plan, optionally reports it,
 //! then commits the final backup snapshot only after the staged import is ready to finish
 
-#[path = "import/apply.rs"]
 mod apply;
-#[path = "import/checks.rs"]
 mod checks;
-#[path = "import/exec_review.rs"]
 mod exec_review;
-#[path = "import/plan.rs"]
 mod plan;
 
 use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
 use unixnotis_core::Config;
 
-use crate::main_css_check::run_css_check;
+use crate::css_check::run_css_check;
 
 use self::apply::{apply_import_plan, finalize_import_transaction, rollback_import_transaction};
 use self::checks::{
@@ -360,5 +356,4 @@ fn confirm_import_exec_content_for_tests(
 }
 
 #[cfg(test)]
-#[path = "import/tests/mod.rs"]
 mod tests;

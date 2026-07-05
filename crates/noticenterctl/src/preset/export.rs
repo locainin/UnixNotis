@@ -3,12 +3,9 @@
 //! Export reads the active config root, applies explicit exclusions,
 //! rejects host-specific escape paths, and writes one shareable bundle file
 
-#[path = "export/checks.rs"]
 mod checks;
-#[path = "export/prompts.rs"]
 mod prompts;
 #[cfg(test)]
-#[path = "export/tests.rs"]
 mod tests;
 
 use anyhow::{anyhow, Context, Result};
