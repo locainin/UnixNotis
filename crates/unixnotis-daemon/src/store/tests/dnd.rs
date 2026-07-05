@@ -31,7 +31,7 @@ fn dnd_state_invalid_payload_falls_back_to_default() {
 #[test]
 fn dnd_state_store_load_returns_none_when_file_is_missing() {
     let state_dir = make_temp_state_dir("dnd-missing-file");
-    let state_store = super::super::store_state::DndStateStore::from_state_dir(state_dir.clone());
+    let state_store = super::super::state::DndStateStore::from_state_dir(state_dir.clone());
 
     // A first run has no state file yet, which should not be treated as corruption
     let loaded = state_store
@@ -47,7 +47,7 @@ fn dnd_state_store_load_reports_non_missing_filesystem_errors() {
     let state_dir = make_temp_state_dir("dnd-path-is-directory");
     let path = state_dir.join("unixnotis").join(DND_STATE_FILE);
     std::fs::create_dir_all(&path).expect("create directory at state file path");
-    let state_store = super::super::store_state::DndStateStore::from_state_dir(state_dir.clone());
+    let state_store = super::super::state::DndStateStore::from_state_dir(state_dir.clone());
 
     // Wrong path shape is a real filesystem problem and should not look like first run
     let err = state_store
