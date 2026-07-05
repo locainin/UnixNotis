@@ -1,27 +1,39 @@
-use std::process::Command;
+#![allow(
+    clippy::blanket_clippy_restriction_lints,
+    clippy::restriction,
+    reason = "workspace CI enables clippy::restriction as a review signal"
+)]
 
-#[test]
-fn binary_rejects_unknown_command_before_dbus_setup() {
-    let output = Command::new(env!("CARGO_BIN_EXE_noticenterctl"))
-        .arg("definitely-not-a-command")
-        .output()
-        .expect("run noticenterctl invalid command");
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::process::Command;
 
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).expect("error output is utf8");
-    assert!(stderr.contains("unrecognized subcommand"));
-    assert!(stderr.contains("definitely-not-a-command"));
-}
+    type TestResult = Result<(), Box<dyn Error>>;
 
-#[test]
-fn binary_rejects_invalid_dnd_state_before_dbus_setup() {
-    let output = Command::new(env!("CARGO_BIN_EXE_noticenterctl"))
-        .args(["dnd", "maybe"])
-        .output()
-        .expect("run noticenterctl invalid dnd state");
+    #[test]
+    fn binary_rejects_unknown_command_before_dbus_setup() -> TestResult {
+        let output = Command::new(env!("CARGO_BIN_EXE_noticenterctl"))
+            .arg("definitely-not-a-command")
+            .output()?;
 
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).expect("error output is utf8");
-    assert!(stderr.contains("invalid value"));
-    assert!(stderr.contains("maybe"));
+        assert!(!output.status.success());
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("unrecognized subcommand"));
+        assert!(stderr.contains("definitely-not-a-command"));
+        Ok(())
+    }
+
+    #[test]
+    fn binary_rejects_invalid_dnd_state_before_dbus_setup() -> TestResult {
+        let output = Command::new(env!("CARGO_BIN_EXE_noticenterctl"))
+            .args(["dnd", "maybe"])
+            .output()?;
+
+        assert!(!output.status.success());
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("invalid value"));
+        assert!(stderr.contains("maybe"));
+        Ok(())
+    }
 }
