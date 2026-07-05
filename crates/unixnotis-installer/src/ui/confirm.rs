@@ -88,10 +88,9 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
                 Style::default().fg(Color::Yellow),
             )));
         } else {
-            // Uninstall removes the managed binaries from the same user bin dir
             lines.push(Line::from(Span::styled(
                 format!(
-                    "Uninstall removes unixnotis-daemon, unixnotis-popups, unixnotis-center, and noticenterctl from {}",
+                    "Uninstall stops UnixNotis, removes managed startup entries, and removes unixnotis-daemon, unixnotis-popups, unixnotis-center, and noticenterctl from {}; config files are kept",
                     bin_dir
                 ),
                 Style::default().fg(Color::Yellow),

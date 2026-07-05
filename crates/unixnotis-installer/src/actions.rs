@@ -44,7 +44,9 @@ pub(super) use build::run_build;
 pub(crate) use config::backup::{list_backup_dirs_for_ui, restore_config};
 pub(super) use config::{ensure_config, remove_state, reset_config};
 pub(super) use daemon::stop_active_daemon;
-pub(super) use environment::{ensure_shell_path_entry, sync_user_environment, HYPR_IMPORT_VARS};
+pub(super) use environment::{
+    ensure_shell_path_entry, remove_shell_path_entry, sync_user_environment, HYPR_IMPORT_VARS,
+};
 pub(super) use install::{
     enable_service, install_binaries, install_service, remove_binaries, uninstall_service,
 };
