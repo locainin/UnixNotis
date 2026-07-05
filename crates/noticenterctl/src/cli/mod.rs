@@ -1,18 +1,12 @@
 //! Command-line argument types for noticenterctl
 
 mod args;
-mod command;
-mod debug;
-mod dnd;
-mod inhibit;
-mod preset;
+mod route;
 
-pub(crate) use args::Args;
-pub(crate) use command::Command;
-pub(crate) use debug::DebugLevelArg;
-pub(crate) use dnd::DndState;
-pub(crate) use inhibit::InhibitScopeArg;
-pub(crate) use preset::PresetCommand;
+pub(crate) use args::{Args, DndState, PresetCommand};
+#[cfg(test)]
+pub(crate) use args::{DebugLevelArg, InhibitScopeArg};
+pub(crate) use route::Command;
 
 #[cfg(test)]
 mod tests;
