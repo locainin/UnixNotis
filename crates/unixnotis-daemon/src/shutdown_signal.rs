@@ -1,6 +1,6 @@
-//! Signal handling for graceful shutdown.
+//! Signal handling for graceful shutdown
 //!
-//! Centralizes signal waiting logic used by the daemon runtime.
+//! Centralizes signal waiting logic used by the daemon runtime
 
 use tokio::signal;
 use tracing::warn;
@@ -16,7 +16,7 @@ pub(super) async fn shutdown_signal() {
             }
             Err(err) => {
                 warn!(?err, "failed to register SIGTERM handler");
-                // Keep the future pending so startup does not abort on registration failure.
+                // Keep the future pending so startup does not abort on registration failure
                 std::future::pending::<()>().await;
             }
         }

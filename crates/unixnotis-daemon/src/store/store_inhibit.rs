@@ -1,6 +1,6 @@
-//! Inhibitor bookkeeping and scope evaluation.
+//! Inhibitor bookkeeping and scope evaluation
 //!
-//! Split out to keep the main store focused on notification lifecycle logic.
+//! Split out to keep the main store focused on notification lifecycle logic
 
 use unixnotis_core::INHIBIT_SCOPE_POPUPS;
 
@@ -35,6 +35,6 @@ impl InhibitorOwnerMismatch {
 }
 
 pub(super) fn inhibits_popups(scope: u32) -> bool {
-    // Scope 0 is the legacy "all output" value; bit 0 specifically targets popups.
+    // Scope 0 is the legacy "all output" value; bit 0 specifically targets popups
     scope == 0 || scope & INHIBIT_SCOPE_POPUPS != 0
 }

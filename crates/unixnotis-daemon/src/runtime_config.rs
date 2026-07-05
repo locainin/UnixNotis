@@ -1,6 +1,6 @@
-//! Configuration loading and tracing setup.
+//! Configuration loading and tracing setup
 //!
-//! Keeps environment handling and logging setup out of the main control flow.
+//! Keeps environment handling and logging setup out of the main control flow
 
 use std::env;
 use std::fs;
@@ -26,7 +26,7 @@ pub(super) fn init_tracing(config: &Config) {
     let (filter, warning) = match EnvFilter::try_from_default_env() {
         Ok(filter) => (filter, None),
         Err(err) => {
-            // Only warn if RUST_LOG was set but invalid; missing env should remain quiet.
+            // Only warn if RUST_LOG was set but invalid; missing env should remain quiet
             let env_warning = if env::var("RUST_LOG").is_ok() {
                 Some(format!(
                     "invalid RUST_LOG value: {err}; falling back to config log_level"
@@ -106,7 +106,7 @@ fn detect_wayland_display() -> Option<String> {
         }
     }
 
-    // Fallback scan: prefer wayland-0 when WAYLAND_DISPLAY is unset, otherwise accept any socket.
+    // Fallback scan: prefer wayland-0 when WAYLAND_DISPLAY is unset, otherwise accept any socket
     let runtime_dir = env::var("XDG_RUNTIME_DIR").ok()?;
     let entries = fs::read_dir(&runtime_dir).ok()?;
     let mut candidates = Vec::new();
@@ -123,7 +123,7 @@ fn detect_wayland_display() -> Option<String> {
         let file_type = match entry.file_type() {
             Ok(file_type) => file_type,
             Err(_) => {
-                // If file type cannot be inspected, skip the entry to avoid false positives.
+                // If file type cannot be inspected, skip the entry to avoid false positives
                 continue;
             }
         };

@@ -8,7 +8,7 @@ fn replace_id_in_history_reuses_id_and_clears_entry() {
     store.close(first.notification.id, CloseReason::Expired);
     assert_eq!(store.history_len(), 1);
 
-    // Replacement should reuse the original ID and remove the history entry.
+    // Replacement should reuse the original ID and remove the history entry
     let replaced = store.insert(make_notification("replacement"), first.notification.id);
     assert!(replaced.replaced);
     assert_eq!(replaced.notification.id, first.notification.id);
@@ -18,7 +18,7 @@ fn replace_id_in_history_reuses_id_and_clears_entry() {
     assert_eq!(active.len(), 1);
     assert_eq!(active[0].summary, "replacement");
 
-    // Closing the replacement should re-add a single history entry for the updated notification.
+    // Closing the replacement should re-add a single history entry for the updated notification
     store.close(replaced.notification.id, CloseReason::Expired);
     let history = store.list_history();
     assert_eq!(history.len(), 1);
@@ -36,7 +36,7 @@ fn replace_id_rejected_for_different_sender() {
     store.close(first.notification.id, CloseReason::Expired);
     assert_eq!(store.history_len(), 1);
 
-    // Cross-sender replacement must allocate a fresh id and keep prior history intact.
+    // Cross-sender replacement must allocate a fresh id and keep prior history intact
     let replaced = store.insert(
         make_notification_with_sender("replacement", ":1.sender-b", 202, 2),
         first.notification.id,
@@ -101,7 +101,7 @@ fn is_notification_owned_by_accepts_same_process_after_reconnect() {
         make_notification_with_sender("owned", ":1.owner-a", 1234, 55),
         0,
     );
-    // A new bus name from the same process lifetime should still be treated as owner.
+    // A new bus name from the same process lifetime should still be treated as owner
     assert!(store.is_notification_owned_by(
         outcome.notification.id,
         ":1.owner-b",
@@ -117,7 +117,7 @@ fn is_notification_owned_by_rejects_reused_pid_with_new_start_time() {
         make_notification_with_sender("owned", ":1.owner-a", 1234, 55),
         0,
     );
-    // Same pid is not enough once the original process lifetime has ended.
+    // Same pid is not enough once the original process lifetime has ended
     assert!(!store.is_notification_owned_by(
         outcome.notification.id,
         ":1.owner-b",
