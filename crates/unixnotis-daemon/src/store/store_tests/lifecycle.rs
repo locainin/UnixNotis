@@ -41,7 +41,7 @@ fn max_active_evicts_oldest_to_history() {
 
 #[test]
 fn max_active_hard_cap_limits_even_when_config_is_higher() {
-    // Config may request a larger active window, but runtime hard-cap protects UI stability.
+    // Config may request a larger active window, but runtime hard-cap protects UI stability
     let mut store = make_store_with_limits(32, 64);
 
     for idx in 0..18 {
@@ -71,6 +71,18 @@ fn max_entries_zero_drops_history_on_close() {
 }
 
 #[test]
+fn max_entries_zero_keeps_active_notifications_when_active_limit_allows() {
+    let mut store = make_store_with_limits(2, 0);
+
+    store.insert(make_notification("first"), 0);
+    let outcome = store.insert(make_notification("second"), 0);
+
+    assert!(outcome.evicted.is_empty());
+    assert_eq!(store.list_active().len(), 2);
+    assert_eq!(store.history_len(), 0);
+}
+
+#[test]
 fn history_eviction_keeps_most_recent_entries() {
     let mut store = make_store_with_limits(0, 2);
 
@@ -78,7 +90,7 @@ fn history_eviction_keeps_most_recent_entries() {
     store.insert(make_notification("second"), 0);
     store.insert(make_notification("third"), 0);
 
-    // History listing returns most-recent-first order.
+    // History listing returns most-recent-first order
     let history = store.list_history();
     assert_eq!(history.len(), 2);
     assert_eq!(history[0].summary, "third");
@@ -108,7 +120,7 @@ fn max_entries_zero_drops_history_on_insert() {
 
     let outcome = store.insert(make_notification("first"), 0);
 
-    // Eviction should archive the active entry, then drop it due to the zero history limit.
+    // Eviction should archive the active entry, then drop it due to the zero history limit
     assert_eq!(outcome.evicted.len(), 1);
     assert!(store.list_active().is_empty());
     assert_eq!(store.history_len(), 0);

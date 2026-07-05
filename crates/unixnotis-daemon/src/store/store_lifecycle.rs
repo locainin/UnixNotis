@@ -8,7 +8,7 @@ use unixnotis_core::{
 
 use super::{DismissOutcome, InsertOutcome, NotificationStore};
 
-// Hard ceiling for concurrently active notifications to protect panel/popups stability.
+// Hard ceiling for concurrently active notifications to protect panel/popups stability
 const ACTIVE_HARD_CAP: usize = 12;
 
 impl NotificationStore {
@@ -119,7 +119,7 @@ impl NotificationStore {
     }
 
     fn enforce_active_limit(&mut self) -> Vec<u32> {
-        // Config limit still applies, but active list never exceeds the global safety cap.
+        // Config limit still applies, but active list never exceeds the global safety cap
         let max_active = self.config.history.max_active.min(ACTIVE_HARD_CAP);
         if max_active == 0 {
             // max_active=0 means archive everything immediately
@@ -193,11 +193,11 @@ impl NotificationStore {
         if notification.suppress_sound {
             return false;
         }
-        // Inhibitors should suppress sound too so focus/presentation mode stays quiet.
+        // Inhibitors should suppress sound too so focus/presentation mode stays quiet
         if self.inhibited {
             return false;
         }
-        // DND still keeps critical notification sounds enabled.
+        // DND still keeps critical notification sounds enabled
         if self.dnd_enabled {
             return notification.urgency == Urgency::Critical;
         }
