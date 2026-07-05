@@ -14,6 +14,9 @@ mod inspect;
 mod manifest;
 mod pathing;
 
+#[cfg(test)]
+mod tests;
+
 use anyhow::Result;
 use std::path::Path;
 
