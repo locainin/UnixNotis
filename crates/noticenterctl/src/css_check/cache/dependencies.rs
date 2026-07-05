@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::super::main_css_check_parse::strip_css_comments;
+use super::super::parse::strip_css_comments;
 use super::model::{CssDependencyState, CssFileIdentity};
 
 pub(in super::super) fn collect_import_dependency_states(

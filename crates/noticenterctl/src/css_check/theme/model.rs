@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use super::super::main_css_check_files::format_display_path;
-use super::super::main_css_check_report::{CssCheckActiveFile, CssCheckDiagnostic};
+use super::super::files::format_display_path;
+use super::super::report::{CssCheckActiveFile, CssCheckDiagnostic};
 
 pub(in super::super) struct CssCheckInputs {
     // These are the real files that move into parse and lint later

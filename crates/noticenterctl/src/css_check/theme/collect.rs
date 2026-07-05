@@ -9,10 +9,8 @@ use crate::preset::command_rules::{
 };
 use crate::preset::css_asset_refs::collect_external_css_asset_refs_from_paths;
 
-use super::super::main_css_check_files::{collect_css_files, format_display_path};
-use super::super::main_css_check_report::{
-    CssCheckActiveFile, CssCheckCategory, CssCheckDiagnostic,
-};
+use super::super::files::{collect_css_files, format_display_path};
+use super::super::report::{CssCheckActiveFile, CssCheckCategory, CssCheckDiagnostic};
 use super::model::CssCheckInputs;
 use super::paths::{
     dedupe_key_for_theme_file, has_css_extension, join_config_keys, normalize_target_key,

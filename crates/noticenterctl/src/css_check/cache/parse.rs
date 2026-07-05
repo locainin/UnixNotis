@@ -4,9 +4,9 @@ use gtk::CssProvider;
 use std::fs;
 use std::path::Path;
 
-use super::super::main_css_check_files::format_display_path;
-use super::super::main_css_check_policy::parsing_error_hint;
-use super::super::main_css_check_report::{CssCheckCategory, CssCheckDiagnostic};
+use super::super::files::format_display_path;
+use super::super::policy::parsing_error_hint;
+use super::super::report::{CssCheckCategory, CssCheckDiagnostic};
 use super::super::source_line_text;
 use super::model::{CachedDiagnosticSource, CachedParseDiagnostic, CssParseWorkItem};
 

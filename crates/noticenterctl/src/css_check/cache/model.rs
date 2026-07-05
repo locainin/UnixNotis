@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
-use super::super::main_css_check_report::CssCheckDiagnostic;
+use super::super::report::CssCheckDiagnostic;
 
 pub(in super::super) struct CssParseReport {
     // Fresh and cached parser findings end up in one flat report
