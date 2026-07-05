@@ -1,7 +1,7 @@
-//! Notification history storage with ordering.
+//! Notification history storage with ordering
 //!
 //! Kept in a dedicated module so store.rs can focus on active notifications
-//! and cross-cutting policy decisions.
+//! and cross-cutting policy decisions
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -51,7 +51,7 @@ impl HistoryStore {
     pub(super) fn remove(&mut self, id: &u32) -> Option<Arc<Notification>> {
         let removed = self.entries.remove(id);
         if removed.is_some() {
-            // Removal is infrequent compared to insertion; pay the cost here to keep order clean.
+            // Removal is infrequent compared to insertion; pay the cost here to keep order clean
             self.order.retain(|entry| entry != id);
         }
         removed
@@ -60,7 +60,7 @@ impl HistoryStore {
     pub(super) fn insert(&mut self, notification: Arc<Notification>) {
         let id = notification.id;
         if self.entries.contains_key(&id) {
-            // Avoid duplicate IDs in order when a notification is replaced.
+            // Avoid duplicate IDs in order when a notification is replaced
             self.order.retain(|entry| *entry != id);
         }
         self.entries.insert(id, notification);
@@ -75,7 +75,7 @@ impl HistoryStore {
 
         while self.entries.len() > max_entries {
             let Some(id) = self.order.pop_front() else {
-                // Recover ordering when entries outlive the recorded order.
+                // Recover ordering when entries outlive the recorded order
                 self.order.extend(self.entries.keys().copied());
                 if self.order.is_empty() {
                     break;

@@ -123,7 +123,7 @@ fn stale_dnd_rollback_cannot_overwrite_newer_write() {
     assert!(write_b.changed);
     assert!(!store.dnd_enabled());
 
-    // Simulate late failure from write_a and verify guarded rollback is rejected.
+    // Simulate late failure from write_a and verify guarded rollback is rejected
     let rolled_back = store.rollback_dnd_write_if_current(&write_a);
     assert!(!rolled_back);
     assert!(!store.dnd_enabled());
@@ -159,7 +159,7 @@ fn dnd_rollback_restores_state_when_write_is_still_current() {
     let write = store.set_dnd(true);
     assert!(store.dnd_enabled());
 
-    // Simulate persistence failure with no newer writes in between.
+    // Simulate persistence failure with no newer writes in between
     let rolled_back = store.rollback_dnd_write_if_current(&write);
     assert!(rolled_back);
     assert!(!store.dnd_enabled());

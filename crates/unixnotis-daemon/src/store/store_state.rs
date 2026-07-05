@@ -1,6 +1,6 @@
-//! DND persistence helpers.
+//! DND persistence helpers
 //!
-//! Encapsulates on-disk state to keep filesystem I/O isolated from the store core.
+//! Encapsulates on-disk state to keep filesystem I/O isolated from the store core
 
 use std::fs;
 use std::io;
@@ -62,12 +62,12 @@ impl DndStateStore {
         fs::create_dir_all(parent)?;
         let temp_path = self.temp_path(parent);
         let mut file = fs::File::create(&temp_path)?;
-        // Write and flush the file before renaming to avoid partially written state files.
+        // Write and flush the file before renaming to avoid partially written state files
         io::Write::write_all(&mut file, &body)?;
-        // Ensure temp contents are durable before the atomic rename.
+        // Ensure temp contents are durable before the atomic rename
         file.sync_all()?;
         fs::rename(&temp_path, &self.path)?;
-        // Sync the directory entry so the rename survives sudden power loss.
+        // Sync the directory entry so the rename survives sudden power loss
         sync_parent_dir(parent)?;
         Ok(())
     }
