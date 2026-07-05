@@ -17,7 +17,7 @@ use super::limits::{
 };
 use super::sender::SenderMetadata;
 
-// Unbroken tokens longer than this are folded with an ellipsis to avoid UI overflow spikes.
+// Unbroken tokens longer than this are folded with an ellipsis to avoid UI overflow spikes
 const MAX_CONTIGUOUS_TOKEN_CHARS: usize = 96;
 
 pub(super) struct NotificationInput {
@@ -79,13 +79,13 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
         },
         app_icon: truncate_utf8_bytes(&app_icon, MAX_APP_ICON_BYTES),
         // Truncate bytes first, then fold long contiguous runs to keep UTF-8 boundaries valid
-        // Fold very long unbroken runs so renderer width remains bounded.
+        // Fold very long unbroken runs so renderer width remains bounded
         summary: normalize_text_for_layout(
             &truncate_utf8_bytes(&summary, MAX_SUMMARY_BYTES),
             MAX_CONTIGUOUS_TOKEN_CHARS,
         ),
         // Apply the same order for body so renderer sees consistent text constraints
-        // Body can be much larger, so apply the same run-folding protection here.
+        // Body can be much larger, so apply the same run-folding protection here
         body: normalize_text_for_layout(
             &truncate_utf8_bytes(&body, MAX_BODY_BYTES),
             MAX_CONTIGUOUS_TOKEN_CHARS,
@@ -248,8 +248,8 @@ fn normalize_text_for_layout(value: &str, max_contiguous: usize) -> String {
     let mut run_width = 0usize;
     let mut folded_run = false;
 
-    // Walk characters so non-ASCII content remains valid after normalization.
-    // Width is tracked in display columns instead of char count to handle wide glyphs.
+    // Walk characters so non-ASCII content remains valid after normalization
+    // Width is tracked in display columns instead of char count to handle wide glyphs
     for ch in value.chars() {
         if ch.is_whitespace() {
             // Whitespace resets contiguous-run accounting
@@ -267,10 +267,10 @@ fn normalize_text_for_layout(value: &str, max_contiguous: usize) -> String {
             continue;
         }
 
-        // Add one ellipsis when a contiguous token crosses the safety threshold.
+        // Add one ellipsis when a contiguous token crosses the safety threshold
         if !folded_run {
             let ellipsis_width = display_width('…');
-            // Keep final run width bounded by trimming the current run tail first.
+            // Keep final run width bounded by trimming the current run tail first
             while run_width.saturating_add(ellipsis_width) > max_contiguous {
                 // Pop one char at a time
                 let Some(last) = out.pop() else {
@@ -291,8 +291,8 @@ fn normalize_text_for_layout(value: &str, max_contiguous: usize) -> String {
 }
 
 fn display_width(ch: char) -> usize {
-    // Width estimators in downstream UI surfaces often treat joiners/selectors as visible slots.
-    // Counting them here keeps folded output safely within those stricter layouts.
+    // Width estimators in downstream UI surfaces often treat joiners/selectors as visible slots
+    // Counting them here keeps folded output safely within those stricter layouts
     if matches!(
         ch,
         '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FE0E}' | '\u{FE0F}'
@@ -303,5 +303,5 @@ fn display_width(ch: char) -> usize {
 }
 
 #[cfg(test)]
-#[path = "payload_tests.rs"]
+#[path = "tests/payload.rs"]
 mod tests;
