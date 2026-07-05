@@ -9,7 +9,7 @@ use crate::paths::format_with_home;
 use super::super::{
     ensure_shell_path_entry,
     hyprland::{ensure_hyprland_autostart, remove_hyprland_autostart},
-    log_line, sync_user_environment, ActionContext,
+    log_line, remove_shell_path_entry, sync_user_environment, ActionContext,
 };
 
 mod artifacts;
@@ -155,7 +155,19 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
         );
     }
 
+    // Remove any Hyprland autostart entry managed by the installer before
+    // cleaning up shell startup files.
     remove_hyprland_autostart(ctx);
+
+    // Shell PATH cleanup is non-fatal: uninstall should continue even if one
+    // startup file cannot be read or updated.
+    if let Err(err) = remove_shell_path_entry(ctx) {
+        log_line(
+            ctx,
+            format!("Warning: failed to remove shell PATH entries ({err})"),
+        );
+    }
+
     Ok(())
 }
 
@@ -163,10 +175,18 @@ fn log_unsafe_service_artifacts(
     ctx: &mut ActionContext,
     artifacts: &[crate::service_manager::ServiceArtifact],
 ) -> bool {
+    // Track whether any unsafe artifact path was detected so the caller can
+    // decide whether cleanup should proceed.
     let mut found = false;
+
     for artifact in artifacts {
+        // Only warn about service artifacts whose paths are considered unsafe
+        // to remove automatically
         if service_artifact_path_conflicts(artifact) {
             found = true;
+
+            // Log the unsafe path in a user-friendly form and leave the file in
+            // place rather than risking deletion of something not owned by us
             log_line(
                 ctx,
                 format!(
@@ -176,5 +196,6 @@ fn log_unsafe_service_artifacts(
             );
         }
     }
+
     found
 }
