@@ -1,10 +1,14 @@
-use super::main_css_check_lint::lint_css_contents;
-use super::main_css_check_parse::{parse_css_declarations, split_selectors};
-use super::main_css_check_runtime::panel_width_floor_warning;
+use super::lint::lint_css_contents;
+use super::parse::{parse_css_declarations, split_selectors};
+use super::runtime::panel_width_floor_warning;
 use unixnotis_core::{
     build_modern_theme_custom_properties, gtk_css_features_for_version, Config, ThemeConfig,
     PANEL_RUNTIME_WIDTH_MIN,
 };
+
+mod files;
+mod policy;
+mod runtime;
 
 #[test]
 fn split_selectors_handles_is_commas() {

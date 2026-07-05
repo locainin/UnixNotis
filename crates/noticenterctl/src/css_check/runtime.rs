@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 use unixnotis_core::{Config, PANEL_RUNTIME_WIDTH_MIN};
 
-use super::main_css_check_report::{CssCheckCategory, CssCheckDiagnostic};
+use super::report::{CssCheckCategory, CssCheckDiagnostic};
 
 pub(super) fn lint_runtime_config(
     config_dir: &Path,
