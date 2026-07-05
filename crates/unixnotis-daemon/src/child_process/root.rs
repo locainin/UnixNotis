@@ -15,7 +15,9 @@ use unixnotis_core::util::CONFIG_PATH_ENV;
 use super::Args;
 use crate::daemon::DaemonState;
 
+#[path = "paths.rs"]
 mod paths;
+#[path = "supervisor.rs"]
 mod supervisor;
 
 use paths::{apply_parent_death_signal, resolve_center_path, resolve_popups_path};
