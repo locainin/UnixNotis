@@ -18,13 +18,15 @@ main() {
   local version="${tag#v}"
   local target="x86_64-unknown-linux-gnu"
   local root
+  local binaries=()
   root="$(repo_root)"
   cd "$root"
+  readarray -t binaries < <(managed_binaries)
 
   assert_workspace_version "$version"
   # Build first so packaging never creates an archive around stale target artifacts
-  build_release_binaries
-  assemble_archive "$tag" "$version" "$target"
+  build_release_binaries "${binaries[@]}"
+  assemble_archive "$tag" "$version" "$target" "${binaries[@]}"
 }
 
 repo_root() {
@@ -48,19 +50,23 @@ assert_workspace_version() {
 }
 
 build_release_binaries() {
+  local binaries=("$@")
+  local args=(build --release -p unixnotis-installer)
+
+  for binary in "${binaries[@]}"; do
+    args+=(-p "$binary")
+  done
+
   # Build only the programs the installer deploys plus the installer itself
-  cargo build --release \
-    -p unixnotis-installer \
-    -p unixnotis-daemon \
-    -p unixnotis-popups \
-    -p unixnotis-center \
-    -p noticenterctl
+  cargo "${args[@]}"
 }
 
 assemble_archive() {
   local tag="${1}"
   local version="${2}"
   local target="${3}"
+  shift 3
+  local binaries=("$@")
   local package_root="unixnotis-${tag}-${target}"
   local dist_root="dist/${package_root}"
   local archive="dist/${package_root}.tar.zst"
@@ -74,12 +80,11 @@ assemble_archive() {
   install -m 0755 target/release/unixnotis-installer "${dist_root}/unixnotis-installer"
 
   # Runtime tools stay under bin so the installer can validate and copy them as a group
-  install -m 0755 target/release/unixnotis-daemon "${dist_root}/bin/unixnotis-daemon"
-  install -m 0755 target/release/unixnotis-popups "${dist_root}/bin/unixnotis-popups"
-  install -m 0755 target/release/unixnotis-center "${dist_root}/bin/unixnotis-center"
-  install -m 0755 target/release/noticenterctl "${dist_root}/bin/noticenterctl"
+  for binary in "${binaries[@]}"; do
+    install -m 0755 "target/release/${binary}" "${dist_root}/bin/${binary}"
+  done
 
-  write_manifest "${dist_root}/unixnotis-release.json" "$tag" "$version" "$target"
+  write_manifest "${dist_root}/unixnotis-release.json" "$tag" "$version" "$target" "${binaries[@]}"
   write_readme "${dist_root}/README.txt" "$tag"
 
   # zstd keeps the release small while still being standard on modern Linux systems
@@ -96,13 +101,53 @@ write_manifest() {
   local tag="${2}"
   local version="${3}"
   local target="${4}"
+  shift 4
+  local binaries=("$@")
+  local json_binaries="["
+  local separator=""
+
+  for binary in "${binaries[@]}"; do
+    json_binaries+="${separator}\"${binary}\""
+    separator=","
+  done
+  json_binaries+="]"
 
   # Keep this schema tiny because the installer trusts it to find bundled binaries
-  printf '{"version":"%s","tag":"%s","target":"%s","binaries":["unixnotis-daemon","unixnotis-popups","unixnotis-center","noticenterctl"]}\n' \
+  printf '{"version":"%s","tag":"%s","target":"%s","binaries":%s}\n' \
     "$version" \
     "$tag" \
     "$target" \
+    "$json_binaries" \
     > "$path"
+}
+
+managed_binaries() {
+  cargo metadata --no-deps --format-version 1 |
+    python3 -c '
+import json
+import sys
+
+metadata = json.load(sys.stdin)
+binaries = (
+    metadata.get("workspace_metadata", {})
+    .get("unixnotis", {})
+    .get("installer", {})
+    .get("binaries", [])
+)
+if not isinstance(binaries, list) or not binaries:
+    raise SystemExit("workspace metadata must define unixnotis.installer.binaries")
+
+seen = set()
+for raw in binaries:
+    if not isinstance(raw, str):
+        raise SystemExit("installer binary names must be strings")
+    name = raw.strip()
+    if not name or name in {".", ".."} or "/" in name or "\\" in name or "\"" in name:
+        raise SystemExit(f"unsafe installer binary name: {raw!r}")
+    if name not in seen:
+        seen.add(name)
+        print(name)
+'
 }
 
 write_readme() {
