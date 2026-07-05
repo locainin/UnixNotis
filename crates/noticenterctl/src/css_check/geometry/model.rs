@@ -5,16 +5,14 @@ use unixnotis_core::Config;
 use super::stock::baselines::{stock_config, stock_geometry_model};
 
 // Keep the geometry model split by job so width math changes stay easy to trace
-#[path = "model/box_metrics.rs"]
 mod box_metrics;
-#[path = "model/constants.rs"]
 mod constants;
-#[path = "model/fixed_grid.rs"]
 mod fixed_grid;
-#[path = "media/mod.rs"]
 mod media;
-#[path = "model/tracking.rs"]
 mod tracking;
+
+#[cfg(test)]
+mod tests;
 
 pub(super) use self::box_metrics::{
     HorizontalBoxMetrics, HorizontalEdges, VerticalBoxMetrics, VerticalEdges,

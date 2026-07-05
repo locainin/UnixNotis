@@ -2,11 +2,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::super::main_css_check_parse::{
+use super::super::parse::{
     next_css_block, normalize_selector, parse_css_declarations, should_recurse_at_rule,
     split_selectors, strip_css_comments,
 };
-use super::super::main_css_check_policy::{
+use super::super::policy::{
     is_complex_geometry_warning_property, is_horizontal_size_property, is_vertical_size_property,
 };
 use super::model::GeometryModel;
@@ -14,17 +14,17 @@ use super::stock::classes::known_unixnotis_classes;
 use super::stock::should_warn_for_unmodeled_known_class;
 
 // Split the parser by job so width parsing, selector checks, and token collection stay separate
-#[path = "parse/custom_properties.rs"]
 mod custom_properties;
-#[path = "parse/lengths/mod.rs"]
 mod lengths;
-#[path = "parse/selectors.rs"]
 mod selectors;
+
+#[cfg(test)]
+mod tests;
 
 pub(super) type CssCustomProperties = HashMap<String, String>;
 
 use self::custom_properties::collect_custom_properties;
-pub(in crate::main_css_check) use self::custom_properties::CssCustomPropertyScopes;
+pub(in crate::css_check) use self::custom_properties::CssCustomPropertyScopes;
 pub(super) use self::lengths::{
     parse_box_edges, parse_box_vertical_edges, parse_single_length, set_edge,
 };
@@ -64,14 +64,14 @@ pub(super) fn collect_geometry_from_contents_with_properties(
     warnings
 }
 
-pub(in crate::main_css_check) fn collect_custom_property_scopes(
+pub(in crate::css_check) fn collect_custom_property_scopes(
     contents: &str,
 ) -> CssCustomPropertyScopes {
     // Lint and geometry both need the same custom-property view of the file
     collect_custom_properties(contents)
 }
 
-pub(in crate::main_css_check) fn can_model_horizontal_size_value(
+pub(in crate::css_check) fn can_model_horizontal_size_value(
     selector: &str,
     property: &str,
     value: &str,

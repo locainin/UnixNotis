@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use super::super::super::main_css_check_parse::{
+use super::super::super::parse::{
     next_css_block, normalize_selector, parse_css_declarations, should_recurse_at_rule,
     split_selectors,
 };
 use super::selectors::simple_class_selector;
 use super::CssCustomProperties;
 
-pub(in crate::main_css_check) struct CssCustomPropertyScopes {
+pub(in crate::css_check) struct CssCustomPropertyScopes {
     // Root tokens apply everywhere unless a tracked selector overrides them later
     root: CssCustomProperties,
     // Selector scopes only keep simple class selectors that geometry can reason about
@@ -15,7 +15,7 @@ pub(in crate::main_css_check) struct CssCustomPropertyScopes {
 }
 
 impl CssCustomPropertyScopes {
-    pub(in crate::main_css_check) fn for_selector(&self, selector: &str) -> CssCustomProperties {
+    pub(in crate::css_check) fn for_selector(&self, selector: &str) -> CssCustomProperties {
         let mut resolved = self.root.clone();
         if let Some(selector_scope) = self.selectors.get(selector) {
             // Selector-local tokens override root tokens for that widget class

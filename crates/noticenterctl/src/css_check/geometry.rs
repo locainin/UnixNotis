@@ -1,13 +1,9 @@
 //! Geometry-aware lint rules for css-check
 
-#[path = "main_css_check_geometry/model.rs"]
 mod model;
-#[path = "main_css_check_geometry/parse.rs"]
 mod parse;
-#[path = "main_css_check_geometry/stock/mod.rs"]
 mod stock;
 #[cfg(test)]
-#[path = "main_css_check_geometry/tests/mod.rs"]
 mod tests;
 
 use std::fs;
@@ -21,9 +17,9 @@ use self::parse::collect_geometry_from_contents_with_properties;
 pub(super) use self::parse::{
     can_model_horizontal_size_value, collect_custom_property_scopes, CssCustomPropertyScopes,
 };
-use super::main_css_check_files::format_display_path;
-use super::main_css_check_report::{CssCheckCategory, CssCheckDiagnostic};
-use super::main_css_check_runtime::display_config_path;
+use super::files::format_display_path;
+use super::report::{CssCheckCategory, CssCheckDiagnostic};
+use super::runtime::display_config_path;
 
 pub(super) fn lint_geometry_css_files(
     files: &[PathBuf],
