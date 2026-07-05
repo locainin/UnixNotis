@@ -1,11 +1,10 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use unixnotis_core::{ControlProxy, InhibitorInfo, NotificationView, PanelDebugLevel};
 
-const CONTROL_CALL_TIMEOUT: Duration = Duration::from_secs(5);
+use super::timeout::run_control_call;
 
 // A boxed future lets every control command return the same kind of async wrapper
 pub(crate) type ControlFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + 'a>>;
@@ -135,23 +134,5 @@ impl ControlClient for ControlProxy<'_> {
     fn list_inhibitors(&self) -> ControlFuture<'_, Vec<InhibitorInfo>> {
         // Ask the daemon for all current blockers and their details
         Box::pin(run_control_call(ControlProxy::list_inhibitors(self)))
-    }
-}
-
-// Runs one daemon call while making sure it cannot hang forever
-async fn run_control_call<T>(call: impl Future<Output = zbus::Result<T>>) -> Result<T> {
-    // Race the real D-Bus call against the maximum allowed wait time
-    match tokio::time::timeout(CONTROL_CALL_TIMEOUT, call).await {
-        // The daemon answered in time and the call itself worked
-        Ok(Ok(value)) => Ok(value),
-
-        // The daemon answered in time, but reported a D-Bus error
-        Ok(Err(err)) => Err(err.into()),
-
-        // The daemon did not answer before the timeout finished
-        Err(_) => Err(anyhow!(
-            "timed out waiting for unixnotis daemon response after {}s",
-            CONTROL_CALL_TIMEOUT.as_secs()
-        )),
     }
 }
