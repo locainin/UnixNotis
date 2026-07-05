@@ -2,11 +2,12 @@ use anyhow::Result;
 use unixnotis_core::util;
 
 use crate::cli::{Command, DndState};
-use crate::main_log_follow::follow_debug_logs;
-use crate::main_output::{print_inhibitors, print_notifications};
+use crate::debug_logs::follow_debug_logs;
+use crate::output::{
+    allow_full_output, print_inhibitors, print_notifications, warn_full_requires_diagnostic,
+};
 
 use super::client::ControlClient;
-use super::output_gate::{allow_full_output, warn_full_requires_diagnostic};
 
 pub(crate) async fn handle_command(client: &impl ControlClient, command: Command) -> Result<()> {
     // CLI forwards work to the daemon

@@ -1,3 +1,2 @@
-mod dispatch;
-mod output_gate;
+mod commands;
 mod support;
