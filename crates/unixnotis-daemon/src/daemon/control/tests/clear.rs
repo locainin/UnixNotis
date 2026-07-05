@@ -1,4 +1,4 @@
-use super::clear::{clear_all_signal_plan, emit_clear_all_signals};
+use super::super::clear::{clear_all_signal_plan, emit_clear_all_signals};
 use crate::test_support::daemon_state_for_test;
 
 #[test]
