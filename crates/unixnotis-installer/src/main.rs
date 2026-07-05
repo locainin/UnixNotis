@@ -52,6 +52,10 @@ fn main() -> Result<()> {
             print!("{}", cli::usage());
             return Ok(());
         }
+        CliAction::Version => {
+            println!("{}", cli::version());
+            return Ok(());
+        }
     };
     let mut app = app::App::new(cli.service_manager);
     let mut terminal_guard = TerminalGuard::new()?;
