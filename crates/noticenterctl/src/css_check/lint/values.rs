@@ -1,7 +1,5 @@
-use super::super::main_css_check_geometry::{
-    can_model_horizontal_size_value, CssCustomPropertyScopes,
-};
-use super::super::main_css_check_policy::is_horizontal_size_property;
+use super::super::geometry::{can_model_horizontal_size_value, CssCustomPropertyScopes};
+use super::super::policy::is_horizontal_size_property;
 
 pub(super) fn should_suppress_duplicate_property_warning(
     property: &str,

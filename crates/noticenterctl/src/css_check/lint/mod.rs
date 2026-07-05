@@ -5,14 +5,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use unixnotis_core::{build_modern_theme_custom_properties, gtk_css_features_for_version, Config};
 
-use super::main_css_check_files::format_display_path;
-use super::main_css_check_geometry::{collect_custom_property_scopes, CssCustomPropertyScopes};
-use super::main_css_check_report::{CssCheckCategory, CssCheckDiagnostic};
+use super::files::format_display_path;
+use super::geometry::{collect_custom_property_scopes, CssCustomPropertyScopes};
+use super::report::{CssCheckCategory, CssCheckDiagnostic};
 
-#[path = "scan.rs"]
 mod scan;
-#[path = "values.rs"]
 mod values;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug)]
 pub(super) struct CssCheckLintFinding {

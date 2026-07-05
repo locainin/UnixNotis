@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::super::main_css_check_parse::{
+use super::super::parse::{
     next_css_block_with_offsets, normalize_selector, parse_css_declarations_with_offsets,
     should_recurse_at_rule, split_selectors, strip_css_comments,
 };
