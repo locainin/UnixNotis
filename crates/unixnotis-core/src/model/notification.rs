@@ -160,9 +160,6 @@ fn push_tag_spacing(output: &mut String, tag: &str) {
     if matches!(tag_name.as_str(), "br" | "p" | "div" | "li" | "tr") {
         // These tags normally separate chunks of text
         output.push('\n');
-    } else {
-        // Inline tags still need a small break so words do not run together
-        output.push(' ');
     }
 }
 
