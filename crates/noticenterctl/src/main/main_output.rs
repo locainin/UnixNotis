@@ -1,4 +1,4 @@
-//! Output formatting helpers for noticenterctl.
+//! Output formatting helpers for noticenterctl
 
 use unixnotis_core::{util, NotificationView};
 
