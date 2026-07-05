@@ -110,7 +110,6 @@ fn sanitize_history(config: &mut Config) {
     // Active notifications are bounded tighter than history to protect panel layout and memory
     config.history.max_active = config.history.max_active.min(MAX_HISTORY_ACTIVE);
     config.history.max_entries = config.history.max_entries.min(MAX_HISTORY_ENTRIES);
-    config.history.max_active = config.history.max_active.min(config.history.max_entries);
 }
 
 #[cfg(test)]

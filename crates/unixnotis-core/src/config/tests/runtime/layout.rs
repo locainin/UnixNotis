@@ -220,16 +220,15 @@ fn sanitize_clamps_history_limits() {
 }
 
 #[test]
-fn sanitize_keeps_active_history_within_total_history() {
-    // Active rows should never outgrow the total history budget
+fn sanitize_keeps_active_limit_independent_from_history_retention() {
     let mut config = Config::default();
     config.history.max_active = 12;
-    config.history.max_entries = 1;
+    config.history.max_entries = 0;
 
     sanitize_config(&mut config);
 
-    assert_eq!(config.history.max_entries, 1);
-    assert_eq!(config.history.max_active, 1);
+    assert_eq!(config.history.max_entries, 0);
+    assert_eq!(config.history.max_active, 12);
 }
 
 #[test]
