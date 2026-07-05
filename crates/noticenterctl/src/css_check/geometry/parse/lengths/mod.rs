@@ -7,6 +7,9 @@ mod resolve_var;
 mod tokenize;
 mod units;
 
+#[cfg(test)]
+mod tests;
+
 use self::tokenize::{consume_balanced_group, split_css_value_tokens};
 use self::units::parse_atomic_value;
 
@@ -44,8 +47,8 @@ pub(in super::super) fn parse_box_edges(
             left: *left,
             right: *right,
         }),
-        [_, right, left] => Some(HorizontalEdges {
-            left: *left,
+        [_, right, _] => Some(HorizontalEdges {
+            left: *right,
             right: *right,
         }),
         _ => None,

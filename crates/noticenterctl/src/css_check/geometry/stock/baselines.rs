@@ -6,17 +6,17 @@ use unixnotis_core::{
     DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
 };
 
-use super::super::super::main_css_check_parse::{
+use super::super::super::parse::{
     next_css_block, normalize_selector, parse_css_declarations, split_selectors, strip_css_comments,
 };
-use super::super::super::main_css_check_policy::is_horizontal_size_property;
+use super::super::super::policy::is_horizontal_size_property;
 use super::super::model::GeometryModel;
 use super::super::parse::{
     collect_custom_property_scopes, collect_geometry_from_contents_with_properties,
 };
 use super::normalized_horizontal_size_rules;
 
-pub(in crate::main_css_check) fn stock_matches_complex_selector_rules(
+pub(in crate::css_check) fn stock_matches_complex_selector_rules(
     selector: &str,
     properties: &[(String, String)],
 ) -> bool {
@@ -39,13 +39,13 @@ pub(in crate::main_css_check) fn stock_matches_complex_selector_rules(
     })
 }
 
-pub(in crate::main_css_check) fn stock_config() -> &'static Config {
+pub(in crate::css_check) fn stock_config() -> &'static Config {
     static CONFIG: OnceLock<Config> = OnceLock::new();
     // Default config is a stable baseline for false-positive control
     CONFIG.get_or_init(Config::default)
 }
 
-pub(in crate::main_css_check) fn stock_geometry_model() -> &'static GeometryModel {
+pub(in crate::css_check) fn stock_geometry_model() -> &'static GeometryModel {
     static MODEL: OnceLock<GeometryModel> = OnceLock::new();
     MODEL.get_or_init(|| {
         let mut model = GeometryModel::default();

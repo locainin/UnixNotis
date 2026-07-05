@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use crate::main_css_check::main_css_check_policy;
+use crate::css_check::policy;
 
 const SMALL_INLINE_WIDTH_WARNING_THRESHOLD_PX: f32 = 64.0;
 
-pub(in crate::main_css_check) fn should_warn_for_unmodeled_known_class(
+pub(in crate::css_check) fn should_warn_for_unmodeled_known_class(
     class_name: &str,
     properties: &[(String, String)],
 ) -> bool {
@@ -54,13 +54,13 @@ fn stock_matches_horizontal_size_rules(class_name: &str, properties: &[(String, 
     })
 }
 
-pub(in crate::main_css_check) fn normalized_horizontal_size_rules(
+pub(in crate::css_check) fn normalized_horizontal_size_rules(
     properties: &[(String, String)],
 ) -> HashMap<String, String> {
     let mut current_rules = HashMap::new();
     for (name, value) in properties
         .iter()
-        .filter(|(name, _)| main_css_check_policy::is_horizontal_size_property(name))
+        .filter(|(name, _)| policy::is_horizontal_size_property(name))
     {
         // Later duplicate properties win in GTK CSS, so the baseline check does the same
         current_rules.insert(name.trim().to_string(), value.trim().to_string());
