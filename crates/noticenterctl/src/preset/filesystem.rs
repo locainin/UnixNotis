@@ -3,9 +3,7 @@
 //! Keeps filesystem validation and secure write helpers grouped under one tree
 //! so callers can import one module name instead of a flat list of files
 
-#[path = "filesystem/checks.rs"]
 mod checks;
-#[path = "filesystem/secure.rs"]
 mod secure;
 
 pub(super) use self::checks::{
@@ -16,3 +14,6 @@ pub(super) use self::secure::{
     remove_empty_relative_dirs_secure, remove_relative_dir_secure, remove_relative_file_secure,
     write_relative_file_atomic_secure,
 };
+
+#[cfg(test)]
+mod tests;
