@@ -1,4 +1,4 @@
-//! File walking and display-path helpers for css-check.
+//! File walking and display-path helpers for css-check
 
 use anyhow::{Context, Result};
 use std::collections::HashSet;
