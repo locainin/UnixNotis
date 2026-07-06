@@ -47,7 +47,13 @@ impl NotificationServer {
         header: &Header<'_>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
-        Self::log_received_notification(&app_name, &summary, &body, replaces_id, expire_timeout);
+        let _ = Self::log_received_notification(
+            &app_name,
+            &summary,
+            &body,
+            replaces_id,
+            expire_timeout,
+        );
         let notification = self
             .notification_from_wire(
                 WireNotification {
@@ -73,10 +79,10 @@ impl NotificationServer {
         body: &str,
         replaces_id: u32,
         expire_timeout: i32,
-    ) {
+    ) -> bool {
         // Debug logging is guarded so normal operation keeps log volume small
         if !tracing::enabled!(tracing::Level::DEBUG) {
-            return;
+            return false;
         }
         let summary_snip = unixnotis_core::util::log_snippet(summary);
         debug!(
@@ -92,6 +98,7 @@ impl NotificationServer {
             let body_snip = unixnotis_core::util::log_snippet(body);
             debug!(body = %body_snip, "notification body snippet");
         }
+        true
     }
 
     async fn notification_from_wire(

@@ -15,6 +15,9 @@ use capabilities::notification_capabilities;
 mod capabilities;
 mod close;
 mod flow;
+#[cfg(test)]
+#[path = "tests/server.rs"]
+mod tests;
 
 /// D-Bus server for org.freedesktop.Notifications
 pub struct NotificationServer {
