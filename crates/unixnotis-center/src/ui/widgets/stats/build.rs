@@ -2,19 +2,25 @@
 
 use gtk::prelude::*;
 use gtk::Align;
-use unixnotis_core::{css::hooks, StatWidgetConfig};
+use unixnotis_core::{css::hooks, IconAssetResolver, StatWidgetConfig};
 
+use super::super::icon_image::image_from_icon_config;
+use super::css::stat_kind_css_class;
 use super::{collect_builtin_groups, stats_builtin::BuiltinStat, StatGrid, StatItem};
 
 impl StatGrid {
-    pub fn new(configs: &[StatWidgetConfig], columns: usize) -> Option<Self> {
+    pub fn new(
+        configs: &[StatWidgetConfig],
+        columns: usize,
+        icon_resolver: &IconAssetResolver,
+    ) -> Option<Self> {
         let mut items = Vec::new();
         for config in configs {
             if !config.enabled {
                 continue;
             }
             // Preserve config order so layout remains predictable for users
-            items.push(StatItem::new(config.clone()));
+            items.push(StatItem::new(config.clone(), icon_resolver));
         }
         if items.is_empty() {
             // Skip widget creation when all stat entries are disabled
@@ -82,7 +88,7 @@ fn flowbox_columns(columns: usize) -> u32 {
 }
 
 impl StatItem {
-    pub(super) fn new(config: StatWidgetConfig) -> Self {
+    pub(super) fn new(config: StatWidgetConfig, icon_resolver: &IconAssetResolver) -> Self {
         let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
         card.add_css_class(hooks::stat_card::ROOT);
         if config.plugin.is_some() {
@@ -95,11 +101,19 @@ impl StatItem {
             // Respect configured min height to keep cards visually aligned
             card.set_size_request(-1, config.min_height);
         }
+        if let Some(kind) = config.kind.as_deref().and_then(stat_kind_css_class) {
+            // Kind hooks let themes target user-defined stats without relying on order
+            card.add_css_class(&kind);
+        }
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         header.add_css_class(hooks::stat_card::HEADER);
-        if let Some(icon_name) = config.icon.as_ref() {
-            let icon = gtk::Image::from_icon_name(icon_name);
+        if let Some(icon) = image_from_icon_config(
+            icon_resolver,
+            &config.label,
+            config.icon.as_deref(),
+            config.icon_asset.as_deref(),
+        ) {
             icon.set_pixel_size(16);
             icon.add_css_class(hooks::stat_card::ICON);
             header.append(&icon);

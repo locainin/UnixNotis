@@ -10,6 +10,7 @@ fn default_card_widgets_keep_builtin_identity_and_layout() {
     assert_eq!(calendar.layout, CardLayout::Default);
     assert_eq!(calendar.title, "Calendar");
     assert_eq!(calendar.icon.as_deref(), Some("x-office-calendar-symbolic"));
+    assert_eq!(calendar.icon_asset, None);
     assert_eq!(calendar.min_height, 180);
     assert_eq!(calendar.cmd, None);
 
@@ -17,6 +18,7 @@ fn default_card_widgets_keep_builtin_identity_and_layout() {
     assert_eq!(weather.title, "Weather");
     assert_eq!(weather.subtitle.as_deref(), Some("No data"));
     assert_eq!(weather.icon.as_deref(), Some("weather-clear-symbolic"));
+    assert_eq!(weather.icon_asset, None);
     assert_eq!(weather.min_height, 160);
 }
 
@@ -30,6 +32,7 @@ fn blank_card_default_is_disabled_placeholder() {
     assert_eq!(card.title, "Card");
     assert_eq!(card.subtitle, None);
     assert_eq!(card.icon, None);
+    assert_eq!(card.icon_asset, None);
     assert_eq!(card.cmd, None);
     assert_eq!(card.plugin, None);
     assert_eq!(card.min_height, 120);
@@ -48,6 +51,7 @@ fn custom_card_layout_and_carousel_options_parse() {
         title = "Now"
         subtitle = "Live"
         icon = "image-x-generic-symbolic"
+        icon_asset = "assets/card.webp"
         cmd = "scripts/card"
         min_height = 220
         monospace = true
@@ -69,6 +73,7 @@ fn custom_card_layout_and_carousel_options_parse() {
     assert_eq!(card.title, "Now");
     assert_eq!(card.subtitle.as_deref(), Some("Live"));
     assert_eq!(card.icon.as_deref(), Some("image-x-generic-symbolic"));
+    assert_eq!(card.icon_asset.as_deref(), Some("assets/card.webp"));
     assert_eq!(card.cmd.as_deref(), Some("scripts/card"));
     assert_eq!(card.min_height, 220);
     assert!(card.monospace);

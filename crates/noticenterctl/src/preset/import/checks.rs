@@ -6,7 +6,7 @@
 use anyhow::{anyhow, Context, Result};
 use std::path::Path;
 use toml::Value;
-use unixnotis_core::{Config, ThemePaths};
+use unixnotis_core::{validate_icon_asset_reference, Config, ThemePaths};
 
 use super::super::command_rules::{
     validate_command_paths_in_config_bytes, validate_config_command_paths_stay_in_root,
@@ -55,6 +55,25 @@ pub(super) fn validate_imported_command_paths_stay_in_root(
 ) -> Result<()> {
     // Preset import should reject explicit command paths that escape the shared config root
     validate_command_paths_in_config_bytes(config_dir, config_bytes, "preset import blocked")
+}
+
+pub(super) fn validate_imported_icon_asset_references(config_bytes: &[u8]) -> Result<()> {
+    let config_text =
+        std::str::from_utf8(config_bytes).context("preset config.toml is not valid UTF-8")?;
+    let value: Value =
+        toml::from_str(config_text).context("parse bundled config.toml for icon asset checks")?;
+    let mut assets = Vec::new();
+    collect_explicit_icon_assets("", &value, &mut assets);
+
+    for asset in assets {
+        validate_icon_asset_reference(&asset.asset).with_context(|| {
+            format!(
+                "preset import blocked because {} has an invalid icon_asset",
+                asset.slot
+            )
+        })?;
+    }
+    Ok(())
 }
 
 pub(super) fn validate_config_theme_paths_stay_in_root(
@@ -148,6 +167,38 @@ fn collect_explicit_exec_commands_from_config_bytes(
     // Walking the parsed value keeps nested widget tables and plugin blocks covered
     collect_explicit_exec_commands("", &value, &mut commands);
     Ok(commands)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ImportedIconAsset {
+    slot: String,
+    asset: String,
+}
+
+fn collect_explicit_icon_assets(prefix: &str, value: &Value, assets: &mut Vec<ImportedIconAsset>) {
+    match value {
+        Value::Table(table) => {
+            for (key, child) in table {
+                let next = join_toml_slot(prefix, key);
+                if key == "icon_asset" {
+                    if let Some(asset) = child.as_str().filter(|value| !value.trim().is_empty()) {
+                        assets.push(ImportedIconAsset {
+                            slot: next.clone(),
+                            asset: asset.trim().to_string(),
+                        });
+                    }
+                }
+                collect_explicit_icon_assets(&next, child, assets);
+            }
+        }
+        Value::Array(items) => {
+            for (index, child) in items.iter().enumerate() {
+                let next = format!("{prefix}[{index}]");
+                collect_explicit_icon_assets(&next, child, assets);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn collect_explicit_exec_commands(

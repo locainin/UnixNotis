@@ -2,6 +2,7 @@
 
 mod build;
 mod card;
+mod css;
 mod stats_builtin;
 #[cfg(test)]
 #[path = "tests/grid.rs"]

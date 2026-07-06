@@ -9,6 +9,12 @@ pub(super) fn apply_card_kind_classes(root: &gtk::Box, config: &CardWidgetConfig
         root.add_css_class(hooks::info_card::MONO);
     }
     if let Some(kind) = config.kind.as_deref() {
+        if let Some(class) =
+            super::super::kind_css::widget_kind_css_class("unixnotis-info-card-kind-", kind)
+        {
+            // User-defined card kinds get stable hooks without changing built-in classes
+            root.add_css_class(&class);
+        }
         match kind {
             "calendar" => root.add_css_class(hooks::info_card::CALENDAR),
             "weather" => root.add_css_class(hooks::info_card::WEATHER),

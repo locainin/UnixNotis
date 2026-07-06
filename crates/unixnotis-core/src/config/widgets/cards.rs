@@ -11,6 +11,7 @@ pub struct CardWidgetConfig {
     pub title: String,
     pub subtitle: Option<String>,
     pub icon: Option<String>,
+    pub icon_asset: Option<String>,
     pub cmd: Option<String>,
     /// External plugin source for this card (preferred over cmd when set)
     pub plugin: Option<WidgetPluginConfig>,
@@ -31,6 +32,7 @@ impl CardWidgetConfig {
             title: "Calendar".to_string(),
             subtitle: None,
             icon: Some("x-office-calendar-symbolic".to_string()),
+            icon_asset: None,
             // No command means the center renders the built-in GTK calendar widget
             cmd: None,
             plugin: None,
@@ -49,6 +51,7 @@ impl CardWidgetConfig {
             title: "Weather".to_string(),
             subtitle: Some("No data".to_string()),
             icon: Some("weather-clear-symbolic".to_string()),
+            icon_asset: None,
             // Weather is a styled placeholder until the user supplies a command or plugin
             cmd: None,
             plugin: None,
@@ -69,6 +72,7 @@ impl Default for CardWidgetConfig {
             title: "Card".to_string(),
             subtitle: None,
             icon: None,
+            icon_asset: None,
             cmd: None,
             plugin: None,
             min_height: 120,

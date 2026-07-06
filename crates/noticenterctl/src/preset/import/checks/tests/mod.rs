@@ -1,6 +1,6 @@
 use super::{
     collect_imported_exec_content, validate_imported_command_paths_stay_in_root,
-    validate_imported_theme_paths_stay_in_root,
+    validate_imported_icon_asset_references, validate_imported_theme_paths_stay_in_root,
 };
 use crate::preset::archive::BundleFile;
 use std::path::PathBuf;
@@ -48,6 +48,52 @@ fn imported_command_checks_reject_absolute_plugin_command() {
     assert!(error
         .to_string()
         .contains("points outside the UnixNotis config directory"));
+}
+
+#[test]
+fn imported_icon_asset_checks_accept_relative_visual_asset() {
+    let config = br#"
+[[widgets.stats]]
+label = "RAM"
+icon = "drive-harddisk-symbolic"
+icon_asset = "assets/ram.svg"
+"#;
+
+    validate_imported_icon_asset_references(config).expect("valid icon asset reference");
+}
+
+#[test]
+fn imported_icon_asset_checks_reject_escape_and_absolute_targets() {
+    let escape = br#"
+[[widgets.stats]]
+label = "RAM"
+icon_asset = "../evil.svg"
+"#;
+    let absolute = br#"
+[[widgets.cards]]
+title = "Weather"
+icon_asset = "/etc/passwd"
+"#;
+
+    assert!(validate_imported_icon_asset_references(escape).is_err());
+    assert!(validate_imported_icon_asset_references(absolute).is_err());
+}
+
+#[test]
+fn imported_icon_asset_checks_reject_remote_url_and_script_extension() {
+    let remote = br#"
+[[widgets.toggles]]
+label = "Remote"
+icon_asset = "https://example.com/icon.svg"
+"#;
+    let script = br#"
+[[widgets.cards]]
+title = "Run"
+icon_asset = "assets/run.sh"
+"#;
+
+    assert!(validate_imported_icon_asset_references(remote).is_err());
+    assert!(validate_imported_icon_asset_references(script).is_err());
 }
 
 #[test]

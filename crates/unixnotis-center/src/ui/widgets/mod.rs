@@ -2,6 +2,8 @@
 
 pub mod brightness;
 pub mod cards;
+mod icon_image;
+mod kind_css;
 // Plugin schema and JSON parsing helpers for widget-backed commands
 mod plugin;
 pub mod stats;
