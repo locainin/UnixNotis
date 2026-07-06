@@ -1,10 +1,18 @@
 use std::fs;
+use std::sync::atomic::AtomicBool;
+use std::sync::{mpsc, Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::{
     ensure_path_entry_in_file, format_path_for_shell_line, remove_path_entry_from_file,
-    shell_path_entry_exists, shell_startup_files,
+    remove_shell_path_entry, shell_path_entry_exists, shell_startup_files,
 };
+use crate::actions::ActionContext;
+use crate::detect::Detection;
+use crate::events::{UiMessage, WorkerEvent};
+use crate::model::ActionMode;
+use crate::paths::InstallPaths;
+use crate::service_manager::ServiceManager;
 
 #[test]
 fn shell_startup_files_prefers_zsh_and_profile() {
@@ -231,6 +239,51 @@ fn remove_path_entry_from_file_treats_missing_file_as_noop() {
 }
 
 #[test]
+fn remove_shell_path_entry_removes_managed_block_from_selected_startup_files() {
+    let _lock = env_lock();
+    let root = test_root("path-entry-remove-high-level");
+    let home = root.join("home");
+    let bin_dir = home.join(".local").join("bin");
+    let startup = home.join(".bashrc");
+    fs::create_dir_all(&home).expect("create home");
+    ensure_path_entry_in_file(&startup, &home, &bin_dir).expect("managed block");
+    let _home = EnvGuard::set("HOME", &home);
+    let _shell = EnvGuard::set("SHELL", "/bin/bash");
+    let (tx, rx) = mpsc::sync_channel::<UiMessage>(16);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = InstallPaths {
+        repo_root: root.clone(),
+        bin_dir,
+        service: ServiceManager::systemd_user(home.join(".config/systemd/user")),
+    };
+    let mut ctx = ActionContext {
+        detection: &detection,
+        paths: &paths,
+        install_state: None,
+        log_tx: tx,
+        action_mode: ActionMode::Uninstall,
+        restore_backup: None,
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
+
+    remove_shell_path_entry(&mut ctx).expect("remove shell path entry");
+
+    let contents = fs::read_to_string(&startup).expect("read startup");
+    assert!(!contents.contains("# unixnotis-installer path entry"));
+    let logs = rx.try_iter().collect::<Vec<_>>();
+    assert!(logs.iter().any(|message| matches!(
+        message,
+        UiMessage::Worker(WorkerEvent::LogLine(line))
+            if line.contains("Removed installer-owned PATH entry")
+    )));
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn remove_path_entry_from_file_reports_directory_read_errors() {
     let root = test_root("path-entry-remove-directory-read-error");
     let home = root.join("home");
@@ -295,4 +348,33 @@ fn test_root(name: &str) -> std::path::PathBuf {
         "unixnotis-installer-env-{name}-{}-{stamp}",
         std::process::id()
     ))
+}
+
+struct EnvGuard {
+    name: &'static str,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl EnvGuard {
+    fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+        let previous = std::env::var_os(name);
+        std::env::set_var(name, value);
+        Self { name, previous }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => std::env::set_var(self.name, value),
+            None => std::env::remove_var(self.name),
+        }
+    }
+}
+
+fn env_lock() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("environment test lock")
 }
