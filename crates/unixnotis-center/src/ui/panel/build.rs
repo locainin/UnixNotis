@@ -98,6 +98,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
         header_title: header.title,
         header_subtitle: header.subtitle,
         header_count: header.count,
+        header_top: header.top,
         header_action_row: header.action_row,
         header_action_group: header.actions.group,
         notification_container: sections.notification_container,
