@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use chrono::Utc;
 use futures_util::TryStreamExt;
+use tracing::Level;
+use tracing_subscriber::filter::LevelFilter;
 use unixnotis_core::{
     CloseReason, Config, Notification, NotificationImage, Urgency, CONTROL_OBJECT_PATH,
 };
@@ -137,6 +139,32 @@ fn handle_dropped_notification_returns_none_for_stored_payload() {
     let id = NotificationServer::handle_dropped_notification(&outcome);
 
     assert_eq!(id, None);
+}
+
+#[test]
+fn log_received_notification_reports_false_when_debug_is_disabled() {
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(LevelFilter::INFO)
+        .finish();
+
+    let logged = tracing::subscriber::with_default(subscriber, || {
+        NotificationServer::log_received_notification("app", "summary", "body", 0, 100)
+    });
+
+    assert!(!logged);
+}
+
+#[test]
+fn log_received_notification_reports_true_when_debug_is_enabled() {
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(Level::DEBUG)
+        .finish();
+
+    let logged = tracing::subscriber::with_default(subscriber, || {
+        NotificationServer::log_received_notification("app", "summary", "body", 0, 100)
+    });
+
+    assert!(logged);
 }
 
 #[tokio::test]
