@@ -77,7 +77,7 @@ fn show_exec_content_in_pager(exec_content: &ImportedExecContent) -> Result<()> 
     finish_pager(child, &pager, write_result)
 }
 
-fn pager_command_parts() -> Result<Vec<String>> {
+pub(super) fn pager_command_parts() -> Result<Vec<String>> {
     // `$PAGER` wins so local pager setup keeps working during import review too
     let configured = env::var("PAGER").unwrap_or_else(|_| "less".to_string());
     let mut parts = shell_words::split(&configured).context("parse pager command")?;
@@ -91,7 +91,7 @@ fn pager_command_parts() -> Result<Vec<String>> {
     Ok(parts)
 }
 
-fn finish_pager(
+pub(super) fn finish_pager(
     mut child: std::process::Child,
     pager: &[String],
     write_result: io::Result<()>,
@@ -119,7 +119,7 @@ fn render_exec_content_review(exec_content: &ImportedExecContent) -> String {
     render_exec_content_review_with_style(exec_content, ReviewStyle::for_terminal())
 }
 
-fn render_exec_content_review_with_style(
+pub(super) fn render_exec_content_review_with_style(
     exec_content: &ImportedExecContent,
     style: ReviewStyle,
 ) -> String {
@@ -178,7 +178,7 @@ fn pager_looks_like_less(parts: &[String]) -> bool {
         .is_some_and(|name| name == "less")
 }
 
-fn pager_enables_raw_control(parts: &[String]) -> bool {
+pub(super) fn pager_enables_raw_control(parts: &[String]) -> bool {
     parts.iter().skip(1).any(|part| {
         part == "-R"
             || part == "-r"
@@ -189,8 +189,8 @@ fn pager_enables_raw_control(parts: &[String]) -> bool {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ReviewStyle {
-    color: bool,
+pub(super) struct ReviewStyle {
+    pub(super) color: bool,
 }
 
 impl ReviewStyle {
@@ -216,7 +216,7 @@ impl ReviewStyle {
         format!("\u{1b}[{prefix}m{text}\u{1b}[0m")
     }
 
-    fn title(self, text: impl Into<String>) -> String {
+    pub(super) fn title(self, text: impl Into<String>) -> String {
         self.paint(text, "1;36")
     }
 
@@ -248,6 +248,3 @@ impl ReviewStyle {
         self.paint(text, "37")
     }
 }
-
-#[cfg(test)]
-mod tests;
