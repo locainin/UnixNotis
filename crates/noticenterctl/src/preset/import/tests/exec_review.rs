@@ -1,4 +1,4 @@
-use super::{
+use super::super::exec_review::{
     finish_pager, pager_command_parts, pager_enables_raw_control,
     render_exec_content_review_with_style, ReviewStyle,
 };
