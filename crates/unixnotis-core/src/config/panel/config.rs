@@ -2,10 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::super::{Anchor, Margins, PanelKeyboardInteractivity, PANEL_HEIGHT_PERCENT_DEFAULT};
 use super::{
-    default_panel_action_order, default_panel_section_order, default_panel_widget_order, Anchor,
-    Margins, PanelActionConfig, PanelActionId, PanelClearButtonPlacement,
-    PanelKeyboardInteractivity, PanelSection, PanelWidgetSection, PANEL_HEIGHT_PERCENT_DEFAULT,
+    default_panel_action_order, default_panel_section_order, default_panel_widget_order,
+    PanelActionConfig, PanelActionId, PanelClearButtonPlacement, PanelSection, PanelWidgetSection,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
