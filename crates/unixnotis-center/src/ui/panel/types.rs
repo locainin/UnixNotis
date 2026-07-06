@@ -2,7 +2,7 @@
 //!
 //! Keeping the widget bundle here lets `mod.rs` stay as module wiring only
 
-/// GTK widgets backing the notification center panel window.
+/// GTK widgets backing the notification center panel window
 pub struct PanelWidgets {
     pub window: gtk::ApplicationWindow,
     pub surface: gtk::Overlay,
@@ -22,6 +22,7 @@ pub struct PanelWidgets {
     pub header_title: gtk::Label,
     pub header_subtitle: gtk::Label,
     pub header_count: gtk::Label,
+    pub header_top: gtk::Box,
     pub header_action_row: gtk::Box,
     pub header_action_group: gtk::Box,
     pub notification_container: gtk::Box,
