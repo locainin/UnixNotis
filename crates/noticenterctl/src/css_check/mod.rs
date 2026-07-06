@@ -25,7 +25,7 @@ use self::report::{
 use self::runtime::lint_runtime_config;
 use self::theme::collect_css_check_inputs;
 
-pub(crate) fn run_css_check() -> Result<()> {
+pub(crate) fn run() -> Result<()> {
     // GTK needs to be ready before CSS parsing starts
     gtk::init().context("initialize gtk")?;
 
