@@ -224,7 +224,8 @@ impl UiState {
         clear_container(&self.panel.toggle_container);
         clear_container(&self.panel.stat_container);
         clear_container(&self.panel.card_container);
-        let (toggles, stats, cards) = build_extra_widgets(&self.panel, config);
+        let (toggles, stats, cards) =
+            build_extra_widgets(&self.panel, config, &self.widget_icon_resolver);
         self.toggles = toggles;
         self.stats = stats;
         self.cards = cards;

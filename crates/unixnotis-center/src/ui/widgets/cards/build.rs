@@ -6,20 +6,25 @@ use std::time::Instant;
 
 use gtk::prelude::*;
 use gtk::Align;
-use unixnotis_core::{css::hooks, CardLayout, CardWidgetConfig};
+use unixnotis_core::{css::hooks, CardLayout, CardWidgetConfig, IconAssetResolver};
 
+use super::super::icon_image::image_from_icon_config;
 use super::weather::{apply_card_kind_classes, configure_card_icon};
 use super::{CardGrid, CardItem, RefreshBackoff};
 
 impl CardGrid {
-    pub fn new(configs: &[CardWidgetConfig], columns: usize) -> Option<Self> {
+    pub fn new(
+        configs: &[CardWidgetConfig],
+        columns: usize,
+        icon_resolver: &IconAssetResolver,
+    ) -> Option<Self> {
         let mut items = Vec::new();
         for config in configs {
             if !config.enabled {
                 continue;
             }
             // Preserve config ordering so cards stay in user-defined sequence
-            items.push(CardItem::new(config.clone()));
+            items.push(CardItem::new(config.clone(), icon_resolver));
         }
         if items.is_empty() {
             // Skip allocation when all cards are disabled
@@ -75,7 +80,7 @@ fn flowbox_columns(columns: usize) -> u32 {
 }
 
 impl CardItem {
-    pub(super) fn new(config: CardWidgetConfig) -> Self {
+    pub(super) fn new(config: CardWidgetConfig, icon_resolver: &IconAssetResolver) -> Self {
         let is_calendar = matches!(config.kind.as_deref(), Some("calendar"));
         let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
         root.add_css_class(hooks::info_card::ROOT);
@@ -88,8 +93,12 @@ impl CardItem {
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         header.add_css_class(hooks::info_card::HEADER);
-        if let Some(icon_name) = config.icon.as_ref() {
-            let icon = gtk::Image::from_icon_name(icon_name);
+        if let Some(icon) = image_from_icon_config(
+            icon_resolver,
+            &config.title,
+            config.icon.as_deref(),
+            config.icon_asset.as_deref(),
+        ) {
             configure_card_icon(&icon, &config);
             header.append(&icon);
             root.add_css_class(hooks::info_card::HAS_ICON);

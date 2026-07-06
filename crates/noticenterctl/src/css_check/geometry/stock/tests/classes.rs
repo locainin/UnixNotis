@@ -1,4 +1,4 @@
-use super::super::classes::known_unixnotis_classes;
+use super::super::classes::{is_known_unixnotis_class, known_unixnotis_classes};
 
 #[test]
 fn player_button_hooks_are_treated_as_known_public_classes() {
@@ -40,4 +40,14 @@ fn decorative_theme_hooks_are_treated_as_known_public_classes() {
     assert!(classes.contains(".unixnotis-info-media"));
     assert!(classes.contains(".unixnotis-info-card-banner"));
     assert!(classes.contains(".unixnotis-panel-action-label-hidden"));
+}
+
+#[test]
+fn dynamic_widget_kind_hooks_are_treated_as_known_public_classes() {
+    assert!(is_known_unixnotis_class(".unixnotis-toggle-kind-wifi"));
+    assert!(is_known_unixnotis_class(".unixnotis-stat-kind-ram"));
+    assert!(is_known_unixnotis_class(
+        ".unixnotis-info-card-kind-weather"
+    ));
+    assert!(!is_known_unixnotis_class(".unixnotis-stat-kind-"));
 }

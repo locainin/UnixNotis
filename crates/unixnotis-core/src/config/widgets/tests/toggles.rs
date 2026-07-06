@@ -74,6 +74,7 @@ fn custom_toggles_round_trip_arbitrary_user_commands() {
         id = "build"
         label = "Build"
         icon = "applications-development-symbolic"
+        icon_asset = "assets/build.svg"
         state_cmd = "scripts/build-state"
         toggle_cmd = "sh -c 'make test && notify-send done'"
         on_cmd = "scripts/build-on"
@@ -86,6 +87,7 @@ fn custom_toggles_round_trip_arbitrary_user_commands() {
     let toggle = widgets.toggles.first().expect("custom toggle");
     assert_eq!(toggle.kind.as_deref(), Some("build"));
     assert_eq!(toggle.label, "Build");
+    assert_eq!(toggle.icon_asset.as_deref(), Some("assets/build.svg"));
     assert_eq!(toggle.state_cmd.as_deref(), Some("scripts/build-state"));
     assert_eq!(
         toggle.toggle_cmd.as_deref(),
@@ -102,6 +104,7 @@ fn blank_toggle_default_is_disabled_and_action_free() {
 
     assert!(!toggle.enabled);
     assert_eq!(toggle.kind, None);
+    assert_eq!(toggle.icon_asset, None);
     assert_eq!(toggle.state_cmd, None);
     assert_eq!(toggle.toggle_cmd, None);
     assert_eq!(toggle.on_cmd, None);

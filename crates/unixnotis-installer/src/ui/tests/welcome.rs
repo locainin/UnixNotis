@@ -18,7 +18,10 @@ fn draw_welcome_renders_status_and_action_menu() {
     assert!(screen.contains("System status"));
     assert!(screen.contains("Actions"));
     assert!(screen.contains("Release"));
-    assert!(screen.contains("Version: v1.1.0 installed"));
+    assert!(screen.contains(&format!(
+        "Version: v{} installed",
+        env!("CARGO_PKG_VERSION")
+    )));
     assert!(screen.contains("Compatibility"));
     assert!(screen.contains("[ok]"));
     assert!(screen.contains("test - ok"));

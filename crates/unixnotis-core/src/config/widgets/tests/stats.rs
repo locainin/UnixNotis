@@ -13,6 +13,7 @@ fn default_stat_widgets_keep_builtin_commands() {
         assert!(stat.enabled);
         assert_eq!(stat.label, label);
         assert_eq!(stat.icon.as_deref(), Some(icon));
+        assert_eq!(stat.icon_asset, None);
         assert_eq!(stat.cmd.as_deref(), Some(command));
         assert_eq!(stat.min_height, 72);
     }
@@ -25,6 +26,7 @@ fn blank_stat_default_is_disabled_placeholder() {
     assert!(!stat.enabled);
     assert_eq!(stat.label, "Stat");
     assert_eq!(stat.icon, None);
+    assert_eq!(stat.icon_asset, None);
     assert_eq!(stat.kind, None);
     assert_eq!(stat.cmd, None);
     assert_eq!(stat.plugin, None);
@@ -38,6 +40,7 @@ fn custom_stat_plugin_config_parses_with_command_fallback() {
         enabled = true
         label = "GPU"
         icon = "video-display-symbolic"
+        icon_asset = "assets/gpu.svg"
         kind = "gpu"
         cmd = "scripts/gpu-fallback"
         min_height = 96
@@ -54,6 +57,7 @@ fn custom_stat_plugin_config_parses_with_command_fallback() {
     assert!(stat.enabled);
     assert_eq!(stat.label, "GPU");
     assert_eq!(stat.icon.as_deref(), Some("video-display-symbolic"));
+    assert_eq!(stat.icon_asset.as_deref(), Some("assets/gpu.svg"));
     assert_eq!(stat.kind.as_deref(), Some("gpu"));
     assert_eq!(stat.cmd.as_deref(), Some("scripts/gpu-fallback"));
     assert_eq!(stat.min_height, 96);

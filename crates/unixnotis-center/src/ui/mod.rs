@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
-use unixnotis_core::{Config, Margins};
+use unixnotis_core::{Config, IconAssetResolver, Margins};
 
 use crate::dbus::{UiCommand, UiEvent};
 use unixnotis_ui::css::CssManager;
@@ -45,6 +45,8 @@ pub struct UiState {
     list: list::NotificationList,
     // Shared resolver keeps icon cache and inflight decode tracking centralized.
     icon_resolver: Rc<icons::IconResolver>,
+    // Widget assets are resolved relative to the active config file root.
+    widget_icon_resolver: IconAssetResolver,
     dnd_guard: Rc<Cell<bool>>,
     search_toggle_guard: Rc<Cell<bool>>,
     panel_visible: bool,

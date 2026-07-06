@@ -29,6 +29,13 @@ pub(in crate::css_check) fn known_unixnotis_classes() -> &'static HashSet<String
     })
 }
 
+pub(in crate::css_check) fn is_known_unixnotis_class(class_name: &str) -> bool {
+    known_unixnotis_classes().contains(class_name)
+        || dynamic_unixnotis_class_prefixes()
+            .iter()
+            .any(|prefix| dynamic_class_has_suffix(class_name, prefix))
+}
+
 fn collect_unixnotis_classes(css: &'static str, classes: &mut HashSet<String>) {
     let bytes = css.as_bytes();
     let mut index = 0usize;
@@ -137,4 +144,18 @@ fn hook_unixnotis_classes() -> &'static [&'static str] {
         "unixnotis-media-button-play",
         "unixnotis-media-button-next",
     ]
+}
+
+fn dynamic_unixnotis_class_prefixes() -> &'static [&'static str] {
+    &[
+        ".unixnotis-toggle-kind-",
+        ".unixnotis-stat-kind-",
+        ".unixnotis-info-card-kind-",
+    ]
+}
+
+fn dynamic_class_has_suffix(class_name: &str, prefix: &str) -> bool {
+    class_name
+        .strip_prefix(prefix)
+        .is_some_and(|suffix| !suffix.is_empty())
 }

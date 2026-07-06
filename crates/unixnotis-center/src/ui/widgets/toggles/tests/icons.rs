@@ -7,6 +7,7 @@ fn test_toggle(kind: Option<&str>, label: &str, icon: &str) -> ToggleWidgetConfi
         kind: kind.map(str::to_string),
         label: label.to_string(),
         icon: icon.to_string(),
+        icon_asset: None,
         state_cmd: None,
         toggle_cmd: None,
         on_cmd: None,

@@ -10,7 +10,7 @@ use super::super::policy::{
     is_complex_geometry_warning_property, is_horizontal_size_property, is_vertical_size_property,
 };
 use super::model::GeometryModel;
-use super::stock::classes::known_unixnotis_classes;
+use super::stock::classes::is_known_unixnotis_class;
 use super::stock::should_warn_for_unmodeled_known_class;
 
 // Split the parser by job so width parsing, selector checks, and token collection stay separate
@@ -179,7 +179,7 @@ fn collect_geometry_selector(
 
     if has_horizontal_size_rules
         && class_name.starts_with(".unixnotis-")
-        && !known_unixnotis_classes().contains(class_name)
+        && !is_known_unixnotis_class(class_name)
         && warned_classes.insert(class_name.to_string())
     {
         // Unknown class warnings are emitted once per file so output stays readable
@@ -193,7 +193,7 @@ fn collect_geometry_selector(
         let Some(target) = model.target_mut(class_name) else {
             if has_horizontal_size_rules
                 && class_name.starts_with(".unixnotis-")
-                && known_unixnotis_classes().contains(class_name)
+                && is_known_unixnotis_class(class_name)
                 && should_warn_for_unmodeled_known_class(class_name, &properties)
                 && warned_classes.insert(format!("unmodeled:{class_name}"))
             {

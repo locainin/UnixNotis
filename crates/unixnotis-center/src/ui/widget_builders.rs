@@ -5,7 +5,7 @@
 
 use gtk::prelude::*;
 
-use unixnotis_core::{css::hooks, Config};
+use unixnotis_core::{css::hooks, Config, IconAssetResolver};
 
 use super::{panel, widgets};
 
@@ -43,6 +43,7 @@ pub(super) fn build_quick_controls(
 pub(super) fn build_extra_widgets(
     panel: &panel::PanelWidgets,
     config: &Config,
+    icon_resolver: &IconAssetResolver,
 ) -> (
     Option<widgets::toggles::ToggleGrid>,
     Option<widgets::stats::StatGrid>,
@@ -54,6 +55,7 @@ pub(super) fn build_extra_widgets(
         config.widgets.toggle_tooltips,
         config.widgets.toggle_layout,
         config.widgets.toggle_columns,
+        icon_resolver,
     );
     if let Some(grid) = toggles.as_ref() {
         panel.toggle_container.set_visible(true);
@@ -63,7 +65,11 @@ pub(super) fn build_extra_widgets(
     }
 
     // Stats widgets expose periodic metrics like CPU and memory usage.
-    let stats = widgets::stats::StatGrid::new(&config.widgets.stats, config.widgets.stat_columns);
+    let stats = widgets::stats::StatGrid::new(
+        &config.widgets.stats,
+        config.widgets.stat_columns,
+        icon_resolver,
+    );
     if let Some(grid) = stats.as_ref() {
         panel.stat_container.set_visible(true);
         panel.stat_container.append(grid.root());
@@ -72,7 +78,11 @@ pub(super) fn build_extra_widgets(
     }
 
     // Card widgets are larger, multi-line information tiles.
-    let cards = widgets::cards::CardGrid::new(&config.widgets.cards, config.widgets.card_columns);
+    let cards = widgets::cards::CardGrid::new(
+        &config.widgets.cards,
+        config.widgets.card_columns,
+        icon_resolver,
+    );
     if let Some(grid) = cards.as_ref() {
         panel.card_container.set_visible(true);
         panel.card_container.append(grid.root());

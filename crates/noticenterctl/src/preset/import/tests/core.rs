@@ -212,3 +212,125 @@ fn import_rejects_kept_local_config_that_points_outside_root() {
     assert!(!outside_theme.exists());
     assert!(!import_root.path.join("base.css").exists());
 }
+
+#[test]
+fn import_accepts_widget_icon_asset_bundled_inside_config_root() {
+    let export_root = TempDirGuard::new("icon-asset-export");
+    export_root.write(
+        "config.toml",
+        r#"
+[[widgets.stats]]
+enabled = true
+label = "RAM"
+icon = "drive-harddisk-symbolic"
+icon_asset = "assets/ram.svg"
+"#,
+    );
+    export_root.write("assets/ram.svg", "<svg/>");
+    let bundle_path = export_root.path.join("demo.unixnotis");
+    write_collected_bundle(
+        &export_root,
+        &bundle_path,
+        "2026-04-19T00:00:00Z",
+        &[
+            ("config.toml", "config.toml"),
+            ("assets/ram.svg", "assets/ram.svg"),
+        ],
+    );
+
+    let import_root = TempDirGuard::new("icon-asset-import");
+    let summary = import_preset_into(&import_root.path, &bundle_path, &[], false)
+        .expect("import icon asset preset");
+
+    assert_eq!(summary.file_count, 2);
+    assert!(import_root.path.join("assets/ram.svg").exists());
+}
+
+#[test]
+fn import_rejects_widget_icon_asset_escape_before_writing() {
+    let export_root = TempDirGuard::new("icon-asset-escape-export");
+    export_root.write(
+        "config.toml",
+        r#"
+[[widgets.stats]]
+enabled = true
+label = "RAM"
+icon_asset = "../evil.svg"
+"#,
+    );
+    let bundle_path = export_root.path.join("demo.unixnotis");
+    write_collected_bundle(
+        &export_root,
+        &bundle_path,
+        "2026-04-20T00:00:00Z",
+        &[("config.toml", "config.toml")],
+    );
+
+    let import_root = TempDirGuard::new("icon-asset-escape-import");
+    let error = import_preset_into(&import_root.path, &bundle_path, &[], false)
+        .expect_err("reject escaped icon asset");
+
+    assert!(error.to_string().contains("invalid icon_asset"));
+    assert!(!import_root.path.join("config.toml").exists());
+}
+
+#[test]
+fn import_rejects_widget_icon_asset_script_extension_before_writing() {
+    let export_root = TempDirGuard::new("icon-asset-script-export");
+    export_root.write(
+        "config.toml",
+        r#"
+[[widgets.cards]]
+enabled = true
+title = "Run"
+icon_asset = "assets/run.sh"
+"#,
+    );
+    export_root.write("assets/run.sh", "#!/bin/sh\ntrue\n");
+    let bundle_path = export_root.path.join("demo.unixnotis");
+    write_collected_bundle(
+        &export_root,
+        &bundle_path,
+        "2026-04-21T00:00:00Z",
+        &[
+            ("config.toml", "config.toml"),
+            ("assets/run.sh", "assets/run.sh"),
+        ],
+    );
+
+    let import_root = TempDirGuard::new("icon-asset-script-import");
+    let error = import_preset_into(&import_root.path, &bundle_path, &[], false)
+        .expect_err("reject script icon asset");
+
+    assert!(error.to_string().contains("invalid icon_asset"));
+    assert!(!import_root.path.join("assets/run.sh").exists());
+}
+
+#[test]
+fn import_allows_missing_optional_widget_icon_asset_reference() {
+    let export_root = TempDirGuard::new("icon-asset-missing-export");
+    export_root.write(
+        "config.toml",
+        r#"
+[[widgets.stats]]
+enabled = true
+label = "VRAM"
+icon = "video-display-symbolic"
+icon_asset = "assets/missing.svg"
+"#,
+    );
+    let bundle_path = export_root.path.join("demo.unixnotis");
+    write_collected_bundle(
+        &export_root,
+        &bundle_path,
+        "2026-04-22T00:00:00Z",
+        &[("config.toml", "config.toml")],
+    );
+
+    let import_root = TempDirGuard::new("icon-asset-missing-import");
+    let summary = import_preset_into(&import_root.path, &bundle_path, &[], false)
+        .expect("missing optional icon asset should not block import");
+
+    assert_eq!(summary.file_count, 1);
+    assert!(import_root.path.join("config.toml").exists());
+}

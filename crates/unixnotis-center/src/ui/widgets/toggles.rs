@@ -9,8 +9,11 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::Align;
 use tracing::warn;
-use unixnotis_core::{css::hooks, PanelDebugLevel, ToggleLayout, ToggleWidgetConfig};
+use unixnotis_core::{
+    css::hooks, IconAssetResolver, PanelDebugLevel, ToggleLayout, ToggleWidgetConfig,
+};
 
+use super::icon_image::image_from_icon_config;
 use super::utils::{run_action_command_with_completion, start_command_watch, CommandWatch};
 use crate::debug;
 
@@ -50,6 +53,7 @@ impl ToggleGrid {
         show_tooltips: bool,
         layout: ToggleLayout,
         columns: usize,
+        icon_resolver: &IconAssetResolver,
     ) -> Option<Self> {
         // Keep only enabled entries so UI wiring stays small and deterministic
         let mut items = Vec::new();
@@ -57,7 +61,12 @@ impl ToggleGrid {
             if !config.enabled {
                 continue;
             }
-            items.push(ToggleItem::new(config.clone(), show_tooltips, layout));
+            items.push(ToggleItem::new(
+                config.clone(),
+                show_tooltips,
+                layout,
+                icon_resolver,
+            ));
         }
         if items.is_empty() {
             // Caller skips widget wiring entirely when no toggles are enabled
@@ -143,7 +152,12 @@ fn reset_toggle_visual_state(button: &gtk::ToggleButton, guard: &Rc<Cell<bool>>)
 }
 
 impl ToggleItem {
-    fn new(config: ToggleWidgetConfig, show_tooltips: bool, layout: ToggleLayout) -> Self {
+    fn new(
+        config: ToggleWidgetConfig,
+        show_tooltips: bool,
+        layout: ToggleLayout,
+        icon_resolver: &IconAssetResolver,
+    ) -> Self {
         // Guard and generation tokens are per-item to isolate async updates
         let guard = Rc::new(Cell::new(false));
         // Refresh generation only lives on the GTK main loop
@@ -155,7 +169,6 @@ impl ToggleItem {
         let button = gtk::ToggleButton::new();
         // Base class applies shared visual treatment for all toggle cards
         button.add_css_class(hooks::toggle_card::ROOT);
-        button.add_css_class(hooks::toggle_card::HAS_ICON);
         button.set_focusable(true);
         // Tooltip stays optional so hover can stay visually quiet in compact layouts
         if show_tooltips {
@@ -190,10 +203,6 @@ impl ToggleItem {
                 "toggle icon missing in theme; using fallback"
             );
         }
-        let icon = gtk::Image::from_icon_name(&icon_name);
-        // Icon class controls size and tint in one place
-        icon.add_css_class(hooks::toggle_card::ICON);
-
         let label = gtk::Label::new(Some(&config.label));
         // Label class controls typography and spacing with icon
         label.add_css_class(hooks::toggle_card::LABEL);
@@ -207,7 +216,20 @@ impl ToggleItem {
         });
         label.set_wrap(false);
 
-        content.append(&icon);
+        if let Some(icon) = image_from_icon_config(
+            icon_resolver,
+            &config.label,
+            Some(&icon_name),
+            config.icon_asset.as_deref(),
+        ) {
+            // Icon class controls size and tint in one place
+            icon.add_css_class(hooks::toggle_card::ICON);
+            content.append(&icon);
+            button.add_css_class(hooks::toggle_card::HAS_ICON);
+        } else {
+            // No-icon toggles are unusual, but the hook keeps spacing themeable
+            button.add_css_class(hooks::toggle_card::NO_ICON);
+        }
         content.append(&label);
         button.set_child(Some(&content));
 

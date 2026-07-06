@@ -21,6 +21,7 @@ pub struct ToggleWidgetConfig {
     pub kind: Option<String>,
     pub label: String,
     pub icon: String,
+    pub icon_asset: Option<String>,
     pub state_cmd: Option<String>,
     /// Optional command run for every user click before state is refreshed
     ///
@@ -38,6 +39,7 @@ impl ToggleWidgetConfig {
             kind: Some(commands::TOGGLE_KIND_WIFI.to_string()),
             label: "Wi-Fi".to_string(),
             icon: "network-wireless-signal-excellent-symbolic".to_string(),
+            icon_asset: None,
             state_cmd: Some(commands::WIFI_STATE_NMCLI.to_string()),
             toggle_cmd: None,
             on_cmd: Some(commands::WIFI_ON_NMCLI.to_string()),
@@ -52,6 +54,7 @@ impl ToggleWidgetConfig {
             kind: Some(commands::TOGGLE_KIND_BLUETOOTH.to_string()),
             label: "Bluetooth".to_string(),
             icon: "bluetooth-active-symbolic".to_string(),
+            icon_asset: None,
             state_cmd: Some(commands::BLUETOOTH_STATE_BLUETOOTHCTL.to_string()),
             toggle_cmd: None,
             on_cmd: Some(commands::BLUETOOTH_ON_BLUETOOTHCTL.to_string()),
@@ -67,6 +70,7 @@ impl ToggleWidgetConfig {
             kind: Some(commands::TOGGLE_KIND_AIRPLANE.to_string()),
             label: "Airplane".to_string(),
             icon: "airplane-mode-symbolic".to_string(),
+            icon_asset: None,
             // Airplane reads active only when every rfkill device is soft-blocked
             state_cmd: Some(commands::AIRPLANE_STATE_CMD.to_string()),
             toggle_cmd: None,
@@ -82,6 +86,7 @@ impl ToggleWidgetConfig {
             kind: Some(commands::TOGGLE_KIND_NIGHT.to_string()),
             label: "Night".to_string(),
             icon: "weather-clear-night-symbolic".to_string(),
+            icon_asset: None,
             // Shipped scripts keep backend fallback logic in editable files
             state_cmd: Some("scripts/unixnotis-blue-light-state".to_string()),
             toggle_cmd: None,
@@ -99,6 +104,7 @@ impl Default for ToggleWidgetConfig {
             kind: None,
             label: "Toggle".to_string(),
             icon: "applications-system-symbolic".to_string(),
+            icon_asset: None,
             state_cmd: None,
             toggle_cmd: None,
             on_cmd: None,

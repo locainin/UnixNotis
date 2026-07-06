@@ -69,8 +69,10 @@ pub(super) fn build_widget_sections(
 ) -> ExtraWidgets {
     let (volume, brightness) =
         super::super::widget_builders::build_quick_controls(panel, &init.config);
+    let icon_resolver =
+        unixnotis_core::IconAssetResolver::new(config_dir_for_widgets(&init.config_path));
     let (toggles, stats, cards) =
-        super::super::widget_builders::build_extra_widgets(panel, &init.config);
+        super::super::widget_builders::build_extra_widgets(panel, &init.config, &icon_resolver);
 
     ExtraWidgets {
         volume,
@@ -79,6 +81,13 @@ pub(super) fn build_widget_sections(
         stats,
         cards,
     }
+}
+
+pub(super) fn config_dir_for_widgets(config_path: &std::path::Path) -> std::path::PathBuf {
+    unixnotis_core::Config::config_dir_for_path(config_path).unwrap_or_else(|err| {
+        tracing::warn!(?err, "failed to resolve config dir for widget icon assets");
+        std::path::PathBuf::from(".")
+    })
 }
 
 pub(super) fn has_visible_widget_section(panel: &panel::PanelWidgets) -> bool {
