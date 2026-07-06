@@ -5,13 +5,13 @@ set -euo pipefail
 main() {
   local tag="${1:-}"
   if [[ -z "$tag" ]]; then
-    printf 'usage: %s v1.0.0\n' "${0}" >&2
+    printf 'usage: %s v1.1.0\n' "${0}" >&2
     exit 2
   fi
 
   if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     # Release artifacts and installer update checks both expect stable vMAJOR.MINOR.PATCH tags
-    printf 'release tag must look like v1.0.0: %s\n' "$tag" >&2
+    printf 'release tag must look like v1.1.0: %s\n' "$tag" >&2
     exit 2
   fi
 
@@ -19,9 +19,11 @@ main() {
   local target="x86_64-unknown-linux-gnu"
   local root
   local binaries=()
+  local binary_list
   root="$(repo_root)"
   cd "$root"
-  readarray -t binaries < <(managed_binaries)
+  binary_list="$(managed_binaries)"
+  readarray -t binaries <<< "$binary_list"
 
   assert_workspace_version "$version"
   # Build first so packaging never creates an archive around stale target artifacts
@@ -129,7 +131,7 @@ import sys
 
 metadata = json.load(sys.stdin)
 binaries = (
-    metadata.get("workspace_metadata", {})
+    metadata.get("metadata", {})
     .get("unixnotis", {})
     .get("installer", {})
     .get("binaries", [])
