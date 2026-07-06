@@ -23,21 +23,41 @@ pub(super) enum RecordedCall {
     ListInhibitors,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum RecordedEvent {
+    Control(RecordedCall),
+    DebugLogFollow,
+}
+
 #[derive(Default)]
 pub(super) struct RecordingControlClient {
-    calls: RefCell<Vec<RecordedCall>>,
+    events: RefCell<Vec<RecordedEvent>>,
 }
 
 impl RecordingControlClient {
     fn record<'a, T: 'a>(&'a self, call: RecordedCall, value: T) -> ControlFuture<'a, T> {
         Box::pin(async move {
-            self.calls.borrow_mut().push(call);
+            self.events.borrow_mut().push(RecordedEvent::Control(call));
             Ok(value)
         })
     }
 
+    pub(super) fn record_debug_log_follow(&self) {
+        self.events.borrow_mut().push(RecordedEvent::DebugLogFollow);
+    }
+
+    pub(super) fn take_events(&self) -> Vec<RecordedEvent> {
+        self.events.replace(Vec::new())
+    }
+
     pub(super) fn take_calls(&self) -> Vec<RecordedCall> {
-        self.calls.replace(Vec::new())
+        self.take_events()
+            .into_iter()
+            .filter_map(|event| match event {
+                RecordedEvent::Control(call) => Some(call),
+                RecordedEvent::DebugLogFollow => None,
+            })
+            .collect()
     }
 }
 
@@ -92,10 +112,12 @@ impl ControlClient for RecordingControlClient {
 
     fn inhibit<'a>(&'a self, reason: &'a str, scope: u32) -> ControlFuture<'a, u64> {
         Box::pin(async move {
-            self.calls.borrow_mut().push(RecordedCall::Inhibit {
-                reason: reason.to_owned(),
-                scope,
-            });
+            self.events
+                .borrow_mut()
+                .push(RecordedEvent::Control(RecordedCall::Inhibit {
+                    reason: reason.to_owned(),
+                    scope,
+                }));
             Ok(42)
         })
     }
