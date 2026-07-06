@@ -198,20 +198,20 @@ fn find_release_root_from_current_exe() -> Option<PathBuf> {
 }
 
 pub(in crate::paths) fn is_unixnotis_release_archive(root: &Path) -> bool {
-    // A valid release archive must include the manifest file at the expected root location.
+    // A valid release archive must include the manifest file at the expected root location
     let manifest = root.join(RELEASE_MANIFEST_FILE);
 
-    // If the manifest cannot be read, the directory cannot be treated as a release archive.
+    // If the manifest cannot be read, the directory cannot be treated as a release archive
     let Ok(contents) = fs::read_to_string(manifest) else {
         return false;
     };
 
-    // The manifest must also match the expected JSON shape before any archive contents are trusted.
+    // The manifest must also match the expected JSON shape before any archive contents are trusted
     let Ok(manifest) = serde_json::from_str::<ReleaseArchiveManifest>(&contents) else {
         return false;
     };
 
-    // Runtime binaries are expected to live under the archive's bin directory.
+    // Runtime binaries are expected to live under the archive's bin directory
     let release_bin_dir = root.join(RELEASE_BIN_DIR);
 
     // The archive layout is intentionally simple: installer at root, runtime tools in bin
@@ -219,20 +219,20 @@ pub(in crate::paths) fn is_unixnotis_release_archive(root: &Path) -> bool {
         return false;
     }
 
-    // Normalize manifest binary names by trimming whitespace and collecting into a set.
-    // The set removes duplicates so each listed binary only needs to be checked once.
+    // Normalize manifest binary names by trimming whitespace and collecting into a set
+    // The set removes duplicates so each listed binary only needs to be checked once
     let names = manifest
         .binaries
         .into_iter()
         .map(|name| name.trim().to_string())
         .collect::<BTreeSet<_>>();
 
-    // An archive with no declared binaries is incomplete, even if the bin directory exists.
+    // An archive with no declared binaries is incomplete, even if the bin directory exists
     if names.is_empty() {
         return false;
     }
 
-    // Every declared binary must have a safe filename and exist as a regular file in bin.
+    // Every declared binary must have a safe filename and exist as a regular file in bin
     names
         .iter()
         .all(|binary| is_release_binary_name(binary) && release_bin_dir.join(binary).is_file())
@@ -240,7 +240,7 @@ pub(in crate::paths) fn is_unixnotis_release_archive(root: &Path) -> bool {
 
 fn is_release_binary_name(binary: &str) -> bool {
     // Only allow plain file names. Empty names, current/parent directory references,
-    // and path separators are rejected to prevent escaping the release bin directory.
+    // and path separators are rejected to prevent escaping the release bin directory
     !binary.is_empty()
         && binary != "."
         && binary != ".."
@@ -250,6 +250,6 @@ fn is_release_binary_name(binary: &str) -> bool {
 
 #[derive(serde::Deserialize)]
 struct ReleaseArchiveManifest {
-    // The manifest declares the runtime binary filenames expected inside RELEASE_BIN_DIR.
+    // The manifest declares the runtime binary filenames expected inside RELEASE_BIN_DIR
     binaries: Vec<String>,
 }

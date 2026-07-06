@@ -156,11 +156,11 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
     }
 
     // Remove any Hyprland autostart entry managed by the installer before
-    // cleaning up shell startup files.
+    // cleaning up shell startup files
     remove_hyprland_autostart(ctx);
 
     // Shell PATH cleanup is non-fatal: uninstall should continue even if one
-    // startup file cannot be read or updated.
+    // startup file cannot be read or updated
     if let Err(err) = remove_shell_path_entry(ctx) {
         log_line(
             ctx,
@@ -176,7 +176,7 @@ fn log_unsafe_service_artifacts(
     artifacts: &[crate::service_manager::ServiceArtifact],
 ) -> bool {
     // Track whether any unsafe artifact path was detected so the caller can
-    // decide whether cleanup should proceed.
+    // decide whether cleanup should proceed
     let mut found = false;
 
     for artifact in artifacts {

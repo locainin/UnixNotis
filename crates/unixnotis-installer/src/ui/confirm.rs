@@ -12,7 +12,7 @@ use super::header::draw_header;
 use super::reset::describe_reset_action;
 
 pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
-    // Confirmation screen keeps the user on one page before running actions.
+    // Confirmation screen keeps the user on one page before running actions
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -24,7 +24,7 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
 
     draw_header(frame, layout[0]);
 
-    // Content lines are built first, then rendered as a wrapped paragraph.
+    // Content lines are built first, then rendered as a wrapped paragraph
     let mut lines = Vec::new();
     lines.push(Line::from(vec![Span::styled(
         format!("Confirm {}", app.action_label(mode)),
@@ -42,7 +42,7 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
         Span::raw(crate::actions::summarize_owner(&app.detection.owner)),
     ]));
 
-    // Blocked state is rendered inline so it is visible before execution.
+    // Blocked state is rendered inline so it is visible before execution
     if let Err(reason) = app.checks.ready_for(mode) {
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
@@ -53,7 +53,7 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
             Span::raw(reason),
         ]));
     }
-    // Warn about destructive actions before proceeding.
+    // Warn about destructive actions before proceeding
     if matches!(mode, ActionMode::Install)
         && app
             .install_state
@@ -99,7 +99,7 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
     }
     if matches!(mode, ActionMode::Reset) {
         lines.push(Line::from(""));
-        // Reset warning includes backup retention to avoid surprise data loss.
+        // Reset warning includes backup retention to avoid surprise data loss
         lines.push(Line::from(Span::styled(
             "Reset overwrites config.toml and theme files with defaults.",
             Style::default().fg(Color::Yellow),
