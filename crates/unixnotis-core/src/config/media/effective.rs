@@ -49,5 +49,5 @@ impl MediaConfig {
 }
 
 #[cfg(test)]
-#[path = "../tests/media.rs"]
+#[path = "tests/effective.rs"]
 mod tests;
