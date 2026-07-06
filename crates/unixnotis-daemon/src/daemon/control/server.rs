@@ -173,7 +173,7 @@ impl ControlServer {
             .map_err(to_fdo_error)
     }
 
-    async fn invoke_action(
+    pub(super) async fn invoke_action(
         &self,
         id: u32,
         action_key: &str,
@@ -188,7 +188,10 @@ impl ControlServer {
             .map_err(to_fdo_error)
     }
 
-    async fn clear_all(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
+    pub(super) async fn clear_all(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ClearAll").await?;
         let ids = self.drain_active_notifications().await;
         self.clear_saved_history().await;
@@ -196,14 +199,20 @@ impl ControlServer {
         Ok(())
     }
 
-    async fn clear_active(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
+    pub(super) async fn clear_active(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ClearActive").await?;
         let ids = self.drain_active_notifications().await;
         clear::emit_clear_all_signals(&self.state, ids).await;
         Ok(())
     }
 
-    async fn clear_history(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
+    pub(super) async fn clear_history(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ClearHistory").await?;
         self.clear_saved_history().await;
         clear::emit_clear_all_signals(&self.state, Vec::new()).await;
