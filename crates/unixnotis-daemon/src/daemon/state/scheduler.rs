@@ -19,10 +19,14 @@ impl DaemonState {
     fn scheduler(&self) -> Option<ExpirationScheduler> {
         // Cloning the sender handle is cheap and keeps await points simple
         let scheduler = self.scheduler.get().cloned();
-        if scheduler.is_none() && !self.scheduler_missing_warned.swap(true, Ordering::SeqCst) {
+        if scheduler.is_none() && self.mark_missing_scheduler_warning_needed() {
             warn!("expiration scheduler is unavailable during live daemon operation");
         }
         scheduler
+    }
+
+    pub(in crate::daemon::state) fn mark_missing_scheduler_warning_needed(&self) -> bool {
+        !self.scheduler_missing_warned.swap(true, Ordering::SeqCst)
     }
 
     pub(in crate::daemon) fn cancel_expiration(&self, id: u32) {
