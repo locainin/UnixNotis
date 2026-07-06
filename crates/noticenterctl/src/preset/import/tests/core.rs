@@ -1,6 +1,20 @@
 use super::*;
 
 #[test]
+fn run_import_reports_missing_bundle_instead_of_succeeding() {
+    let missing = std::env::temp_dir().join("unixnotis-missing-import-bundle.unixnotis");
+    let _ = fs::remove_file(&missing);
+
+    let error = super::super::runner::run_import(&missing, &[], true, false)
+        .expect_err("missing bundle should fail");
+
+    assert!(
+        error.to_string().contains("does not exist")
+            || error.to_string().contains("read preset bundle")
+    );
+}
+
+#[test]
 fn import_dry_run_reports_create_and_overwrite_counts() {
     // Dry-run should plan writes without changing the target tree
     let export_root = TempDirGuard::new("dry-run-export");
@@ -31,6 +45,25 @@ fn import_dry_run_reports_create_and_overwrite_counts() {
 }
 
 #[test]
+fn import_dry_run_does_not_create_included_files() {
+    let export_root = TempDirGuard::new("dry-run-no-create-export");
+    export_root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    export_root.write("base.css", ".a { color: red; }");
+    let bundle_path = export_root.path.join("demo.unixnotis");
+    export_preset_from(&export_root.path, &bundle_path, &[], false).expect("export bundle");
+
+    let import_root = TempDirGuard::new("dry-run-no-create-import");
+    let summary =
+        import_preset_into(&import_root.path, &bundle_path, &[], true).expect("dry-run import");
+
+    assert!(summary.dry_run);
+    assert_eq!(summary.file_count, 2);
+    assert_eq!(summary.created, 2);
+    assert!(!import_root.path.join("config.toml").exists());
+    assert!(!import_root.path.join("base.css").exists());
+}
+
+#[test]
 fn import_writes_files_and_creates_backup_for_overwrites() {
     // Real import should overwrite live files and keep a rollback copy
     let export_root = TempDirGuard::new("real-export");
@@ -53,6 +86,52 @@ fn import_writes_files_and_creates_backup_for_overwrites() {
         fs::read_to_string(import_root.path.join("config.toml")).expect("read config"),
         "[theme]\nbase_css = \"base.css\"\n"
     );
+}
+
+#[test]
+fn import_accepts_bundle_that_contains_only_config_toml() {
+    let export_root = TempDirGuard::new("config-only-export");
+    export_root.write("config.toml", "title = \"only config\"\n");
+    let bundle_path = export_root.path.join("demo.unixnotis");
+    write_collected_bundle(
+        &export_root,
+        &bundle_path,
+        "2026-04-18T00:00:00Z",
+        &[("config.toml", "config.toml")],
+    );
+
+    let import_root = TempDirGuard::new("config-only-import");
+    let summary =
+        import_preset_into(&import_root.path, &bundle_path, &[], false).expect("import config");
+
+    assert_eq!(summary.file_count, 1);
+    assert_eq!(summary.created, 1);
+    assert_eq!(
+        fs::read_to_string(import_root.path.join("config.toml")).expect("read config"),
+        "title = \"only config\"\n"
+    );
+}
+
+#[test]
+fn import_rejects_bundle_without_config_toml_before_writing() {
+    let export_root = TempDirGuard::new("missing-config-export");
+    export_root.write("base.css", ".a { color: red; }");
+    let bundle_path = export_root.path.join("demo.unixnotis");
+    write_collected_bundle(
+        &export_root,
+        &bundle_path,
+        "2026-04-17T00:00:00Z",
+        &[("base.css", "base.css")],
+    );
+
+    let import_root = TempDirGuard::new("missing-config-import");
+    let error = import_preset_into(&import_root.path, &bundle_path, &[], false)
+        .expect_err("reject missing config");
+
+    assert!(error
+        .to_string()
+        .contains("preset bundle is missing config.toml"));
+    assert!(!import_root.path.join("base.css").exists());
 }
 
 #[test]

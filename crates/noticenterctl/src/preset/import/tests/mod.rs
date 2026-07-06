@@ -1,4 +1,4 @@
-pub(super) use super::{import_preset_into, import_preset_into_with_confirm};
+pub(super) use super::test_helpers::{import_preset_into, import_preset_into_with_confirm};
 pub(super) use crate::preset::archive::write_bundle;
 pub(super) use crate::preset::config_root::{CollectedConfigFiles, PresetFileSource};
 pub(super) use crate::preset::export::export_preset_from;
@@ -10,9 +10,12 @@ pub(super) use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod commit;
 mod core;
 mod css;
 mod exec;
+mod exec_review;
+mod prompts;
 
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
