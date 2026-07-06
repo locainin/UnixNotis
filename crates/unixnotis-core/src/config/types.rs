@@ -1,17 +1,18 @@
-//! Configuration types and defaults for UnixNotis.
+//! Configuration types and defaults for UnixNotis
 //!
 //! Keeps high-level config categories together and delegates detailed schemas
-//! to focused modules for maintainability.
+//! to focused modules for maintainability
 
 use serde::{Deserialize, Serialize};
 
-use super::layout::{PanelConfig, PopupConfig};
+use super::layout::PopupConfig;
 use super::media::MediaConfig;
+use super::panel::PanelConfig;
 use super::rules::RuleConfig;
 use super::theme::ThemeConfig;
 use super::widget_config::WidgetsConfig;
 
-/// Top-level configuration loaded from config.toml.
+/// Top-level configuration loaded from config.toml
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
@@ -35,7 +36,7 @@ pub struct GeneralConfig {
     pub log_level: Option<String>,
 }
 
-/// Inhibit behavior controls how the daemon handles suppression requests.
+/// Inhibit behavior controls how the daemon handles suppression requests
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct InhibitConfig {
@@ -53,9 +54,9 @@ impl Default for InhibitConfig {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum InhibitMode {
-    /// Store notifications but suppress popup rendering.
+    /// Store notifications but suppress popup rendering
     NoPopups,
-    /// Drop incoming notifications entirely while inhibited.
+    /// Drop incoming notifications entirely while inhibited
     DropAll,
 }
 
@@ -81,17 +82,17 @@ impl Default for HistoryConfig {
     }
 }
 
-/// Notification sound behavior.
+/// Notification sound behavior
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SoundConfig {
-    /// Enables sound playback when the daemon receives notifications.
+    /// Enables sound playback when the daemon receives notifications
     pub enabled: bool,
-    /// Default named sound from the freedesktop sound theme.
+    /// Default named sound from the freedesktop sound theme
     pub default_name: Option<String>,
-    /// Default sound file path, resolves relative to the UnixNotis config dir.
+    /// Default sound file path, resolves relative to the UnixNotis config dir
     pub default_file: Option<String>,
-    /// Directory containing custom sound files, resolves relative to config dir.
+    /// Directory containing custom sound files, resolves relative to config dir
     pub default_dir: Option<String>,
 }
 

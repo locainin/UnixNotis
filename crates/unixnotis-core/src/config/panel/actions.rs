@@ -20,6 +20,7 @@ pub enum PanelActionId {
     Dnd,
     Clear,
     Search,
+    Close,
 }
 
 /// Return the stock left-to-right panel action order
