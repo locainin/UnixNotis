@@ -48,34 +48,34 @@ pub(crate) fn ensure_shell_path_entry(ctx: &mut ActionContext) -> Result<()> {
 
 pub(crate) fn remove_shell_path_entry(ctx: &mut ActionContext) -> Result<()> {
     // Resolve the user's home directory so shell startup files and path entries
-    // can be located relative to the current user.
+    // can be located relative to the current user
     let home = crate::paths::home_dir()?;
 
     // Read the active shell when available so the cleanup can target the startup
-    // files that are most likely to contain the installer-added PATH entry.
+    // files that are most likely to contain the installer-added PATH entry
     let shell = env::var("SHELL").ok();
 
-    // Build the list of shell startup files that should be checked for PATH entries.
+    // Build the list of shell startup files that should be checked for PATH entries
     let startup_files = shell_startup_files(&home, shell.as_deref());
 
-    // Track which files were actually modified so the final log output is accurate.
+    // Track which files were actually modified so the final log output is accurate
     let mut removed_files = Vec::new();
 
     for startup_file in startup_files {
-        // Remove only installer-owned references to the configured bin directory.
-        // Files that do not contain such an entry are left untouched.
+        // Remove only installer-owned references to the configured bin directory
+        // Files that do not contain such an entry are left untouched
         if remove_path_entry_from_file(&startup_file, &home, &ctx.paths.bin_dir)? {
             removed_files.push(startup_file);
         }
     }
 
     if removed_files.is_empty() {
-        // Nothing matched the installer-managed PATH entry, so no startup file changed.
+        // Nothing matched the installer-managed PATH entry, so no startup file changed
         log_line(ctx, "No installer-owned shell PATH entries found.");
     } else {
         for startup_file in removed_files {
             // Report each modified startup file using a home-relative display path
-            // to keep the message readable and user-specific.
+            // to keep the message readable and user-specific
             log_line(
                 ctx,
                 format!(
@@ -162,17 +162,17 @@ pub(in crate::actions::environment) fn remove_path_entry_from_file(
         Err(err) => return Err(anyhow!("failed to read {}: {}", file.display(), err)),
     };
 
-    // If the installer marker is not present, this file was not modified by this installer.
+    // If the installer marker is not present, this file was not modified by this installer
     if !existing.contains(PATH_BLOCK_MARKER) {
         return Ok(false);
     }
 
-    // Track whether anything was removed while collecting the lines that should remain.
+    // Track whether anything was removed while collecting the lines that should remain
     let mut changed = false;
     let mut kept = Vec::new();
 
     // Use a peekable iterator so a marker line can inspect the following PATH line
-    // before deciding whether both should be removed.
+    // before deciding whether both should be removed
     let mut lines = existing.lines().peekable();
 
     while let Some(line) = lines.next() {
@@ -181,7 +181,7 @@ pub(in crate::actions::environment) fn remove_path_entry_from_file(
         if line.trim() == PATH_BLOCK_MARKER {
             if let Some(next) = lines.peek() {
                 // Remove the marker and the following PATH entry only when the next
-                // line points to the installer-managed bin directory.
+                // line points to the installer-managed bin directory
                 if is_shell_path_entry_line(next.trim(), home, bin_dir) {
                     lines.next();
                     changed = true;
@@ -206,7 +206,7 @@ pub(in crate::actions::environment) fn remove_path_entry_from_file(
         updated.push('\n');
     }
 
-    // Write the cleaned startup file back to disk.
+    // Write the cleaned startup file back to disk
     fs::write(file, updated)
         .map_err(|err| anyhow!("failed to write {}: {}", file.display(), err))?;
     Ok(true)
@@ -231,7 +231,7 @@ fn is_shell_path_entry_line(trimmed: &str, home: &Path, bin_dir: &Path) -> bool 
     let absolute_path = bin_dir.display().to_string();
 
     // Only consider export PATH lines, and only when they reference the installer
-    // bin directory in either supported path format.
+    // bin directory in either supported path format
     trimmed.starts_with("export PATH=")
         && (trimmed.contains(&shell_path) || trimmed.contains(&absolute_path))
 }

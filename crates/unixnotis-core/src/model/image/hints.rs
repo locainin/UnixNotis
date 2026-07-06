@@ -118,11 +118,11 @@ fn resolve_icon_name(
 
 fn normalize_app_icon_path(app_icon: &str) -> Option<String> {
     // Normalize the incoming icon path first so later checks operate on a cleaned,
-    // bounded value rather than raw metadata input.
+    // bounded value rather than raw metadata input
     let path = normalize_image_path(app_icon);
 
-    // Only accept paths that are already absolute filesystem paths or valid file URIs.
-    // Relative paths are rejected because app icons need to resolve unambiguously.
+    // Only accept paths that are already absolute filesystem paths or valid file URIs
+    // Relative paths are rejected because app icons need to resolve unambiguously
     if path.starts_with('/') || path.starts_with("file://") {
         Some(path)
     } else {
@@ -132,29 +132,29 @@ fn normalize_app_icon_path(app_icon: &str) -> Option<String> {
 
 fn normalize_image_path(value: &str) -> String {
     // Sanitize display-facing metadata and enforce the maximum byte length before
-    // doing any URI-specific normalization.
+    // doing any URI-specific normalization
     let bounded = sanitize_metadata_string(value, MAX_IMAGE_PATH_BYTES);
 
     // File URIs get normalized into the accepted form when possible. Invalid or
-    // unsupported file URI shapes fall back to an empty string.
+    // unsupported file URI shapes fall back to an empty string
     if bounded.starts_with("file://") {
         return normalize_file_uri(&bounded).unwrap_or_default();
     }
 
-    // Non-file URI values are returned after sanitization/truncation only.
+    // Non-file URI values are returned after sanitization/truncation only
     bounded
 }
 
 fn normalize_file_uri(value: &str) -> Option<String> {
-    // This function only handles file:// URIs; anything else is rejected immediately.
+    // This function only handles file:// URIs; anything else is rejected immediately
     let stripped = value.strip_prefix("file://")?;
 
-    // A file URI with an absolute path is already in the expected form.
+    // A file URI with an absolute path is already in the expected form
     if stripped.starts_with('/') {
         return Some(value.to_string());
     }
 
-    // Convert localhost-based file URIs into the canonical absolute-path form.
+    // Convert localhost-based file URIs into the canonical absolute-path form
     stripped
         .strip_prefix("localhost/")
         .map(|path| format!("file:///{path}"))
@@ -162,25 +162,25 @@ fn normalize_file_uri(value: &str) -> Option<String> {
 
 fn bound_icon_name(value: &str) -> String {
     // Icon names use the same metadata sanitization path, but with the icon-name
-    // byte limit instead of the image-path byte limit.
+    // byte limit instead of the image-path byte limit
     sanitize_metadata_string(value, MAX_ICON_NAME_BYTES)
 }
 
 fn sanitize_metadata_string(value: &str, max_bytes: usize) -> String {
     // Remove inline display control/problematic characters before trimming and
-    // applying the final UTF-8-safe byte limit.
+    // applying the final UTF-8-safe byte limit
     let cleaned = util::sanitize_inline_display_text(value);
     truncate_utf8_bytes(cleaned.trim(), max_bytes)
 }
 
 fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
-    // Fast path: avoid allocation/truncation work when the value already fits.
+    // Fast path: avoid allocation/truncation work when the value already fits
     if value.len() <= max_bytes {
         return value.to_string();
     }
 
     // Find the last valid UTF-8 character boundary that does not exceed max_bytes,
-    // so slicing never cuts through the middle of a multi-byte character.
+    // so slicing never cuts through the middle of a multi-byte character
     let end = value
         .char_indices()
         .map(|(index, _)| index)
@@ -188,13 +188,13 @@ fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
         .last()
         .unwrap_or(0);
 
-    // Return only the byte-safe prefix.
+    // Return only the byte-safe prefix
     value[..end].to_string()
 }
 
 pub(super) fn owned_to_string(value: &OwnedValue) -> Option<String> {
-    // Clone the owned D-Bus value first, then attempt to extract it as a String.
-    // Any clone or conversion failure is represented as None.
+    // Clone the owned D-Bus value first, then attempt to extract it as a String
+    // Any clone or conversion failure is represented as None
     value
         .try_clone()
         .ok()
