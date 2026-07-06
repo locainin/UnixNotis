@@ -113,5 +113,5 @@ fn sanitize_history(config: &mut Config) {
 }
 
 #[cfg(test)]
-#[path = "../../tests/runtime/layout.rs"]
+#[path = "tests/pipeline.rs"]
 mod tests;

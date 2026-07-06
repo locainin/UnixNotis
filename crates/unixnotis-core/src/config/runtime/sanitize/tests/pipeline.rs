@@ -155,6 +155,29 @@ fn sanitize_preserves_optional_panel_labels_and_repairs_widget_order() {
 }
 
 #[test]
+fn sanitize_preserves_explicit_close_action_order() {
+    let mut config = Config::default();
+    config.panel.action_order = vec![
+        PanelActionId::Close,
+        PanelActionId::Search,
+        PanelActionId::Close,
+    ];
+
+    sanitize_config(&mut config);
+
+    assert_eq!(
+        config.panel.action_order,
+        vec![
+            PanelActionId::Close,
+            PanelActionId::Search,
+            PanelActionId::Widgets,
+            PanelActionId::Dnd,
+            PanelActionId::Clear,
+        ]
+    );
+}
+
+#[test]
 fn default_panel_section_labels_do_not_force_widget_headings() {
     let config = PanelConfig::default();
 

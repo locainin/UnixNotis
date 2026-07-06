@@ -117,5 +117,5 @@ fn normalize_media_aliases(aliases: &BTreeMap<String, String>) -> BTreeMap<Strin
 }
 
 #[cfg(test)]
-#[path = "../../tests/runtime/media.rs"]
+#[path = "tests/media.rs"]
 mod tests;
