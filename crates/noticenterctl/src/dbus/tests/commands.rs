@@ -1,7 +1,10 @@
-use crate::cli::{Command, DndState, InhibitScopeArg, PresetCommand};
+use anyhow::anyhow;
+use unixnotis_core::PanelDebugLevel;
 
-use super::super::handle_command;
-use super::support::{RecordedCall, RecordingControlClient};
+use crate::cli::{Command, DebugLevelArg, DndState, InhibitScopeArg, PresetCommand};
+
+use super::super::commands::{handle_command, handle_command_with_debug_logs};
+use super::support::{RecordedCall, RecordedEvent, RecordingControlClient};
 
 #[tokio::test]
 async fn clear_commands_dispatch_to_matching_control_calls() {
@@ -36,6 +39,58 @@ async fn panel_commands_dispatch_to_matching_control_calls() {
             .expect("dispatch command");
         assert_eq!(client.take_calls(), vec![expected]);
     }
+}
+
+#[tokio::test]
+async fn debug_open_dispatches_debug_panel_and_attempts_log_follow() {
+    let client = RecordingControlClient::default();
+
+    handle_command_with_debug_logs(
+        &client,
+        Command::OpenPanel {
+            debug: Some(DebugLevelArg::Verbose),
+        },
+        || {
+            client.record_debug_log_follow();
+            Ok(())
+        },
+    )
+    .await
+    .expect("dispatch debug open");
+
+    assert_eq!(
+        client.take_events(),
+        vec![
+            RecordedEvent::Control(RecordedCall::OpenPanelDebug(PanelDebugLevel::Verbose)),
+            RecordedEvent::DebugLogFollow,
+        ]
+    );
+}
+
+#[tokio::test]
+async fn debug_open_still_succeeds_when_log_follow_fails() {
+    let client = RecordingControlClient::default();
+
+    handle_command_with_debug_logs(
+        &client,
+        Command::OpenPanel {
+            debug: Some(DebugLevelArg::Warn),
+        },
+        || {
+            client.record_debug_log_follow();
+            Err(anyhow!("journal unavailable"))
+        },
+    )
+    .await
+    .expect("debug open should survive log follow errors");
+
+    assert_eq!(
+        client.take_events(),
+        vec![
+            RecordedEvent::Control(RecordedCall::OpenPanelDebug(PanelDebugLevel::Warn)),
+            RecordedEvent::DebugLogFollow,
+        ]
+    );
 }
 
 #[tokio::test]

@@ -10,6 +10,14 @@ use crate::output::{
 use super::client::ControlClient;
 
 pub(crate) async fn handle_command(client: &impl ControlClient, command: Command) -> Result<()> {
+    handle_command_with_debug_logs(client, command, follow_debug_logs).await
+}
+
+pub(super) async fn handle_command_with_debug_logs(
+    client: &impl ControlClient,
+    command: Command,
+    mut follow_logs: impl FnMut() -> Result<()>,
+) -> Result<()> {
     // CLI forwards work to the daemon
     match command {
         Command::TogglePanel => {
@@ -21,7 +29,7 @@ pub(crate) async fn handle_command(client: &impl ControlClient, command: Command
             if let Some(level) = debug {
                 client.open_panel_debug(level.into()).await?;
                 // Panel open should still succeed when journal follow is unavailable
-                if let Err(err) = follow_debug_logs() {
+                if let Err(err) = follow_logs() {
                     eprintln!("debug log follow unavailable: {err}");
                 }
             } else {
