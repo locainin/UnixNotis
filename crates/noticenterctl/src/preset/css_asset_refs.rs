@@ -3,14 +3,10 @@
 //! This module keeps CSS asset scanning and bundle-only rewrites in one tree
 //! so preset import, export, inspect, and css-check all read the same rules
 
-#[path = "css_asset_refs/collect.rs"]
 mod collect;
-#[path = "css_asset_refs/parse.rs"]
 mod parse;
-#[path = "css_asset_refs/rewrite.rs"]
 mod rewrite;
 #[cfg(test)]
-#[path = "css_asset_refs/tests.rs"]
 mod tests;
 
 use std::path::{Path, PathBuf};

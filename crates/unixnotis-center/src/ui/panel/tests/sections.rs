@@ -1,6 +1,9 @@
-use unixnotis_core::{PanelClearButtonPlacement, PanelConfig};
+use gtk::prelude::*;
+use unixnotis_core::{PanelClearButtonPlacement, PanelConfig, PanelSection};
 
-use super::notification_header_row_visible;
+use super::{
+    apply_panel_body_section_order, build_panel_sections, notification_header_row_visible,
+};
 
 #[test]
 fn notification_header_row_stays_visible_for_header_clear_button() {
@@ -25,4 +28,41 @@ fn notification_header_row_uses_section_label_when_section_is_visible() {
     };
 
     assert!(notification_header_row_visible(&config));
+}
+
+#[gtk::test]
+fn build_panel_sections_can_place_notifications_before_widgets() {
+    let config = PanelConfig {
+        section_order: vec![PanelSection::Notifications, PanelSection::Widgets],
+        ..PanelConfig::default()
+    };
+
+    let sections = build_panel_sections(&config);
+    let first = sections
+        .body_stack
+        .first_child()
+        .expect("body stack should contain notification section");
+    let expected: gtk::Widget = sections.notification_container.clone().upcast();
+
+    assert_eq!(first, expected);
+}
+
+#[gtk::test]
+fn apply_panel_body_section_order_can_move_notifications_before_widgets() {
+    let config = PanelConfig::default();
+    let sections = build_panel_sections(&config);
+
+    apply_panel_body_section_order(
+        &sections.body_stack,
+        &sections.widget_revealer,
+        &sections.notification_container,
+        &[PanelSection::Notifications, PanelSection::Widgets],
+    );
+    let first = sections
+        .body_stack
+        .first_child()
+        .expect("body stack should contain notification section");
+    let expected: gtk::Widget = sections.notification_container.clone().upcast();
+
+    assert_eq!(first, expected);
 }

@@ -3,14 +3,10 @@
 //! Keeps archive reads, writes, mode checks, and tests grouped under one tree
 //! so the preset layer has one clear module boundary for bundle I/O
 
-#[path = "archive/modes.rs"]
 mod modes;
-#[path = "archive/read.rs"]
 mod read;
 #[cfg(test)]
-#[path = "archive/tests.rs"]
 mod tests;
-#[path = "archive/write.rs"]
 mod write;
 
 use std::path::PathBuf;

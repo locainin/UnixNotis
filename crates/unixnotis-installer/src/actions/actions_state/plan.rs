@@ -46,7 +46,8 @@ pub fn build_plan(mode: ActionMode) -> Vec<StepKind> {
             steps
         }
         ActionMode::Uninstall => vec![
-            // Service is removed before deleting binaries and state files
+            // Stop before deleting artifacts so a live daemon cannot survive removal
+            StepKind::StopDaemon,
             StepKind::UninstallService,
             StepKind::RemoveBinaries,
             StepKind::RemoveState,

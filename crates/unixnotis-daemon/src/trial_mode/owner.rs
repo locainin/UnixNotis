@@ -185,7 +185,7 @@ async fn pgrep_exact(name: &str) -> Vec<u32> {
 }
 
 async fn read_comm(pid: u32) -> Option<String> {
-    // Prefer /proc to avoid spawning a process for a single field.
+    // Prefer /proc to avoid spawning a process for a single field
     let path = format!("/proc/{}/comm", pid);
     if let Ok(contents) = fs::read_to_string(path).await {
         let comm = contents.trim().to_string();
@@ -209,7 +209,7 @@ async fn read_comm(pid: u32) -> Option<String> {
 }
 
 async fn read_args(pid: u32) -> Option<Vec<String>> {
-    // Use /proc/cmdline to preserve argument boundaries and quoting.
+    // Use /proc/cmdline to preserve argument boundaries and quoting
     let path = format!("/proc/{}/cmdline", pid);
     if let Ok(contents) = fs::read(path).await {
         let parts = contents

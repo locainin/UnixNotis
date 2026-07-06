@@ -4,11 +4,12 @@ use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{css::hooks, PanelConfig};
 
-use super::actions::{build_panel_actions, PanelActionWidgets};
+use super::actions::{action_order_contains_close, build_panel_actions, PanelActionWidgets};
 use super::search::{build_panel_search, PanelSearchWidgets};
 
 pub(super) struct PanelHeaderWidgets {
     pub(super) root: gtk::Box,
+    pub(super) top: gtk::Box,
     pub(super) action_row: gtk::Box,
     pub(super) title: gtk::Label,
     pub(super) subtitle: gtk::Label,
@@ -16,6 +17,10 @@ pub(super) struct PanelHeaderWidgets {
     pub(super) search: PanelSearchWidgets,
     pub(super) actions: PanelActionWidgets,
 }
+
+#[cfg(test)]
+#[path = "tests/header.rs"]
+mod tests;
 
 pub(super) fn build_panel_header(config: &PanelConfig) -> PanelHeaderWidgets {
     let header = gtk::Box::new(gtk::Orientation::Vertical, 8);
@@ -60,8 +65,10 @@ pub(super) fn build_panel_header(config: &PanelConfig) -> PanelHeaderWidgets {
 
     header_top.append(&title_box);
     header_top.append(&spacer);
-    // Keep close away from clear so destructive actions do not blend together
-    header_top.append(&action_area.widgets.close_button);
+    if !action_order_contains_close(&config.action_order) {
+        // Keep close away from clear so destructive actions do not blend together
+        header_top.append(&action_area.widgets.close_button);
+    }
     header.append(&header_top);
     // Action row sits below the title so narrow panels stay stable
     header.append(&action_area.row);
@@ -71,6 +78,7 @@ pub(super) fn build_panel_header(config: &PanelConfig) -> PanelHeaderWidgets {
 
     PanelHeaderWidgets {
         root: header,
+        top: header_top,
         action_row: action_area.row,
         title,
         subtitle,

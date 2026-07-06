@@ -213,8 +213,14 @@ trait Control {
     /// Invoke an action key for a notification.
     fn invoke_action(&self, id: u32, action_key: &str) -> zbus::Result<()>;
 
-    /// Clear all notifications from history and popups.
+    /// Clear active notifications and saved history.
     fn clear_all(&self) -> zbus::Result<()>;
+
+    /// Clear active notifications without deleting saved history.
+    fn clear_active(&self) -> zbus::Result<()>;
+
+    /// Clear saved history without closing active notifications.
+    fn clear_history(&self) -> zbus::Result<()>;
 
     /// Mark the panel UI ready after signal subscriptions are active.
     fn mark_panel_ready(&self) -> zbus::Result<()>;

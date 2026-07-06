@@ -1,4 +1,4 @@
-//! Daemon entrypoint and service bootstrap.
+//! Daemon entrypoint and service bootstrap
 
 #![allow(
     clippy::blanket_clippy_restriction_lints,
@@ -142,7 +142,7 @@ async fn main() -> Result<()> {
         TrialState::default()
     };
 
-    // Resolve sound settings once to avoid repeated filesystem work.
+    // Resolve sound settings once to avoid repeated filesystem work
     let sound_settings = SoundSettings::from_config(&config);
     let state = DaemonState::new(connection.clone(), config, sound_settings, args.trial);
     let scheduler = ExpirationScheduler::start(state.clone());

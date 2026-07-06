@@ -54,7 +54,7 @@ impl ControlServer {
             }
         }
         if write.changed {
-            // Mutation is already committed; signal fanout is best-effort.
+            // Mutation is already committed; signal fanout is best-effort
             if let Err(err) = self.state.emit_state_changed().await {
                 warn!(
                     ?err,

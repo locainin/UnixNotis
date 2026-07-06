@@ -122,6 +122,26 @@ fn notification_view_treats_self_closing_break_as_newline() {
 }
 
 #[test]
+fn notification_view_preserves_inline_markup_adjacency() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.body = "foo<b>bar</b> and <i>baz</i>".to_string();
+
+    let view = notification.to_view();
+
+    assert_eq!(view.body, "foobar and baz");
+}
+
+#[test]
+fn notification_view_collapses_inline_spaces_without_leaking_after_blocks() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.body = "Alpha  <b>Beta</b><br> Gamma".to_string();
+
+    let view = notification.to_view();
+
+    assert_eq!(view.body, "Alpha Beta\nGamma");
+}
+
+#[test]
 fn notification_view_collapses_repeated_block_tag_newlines() {
     let mut notification = notification_with_image(image_with_raw_bytes());
     notification.body = "Line one<br><br>Line two".to_string();

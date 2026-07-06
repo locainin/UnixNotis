@@ -20,11 +20,12 @@ fn install_plan_stays_focused_on_build_and_install() {
 }
 
 #[test]
-fn uninstall_plan_removes_service_before_binaries_and_state() {
+fn uninstall_plan_stops_daemon_before_removing_files() {
     let plan = build_plan(ActionMode::Uninstall);
     assert_eq!(
         plan,
         vec![
+            StepKind::StopDaemon,
             StepKind::UninstallService,
             StepKind::RemoveBinaries,
             StepKind::RemoveState,

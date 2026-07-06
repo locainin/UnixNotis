@@ -12,22 +12,22 @@ use super::types::{Action, Urgency};
 /// Full notification record stored by the daemon.
 #[derive(Debug)]
 pub struct Notification {
-    // Stable identifier assigned by the daemon.
+    // Stable identifier assigned by the daemon
     pub id: u32,
-    // Origin metadata for display and filtering.
+    // Origin metadata for display and filtering
     pub app_name: String,
     pub app_icon: String,
-    // User-facing content as provided by the sender.
+    // User-facing content as provided by the sender
     pub summary: String,
     pub body: String,
-    // Optional actions supplied by the app.
+    // Optional actions supplied by the app
     pub actions: Vec<Action>,
-    // Raw hints preserved for storage and downstream consumers.
+    // Raw hints preserved for storage and downstream consumers
     pub hints: HashMap<String, OwnedValue>,
-    // Derived urgency used for styling and escalation.
+    // Derived urgency used for styling and escalation
     pub urgency: Urgency,
     pub category: Option<String>,
-    // Flags from the notification protocol.
+    // Flags from the notification protocol
     pub is_transient: bool,
     pub is_resident: bool,
     /// Suppress showing this notification as a popup.
@@ -37,9 +37,9 @@ pub struct Notification {
     pub image: NotificationImage,
     pub expire_timeout: i32,
     pub received_at: DateTime<Utc>,
-    // D-Bus unique sender name for ownership checks in daemon-side operations.
+    // D-Bus unique sender name for ownership checks in daemon-side operations
     pub sender_name: Option<String>,
-    // Sender process metadata is retained for diagnostics and audit logging.
+    // Sender process metadata is retained for diagnostics and audit logging
     pub sender_pid: Option<u32>,
     pub sender_start_time: Option<u64>,
     pub sender_executable: Option<String>,
@@ -82,7 +82,7 @@ impl Notification {
 
     /// Create a history entry with heavyweight hint data stripped out.
     pub fn to_history(&self) -> Notification {
-        // History entries should never retain raw image-data blobs.
+        // History entries should never retain raw image-data blobs
         let mut image = self.image.clone();
         image.has_image_data = false;
         image.image_data = Default::default();
@@ -93,7 +93,7 @@ impl Notification {
             summary: self.summary.clone(),
             body: self.body.clone(),
             actions: self.actions.clone(),
-            // Keep history entries lightweight by dropping raw hint payloads.
+            // Keep history entries lightweight by dropping raw hint payloads
             hints: HashMap::new(),
             urgency: self.urgency,
             category: self.category.clone(),
@@ -160,9 +160,6 @@ fn push_tag_spacing(output: &mut String, tag: &str) {
     if matches!(tag_name.as_str(), "br" | "p" | "div" | "li" | "tr") {
         // These tags normally separate chunks of text
         output.push('\n');
-    } else {
-        // Inline tags still need a small break so words do not run together
-        output.push(' ');
     }
 }
 
@@ -250,9 +247,9 @@ fn collapse_notification_whitespace(input: &str) -> String {
 /// Serializable view of a notification for D-Bus signals.
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 pub struct NotificationView {
-    // Identifier matches Notification::id.
+    // Identifier matches Notification::id
     pub id: u32,
-    // Lightweight fields used for UI display and filtering.
+    // Lightweight fields used for UI display and filtering
     // Intentionally omits daemon-only protocol flags and timestamps
     pub app_name: String,
     pub summary: String,
@@ -261,7 +258,7 @@ pub struct NotificationView {
     pub urgency: u8,
     // Close handling needs this flag so history policy stays shared
     pub is_transient: bool,
-    // Image metadata intended for UI usage.
+    // Image metadata intended for UI usage
     pub image: NotificationImage,
 }
 

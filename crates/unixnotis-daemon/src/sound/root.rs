@@ -9,8 +9,11 @@ use tracing::{debug, warn};
 use unixnotis_core::Config;
 use zbus::zvariant::OwnedValue;
 
+#[path = "backend.rs"]
 mod backend;
+#[path = "command.rs"]
 mod command;
+#[path = "resolve.rs"]
 mod resolve;
 
 use backend::{detect_backend, SoundBackend};
