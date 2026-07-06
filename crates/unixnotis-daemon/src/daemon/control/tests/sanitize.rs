@@ -1,6 +1,6 @@
 use unixnotis_core::{INHIBIT_SCOPE_ALL, INHIBIT_SCOPE_POPUPS};
 
-use super::sanitize::{normalize_inhibit_scope, sanitize_inhibit_reason};
+use super::super::sanitize::{normalize_inhibit_scope, sanitize_inhibit_reason};
 
 #[test]
 fn sanitize_inhibit_reason_trims_empty_reason_to_manual() {

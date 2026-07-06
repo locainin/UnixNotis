@@ -40,6 +40,8 @@ pub struct NotificationImage {
 // Bound untrusted image payloads to keep daemon/UI memory predictable under floods
 pub(super) const MAX_IMAGE_BYTES: usize = 256 * 1024;
 pub(super) const MAX_IMAGE_DIMENSION: i32 = 256;
+pub(super) const MAX_IMAGE_PATH_BYTES: usize = 1024;
+pub(super) const MAX_ICON_NAME_BYTES: usize = 256;
 
 #[cfg(test)]
 use hints::{owned_to_string, strip_desktop_suffix};

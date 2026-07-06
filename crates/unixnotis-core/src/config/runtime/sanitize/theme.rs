@@ -53,5 +53,5 @@ fn clamp_alpha_finite(value: &mut f32) {
 }
 
 #[cfg(test)]
-#[path = "../../tests/runtime/theme.rs"]
+#[path = "tests/theme.rs"]
 mod tests;

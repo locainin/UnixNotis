@@ -49,6 +49,7 @@ pub(super) fn build_panel_actions(config: &PanelConfig) -> PanelActionArea {
         &dnd_toggle,
         &clear_button,
         &search_toggle,
+        &close_button,
         &config.action_order,
     );
     actions.append(&action_primary);
@@ -71,43 +72,51 @@ pub(super) fn build_clear_button(config: &PanelConfig) -> gtk::Button {
 }
 
 pub(in crate::ui::panel) fn apply_panel_action_config(
-    group: &gtk::Box,
-    focus_toggle: &gtk::ToggleButton,
-    dnd_toggle: &gtk::ToggleButton,
-    clear_button: &gtk::Button,
-    search_toggle: &gtk::ToggleButton,
-    close_button: &gtk::Button,
+    header_top: &gtk::Box,
+    widgets: &PanelActionWidgets,
     config: &PanelConfig,
 ) {
     update_action_button(
-        focus_toggle,
+        &widgets.focus_toggle,
         hooks::panel_action::FOCUS,
         &config.focus_action,
     );
-    update_action_button(dnd_toggle, hooks::panel_action::PRIMARY, &config.dnd_action);
     update_action_button(
-        clear_button,
+        &widgets.dnd_toggle,
+        hooks::panel_action::PRIMARY,
+        &config.dnd_action,
+    );
+    update_action_button(
+        &widgets.clear_button,
         hooks::panel_action::MUTED,
         &resolved_clear_action(config),
     );
+    widgets.clear_button.set_visible(matches!(
+        config.clear_button_placement,
+        PanelClearButtonPlacement::ActionRow
+    ));
     update_action_button(
-        search_toggle,
+        &widgets.search_toggle,
         hooks::panel_action::SEARCH,
         &config.search_action,
     );
     update_action_button(
-        close_button,
+        &widgets.close_button,
         hooks::panel_action::CLOSE,
         &config.close_action,
     );
     append_ordered_actions(
-        group,
-        focus_toggle,
-        dnd_toggle,
-        clear_button,
-        search_toggle,
+        &widgets.group,
+        &widgets.focus_toggle,
+        &widgets.dnd_toggle,
+        &widgets.clear_button,
+        &widgets.search_toggle,
+        &widgets.close_button,
         &config.action_order,
     );
+    if !action_order_contains_close(&config.action_order) {
+        move_child_to_box(header_top, &widgets.close_button.clone().upcast());
+    }
 }
 
 pub(in crate::ui::panel) fn apply_clear_button_config(button: &gtk::Button, config: &PanelConfig) {
@@ -116,6 +125,10 @@ pub(in crate::ui::panel) fn apply_clear_button_config(button: &gtk::Button, conf
         hooks::panel_action::MUTED,
         &resolved_clear_action(config),
     );
+    button.set_visible(matches!(
+        config.clear_button_placement,
+        PanelClearButtonPlacement::NotificationHeader
+    ));
 }
 
 fn build_toggle_action(role_class: &str, config: &PanelActionConfig) -> gtk::ToggleButton {
@@ -204,6 +217,7 @@ fn append_ordered_actions(
     dnd_toggle: &gtk::ToggleButton,
     clear_button: &gtk::Button,
     search_toggle: &gtk::ToggleButton,
+    close_button: &gtk::Button,
     order: &[PanelActionId],
 ) {
     let mut previous: Option<gtk::Widget> = None;
@@ -213,13 +227,27 @@ fn append_ordered_actions(
             PanelActionId::Dnd => dnd_toggle.clone().upcast(),
             PanelActionId::Clear => clear_button.clone().upcast(),
             PanelActionId::Search => search_toggle.clone().upcast(),
+            PanelActionId::Close => close_button.clone().upcast(),
         };
-        if child.parent().is_none() {
-            group.append(&child);
-        }
+        move_child_to_box(group, &child);
         group.reorder_child_after(&child, previous.as_ref());
         previous = Some(child);
     }
+}
+
+pub(in crate::ui::panel) fn action_order_contains_close(order: &[PanelActionId]) -> bool {
+    order.contains(&PanelActionId::Close)
+}
+
+fn move_child_to_box(parent: &gtk::Box, child: &gtk::Widget) {
+    let target: gtk::Widget = parent.clone().upcast();
+    if child.parent().as_ref() == Some(&target) {
+        return;
+    }
+    if child.parent().is_some() {
+        child.unparent();
+    }
+    parent.append(child);
 }
 
 fn resolved_clear_action(config: &PanelConfig) -> PanelActionConfig {
@@ -232,31 +260,5 @@ fn resolved_clear_action(config: &PanelConfig) -> PanelActionConfig {
 }
 
 #[cfg(test)]
-mod tests {
-    use unixnotis_core::{PanelActionConfig, PanelConfig};
-
-    use super::resolved_clear_action;
-
-    #[test]
-    fn legacy_clear_label_updates_stock_clear_action() {
-        let config = PanelConfig {
-            clear_label: "Wipe".to_string(),
-            ..PanelConfig::default()
-        };
-
-        assert_eq!(resolved_clear_action(&config).label, "Wipe");
-    }
-
-    #[test]
-    fn custom_clear_action_with_clear_label_is_not_rewritten() {
-        let mut custom = PanelActionConfig::clear();
-        custom.icon = "edit-delete-symbolic".to_string();
-        let config = PanelConfig {
-            clear_label: "Wipe".to_string(),
-            clear_action: custom.clone(),
-            ..PanelConfig::default()
-        };
-
-        assert_eq!(resolved_clear_action(&config), custom);
-    }
-}
+#[path = "tests/actions.rs"]
+mod tests;

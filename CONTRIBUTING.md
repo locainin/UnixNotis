@@ -178,7 +178,7 @@ If docs live in the Wiki and are not updated in the PR, note what needs to be up
 
 ## Releases
 
-UnixNotis releases are cut from `master` with tags such as `v1.0.0`.
+UnixNotis releases are cut from `master` with tags such as `v1.1.0`.
 
 Before tagging a release:
 
@@ -192,7 +192,7 @@ Before tagging a release:
 Build the release archive manually before creating the GitHub release:
 
 ```sh
-scripts/package-release.sh v1.0.0
+scripts/package-release.sh v1.1.0
 ```
 
 The same packaging step can be run from the manual **Release Package** GitHub Actions workflow. It

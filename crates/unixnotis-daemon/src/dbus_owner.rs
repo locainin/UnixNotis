@@ -1,6 +1,6 @@
-//! D-Bus owner tracking helpers.
+//! D-Bus owner tracking helpers
 //!
-//! Provides reusable helpers for name ownership checks during startup and trial mode.
+//! Provides reusable helpers for name ownership checks during startup and trial mode
 
 use std::time::Duration;
 
@@ -20,7 +20,7 @@ pub(super) async fn wait_for_owner_state(
     let mut stream = dbus_proxy
         .receive_name_owner_changed_with_args(&[(0, name_str.as_str())])
         .await?;
-    // Re-check after subscribing to avoid missing a transition between the initial query and stream setup.
+    // Re-check after subscribing to avoid missing a transition between the initial query and stream setup
     let has_owner = match dbus_proxy.name_has_owner(name.clone()).await {
         Ok(value) => value,
         Err(err) => {

@@ -102,6 +102,48 @@ fn release_archive_detection_requires_manifest_and_bundled_binaries() {
 }
 
 #[test]
+fn release_archive_detection_uses_manifest_binary_list_without_hardcoded_names() {
+    let root = env::temp_dir().join(format!(
+        "unixnotis-release-archive-custom-{}",
+        std::process::id()
+    ));
+    let bin_dir = root.join(RELEASE_BIN_DIR);
+    fs::create_dir_all(&bin_dir).expect("release bin dir");
+    fs::write(
+        root.join(RELEASE_MANIFEST_FILE),
+        r#"{"version":"1.0.0","binaries":["unixnotis-daemon"]}"#,
+    )
+    .expect("release manifest");
+    fs::write(bin_dir.join("unixnotis-daemon"), "binary").expect("release binary");
+
+    assert!(is_unixnotis_release_archive(&root));
+
+    fs::remove_file(bin_dir.join("unixnotis-daemon")).expect("remove manifest binary");
+    assert!(!is_unixnotis_release_archive(&root));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn release_archive_detection_rejects_unsafe_manifest_binary_names() {
+    let root = env::temp_dir().join(format!(
+        "unixnotis-release-archive-unsafe-{}",
+        std::process::id()
+    ));
+    let bin_dir = root.join(RELEASE_BIN_DIR);
+    fs::create_dir_all(&bin_dir).expect("release bin dir");
+    fs::write(
+        root.join(RELEASE_MANIFEST_FILE),
+        r#"{"version":"1.0.0","binaries":["../unixnotis-daemon"]}"#,
+    )
+    .expect("release manifest");
+
+    assert!(!is_unixnotis_release_archive(&root));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn release_root_discovery_prefers_explicit_archive_override() {
     let _guard = env_lock();
     let root = env::temp_dir().join(format!("unixnotis-release-root-{}", std::process::id()));

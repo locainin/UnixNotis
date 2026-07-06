@@ -14,7 +14,7 @@ mod checks;
 mod cli;
 mod detect;
 mod events;
-// Keep installer entrypoint lean by delegating to modules stored under src/main/.
+// Keep installer entrypoint lean by delegating to modules stored under src/main/
 #[path = "main/action_workflow.rs"]
 mod action_workflow;
 #[path = "main/main_flow.rs"]
@@ -50,6 +50,10 @@ fn main() -> Result<()> {
         CliAction::Run(args) => args,
         CliAction::Help => {
             print!("{}", cli::usage());
+            return Ok(());
+        }
+        CliAction::Version => {
+            println!("{}", cli::version());
             return Ok(());
         }
     };

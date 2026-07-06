@@ -85,5 +85,5 @@ fn command_requires_shell(cmd: &str) -> bool {
 }
 
 #[cfg(test)]
-#[path = "../../tests/runtime/shell.rs"]
+#[path = "tests/shell.rs"]
 mod tests;

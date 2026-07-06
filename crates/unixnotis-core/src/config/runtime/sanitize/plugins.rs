@@ -104,5 +104,5 @@ fn sanitize_widget_plugin(
 }
 
 #[cfg(test)]
-#[path = "../../tests/runtime/plugins.rs"]
+#[path = "tests/plugins.rs"]
 mod tests;

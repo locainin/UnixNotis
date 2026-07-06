@@ -4,16 +4,11 @@
 //! what command slots exist, which ones point outside the config root,
 //! and which ones can be rewritten into portable config-relative paths
 
-#[path = "command_rules/checks.rs"]
 mod checks;
-#[path = "command_rules/collect.rs"]
 mod collect;
-#[path = "command_rules/rewrite.rs"]
 mod rewrite;
 #[cfg(test)]
-#[path = "command_rules/tests.rs"]
 mod tests;
-#[path = "command_rules/tokens.rs"]
 mod tokens;
 
 use std::path::PathBuf;
