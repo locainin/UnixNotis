@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use unixnotis_core::{PanelDebugLevel, INHIBIT_SCOPE_ALL, INHIBIT_SCOPE_POPUPS};
 
-use super::route::Command;
+use super::command::Command;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
