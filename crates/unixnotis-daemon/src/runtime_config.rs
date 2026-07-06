@@ -22,7 +22,13 @@ pub(super) fn load_config(args: &Args) -> Result<Config> {
     }
 }
 
-pub(super) fn init_tracing(config: &Config) {
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct TracingInitOutcome {
+    pub(super) attempted_init: bool,
+    pub(super) had_env_warning: bool,
+}
+
+pub(super) fn init_tracing(config: &Config) -> TracingInitOutcome {
     let (filter, warning) = match EnvFilter::try_from_default_env() {
         Ok(filter) => (filter, None),
         Err(err) => {
@@ -52,8 +58,13 @@ pub(super) fn init_tracing(config: &Config) {
     if let Err(err) = tracing_subscriber::fmt().with_env_filter(filter).try_init() {
         eprintln!("unixnotis-daemon: tracing already initialized or unavailable: {err}");
     }
+    let had_env_warning = warning.is_some();
     if let Some(message) = warning {
         tracing::warn!("{message}");
+    }
+    TracingInitOutcome {
+        attempted_init: true,
+        had_env_warning,
     }
 }
 
