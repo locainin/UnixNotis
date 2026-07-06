@@ -5,6 +5,8 @@
 
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use super::super::filesystem::ensure_dir_fd_matches_live_path;
 use super::super::filesystem::{
@@ -114,6 +116,18 @@ pub(super) fn finalize_import_transaction(
             continue;
         };
 
+        #[cfg(test)]
+        if backup_write_failure_should_fire(written_backup_paths.len()) {
+            cleanup_backup_snapshot(
+                &transaction.config_root_fd,
+                &backup_relative_dir,
+                &backup_root_fd,
+                &written_backup_paths,
+            )?;
+            rollback_applied_import_items(&transaction.config_root_fd, &transaction.applied_items)?;
+            return Err(anyhow::anyhow!("forced backup write failure"));
+        }
+
         // Backup bytes come from the captured pre-import state, not from the live tree after apply
         if let Err(err) = write_relative_file_atomic_secure(
             &backup_root_fd,
@@ -157,6 +171,53 @@ pub(super) fn finalize_import_transaction(
     }
 
     Ok(Some(transaction.config_dir.join(&backup_relative_dir)))
+}
+
+#[cfg(test)]
+pub(super) struct BackupWriteFailureGuard {
+    _lock: MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+pub(super) fn fail_backup_write_after_for_test(
+    successful_writes: usize,
+) -> BackupWriteFailureGuard {
+    let lock = backup_write_failure_lock()
+        .lock()
+        .expect("backup failpoint test lock");
+    *backup_write_failure_after()
+        .lock()
+        .expect("backup failpoint lock") = Some(successful_writes);
+    BackupWriteFailureGuard { _lock: lock }
+}
+
+#[cfg(test)]
+fn backup_write_failure_should_fire(successful_writes: usize) -> bool {
+    backup_write_failure_after()
+        .lock()
+        .expect("backup failpoint lock")
+        .is_some_and(|target| target == successful_writes)
+}
+
+#[cfg(test)]
+fn backup_write_failure_after() -> &'static Mutex<Option<usize>> {
+    static FAILURE_AFTER: OnceLock<Mutex<Option<usize>>> = OnceLock::new();
+    FAILURE_AFTER.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(test)]
+fn backup_write_failure_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[cfg(test)]
+impl Drop for BackupWriteFailureGuard {
+    fn drop(&mut self) {
+        *backup_write_failure_after()
+            .lock()
+            .expect("backup failpoint lock") = None;
+    }
 }
 
 pub(super) fn rollback_import_transaction(transaction: ImportTransaction) -> Result<()> {
