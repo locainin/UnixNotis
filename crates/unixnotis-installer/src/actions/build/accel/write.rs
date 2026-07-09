@@ -1,7 +1,8 @@
 //! Build acceleration config writes and updates
 
-use std::fs;
-use std::path::Path;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use super::model::{BuildAccelDetection, BuildAccelOutcome};
 use super::wrapper::{format_build_accel_config, write_wrapper_script};
@@ -86,12 +87,31 @@ fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing parent directory")
     })?;
     fs::create_dir_all(parent)?;
-    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-    let tmp_name = format!("{file_name}.tmp-{}", std::process::id());
-    let tmp_path = path.with_file_name(tmp_name);
+    let tmp_path = atomic_temp_path(path);
 
     // The temp file is written fully before the final rename touches the live config
-    fs::write(&tmp_path, contents)?;
-    fs::rename(tmp_path, path)?;
+    let mut temp_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp_path)?;
+    temp_file
+        .write_all(contents.as_bytes())
+        .inspect_err(|_err| {
+            let _ = fs::remove_file(&tmp_path);
+        })?;
+    temp_file.flush().inspect_err(|_err| {
+        let _ = fs::remove_file(&tmp_path);
+    })?;
+    drop(temp_file);
+    fs::rename(&tmp_path, path).inspect_err(|_err| {
+        let _ = fs::remove_file(&tmp_path);
+    })?;
     Ok(())
+}
+
+pub(super) fn atomic_temp_path(path: &Path) -> PathBuf {
+    // Temp paths must be predictable to clean up, but create_new keeps existing paths untrusted
+    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+    let tmp_name = format!("{file_name}.tmp-{}", std::process::id());
+    path.with_file_name(tmp_name)
 }
