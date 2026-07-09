@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use tar::{Builder, Header};
@@ -24,8 +24,7 @@ pub(crate) fn write_bundle(
 
     // Writing into a temp file first keeps partial bundles and symlink-follow writes off the target path
     let temp_path = temp_bundle_path(bundle_path);
-    let output = File::create(&temp_path)
-        .with_context(|| format!("create temp preset bundle {}", temp_path.display()))?;
+    let output = create_temp_bundle_file(&temp_path)?;
     let encoder = GzEncoder::new(output, Compression::default());
     let mut builder = Builder::new(encoder);
 
@@ -118,7 +117,7 @@ fn append_reader<R: Read>(
     Ok(())
 }
 
-fn temp_bundle_path(bundle_path: &Path) -> PathBuf {
+pub(super) fn temp_bundle_path(bundle_path: &Path) -> PathBuf {
     let parent = bundle_path
         .parent()
         .map(Path::to_path_buf)
@@ -133,4 +132,13 @@ fn temp_bundle_path(bundle_path: &Path) -> PathBuf {
         .expect("clock moved backwards")
         .as_nanos();
     parent.join(format!(".{file_name}.{stamp}.tmp"))
+}
+
+pub(super) fn create_temp_bundle_file(temp_path: &Path) -> Result<File> {
+    // create_new refuses existing files and symlinks, so temp writes cannot be redirected
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(temp_path)
+        .with_context(|| format!("create temp preset bundle {}", temp_path.display()))
 }
