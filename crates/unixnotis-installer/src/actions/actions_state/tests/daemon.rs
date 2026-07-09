@@ -9,7 +9,40 @@ use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
 
-use super::{pid_alive, pid_matches_comm, systemd_stop_error_is_satisfied_by_state, wait_for_exit};
+use super::{
+    is_systemd_unit_inactive, pid_alive, pid_matches_comm, stop_active_daemon,
+    systemd_stop_error_is_satisfied_by_state, wait_for_exit,
+};
+
+#[test]
+fn stop_active_daemon_errors_for_unmanaged_owner() {
+    let detection = Detection {
+        owner: Some(crate::detect::OwnerInfo {
+            pid: None,
+            comm: Some("unknown-daemon".to_string()),
+        }),
+        daemons: Vec::new(),
+    };
+    let paths = InstallPaths {
+        repo_root: std::env::temp_dir(),
+        bin_dir: std::env::temp_dir(),
+        service: ServiceManager::systemd_user(std::env::temp_dir()),
+    };
+    let (tx, _rx) = mpsc::sync_channel::<UiMessage>(4);
+    let mut ctx = ActionContext {
+        detection: &detection,
+        paths: &paths,
+        install_state: None,
+        log_tx: tx,
+        action_mode: ActionMode::Install,
+        restore_backup: None,
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
+
+    let error = stop_active_daemon(&mut ctx).expect_err("unmanaged owner must block install");
+
+    assert!(error.to_string().contains("not managed by a known unit"));
+}
 
 #[test]
 fn systemd_stop_error_can_continue_when_unit_is_inactive() {
@@ -51,6 +84,32 @@ fn systemd_stop_error_rejects_unrecognized_non_running_words() {
     // Only explicit systemd states should satisfy a failed stop
     assert!(!systemd_stop_error_is_satisfied_by_state("dead"));
     assert!(!systemd_stop_error_is_satisfied_by_state("stopped"));
+}
+
+#[test]
+fn is_systemd_unit_inactive_reads_trusted_systemctl_state() {
+    let _lock = crate::tests::env::test_env_lock();
+    let root = std::env::temp_dir().join(format!(
+        "unixnotis-daemon-systemctl-state-{}",
+        std::process::id()
+    ));
+    let fake_bin = root.join("bin");
+    std::fs::create_dir_all(&fake_bin).expect("fake bin");
+    write_executable(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\ncase \"$3\" in inactive.service) echo inactive; exit 3 ;; active.service) echo active; exit 0 ;; *) exit 1 ;; esac\n",
+    );
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+
+    assert!(is_systemd_unit_inactive("inactive.service").expect("inactive state"));
+    assert!(!is_systemd_unit_inactive("active.service").expect("active state"));
+    let error =
+        is_systemd_unit_inactive("missing.service").expect_err("empty failed status is an error");
+    assert!(error
+        .to_string()
+        .contains("failed to read systemd unit state"));
+
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -135,4 +194,12 @@ fn wait_for_exit_aborts_immediately_when_pid_name_no_longer_matches() {
     assert!(err
         .to_string()
         .contains("no longer matches expected daemon"));
+}
+
+fn write_executable(path: &std::path::Path, contents: &str) {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::write(path, contents).expect("fake command");
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+        .expect("fake command mode");
 }

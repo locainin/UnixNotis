@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Context, Result};
 
 use super::{log_line, run_command, ActionContext};
+use crate::system_tools;
 
 pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
     let Some(owner) = ctx.detection.owner.as_ref() else {
@@ -58,7 +59,8 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
                     })?;
                 (spec.label().to_string(), spec.to_command())
             } else {
-                let mut command = Command::new("systemctl");
+                let mut command = system_tools::command("systemctl")
+                    .context("failed to locate trusted systemctl")?;
                 command.args(["--user", "disable", "--now", daemon.unit.as_str()]);
                 (
                     format!("systemctl --user disable --now {}", daemon.unit),
@@ -177,7 +179,8 @@ fn pid_alive(pid: u32) -> Result<bool> {
 
 fn pid_matches_comm(pid: u32, expected: &str) -> Result<bool> {
     // Validate the process name with ps before sending signals to avoid PID reuse hazards.
-    let output = Command::new("ps")
+    let output = system_tools::command("ps")
+        .context("failed to locate trusted ps")?
         .args(["-p", &pid.to_string(), "-o", "comm="])
         .output()
         .with_context(|| format!("failed to read comm for pid {pid}"))?;
@@ -194,7 +197,8 @@ fn pid_matches_comm(pid: u32, expected: &str) -> Result<bool> {
 
 fn is_systemd_unit_inactive(unit: &str) -> Result<bool> {
     // A failed stop command is only recoverable when systemd agrees the unit is no longer running
-    let output = Command::new("systemctl")
+    let output = system_tools::command("systemctl")
+        .context("failed to locate trusted systemctl")?
         .args(["--user", "is-active", unit])
         .output()
         .with_context(|| format!("failed to check systemd unit state for {unit}"))?;

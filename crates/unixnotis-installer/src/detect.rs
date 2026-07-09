@@ -3,10 +3,11 @@
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
-use std::process::Command;
 
 use rustix::process::geteuid;
 use serde_json::Value;
+
+use crate::system_tools;
 
 #[derive(Clone)]
 pub struct OwnerInfo {
@@ -204,7 +205,11 @@ fn read_busctl_owner() -> Option<OwnerInfo> {
 }
 
 fn run_busctl(args: &[&str]) -> Option<String> {
-    let output = Command::new("busctl").args(args).output().ok()?;
+    let output = system_tools::command("busctl")
+        .ok()?
+        .args(args)
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -230,7 +235,11 @@ fn detect_known_daemons(owner: &Option<OwnerInfo>) -> Vec<DetectedDaemon> {
 }
 
 fn is_unit_active(unit: &str) -> (bool, Option<String>) {
-    match Command::new("systemctl")
+    let mut command = match system_tools::command("systemctl") {
+        Ok(command) => command,
+        Err(err) => return (false, systemctl_spawn_error(&err)),
+    };
+    match command
         .args(["--user", "is-active", "--quiet", unit])
         .status()
     {
@@ -251,9 +260,10 @@ pub(crate) fn systemctl_spawn_error(err: &std::io::Error) -> Option<String> {
 fn pgrep_exact(name: &str) -> Vec<u32> {
     // Limit process discovery to the current user to avoid cross-user noise.
     let uid = geteuid().as_raw();
-    let output = Command::new("pgrep")
-        .args(["-x", "-u", &uid.to_string(), name])
-        .output();
+    let output = match system_tools::command("pgrep") {
+        Ok(mut command) => command.args(["-x", "-u", &uid.to_string(), name]).output(),
+        Err(_) => return Vec::new(),
+    };
     let Ok(output) = output else {
         return Vec::new();
     };
@@ -275,7 +285,8 @@ pub(crate) fn read_comm(pid: u32) -> Option<String> {
             return Some(comm);
         }
     }
-    let output = Command::new("ps")
+    let output = system_tools::command("ps")
+        .ok()?
         .arg("-p")
         .arg(pid.to_string())
         .arg("-o")

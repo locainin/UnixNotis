@@ -1,4 +1,3 @@
-use std::env;
 use std::fs;
 use std::io::{Error, ErrorKind};
 use std::os::unix::fs::PermissionsExt;
@@ -8,29 +7,6 @@ use crate::detect::{
     parse_busctl_json, parse_busctl_status, read_cmdline_program, read_comm, systemctl_spawn_error,
     KNOWN_DAEMONS,
 };
-
-struct EnvGuard {
-    key: &'static str,
-    old: Option<String>,
-}
-
-impl EnvGuard {
-    fn set(key: &'static str, value: impl AsRef<str>) -> Self {
-        let old = env::var(key).ok();
-        env::set_var(key, value.as_ref());
-        Self { key, old }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match &self.old {
-            // Restore global command lookup after fake process-detection tests
-            Some(value) => env::set_var(self.key, value),
-            None => env::remove_var(self.key),
-        }
-    }
-}
 
 #[test]
 fn known_daemons_include_quickshell_owner() {
@@ -259,7 +235,7 @@ fn detect_uses_bus_owner_systemd_status_and_pgrep_results() {
          fi\n\
          exit 1\n",
     );
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
 
     let detection = crate::detect::detect();
 
@@ -306,7 +282,7 @@ fn detect_falls_back_to_text_busctl_status_when_json_status_fails() {
     );
     write_executable(&fake_bin.join("systemctl"), "#!/bin/sh\nexit 3\n");
     write_executable(&fake_bin.join("pgrep"), "#!/bin/sh\nexit 1\n");
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
 
     let detection = crate::detect::detect();
 
@@ -332,7 +308,7 @@ fn write_executable(path: &Path, contents: &str) {
 }
 
 fn test_root(name: &str) -> std::path::PathBuf {
-    let root = env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     root
 }
