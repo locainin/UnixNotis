@@ -10,6 +10,8 @@ use super::{
     validate_command_paths_in_config_bytes,
 };
 
+mod env_paths;
+
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn temp_root(name: &str) -> PathBuf {
@@ -69,6 +71,20 @@ fn validation_rejects_relative_command_path_that_leaves_root() {
     let error =
         validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
             .expect_err("reject relative command escape");
+
+    assert!(error
+        .to_string()
+        .contains("points outside the UnixNotis config directory"));
+}
+
+#[test]
+fn validation_rejects_absolute_command_path_with_equals_that_leaves_root() {
+    let config_dir = temp_root("equals-command-path");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.toggles]]\nlabel = \"Probe\"\nicon = \"applications-system-symbolic\"\ntoggle_cmd = \"/tmp/tool=evil --run\"\n";
+
+    let error =
+        validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+            .expect_err("path-like command containing equals should not parse as env");
 
     assert!(error
         .to_string()
