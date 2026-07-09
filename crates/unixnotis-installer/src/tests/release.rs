@@ -8,29 +8,6 @@ use super::{
     parse_version_tag, release_tag_is_newer, ReleaseStatus, ReleaseUpdateState,
 };
 
-struct EnvGuard {
-    name: &'static str,
-    previous: Option<std::ffi::OsString>,
-}
-
-impl EnvGuard {
-    fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
-        let previous = std::env::var_os(name);
-        std::env::set_var(name, value);
-        Self { name, previous }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        // Restore process-wide variables even when an assertion fails
-        match &self.previous {
-            Some(value) => std::env::set_var(self.name, value),
-            None => std::env::remove_var(self.name),
-        }
-    }
-}
-
 #[test]
 fn latest_tag_from_json_reads_tag_name() {
     let json = br#"{"tag_name":"v1.0.1","name":"UnixNotis v1.0.1"}"#;
@@ -63,7 +40,7 @@ fn fetch_latest_release_tag_reads_tag_from_successful_curl_json() {
         &fake_bin.join("curl"),
         "#!/bin/sh\nprintf '%s\\n' '{\"tag_name\":\"v9.9.9\"}'\n",
     );
-    let _path = EnvGuard::set("PATH", fake_bin.as_os_str());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
 
     let latest = fetch_latest_release_tag().expect("fake curl should return release JSON");
 
@@ -77,7 +54,7 @@ fn fetch_latest_release_tag_rejects_failed_curl_status() {
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake curl directory");
     write_executable(&fake_bin.join("curl"), "#!/bin/sh\nexit 22\n");
-    let _path = EnvGuard::set("PATH", fake_bin.as_os_str());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
 
     let err = fetch_latest_release_tag().expect_err("failed curl must not look like an update");
 

@@ -1,35 +1,11 @@
 use unixnotis_core::gtk_css_features_from_version_string;
 
-use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use super::{gtk4_css_features_check, gtk4_layer_shell_check};
 use crate::checks::{CheckItem, CheckState};
-
-struct EnvGuard {
-    key: &'static str,
-    old: Option<String>,
-}
-
-impl EnvGuard {
-    fn set(key: &'static str, value: impl AsRef<str>) -> Self {
-        let old = env::var(key).ok();
-        env::set_var(key, value.as_ref());
-        Self { key, old }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match &self.old {
-            // pkg-config lookup goes through PATH, so test changes stay scoped
-            Some(value) => env::set_var(self.key, value),
-            None => env::remove_var(self.key),
-        }
-    }
-}
 
 #[test]
 fn gtk_css_feature_parser_handles_major_and_minor_checks() {
@@ -67,7 +43,7 @@ fn gtk_css_features_check_warns_for_old_gtk_and_okays_modern_gtk() {
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin");
     write_fake_pkg_config(&fake_bin, "4.14.9", None);
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
     let pkg = CheckItem::ok("pkg-config", "available");
 
     let old = gtk4_css_features_check(&pkg);
@@ -91,7 +67,7 @@ fn gtk_checks_distinguish_pkg_config_missing_from_package_missing() {
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin");
     write_failing_pkg_config(&fake_bin);
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
     let pkg_missing = CheckItem::fail("pkg-config", "not installed");
 
     let css = gtk4_css_features_check(&pkg_missing);
@@ -112,7 +88,7 @@ fn gtk_layer_shell_check_reports_found_version() {
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin");
     write_fake_pkg_config(&fake_bin, "4.22.4", Some("1.3.0"));
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
     let pkg = CheckItem::ok("pkg-config", "available");
 
     let layer = gtk4_layer_shell_check(&pkg);
@@ -152,7 +128,7 @@ fn write_failing_pkg_config(fake_bin: &std::path::Path) {
 }
 
 fn test_root(name: &str) -> PathBuf {
-    let root = env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     root
 }

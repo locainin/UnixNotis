@@ -3,7 +3,7 @@
 const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/locainin/UnixNotis/releases/latest";
 const MAX_RELEASE_RESPONSE_BYTES: &str = "65536";
 
-use std::process::Command;
+use crate::system_tools;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReleaseStatus {
@@ -90,7 +90,8 @@ fn current_version_tag() -> String {
 fn fetch_latest_release_tag() -> Result<String, String> {
     // GitHub's latest-release endpoint returns the newest non-draft, non-prerelease release
     // Curl is used instead of adding an HTTP client dependency to the installer binary
-    let output = Command::new("curl")
+    let output = system_tools::command("curl")
+        .map_err(|err| err.to_string())?
         .args(latest_release_curl_args())
         .output()
         .map_err(|err| err.to_string())?;

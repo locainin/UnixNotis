@@ -9,8 +9,8 @@ use crate::paths::InstallPaths;
 use crate::service_manager::{ReadinessIssue, ServiceManager};
 
 use super::system::{
-    dbus_update_env_check, install_paths_check, readiness_error_detail, readiness_messages,
-    readiness_warning_detail, service_manager_check_from,
+    command_success, dbus_update_env_check, install_paths_check, readiness_error_detail,
+    readiness_messages, readiness_warning_detail, service_manager_check_from,
 };
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -179,7 +179,7 @@ fn dbus_update_env_check_warns_when_helper_is_not_on_path() {
     let root = test_root("missing-dbus-update-env-check");
     let fake_bin = root.join("fake-bin");
     fs::create_dir_all(&fake_bin).expect("fake bin dir");
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
 
     let manager = ServiceManager::systemd_user(root.join("systemd"));
 
@@ -196,7 +196,7 @@ fn dbus_update_env_check_is_ok_when_selected_backend_does_not_need_helper() {
     let root = test_root("missing-dbus-update-env-non-systemd-check");
     let fake_bin = root.join("fake-bin");
     fs::create_dir_all(&fake_bin).expect("fake bin dir");
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
     let manager = ServiceManager::runit_user(root.join("service"));
 
     let item = dbus_update_env_check(Some(&manager));
@@ -226,6 +226,22 @@ fn install_paths_check_fails_when_service_root_is_not_directory() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn command_success_distinguishes_success_failure_and_missing_trusted_tools() {
+    let _lock = env_lock();
+    let root = test_root("command-success");
+    let fake_bin = root.join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    write_fake_tool(&fake_bin.join("ok-tool"), "#!/bin/sh\nexit 0\n");
+    write_fake_tool(&fake_bin.join("fail-tool"), "#!/bin/sh\nexit 7\n");
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+
+    assert_eq!(command_success("ok-tool", &[]), Ok(true));
+    assert_eq!(command_success("fail-tool", &[]), Ok(false));
+    assert!(command_success("missing-tool", &[]).is_err());
+    let _ = fs::remove_dir_all(root);
+}
+
 fn write_fake_s6_tools(fake_bin: &std::path::Path) {
     fs::create_dir_all(fake_bin).expect("fake bin dir");
     for tool in [
@@ -239,6 +255,11 @@ fn write_fake_s6_tools(fake_bin: &std::path::Path) {
         fs::write(&path, "#!/bin/sh\nexit 0\n").expect("fake s6 tool");
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("fake tool mode");
     }
+}
+
+fn write_fake_tool(path: &std::path::Path, contents: &str) {
+    fs::write(path, contents).expect("fake tool");
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("fake tool mode");
 }
 
 fn write_fake_s6_tools_except(fake_bin: &std::path::Path, missing_tool: &str) {

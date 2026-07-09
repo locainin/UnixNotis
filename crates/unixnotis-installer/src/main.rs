@@ -27,6 +27,7 @@ mod model;
 mod paths;
 mod release;
 mod service_manager;
+mod system_tools;
 mod terminal;
 #[cfg(test)]
 #[path = "tests/mod.rs"]
