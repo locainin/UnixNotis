@@ -5,7 +5,10 @@ use unixnotis_core::Config;
 
 use super::super::pathing::normalize_lexical_path;
 use super::collect::collect_command_references_from_config;
-use super::tokens::{first_command_token, is_host_specific_path_token, resolve_command_path_token};
+use super::tokens::{
+    collect_outside_env_path_tokens, first_command_token, is_host_specific_path_token,
+    resolve_command_path_token,
+};
 use super::{HostSpecificCommandPath, OutsideCommandPath};
 
 pub(crate) fn collect_outside_command_paths(
@@ -16,19 +19,31 @@ pub(crate) fn collect_outside_command_paths(
 
     collect_command_references_from_config(config)
         .into_iter()
-        .filter_map(|reference| {
-            let resolved_path = resolve_command_path_token(config_dir, &reference.command)?;
-            // Only explicit path commands are checked here
-            let normalized_path = normalize_lexical_path(&resolved_path);
-            if normalized_path.starts_with(&normalized_root) {
-                return None;
+        .flat_map(|reference| {
+            let mut outside = Vec::new();
+            if let Some(resolved_path) = resolve_command_path_token(config_dir, &reference.command)
+            {
+                // Only explicit path commands are checked here
+                let normalized_path = normalize_lexical_path(&resolved_path);
+                if !normalized_path.starts_with(&normalized_root) {
+                    outside.push(OutsideCommandPath {
+                        slot: reference.slot.clone(),
+                        command: reference.command.clone(),
+                        resolved_path,
+                    });
+                }
             }
 
-            Some(OutsideCommandPath {
-                slot: reference.slot,
-                command: reference.command,
-                resolved_path,
-            })
+            outside.extend(
+                collect_outside_env_path_tokens(config_dir, &reference.command)
+                    .into_iter()
+                    .map(|(_name, resolved_path)| OutsideCommandPath {
+                        slot: reference.slot.clone(),
+                        command: reference.command.clone(),
+                        resolved_path,
+                    }),
+            );
+            outside
         })
         .collect()
 }
