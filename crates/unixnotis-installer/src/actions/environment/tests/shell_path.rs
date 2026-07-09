@@ -1,4 +1,6 @@
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -127,7 +129,34 @@ fn ensure_path_entry_in_file_reports_directory_read_errors() {
     let err = ensure_path_entry_in_file(&startup, &home, &bin_dir)
         .expect_err("directory should not be treated as missing");
 
-    assert!(err.to_string().contains("failed to read"));
+    assert!(err.to_string().contains("refusing to overwrite non-file"));
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn ensure_path_entry_in_file_rejects_startup_symlink_without_touching_target() {
+    let root = test_root("path-entry-symlink-rejected");
+    let home = root.join("home");
+    let bin_dir = home.join(".local").join("bin");
+    let startup = home.join(".profile");
+    let protected = root.join("protected");
+
+    fs::create_dir_all(&home).expect("create home");
+    fs::write(&protected, "protected").expect("protected");
+    symlink(&protected, &startup).expect("startup symlink");
+
+    let err = ensure_path_entry_in_file(&startup, &home, &bin_dir)
+        .expect_err("startup symlink should be rejected");
+
+    assert!(err
+        .to_string()
+        .contains("refusing to write through symlink"));
+    assert_eq!(
+        fs::read_to_string(&protected).expect("protected remains"),
+        "protected"
+    );
 
     let _ = fs::remove_dir_all(&root);
 }
@@ -295,7 +324,35 @@ fn remove_path_entry_from_file_reports_directory_read_errors() {
     let err = remove_path_entry_from_file(&startup, &home, &bin_dir)
         .expect_err("directory should not be treated as missing");
 
-    assert!(err.to_string().contains("failed to read"));
+    assert!(err.to_string().contains("refusing to overwrite non-file"));
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn remove_path_entry_from_file_rejects_startup_symlink_without_touching_target() {
+    let root = test_root("path-entry-remove-symlink-rejected");
+    let home = root.join("home");
+    let bin_dir = home.join(".local").join("bin");
+    let startup = home.join(".profile");
+    let protected = root.join("protected");
+    let managed = "# unixnotis-installer path entry\nexport PATH=\"$HOME/.local/bin:$PATH\"\n";
+
+    fs::create_dir_all(&home).expect("create home");
+    fs::write(&protected, managed).expect("protected");
+    symlink(&protected, &startup).expect("startup symlink");
+
+    let err = remove_path_entry_from_file(&startup, &home, &bin_dir)
+        .expect_err("startup symlink should be rejected");
+
+    assert!(err
+        .to_string()
+        .contains("refusing to write through symlink"));
+    assert_eq!(
+        fs::read_to_string(&protected).expect("protected remains"),
+        managed
+    );
 
     let _ = fs::remove_dir_all(&root);
 }

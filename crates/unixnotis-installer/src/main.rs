@@ -26,6 +26,7 @@ mod model;
 #[path = "paths/index.rs"]
 mod paths;
 mod release;
+mod safe_write;
 mod service_manager;
 mod system_tools;
 mod terminal;

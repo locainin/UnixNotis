@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Result};
 
 use crate::paths::format_with_home;
+use crate::safe_write::{reject_unsafe_write_target, write_text_preserving_mode};
 
 use super::super::{log_line, ActionContext};
 
@@ -116,6 +117,8 @@ pub(in crate::actions::environment) fn ensure_path_entry_in_file(
     home: &Path,
     bin_dir: &Path,
 ) -> Result<bool> {
+    reject_unsafe_write_target(file)
+        .map_err(|err| anyhow!("failed to write {}: {}", file.display(), err))?;
     let existing = match fs::read_to_string(file) {
         Ok(contents) => contents,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -144,7 +147,7 @@ pub(in crate::actions::environment) fn ensure_path_entry_in_file(
     updated.push_str(&export_line);
     updated.push('\n');
 
-    fs::write(file, updated)
+    write_text_preserving_mode(file, &updated, 0o644)
         .map_err(|err| anyhow!("failed to write {}: {}", file.display(), err))?;
     Ok(true)
 }
@@ -156,6 +159,8 @@ pub(in crate::actions::environment) fn remove_path_entry_from_file(
 ) -> Result<bool> {
     // Read the startup file contents before attempting any removal
     // Missing files are not an error because not every shell uses every startup file
+    reject_unsafe_write_target(file)
+        .map_err(|err| anyhow!("failed to write {}: {}", file.display(), err))?;
     let existing = match fs::read_to_string(file) {
         Ok(contents) => contents,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
@@ -207,7 +212,7 @@ pub(in crate::actions::environment) fn remove_path_entry_from_file(
     }
 
     // Write the cleaned startup file back to disk
-    fs::write(file, updated)
+    write_text_preserving_mode(file, &updated, 0o644)
         .map_err(|err| anyhow!("failed to write {}: {}", file.display(), err))?;
     Ok(true)
 }
