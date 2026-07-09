@@ -5,8 +5,6 @@
 use anyhow::{anyhow, Context, Result};
 use std::env;
 use std::io::{self, IsTerminal, Write};
-use std::path::Path;
-use std::process::{Command, Stdio};
 
 use super::super::pathing::prompt_yes_no;
 use super::checks::ImportedExecContent;
@@ -43,7 +41,11 @@ pub(super) fn confirm_import_exec_content(
 
     // Review happens before the final trust prompt so the decision is made with context
     if prompt_yes_no("Inspect executable content now?")? {
-        show_exec_content_in_pager(exec_content)?;
+        let review =
+            render_exec_content_review_with_style(exec_content, ReviewStyle::for_terminal());
+        let stderr = io::stderr();
+        let mut stderr = stderr.lock();
+        write_exec_content_review(&mut stderr, &review)?;
     }
 
     // A second prompt keeps pager exit from being treated as implicit approval
@@ -54,69 +56,12 @@ pub(super) fn confirm_import_exec_content(
     Err(anyhow!("preset command canceled"))
 }
 
-fn show_exec_content_in_pager(exec_content: &ImportedExecContent) -> Result<()> {
-    let pager = pager_command_parts()?;
-    let mut command = Command::new(&pager[0]);
-    if pager.len() > 1 {
-        command.args(&pager[1..]);
-    }
-    // The review is pushed through stdin so the pager can stay the single interactive UI
-    let mut child = command
-        .stdin(Stdio::piped())
-        .spawn()
-        .with_context(|| format!("launch pager '{}'", pager.join(" ")))?;
-
-    let review = render_exec_content_review(exec_content);
-    let write_result = if let Some(mut stdin) = child.stdin.take() {
-        // Closing stdin after the write lets the pager reach EOF and quit normally
-        stdin.write_all(review.as_bytes())
-    } else {
-        Ok(())
-    };
-
-    finish_pager(child, &pager, write_result)
-}
-
-pub(super) fn pager_command_parts() -> Result<Vec<String>> {
-    // `$PAGER` wins so local pager setup keeps working during import review too
-    let configured = env::var("PAGER").unwrap_or_else(|_| "less".to_string());
-    let mut parts = shell_words::split(&configured).context("parse pager command")?;
-    if parts.is_empty() {
-        return Err(anyhow!("pager command is empty"));
-    }
-    if pager_looks_like_less(&parts) && !pager_enables_raw_control(&parts) {
-        // `less -R` keeps ANSI colors visible instead of printing escape bytes
-        parts.push("-R".to_string());
-    }
-    Ok(parts)
-}
-
-pub(super) fn finish_pager(
-    mut child: std::process::Child,
-    pager: &[String],
-    write_result: io::Result<()>,
-) -> Result<()> {
-    if let Err(err) = write_result {
-        // A spawned pager still needs reaping even if stdin broke early
-        let _ = child.wait();
-        return Err(err).context("write executable content review to pager");
-    }
-
-    let status = child.wait().context("wait for pager")?;
-    if status.success() {
-        return Ok(());
-    }
-
-    Err(anyhow!(
-        "pager '{}' exited with status {}",
-        pager.join(" "),
-        status
-    ))
-}
-
-fn render_exec_content_review(exec_content: &ImportedExecContent) -> String {
-    // Styling is applied at render time so the gathered review model stays plain
-    render_exec_content_review_with_style(exec_content, ReviewStyle::for_terminal())
+pub(super) fn write_exec_content_review(writer: &mut impl Write, review: &str) -> Result<()> {
+    // Security review text is written directly; no pager or shell can run while trust is undecided
+    writer
+        .write_all(review.as_bytes())
+        .context("write executable content review")?;
+    writer.flush().context("flush executable content review")
 }
 
 pub(super) fn render_exec_content_review_with_style(
@@ -166,26 +111,6 @@ pub(super) fn render_exec_content_review_with_style(
 
     lines.push(String::new());
     lines.join("\n")
-}
-
-fn pager_looks_like_less(parts: &[String]) -> bool {
-    let Some(program) = parts.first() else {
-        return false;
-    };
-    Path::new(program)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name == "less")
-}
-
-pub(super) fn pager_enables_raw_control(parts: &[String]) -> bool {
-    parts.iter().skip(1).any(|part| {
-        part == "-R"
-            || part == "-r"
-            || (part.starts_with('-')
-                && !part.starts_with("--")
-                && part.chars().skip(1).any(|flag| matches!(flag, 'R' | 'r')))
-    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
