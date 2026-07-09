@@ -119,7 +119,7 @@ impl App {
     pub fn new(service_manager: Option<ServiceManagerChoice>) -> Self {
         // Initialize with current system state.
         let (checks, detection, install_state) = Self::load_state(service_manager);
-        let release_status = ReleaseStatus::detect();
+        let release_status = ReleaseStatus::current_only();
 
         Self {
             checks,

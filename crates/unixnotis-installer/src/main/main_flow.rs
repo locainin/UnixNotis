@@ -22,6 +22,7 @@ pub(crate) fn run_app(terminal_guard: &mut TerminalGuard, app: &mut App) -> Resu
     const UI_QUEUE_CAPACITY: usize = 512;
     let (ui_tx, ui_rx) = mpsc::sync_channel::<UiMessage>(UI_QUEUE_CAPACITY);
     spawn_input_thread(ui_tx.clone());
+    spawn_release_check_thread(ui_tx.clone());
 
     terminal_guard
         .terminal_mut()
@@ -36,6 +37,9 @@ pub(crate) fn run_app(terminal_guard: &mut TerminalGuard, app: &mut App) -> Resu
             }
             Ok(UiMessage::Worker(event)) => {
                 apply_worker_event(app, event);
+            }
+            Ok(UiMessage::ReleaseStatus(status)) => {
+                app.release_status = status;
             }
             Err(_) => return Ok(ExitAction::None),
         }
@@ -73,6 +77,16 @@ fn spawn_input_thread(ui_tx: mpsc::SyncSender<UiMessage>) {
             if ui_tx.send(UiMessage::Input(event)).is_err() {
                 break;
             }
+        }
+    });
+}
+
+fn spawn_release_check_thread(ui_tx: mpsc::SyncSender<UiMessage>) {
+    // GitHub checks are useful, but they must not block the first installer frame
+    thread::spawn(move || {
+        let status = crate::release::ReleaseStatus::detect();
+        if ui_tx.send(UiMessage::ReleaseStatus(status)).is_err() {
+            // The UI already exited, so the late release result has no consumer
         }
     });
 }

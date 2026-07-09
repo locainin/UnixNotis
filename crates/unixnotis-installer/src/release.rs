@@ -1,10 +1,9 @@
 //! Release version and update status helpers
 
-#[cfg(not(test))]
-use std::process::Command;
-
-#[cfg(not(test))]
 const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/locainin/UnixNotis/releases/latest";
+const MAX_RELEASE_RESPONSE_BYTES: &str = "65536";
+
+use std::process::Command;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReleaseStatus {
@@ -60,9 +59,8 @@ impl ReleaseStatus {
         }
     }
 
-    #[cfg(test)]
     pub fn current_only() -> Self {
-        // Render tests use this helper so the welcome screen stays deterministic
+        // Startup uses this lightweight value while the network check runs later
         Self {
             current: current_version_tag(),
             latest: None,
@@ -89,22 +87,11 @@ fn current_version_tag() -> String {
     format!("v{}", env!("CARGO_PKG_VERSION"))
 }
 
-#[cfg(not(test))]
 fn fetch_latest_release_tag() -> Result<String, String> {
     // GitHub's latest-release endpoint returns the newest non-draft, non-prerelease release
     // Curl is used instead of adding an HTTP client dependency to the installer binary
     let output = Command::new("curl")
-        .args([
-            "-fsSL",
-            "--max-time",
-            "2",
-            // Keep requests explicit so GitHub API behavior does not depend on global curl config
-            "-H",
-            "Accept: application/vnd.github+json",
-            "-H",
-            "X-GitHub-Api-Version: 2022-11-28",
-            LATEST_RELEASE_URL,
-        ])
+        .args(latest_release_curl_args())
         .output()
         .map_err(|err| err.to_string())?;
 
@@ -114,6 +101,27 @@ fn fetch_latest_release_tag() -> Result<String, String> {
     }
 
     latest_tag_from_json(&output.stdout)
+}
+
+fn latest_release_curl_args() -> [&'static str; 14] {
+    [
+        // Disable .curlrc so local flags cannot rewrite the release-check request
+        "-q",
+        "-fsSL",
+        "--proto",
+        "=https",
+        "--tlsv1.2",
+        "--max-time",
+        "2",
+        // The latest-release JSON is tiny; this prevents accidental large captures
+        "--max-filesize",
+        MAX_RELEASE_RESPONSE_BYTES,
+        "-H",
+        "Accept: application/vnd.github+json",
+        "-H",
+        "X-GitHub-Api-Version: 2022-11-28",
+        LATEST_RELEASE_URL,
+    ]
 }
 
 fn latest_tag_from_json(bytes: &[u8]) -> Result<String, String> {
@@ -136,19 +144,36 @@ fn release_tag_is_newer(latest: &str, current: &str) -> bool {
     }
 }
 
-fn parse_version_tag(tag: &str) -> Option<(u32, u32, u32)> {
-    // Only stable semver tags are supported by the installer update indicator
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ReleaseVersion {
+    major: u32,
+    minor: u32,
+    patch: u32,
+    // Stable releases sort after prereleases with the same numeric version
+    stable: bool,
+}
+
+fn parse_version_tag(tag: &str) -> Option<ReleaseVersion> {
+    // Accept SemVer-like release tags while ignoring build metadata for ordering
     let trimmed = tag.trim().trim_start_matches('v');
-    let mut parts = trimmed.split('.');
+    let (core, suffix) = trimmed
+        .split_once(['-', '+'])
+        .map_or((trimmed, None), |(core, suffix)| (core, Some(suffix)));
+    let mut parts = core.split('.');
     // Tuple comparison keeps major/minor/patch ordering correct without string sorting
     let major = parts.next()?.parse::<u32>().ok()?;
     let minor = parts.next()?.parse::<u32>().ok()?;
     let patch = parts.next()?.parse::<u32>().ok()?;
-    // Stable release tags must stay simple so update checks do not misread prerelease text
     if parts.next().is_some() {
         return None;
     }
-    Some((major, minor, patch))
+    let stable = suffix.is_none_or(|suffix| suffix.starts_with('+'));
+    Some(ReleaseVersion {
+        major,
+        minor,
+        patch,
+        stable,
+    })
 }
 
 #[cfg(test)]

@@ -45,7 +45,7 @@ fn env_sync_command_stdout_is_not_copied_into_logs() {
         .try_iter()
         .filter_map(|message| match message {
             UiMessage::Worker(WorkerEvent::LogLine(line)) => Some(line),
-            UiMessage::Input(_) | UiMessage::Worker(_) => None,
+            UiMessage::Input(_) | UiMessage::ReleaseStatus(_) | UiMessage::Worker(_) => None,
         })
         .collect::<Vec<_>>();
 
