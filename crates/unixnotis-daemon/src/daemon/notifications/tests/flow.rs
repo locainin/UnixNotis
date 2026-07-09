@@ -15,7 +15,7 @@ use zbus::{Connection, MatchRule, Message, MessageStream};
 use crate::daemon::{DaemonState, NotificationServer};
 use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
-use crate::store::InsertOutcome;
+use crate::store::{InsertOutcome, NotificationStore};
 use crate::test_support::daemon_state_for_test;
 
 fn notification_with_id(id: u32) -> Arc<Notification> {
@@ -89,7 +89,8 @@ fn notify_header_message() -> Message {
 async fn daemon_state_with_config(config: Config) -> Arc<DaemonState> {
     let connection = Connection::session().await.expect("session bus");
     let sound = SoundSettings::from_config(&config);
-    DaemonState::new(connection, config, sound, false)
+    let store = NotificationStore::new_with_state_store(config, None);
+    DaemonState::new_with_store(connection, store, sound, false)
 }
 
 async fn control_signal_stream(state: &DaemonState, member: &str) -> MessageStream {

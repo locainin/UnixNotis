@@ -1,11 +1,9 @@
 //! Daemon entrypoint and service bootstrap
 
 #![allow(
-    clippy::blanket_clippy_restriction_lints,
     clippy::nursery,
     clippy::pedantic,
-    clippy::restriction,
-    reason = "workspace clippy runs use these groups as review signals, not as zero-tolerance policy gates"
+    reason = "pedantic and nursery cleanup is tracked incrementally across existing code"
 )]
 
 use std::path::PathBuf;
@@ -229,7 +227,9 @@ async fn main() -> Result<()> {
     }
 
     // A shared flag lets both supervisors stop and reap their current child cleanly
-    let _ = shutdown_tx.send(true);
+    if let Err(err) = shutdown_tx.send(true) {
+        warn!(?err, "shutdown signal receivers already closed");
+    }
     if let Err(err) = popups_task.await {
         warn!(?err, "popups supervisor task failed");
     }
@@ -246,29 +246,29 @@ async fn main() -> Result<()> {
         }
 
         if let Some(action) = trial_state.take_restore_action() {
-            if let Err(err) = restore_previous(action) {
-                error!(?err, "failed to restore previous notification daemon");
-            }
-            let reacquired = match wait_for_owner_state(
+            restore_previous_or_fail(action)?;
+
+            let reacquired = wait_for_owner_state(
                 &dbus_proxy,
                 zbus::names::BusName::try_from("org.freedesktop.Notifications")?,
                 true,
                 Duration::from_millis(args.restore_wait_ms),
             )
             .await
-            {
-                Ok(value) => value,
-                Err(err) => {
-                    warn!(?err, "failed to wait for notification owner reacquire");
-                    false
-                }
-            };
+            .context("wait for previous daemon to reacquire org.freedesktop.Notifications")?;
 
             if !reacquired {
-                info!("no daemon re-acquired after release");
+                anyhow::bail!(
+                    "previous daemon did not reacquire org.freedesktop.Notifications within {} ms",
+                    args.restore_wait_ms
+                );
             }
         }
     }
 
     Ok(())
+}
+
+fn restore_previous_or_fail(action: trial_mode::RestoreAction) -> Result<()> {
+    restore_previous(action).context("restore previous notification daemon")
 }

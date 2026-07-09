@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use super::{Args, RestoreStrategy};
+use super::{restore_previous_or_fail, trial_mode::RestoreAction, Args, RestoreStrategy};
 
 #[test]
 fn args_parse_check_mode_without_trial_flags() {
@@ -33,4 +33,19 @@ fn args_parse_trial_restore_process_and_run_seconds() {
     assert!(matches!(args.restore, RestoreStrategy::Process));
     assert_eq!(args.restore_wait_ms, 125);
     assert_eq!(args.run_seconds, Some(9));
+}
+
+#[test]
+fn restore_previous_or_fail_returns_error_when_restore_command_cannot_spawn() {
+    let action = RestoreAction::Command {
+        program: "/definitely/missing/unixnotis-restore-target".to_string(),
+        args: Vec::new(),
+    };
+
+    let err = restore_previous_or_fail(action).expect_err("restore failure must fail trial mode");
+
+    // Trial mode must not report success when the old daemon could not be restarted
+    assert!(err
+        .to_string()
+        .contains("restore previous notification daemon"));
 }

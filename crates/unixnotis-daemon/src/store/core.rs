@@ -23,7 +23,10 @@ impl NotificationStore {
         Self::new_with_state_store(config, dnd_state_store)
     }
 
-    fn new_with_state_store(config: Config, dnd_state_store: Option<DndStateStore>) -> Self {
+    pub(crate) fn new_with_state_store(
+        config: Config,
+        dnd_state_store: Option<DndStateStore>,
+    ) -> Self {
         // Config default is used unless a valid persisted value overrides it
         let mut dnd_enabled = config.general.dnd_default;
         if let Some(store) = dnd_state_store.as_ref() {

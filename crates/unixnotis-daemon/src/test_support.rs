@@ -11,6 +11,7 @@ use zbus::Connection;
 
 use crate::daemon::DaemonState;
 use crate::sound::SoundSettings;
+use crate::store::NotificationStore;
 
 pub(crate) fn env_lock() -> MutexGuard<'static, ()> {
     // Environment variables are process-global, so all tests that edit them share one lock
@@ -27,7 +28,8 @@ pub(crate) async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> 
         .expect("session bus should be available for daemon signal tests");
     let config = Config::default();
     let sound = SoundSettings::from_config(&config);
-    DaemonState::new(connection, config, sound, trial_mode)
+    let store = NotificationStore::new_with_state_store(config, None);
+    DaemonState::new_with_store(connection, store, sound, trial_mode)
 }
 
 pub(crate) struct EnvVarGuard {
