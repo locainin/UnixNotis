@@ -15,14 +15,30 @@ fn choose_wayland_fallback_prefers_wayland_zero() {
 }
 
 #[test]
-fn choose_wayland_fallback_sorts_nonzero_candidates() {
+fn choose_wayland_fallback_rejects_multiple_nonzero_candidates() {
     let chosen = choose_wayland_fallback(vec![
         "wayland-7".to_string(),
         "wayland-3".to_string(),
         "wayland-5".to_string(),
     ]);
 
-    // Directory iteration order is unstable, so fallback selection must sort
+    // Ambiguous sockets can point at the wrong display, so force explicit env
+    assert_eq!(chosen.as_deref(), None);
+}
+
+#[test]
+fn choose_wayland_fallback_accepts_single_nonzero_candidate() {
+    let chosen = choose_wayland_fallback(vec!["wayland-3".to_string()]);
+
+    // A single discovered socket is unambiguous when wayland-0 is absent
+    assert_eq!(chosen.as_deref(), Some("wayland-3"));
+}
+
+#[test]
+fn choose_wayland_fallback_dedupes_before_checking_ambiguity() {
+    let chosen = choose_wayland_fallback(vec!["wayland-3".to_string(), "wayland-3".to_string()]);
+
+    // Duplicate directory entries should not make one display look ambiguous
     assert_eq!(chosen.as_deref(), Some("wayland-3"));
 }
 

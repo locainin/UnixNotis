@@ -45,6 +45,16 @@ impl DaemonState {
         trial_mode: bool,
     ) -> Arc<Self> {
         let store = NotificationStore::new(config);
+        Self::new_with_store(connection, store, sound, trial_mode)
+    }
+
+    pub(crate) fn new_with_store(
+        connection: Connection,
+        store: NotificationStore,
+        sound: SoundSettings,
+        trial_mode: bool,
+    ) -> Arc<Self> {
+        // One construction path keeps scheduler, signal cache, and popup state in sync
         Arc::new(Self {
             store: Mutex::new(store),
             sound,
