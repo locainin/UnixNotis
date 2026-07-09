@@ -32,8 +32,12 @@ main() {
 }
 
 repo_root() {
-  # Resolve through git so the script can run from any subdirectory
-  git rev-parse --show-toplevel
+  local script_dir
+
+  # Resolve from this script so CI workspaces do not depend on git safe.directory state
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+  cd -- "${script_dir}/.."
+  pwd -P
 }
 
 assert_workspace_version() {
