@@ -1,9 +1,3 @@
-#![allow(
-    clippy::blanket_clippy_restriction_lints,
-    clippy::restriction,
-    reason = "workspace CI enables clippy::restriction as a review signal"
-)]
-
 #[cfg(test)]
 mod tests {
     use std::error::Error;

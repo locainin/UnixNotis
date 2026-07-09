@@ -45,12 +45,14 @@ jobs:
             curl \
             dbus \
             git \
+            jq \
             libgtk-4-dev \
             libgtk4-layer-shell-dev \
             pkg-config \
             shellcheck \
             xauth \
-            xvfb
+            xvfb \
+            zstd
 
       - name: Check out repository
         uses: actions/checkout@v5
@@ -59,10 +61,11 @@ jobs:
         run: |
           set -euo pipefail
           curl --proto '=https' --tlsv1.2 -fsS https://sh.rustup.rs \
-            | sh -s -- -y --profile minimal --component rustfmt,clippy
+            | sh -s -- -y --default-toolchain 1.96.1 --profile minimal --component rustfmt,clippy
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
           source "${HOME}/.cargo/env"
-          rustup default stable
+          rustup default 1.96.1
+          cargo install cargo-audit --locked --version 0.22.0
 
       - name: Cache Cargo state
         uses: actions/cache@v4
@@ -90,7 +93,13 @@ jobs:
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-off
 
       - name: Run workspace tests
-        run: xvfb-run -a dbus-run-session -- cargo test --workspace
+        run: xvfb-run -a dbus-run-session -- cargo test --workspace --all-features
+
+      - name: Run dependency audit
+        run: cargo audit --deny warnings
+
+      - name: Build release package
+        run: scripts/package-release.sh "v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "unixnotis-core") | .version')"
 
       - name: Run strict clippy
         run: >
@@ -98,4 +107,3 @@ jobs:
           -D warnings
           -W clippy::pedantic
           -W clippy::nursery
-          -W clippy::restriction

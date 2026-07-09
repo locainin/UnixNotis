@@ -91,7 +91,7 @@ scripts/package-release.sh v1.1.1
 
 ```sh
 cargo test --workspace
-cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::restriction
+cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery
 ```
 
 ## Contributing

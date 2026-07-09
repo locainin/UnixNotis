@@ -1,9 +1,7 @@
 #![allow(
-    clippy::blanket_clippy_restriction_lints,
     clippy::nursery,
     clippy::pedantic,
-    clippy::restriction,
-    reason = "workspace clippy runs use these groups as review signals, not as zero-tolerance policy gates"
+    reason = "pedantic and nursery cleanup is tracked incrementally across existing code"
 )]
 
 mod app;
