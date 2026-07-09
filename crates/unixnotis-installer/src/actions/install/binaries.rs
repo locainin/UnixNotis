@@ -1,6 +1,7 @@
 //! Binary install and uninstall helpers
 
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
@@ -104,22 +105,9 @@ fn copy_binary(ctx: &mut ActionContext, source: &Path, destination: &Path) -> Re
     let source_display = format_with_home(source);
     let destination_display = format_with_home(destination);
     // Stage the copy beside the final file so the rename can replace atomically
-    let temp_name = format!(
-        "{}.tmp-{}",
-        destination
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy(),
-        std::process::id()
-    );
-    let temp_path = destination.with_file_name(temp_name);
+    let temp_path = binary_temp_path(destination);
 
-    if temp_path.exists() {
-        // Clear stale temp files from interrupted installs before staging a new copy
-        fs::remove_file(&temp_path).with_context(|| "failed to remove stale temp file")?;
-    }
-
-    fs::copy(source, &temp_path).map_err(|err| {
+    stage_binary_copy(source, &temp_path).map_err(|err| {
         anyhow!(
             "failed to stage {} -> {}: {}",
             source_display,
@@ -147,4 +135,36 @@ fn copy_binary(ctx: &mut ActionContext, source: &Path, destination: &Path) -> Re
         ),
     );
     Ok(())
+}
+
+pub(super) fn binary_temp_path(destination: &Path) -> PathBuf {
+    // The temp file sits beside the final binary so rename stays atomic
+    let temp_name = format!(
+        "{}.tmp-{}",
+        destination
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy(),
+        std::process::id()
+    );
+    destination.with_file_name(temp_name)
+}
+
+fn stage_binary_copy(source: &Path, temp_path: &Path) -> io::Result<()> {
+    // create_new refuses attacker-created symlinks or stale files at the temp path
+    let mut input = File::open(source)?;
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(temp_path)?;
+    io::copy(&mut input, &mut output).inspect_err(|_err| {
+        let _ = fs::remove_file(temp_path);
+    })?;
+    output.sync_all().inspect_err(|_err| {
+        let _ = fs::remove_file(temp_path);
+    })?;
+    let permissions = fs::metadata(source)?.permissions();
+    fs::set_permissions(temp_path, permissions).inspect_err(|_err| {
+        let _ = fs::remove_file(temp_path);
+    })
 }
