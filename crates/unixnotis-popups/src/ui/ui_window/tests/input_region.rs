@@ -1,5 +1,6 @@
 use super::{
-    build_popup_input_region, popup_surface_needs_retry, InputRegionSignature, PopupInputRegionState,
+    build_popup_input_region, popup_surface_needs_retry, InputRegionSignature,
+    PopupInputRegionState,
 };
 use gtk::cairo;
 
