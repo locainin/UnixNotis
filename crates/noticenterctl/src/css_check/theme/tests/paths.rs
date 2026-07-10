@@ -35,6 +35,11 @@ fn includes_active_targets_outside_config_root_and_skips_unused_css() {
         ".unixnotis-media-card { color: red; }",
     )
     .expect("write media.css");
+    fs::write(
+        config_dir.join("overrides.css"),
+        ".unixnotis-panel { border-width: 2px; }",
+    )
+    .expect("write overrides.css");
     fs::write(&external_panel, ".unixnotis-panel { color: blue; }").expect("write external panel");
     fs::write(config_dir.join("unused.css"), ".unused { color: red; }").expect("write unused.css");
     root.write(
@@ -52,7 +57,11 @@ fn includes_active_targets_outside_config_root_and_skips_unused_css() {
     )
     .expect("inputs");
 
-    assert_eq!(inputs.files.len(), 5);
+    assert_eq!(inputs.files.len(), 6);
+    assert_eq!(
+        inputs.active_files.last().map(|file| file.slot_name),
+        Some("[theme].overrides_css")
+    );
     assert!(inputs.files.iter().any(|path| path == &external_panel));
     assert!(inputs
         .notes
@@ -85,6 +94,10 @@ fn warns_when_theme_slots_share_one_file() {
     root.write(
         "xdg/unixnotis/media.css",
         ".unixnotis-media-card { color: red; }",
+    );
+    root.write(
+        "xdg/unixnotis/overrides.css",
+        ".unixnotis-panel { border-width: 2px; }",
     );
     root.write(
         "xdg/unixnotis/config.toml",
@@ -129,6 +142,10 @@ fn dedupes_theme_slots_that_resolve_to_the_same_real_file() {
         ".unixnotis-media-card { color: red; }",
     );
     root.write(
+        "xdg/unixnotis/overrides.css",
+        ".unixnotis-panel { border-width: 2px; }",
+    );
+    root.write(
         "xdg/unixnotis/shared/popup.css",
         ".unixnotis-popup { color: red; }",
     );
@@ -159,7 +176,7 @@ fn dedupes_theme_slots_that_resolve_to_the_same_real_file() {
         .filter(|path| path.ends_with("popup.css") || path.ends_with("popup-link.css"))
         .collect::<Vec<_>>();
     assert_eq!(popup_paths.len(), 1);
-    assert_eq!(inputs.files.len(), 4);
+    assert_eq!(inputs.files.len(), 5);
 }
 
 #[test]
@@ -180,6 +197,10 @@ fn warns_when_configured_theme_target_is_missing() {
     root.write(
         "xdg/unixnotis/media.css",
         ".unixnotis-media-card { color: red; }",
+    );
+    root.write(
+        "xdg/unixnotis/overrides.css",
+        ".unixnotis-panel { border-width: 2px; }",
     );
     root.write(
         "xdg/unixnotis/config.toml",

@@ -29,6 +29,10 @@ fn ensure_theme_files_writes_missing_files_and_renames_legacy_style() {
     assert!(paths.popup_css.exists());
     assert!(paths.widgets_css.exists());
     assert!(paths.media_css.exists());
+    assert!(paths.overrides_css.exists());
+    assert!(fs::read_to_string(&paths.overrides_css)
+        .expect("overrides css")
+        .contains("final theme overrides"));
     assert!(root.join("style.css.bak").exists());
     assert!(!root.join("style.css").exists());
 
