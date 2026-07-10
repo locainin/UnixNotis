@@ -33,6 +33,7 @@ mod shutdown_signal;
 #[path = "sound/root.rs"]
 mod sound;
 mod store;
+mod system_tools;
 #[cfg(test)]
 mod test_support;
 #[path = "trial_mode/root.rs"]
