@@ -11,6 +11,7 @@ mod dbus;
 mod debug_logs;
 mod output;
 mod preset;
+mod system_tools;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
