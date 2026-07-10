@@ -32,14 +32,5 @@ pub(super) async fn shutdown_signal() {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    #[tokio::test]
-    async fn shutdown_signal_waits_when_no_signal_arrives() {
-        let result =
-            tokio::time::timeout(Duration::from_millis(25), super::shutdown_signal()).await;
-
-        assert!(result.is_err());
-    }
-}
+#[path = "shutdown_signal/tests/mod.rs"]
+mod tests;

@@ -170,19 +170,5 @@ async fn reap_sound_child(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[cfg(target_os = "linux")]
-    #[tokio::test]
-    async fn reaps_short_lived_command() {
-        // Smoke test ensures reap path handles a normal successful child exit
-        let mut command = Command::new("true");
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let child = command.spawn().expect("spawn true");
-        reap_sound_child("test", "true".to_string(), child.id(), child).await;
-    }
-}
+#[path = "tests/command.rs"]
+mod tests;
