@@ -73,4 +73,5 @@ fn format_inhibitors(inhibitors: &[(u64, String, u32, String)]) -> String {
 }
 
 #[cfg(test)]
+#[path = "tests/mod.rs"]
 mod tests;
