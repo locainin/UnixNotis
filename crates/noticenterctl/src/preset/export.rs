@@ -161,6 +161,7 @@ fn export_preset_from_with_confirm(
             ("popup_css", &theme_paths.popup_css),
             ("widgets_css", &theme_paths.widgets_css),
             ("media_css", &theme_paths.media_css),
+            ("overrides_css", &theme_paths.overrides_css),
         ],
     )?;
     // Shared presets should not ship explicit command paths that depend on outside host files

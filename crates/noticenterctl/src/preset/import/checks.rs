@@ -129,6 +129,7 @@ fn validate_resolved_theme_paths_stay_in_root(
         ("popup_css", &theme_paths.popup_css),
         ("widgets_css", &theme_paths.widgets_css),
         ("media_css", &theme_paths.media_css),
+        ("overrides_css", &theme_paths.overrides_css),
     ] {
         // Normalize each target so lexical parent traversal cannot hide outside writes
         let normalized_path = normalize_lexical_path(path);

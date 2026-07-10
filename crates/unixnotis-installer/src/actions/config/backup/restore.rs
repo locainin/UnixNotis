@@ -82,6 +82,7 @@ pub(crate) fn restore_config(ctx: &mut ActionContext) -> Result<()> {
         ("popup.css", theme_paths.popup_css),
         ("widgets.css", theme_paths.widgets_css),
         ("media.css", theme_paths.media_css),
+        ("overrides.css", theme_paths.overrides_css),
     ];
 
     for (name, target) in theme_targets {
