@@ -71,7 +71,7 @@ jobs:
           cargo install cargo-audit --locked --version 0.22.0
 
       - name: Cache Cargo state
-        uses: actions/cache@v4
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cargo/git/db
