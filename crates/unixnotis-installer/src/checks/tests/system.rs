@@ -1,12 +1,12 @@
 use std::env;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::checks::CheckState;
 use crate::paths::InstallPaths;
 use crate::service_manager::{ReadinessIssue, ServiceManager};
+use crate::tests::fs::write_executable;
 
 use super::system::{
     command_success, dbus_update_env_check, install_paths_check, readiness_error_detail,
@@ -229,14 +229,12 @@ fn write_fake_s6_tools(fake_bin: &std::path::Path) {
         "s6-svstat",
     ] {
         let path = fake_bin.join(tool);
-        fs::write(&path, "#!/bin/sh\nexit 0\n").expect("fake s6 tool");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("fake tool mode");
+        write_executable(&path, "#!/bin/sh\nexit 0\n");
     }
 }
 
 fn write_fake_tool(path: &std::path::Path, contents: &str) {
-    fs::write(path, contents).expect("fake tool");
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("fake tool mode");
+    write_executable(path, contents);
 }
 
 fn write_fake_s6_tools_except(fake_bin: &std::path::Path, missing_tool: &str) {
@@ -253,8 +251,7 @@ fn write_fake_s6_tools_except(fake_bin: &std::path::Path, missing_tool: &str) {
             continue;
         }
         let path = fake_bin.join(tool);
-        fs::write(&path, "#!/bin/sh\nexit 0\n").expect("fake s6 tool");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("fake tool mode");
+        write_executable(&path, "#!/bin/sh\nexit 0\n");
     }
 }
 

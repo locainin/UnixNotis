@@ -1,7 +1,8 @@
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::tests::fs::write_executable;
 
 use super::{
     current_version_tag, fetch_latest_release_tag, latest_release_curl_args, latest_tag_from_json,
@@ -119,16 +120,6 @@ fn parse_version_tag_accepts_plain_and_prefixed_versions() {
     assert_eq!(parse_version_tag("v1.2"), None);
     assert_eq!(parse_version_tag("v1.2.3.4"), None);
     assert_eq!(parse_version_tag("not-a-version"), None);
-}
-
-fn write_executable(path: &Path, contents: &str) {
-    fs::write(path, contents).expect("fake curl script should be writable");
-    let mut permissions = fs::metadata(path)
-        .expect("fake curl script metadata")
-        .permissions();
-    // Command lookup requires the execute bit, not just a readable file
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions).expect("fake curl script should be executable");
 }
 
 fn temp_dir(name: &str) -> PathBuf {

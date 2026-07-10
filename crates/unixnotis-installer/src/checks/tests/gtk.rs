@@ -1,11 +1,11 @@
 use unixnotis_core::gtk_css_features_from_version_string;
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use super::{gtk4_css_features_check, gtk4_layer_shell_check};
 use crate::checks::{CheckItem, CheckState};
+use crate::tests::fs::write_executable;
 
 #[test]
 fn gtk_css_feature_parser_handles_major_and_minor_checks() {
@@ -116,15 +116,12 @@ fn write_fake_pkg_config(
          esac\n"
     );
     let path = fake_bin.join("pkg-config");
-    fs::write(&path, script).expect("fake pkg-config");
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("fake pkg-config mode");
+    write_executable(&path, &script);
 }
 
 fn write_failing_pkg_config(fake_bin: &std::path::Path) {
     let path = fake_bin.join("pkg-config");
-    fs::write(&path, "#!/bin/sh\nexit 1\n").expect("fake failing pkg-config");
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
-        .expect("fake failing pkg-config mode");
+    write_executable(&path, "#!/bin/sh\nexit 1\n");
 }
 
 fn test_root(name: &str) -> PathBuf {

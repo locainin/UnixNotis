@@ -1,6 +1,5 @@
 use std::env;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::MutexGuard;
 
@@ -8,6 +7,7 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::{use_fake_command_bin, ServiceManager};
+use crate::tests::fs::write_executable;
 
 use super::super::super::service::{enable_service, install_service, uninstall_service};
 use super::super::support::{test_context, test_root};
@@ -146,8 +146,7 @@ pub(super) fn write_fake_tools(fake_bin: &Path, log_path: &Path, mode: FakeToolM
             _ => fake_tool_script(tool, log_path, ""),
         };
         let path = fake_bin.join(tool);
-        fs::write(&path, script).expect("write fake tool");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("chmod fake tool");
+        write_executable(&path, &script);
     }
     // Route CommandSpec-created processes to this temp bin without changing global PATH
     // That keeps parallel tests from accidentally borrowing another flow's fake commands

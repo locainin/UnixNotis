@@ -1,10 +1,10 @@
 use std::fs;
 use std::os::unix::fs::symlink;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use crate::service_manager::{ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_RUNIT_SERVICE};
 use crate::system_tools::use_fake_tool_bin;
+use crate::tests::fs::write_executable as write_test_executable;
 
 #[test]
 fn runit_backend_renders_service_directory_and_run_script() {
@@ -280,6 +280,7 @@ fn runit_backend_escapes_run_script_command_path_with_quotes() {
 
 #[test]
 fn runit_readiness_rejects_chpst_that_exists_only_on_path() {
+    let _lock = crate::tests::env::test_env_lock();
     let root = test_root("runit-path-only-chpst");
     let path_bin = root.join("path-bin");
     let trusted_bin = root.join("trusted-bin");
@@ -305,12 +306,7 @@ fn test_root(name: &str) -> PathBuf {
 }
 
 fn write_executable(path: PathBuf, contents: &str) {
-    fs::write(&path, contents).expect("write fake executable");
-    let mut permissions = fs::metadata(&path)
-        .expect("fake executable metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions).expect("chmod fake executable");
+    write_test_executable(&path, contents);
 }
 
 struct EnvPathGuard {

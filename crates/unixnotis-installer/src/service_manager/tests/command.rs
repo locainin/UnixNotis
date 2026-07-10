@@ -1,9 +1,8 @@
 use std::fs;
-use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{use_fake_command_bin, CommandSpec};
+use crate::tests::fs::write_executable;
 
 struct TempDirGuard {
     path: std::path::PathBuf,
@@ -25,17 +24,7 @@ impl TempDirGuard {
 
     fn write_executable(&self, name: &str, contents: &str) {
         let path = self.path.join(name);
-        let mut file = fs::File::create(&path).expect("create fake manager tool");
-        file.write_all(contents.as_bytes())
-            .expect("write fake manager tool");
-        file.flush().expect("flush fake manager tool");
-        file.sync_all().expect("sync fake manager tool");
-        drop(file);
-        let mut permissions = fs::metadata(&path)
-            .expect("fake manager tool metadata")
-            .permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(path, permissions).expect("chmod fake manager tool");
+        write_executable(&path, contents);
     }
 }
 
@@ -86,6 +75,7 @@ fn command_spec_uses_explicit_fake_bin_for_backend_tools() {
 
 #[test]
 fn command_spec_ignores_inherited_path_backend_tools() {
+    let _lock = crate::tests::env::test_env_lock();
     let root = TempDirGuard::new("path-hijack");
     let marker = root.path.join("marker");
     root.write_executable(
