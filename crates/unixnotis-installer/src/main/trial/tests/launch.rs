@@ -1,7 +1,8 @@
-use std::os::unix::fs::{symlink, PermissionsExt};
+use std::os::unix::fs::symlink;
 
 use super::launch::{run_trial_with_shim_cleanup, trial_launch_script};
 use super::paths::shell_quote;
+use crate::tests::fs::write_executable;
 
 #[test]
 fn trial_launch_script_guards_cleanup_with_expected_symlink_target() {
@@ -54,12 +55,6 @@ fn trial_launch_ignores_shell_from_inherited_path() {
     assert!(!shim.exists());
 
     let _ = std::fs::remove_dir_all(root);
-}
-
-fn write_executable(path: &std::path::Path, contents: &str) {
-    std::fs::write(path, contents).expect("fake executable");
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
-        .expect("fake executable mode");
 }
 
 struct EnvGuard {

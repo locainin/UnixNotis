@@ -1,4 +1,3 @@
-use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 
@@ -8,6 +7,7 @@ use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
+use crate::tests::fs::write_executable;
 
 use super::{
     is_systemd_unit_inactive, pid_alive, pid_matches_comm, stop_active_daemon,
@@ -281,11 +281,10 @@ fn pid_matches_comm_rejects_wrong_process_name() {
 #[test]
 fn pid_matches_comm_accepts_current_process_name_from_ps() {
     let pid = std::process::id();
-    let output = Command::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "comm="])
-        .output()
-        .expect("ps should inspect current process");
-    let expected = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let expected = std::fs::read_to_string(format!("/proc/{pid}/comm"))
+        .expect("proc should expose the current process name")
+        .trim()
+        .to_string();
 
     let matches = pid_matches_comm(pid, &expected).expect("comm probe");
 
@@ -326,14 +325,6 @@ fn wait_for_exit_aborts_immediately_when_pid_name_no_longer_matches() {
     assert!(err
         .to_string()
         .contains("no longer matches expected daemon"));
-}
-
-fn write_executable(path: &std::path::Path, contents: &str) {
-    use std::os::unix::fs::PermissionsExt;
-
-    std::fs::write(path, contents).expect("fake command");
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
-        .expect("fake command mode");
 }
 
 fn fake_daemon_tool_root(label: &str) -> std::path::PathBuf {

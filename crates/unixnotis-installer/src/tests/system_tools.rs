@@ -3,6 +3,8 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::tests::fs::write_executable;
+
 #[test]
 fn trusted_command_ignores_inherited_path_entries() {
     let _lock = crate::tests::env::test_env_lock();
@@ -86,11 +88,6 @@ fn trusted_program_accepts_files_with_only_execute_bits() {
 
     assert_eq!(resolved, tool);
     let _ = fs::remove_dir_all(root);
-}
-
-fn write_executable(path: &std::path::Path, contents: &str) {
-    fs::write(path, contents).expect("fake tool");
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("fake tool mode");
 }
 
 fn test_root(name: &str) -> std::path::PathBuf {

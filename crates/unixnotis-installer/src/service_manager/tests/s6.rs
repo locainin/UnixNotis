@@ -1,6 +1,5 @@
 use std::fs;
 use std::os::unix::fs as unix_fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use crate::service_manager::{
@@ -8,6 +7,7 @@ use crate::service_manager::{
     MANAGED_DIRECTORY_MARKER, UNIXNOTIS_DAEMON_S6_SERVICE,
 };
 use crate::system_tools::use_fake_tool_bin;
+use crate::tests::fs::write_executable as write_test_executable;
 
 #[test]
 fn s6_backend_renders_service_source_and_default_bundle_member() {
@@ -288,6 +288,7 @@ fn s6_readiness_accepts_symlinked_live_directory() {
 
 #[test]
 fn s6_readiness_rejects_tools_that_exist_only_on_path() {
+    let _lock = crate::tests::env::test_env_lock();
     let root = test_root("s6-path-only-tools");
     let path_bin = root.join("path-bin");
     let trusted_bin = root.join("trusted-bin");
@@ -411,12 +412,7 @@ fn test_root(name: &str) -> PathBuf {
 }
 
 fn write_executable(path: PathBuf, contents: &str) {
-    fs::write(&path, contents).expect("write fake executable");
-    let mut permissions = fs::metadata(&path)
-        .expect("fake executable metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions).expect("chmod fake executable");
+    write_test_executable(&path, contents);
 }
 
 struct EnvPathGuard {

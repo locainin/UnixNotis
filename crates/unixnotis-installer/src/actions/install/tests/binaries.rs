@@ -12,6 +12,7 @@ use std::os::unix::fs::symlink;
 
 #[test]
 fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
+    let _lock = crate::tests::env::test_env_lock();
     // A fake workspace keeps the test focused on copy behavior instead of the real repo layout
     let root = test_root("install-binaries");
     write_fake_workspace(
@@ -95,6 +96,7 @@ fn install_binaries_copies_from_release_archive_bin_dir() {
 #[cfg(unix)]
 #[test]
 fn install_binaries_rejects_preexisting_temp_symlink_without_touching_target() {
+    let _lock = crate::tests::env::test_env_lock();
     let root = test_root("install-binaries-temp-symlink");
     write_fake_workspace(
         &root,

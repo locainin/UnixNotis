@@ -1,7 +1,6 @@
+use crate::tests::fs::write_executable;
 use std::fs;
 use std::io::{Error, ErrorKind};
-use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 
 use crate::detect::{
     parse_busctl_json, parse_busctl_status, read_cmdline_program, read_comm, systemctl_spawn_error,
@@ -300,11 +299,6 @@ fn detect_falls_back_to_text_busctl_status_when_json_status_fails() {
         .any(|daemon| daemon.name == "mako" && daemon.is_owner));
 
     let _ = fs::remove_dir_all(root);
-}
-
-fn write_executable(path: &Path, contents: &str) {
-    fs::write(path, contents).expect("write fake command");
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("fake command mode");
 }
 
 fn test_root(name: &str) -> std::path::PathBuf {
