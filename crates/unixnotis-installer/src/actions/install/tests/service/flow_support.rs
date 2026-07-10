@@ -120,6 +120,7 @@ pub(super) fn flow_env(root: &Path) -> Vec<EnvGuard> {
         EnvGuard::set("XDG_SESSION_TYPE", "wayland"),
         EnvGuard::set("XDG_SESSION_DESKTOP", "Hyprland"),
         EnvGuard::set("DISPLAY", ":99"),
+        EnvGuard::set("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/unixnotis-bus"),
     ]
 }
 

@@ -105,6 +105,11 @@ fn runit_install_flow_syncs_envdir_before_removing_down_and_starting() {
     let service_dir = paths.service.primary_artifact_path();
     // Envdir sync must happen before the temporary down gate is removed
     assert!(service_dir.join("env").join("WAYLAND_DISPLAY").is_file());
+    assert_eq!(
+        fs::read_to_string(service_dir.join("env").join("DBUS_SESSION_BUS_ADDRESS"))
+            .expect("runit D-Bus address should be persisted"),
+        "unix:path=/tmp/unixnotis-bus\n"
+    );
     assert!(
         fs::symlink_metadata(service_dir.join("down")).is_err(),
         "runit down gate should be removed immediately before sv start"
@@ -146,6 +151,17 @@ fn s6_install_flow_compiles_database_then_changes_service() {
         .join("env")
         .join("WAYLAND_DISPLAY")
         .is_file());
+    assert_eq!(
+        fs::read_to_string(
+            paths
+                .service
+                .primary_artifact_path()
+                .join("env")
+                .join("DBUS_SESSION_BUS_ADDRESS")
+        )
+        .expect("s6 D-Bus address should be persisted"),
+        "unix:path=/tmp/unixnotis-bus\n"
+    );
     let calls = read_calls(&log_path);
     assert_call_order(
         &calls,

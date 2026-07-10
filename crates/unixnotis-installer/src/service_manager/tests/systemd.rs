@@ -130,13 +130,24 @@ fn environment_sync_commands_come_from_selected_backend() {
     let vars = [
         ("WAYLAND_DISPLAY", "wayland-1".to_string()),
         ("XDG_RUNTIME_DIR", "/run/user/1000".to_string()),
+        (
+            "DBUS_SESSION_BUS_ADDRESS",
+            "unix:path=/tmp/unixnotis-bus".to_string(),
+        ),
     ];
 
     // D-Bus sync runs first because systemd activation and DBus activation are separate stores
     let with_dbus = manager.environment_sync_commands(&vars, true);
     assert_eq!(with_dbus.len(), 2);
     assert_eq!(with_dbus[0].program(), "dbus-update-activation-environment");
-    assert_eq!(with_dbus[0].args(), &["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"]);
+    assert_eq!(
+        with_dbus[0].args(),
+        &[
+            "WAYLAND_DISPLAY",
+            "XDG_RUNTIME_DIR",
+            "DBUS_SESSION_BUS_ADDRESS",
+        ]
+    );
     assert_eq!(with_dbus[1].program(), "systemctl");
     assert_eq!(
         with_dbus[1].args(),
@@ -146,6 +157,7 @@ fn environment_sync_commands_come_from_selected_backend() {
             "import-environment",
             "WAYLAND_DISPLAY",
             "XDG_RUNTIME_DIR",
+            "DBUS_SESSION_BUS_ADDRESS",
         ]
     );
 
@@ -160,6 +172,7 @@ fn environment_sync_commands_come_from_selected_backend() {
             "import-environment",
             "WAYLAND_DISPLAY",
             "XDG_RUNTIME_DIR",
+            "DBUS_SESSION_BUS_ADDRESS",
         ]
     );
 }

@@ -10,7 +10,7 @@ use super::super::{
     install::write_service_artifact, log_line, run_command_without_stdout, ActionContext,
 };
 
-pub(crate) const HYPR_IMPORT_VARS: [&str; 7] = [
+pub(crate) const HYPR_IMPORT_VARS: [&str; 8] = [
     // Keep this list narrow so debug output and service environments do not inherit full shells
     "WAYLAND_DISPLAY",
     "XDG_CURRENT_DESKTOP",
@@ -18,6 +18,8 @@ pub(crate) const HYPR_IMPORT_VARS: [&str; 7] = [
     "XDG_SESSION_DESKTOP",
     "DISPLAY",
     "XDG_RUNTIME_DIR",
+    // Nonstandard session buses need the explicit address inherited by the login session
+    "DBUS_SESSION_BUS_ADDRESS",
     "PATH",
 ];
 const HYPR_REQUIRED_VARS: [&str; 2] = ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"];
