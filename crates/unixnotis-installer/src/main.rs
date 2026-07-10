@@ -23,7 +23,6 @@ mod main_handlers;
 #[path = "main/tests.rs"]
 mod main_tests;
 mod model;
-#[path = "paths/index.rs"]
 mod paths;
 mod release;
 mod safe_write;
@@ -33,7 +32,7 @@ mod terminal;
 #[cfg(test)]
 #[path = "tests/mod.rs"]
 mod tests;
-#[path = "main/trial/index.rs"]
+#[path = "main/trial/mod.rs"]
 mod trial;
 mod ui;
 
