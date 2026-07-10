@@ -1,9 +1,9 @@
-//! Service-manager backend contract for installer-owned daemon startup.
+//! Service-manager backend contract for installer-owned daemon startup
 //!
 //! Installer actions call this service-manager contract instead of branching on systemd,
 //! dinit, runit, or s6 directly. Each backend owns its artifacts, command
 //! shapes, and session-startup lines so new init systems do not inherit
-//! systemd assumptions by accident.
+//! systemd assumptions by accident
 
 // Artifact data stays separate from writer code so tests can inspect planned writes
 mod artifact;
@@ -73,3 +73,7 @@ mod shell_tests;
 #[cfg(test)]
 #[path = "service_manager/tests/probe.rs"]
 mod probe_tests;
+
+#[cfg(test)]
+#[path = "service_manager/tests/command.rs"]
+mod command_tests;

@@ -1,4 +1,4 @@
-use super::{command, use_fake_tool_bin};
+use super::{command, program_path, use_fake_tool_bin};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -32,6 +32,59 @@ fn trusted_command_uses_explicit_test_fake_bin() {
         .expect("fake tool status");
 
     assert!(status.success());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn trusted_program_rejects_empty_names() {
+    let root = test_root("trusted-tool-empty-name");
+    fs::create_dir_all(&root).expect("fake bin");
+    let _fake = use_fake_tool_bin(&root);
+
+    let err = program_path("").expect_err("empty tool name must be rejected");
+
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn trusted_program_rejects_names_with_path_separators() {
+    let root = test_root("trusted-tool-path-name");
+    fs::create_dir_all(&root).expect("fake bin");
+    write_executable(&root.join("tool"), "#!/bin/sh\nexit 0\n");
+    let _fake = use_fake_tool_bin(&root);
+
+    let err = program_path("./tool").expect_err("path-like tool name must be rejected");
+
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn trusted_program_rejects_regular_files_without_execute_bits() {
+    let root = test_root("trusted-tool-not-executable");
+    fs::create_dir_all(&root).expect("fake bin");
+    fs::write(root.join("tool"), "plain data").expect("fake tool");
+    let _fake = use_fake_tool_bin(&root);
+
+    let err = program_path("tool").expect_err("non-executable tool must be rejected");
+
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn trusted_program_accepts_files_with_only_execute_bits() {
+    let root = test_root("trusted-tool-execute-only");
+    fs::create_dir_all(&root).expect("fake bin");
+    let tool = root.join("tool");
+    fs::write(&tool, "plain data").expect("fake tool");
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o111)).expect("fake tool mode");
+    let _fake = use_fake_tool_bin(&root);
+
+    let resolved = program_path("tool").expect("execute-only tool should resolve");
+
+    assert_eq!(resolved, tool);
     let _ = fs::remove_dir_all(root);
 }
 

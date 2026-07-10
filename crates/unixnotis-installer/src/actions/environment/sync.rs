@@ -1,4 +1,4 @@
-//! Session environment import for D-Bus activation and the selected service manager.
+//! Session environment import for D-Bus activation and the selected service manager
 
 use std::env;
 
@@ -83,8 +83,14 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
         for spec in specs {
             log_line(ctx, format!("Syncing environment with {}", spec.program()));
             // Import commands can echo names or values on stdout on some setups
-            if let Err(err) = run_command_without_stdout(ctx, spec.label(), spec.to_command(), None)
-            {
+            let command = match spec.to_command() {
+                Ok(command) => command,
+                Err(err) => {
+                    log_line(ctx, format!("Warning: {}", err));
+                    continue;
+                }
+            };
+            if let Err(err) = run_command_without_stdout(ctx, spec.label(), command, None) {
                 log_line(ctx, format!("Warning: {}", err));
                 continue;
             }
