@@ -164,3 +164,34 @@ fn remove_trial_control_shim_preserves_symlink_to_wrong_target() {
     assert!(super::paths::path_exists_no_follow(&shim));
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+#[cfg(unix)]
+fn remove_trial_control_shim_treats_missing_path_as_already_clean() {
+    let root = temp_dir("remove-missing-shim");
+    let target = root.join("target").join("noticenterctl");
+    let shim = root.join("missing").join("noticenterctl");
+
+    let removed = remove_trial_control_shim(&shim, &target).expect("missing shim should be clean");
+
+    assert!(!removed);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+#[cfg(unix)]
+fn remove_trial_control_shim_reports_non_directory_parent() {
+    let root = temp_dir("inspect-invalid-shim-parent");
+    let parent = root.join("not-a-directory");
+    let shim = parent.join("noticenterctl");
+    let target = root.join("target").join("noticenterctl");
+    fs::write(&parent, "blocking file\n").expect("blocking parent file");
+
+    let error = remove_trial_control_shim(&shim, &target)
+        .expect_err("invalid shim parent should report inspection failure");
+
+    assert!(error
+        .to_string()
+        .contains("failed to inspect trial noticenterctl shim"));
+    let _ = fs::remove_dir_all(root);
+}
