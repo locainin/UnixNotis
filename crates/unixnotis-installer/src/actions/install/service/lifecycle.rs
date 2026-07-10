@@ -99,5 +99,5 @@ pub(in crate::actions::install) fn run_command_spec(
     ctx: &mut ActionContext,
     spec: &CommandSpec,
 ) -> Result<()> {
-    run_command(ctx, spec.label(), spec.to_command(), None)
+    run_command(ctx, spec.label(), spec.to_command()?, None)
 }

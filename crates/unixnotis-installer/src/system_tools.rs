@@ -15,13 +15,17 @@ thread_local! {
 const TRUSTED_TOOL_DIRS: [&str; 4] = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
 
 pub(crate) fn command(program: &str) -> std::io::Result<Command> {
-    let path = trusted_program_path(program).ok_or_else(|| {
+    let path = program_path(program)?;
+    Ok(Command::new(path))
+}
+
+pub(crate) fn program_path(program: &str) -> std::io::Result<PathBuf> {
+    trusted_program_path(program).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("{program} not found in trusted system tool directories"),
         )
-    })?;
-    Ok(Command::new(path))
+    })
 }
 
 pub(crate) fn program_exists(program: &str) -> bool {

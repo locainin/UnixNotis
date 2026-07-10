@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use unixnotis_core::program_in_path;
+use crate::system_tools;
 
 use super::artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER};
 use super::command::CommandSpec;
@@ -192,7 +192,7 @@ pub fn pre_start_artifacts_to_write(_artifact_root: &Path) -> Vec<ServiceArtifac
 }
 
 pub fn readiness_issues() -> Vec<ReadinessIssue> {
-    if program_in_path("chpst") {
+    if system_tools::program_exists("chpst") {
         Vec::new()
     } else {
         vec![ReadinessIssue::error(

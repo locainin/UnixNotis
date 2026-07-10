@@ -1,8 +1,10 @@
 use std::fs;
 use std::os::unix::fs::symlink;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use crate::service_manager::{ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_RUNIT_SERVICE};
+use crate::system_tools::use_fake_tool_bin;
 
 #[test]
 fn runit_backend_renders_service_directory_and_run_script() {
@@ -258,8 +260,60 @@ fn runit_backend_escapes_run_script_command_path_with_quotes() {
     );
 }
 
+#[test]
+fn runit_readiness_rejects_chpst_that_exists_only_on_path() {
+    let root = test_root("runit-path-only-chpst");
+    let path_bin = root.join("path-bin");
+    let trusted_bin = root.join("trusted-bin");
+    fs::create_dir_all(&path_bin).expect("path bin");
+    fs::create_dir_all(&trusted_bin).expect("trusted bin");
+    write_executable(path_bin.join("chpst"), "#!/bin/sh\nexit 0\n");
+    let _path = EnvPathGuard::prepend(&path_bin);
+    let _tools = use_fake_tool_bin(&trusted_bin);
+
+    let issues = ServiceManager::runit_user(root.join("service")).readiness_issues();
+
+    assert!(issues
+        .iter()
+        .any(|issue| issue.message().contains("chpst not found")));
+
+    let _ = fs::remove_dir_all(root);
+}
+
 fn test_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     root
+}
+
+fn write_executable(path: PathBuf, contents: &str) {
+    fs::write(&path, contents).expect("write fake executable");
+    let mut permissions = fs::metadata(&path)
+        .expect("fake executable metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).expect("chmod fake executable");
+}
+
+struct EnvPathGuard {
+    previous: Option<std::ffi::OsString>,
+}
+
+impl EnvPathGuard {
+    fn prepend(path: &Path) -> Self {
+        let previous = std::env::var_os("PATH");
+        let old_path = previous.clone().unwrap_or_default();
+        let new_path = format!("{}:{}", path.display(), old_path.to_string_lossy());
+        std::env::set_var("PATH", new_path);
+        Self { previous }
+    }
+}
+
+impl Drop for EnvPathGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => std::env::set_var("PATH", value),
+            None => std::env::remove_var("PATH"),
+        }
+    }
 }

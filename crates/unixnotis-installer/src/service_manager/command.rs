@@ -1,5 +1,7 @@
 use std::process::{Command, Stdio};
 
+use crate::system_tools;
+
 #[cfg(test)]
 use std::cell::RefCell;
 #[cfg(test)]
@@ -74,8 +76,8 @@ impl CommandSpec {
         &self.envs
     }
 
-    pub fn to_command(&self) -> Command {
-        let mut command = Command::new(command_program(&self.program));
+    pub fn to_command(&self) -> std::io::Result<Command> {
+        let mut command = Command::new(command_program(&self.program)?);
         // CommandSpec never goes through a shell, which keeps service-manager commands predictable
         command.args(&self.args);
         for (name, value) in &self.envs {
@@ -88,19 +90,19 @@ impl CommandSpec {
         if self.suppress_stderr {
             command.stderr(Stdio::null());
         }
-        command
+        Ok(command)
     }
 }
 
-fn command_program(program: &str) -> std::ffi::OsString {
+fn command_program(program: &str) -> std::io::Result<std::ffi::OsString> {
     #[cfg(test)]
     if let Some(fake_program) = fake_command_program(program) {
         // Test-only fake routing keeps CommandSpec execution deterministic under cargo test
-        return fake_program.into_os_string();
+        return Ok(fake_program.into_os_string());
     }
 
-    // Production always executes the program name exactly as the backend provided it
-    program.into()
+    // Production resolves backend tools from trusted system directories, not inherited PATH
+    system_tools::program_path(program).map(|path| path.into_os_string())
 }
 
 #[cfg(test)]

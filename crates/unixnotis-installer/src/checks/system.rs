@@ -69,7 +69,7 @@ fn availability_check_item(
     spec: &CommandSpec,
     issues: &[ReadinessIssue],
 ) -> CheckItem {
-    match spec.to_command().status() {
+    match spec.to_command().and_then(|mut command| command.status()) {
         Ok(status) if status.success() => match readiness_warning_detail(manager, issues) {
             // A manager can be available while still needing user setup for autostart
             Some(detail) => CheckItem::warn("Service manager", &detail),

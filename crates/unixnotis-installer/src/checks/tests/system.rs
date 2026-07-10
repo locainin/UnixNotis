@@ -18,29 +18,6 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     crate::tests::env::test_env_lock()
 }
 
-struct EnvGuard {
-    key: &'static str,
-    old: Option<String>,
-}
-
-impl EnvGuard {
-    fn set(key: &'static str, value: impl AsRef<str>) -> Self {
-        let old = env::var(key).ok();
-        env::set_var(key, value.as_ref());
-        Self { key, old }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match &self.old {
-            // Restore fake PATHs so unrelated tests see the original command lookup
-            Some(value) => env::set_var(self.key, value),
-            None => env::remove_var(self.key),
-        }
-    }
-}
-
 #[test]
 fn readiness_error_detail_collects_only_blocking_issues() {
     let issues = [
@@ -90,7 +67,7 @@ fn service_manager_check_fails_for_s6_missing_live_directory() {
     let root = test_root("s6-missing-live-check");
     let fake_bin = root.join("fake-bin");
     write_fake_s6_tools(&fake_bin);
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
     let data = root.join("s6");
     let default_dir = data.join("sv").join("default");
     fs::create_dir_all(&default_dir).expect("default bundle dir");
@@ -110,7 +87,7 @@ fn service_manager_check_warns_for_initializable_s6_layout() {
     let root = test_root("s6-initializable-check");
     let fake_bin = root.join("fake-bin");
     write_fake_s6_tools(&fake_bin);
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
     let data = root.join("s6");
     let live = root.join("run").join("s6-rc");
     fs::create_dir_all(&live).expect("live dir");
@@ -133,7 +110,7 @@ fn service_manager_check_fails_when_s6_required_tool_is_missing() {
     let root = test_root("s6-missing-tool-check");
     let fake_bin = root.join("fake-bin");
     write_fake_s6_tools_except(&fake_bin, "s6-envdir");
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
     let data = root.join("s6");
     let default_dir = data.join("sv").join("default");
     fs::create_dir_all(&default_dir).expect("default bundle dir");
@@ -155,7 +132,7 @@ fn service_manager_check_fails_for_user_owned_s6_default_type() {
     let root = test_root("s6-invalid-default-type-check");
     let fake_bin = root.join("fake-bin");
     write_fake_s6_tools(&fake_bin);
-    let _path = EnvGuard::set("PATH", fake_bin.to_string_lossy());
+    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
     let data = root.join("s6");
     let default_dir = data.join("sv").join("default");
     fs::create_dir_all(&default_dir).expect("default bundle dir");
