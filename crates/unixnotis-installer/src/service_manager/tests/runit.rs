@@ -110,10 +110,20 @@ fn runit_backend_commands_match_expected_behavior() {
 #[test]
 fn runit_backend_environment_sync_uses_envdir_artifacts() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
-    let names = ["WAYLAND_DISPLAY", "DISPLAY", "XDG_RUNTIME_DIR", "PATH"];
+    let names = [
+        "WAYLAND_DISPLAY",
+        "DISPLAY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "PATH",
+    ];
     let vars = [
         ("WAYLAND_DISPLAY", "wayland-1\nignored".to_string()),
         ("XDG_RUNTIME_DIR", "/run/user/1000\t ".to_string()),
+        (
+            "DBUS_SESSION_BUS_ADDRESS",
+            "unix:path=/tmp/unixnotis-bus".to_string(),
+        ),
     ];
 
     // runit has no manager environment import command, so sync is pure envdir artifacts
@@ -121,7 +131,7 @@ fn runit_backend_environment_sync_uses_envdir_artifacts() {
     let artifacts = manager.environment_sync_artifacts(&names, &vars);
 
     assert!(commands.is_empty());
-    assert_eq!(artifacts.len(), 4);
+    assert_eq!(artifacts.len(), 5);
     assert_eq!(
         artifacts[0].path,
         PathBuf::from("/tmp/service/unixnotis-daemon/env")
@@ -144,6 +154,14 @@ fn runit_backend_environment_sync_uses_envdir_artifacts() {
         PathBuf::from("/tmp/service/unixnotis-daemon/env/XDG_RUNTIME_DIR")
     );
     assert_eq!(artifacts[3].contents.as_deref(), Some("/run/user/1000\n"));
+    assert_eq!(
+        artifacts[4].path,
+        PathBuf::from("/tmp/service/unixnotis-daemon/env/DBUS_SESSION_BUS_ADDRESS")
+    );
+    assert_eq!(
+        artifacts[4].contents.as_deref(),
+        Some("unix:path=/tmp/unixnotis-bus\n")
+    );
     // PATH is intentionally excluded because the run script sets a safe fixed PATH first
     assert!(!artifacts
         .iter()

@@ -135,16 +135,25 @@ fn s6_backend_environment_sync_uses_envdir_artifacts() {
         PathBuf::from("/tmp/s6-data"),
         PathBuf::from("/run/user/s6-rc"),
     );
-    let names = ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "PATH"];
+    let names = [
+        "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "PATH",
+    ];
     let vars = [
         ("WAYLAND_DISPLAY", "wayland-1\nignored".to_string()),
         ("XDG_RUNTIME_DIR", "/run/user/1000\t ".to_string()),
+        (
+            "DBUS_SESSION_BUS_ADDRESS",
+            "unix:path=/tmp/unixnotis-bus".to_string(),
+        ),
     ];
 
     // s6-envdir reads files at service start, so sync writes artifact files instead of commands
     let artifacts = manager.environment_sync_artifacts(&names, &vars);
 
-    assert_eq!(artifacts.len(), 3);
+    assert_eq!(artifacts.len(), 4);
     assert_eq!(
         artifacts[0].path,
         PathBuf::from("/tmp/s6-data/sv/unixnotis-daemon/env")
@@ -159,6 +168,14 @@ fn s6_backend_environment_sync_uses_envdir_artifacts() {
         PathBuf::from("/tmp/s6-data/sv/unixnotis-daemon/env/XDG_RUNTIME_DIR")
     );
     assert_eq!(artifacts[2].contents.as_deref(), Some("/run/user/1000\n"));
+    assert_eq!(
+        artifacts[3].path,
+        PathBuf::from("/tmp/s6-data/sv/unixnotis-daemon/env/DBUS_SESSION_BUS_ADDRESS")
+    );
+    assert_eq!(
+        artifacts[3].contents.as_deref(),
+        Some("unix:path=/tmp/unixnotis-bus\n")
+    );
     // PATH is excluded for the same reason as runit: the run script fixes lookup first
     assert!(!artifacts
         .iter()
