@@ -105,13 +105,11 @@ fn copy_binary(ctx: &mut ActionContext, source: &Path, destination: &Path) -> Re
     let source_display = format_with_home(source);
     let destination_display = format_with_home(destination);
     // Stage the copy beside the final file so the rename can replace atomically
-    let temp_path = binary_temp_path(destination);
-
-    stage_binary_copy(source, &temp_path).map_err(|err| {
+    let temp_path = stage_binary_copy_with_retry(source, destination).map_err(|err| {
         anyhow!(
             "failed to stage {} -> {}: {}",
             source_display,
-            format_with_home(&temp_path),
+            destination_display,
             err
         )
     })?;
@@ -167,4 +165,37 @@ fn stage_binary_copy(source: &Path, temp_path: &Path) -> io::Result<()> {
     fs::set_permissions(temp_path, permissions).inspect_err(|_err| {
         let _ = fs::remove_file(temp_path);
     })
+}
+
+fn stage_binary_copy_with_retry(source: &Path, destination: &Path) -> io::Result<PathBuf> {
+    for attempt in 0..16 {
+        let temp_path = binary_temp_path_attempt(destination, attempt);
+        match stage_binary_copy(source, &temp_path) {
+            Ok(()) => return Ok(temp_path),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not allocate a safe temporary binary path",
+    ))
+}
+
+fn binary_temp_path_attempt(destination: &Path, attempt: u8) -> PathBuf {
+    if attempt == 0 {
+        return binary_temp_path(destination);
+    }
+    let file_name = destination
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock moved backwards")
+        .as_nanos();
+    destination.with_file_name(format!(
+        "{file_name}.tmp-{}-{nonce}-{attempt}",
+        std::process::id()
+    ))
 }
