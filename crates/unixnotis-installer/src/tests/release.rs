@@ -84,6 +84,9 @@ fn release_tag_compare_detects_newer_patch_minor_and_major() {
     assert!(!release_tag_is_newer("v1.0.0", "v1.0.0"));
     assert!(!release_tag_is_newer("v0.9.9", "v1.0.0"));
     assert!(!release_tag_is_newer("v1.2.3-beta.1", "v1.2.3"));
+    assert!(!release_tag_is_newer("v1.2.3+build.4", "v1.2.3"));
+    assert!(!release_tag_is_newer("v1.2.3", "v1.2.3+build.4"));
+    assert!(release_tag_is_newer("v1.2.3", "v1.2.3-beta.1"));
 }
 
 #[test]

@@ -11,8 +11,8 @@ use super::super::{hyprland, icons, panel, widgets, UiState, UiStateInit};
 use super::actions::{connect_clear_button, connect_close_button, connect_dnd_toggle};
 use super::autoclose::connect_auto_close;
 use super::builders::{
-    build_media_widget, build_notification_list, build_widget_sections, config_dir_for_widgets,
-    has_visible_widget_section,
+    build_media_widget, build_notification_list, build_widget_sections, has_visible_widget_section,
+    icon_resolver_for_widgets,
 };
 use super::keyboard::connect_keyboard_shortcuts;
 use super::search::{connect_filter_entry, connect_search_toggle, connect_widget_collapse_toggle};
@@ -34,10 +34,9 @@ impl UiState {
         let dnd_guard = Rc::new(Cell::new(false));
         let search_toggle_guard = Rc::new(Cell::new(false));
         let panel_visible_flag = Arc::new(AtomicBool::new(false));
-        let widget_icon_resolver =
-            unixnotis_core::IconAssetResolver::new(config_dir_for_widgets(&init.config_path));
+        let widget_icon_resolver = icon_resolver_for_widgets(&init.config_path);
         let media = build_media_widget(&panel, &init);
-        let extra_widgets = build_widget_sections(&panel, &init);
+        let extra_widgets = build_widget_sections(&panel, &init, &widget_icon_resolver);
         list.set_empty_layout(has_visible_widget_section(&panel));
 
         connect_dnd_toggle(&panel, dnd_guard.clone(), init.command_tx.clone());

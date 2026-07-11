@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
-use unixnotis_core::Config;
+use unixnotis_core::{parse_command, Config};
 
 use super::super::pathing::normalize_lexical_path;
 use super::collect::collect_command_references_from_config;
@@ -61,7 +61,8 @@ pub(crate) fn collect_host_specific_command_paths(
             let resolved_path = resolve_command_path_token(config_dir, &reference.command)?;
             let normalized_path = normalize_lexical_path(&resolved_path);
             // Only absolute host-local command paths under the config root are warned here
-            if !normalized_path.starts_with(&normalized_root) || !is_host_specific_path_token(token)
+            if !normalized_path.starts_with(&normalized_root)
+                || !is_host_specific_path_token(&token)
             {
                 return None;
             }
@@ -80,6 +81,15 @@ pub(crate) fn validate_config_command_paths_stay_in_root(
     config: &Config,
     mode_label: &str,
 ) -> Result<()> {
+    for reference in collect_command_references_from_config(config) {
+        parse_command(&reference.command).with_context(|| {
+            format!(
+                "{mode_label} because {} contains an invalid command",
+                reference.slot
+            )
+        })?;
+    }
+
     let outside_paths = collect_outside_command_paths(config_dir, config);
     if outside_paths.is_empty() {
         return Ok(());

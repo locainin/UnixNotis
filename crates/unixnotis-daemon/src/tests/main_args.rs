@@ -1,6 +1,11 @@
 use clap::Parser;
 
-use super::{restore_previous_or_fail, trial_mode::RestoreAction, Args, RestoreStrategy};
+use super::{
+    combine_run_and_restore, restore_previous_or_fail,
+    trial_mode::{RestoreAction, TrialState},
+    Args, RestoreStrategy,
+};
+use anyhow::anyhow;
 
 #[test]
 fn args_parse_check_mode_without_trial_flags() {
@@ -33,6 +38,38 @@ fn args_parse_trial_restore_process_and_run_seconds() {
     assert!(matches!(args.restore, RestoreStrategy::Process));
     assert_eq!(args.restore_wait_ms, 125);
     assert_eq!(args.run_seconds, Some(9));
+}
+
+#[test]
+fn startup_and_restoration_errors_are_both_preserved() {
+    let error = combine_run_and_restore(
+        Err(anyhow!("object registration failed")),
+        Err(anyhow!("previous daemon restart failed")),
+    )
+    .expect_err("combined failure");
+    let message = format!("{error:#}");
+
+    assert!(message.contains("object registration failed"));
+    assert!(message.contains("trial restoration also failed"));
+    assert!(message.contains("previous daemon restart failed"));
+}
+
+#[test]
+fn restoration_error_is_returned_after_successful_runtime() {
+    let error = combine_run_and_restore(Ok(()), Err(anyhow!("restore failed")))
+        .expect_err("restore failure");
+
+    assert_eq!(error.to_string(), "restore failed");
+}
+
+#[test]
+fn trial_restore_action_can_be_consumed_exactly_once() {
+    let mut trial = TrialState::with_restore_action_for_test(RestoreAction::Systemd {
+        unit: "mako.service".to_string(),
+    });
+
+    assert!(trial.take_restore_action().is_some());
+    assert!(trial.take_restore_action().is_none());
 }
 
 #[test]

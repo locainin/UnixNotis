@@ -1,6 +1,8 @@
 //! Trusted external tool lookup for installer probes
 
-use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
 #[cfg(test)]
@@ -11,8 +13,6 @@ thread_local! {
     // Tests can route trusted-tool probes without changing process-global PATH
     static FAKE_TOOL_BIN: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
-
-const TRUSTED_TOOL_DIRS: [&str; 4] = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
 
 pub(crate) fn command(program: &str) -> std::io::Result<Command> {
     let path = program_path(program)?;
@@ -42,12 +42,10 @@ fn trusted_program_path(program: &str) -> Option<PathBuf> {
         return fake_program_path(program);
     }
 
-    TRUSTED_TOOL_DIRS
-        .iter()
-        .map(|dir| Path::new(dir).join(program))
-        .find(|path| executable_file(path))
+    unixnotis_core::util::trusted_system_program_path(program)
 }
 
+#[cfg(test)]
 fn executable_file(path: &Path) -> bool {
     let Ok(metadata) = path.metadata() else {
         return false;
@@ -58,14 +56,14 @@ fn executable_file(path: &Path) -> bool {
     executable_mode(&metadata)
 }
 
-#[cfg(unix)]
+#[cfg(all(test, unix))]
 fn executable_mode(metadata: &std::fs::Metadata) -> bool {
     use std::os::unix::fs::PermissionsExt;
 
     metadata.permissions().mode() & 0o111 != 0
 }
 
-#[cfg(not(unix))]
+#[cfg(all(test, not(unix)))]
 fn executable_mode(_metadata: &std::fs::Metadata) -> bool {
     true
 }

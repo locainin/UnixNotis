@@ -113,8 +113,8 @@ impl StatItem {
             &config.label,
             config.icon.as_deref(),
             config.icon_asset.as_deref(),
+            16,
         ) {
-            icon.set_pixel_size(16);
             icon.add_css_class(hooks::stat_card::ICON);
             header.append(&icon);
             card.add_css_class(hooks::stat_card::HAS_ICON);

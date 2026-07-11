@@ -21,6 +21,7 @@ pub const SHELL_META_CHARS: [char; 15] = [
     '|', '&', ';', '<', '>', '$', '`', '(', ')', '{', '}', '[', ']', '*', '?',
 ];
 pub const CONFIG_PATH_ENV: &str = "UNIXNOTIS_CONFIG_PATH";
+pub const TRUSTED_SYSTEM_TOOL_DIRS: [&str; 4] = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
 const DEFAULT_LOG_LIMIT: usize = 160;
 const DIAGNOSTIC_LOG_LIMIT: usize = 512;
 
@@ -60,6 +61,18 @@ pub fn program_in_path(program: &str) -> bool {
         .as_ref()
         .map(|paths| env::split_paths(paths).any(|dir| is_executable_path(&dir.join(program))))
         .unwrap_or(false)
+}
+
+pub fn trusted_system_program_path(program: &str) -> Option<PathBuf> {
+    if program.is_empty() || program.contains(std::path::MAIN_SEPARATOR) {
+        return None;
+    }
+
+    // Security-sensitive helpers use an explicit FHS policy instead of attacker-controlled PATH
+    TRUSTED_SYSTEM_TOOL_DIRS
+        .iter()
+        .map(|directory| Path::new(directory).join(program))
+        .find(|path| is_executable_path(path))
 }
 
 /// Resolve XDG_STATE_HOME with the specification defaults.

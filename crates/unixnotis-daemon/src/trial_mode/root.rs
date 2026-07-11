@@ -32,8 +32,17 @@ impl TrialState {
         // take moves out the action so restore runs at most once
         self.restore_action.take()
     }
+
+    #[cfg(test)]
+    pub(super) fn with_restore_action_for_test(action: RestoreAction) -> Self {
+        // Tests construct an armed guard without stopping a real desktop daemon
+        Self {
+            restore_action: Some(action),
+        }
+    }
 }
 
+#[derive(Debug)]
 pub(super) enum RestoreAction {
     // Restart through the matching user unit
     Systemd { unit: String },
@@ -128,6 +137,7 @@ pub(super) async fn prepare_trial(
 
     // Step 3: stop current owner and capture restore plan when applicable
     let restore_action = control::stop_active_owner(args, &owner).await?;
+    let mut trial_state = TrialState { restore_action };
     // Step 4: wait until bus name is fully released before continuing startup
     let released = wait_for_owner_state(
         dbus_proxy,
@@ -135,17 +145,44 @@ pub(super) async fn prepare_trial(
         false,
         Duration::from_millis(args.restore_wait_ms),
     )
-    .await?;
+    .await;
+    let released = match released {
+        Ok(released) => released,
+        Err(wait_error) => {
+            return Err(restore_after_prepare_failure(&mut trial_state, wait_error));
+        }
+    };
     if !released {
-        return Err(anyhow!(
-            "org.freedesktop.Notifications did not release in time"
+        return Err(restore_after_prepare_failure(
+            &mut trial_state,
+            anyhow!("org.freedesktop.Notifications did not release in time"),
         ));
     }
 
     debug!("trial mode preparation complete");
-    Ok(TrialState { restore_action })
+    Ok(trial_state)
+}
+
+fn restore_after_prepare_failure(
+    trial_state: &mut TrialState,
+    prepare_error: anyhow::Error,
+) -> anyhow::Error {
+    let Some(action) = trial_state.take_restore_action() else {
+        return prepare_error;
+    };
+
+    // Preparation owns cleanup until a complete TrialState can be returned to main
+    match control::restore_previous(action) {
+        Ok(()) => prepare_error,
+        Err(restore_error) => {
+            prepare_error.context(format!("trial restoration also failed: {restore_error:#}"))
+        }
+    }
 }
 
 #[cfg(test)]
 #[path = "tests/known_daemons.rs"]
 mod known_daemons_tests;
+#[cfg(test)]
+#[path = "tests/root.rs"]
+mod tests;

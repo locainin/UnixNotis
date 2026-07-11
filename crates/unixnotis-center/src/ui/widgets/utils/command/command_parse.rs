@@ -3,85 +3,13 @@
 //! Keeps shell parsing and "slow command" classification localized so the
 //! enqueue/worker pipeline can stay focused on execution and backpressure.
 
-use glib::shell_parse_argv;
-use unixnotis_core::util::SHELL_META_CHARS;
-
-pub(super) struct ParsedCommand {
-    pub(super) env: Vec<(String, String)>,
-    pub(super) program: String,
-    pub(super) args: Vec<String>,
-}
-
-type EnvAssignments = Vec<(String, String)>;
+pub(super) use unixnotis_core::ParsedCommand;
+use unixnotis_core::{parse_command, ExecutionMode};
 
 pub(super) fn parse_simple_command(cmd: &str) -> Option<ParsedCommand> {
-    // Simple commands are parsed without a shell so quoting works but
-    // shell metacharacters still keep the command on the shell path
-    let cmd = cmd.trim();
-    if cmd.is_empty() || !is_shell_free_command(cmd) {
-        return None;
-    }
-    // Use GLib parsing to honor quoted arguments without invoking a shell.
-    // Parsing failures are treated as non-simple commands and routed through shell mode
-    let parts = shell_parse_argv(cmd)
-        .ok()?
-        .into_iter()
-        .map(|part| part.into_string().ok())
-        .collect::<Option<Vec<_>>>()?;
-    let (env, remaining) = split_leading_env_assignments(parts)?;
-    let mut parts = remaining.into_iter();
-    let program = parts.next()?;
-    let args = parts.collect::<Vec<_>>();
-    Some(ParsedCommand { env, program, args })
-}
-
-fn is_shell_free_command(cmd: &str) -> bool {
-    // This local check stays looser than unixnotis_core::util::is_simple_command because
-    // leading NAME=value pairs are safe to apply directly to a child process environment
-    if cmd
-        .chars()
-        .any(|ch| SHELL_META_CHARS.contains(&ch) || ch == '~' || ch == '\n' || ch == '\r')
-    {
-        return false;
-    }
-    true
-}
-
-fn split_leading_env_assignments(parts: Vec<String>) -> Option<(EnvAssignments, Vec<String>)> {
-    let mut env = Vec::new();
-    let mut index = 0usize;
-
-    // Only the leading NAME=value segment is treated as process-local environment
-    while let Some(part) = parts.get(index) {
-        let Some((name, value)) = split_env_assignment(part) else {
-            break;
-        };
-        env.push((name.to_string(), value.to_string()));
-        index += 1;
-    }
-
-    let remaining = parts.get(index..)?.to_vec();
-    if remaining.is_empty() {
-        return None;
-    }
-    Some((env, remaining))
-}
-
-fn split_env_assignment(token: &str) -> Option<(&str, &str)> {
-    let (name, value) = token.split_once('=')?;
-    // Keep assignment parsing strict so malformed shell syntax falls back to sh -c
-    if name.is_empty() {
-        return None;
-    }
-    let mut chars = name.chars();
-    let first = chars.next()?;
-    if !(first == '_' || first.is_ascii_alphabetic()) {
-        return None;
-    }
-    if chars.any(|ch| !(ch == '_' || ch.is_ascii_alphanumeric())) {
-        return None;
-    }
-    Some((name, value))
+    // Runtime consumes the same parsed representation used by preset security checks
+    let parsed = parse_command(cmd).ok()?;
+    (parsed.execution_mode == ExecutionMode::Direct).then_some(parsed)
 }
 
 pub(super) fn is_probably_slow(cmd: &str) -> bool {

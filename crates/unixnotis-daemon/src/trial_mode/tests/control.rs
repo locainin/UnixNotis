@@ -129,6 +129,37 @@ async fn stop_via_process_errors_when_trusted_kill_fails() {
 }
 
 #[tokio::test]
+async fn process_restore_is_fully_constructed_before_owner_is_stopped() {
+    let root = TempDirGuard::new("prepare-before-stop");
+    let marker = root.path.join("kill-was-called");
+    root.write_executable(
+        "kill",
+        &format!("#!/bin/sh\ntouch -- '{}'\n", marker.display()),
+    );
+    let _tools = use_fake_tool_bin(&root.path);
+    let args = Args {
+        config: None,
+        trial: true,
+        restore: RestoreStrategy::Process,
+        yes: true,
+        restore_wait_ms: 1,
+        check: false,
+        run_seconds: None,
+    };
+    let owner = OwnerInfo {
+        pid: Some(42),
+        comm: Some("mako".to_string()),
+        args: None,
+    };
+
+    stop_active_owner(&args, &owner)
+        .await
+        .expect_err("missing trusted restart program");
+
+    assert!(!marker.exists());
+}
+
+#[tokio::test]
 async fn stop_active_owner_returns_systemd_restore_action_in_auto_mode() {
     let root = TempDirGuard::new("auto-systemd");
     root.write_executable("systemctl", "#!/bin/sh\nexit 0\n");
