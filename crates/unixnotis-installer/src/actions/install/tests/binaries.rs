@@ -95,7 +95,7 @@ fn install_binaries_copies_from_release_archive_bin_dir() {
 
 #[cfg(unix)]
 #[test]
-fn install_binaries_rejects_preexisting_temp_symlink_without_touching_target() {
+fn install_binaries_bypasses_preexisting_temp_symlink_without_touching_it() {
     let _lock = crate::tests::env::test_env_lock();
     let root = test_root("install-binaries-temp-symlink");
     write_fake_workspace(
@@ -130,9 +130,8 @@ fn install_binaries_rejects_preexisting_temp_symlink_without_touching_target() {
     };
     let mut ctx = test_context(&detection, &paths, ActionMode::Install);
 
-    let error = install_binaries(&mut ctx).expect_err("preexisting temp symlink must fail");
+    install_binaries(&mut ctx).expect("alternate temp path should bypass stale symlink");
 
-    assert!(error.to_string().contains("failed to stage"));
     assert_eq!(
         fs::read_to_string(&protected).expect("protected remains"),
         "protected"
@@ -141,7 +140,7 @@ fn install_binaries_rejects_preexisting_temp_symlink_without_touching_target() {
         .expect("temp symlink remains")
         .file_type()
         .is_symlink());
-    assert!(!destination.exists());
+    assert!(destination.exists());
     let _ = fs::remove_dir_all(&root);
 }
 

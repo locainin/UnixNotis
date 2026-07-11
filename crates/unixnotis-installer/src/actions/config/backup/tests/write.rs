@@ -7,7 +7,7 @@ use std::os::unix::fs::symlink;
 
 #[cfg(unix)]
 #[test]
-fn write_atomic_rejects_preexisting_temp_symlink_without_touching_target() {
+fn write_atomic_bypasses_preexisting_temp_symlink_without_touching_it() {
     let root = test_root("backup-atomic-temp-symlink");
     let target = root.join("config.toml");
     let protected = root.join("protected");
@@ -16,10 +16,9 @@ fn write_atomic_rejects_preexisting_temp_symlink_without_touching_target() {
     fs::write(&protected, "protected").expect("protected");
     symlink(&protected, &temp_path).expect("temp symlink");
 
-    let error = write_atomic(&target, "new").expect_err("preexisting temp symlink must fail");
+    write_atomic(&target, "new").expect("alternate temp path");
 
-    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
-    assert_eq!(fs::read_to_string(&target).expect("target remains"), "old");
+    assert_eq!(fs::read_to_string(&target).expect("target updated"), "new");
     assert_eq!(
         fs::read_to_string(&protected).expect("protected remains"),
         "protected"
@@ -32,17 +31,16 @@ fn write_atomic_rejects_preexisting_temp_symlink_without_touching_target() {
 }
 
 #[test]
-fn write_atomic_rejects_preexisting_temp_regular_file_without_replacing_target() {
+fn write_atomic_bypasses_stale_temp_regular_file() {
     let root = test_root("backup-atomic-temp-regular");
     let target = root.join("config.toml");
     let temp_path = atomic_temp_path(&target);
     fs::write(&target, "old").expect("target");
     fs::write(&temp_path, "stale").expect("stale temp");
 
-    let error = write_atomic(&target, "new").expect_err("preexisting temp file must fail");
+    write_atomic(&target, "new").expect("alternate temp path");
 
-    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
-    assert_eq!(fs::read_to_string(&target).expect("target remains"), "old");
+    assert_eq!(fs::read_to_string(&target).expect("target updated"), "new");
     assert_eq!(
         fs::read_to_string(&temp_path).expect("temp remains"),
         "stale"

@@ -87,13 +87,7 @@ fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing parent directory")
     })?;
     fs::create_dir_all(parent)?;
-    let tmp_path = atomic_temp_path(path);
-
-    // The temp file is written fully before the final rename touches the live config
-    let mut temp_file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&tmp_path)?;
+    let (tmp_path, mut temp_file) = create_atomic_temp_file(path)?;
     temp_file
         .write_all(contents.as_bytes())
         .inspect_err(|_err| {
@@ -114,4 +108,38 @@ pub(super) fn atomic_temp_path(path: &Path) -> PathBuf {
     let file_name = path.file_name().unwrap_or_default().to_string_lossy();
     let tmp_name = format!("{file_name}.tmp-{}", std::process::id());
     path.with_file_name(tmp_name)
+}
+
+fn create_atomic_temp_file(path: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
+    for attempt in 0..16 {
+        let temp_path = atomic_temp_path_attempt(path, attempt);
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(file) => return Ok((temp_path, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "could not allocate a safe build config temporary path",
+    ))
+}
+
+fn atomic_temp_path_attempt(path: &Path, attempt: u8) -> PathBuf {
+    if attempt == 0 {
+        return atomic_temp_path(path);
+    }
+    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock moved backwards")
+        .as_nanos();
+    path.with_file_name(format!(
+        "{file_name}.tmp-{}-{nonce}-{attempt}",
+        std::process::id()
+    ))
 }
