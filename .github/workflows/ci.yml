@@ -55,7 +55,7 @@ jobs:
             zstd
 
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Trust checked-out repository
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
@@ -71,7 +71,7 @@ jobs:
           cargo install cargo-audit --locked --version 0.22.0
 
       - name: Cache Cargo state
-        uses: actions/cache@v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/git/db
@@ -94,9 +94,10 @@ jobs:
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-state \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-on \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-off
+          shellharden --check scripts/package-release.sh
 
       - name: Run workspace tests
-        run: xvfb-run -a dbus-run-session -- cargo test --workspace --all-features
+        run: xvfb-run -a dbus-run-session -- cargo test --workspace --all-targets --all-features
 
       - name: Run dependency audit
         run: cargo audit --deny warnings
@@ -110,3 +111,6 @@ jobs:
           -D warnings
           -W clippy::pedantic
           -W clippy::nursery
+
+      - name: Check patch whitespace
+        run: git diff --check
