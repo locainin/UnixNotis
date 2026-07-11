@@ -2,6 +2,7 @@
 //!
 //! Keeps config types, I/O, and runtime cleanup in separate files
 
+mod command_parse;
 mod commands;
 mod icon_assets;
 mod io;
@@ -14,10 +15,12 @@ mod theme;
 mod types;
 mod widget_config;
 
+pub use command_parse::{parse_command, CommandParseError, ExecutionMode, ParsedCommand};
 pub use icon_assets::{
-    resolve_icon_asset_path, resolve_icon_asset_path_with_policy, validate_icon_asset_reference,
-    AssetPolicy, IconAssetError, IconAssetResolver, DEFAULT_ICON_ASSET_EXTENSIONS,
-    DEFAULT_ICON_ASSET_MAX_BYTES,
+    resolve_icon_asset_path, resolve_icon_asset_path_with_policy, validate_icon_asset_contents,
+    validate_icon_asset_reference, AssetPolicy, IconAssetError, IconAssetResolver,
+    ResolvedIconAsset, DEFAULT_ICON_ASSET_EXTENSIONS, DEFAULT_ICON_ASSET_MAX_BYTES,
+    DEFAULT_ICON_ASSET_MAX_HEIGHT, DEFAULT_ICON_ASSET_MAX_PIXELS, DEFAULT_ICON_ASSET_MAX_WIDTH,
 };
 pub use io::{ConfigError, ThemePaths};
 pub use layout::*;

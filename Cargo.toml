@@ -54,6 +54,9 @@ ratatui = "0.30.0"
 crossterm = "0.28"
 unicode-width = "0.2.2"
 rustix = { version = "1.1", features = ["fs", "process"] }
+resvg = { version = "0.47.0", default-features = false }
+semver = "1.0.28"
+shell-words = "1.1.1"
 
 [workspace.metadata.unixnotis.installer]
 # Installer-managed binaries live in workspace metadata to avoid duplication between build and install logic.

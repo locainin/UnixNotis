@@ -137,6 +137,25 @@ fn rewrite_host_specific_command_paths_makes_commands_config_relative() {
 }
 
 #[test]
+fn rewrite_host_specific_command_inside_env_wrapper_preserves_assignments() {
+    let config_dir = temp_root("rewrite-env-wrapper");
+    let script_path = config_dir.join("scripts/probe tool");
+    let config = format!(
+        "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {:?}\n",
+        format!("env MODE='two words' '{}' --json", script_path.display())
+    );
+    let mut parsed: Config = toml::from_str(&config).expect("parse config");
+
+    let rewritten = rewrite_host_specific_command_paths(&config_dir, &mut parsed);
+
+    assert_eq!(rewritten.len(), 1);
+    assert_eq!(
+        parsed.widgets.stats[0].cmd.as_deref(),
+        Some("env 'MODE=two words' 'scripts/probe tool' --json")
+    );
+}
+
+#[test]
 fn rewrite_host_specific_toggle_command_paths_makes_commands_config_relative() {
     let config_dir = temp_root("rewrite-toggle-command");
     let script_path = config_dir.join("scripts/unixnotis-toggle-action");

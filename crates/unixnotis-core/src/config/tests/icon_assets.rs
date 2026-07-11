@@ -2,9 +2,13 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use image::codecs::png::PngEncoder;
+use image::{ExtendedColorType, ImageEncoder};
+
 use super::{
-    resolve_icon_asset_path, resolve_icon_asset_path_with_policy, validate_icon_asset_reference,
-    AssetPolicy, IconAssetError, IconAssetResolver,
+    resolve_icon_asset_path, resolve_icon_asset_path_with_policy, validate_dimensions,
+    validate_icon_asset_contents, validate_icon_asset_reference, AssetPolicy, IconAssetError,
+    IconAssetResolver,
 };
 
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -44,6 +48,15 @@ impl Drop for TempRoot {
     }
 }
 
+fn png_bytes(width: u32, height: u32) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let pixels = vec![0_u8; width as usize * height as usize * 4];
+    PngEncoder::new(&mut bytes)
+        .write_image(&pixels, width, height, ExtendedColorType::Rgba8)
+        .expect("encode png");
+    bytes
+}
+
 #[test]
 fn relative_svg_asset_resolves_inside_config_root() {
     let root = TempRoot::new("valid");
@@ -66,6 +79,98 @@ fn resolver_object_applies_config_root_and_policy() {
         .expect("resolve with resolver object");
 
     assert_eq!(resolved, expected);
+}
+
+#[test]
+fn disabled_resolver_never_falls_back_to_the_process_directory() {
+    let resolver = IconAssetResolver::disabled();
+
+    assert!(matches!(
+        resolver.resolve_icon_asset_path("assets/ram.svg"),
+        Err(IconAssetError::Disabled)
+    ));
+}
+
+#[test]
+fn largest_valid_png_is_rendered_inside_requested_icon_slot() {
+    let root = TempRoot::new("bounded-render");
+    root.write("assets/large.png", &png_bytes(512, 512));
+    let resolver = IconAssetResolver::new(root.path.clone());
+
+    let resolved = resolver
+        .resolve_icon_asset("assets/large.png", 16)
+        .expect("decode bounded icon");
+
+    assert_eq!((resolved.width, resolved.height), (16, 16));
+    assert_eq!(resolved.rgba.len(), 16 * 16 * 4);
+}
+
+#[test]
+fn decoded_dimensions_and_corrupt_signatures_are_rejected() {
+    let oversized = png_bytes(513, 1);
+    assert!(matches!(
+        validate_icon_asset_contents("assets/wide.png", &oversized),
+        Err(IconAssetError::Decode { .. } | IconAssetError::Dimensions { .. })
+    ));
+    assert!(matches!(
+        validate_icon_asset_contents("assets/corrupt.png", b"not a png"),
+        Err(IconAssetError::InvalidFormat(_))
+    ));
+}
+
+#[test]
+fn excessive_svg_dimensions_are_rejected_before_rendering() {
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="513" height="1"/>"#;
+
+    assert!(matches!(
+        validate_icon_asset_contents("assets/wide.svg", svg),
+        Err(IconAssetError::Dimensions { .. })
+    ));
+}
+
+#[test]
+fn dimension_policy_accepts_exact_limits_and_rejects_each_independent_boundary() {
+    let policy = AssetPolicy::default();
+    validate_dimensions(Path::new("icon.png"), 512, 512, policy).expect("exact limits");
+
+    for (width, height) in [(0, 1), (1, 0), (513, 1), (1, 513)] {
+        assert!(validate_dimensions(Path::new("icon.png"), width, height, policy).is_err());
+    }
+
+    let pixel_policy = AssetPolicy {
+        max_width: 512,
+        max_height: 512,
+        max_pixels: 100,
+        ..policy
+    };
+    assert!(validate_dimensions(Path::new("icon.png"), 11, 10, pixel_policy).is_err());
+}
+
+#[test]
+fn content_size_limit_is_inclusive_and_svg_image_nodes_are_rejected() {
+    let prefix = br#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>"#;
+    let mut exact = prefix.to_vec();
+    exact.resize(2_097_152, b' ');
+    validate_icon_asset_contents("assets/exact.svg", &exact).expect("exact byte limit");
+
+    let embedded = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><image href="/tmp/evil.png"/></svg>"#;
+    assert!(matches!(
+        validate_icon_asset_contents("assets/embedded.svg", embedded),
+        Err(IconAssetError::EmbeddedSvgImage(_))
+    ));
+}
+
+#[test]
+fn replacing_a_previously_validated_path_does_not_reuse_old_file_bytes() {
+    let root = TempRoot::new("replace-after-validation");
+    let path = root.write("assets/icon.png", &png_bytes(1, 1));
+    let resolver = IconAssetResolver::new(root.path.clone());
+    resolver
+        .resolve_icon_asset_path("assets/icon.png")
+        .expect("initial path validation");
+    std::fs::write(path, b"corrupt replacement").expect("replace icon bytes");
+
+    assert!(resolver.resolve_icon_asset("assets/icon.png", 16).is_err());
 }
 
 #[test]
@@ -139,6 +244,7 @@ fn oversized_asset_returns_error() {
     let policy = AssetPolicy {
         max_bytes: 4,
         allowed_extensions: &["png"],
+        ..AssetPolicy::default()
     };
 
     assert!(resolve_icon_asset_path_with_policy(&root.path, "assets/huge.png", policy).is_err());
@@ -151,6 +257,7 @@ fn asset_at_exact_size_limit_is_allowed() {
     let policy = AssetPolicy {
         max_bytes: 4,
         allowed_extensions: &["png"],
+        ..AssetPolicy::default()
     };
 
     assert!(resolve_icon_asset_path_with_policy(&root.path, "assets/exact.png", policy).is_ok());

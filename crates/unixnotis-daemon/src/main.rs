@@ -12,7 +12,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
 use tokio::sync::watch;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
@@ -141,6 +141,33 @@ async fn main() -> Result<()> {
         TrialState::default()
     };
 
+    // Trial cleanup runs after every daemon result, including partial startup failures
+    let run_result = run_daemon(
+        &args,
+        config,
+        &connection,
+        &dbus_proxy,
+        notifications_name.clone(),
+    )
+    .await;
+    let restore_result = finish_trial(
+        &args,
+        &connection,
+        &dbus_proxy,
+        notifications_name,
+        &mut trial_state,
+    )
+    .await;
+    combine_run_and_restore(run_result, restore_result)
+}
+
+async fn run_daemon(
+    args: &Args,
+    config: Config,
+    connection: &Connection,
+    dbus_proxy: &DBusProxy<'_>,
+    notifications_name: zbus::names::BusName<'_>,
+) -> Result<()> {
     // Resolve sound settings once to avoid repeated filesystem work
     let sound_settings = SoundSettings::from_config(&config);
     let state = DaemonState::new(connection.clone(), config, sound_settings, args.trial);
@@ -160,7 +187,7 @@ async fn main() -> Result<()> {
         .at(CONTROL_OBJECT_PATH, ControlServer::new(state.clone()))
         .await?;
 
-    let control_reply = request_control_name(&connection).await?;
+    let control_reply = request_control_name(connection).await?;
     match control_reply {
         zbus::fdo::RequestNameReply::PrimaryOwner => {
             info!(CONTROL_BUS_NAME, "acquired control bus name");
@@ -175,10 +202,10 @@ async fn main() -> Result<()> {
         }
     }
 
-    let reply = request_well_known_name(&connection, args.trial).await?;
+    let reply = request_well_known_name(connection, args.trial).await?;
     log_name_reply(&reply);
     let owner_is_self =
-        match log_current_owner(&dbus_proxy, &connection, notifications_name.clone()).await {
+        match log_current_owner(dbus_proxy, connection, notifications_name.clone()).await {
             Ok(value) => value,
             Err(err) => {
                 warn!(?err, "failed to query current notification owner");
@@ -238,36 +265,74 @@ async fn main() -> Result<()> {
         warn!(?err, "center supervisor task failed");
     }
 
-    if args.trial {
-        if let Err(err) = connection
-            .release_name("org.freedesktop.Notifications")
-            .await
-        {
-            error!(?err, "failed to release notification name");
-        }
+    Ok(())
+}
 
-        if let Some(action) = trial_state.take_restore_action() {
-            restore_previous_or_fail(action)?;
-
-            let reacquired = wait_for_owner_state(
-                &dbus_proxy,
-                zbus::names::BusName::try_from("org.freedesktop.Notifications")?,
-                true,
-                Duration::from_millis(args.restore_wait_ms),
-            )
-            .await
-            .context("wait for previous daemon to reacquire org.freedesktop.Notifications")?;
-
-            if !reacquired {
-                anyhow::bail!(
-                    "previous daemon did not reacquire org.freedesktop.Notifications within {} ms",
-                    args.restore_wait_ms
-                );
-            }
-        }
+async fn finish_trial(
+    args: &Args,
+    connection: &Connection,
+    dbus_proxy: &DBusProxy<'_>,
+    notifications_name: zbus::names::BusName<'_>,
+    trial_state: &mut TrialState,
+) -> Result<()> {
+    if !args.trial {
+        return Ok(());
     }
 
+    // Releasing the name and restarting the prior owner are independent cleanup duties
+    let release_result = connection
+        .release_name("org.freedesktop.Notifications")
+        .await
+        .context("release org.freedesktop.Notifications after trial")
+        .map(|_| ());
+    let restore_result = restore_trial_owner(
+        args,
+        dbus_proxy,
+        notifications_name,
+        trial_state.take_restore_action(),
+    )
+    .await;
+
+    combine_run_and_restore(release_result, restore_result)
+}
+
+async fn restore_trial_owner(
+    args: &Args,
+    dbus_proxy: &DBusProxy<'_>,
+    notifications_name: zbus::names::BusName<'_>,
+    action: Option<trial_mode::RestoreAction>,
+) -> Result<()> {
+    let Some(action) = action else {
+        return Ok(());
+    };
+
+    restore_previous_or_fail(action)?;
+    let reacquired = wait_for_owner_state(
+        dbus_proxy,
+        notifications_name,
+        true,
+        Duration::from_millis(args.restore_wait_ms),
+    )
+    .await
+    .context("wait for previous daemon to reacquire org.freedesktop.Notifications")?;
+    if !reacquired {
+        anyhow::bail!(
+            "previous daemon did not reacquire org.freedesktop.Notifications within {} ms",
+            args.restore_wait_ms
+        );
+    }
     Ok(())
+}
+
+fn combine_run_and_restore(run_result: Result<()>, restore_result: Result<()>) -> Result<()> {
+    match (run_result, restore_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(run_error), Ok(())) => Err(run_error),
+        (Ok(()), Err(restore_error)) => Err(restore_error),
+        (Err(run_error), Err(restore_error)) => {
+            Err(run_error.context(format!("trial restoration also failed: {restore_error:#}")))
+        }
+    }
 }
 
 fn restore_previous_or_fail(action: trial_mode::RestoreAction) -> Result<()> {

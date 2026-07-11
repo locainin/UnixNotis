@@ -140,41 +140,14 @@ fn latest_tag_from_json(bytes: &[u8]) -> Result<String, String> {
 fn release_tag_is_newer(latest: &str, current: &str) -> bool {
     // Unknown tag formats are treated as non-updates so prereleases cannot surprise users
     match (parse_version_tag(latest), parse_version_tag(current)) {
-        (Some(latest), Some(current)) => latest > current,
+        (Some(latest), Some(current)) => latest.cmp_precedence(&current).is_gt(),
         _ => false,
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct ReleaseVersion {
-    major: u32,
-    minor: u32,
-    patch: u32,
-    // Stable releases sort after prereleases with the same numeric version
-    stable: bool,
-}
-
-fn parse_version_tag(tag: &str) -> Option<ReleaseVersion> {
-    // Accept SemVer-like release tags while ignoring build metadata for ordering
-    let trimmed = tag.trim().trim_start_matches('v');
-    let (core, suffix) = trimmed
-        .split_once(['-', '+'])
-        .map_or((trimmed, None), |(core, suffix)| (core, Some(suffix)));
-    let mut parts = core.split('.');
-    // Tuple comparison keeps major/minor/patch ordering correct without string sorting
-    let major = parts.next()?.parse::<u32>().ok()?;
-    let minor = parts.next()?.parse::<u32>().ok()?;
-    let patch = parts.next()?.parse::<u32>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    let stable = suffix.is_none_or(|suffix| suffix.starts_with('+'));
-    Some(ReleaseVersion {
-        major,
-        minor,
-        patch,
-        stable,
-    })
+fn parse_version_tag(tag: &str) -> Option<semver::Version> {
+    // The SemVer implementation keeps build metadata out of precedence comparisons
+    semver::Version::parse(tag.trim().trim_start_matches('v')).ok()
 }
 
 #[cfg(test)]

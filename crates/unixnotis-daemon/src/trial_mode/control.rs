@@ -89,8 +89,9 @@ pub(super) async fn stop_active_owner(
         }
         RestoreStrategy::Process => {
             // Strict process mode always captures argv for later spawn
-            stop_via_process(pid).await?;
             let (program, args) = build_restart_command(owner, comm)?;
+            // A complete restart command must exist before the current owner is touched
+            stop_via_process(pid).await?;
             let program_snip = util::log_snippet(&program);
             debug!(
                 program = %program_snip,
@@ -108,8 +109,9 @@ pub(super) async fn stop_active_owner(
                     unit: known.unit.to_string(),
                 }))
             } else {
-                stop_via_process(pid).await?;
                 let (program, args) = build_restart_command(owner, comm)?;
+                // Auto mode follows the same prepare-before-stop transaction as strict mode
+                stop_via_process(pid).await?;
                 let program_snip = util::log_snippet(&program);
                 debug!(
                     program = %program_snip,

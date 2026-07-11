@@ -19,6 +19,54 @@ fn validation_rejects_ld_preload_path_that_leaves_root() {
 }
 
 #[test]
+fn validation_rejects_quoted_ld_preload_paths_that_leave_root() {
+    let config_dir = temp_root("quoted-ld-preload-outside");
+    for command in [
+        "LD_PRELOAD=\"/tmp/evil.so\" /bin/true",
+        "LD_PRELOAD='/tmp/evil.so' /bin/true",
+        "env LD_PRELOAD=/tmp/evil.so /bin/true",
+    ] {
+        let config = format!(
+            "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {command:?}\n"
+        );
+        validate_command_paths_in_config_bytes(
+            &config_dir,
+            config.as_bytes(),
+            "preset import blocked",
+        )
+        .expect_err("reject quoted or env-wrapped preload escape");
+    }
+}
+
+#[test]
+fn validation_rejects_tilde_program_and_malformed_quoting() {
+    let config_dir = temp_root("tilde-and-quote");
+    let tilde = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"~/outside-script\"\n";
+    validate_command_paths_in_config_bytes(&config_dir, tilde, "preset import blocked")
+        .expect_err("reject tilde program outside config root");
+
+    let malformed = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = 'echo \"unterminated'\n";
+    validate_command_paths_in_config_bytes(&config_dir, malformed, "preset import blocked")
+        .expect_err("reject malformed command quoting");
+}
+
+#[test]
+fn validation_rejects_home_override_and_env_wrapped_absolute_program() {
+    let config_dir = temp_root("home-and-env-program");
+    for command in ["HOME=/tmp ./script", "env SAFE=value /bin/true"] {
+        let config = format!(
+            "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {command:?}\n"
+        );
+        validate_command_paths_in_config_bytes(
+            &config_dir,
+            config.as_bytes(),
+            "preset import blocked",
+        )
+        .expect_err("reject path policy escape");
+    }
+}
+
+#[test]
 fn env_path_token_collector_finds_ld_preload_outside_root() {
     let config_dir = temp_root("ld-preload-token");
 
@@ -58,7 +106,7 @@ fn env_path_token_collector_ignores_unknown_env_names() {
 }
 
 #[test]
-fn env_path_token_collector_ignores_complex_shell_commands() {
+fn env_path_token_collector_defers_shell_assignment_scope_to_exec_review() {
     let config_dir = temp_root("complex-env-token");
 
     let outside =
