@@ -202,5 +202,5 @@ fn maybe_compact(heap: &mut BinaryHeap<ExpirationItem>, scheduled: &HashMap<u32,
 }
 
 #[cfg(test)]
-#[path = "expire_tests.rs"]
+#[path = "expire/tests/mod.rs"]
 mod tests;

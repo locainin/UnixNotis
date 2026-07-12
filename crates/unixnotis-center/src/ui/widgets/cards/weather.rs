@@ -33,3 +33,12 @@ pub(super) fn configure_card_icon(icon: &gtk::Image, config: &CardWidgetConfig) 
     }
     icon.add_css_class(hooks::info_card::ICON);
 }
+
+pub(super) fn card_icon_size(config: &CardWidgetConfig) -> u32 {
+    // Asset decoding and theme icons share one fixed logical slot per card kind
+    if matches!(config.kind.as_deref(), Some("weather")) {
+        24
+    } else {
+        18
+    }
+}

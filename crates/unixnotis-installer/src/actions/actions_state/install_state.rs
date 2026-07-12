@@ -57,8 +57,8 @@ impl InstallState {
 }
 
 pub fn check_install_state(paths: &InstallPaths) -> InstallState {
-    // Keep install state aligned with installer binary discovery.
-    // Best-effort resolution keeps install state usable even if workspace metadata is broken.
+    // Keep install state aligned with installer binary discovery
+    // Best-effort resolution keeps install state usable even if workspace metadata is broken
     let (binaries, warning) = resolve_install_binaries_best_effort(paths);
     let binaries = binaries
         .into_iter()
@@ -83,7 +83,7 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         enabled
     } else {
         match paths.service.is_enabled_command() {
-            Some(spec) => match spec.to_command().status() {
+            Some(spec) => match spec.to_command().and_then(|mut command| command.status()) {
                 // Command-backed managers still use the native manager status probe
                 Ok(status) => status.success(),
                 Err(err) => {

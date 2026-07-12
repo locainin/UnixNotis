@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use unixnotis_core::program_in_path;
+use crate::system_tools;
 
 use super::artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER};
 use super::command::CommandSpec;
@@ -207,7 +207,7 @@ pub fn readiness_issues(artifact_root: &Path, live_dir: &Path) -> Vec<ReadinessI
         "s6-svstat",
     ] {
         // Missing tools would fail after artifact writes, so treat them as hard blockers
-        if !program_in_path(program) {
+        if !system_tools::program_exists(program) {
             issues.push(ReadinessIssue::error(format!(
                 "{program} not found in PATH; s6 backend cannot fully run"
             )));

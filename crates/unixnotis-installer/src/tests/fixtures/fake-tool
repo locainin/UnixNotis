@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -eu
+
+tool_name=${0##*/}
+tool_root=${0%/*}
+script_path="${tool_root}/.${tool_name}.script"
+
+# Generated fixture logic is data so container filesystems never execute a fresh writable inode
+exec /bin/sh "$script_path" "$@"

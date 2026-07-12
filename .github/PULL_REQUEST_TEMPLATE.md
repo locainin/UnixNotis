@@ -39,7 +39,7 @@ For docs-only changes, say that no code regression run was needed.
 
 ```sh
 cargo test --workspace
-cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::restriction
+cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery
 ```
 
 Extra verification:

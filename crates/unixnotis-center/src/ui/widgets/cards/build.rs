@@ -9,7 +9,7 @@ use gtk::Align;
 use unixnotis_core::{css::hooks, CardLayout, CardWidgetConfig, IconAssetResolver};
 
 use super::super::icon_image::image_from_icon_config;
-use super::weather::{apply_card_kind_classes, configure_card_icon};
+use super::weather::{apply_card_kind_classes, card_icon_size, configure_card_icon};
 use super::{CardGrid, CardItem, RefreshBackoff};
 
 impl CardGrid {
@@ -98,6 +98,7 @@ impl CardItem {
             &config.title,
             config.icon.as_deref(),
             config.icon_asset.as_deref(),
+            card_icon_size(&config),
         ) {
             configure_card_icon(&icon, &config);
             header.append(&icon);

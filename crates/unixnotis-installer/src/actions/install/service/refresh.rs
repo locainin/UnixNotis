@@ -122,7 +122,7 @@ impl S6UpdateOutcome {
 }
 
 fn run_s6_database_update(ctx: &mut ActionContext, spec: &CommandSpec) -> Result<S6UpdateOutcome> {
-    let mut command = spec.to_command();
+    let mut command = spec.to_command()?;
     let output = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())

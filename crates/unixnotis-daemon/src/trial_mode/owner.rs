@@ -1,10 +1,11 @@
 use anyhow::Result;
 use tokio::fs;
-use tokio::process::Command as TokioCommand;
 use tokio::time::timeout;
 use tracing::warn;
 use unixnotis_core::util;
 use zbus::fdo::DBusProxy;
+
+use crate::system_tools;
 
 use super::{DetectedDaemon, OwnerInfo, KNOWN_DAEMONS, TRIAL_COMMAND_TIMEOUT};
 
@@ -115,7 +116,9 @@ pub(super) async fn is_unit_active(unit: &str) -> bool {
     // systemctl exit code is enough here, stdout is not needed
     let command_str = format!("systemctl --user is-active --quiet {unit}");
     let command_snip = util::log_snippet(&command_str);
-    let mut command = TokioCommand::new("systemctl");
+    let Ok(mut command) = system_tools::tokio_command("systemctl") else {
+        return false;
+    };
     command
         .arg("--user")
         .arg("is-active")
@@ -129,7 +132,7 @@ pub(super) async fn is_unit_active(unit: &str) -> bool {
 }
 
 pub(super) async fn run_command_output(
-    command: &mut TokioCommand,
+    command: &mut tokio::process::Command,
     command_snip: &str,
 ) -> Option<std::process::Output> {
     // Shared timeout wrapper prevents trial mode from hanging on slow commands
@@ -147,7 +150,7 @@ pub(super) async fn run_command_output(
 }
 
 pub(super) async fn run_command_status(
-    command: &mut TokioCommand,
+    command: &mut tokio::process::Command,
     command_snip: &str,
 ) -> Option<std::process::ExitStatus> {
     // Status wrapper mirrors output wrapper and keeps logging consistent
@@ -168,7 +171,9 @@ async fn pgrep_exact(name: &str) -> Vec<u32> {
     // pgrep -x avoids partial-name matches
     let command_str = format!("pgrep -x {name}");
     let command_snip = util::log_snippet(&command_str);
-    let mut command = TokioCommand::new("pgrep");
+    let Ok(mut command) = system_tools::tokio_command("pgrep") else {
+        return Vec::new();
+    };
     command.arg("-x").arg(name);
     let output = match run_command_output(&mut command, &command_snip).await {
         Some(output) => output,
@@ -195,7 +200,7 @@ async fn read_comm(pid: u32) -> Option<String> {
     }
     let command_str = format!("ps -p {pid} -o comm=");
     let command_snip = util::log_snippet(&command_str);
-    let mut command = TokioCommand::new("ps");
+    let mut command = system_tools::tokio_command("ps").ok()?;
     command
         .arg("-p")
         .arg(pid.to_string())
@@ -223,7 +228,7 @@ async fn read_args(pid: u32) -> Option<Vec<String>> {
     }
     let command_str = format!("ps -p {pid} -o args=");
     let command_snip = util::log_snippet(&command_str);
-    let mut command = TokioCommand::new("ps");
+    let mut command = system_tools::tokio_command("ps").ok()?;
     command
         .arg("-p")
         .arg(pid.to_string())
@@ -245,3 +250,7 @@ async fn read_args(pid: u32) -> Option<Vec<String>> {
         Some(parts)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/owner.rs"]
+mod tests;

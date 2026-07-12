@@ -33,11 +33,14 @@ impl ServiceProbe {
         match self {
             Self::ExitStatus(command) => {
                 // systemd and dinit status commands already encode active state in exit status
-                command.to_command().status().map(|status| status.success())
+                command
+                    .to_command()?
+                    .status()
+                    .map(|status| status.success())
             }
             Self::Stdout { command, parser } => {
                 // runit status needs stdout parsing because `sv check` can pass for down state
-                let output = command.to_command().output()?;
+                let output = command.to_command()?.output()?;
                 if !output.status.success() {
                     return Ok(false);
                 }

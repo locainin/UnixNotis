@@ -1,8 +1,9 @@
 use anyhow::{anyhow, Result};
 use std::process::Command as StdCommand;
-use tokio::process::Command as TokioCommand;
 use tracing::{debug, info, warn};
 use unixnotis_core::util;
+
+use crate::system_tools;
 
 use super::owner::{is_unit_active, run_command_status};
 use super::{Args, OwnerInfo, RestoreAction, RestoreStrategy, KNOWN_DAEMONS};
@@ -12,11 +13,8 @@ pub(crate) fn restore_previous(action: RestoreAction) -> Result<()> {
         RestoreAction::Systemd { unit } => {
             // Unit-based restore is safest when daemon was systemd-managed
             info!(unit, "restarting notification daemon unit");
-            let status = StdCommand::new("systemctl")
-                .arg("--user")
-                .arg("start")
-                .arg(&unit)
-                .status()?;
+            let mut command = system_tools::command("systemctl")?;
+            let status = command.arg("--user").arg("start").arg(&unit).status()?;
             if status.success() {
                 Ok(())
             } else {
@@ -91,8 +89,9 @@ pub(super) async fn stop_active_owner(
         }
         RestoreStrategy::Process => {
             // Strict process mode always captures argv for later spawn
+            let (program, args) = build_restart_command(owner, comm)?;
+            // A complete restart command must exist before the current owner is touched
             stop_via_process(pid).await?;
-            let (program, args) = build_restart_command(owner, comm);
             let program_snip = util::log_snippet(&program);
             debug!(
                 program = %program_snip,
@@ -110,8 +109,9 @@ pub(super) async fn stop_active_owner(
                     unit: known.unit.to_string(),
                 }))
             } else {
+                let (program, args) = build_restart_command(owner, comm)?;
+                // Auto mode follows the same prepare-before-stop transaction as strict mode
                 stop_via_process(pid).await?;
-                let (program, args) = build_restart_command(owner, comm);
                 let program_snip = util::log_snippet(&program);
                 debug!(
                     program = %program_snip,
@@ -129,7 +129,7 @@ async fn stop_via_systemd(unit: &str) -> Result<()> {
     info!(unit, "stopping notification daemon unit");
     let command_str = format!("systemctl --user stop {unit}");
     let command_snip = util::log_snippet(&command_str);
-    let mut command = TokioCommand::new("systemctl");
+    let mut command = system_tools::tokio_command("systemctl")?;
     command.arg("--user").arg("stop").arg(unit);
     let status = run_command_status(&mut command, &command_snip)
         .await
@@ -147,7 +147,7 @@ async fn stop_via_process(pid: u32) -> Result<()> {
     info!(pid, "stopping notification daemon process");
     let command_str = format!("kill -TERM {pid}");
     let command_snip = util::log_snippet(&command_str);
-    let mut command = TokioCommand::new("kill");
+    let mut command = system_tools::tokio_command("kill")?;
     command.arg("-TERM").arg(pid.to_string());
     let status = run_command_status(&mut command, &command_snip)
         .await
@@ -160,15 +160,20 @@ async fn stop_via_process(pid: u32) -> Result<()> {
     }
 }
 
-fn build_restart_command(owner: &OwnerInfo, fallback: &str) -> (String, Vec<String>) {
+fn build_restart_command(owner: &OwnerInfo, fallback: &str) -> Result<(String, Vec<String>)> {
     if let Some(args) = owner.args.as_ref() {
         let mut parts = args.clone();
         // Argv[0] is the executable path; the rest are forwarded as-is
         if !parts.is_empty() {
             let program = parts.remove(0);
-            return (program, parts);
+            return Ok((program, parts));
         }
     }
-    // Fallback uses process name when argv could not be collected
-    (fallback.to_string(), Vec::new())
+    // Missing argv leaves only a bare name, so resolve it through trusted system directories
+    let program = system_tools::program_path(fallback)?;
+    Ok((program.display().to_string(), Vec::new()))
 }
+
+#[cfg(test)]
+#[path = "tests/control.rs"]
+mod tests;

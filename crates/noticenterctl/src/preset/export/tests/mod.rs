@@ -169,6 +169,25 @@ fn export_rejects_theme_paths_that_leave_root_through_parent_traversal() {
 }
 
 #[test]
+fn export_rejects_override_path_that_leaves_root() {
+    // The last-loaded layer must follow the same containment policy as every other theme file
+    let root = TempDirGuard::new("override-theme-escape");
+    root.write(
+        "config.toml",
+        "[theme]\noverrides_css = \"../outside-overrides.css\"\n",
+    );
+
+    let bundle_path = root.path.join("demo.unixnotis");
+    let error = export_preset_from(&root.path, &bundle_path, &[], false)
+        .expect_err("reject override escape");
+
+    assert!(error
+        .to_string()
+        .contains("requires overrides_css to live under the config root"));
+    assert!(!bundle_path.exists());
+}
+
+#[test]
 fn export_rejects_absolute_plugin_command_outside_root() {
     // Shared presets should stay self-contained when commands point at local scripts
     let root = TempDirGuard::new("outside-command");

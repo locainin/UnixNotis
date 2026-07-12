@@ -13,6 +13,7 @@ use crate::service_manager::{
     use_fake_command_bin, ServiceManager, MANAGED_DIRECTORY_MARKER,
     MANAGED_DIRECTORY_MARKER_CONTENTS,
 };
+use crate::tests::fs::write_executable;
 
 use super::{check_install_state, check_install_state_step, ActionContext};
 
@@ -178,9 +179,7 @@ fn active_probe_errors_are_reported_as_conflict_warnings() {
         .expect("chmod non-executable systemctl");
     for command in ["sv", "s6-svstat"] {
         let path = fake_bin.join(command);
-        fs::write(&path, "#!/bin/sh\nexit 1\n").expect("fake inactive command");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
-            .expect("chmod fake inactive command");
+        write_executable(&path, "#!/bin/sh\nexit 1\n");
     }
     let _fake_bin = use_fake_command_bin(&fake_bin);
     let paths = InstallPaths {
@@ -211,17 +210,12 @@ fn install_check_blocks_when_different_backend_is_active() {
     for command in ["dinitctl", "sv", "s6-svstat"] {
         // Only systemd should look active; every other backend probe should stay inactive
         let path = fake_bin.join(command);
-        fs::write(&path, "#!/bin/sh\nexit 1\n").expect("fake inactive command");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
-            .expect("chmod fake inactive command");
+        write_executable(&path, "#!/bin/sh\nexit 1\n");
     }
-    fs::write(
+    write_executable(
         &fake_systemctl,
         "#!/bin/sh\ncase \" $* \" in *\" is-active \"*) exit 0 ;; *) exit 1 ;; esac\n",
-    )
-    .expect("fake systemctl");
-    fs::set_permissions(&fake_systemctl, fs::Permissions::from_mode(0o755))
-        .expect("chmod fake systemctl");
+    );
     let _fake_bin = use_fake_command_bin(&fake_bin);
     let paths = InstallPaths {
         repo_root: repo_root(),
@@ -321,9 +315,7 @@ fn fake_inactive_manager_commands(root: &Path) -> impl Drop {
     for command in ["systemctl", "dinitctl", "sv", "s6-svstat"] {
         // Exit 1 models a healthy inactive service for every active-state probe style
         let path = fake_bin.join(command);
-        fs::write(&path, "#!/bin/sh\nexit 1\n").expect("fake inactive command");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
-            .expect("chmod fake inactive command");
+        write_executable(&path, "#!/bin/sh\nexit 1\n");
     }
     // Active probes are command-backed, so route them away from the host managers
     use_fake_command_bin(&fake_bin)

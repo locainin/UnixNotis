@@ -185,6 +185,10 @@ fn dinit_backend_environment_sync_uses_setenv() {
     let vars = [
         ("WAYLAND_DISPLAY", "wayland-1".to_string()),
         ("XDG_RUNTIME_DIR", "/run/user/1000".to_string()),
+        (
+            "DBUS_SESSION_BUS_ADDRESS",
+            "unix:path=/tmp/unixnotis-bus".to_string(),
+        ),
     ];
 
     let commands = manager.environment_sync_commands(&vars, true);
@@ -193,13 +197,23 @@ fn dinit_backend_environment_sync_uses_setenv() {
     assert_eq!(commands[0].program(), "dinitctl");
     assert_eq!(
         commands[0].args(),
-        &["--user", "setenv", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"]
+        &[
+            "--user",
+            "setenv",
+            "WAYLAND_DISPLAY",
+            "XDG_RUNTIME_DIR",
+            "DBUS_SESSION_BUS_ADDRESS",
+        ]
     );
     assert_eq!(
         commands[0].envs(),
         &[
             ("WAYLAND_DISPLAY".to_string(), "wayland-1".to_string()),
             ("XDG_RUNTIME_DIR".to_string(), "/run/user/1000".to_string()),
+            (
+                "DBUS_SESSION_BUS_ADDRESS".to_string(),
+                "unix:path=/tmp/unixnotis-bus".to_string(),
+            ),
         ]
     );
 }

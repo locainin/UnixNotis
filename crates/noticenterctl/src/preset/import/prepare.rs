@@ -14,8 +14,7 @@ use super::super::pathing::{
 };
 use super::checks::{
     collect_imported_exec_content, validate_imported_command_paths_stay_in_root,
-    validate_imported_icon_asset_references, validate_imported_theme_paths_stay_in_root,
-    ImportedExecContent,
+    validate_imported_icon_assets, validate_imported_theme_paths_stay_in_root, ImportedExecContent,
 };
 use super::plan::{build_import_plan, ImportPlan};
 
@@ -89,7 +88,7 @@ pub(super) fn prepare_import(
     // Explicit path commands should stay inside the shared config root too
     validate_imported_command_paths_stay_in_root(config_dir, &effective_config_bytes)?;
     // Widget image assets must stay config-relative even though missing optional files can fall back at runtime
-    validate_imported_icon_asset_references(&effective_config_bytes)?;
+    validate_imported_icon_assets(&effective_config_bytes, &included_bundle_files)?;
     // Shared presets default to data-only imports unless the caller explicitly trusts exec content
     let exec_content =
         collect_imported_exec_content(&effective_config_bytes, &included_bundle_files)?;

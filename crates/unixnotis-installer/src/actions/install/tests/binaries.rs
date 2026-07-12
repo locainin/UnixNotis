@@ -3,11 +3,16 @@ use std::fs;
 use crate::detect::Detection;
 use crate::model::ActionMode;
 
+use super::super::binaries::binary_temp_path;
 use super::super::{install_binaries, remove_binaries};
 use super::support::{test_context, test_paths, test_root, write_fake_workspace};
 
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
+
 #[test]
 fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
+    let _lock = crate::tests::env::test_env_lock();
     // A fake workspace keeps the test focused on copy behavior instead of the real repo layout
     let root = test_root("install-binaries");
     write_fake_workspace(
@@ -85,6 +90,57 @@ fn install_binaries_copies_from_release_archive_bin_dir() {
         );
     }
 
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn install_binaries_bypasses_preexisting_temp_symlink_without_touching_it() {
+    let _lock = crate::tests::env::test_env_lock();
+    let root = test_root("install-binaries-temp-symlink");
+    write_fake_workspace(
+        &root,
+        &[
+            "unixnotis-daemon",
+            "unixnotis-popups",
+            "unixnotis-center",
+            "noticenterctl",
+        ],
+    );
+    let paths = test_paths(&root);
+    for binary in [
+        "unixnotis-daemon",
+        "unixnotis-popups",
+        "unixnotis-center",
+        "noticenterctl",
+    ] {
+        let source = paths.repo_root.join("target").join("release").join(binary);
+        fs::create_dir_all(source.parent().expect("release dir")).expect("make release dir");
+        fs::write(&source, format!("binary:{binary}")).expect("write fake binary");
+    }
+    fs::create_dir_all(&paths.bin_dir).expect("bin dir");
+    let destination = paths.bin_dir.join("unixnotis-daemon");
+    let temp_path = binary_temp_path(&destination);
+    let protected = root.join("protected");
+    fs::write(&protected, "protected").expect("protected");
+    symlink(&protected, &temp_path).expect("temp symlink");
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, &paths, ActionMode::Install);
+
+    install_binaries(&mut ctx).expect("alternate temp path should bypass stale symlink");
+
+    assert_eq!(
+        fs::read_to_string(&protected).expect("protected remains"),
+        "protected"
+    );
+    assert!(fs::symlink_metadata(&temp_path)
+        .expect("temp symlink remains")
+        .file_type()
+        .is_symlink());
+    assert!(destination.exists());
     let _ = fs::remove_dir_all(&root);
 }
 

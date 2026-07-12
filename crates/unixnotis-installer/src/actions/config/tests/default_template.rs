@@ -16,6 +16,13 @@ fn default_config_template_documents_panel_height_modes() {
 }
 
 #[test]
+fn default_config_template_exposes_final_theme_override_layer() {
+    let config_toml = render_default_config_toml(&Config::default()).expect("render config");
+
+    assert!(config_toml.contains("overrides_css = \"overrides.css\""));
+}
+
+#[test]
 fn default_config_template_uses_shipped_night_scripts() {
     let config_toml = render_default_config_toml(&Config::default()).expect("render config");
     let night_block = config_toml

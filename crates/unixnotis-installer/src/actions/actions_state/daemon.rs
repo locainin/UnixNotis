@@ -1,12 +1,13 @@
-//! Stop and verify the currently running notification daemon.
+//! Stop and verify the currently running notification daemon
 
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
 
 use super::{log_line, run_command, ActionContext};
+use crate::system_tools;
 
 pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
     let Some(owner) = ctx.detection.owner.as_ref() else {
@@ -16,7 +17,7 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
 
     let owner_pid = owner.pid;
     let owner_comm = owner.comm.as_deref();
-    // Prefer the bus-reported command name, but fall back to PID matching when comm is unavailable.
+    // Prefer the bus-reported command name, but fall back to PID matching when comm is unavailable
     let known = owner_comm
         .and_then(|comm| {
             ctx.detection
@@ -56,9 +57,10 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
                     .ok_or_else(|| {
                         anyhow!("service manager cannot stop unixnotis for reinstall")
                     })?;
-                (spec.label().to_string(), spec.to_command())
+                (spec.label().to_string(), spec.to_command()?)
             } else {
-                let mut command = Command::new("systemctl");
+                let mut command = system_tools::command("systemctl")
+                    .context("failed to locate trusted systemctl")?;
                 command.args(["--user", "disable", "--now", daemon.unit.as_str()]);
                 (
                     format!("systemctl --user disable --now {}", daemon.unit),
@@ -84,14 +86,14 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
 
         if let Some(pid) = owner_pid {
             log_line(ctx, format!("Stopping {} (pid {})", daemon.name, pid));
-            // If the process is already gone, the stop goal is satisfied.
+            // If the process is already gone, the stop goal is satisfied
             if !pid_alive(pid)? {
                 log_line(ctx, format!("Process {} already stopped.", pid));
                 return Ok(());
             }
-            // Re-check the command name to avoid signaling a recycled PID.
+            // Re-check the command name to avoid signaling a recycled PID
             if !pid_matches_comm(pid, &daemon.name)? {
-                // Re-check liveness to treat a natural exit as success.
+                // Re-check liveness to treat a natural exit as success
                 if !pid_alive(pid)? {
                     log_line(ctx, format!("Process {} already stopped.", pid));
                     return Ok(());
@@ -102,7 +104,8 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
                     daemon.name
                 ));
             }
-            let status = Command::new("kill")
+            let status = system_tools::command("kill")
+                .context("failed to locate trusted kill")?
                 .args(["-TERM", &pid.to_string()])
                 .status()
                 .context("failed to terminate notification daemon")?;
@@ -146,7 +149,7 @@ fn wait_for_exit(ctx: &mut ActionContext, pid: u32, expected_comm: &str) -> Resu
             log_line(ctx, format!("Process {} stopped.", pid));
             return Ok(());
         }
-        // PID reuse protection: verify the command name during the wait loop.
+        // PID reuse protection verifies the command name during the wait loop
         if !pid_matches_comm(pid, expected_comm)? {
             return Err(anyhow!(
                 "pid {} no longer matches expected daemon {}; aborting wait",
@@ -165,7 +168,8 @@ fn pid_alive(pid: u32) -> Result<bool> {
         return Ok(false);
     }
 
-    let status = Command::new("kill")
+    let status = system_tools::command("kill")
+        .context("failed to locate trusted kill")?
         .args(["-0", &pid.to_string()])
         // Dead-PID probes are expected during waits, so keep kill diagnostics out of the TUI
         .stdout(Stdio::null())
@@ -176,8 +180,9 @@ fn pid_alive(pid: u32) -> Result<bool> {
 }
 
 fn pid_matches_comm(pid: u32, expected: &str) -> Result<bool> {
-    // Validate the process name with ps before sending signals to avoid PID reuse hazards.
-    let output = Command::new("ps")
+    // Validate the process name with ps before sending signals to avoid PID reuse hazards
+    let output = system_tools::command("ps")
+        .context("failed to locate trusted ps")?
         .args(["-p", &pid.to_string(), "-o", "comm="])
         .output()
         .with_context(|| format!("failed to read comm for pid {pid}"))?;
@@ -194,7 +199,8 @@ fn pid_matches_comm(pid: u32, expected: &str) -> Result<bool> {
 
 fn is_systemd_unit_inactive(unit: &str) -> Result<bool> {
     // A failed stop command is only recoverable when systemd agrees the unit is no longer running
-    let output = Command::new("systemctl")
+    let output = system_tools::command("systemctl")
+        .context("failed to locate trusted systemctl")?
         .args(["--user", "is-active", unit])
         .output()
         .with_context(|| format!("failed to check systemd unit state for {unit}"))?;

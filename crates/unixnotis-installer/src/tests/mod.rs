@@ -4,5 +4,6 @@ mod app;
 mod detect;
 pub(crate) mod env;
 mod events;
+pub(crate) mod fs;
 mod model;
 mod terminal;

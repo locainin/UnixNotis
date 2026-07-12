@@ -6,6 +6,7 @@ mod commands;
 mod labels;
 
 #[cfg(test)]
+#[path = "tests/mod.rs"]
 mod tests;
 
 use gtk::pango::{EllipsizeMode, WrapMode};

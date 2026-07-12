@@ -221,6 +221,7 @@ impl ToggleItem {
             &config.label,
             Some(&icon_name),
             config.icon_asset.as_deref(),
+            18,
         ) {
             // Icon class controls size and tint in one place
             icon.add_css_class(hooks::toggle_card::ICON);

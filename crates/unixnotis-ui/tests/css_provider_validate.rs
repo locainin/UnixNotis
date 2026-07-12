@@ -1,14 +1,12 @@
 #![allow(
-    clippy::blanket_clippy_restriction_lints,
     clippy::implicit_return,
     clippy::nursery,
     clippy::needless_return,
     clippy::panic_in_result_fn,
     clippy::pedantic,
     clippy::question_mark_used,
-    clippy::restriction,
     clippy::std_instead_of_core,
-    reason = "workspace clippy runs use these groups as review signals, not as zero-tolerance policy gates"
+    reason = "pedantic and nursery cleanup is tracked incrementally across existing code"
 )]
 
 #[cfg(test)]

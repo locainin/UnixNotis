@@ -58,3 +58,17 @@ fn detect_wayland_display_scans_runtime_sockets_and_ignores_regular_files() {
 
     assert_eq!(detect_wayland_display().as_deref(), Some("wayland-3"));
 }
+
+#[cfg(unix)]
+#[test]
+fn detect_wayland_display_rejects_ambiguous_runtime_sockets() {
+    let _guard = env_lock();
+    let root = TempRoot::new("runtime-wayland-ambiguous");
+    let _first = test_support::bind_wayland_socket(&root.join("wayland-3"));
+    let _second = test_support::bind_wayland_socket(&root.join("wayland-5"));
+    let _runtime = EnvVarGuard::set("XDG_RUNTIME_DIR", root.path());
+    let _display = EnvVarGuard::remove("WAYLAND_DISPLAY");
+
+    // Multiple non-primary sockets are unsafe to guess between
+    assert_eq!(detect_wayland_display(), None);
+}

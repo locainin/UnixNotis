@@ -4,6 +4,7 @@ use crossterm::event::Event;
 
 pub enum UiMessage {
     Input(Event),
+    ReleaseStatus(crate::release::ReleaseStatus),
     Worker(WorkerEvent),
 }
 

@@ -1,7 +1,8 @@
 //! Build acceleration config writes and updates
 
-use std::fs;
-use std::path::Path;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use super::model::{BuildAccelDetection, BuildAccelOutcome};
 use super::wrapper::{format_build_accel_config, write_wrapper_script};
@@ -86,12 +87,59 @@ fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing parent directory")
     })?;
     fs::create_dir_all(parent)?;
+    let (tmp_path, mut temp_file) = create_atomic_temp_file(path)?;
+    temp_file
+        .write_all(contents.as_bytes())
+        .inspect_err(|_err| {
+            let _ = fs::remove_file(&tmp_path);
+        })?;
+    temp_file.flush().inspect_err(|_err| {
+        let _ = fs::remove_file(&tmp_path);
+    })?;
+    drop(temp_file);
+    fs::rename(&tmp_path, path).inspect_err(|_err| {
+        let _ = fs::remove_file(&tmp_path);
+    })?;
+    Ok(())
+}
+
+pub(super) fn atomic_temp_path(path: &Path) -> PathBuf {
+    // Temp paths must be predictable to clean up, but create_new keeps existing paths untrusted
     let file_name = path.file_name().unwrap_or_default().to_string_lossy();
     let tmp_name = format!("{file_name}.tmp-{}", std::process::id());
-    let tmp_path = path.with_file_name(tmp_name);
+    path.with_file_name(tmp_name)
+}
 
-    // The temp file is written fully before the final rename touches the live config
-    fs::write(&tmp_path, contents)?;
-    fs::rename(tmp_path, path)?;
-    Ok(())
+fn create_atomic_temp_file(path: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
+    for attempt in 0..16 {
+        let temp_path = atomic_temp_path_attempt(path, attempt);
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(file) => return Ok((temp_path, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "could not allocate a safe build config temporary path",
+    ))
+}
+
+fn atomic_temp_path_attempt(path: &Path, attempt: u8) -> PathBuf {
+    if attempt == 0 {
+        return atomic_temp_path(path);
+    }
+    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock moved backwards")
+        .as_nanos();
+    path.with_file_name(format!(
+        "{file_name}.tmp-{}-{nonce}-{attempt}",
+        std::process::id()
+    ))
 }

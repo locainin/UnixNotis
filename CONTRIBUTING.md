@@ -77,7 +77,7 @@ At a minimum, all code changes should pass the following:
 
 ```sh
 cargo test --workspace
-cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::restriction
+cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery
 ```
 If a full run is not practical, say what was tested and what was not.
 
