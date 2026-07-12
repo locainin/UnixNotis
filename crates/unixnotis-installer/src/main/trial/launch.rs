@@ -7,6 +7,7 @@ use anyhow::{anyhow, Result};
 use super::build::build_trial_binaries;
 use super::paths::shell_quote;
 use super::shim::ensure_trial_control_access;
+use crate::system_tools;
 
 const TRIAL_DAEMON_ARGS: [&str; 4] = ["--trial", "--restore", "auto", "--yes"];
 
@@ -42,7 +43,7 @@ fn run_trial_process(daemon_bin: &Path) -> Result<std::process::ExitStatus> {
         .map_err(|err| anyhow!("failed to run trial: {}", err))
 }
 
-fn run_trial_with_shim_cleanup(
+pub(super) fn run_trial_with_shim_cleanup(
     daemon_bin: &Path,
     shim_path: &Path,
     expected_target: &Path,
@@ -52,9 +53,12 @@ fn run_trial_with_shim_cleanup(
     let shim = shell_quote(shim_path.display().to_string().as_str());
     let target = shell_quote(expected_target.display().to_string().as_str());
     let script = trial_launch_script(&daemon, &shim, &target);
-    std::process::Command::new("sh")
+    system_tools::command("sh")
+        .map_err(|err| anyhow!("failed to locate trusted shell: {}", err))?
         .arg("-c")
         .arg(script)
+        // Cleanup helpers must not resolve through an attacker-controlled inherited PATH
+        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
         .status()
         .map_err(|err| anyhow!("failed to run trial: {}", err))
 }

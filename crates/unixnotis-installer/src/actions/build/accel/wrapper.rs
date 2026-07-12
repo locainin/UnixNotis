@@ -1,7 +1,8 @@
 //! Wrapper script generation for optional build acceleration
 
-use std::fs;
-use std::path::Path;
+use std::{fs, path::Path};
+
+use crate::safe_write::write_text_with_mode;
 
 pub(in crate::actions::build::accel) fn format_build_accel_config() -> String {
     // A wrapper script keeps builds working if accelerator tools disappear later
@@ -25,9 +26,7 @@ pub(in crate::actions::build::accel) fn write_wrapper_script(
         // Create the wrapper parent first so the later config write has a valid target
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
-    fs::write(wrapper_path, wrapper_script()).map_err(|err| err.to_string())?;
-    set_wrapper_permissions(wrapper_path).map_err(|err| err.to_string())?;
-    Ok(())
+    write_text_with_mode(wrapper_path, &wrapper_script(), 0o755).map_err(|err| err.to_string())
 }
 
 pub(in crate::actions::build::accel) fn wrapper_script() -> String {
@@ -72,19 +71,4 @@ pub(in crate::actions::build::accel) fn wrapper_script() -> String {
         "",
     ]
     .join("\n")
-}
-
-#[cfg(unix)]
-fn set_wrapper_permissions(wrapper_path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut perms = fs::metadata(wrapper_path)?.permissions();
-    // The wrapper must be executable or Cargo cannot launch it
-    perms.set_mode(0o755);
-    fs::set_permissions(wrapper_path, perms)
-}
-
-#[cfg(not(unix))]
-fn set_wrapper_permissions(_wrapper_path: &Path) -> std::io::Result<()> {
-    Ok(())
 }

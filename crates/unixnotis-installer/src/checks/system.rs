@@ -3,12 +3,11 @@
 use std::env;
 use std::fs::OpenOptions;
 use std::path::Path;
-use std::process::Command;
-
-use unixnotis_core::program_in_path;
 
 use crate::paths::{InstallPaths, ServiceManagerChoice};
 use crate::service_manager::{CommandSpec, ReadinessIssue, ServiceManager};
+use crate::system_tools;
+use unixnotis_core::program_in_path;
 
 use super::CheckItem;
 
@@ -70,7 +69,7 @@ fn availability_check_item(
     spec: &CommandSpec,
     issues: &[ReadinessIssue],
 ) -> CheckItem {
-    match spec.to_command().status() {
+    match spec.to_command().and_then(|mut command| command.status()) {
         Ok(status) if status.success() => match readiness_warning_detail(manager, issues) {
             // A manager can be available while still needing user setup for autostart
             Some(detail) => CheckItem::warn("Service manager", &detail),
@@ -121,10 +120,10 @@ pub(super) fn cargo_check(release_archive: bool) -> CheckItem {
         return CheckItem::ok("cargo", "not required for release archive");
     }
 
-    match command_success("cargo", &["--version"]) {
-        Ok(true) => CheckItem::ok("cargo", "available"),
-        Ok(false) => CheckItem::fail("cargo", "not installed"),
-        Err(err) => CheckItem::fail("cargo", &format!("check failed: {err}")),
+    if program_in_path("cargo") {
+        CheckItem::ok("cargo", "available")
+    } else {
+        CheckItem::fail("cargo", "not installed")
     }
 }
 
@@ -145,7 +144,7 @@ pub(super) fn busctl_check() -> CheckItem {
 }
 
 pub(super) fn dbus_update_env_check(manager: Option<&ServiceManager>) -> CheckItem {
-    if program_in_path("dbus-update-activation-environment") {
+    if system_tools::program_exists("dbus-update-activation-environment") {
         CheckItem::ok("dbus-update-activation-environment", "available")
     } else if manager.is_some_and(|manager| !manager.uses_dbus_environment_helper()) {
         CheckItem::ok(
@@ -169,7 +168,8 @@ pub(super) fn install_paths_check(paths: &InstallPaths) -> CheckItem {
 }
 
 pub(super) fn pkg_config_version(lib: &str) -> Result<Option<String>, String> {
-    let output = Command::new("pkg-config")
+    let output = system_tools::command("pkg-config")
+        .map_err(|err| err.to_string())?
         .args(["--modversion", lib])
         .output()
         .map_err(|err| err.to_string())?;
@@ -185,8 +185,9 @@ pub(super) fn pkg_config_version(lib: &str) -> Result<Option<String>, String> {
     }
 }
 
-fn command_success(program: &str, args: &[&str]) -> Result<bool, String> {
-    Command::new(program)
+pub(super) fn command_success(program: &str, args: &[&str]) -> Result<bool, String> {
+    system_tools::command(program)
+        .map_err(|err| err.to_string())?
         .args(args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

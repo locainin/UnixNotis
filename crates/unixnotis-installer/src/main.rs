@@ -1,11 +1,9 @@
 //! UnixNotis installer entrypoint with a ratatui-driven flow.
 
 #![allow(
-    clippy::blanket_clippy_restriction_lints,
     clippy::nursery,
     clippy::pedantic,
-    clippy::restriction,
-    reason = "workspace clippy runs use these groups as review signals, not as zero-tolerance policy gates"
+    reason = "pedantic and nursery cleanup is tracked incrementally across existing code"
 )]
 
 mod actions;
@@ -25,15 +23,16 @@ mod main_handlers;
 #[path = "main/tests.rs"]
 mod main_tests;
 mod model;
-#[path = "paths/index.rs"]
 mod paths;
 mod release;
+mod safe_write;
 mod service_manager;
+mod system_tools;
 mod terminal;
 #[cfg(test)]
 #[path = "tests/mod.rs"]
 mod tests;
-#[path = "main/trial/index.rs"]
+#[path = "main/trial/mod.rs"]
 mod trial;
 mod ui;
 

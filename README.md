@@ -84,14 +84,14 @@ reports when a newer GitHub release is available.
 Maintainers can build a local release archive manually:
 
 ```sh
-scripts/package-release.sh v1.1.1
+scripts/package-release.sh v1.1.2
 ```
 
 ## Development
 
 ```sh
 cargo test --workspace
-cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::restriction
+cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery
 ```
 
 ## Contributing

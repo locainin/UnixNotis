@@ -1,12 +1,10 @@
 use super::super::exec_review::{
-    finish_pager, pager_command_parts, pager_enables_raw_control,
-    render_exec_content_review_with_style, ReviewStyle,
+    confirm_import_exec_content, render_exec_content_review_with_style, write_exec_content_review,
+    ReviewStyle,
 };
 use crate::preset::import::checks::{ImportedExecCommand, ImportedExecContent, ImportedExecFile};
 use std::env;
-use std::io;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Mutex;
 
 // Pager tests mutate one process-global env var, so they need one tiny lock
@@ -30,8 +28,36 @@ fn exec_review_renders_commands_and_files() {
     );
 
     assert!(review.contains("widgets.stats[0].cmd = scripts/check.sh"));
+    assert!(review.contains("This preset contains executable commands or bundled scripts"));
+    assert!(review.contains("Only continue if the source is trusted"));
+    assert!(review.contains("Command entries"));
+    assert!(review.contains("Bundled executable files"));
     assert!(review.contains("== scripts/check.sh (mode 755) =="));
     assert!(review.contains("#!/bin/sh"));
+}
+
+#[test]
+fn exec_review_allows_empty_or_explicitly_trusted_exec_content() {
+    let empty = ImportedExecContent {
+        commands: Vec::new(),
+        files: Vec::new(),
+    };
+    confirm_import_exec_content(&empty, false).expect("empty content does not need review");
+
+    let content = imported_exec_content();
+    confirm_import_exec_content(&content, true).expect("allow_exec bypasses interactive review");
+}
+
+#[test]
+fn exec_review_rejects_untrusted_exec_content_when_not_interactive() {
+    let content = imported_exec_content();
+
+    let error = confirm_import_exec_content(&content, false)
+        .expect_err("noninteractive untrusted exec content should fail closed");
+
+    assert!(error
+        .to_string()
+        .contains("preset import found executable commands or bundled scripts"));
 }
 
 #[test]
@@ -42,14 +68,15 @@ fn exec_review_style_can_add_color() {
 }
 
 #[test]
-fn pager_command_adds_raw_control_for_less() {
+fn exec_review_writer_ignores_pager_environment() {
     let _guard = PAGER_ENV_LOCK.lock().expect("lock pager env");
     let original = env::var_os("PAGER");
     unsafe {
-        env::set_var("PAGER", "less -F");
+        env::set_var("PAGER", "sh -c 'echo pwned'");
     }
 
-    let pager = pager_command_parts().expect("build pager");
+    let mut written = Vec::new();
+    write_exec_content_review(&mut written, "review text\n").expect("write review");
 
     match original {
         Some(value) => unsafe {
@@ -60,71 +87,19 @@ fn pager_command_adds_raw_control_for_less() {
         },
     }
 
-    assert_eq!(pager, vec!["less", "-F", "-R"]);
+    assert_eq!(written, b"review text\n");
 }
 
-#[test]
-fn pager_command_keeps_existing_raw_control_flag() {
-    assert!(pager_enables_raw_control(&[
-        "less".to_string(),
-        "-FR".to_string()
-    ]));
-    assert!(pager_enables_raw_control(&[
-        "less".to_string(),
-        "-R".to_string()
-    ]));
-    assert!(!pager_enables_raw_control(&[
-        "less".to_string(),
-        "-F".to_string()
-    ]));
-}
-
-#[test]
-fn pager_command_respects_quoted_arguments() {
-    let _guard = PAGER_ENV_LOCK.lock().expect("lock pager env");
-    let original = env::var_os("PAGER");
-    unsafe {
-        env::set_var("PAGER", "less --prompt='unixnotis review'");
+fn imported_exec_content() -> ImportedExecContent {
+    ImportedExecContent {
+        commands: vec![ImportedExecCommand {
+            slot: "widgets.stats[0].cmd".to_string(),
+            command: "scripts/check.sh".to_string(),
+        }],
+        files: vec![ImportedExecFile {
+            relative_path: PathBuf::from("scripts/check.sh"),
+            contents: b"#!/bin/sh\necho ok\n".to_vec(),
+            mode: 0o755,
+        }],
     }
-
-    let pager = pager_command_parts().expect("build pager");
-
-    match original {
-        Some(value) => unsafe {
-            env::set_var("PAGER", value);
-        },
-        None => unsafe {
-            env::remove_var("PAGER");
-        },
-    }
-
-    assert_eq!(
-        pager,
-        vec![
-            "less".to_string(),
-            "--prompt=unixnotis review".to_string(),
-            "-R".to_string()
-        ]
-    );
-}
-
-#[test]
-fn finish_pager_reaps_child_after_stdin_failure() {
-    let child = Command::new("sh")
-        .arg("-c")
-        .arg("exit 0")
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .expect("spawn pager");
-
-    let error = finish_pager(
-        child,
-        &["sh".to_string(), "-c".to_string(), "exit 0".to_string()],
-        Err(io::Error::new(io::ErrorKind::BrokenPipe, "broken pipe")),
-    )
-    .expect_err("stdin failure should surface");
-
-    assert!(error
-        .to_string()
-        .contains("write executable content review to pager"));
 }

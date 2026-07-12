@@ -15,6 +15,18 @@ fn ui_message_can_carry_keyboard_input() {
 }
 
 #[test]
+fn ui_message_can_carry_release_status_update() {
+    let status = crate::release::ReleaseStatus::current_only();
+    let message = UiMessage::ReleaseStatus(status);
+
+    // Release checks arrive separately so startup can draw before network work finishes
+    match message {
+        UiMessage::ReleaseStatus(status) => assert_eq!(status.latest, None),
+        _ => panic!("expected release status"),
+    }
+}
+
+#[test]
 fn worker_event_failed_keeps_step_index_and_message() {
     let event = WorkerEvent::StepFailed(3, "service start failed".to_string());
 

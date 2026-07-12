@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use std::env;
-use std::process::{Command as ProcCommand, Stdio};
+use std::process::Stdio;
+
+use crate::system_tools;
 
 const DEFAULT_DAEMON_UNIT: &str = "unixnotis-daemon.service";
 
@@ -35,7 +37,10 @@ pub(super) fn probe_args(unit: &str) -> Vec<String> {
 }
 
 pub(super) fn journalctl_is_available() -> bool {
-    ProcCommand::new("journalctl")
+    let Ok(mut command) = system_tools::command("journalctl") else {
+        return false;
+    };
+    command
         .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -45,7 +50,8 @@ pub(super) fn journalctl_is_available() -> bool {
 }
 
 pub(super) fn journal_has_user_unit_logs(unit: &str) -> Result<bool> {
-    let status = ProcCommand::new("journalctl")
+    let mut command = system_tools::command("journalctl").context("resolve trusted journalctl")?;
+    let status = command
         .args(probe_args(unit))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -56,7 +62,8 @@ pub(super) fn journal_has_user_unit_logs(unit: &str) -> Result<bool> {
 
 pub(super) fn follow_user_unit_logs(unit: &str) -> Result<()> {
     // Follow the user-level systemd unit so the output matches the active session
-    let status = ProcCommand::new("journalctl")
+    let mut command = system_tools::command("journalctl").context("resolve trusted journalctl")?;
+    let status = command
         .args(follow_args(unit))
         .status()
         .with_context(|| format!("start journalctl follow for {unit}"))?;

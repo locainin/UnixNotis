@@ -7,6 +7,7 @@ pub(super) enum CssProviderLayer {
     Popup,
     Widgets,
     Media,
+    Overrides,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

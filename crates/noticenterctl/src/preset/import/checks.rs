@@ -6,13 +6,16 @@
 use anyhow::{anyhow, Context, Result};
 use std::path::Path;
 use toml::Value;
-use unixnotis_core::{validate_icon_asset_reference, Config, ThemePaths};
+use unixnotis_core::{
+    validate_icon_asset_contents, validate_icon_asset_reference, Config, ThemePaths,
+};
+
+use super::super::archive::BundleFile;
 
 use super::super::command_rules::{
     validate_command_paths_in_config_bytes, validate_config_command_paths_stay_in_root,
 };
 use super::super::pathing::normalize_lexical_path;
-use crate::preset::archive::BundleFile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::preset) struct ImportedExecContent {
@@ -57,7 +60,10 @@ pub(super) fn validate_imported_command_paths_stay_in_root(
     validate_command_paths_in_config_bytes(config_dir, config_bytes, "preset import blocked")
 }
 
-pub(super) fn validate_imported_icon_asset_references(config_bytes: &[u8]) -> Result<()> {
+pub(super) fn validate_imported_icon_assets(
+    config_bytes: &[u8],
+    bundle_files: &[BundleFile],
+) -> Result<()> {
     let config_text =
         std::str::from_utf8(config_bytes).context("preset config.toml is not valid UTF-8")?;
     let value: Value =
@@ -70,6 +76,26 @@ pub(super) fn validate_imported_icon_asset_references(config_bytes: &[u8]) -> Re
             format!(
                 "preset import blocked because {} has an invalid icon_asset",
                 asset.slot
+            )
+        })?;
+        let Some(file) = bundle_files
+            .iter()
+            .find(|file| file.relative_path == Path::new(&asset.asset))
+        else {
+            // Optional missing assets preserve the documented theme-icon fallback behavior
+            continue;
+        };
+        if file.mode & 0o111 != 0 {
+            return Err(anyhow!(
+                "preset import blocked because {} references executable icon asset {}",
+                asset.slot,
+                asset.asset
+            ));
+        }
+        validate_icon_asset_contents(&asset.asset, &file.contents).with_context(|| {
+            format!(
+                "preset import blocked because {} references unsafe icon asset {}",
+                asset.slot, asset.asset
             )
         })?;
     }
@@ -129,6 +155,7 @@ fn validate_resolved_theme_paths_stay_in_root(
         ("popup_css", &theme_paths.popup_css),
         ("widgets_css", &theme_paths.widgets_css),
         ("media_css", &theme_paths.media_css),
+        ("overrides_css", &theme_paths.overrides_css),
     ] {
         // Normalize each target so lexical parent traversal cannot hide outside writes
         let normalized_path = normalize_lexical_path(path);

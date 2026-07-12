@@ -152,16 +152,25 @@ fn detect_wayland_display() -> Option<String> {
 }
 
 fn choose_wayland_fallback(mut candidates: Vec<String>) -> Option<String> {
-    if candidates.is_empty() {
-        return None;
-    }
+    candidates.sort();
+    candidates.dedup();
+
     // Prefer the conventional primary socket when present
     if candidates.iter().any(|candidate| candidate == "wayland-0") {
         return Some("wayland-0".to_string());
     }
-    // Directory iteration order is not stable, so sort before picking a fallback
-    candidates.sort();
-    candidates.into_iter().next()
+
+    match candidates.as_slice() {
+        [] => None,
+        [only] => Some(only.clone()),
+        many => {
+            tracing::warn!(
+                ?many,
+                "multiple Wayland sockets found; set WAYLAND_DISPLAY explicitly"
+            );
+            None
+        }
+    }
 }
 
 #[cfg(unix)]

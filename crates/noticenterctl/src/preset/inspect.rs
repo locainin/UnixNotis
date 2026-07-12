@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use std::path::Path;
-use unixnotis_core::Config;
+use unixnotis_core::{util, Config};
 
 use super::archive::read_bundle;
 use super::command_rules::{
@@ -32,13 +32,22 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
     let bundle = read_bundle(input_path).context("read preset bundle for inspect")?;
 
     let mut out = String::new();
-    out.push_str(&format!("preset: {}\n", bundle.manifest.bundle_name));
+    out.push_str(&format!(
+        "preset: {}\n",
+        safe_report_value(&bundle.manifest.bundle_name)
+    ));
     out.push_str(&format!(
         "format version: {}\n",
         bundle.manifest.format_version
     ));
-    out.push_str(&format!("exported at: {}\n", bundle.manifest.exported_at));
-    out.push_str(&format!("tool version: {}\n", bundle.manifest.tool_version));
+    out.push_str(&format!(
+        "exported at: {}\n",
+        safe_report_value(&bundle.manifest.exported_at)
+    ));
+    out.push_str(&format!(
+        "tool version: {}\n",
+        safe_report_value(&bundle.manifest.tool_version)
+    ));
     out.push_str(&format!("files: {}\n", bundle.manifest.files.len()));
     out.push_str(&format!("assets: {}\n", yes_no(bundle.manifest.has_assets)));
     out.push_str(&format!(
@@ -61,7 +70,11 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
                         out.push_str("  none\n");
                     } else {
                         for command in commands {
-                            out.push_str(&format!("  - {} = {}\n", command.slot, command.command));
+                            out.push_str(&format!(
+                                "  - {} = {}\n",
+                                safe_report_value(&command.slot),
+                                safe_report_value(&command.command)
+                            ));
                         }
                     }
 
@@ -77,7 +90,8 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
                         for warning in outside_paths {
                             out.push_str(&format!(
                                 "  - {} points outside the config root: {}\n",
-                                warning.slot, warning.command
+                                safe_report_value(&warning.slot),
+                                safe_report_value(&warning.command)
                             ));
                         }
                     }
@@ -96,7 +110,8 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
                         for leak in leaked_paths {
                             out.push_str(&format!(
                                 "  - {} uses a host-local config path: {}\n",
-                                leak.slot, leak.command
+                                safe_report_value(&leak.slot),
+                                safe_report_value(&leak.command)
                             ));
                         }
                     }
@@ -108,16 +123,22 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
                         out.push_str("  none\n");
                     } else {
                         for warning in theme_warnings {
-                            out.push_str(&format!("  - {warning}\n"));
+                            out.push_str(&format!("  - {}\n", safe_report_value(&warning)));
                         }
                     }
                 }
                 Err(err) => {
-                    out.push_str(&format!("command refs: unavailable ({err})\n"));
+                    out.push_str(&format!(
+                        "command refs: unavailable ({})\n",
+                        safe_report_value(&err.to_string())
+                    ));
                 }
             },
             Err(err) => {
-                out.push_str(&format!("command refs: unavailable ({err})\n"));
+                out.push_str(&format!(
+                    "command refs: unavailable ({})\n",
+                    safe_report_value(&err.to_string())
+                ));
             }
         }
     } else {
@@ -139,16 +160,16 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
         for warning in css_asset_warnings {
             out.push_str(&format!(
                 "  - {} -> {} ({})\n",
-                warning.css_file.display(),
-                warning.asset_ref,
-                warning.reason
+                safe_report_path(warning.css_file.as_path()),
+                safe_report_value(&warning.asset_ref),
+                safe_report_value(&warning.reason)
             ));
         }
     }
 
     out.push_str("file list:\n");
     for file in &bundle.manifest.files {
-        out.push_str(&format!("  - {}\n", file.path));
+        out.push_str(&format!("  - {}\n", safe_report_value(&file.path)));
     }
     Ok(out)
 }
@@ -160,6 +181,16 @@ fn yes_no(value: bool) -> &'static str {
     } else {
         "no"
     }
+}
+
+fn safe_report_value(value: &str) -> String {
+    // Presets can come from someone else, so inspect output must not emit raw terminal controls
+    util::sanitize_log_value(value, util::diagnostic_log_limit())
+}
+
+fn safe_report_path(path: &Path) -> String {
+    // Paths can carry odd bytes from archives, so route them through the same terminal guard
+    safe_report_value(&path.display().to_string())
 }
 
 fn collect_theme_path_warnings(config: &Config) -> Vec<String> {
@@ -181,6 +212,7 @@ fn collect_theme_path_warnings(config: &Config) -> Vec<String> {
         ("popup_css", &theme_paths.popup_css),
         ("widgets_css", &theme_paths.widgets_css),
         ("media_css", &theme_paths.media_css),
+        ("overrides_css", &theme_paths.overrides_css),
     ] {
         let normalized_path = normalize_lexical_path(path);
         if !normalized_path.starts_with(&normalized_root) {

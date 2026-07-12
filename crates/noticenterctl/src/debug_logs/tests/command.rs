@@ -7,6 +7,7 @@ use super::super::command::follow_debug_logs;
 use super::super::journal::{
     follow_user_unit_logs, journal_has_user_unit_logs, journalctl_is_available,
 };
+use crate::system_tools::use_fake_tool_bin;
 
 struct EnvGuard {
     name: &'static str,
@@ -78,18 +79,12 @@ fn env_lock() -> MutexGuard<'static, ()> {
         .expect("debug log env lock")
 }
 
-fn prepend_path(path: &std::path::Path) -> EnvGuard {
-    let old_path = std::env::var_os("PATH").unwrap_or_default();
-    let new_path = format!("{}:{}", path.display(), old_path.to_string_lossy());
-    EnvGuard::set("PATH", new_path)
-}
-
 #[test]
 fn journalctl_availability_tracks_executable_status() {
     let _lock = env_lock();
     let root = TempDirGuard::new("availability");
     root.write_journalctl("#!/bin/sh\nexit 0\n");
-    let _path = prepend_path(&root.path);
+    let _tools = use_fake_tool_bin(&root.path);
 
     assert!(journalctl_is_available());
 
@@ -103,7 +98,7 @@ fn journal_probe_reports_user_unit_presence_from_exit_status() {
     let _lock = env_lock();
     let root = TempDirGuard::new("probe");
     root.write_journalctl("#!/bin/sh\nexit 0\n");
-    let _path = prepend_path(&root.path);
+    let _tools = use_fake_tool_bin(&root.path);
 
     assert!(journal_has_user_unit_logs("unixnotis-daemon.service").expect("probe success"));
 
@@ -117,7 +112,7 @@ fn journal_follow_returns_error_for_nonzero_journalctl_exit() {
     let _lock = env_lock();
     let root = TempDirGuard::new("follow-failure");
     root.write_journalctl("#!/bin/sh\nexit 11\n");
-    let _path = prepend_path(&root.path);
+    let _tools = use_fake_tool_bin(&root.path);
 
     let error = follow_user_unit_logs("unixnotis-daemon.service").expect_err("follow should fail");
 
@@ -128,7 +123,7 @@ fn journal_follow_returns_error_for_nonzero_journalctl_exit() {
 fn follow_debug_logs_requires_journalctl_on_path() {
     let _lock = env_lock();
     let root = TempDirGuard::new("missing");
-    let _path = EnvGuard::set("PATH", &root.path);
+    let _tools = use_fake_tool_bin(&root.path);
     let _unit = EnvGuard::remove("UNIXNOTIS_DAEMON_UNIT");
 
     let error = follow_debug_logs().expect_err("missing journalctl should fail");
@@ -141,7 +136,7 @@ fn follow_debug_logs_rejects_missing_user_unit_logs_before_following() {
     let _lock = env_lock();
     let root = TempDirGuard::new("no-logs");
     root.write_journalctl("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then exit 0; fi\nexit 4\n");
-    let _path = prepend_path(&root.path);
+    let _tools = use_fake_tool_bin(&root.path);
     let _unit = EnvGuard::set("UNIXNOTIS_DAEMON_UNIT", "custom.service");
 
     let error = follow_debug_logs().expect_err("missing unit logs should fail");
@@ -159,7 +154,7 @@ fn follow_debug_logs_runs_probe_then_follow_for_available_unit() {
         "#!/bin/sh\nprintf '%s\\n' \"$*\" >> {:?}\nexit 0\n",
         calls
     ));
-    let _path = prepend_path(&root.path);
+    let _tools = use_fake_tool_bin(&root.path);
     let _unit = EnvGuard::set("UNIXNOTIS_DAEMON_UNIT", "custom.service");
 
     follow_debug_logs().expect("follow should succeed");
@@ -168,4 +163,18 @@ fn follow_debug_logs_runs_probe_then_follow_for_available_unit() {
     assert!(calls.contains("--version"));
     assert!(calls.contains("--user --no-pager -n 1 -u custom.service -o cat"));
     assert!(calls.contains("--user -f -u custom.service -o cat"));
+}
+
+#[test]
+fn journalctl_lookup_ignores_inherited_path_entries() {
+    let _lock = env_lock();
+    let root = TempDirGuard::new("path-hijack");
+    let marker = root.path.join("marker");
+    root.write_journalctl(&format!("#!/bin/sh\nprintf hit > {:?}\nexit 0\n", marker));
+    let _path = EnvGuard::set("PATH", &root.path);
+    let empty_tools = TempDirGuard::new("trusted-empty");
+    let _tools = use_fake_tool_bin(&empty_tools.path);
+
+    assert!(!journalctl_is_available());
+    assert!(!marker.exists());
 }

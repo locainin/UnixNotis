@@ -13,6 +13,12 @@ use super::super::pathing::{
 use super::modes::sanitize_payload_mode;
 use super::{BundleArchive, BundleFile};
 
+pub(super) const MAX_PRESET_ARCHIVE_ENTRIES: usize = 2_048;
+pub(super) const MAX_PRESET_PAYLOAD_FILES: usize = 512;
+pub(super) const MAX_PRESET_MANIFEST_BYTES: u64 = 1_048_576;
+pub(super) const MAX_PRESET_FILE_BYTES: u64 = 16_777_216;
+pub(super) const MAX_PRESET_TOTAL_PAYLOAD_BYTES: u64 = 67_108_864;
+
 pub(crate) fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
     // Import and inspect use the same reader so validation stays consistent
     let input = File::open(bundle_path)
@@ -23,7 +29,19 @@ pub(crate) fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
     let mut manifest_contents = None::<String>;
     let mut files = BTreeMap::<PathBuf, BundleFile>::new();
 
+    let mut entry_count = 0usize;
+    let mut payload_count = 0usize;
+    let mut total_payload_bytes = 0u64;
+
     for entry in archive.entries().context("read preset bundle entries")? {
+        entry_count += 1;
+        if entry_count > MAX_PRESET_ARCHIVE_ENTRIES {
+            return Err(anyhow!(
+                "preset bundle contains too many archive entries: max {}",
+                MAX_PRESET_ARCHIVE_ENTRIES
+            ));
+        }
+
         let mut entry = entry.context("read preset bundle entry")?;
         if entry.header().entry_type().is_dir() {
             // Tar archives can carry directory records, but preset logic only cares about files
@@ -31,8 +49,21 @@ pub(crate) fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
         }
 
         let archive_path = entry.path().context("read bundle entry path")?.into_owned();
+        let declared_size = entry
+            .header()
+            .size()
+            .with_context(|| format!("read bundle entry size {}", archive_path.display()))?;
 
         if archive_path == Path::new(MANIFEST_ARCHIVE_PATH) {
+            if manifest_contents.is_some() {
+                return Err(anyhow!("preset bundle contains duplicate manifest.toml"));
+            }
+            validate_entry_size(
+                "manifest",
+                &archive_path,
+                declared_size,
+                MAX_PRESET_MANIFEST_BYTES,
+            )?;
             // Manifest text is read as UTF-8 so later checks can reason about field values
             let mut contents = String::new();
             entry
@@ -52,6 +83,20 @@ pub(crate) fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
                 archive_path.display()
             ));
         }
+        payload_count += 1;
+        if payload_count > MAX_PRESET_PAYLOAD_FILES {
+            return Err(anyhow!(
+                "preset bundle contains too many payload files: max {}",
+                MAX_PRESET_PAYLOAD_FILES
+            ));
+        }
+        validate_entry_size(
+            "payload",
+            &archive_path,
+            declared_size,
+            MAX_PRESET_FILE_BYTES,
+        )?;
+        total_payload_bytes = checked_payload_total(total_payload_bytes, declared_size)?;
         if files.contains_key(&relative_path) {
             // Duplicate payload paths would make import order-sensitive, so reject them
             return Err(anyhow!(
@@ -87,6 +132,7 @@ pub(crate) fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
             manifest.format_version
         ));
     }
+    validate_manifest_budget(&manifest)?;
 
     let expected_paths = manifest
         .files
@@ -118,4 +164,66 @@ pub(crate) fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
         manifest,
         files: files.into_values().collect(),
     })
+}
+
+fn validate_entry_size(kind: &str, path: &Path, declared_size: u64, max: u64) -> Result<()> {
+    if declared_size <= max {
+        return Ok(());
+    }
+
+    Err(anyhow!(
+        "preset bundle {kind} entry is too large: {} ({} bytes, max {} bytes)",
+        path.display(),
+        declared_size,
+        max
+    ))
+}
+
+pub(super) fn checked_payload_total(current: u64, next: u64) -> Result<u64> {
+    let total = current
+        .checked_add(next)
+        .ok_or_else(|| anyhow!("preset bundle payload size overflow"))?;
+    if total > MAX_PRESET_TOTAL_PAYLOAD_BYTES {
+        return Err(anyhow!(
+            "preset bundle payload is too large: {} bytes, max {} bytes",
+            total,
+            MAX_PRESET_TOTAL_PAYLOAD_BYTES
+        ));
+    }
+
+    Ok(total)
+}
+
+fn validate_manifest_budget(manifest: &super::super::manifest::PresetManifest) -> Result<()> {
+    if manifest.files.len() > MAX_PRESET_PAYLOAD_FILES {
+        return Err(anyhow!(
+            "preset manifest lists too many payload files: max {}",
+            MAX_PRESET_PAYLOAD_FILES
+        ));
+    }
+
+    let mut total = 0u64;
+    for file in &manifest.files {
+        if file.size > MAX_PRESET_FILE_BYTES {
+            return Err(anyhow!(
+                "preset manifest file is too large: {} ({} bytes, max {} bytes)",
+                file.path,
+                file.size,
+                MAX_PRESET_FILE_BYTES
+            ));
+        }
+        total = total
+            .checked_add(file.size)
+            .ok_or_else(|| anyhow!("preset manifest payload size overflow"))?;
+    }
+
+    if total > MAX_PRESET_TOTAL_PAYLOAD_BYTES {
+        return Err(anyhow!(
+            "preset manifest payload is too large: {} bytes, max {} bytes",
+            total,
+            MAX_PRESET_TOTAL_PAYLOAD_BYTES
+        ));
+    }
+
+    Ok(())
 }

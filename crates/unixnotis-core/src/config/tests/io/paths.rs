@@ -106,9 +106,11 @@ fn config_dir_for_path_uses_parent_for_nested_path() {
 }
 
 #[test]
-fn resolve_theme_paths_from_includes_media_css() {
-    let config: Config =
-        toml::from_str("[theme]\nmedia_css = \"rice/media.css\"\n").expect("config should parse");
+fn resolve_theme_paths_from_includes_media_and_override_layers() {
+    let config: Config = toml::from_str(
+        "[theme]\nmedia_css = \"rice/media.css\"\noverrides_css = \"rice/final.css\"\n",
+    )
+    .expect("config should parse");
     let base = PathBuf::from("/tmp/unixnotis-theme-paths");
 
     // Theme path resolution needs to include every active CSS slot, including media
@@ -117,4 +119,5 @@ fn resolve_theme_paths_from_includes_media_css() {
         .expect("theme paths should resolve");
 
     assert_eq!(paths.media_css, base.join("rice").join("media.css"));
+    assert_eq!(paths.overrides_css, base.join("rice").join("final.css"));
 }

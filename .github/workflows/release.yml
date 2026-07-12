@@ -52,7 +52,7 @@ jobs:
             zstd
 
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Install Rust toolchain
         run: |
@@ -61,17 +61,20 @@ jobs:
             | sh -s -- -y --profile minimal
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
           source "${HOME}/.cargo/env"
-          rustup default stable
+          rustup default 1.96.1
+          cargo install shellharden --locked --version 4.3.2
 
       - name: Check packaging script
-        run: shellcheck scripts/package-release.sh
+        run: |
+          shellcheck scripts/package-release.sh
+          shellharden --check scripts/package-release.sh
 
       - name: Build package archive
         # The script checks that Cargo's version matches the requested release tag
         run: scripts/package-release.sh "${{ inputs.tag }}"
 
       - name: Upload package archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unixnotis-${{ inputs.tag }}-release
           path: |

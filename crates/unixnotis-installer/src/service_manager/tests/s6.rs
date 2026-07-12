@@ -6,6 +6,8 @@ use crate::service_manager::{
     ReadinessIssue, ServiceArtifactKind, ServiceArtifactRefresh, ServiceManager,
     MANAGED_DIRECTORY_MARKER, UNIXNOTIS_DAEMON_S6_SERVICE,
 };
+use crate::system_tools::use_fake_tool_bin;
+use crate::tests::fs::write_executable as write_test_executable;
 
 #[test]
 fn s6_backend_renders_service_source_and_default_bundle_member() {
@@ -133,16 +135,25 @@ fn s6_backend_environment_sync_uses_envdir_artifacts() {
         PathBuf::from("/tmp/s6-data"),
         PathBuf::from("/run/user/s6-rc"),
     );
-    let names = ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "PATH"];
+    let names = [
+        "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "PATH",
+    ];
     let vars = [
         ("WAYLAND_DISPLAY", "wayland-1\nignored".to_string()),
         ("XDG_RUNTIME_DIR", "/run/user/1000\t ".to_string()),
+        (
+            "DBUS_SESSION_BUS_ADDRESS",
+            "unix:path=/tmp/unixnotis-bus".to_string(),
+        ),
     ];
 
     // s6-envdir reads files at service start, so sync writes artifact files instead of commands
     let artifacts = manager.environment_sync_artifacts(&names, &vars);
 
-    assert_eq!(artifacts.len(), 3);
+    assert_eq!(artifacts.len(), 4);
     assert_eq!(
         artifacts[0].path,
         PathBuf::from("/tmp/s6-data/sv/unixnotis-daemon/env")
@@ -157,6 +168,14 @@ fn s6_backend_environment_sync_uses_envdir_artifacts() {
         PathBuf::from("/tmp/s6-data/sv/unixnotis-daemon/env/XDG_RUNTIME_DIR")
     );
     assert_eq!(artifacts[2].contents.as_deref(), Some("/run/user/1000\n"));
+    assert_eq!(
+        artifacts[3].path,
+        PathBuf::from("/tmp/s6-data/sv/unixnotis-daemon/env/DBUS_SESSION_BUS_ADDRESS")
+    );
+    assert_eq!(
+        artifacts[3].contents.as_deref(),
+        Some("unix:path=/tmp/unixnotis-bus\n")
+    );
     // PATH is excluded for the same reason as runit: the run script fixes lookup first
     assert!(!artifacts
         .iter()
@@ -268,6 +287,40 @@ fn s6_readiness_accepts_symlinked_live_directory() {
 }
 
 #[test]
+fn s6_readiness_rejects_tools_that_exist_only_on_path() {
+    let _lock = crate::tests::env::test_env_lock();
+    let root = test_root("s6-path-only-tools");
+    let path_bin = root.join("path-bin");
+    let trusted_bin = root.join("trusted-bin");
+    let data = root.join("s6");
+    let live = root.join("run").join("s6-rc");
+    fs::create_dir_all(&path_bin).expect("path bin");
+    fs::create_dir_all(&trusted_bin).expect("trusted bin");
+    fs::create_dir_all(&live).expect("live dir");
+    fs::create_dir_all(data.join("sv").join("default")).expect("default dir");
+    fs::write(data.join("sv").join("default").join("type"), "bundle\n").expect("default type");
+    for tool in [
+        "s6-rc-compile",
+        "s6-rc-update",
+        "s6-rc",
+        "s6-envdir",
+        "s6-svstat",
+    ] {
+        write_executable(path_bin.join(tool), "#!/bin/sh\nexit 0\n");
+    }
+    let _path = EnvPathGuard::prepend(&path_bin);
+    let _tools = use_fake_tool_bin(&trusted_bin);
+
+    let issues = ServiceManager::s6_user(data, live).readiness_issues();
+
+    assert!(issues
+        .iter()
+        .any(|issue| issue.message().contains("s6-rc not found")));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn s6_enabled_state_requires_every_source_artifact() {
     let root = test_root("s6-enabled-layout");
     let data = root.join("s6");
@@ -356,4 +409,31 @@ fn test_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("unixnotis-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     root
+}
+
+fn write_executable(path: PathBuf, contents: &str) {
+    write_test_executable(&path, contents);
+}
+
+struct EnvPathGuard {
+    previous: Option<std::ffi::OsString>,
+}
+
+impl EnvPathGuard {
+    fn prepend(path: &Path) -> Self {
+        let previous = std::env::var_os("PATH");
+        let old_path = previous.clone().unwrap_or_default();
+        let new_path = format!("{}:{}", path.display(), old_path.to_string_lossy());
+        std::env::set_var("PATH", new_path);
+        Self { previous }
+    }
+}
+
+impl Drop for EnvPathGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => std::env::set_var("PATH", value),
+            None => std::env::remove_var("PATH"),
+        }
+    }
 }

@@ -1,6 +1,6 @@
 use super::{
     collect_imported_exec_content, validate_imported_command_paths_stay_in_root,
-    validate_imported_icon_asset_references, validate_imported_theme_paths_stay_in_root,
+    validate_imported_icon_assets, validate_imported_theme_paths_stay_in_root,
 };
 use crate::preset::archive::BundleFile;
 use std::path::PathBuf;
@@ -59,7 +59,7 @@ icon = "drive-harddisk-symbolic"
 icon_asset = "assets/ram.svg"
 "#;
 
-    validate_imported_icon_asset_references(config).expect("valid icon asset reference");
+    validate_imported_icon_assets(config, &[]).expect("valid optional icon asset reference");
 }
 
 #[test]
@@ -75,8 +75,8 @@ title = "Weather"
 icon_asset = "/etc/passwd"
 "#;
 
-    assert!(validate_imported_icon_asset_references(escape).is_err());
-    assert!(validate_imported_icon_asset_references(absolute).is_err());
+    assert!(validate_imported_icon_assets(escape, &[]).is_err());
+    assert!(validate_imported_icon_assets(absolute, &[]).is_err());
 }
 
 #[test]
@@ -92,8 +92,49 @@ title = "Run"
 icon_asset = "assets/run.sh"
 "#;
 
-    assert!(validate_imported_icon_asset_references(remote).is_err());
-    assert!(validate_imported_icon_asset_references(script).is_err());
+    assert!(validate_imported_icon_assets(remote, &[]).is_err());
+    assert!(validate_imported_icon_assets(script, &[]).is_err());
+}
+
+#[test]
+fn imported_icon_asset_checks_reject_corrupt_oversized_and_executable_payloads() {
+    let config = br#"
+[[widgets.stats]]
+label = "RAM"
+icon_asset = "assets/ram.svg"
+"#;
+    let file = |contents: Vec<u8>, mode| BundleFile {
+        relative_path: PathBuf::from("assets/ram.svg"),
+        contents,
+        mode,
+    };
+
+    assert!(validate_imported_icon_assets(config, &[file(b"not svg".to_vec(), 0o644)]).is_err());
+    assert!(validate_imported_icon_assets(config, &[file(vec![b' '; 2_097_153], 0o644)]).is_err());
+    assert!(validate_imported_icon_assets(
+        config,
+        &[file(
+            br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"/>"#.to_vec(),
+            0o755,
+        )],
+    )
+    .is_err());
+}
+
+#[test]
+fn imported_icon_asset_checks_accept_valid_bounded_svg_payload() {
+    let config = br#"
+[[widgets.stats]]
+label = "RAM"
+icon_asset = "assets/ram.svg"
+"#;
+    let files = [BundleFile {
+        relative_path: PathBuf::from("assets/ram.svg"),
+        contents: br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"/>"#.to_vec(),
+        mode: 0o644,
+    }];
+
+    validate_imported_icon_assets(config, &files).expect("safe bundled SVG");
 }
 
 #[test]

@@ -14,5 +14,4 @@ pub use format::format_with_home;
 use discovery::{is_unixnotis_release_archive, is_unixnotis_repo};
 
 #[cfg(test)]
-#[path = "tests/index.rs"]
 mod tests;

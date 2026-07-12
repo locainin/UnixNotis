@@ -1,4 +1,4 @@
-//! Trial-run modules for local daemon testing without installing service files
+//! Trial-run support for local daemon testing without installing service files
 
 mod build;
 mod launch;

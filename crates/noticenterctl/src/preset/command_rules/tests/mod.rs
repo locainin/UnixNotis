@@ -10,6 +10,8 @@ use super::{
     validate_command_paths_in_config_bytes,
 };
 
+mod env_paths;
+
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn temp_root(name: &str) -> PathBuf {
@@ -76,6 +78,20 @@ fn validation_rejects_relative_command_path_that_leaves_root() {
 }
 
 #[test]
+fn validation_rejects_absolute_command_path_with_equals_that_leaves_root() {
+    let config_dir = temp_root("equals-command-path");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.toggles]]\nlabel = \"Probe\"\nicon = \"applications-system-symbolic\"\ntoggle_cmd = \"/tmp/tool=evil --run\"\n";
+
+    let error =
+        validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+            .expect_err("path-like command containing equals should not parse as env");
+
+    assert!(error
+        .to_string()
+        .contains("points outside the UnixNotis config directory"));
+}
+
+#[test]
 fn host_specific_command_paths_include_absolute_path_inside_root() {
     let config_dir = temp_root("inside-root-host-specific");
     let script_path = config_dir.join("scripts/unixnotis-thermal-stat");
@@ -117,6 +133,25 @@ fn rewrite_host_specific_command_paths_makes_commands_config_relative() {
             .expect("plugin")
             .command,
         "scripts/unixnotis-thermal-stat --json"
+    );
+}
+
+#[test]
+fn rewrite_host_specific_command_inside_env_wrapper_preserves_assignments() {
+    let config_dir = temp_root("rewrite-env-wrapper");
+    let script_path = config_dir.join("scripts/probe tool");
+    let config = format!(
+        "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {:?}\n",
+        format!("env MODE='two words' '{}' --json", script_path.display())
+    );
+    let mut parsed: Config = toml::from_str(&config).expect("parse config");
+
+    let rewritten = rewrite_host_specific_command_paths(&config_dir, &mut parsed);
+
+    assert_eq!(rewritten.len(), 1);
+    assert_eq!(
+        parsed.widgets.stats[0].cmd.as_deref(),
+        Some("env 'MODE=two words' 'scripts/probe tool' --json")
     );
 }
 
