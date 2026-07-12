@@ -69,6 +69,7 @@ jobs:
           source "${HOME}/.cargo/env"
           rustup default 1.96.1
           cargo install cargo-audit --locked --version 0.22.0
+          cargo install shellharden --locked --version 4.3.2
 
       - name: Cache Cargo state
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
