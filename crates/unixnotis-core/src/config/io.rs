@@ -1,11 +1,13 @@
-//! Configuration loading, path resolution, and on-disk defaults.
+//! Configuration loading, path resolution, and on-disk defaults
 //!
-//! Focuses on I/O and filesystem-related helpers for config management.
+//! Focuses on I/O and filesystem-related helpers for config management
 
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 use tracing::warn;
@@ -21,10 +23,12 @@ use super::Config;
 
 static LEGACY_RENAME_WARNED: AtomicBool = AtomicBool::new(false);
 static INVALID_XDG_WARNED: AtomicBool = AtomicBool::new(false);
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
+const TEMP_FILE_ATTEMPTS: u8 = 16;
 
 #[derive(Debug, Clone)]
 pub struct ThemePaths {
-    // Base directory used to resolve relative theme paths.
+    // Base directory used to resolve relative theme paths
     pub base_dir: PathBuf,
     pub base_css: PathBuf,
     pub popup_css: PathBuf,
@@ -45,7 +49,7 @@ pub enum ConfigError {
 }
 
 impl Config {
-    /// Load configuration from a specific path.
+    /// Load configuration from a specific path
     pub fn load_from_path(path: &Path) -> Result<Self, ConfigError> {
         let contents =
             fs::read_to_string(path).map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
@@ -63,7 +67,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Load configuration from the default XDG config location, if present.
+    /// Load configuration from the default XDG config location, if present
     pub fn load_default() -> Result<Self, ConfigError> {
         let path = Self::default_config_path()?;
         if !path.exists() {
@@ -74,7 +78,7 @@ impl Config {
         Self::load_from_path(&path)
     }
 
-    /// Resolve configured CSS paths relative to the config directory.
+    /// Resolve configured CSS paths relative to the config directory
     pub fn resolve_theme_paths(&self) -> Result<ThemePaths, ConfigError> {
         let base = Self::default_config_dir()?;
         self.resolve_theme_paths_from(&base)
@@ -91,9 +95,9 @@ impl Config {
         env::current_dir().map_err(|err| ConfigError::ReadFailed(err.to_string()))
     }
 
-    /// Resolve configured CSS paths relative to an explicit config directory.
+    /// Resolve configured CSS paths relative to an explicit config directory
     pub fn resolve_theme_paths_from(&self, base: &Path) -> Result<ThemePaths, ConfigError> {
-        // Resolve relative paths against the supplied config directory.
+        // Resolve relative paths against the supplied config directory
         Ok(ThemePaths {
             base_dir: base.to_path_buf(),
             base_css: Self::resolve_path(base, &self.theme.base_css),
@@ -105,9 +109,9 @@ impl Config {
         })
     }
 
-    /// Ensure all theme files exist in the config directory.
+    /// Ensure all theme files exist in the config directory
     pub fn ensure_theme_files(&self, theme_paths: &ThemePaths) -> Result<(), ConfigError> {
-        // Use the same base directory used for resolving theme paths.
+        // Use the same base directory used for resolving theme paths
         let config_dir = &theme_paths.base_dir;
         fs::create_dir_all(config_dir).map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
 
@@ -143,7 +147,7 @@ impl Config {
             if !backup.exists() {
                 if let Err(err) = fs::rename(&legacy, &backup) {
                     // Non-fatal: leave legacy style.css in place if backup fails (permissions,
-                    // existing paths, or filesystem limitations).
+                    // existing paths, or filesystem limitations)
                     if LEGACY_RENAME_WARNED
                         .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
                         .is_ok()
@@ -162,7 +166,7 @@ impl Config {
         Ok(())
     }
 
-    /// Ensure helper scripts used by the shipped default config exist.
+    /// Ensure helper scripts used by the shipped default config exist
     pub fn ensure_default_scripts_in(config_dir: &Path) -> Result<(), ConfigError> {
         for script in DEFAULT_SCRIPTS {
             let path = config_dir.join(script.relative_path);
@@ -176,7 +180,7 @@ impl Config {
         Ok(())
     }
 
-    /// Overwrite helper scripts with the built-in defaults.
+    /// Overwrite helper scripts with the built-in defaults
     pub fn write_default_scripts_in(config_dir: &Path) -> Result<(), ConfigError> {
         for script in DEFAULT_SCRIPTS {
             write_default_script(&config_dir.join(script.relative_path), script.contents)?;
@@ -190,14 +194,14 @@ impl Config {
         sanitize_config(self);
     }
 
-    /// Return the default config directory based on XDG or $HOME.
+    /// Return the default config directory based on XDG or $HOME
     pub fn default_config_dir() -> Result<PathBuf, ConfigError> {
         if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
             let trimmed = xdg.trim();
             if !trimmed.is_empty() {
                 let path = PathBuf::from(trimmed);
                 if path.is_absolute() {
-                    // Prefer the XDG base directory when it is explicitly configured.
+                    // Prefer the XDG base directory when it is explicitly configured
                     return Ok(path.join("unixnotis"));
                 }
             }
@@ -209,11 +213,11 @@ impl Config {
             }
         }
         let home = env::var("HOME").map_err(|_| ConfigError::MissingHome)?;
-        // Fall back to the standard $HOME/.config path for predictable location.
+        // Fall back to the standard $HOME/.config path for predictable location
         Ok(PathBuf::from(home).join(".config").join("unixnotis"))
     }
 
-    /// Return the default config file path.
+    /// Return the default config file path
     pub fn default_config_path() -> Result<PathBuf, ConfigError> {
         Ok(Self::default_config_dir()?.join("config.toml"))
     }
@@ -252,13 +256,55 @@ fn write_file_atomic(path: &Path, contents: &str) -> Result<(), ConfigError> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| ConfigError::ReadFailed("invalid default script file name".to_string()))?;
-    // Temp lives beside the target so rename stays on the same filesystem
-    let tmp = parent.join(format!(".{name}.tmp-{}", std::process::id()));
-    fs::write(&tmp, contents).map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
+    // A fresh adjacent file keeps rename atomic and refuses planted symlinks
+    let (tmp, mut file) = create_adjacent_temp(parent, name)?;
+    if let Err(err) = file
+        .write_all(contents.as_bytes())
+        .and_then(|()| file.sync_all())
+    {
+        drop(file);
+        let _ = fs::remove_file(&tmp);
+        return Err(ConfigError::ReadFailed(err.to_string()));
+    }
+    drop(file);
     fs::rename(&tmp, path).map_err(|err| {
         let _ = fs::remove_file(&tmp);
         ConfigError::ReadFailed(err.to_string())
     })
+}
+
+fn create_adjacent_temp(parent: &Path, name: &str) -> Result<(PathBuf, fs::File), ConfigError> {
+    let candidates = (0..TEMP_FILE_ATTEMPTS).map(|_| {
+        // Time, process, and a counter prevent normal concurrent writers from sharing a name
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_nanos());
+        let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        parent.join(format!(
+            ".{name}.tmp-{}-{nanos}-{counter}",
+            std::process::id()
+        ))
+    });
+    reserve_adjacent_temp(candidates)
+}
+
+fn reserve_adjacent_temp(
+    candidates: impl IntoIterator<Item = PathBuf>,
+) -> Result<(PathBuf, fs::File), ConfigError> {
+    for path in candidates {
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => return Ok((path, file)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(ConfigError::ReadFailed(err.to_string())),
+        }
+    }
+    Err(ConfigError::ReadFailed(
+        "unable to reserve a fresh temporary config file".to_string(),
+    ))
 }
 
 #[cfg(unix)]

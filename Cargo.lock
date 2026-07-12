@@ -137,7 +137,7 @@ dependencies = [
  "futures-lite",
  "parking",
  "polling",
- "rustix 1.1.4",
+ "rustix",
  "slab",
  "windows-sys 0.61.2",
 ]
@@ -168,7 +168,7 @@ dependencies = [
  "cfg-if",
  "event-listener",
  "futures-lite",
- "rustix 1.1.4",
+ "rustix",
 ]
 
 [[package]]
@@ -194,7 +194,7 @@ dependencies = [
  "cfg-if",
  "futures-core",
  "futures-io",
- "rustix 1.1.4",
+ "rustix",
  "signal-hook-registry",
  "slab",
  "windows-sys 0.61.2",
@@ -546,22 +546,6 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crossterm"
-version = "0.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "829d955a0bb380ef178a640b91779e3987da38c9aea133b20614cfed8cdea9c6"
-dependencies = [
- "bitflags 2.11.1",
- "crossterm_winapi",
- "mio 1.2.0",
- "parking_lot",
- "rustix 0.38.44",
- "signal-hook",
- "signal-hook-mio",
- "winapi",
-]
-
-[[package]]
-name = "crossterm"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b9f2e4c67f833b660cdb0a3523065869fb35570177239812ed4c905aeff87b"
@@ -572,7 +556,7 @@ dependencies = [
  "document-features",
  "mio 1.2.0",
  "parking_lot",
- "rustix 1.1.4",
+ "rustix",
  "signal-hook",
  "signal-hook-mio",
  "winapi",
@@ -1827,12 +1811,6 @@ dependencies = [
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.4.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
-
-[[package]]
-name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
@@ -1988,7 +1966,7 @@ dependencies = [
 
 [[package]]
 name = "noticenterctl"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1996,7 +1974,7 @@ dependencies = [
  "clap",
  "flate2",
  "gtk4",
- "rustix 1.1.4",
+ "rustix",
  "serde",
  "serde_json",
  "shell-words",
@@ -2313,7 +2291,7 @@ dependencies = [
  "concurrent-queue",
  "hermit-abi",
  "pin-project-lite",
- "rustix 1.1.4",
+ "rustix",
  "windows-sys 0.61.2",
 ]
 
@@ -2488,7 +2466,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "577c9b9f652b4c121fb25c6a391dd06406d3b092ba68827e6d2f09550edc54b3"
 dependencies = [
  "cfg-if",
- "crossterm 0.29.0",
+ "crossterm",
  "instability",
  "ratatui-core",
 ]
@@ -2622,19 +2600,6 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.38.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
-dependencies = [
- "bitflags 2.11.1",
- "errno",
- "libc",
- "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "rustix"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
@@ -2642,7 +2607,7 @@ dependencies = [
  "bitflags 2.11.1",
  "errno",
  "libc",
- "linux-raw-sys 0.12.1",
+ "linux-raw-sys",
  "windows-sys 0.61.2",
 ]
 
@@ -3008,7 +2973,7 @@ dependencies = [
  "fastrand",
  "getrandom 0.4.2",
  "once_cell",
- "rustix 1.1.4",
+ "rustix",
  "windows-sys 0.61.2",
 ]
 
@@ -3449,7 +3414,7 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "unixnotis-center"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -3463,7 +3428,7 @@ dependencies = [
  "gtk4",
  "gtk4-layer-shell",
  "image",
- "rustix 1.1.4",
+ "rustix",
  "serde",
  "serde_json",
  "tokio",
@@ -3478,12 +3443,12 @@ dependencies = [
 
 [[package]]
 name = "unixnotis-core"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "chrono",
  "image",
  "resvg",
- "rustix 1.1.4",
+ "rustix",
  "serde",
  "serde_ignored",
  "serde_repr",
@@ -3496,14 +3461,14 @@ dependencies = [
 
 [[package]]
 name = "unixnotis-daemon"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
  "futures-util",
  "indexmap",
- "rustix 1.1.4",
+ "rustix",
  "serde",
  "serde_json",
  "tokio",
@@ -3516,13 +3481,13 @@ dependencies = [
 
 [[package]]
 name = "unixnotis-installer"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "chrono",
- "crossterm 0.28.1",
+ "crossterm",
  "ratatui",
- "rustix 1.1.4",
+ "rustix",
  "semver",
  "serde",
  "serde_json",
@@ -3532,7 +3497,7 @@ dependencies = [
 
 [[package]]
 name = "unixnotis-popups"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -3554,7 +3519,7 @@ dependencies = [
 
 [[package]]
 name = "unixnotis-ui"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "gtk4",
  "notify",
@@ -4219,7 +4184,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
 dependencies = [
  "libc",
- "rustix 1.1.4",
+ "rustix",
 ]
 
 [[package]]
