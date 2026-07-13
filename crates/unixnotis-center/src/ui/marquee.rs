@@ -27,6 +27,7 @@ struct MarqueeState {
     is_mapped: bool,
     tick_source: Option<glib::SourceId>,
     char_limit: usize,
+    max_width: i32,
     buffer: Vec<char>,
     last_rendered_offset: usize,
     full_text: String,
@@ -76,6 +77,7 @@ impl MarqueeLabel {
             is_mapped: root.is_mapped(),
             tick_source: None,
             char_limit,
+            max_width,
             last_rendered_offset: usize::MAX,
             render_buf: String::new(),
             ..Default::default()
@@ -137,6 +139,8 @@ impl MarqueeLabel {
     }
 
     fn set_text_inner(&self, text: &str, force: bool) {
+        // Pango measures rendered pixels so short wide-glyph titles still activate scrolling
+        let text_width = self.label.create_pango_layout(Some(text)).pixel_size().0;
         let mut state = self.state.borrow_mut();
         // Avoid resetting the marquee when the full text is identical
         // This prevents unnecessary redraws and keeps CPU usage stable
@@ -144,7 +148,12 @@ impl MarqueeLabel {
             return;
         }
         let char_limit = state.char_limit;
-        state.enabled = char_limit > 0 && text.chars().count() > char_limit;
+        state.enabled = marquee_should_tick(
+            char_limit,
+            text.chars().count(),
+            text_width,
+            state.max_width,
+        );
         state.reset_pending = true;
         state.offset = 0.0;
         state.hold_until = None;
@@ -186,9 +195,15 @@ impl MarqueeLabel {
         self.label.set_max_width_chars(char_limit as i32);
         let mut state = self.state.borrow_mut();
         state.char_limit = char_limit;
+        state.max_width = max_width;
         let full_text = state.full_text.clone();
         drop(state);
         self.set_text_force(&full_text);
+    }
+
+    pub fn update_width(&self, max_width: i32) {
+        let char_limit = self.state.borrow().char_limit;
+        self.update_limits(max_width, char_limit);
     }
 
     fn start_ticking(&self) {
@@ -205,6 +220,15 @@ impl MarqueeLabel {
         state.hold_until = None;
         perf_probe::marquee_stop();
     }
+}
+
+fn marquee_should_tick(
+    char_limit: usize,
+    char_count: usize,
+    text_width: i32,
+    max_width: i32,
+) -> bool {
+    char_limit > 0 && (char_count > char_limit || text_width > max_width.max(0))
 }
 
 fn start_ticking_inner(state: Rc<RefCell<MarqueeState>>, label: gtk::Label) {
@@ -291,3 +315,7 @@ fn render_visible(state: &mut MarqueeState, offset: usize) {
         state.render_buf.push(state.buffer[pos]);
     }
 }
+
+#[cfg(test)]
+#[path = "tests/marquee.rs"]
+mod tests;
