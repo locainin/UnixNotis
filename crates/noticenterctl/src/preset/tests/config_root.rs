@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::super::config_root::{collect_selected_config_files, override_collected_file_contents};
+use super::super::config_root::{
+    checked_export_total, collect_selected_config_files, override_collected_file_contents,
+};
 use super::super::pathing::format_relative_path;
 
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -148,4 +150,15 @@ fn selected_collection_keeps_descriptor_validated_bytes_after_path_replacement()
 
     assert_eq!(collected.files[0].source_contents, b"trusted = true");
     assert_eq!(collected.files[0].size, b"trusted = true".len() as u64);
+}
+
+#[test]
+fn export_totals_accept_exact_limits_and_reject_overflow() {
+    assert_eq!(
+        checked_export_total(67_108_863, 1, 511).expect("exact limit"),
+        67_108_864
+    );
+    assert!(checked_export_total(67_108_864, 1, 0).is_err());
+    assert!(checked_export_total(u64::MAX, 1, 0).is_err());
+    assert!(checked_export_total(0, 0, 512).is_err());
 }

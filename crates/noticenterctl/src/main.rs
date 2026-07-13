@@ -4,7 +4,6 @@
     clippy::cast_possible_wrap,
     clippy::format_push_string,
     clippy::future_not_send,
-    clippy::items_after_statements,
     clippy::match_same_arms,
     clippy::needless_continue,
     clippy::needless_pass_by_value,

@@ -11,7 +11,9 @@ mod write;
 
 use std::path::PathBuf;
 
-pub(super) use self::read::read_bundle;
+pub(super) use self::read::{
+    read_bundle, MAX_PRESET_FILE_BYTES, MAX_PRESET_PAYLOAD_FILES, MAX_PRESET_TOTAL_PAYLOAD_BYTES,
+};
 pub(super) use self::write::write_bundle;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
