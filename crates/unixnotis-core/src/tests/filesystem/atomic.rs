@@ -1,6 +1,6 @@
 use super::{
-    anchor_resolve_flags, contained_resolve_flags, file_mode, open_parent, reserve_temp,
-    sync_directory, write_file_atomic, write_file_if_missing,
+    anchor_resolve_flags, contained_resolve_flags, file_mode, make_file_executable, open_parent,
+    reserve_temp, sync_directory, write_file_atomic, write_file_if_missing,
 };
 use std::ffi::OsString;
 use std::fs;
@@ -9,7 +9,7 @@ use std::os::fd::OwnedFd;
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::os::unix::net::UnixStream;
 
-use rustix::fs::{Mode, ResolveFlags};
+use rustix::fs::{mkfifoat, Mode, ResolveFlags, CWD};
 
 use crate::test_support::unique_temp_path;
 
@@ -96,6 +96,57 @@ fn create_if_missing_preserves_existing_file_and_mode() {
         .mode()
         & 0o777;
     assert_eq!(mode, 0o640);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn create_if_missing_rejects_every_unsafe_existing_target() {
+    let root = unique_temp_path("atomic-if-missing-unsafe");
+    fs::create_dir_all(&root).expect("create test root");
+    let outside = root.join("outside.css");
+    fs::write(&outside, "outside").expect("write outside file");
+    let direct_link = root.join("direct-link.css");
+    let file_link = root.join("file-link.css");
+    let directory = root.join("directory.css");
+    let fifo = root.join("fifo.css");
+    symlink("missing.css", &direct_link).expect("create dangling link");
+    symlink(&outside, &file_link).expect("create file link");
+    fs::create_dir(&directory).expect("create directory target");
+    mkfifoat(CWD, &fifo, Mode::from_raw_mode(0o600)).expect("create fifo target");
+
+    for target in [&direct_link, &file_link, &directory, &fifo] {
+        let error = write_file_if_missing(target, b"replacement", 0o644)
+            .expect_err("unsafe existing target should fail");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+    assert_eq!(
+        fs::read_to_string(outside).expect("read outside"),
+        "outside"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn executable_update_rejects_symlink_without_touching_its_target() {
+    let root = unique_temp_path("atomic-executable-symlink");
+    fs::create_dir_all(&root).expect("create test root");
+    let outside = root.join("outside.sh");
+    let link = root.join("script.sh");
+    fs::write(&outside, "safe").expect("write outside script");
+    fs::set_permissions(&outside, fs::Permissions::from_mode(0o600)).expect("set outside mode");
+    symlink(&outside, &link).expect("create script link");
+
+    make_file_executable(&link).expect_err("script link should fail");
+
+    assert_eq!(fs::read_to_string(&outside).expect("read outside"), "safe");
+    assert_eq!(
+        fs::metadata(&outside)
+            .expect("outside metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
     let _ = fs::remove_dir_all(root);
 }
 
