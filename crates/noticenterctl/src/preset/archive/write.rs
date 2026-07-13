@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use tar::{Builder, Header};
 
@@ -40,25 +40,15 @@ pub fn write_bundle(
     for file in &collected.files {
         let mode = sanitize_payload_mode(file.mode, &file.relative_path)?;
 
-        if let Some(contents) = &file.contents_override {
-            // Overridden files stay in memory so export can patch config.toml in the bundle only
-            append_bytes(
-                &mut builder,
-                &archive_payload_path(&file.relative_path),
-                contents,
-                mode,
-            )?;
-            continue;
-        }
-
-        // Files are streamed from disk so export memory stays bounded by one file at a time
-        let mut source_file = File::open(&file.source_path)
-            .with_context(|| format!("open {} for preset archive", file.source_path.display()))?;
-        append_reader(
+        // Every payload comes from bytes captured through the secure config-root descriptor
+        let contents = file
+            .contents_override
+            .as_deref()
+            .unwrap_or(&file.source_contents);
+        append_bytes(
             &mut builder,
             &archive_payload_path(&file.relative_path),
-            &mut source_file,
-            file.size,
+            contents,
             mode,
         )?;
     }
@@ -96,23 +86,6 @@ fn append_bytes(
     header.set_cksum();
     builder
         .append_data(&mut header, path, Cursor::new(contents))
-        .with_context(|| format!("append {} to preset archive", path.display()))?;
-    Ok(())
-}
-
-fn append_reader<R: Read>(
-    builder: &mut Builder<GzEncoder<File>>,
-    path: &Path,
-    reader: &mut R,
-    size: u64,
-    mode: u32,
-) -> Result<()> {
-    let mut header = Header::new_gnu();
-    header.set_mode(mode);
-    header.set_size(size);
-    header.set_cksum();
-    builder
-        .append_data(&mut header, path, reader)
         .with_context(|| format!("append {} to preset archive", path.display()))?;
     Ok(())
 }

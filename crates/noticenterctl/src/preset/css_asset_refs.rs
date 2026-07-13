@@ -58,8 +58,8 @@ fn read_css_text(file: &PresetFileSource) -> Result<String> {
             .with_context(|| format!("decode css override {}", file.relative_path.display()));
     }
 
-    std::fs::read_to_string(&file.source_path)
-        .with_context(|| format!("read css file {}", file.source_path.display()))
+    String::from_utf8(file.source_contents.clone())
+        .with_context(|| format!("decode css file {}", file.relative_path.display()))
 }
 
 fn local_file_url_path(value: &str) -> Option<PathBuf> {

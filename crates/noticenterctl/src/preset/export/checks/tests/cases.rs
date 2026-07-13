@@ -57,6 +57,7 @@ fn make_source(root: &TempDirGuard, relative_path: &str, contents: &[u8]) -> Pre
         source_path,
         size: metadata.len(),
         mode,
+        source_contents: contents.to_vec(),
         contents_override: None,
     }
 }

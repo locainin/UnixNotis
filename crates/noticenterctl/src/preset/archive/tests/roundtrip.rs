@@ -19,6 +19,7 @@ fn archive_round_trip_keeps_manifest_and_payload() {
                 source_path: css_path,
                 size: 18,
                 mode: 0o644,
+                source_contents: b".a { color: red; }".to_vec(),
                 contents_override: None,
             },
             PresetFileSource {
@@ -26,6 +27,7 @@ fn archive_round_trip_keeps_manifest_and_payload() {
                 source_path: config_path,
                 size: 11,
                 mode: 0o644,
+                source_contents: b"demo = true".to_vec(),
                 contents_override: None,
             },
         ],
@@ -67,6 +69,7 @@ fn archive_round_trip_uses_overridden_file_bytes() {
             source_path: config_path,
             size: 12,
             mode: 0o644,
+            source_contents: b"demo = true".to_vec(),
             contents_override: Some(b"demo = false\n".to_vec()),
         }],
         skipped_symlinks: Vec::new(),

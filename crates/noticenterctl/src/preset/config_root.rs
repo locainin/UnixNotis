@@ -6,10 +6,9 @@
 use anyhow::{anyhow, Context, Result};
 use std::env;
 use std::fs;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+use super::filesystem::{open_secure_dir_all, read_relative_file_secure};
 use super::pathing::{normalize_relative_path, relative_path_matches_exclusion};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +17,8 @@ pub(super) struct PresetFileSource {
     pub(super) relative_path: PathBuf,
     // Real on-disk source path used while export streams files into the archive
     pub(super) source_path: PathBuf,
+    // Bytes are captured from the same secure descriptor used for metadata validation
+    pub(super) source_contents: Vec<u8>,
     // Cached size goes into the manifest so later validation stays cheap
     pub(super) size: u64,
     // File mode is cached so archive overrides can keep the same permissions
@@ -43,8 +44,8 @@ pub(super) fn collect_selected_config_files(
     exclusions: &[PathBuf],
 ) -> Result<CollectedConfigFiles> {
     // Export follows an explicit dependency list so unrelated private files never enter a bundle
-    let canonical_root = fs::canonicalize(config_dir)
-        .with_context(|| format!("resolve config directory {}", config_dir.display()))?;
+    let root_fd = open_secure_dir_all(config_dir)
+        .with_context(|| format!("open config directory {}", config_dir.display()))?;
     let output_path = output_path.map(resolve_working_path).transpose()?;
     let mut collected = CollectedConfigFiles::default();
 
@@ -73,21 +74,15 @@ pub(super) fn collect_selected_config_files(
             continue;
         }
 
-        let canonical = fs::canonicalize(&path)
-            .with_context(|| format!("resolve selected config file {}", path.display()))?;
-        if !canonical.starts_with(&canonical_root) {
-            return Err(anyhow!(
-                "selected config file leaves the config root: {}",
-                path.display()
-            ));
-        }
-
-        let mode = file_mode(&path, &metadata)?;
+        // Secure descriptor-relative reading closes the validation-to-read race
+        let (source_contents, descriptor_mode) = read_relative_file_secure(&root_fd, &relative)?;
+        let mode = file_mode(&path, descriptor_mode)?;
         collected.files.push(PresetFileSource {
             relative_path: relative,
             source_path: path,
-            size: metadata.len(),
+            size: source_contents.len() as u64,
             mode,
+            source_contents,
             contents_override: None,
         });
     }
@@ -138,10 +133,9 @@ fn resolve_working_path(path: &Path) -> Result<PathBuf> {
         .join(path))
 }
 
-fn file_mode(path: &Path, metadata: &fs::Metadata) -> Result<u32> {
+fn file_mode(path: &Path, raw_mode: u32) -> Result<u32> {
     #[cfg(unix)]
     {
-        let raw_mode = metadata.permissions().mode();
         // Reject special permission bits so exported presets do not carry surprising file behavior
         let permission_mode = raw_mode & 0o7777;
         if permission_mode & 0o7000 != 0 {
@@ -156,7 +150,7 @@ fn file_mode(path: &Path, metadata: &fs::Metadata) -> Result<u32> {
     #[cfg(not(unix))]
     {
         let _ = path;
-        let _ = metadata;
+        let _ = raw_mode;
         Ok(0o644)
     }
 }
