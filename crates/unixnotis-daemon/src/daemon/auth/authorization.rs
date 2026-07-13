@@ -54,7 +54,7 @@ async fn authorize_control_call_for_executables(
         .await
         .map_err(to_fdo_error)?;
     let bus_name = zbus::names::BusName::try_from(sender_name.as_str())
-        .map_err(|_| zbus::fdo::Error::AccessDenied("invalid sender".to_string()))?;
+        .map_err(|_error| zbus::fdo::Error::AccessDenied("invalid sender".to_string()))?;
 
     // Same desktop uid is required before any executable trust checks are considered
     let caller_uid = proxy.get_connection_unix_user(bus_name.clone()).await?;

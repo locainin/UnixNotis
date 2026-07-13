@@ -101,6 +101,22 @@ fn release_status_display_line_reports_available_update() {
 }
 
 #[test]
+fn release_status_detection_reports_a_newer_release() {
+    let status = ReleaseStatus::detect_with(|| Ok("v999.0.0".to_string()));
+
+    assert_eq!(status.latest.as_deref(), Some("v999.0.0"));
+    assert_eq!(status.state, ReleaseUpdateState::UpdateAvailable);
+}
+
+#[test]
+fn release_status_detection_degrades_cleanly_when_lookup_fails() {
+    let status = ReleaseStatus::detect_with(|| Err("network unavailable".to_string()));
+
+    assert_eq!(status.latest, None);
+    assert_eq!(status.state, ReleaseUpdateState::Unknown);
+}
+
+#[test]
 fn release_status_display_line_reports_up_to_date_release() {
     let status = ReleaseStatus {
         current: "v1.0.0".to_string(),
