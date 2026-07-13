@@ -82,6 +82,22 @@ fn secure_atomic_write_replaces_existing_file() {
 }
 
 #[test]
+fn secure_atomic_write_cleans_temp_payload_when_rename_fails() {
+    let root = TempDirGuard::new("rename-cleanup");
+    fs::create_dir(root.path.join("target")).expect("create conflicting directory");
+    let root_fd = open_secure_dir_all(&root.path).expect("open secure root");
+
+    write_relative_file_atomic_secure(&root_fd, Path::new("target"), b"private", 0o600)
+        .expect_err("file cannot replace a directory");
+
+    let entries = fs::read_dir(&root.path)
+        .expect("read root")
+        .map(|entry| entry.expect("read entry").file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(entries, vec![std::ffi::OsString::from("target")]);
+}
+
+#[test]
 fn secure_open_flags_preserve_each_required_safety_property() {
     let directory = directory_open_flags();
     assert!(directory.contains(OFlags::DIRECTORY));

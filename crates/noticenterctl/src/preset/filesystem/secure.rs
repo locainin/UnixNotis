@@ -10,12 +10,15 @@ use std::fs;
 use std::io::{Read, Write};
 use std::os::fd::{AsFd, OwnedFd};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::pathing::normalize_relative_path;
 
 const BACKUP_PREFIX: &str = "Backup-";
 const MAX_BACKUP_SUFFIX_ATTEMPTS: usize = 10_000;
+const MAX_TEMP_FILE_ATTEMPTS: u8 = 16;
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
     let mut current_fd = if path.is_absolute() {
@@ -106,19 +109,8 @@ pub fn write_relative_file_atomic_secure(
     let (parent_fd, file_name) = open_or_create_parent_dir(root_dir, &relative_path)?;
 
     // Temp files stay in the final parent dir so the rename does not cross filesystems
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is earlier than the Unix epoch")?
-        .as_nanos();
-    let temp_name = format!(".{file_name}.{stamp}.tmp");
-    let temp_fd = openat2(
-        &parent_fd,
-        temp_name.as_str(),
-        temp_file_open_flags(),
-        mode_from_bits(mode),
-        secure_resolve_flags(),
-    )
-    .with_context(|| format!("create secure temp file for {}", relative_path.display()))?;
+    let (temp_name, temp_fd) = reserve_secure_temp_file(&parent_fd, &file_name, mode)
+        .with_context(|| format!("create secure temp file for {}", relative_path.display()))?;
     let mut temp_file = fs::File::from(temp_fd);
 
     let write_result = (|| -> Result<()> {
@@ -133,20 +125,56 @@ pub fn write_relative_file_atomic_secure(
     })();
 
     if let Err(err) = write_result {
+        drop(temp_file);
         // Failed temp writes should not leave junk beside the final target path
         let _ = unlinkat(&parent_fd, temp_name.as_str(), AtFlags::empty());
         return Err(err);
     }
+    drop(temp_file);
 
     // Rename is the only point where the new contents become visible at the target path
-    renameat(
+    if let Err(err) = renameat(
         &parent_fd,
         temp_name.as_str(),
         &parent_fd,
         file_name.as_str(),
-    )
-    .with_context(|| format!("replace secure target file {}", relative_path.display()))?;
+    ) {
+        // Failed publication must not retain configuration payloads in hidden temp files
+        let _ = unlinkat(&parent_fd, temp_name.as_str(), AtFlags::empty());
+        return Err(err)
+            .with_context(|| format!("replace secure target file {}", relative_path.display()));
+    }
     Ok(())
+}
+
+fn reserve_secure_temp_file(
+    parent_fd: &OwnedFd,
+    file_name: &str,
+    mode: u32,
+) -> Result<(String, OwnedFd)> {
+    for attempt in 0..MAX_TEMP_FILE_ATTEMPTS {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("system clock is earlier than the Unix epoch")?
+            .as_nanos();
+        let serial = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let temp_name = format!(
+            ".{file_name}.{}.{stamp}.{serial}.{attempt}.tmp",
+            std::process::id()
+        );
+        match openat2(
+            parent_fd,
+            temp_name.as_str(),
+            temp_file_open_flags(),
+            mode_from_bits(mode),
+            secure_resolve_flags(),
+        ) {
+            Ok(fd) => return Ok((temp_name, fd)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(err.into()),
+        }
+    }
+    Err(anyhow!("unable to reserve an exclusive secure temp file"))
 }
 
 pub fn remove_relative_file_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
