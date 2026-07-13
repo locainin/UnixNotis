@@ -1,7 +1,7 @@
-//! Battery reader helpers for builtin stats.
+//! Battery reader helpers for builtin stats
 //!
-//! Keeps power_supply parsing isolated so the main builtin stats logic stays
-//! focused on selection and state handling.
+//! Keeps `power_supply` parsing isolated so the main builtin stats logic stays
+//! focused on selection and state handling
 
 use std::fs;
 use std::path::Path;
@@ -29,16 +29,16 @@ pub(super) fn read_battery_from(root: &Path) -> Option<String> {
         if device_type.trim() != "Battery" {
             continue;
         }
-        // Skip batteries that report not present to avoid mixing placeholder devices.
+        // Skip batteries that report not present to avoid mixing placeholder devices
         if let Some(present) = read_power_supply_value(&path.join("present")) {
             if present == 0 {
                 continue;
             }
         }
-        // Capture capacity regardless of unit family to support mixed-unit fallback.
+        // Capture capacity regardless of unit family to support mixed-unit fallback
         let capacity = read_power_supply_value(&path.join("capacity"));
-        // Prefer energy_* or charge_* pairs so multi-battery systems aggregate correctly.
-        // Capacity alone is a last-resort fallback because it is not weighted by size.
+        // Prefer energy_* or charge_* pairs so multi-battery systems aggregate correctly
+        // Capacity alone is a last-resort fallback because it is not weighted by size
         if let (Some(now), Some(full)) = (
             read_power_supply_value(&path.join("energy_now")),
             read_power_supply_value(&path.join("energy_full")),
@@ -74,29 +74,29 @@ pub(super) fn read_battery_from(root: &Path) -> Option<String> {
             capacity_count = capacity_count.saturating_add(1);
         }
     }
-    // Do not mix energy and charge units; fall back to capacity if mixed.
-    // If both unit families are present, capacity averaging is the only safe fallback.
+    // Do not mix energy and charge units; fall back to capacity if mixed
+    // If both unit families are present, capacity averaging is the only safe fallback
     if energy_full_total > 0 && charge_count == 0 {
-        // Rounded integer percent avoids floating-point drift for repeated reads.
+        // Rounded integer percent avoids floating-point drift for repeated reads
         let percent =
             (energy_now_total.saturating_mul(100) + energy_full_total / 2) / energy_full_total;
         return Some(percent.to_string());
     }
     if charge_full_total > 0 && energy_count == 0 {
-        // Charge-based values use the same arithmetic when energy data is absent.
+        // Charge-based values use the same arithmetic when energy data is absent
         let percent =
             (charge_now_total.saturating_mul(100) + charge_full_total / 2) / charge_full_total;
         return Some(percent.to_string());
     }
     if let Some(avg) = (capacity_sum + capacity_count / 2).checked_div(capacity_count) {
-        // Average capacity is less accurate but avoids returning nothing on minimal systems.
+        // Average capacity is less accurate but avoids returning nothing on minimal systems
         return Some(avg.to_string());
     }
     None
 }
 
 fn read_power_supply_value(path: &Path) -> Option<u64> {
-    // Simple helper that trims and parses numeric power_supply values.
+    // Simple helper that trims and parses numeric power_supply values
     let contents = fs::read_to_string(path).ok()?;
     contents.trim().parse::<u64>().ok()
 }

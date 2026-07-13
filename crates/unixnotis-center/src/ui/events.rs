@@ -1,7 +1,7 @@
-//! UI event dispatch and list wiring for `UiState`.
+//! UI event dispatch and list wiring for `UiState`
 //!
 //! Centralizes `UiEvent` handling so UI state transitions remain coherent and
-//! traceable in logs.
+//! traceable in logs
 
 use tracing::debug;
 use unixnotis_core::PanelDebugLevel;
@@ -24,7 +24,7 @@ impl UiState {
                     history = history.len(),
                     "received initial state"
                 );
-                // Seed list data before applying state to keep counts aligned.
+                // Seed list data before applying state to keep counts aligned
                 self.list.seed(active, history);
                 self.update_state(state);
                 self.refresh_counts();
@@ -42,7 +42,7 @@ impl UiState {
                     )
                 });
                 self.list.add_or_update(notification, true);
-                // Header count reflects the combined active + history totals.
+                // Header count reflects the combined active + history totals
                 self.refresh_counts();
             }
             UiEvent::NotificationUpdated(notification, _show_popup) => {
@@ -58,7 +58,7 @@ impl UiState {
                     )
                 });
                 self.list.add_or_update(notification, true);
-                // Updates may shift groups; refresh count even when list is stable.
+                // Updates may shift groups; refresh count even when list is stable
                 self.refresh_counts();
             }
             UiEvent::NotificationClosed(id, reason) => {
@@ -67,7 +67,7 @@ impl UiState {
                     format!("notification closed: #{id} ({reason:?})")
                 });
                 self.list.mark_closed(id, reason);
-                // Marking closed can move entries between active/history buckets.
+                // Marking closed can move entries between active/history buckets
                 self.refresh_counts();
             }
             UiEvent::StateChanged(state) => {
@@ -84,22 +84,22 @@ impl UiState {
                     )
                 });
                 self.update_state(state);
-                // Keep counts in sync if daemon state changes imply list updates.
+                // Keep counts in sync if daemon state changes imply list updates
                 self.refresh_counts();
             }
             UiEvent::PanelRequested(request) => {
                 debug!(?request, "panel request");
                 self.log_debug(PanelDebugLevel::Info, || {
-                    format!("panel request: {:?}", request)
+                    format!("panel request: {request:?}")
                 });
-                // Delegate to visibility handler to keep behavior consistent.
+                // Delegate to visibility handler to keep behavior consistent
                 self.apply_panel_request(request);
             }
             UiEvent::GroupToggled(key) => {
                 debug!(app = %key, "group toggled");
                 self.log_debug(PanelDebugLevel::Verbose, || format!("group toggled: {key}"));
                 self.list.toggle_group(&key);
-                // Toggling can change stacked visibility; counts reflect total entries.
+                // Toggling can change stacked visibility; counts reflect total entries
                 self.refresh_counts();
             }
             UiEvent::MediaUpdated(infos) => {
@@ -107,14 +107,14 @@ impl UiState {
                 self.log_debug(PanelDebugLevel::Verbose, || {
                     format!("media updated: {} players", infos.len())
                 });
-                // Avoid updating hidden widgets; cache the snapshot and apply on next open.
-                // This keeps background CPU minimal while preserving the most recent media state.
+                // Avoid updating hidden widgets; cache the snapshot and apply on next open
+                // This keeps background CPU minimal while preserving the most recent media state
                 if self.panel_visible {
                     if let Some(widget) = self.media.as_mut() {
                         widget.update(&infos);
                     }
                 } else {
-                    // Cache the latest snapshot to prevent repeated UI work while hidden.
+                    // Cache the latest snapshot to prevent repeated UI work while hidden
                     self.pending_media = Some(infos);
                     self.pending_media_cleared = false;
                 }
@@ -122,39 +122,39 @@ impl UiState {
             UiEvent::MediaCleared => {
                 debug!("media cleared");
                 self.log_debug(PanelDebugLevel::Info, || "media cleared".to_string());
-                // Clearing removes UI state; defer until visible to avoid hidden updates.
-                // The pending flags ensure the next open matches daemon state.
+                // Clearing removes UI state; defer until visible to avoid hidden updates
+                // The pending flags ensure the next open matches daemon state
                 if self.panel_visible {
                     if let Some(widget) = self.media.as_mut() {
                         widget.clear();
                     }
                 } else {
-                    // Clear cached data and mark a pending clear so stale artwork is not shown later.
+                    // Clear cached data and mark a pending clear so stale artwork is not shown later
                     self.pending_media = None;
                     self.pending_media_cleared = true;
                 }
             }
             UiEvent::ClickOutside => {
                 debug!("click outside detected");
-                // Close requests go through visibility handler to respect guards.
+                // Close requests go through visibility handler to respect guards
                 self.close_if_click_outside();
             }
             UiEvent::WorkAreaUpdated(reserved) => {
                 debug!(?reserved, "work area updated");
-                // Skip reapplying the same margins to avoid redundant layout recalculations.
-                // Prevents subtle width jitter when Hyprland reports identical values repeatedly.
+                // Skip reapplying the same margins to avoid redundant layout recalculations
+                // Prevents subtle width jitter when Hyprland reports identical values repeatedly
                 if self.work_area == reserved {
                     return;
                 }
                 self.work_area = reserved;
-                // Re-apply panel sizing only when the work area actually changes.
-                // Avoids redundant calls that can cascade into GTK relayout passes.
+                // Re-apply panel sizing only when the work area actually changes
+                // Avoids redundant calls that can cascade into GTK relayout passes
                 panel::apply_panel_config(&self.panel, &self.config, self.work_area);
                 let message = format!("work area update: {:?}", self.work_area);
                 self.log_debug(PanelDebugLevel::Info, move || message);
             }
             UiEvent::RefreshWidgets => {
-                // One-shot timers are re-armed after each refresh tick.
+                // One-shot timers are re-armed after each refresh tick
                 self.refresh_source = None;
                 // Track actual timer fire count to spot reschedule churn
                 super::perf_probe::refresh_timer_fired();
@@ -166,7 +166,7 @@ impl UiState {
             UiEvent::FilterChanged(query) => {
                 if self.list.set_filter_query(&query) {
                     self.log_debug(PanelDebugLevel::Verbose, || {
-                        format!("notification filter updated: '{}'", query)
+                        format!("notification filter updated: '{query}'")
                     });
                 }
             }
@@ -175,7 +175,7 @@ impl UiState {
             }
             UiEvent::CssReload => {
                 debug!("css reload requested");
-                self.css.reload(css::DEFAULT_CSS);
+                let _ = self.css.reload(css::DEFAULT_CSS);
                 self.log_debug(PanelDebugLevel::Info, || "css reloaded".to_string());
             }
             UiEvent::ConfigReload => {
@@ -189,7 +189,7 @@ impl UiState {
         self.list.flush_rebuild();
     }
 
-    pub fn list_needs_rebuild(&self) -> bool {
+    pub const fn list_needs_rebuild(&self) -> bool {
         self.list.needs_rebuild()
     }
 }

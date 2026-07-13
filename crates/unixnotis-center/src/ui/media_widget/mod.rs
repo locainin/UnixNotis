@@ -133,8 +133,8 @@ fn connect_prev_button(
     selection: Rc<RefCell<MediaSelection>>,
     card: MediaCardWidgets,
 ) {
-    let selection_prev = selection.clone();
-    let card_prev = card.clone();
+    let selection_prev = selection;
+    let card_prev = card;
     nav_prev.connect_clicked(clone!(
         #[weak]
         root,

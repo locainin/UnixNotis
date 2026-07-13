@@ -4,11 +4,12 @@ use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{
     css::hooks, PanelClearButtonPlacement, PanelConfig, PanelSection, PanelWidgetSection,
+    WidgetDensity,
 };
 
 use super::actions::build_clear_button;
 
-pub(crate) const WIDGET_REVEAL_TRANSITION_MS: u64 = 180;
+pub const WIDGET_REVEAL_TRANSITION_MS: u64 = 180;
 
 pub(super) struct PanelSectionWidgets {
     pub(super) body_stack: gtk::Box,
@@ -29,7 +30,10 @@ pub(super) struct PanelSectionWidgets {
     pub(super) media_container: gtk::Box,
 }
 
-pub(super) fn build_panel_sections(config: &PanelConfig) -> PanelSectionWidgets {
+pub(super) fn build_panel_sections(
+    config: &PanelConfig,
+    widget_density: WidgetDensity,
+) -> PanelSectionWidgets {
     let body_stack = gtk::Box::new(gtk::Orientation::Vertical, 8);
     body_stack.add_css_class(hooks::panel_shell::BODY_STACK);
     body_stack.set_hexpand(true);
@@ -56,6 +60,12 @@ pub(super) fn build_panel_sections(config: &PanelConfig) -> PanelSectionWidgets 
 
     let widget_stack = gtk::Box::new(gtk::Orientation::Vertical, 8);
     widget_stack.add_css_class(hooks::panel_shell::WIDGET_STACK);
+    apply_widget_density(
+        &widget_stack,
+        &quick_controls,
+        &media_container,
+        widget_density,
+    );
     for section in &config.widget_order {
         match section {
             PanelWidgetSection::Media => widget_stack.append(&media_container),
@@ -146,6 +156,26 @@ pub(super) fn build_panel_sections(config: &PanelConfig) -> PanelSectionWidgets 
     }
 }
 
+pub fn apply_widget_density(
+    widget_stack: &gtk::Box,
+    quick_controls: &gtk::Box,
+    media_container: &gtk::Box,
+    density: WidgetDensity,
+) {
+    let compact = density == WidgetDensity::Compact;
+    // Runtime spacing changes immediately while CSS classes handle theme-specific padding
+    widget_stack.set_spacing(if compact { 6 } else { 8 });
+    quick_controls.set_spacing(if compact { 6 } else { 10 });
+    media_container.set_spacing(if compact { 6 } else { 8 });
+    if compact {
+        widget_stack.remove_css_class(hooks::panel_shell::WIDGET_DENSITY_COMFORTABLE);
+        widget_stack.add_css_class(hooks::panel_shell::WIDGET_DENSITY_COMPACT);
+    } else {
+        widget_stack.remove_css_class(hooks::panel_shell::WIDGET_DENSITY_COMPACT);
+        widget_stack.add_css_class(hooks::panel_shell::WIDGET_DENSITY_COMFORTABLE);
+    }
+}
+
 pub(in crate::ui::panel) fn apply_panel_body_section_order(
     body_stack: &gtk::Box,
     widget_revealer: &gtk::Revealer,
@@ -201,7 +231,7 @@ fn build_section_header(label: &str) -> gtk::Label {
     header
 }
 
-pub(crate) fn notification_header_row_visible(config: &PanelConfig) -> bool {
+pub const fn notification_header_row_visible(config: &PanelConfig) -> bool {
     matches!(
         config.clear_button_placement,
         PanelClearButtonPlacement::NotificationHeader

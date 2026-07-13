@@ -135,7 +135,7 @@ pub(super) async fn apply_owner_change(
         return Ok(());
     }
 
-    let has_owner = new_owner.map(|owner| !owner.is_empty()).unwrap_or(false);
+    let has_owner = new_owner.is_some_and(|owner| !owner.is_empty());
     if !has_owner {
         // Losing the bus owner means the player has gone away
         remove_player(name, state, sender).await;
@@ -217,13 +217,13 @@ fn should_schedule_metadata_fallback(origin: MediaRefreshOrigin) -> bool {
     origin == MediaRefreshOrigin::Bus
 }
 
-fn should_publish_immediate_command_snapshot(command: &MediaCommand) -> bool {
+const fn should_publish_immediate_command_snapshot(command: &MediaCommand) -> bool {
     // Track skip commands often produce one partial metadata frame before the real update settles
     // Let the bus event or bounded retry publish those instead of flashing a blank card
     matches!(command, MediaCommand::PlayPause { .. })
 }
 
-fn merge_mode_for_signal(origin: MediaRefreshOrigin) -> MediaCacheMergeMode {
+const fn merge_mode_for_signal(origin: MediaRefreshOrigin) -> MediaCacheMergeMode {
     match origin {
         // Native property bursts can still be mid-transition
         MediaRefreshOrigin::Bus => MediaCacheMergeMode::Transitioning,

@@ -1,3 +1,8 @@
+#![allow(
+    clippy::float_cmp,
+    reason = "the tolerance helper returns exact configured constants for these finite inputs"
+)]
+
 use super::value::{format_command_value, slider_value_changed, slider_value_tolerance};
 
 #[test]

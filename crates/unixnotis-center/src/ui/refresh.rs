@@ -1,6 +1,6 @@
-//! Widget refresh scheduling for `UiState`.
+//! Widget refresh scheduling for `UiState`
 //!
-//! Maintains deadline-based polling cadence and GLib timer lifecycle.
+//! Maintains deadline-based polling cadence and `GLib` timer lifecycle
 
 use std::time::{Duration, Instant};
 
@@ -25,20 +25,18 @@ impl UiState {
         }
 
         // Fast controls expose per-widget deadlines so stable sliders do not
-        // keep the whole panel on a one-second wakeup loop.
+        // keep the whole panel on a one-second wakeup loop
         let fast_base = Duration::from_millis(fast_ms.max(1));
         let volume_due = self
             .volume
             .as_ref()
             .and_then(|widget| widget.next_poll_in(now, fast_base))
-            .map(is_due_delay)
-            .unwrap_or(false);
+            .is_some_and(is_due_delay);
         let brightness_due = self
             .brightness
             .as_ref()
             .and_then(|widget| widget.next_poll_in(now, fast_base))
-            .map(is_due_delay)
-            .unwrap_or(false);
+            .is_some_and(is_due_delay);
         let fast_due = force || (fast_ms > 0 && (volume_due || brightness_due));
         if fast_due {
             super::perf_probe::refresh_fast_lane_due();
@@ -56,11 +54,9 @@ impl UiState {
             }
         }
 
-        // Slow cadence is reserved for less dynamic controls to keep idle CPU low.
-        let toggles_due = force
-            || interval_due(now, self.last_slow_refresh, slow_ms)
-                .map(is_due_delay)
-                .unwrap_or(false);
+        // Slow cadence is reserved for less dynamic controls to keep idle CPU low
+        let toggles_due =
+            force || interval_due(now, self.last_slow_refresh, slow_ms).is_some_and(is_due_delay);
         if toggles_due {
             super::perf_probe::refresh_slow_lane_due();
             if let Some(toggles) = self.toggles.as_ref() {
@@ -72,7 +68,7 @@ impl UiState {
             self.last_slow_refresh = Some(now);
         }
 
-        // Widget-level backoff logic scales from this baseline.
+        // Widget-level backoff logic scales from this baseline
         let slow_base = Duration::from_millis(slow_ms.max(1));
         if let Some(stats) = self.stats.as_ref() {
             if force || stats.is_due(now) {
@@ -94,7 +90,7 @@ impl UiState {
         }
         let now = Instant::now();
         // Arm a one-shot timer for the nearest widget deadline rather than
-        // running a fixed periodic tick.
+        // running a fixed periodic tick
         let Some(mut delay) = self.next_refresh_delay(now) else {
             return;
         };
@@ -129,10 +125,9 @@ impl UiState {
         let toggles_poll = self
             .toggles
             .as_ref()
-            .map(|widget| widget.needs_polling())
-            .unwrap_or(false);
+            .is_some_and(super::widgets::toggles::ToggleGrid::needs_polling);
         if toggles_poll {
-            // Slow lane uses the configured slower interval by default.
+            // Slow lane uses the configured slower interval by default
             update_next_delay(
                 &mut next,
                 interval_due(
@@ -144,7 +139,7 @@ impl UiState {
         }
 
         if let Some(stats) = self.stats.as_ref() {
-            // Stats/cards expose their own next deadline, including backoff.
+            // Stats/cards expose their own next deadline, including backoff
             update_next_delay(&mut next, stats.next_refresh_in(now));
         }
         if let Some(cards) = self.cards.as_ref() {
@@ -173,7 +168,7 @@ impl UiState {
 
 fn interval_due(now: Instant, last: Option<Instant>, interval_ms: u64) -> Option<Duration> {
     if interval_ms == 0 {
-        // Zero disables this interval lane completely.
+        // Zero disables this interval lane completely
         return None;
     }
     let base = Duration::from_millis(interval_ms);
@@ -188,7 +183,7 @@ fn update_next_delay(next: &mut Option<Duration>, candidate: Option<Duration>) {
         return;
     };
     match next {
-        // Keep the earliest non-empty candidate as the next one-shot wakeup.
+        // Keep the earliest non-empty candidate as the next one-shot wakeup
         Some(current) if candidate >= *current => {}
         _ => *next = Some(candidate),
     }

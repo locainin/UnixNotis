@@ -136,7 +136,7 @@ fn media_score(info: &MediaInfo) -> (u8, u8) {
     // Duplicate groups keep the most useful card for the panel
     // Playing state matters first, then artwork breaks otherwise equal entries
     let status = playback_rank(&info.playback_status);
-    let art_rank = if info.art_source.is_some() { 0 } else { 1 };
+    let art_rank = u8::from(info.art_source.is_none());
     (status, art_rank)
 }
 

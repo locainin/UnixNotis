@@ -34,7 +34,7 @@ impl DelayedSlowQueue {
     pub(super) fn global() -> &'static Self {
         static QUEUE: OnceLock<DelayedSlowQueue> = OnceLock::new();
         // One delay queue is enough here
-        QUEUE.get_or_init(|| DelayedSlowQueue {
+        QUEUE.get_or_init(|| Self {
             state: Mutex::new(DelayedState {
                 pending: Vec::new(),
                 next_seq: 0,

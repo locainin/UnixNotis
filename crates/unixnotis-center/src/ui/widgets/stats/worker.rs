@@ -34,7 +34,7 @@ impl BuiltinStatWorker {
             let spawn = thread::Builder::new()
                 .name("unixnotis-builtin-stats".to_string())
                 .spawn(move || {
-                    for mut job in rx.iter() {
+                    for mut job in &rx {
                         let value = job.stat.read().unwrap_or_else(|| "n/a".to_string());
                         let _ = job.respond.send_blocking((job.stat, value));
                     }

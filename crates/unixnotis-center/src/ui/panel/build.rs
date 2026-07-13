@@ -57,7 +57,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     root.set_size_request(width, -1);
 
     let header = build_panel_header(&config.panel);
-    let sections = build_panel_sections(&config.panel);
+    let sections = build_panel_sections(&config.panel, config.widgets.density);
     let body_chrome = build_panel_body_chrome(&sections.body_stack);
     let overlay = gtk::Overlay::new();
     overlay.set_hexpand(false);

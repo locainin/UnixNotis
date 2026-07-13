@@ -26,6 +26,7 @@ pub(super) fn list_config() -> NotificationListConfig {
         show_notification_thumbnails: false,
         empty_text: "No notifications".to_string(),
         empty_offset_top: 24,
+        empty_alignment: unixnotis_core::EmptyStateAlignment::Auto,
     }
 }
 

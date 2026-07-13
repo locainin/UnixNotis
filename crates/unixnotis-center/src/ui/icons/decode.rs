@@ -1,6 +1,6 @@
-//! Background decoding for raster icons.
+//! Background decoding for raster icons
 //!
-//! Offloads image decoding and resizing to worker threads.
+//! Offloads image decoding and resizing to worker threads
 
 use std::fs::File;
 use std::io::Read;
@@ -16,7 +16,7 @@ use gtk::prelude::*;
 
 use super::cache::IconKey;
 
-// Prevent unbounded reads from untrusted icon paths.
+// Prevent unbounded reads from untrusted icon paths
 const MAX_ICON_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_ICON_DIMENSION: u32 = 2048;
 const ICON_DECODE_QUEUE_CAPACITY: usize = 128;
@@ -25,16 +25,16 @@ enum IconDecodeDropPolicy {
     DropNewest,
 }
 
-// Bound decode queue growth to protect against bursts of unique icon paths.
+// Bound decode queue growth to protect against bursts of unique icon paths
 const ICON_DECODE_DROP_POLICY: IconDecodeDropPolicy = IconDecodeDropPolicy::DropNewest;
 
 pub(super) struct IconWorker {
     sender: channel::Sender<IconJob>,
-    // Test-only guard keeps the update channel open when no workers are spawned.
+    // Test-only guard keeps the update channel open when no workers are spawned
     #[cfg(test)]
     #[allow(dead_code)]
     update_tx_guard: async_channel::Sender<IconUpdate>,
-    // Test-only receiver guard keeps the channel open when no workers are spawned.
+    // Test-only receiver guard keeps the channel open when no workers are spawned
     #[cfg(test)]
     #[allow(dead_code)]
     receiver_guard: channel::Receiver<IconJob>,
@@ -45,19 +45,19 @@ pub(super) struct IconUpdate {
     pub(super) result: IconResult,
 }
 
-// Submission errors indicate overload or shutdown; callers decide how to recover.
+// Submission errors indicate overload or shutdown; callers decide how to recover
 pub(super) enum IconSubmitError {
     Full,
     Closed,
 }
 
 impl IconSubmitError {
-    pub(super) fn reason(&self) -> &'static str {
+    pub(super) const fn reason(&self) -> &'static str {
         match self {
-            IconSubmitError::Full => match ICON_DECODE_DROP_POLICY {
+            Self::Full => match ICON_DECODE_DROP_POLICY {
                 IconDecodeDropPolicy::DropNewest => "icon decode queue full (drop-newest)",
             },
-            IconSubmitError::Closed => "icon decode queue closed",
+            Self::Closed => "icon decode queue closed",
         }
     }
 }
@@ -103,18 +103,16 @@ impl IconWorker {
         capacity: usize,
         spawn_workers: bool,
     ) -> Self {
-        // Bounded job queue; drop policy applies when overload occurs.
+        // Bounded job queue; drop policy applies when overload occurs
         let (sender, receiver) = channel::bounded::<IconJob>(capacity);
         #[cfg(test)]
         let receiver_guard = receiver.clone();
         #[cfg(test)]
         let update_tx_guard = update_tx.clone();
 
-        // Keep worker count small (<=2) because decode is CPU-heavy and we don't want to starve GTK.
-        // available_parallelism() may fail in constrained environments, so default to 1.
-        let worker_count = thread::available_parallelism()
-            .map(|count| count.get().min(2))
-            .unwrap_or(1);
+        // Keep worker count small (<=2) because decode is CPU-heavy and we don't want to starve GTK
+        // available_parallelism() may fail in constrained environments, so default to 1
+        let worker_count = thread::available_parallelism().map_or(1, |count| count.get().min(2));
 
         if spawn_workers {
             for _ in 0..worker_count {
@@ -122,8 +120,8 @@ impl IconWorker {
                 let update_tx = update_tx.clone();
 
                 thread::spawn(move || {
-                    // Blocking worker loop: wait for decode jobs, run decode, report back to UI via update_tx.
-                    for job in receiver.iter() {
+                    // Blocking worker loop: wait for decode jobs, run decode, report back to UI via update_tx
+                    for job in &receiver {
                         let IconJob::Decode {
                             key,
                             path,
@@ -132,15 +130,15 @@ impl IconWorker {
                             mode,
                         } = job;
 
-                        // Decode off-thread; GTK objects should be created/applied on the main loop later.
+                        // Decode off-thread; GTK objects should be created/applied on the main loop later
                         let result = match mode {
                             IconDecodeMode::Raster => decode_raster(&path, size, scale),
                             // Bytes mode keeps file I/O off the GTK thread for formats that
-                            // are still decoded on the main loop (e.g., SVG via GDK).
+                            // are still decoded on the main loop (e.g., SVG via GDK)
                             IconDecodeMode::Bytes => load_bytes(&path),
                         };
 
-                        // send_blocking is fine here (worker thread), avoids busy looping if UI is momentarily slow.
+                        // send_blocking is fine here (worker thread), avoids busy looping if UI is momentarily slow
                         let _ = update_tx.send_blocking(IconUpdate { key, result });
                     }
                 });
@@ -164,7 +162,7 @@ impl IconWorker {
         scale: i32,
         mode: IconDecodeMode,
     ) -> Result<(), IconSubmitError> {
-        // Non-blocking submit; overload handling is delegated to the caller.
+        // Non-blocking submit; overload handling is delegated to the caller
         let job = IconJob::Decode {
             // Move the owned key straight into the job so the caller does not pay
             // for an extra deep clone before the worker even starts
@@ -201,7 +199,7 @@ fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
         return IconResult::Failed(format!("icon file too large ({} bytes)", metadata.len()));
     }
 
-    // Read the file into memory with a hard cap to avoid unbounded allocations.
+    // Read the file into memory with a hard cap to avoid unbounded allocations
     let file = match File::open(path) {
         Ok(file) => file,
         Err(err) => return IconResult::Failed(err.to_string()),
@@ -215,28 +213,28 @@ fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
         return IconResult::Failed("icon file too large".to_string());
     }
 
-    // Decode the image from the raw bytes. load_from_memory auto-detects the format.
+    // Decode the image from the raw bytes. load_from_memory auto-detects the format
     let image = match image::load_from_memory(&bytes) {
         Ok(image) => image,
         Err(err) => return IconResult::Failed(err.to_string()),
     };
 
-    // Compute target pixel size. size is logical units; scale accounts for output scale (e.g. 2x).
-    // max(1) prevents zero/negative values from producing nonsense.
+    // Compute target pixel size. size is logical units; scale accounts for output scale (e.g. 2x)
+    // max(1) prevents zero/negative values from producing nonsense
     let size = i64::from(size.max(1));
     let scale = i64::from(scale.max(1));
     let target = size
         .saturating_mul(scale)
-        .clamp(1, MAX_ICON_DIMENSION as i64) as u32;
+        .clamp(1, i64::from(MAX_ICON_DIMENSION)) as u32;
 
-    // Convert to RGBA8 so the SIMD resizer works on a stable pixel layout.
+    // Convert to RGBA8 so the SIMD resizer works on a stable pixel layout
     let rgba = image.to_rgba8();
     let width = rgba.width();
     let height = rgba.height();
     if width > i32::MAX as u32 || height > i32::MAX as u32 {
         return IconResult::Failed("decoded icon exceeds supported dimensions".to_string());
     }
-    // Skip the resize path when the source already matches the target size.
+    // Skip the resize path when the source already matches the target size
     if width == target && height == target {
         let width = width as i32;
         let height = height as i32;
@@ -265,10 +263,10 @@ fn decode_raster(path: &Path, size: i32, scale: i32) -> IconResult {
     let width = target as i32;
     let height = target as i32;
 
-    // Bytes per row for RGBA8. saturating_mul avoids overflow if width is unexpectedly large.
+    // Bytes per row for RGBA8. saturating_mul avoids overflow if width is unexpectedly large
     let stride = width.saturating_mul(4);
 
-    // into_vec consumes the resize buffer and returns the owned RGBA bytes (no extra copy).
+    // into_vec consumes the resize buffer and returns the owned RGBA bytes (no extra copy)
     IconResult::Raster(RasterImage {
         bytes: dst.into_vec(),
         width,
@@ -289,7 +287,7 @@ fn load_bytes(path: &Path) -> IconResult {
         return IconResult::Failed(format!("icon file too large ({} bytes)", metadata.len()));
     }
 
-    // Read the file into memory with a hard cap to avoid unbounded allocations.
+    // Read the file into memory with a hard cap to avoid unbounded allocations
     let file = match File::open(path) {
         Ok(file) => file,
         Err(err) => return IconResult::Failed(err.to_string()),
@@ -306,8 +304,8 @@ fn load_bytes(path: &Path) -> IconResult {
 }
 
 pub(super) fn texture_from_raster(image: &RasterImage) -> Texture {
-    // Wrap the Vec<u8> as glib::Bytes so GTK can reference it efficiently.
-    // MemoryTexture copies/uses the bytes per GTK expectations; stride must match row size.
+    // Wrap the Vec<u8> as glib::Bytes so GTK can reference it efficiently
+    // MemoryTexture copies/uses the bytes per GTK expectations; stride must match row size
     let bytes = glib::Bytes::from(&image.bytes);
 
     gdk::MemoryTexture::new(

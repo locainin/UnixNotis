@@ -13,7 +13,7 @@ const MEDIA_BUTTON_FALLBACK_WIDTH_PX: i32 = 28;
 const MEDIA_NAV_FALLBACK_WIDTH_PX: i32 = 22;
 const MEDIA_ART_FRAME_EXTRA_PX: i32 = 4;
 
-pub(super) fn stack_layout_class(layout: MediaLayout) -> &'static str {
+pub(super) const fn stack_layout_class(layout: MediaLayout) -> &'static str {
     // Stable classes let media.css style each shell without guessing structure
     match layout {
         MediaLayout::Carousel => "unixnotis-media-stack-carousel",
@@ -24,7 +24,7 @@ pub(super) fn stack_layout_class(layout: MediaLayout) -> &'static str {
     }
 }
 
-pub(super) fn row_layout_class(layout: MediaLayout) -> &'static str {
+pub(super) const fn row_layout_class(layout: MediaLayout) -> &'static str {
     // Row classes mirror the shell preset so width tweaks can stay layout specific
     match layout {
         MediaLayout::Carousel => "unixnotis-media-row-carousel",
@@ -35,7 +35,7 @@ pub(super) fn row_layout_class(layout: MediaLayout) -> &'static str {
     }
 }
 
-pub(super) fn card_layout_class(layout: MediaLayout) -> &'static str {
+pub(super) const fn card_layout_class(layout: MediaLayout) -> &'static str {
     // Card classes are the main theme hook users touch when ricing the player
     match layout {
         MediaLayout::Carousel => "unixnotis-media-card-carousel",
@@ -61,11 +61,11 @@ pub(super) fn marquee_width_for_shell(shell: &MediaShellConfig, panel_width: i32
         .max(shell.text_width_floor_px.max(MIN_MEDIA_TEXT_WIDTH_FLOOR_PX))
 }
 
-pub(super) fn card_height_for_shell(shell: &MediaShellConfig) -> i32 {
+pub(super) const fn card_height_for_shell(shell: &MediaShellConfig) -> i32 {
     shell.card_height_px
 }
 
-pub(super) fn art_frame_size_px(shell: &MediaShellConfig) -> i32 {
+pub(super) const fn art_frame_size_px(shell: &MediaShellConfig) -> i32 {
     shell.art_size_px.saturating_add(MEDIA_ART_FRAME_EXTRA_PX)
 }
 

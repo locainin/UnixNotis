@@ -77,7 +77,7 @@ impl MediaShellConfig {
     }
 }
 
-fn resolve_navigation_position(
+const fn resolve_navigation_position(
     config: &MediaConfig,
     controls_position: ResolvedMediaControlsPosition,
 ) -> ResolvedMediaNavigationPosition {

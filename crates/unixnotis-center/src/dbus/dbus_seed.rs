@@ -1,4 +1,4 @@
-//! Seeding helpers for initial control state sync over D-Bus.
+//! Seeding helpers for initial control state sync over D-Bus
 
 use std::time::{Duration, Instant};
 
@@ -9,25 +9,25 @@ use unixnotis_core::ControlProxy;
 use super::dbus_backoff::RetryLog;
 use super::dbus_types::UiEvent;
 
-// Seed retries tolerate short startup hiccups without blocking indefinitely.
-pub(crate) const SEED_RETRY_BASE_MS: u64 = 250;
-pub(crate) const SEED_RETRY_MAX_MS: u64 = 2000;
-pub(crate) const SEED_RETRY_BUDGET_SECS: u64 = 30;
-pub(crate) const SEED_RETRY_LOG_INTERVAL_SECS: u64 = 10;
+// Seed retries tolerate short startup hiccups without blocking indefinitely
+pub const SEED_RETRY_BASE_MS: u64 = 250;
+pub const SEED_RETRY_MAX_MS: u64 = 2000;
+pub const SEED_RETRY_BUDGET_SECS: u64 = 30;
+pub const SEED_RETRY_LOG_INTERVAL_SECS: u64 = 10;
 
-// Captures seed failures without forcing an immediate reconnect.
+// Captures seed failures without forcing an immediate reconnect
 #[derive(Debug)]
-pub(crate) struct SeedError {
+pub struct SeedError {
     pub(crate) state_error: Option<String>,
     pub(crate) active_error: Option<String>,
     pub(crate) history_error: Option<String>,
 }
 
-pub(crate) async fn seed_state_with_retry(
+pub async fn seed_state_with_retry(
     proxy: &ControlProxy<'_>,
     sender: &async_channel::Sender<UiEvent>,
 ) {
-    // Seed retries are bounded to keep startup responsive while tolerating transient failures.
+    // Seed retries are bounded to keep startup responsive while tolerating transient failures
     let mut backoff = super::dbus_backoff::Backoff::new(SEED_RETRY_BASE_MS, SEED_RETRY_MAX_MS);
     let deadline = Instant::now() + Duration::from_secs(SEED_RETRY_BUDGET_SECS);
     let mut log = RetryLog::new(Duration::from_secs(SEED_RETRY_LOG_INTERVAL_SECS));
@@ -69,11 +69,11 @@ pub(crate) async fn seed_state_with_retry(
     }
 }
 
-pub(crate) async fn seed_state(
+pub async fn seed_state(
     proxy: &ControlProxy<'_>,
     sender: &async_channel::Sender<UiEvent>,
 ) -> Result<(), SeedError> {
-    // Fetch in parallel so startup waits on the slowest call instead of the sum of all calls.
+    // Fetch in parallel so startup waits on the slowest call instead of the sum of all calls
     let (state, active, history) =
         tokio::join!(proxy.get_state(), proxy.list_active(), proxy.list_history());
 

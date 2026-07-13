@@ -65,7 +65,7 @@ pub(super) fn attach_icon_action(
             else {
                 return;
             };
-            request_refresh(request.clone(), refresh, Duration::from_secs(1), true);
+            request_refresh(request, refresh, Duration::from_secs(1), true);
         });
     });
 }
@@ -82,8 +82,8 @@ pub(super) fn attach_scale_action(
     let pending_value = Rc::new(Cell::new(None));
     let request = SliderRefreshRequest::from_config(config);
     let updating_guard = refresh_meta.updating.clone();
-    let pending_guard = pending.clone();
-    let pending_value_guard = pending_value.clone();
+    let pending_guard = pending;
+    let pending_value_guard = pending_value;
     let scale_weak = scale.downgrade();
     let label_weak = value_label.downgrade();
     let icon_weak = icon_image.downgrade();

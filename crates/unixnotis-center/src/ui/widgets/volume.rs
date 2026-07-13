@@ -1,4 +1,4 @@
-//! Volume slider widget wrapper.
+//! Volume slider widget wrapper
 
 use std::time::{Duration, Instant};
 
@@ -17,7 +17,7 @@ impl VolumeWidget {
         }
     }
 
-    pub fn root(&self) -> &gtk::Box {
+    pub const fn root(&self) -> &gtk::Box {
         &self.slider.root
     }
 

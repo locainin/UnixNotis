@@ -11,6 +11,8 @@ pub(super) struct MediaDisplayConfig {
     pub(super) show_position_when_single_player: bool,
     pub(super) show_title: bool,
     pub(super) show_artist: bool,
+    pub(super) collapse_missing_artist: bool,
+    pub(super) collapse_missing_art: bool,
     pub(super) title_fallback: MediaTitleFallback,
     pub(super) position_format: MediaPositionFormat,
     pub(super) source_aliases: BTreeMap<String, String>,
@@ -25,11 +27,29 @@ impl MediaDisplayConfig {
             show_position_when_single_player: config.show_position_when_single_player,
             show_title: config.show_title,
             show_artist: config.show_artist,
+            collapse_missing_artist: config.collapse_missing_artist,
+            collapse_missing_art: config.collapse_missing_art,
             title_fallback: config.title_fallback,
             position_format: config.position_format,
             source_aliases: config.source_aliases.clone(),
         }
     }
+}
+
+pub(super) const fn artist_text_for<'a>(
+    artist: &'a str,
+    display: &MediaDisplayConfig,
+) -> Option<&'a str> {
+    if !display.show_artist || (artist.is_empty() && display.collapse_missing_artist) {
+        return None;
+    }
+    // A single space reserves a stable line without presenting fake metadata
+    Some(if artist.is_empty() { " " } else { artist })
+}
+
+pub(super) const fn art_slot_visible(has_art: bool, display: &MediaDisplayConfig) -> bool {
+    // Stable shells reserve the slot while compact shells may collapse absent artwork
+    has_art || !display.collapse_missing_art
 }
 
 pub(super) fn title_text_for(info: &MediaInfo, display: &MediaDisplayConfig) -> Option<String> {
@@ -104,8 +124,10 @@ fn resolve_source_label(info: &MediaInfo, aliases: &BTreeMap<String, String>) ->
             best = Some((label.as_str(), score));
         }
     }
-    best.map(|(label, _)| label.to_string())
-        .unwrap_or_else(|| default_source_label(info))
+    best.map_or_else(
+        || default_source_label(info),
+        |(label, _)| label.to_string(),
+    )
 }
 
 fn default_source_label(info: &MediaInfo) -> String {

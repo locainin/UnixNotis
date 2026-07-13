@@ -4,7 +4,7 @@ use unixnotis_core::{PanelConfig, PanelSection};
 
 use super::types::PanelWidgets;
 
-pub(crate) fn apply_reloaded_panel_chrome(panel: &PanelWidgets, config: &PanelConfig) {
+pub fn apply_reloaded_panel_chrome(panel: &PanelWidgets, config: &PanelConfig) {
     super::actions::apply_panel_action_config(
         &panel.header_top,
         &super::actions::PanelActionWidgets {
@@ -20,7 +20,7 @@ pub(crate) fn apply_reloaded_panel_chrome(panel: &PanelWidgets, config: &PanelCo
     super::actions::apply_clear_button_config(&panel.clear_header_button, config);
 }
 
-pub(crate) fn apply_reloaded_body_order(panel: &PanelWidgets, order: &[PanelSection]) {
+pub fn apply_reloaded_body_order(panel: &PanelWidgets, order: &[PanelSection]) {
     super::sections::apply_panel_body_section_order(
         &panel.body_stack,
         &panel.widget_revealer,

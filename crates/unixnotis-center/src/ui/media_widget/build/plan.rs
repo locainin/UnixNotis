@@ -34,7 +34,7 @@ impl ShellCompositionPlan {
     }
 }
 
-pub(super) fn nav_cluster_spacing_px(
+pub(super) const fn nav_cluster_spacing_px(
     include_controls: bool,
     include_nav: bool,
     shell: &MediaShellConfig,

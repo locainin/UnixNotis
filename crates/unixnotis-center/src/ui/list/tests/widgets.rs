@@ -15,8 +15,7 @@ fn new_gtk_item() -> gtk::ListItem {
 fn contains_label_text(root: &gtk::Widget, text: &str) -> bool {
     if root
         .downcast_ref::<gtk::Label>()
-        .map(|label| label.text().as_str() == text)
-        .unwrap_or(false)
+        .is_some_and(|label| label.text().as_str() == text)
     {
         return true;
     }

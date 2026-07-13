@@ -47,10 +47,10 @@ pub(super) struct CommandWorker {
 }
 
 impl CommandWorker {
-    fn global() -> &'static CommandWorker {
+    fn global() -> &'static Self {
         static WORKER: OnceLock<CommandWorker> = OnceLock::new();
         // One shared queue keeps one path for dispatch
-        WORKER.get_or_init(|| CommandWorker::new(COMMAND_WORKERS))
+        WORKER.get_or_init(|| Self::new(COMMAND_WORKERS))
     }
 
     fn new(worker_count: usize) -> Self {
@@ -225,10 +225,10 @@ enum FallbackSubmitError {
 }
 
 impl FallbackWorker {
-    fn global() -> &'static FallbackWorker {
+    fn global() -> &'static Self {
         static WORKER: OnceLock<FallbackWorker> = OnceLock::new();
         // One extra queue for action overflow
-        WORKER.get_or_init(|| FallbackWorker::new(COMMAND_FALLBACK_QUEUE_CAPACITY))
+        WORKER.get_or_init(|| Self::new(COMMAND_FALLBACK_QUEUE_CAPACITY))
     }
 
     fn new(capacity: usize) -> Self {
@@ -284,7 +284,7 @@ fn should_warn_queue_full_from(last_warn: &mut Option<Instant>, now: Instant) ->
 fn run_worker(rx: channel::Receiver<CommandJob>) {
     // Reuse one runtime per worker
     let runtime = build_command_runtime();
-    for job in rx.iter() {
+    for job in &rx {
         // Order only holds inside one worker
         handle_job(job, runtime.as_ref());
     }
@@ -313,11 +313,10 @@ fn handle_job(job: CommandJob, runtime: Option<&tokio::runtime::Runtime>) {
     }
     match result {
         Ok(output) => {
-            if !output.status.success() {
-                warn!(command = %cmd_snip, "command returned non-zero status");
-                debug::log(PanelDebugLevel::Warn, || {
+            if output.status.success() {
+                debug::log(PanelDebugLevel::Verbose, || {
                     format!(
-                        "command failed kind={:?} status={:?} queue_wait_ms={} exec_ms={} total_ms={}",
+                        "command ok kind={:?} status={:?} queue_wait_ms={} exec_ms={} total_ms={}",
                         job.plan.kind,
                         output.status.code(),
                         queue_wait_ms,
@@ -326,9 +325,10 @@ fn handle_job(job: CommandJob, runtime: Option<&tokio::runtime::Runtime>) {
                     )
                 });
             } else {
-                debug::log(PanelDebugLevel::Verbose, || {
+                warn!(command = %cmd_snip, "command returned non-zero status");
+                debug::log(PanelDebugLevel::Warn, || {
                     format!(
-                        "command ok kind={:?} status={:?} queue_wait_ms={} exec_ms={} total_ms={}",
+                        "command failed kind={:?} status={:?} queue_wait_ms={} exec_ms={} total_ms={}",
                         job.plan.kind,
                         output.status.code(),
                         queue_wait_ms,

@@ -1,7 +1,7 @@
-//! Icon resolution for notification widgets.
+//! Icon resolution for notification widgets
 //!
 //! Keeps icon orchestration in this module while delegating cache and
-//! decoding helpers to focused submodules.
+//! decoding helpers to focused submodules
 
 mod cache;
 mod decode;
@@ -33,14 +33,14 @@ use theme::{
     resolve_icon_source, resolve_path_texture, IconSource,
 };
 
-/// Resolves notification icons using image hints, themed icons, and desktop metadata.
+/// Resolves notification icons using image hints, themed icons, and desktop metadata
 pub struct IconResolver {
     inner: Rc<IconResolverInner>,
 }
 
 impl IconResolver {
     pub fn new() -> Self {
-        // Bound update queue to avoid unbounded memory growth if UI stalls.
+        // Bound update queue to avoid unbounded memory growth if UI stalls
         let (update_tx, update_rx) =
             async_channel::bounded::<IconUpdate>(ICON_UPDATE_QUEUE_CAPACITY);
         let worker = IconWorker::new(update_tx);
@@ -72,9 +72,9 @@ impl IconResolver {
     }
 
     pub fn clear_missing_cache(&self) {
-        // Theme reloads can add icons that were previously missing.
+        // Theme reloads can add icons that were previously missing
         // Clearing the miss cache ensures new lookups are attempted immediately
-        // instead of waiting for the miss TTL to expire.
+        // instead of waiting for the miss TTL to expire
         self.inner.clear_missing_cache();
     }
 }
@@ -87,7 +87,7 @@ struct IconResolverInner {
     worker: IconWorker,
 }
 
-// Update queue capacity keeps bursts buffered without unbounded growth.
+// Update queue capacity keeps bursts buffered without unbounded growth
 const ICON_UPDATE_QUEUE_CAPACITY: usize = 256;
 
 impl IconResolverInner {
@@ -120,7 +120,7 @@ impl IconResolverInner {
     }
 
     fn clear_missing_cache(&self) {
-        // Clear both ordered and set storage to keep cache state consistent.
+        // Clear both ordered and set storage to keep cache state consistent
         self.missing_names.borrow_mut().clear();
     }
 
@@ -141,15 +141,15 @@ impl IconResolverInner {
 
         if !image.image_path.is_empty() {
             if let Some(path) = file_path_from_hint(&image.image_path) {
-                // Own the decoded path to keep icon decode jobs self-contained.
+                // Own the decoded path to keep icon decode jobs self-contained
                 if let Some(key) = icon_key_for_path(&path, size, scale) {
                     if let Some(paintable) = self.cache.borrow_mut().get(&key) {
                         return Some(IconResolution::Ready { key, paintable });
                     }
                     if is_svg_path(&path) {
-                        // SVG icon hints should avoid synchronous file I/O on the GTK thread.
+                        // SVG icon hints should avoid synchronous file I/O on the GTK thread
                         // Route them through the async byte loader so texture creation happens on
-                        // the main loop without blocking disk reads.
+                        // the main loop without blocking disk reads
                         return Some(IconResolution::Async {
                             request: IconDecodeRequest {
                                 key,
@@ -213,13 +213,12 @@ impl IconResolverInner {
                 paintable: cached,
             });
         }
-        let source = match resolve_icon_source(name, size, scale) {
-            Some(source) => source,
-            None => {
-                // Cache misses briefly to avoid repeated theme lookups during bursts.
-                self.missing_names.borrow_mut().insert(key.clone());
-                return None;
-            }
+        let source = if let Some(source) = resolve_icon_source(name, size, scale) {
+            source
+        } else {
+            // Cache misses briefly to avoid repeated theme lookups during bursts
+            self.missing_names.borrow_mut().insert(key);
+            return None;
         };
         match source {
             IconSource::Paintable(paintable) => {
@@ -272,7 +271,7 @@ impl IconResolverInner {
             return;
         }
         inflight.insert(key.clone(), vec![image.downgrade()]);
-        // Release the inflight borrow before handling synchronous errors.
+        // Release the inflight borrow before handling synchronous errors
         drop(inflight);
         // Keep one local key around so a failed submit can clear the same inflight
         // entry without rebuilding a second owned key from raw inputs
@@ -280,7 +279,7 @@ impl IconResolverInner {
             .worker
             .submit_decode(key.clone(), path, size, scale, mode)
         {
-            // Keep the inflight map consistent by issuing an immediate failure update.
+            // Keep the inflight map consistent by issuing an immediate failure update
             self.handle_update(IconUpdate {
                 key,
                 result: IconResult::Failed(err.reason().to_string()),
@@ -302,11 +301,11 @@ impl IconResolverInner {
                 )
             }
             IconResult::Bytes(bytes) => {
-                // Create textures on the GTK thread to keep GDK/GIO object use thread-safe.
-                // The bytes were loaded off-thread to avoid synchronous disk I/O here.
+                // Create textures on the GTK thread to keep GDK/GIO object use thread-safe
+                // The bytes were loaded off-thread to avoid synchronous disk I/O here
                 let (size, scale) = key.size_and_scale();
                 let target = size.max(1).saturating_mul(scale.max(1)).max(1);
-                // Decode at the target size to avoid large SVG rasterization on the UI thread.
+                // Decode at the target size to avoid large SVG rasterization on the UI thread
                 let bytes = glib::Bytes::from_owned(bytes);
                 let stream = MemoryInputStream::from_bytes(&bytes);
                 match Pixbuf::from_stream_at_scale(
@@ -366,8 +365,8 @@ impl IconResolverInner {
     }
 }
 
-// Cache failed icon lookups briefly to avoid repeated theme scans during bursts.
-// Entries expire quickly to avoid pinning misses after icon theme changes.
+// Cache failed icon lookups briefly to avoid repeated theme scans during bursts
+// Entries expire quickly to avoid pinning misses after icon theme changes
 struct MissingIconCache {
     order: VecDeque<(IconKey, Instant)>,
     set: HashSet<IconKey>,
@@ -418,8 +417,8 @@ impl MissingIconCache {
     }
 
     fn clear(&mut self) {
-        // Clear both the ordered list and set to reset miss tracking.
-        // This avoids reusing stale misses after theme changes.
+        // Clear both the ordered list and set to reset miss tracking
+        // This avoids reusing stale misses after theme changes
         self.order.clear();
         self.set.clear();
     }

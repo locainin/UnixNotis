@@ -11,14 +11,14 @@ use unixnotis_core::{util::CONFIG_PATH_ENV, Config};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
-pub(crate) struct Args {
+pub struct Args {
     /// Path to config.toml
     #[arg(long)]
     pub(crate) config: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ConfigSource {
+pub enum ConfigSource {
     // Explicit CLI or daemon-provided path
     Custom,
     // Config loaded from the default on-disk location
@@ -27,7 +27,7 @@ pub(crate) enum ConfigSource {
     Builtin,
 }
 
-pub(crate) fn load_config(args: &Args) -> Result<(Config, PathBuf, ConfigSource)> {
+pub fn load_config(args: &Args) -> Result<(Config, PathBuf, ConfigSource)> {
     if let Some(path) = config_override_path(args, env::var_os(CONFIG_PATH_ENV)) {
         return Ok((
             Config::load_from_path(&path).context("read config from path")?,
@@ -46,7 +46,7 @@ pub(crate) fn load_config(args: &Args) -> Result<(Config, PathBuf, ConfigSource)
     Ok((config, path, source))
 }
 
-pub(crate) fn init_tracing(config: &Config) {
+pub fn init_tracing(config: &Config) {
     // Prefer RUST_LOG when it is valid
     // Fall back to the config file when the env value is missing or broken
     let (filter, warning, env_warning) = match EnvFilter::try_from_default_env() {
@@ -73,10 +73,8 @@ pub(crate) fn init_tracing(config: &Config) {
                     // Fall back to info so logging still works
                     let fallback =
                         EnvFilter::try_new("info").unwrap_or_else(|_| EnvFilter::new("info"));
-                    let warning = format!(
-                        "invalid log_level '{}'; defaulting to 'info' ({err})",
-                        configured
-                    );
+                    let warning =
+                        format!("invalid log_level '{configured}'; defaulting to 'info' ({err})");
                     (fallback, Some(warning), env_warning)
                 }
             }
@@ -95,7 +93,7 @@ pub(crate) fn init_tracing(config: &Config) {
     }
 }
 
-pub(crate) fn is_wayland_session() -> bool {
+pub fn is_wayland_session() -> bool {
     if let Ok(session_type) = env::var("XDG_SESSION_TYPE") {
         if session_type.eq_ignore_ascii_case("wayland") {
             return true;

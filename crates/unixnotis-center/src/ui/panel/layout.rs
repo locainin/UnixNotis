@@ -117,7 +117,7 @@ pub fn apply_panel_config(panel: &PanelWidgets, config: &Config, reserved: Optio
     // margins, so only the outer shell receives an exact width request
 }
 
-pub(super) fn map_keyboard_mode(mode: PanelKeyboardInteractivity) -> KeyboardMode {
+pub(super) const fn map_keyboard_mode(mode: PanelKeyboardInteractivity) -> KeyboardMode {
     match mode {
         PanelKeyboardInteractivity::None => KeyboardMode::None,
         PanelKeyboardInteractivity::OnDemand => KeyboardMode::OnDemand,
@@ -153,8 +153,7 @@ fn resolve_panel_height(
         // Pixel override is still bounded by the current monitor work area
         return Some(
             usable_height
-                .map(|usable| height_override.min(usable))
-                .unwrap_or(height_override)
+                .map_or(height_override, |usable| height_override.min(usable))
                 .max(1),
         );
     }

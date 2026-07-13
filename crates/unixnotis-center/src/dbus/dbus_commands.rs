@@ -11,7 +11,7 @@ use crate::debug;
 // Cap offline queue length so a dead bus does not keep growing memory use
 const MAX_OFFLINE_COMMANDS: usize = 128;
 
-pub(crate) async fn handle_command(
+pub async fn handle_command(
     proxy: &ControlProxy<'_>,
     // The runtime still passes the UI sender here so the call shape stays uniform
     // Clear-all recovery no longer needs it because daemon invalidation handles reseed
@@ -31,7 +31,7 @@ pub(crate) async fn handle_command(
     }
 }
 
-pub(crate) fn stash_offline_commands(
+pub fn stash_offline_commands(
     command_rx: &mut mpsc::Receiver<UiCommand>,
     offline: &mut VecDeque<UiCommand>,
 ) {
@@ -78,7 +78,7 @@ fn enqueue_offline_command(offline: &mut VecDeque<UiCommand>, command: UiCommand
     true
 }
 
-pub(crate) async fn flush_offline_commands(
+pub async fn flush_offline_commands(
     proxy: &ControlProxy<'_>,
     sender: &async_channel::Sender<super::dbus_types::UiEvent>,
     offline: &mut VecDeque<UiCommand>,
@@ -97,8 +97,8 @@ pub(crate) async fn flush_offline_commands(
     }
 }
 
-pub(crate) fn drop_stale_offline_commands(offline: &mut VecDeque<UiCommand>) {
-    // Drop ID-based commands after reconnect to avoid acting on stale IDs.
+pub fn drop_stale_offline_commands(offline: &mut VecDeque<UiCommand>) {
+    // Drop ID-based commands after reconnect to avoid acting on stale IDs
     // Commands that do not depend on old notification ids are kept
     let before = offline.len();
     offline.retain(|command| {

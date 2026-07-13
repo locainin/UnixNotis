@@ -19,6 +19,7 @@ pub(super) fn build_notification_list(
         show_notification_thumbnails: init.config.panel.notification_thumbnails_visible,
         empty_text: init.config.panel.empty_text.clone(),
         empty_offset_top: init.config.panel.empty_offset_top,
+        empty_alignment: init.config.panel.empty_alignment,
     };
 
     // Notification list owns row virtualization and icon resolution

@@ -1,7 +1,7 @@
-//! Small UI-side guards for bursty button and toggle input.
+//! Small UI-side guards for bursty button and toggle input
 //!
 //! These helpers keep repeated clicks from spawning redundant work while still
-//! letting the newest user intent win when toggles bounce quickly.
+//! letting the newest user intent win when toggles bounce quickly
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -80,8 +80,8 @@ fn schedule_widgets_collapsed(
         return;
     }
 
-    let sender_retry = sender.clone();
-    let latest_retry = latest.clone();
+    let sender_retry = sender;
+    let latest_retry = latest;
     let pending_retry = pending.clone();
     let id = glib::timeout_add_local_once(delay, move || {
         let _ = pending_retry.borrow_mut().take();

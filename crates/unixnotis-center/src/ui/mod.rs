@@ -1,7 +1,7 @@
-//! Center UI state, widget wiring, and event handling.
+//! Center UI state, widget wiring, and event handling
 //!
 //! Implementation is split across focused modules to keep this root file concise
-//! while preserving a single home for shared state definitions.
+//! while preserving a single home for shared state definitions
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -21,8 +21,7 @@ mod config_media;
 mod events;
 mod hyprland;
 mod icons;
-// Startup wiring lives outside `src/ui` but remains a child module for private UI access
-#[path = "../init/root.rs"]
+// Startup wiring remains a child module so constructors can access private UI parts
 mod init;
 mod input_guard;
 mod list;
@@ -36,31 +35,31 @@ mod visibility;
 mod widget_builders;
 mod widgets;
 
-/// GTK state for the notification center panel.
+/// GTK state for the notification center panel
 pub struct UiState {
     config: Config,
     config_path: std::path::PathBuf,
     css: CssManager,
     panel: panel::PanelWidgets,
     list: list::NotificationList,
-    // Shared resolver keeps icon cache and inflight decode tracking centralized.
+    // Shared resolver keeps icon cache and inflight decode tracking centralized
     icon_resolver: Rc<icons::IconResolver>,
-    // Widget assets are resolved relative to the active config file root.
+    // Widget assets are resolved relative to the active config file root
     widget_icon_resolver: IconAssetResolver,
     dnd_guard: Rc<Cell<bool>>,
     search_toggle_guard: Rc<Cell<bool>>,
     panel_visible: bool,
     panel_visible_flag: Arc<AtomicBool>,
     work_area: Option<Margins>,
-    // Tracks the last rendered count to avoid redundant label updates.
+    // Tracks the last rendered count to avoid redundant label updates
     last_count: Option<usize>,
     media: Option<media_widget::MediaWidget>,
     media_handle: Option<crate::media::MediaHandle>,
-    // Holds the most recent media snapshot while the panel is hidden.
-    // Defers GTK updates until visible to keep idle CPU near zero.
+    // Holds the most recent media snapshot while the panel is hidden
+    // Defers GTK updates until visible to keep idle CPU near zero
     pending_media: Option<Vec<crate::media::MediaInfo>>,
-    // Tracks a pending media clear request while hidden.
-    // Ensures stale artwork does not linger across open/close cycles.
+    // Tracks a pending media clear request while hidden
+    // Ensures stale artwork does not linger across open/close cycles
     pending_media_cleared: bool,
     volume: Option<widgets::volume::VolumeWidget>,
     brightness: Option<widgets::brightness::BrightnessWidget>,
@@ -72,11 +71,15 @@ pub struct UiState {
     widgets_collapsed: bool,
     refresh_source: Option<gtk::glib::SourceId>,
     last_slow_refresh: Option<Instant>,
-    // Keeps the shared async runtime alive for D-Bus and media tasks.
+    // Keeps the shared async runtime alive for D-Bus and media tasks
     _runtime: Arc<tokio::runtime::Runtime>,
 }
 
-// Bundles constructor inputs to keep initialization readable and stable.
+#[cfg(test)]
+#[path = "tests/config.rs"]
+mod config_tests;
+
+// Bundles constructor inputs to keep initialization readable and stable
 pub struct UiStateInit {
     pub app: gtk::Application,
     pub config: Config,
@@ -89,17 +92,17 @@ pub struct UiStateInit {
 }
 
 impl UiState {
-    pub fn panel_is_visible(&self) -> bool {
+    pub const fn panel_is_visible(&self) -> bool {
         self.panel_visible
     }
 }
 
-pub(super) fn try_send_command(command_tx: &mpsc::Sender<UiCommand>, command: UiCommand) {
-    // Non-blocking send keeps GTK handlers responsive under D-Bus stalls.
+pub fn try_send_command(command_tx: &mpsc::Sender<UiCommand>, command: UiCommand) {
+    // Non-blocking send keeps GTK handlers responsive under D-Bus stalls
     match command_tx.try_send(command) {
         Ok(()) => {}
         Err(TrySendError::Full(command)) => {
-            // Backpressure is retried asynchronously to avoid dropping user actions.
+            // Backpressure is retried asynchronously to avoid dropping user actions
             let command_tx = command_tx.clone();
             glib::MainContext::default().spawn_local(async move {
                 if let Err(err) = command_tx.send(command).await {

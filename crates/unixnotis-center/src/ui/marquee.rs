@@ -1,4 +1,4 @@
-//! Marquee label support for long text in constrained layouts.
+//! Marquee label support for long text in constrained layouts
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -12,8 +12,8 @@ use super::perf_probe;
 
 const MARQUEE_SPEED_CHARS_PER_SEC: f64 = 8.0;
 const MARQUEE_PAUSE_MS: u64 = 900;
-// Lower tick rate keeps CPU usage minimal while still providing smooth enough motion.
-// This avoids per-frame callbacks that can spike CPU on large or multiple marquee labels.
+// Lower tick rate keeps CPU usage minimal while still providing smooth enough motion
+// This avoids per-frame callbacks that can spike CPU on large or multiple marquee labels
 const MARQUEE_TICK_MS: u64 = 100;
 
 #[derive(Default)]
@@ -33,7 +33,7 @@ struct MarqueeState {
     render_buf: String,
 }
 
-/// Simple marquee label that slides overflow text left and resets.
+/// Simple marquee label that slides overflow text left and resets
 #[derive(Clone)]
 pub struct MarqueeLabel {
     root: gtk::Fixed,
@@ -56,13 +56,13 @@ impl MarqueeLabel {
         label.set_valign(Align::Center);
         label.set_single_line_mode(true);
         label.set_wrap(false);
-        // Ellipsize forces width-chars limits to be honored for preferred sizing.
-        // This keeps the marquee width stable even when glyph widths vary.
+        // Ellipsize forces width-chars limits to be honored for preferred sizing
+        // This keeps the marquee width stable even when glyph widths vary
         label.set_ellipsize(gtk::pango::EllipsizeMode::End);
         label.set_hexpand(false);
         if char_limit > 0 {
-            // Fixed character width avoids layout jitter as the slice changes.
-            // The label still renders the full string; only the measured width is clamped.
+            // Fixed character width avoids layout jitter as the slice changes
+            // The label still renders the full string; only the measured width is clamped
             label.set_width_chars(char_limit as i32);
             label.set_max_width_chars(char_limit as i32);
         }
@@ -108,8 +108,8 @@ impl MarqueeLabel {
             move |_| {
                 let mut state = unmapped_state.borrow_mut();
                 state.is_mapped = false;
-                // Stop ticking immediately when the widget is unmapped to avoid background work.
-                // Unmapped widgets should not keep timers alive.
+                // Stop ticking immediately when the widget is unmapped to avoid background work
+                // Unmapped widgets should not keep timers alive
                 if let Some(source_id) = state.tick_source.take() {
                     source_id.remove();
                     state.is_ticking = false;
@@ -132,14 +132,14 @@ impl MarqueeLabel {
     }
 
     pub fn set_text_force(&self, text: &str) {
-        // Force recomputation even when text is unchanged (used when layout limits change).
+        // Force recomputation even when text is unchanged (used when layout limits change)
         self.set_text_inner(text, true);
     }
 
     fn set_text_inner(&self, text: &str, force: bool) {
         let mut state = self.state.borrow_mut();
-        // Avoid resetting the marquee when the full text is identical.
-        // This prevents unnecessary redraws and keeps CPU usage stable.
+        // Avoid resetting the marquee when the full text is identical
+        // This prevents unnecessary redraws and keeps CPU usage stable
         if !force && state.full_text == text {
             return;
         }
@@ -166,7 +166,7 @@ impl MarqueeLabel {
             render_visible(&mut state, 0);
             self.label.set_text(&state.render_buf);
         } else {
-            // Only set the raw text when the marquee is disabled to avoid redundant updates.
+            // Only set the raw text when the marquee is disabled to avoid redundant updates
             self.label.set_text(text);
         }
         drop(state);
@@ -174,8 +174,8 @@ impl MarqueeLabel {
         if enabled && mapped && !ticking {
             self.start_ticking();
         } else if !enabled {
-            // Disable any scheduled tick when marquee is not needed.
-            // Keeps idle CPU near zero when text fits inside the label.
+            // Disable any scheduled tick when marquee is not needed
+            // Keeps idle CPU near zero when text fits inside the label
             self.stop_ticking();
         }
     }
@@ -218,7 +218,7 @@ fn start_ticking_inner(state: Rc<RefCell<MarqueeState>>, label: gtk::Label) {
     }
 
     let state_tick = state.clone();
-    let label_tick = label.clone();
+    let label_tick = label;
     let source_id = glib::timeout_add_local(Duration::from_millis(MARQUEE_TICK_MS), move || {
         perf_probe::marquee_tick();
         let mut state = state_tick.borrow_mut();
@@ -257,7 +257,7 @@ fn start_ticking_inner(state: Rc<RefCell<MarqueeState>>, label: gtk::Label) {
         }
 
         if delta_sec > 0.0 {
-            state.offset += MARQUEE_SPEED_CHARS_PER_SEC * delta_sec;
+            state.offset = MARQUEE_SPEED_CHARS_PER_SEC.mul_add(delta_sec, state.offset);
             if state.offset >= buffer_len as f64 {
                 state.offset = 0.0;
                 state.hold_until = Some(now + Duration::from_millis(MARQUEE_PAUSE_MS));

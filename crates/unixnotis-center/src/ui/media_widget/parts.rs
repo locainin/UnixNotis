@@ -95,11 +95,12 @@ pub(super) fn build_media_card_parts(
     let player_total = Rc::new(Cell::new(0usize));
 
     MediaCardLayoutParts {
-        art_frame,
+        art_frame: art_frame.clone(),
         controls,
         card: MediaCardWidgets {
             root,
             art,
+            art_frame,
             text_box,
             meta_row,
             source_label,
