@@ -151,8 +151,7 @@ fn follow_debug_logs_runs_probe_then_follow_for_available_unit() {
     let root = TempDirGuard::new("follow-success");
     let calls = root.path.join("calls");
     root.write_journalctl(&format!(
-        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> {:?}\nexit 0\n",
-        calls
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> {calls:?}\nexit 0\n"
     ));
     let _tools = use_fake_tool_bin(&root.path);
     let _unit = EnvGuard::set("UNIXNOTIS_DAEMON_UNIT", "custom.service");
@@ -170,7 +169,7 @@ fn journalctl_lookup_ignores_inherited_path_entries() {
     let _lock = env_lock();
     let root = TempDirGuard::new("path-hijack");
     let marker = root.path.join("marker");
-    root.write_journalctl(&format!("#!/bin/sh\nprintf hit > {:?}\nexit 0\n", marker));
+    root.write_journalctl(&format!("#!/bin/sh\nprintf hit > {marker:?}\nexit 0\n"));
     let _path = EnvGuard::set("PATH", &root.path);
     let empty_tools = TempDirGuard::new("trusted-empty");
     let _tools = use_fake_tool_bin(&empty_tools.path);

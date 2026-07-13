@@ -3,7 +3,7 @@ use clap::Subcommand;
 use super::args::{DebugLevelArg, DndState, InhibitScopeArg, PresetCommand};
 
 #[derive(Subcommand, Debug)]
-pub(crate) enum Command {
+pub enum Command {
     // Toggle the panel visibility without changing other state
     TogglePanel,
     // Open the panel, optionally enabling debug logging for live diagnostics
@@ -62,8 +62,8 @@ pub(crate) enum Command {
 }
 
 impl Command {
-    pub(crate) fn is_local_only(&self) -> bool {
+    pub(crate) const fn is_local_only(&self) -> bool {
         // Local-only commands should not fail just because D-Bus is unavailable
-        matches!(self, Command::CssCheck | Command::Preset { .. })
+        matches!(self, Self::CssCheck | Self::Preset { .. })
     }
 }
