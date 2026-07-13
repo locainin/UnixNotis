@@ -3,7 +3,6 @@
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -28,60 +27,73 @@ struct ReloadGate {
 }
 
 struct ReloadSlot {
-    represented: AtomicBool,
-    retry_pending: AtomicBool,
-    dirty_again: AtomicBool,
+    state: Mutex<ReloadSlotState>,
+}
+
+#[derive(Default)]
+struct ReloadSlotState {
+    represented: bool,
+    retry_pending: bool,
+    dirty_again: bool,
 }
 
 impl ReloadSlot {
     const fn new() -> Self {
         Self {
-            represented: AtomicBool::new(false),
-            retry_pending: AtomicBool::new(false),
-            dirty_again: AtomicBool::new(false),
+            state: Mutex::new(ReloadSlotState {
+                represented: false,
+                retry_pending: false,
+                dirty_again: false,
+            }),
         }
     }
 
     fn request(&self, sender: &async_channel::Sender<dbus::UiEvent>, event: dbus::UiEvent) -> bool {
-        if self.represented.swap(true, Ordering::AcqRel) {
+        let mut state = self.lock_state();
+        let needs_retry = if state.represented {
             // Preserve one trailing reload when a change lands during processing
-            self.dirty_again.store(true, Ordering::Release);
-            return false;
-        }
-        self.dispatch(sender, event)
+            state.dirty_again = true;
+            false
+        } else {
+            state.represented = true;
+            Self::dispatch(&mut state, sender, event)
+        };
+        drop(state);
+        needs_retry
     }
 
     fn dispatch(
-        &self,
+        state: &mut ReloadSlotState,
         sender: &async_channel::Sender<dbus::UiEvent>,
         event: dbus::UiEvent,
     ) -> bool {
         match sender.try_send(event) {
             Ok(()) => {
-                self.retry_pending.store(false, Ordering::Release);
+                state.retry_pending = false;
                 false
             }
             Err(async_channel::TrySendError::Full(_)) => {
-                self.retry_pending.store(true, Ordering::Release);
+                state.retry_pending = true;
                 true
             }
             Err(async_channel::TrySendError::Closed(_)) => {
-                self.clear();
+                *state = ReloadSlotState::default();
                 false
             }
         }
     }
 
     fn flush(&self, sender: &async_channel::Sender<dbus::UiEvent>, event: dbus::UiEvent) {
-        if !self.retry_pending.load(Ordering::Acquire) {
-            return;
+        let mut state = self.lock_state();
+        if state.retry_pending {
+            // A successful retry covers every change observed before it entered the queue
+            let had_trailing_change = std::mem::take(&mut state.dirty_again);
+            let _needs_retry = Self::dispatch(&mut state, sender, event);
+            if state.retry_pending && had_trailing_change {
+                state.dirty_again = true;
+            }
         }
-        // A successful retry covers every change observed before it entered the queue
-        let had_trailing_change = self.dirty_again.swap(false, Ordering::AcqRel);
-        let _needs_retry = self.dispatch(sender, event);
-        if self.retry_pending.load(Ordering::Acquire) && had_trailing_change {
-            self.dirty_again.store(true, Ordering::Release);
-        }
+        drop(state);
     }
 
     fn complete(
@@ -89,21 +101,29 @@ impl ReloadSlot {
         sender: &async_channel::Sender<dbus::UiEvent>,
         event: dbus::UiEvent,
     ) -> bool {
-        if self.dirty_again.swap(false, Ordering::AcqRel) {
-            return self.dispatch(sender, event);
-        }
-        self.represented.store(false, Ordering::Release);
-        // Recheck after clearing so a watcher hit in the handoff window is retained
-        if self.dirty_again.swap(false, Ordering::AcqRel) {
-            return self.request(sender, event);
-        }
-        false
+        let mut state = self.lock_state();
+        let needs_retry = if std::mem::take(&mut state.dirty_again) {
+            Self::dispatch(&mut state, sender, event)
+        } else {
+            state.represented = false;
+            false
+        };
+        drop(state);
+        needs_retry
     }
 
-    fn clear(&self) {
-        self.represented.store(false, Ordering::Release);
-        self.retry_pending.store(false, Ordering::Release);
-        self.dirty_again.store(false, Ordering::Release);
+    fn has_retry_pending(&self) -> bool {
+        let state = self.lock_state();
+        let retry_pending = state.retry_pending;
+        drop(state);
+        retry_pending
+    }
+
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, ReloadSlotState> {
+        match self.state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => poisoned.into_inner(),
+        }
     }
 }
 
@@ -129,8 +149,7 @@ impl ReloadGate {
     }
 
     fn has_pending(&self) -> bool {
-        self.css.retry_pending.load(Ordering::Acquire)
-            || self.config.retry_pending.load(Ordering::Acquire)
+        self.css.has_retry_pending() || self.config.has_retry_pending()
     }
 
     fn complete_css(&self, sender: &async_channel::Sender<dbus::UiEvent>) -> bool {
