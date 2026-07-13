@@ -184,7 +184,7 @@ fn normalize_lexical_path(path: &Path) -> PathBuf {
                     // One parent segment cancels one earlier normal segment when that is possible
                     normalized.pop();
                 }
-                Some(Component::RootDir) | Some(Component::Prefix(_)) => {}
+                Some(Component::RootDir | Component::Prefix(_)) => {}
                 // Leading `..` must be preserved when there is nothing earlier to fold away
                 _ => normalized.push(".."),
             },

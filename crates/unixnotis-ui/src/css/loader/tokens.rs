@@ -18,9 +18,9 @@ pub(super) fn ensure_base_tokens(contents: &str, path: &Path) -> String {
     );
     format!(
         "{prefix}\n{contents}",
-        prefix = r#"@define-color unixnotis-surface-base @unixnotis-surface;
+        prefix = r"@define-color unixnotis-surface-base @unixnotis-surface;
 @define-color unixnotis-surface-strong-base @unixnotis-surface-strong;
-@define-color unixnotis-card-base @unixnotis-card;"#,
+@define-color unixnotis-card-base @unixnotis-card;",
     )
 }
 
