@@ -12,7 +12,8 @@ mod tests;
 use anyhow::{anyhow, Context, Result};
 use chrono::Local;
 use std::path::{Path, PathBuf};
-use unixnotis_core::Config;
+use toml::Value;
+use unixnotis_core::{validate_icon_asset_reference, Config};
 
 use self::checks::{validate_theme_paths_stay_in_root, HostSpecificScriptLeak};
 use self::prompts::{
@@ -23,10 +24,14 @@ use self::prompts::{
     rewrite_host_specific_script_paths_if_requested,
 };
 use super::archive::write_bundle;
-use super::command_rules::{validate_config_command_paths_stay_in_root, HostSpecificCommandPath};
-use super::config_root::{collect_config_files, override_collected_file_contents};
+use super::command_rules::{
+    collect_command_references_from_config, resolve_command_path_token,
+    validate_config_command_paths_stay_in_root, HostSpecificCommandPath,
+};
+use super::config_root::{collect_selected_config_files, override_collected_file_contents};
 use super::css_asset_refs::{
-    collect_external_css_asset_refs_from_collected, ExternalCssAssetRef, HostSpecificCssAssetRef,
+    collect_external_css_asset_refs_from_collected, collect_local_css_asset_paths_from_paths,
+    ExternalCssAssetRef, HostSpecificCssAssetRef,
 };
 use super::manifest::{PresetManifest, PresetManifestFile};
 use super::pathing::{
@@ -189,8 +194,46 @@ fn export_preset_from_with_confirm(
         ));
     }
 
-    // File collection walks the whole config tree and filters backup dirs and excluded paths
-    let mut collected = collect_config_files(config_dir, Some(output_path), &exclusions)?;
+    // Build a dependency closure instead of copying unrelated files from the config tree
+    let theme_files = [
+        theme_paths.base_css,
+        theme_paths.panel_css,
+        theme_paths.popup_css,
+        theme_paths.widgets_css,
+        theme_paths.media_css,
+        theme_paths.overrides_css,
+    ];
+    let mut selected_paths = vec![PathBuf::from("config.toml")];
+    let existing_theme_files = theme_files
+        .iter()
+        .filter(|path| path.is_file())
+        .cloned()
+        .collect::<Vec<_>>();
+    for theme_file in &existing_theme_files {
+        selected_paths.push(
+            theme_file
+                .strip_prefix(config_dir)
+                .context("make active theme path relative to config root")?
+                .to_path_buf(),
+        );
+    }
+    selected_paths.extend(collect_local_css_asset_paths_from_paths(
+        config_dir,
+        &existing_theme_files,
+    )?);
+    selected_paths.extend(
+        collect_command_references_from_config(&config)
+            .into_iter()
+            .filter_map(|reference| resolve_command_path_token(config_dir, &reference.command))
+            .filter(|path| path.is_file())
+            .filter_map(|path| path.strip_prefix(config_dir).ok().map(Path::to_path_buf)),
+    );
+    selected_paths.extend(collect_existing_icon_assets(&config_path, config_dir)?);
+    selected_paths.sort();
+    selected_paths.dedup();
+
+    let mut collected =
+        collect_selected_config_files(config_dir, &selected_paths, Some(output_path), &exclusions)?;
     if !collected
         .files
         .iter()
@@ -270,4 +313,46 @@ fn export_preset_from_with_confirm(
         skipped_symlinks: collected.skipped_symlinks,
         skipped_non_regular: collected.skipped_non_regular,
     })
+}
+
+fn collect_existing_icon_assets(config_path: &Path, config_dir: &Path) -> Result<Vec<PathBuf>> {
+    let config_text = std::fs::read_to_string(config_path)
+        .with_context(|| format!("read config file {}", config_path.display()))?;
+    let value: Value = toml::from_str(&config_text).context("parse config.toml icon assets")?;
+    let mut raw_assets = Vec::new();
+    collect_icon_asset_values(&value, &mut raw_assets);
+
+    let mut paths = Vec::new();
+    for asset in raw_assets {
+        validate_icon_asset_reference(&asset)
+            .with_context(|| format!("validate configured icon asset {asset}"))?;
+        let relative = PathBuf::from(asset);
+        if config_dir.join(&relative).is_file() {
+            paths.push(relative);
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
+fn collect_icon_asset_values(value: &Value, assets: &mut Vec<String>) {
+    match value {
+        Value::Table(table) => {
+            for (key, child) in table {
+                if key == "icon_asset" {
+                    if let Some(asset) = child.as_str().filter(|asset| !asset.trim().is_empty()) {
+                        assets.push(asset.trim().to_string());
+                    }
+                }
+                collect_icon_asset_values(child, assets);
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                collect_icon_asset_values(child, assets);
+            }
+        }
+        _ => {}
+    }
 }

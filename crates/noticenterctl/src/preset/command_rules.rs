@@ -20,6 +20,7 @@ pub use self::checks::{
 };
 pub use self::collect::collect_command_references_from_config;
 pub use self::rewrite::rewrite_host_specific_command_paths;
+pub(super) use self::tokens::resolve_command_path_token;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandReference {
