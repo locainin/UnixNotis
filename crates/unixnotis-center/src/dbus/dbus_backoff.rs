@@ -93,7 +93,7 @@ impl RetryLog {
 
     pub(crate) fn reset(&mut self) {
         // Allow the next failure after a success to emit a warning immediately
-        self.last_warn = Instant::now().checked_sub(self.interval).unwrap();
+        self.last_warn = instant_before_or_now(Instant::now(), self.interval);
     }
 
     pub(crate) fn warn_or_debug<E: std::fmt::Debug>(&mut self, err: &E, message: &str) {
@@ -112,6 +112,11 @@ impl RetryLog {
             debug_fn();
         }
     }
+}
+
+fn instant_before_or_now(now: Instant, interval: Duration) -> Instant {
+    // A duration can exceed the platform clock history, so subtraction must saturate safely
+    now.checked_sub(interval).unwrap_or(now)
 }
 
 #[cfg(test)]

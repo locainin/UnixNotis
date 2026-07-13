@@ -154,3 +154,11 @@ fn retry_log_warn_or_debug_reports_warning_status() {
     assert!(log.warn_or_debug(&err, "dbus retry"));
     assert!(!log.warn_or_debug(&err, "dbus retry"));
 }
+
+#[test]
+fn retry_log_accepts_an_interval_larger_than_the_instant_clock_history() {
+    // Extreme configuration must not panic while preparing the first warning
+    let mut log = RetryLog::new(Duration::MAX);
+
+    assert!(!log.log_with(|| {}, || {}));
+}
