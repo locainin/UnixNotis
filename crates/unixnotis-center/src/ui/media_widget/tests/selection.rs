@@ -59,3 +59,44 @@ fn snapshot_restore_falls_back_to_first_player_when_bus_is_gone() {
         Some("org.mpris.MediaPlayer2.alpha")
     );
 }
+
+#[test]
+fn arrow_navigation_changes_metadata_and_wraps_without_stale_titles() {
+    let mut selection = MediaSelection::default();
+    selection.set_players(vec![
+        media_info("org.mpris.MediaPlayer2.alpha", "Alpha title"),
+        media_info("org.mpris.MediaPlayer2.beta", "Beta title"),
+        media_info("org.mpris.MediaPlayer2.gamma", "Gamma title"),
+    ]);
+
+    assert_eq!(
+        selection.current().map(|info| info.title.as_str()),
+        Some("Alpha title")
+    );
+    selection.next();
+    assert_eq!(
+        selection.current().map(|info| info.title.as_str()),
+        Some("Beta title")
+    );
+    selection.next();
+    assert_eq!(
+        selection.current().map(|info| info.title.as_str()),
+        Some("Gamma title")
+    );
+    selection.prev();
+    assert_eq!(
+        selection.current().map(|info| info.title.as_str()),
+        Some("Beta title")
+    );
+    selection.next();
+    selection.next();
+    assert_eq!(
+        selection.current().map(|info| info.title.as_str()),
+        Some("Alpha title")
+    );
+    selection.prev();
+    assert_eq!(
+        selection.current().map(|info| info.title.as_str()),
+        Some("Gamma title")
+    );
+}
