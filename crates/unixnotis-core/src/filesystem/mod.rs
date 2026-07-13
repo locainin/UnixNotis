@@ -2,4 +2,4 @@
 
 mod atomic;
 
-pub use atomic::{write_file_atomic, write_file_if_missing};
+pub use atomic::{make_file_executable, write_file_atomic, write_file_if_missing};

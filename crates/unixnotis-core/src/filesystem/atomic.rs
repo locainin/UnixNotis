@@ -63,7 +63,11 @@ pub fn write_file_if_missing(path: &Path, contents: &[u8], mode: u32) -> io::Res
         contained_resolve_flags(),
     ) {
         Ok(fd) => fd,
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(false),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            // A collision is safe only when the existing destination is a regular file
+            validate_existing_target(&parent_fd, &file_name)?;
+            return Ok(false);
+        }
         Err(error) => return Err(error.into()),
     };
     let mut file = fs::File::from(fd);
@@ -75,6 +79,35 @@ pub fn write_file_if_missing(path: &Path, contents: &[u8], mode: u32) -> io::Res
     drop(file);
     sync_directory(parent_fd)?;
     Ok(true)
+}
+
+/// Add executable bits to an existing regular file without following links
+///
+/// # Errors
+///
+/// Returns an error when the path escapes through a link, is not a regular file, or cannot be
+/// opened and updated through its stable descriptor
+pub fn make_file_executable(path: &Path) -> io::Result<()> {
+    let (parent_fd, file_name) = open_parent(path)?;
+    let fd = openat2(
+        &parent_fd,
+        &file_name,
+        OFlags::RDONLY
+            .union(OFlags::NONBLOCK)
+            .union(OFlags::CLOEXEC)
+            .union(OFlags::NOFOLLOW),
+        Mode::empty(),
+        contained_resolve_flags(),
+    )?;
+    let file = fs::File::from(fd);
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(unsafe_target_error());
+    }
+
+    // Descriptor-based chmod prevents a path swap from redirecting the permission update
+    let mode = metadata.permissions().mode() | 0o111;
+    file.set_permissions(fs::Permissions::from_mode(mode))
 }
 
 fn open_parent(path: &Path) -> io::Result<(OwnedFd, OsString)> {
@@ -148,9 +181,7 @@ fn validate_target(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<()> 
     match openat2(
         parent_fd,
         file_name,
-        OFlags::RDONLY
-            .union(OFlags::CLOEXEC)
-            .union(OFlags::NOFOLLOW),
+        OFlags::PATH.union(OFlags::CLOEXEC).union(OFlags::NOFOLLOW),
         Mode::empty(),
         contained_resolve_flags(),
     ) {
@@ -158,15 +189,34 @@ fn validate_target(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<()> 
             if fs::File::from(fd).metadata()?.is_file() {
                 Ok(())
             } else {
-                Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "refusing to replace a non-file target",
-                ))
+                Err(unsafe_target_error())
             }
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
     }
+}
+
+fn validate_existing_target(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<()> {
+    let fd = openat2(
+        parent_fd,
+        file_name,
+        OFlags::PATH.union(OFlags::CLOEXEC).union(OFlags::NOFOLLOW),
+        Mode::empty(),
+        contained_resolve_flags(),
+    )?;
+    if fs::File::from(fd).metadata()?.is_file() {
+        Ok(())
+    } else {
+        Err(unsafe_target_error())
+    }
+}
+
+fn unsafe_target_error() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "refusing to operate on a non-regular file target",
+    )
 }
 
 fn temp_candidates(file_name: &OsString) -> impl Iterator<Item = OsString> + '_ {

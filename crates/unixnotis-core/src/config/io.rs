@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::filesystem::{write_file_atomic, write_file_if_missing};
+use crate::filesystem::{make_file_executable, write_file_atomic, write_file_if_missing};
 use crate::util::expand_tilde;
 use crate::{
     DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_OVERRIDES_CSS, DEFAULT_PANEL_CSS,
@@ -281,13 +281,7 @@ fn write_default_script(path: &Path, contents: &str) -> Result<(), ConfigError> 
 
 #[cfg(unix)]
 fn set_executable(path: &Path) -> Result<(), ConfigError> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path)
-        .map_err(|err| ConfigError::ReadFailed(err.to_string()))?
-        .permissions();
-    permissions.set_mode(permissions.mode() | 0o111);
-    fs::set_permissions(path, permissions).map_err(|err| ConfigError::ReadFailed(err.to_string()))
+    make_file_executable(path).map_err(|err| ConfigError::ReadFailed(err.to_string()))
 }
 
 #[cfg(not(unix))]

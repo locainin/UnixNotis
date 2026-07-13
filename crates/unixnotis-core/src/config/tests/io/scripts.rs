@@ -75,6 +75,38 @@ fn ensure_default_scripts_in_preserves_user_edited_script_contents() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[cfg(unix)]
+#[test]
+fn ensure_default_scripts_in_rejects_symlink_without_changing_external_permissions() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    let root = test_root("default-script-symlink");
+    let _ = fs::remove_dir_all(&root);
+    let script = &crate::DEFAULT_SCRIPTS[0];
+    let path = root.join(script.relative_path);
+    let outside = root.join("outside.sh");
+    fs::create_dir_all(path.parent().expect("script parent")).expect("script parent dir");
+    fs::write(&outside, "external").expect("outside script");
+    fs::set_permissions(&outside, fs::Permissions::from_mode(0o600)).expect("outside mode");
+    symlink(&outside, &path).expect("script symlink");
+
+    Config::ensure_default_scripts_in(&root).expect_err("script symlink should be rejected");
+
+    assert_eq!(
+        fs::read_to_string(&outside).expect("outside contents"),
+        "external"
+    );
+    assert_eq!(
+        fs::metadata(&outside)
+            .expect("outside metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
 #[test]
 fn enabled_default_script_commands_have_shipped_files() {
     // Stock config should never point at a script that is missing from DEFAULT_SCRIPTS
