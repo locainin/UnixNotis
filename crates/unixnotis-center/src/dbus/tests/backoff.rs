@@ -1,6 +1,17 @@
 use std::cell::Cell;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::*;
+
+#[test]
+fn atomic_jitter_updates_advance_from_distinct_states() {
+    let state = AtomicU64::new(7);
+    let first = advance_jitter_state(&state, 1);
+    let second = advance_jitter_state(&state, 1);
+
+    assert_ne!(first, second);
+    assert_eq!(state.load(Ordering::Relaxed), second);
+}
 
 #[test]
 fn backoff_resets_to_base() {

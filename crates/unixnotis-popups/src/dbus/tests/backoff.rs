@@ -1,11 +1,22 @@
 use std::cell::Cell;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use super::{
-    evolve_jitter_seed, jitter_duration, seed_from_nanos, set_jitter_seed_for_test, Backoff,
-    RetryLog,
+    advance_jitter_state, evolve_jitter_seed, jitter_duration, seed_from_nanos,
+    set_jitter_seed_for_test, Backoff, RetryLog,
 };
+
+#[test]
+fn atomic_jitter_updates_advance_from_distinct_states() {
+    let state = AtomicU64::new(7);
+    let first = advance_jitter_state(&state, 1);
+    let second = advance_jitter_state(&state, 1);
+
+    assert_ne!(first, second);
+    assert_eq!(state.load(Ordering::Relaxed), second);
+}
 
 fn jitter_test_lock() -> MutexGuard<'static, ()> {
     // Jitter state is process-global, so exact-seed tests must run one at a time
