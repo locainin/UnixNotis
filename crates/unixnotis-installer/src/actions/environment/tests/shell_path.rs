@@ -2,7 +2,7 @@ use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
 use std::sync::atomic::AtomicBool;
-use std::sync::{mpsc, Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{mpsc, Arc, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::{
@@ -430,8 +430,7 @@ impl Drop for EnvGuard {
 }
 
 fn env_lock() -> MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("environment test lock")
+    // HOME and SHELL share one process namespace with every installer test
+    // Reusing the crate lock prevents unrelated path tests from restoring them mid-assertion
+    crate::tests::env::test_env_lock()
 }

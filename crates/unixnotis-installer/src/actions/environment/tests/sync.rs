@@ -11,6 +11,8 @@ use crate::service_manager::ServiceManager;
 
 #[test]
 fn env_sync_command_stdout_is_not_copied_into_logs() {
+    // Command lookup reads PATH, so it must not race tests that replace process env
+    let _lock = crate::tests::env::test_env_lock();
     let (tx, rx) = mpsc::sync_channel::<UiMessage>(16);
     let detection = Detection {
         owner: None,
