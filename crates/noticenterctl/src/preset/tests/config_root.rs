@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::super::config_root::{collect_config_files, override_collected_file_contents};
+use super::super::config_root::{collect_selected_config_files, override_collected_file_contents};
 use super::super::pathing::format_relative_path;
 
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -44,8 +44,8 @@ impl Drop for TempDirGuard {
 }
 
 #[test]
-fn collect_config_files_skips_backups_symlinks_and_output_file() {
-    // Export should keep the tree portable and avoid self-inclusion
+fn selected_collection_keeps_only_dependencies_and_skips_unsafe_entries() {
+    // Export should keep the dependency set portable and avoid unrelated content
     let root = TempDirGuard::new("collect");
     root.write("config.toml", "demo = true");
     root.write("assets/bg.png", "png");
@@ -59,10 +59,16 @@ fn collect_config_files_skips_backups_symlinks_and_output_file() {
     )
     .expect("create symlink");
 
-    let collected = collect_config_files(
+    let collected = collect_selected_config_files(
         &root.path,
+        &[
+            PathBuf::from("config.toml"),
+            PathBuf::from("assets/bg.png"),
+            PathBuf::from("linked.png"),
+            PathBuf::from("bundle.unixnotis"),
+        ],
         Some(&root.path.join("bundle.unixnotis")),
-        &[PathBuf::from("scripts")],
+        &[],
     )
     .expect("collect files");
 
@@ -85,7 +91,7 @@ fn collect_config_files_skips_backups_symlinks_and_output_file() {
 
 #[cfg(unix)]
 #[test]
-fn collect_config_files_rejects_special_permission_bits() {
+fn selected_collection_rejects_special_permission_bits() {
     let root = TempDirGuard::new("special-mode");
     root.write("config.toml", "demo = true");
     root.write("scripts/run.sh", "#!/bin/sh\necho hi\n");
@@ -97,7 +103,9 @@ fn collect_config_files_rejects_special_permission_bits() {
     perms.set_mode(0o4755);
     fs::set_permissions(&script_path, perms).expect("set script mode");
 
-    let error = collect_config_files(&root.path, None, &[]).expect_err("reject special mode");
+    let error =
+        collect_selected_config_files(&root.path, &[PathBuf::from("scripts/run.sh")], None, &[])
+            .expect_err("reject special mode");
     assert!(error.to_string().contains("special permission bits"));
 }
 
@@ -106,7 +114,9 @@ fn override_collected_file_contents_updates_manifest_size() {
     let root = TempDirGuard::new("override");
     root.write("config.toml", "demo = true");
 
-    let mut collected = collect_config_files(&root.path, None, &[]).expect("collect files");
+    let mut collected =
+        collect_selected_config_files(&root.path, &[PathBuf::from("config.toml")], None, &[])
+            .expect("collect files");
     override_collected_file_contents(
         &mut collected,
         Path::new("config.toml"),
