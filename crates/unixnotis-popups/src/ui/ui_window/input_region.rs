@@ -181,7 +181,7 @@ fn force_wayland_commit_if_available(surface: &gtk::gdk::Surface) {
     }
 }
 
-fn popup_surface_needs_retry(
+const fn popup_surface_needs_retry(
     surface_width: i32,
     surface_height: i32,
     allow_click_through: bool,

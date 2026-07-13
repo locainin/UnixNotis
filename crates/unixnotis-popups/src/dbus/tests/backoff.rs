@@ -91,11 +91,11 @@ fn backoff_sleep_doubles_until_max_and_clamps_jitter() {
     );
     assert_eq!(
         backoff.next_sleep_with_jitter(Duration::from_millis(10)),
-        Duration::from_millis(1_000)
+        Duration::from_secs(1)
     );
     assert_eq!(
         backoff.next_sleep_with_jitter(Duration::from_millis(500)),
-        Duration::from_millis(1_000)
+        Duration::from_secs(1)
     );
 }
 
@@ -115,7 +115,7 @@ fn backoff_reset_returns_next_sleep_to_base_delay() {
 
 #[test]
 fn retry_log_warns_immediately_then_debugs_until_reset() {
-    let mut log = RetryLog::new(Duration::from_secs(60));
+    let mut log = RetryLog::new(Duration::from_mins(1));
     let warnings = Cell::new(0usize);
     let debugs = Cell::new(0usize);
 
@@ -148,7 +148,7 @@ fn retry_log_warns_immediately_then_debugs_until_reset() {
 
 #[test]
 fn retry_log_warn_or_debug_reports_warning_status() {
-    let mut log = RetryLog::new(Duration::from_secs(60));
+    let mut log = RetryLog::new(Duration::from_mins(1));
     let err = "offline";
 
     assert!(log.warn_or_debug(&err, "dbus retry"));

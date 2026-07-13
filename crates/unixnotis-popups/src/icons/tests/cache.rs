@@ -62,8 +62,8 @@ fn texture_cache_keeps_sizes_separate() {
     let large = gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &bytes, 4)
         .upcast::<gdk::Texture>();
 
-    cache.insert(path.clone(), 20, small.clone());
-    cache.insert(path.clone(), 32, large.clone());
+    cache.insert(path.clone(), 20, small);
+    cache.insert(path.clone(), 32, large);
 
     assert!(cache.get(&path, 20).is_some());
     assert!(cache.get(&path, 32).is_some());

@@ -32,7 +32,7 @@ struct ReloadSlot {
 }
 
 impl ReloadSlot {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             state: AtomicU8::new(RELOAD_IDLE),
             dirty_again: AtomicBool::new(false),
@@ -146,7 +146,7 @@ impl ReloadSlot {
 }
 
 impl ReloadGate {
-    pub(super) fn new() -> Self {
+    pub(super) const fn new() -> Self {
         Self {
             css: ReloadSlot::new(),
             config: ReloadSlot::new(),

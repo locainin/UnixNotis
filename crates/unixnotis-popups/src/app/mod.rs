@@ -12,7 +12,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use glib::MainContext;
 use gtk::prelude::*;
-use tracing::info;
+use tracing::{info, warn};
 use unixnotis_core::Config;
 use unixnotis_ui::css::{self, CssKind};
 
@@ -32,13 +32,13 @@ const UI_EVENT_QUEUE_CAPACITY: usize = 512;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
-pub(crate) struct Args {
+pub struct Args {
     /// Path to config.toml
     #[arg(long)]
     config: Option<PathBuf>,
 }
 
-pub(crate) fn run(args: Args) -> Result<()> {
+pub fn run(args: Args) -> Result<()> {
     // Load and validate config before GTK starts so startup failures stay clear
     let (config, config_path, config_source) = load_config(&args).context("load config")?;
     init_tracing(&config);
@@ -87,8 +87,8 @@ pub(crate) fn run(args: Args) -> Result<()> {
         let reload_timer = Arc::new(Mutex::new(None::<glib::SourceId>));
 
         let css_manager = css::CssManager::new_popup(theme_paths.clone(), config.theme.clone());
-        css_manager.apply_to_display();
-        css_manager.reload(css::DEFAULT_CSS);
+        let _ = css_manager.apply_to_display();
+        let _ = css_manager.reload(css::DEFAULT_CSS);
 
         let ui = Rc::new(std::cell::RefCell::new(ui::UiState::new(
             app,
@@ -98,7 +98,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
             css_manager,
         )));
 
-        let ui_clone = ui.clone();
+        let ui_clone = ui;
         let reload_gate_loop = Arc::clone(&reload_gate);
         let event_tx_loop = event_tx.clone();
         let reload_timer_loop = Arc::clone(&reload_timer);
@@ -114,7 +114,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
             }
         });
 
-        css::start_css_watcher(&theme_paths, CssKind::Popup, {
+        if let Err(err) = css::start_css_watcher(&theme_paths, CssKind::Popup, {
             let event_tx = event_tx.clone();
             let reload_gate = Arc::clone(&reload_gate);
             let reload_timer = Arc::clone(&reload_timer);
@@ -129,9 +129,11 @@ pub(crate) fn run(args: Args) -> Result<()> {
                     });
                 }
             }
-        });
-        css::start_config_watcher(config_path.clone(), {
-            let event_tx = event_tx.clone();
+        }) {
+            warn!(?err, "failed to start popup css watcher");
+        }
+        if let Err(err) = css::start_config_watcher(&config_path, {
+            let event_tx = event_tx;
             let reload_gate = Arc::clone(&reload_gate);
             let reload_timer = Arc::clone(&reload_timer);
             move || {
@@ -145,7 +147,9 @@ pub(crate) fn run(args: Args) -> Result<()> {
                     });
                 }
             }
-        });
+        }) {
+            warn!(?err, "failed to start popup config watcher");
+        }
         info!("unixnotis-popups running");
     });
 

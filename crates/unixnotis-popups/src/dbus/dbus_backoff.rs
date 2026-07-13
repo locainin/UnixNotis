@@ -6,21 +6,21 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, warn};
 
 // Backoff settings throttle reconnect attempts while keeping recovery responsive
-pub(crate) const BACKOFF_BASE_MS: u64 = 250;
-pub(crate) const BACKOFF_MAX_MS: u64 = 5000;
+pub const BACKOFF_BASE_MS: u64 = 250;
+pub const BACKOFF_MAX_MS: u64 = 5000;
 const BACKOFF_JITTER_MS: u64 = 120;
 // Retry warnings are rate-limited to avoid noisy logs during long outages
-pub(crate) const RETRY_WARN_INTERVAL_SECS: u64 = 30;
+pub const RETRY_WARN_INTERVAL_SECS: u64 = 30;
 static JITTER_STATE: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) struct Backoff {
+pub struct Backoff {
     base: Duration,
     current: Duration,
     max: Duration,
 }
 
 impl Backoff {
-    pub(crate) fn new(base_ms: u64, max_ms: u64) -> Self {
+    pub(crate) const fn new(base_ms: u64, max_ms: u64) -> Self {
         let base = Duration::from_millis(base_ms);
         Self {
             base,
@@ -29,7 +29,7 @@ impl Backoff {
         }
     }
 
-    pub(crate) fn reset(&mut self) {
+    pub(crate) const fn reset(&mut self) {
         self.current = self.base;
     }
 
@@ -47,7 +47,7 @@ impl Backoff {
 }
 
 // Rate-limited logger avoids warning floods during retry loops
-pub(crate) struct RetryLog {
+pub struct RetryLog {
     interval: Duration,
     last_warn: Instant,
 }
@@ -64,7 +64,7 @@ impl RetryLog {
 
     pub(crate) fn reset(&mut self) {
         // Allow the next failure after a success to warn right away
-        self.last_warn = Instant::now() - self.interval;
+        self.last_warn = Instant::now().checked_sub(self.interval).unwrap();
     }
 
     pub(crate) fn warn_or_debug<E: std::fmt::Debug>(&mut self, err: &E, message: &str) -> bool {
@@ -87,7 +87,7 @@ impl RetryLog {
     }
 }
 
-pub(crate) fn jitter_duration(max_ms: u64) -> Duration {
+pub fn jitter_duration(max_ms: u64) -> Duration {
     if max_ms == 0 {
         return Duration::from_millis(0);
     }
@@ -100,10 +100,12 @@ fn next_jitter_seed() -> u64 {
     // Seed from wall clock once, then evolve the state on each call
     let seed = JITTER_STATE.load(Ordering::Relaxed);
     let value = if seed == 0 {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .subsec_nanos() as u64;
+        let nanos = u64::from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos(),
+        );
         seed_from_nanos(nanos)
     } else {
         seed
@@ -113,12 +115,12 @@ fn next_jitter_seed() -> u64 {
     next
 }
 
-pub(super) fn seed_from_nanos(nanos: u64) -> u64 {
+pub(super) const fn seed_from_nanos(nanos: u64) -> u64 {
     // Avoid a zero seed so the generator keeps moving
     nanos | 1
 }
 
-pub(super) fn evolve_jitter_seed(seed: u64) -> u64 {
+pub(super) const fn evolve_jitter_seed(seed: u64) -> u64 {
     // LCG constants from Numerical Recipes; this only needs cheap decorrelation
     seed.wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407)

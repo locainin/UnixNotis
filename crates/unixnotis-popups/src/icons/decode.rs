@@ -9,7 +9,7 @@ use image::imageops::FilterType;
 use image::{ImageReader, Limits};
 
 #[derive(Clone)]
-pub(crate) struct RasterIcon {
+pub struct RasterIcon {
     pub(crate) bytes: Vec<u8>,
     pub(crate) width: i32,
     pub(crate) height: i32,
@@ -23,7 +23,7 @@ const MAX_ICON_SOURCE_DIMENSION: u32 = 2048;
 // Cap decoder allocation so compressed inputs cannot explode into very large buffers
 const MAX_ICON_DECODE_ALLOC_BYTES: u64 = 16 * 1024 * 1024;
 
-pub(crate) fn decode_icon_file(path: &Path, target_size: i32) -> Result<RasterIcon, String> {
+pub fn decode_icon_file(path: &Path, target_size: i32) -> Result<RasterIcon, String> {
     // Decode on a worker thread; keep I/O and CPU-bound work off the GTK main loop
     let metadata = fs::metadata(path).map_err(|err| err.to_string())?;
     if !metadata.is_file() {
@@ -39,8 +39,7 @@ pub(crate) fn decode_icon_file(path: &Path, target_size: i32) -> Result<RasterIc
     if width > MAX_ICON_SOURCE_DIMENSION || height > MAX_ICON_SOURCE_DIMENSION {
         // Header checks reject very large rasters before a full pixel decode happens
         return Err(format!(
-            "icon dimensions exceed popup decode limit ({}x{})",
-            width, height
+            "icon dimensions exceed popup decode limit ({width}x{height})"
         ));
     }
 
