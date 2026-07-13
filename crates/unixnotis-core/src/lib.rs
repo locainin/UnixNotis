@@ -10,6 +10,7 @@ pub mod assets;
 pub mod config;
 pub mod control;
 pub mod css;
+pub mod filesystem;
 pub mod model;
 #[cfg(test)]
 #[path = "tests/support.rs"]

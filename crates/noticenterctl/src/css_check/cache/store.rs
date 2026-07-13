@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use unixnotis_core::filesystem::write_file_atomic;
 
 use super::model::{CachedParseDiagnostic, CssDependencyState, CssFileIdentity, CssParseWorkItem};
 
@@ -101,30 +102,11 @@ impl CssParseCacheState {
             return;
         }
 
-        let Some(parent) = self.path.parent() else {
-            return;
-        };
-
-        if fs::create_dir_all(parent).is_err() {
-            return;
-        }
-
         let Ok(contents) = serde_json::to_vec_pretty(&self.file) else {
             return;
         };
-
-        // Write-then-rename keeps partial cache files out of later runs
-        let temp_path = parent.join(format!(
-            ".{}.tmp-{}",
-            CSS_PARSE_CACHE_FILE,
-            std::process::id()
-        ));
-        if fs::write(&temp_path, contents).is_err() {
-            return;
-        }
-        if fs::rename(&temp_path, &self.path).is_err() {
-            let _ = fs::remove_file(&temp_path);
-        }
+        // Cache persistence is optional, but successful writes still use the hardened path
+        let _ = write_file_atomic(&self.path, &contents, 0o600);
     }
 }
 

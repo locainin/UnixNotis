@@ -4,14 +4,13 @@
 
 use std::env;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use thiserror::Error;
 use tracing::warn;
 
+use crate::filesystem::{write_file_atomic, write_file_if_missing};
 use crate::util::expand_tilde;
 use crate::{
     DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_OVERRIDES_CSS, DEFAULT_PANEL_CSS,
@@ -23,8 +22,6 @@ use super::Config;
 
 static LEGACY_RENAME_WARNED: AtomicBool = AtomicBool::new(false);
 static INVALID_XDG_WARNED: AtomicBool = AtomicBool::new(false);
-static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
-const TEMP_FILE_ATTEMPTS: u8 = 16;
 
 #[derive(Debug, Clone)]
 pub struct ThemePaths {
@@ -113,14 +110,6 @@ impl Config {
     pub fn ensure_theme_files(&self, theme_paths: &ThemePaths) -> Result<(), ConfigError> {
         // Use the same base directory used for resolving theme paths
         let config_dir = &theme_paths.base_dir;
-        fs::create_dir_all(config_dir).map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
-
-        ensure_parent_dir(&theme_paths.base_css)?;
-        ensure_parent_dir(&theme_paths.panel_css)?;
-        ensure_parent_dir(&theme_paths.popup_css)?;
-        ensure_parent_dir(&theme_paths.widgets_css)?;
-        ensure_parent_dir(&theme_paths.media_css)?;
-        ensure_parent_dir(&theme_paths.overrides_css)?;
 
         let legacy = config_dir.join("style.css");
         let base_exists = theme_paths.base_css.exists();
@@ -234,77 +223,17 @@ impl Config {
 }
 
 fn write_if_missing(path: &Path, contents: &str) -> Result<(), ConfigError> {
-    if path.exists() {
-        return Ok(());
-    }
-    fs::write(path, contents).map_err(|err| ConfigError::ReadFailed(err.to_string()))
+    write_file_if_missing(path, contents.as_bytes(), 0o644)
+        .map(|_created| ())
+        .map_err(|err| ConfigError::ReadFailed(err.to_string()))
 }
 
 fn write_default_script(path: &Path, contents: &str) -> Result<(), ConfigError> {
-    ensure_parent_dir(path)?;
     // Script reset uses the same atomic path as startup provisioning
     // This keeps installer resets from leaving half-written helpers behind
-    write_file_atomic(path, contents)?;
+    write_file_atomic(path, contents.as_bytes(), 0o755)
+        .map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
     set_executable(path)
-}
-
-fn write_file_atomic(path: &Path, contents: &str) -> Result<(), ConfigError> {
-    let parent = path.parent().ok_or_else(|| {
-        ConfigError::ReadFailed("missing default script parent directory".to_string())
-    })?;
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| ConfigError::ReadFailed("invalid default script file name".to_string()))?;
-    // A fresh adjacent file keeps rename atomic and refuses planted symlinks
-    let (tmp, mut file) = create_adjacent_temp(parent, name)?;
-    if let Err(err) = file
-        .write_all(contents.as_bytes())
-        .and_then(|()| file.sync_all())
-    {
-        drop(file);
-        let _ = fs::remove_file(&tmp);
-        return Err(ConfigError::ReadFailed(err.to_string()));
-    }
-    drop(file);
-    fs::rename(&tmp, path).map_err(|err| {
-        let _ = fs::remove_file(&tmp);
-        ConfigError::ReadFailed(err.to_string())
-    })
-}
-
-fn create_adjacent_temp(parent: &Path, name: &str) -> Result<(PathBuf, fs::File), ConfigError> {
-    let candidates = (0..TEMP_FILE_ATTEMPTS).map(|_| {
-        // Time, process, and a counter prevent normal concurrent writers from sharing a name
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_nanos());
-        let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        parent.join(format!(
-            ".{name}.tmp-{}-{nanos}-{counter}",
-            std::process::id()
-        ))
-    });
-    reserve_adjacent_temp(candidates)
-}
-
-fn reserve_adjacent_temp(
-    candidates: impl IntoIterator<Item = PathBuf>,
-) -> Result<(PathBuf, fs::File), ConfigError> {
-    for path in candidates {
-        match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
-            Ok(file) => return Ok((path, file)),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(err) => return Err(ConfigError::ReadFailed(err.to_string())),
-        }
-    }
-    Err(ConfigError::ReadFailed(
-        "unable to reserve a fresh temporary config file".to_string(),
-    ))
 }
 
 #[cfg(unix)]
@@ -321,13 +250,6 @@ fn set_executable(path: &Path) -> Result<(), ConfigError> {
 #[cfg(not(unix))]
 fn set_executable(_path: &Path) -> Result<(), ConfigError> {
     Ok(())
-}
-
-fn ensure_parent_dir(path: &Path) -> Result<(), ConfigError> {
-    let parent = path.parent().ok_or_else(|| {
-        ConfigError::ReadFailed("missing default file parent directory".to_string())
-    })?;
-    fs::create_dir_all(parent).map_err(|err| ConfigError::ReadFailed(err.to_string()))
 }
 
 #[cfg(test)]
