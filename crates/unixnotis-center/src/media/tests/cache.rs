@@ -63,6 +63,35 @@ fn transition_merge_keeps_prior_art_until_followup_refresh() {
 }
 
 #[test]
+fn transition_merge_accepts_new_text_and_art_as_soon_as_they_arrive() {
+    let mut existing = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", true, None);
+    existing.title = "Old title".to_string();
+    existing.art_source = Some(crate::media::MediaArtSource::LocalFile(
+        std::path::PathBuf::from("/tmp/old-art.png"),
+    ));
+    let mut fetched = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", true, None);
+    fetched.title = "New title".to_string();
+    fetched.art_source = Some(crate::media::MediaArtSource::LocalFile(
+        std::path::PathBuf::from("/tmp/new-art.png"),
+    ));
+
+    let merged = merge_media_info(
+        Some(&existing),
+        Some(fetched),
+        MediaCacheMergeMode::Transitioning,
+    )
+    .expect("transition snapshot");
+
+    assert_eq!(merged.title, "New title");
+    assert_eq!(
+        merged.art_source,
+        Some(crate::media::MediaArtSource::LocalFile(
+            std::path::PathBuf::from("/tmp/new-art.png")
+        ))
+    );
+}
+
+#[test]
 fn transition_merge_keeps_prior_text_when_player_goes_blank_mid_swap() {
     let existing = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", true, None);
     let mut fetched = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", false, None);
@@ -106,4 +135,53 @@ fn transition_merge_does_not_keep_old_media_after_stop() {
     assert!(merged.title.is_empty());
     assert!(merged.artist.is_empty());
     assert!(merged.art_source.is_none());
+}
+
+#[test]
+fn fallback_after_skip_replaces_every_stale_metadata_field() {
+    let mut old_track = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", true, None);
+    old_track.title = "Old title".to_string();
+    old_track.artist = "Old artist".to_string();
+
+    let mut partial = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", false, None);
+    partial.title.clear();
+    partial.artist.clear();
+    let transitioning = merge_media_info(
+        Some(&old_track),
+        Some(partial),
+        MediaCacheMergeMode::Transitioning,
+    )
+    .expect("transition snapshot");
+    assert_eq!(transitioning.title, "Old title");
+
+    let mut new_track = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", false, None);
+    new_track.title = "New title".to_string();
+    new_track.artist = "New artist".to_string();
+    let settled = merge_media_info(
+        Some(&transitioning),
+        Some(new_track),
+        MediaCacheMergeMode::Stable,
+    )
+    .expect("settled snapshot");
+
+    assert_eq!(settled.title, "New title");
+    assert_eq!(settled.artist, "New artist");
+    assert!(settled.art_source.is_none());
+}
+
+#[test]
+fn fallback_after_skip_clears_old_metadata_when_player_stays_blank() {
+    let mut old_track = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", true, None);
+    old_track.title = "Old title".to_string();
+    old_track.artist = "Old artist".to_string();
+
+    let mut blank = make_info("org.mpris.MediaPlayer2.a", "Alpha", "Playing", false, None);
+    blank.title.clear();
+    blank.artist.clear();
+    let settled = merge_media_info(Some(&old_track), Some(blank), MediaCacheMergeMode::Stable)
+        .expect("settled blank snapshot");
+
+    assert!(settled.title.is_empty());
+    assert!(settled.artist.is_empty());
+    assert!(settled.art_source.is_none());
 }

@@ -52,11 +52,15 @@ pub(super) fn schedule_metadata_fallback(
     signal_tx: Sender<MediaSignal>,
     bus_name: &str,
 ) {
-    // Replace older delayed work so each player has at most one active retry plan.
     if !needs_metadata_fallback(cache, bus_name) {
         cancel_delayed_refresh(tasks, bus_name);
         return;
     }
+    if tasks.get(bus_name).is_some_and(|task| !task.is_finished()) {
+        // Noisy property bursts must not postpone the stable refresh forever
+        return;
+    }
+    // Finished handles can be replaced without growing the per-player task map
     schedule_refresh_sequence(tasks, signal_tx, bus_name, &METADATA_REFRESH_DELAYS_MS);
 }
 
