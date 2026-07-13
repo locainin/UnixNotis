@@ -29,9 +29,8 @@ fn decode_icon_file_rejects_large_dimensions_before_full_decode() {
         .save_with_format(&path, ImageFormat::Png)
         .expect("save image");
 
-    let err = match decode_icon_file(&path, 20) {
-        Ok(_) => panic!("oversized image should fail"),
-        Err(err) => err,
+    let Err(err) = decode_icon_file(&path, 20) else {
+        panic!("oversized image should fail")
     };
     assert!(err.contains("decode limit"));
     let _ = fs::remove_file(&path);
@@ -58,9 +57,8 @@ fn decode_icon_file_rejects_non_files() {
     let path = test_path("not-file");
     fs::create_dir(&path).expect("create temp dir");
 
-    let err = match decode_icon_file(&path, 20) {
-        Ok(_) => panic!("directory should fail"),
-        Err(err) => err,
+    let Err(err) = decode_icon_file(&path, 20) else {
+        panic!("directory should fail")
     };
     assert_eq!(err, "icon path is not a regular file");
     let _ = fs::remove_dir(&path);

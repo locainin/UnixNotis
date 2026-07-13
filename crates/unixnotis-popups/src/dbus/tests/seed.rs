@@ -128,7 +128,9 @@ async fn seed_state_with_retry_returns_after_successful_seed() {
 async fn seed_state_with_retry_stops_immediately_after_expired_budget() {
     let source = FakeSeedSource::missing_state();
     let (tx, rx) = bounded(1);
-    let expired = Instant::now() - Duration::from_millis(1);
+    let expired = Instant::now()
+        .checked_sub(Duration::from_millis(1))
+        .unwrap();
 
     tokio::time::timeout(
         Duration::from_millis(50),
@@ -154,7 +156,7 @@ fn seed_retry_deadline_adds_fixed_retry_budget() {
 
 #[test]
 fn log_seed_retry_reports_warning_then_debug_status() {
-    let mut log = RetryLog::new(Duration::from_secs(60));
+    let mut log = RetryLog::new(Duration::from_mins(1));
     let err = SeedError {
         state_error: Some("state unavailable".to_string()),
         active_error: None,

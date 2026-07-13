@@ -1,6 +1,6 @@
-//! Icon decode, cache, and widget construction for popups.
+//! Icon decode, cache, and widget construction for popups
 //!
-//! Keeps icon decoding, caching, and texture reuse isolated from UI state handling.
+//! Keeps icon decoding, caching, and texture reuse isolated from UI state handling
 
 use std::path::PathBuf;
 
@@ -17,9 +17,9 @@ use super::icons::{
 use super::UiState;
 
 const ICON_CACHE_MAX_ENTRIES: usize = 256;
-// Skip caching decoded textures above this size to avoid holding large buffers.
+// Skip caching decoded textures above this size to avoid holding large buffers
 const ICON_TEXTURE_CACHE_MAX_BYTES: usize = 1024 * 1024;
-// Popup icon size is fixed so rows stay visually consistent across icon sources.
+// Popup icon size is fixed so rows stay visually consistent across icon sources
 const POPUP_ICON_SIZE: i32 = 20;
 
 impl UiState {
@@ -47,7 +47,7 @@ impl UiState {
         }
 
         let candidates = collect_icon_candidates(notification);
-        // Keep the first successful resolve to avoid duplicate theme lookups and widget creation.
+        // Keep the first successful resolve to avoid duplicate theme lookups and widget creation
         let mut resolved: Option<(String, gtk::Image)> = None;
 
         for candidate in &candidates {
@@ -75,20 +75,17 @@ impl UiState {
             }
         }
 
-        match resolved {
-            Some((icon_name, widget)) => {
-                self.cache_icon(cache_key, Some(icon_name));
-                Some(widget)
-            }
-            None => {
-                self.cache_icon(cache_key, None);
-                None
-            }
+        if let Some((icon_name, widget)) = resolved {
+            self.cache_icon(cache_key, Some(icon_name));
+            Some(widget)
+        } else {
+            self.cache_icon(cache_key, None);
+            None
         }
     }
 
     fn cache_icon(&mut self, cache_key: String, resolved: Option<String>) {
-        // Bound the icon cache to avoid unbounded growth in long-running sessions.
+        // Bound the icon cache to avoid unbounded growth in long-running sessions
         match self.icon_cache.entry(cache_key) {
             std::collections::hash_map::Entry::Occupied(mut entry) => {
                 entry.insert(resolved);
@@ -109,9 +106,9 @@ impl UiState {
 
     fn resolve_icon_widget(&self, name: &str, size: i32) -> Option<gtk::Image> {
         if let Some(file_path) = file_path_from_hint(name) {
-            // Decoded file:// paths allow loading icon files with escaped characters.
+            // Decoded file:// paths allow loading icon files with escaped characters
             if file_path.is_file() {
-                // Reuse a cached texture when available to avoid repeated decode work.
+                // Reuse a cached texture when available to avoid repeated decode work
                 if let Some(texture) = self.icon_texture_cache.borrow_mut().get(&file_path, size) {
                     let widget = gtk::Image::new();
                     widget.set_paintable(Some(&texture));
@@ -134,7 +131,7 @@ impl UiState {
         let cache = self.icon_texture_cache.clone();
         let path_clone = path.clone();
         let target_size = size.max(1);
-        // Apply the texture on the main loop to avoid GTK thread violations.
+        // Apply the texture on the main loop to avoid GTK thread violations
         glib::MainContext::default().spawn_local(async move {
             if let Ok(result) = rx.recv().await {
                 match result {
@@ -150,7 +147,7 @@ impl UiState {
                         .upcast::<gdk::Texture>();
                         widget_clone.set_paintable(Some(&texture));
                         set_popup_icon_size(&widget_clone, target_size);
-                        // Cache only modestly sized textures to limit resident memory.
+                        // Cache only modestly sized textures to limit resident memory
                         if icon.bytes.len() <= ICON_TEXTURE_CACHE_MAX_BYTES {
                             cache.borrow_mut().insert(path_clone, target_size, texture);
                         }
@@ -162,7 +159,7 @@ impl UiState {
             }
         });
 
-        // Decode on a background worker pool to avoid spawning unbounded threads.
+        // Decode on a background worker pool to avoid spawning unbounded threads
         IconDecodePool::global().submit(path, target_size, tx);
 
         widget
@@ -171,7 +168,7 @@ impl UiState {
 
 fn set_popup_icon_size(widget: &gtk::Image, size: i32) {
     let size = size.max(1);
-    // Enforce a fixed icon footprint so file-backed and themed icons align.
+    // Enforce a fixed icon footprint so file-backed and themed icons align
     widget.set_pixel_size(size);
     widget.set_size_request(size, size);
 }

@@ -1,9 +1,18 @@
 //! Popup application entrypoint and top-level module wiring
 
-#![allow(
-    clippy::nursery,
-    clippy::pedantic,
-    reason = "pedantic and nursery cleanup is tracked incrementally across existing code"
+#![expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::default_trait_access,
+    clippy::future_not_send,
+    clippy::needless_pass_by_value,
+    clippy::option_if_let_else,
+    clippy::struct_field_names,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    reason = "reviewed GTK pixel math, main-thread futures, and popup state boundaries retain stable compositor-facing behavior"
 )]
 
 use anyhow::Result;
@@ -13,6 +22,7 @@ use clap::Parser;
 mod app;
 mod dbus;
 #[cfg(test)]
+#[path = "tests/support.rs"]
 mod test_support;
 mod ui;
 
