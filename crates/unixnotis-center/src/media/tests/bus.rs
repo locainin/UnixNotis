@@ -2,7 +2,13 @@ use std::collections::HashMap;
 
 use unixnotis_core::MediaConfig;
 
-use super::{is_allowed_player, is_relevant_media_change};
+use super::{is_allowed_player, is_relevant_media_change, owner_probe_is_stable};
+
+#[test]
+fn owner_probe_accepts_only_one_stable_unique_owner() {
+    assert!(owner_probe_is_stable(":1.40", ":1.40"));
+    assert!(!owner_probe_is_stable(":1.40", ":1.41"));
+}
 
 #[test]
 fn is_allowed_player_respects_lists() {

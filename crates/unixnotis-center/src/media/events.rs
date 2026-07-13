@@ -151,14 +151,18 @@ pub(super) async fn apply_owner_change(
         return Ok(());
     }
 
-    if let Some(previous) = state.players.remove(name) {
+    let removed_previous = if let Some(previous) = state.players.remove(name) {
         // A replacement owner invalidates every process-bound proxy and policy decision
         let _ = previous.listener_cancel.send(true);
         cancel_delayed_refresh(&mut state.delayed_refreshes, name);
         state.cache.remove(name);
-    }
+        true
+    } else {
+        false
+    };
 
-    if let Some(player_state) = build_player_state(connection, name, config).await? {
+    let rebuilt = build_player_state(connection, name, config).await;
+    if let Ok(Some(player_state)) = rebuilt.as_ref() {
         // The listener is started before the state is published so late property
         // traffic does not slip in between player creation and cache refresh
         spawn_properties_listener(
@@ -167,7 +171,7 @@ pub(super) async fn apply_owner_change(
             signal_tx.clone(),
             player_state.listener_cancel.subscribe(),
         );
-        state.players.insert(name.to_string(), player_state);
+        state.players.insert(name.to_string(), player_state.clone());
         // A late-joining player still needs one snapshot pass through the cache
         refresh_player_cache(
             &state.players,
@@ -185,7 +189,11 @@ pub(super) async fn apply_owner_change(
         );
     }
 
-    Ok(())
+    // Removing the prior cache must reach GTK even when replacement probing fails
+    if removed_previous && !matches!(&rebuilt, Ok(Some(_))) {
+        send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
+    }
+    rebuilt.map(|_state| ())
 }
 
 fn owner_is_unchanged(current_owner: Option<&str>, announced_owner: Option<&str>) -> bool {
