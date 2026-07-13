@@ -62,16 +62,14 @@ fn is_backup_dir(path: &Path) -> bool {
     // Backup folders use the Backup-YYYY-MM-DD name shape
     path.file_name()
         .and_then(|name| name.to_str())
-        .map(|name| name.starts_with("Backup-"))
-        .unwrap_or(false)
+        .is_some_and(|name| name.starts_with("Backup-"))
 }
 
 fn is_css_file(path: &Path) -> bool {
     // Only *.css files matter here
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("css"))
-        .unwrap_or(false)
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("css"))
 }
 
 pub(super) fn display_config_root(config_dir: &Path) -> String {

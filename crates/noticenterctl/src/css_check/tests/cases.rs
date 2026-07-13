@@ -6,8 +6,11 @@ use unixnotis_core::{
     PANEL_RUNTIME_WIDTH_MIN,
 };
 
+#[path = "files.rs"]
 mod files;
+#[path = "policy.rs"]
 mod policy;
+#[path = "runtime.rs"]
 mod runtime;
 
 #[test]
@@ -59,7 +62,7 @@ fn panel_width_floor_warning_reports_runtime_clamp() {
 #[test]
 fn lint_css_contents_warns_on_web_length_tokens_in_layout_props() {
     // Valid calc and var usage should pass when the token chain resolves cleanly
-    let css = r#"
+    let css = r"
         :root {
             --pad: 12px;
         }
@@ -67,7 +70,7 @@ fn lint_css_contents_warns_on_web_length_tokens_in_layout_props() {
             min-width: calc(30px + 4px);
             padding-left: var(--pad);
         }
-    "#;
+    ";
 
     let warnings = lint_css_contents(css);
     assert!(warnings.is_empty());
@@ -90,11 +93,11 @@ fn lint_css_contents_accepts_generated_modern_theme_tokens() {
 #[test]
 fn lint_css_contents_still_warns_on_percentage_layout_values() {
     // Percentages are still hard for geometry lint to model accurately
-    let css = r#"
+    let css = r"
         .unixnotis-panel {
             min-width: 80%;
         }
-    "#;
+    ";
 
     let warnings = lint_css_contents(css);
     assert_eq!(warnings.len(), 1);
@@ -108,12 +111,12 @@ fn lint_css_contents_still_warns_on_percentage_layout_values() {
 #[test]
 fn lint_css_contents_reports_line_for_duplicate_property() {
     // Duplicate properties should point at the later property that wins
-    let css = r#"
+    let css = r"
         .unixnotis-panel {
             padding: 6px;
             padding: 8px;
         }
-    "#;
+    ";
 
     let warnings = lint_css_contents(css);
     let duplicate = warnings
@@ -127,11 +130,11 @@ fn lint_css_contents_reports_line_for_duplicate_property() {
 #[test]
 fn lint_css_contents_warns_on_non_px_layout_units() {
     // Valid GTK units still need a warning when geometry cannot turn them into px
-    let css = r#"
+    let css = r"
         .unixnotis-toggle {
             min-width: 10rem;
         }
-    "#;
+    ";
 
     let warnings = lint_css_contents(css);
     assert_eq!(warnings.len(), 1);
@@ -141,12 +144,12 @@ fn lint_css_contents_warns_on_non_px_layout_units() {
 #[test]
 fn lint_css_contents_warns_when_unresolved_modern_override_replaces_legacy_value() {
     // Broken modern fallbacks should still report that they override the safe legacy value
-    let css = r#"
+    let css = r"
         .unixnotis-toggle {
             min-width: 104px;
             min-width: var(--missing-width);
         }
-    "#;
+    ";
 
     let warnings = lint_css_contents(css);
     assert!(warnings
@@ -160,12 +163,12 @@ fn lint_css_contents_warns_when_unresolved_modern_override_replaces_legacy_value
 #[test]
 fn lint_css_contents_accepts_resolved_compare_length_functions() {
     // compare functions should stay quiet once geometry can resolve the full value
-    let css = r#"
+    let css = r"
         .unixnotis-toggle {
             min-width: max(84px, 104px);
             padding-left: clamp(8px, 10px, 12px);
         }
-    "#;
+    ";
 
     let warnings = lint_css_contents(css);
     assert!(warnings.is_empty(), "{warnings:?}");

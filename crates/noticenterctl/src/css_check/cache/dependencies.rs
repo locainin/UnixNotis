@@ -88,7 +88,7 @@ fn parse_import_target(statement: &str) -> Option<String> {
     }
 
     let end = trimmed[1..].find(quote)?;
-    Some(trimmed[1..1 + end].to_string())
+    Some(trimmed[1..=end].to_string())
 }
 
 fn unquote_import_target(value: &str) -> &str {

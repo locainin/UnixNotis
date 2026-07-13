@@ -209,7 +209,7 @@ impl GeometryModel {
         stock_pressure_for_default: F,
     ) -> i32
     where
-        F: FnOnce(&GeometryModel, &Config) -> i32,
+        F: FnOnce(&Self, &Config) -> i32,
     {
         if configured_columns != stock_columns {
             return pressure;

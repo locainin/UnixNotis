@@ -85,7 +85,7 @@ impl ModeledMediaShell {
         }
     }
 
-    pub(super) fn art_frame_size_px(self) -> i32 {
+    pub(super) const fn art_frame_size_px(self) -> i32 {
         // The runtime shell adds a small frame around the configured art size
         self.art_size_px.saturating_add(4)
     }
@@ -100,7 +100,7 @@ impl ModeledMediaShell {
     }
 }
 
-pub(super) fn nav_cluster_spacing_px(
+pub(super) const fn nav_cluster_spacing_px(
     include_controls: bool,
     include_nav: bool,
     shell: ModeledMediaShell,

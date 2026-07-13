@@ -170,12 +170,12 @@ fn dedupes_theme_slots_that_resolve_to_the_same_real_file() {
     )
     .expect("inputs");
 
-    let popup_paths = inputs
+    let popup_path_count = inputs
         .files
         .iter()
         .filter(|path| path.ends_with("popup.css") || path.ends_with("popup-link.css"))
-        .collect::<Vec<_>>();
-    assert_eq!(popup_paths.len(), 1);
+        .count();
+    assert_eq!(popup_path_count, 1);
     assert_eq!(inputs.files.len(), 5);
 }
 

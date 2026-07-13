@@ -12,6 +12,7 @@ mod media;
 mod tracking;
 
 #[cfg(test)]
+#[path = "model/tests/cases.rs"]
 mod tests;
 
 pub(super) use self::box_metrics::{

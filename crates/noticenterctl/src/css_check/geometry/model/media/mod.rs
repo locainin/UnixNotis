@@ -9,6 +9,7 @@ mod vertical;
 mod width;
 
 #[cfg(test)]
+#[path = "tests/cases.rs"]
 mod tests;
 
 // The geometry model stores the vertical media box state directly

@@ -12,12 +12,8 @@ impl ReportStyle {
         // Color should stay off for pipes, NO_COLOR, or dumb terminals
         let color = io::stdout().is_terminal()
             && env::var_os("NO_COLOR").is_none()
-            && env::var("CLICOLOR")
-                .map(|value| value != "0")
-                .unwrap_or(true)
-            && env::var("TERM")
-                .map(|value| value != "dumb")
-                .unwrap_or(true);
+            && env::var("CLICOLOR").map_or(true, |value| value != "0")
+            && env::var("TERM").map_or(true, |value| value != "dumb");
         Self { color }
     }
 

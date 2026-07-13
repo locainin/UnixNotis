@@ -6,6 +6,7 @@ mod selectors;
 mod types;
 
 #[cfg(test)]
+#[path = "tests/cases.rs"]
 mod tests;
 
 pub(super) use blocks::{next_css_block, next_css_block_with_offsets, strip_css_comments};

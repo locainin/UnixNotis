@@ -1,10 +1,9 @@
 use super::super::policy::{
-    is_complex_geometry_warning_property, is_horizontal_size_property, is_vertical_size_property,
-    parsing_error_hint,
+    is_horizontal_size_property, is_vertical_size_property, parsing_error_hint,
 };
 
 #[test]
-fn size_property_classifiers_keep_width_height_and_complex_sets_distinct() {
+fn size_property_classifiers_keep_width_and_height_sets_distinct() {
     assert!(is_horizontal_size_property("width"));
     assert!(is_horizontal_size_property("border-right-width"));
     assert!(!is_horizontal_size_property("height"));
@@ -12,10 +11,6 @@ fn size_property_classifiers_keep_width_height_and_complex_sets_distinct() {
     assert!(is_vertical_size_property("height"));
     assert!(is_vertical_size_property("border-bottom-width"));
     assert!(!is_vertical_size_property("min-width"));
-
-    assert!(is_complex_geometry_warning_property("padding-left"));
-    assert!(!is_complex_geometry_warning_property("border-left-width"));
-    assert!(!is_complex_geometry_warning_property("color"));
 }
 
 #[test]

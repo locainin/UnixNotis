@@ -6,10 +6,9 @@ use super::super::parse::{
     next_css_block, normalize_selector, parse_css_declarations, should_recurse_at_rule,
     split_selectors, strip_css_comments,
 };
-use super::super::policy::{
-    is_complex_geometry_warning_property, is_horizontal_size_property, is_vertical_size_property,
-};
+use super::super::policy::{is_horizontal_size_property, is_vertical_size_property};
 use super::model::GeometryModel;
+use super::stock::baselines::stock_matches_complex_selector_rules;
 use super::stock::classes::is_known_unixnotis_class;
 use super::stock::should_warn_for_unmodeled_known_class;
 
@@ -19,6 +18,7 @@ mod lengths;
 mod selectors;
 
 #[cfg(test)]
+#[path = "parse/tests/cases.rs"]
 mod tests;
 
 pub(super) type CssCustomProperties = HashMap<String, String>;
@@ -28,7 +28,9 @@ pub(in crate::css_check) use self::custom_properties::CssCustomPropertyScopes;
 pub(super) use self::lengths::{
     parse_box_edges, parse_box_vertical_edges, parse_single_length, set_edge,
 };
-use self::selectors::{maybe_warn_for_complex_unixnotis_selector, simple_class_selector};
+use self::selectors::{
+    complex_target_class, is_nonexpanding_boundary_reset, simple_class_selector,
+};
 
 #[cfg(test)]
 pub(super) fn collect_geometry_from_contents(
@@ -82,9 +84,13 @@ pub(in crate::css_check) fn can_model_horizontal_size_value(
         return true;
     }
 
-    let scoped_properties = simple_class_selector(selector)
-        .map(|class_name| custom_properties.for_selector(class_name))
-        .unwrap_or_else(|| custom_properties.for_selector(selector));
+    let modeled_class = simple_class_selector(selector)
+        .map(str::to_string)
+        .or_else(|| complex_target_class(selector));
+    let scoped_properties = modeled_class.as_deref().map_or_else(
+        || custom_properties.for_selector(selector),
+        |class_name| custom_properties.for_selector(class_name),
+    );
 
     match property {
         "width" | "min-width" | "margin-left" | "margin-right" | "padding-left"
@@ -160,20 +166,12 @@ fn collect_geometry_selector(
     let has_vertical_size_rules = properties
         .iter()
         .any(|(name, _)| is_vertical_size_property(name));
-    let has_complex_width_driver_rules = properties
-        .iter()
-        .any(|(name, _)| is_complex_geometry_warning_property(name));
     // Keep selector matching strict so width math does not drift from real widgets
-    let Some(class_name) = simple_class_selector(selector) else {
-        // This branch is where descendant, pseudo, and compound selectors stay visible
-        // instead of failing silently
-        maybe_warn_for_complex_unixnotis_selector(
-            selector,
-            &properties,
-            has_complex_width_driver_rules,
-            warnings,
-            warned_classes,
-        );
+    let modeled_class = simple_class_selector(selector)
+        .map(str::to_string)
+        .or_else(|| complex_target_class(selector));
+    let Some(class_name) = modeled_class.as_deref() else {
+        // Descendants aimed at plain GTK subnodes do not resize a UnixNotis-owned allocation
         return;
     };
 
@@ -184,13 +182,20 @@ fn collect_geometry_selector(
     {
         // Unknown class warnings are emitted once per file so output stays readable
         warnings.push(format!(
-            "size rules target unknown UnixNotis class '{}'; the live widget tree may never match it",
-            class_name
+            "size rules target unknown UnixNotis class '{class_name}'; the live widget tree may never match it"
         ));
     }
 
     if has_horizontal_size_rules {
         let Some(target) = model.target_mut(class_name) else {
+            if is_nonexpanding_boundary_reset(selector, &properties) {
+                // Removing an outer margin cannot increase the widget width budget
+                return;
+            }
+            if stock_matches_complex_selector_rules(selector, &properties) {
+                // Shipped pseudo and descendant rules already have a reviewed geometry baseline
+                return;
+            }
             if has_horizontal_size_rules
                 && class_name.starts_with(".unixnotis-")
                 && is_known_unixnotis_class(class_name)
@@ -201,8 +206,7 @@ fn collect_geometry_selector(
                 // Once the rules differ from stock, the change needs to stay visible
                 // Only custom size changes on major unmodeled layout hooks should stay loud
                 warnings.push(format!(
-                    "size rules target known UnixNotis class '{}', but geometry lint does not model its width yet; width pressure may be missed",
-                    class_name
+                    "size rules target known UnixNotis class '{class_name}', but geometry lint does not model its width yet; width pressure may be missed"
                 ));
             }
             // Known non-modeled classes otherwise stay quiet so stock theme selectors do not spam output

@@ -8,6 +8,7 @@ mod tokenize;
 mod units;
 
 #[cfg(test)]
+#[path = "tests/cases.rs"]
 mod tests;
 
 use self::tokenize::{consume_balanced_group, split_css_value_tokens};
@@ -130,7 +131,7 @@ pub(super) enum ResolvedCssValue {
 }
 
 impl ResolvedCssValue {
-    fn into_length(self) -> Option<f32> {
+    const fn into_length(self) -> Option<f32> {
         match self {
             Self::Length(value) => Some(value),
             // Plain scalars only make sense while calc math is still in progress
@@ -179,7 +180,7 @@ impl ResolvedCssValue {
         }
     }
 
-    fn min_with(self, rhs: Self) -> Option<Self> {
+    const fn min_with(self, rhs: Self) -> Option<Self> {
         match (self, rhs) {
             (Self::Length(left), Self::Length(right)) => Some(Self::Length(left.min(right))),
             (Self::Scalar(left), Self::Scalar(right)) => Some(Self::Scalar(left.min(right))),
@@ -187,7 +188,7 @@ impl ResolvedCssValue {
         }
     }
 
-    fn max_with(self, rhs: Self) -> Option<Self> {
+    const fn max_with(self, rhs: Self) -> Option<Self> {
         match (self, rhs) {
             (Self::Length(left), Self::Length(right)) => Some(Self::Length(left.max(right))),
             (Self::Scalar(left), Self::Scalar(right)) => Some(Self::Scalar(left.max(right))),
@@ -211,7 +212,7 @@ struct LengthExpressionParser<'a> {
 }
 
 impl<'a> LengthExpressionParser<'a> {
-    fn new(input: &'a str, custom_properties: &'a CssCustomProperties, depth: usize) -> Self {
+    const fn new(input: &'a str, custom_properties: &'a CssCustomProperties, depth: usize) -> Self {
         Self {
             input,
             cursor: 0,

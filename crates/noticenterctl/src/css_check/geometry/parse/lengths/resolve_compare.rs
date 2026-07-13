@@ -1,4 +1,4 @@
-//! min(), max(), and clamp() resolution for geometry length parsing
+//! `min()`, `max()`, and `clamp()` resolution for geometry length parsing
 
 use super::{
     parse_length_expression, tokenize::split_top_level_list, CssCustomProperties, ResolvedCssValue,
