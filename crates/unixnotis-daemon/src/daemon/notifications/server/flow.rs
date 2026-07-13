@@ -34,7 +34,10 @@ struct WireNotification {
 }
 
 impl NotificationServer {
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the freedesktop notification method defines this wire-level argument list"
+    )]
     pub(super) async fn ingest_notify(
         &self,
         app_name: String,

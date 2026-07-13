@@ -32,11 +32,17 @@ pub(super) struct IconWorker {
     sender: channel::Sender<IconJob>,
     // Test-only guard keeps the update channel open when no workers are spawned
     #[cfg(test)]
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "the test guard keeps the update channel alive without being read"
+    )]
     update_tx_guard: async_channel::Sender<IconUpdate>,
     // Test-only receiver guard keeps the channel open when no workers are spawned
     #[cfg(test)]
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "the test guard keeps the worker channel alive without being read"
+    )]
     receiver_guard: channel::Receiver<IconJob>,
 }
 
