@@ -78,7 +78,7 @@ pub(super) fn expand_rgb_row_scalar(src: &[u8], dst: &mut [u8]) {
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
-#[allow(
+#[expect(
     clippy::cast_ptr_alignment,
     reason = "the SSSE3 loadu and storeu intrinsics explicitly support unaligned byte buffers"
 )]
