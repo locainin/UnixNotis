@@ -13,6 +13,9 @@ mod labels_tests;
 #[cfg(test)]
 #[path = "tests/metadata.rs"]
 mod metadata_tests;
+#[cfg(test)]
+#[path = "tests/stack.rs"]
+mod stack_tests;
 mod state;
 #[cfg(test)]
 #[path = "tests/state.rs"]
