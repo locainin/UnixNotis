@@ -77,6 +77,51 @@ pub fn collect_external_css_asset_refs_from_paths(
     Ok(refs)
 }
 
+pub(in crate::preset) fn collect_local_css_asset_paths_from_paths(
+    config_dir: &Path,
+    css_paths: &[PathBuf],
+) -> Result<Vec<PathBuf>> {
+    let normalized_root = normalize_lexical_path(config_dir);
+    let mut paths = Vec::new();
+
+    for css_path in css_paths {
+        let css_text = std::fs::read_to_string(css_path)
+            .with_context(|| format!("read css file {}", css_path.display()))?;
+        let stripped = strip_css_comments(&css_text);
+        for asset_ref in collect_url_values(&stripped) {
+            let trimmed = asset_ref.trim();
+            let lowered = trimmed.to_ascii_lowercase();
+            if trimmed.is_empty()
+                || lowered.starts_with("data:")
+                || lowered.starts_with("http://")
+                || lowered.starts_with("https://")
+            {
+                continue;
+            }
+
+            let candidate = if let Some(path) = local_file_url_path(trimmed) {
+                path
+            } else {
+                let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
+                if expanded.is_absolute() {
+                    expanded
+                } else {
+                    css_path.parent().unwrap_or(config_dir).join(expanded)
+                }
+            };
+            let normalized = normalize_lexical_path(&candidate);
+            if let Ok(relative) = normalized.strip_prefix(&normalized_root) {
+                // The selected-file collector performs the final filesystem safety checks
+                paths.push(relative.to_path_buf());
+            }
+        }
+    }
+
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
 fn collect_external_refs_from_text(
     config_dir: &Path,
     css_path: &Path,
