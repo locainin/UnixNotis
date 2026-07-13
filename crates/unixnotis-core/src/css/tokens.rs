@@ -274,6 +274,23 @@ const fn layout_tokens() -> &'static [(&'static str, &'static str)] {
         ("--unixnotis-media-button-padding-y", "4px"),
         ("--unixnotis-media-button-padding-x", "6px"),
         ("--unixnotis-media-nav-size", "22px"),
+        ("--unixnotis-media-nav-radius", "12px"),
+        ("--unixnotis-media-nav-font-size", "12px"),
+        ("--unixnotis-media-card-radius", "18px"),
+        ("--unixnotis-media-card-min-height", "68px"),
+        ("--unixnotis-media-card-inline-min-height", "88px"),
+        ("--unixnotis-media-card-stacked-min-height", "108px"),
+        ("--unixnotis-media-card-showcase-min-height", "92px"),
+        ("--unixnotis-media-art-radius", "12px"),
+        ("--unixnotis-media-art-frame-radius", "14px"),
+        ("--unixnotis-media-source-font-size", "11px"),
+        ("--unixnotis-media-source-letter-spacing", "0.1em"),
+        ("--unixnotis-media-position-font-size", "11px"),
+        ("--unixnotis-media-position-letter-spacing", "0.08em"),
+        ("--unixnotis-media-title-font-size", "13px"),
+        ("--unixnotis-media-title-font-weight", "700"),
+        ("--unixnotis-media-artist-font-size", "12px"),
+        ("--unixnotis-media-button-radius", "10px"),
     ]
 }
 
