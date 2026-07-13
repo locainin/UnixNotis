@@ -53,7 +53,10 @@ pub struct IconDecodePool {
     in_flight: IconWaiters,
     // Test-only receiver guard keeps the channel open when no workers are spawned
     #[cfg(test)]
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "the test guard keeps the worker channel alive without being read"
+    )]
     rx_guard: async_channel::Receiver<IconDecodeJob>,
 }
 

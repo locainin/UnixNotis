@@ -40,7 +40,10 @@ impl NotificationServer {
         notification_capabilities(self.state.sound.supports_sound())
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the freedesktop notification D-Bus signature fixes this argument list"
+    )]
     async fn notify(
         &self,
         app_name: String,
