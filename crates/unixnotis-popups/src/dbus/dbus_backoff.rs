@@ -99,21 +99,25 @@ pub fn jitter_duration(max_ms: u64) -> Duration {
 
 fn next_jitter_seed() -> u64 {
     // Seed from wall clock once, then evolve the state on each call
-    let seed = JITTER_STATE.load(Ordering::Relaxed);
-    let value = if seed == 0 {
-        let nanos = u64::from(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .subsec_nanos(),
-        );
-        seed_from_nanos(nanos)
-    } else {
-        seed
-    };
-    let next = evolve_jitter_seed(value);
-    JITTER_STATE.store(next, Ordering::Relaxed);
-    next
+    let nanos = u64::from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos(),
+    );
+    advance_jitter_state(&JITTER_STATE, seed_from_nanos(nanos))
+}
+
+fn advance_jitter_state(state: &AtomicU64, fallback: u64) -> u64 {
+    let mut current = state.load(Ordering::Relaxed);
+    loop {
+        let seed = if current == 0 { fallback } else { current };
+        let next = evolve_jitter_seed(seed);
+        match state.compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return next,
+            Err(observed) => current = observed,
+        }
+    }
 }
 
 pub(super) const fn seed_from_nanos(nanos: u64) -> u64 {
