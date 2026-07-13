@@ -11,7 +11,7 @@ use super::header::draw_header;
 use super::widgets::truncate_to_width;
 
 pub(super) fn draw_build_accel(frame: &mut Frame<'_>, app: &App) {
-    // Layout keeps the header fixed and splits body from choice list.
+    // Layout keeps the header fixed and splits body from choice list
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(3), Constraint::Min(10)])
@@ -24,7 +24,7 @@ pub(super) fn draw_build_accel(frame: &mut Frame<'_>, app: &App) {
         .constraints([Constraint::Min(8), Constraint::Length(6)])
         .split(layout[1]);
 
-    // Prompt is informational and opt-in; no automatic package installs are performed.
+    // Prompt is informational and opt-in; no automatic package installs are performed
     let body = render_build_accel_body(app);
     let block = Block::default()
         .title("Build acceleration (optional)")
@@ -40,7 +40,7 @@ pub(super) fn draw_build_accel(frame: &mut Frame<'_>, app: &App) {
 }
 
 pub(super) fn render_build_accel_body(app: &App) -> Text<'static> {
-    // The body includes tool status, config status, and a compact install hint.
+    // The body includes tool status, config status, and a compact install hint
     let mut lines = vec![
         Line::from(vec![Span::styled(
             "Optional build acceleration",
@@ -70,14 +70,14 @@ pub(super) fn render_build_accel_body(app: &App) -> Text<'static> {
     ));
     lines.push(build_config_status_line(&state.detection));
 
-    // Keep configuration guidance short so the status block stays readable.
+    // Keep configuration guidance short so the status block stays readable
     lines.push(Line::from(""));
     lines.push(Line::from(
         "Configuration stays local and falls back if tools are removed.",
     ));
 
     if !state.detection.sccache_installed || !state.detection.mold_installed {
-        // Use a single pacman invocation to reduce copy/paste friction.
+        // Use a single pacman invocation to reduce copy/paste friction
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "Install on Arch (manual):",
@@ -88,7 +88,7 @@ pub(super) fn render_build_accel_body(app: &App) -> Text<'static> {
     }
 
     if let Some(outcome) = &state.outcome {
-        // Show the most recent action result to make success/failure explicit.
+        // Show the most recent action result to make success/failure explicit
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "Result:",
@@ -101,7 +101,7 @@ pub(super) fn render_build_accel_body(app: &App) -> Text<'static> {
 }
 
 pub(super) fn package_status_line(name: &str, installed: bool, purpose: &str) -> Line<'static> {
-    // Format: "pkg: status - purpose" to keep the list scannable.
+    // Format: "pkg: status - purpose" to keep the list scannable
     let status = if installed { "installed" } else { "missing" };
     let status_style = if installed {
         Style::default().fg(Color::Green)
@@ -109,7 +109,7 @@ pub(super) fn package_status_line(name: &str, installed: bool, purpose: &str) ->
         Style::default().fg(Color::Red)
     };
 
-    // Status is bolded for quick scanning in noisy terminal themes.
+    // Status is bolded for quick scanning in noisy terminal themes
     Line::from(vec![
         Span::styled(
             format!("{name}: "),
@@ -124,7 +124,7 @@ pub(super) fn package_status_line(name: &str, installed: bool, purpose: &str) ->
 pub(super) fn build_config_status_line(
     detection: &crate::actions::BuildAccelDetection,
 ) -> Line<'static> {
-    // Config status is derived from installer-managed markers and tool availability.
+    // Config status is derived from installer-managed markers and tool availability
     let (status_text, status_style) = match &detection.config_status {
         BuildAccelConfigStatus::Missing => {
             ("not installed".to_string(), Style::default().fg(Color::Red))
@@ -138,13 +138,8 @@ pub(super) fn build_config_status_line(
             Style::default().fg(Color::Red),
         ),
         BuildAccelConfigStatus::Managed { wrapper_present } => {
-            if !*wrapper_present {
-                (
-                    "installed (wrapper missing)".to_string(),
-                    Style::default().fg(Color::Yellow),
-                )
-            } else {
-                // Tool availability determines the "installed for X" message.
+            if *wrapper_present {
+                // Tool availability determines the "installed for X" message
                 let tool_status = match (detection.sccache_installed, detection.mold_installed) {
                     (true, true) => "installed - sccache + mold",
                     (true, false) => "installed - sccache",
@@ -152,6 +147,11 @@ pub(super) fn build_config_status_line(
                     (false, false) => "installed - tools missing",
                 };
                 (tool_status.to_string(), Style::default().fg(Color::Green))
+            } else {
+                (
+                    "installed (wrapper missing)".to_string(),
+                    Style::default().fg(Color::Yellow),
+                )
             }
         }
     };
@@ -164,7 +164,7 @@ pub(super) fn build_config_status_line(
 
 pub(super) fn render_build_accel_menu(app: &App, width: u16) -> List<'static> {
     let inner_width = width.saturating_sub(2) as usize;
-    // Menu choices depend on config state and tool availability to avoid invalid actions.
+    // Menu choices depend on config state and tool availability to avoid invalid actions
     let entries: Vec<&str> = match app.build_accel_menu_mode() {
         BuildAccelMenuMode::ReturnOnly => vec!["Return to menu"],
         BuildAccelMenuMode::EnableOrSkip => vec![
@@ -175,7 +175,7 @@ pub(super) fn render_build_accel_menu(app: &App, width: u16) -> List<'static> {
             vec!["Return to menu", "Reinstall build acceleration config"]
         }
     };
-    // The first entry is always the default selection.
+    // The first entry is always the default selection
     let list_items = entries
         .iter()
         .enumerate()
@@ -197,7 +197,7 @@ pub(super) fn render_build_accel_menu(app: &App, width: u16) -> List<'static> {
 }
 
 pub(super) fn outcome_summary(outcome: &crate::actions::BuildAccelOutcome) -> String {
-    // Outcome text is short so it fits within the body block without wrapping.
+    // Outcome text is short so it fits within the body block without wrapping
     match outcome {
         crate::actions::BuildAccelOutcome::SkippedMissingTools => {
             "No build accelerators detected; enable unavailable.".to_string()
@@ -209,18 +209,12 @@ pub(super) fn outcome_summary(outcome: &crate::actions::BuildAccelOutcome) -> St
             relative_path,
             used_sccache,
             used_mold,
-        } => format!(
-            "Wrote {} (sccache={}, mold={}).",
-            relative_path, used_sccache, used_mold
-        ),
+        } => format!("Wrote {relative_path} (sccache={used_sccache}, mold={used_mold})."),
         crate::actions::BuildAccelOutcome::UpdatedExisting {
             relative_path,
             used_sccache,
             used_mold,
-        } => format!(
-            "Updated {} (sccache={}, mold={}).",
-            relative_path, used_sccache, used_mold
-        ),
+        } => format!("Updated {relative_path} (sccache={used_sccache}, mold={used_mold})."),
         crate::actions::BuildAccelOutcome::Failed(err) => {
             format!("Setup failed: {err}")
         }

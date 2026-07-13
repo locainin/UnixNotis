@@ -104,7 +104,7 @@ fn fetch_latest_release_tag() -> Result<String, String> {
     latest_tag_from_json(&output.stdout)
 }
 
-fn latest_release_curl_args() -> [&'static str; 14] {
+const fn latest_release_curl_args() -> [&'static str; 14] {
     [
         // Disable .curlrc so local flags cannot rewrite the release-check request
         "-q",

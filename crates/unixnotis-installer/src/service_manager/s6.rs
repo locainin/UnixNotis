@@ -21,11 +21,11 @@ const DEFAULT_BUNDLE: &str = "default";
 const BUNDLE_TYPE: &str = "bundle\n";
 const SAFE_RUN_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 
-pub fn artifact_label() -> &'static str {
+pub const fn artifact_label() -> &'static str {
     "s6 user service source"
 }
 
-pub fn manager_label() -> &'static str {
+pub const fn manager_label() -> &'static str {
     "s6-rc user database"
 }
 
@@ -75,12 +75,12 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     ]
 }
 
-pub fn availability_command() -> Option<CommandSpec> {
+pub const fn availability_command() -> Option<CommandSpec> {
     // s6 readiness needs several tools and paths, so readiness_issues owns validation
     None
 }
 
-pub fn is_enabled_command() -> Option<CommandSpec> {
+pub const fn is_enabled_command() -> Option<CommandSpec> {
     // Enablement is source-backed through the default bundle membership file
     None
 }
@@ -163,7 +163,7 @@ pub fn hyprland_startup_commands(
     vec![format!("sh -lc {}", shell_quote(&script))]
 }
 
-pub fn environment_sync_commands() -> Vec<CommandSpec> {
+pub const fn environment_sync_commands() -> Vec<CommandSpec> {
     Vec::new()
 }
 
@@ -313,29 +313,21 @@ fn is_s6_envdir_name(name: &str) -> bool {
 }
 
 fn is_regular_file(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_file())
-        .unwrap_or(false)
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 fn is_matching_file(path: &Path, expected: &str) -> bool {
-    is_regular_file(path)
-        && fs::read_to_string(path)
-            .map(|contents| contents == expected)
-            .unwrap_or(false)
+    is_regular_file(path) && fs::read_to_string(path).is_ok_and(|contents| contents == expected)
 }
 
 fn is_directory(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_dir())
-        .unwrap_or(false)
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
 }
 
 fn is_directory_or_symlink_to_directory(path: &Path) -> bool {
     fs::metadata(path)
         // Only live-root readiness follows the final symlink because that is normal s6 state
-        .map(|metadata| metadata.is_dir())
-        .unwrap_or(false)
+        .is_ok_and(|metadata| metadata.is_dir())
 }
 
 fn status_output_is_running(stdout: &str) -> bool {

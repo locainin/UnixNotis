@@ -51,7 +51,7 @@ impl CommandSpec {
         self
     }
 
-    pub(super) fn quiet(mut self) -> Self {
+    pub(super) const fn quiet(mut self) -> Self {
         // Availability probes should not leak command output into the parent process
         self.suppress_stdout = true;
         self.suppress_stderr = true;
@@ -102,7 +102,7 @@ fn command_program(program: &str) -> std::io::Result<std::ffi::OsString> {
     }
 
     // Production resolves backend tools from trusted system directories, not inherited PATH
-    system_tools::program_path(program).map(|path| path.into_os_string())
+    system_tools::program_path(program).map(std::path::PathBuf::into_os_string)
 }
 
 #[cfg(test)]
@@ -119,7 +119,7 @@ fn fake_command_program(program: &str) -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-pub(crate) struct FakeCommandBinGuard {
+pub struct FakeCommandBinGuard {
     // Previous routing supports nested helpers without leaking fake bins across tests
     previous: Option<PathBuf>,
 }
@@ -135,7 +135,7 @@ impl Drop for FakeCommandBinGuard {
 }
 
 #[cfg(test)]
-pub(crate) fn use_fake_command_bin(path: &Path) -> FakeCommandBinGuard {
+pub fn use_fake_command_bin(path: &Path) -> FakeCommandBinGuard {
     FAKE_COMMAND_BIN.with(|fake_bin| {
         let mut fake_bin = fake_bin.borrow_mut();
         // replace() returns the old route so Drop can restore it exactly

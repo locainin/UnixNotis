@@ -6,7 +6,10 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::service_manager::{ServiceArtifact, ServiceArtifactKind};
 
-use super::super::super::service::{remove_service_artifact, write_service_artifact};
+use super::super::super::service::{
+    current_mode, ensure_regular_artifact_file_path, remove_service_artifact,
+    remove_service_symlink, write_service_artifact, write_service_symlink,
+};
 use super::super::support::{test_context, test_paths, test_root};
 
 // Write-path tests cover the low-level artifact writer before backend-specific lists use it
@@ -270,6 +273,22 @@ fn write_shared_service_file_refuses_to_overwrite_user_content() {
         write_service_artifact(&ctx, &artifact).expect("matching shared file is accepted");
 
     assert!(!unchanged);
+    fs::set_permissions(&artifact.path, fs::Permissions::from_mode(0o600))
+        .expect("seed shared file mode drift");
+
+    let mode_fixed =
+        write_service_artifact(&ctx, &artifact).expect("matching shared file mode is repaired");
+
+    // Permission-only repair keeps shared contents untouched and remains an unchanged write
+    assert!(!mode_fixed);
+    assert_eq!(
+        fs::metadata(&artifact.path)
+            .expect("shared file metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o644
+    );
     fs::write(&artifact.path, "longrun\n").expect("seed incompatible shared file");
 
     let err =
@@ -357,6 +376,201 @@ fn remove_shared_service_file_preserves_marker_file_after_user_edit() {
         fs::read_to_string(&marker).expect("marker remains for manual cleanup context"),
         "unixnotis\n"
     );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn remove_shared_service_file_handles_missing_and_invalid_paths_safely() {
+    let root = test_root("install-service-shared-file-invalid-remove");
+    let marker = root.join(".unixnotis-created-type");
+    fs::create_dir_all(&root).expect("make shared service root");
+    fs::write(&marker, "unixnotis\n").expect("write valid ownership marker");
+    let missing = ServiceArtifact {
+        path: root.join("missing-type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker.clone()),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+
+    let removed = remove_service_artifact(&missing).expect("missing shared file should be safe");
+
+    assert!(!removed);
+    assert!(marker.exists());
+
+    let blocked_parent = root.join("blocked-parent");
+    fs::write(&blocked_parent, "regular file").expect("write blocking parent");
+    let invalid = ServiceArtifact {
+        path: blocked_parent.join("type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker.clone()),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+
+    let error = remove_service_artifact(&invalid)
+        .expect_err("filesystem errors must not look like missing shared files");
+
+    assert!(format!("{error:#}").contains("failed to inspect"));
+    assert!(marker.exists());
+
+    let directory_artifact = ServiceArtifact {
+        path: root.join("directory-type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+    fs::create_dir_all(&directory_artifact.path).expect("make invalid shared directory");
+
+    let error = remove_service_artifact(&directory_artifact)
+        .expect_err("a directory must never be removed as a shared file");
+
+    assert!(error
+        .to_string()
+        .contains("non-regular shared service artifact"));
+    assert!(directory_artifact.path.is_dir());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn remove_shared_service_file_preserves_nonempty_layout_directories() {
+    let root = test_root("install-service-shared-file-nonempty-layout");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let marker = root.join("default").join(".unixnotis-created-type");
+    let artifact = ServiceArtifact {
+        path: root.join("default").join("type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker.clone()),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+    write_service_artifact(&ctx, &artifact).expect("seed marker-owned shared file");
+    let foreign = root.join("default").join("contents.d").join("foreign");
+    fs::create_dir_all(foreign.parent().expect("foreign file parent"))
+        .expect("make shared contents directory");
+    fs::write(&foreign, "keep").expect("seed foreign bundle member");
+
+    let removed = remove_service_artifact(&artifact).expect("owned file removal should succeed");
+
+    assert!(removed);
+    assert!(!artifact.path.exists());
+    assert!(!marker.exists());
+    assert_eq!(
+        fs::read_to_string(&foreign).expect("foreign file remains"),
+        "keep"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn remove_shared_service_file_reports_invalid_layout_cleanup_shape() {
+    let root = test_root("install-service-shared-file-invalid-layout");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let marker = root.join("default").join(".unixnotis-created-type");
+    let artifact = ServiceArtifact {
+        path: root.join("default").join("type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker.clone()),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+    write_service_artifact(&ctx, &artifact).expect("seed marker-owned shared file");
+    let invalid_contents_dir = root.join("default").join("contents.d");
+    // A regular file at the cleanup-only directory path is foreign and must surface an error
+    fs::write(&invalid_contents_dir, "foreign").expect("seed invalid layout path");
+
+    let error = remove_service_artifact(&artifact)
+        .expect_err("invalid layout shape must not be reported as clean removal");
+
+    assert!(format!("{error:#}").contains("failed to remove"));
+    assert_eq!(
+        fs::read_to_string(&invalid_contents_dir).expect("foreign layout file remains"),
+        "foreign"
+    );
+    // Owned files were removed before the cleanup-only layout error was discovered
+    assert!(!artifact.path.exists());
+    assert!(!marker.exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn regular_service_file_shape_checks_distinguish_missing_directory_and_io_errors() {
+    let root = test_root("install-service-file-shape-checks");
+    let missing = root.join("missing");
+    fs::create_dir_all(&root).expect("make service root");
+
+    assert!(!ensure_regular_artifact_file_path(&missing).expect("missing path is available"));
+    fs::write(&missing, "service").expect("write regular service file");
+    assert!(ensure_regular_artifact_file_path(&missing).expect("regular file is replaceable"));
+
+    let directory = root.join("directory");
+    fs::create_dir(&directory).expect("make conflicting directory");
+    let directory_error = ensure_regular_artifact_file_path(&directory)
+        .expect_err("directory conflict must remain distinct");
+    assert!(directory_error
+        .to_string()
+        .contains("cannot replace directory"));
+
+    let blocked_parent = root.join("blocked-parent");
+    fs::write(&blocked_parent, "regular file").expect("write blocking parent");
+    let io_error = ensure_regular_artifact_file_path(&blocked_parent.join("child"))
+        .expect_err("NotADirectory must not be treated as a missing file");
+    assert!(format!("{io_error:#}").contains("failed to inspect"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn current_mode_propagates_filesystem_errors_other_than_missing_paths() {
+    let root = test_root("install-service-current-mode-error");
+    fs::create_dir_all(&root).expect("make service root");
+    let blocked_parent = root.join("blocked-parent");
+    fs::write(&blocked_parent, "regular file").expect("write blocking parent");
+
+    let error = current_mode(&blocked_parent.join("child"))
+        .expect_err("NotADirectory must not be treated as an absent mode");
+
+    assert!(format!("{error:#}").contains("failed to inspect"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn service_symlink_helpers_distinguish_missing_paths_from_filesystem_errors() {
+    let root = test_root("install-service-symlink-errors");
+    fs::create_dir_all(&root).expect("make service root");
+    let missing = root.join("missing-link");
+    let expected_target = root.join("target");
+
+    remove_service_symlink(&missing, &expected_target)
+        .expect("missing symlink should make uninstall idempotent");
+
+    let blocked_parent = root.join("blocked-parent");
+    fs::write(&blocked_parent, "regular file").expect("write blocking parent");
+    let blocked_link = blocked_parent.join("service-link");
+
+    let remove_error = remove_service_symlink(&blocked_link, &expected_target)
+        .expect_err("remove must preserve NotADirectory errors");
+    assert!(format!("{remove_error:#}").contains("failed to inspect"));
+
+    let write_error = write_service_symlink(&blocked_link, &expected_target)
+        .expect_err("write must preserve NotADirectory errors");
+    assert!(format!("{write_error:#}").contains("failed to inspect"));
+    assert!(blocked_parent.is_file());
     let _ = fs::remove_dir_all(&root);
 }
 

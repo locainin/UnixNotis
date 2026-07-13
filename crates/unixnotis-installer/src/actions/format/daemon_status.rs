@@ -1,4 +1,4 @@
-//! Formatting helpers for detection summaries.
+//! Formatting helpers for detection summaries
 
 use crate::detect::DetectedDaemon;
 
@@ -9,20 +9,19 @@ pub fn summarize_owner(owner: &Option<crate::detect::OwnerInfo>) -> String {
             let name = info.comm.as_deref().unwrap_or("unknown");
             let pid = info
                 .pid
-                .map(|pid| pid.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            format!("{} (pid {})", name, pid)
+                .map_or_else(|| "unknown".to_string(), |pid| pid.to_string());
+            format!("{name} (pid {pid})")
         }
         None => "none detected".to_string(),
     }
 }
 
-pub fn daemon_has_displayable_status(daemon: &DetectedDaemon) -> bool {
+pub const fn daemon_has_displayable_status(daemon: &DetectedDaemon) -> bool {
     // Welcome should show real ownership or runtime evidence, not inactive systemd probe noise
     daemon.is_owner || daemon.systemd_active || !daemon.running_pids.is_empty()
 }
 
-pub fn daemon_status_is_warning(daemon: &DetectedDaemon) -> bool {
+pub const fn daemon_status_is_warning(daemon: &DetectedDaemon) -> bool {
     // A visible row with a probe error needs warning styling so it does not look healthy
     daemon.systemd_error.is_some()
 }
@@ -37,17 +36,17 @@ pub fn format_daemon_status(daemon: &DetectedDaemon) -> String {
         status.push("systemd-active".to_string());
     }
     if let Some(err) = daemon.systemd_error.as_ref() {
-        status.push(format!("systemd-error: {}", err));
+        status.push(format!("systemd-error: {err}"));
     }
     if !daemon.running_pids.is_empty() {
         // Join all live pids into one field so callers do not need to format them again
         let ids = daemon
             .running_pids
             .iter()
-            .map(|pid| pid.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ");
-        status.push(format!("pid {}", ids));
+        status.push(format!("pid {ids}"));
     }
     if status.is_empty() {
         // Fall back to one stable string when no daemon signal is present

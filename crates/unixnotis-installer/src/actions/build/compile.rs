@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 
 use super::super::{binaries::resolve_install_binaries, log_line, run_command, ActionContext};
 
-pub(crate) fn run_build(ctx: &mut ActionContext) -> Result<()> {
+pub fn run_build(ctx: &mut ActionContext) -> Result<()> {
     if ctx.paths.is_release_archive() {
         // Downloaded releases already ship binaries, so "build" becomes a bundle check
         return verify_release_binaries(ctx);

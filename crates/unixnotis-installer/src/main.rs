@@ -1,9 +1,19 @@
-//! UnixNotis installer entrypoint with a ratatui-driven flow.
+//! `UnixNotis` installer entrypoint with a ratatui-driven flow
 
-#![allow(
-    clippy::nursery,
-    clippy::pedantic,
-    reason = "pedantic and nursery cleanup is tracked incrementally across existing code"
+#![expect(
+    clippy::collapsible_else_if,
+    clippy::items_after_statements,
+    clippy::match_same_arms,
+    clippy::missing_const_for_fn,
+    clippy::needless_continue,
+    clippy::needless_pass_by_value,
+    clippy::option_if_let_else,
+    clippy::redundant_else,
+    clippy::ref_option,
+    clippy::similar_names,
+    clippy::too_many_lines,
+    clippy::unnecessary_wraps,
+    reason = "reviewed installer state-machine, backend, and TUI boundaries keep explicit control flow for auditable lifecycle behavior"
 )]
 
 mod actions;
@@ -20,7 +30,7 @@ mod main_flow;
 #[path = "main/main_handlers.rs"]
 mod main_handlers;
 #[cfg(test)]
-#[path = "main/tests.rs"]
+#[path = "main/tests/mod.rs"]
 mod main_tests;
 mod model;
 mod paths;

@@ -26,7 +26,7 @@ impl ReadinessIssue {
         }
     }
 
-    pub fn is_error(&self) -> bool {
+    pub const fn is_error(&self) -> bool {
         // Check rendering needs a cheap severity split without cloning strings
         matches!(self, Self::Error(_))
     }

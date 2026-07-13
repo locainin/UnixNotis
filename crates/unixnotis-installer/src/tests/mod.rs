@@ -2,8 +2,8 @@
 
 mod app;
 mod detect;
-pub(crate) mod env;
+pub mod env;
 mod events;
-pub(crate) mod fs;
+pub mod fs;
 mod model;
 mod terminal;

@@ -51,9 +51,8 @@ fn command_lookup_skips_non_executable_path_shadow() {
     fs::set_permissions(&shadow, fs::Permissions::from_mode(0o644)).expect("shadow chmod");
     fs::set_permissions(&real, fs::Permissions::from_mode(0o755)).expect("real chmod");
 
-    let found =
-        find_command_on_path_with_index("noticenterctl", &[shadow_dir.clone(), real_dir.clone()])
-            .expect("executable command should be found");
+    let found = find_command_on_path_with_index("noticenterctl", &[shadow_dir, real_dir])
+        .expect("executable command should be found");
 
     // A non-executable file with the right name should not block the usable shim target
     assert_eq!(found.0, 1);

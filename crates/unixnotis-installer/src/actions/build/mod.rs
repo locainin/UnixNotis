@@ -9,4 +9,4 @@ pub use accel::{
     detect_build_accel, detect_build_accel_without_repo, write_build_accel_config,
     BuildAccelConfigStatus, BuildAccelDetection, BuildAccelOutcome,
 };
-pub(crate) use compile::run_build;
+pub use compile::run_build;

@@ -55,8 +55,7 @@ impl Checks {
         // Release archives do not require a Rust toolchain for install mode
         let release_archive = discovered_paths
             .as_ref()
-            .map(InstallPaths::is_release_archive)
-            .unwrap_or(false);
+            .is_ok_and(InstallPaths::is_release_archive);
         let cargo = system::cargo_check(release_archive);
         let pkg_config = system::pkg_config_check();
         let gtk4_css_features = gtk::gtk4_css_features_check(&pkg_config);

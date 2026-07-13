@@ -58,14 +58,12 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
         && app
             .install_state
             .as_ref()
-            .map(|state| state.is_fully_installed())
-            .unwrap_or(false)
+            .is_some_and(crate::actions::InstallState::is_fully_installed)
     {
         lines.push(Line::from(""));
         let service_artifact =
             crate::paths::InstallPaths::discover_with_service_manager(app.service_manager)
-                .map(|paths| paths.service.artifact_label())
-                .unwrap_or("service artifact");
+                .map_or("service artifact", |paths| paths.service.artifact_label());
         lines.push(Line::from(Span::styled(
             format!("Reinstall will overwrite binaries and the {service_artifact}."),
             Style::default().fg(Color::Yellow),
@@ -76,22 +74,22 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
         // Fall back to the default user bin path when discovery cannot run here
         let bin_dir =
             crate::paths::InstallPaths::discover_with_service_manager(app.service_manager)
-                .map(|paths| format_with_home(&paths.bin_dir))
-                .unwrap_or_else(|_| "$HOME/.local/bin".to_string());
+                .map_or_else(
+                    |_| "$HOME/.local/bin".to_string(),
+                    |paths| format_with_home(&paths.bin_dir),
+                );
         if matches!(mode, ActionMode::Install) {
             // Install builds release binaries and copies them into the user bin dir
             lines.push(Line::from(Span::styled(
                 format!(
-                    "Install builds UnixNotis and copies unixnotis-daemon, unixnotis-popups, unixnotis-center, and noticenterctl into {}; startup files are updated so new terminals include this path",
-                    bin_dir
+                    "Install builds UnixNotis and copies unixnotis-daemon, unixnotis-popups, unixnotis-center, and noticenterctl into {bin_dir}; startup files are updated so new terminals include this path"
                 ),
                 Style::default().fg(Color::Yellow),
             )));
         } else {
             lines.push(Line::from(Span::styled(
                 format!(
-                    "Uninstall stops UnixNotis, removes managed startup entries, and removes unixnotis-daemon, unixnotis-popups, unixnotis-center, and noticenterctl from {}; config files are kept",
-                    bin_dir
+                    "Uninstall stops UnixNotis, removes managed startup entries, and removes unixnotis-daemon, unixnotis-popups, unixnotis-center, and noticenterctl from {bin_dir}; config files are kept"
                 ),
                 Style::default().fg(Color::Yellow),
             )));

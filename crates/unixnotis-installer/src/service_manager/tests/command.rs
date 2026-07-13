@@ -80,7 +80,7 @@ fn command_spec_ignores_inherited_path_backend_tools() {
     let marker = root.path.join("marker");
     root.write_executable(
         "sv",
-        &format!("#!/bin/sh\nprintf hit > {:?}\nexit 0\n", marker),
+        &format!("#!/bin/sh\nprintf hit > {marker:?}\nexit 0\n"),
     );
     let _path = EnvGuard::prepend_path(&root.path);
     let empty_tools = TempDirGuard::new("empty-trusted");

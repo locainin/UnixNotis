@@ -372,6 +372,5 @@ fn remove_stale_temp_link(temp_link: &Path) -> Result<()> {
 fn path_is_live_directory(path: &Path) -> bool {
     fs::metadata(path)
         // s6 live roots are normally symlinks, and the symlink name is the command contract
-        .map(|metadata| metadata.is_dir())
-        .unwrap_or(false)
+        .is_ok_and(|metadata| metadata.is_dir())
 }

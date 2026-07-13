@@ -29,7 +29,7 @@ pub(in crate::actions::config) fn backup_existing_file(
     let backup_path = backup_dir.join(file_name.as_ref());
 
     // Copy first so the live file stays intact until replacement succeeds
-    fs::copy(path, &backup_path).with_context(|| format!("failed to backup {}", label))?;
+    fs::copy(path, &backup_path).with_context(|| format!("failed to backup {label}"))?;
     log_line(
         ctx,
         format!("Backed up {} to {}", label, format_with_home(&backup_path)),
@@ -37,7 +37,7 @@ pub(in crate::actions::config) fn backup_existing_file(
     Ok(())
 }
 
-pub(crate) fn list_backup_dirs_for_ui() -> Vec<PathBuf> {
+pub fn list_backup_dirs_for_ui() -> Vec<PathBuf> {
     let Ok(config_dir) = Config::default_config_dir() else {
         return Vec::new();
     };

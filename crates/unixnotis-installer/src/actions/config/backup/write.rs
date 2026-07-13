@@ -4,7 +4,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
 
-pub(crate) fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+pub fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     // A sibling temp file avoids leaving a partially written target behind
     let (temp_path, mut temp_file) = create_atomic_temp_file(path)?;
     temp_file

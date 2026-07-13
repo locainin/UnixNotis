@@ -51,7 +51,7 @@ overrides_css = "themes/custom/overrides.css"
         install_state: None,
         log_tx: tx,
         action_mode: ActionMode::Install,
-        restore_backup: Some(backup_dir.clone()),
+        restore_backup: Some(backup_dir),
         service_reload_required: Arc::new(AtomicBool::new(false)),
     };
 
@@ -131,7 +131,7 @@ fn restore_config_skips_absolute_theme_targets() {
         install_state: None,
         log_tx: tx,
         action_mode: ActionMode::Install,
-        restore_backup: Some(backup_dir.clone()),
+        restore_backup: Some(backup_dir),
         service_reload_required: Arc::new(AtomicBool::new(false)),
     };
 

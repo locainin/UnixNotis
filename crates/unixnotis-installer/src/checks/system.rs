@@ -12,15 +12,9 @@ use unixnotis_core::program_in_path;
 use super::CheckItem;
 
 pub(super) fn wayland_check() -> CheckItem {
-    let wayland_session = env::var("XDG_SESSION_TYPE")
-        .map(|val| val == "wayland")
-        .unwrap_or(false)
-        || env::var("WAYLAND_DISPLAY")
-            .map(|val| !val.is_empty())
-            .unwrap_or(false);
-    let runtime_ok = env::var("XDG_RUNTIME_DIR")
-        .map(|val| !val.is_empty())
-        .unwrap_or(false);
+    let wayland_session = env::var("XDG_SESSION_TYPE").is_ok_and(|val| val == "wayland")
+        || env::var("WAYLAND_DISPLAY").is_ok_and(|val| !val.is_empty());
+    let runtime_ok = env::var("XDG_RUNTIME_DIR").is_ok_and(|val| !val.is_empty());
     // Wayland plus XDG runtime dir is the minimum runtime needed for the UI pieces
     if wayland_session && runtime_ok {
         CheckItem::ok("Wayland", "session detected")

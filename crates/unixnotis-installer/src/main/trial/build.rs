@@ -31,7 +31,7 @@ pub(super) fn build_trial_binaries(repo_root: &Path) -> Result<TrialBinaries> {
     let build_status = command
         .current_dir(repo_root)
         .status()
-        .map_err(|err| anyhow!("failed to build trial binaries: {}", err))?;
+        .map_err(|err| anyhow!("failed to build trial binaries: {err}"))?;
     if !build_status.success() {
         // A failed build should never fall through into an older target/debug binary
         return Err(anyhow!("trial build exited with failure"));

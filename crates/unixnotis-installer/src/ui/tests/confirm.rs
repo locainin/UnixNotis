@@ -48,3 +48,19 @@ fn draw_confirm_restore_backup_shows_selected_backup_path() {
     assert!(screen.contains("Restoring from backup"));
     assert!(screen.contains("Backup-2026-01-02"));
 }
+
+#[test]
+fn draw_confirm_uninstall_names_removed_artifacts_and_retained_config() {
+    let app = app_for_rendering(Screen::Confirm(ActionMode::Uninstall));
+
+    let screen = render_app(&app);
+
+    // The destructive boundary must be visible before uninstall receives confirmation
+    assert!(screen.contains("Confirm Uninstall"));
+    assert!(screen.contains("removes managed startup entries"));
+    assert!(screen.contains("unixnotis-daemon"));
+    assert!(screen.contains("unixnotis-popups"));
+    assert!(screen.contains("unixnotis-center"));
+    assert!(screen.contains("noticenterctl"));
+    assert!(screen.contains("config files are kept"));
+}

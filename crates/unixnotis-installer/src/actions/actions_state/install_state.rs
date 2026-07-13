@@ -51,7 +51,7 @@ impl InstallState {
         self.is_installed() && self.service_active
     }
 
-    pub fn service_enabled(&self) -> bool {
+    pub const fn service_enabled(&self) -> bool {
         self.service_enabled
     }
 }
@@ -82,39 +82,37 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
         // Artifact-backed managers prove enablement through installer-owned filesystem state
         enabled
     } else {
-        match paths.service.is_enabled_command() {
-            Some(spec) => match spec.to_command().and_then(|mut command| command.status()) {
+        if let Some(spec) = paths.service.is_enabled_command() {
+            match spec.to_command().and_then(|mut command| command.status()) {
                 // Command-backed managers still use the native manager status probe
                 Ok(status) => status.success(),
                 Err(err) => {
                     service_enabled_error = Some(err.to_string());
                     false
                 }
-            },
-            None => {
-                // This should only apply to future backends that have no state probe yet
-                service_enabled_error =
-                    Some("service manager has no enabled-state command".to_string());
-                false
             }
+        } else {
+            // This should only apply to future backends that have no state probe yet
+            service_enabled_error =
+                Some("service manager has no enabled-state command".to_string());
+            false
         }
     };
     // Active state still matters for the install summary shown in the UI
     let mut service_active_error = None;
-    let service_active = match paths.service.active_probe() {
-        Some(probe) => match probe.evaluate() {
+    let service_active = if let Some(probe) = paths.service.active_probe() {
+        match probe.evaluate() {
             // Active probes can be plain exit status or stdout parsing, depending on backend
             Ok(active) => active,
             Err(err) => {
                 service_active_error = Some(err.to_string());
                 false
             }
-        },
-        None => {
-            // Backends without active state still allow install, but cannot claim a running service
-            service_active_error = Some("service manager has no active-state command".to_string());
-            false
         }
+    } else {
+        // Backends without active state still allow install, but cannot claim a running service
+        service_active_error = Some("service manager has no active-state command".to_string());
+        false
     };
 
     let (service_conflicts, service_conflict_warnings) =
