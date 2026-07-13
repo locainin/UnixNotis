@@ -1,4 +1,4 @@
-//! Panel request/readiness helpers for ControlServer
+//! Panel request/readiness helpers for `ControlServer`
 //!
 //! Keeps panel lifecycle and request fanout logic isolated from other control methods
 
@@ -22,7 +22,7 @@ impl ControlServer {
         let ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
             .map_err(to_fdo_error)?;
         // Panel requests are signaled so center keeps authority over local UI policy
-        ControlServer::panel_requested(&ctx, request)
+        Self::panel_requested(&ctx, request)
             .await
             .map_err(to_fdo_error)
     }

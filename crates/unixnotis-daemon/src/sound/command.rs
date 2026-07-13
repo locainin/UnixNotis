@@ -59,12 +59,11 @@ fn sound_semaphore() -> &'static Arc<Semaphore> {
 fn spawn_sound_command(backend: &'static str, program: &str, args: &[String]) {
     let limiter = sound_semaphore().clone();
     // try_acquire keeps this call non-blocking on hot paths
-    let permit = match limiter.try_acquire_owned() {
-        Ok(permit) => permit,
-        Err(_) => {
-            debug!(backend, "sound command skipped (concurrency limit reached)");
-            return;
-        }
+    let permit = if let Ok(permit) = limiter.try_acquire_owned() {
+        permit
+    } else {
+        debug!(backend, "sound command skipped (concurrency limit reached)");
+        return;
     };
     let command_str = if args.is_empty() {
         program.to_string()

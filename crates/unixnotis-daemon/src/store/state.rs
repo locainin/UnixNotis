@@ -22,7 +22,7 @@ pub(super) struct PersistedDndState {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DndStateStore {
+pub struct DndStateStore {
     path: PathBuf,
 }
 

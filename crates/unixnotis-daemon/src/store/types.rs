@@ -49,7 +49,7 @@ pub struct InsertOutcome {
     pub dropped: bool,
 }
 
-pub(crate) struct DndWrite {
+pub struct DndWrite {
     // True when the in-memory DND value changed
     pub(crate) changed: bool,
     // Value seen before this write
@@ -70,7 +70,7 @@ pub struct DismissOutcome {
 }
 
 impl DismissOutcome {
-    pub fn removed_any(&self) -> bool {
+    pub const fn removed_any(&self) -> bool {
         // Convenience helper for callers that only need yes/no
         self.removed_active || self.removed_history
     }

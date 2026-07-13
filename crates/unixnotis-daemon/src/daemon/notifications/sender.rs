@@ -82,7 +82,7 @@ pub(super) fn app_name_matches_sender(app_name: &str, sender_executable: &str) -
     let Some(exe_name) = Path::new(sender_executable)
         .file_name()
         .and_then(|value| value.to_str())
-        .map(|value| value.to_ascii_lowercase())
+        .map(str::to_ascii_lowercase)
     else {
         return true;
     };

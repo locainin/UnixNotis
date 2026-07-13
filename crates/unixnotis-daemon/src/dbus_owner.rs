@@ -10,7 +10,7 @@ use tracing::{info, warn};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
-pub(super) async fn wait_for_owner_state(
+pub async fn wait_for_owner_state(
     dbus_proxy: &DBusProxy<'_>,
     name: zbus::names::BusName<'_>,
     expect_owner: bool,
@@ -36,7 +36,7 @@ pub(super) async fn wait_for_owner_state(
 
     loop {
         tokio::select! {
-            _ = &mut deadline => return Ok(false),
+            () = &mut deadline => return Ok(false),
             signal = stream.next() => {
                 let Some(signal) = signal else {
                     return Ok(false);
@@ -45,8 +45,7 @@ pub(super) async fn wait_for_owner_state(
                 let new_owner = args
                     .new_owner()
                     .as_ref()
-                    .map(|name| name.as_str())
-                    .unwrap_or("");
+                    .map_or("", |name| name.as_str());
                 if owner_state_matches(Some(new_owner), expect_owner) {
                     return Ok(true);
                 }
@@ -55,12 +54,14 @@ pub(super) async fn wait_for_owner_state(
     }
 }
 
-pub(super) async fn log_current_owner(
+pub async fn log_current_owner(
     dbus_proxy: &DBusProxy<'_>,
     connection: &Connection,
     name: zbus::names::BusName<'_>,
 ) -> Result<bool> {
-    let unique_name = connection.unique_name().map(|name| name.to_string());
+    let unique_name = connection
+        .unique_name()
+        .map(std::string::ToString::to_string);
     let owner = match dbus_proxy.get_name_owner(name).await {
         Ok(owner) => owner.to_string(),
         Err(err) => {

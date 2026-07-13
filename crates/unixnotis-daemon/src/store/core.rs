@@ -68,15 +68,15 @@ impl NotificationStore {
         }
     }
 
-    pub fn config(&self) -> &Config {
+    pub const fn config(&self) -> &Config {
         &self.config
     }
 
-    pub fn inhibited(&self) -> bool {
+    pub const fn inhibited(&self) -> bool {
         self.inhibited
     }
 
-    pub fn inhibitor_count(&self) -> u32 {
+    pub const fn inhibitor_count(&self) -> u32 {
         self.inhibitor_count
     }
 

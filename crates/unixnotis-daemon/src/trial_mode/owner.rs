@@ -89,10 +89,10 @@ pub(super) fn print_detected_daemons(daemons: &[DetectedDaemon], owner: &Option<
             let ids = daemon
                 .running_pids
                 .iter()
-                .map(|pid| pid.to_string())
+                .map(std::string::ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(", ");
-            status.push(format!("pid {}", ids));
+            status.push(format!("pid {ids}"));
         }
         if status.is_empty() {
             status.push("not running".to_string());
@@ -105,9 +105,8 @@ pub(super) fn print_detected_daemons(daemons: &[DetectedDaemon], owner: &Option<
             let name = owner.comm.as_deref().unwrap_or("unknown");
             let pid = owner
                 .pid
-                .map(|pid| pid.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            println!("- {}: dbus-owner, pid {}", name, pid);
+                .map_or_else(|| "unknown".to_string(), |pid| pid.to_string());
+            println!("- {name}: dbus-owner, pid {pid}");
         }
     }
 }
@@ -191,7 +190,7 @@ async fn pgrep_exact(name: &str) -> Vec<u32> {
 
 async fn read_comm(pid: u32) -> Option<String> {
     // Prefer /proc to avoid spawning a process for a single field
-    let path = format!("/proc/{}/comm", pid);
+    let path = format!("/proc/{pid}/comm");
     if let Ok(contents) = fs::read_to_string(path).await {
         let comm = contents.trim().to_string();
         if !comm.is_empty() {
@@ -215,7 +214,7 @@ async fn read_comm(pid: u32) -> Option<String> {
 
 async fn read_args(pid: u32) -> Option<Vec<String>> {
     // Use /proc/cmdline to preserve argument boundaries and quoting
-    let path = format!("/proc/{}/cmdline", pid);
+    let path = format!("/proc/{pid}/cmdline");
     if let Ok(contents) = fs::read(path).await {
         let parts = contents
             .split(|byte| *byte == 0)
@@ -242,7 +241,7 @@ async fn read_args(pid: u32) -> Option<Vec<String>> {
     // split_whitespace fallback is less exact than /proc but better than missing args
     let parts = fallback
         .split_whitespace()
-        .map(|part| part.to_string())
+        .map(std::string::ToString::to_string)
         .collect::<Vec<_>>();
     if parts.is_empty() {
         None

@@ -1,9 +1,21 @@
 //! Daemon entrypoint and service bootstrap
 
-#![allow(
-    clippy::nursery,
-    clippy::pedantic,
-    reason = "pedantic and nursery cleanup is tracked incrementally across existing code"
+#![expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::manual_let_else,
+    clippy::needless_continue,
+    clippy::needless_pass_by_ref_mut,
+    clippy::needless_pass_by_value,
+    clippy::option_if_let_else,
+    clippy::ref_option,
+    clippy::significant_drop_tightening,
+    clippy::struct_excessive_bools,
+    clippy::struct_field_names,
+    clippy::trivially_copy_pass_by_ref,
+    clippy::unnecessary_wraps,
+    clippy::unused_async,
+    reason = "reviewed D-Bus trait signatures, lock lifetimes, protocol integer widths, and private-module visibility preserve daemon compatibility"
 )]
 
 use std::path::PathBuf;
@@ -35,6 +47,7 @@ mod sound;
 mod store;
 mod system_tools;
 #[cfg(test)]
+#[path = "tests/support.rs"]
 mod test_support;
 #[path = "trial_mode/root.rs"]
 mod trial_mode;
@@ -243,8 +256,8 @@ async fn run_daemon(
         Some(seconds) => {
             let timeout = tokio::time::sleep(Duration::from_secs(seconds));
             tokio::select! {
-                _ = shutdown_signal() => {},
-                _ = timeout => {
+                () = shutdown_signal() => {},
+                () = timeout => {
                     info!(seconds, "run-seconds elapsed, shutting down");
                 }
             }

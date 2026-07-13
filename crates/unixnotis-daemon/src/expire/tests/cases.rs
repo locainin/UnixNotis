@@ -83,7 +83,7 @@ fn maybe_compact_rebuilds_from_scheduled() {
     for id in 0..129_u32 {
         heap.push(ExpirationItem {
             id,
-            deadline: now + Duration::from_secs(id as u64 + 1),
+            deadline: now + Duration::from_secs(u64::from(id) + 1),
         });
     }
 

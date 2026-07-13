@@ -16,7 +16,7 @@ mod types;
 use history::HistoryStore;
 use inhibit::Inhibitor;
 use state::{DndStateStore, DND_STATE_VERSION};
-pub(crate) use types::DndWrite;
+pub use types::DndWrite;
 pub use types::{DismissOutcome, InsertOutcome, NotificationStore};
 
 #[cfg(test)]

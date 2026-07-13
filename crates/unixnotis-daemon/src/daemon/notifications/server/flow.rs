@@ -255,7 +255,7 @@ impl NotificationServer {
 
         for id in evicted {
             // Emit both freedesktop and control close signals for consistent subscribers
-            NotificationServer::notification_closed(&notif_ctx, id, CloseReason::Undefined as u32)
+            Self::notification_closed(&notif_ctx, id, CloseReason::Undefined as u32)
                 .await
                 .map_err(to_fdo_error)?;
             ControlServer::notification_closed(&control_ctx, id, CloseReason::Undefined)

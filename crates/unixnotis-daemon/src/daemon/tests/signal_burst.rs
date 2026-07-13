@@ -61,7 +61,9 @@ fn notification_signal_mode_caps_unique_senders_without_blocking_known_sender() 
 
 #[test]
 fn notification_signal_mode_prunes_expired_senders_before_track_limit_check() {
-    let stale = Instant::now() - NOTIFICATION_SIGNAL_WINDOW - Duration::from_millis(1);
+    let stale = Instant::now()
+        .checked_sub(NOTIFICATION_SIGNAL_WINDOW + Duration::from_millis(1))
+        .expect("test clock should represent the previous burst window");
     let mut seeded = HashMap::<String, NotificationBurstState>::new();
     for index in 0..NOTIFICATION_SIGNAL_TRACK_LIMIT {
         seeded.insert(
@@ -90,7 +92,9 @@ fn notification_signal_mode_resets_existing_sender_after_window_expires() {
     seeded.insert(
         ":1.noisy".to_string(),
         NotificationBurstState {
-            window_started: now - NOTIFICATION_SIGNAL_WINDOW - Duration::from_millis(1),
+            window_started: now
+                .checked_sub(NOTIFICATION_SIGNAL_WINDOW + Duration::from_millis(1))
+                .expect("test clock should represent the previous burst window"),
             // Recent last_seen keeps the sender in the map so only the per-sender window resets
             last_seen: now,
             count: NOTIFICATION_DIRECT_SIGNAL_LIMIT + 1,

@@ -1,7 +1,7 @@
 use super::{DndWrite, NotificationStore};
 
 impl NotificationStore {
-    pub fn dnd_enabled(&self) -> bool {
+    pub const fn dnd_enabled(&self) -> bool {
         self.dnd_enabled
     }
 
@@ -15,7 +15,7 @@ impl NotificationStore {
         self.write_dnd(!self.dnd_enabled)
     }
 
-    pub(crate) fn rollback_dnd_write_if_current(&mut self, write: &DndWrite) -> bool {
+    pub(crate) const fn rollback_dnd_write_if_current(&mut self, write: &DndWrite) -> bool {
         // No-op writes do not need rollback
         if !write.changed {
             return false;

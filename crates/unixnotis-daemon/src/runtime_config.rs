@@ -15,7 +15,7 @@ use unixnotis_core::Config;
 
 use super::Args;
 
-pub(super) fn load_config(args: &Args) -> Result<Config> {
+pub fn load_config(args: &Args) -> Result<Config> {
     match args.config.as_ref() {
         Some(path) => Config::load_from_path(path).context("read config from path"),
         None => Config::load_default().context("read default config"),
@@ -23,12 +23,12 @@ pub(super) fn load_config(args: &Args) -> Result<Config> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct TracingInitOutcome {
+pub struct TracingInitOutcome {
     pub(super) attempted_init: bool,
     pub(super) had_env_warning: bool,
 }
 
-pub(super) fn init_tracing(config: &Config) -> TracingInitOutcome {
+pub fn init_tracing(config: &Config) -> TracingInitOutcome {
     let (filter, warning) = match EnvFilter::try_from_default_env() {
         Ok(filter) => (filter, None),
         Err(err) => {
@@ -47,8 +47,7 @@ pub(super) fn init_tracing(config: &Config) -> TracingInitOutcome {
                 .unwrap_or_else(|| "info".to_string());
             let fallback = EnvFilter::try_new(configured.clone()).unwrap_or_else(|err| {
                 eprintln!(
-                    "unixnotis-daemon: invalid log level '{}': {err}; falling back to info",
-                    configured
+                    "unixnotis-daemon: invalid log level '{configured}': {err}; falling back to info"
                 );
                 EnvFilter::new("info")
             });
@@ -68,7 +67,7 @@ pub(super) fn init_tracing(config: &Config) -> TracingInitOutcome {
     }
 }
 
-pub(super) async fn ensure_wayland_session(timeout: Duration) -> Result<()> {
+pub async fn ensure_wayland_session(timeout: Duration) -> Result<()> {
     if let Some(display) = detect_wayland_display() {
         apply_wayland_env(&display);
         return Ok(());

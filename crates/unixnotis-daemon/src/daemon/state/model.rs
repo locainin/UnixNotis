@@ -70,7 +70,7 @@ impl DaemonState {
         })
     }
 
-    pub(crate) fn connection(&self) -> &Connection {
+    pub(crate) const fn connection(&self) -> &Connection {
         &self.connection
     }
 }

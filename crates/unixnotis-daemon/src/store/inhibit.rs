@@ -13,13 +13,13 @@ pub(super) struct Inhibitor {
 }
 
 #[derive(Debug)]
-pub(crate) struct InhibitorOwnerMismatch {
+pub struct InhibitorOwnerMismatch {
     expected_owner: String,
     actual_owner: String,
 }
 
 impl InhibitorOwnerMismatch {
-    pub(super) fn new(expected_owner: String, actual_owner: String) -> Self {
+    pub(super) const fn new(expected_owner: String, actual_owner: String) -> Self {
         Self {
             expected_owner,
             actual_owner,
@@ -34,7 +34,7 @@ impl InhibitorOwnerMismatch {
     }
 }
 
-pub(super) fn inhibits_popups(scope: u32) -> bool {
+pub(super) const fn inhibits_popups(scope: u32) -> bool {
     // Scope 0 is the legacy "all output" value; bit 0 specifically targets popups
     scope == 0 || scope & INHIBIT_SCOPE_POPUPS != 0
 }

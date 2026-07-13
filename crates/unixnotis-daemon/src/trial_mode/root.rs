@@ -19,22 +19,22 @@ mod owner;
 mod prompt;
 
 // Re-export keeps main.rs call sites unchanged after the split
-pub(super) use control::restore_previous;
+pub use control::restore_previous;
 
 #[derive(Default)]
-pub(super) struct TrialState {
+pub struct TrialState {
     // Populated only when the replaced daemon can be restored later
     restore_action: Option<RestoreAction>,
 }
 
 impl TrialState {
-    pub(super) fn take_restore_action(&mut self) -> Option<RestoreAction> {
+    pub(super) const fn take_restore_action(&mut self) -> Option<RestoreAction> {
         // take moves out the action so restore runs at most once
         self.restore_action.take()
     }
 
     #[cfg(test)]
-    pub(super) fn with_restore_action_for_test(action: RestoreAction) -> Self {
+    pub(super) const fn with_restore_action_for_test(action: RestoreAction) -> Self {
         // Tests construct an armed guard without stopping a real desktop daemon
         Self {
             restore_action: Some(action),
@@ -43,14 +43,14 @@ impl TrialState {
 }
 
 #[derive(Debug)]
-pub(super) enum RestoreAction {
+pub enum RestoreAction {
     // Restart through the matching user unit
     Systemd { unit: String },
     // Restart with captured command line
     Command { program: String, args: Vec<String> },
 }
 
-pub(super) struct OwnerInfo {
+pub struct OwnerInfo {
     // D-Bus owner PID when available
     pub(super) pid: Option<u32>,
     // Process name from /proc or ps
@@ -59,19 +59,19 @@ pub(super) struct OwnerInfo {
     pub(super) args: Option<Vec<String>>,
 }
 
-pub(super) struct DetectedDaemon {
+pub struct DetectedDaemon {
     pub(super) name: String,
     pub(super) systemd_active: bool,
     pub(super) running_pids: Vec<u32>,
     pub(super) is_owner: bool,
 }
 
-pub(super) struct KnownDaemon {
+pub struct KnownDaemon {
     pub(super) name: &'static str,
     pub(super) unit: &'static str,
 }
 
-pub(super) const KNOWN_DAEMONS: &[KnownDaemon] = &[
+pub const KNOWN_DAEMONS: &[KnownDaemon] = &[
     KnownDaemon {
         name: "mako",
         unit: "mako.service",
@@ -94,9 +94,9 @@ pub(super) const KNOWN_DAEMONS: &[KnownDaemon] = &[
     },
 ];
 
-pub(super) const TRIAL_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
+pub const TRIAL_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 
-pub(super) async fn prepare_trial(
+pub async fn prepare_trial(
     args: &Args,
     dbus_proxy: &DBusProxy<'_>,
     notifications_name: zbus::names::BusName<'_>,
