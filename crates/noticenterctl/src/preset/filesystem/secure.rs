@@ -9,6 +9,7 @@ use rustix::fs::{mkdirat, openat2, renameat, unlinkat, AtFlags, Mode, OFlags, Re
 use std::fs;
 use std::io::{Read, Write};
 use std::os::fd::{AsFd, OwnedFd};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -67,6 +68,14 @@ pub fn read_relative_file_secure(
     root_dir: &OwnedFd,
     relative_path: &Path,
 ) -> Result<(Vec<u8>, u32)> {
+    read_relative_file_secure_bounded(root_dir, relative_path, u64::MAX)
+}
+
+pub fn read_relative_file_secure_bounded(
+    root_dir: &OwnedFd,
+    relative_path: &Path,
+    max_bytes: u64,
+) -> Result<(Vec<u8>, u32)> {
     // Normalize first so every later open call sees one clean relative path shape
     let relative_path = normalize_relative_path(relative_path)?;
     let file_fd = openat2(
@@ -77,7 +86,7 @@ pub fn read_relative_file_secure(
         secure_resolve_flags(),
     )
     .with_context(|| format!("open file under secure root {}", relative_path.display()))?;
-    let mut file = fs::File::from(file_fd);
+    let file = fs::File::from(file_fd);
     let metadata = file
         .metadata()
         .with_context(|| format!("inspect file under secure root {}", relative_path.display()))?;
@@ -88,13 +97,29 @@ pub fn read_relative_file_secure(
             relative_path.display()
         ));
     }
+    if metadata.len() > max_bytes {
+        return Err(anyhow!(
+            "secure file read exceeds the {max_bytes} byte limit: {}",
+            relative_path.display()
+        ));
+    }
 
     let mut contents = Vec::new();
+    let reserve = usize::try_from(metadata.len()).context("file size does not fit in memory")?;
+    contents
+        .try_reserve_exact(reserve)
+        .context("reserve memory for secure file read")?;
     // Reads stay fully in-memory here because backup and rollback both reuse the original bytes
-    file.read_to_end(&mut contents)
+    file.take(max_bytes.saturating_add(1))
+        .read_to_end(&mut contents)
         .with_context(|| format!("read file under secure root {}", relative_path.display()))?;
+    if contents.len() as u64 > max_bytes {
+        return Err(anyhow!(
+            "secure file grew beyond the {max_bytes} byte limit while reading: {}",
+            relative_path.display()
+        ));
+    }
 
-    use std::os::unix::fs::PermissionsExt;
     Ok((contents, metadata.permissions().mode()))
 }
 
@@ -118,6 +143,10 @@ pub fn write_relative_file_atomic_secure(
         temp_file
             .write_all(contents)
             .with_context(|| format!("write secure temp file for {}", relative_path.display()))?;
+        // Exact descriptor permissions prevent the process umask from changing imported modes
+        temp_file
+            .set_permissions(fs::Permissions::from_mode(mode & 0o777))
+            .with_context(|| format!("set secure temp mode for {}", relative_path.display()))?;
         temp_file
             .sync_all()
             .with_context(|| format!("flush secure temp file for {}", relative_path.display()))?;
@@ -144,6 +173,9 @@ pub fn write_relative_file_atomic_secure(
         return Err(err)
             .with_context(|| format!("replace secure target file {}", relative_path.display()));
     }
+    // Directory synchronization makes the rename durable across a sudden system restart
+    rustix::fs::fsync(&parent_fd)
+        .with_context(|| format!("flush secure parent for {}", relative_path.display()))?;
     Ok(())
 }
 

@@ -14,10 +14,10 @@ use super::modes::sanitize_payload_mode;
 use super::{BundleArchive, BundleFile};
 
 pub(super) const MAX_PRESET_ARCHIVE_ENTRIES: usize = 2_048;
-pub(super) const MAX_PRESET_PAYLOAD_FILES: usize = 512;
+pub(in crate::preset) const MAX_PRESET_PAYLOAD_FILES: usize = 512;
 pub(super) const MAX_PRESET_MANIFEST_BYTES: u64 = 1_048_576;
-pub(super) const MAX_PRESET_FILE_BYTES: u64 = 16_777_216;
-pub(super) const MAX_PRESET_TOTAL_PAYLOAD_BYTES: u64 = 67_108_864;
+pub(in crate::preset) const MAX_PRESET_FILE_BYTES: u64 = 16_777_216;
+pub(in crate::preset) const MAX_PRESET_TOTAL_PAYLOAD_BYTES: u64 = 67_108_864;
 
 pub fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
     // Import and inspect use the same reader so validation stays consistent

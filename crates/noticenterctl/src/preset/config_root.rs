@@ -8,7 +8,10 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::filesystem::{open_secure_dir_all, read_relative_file_secure};
+use super::archive::{
+    MAX_PRESET_FILE_BYTES, MAX_PRESET_PAYLOAD_FILES, MAX_PRESET_TOTAL_PAYLOAD_BYTES,
+};
+use super::filesystem::{open_secure_dir_all, read_relative_file_secure_bounded};
 use super::pathing::{normalize_relative_path, relative_path_matches_exclusion};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +51,7 @@ pub(super) fn collect_selected_config_files(
         .with_context(|| format!("open config directory {}", config_dir.display()))?;
     let output_path = output_path.map(resolve_working_path).transpose()?;
     let mut collected = CollectedConfigFiles::default();
+    let mut total_bytes = 0u64;
 
     for relative_path in relative_paths {
         let relative = normalize_relative_path(relative_path)?;
@@ -75,7 +79,13 @@ pub(super) fn collect_selected_config_files(
         }
 
         // Secure descriptor-relative reading closes the validation-to-read race
-        let (source_contents, descriptor_mode) = read_relative_file_secure(&root_fd, &relative)?;
+        let (source_contents, descriptor_mode) =
+            read_relative_file_secure_bounded(&root_fd, &relative, MAX_PRESET_FILE_BYTES)?;
+        total_bytes = checked_export_total(
+            total_bytes,
+            source_contents.len() as u64,
+            collected.files.len(),
+        )?;
         let mode = file_mode(&path, descriptor_mode)?;
         collected.files.push(PresetFileSource {
             relative_path: relative,
@@ -98,6 +108,20 @@ pub(super) fn collect_selected_config_files(
     collected.skipped_non_regular.sort();
     collected.skipped_non_regular.dedup();
     Ok(collected)
+}
+
+pub(super) fn checked_export_total(current: u64, file_size: u64, file_count: usize) -> Result<u64> {
+    if file_count >= MAX_PRESET_PAYLOAD_FILES {
+        return Err(anyhow!(
+            "preset export selects more than {MAX_PRESET_PAYLOAD_FILES} files"
+        ));
+    }
+    current
+        .checked_add(file_size)
+        .filter(|total| *total <= MAX_PRESET_TOTAL_PAYLOAD_BYTES)
+        .ok_or_else(|| {
+            anyhow!("preset export payload exceeds {MAX_PRESET_TOTAL_PAYLOAD_BYTES} bytes")
+        })
 }
 
 pub(super) fn override_collected_file_contents(

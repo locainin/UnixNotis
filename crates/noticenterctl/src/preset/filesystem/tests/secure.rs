@@ -1,7 +1,7 @@
 use super::super::{
     create_backup_dir_secure, open_secure_dir_all, read_relative_file_secure,
-    remove_empty_relative_dirs_secure, remove_relative_dir_secure, remove_relative_file_secure,
-    write_relative_file_atomic_secure,
+    read_relative_file_secure_bounded, remove_empty_relative_dirs_secure,
+    remove_relative_dir_secure, remove_relative_file_secure, write_relative_file_atomic_secure,
 };
 use crate::preset::filesystem::secure::{
     backup_name_is_taken, child_directory_is_missing, directory_open_flags,
@@ -67,11 +67,7 @@ fn secure_atomic_write_replaces_existing_file() {
         .expect("written file metadata")
         .permissions()
         .mode();
-    assert_eq!(
-        mode & 0o111,
-        0o111,
-        "requested executable mode should remain"
-    );
+    assert_eq!(mode & 0o777, 0o755, "requested mode should remain exact");
     assert_eq!(
         fs::read_dir(target.parent().expect("target parent"))
             .expect("read target parent")
@@ -165,6 +161,18 @@ fn secure_read_returns_contents_and_mode_but_rejects_non_files() {
 
     symlink("value.txt", root.path.join("nested/link.txt")).expect("create file symlink");
     assert!(read_relative_file_secure(&root_fd, Path::new("nested/link.txt")).is_err());
+}
+
+#[test]
+fn secure_bounded_read_rejects_oversized_file_before_returning_bytes() {
+    let root = TempDirGuard::new("bounded-read");
+    root.write("value.txt", "12345");
+    let root_fd = open_secure_dir_all(&root.path).expect("open secure root");
+
+    let error = read_relative_file_secure_bounded(&root_fd, Path::new("value.txt"), 4)
+        .expect_err("oversized file should fail");
+
+    assert!(error.to_string().contains("4 byte limit"));
 }
 
 #[test]

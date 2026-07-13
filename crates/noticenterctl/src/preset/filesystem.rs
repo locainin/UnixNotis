@@ -11,8 +11,8 @@ pub(super) use self::checks::{
 };
 pub(super) use self::secure::{
     create_backup_dir_secure, open_secure_dir_all, read_relative_file_secure,
-    remove_empty_relative_dirs_secure, remove_relative_dir_secure, remove_relative_file_secure,
-    write_relative_file_atomic_secure,
+    read_relative_file_secure_bounded, remove_empty_relative_dirs_secure,
+    remove_relative_dir_secure, remove_relative_file_secure, write_relative_file_atomic_secure,
 };
 
 #[cfg(test)]

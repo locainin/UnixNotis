@@ -10,12 +10,16 @@ use super::super::config_root::CollectedConfigFiles;
 use super::super::manifest::PresetManifest;
 use super::super::pathing::{archive_payload_path, MANIFEST_ARCHIVE_PATH};
 use super::modes::sanitize_payload_mode;
+use super::read::{
+    MAX_PRESET_FILE_BYTES, MAX_PRESET_PAYLOAD_FILES, MAX_PRESET_TOTAL_PAYLOAD_BYTES,
+};
 
 pub fn write_bundle(
     bundle_path: &Path,
     manifest: &PresetManifest,
     collected: &CollectedConfigFiles,
 ) -> Result<()> {
+    validate_export_payload_sizes(collected)?;
     if let Some(parent) = bundle_path.parent() {
         // Export can target nested output paths, so create the parent tree first
         std::fs::create_dir_all(parent)
@@ -69,6 +73,34 @@ pub fn write_bundle(
         // Temp bundle cleanup keeps failed exports from leaving large junk files behind
         let _ = fs::remove_file(&temp_path);
         return Err(err);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_export_payload_sizes(collected: &CollectedConfigFiles) -> Result<()> {
+    if collected.files.len() > MAX_PRESET_PAYLOAD_FILES {
+        anyhow::bail!("preset export contains more than {MAX_PRESET_PAYLOAD_FILES} files");
+    }
+    let mut total = 0u64;
+    for file in &collected.files {
+        let size = file
+            .contents_override
+            .as_ref()
+            .map_or(file.source_contents.len(), Vec::len) as u64;
+        if size > MAX_PRESET_FILE_BYTES {
+            anyhow::bail!(
+                "preset export file exceeds {MAX_PRESET_FILE_BYTES} bytes: {}",
+                file.relative_path.display()
+            );
+        }
+        total = total
+            .checked_add(size)
+            .filter(|value| *value <= MAX_PRESET_TOTAL_PAYLOAD_BYTES)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "preset export payload exceeds {MAX_PRESET_TOTAL_PAYLOAD_BYTES} bytes"
+                )
+            })?;
     }
     Ok(())
 }

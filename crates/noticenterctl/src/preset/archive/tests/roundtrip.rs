@@ -1,3 +1,4 @@
+use super::super::write::validate_export_payload_sizes;
 use super::super::{read_bundle, write_bundle};
 use super::support::TempDirGuard;
 use crate::preset::config_root::{CollectedConfigFiles, PresetFileSource};
@@ -90,4 +91,24 @@ fn archive_round_trip_uses_overridden_file_bytes() {
 
     assert_eq!(bundle.files.len(), 1);
     assert_eq!(bundle.files[0].contents, b"demo = false\n");
+}
+
+#[test]
+fn export_size_validation_uses_override_bytes() {
+    let collected = CollectedConfigFiles {
+        files: vec![PresetFileSource {
+            relative_path: PathBuf::from("config.toml"),
+            source_path: PathBuf::from("config.toml"),
+            size: 1,
+            mode: 0o644,
+            source_contents: vec![b'a'],
+            contents_override: Some(vec![b'x'; 16_777_217]),
+        }],
+        skipped_symlinks: Vec::new(),
+        skipped_non_regular: Vec::new(),
+    };
+
+    let error = validate_export_payload_sizes(&collected)
+        .expect_err("oversized override should be rejected");
+    assert!(error.to_string().contains("exceeds 16777216 bytes"));
 }
