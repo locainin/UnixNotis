@@ -17,6 +17,8 @@ use crate::debug;
 #[derive(Clone)]
 pub(super) struct PlayerState {
     pub(super) bus_name: String,
+    // Unique owner distinguishes a restarted process that reused the same MPRIS name
+    pub(super) unique_owner: Option<String>,
     pub(super) identity: String,
     pub(super) browser_family: Option<String>,
     pub(super) owner_pid: Option<u32>,
@@ -225,7 +227,7 @@ pub(super) async fn build_player_state(
         .unwrap_or_else(|| name.to_string());
     // DBus owner data is captured once so snapshots do not need another bus round trip
     // Browser bridges may later override this PID with a stronger metadata source PID
-    let (owner_pid, owner_executable) = resolve_player_owner(connection, name).await;
+    let (unique_owner, owner_pid, owner_executable) = resolve_player_owner(connection, name).await;
     let browser_family = detect_browser_family(&identity, name, &config.browser_tokens);
     let remote_art_allowed = remote_art_allowed(
         browser_family.as_deref(),
@@ -247,6 +249,7 @@ pub(super) async fn build_player_state(
 
     Ok(Some(PlayerState {
         bus_name: name.to_string(),
+        unique_owner,
         identity,
         browser_family,
         owner_pid,
@@ -274,15 +277,20 @@ async fn fetch_identity(connection: &Connection, name: &str) -> Option<String> {
 async fn resolve_player_owner(
     connection: &Connection,
     name: &str,
-) -> (Option<u32>, Option<String>) {
+) -> (Option<String>, Option<u32>, Option<String>) {
     // Some synthetic names cannot be converted into a DBus bus name
     // Treat those as unknown instead of rejecting the whole media player
     let Ok(bus_name) = zbus::names::BusName::try_from(name) else {
-        return (None, None);
+        return (None, None, None);
     };
     let Ok(proxy) = DBusProxy::new(connection).await else {
-        return (None, None);
+        return (None, None, None);
     };
+    let unique_owner = proxy
+        .get_name_owner(bus_name.clone())
+        .await
+        .ok()
+        .map(|owner| owner.to_string());
     // The bus owner PID is useful for normal players and art trust policy
     // It is weaker than bridge metadata when a helper owns the MPRIS name
     let pid = proxy.get_connection_unix_process_id(bus_name).await.ok();
@@ -292,7 +300,7 @@ async fn resolve_player_owner(
             .map(|path| path.display().to_string()),
         None => None,
     };
-    (pid, executable)
+    (unique_owner, pid, executable)
 }
 
 #[cfg(target_os = "linux")]
