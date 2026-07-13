@@ -21,7 +21,9 @@ impl Default for MediaConfig {
             show_position_when_single_player: false,
             show_title: true,
             show_artist: true,
+            collapse_missing_artist: false,
             show_art: true,
+            collapse_missing_art: false,
             show_controls: true,
             show_navigation: true,
             title_fallback: MediaTitleFallback::Identity,
@@ -44,7 +46,8 @@ impl Default for MediaConfig {
     }
 }
 
-pub fn default_art_position_for_layout(layout: MediaLayout) -> MediaArtPosition {
+#[must_use]
+pub const fn default_art_position_for_layout(layout: MediaLayout) -> MediaArtPosition {
     // Presets own their natural shape; explicit config can override this later
     match layout {
         MediaLayout::Stacked | MediaLayout::Player => MediaArtPosition::Top,
@@ -54,7 +57,8 @@ pub fn default_art_position_for_layout(layout: MediaLayout) -> MediaArtPosition 
     }
 }
 
-pub fn default_controls_position_for_layout(layout: MediaLayout) -> MediaControlsPosition {
+#[must_use]
+pub const fn default_controls_position_for_layout(layout: MediaLayout) -> MediaControlsPosition {
     // Control placement follows the shell shape so each preset remains balanced
     match layout {
         MediaLayout::Carousel => MediaControlsPosition::Inline,
@@ -65,7 +69,10 @@ pub fn default_controls_position_for_layout(layout: MediaLayout) -> MediaControl
     }
 }
 
-pub fn default_navigation_position_for_layout(layout: MediaLayout) -> MediaNavigationPosition {
+#[must_use]
+pub const fn default_navigation_position_for_layout(
+    layout: MediaLayout,
+) -> MediaNavigationPosition {
     // Player hides navigation by default because it is designed as a focused single-card shell
     match layout {
         MediaLayout::Carousel => MediaNavigationPosition::External,
@@ -76,7 +83,8 @@ pub fn default_navigation_position_for_layout(layout: MediaLayout) -> MediaNavig
     }
 }
 
-pub fn default_card_height_for_layout(layout: MediaLayout) -> i32 {
+#[must_use]
+pub const fn default_card_height_for_layout(layout: MediaLayout) -> i32 {
     match layout {
         MediaLayout::Carousel => 72,
         MediaLayout::Inline => 92,

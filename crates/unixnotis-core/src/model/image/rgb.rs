@@ -78,6 +78,10 @@ pub(super) fn expand_rgb_row_scalar(src: &[u8], dst: &mut [u8]) {
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
+#[allow(
+    clippy::cast_ptr_alignment,
+    reason = "the SSSE3 loadu and storeu intrinsics explicitly support unaligned byte buffers"
+)]
 pub(super) unsafe fn expand_rgb_row_ssse3(src: &[u8], dst: &mut [u8]) {
     // SSSE3 shuffles 12-byte RGB quads into 16-byte RGBA blocks with a fixed alpha mask
     use std::arch::x86_64::{
@@ -92,10 +96,16 @@ pub(super) unsafe fn expand_rgb_row_ssse3(src: &[u8], dst: &mut [u8]) {
 
     // Process 4 pixels at a time (12 bytes -> 16 bytes). Read requires 16 bytes
     while s + 16 <= src.len() {
-        let chunk = unsafe { _mm_loadu_si128(src.as_ptr().add(s) as *const __m128i) };
+        // SAFETY: The loop guard proves the 16-byte unaligned read remains inside src
+        let src_ptr = unsafe { src.as_ptr().add(s) };
+        // SAFETY: SSSE3 permits this pointer to be unaligned
+        let chunk = unsafe { _mm_loadu_si128(src_ptr.cast::<__m128i>()) };
         let shuffled = _mm_shuffle_epi8(chunk, mask);
         let with_alpha = _mm_or_si128(shuffled, alpha);
-        unsafe { _mm_storeu_si128(dst.as_mut_ptr().add(d) as *mut __m128i, with_alpha) };
+        // SAFETY: Four source pixels always map to the next 16-byte destination block
+        let dst_ptr = unsafe { dst.as_mut_ptr().add(d) };
+        // SAFETY: The caller allocates four RGBA bytes for every source RGB pixel
+        unsafe { _mm_storeu_si128(dst_ptr.cast::<__m128i>(), with_alpha) };
         s += 12;
         d += 16;
     }

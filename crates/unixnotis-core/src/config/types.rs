@@ -1,4 +1,4 @@
-//! Configuration types and defaults for UnixNotis
+//! Configuration types and defaults for `UnixNotis`
 //!
 //! Keeps high-level config categories together and delegates detailed schemas
 //! to focused modules for maintainability
@@ -90,7 +90,7 @@ pub struct SoundConfig {
     pub enabled: bool,
     /// Default named sound from the freedesktop sound theme
     pub default_name: Option<String>,
-    /// Default sound file path, resolves relative to the UnixNotis config dir
+    /// Default sound file path, resolves relative to the `UnixNotis` config dir
     pub default_file: Option<String>,
     /// Directory containing custom sound files, resolves relative to config dir
     pub default_dir: Option<String>,

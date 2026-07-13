@@ -11,6 +11,7 @@ pub enum PanelSection {
 }
 
 /// Return the stock top-to-bottom panel body section order
+#[must_use]
 pub fn default_panel_section_order() -> Vec<PanelSection> {
     vec![PanelSection::Widgets, PanelSection::Notifications]
 }
@@ -27,6 +28,7 @@ pub enum PanelWidgetSection {
 }
 
 /// Return the stock top-to-bottom panel section order
+#[must_use]
 pub fn default_panel_widget_order() -> Vec<PanelWidgetSection> {
     vec![
         PanelWidgetSection::Sliders,

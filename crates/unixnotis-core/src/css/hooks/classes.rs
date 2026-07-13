@@ -55,6 +55,8 @@ pub mod panel_shell {
     pub const MEDIA_CONTAINER: &str = "unixnotis-media-container";
     pub const QUICK_CONTROLS: &str = "unixnotis-quick-controls";
     pub const WIDGET_STACK: &str = "unixnotis-widget-stack";
+    pub const WIDGET_DENSITY_COMFORTABLE: &str = "unixnotis-widget-density-comfortable";
+    pub const WIDGET_DENSITY_COMPACT: &str = "unixnotis-widget-density-compact";
     pub const WIDGET_REVEALER: &str = "unixnotis-widget-revealer";
     pub const SECTION_HEADER: &str = "unixnotis-section-header";
     pub const RECENT_SECTION: &str = "unixnotis-recent-section";

@@ -1,5 +1,7 @@
 use super::*;
-use crate::{Anchor, Margins, PanelKeyboardInteractivity, PANEL_HEIGHT_PERCENT_DEFAULT};
+use crate::{
+    Anchor, EmptyStateAlignment, Margins, PanelKeyboardInteractivity, PANEL_HEIGHT_PERCENT_DEFAULT,
+};
 
 #[test]
 fn default_panel_config_keeps_expected_layout_and_text_contract() {
@@ -24,6 +26,7 @@ fn default_panel_config_keeps_expected_layout_and_text_contract() {
     ));
     assert_eq!(panel.title, "Notifications");
     assert_eq!(panel.empty_text, "NO NOTIFICATIONS");
+    assert_eq!(panel.empty_alignment, EmptyStateAlignment::Auto);
     assert_eq!(panel.search_placeholder, "Search app, title, or message");
     assert!(panel.action_row_visible);
     assert!(panel.notification_list_expand);
@@ -42,6 +45,7 @@ fn panel_config_parses_custom_ordering_and_action_blocks() {
         widget_order = ["stats", "cards", "media", "toggles", "sliders"]
         action_order = ["close", "search", "widgets", "dnd", "clear"]
         clear_button_placement = "notification-header"
+        empty_alignment = "end"
 
         [search_action]
         label = "Find"
@@ -55,6 +59,7 @@ fn panel_config_parses_custom_ordering_and_action_blocks() {
     assert_eq!(panel.width, 512);
     assert_eq!(panel.height, 75);
     assert_eq!(panel.height_override, Some(640));
+    assert_eq!(panel.empty_alignment, EmptyStateAlignment::End);
     assert_eq!(
         panel.section_order,
         vec![PanelSection::Notifications, PanelSection::Widgets]

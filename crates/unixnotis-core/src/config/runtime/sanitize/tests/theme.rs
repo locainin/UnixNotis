@@ -1,3 +1,8 @@
+#![allow(
+    clippy::float_cmp,
+    reason = "theme sanitization assigns exact clamp boundaries and explicit fallback constants"
+)]
+
 use super::super::*;
 use crate::{Config, ThemeConfig};
 

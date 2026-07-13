@@ -27,8 +27,12 @@ pub struct MediaConfig {
     pub show_title: bool,
     /// Show the artist lane at all
     pub show_artist: bool,
+    /// Collapse the artist lane when the player does not provide an artist
+    pub collapse_missing_artist: bool,
     /// Show album artwork when present
     pub show_art: bool,
+    /// Collapse the artwork slot when the player does not provide artwork
+    pub collapse_missing_art: bool,
     /// Show transport buttons
     pub show_controls: bool,
     /// Show next and previous player navigation

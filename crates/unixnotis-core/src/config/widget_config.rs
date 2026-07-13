@@ -5,5 +5,5 @@ mod widgets;
 
 pub use self::widgets::{
     CardLayout, CardWidgetConfig, NumericParseMode, SliderWidgetConfig, StatWidgetConfig,
-    ToggleLayout, ToggleWidgetConfig, WidgetPluginConfig, WidgetsConfig,
+    ToggleLayout, ToggleWidgetConfig, WidgetDensity, WidgetPluginConfig, WidgetsConfig,
 };

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::WidgetPluginConfig;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct StatWidgetConfig {
     pub enabled: bool,

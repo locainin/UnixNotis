@@ -1,4 +1,4 @@
-//! Embedded non-CSS default files shipped with UnixNotis
+//! Embedded non-CSS default files shipped with `UnixNotis`
 
 pub struct DefaultScript {
     pub relative_path: &'static str,

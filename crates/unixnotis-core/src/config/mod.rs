@@ -1,4 +1,4 @@
-//! Configuration module wiring for UnixNotis
+//! Configuration module wiring for `UnixNotis`
 //!
 //! Keeps config types, I/O, and runtime cleanup in separate files
 

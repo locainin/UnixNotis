@@ -1,4 +1,4 @@
-//! Embedded default theme fragments for UnixNotis.
+//! Embedded default theme fragments for `UnixNotis`
 
 pub const DEFAULT_BASE_CSS: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/base.css"));

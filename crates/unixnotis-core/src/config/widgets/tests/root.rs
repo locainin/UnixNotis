@@ -1,4 +1,4 @@
-use crate::{ToggleLayout, WidgetsConfig};
+use crate::{ToggleLayout, WidgetDensity, WidgetsConfig};
 
 #[test]
 fn default_widgets_keep_expected_grid_shape() {
@@ -6,6 +6,7 @@ fn default_widgets_keep_expected_grid_shape() {
 
     // These counts define the visible stock control-center sections
     assert_eq!(widgets.toggle_layout, ToggleLayout::Horizontal);
+    assert_eq!(widgets.density, WidgetDensity::Comfortable);
     assert_eq!(widgets.toggle_columns, 4);
     assert_eq!(widgets.stat_columns, 2);
     assert_eq!(widgets.card_columns, 2);
@@ -19,6 +20,7 @@ fn partial_widgets_toml_keeps_unspecified_stock_defaults() {
     let widgets: WidgetsConfig = toml::from_str(
         r#"
         toggle_layout = "vertical"
+        density = "compact"
         toggle_columns = 3
         refresh_interval_ms = 2500
         "#,
@@ -26,6 +28,7 @@ fn partial_widgets_toml_keeps_unspecified_stock_defaults() {
     .expect("partial widgets config should parse");
 
     assert_eq!(widgets.toggle_layout, ToggleLayout::Vertical);
+    assert_eq!(widgets.density, WidgetDensity::Compact);
     assert_eq!(widgets.toggle_columns, 3);
     assert_eq!(widgets.refresh_interval_ms, 2500);
     assert_eq!(widgets.stat_columns, WidgetsConfig::default().stat_columns);
@@ -36,11 +39,11 @@ fn partial_widgets_toml_keeps_unspecified_stock_defaults() {
 #[test]
 fn empty_widget_arrays_replace_stock_sections() {
     let widgets: WidgetsConfig = toml::from_str(
-        r#"
+        r"
         toggles = []
         stats = []
         cards = []
-        "#,
+        ",
     )
     .expect("empty widget arrays should parse");
 

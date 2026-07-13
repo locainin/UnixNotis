@@ -47,13 +47,17 @@ pub enum ConfigError {
 
 impl Config {
     /// Load configuration from a specific path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be read or its TOML cannot be parsed
     pub fn load_from_path(path: &Path) -> Result<Self, ConfigError> {
         let contents =
             fs::read_to_string(path).map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
         let mut ignored_keys = Vec::new();
         // Build the TOML deserializer from the file text
         let deserializer = toml::de::Deserializer::new(&contents);
-        let mut config: Config = serde_ignored::deserialize(deserializer, |path| {
+        let mut config: Self = serde_ignored::deserialize(deserializer, |path| {
             ignored_keys.push(path.to_string());
         })
         .map_err(|err| ConfigError::ParseFailed(err.to_string()))?;
@@ -65,6 +69,11 @@ impl Config {
     }
 
     /// Load configuration from the default XDG config location, if present
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the default location cannot be resolved or an existing config file
+    /// cannot be read and parsed
     pub fn load_default() -> Result<Self, ConfigError> {
         let path = Self::default_config_path()?;
         if !path.exists() {
@@ -76,12 +85,21 @@ impl Config {
     }
 
     /// Resolve configured CSS paths relative to the config directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the default config directory cannot be resolved
     pub fn resolve_theme_paths(&self) -> Result<ThemePaths, ConfigError> {
         let base = Self::default_config_dir()?;
         self.resolve_theme_paths_from(&base)
     }
 
     /// Resolve the config directory that should anchor relative theme paths
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a parentless relative path requires the current directory and that
+    /// directory cannot be read
     pub fn config_dir_for_path(path: &Path) -> Result<PathBuf, ConfigError> {
         if let Some(parent) = path.parent() {
             // Plain file names report an empty parent, so skip that case
@@ -93,6 +111,11 @@ impl Config {
     }
 
     /// Resolve configured CSS paths relative to an explicit config directory
+    ///
+    /// # Errors
+    ///
+    /// This operation currently has no failure path; the result type is retained for API
+    /// compatibility with other theme-resolution helpers
     pub fn resolve_theme_paths_from(&self, base: &Path) -> Result<ThemePaths, ConfigError> {
         // Resolve relative paths against the supplied config directory
         Ok(ThemePaths {
@@ -107,6 +130,10 @@ impl Config {
     }
 
     /// Ensure all theme files exist in the config directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a missing theme file cannot be created safely
     pub fn ensure_theme_files(&self, theme_paths: &ThemePaths) -> Result<(), ConfigError> {
         // Use the same base directory used for resolving theme paths
         let config_dir = &theme_paths.base_dir;
@@ -156,6 +183,10 @@ impl Config {
     }
 
     /// Ensure helper scripts used by the shipped default config exist
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a missing script cannot be written or made executable
     pub fn ensure_default_scripts_in(config_dir: &Path) -> Result<(), ConfigError> {
         for script in DEFAULT_SCRIPTS {
             let path = config_dir.join(script.relative_path);
@@ -170,6 +201,10 @@ impl Config {
     }
 
     /// Overwrite helper scripts with the built-in defaults
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when any script cannot be replaced safely
     pub fn write_default_scripts_in(config_dir: &Path) -> Result<(), ConfigError> {
         for script in DEFAULT_SCRIPTS {
             write_default_script(&config_dir.join(script.relative_path), script.contents)?;
@@ -184,6 +219,10 @@ impl Config {
     }
 
     /// Return the default config directory based on XDG or $HOME
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when neither a valid absolute `XDG_CONFIG_HOME` nor `HOME` is available
     pub fn default_config_dir() -> Result<PathBuf, ConfigError> {
         if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
             let trimmed = xdg.trim();
@@ -207,6 +246,10 @@ impl Config {
     }
 
     /// Return the default config file path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the default config directory cannot be resolved
     pub fn default_config_path() -> Result<PathBuf, ConfigError> {
         Ok(Self::default_config_dir()?.join("config.toml"))
     }

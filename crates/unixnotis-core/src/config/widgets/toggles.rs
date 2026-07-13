@@ -11,7 +11,7 @@ pub enum ToggleLayout {
     Vertical,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct ToggleWidgetConfig {
     pub enabled: bool,
