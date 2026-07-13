@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gtk::prelude::*;
-use gtk::{Align, Overflow};
+use gtk::{Align, Overflow, PolicyType};
 
 use crate::media::MediaHandle;
 use crate::ui::input_guard::ClickCooldown;
@@ -73,6 +73,14 @@ pub(super) fn build_media_card_parts(
     let title_widget = title_label.widget();
     title_widget.set_hexpand(false);
     title_widget.set_halign(Align::Start);
+    // GtkFixed otherwise reports the label's natural text width beyond the pixel budget
+    let title_boundary = gtk::ScrolledWindow::new();
+    title_boundary.set_policy(PolicyType::External, PolicyType::Never);
+    title_boundary.set_propagate_natural_width(false);
+    title_boundary.set_min_content_width(marquee_width);
+    title_boundary.set_max_content_width(marquee_width);
+    title_boundary.set_overflow(Overflow::Hidden);
+    title_boundary.set_child(Some(&title_widget));
 
     let artist_label = gtk::Label::new(None);
     artist_label.set_xalign(0.0);
@@ -80,7 +88,7 @@ pub(super) fn build_media_card_parts(
     artist_label.add_css_class(hooks::media_shell::ARTIST);
 
     text_box.append(&meta_row);
-    text_box.append(&title_widget);
+    text_box.append(&title_boundary);
     text_box.append(&artist_label);
 
     // Transport buttons are shared across every shell preset
@@ -106,7 +114,11 @@ pub(super) fn build_media_card_parts(
             source_label,
             position_label,
             title_widget,
+            title_boundary,
             title_label,
+            single_player_text_width: Cell::new(marquee_width),
+            multi_player_text_width: Cell::new(marquee_width),
+            applied_text_width: Cell::new(marquee_width),
             artist_label,
             play_button,
             next_button,

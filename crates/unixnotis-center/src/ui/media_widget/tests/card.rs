@@ -31,7 +31,11 @@ fn card() -> MediaCardWidgets {
         source_label: gtk::Label::new(None),
         position_label: gtk::Label::new(None),
         title_widget,
+        title_boundary: gtk::ScrolledWindow::new(),
         title_label,
+        single_player_text_width: Cell::new(180),
+        multi_player_text_width: Cell::new(120),
+        applied_text_width: Cell::new(180),
         artist_label: gtk::Label::new(None),
         play_button: gtk::Button::new(),
         next_button: gtk::Button::new(),
@@ -75,6 +79,28 @@ fn update_applies_metadata_capabilities_and_missing_art_state() {
     assert!(!card.next_button.is_sensitive());
     assert!(card.art_frame.get_visible());
     assert!(!card.art.get_visible());
+}
+
+#[gtk::test]
+fn consecutive_track_updates_replace_old_title_artist_and_source() {
+    let card = card();
+    let first = media_info();
+    card.update(&first, 1, 1);
+
+    let mut second = first;
+    second.identity = "Other Player".to_string();
+    second.title = "A Different Track".to_string();
+    second.artist = "A Different Artist".to_string();
+    card.update(&second, 1, 1);
+
+    assert_eq!(card.source_label.text(), "Other Player");
+    let rendered_title = card
+        .title_widget
+        .first_child()
+        .and_downcast::<gtk::Label>()
+        .expect("marquee title label");
+    assert_eq!(rendered_title.text(), "A Different Track");
+    assert_eq!(card.artist_label.text(), "A Different Artist");
 }
 
 #[gtk::test]

@@ -23,7 +23,11 @@ pub(super) struct MediaCardWidgets {
     pub(super) source_label: gtk::Label,
     pub(super) position_label: gtk::Label,
     pub(super) title_widget: gtk::Fixed,
+    pub(super) title_boundary: gtk::ScrolledWindow,
     pub(super) title_label: MarqueeLabel,
+    pub(super) single_player_text_width: Cell<i32>,
+    pub(super) multi_player_text_width: Cell<i32>,
+    pub(super) applied_text_width: Cell<i32>,
     pub(super) artist_label: gtk::Label,
     pub(super) play_button: gtk::Button,
     pub(super) next_button: gtk::Button,
@@ -34,6 +38,22 @@ pub(super) struct MediaCardWidgets {
 }
 
 impl MediaCardWidgets {
+    pub(super) fn apply_player_count_width(&self, total: usize) {
+        let width = if total > 1 {
+            self.multi_player_text_width.get()
+        } else {
+            self.single_player_text_width.get()
+        };
+        if self.applied_text_width.get() == width {
+            return;
+        }
+        self.text_box.set_size_request(width, -1);
+        self.title_boundary.set_min_content_width(width);
+        self.title_boundary.set_max_content_width(width);
+        self.title_label.update_width(width);
+        self.applied_text_width.set(width);
+    }
+
     pub(super) fn apply_display_config(&self, config: &MediaConfig) {
         // Keep the latest config snapshot so live updates and reloads render the same rules
         *self.display.borrow_mut() = MediaDisplayConfig::from_config(config);

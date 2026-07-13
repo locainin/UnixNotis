@@ -90,6 +90,15 @@ pub struct MediaHandle {
 }
 
 impl MediaHandle {
+    #[cfg(test)]
+    pub(crate) const fn disconnected(runtime: tokio::runtime::Handle) -> Self {
+        // UI construction tests need a real runtime handle without starting a D-Bus media task
+        Self {
+            command_tx: None,
+            runtime,
+        }
+    }
+
     pub fn refresh(&self) {
         self.send_command(MediaCommand::Refresh);
     }
