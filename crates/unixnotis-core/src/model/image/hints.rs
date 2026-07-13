@@ -189,7 +189,7 @@ fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
         .unwrap_or(0);
 
     // Return only the byte-safe prefix
-    value[..end].to_string()
+    value.get(..end).unwrap_or_default().to_string()
 }
 
 pub(super) fn owned_to_string(value: &OwnedValue) -> Option<String> {

@@ -14,7 +14,9 @@ impl MediaConfig {
 
         match self.art_position {
             MediaArtPosition::Auto => default_art_position_for_layout(self.layout),
-            position => position,
+            MediaArtPosition::Start => MediaArtPosition::Start,
+            MediaArtPosition::Top => MediaArtPosition::Top,
+            MediaArtPosition::Hidden => MediaArtPosition::Hidden,
         }
     }
 
@@ -27,7 +29,10 @@ impl MediaConfig {
 
         match self.controls_position {
             MediaControlsPosition::Auto => default_controls_position_for_layout(self.layout),
-            position => position,
+            MediaControlsPosition::Inline => MediaControlsPosition::Inline,
+            MediaControlsPosition::Bottom => MediaControlsPosition::Bottom,
+            MediaControlsPosition::Side => MediaControlsPosition::Side,
+            MediaControlsPosition::Hidden => MediaControlsPosition::Hidden,
         }
     }
 
@@ -40,7 +45,9 @@ impl MediaConfig {
 
         match self.navigation_position {
             MediaNavigationPosition::Auto => default_navigation_position_for_layout(self.layout),
-            position => position,
+            MediaNavigationPosition::External => MediaNavigationPosition::External,
+            MediaNavigationPosition::WithControls => MediaNavigationPosition::WithControls,
+            MediaNavigationPosition::Hidden => MediaNavigationPosition::Hidden,
         }
     }
 
