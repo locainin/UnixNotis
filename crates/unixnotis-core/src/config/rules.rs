@@ -79,7 +79,7 @@ impl<'de> Deserialize<'de> for RuleUrgency {
             where
                 E: de::Error,
             {
-                let value = u8::try_from(value).map_err(|_| {
+                let value = u8::try_from(value).map_err(|_error| {
                     E::custom("urgency must be 0 (low), 1 (normal), or 2 (critical)")
                 })?;
                 RuleUrgency::from_u8(value).map_err(E::custom)

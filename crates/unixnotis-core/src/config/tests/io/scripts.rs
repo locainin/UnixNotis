@@ -130,5 +130,21 @@ fn write_default_scripts_in_replaces_user_edited_script_contents() {
         script.contents
     );
 
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        // Reset scripts must remain directly runnable after atomic replacement
+        let mode = fs::metadata(&path)
+            .expect("reset script metadata")
+            .permissions()
+            .mode();
+        assert_eq!(
+            mode & 0o111,
+            0o111,
+            "reset script should retain every executable bit"
+        );
+    }
+
     let _ = fs::remove_dir_all(root);
 }

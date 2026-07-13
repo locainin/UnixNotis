@@ -240,7 +240,7 @@ impl Config {
                 warn!("invalid XDG_CONFIG_HOME; falling back to $HOME/.config");
             }
         }
-        let home = env::var("HOME").map_err(|_| ConfigError::MissingHome)?;
+        let home = env::var("HOME").map_err(|_error| ConfigError::MissingHome)?;
         // Fall back to the standard $HOME/.config path for predictable location
         Ok(PathBuf::from(home).join(".config").join("unixnotis"))
     }
