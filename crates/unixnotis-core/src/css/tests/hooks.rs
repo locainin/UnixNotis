@@ -232,13 +232,17 @@ fn stock_panel_css_targets_real_group_card_hooks() {
 }
 
 #[test]
-fn stock_panel_css_keeps_internal_stack_ghosts_compact() {
+fn stock_panel_css_uses_two_overlapping_full_card_stack_layers() {
     let css = crate::theme::DEFAULT_PANEL_CSS;
 
-    // Ghosts live inside the row and should look like depth, not full cards
+    // Full-height rear layers overlap so themes retain a coherent card silhouette
     assert!(css.contains(".unixnotis-stack-ghost"));
-    assert!(css.contains("min-height: 8px;"));
-    assert!(css.contains("margin-bottom: 0;"));
+    assert!(css.contains("min-height: 68px;"));
+    assert!(css.contains("margin-left: 10px;"));
+    assert!(css.contains("margin-top: -58px;"));
+
+    // The back layer narrows again and starts the stack without a negative offset
     assert!(css.contains(".unixnotis-stack-ghost-2"));
-    assert!(css.contains("min-height: 7px;"));
+    assert!(css.contains("margin-left: 20px;"));
+    assert!(css.contains("margin-top: 0;"));
 }
