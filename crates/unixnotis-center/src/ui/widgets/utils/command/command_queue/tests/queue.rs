@@ -1,9 +1,12 @@
 use std::collections::{HashMap, VecDeque};
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::{Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use super::coalesced::{insert_coalesced_job, CoalescedRefreshState};
 use super::delayed::{
-    next_delayed_wake, next_ready_delayed_job_index, try_enqueue_delayed_job, DelayedState,
+    next_delayed_wake, next_ready_delayed_job_index, try_enqueue_delayed_job, DelayedSlowQueue,
+    DelayedState,
 };
 use super::{should_warn_queue_full_from, CommandJob, CommandKind, CommandPlan};
 
@@ -94,6 +97,49 @@ fn delayed_enqueue_rejects_jobs_once_capacity_is_reached() {
     // Delayed queue stays bounded
     assert!(rejected.is_err());
     assert_eq!(state.pending.len(), 1);
+}
+
+#[test]
+fn delayed_submit_records_the_requested_future_deadline() {
+    let queue = DelayedSlowQueue {
+        state: Mutex::new(DelayedState {
+            pending: Vec::new(),
+            next_seq: 0,
+        }),
+        wake: Condvar::new(),
+    };
+    let before = Instant::now();
+
+    let result = queue.submit(
+        job("echo delayed", CommandKind::Slow),
+        Duration::from_millis(50),
+    );
+
+    assert!(result.is_ok());
+    let state = queue.state.lock().expect("delayed test queue lock");
+    assert_eq!(state.pending.len(), 1);
+    assert!(state.pending[0].ready_at >= before + Duration::from_millis(50));
+    drop(state);
+}
+
+#[test]
+fn delayed_submit_returns_the_job_when_the_queue_lock_is_poisoned() {
+    let queue = DelayedSlowQueue {
+        state: Mutex::new(DelayedState {
+            pending: Vec::new(),
+            next_seq: 0,
+        }),
+        wake: Condvar::new(),
+    };
+    let poison = catch_unwind(AssertUnwindSafe(|| {
+        let _guard = queue.state.lock().expect("delayed test queue lock");
+        panic!("poison delayed test queue");
+    }));
+    assert!(poison.is_err());
+
+    let rejected = queue.submit(job("echo rejected", CommandKind::Slow), Duration::ZERO);
+
+    assert!(rejected.is_err());
 }
 
 #[test]
