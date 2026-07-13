@@ -40,7 +40,7 @@ pub(super) fn sanitize_theme_config(config: &mut Config) {
     config.theme.card_radius = config.theme.card_radius.min(MAX_CARD_RADIUS);
 }
 
-fn clamp_alpha(value: &mut f32, fallback: f32) {
+const fn clamp_alpha(value: &mut f32, fallback: f32) {
     if !value.is_finite() {
         *value = fallback;
         return;
@@ -48,7 +48,7 @@ fn clamp_alpha(value: &mut f32, fallback: f32) {
     *value = value.clamp(0.0, 1.0);
 }
 
-fn clamp_alpha_finite(value: &mut f32) {
+const fn clamp_alpha_finite(value: &mut f32) {
     *value = value.clamp(0.0, 1.0);
 }
 

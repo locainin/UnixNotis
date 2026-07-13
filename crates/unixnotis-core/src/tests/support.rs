@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) fn test_env_lock() -> MutexGuard<'static, ()> {
+pub fn test_env_lock() -> MutexGuard<'static, ()> {
     // Environment variables are process-global, so every env-mutating core test shares one lock
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -14,7 +14,7 @@ pub(crate) fn test_env_lock() -> MutexGuard<'static, ()> {
         .expect("core test env lock should not be poisoned")
 }
 
-pub(crate) fn unique_temp_path(name: &str) -> PathBuf {
+pub fn unique_temp_path(name: &str) -> PathBuf {
     // Mix the process id with a timestamp so parallel test binaries do not collide
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -26,7 +26,7 @@ pub(crate) fn unique_temp_path(name: &str) -> PathBuf {
     ))
 }
 
-pub(crate) struct EnvGuard {
+pub struct EnvGuard {
     key: &'static str,
     previous: Option<OsString>,
 }
@@ -45,7 +45,7 @@ impl Drop for EnvGuard {
     }
 }
 
-pub(crate) fn set_env(key: &str, value: Option<&OsStr>) -> Option<OsString> {
+pub fn set_env(key: &str, value: Option<&OsStr>) -> Option<OsString> {
     let previous = env::var_os(key);
     match value {
         Some(value) => env::set_var(key, value),
@@ -54,7 +54,7 @@ pub(crate) fn set_env(key: &str, value: Option<&OsStr>) -> Option<OsString> {
     previous
 }
 
-pub(crate) fn restore_env(key: &str, previous: Option<OsString>) {
+pub fn restore_env(key: &str, previous: Option<OsString>) {
     match previous {
         Some(value) => env::set_var(key, value),
         None => env::remove_var(key),

@@ -102,7 +102,7 @@ impl Default for SliderWidgetConfig {
     }
 }
 
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum NumericParseMode {
     /// Uses heuristic parsing for mixed output formats

@@ -1,12 +1,10 @@
 //! Shared GTK CSS feature gates, theme tokens, and class hooks
 
 // Keep CSS support rules in one place so UI, installer, and checker stay aligned
-#[path = "features.rs"]
 pub mod features;
 // Shared class names stop theme hooks from drifting between widgets
 pub mod hooks;
 // Token builders keep legacy colors and newer custom properties in sync
-#[path = "tokens.rs"]
 pub mod tokens;
 
 pub use self::features::{

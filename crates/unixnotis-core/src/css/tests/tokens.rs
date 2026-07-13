@@ -1,3 +1,8 @@
+#![allow(
+    clippy::float_cmp,
+    reason = "theme-token resolution returns exact configured and clamped constants"
+)]
+
 use super::{
     build_legacy_theme_color_overrides, build_modern_theme_custom_properties,
     theme_card_style_values,

@@ -125,10 +125,10 @@ fn config_requires_shell_checks_each_slider_command_branch() {
         |config: &mut Config| config.widgets.volume.get_cmd = "echo get | cat".to_string(),
         |config: &mut Config| config.widgets.volume.set_cmd = "echo set | cat".to_string(),
         |config: &mut Config| {
-            config.widgets.volume.toggle_cmd = Some("echo toggle | cat".to_string())
+            config.widgets.volume.toggle_cmd = Some("echo toggle | cat".to_string());
         },
         |config: &mut Config| {
-            config.widgets.volume.watch_cmd = Some("echo watch | cat".to_string())
+            config.widgets.volume.watch_cmd = Some("echo watch | cat".to_string());
         },
         |config: &mut Config| config.widgets.brightness.get_cmd = "echo bget | cat".to_string(),
         |config: &mut Config| config.widgets.brightness.set_cmd = "echo bset | cat".to_string(),

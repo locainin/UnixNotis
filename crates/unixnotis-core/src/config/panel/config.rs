@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use super::super::{Anchor, Margins, PanelKeyboardInteractivity, PANEL_HEIGHT_PERCENT_DEFAULT};
 use super::{
     default_panel_action_order, default_panel_section_order, default_panel_widget_order,
-    PanelActionConfig, PanelActionId, PanelClearButtonPlacement, PanelSection, PanelWidgetSection,
+    EmptyStateAlignment, PanelActionConfig, PanelActionId, PanelClearButtonPlacement, PanelSection,
+    PanelWidgetSection,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -70,6 +71,8 @@ pub struct PanelConfig {
     pub close_action: PanelActionConfig,
     /// Top offset in logical pixels for the empty-state label
     pub empty_offset_top: i32,
+    /// Vertical alignment inside the remaining notification area
+    pub empty_alignment: EmptyStateAlignment,
     /// Hide the panel when focus leaves the window
     pub close_on_blur: bool,
     /// Close the panel when a different window becomes active (Hyprland only)
@@ -120,6 +123,7 @@ impl Default for PanelConfig {
             search_action: PanelActionConfig::search(),
             close_action: PanelActionConfig::close(),
             empty_offset_top: 120,
+            empty_alignment: EmptyStateAlignment::Auto,
             close_on_blur: false,
             close_on_click_outside: true,
             respect_work_area: true,

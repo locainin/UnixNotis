@@ -14,6 +14,11 @@ const TEMP_ATTEMPTS: u8 = 16;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Replace a regular file through an exclusive sibling temporary file
+///
+/// # Errors
+///
+/// Returns an error when containment checks fail or the temporary write, synchronization, target
+/// validation, rename, or parent-directory synchronization cannot complete
 pub fn write_file_atomic(path: &Path, contents: &[u8], mode: u32) -> io::Result<()> {
     let (parent_fd, file_name) = open_parent(path)?;
     validate_target(&parent_fd, &file_name)?;
@@ -40,6 +45,11 @@ pub fn write_file_atomic(path: &Path, contents: &[u8], mode: u32) -> io::Result<
 }
 
 /// Create a new regular file without replacing any existing path
+///
+/// # Errors
+///
+/// Returns an error when the parent cannot be opened securely, the destination already has an
+/// unsafe shape, or writing and synchronizing the new file fails
 pub fn write_file_if_missing(path: &Path, contents: &[u8], mode: u32) -> io::Result<bool> {
     let (parent_fd, file_name) = open_parent(path)?;
     let fd = match openat2(
@@ -213,17 +223,17 @@ fn sync_directory(parent_fd: OwnedFd) -> io::Result<()> {
     fs::File::from(parent_fd).sync_all()
 }
 
-fn file_mode(mode: u32) -> Mode {
+const fn file_mode(mode: u32) -> Mode {
     Mode::from_raw_mode(mode & 0o777)
 }
 
-fn contained_resolve_flags() -> ResolveFlags {
+const fn contained_resolve_flags() -> ResolveFlags {
     ResolveFlags::BENEATH
         .union(ResolveFlags::NO_SYMLINKS)
         .union(ResolveFlags::NO_MAGICLINKS)
 }
 
-fn anchor_resolve_flags() -> ResolveFlags {
+const fn anchor_resolve_flags() -> ResolveFlags {
     ResolveFlags::NO_SYMLINKS.union(ResolveFlags::NO_MAGICLINKS)
 }
 

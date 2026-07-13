@@ -67,10 +67,7 @@ fn config_requires_shell(config: &Config) -> bool {
 }
 
 fn command_requires_shell_opt(value: &Option<String>) -> bool {
-    value
-        .as_deref()
-        .map(command_requires_shell)
-        .unwrap_or(false)
+    value.as_deref().is_some_and(command_requires_shell)
 }
 
 fn command_requires_shell(cmd: &str) -> bool {

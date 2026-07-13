@@ -692,3 +692,16 @@
     0 12px 18px -14px alpha(@unixnotis-accent-2, 0.6),
     inset 0 0 0 1px alpha(#ffffff, 0.1);
 }
+/* Compact density trims shell padding without shrinking interactive targets below 36px */
+.unixnotis-widget-density-compact .unixnotis-quick-slider {
+  padding: 8px 10px;
+}
+
+.unixnotis-widget-density-compact .unixnotis-toggle {
+  padding: 3px 6px;
+  min-height: 36px;
+}
+
+.unixnotis-widget-density-compact .unixnotis-stat-card {
+  padding: 8px 10px;
+}

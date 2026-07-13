@@ -1,4 +1,4 @@
-//! Notification records and their lightweight UI views.
+//! Notification records and their lightweight UI views
 
 use std::collections::HashMap;
 
@@ -9,7 +9,7 @@ use zbus::zvariant::{OwnedValue, Type};
 use super::image::NotificationImage;
 use super::types::{Action, Urgency};
 
-/// Full notification record stored by the daemon.
+/// Full notification record stored by the daemon
 #[derive(Debug)]
 pub struct Notification {
     // Stable identifier assigned by the daemon
@@ -30,9 +30,9 @@ pub struct Notification {
     // Flags from the notification protocol
     pub is_transient: bool,
     pub is_resident: bool,
-    /// Suppress showing this notification as a popup.
+    /// Suppress showing this notification as a popup
     pub suppress_popup: bool,
-    /// Suppress sound playback for this notification.
+    /// Suppress sound playback for this notification
     pub suppress_sound: bool,
     pub image: NotificationImage,
     pub expire_timeout: i32,
@@ -46,7 +46,8 @@ pub struct Notification {
 }
 
 impl Notification {
-    /// Convert to a lightweight view for UI consumption.
+    /// Convert to a lightweight view for UI consumption
+    #[must_use]
     pub fn to_view(&self) -> NotificationView {
         NotificationView {
             id: self.id,
@@ -63,7 +64,8 @@ impl Notification {
         }
     }
 
-    /// Convert to a view for list rows with heavy image data removed.
+    /// Convert to a view for list rows with heavy image data removed
+    #[must_use]
     pub fn to_list_view(&self) -> NotificationView {
         NotificationView {
             id: self.id,
@@ -80,13 +82,14 @@ impl Notification {
         }
     }
 
-    /// Create a history entry with heavyweight hint data stripped out.
-    pub fn to_history(&self) -> Notification {
+    /// Create a history entry with heavyweight hint data stripped out
+    #[must_use]
+    pub fn to_history(&self) -> Self {
         // History entries should never retain raw image-data blobs
         let mut image = self.image.clone();
         image.has_image_data = false;
         image.image_data = Default::default();
-        Notification {
+        Self {
             id: self.id,
             app_name: self.app_name.clone(),
             app_icon: self.app_icon.clone(),
@@ -244,7 +247,7 @@ fn collapse_notification_whitespace(input: &str) -> String {
     output.trim().to_string()
 }
 
-/// Serializable view of a notification for D-Bus signals.
+/// Serializable view of a notification for D-Bus signals
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 pub struct NotificationView {
     // Identifier matches Notification::id

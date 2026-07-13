@@ -86,7 +86,7 @@ fn image_data_usability_rejects_invalid_geometry_and_format() {
     assert!(!NotificationImage::is_image_data_usable(&ImageData {
         height: 257,
         data: vec![0; 257 * 4],
-        ..base.clone()
+        ..base
     }));
     assert!(!NotificationImage::is_image_data_usable(&ImageData {
         bits_per_sample: 16,
@@ -94,7 +94,7 @@ fn image_data_usability_rejects_invalid_geometry_and_format() {
     }));
     assert!(!NotificationImage::is_image_data_usable(&ImageData {
         channels: 3,
-        ..base.clone()
+        ..base
     }));
 }
 

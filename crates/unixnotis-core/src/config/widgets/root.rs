@@ -4,9 +4,22 @@ use super::{
     CardWidgetConfig, SliderWidgetConfig, StatWidgetConfig, ToggleLayout, ToggleWidgetConfig,
 };
 
+/// Shared spacing profile for the built-in widget stack
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum WidgetDensity {
+    /// Preserve roomy touch targets and section spacing
+    #[default]
+    Comfortable,
+    /// Reduce non-interactive padding while keeping controls usable
+    Compact,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct WidgetsConfig {
+    /// Shared density profile applied before theme-specific CSS
+    pub density: WidgetDensity,
     pub volume: SliderWidgetConfig,
     pub brightness: SliderWidgetConfig,
     /// Controls whether toggle buttons expose GTK tooltips on hover
@@ -29,6 +42,7 @@ pub struct WidgetsConfig {
 impl Default for WidgetsConfig {
     fn default() -> Self {
         Self {
+            density: WidgetDensity::Comfortable,
             volume: SliderWidgetConfig::default_volume(),
             brightness: SliderWidgetConfig::default_brightness(),
             // Tooltips stay opt-in so compact panels do not add hover-only noise

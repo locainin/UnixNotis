@@ -24,6 +24,7 @@ pub enum PanelActionId {
 }
 
 /// Return the stock left-to-right panel action order
+#[must_use]
 pub fn default_panel_action_order() -> Vec<PanelActionId> {
     vec![
         PanelActionId::Widgets,
@@ -48,6 +49,7 @@ pub struct PanelActionConfig {
 }
 
 impl PanelActionConfig {
+    #[must_use]
     pub fn widgets() -> Self {
         Self {
             label: "Widgets".to_string(),
@@ -57,6 +59,7 @@ impl PanelActionConfig {
         }
     }
 
+    #[must_use]
     pub fn dnd() -> Self {
         Self {
             label: "DND".to_string(),
@@ -66,6 +69,7 @@ impl PanelActionConfig {
         }
     }
 
+    #[must_use]
     pub fn clear() -> Self {
         Self {
             label: "Clear".to_string(),
@@ -75,6 +79,7 @@ impl PanelActionConfig {
         }
     }
 
+    #[must_use]
     pub fn search() -> Self {
         Self {
             label: "Search".to_string(),
@@ -84,6 +89,7 @@ impl PanelActionConfig {
         }
     }
 
+    #[must_use]
     pub fn close() -> Self {
         Self {
             label: "Close".to_string(),

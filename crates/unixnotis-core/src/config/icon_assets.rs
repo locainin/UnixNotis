@@ -72,6 +72,7 @@ impl IconAssetResolver {
         }
     }
 
+    #[must_use]
     pub fn disabled() -> Self {
         // Disabled resolution fails closed while theme-name fallbacks remain available
         Self {
@@ -80,11 +81,23 @@ impl IconAssetResolver {
         }
     }
 
+    /// Resolve an icon reference beneath the configured asset root
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when asset resolution is disabled or the reference violates the
+    /// configured path, file-type, extension, or size policy
     pub fn resolve_icon_asset_path(&self, asset: &str) -> Result<PathBuf, IconAssetError> {
         let config_dir = self.config_dir.as_deref().ok_or(IconAssetError::Disabled)?;
         resolve_icon_asset_path_with_policy(config_dir, asset, self.policy)
     }
 
+    /// Resolve and decode an icon reference at the requested render size
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the reference is unsafe, the file cannot be read securely, or the
+    /// image data cannot be decoded within policy limits
     pub fn resolve_icon_asset(
         &self,
         asset: &str,
@@ -98,10 +111,21 @@ impl IconAssetResolver {
     }
 }
 
+/// Resolve an icon reference using the default asset policy
+///
+/// # Errors
+///
+/// Returns an error when the reference escapes the config root or targets an unsupported,
+/// unsafe, oversized, or invalid file
 pub fn resolve_icon_asset_path(config_dir: &Path, asset: &str) -> Result<PathBuf, IconAssetError> {
     resolve_icon_asset_path_with_policy(config_dir, asset, AssetPolicy::default())
 }
 
+/// Resolve an icon reference using an explicit asset policy
+///
+/// # Errors
+///
+/// Returns an error when the reference or existing file violates the supplied policy
 pub fn resolve_icon_asset_path_with_policy(
     config_dir: &Path,
     asset: &str,
@@ -117,12 +141,24 @@ pub fn resolve_icon_asset_path_with_policy(
     Ok(target)
 }
 
+/// Validate an icon reference without requiring the target file to exist
+///
+/// # Errors
+///
+/// Returns an error when the reference is absolute, escapes the config root, or uses an
+/// unsupported extension
 pub fn validate_icon_asset_reference(asset: &str) -> Result<(), IconAssetError> {
     // Preset import validates references before the optional asset file exists locally
     let relative = normalize_icon_asset_relative_path(asset)?;
     validate_icon_asset_extension(Path::new(&relative), AssetPolicy::default())
 }
 
+/// Validate and decode icon bytes using the default asset policy
+///
+/// # Errors
+///
+/// Returns an error when the reference is invalid, the payload exceeds the size limit, or the
+/// image format cannot be decoded safely
 pub fn validate_icon_asset_contents(asset: &str, bytes: &[u8]) -> Result<(), IconAssetError> {
     let relative = normalize_icon_asset_relative_path(asset)?;
     let policy = AssetPolicy::default();

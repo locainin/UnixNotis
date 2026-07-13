@@ -7,16 +7,16 @@
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::Type;
 
-#[path = "image/hints.rs"]
 mod hints;
-#[path = "image/normalize.rs"]
 mod normalize;
-#[path = "image/projection.rs"]
 mod projection;
-#[path = "image/rgb.rs"]
 mod rgb;
 
-/// Raw image data payload from notification hints.
+/// Raw image data payload from notification hints
+#[allow(
+    clippy::unsafe_derive_deserialize,
+    reason = "deserialization only fills owned fields; optimized image methods validate buffers before unsafe SIMD access"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq, Eq)]
 pub struct ImageData {
     pub width: i32,
@@ -28,7 +28,11 @@ pub struct ImageData {
     pub data: Vec<u8>,
 }
 
-/// Image information derived from standard hints and app_icon.
+/// Image information derived from standard hints and `app_icon`
+#[allow(
+    clippy::unsafe_derive_deserialize,
+    reason = "deserialization only fills owned fields; nested image methods validate buffers before unsafe SIMD access"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq, Eq)]
 pub struct NotificationImage {
     pub has_image_data: bool,

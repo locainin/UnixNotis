@@ -5,7 +5,8 @@ use super::{
 };
 
 impl MediaConfig {
-    pub fn effective_art_position(&self) -> MediaArtPosition {
+    #[must_use]
+    pub const fn effective_art_position(&self) -> MediaArtPosition {
         if !self.show_art {
             // Hidden wins even when a layout preset normally shows art
             return MediaArtPosition::Hidden;
@@ -17,7 +18,8 @@ impl MediaConfig {
         }
     }
 
-    pub fn effective_controls_position(&self) -> MediaControlsPosition {
+    #[must_use]
+    pub const fn effective_controls_position(&self) -> MediaControlsPosition {
         if !self.show_controls {
             // Disabled controls should not leak back in through Auto defaults
             return MediaControlsPosition::Hidden;
@@ -29,7 +31,8 @@ impl MediaConfig {
         }
     }
 
-    pub fn effective_navigation_position(&self) -> MediaNavigationPosition {
+    #[must_use]
+    pub const fn effective_navigation_position(&self) -> MediaNavigationPosition {
         if !self.show_navigation {
             // Navigation follows the same override rule as controls and art
             return MediaNavigationPosition::Hidden;
@@ -41,6 +44,7 @@ impl MediaConfig {
         }
     }
 
+    #[must_use]
     pub fn effective_card_height_px(&self) -> i32 {
         // Explicit config wins; otherwise the selected layout owns the height
         self.card_height_px

@@ -6,6 +6,10 @@ use super::{
 };
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one flat hook inventory makes duplicate public CSS names visible in a single assertion"
+)]
 fn hook_names_stay_unique() {
     // One flat set makes accidental selector reuse obvious during refactors
     let names = [
@@ -54,6 +58,8 @@ fn hook_names_stay_unique() {
         panel_shell::MEDIA_CONTAINER,
         panel_shell::QUICK_CONTROLS,
         panel_shell::WIDGET_STACK,
+        panel_shell::WIDGET_DENSITY_COMFORTABLE,
+        panel_shell::WIDGET_DENSITY_COMPACT,
         panel_shell::WIDGET_REVEALER,
         panel_shell::SECTION_HEADER,
         panel_shell::RECENT_SECTION,

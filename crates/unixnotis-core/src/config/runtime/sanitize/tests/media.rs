@@ -28,8 +28,7 @@ fn sanitize_normalizes_media_tokens() {
         "spotify".to_string(),
     ];
     config.media.denylist = vec!["Playerctld".to_string(), "playerctld".to_string()];
-    config.media.browser_tokens =
-        vec!["FireFox".to_string(), "".to_string(), "firefox".to_string()];
+    config.media.browser_tokens = vec!["FireFox".to_string(), String::new(), "firefox".to_string()];
     sanitize_config(&mut config);
 
     assert_eq!(config.media.allowlist, vec!["spotify".to_string()]);
