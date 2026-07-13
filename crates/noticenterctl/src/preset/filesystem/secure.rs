@@ -15,6 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::super::pathing::normalize_relative_path;
 
 const BACKUP_PREFIX: &str = "Backup-";
+const MAX_BACKUP_SUFFIX_ATTEMPTS: usize = 10_000;
 
 pub fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
     let mut current_fd = if path.is_absolute() {
@@ -22,7 +23,7 @@ pub fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
         openat2(
             CWD,
             "/",
-            OFlags::DIRECTORY | OFlags::CLOEXEC,
+            directory_open_flags(),
             Mode::empty(),
             secure_anchor_resolve_flags(),
         )
@@ -32,7 +33,7 @@ pub fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
         openat2(
             CWD,
             ".",
-            OFlags::DIRECTORY | OFlags::CLOEXEC,
+            directory_open_flags(),
             Mode::empty(),
             secure_anchor_resolve_flags(),
         )
@@ -68,7 +69,7 @@ pub fn read_relative_file_secure(
     let file_fd = openat2(
         root_dir,
         &relative_path,
-        OFlags::RDONLY | OFlags::CLOEXEC,
+        read_open_flags(),
         Mode::empty(),
         secure_resolve_flags(),
     )
@@ -107,13 +108,13 @@ pub fn write_relative_file_atomic_secure(
     // Temp files stay in the final parent dir so the rename does not cross filesystems
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("clock moved backwards")
+        .context("system clock is earlier than the Unix epoch")?
         .as_nanos();
     let temp_name = format!(".{file_name}.{stamp}.tmp");
     let temp_fd = openat2(
         &parent_fd,
         temp_name.as_str(),
-        OFlags::WRONLY | OFlags::CLOEXEC | OFlags::CREATE | OFlags::EXCL,
+        temp_file_open_flags(),
         mode_from_bits(mode),
         secure_resolve_flags(),
     )
@@ -161,7 +162,8 @@ pub fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, OwnedFd)
     // Backup names match the rest of the project, but creation stays pinned to the secure root fd
     let stamp = Local::now().format("%Y-%m-%d").to_string();
 
-    for suffix in 0usize.. {
+    // A finite cap prevents a corrupted directory from causing an endless retry loop
+    for suffix in 0..MAX_BACKUP_SUFFIX_ATTEMPTS {
         let dir_name = if suffix == 0 {
             format!("{BACKUP_PREFIX}{stamp}")
         } else {
@@ -174,14 +176,14 @@ pub fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, OwnedFd)
                 let dir_fd = openat2(
                     root_dir,
                     dir_name.as_str(),
-                    OFlags::DIRECTORY | OFlags::CLOEXEC,
+                    directory_open_flags(),
                     Mode::empty(),
                     secure_resolve_flags(),
                 )
                 .with_context(|| format!("open secure backup directory {dir_name}"))?;
                 return Ok((PathBuf::from(dir_name), dir_fd));
             }
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err(err) if backup_name_is_taken(err.kind()) => {
                 // Existing backup names are skipped so repeated imports keep every earlier snapshot
                 continue;
             }
@@ -192,7 +194,7 @@ pub fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, OwnedFd)
         }
     }
 
-    unreachable!("backup directory generation should always return or fail")
+    Err(anyhow!("exhausted every available backup directory suffix"))
 }
 
 pub fn remove_empty_relative_dirs_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
@@ -210,12 +212,7 @@ pub fn remove_empty_relative_dirs_secure(root_dir: &OwnedFd, relative_path: &Pat
                 // Keep walking upward until a parent still contains something else
                 current = path.parent().map(PathBuf::from);
             }
-            Err(err)
-                if matches!(
-                    err.kind(),
-                    std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
-                ) =>
-            {
+            Err(err) if empty_dir_cleanup_is_complete(err.kind()) => {
                 // Missing or non-empty directories mean cleanup is already done far enough
                 break;
             }
@@ -257,7 +254,7 @@ fn open_or_create_parent_dir(
     let mut current_fd = openat2(
         root_dir,
         ".",
-        OFlags::DIRECTORY | OFlags::CLOEXEC,
+        directory_open_flags(),
         Mode::empty(),
         secure_resolve_flags(),
     )
@@ -289,13 +286,13 @@ fn open_or_create_child_dir<Fd: AsFd>(parent_fd: Fd, name: &std::ffi::OsStr) -> 
     match openat2(
         parent_fd.as_fd(),
         name,
-        OFlags::DIRECTORY | OFlags::CLOEXEC,
+        directory_open_flags(),
         Mode::empty(),
         secure_resolve_flags(),
     ) {
         // Existing directories are reopened under the already trusted parent dir fd
         Ok(fd) => Ok(fd),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        Err(err) if child_directory_is_missing(err.kind()) => {
             // Create the next directory segment under the already verified parent dir fd
             mkdirat(parent_fd.as_fd(), name, mode_from_bits(0o755)).with_context(|| {
                 format!("create secure directory {}", Path::new(name).display())
@@ -303,7 +300,7 @@ fn open_or_create_child_dir<Fd: AsFd>(parent_fd: Fd, name: &std::ffi::OsStr) -> 
             openat2(
                 parent_fd.as_fd(),
                 name,
-                OFlags::DIRECTORY | OFlags::CLOEXEC,
+                directory_open_flags(),
                 Mode::empty(),
                 secure_resolve_flags(),
             )
@@ -316,14 +313,52 @@ fn open_or_create_child_dir<Fd: AsFd>(parent_fd: Fd, name: &std::ffi::OsStr) -> 
     }
 }
 
-fn secure_resolve_flags() -> ResolveFlags {
+pub(super) const fn secure_resolve_flags() -> ResolveFlags {
     // BENEATH pins all later lookups under the starting dir fd while the symlink bans stop jumps
-    ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS
+    ResolveFlags::BENEATH
+        .union(ResolveFlags::NO_SYMLINKS)
+        .union(ResolveFlags::NO_MAGICLINKS)
 }
 
-fn secure_anchor_resolve_flags() -> ResolveFlags {
+pub(super) const fn secure_anchor_resolve_flags() -> ResolveFlags {
     // The anchor walk may start from / or . so it skips BENEATH and only bans link-like detours
-    ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS
+    ResolveFlags::NO_SYMLINKS.union(ResolveFlags::NO_MAGICLINKS)
+}
+
+// Only a name collision is safe to retry with the next backup suffix
+pub(super) fn backup_name_is_taken(kind: std::io::ErrorKind) -> bool {
+    kind == std::io::ErrorKind::AlreadyExists
+}
+
+// Missing and non-empty parents both mean upward cleanup has reached its safe limit
+pub(super) const fn empty_dir_cleanup_is_complete(kind: std::io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+    )
+}
+
+// Directory creation is allowed only when the lookup proved the segment is absent
+pub(super) fn child_directory_is_missing(kind: std::io::ErrorKind) -> bool {
+    kind == std::io::ErrorKind::NotFound
+}
+
+pub(super) const fn directory_open_flags() -> OFlags {
+    // Directory handles must never leak through a later process launch
+    OFlags::DIRECTORY.union(OFlags::CLOEXEC)
+}
+
+pub(super) const fn read_open_flags() -> OFlags {
+    // Secure reads need no write capability and must close across exec
+    OFlags::RDONLY.union(OFlags::CLOEXEC)
+}
+
+pub(super) const fn temp_file_open_flags() -> OFlags {
+    // Exclusive creation prevents a stale or attacker-planted temp file from being reused
+    OFlags::WRONLY
+        .union(OFlags::CLOEXEC)
+        .union(OFlags::CREATE)
+        .union(OFlags::EXCL)
 }
 
 const fn mode_from_bits(mode: u32) -> Mode {
