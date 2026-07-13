@@ -11,7 +11,8 @@ use super::super::manifest::PresetManifest;
 use super::super::pathing::{archive_payload_path, MANIFEST_ARCHIVE_PATH};
 use super::modes::sanitize_payload_mode;
 use super::read::{
-    MAX_PRESET_FILE_BYTES, MAX_PRESET_PAYLOAD_FILES, MAX_PRESET_TOTAL_PAYLOAD_BYTES,
+    MAX_PRESET_FILE_BYTES, MAX_PRESET_MANIFEST_BYTES, MAX_PRESET_PAYLOAD_FILES,
+    MAX_PRESET_TOTAL_PAYLOAD_BYTES,
 };
 
 pub fn write_bundle(
@@ -34,6 +35,7 @@ pub fn write_bundle(
 
     // Manifest always goes in first so a partial or broken bundle is easy to spot
     let manifest_bytes = manifest.encode()?.into_bytes();
+    validate_export_manifest_size(manifest_bytes.len() as u64)?;
     append_bytes(
         &mut builder,
         Path::new(MANIFEST_ARCHIVE_PATH),
@@ -73,6 +75,13 @@ pub fn write_bundle(
         // Temp bundle cleanup keeps failed exports from leaving large junk files behind
         let _ = fs::remove_file(&temp_path);
         return Err(err);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_export_manifest_size(size: u64) -> Result<()> {
+    if size > MAX_PRESET_MANIFEST_BYTES {
+        anyhow::bail!("preset export manifest exceeds {MAX_PRESET_MANIFEST_BYTES} bytes");
     }
     Ok(())
 }

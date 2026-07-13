@@ -1,4 +1,4 @@
-use super::super::write::validate_export_payload_sizes;
+use super::super::write::{validate_export_manifest_size, validate_export_payload_sizes};
 use super::super::{read_bundle, write_bundle};
 use super::support::TempDirGuard;
 use crate::preset::config_root::{CollectedConfigFiles, PresetFileSource};
@@ -111,4 +111,10 @@ fn export_size_validation_uses_override_bytes() {
     let error = validate_export_payload_sizes(&collected)
         .expect_err("oversized override should be rejected");
     assert!(error.to_string().contains("exceeds 16777216 bytes"));
+}
+
+#[test]
+fn export_manifest_size_accepts_limit_and_rejects_next_byte() {
+    assert!(validate_export_manifest_size(1_048_576).is_ok());
+    assert!(validate_export_manifest_size(1_048_577).is_err());
 }
