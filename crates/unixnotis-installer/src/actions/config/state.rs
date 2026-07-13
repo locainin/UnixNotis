@@ -10,21 +10,16 @@ use super::super::{log_line, ActionContext};
 
 pub(in crate::actions::config) const DND_STATE_FILE: &str = "state.json";
 
-pub(crate) fn remove_state(ctx: &mut ActionContext) -> Result<()> {
-    let Some(state_dir) = resolve_state_dir() else {
+pub fn remove_state(ctx: &mut ActionContext) -> Result<()> {
+    let Some(state_dir) = util::resolve_state_dir() else {
         log_line(ctx, "State directory not resolved; skipping state cleanup.");
         return Ok(());
     };
 
     let state_root = state_dir.join("unixnotis");
-    let outcome = match remove_state_file(&state_root) {
-        Ok(outcome) => outcome,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            log_line(ctx, "State file not present; nothing to remove.");
-            return Ok(());
-        }
-        Err(err) => return Err(err).with_context(|| "failed to remove state file"),
-    };
+    // remove_state_file already treats a missing state file as a successful no-op
+    // Keeping error classification in one place prevents inconsistent uninstall behavior
+    let outcome = remove_state_file(&state_root).with_context(|| "failed to remove state file")?;
 
     if outcome.removed_file {
         let path = state_root.join(DND_STATE_FILE);
@@ -145,12 +140,8 @@ pub(in crate::actions::config) fn cleanup_warning_message(
     }
 }
 
-fn resolve_state_dir() -> Option<PathBuf> {
-    util::resolve_state_dir()
-}
-
 pub(in crate::actions::config) fn format_with_state_env(path: &Path) -> String {
-    // Prefer XDG_STATE_HOME for display when available to avoid absolute paths in logs.
+    // Prefer XDG_STATE_HOME for display when available to avoid absolute paths in logs
     if let Ok(state_home) = std::env::var("XDG_STATE_HOME") {
         if !state_home.trim().is_empty() {
             let state_root = PathBuf::from(state_home);

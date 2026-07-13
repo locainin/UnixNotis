@@ -14,7 +14,7 @@ pub enum ServiceProbe {
 }
 
 impl ServiceProbe {
-    pub(super) fn exit_status(command: CommandSpec) -> Self {
+    pub(super) const fn exit_status(command: CommandSpec) -> Self {
         Self::ExitStatus(command)
     }
 
@@ -23,7 +23,7 @@ impl ServiceProbe {
     }
 
     #[cfg(test)]
-    pub fn command(&self) -> &CommandSpec {
+    pub const fn command(&self) -> &CommandSpec {
         match self {
             Self::ExitStatus(command) | Self::Stdout { command, .. } => command,
         }

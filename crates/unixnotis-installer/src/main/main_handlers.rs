@@ -1,4 +1,4 @@
-//! Key handling for each installer screen.
+//! Key handling for each installer screen
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -15,9 +15,9 @@ use crate::paths::InstallPaths;
 use crate::terminal::TerminalGuard;
 use crate::ExitAction;
 
-pub(crate) fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
+pub fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
     match key.code {
-        KeyCode::Char('q') | KeyCode::Char('Q') => Ok(Some(ExitAction::None)),
+        KeyCode::Char('q' | 'Q') => Ok(Some(ExitAction::None)),
         KeyCode::Up | KeyCode::Char('k') => {
             if app.menu_index > 0 {
                 app.menu_index -= 1;
@@ -30,7 +30,7 @@ pub(crate) fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Result<Option<
             }
             Ok(None)
         }
-        KeyCode::Char('r') | KeyCode::Char('R') => {
+        KeyCode::Char('r' | 'R') => {
             app.refresh();
             Ok(None)
         }
@@ -38,7 +38,7 @@ pub(crate) fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Result<Option<
             MenuItem::Quit => Ok(Some(ExitAction::None)),
             MenuItem::Action(mode) => {
                 if mode == ActionMode::Reset {
-                    // Reset uses a submenu to avoid accidental destructive actions.
+                    // Reset uses a submenu to avoid accidental destructive actions
                     app.reset_menu_index = 0;
                     app.screen = Screen::ResetMenu;
                 } else {
@@ -51,21 +51,21 @@ pub(crate) fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Result<Option<
     }
 }
 
-pub(crate) fn handle_reset_menu_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
+pub fn handle_reset_menu_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
     match key.code {
         KeyCode::Esc => {
             app.screen = Screen::Welcome;
             Ok(None)
         }
         KeyCode::Up | KeyCode::Char('k') => {
-            // Clamp selection to keep navigation predictable in small terminals.
+            // Clamp selection to keep navigation predictable in small terminals
             if app.reset_menu_index > 0 {
                 app.reset_menu_index -= 1;
             }
             Ok(None)
         }
         KeyCode::Down | KeyCode::Char('j') => {
-            // Reset menu has three entries; enforce bounds.
+            // Reset menu has three entries; enforce bounds
             if app.reset_menu_index < 2 {
                 app.reset_menu_index += 1;
             }
@@ -74,12 +74,12 @@ pub(crate) fn handle_reset_menu_key(app: &mut App, key: KeyEvent) -> Result<Opti
         KeyCode::Enter => {
             match app.reset_menu_index {
                 0 => {
-                    // Default reset overwrites config and theme files.
+                    // Default reset overwrites config and theme files
                     app.reset_action = crate::model::ResetAction::ResetDefaults;
                     app.screen = Screen::Confirm(ActionMode::Reset);
                 }
                 1 => {
-                    // Restore flow needs the latest list of backup directories.
+                    // Restore flow needs the latest list of backup directories
                     app.refresh_backups();
                     app.screen = Screen::RestoreSelect;
                 }
@@ -93,31 +93,28 @@ pub(crate) fn handle_reset_menu_key(app: &mut App, key: KeyEvent) -> Result<Opti
     }
 }
 
-pub(crate) fn handle_restore_select_key(
-    app: &mut App,
-    key: KeyEvent,
-) -> Result<Option<ExitAction>> {
+pub fn handle_restore_select_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
     match key.code {
         KeyCode::Esc => {
             app.screen = Screen::ResetMenu;
             Ok(None)
         }
         KeyCode::Up | KeyCode::Char('k') => {
-            // Backup selection should never underflow.
+            // Backup selection should never underflow
             if app.restore_menu_index > 0 {
                 app.restore_menu_index -= 1;
             }
             Ok(None)
         }
         KeyCode::Down | KeyCode::Char('j') => {
-            // Only advance selection when there are backup entries.
+            // Only advance selection when there are backup entries
             if app.restore_menu_index + 1 < app.restore_backups.len() {
                 app.restore_menu_index += 1;
             }
             Ok(None)
         }
         KeyCode::Enter => {
-            // Restore proceeds only when a backup is selected.
+            // Restore proceeds only when a backup is selected
             if let Some(path) = app.restore_backups.get(app.restore_menu_index).cloned() {
                 app.reset_action = crate::model::ResetAction::RestoreBackup { path };
                 app.screen = Screen::Confirm(ActionMode::Reset);
@@ -128,7 +125,7 @@ pub(crate) fn handle_restore_select_key(
     }
 }
 
-pub(crate) fn handle_confirm_key(
+pub fn handle_confirm_key(
     app: &mut App,
     terminal_guard: &mut TerminalGuard,
     ui_tx: &mpsc::SyncSender<UiMessage>,
@@ -166,7 +163,7 @@ pub(crate) fn handle_confirm_key(
     }
 }
 
-pub(crate) fn handle_progress_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
+pub fn handle_progress_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
     if matches!(app.progress_state, ProgressState::Running) {
         return Ok(None);
     }
@@ -180,7 +177,7 @@ pub(crate) fn handle_progress_key(app: &mut App, key: KeyEvent) -> Result<Option
             if matches!(app.screen, Screen::Progress(ActionMode::Install))
                 && matches!(app.progress_state, ProgressState::Completed)
             {
-                // Present the optional build-acceleration prompt after a successful install.
+                // Present the optional build-acceleration prompt after a successful install
                 prepare_build_accel_prompt(app);
                 app.screen = Screen::BuildAccel;
             } else {
@@ -188,7 +185,7 @@ pub(crate) fn handle_progress_key(app: &mut App, key: KeyEvent) -> Result<Option
             }
             Ok(None)
         }
-        KeyCode::Char('q') | KeyCode::Char('Q') => Ok(Some(ExitAction::None)),
+        KeyCode::Char('q' | 'Q') => Ok(Some(ExitAction::None)),
         KeyCode::Esc => {
             app.screen = Screen::Welcome;
             Ok(None)
@@ -197,9 +194,9 @@ pub(crate) fn handle_progress_key(app: &mut App, key: KeyEvent) -> Result<Option
     }
 }
 
-pub(crate) fn handle_build_accel_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
+pub fn handle_build_accel_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
     match key.code {
-        KeyCode::Char('q') | KeyCode::Char('Q') => Ok(Some(ExitAction::None)),
+        KeyCode::Char('q' | 'Q') => Ok(Some(ExitAction::None)),
         KeyCode::Up | KeyCode::Char('k') => {
             if app.build_accel_menu_index > 0 {
                 app.build_accel_menu_index -= 1;

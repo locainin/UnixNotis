@@ -233,9 +233,10 @@ fn trial_shim_target_matches(path: &Path, raw_target: &Path, expected_target: &P
         raw_target.to_path_buf()
     } else {
         // Relative symlink targets are resolved from the shim directory
-        path.parent()
-            .map(|parent| parent.join(raw_target))
-            .unwrap_or_else(|| raw_target.to_path_buf())
+        path.parent().map_or_else(
+            || raw_target.to_path_buf(),
+            |parent| parent.join(raw_target),
+        )
     };
     canonicalize_best_effort(&resolved) == canonicalize_best_effort(expected_target)
 }

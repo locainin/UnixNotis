@@ -12,9 +12,9 @@ pub(in crate::actions::config) use settings::{ensure_installer_config, load_inst
 pub(in crate::actions::config) use retention::create_backup_dir;
 pub(in crate::actions::config) use snapshot::backup_existing_file;
 
-pub(crate) use restore::restore_config;
-pub(crate) use snapshot::list_backup_dirs_for_ui;
-pub(crate) use write::write_atomic;
+pub use restore::restore_config;
+pub use snapshot::list_backup_dirs_for_ui;
+pub use write::write_atomic;
 
 #[cfg(test)]
 pub(in crate::actions::config::backup) use restore::is_restore_target_allowed;

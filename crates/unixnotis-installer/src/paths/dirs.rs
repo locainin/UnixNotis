@@ -164,13 +164,11 @@ fn dedupe_path_results(candidates: Vec<Result<PathBuf>>) -> Vec<Result<PathBuf>>
 fn path_is_directory_or_symlink_to_directory(path: &Path) -> bool {
     fs::metadata(path)
         // s6 live roots are expected to be symlinks that point at the current live tree
-        .map(|metadata| metadata.is_dir())
-        .unwrap_or(false)
+        .is_ok_and(|metadata| metadata.is_dir())
 }
 
 fn path_is_plain_directory(path: &Path) -> bool {
     fs::symlink_metadata(path)
         // Auto-detected /tmp roots must not follow symlinks into surprising locations
-        .map(|metadata| metadata.file_type().is_dir())
-        .unwrap_or(false)
+        .is_ok_and(|metadata| metadata.file_type().is_dir())
 }

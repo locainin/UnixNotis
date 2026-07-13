@@ -19,11 +19,11 @@ const ENV_DIR: &str = "env";
 const DOWN_FILE: &str = "down";
 const SAFE_RUN_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 
-pub fn artifact_label() -> &'static str {
+pub const fn artifact_label() -> &'static str {
     "runit service directory"
 }
 
-pub fn manager_label() -> &'static str {
+pub const fn manager_label() -> &'static str {
     "runit user supervisor"
 }
 
@@ -76,7 +76,7 @@ pub fn availability_command() -> Option<CommandSpec> {
     Some(CommandSpec::new("sv -V", "sv", ["-V"]).quiet())
 }
 
-pub fn is_enabled_command() -> Option<CommandSpec> {
+pub const fn is_enabled_command() -> Option<CommandSpec> {
     // Enablement is the presence of the service directory under the watched root
     None
 }
@@ -102,7 +102,7 @@ pub fn active_probe(artifact_root: &Path) -> Option<ServiceProbe> {
     Some(ServiceProbe::stdout(command, status_output_is_running))
 }
 
-pub fn reload_after_artifact_change() -> Option<CommandSpec> {
+pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
     // Runit notices service-directory files through runsv; stop/start owns refresh behavior
     None
 }
@@ -147,7 +147,7 @@ pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> 
     vec![format!("sh -lc {}", shell_quote(&script))]
 }
 
-pub fn environment_sync_commands() -> Vec<CommandSpec> {
+pub const fn environment_sync_commands() -> Vec<CommandSpec> {
     Vec::new()
 }
 
@@ -186,7 +186,7 @@ pub fn pre_start_artifacts_to_remove(artifact_root: &Path) -> Vec<ServiceArtifac
     vec![start_gate_artifact(artifact_root)]
 }
 
-pub fn pre_start_artifacts_to_write(_artifact_root: &Path) -> Vec<ServiceArtifact> {
+pub const fn pre_start_artifacts_to_write(_artifact_root: &Path) -> Vec<ServiceArtifact> {
     // The gate is part of the ordered backend artifact list so it lands before ./run
     Vec::new()
 }
@@ -247,21 +247,16 @@ fn is_runit_envdir_name(name: &str) -> bool {
 }
 
 fn is_regular_file(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_file())
-        .unwrap_or(false)
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 fn is_directory(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_dir())
-        .unwrap_or(false)
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
 }
 
 fn path_is_missing(path: &Path) -> bool {
     fs::symlink_metadata(path)
-        .map(|_| false)
-        .unwrap_or_else(|err| err.kind() == std::io::ErrorKind::NotFound)
+        .map_or_else(|err| err.kind() == std::io::ErrorKind::NotFound, |_| false)
 }
 
 fn status_output_is_running(stdout: &str) -> bool {

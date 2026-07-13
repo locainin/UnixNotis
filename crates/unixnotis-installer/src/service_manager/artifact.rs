@@ -33,7 +33,7 @@ pub struct ServiceArtifact {
 }
 
 impl ServiceArtifact {
-    pub(super) fn file(path: PathBuf, contents: String) -> Self {
+    pub(super) const fn file(path: PathBuf, contents: String) -> Self {
         // File artifacts are the simplest manager-owned shape, used by systemd and dinit
         Self {
             path,
@@ -66,8 +66,7 @@ impl ServiceArtifact {
             }
             ServiceArtifactKind::Symlink { target } => fs::read_link(&self.path)
                 // Symlink state is exact because enablement can depend on the stored target
-                .map(|actual| actual == *target)
-                .unwrap_or(false),
+                .is_ok_and(|actual| actual == *target),
         }
     }
 
@@ -79,15 +78,11 @@ impl ServiceArtifact {
 }
 
 fn path_is_regular_file(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_file())
-        .unwrap_or(false)
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 fn path_is_directory(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_dir())
-        .unwrap_or(false)
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
 }
 
 fn path_exists_without_following(path: &Path) -> bool {
@@ -97,9 +92,7 @@ fn path_exists_without_following(path: &Path) -> bool {
 
 fn file_contents_match(path: &Path, expected: &str) -> bool {
     // Shared setup files use exact tiny contents, such as s6 bundle type declarations
-    fs::read_to_string(path)
-        .map(|contents| contents == expected)
-        .unwrap_or(false)
+    fs::read_to_string(path).is_ok_and(|contents| contents == expected)
 }
 
 pub fn managed_directory_marker(path: &Path) -> PathBuf {
@@ -115,7 +108,5 @@ pub fn managed_directory_marker_is_valid(path: &Path) -> bool {
     if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
         return false;
     }
-    fs::read_to_string(path)
-        .map(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
-        .unwrap_or(false)
+    fs::read_to_string(path).is_ok_and(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
 }

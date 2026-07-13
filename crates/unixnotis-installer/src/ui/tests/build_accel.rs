@@ -125,7 +125,7 @@ fn build_config_status_line_reports_unmanaged_and_wrapper_missing_states() {
         config_status: BuildAccelConfigStatus::Managed {
             wrapper_present: false,
         },
-        ..unmanaged.clone()
+        ..unmanaged
     };
 
     let unmanaged_line = format!(

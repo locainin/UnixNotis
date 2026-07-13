@@ -10,7 +10,7 @@ static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const FAKE_TOOL_DISPATCHER: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/src/tests/fixtures/fake-tool");
 
-pub(crate) fn write_executable(path: &Path, contents: &str) {
+pub fn write_executable(path: &Path, contents: &str) {
     let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let file_name = path
         .file_name()

@@ -50,7 +50,7 @@ pub(in crate::actions::config::backup) fn list_backup_dirs(config_dir: &Path) ->
     };
 
     entries
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .filter_map(|entry| {
             let file_type = entry.file_type().ok()?;
             if !file_type.is_dir() {

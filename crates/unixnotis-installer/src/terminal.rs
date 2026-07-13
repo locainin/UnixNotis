@@ -1,4 +1,4 @@
-//! Terminal setup and teardown for ratatui sessions.
+//! Terminal setup and teardown for ratatui sessions
 
 use std::io;
 
@@ -11,18 +11,18 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
 pub struct TerminalGuard {
-    // Own the ratatui Terminal and restore terminal state on drop.
+    // Own the ratatui Terminal and restore terminal state on drop
     terminal: Terminal<CrosstermBackend<io::Stdout>>,
 }
 
 impl TerminalGuard {
     pub fn new() -> io::Result<Self> {
-        // Enable raw mode so keypresses are delivered directly.
+        // Enable raw mode so keypresses are delivered directly
         enable_raw_mode()?;
 
         let mut stdout = io::stdout();
 
-        // Switch to the alternate screen buffer to preserve shell scrollback.
+        // Switch to the alternate screen buffer to preserve shell scrollback
         stdout.execute(EnterAlternateScreen)?;
 
         stdout.execute(EnableMouseCapture)?;
@@ -34,12 +34,12 @@ impl TerminalGuard {
         Ok(Self { terminal })
     }
 
-    pub fn terminal_mut(&mut self) -> &mut Terminal<CrosstermBackend<io::Stdout>> {
+    pub const fn terminal_mut(&mut self) -> &mut Terminal<CrosstermBackend<io::Stdout>> {
         &mut self.terminal
     }
 
     pub fn restore(&mut self) -> io::Result<()> {
-        // Restore terminal state back to normal.
+        // Restore terminal state back to normal
         disable_raw_mode()?;
 
         execute!(
@@ -56,7 +56,7 @@ impl TerminalGuard {
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        // Best-effort cleanup, never panic in Drop.
+        // Best-effort cleanup, never panic in Drop
         let _ = self.restore();
     }
 }

@@ -3,7 +3,9 @@ use std::fs;
 use crate::detect::Detection;
 use crate::model::ActionMode;
 
-use super::super::binaries::binary_temp_path;
+use super::super::binaries::{
+    binary_temp_path, binary_temp_path_attempt, stage_binary_copy_with_retry,
+};
 use super::super::{install_binaries, remove_binaries};
 use super::support::{test_context, test_paths, test_root, write_fake_workspace};
 
@@ -141,6 +143,43 @@ fn install_binaries_bypasses_preexisting_temp_symlink_without_touching_it() {
         .file_type()
         .is_symlink());
     assert!(destination.exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn binary_temp_path_attempt_uses_stable_first_path_and_unique_retry_path() {
+    let destination = std::env::temp_dir().join("unixnotis-daemon");
+
+    let first = binary_temp_path_attempt(&destination, 0);
+    let retry = binary_temp_path_attempt(&destination, 1);
+
+    // The stable first path makes stale-file handling deterministic and testable
+    assert_eq!(first, binary_temp_path(&destination));
+    // Retry paths carry the attempt so a collision cannot repeat the first candidate
+    assert_ne!(retry, first);
+    assert!(retry
+        .file_name()
+        .expect("retry file name")
+        .to_string_lossy()
+        .ends_with("-1"));
+}
+
+#[test]
+fn stage_binary_copy_propagates_errors_other_than_path_collisions() {
+    let root = std::env::temp_dir().join(format!(
+        "unixnotis-installer-binary-stage-error-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    let source_dir = root.join("source-directory");
+    let destination = root.join("unixnotis-daemon");
+    fs::create_dir_all(&source_dir).expect("make invalid directory source");
+
+    let error = stage_binary_copy_with_retry(&source_dir, &destination)
+        .expect_err("a source read error must not be treated as a temp collision");
+
+    assert_ne!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(!destination.exists());
     let _ = fs::remove_dir_all(&root);
 }
 

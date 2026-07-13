@@ -8,11 +8,11 @@ use super::command::CommandSpec;
 // Keep the systemd unit name stable for existing installs and migration cleanup
 pub const SERVICE_NAME: &str = "unixnotis-daemon.service";
 
-pub fn artifact_label() -> &'static str {
+pub const fn artifact_label() -> &'static str {
     "systemd unit"
 }
 
-pub fn manager_label() -> &'static str {
+pub const fn manager_label() -> &'static str {
     "systemd user manager"
 }
 

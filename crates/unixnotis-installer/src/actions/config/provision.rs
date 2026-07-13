@@ -14,7 +14,7 @@ use super::backup::{
     write_atomic,
 };
 
-pub(crate) fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
+pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
     let config = Config::default();
     let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
     let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;
@@ -81,7 +81,7 @@ pub(crate) fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn reset_config(ctx: &mut ActionContext) -> Result<()> {
+pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     let config = Config::default();
     let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
     let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;

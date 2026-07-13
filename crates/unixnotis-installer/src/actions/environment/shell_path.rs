@@ -13,7 +13,7 @@ use super::super::{log_line, ActionContext};
 
 const PATH_BLOCK_MARKER: &str = "# unixnotis-installer path entry";
 
-pub(crate) fn ensure_shell_path_entry(ctx: &mut ActionContext) -> Result<()> {
+pub fn ensure_shell_path_entry(ctx: &mut ActionContext) -> Result<()> {
     // Startup file edits only affect new shells, not the current terminal
     let home = crate::paths::home_dir()?;
     let shell = env::var("SHELL").ok();
@@ -47,7 +47,7 @@ pub(crate) fn ensure_shell_path_entry(ctx: &mut ActionContext) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn remove_shell_path_entry(ctx: &mut ActionContext) -> Result<()> {
+pub fn remove_shell_path_entry(ctx: &mut ActionContext) -> Result<()> {
     // Resolve the user's home directory so shell startup files and path entries
     // can be located relative to the current user
     let home = crate::paths::home_dir()?;

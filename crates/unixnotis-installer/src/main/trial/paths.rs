@@ -66,8 +66,7 @@ pub(super) fn path_dir_is_writable(dir: &Path) -> bool {
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or(0)
+            .map_or(0, |duration| duration.as_nanos())
     ));
     match std::fs::OpenOptions::new()
         .write(true)

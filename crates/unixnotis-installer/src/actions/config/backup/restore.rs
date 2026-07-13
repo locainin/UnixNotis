@@ -12,7 +12,7 @@ use super::super::super::{log_line, ActionContext};
 use super::retention::BACKUP_PREFIX;
 use super::write::write_atomic;
 
-pub(crate) fn restore_config(ctx: &mut ActionContext) -> Result<()> {
+pub fn restore_config(ctx: &mut ActionContext) -> Result<()> {
     let Some(backup_dir) = ctx.restore_backup.clone() else {
         return Err(anyhow!("no backup directory selected"));
     };
@@ -62,8 +62,7 @@ pub(crate) fn restore_config(ctx: &mut ActionContext) -> Result<()> {
                 log_line(
                     ctx,
                     format!(
-                        "Warning: failed to parse restored config.toml ({:?}); using defaults",
-                        err
+                        "Warning: failed to parse restored config.toml ({err:?}); using defaults"
                     ),
                 );
                 Config::default()
@@ -90,10 +89,7 @@ pub(crate) fn restore_config(ctx: &mut ActionContext) -> Result<()> {
         if !source.exists() {
             log_line(
                 ctx,
-                format!(
-                    "Warning: backup missing {}; leaving current file unchanged",
-                    name
-                ),
+                format!("Warning: backup missing {name}; leaving current file unchanged"),
             );
             continue;
         }
@@ -111,11 +107,11 @@ pub(crate) fn restore_config(ctx: &mut ActionContext) -> Result<()> {
         if let Some(parent) = target.parent() {
             // Create parents for custom theme paths before writing restored content
             fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create parent dir for {}", name))?;
+                .with_context(|| format!("failed to create parent dir for {name}"))?;
         }
-        let contents = fs::read_to_string(&source)
-            .with_context(|| format!("failed to read backup {}", name))?;
-        write_atomic(&target, &contents).with_context(|| format!("failed to restore {}", name))?;
+        let contents =
+            fs::read_to_string(&source).with_context(|| format!("failed to read backup {name}"))?;
+        write_atomic(&target, &contents).with_context(|| format!("failed to restore {name}"))?;
         log_line(
             ctx,
             format!("Restored {} -> {}", name, format_with_home(&target)),

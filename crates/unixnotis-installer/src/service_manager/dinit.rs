@@ -8,11 +8,11 @@ use super::readiness::ReadinessIssue;
 // Dinit service names are file names without the .service suffix used by systemd
 pub const SERVICE_NAME: &str = "unixnotis-daemon";
 
-pub fn artifact_label() -> &'static str {
+pub const fn artifact_label() -> &'static str {
     "dinit service"
 }
 
-pub fn manager_label() -> &'static str {
+pub const fn manager_label() -> &'static str {
     "dinit user manager"
 }
 
@@ -56,7 +56,7 @@ pub fn availability_command() -> Option<CommandSpec> {
     )
 }
 
-pub fn is_enabled_command() -> Option<CommandSpec> {
+pub const fn is_enabled_command() -> Option<CommandSpec> {
     // Enablement is represented by the installer-owned boot.d link
     None
 }
@@ -69,7 +69,7 @@ pub fn is_active_command() -> Option<CommandSpec> {
     ))
 }
 
-pub fn reload_after_artifact_change() -> Option<CommandSpec> {
+pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
     // Start loads the service on first install; reload is fragile for services not already loaded
     None
 }
@@ -125,9 +125,7 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
     // The boot link is the persistent enablement state, so verify the link itself
     is_regular_file(&service_path)
         && is_directory(&boot_dir)
-        && fs::read_link(&boot_link)
-            .map(|target| target == expected_target)
-            .unwrap_or(false)
+        && fs::read_link(&boot_link).is_ok_and(|target| target == expected_target)
 }
 
 pub fn readiness_issues(artifact_root: &Path) -> Vec<ReadinessIssue> {
@@ -213,13 +211,9 @@ fn boot_service_includes_boot_dir(path: &Path) -> bool {
 }
 
 fn is_regular_file(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_file())
-        .unwrap_or(false)
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 fn is_directory(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_dir())
-        .unwrap_or(false)
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
 }

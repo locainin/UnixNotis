@@ -10,7 +10,7 @@ use std::sync::{mpsc, Arc};
 #[test]
 fn strip_hyprland_bootstrap_block_handles_malformed_block() {
     let _lock = crate::tests::env::test_env_lock();
-    // Confirms malformed markers leave the original content intact for safe append.
+    // Confirms malformed markers leave the original content intact for safe append
     let detection = Detection {
         owner: None,
         daemons: Vec::new(),
@@ -26,7 +26,7 @@ fn strip_hyprland_bootstrap_block_handles_malformed_block() {
         restore_backup: None,
         service_reload_required: Arc::new(AtomicBool::new(false)),
     };
-    let contents = format!("{start}\nexec-once = foo\n", start = HYPR_BOOTSTRAP_START);
+    let contents = format!("{HYPR_BOOTSTRAP_START}\nexec-once = foo\n");
     let result = strip_hyprland_bootstrap_block(&mut ctx, &contents, Path::new("hyprland.conf"));
     assert_eq!(result.stripped, contents);
     assert!(!result.block_found);
@@ -36,7 +36,7 @@ fn strip_hyprland_bootstrap_block_handles_malformed_block() {
 #[test]
 fn strip_hyprland_bootstrap_block_removes_managed_block() {
     let _lock = crate::tests::env::test_env_lock();
-    // Ensures a well-formed block is removed and the remaining content is preserved.
+    // Ensures a well-formed block is removed and the remaining content is preserved
     let detection = Detection {
         owner: None,
         daemons: Vec::new(),
@@ -52,11 +52,8 @@ fn strip_hyprland_bootstrap_block_removes_managed_block() {
         restore_backup: None,
         service_reload_required: Arc::new(AtomicBool::new(false)),
     };
-    let contents = format!(
-        "line-a\n{start}\nexec-once = foo\n{end}\nline-b\n",
-        start = HYPR_BOOTSTRAP_START,
-        end = HYPR_BOOTSTRAP_END
-    );
+    let contents =
+        format!("line-a\n{HYPR_BOOTSTRAP_START}\nexec-once = foo\n{HYPR_BOOTSTRAP_END}\nline-b\n");
     let result = strip_hyprland_bootstrap_block(&mut ctx, &contents, Path::new("hyprland.conf"));
     assert_eq!(result.stripped, "line-a\nline-b\n");
     assert!(result.block_found);
@@ -82,12 +79,97 @@ fn strip_hyprland_bootstrap_block_removes_all_blocks() {
         service_reload_required: Arc::new(AtomicBool::new(false)),
     };
     let contents = format!(
-        "line-a\n{start}\nexec-once = foo\n{end}\nline-b\n{start}\nexec-once = bar\n{end}\nline-c\n",
-        start = HYPR_BOOTSTRAP_START,
-        end = HYPR_BOOTSTRAP_END
+        "line-a\n{HYPR_BOOTSTRAP_START}\nexec-once = foo\n{HYPR_BOOTSTRAP_END}\nline-b\n{HYPR_BOOTSTRAP_START}\nexec-once = bar\n{HYPR_BOOTSTRAP_END}\nline-c\n"
     );
     let result = strip_hyprland_bootstrap_block(&mut ctx, &contents, Path::new("hyprland.conf"));
     assert_eq!(result.stripped, "line-a\nline-b\nline-c\n");
     assert!(result.block_found);
+    assert!(!result.malformed);
+}
+
+#[test]
+fn strip_hyprland_bootstrap_block_removes_comment_prefixes_without_residue() {
+    let _lock = crate::tests::env::test_env_lock();
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+    let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
+    let mut ctx = crate::actions::ActionContext {
+        detection: &detection,
+        paths: &paths,
+        install_state: None,
+        log_tx: tx,
+        action_mode: ActionMode::Install,
+        restore_backup: None,
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
+    let contents = format!(
+        "-- retained\n-- {HYPR_BOOTSTRAP_START}\n-- managed\n-- {HYPR_BOOTSTRAP_END}\n-- after\n"
+    );
+
+    let result = strip_hyprland_bootstrap_block(&mut ctx, &contents, Path::new("hyprland.lua"));
+
+    assert_eq!(result.stripped, "-- retained\n-- after\n");
+    assert!(result.block_found);
+    assert!(!result.malformed);
+}
+
+#[test]
+fn strip_hyprland_bootstrap_block_matches_exact_hyprlang_marker_comments() {
+    let _lock = crate::tests::env::test_env_lock();
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+    let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
+    let mut ctx = crate::actions::ActionContext {
+        detection: &detection,
+        paths: &paths,
+        install_state: None,
+        log_tx: tx,
+        action_mode: ActionMode::Install,
+        restore_backup: None,
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
+    let contents = format!(
+        "# retained\n# {HYPR_BOOTSTRAP_START}\nexec-once = managed\n# {HYPR_BOOTSTRAP_END}\n# after\n"
+    );
+
+    let result = strip_hyprland_bootstrap_block(&mut ctx, &contents, Path::new("hyprland.conf"));
+
+    assert_eq!(result.stripped, "# retained\n# after\n");
+    assert!(result.block_found);
+    assert!(!result.malformed);
+}
+
+#[test]
+fn strip_hyprland_bootstrap_block_ignores_marker_text_inside_lua_strings() {
+    let _lock = crate::tests::env::test_env_lock();
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+    let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
+    let mut ctx = crate::actions::ActionContext {
+        detection: &detection,
+        paths: &paths,
+        install_state: None,
+        log_tx: tx,
+        action_mode: ActionMode::Install,
+        restore_backup: None,
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
+    let contents = format!(
+        "local start = \"{HYPR_BOOTSTRAP_START}\"\nlocal finish = \"{HYPR_BOOTSTRAP_END}\"\n"
+    );
+
+    let result = strip_hyprland_bootstrap_block(&mut ctx, &contents, Path::new("hyprland.lua"));
+
+    assert_eq!(result.stripped, contents);
+    assert!(!result.block_found);
     assert!(!result.malformed);
 }

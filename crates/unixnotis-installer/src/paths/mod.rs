@@ -1,4 +1,4 @@
-//! Filesystem layout helpers for UnixNotis installation paths
+//! Filesystem layout helpers for `UnixNotis` installation paths
 
 mod choice;
 mod dirs;

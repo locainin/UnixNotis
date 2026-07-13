@@ -1,4 +1,4 @@
-//! UI state and event handling for the installer TUI.
+//! UI state and event handling for the installer TUI
 
 use crate::actions::{check_install_state, InstallState};
 use crate::actions::{BuildAccelConfigStatus, BuildAccelDetection, BuildAccelOutcome};
@@ -13,92 +13,92 @@ use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProgressState {
-    // No action is running.
+    // No action is running
     Idle,
-    // Action is running.
+    // Action is running
     Running,
-    // Action finished successfully.
+    // Action finished successfully
     Completed,
-    // Action failed.
+    // Action failed
     Failed,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Screen {
-    // Landing screen with status and menu.
+    // Landing screen with status and menu
     Welcome,
-    // Confirmation screen before execution.
+    // Confirmation screen before execution
     Confirm(ActionMode),
-    // Reset submenu for default vs restore.
+    // Reset submenu for default vs restore
     ResetMenu,
-    // Backup selection screen for restore.
+    // Backup selection screen for restore
     RestoreSelect,
-    // Progress screen for running actions.
+    // Progress screen for running actions
     Progress(ActionMode),
-    // Optional build-acceleration prompt after install.
+    // Optional build-acceleration prompt after install
     BuildAccel,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MenuItem {
-    // Select an action mode.
+    // Select an action mode
     Action(ActionMode),
-    // Exit the application.
+    // Exit the application
     Quit,
 }
 
 pub struct App {
-    // Results of environment/system checks.
+    // Results of environment/system checks
     pub checks: Checks,
 
-    // Detection of existing daemons/services and ownership state.
+    // Detection of existing daemons/services and ownership state
     pub detection: Detection,
 
-    // Selected menu index.
+    // Selected menu index
     pub menu_index: usize,
 
-    // Current screen.
+    // Current screen
     pub screen: Screen,
 
-    // Log lines for UI display.
+    // Log lines for UI display
     pub logs: VecDeque<String>,
 
-    // Steps for the active action.
+    // Steps for the active action
     pub steps: Vec<ActionStep>,
 
-    // Progress state for the active action.
+    // Progress state for the active action
     pub progress_state: ProgressState,
 
-    // Last error message for failure display.
+    // Last error message for failure display
     pub last_error: Option<String>,
 
-    // Cached install state for dynamic menu labeling.
+    // Cached install state for dynamic menu labeling
     pub install_state: Option<InstallState>,
 
-    // Earliest time the progress screen can accept navigation input.
+    // Earliest time the progress screen can accept navigation input
     pub progress_ready_at: Option<Instant>,
 
-    // Optional build-acceleration prompt data.
+    // Optional build-acceleration prompt data
     pub build_accel: Option<BuildAccelState>,
 
-    // Selected option index for the build-acceleration prompt.
+    // Selected option index for the build-acceleration prompt
     pub build_accel_menu_index: usize,
 
-    // Reset submenu selection index (defaults vs restore).
+    // Reset submenu selection index (defaults vs restore)
     pub reset_menu_index: usize,
 
-    // Selected reset action (defaults or a specific backup restore).
+    // Selected reset action (defaults or a specific backup restore)
     pub reset_action: ResetAction,
 
-    // Cached list of backup directories for the restore flow.
+    // Cached list of backup directories for the restore flow
     pub restore_backups: Vec<PathBuf>,
-    // Selected backup index when restoring.
+    // Selected backup index when restoring
     pub restore_menu_index: usize,
 
-    // Explicit backend selected at startup; None keeps environment/default behavior.
+    // Explicit backend selected at startup; None keeps environment/default behavior
     pub service_manager: Option<ServiceManagerChoice>,
 
-    // Current installer version and best-effort latest release status.
+    // Current installer version and best-effort latest release status
     pub release_status: ReleaseStatus,
 }
 
@@ -117,7 +117,7 @@ pub enum BuildAccelMenuMode {
 
 impl App {
     pub fn new(service_manager: Option<ServiceManagerChoice>) -> Self {
-        // Initialize with current system state.
+        // Initialize with current system state
         let (checks, detection, install_state) = Self::load_state(service_manager);
         let release_status = ReleaseStatus::current_only();
 
@@ -143,7 +143,7 @@ impl App {
         }
     }
 
-    pub fn menu_items() -> [MenuItem; 5] {
+    pub const fn menu_items() -> [MenuItem; 5] {
         [
             MenuItem::Action(ActionMode::Test),
             MenuItem::Action(ActionMode::Install),
@@ -159,19 +159,19 @@ impl App {
     }
 
     pub fn refresh(&mut self) {
-        // Refresh all state on demand to match the initial load path.
+        // Refresh all state on demand to match the initial load path
         let (checks, detection, install_state) = Self::load_state(self.service_manager);
         self.checks = checks;
         self.detection = detection;
         self.install_state = install_state;
     }
 
-    pub fn build_accel_menu_mode(&self) -> BuildAccelMenuMode {
+    pub const fn build_accel_menu_mode(&self) -> BuildAccelMenuMode {
         let Some(state) = self.build_accel.as_ref() else {
             return BuildAccelMenuMode::ReturnOnly;
         };
 
-        // Enabling only makes sense if at least one accelerator is available.
+        // Enabling only makes sense if at least one accelerator is available
         let enable_available = state.detection.sccache_installed || state.detection.mold_installed;
 
         match state.detection.config_status {
@@ -190,7 +190,7 @@ impl App {
     }
 
     pub fn build_accel_menu_len(&self) -> usize {
-        // Keep menu length aligned with the chosen mode to avoid invalid indices.
+        // Keep menu length aligned with the chosen mode to avoid invalid indices
         match self.build_accel_menu_mode() {
             BuildAccelMenuMode::ReturnOnly => 1,
             BuildAccelMenuMode::EnableOrSkip => 2,
@@ -207,18 +207,17 @@ impl App {
     }
 
     pub fn refresh_backups(&mut self) {
-        // Refresh the list of available backup directories for restore.
+        // Refresh the list of available backup directories for restore
         self.restore_backups = crate::actions::list_backup_dirs_for_ui();
         self.restore_menu_index = 0;
     }
 
     fn install_label(&self) -> &'static str {
-        // Installed state is derived from filesystem presence, not runtime health.
+        // Installed state is derived from filesystem presence, not runtime health
         if self
             .install_state
             .as_ref()
-            .map(|state| state.is_installed())
-            .unwrap_or(false)
+            .is_some_and(crate::actions::InstallState::is_installed)
         {
             "Reinstall"
         } else {
@@ -229,10 +228,10 @@ impl App {
     fn load_state(
         service_manager: Option<ServiceManagerChoice>,
     ) -> (Checks, Detection, Option<InstallState>) {
-        // Keep initialization and refresh logic consistent in a single helper.
+        // Keep initialization and refresh logic consistent in a single helper
         let checks = Checks::run(service_manager);
         let detection = crate::detect::detect();
-        // Install state remains optional so the UI can render even if discovery fails.
+        // Install state remains optional so the UI can render even if discovery fails
         let install_state = InstallPaths::discover_with_service_manager(service_manager)
             .ok()
             .map(|paths| check_install_state(&paths));
