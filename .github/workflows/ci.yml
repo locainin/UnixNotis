@@ -91,11 +91,15 @@ jobs:
           set -euo pipefail
           shellcheck \
             scripts/package-release.sh \
+            tests/package-release.sh \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-lib \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-state \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-on \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-off
-          shellharden --check scripts/package-release.sh
+          shellharden --check scripts/package-release.sh tests/package-release.sh
+
+      - name: Test release packaging helpers
+        run: tests/package-release.sh
 
       - name: Run workspace tests
         run: xvfb-run -a dbus-run-session -- cargo test --workspace --all-targets --all-features

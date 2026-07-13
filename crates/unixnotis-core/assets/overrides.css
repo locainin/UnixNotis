@@ -7,13 +7,25 @@
  * Older GTK releases can place direct .unixnotis-* selector rules in this file
  */
 
-/* Example compact shape and spacing controls
+/* Example cross-surface controls
 :root {
+  --unixnotis-ui-font-family: "Inter", "Noto Sans", sans-serif;
+  --unixnotis-monospace-font-family: "Iosevka", monospace;
   --unixnotis-panel-radius: 18px;
   --unixnotis-panel-padding: 12px;
   --unixnotis-popup-card-radius: 14px;
   --unixnotis-popup-card-padding-y: 10px;
   --unixnotis-popup-card-padding-x: 12px;
   --unixnotis-toggle-min-height: 48px;
+  --unixnotis-media-row-gap: 4px;
+  --unixnotis-media-art-size: 44px;
 }
+*/
+
+/* Palette aliases use GTK color names and can be replaced at final-provider priority
+@define-color unixnotis-accent #7dd3fc;
+@define-color unixnotis-accent-2 #c084fc;
+@define-color unixnotis-urgent #fb7185;
+@define-color unixnotis-text #f8fafc;
+@define-color unixnotis-muted #a8b1c2;
 */

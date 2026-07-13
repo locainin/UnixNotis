@@ -66,8 +66,9 @@ jobs:
 
       - name: Check packaging script
         run: |
-          shellcheck scripts/package-release.sh
-          shellharden --check scripts/package-release.sh
+          shellcheck scripts/package-release.sh tests/package-release.sh
+          shellharden --check scripts/package-release.sh tests/package-release.sh
+          tests/package-release.sh
 
       - name: Build package archive
         # The script checks that Cargo's version matches the requested release tag

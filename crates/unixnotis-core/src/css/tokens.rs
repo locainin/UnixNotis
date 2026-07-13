@@ -209,6 +209,14 @@ fn color_alias_tokens() -> &'static [(&'static str, &'static str)] {
 fn layout_tokens() -> &'static [(&'static str, &'static str)] {
     // These numbers match the shipped layout so custom themes can override safely
     &[
+        (
+            "--unixnotis-ui-font-family",
+            r#""Manrope", "SF Pro Text", "CaskaydiaCove Nerd Font Propo", "Noto Sans", sans-serif"#,
+        ),
+        (
+            "--unixnotis-monospace-font-family",
+            r#""CaskaydiaCove Nerd Font Mono", "JetBrains Mono", monospace"#,
+        ),
         ("--unixnotis-panel-radius", "30px"),
         ("--unixnotis-panel-padding", "16px"),
         ("--unixnotis-panel-header-radius", "18px"),

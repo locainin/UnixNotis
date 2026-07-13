@@ -76,6 +76,8 @@ assemble_archive() {
   local package_root="unixnotis-${tag}-${target}"
   local dist_root="dist/${package_root}"
   local archive="dist/${package_root}.tar.zst"
+  local release_epoch
+  release_epoch="$(release_epoch)"
 
   # Start from a clean package directory so stale binaries cannot leak into a release
   # The dist directory itself is ignored so local package checks do not dirty commits
@@ -93,13 +95,36 @@ assemble_archive() {
   write_manifest "${dist_root}/unixnotis-release.json" "$tag" "$version" "$target" "${binaries[@]}"
   write_readme "${dist_root}/README.txt" "$tag"
 
-  # zstd keeps the release small while still being standard on modern Linux systems
-  tar --zstd -C dist -cf "$archive" "$package_root"
+  # Stable metadata makes the same inputs produce the same release bytes on every builder
+  tar \
+    --zstd \
+    --sort=name \
+    --format=gnu \
+    --mtime="@${release_epoch}" \
+    --owner=0 \
+    --group=0 \
+    --numeric-owner \
+    -C dist \
+    -cf "$archive" \
+    "$package_root"
   # The checksum file is uploaded with the archive for a simple manual verification path
-  sha256sum "$archive" > "${archive}.sha256"
+  (
+    cd -- "$(dirname -- "$archive")"
+    sha256sum "$(basename -- "$archive")"
+  ) > "${archive}.sha256"
 
   printf 'wrote %s\n' "$archive"
   printf 'wrote %s\n' "${archive}.sha256"
+}
+
+release_epoch() {
+  local epoch="${SOURCE_DATE_EPOCH:-0}"
+
+  if [[ ! "$epoch" =~ ^[0-9]+$ ]]; then
+    printf 'SOURCE_DATE_EPOCH must be an unsigned integer: %s\n' "$epoch" >&2
+    return 2
+  fi
+  printf '%s\n' "$epoch"
 }
 
 write_manifest() {
@@ -169,4 +194,6 @@ write_readme() {
     > "$path"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
