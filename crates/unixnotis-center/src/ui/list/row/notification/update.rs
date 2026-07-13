@@ -25,6 +25,21 @@ use super::state::{
 
 const ACTION_BUTTON_GUARD_MS: u64 = 180;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct StackGhostVisibility {
+    pub(super) middle: bool,
+    pub(super) back: bool,
+}
+
+pub(super) const fn stack_ghost_visibility(stack_depth: u8) -> StackGhostVisibility {
+    // A single rear layer uses the back slot because that slot starts without overlap
+    // The middle slot becomes safe only when the back layer is present beneath it
+    StackGhostVisibility {
+        middle: stack_depth >= 2,
+        back: stack_depth >= 1,
+    }
+}
+
 pub(in crate::ui::list) fn update_notification_row(
     row: &NotificationRowWidgets,
     data: &RowData,
@@ -55,9 +70,11 @@ pub(in crate::ui::list) fn update_notification_row(
     // Collapsed and expanded hooks let themes space grouped cards directly
     set_class_state(card, hooks::panel_card::GROUP_COLLAPSED, data.stacked);
     set_class_state(card, hooks::panel_card::GROUP_EXPANDED, data.expanded);
-    // Stack ghosts are internal card shadows and must follow the same row update
-    set_widget_visible_if_changed(&row.stack_ghost_1, data.stack_depth >= 1);
-    set_widget_visible_if_changed(&row.stack_ghost_2, data.stack_depth >= 2);
+    // Stack ghosts occupy fixed paint slots with different overlap rules
+    // Depth one must skip the middle slot or its negative margin escapes the row
+    let ghost_visibility = stack_ghost_visibility(data.stack_depth);
+    set_widget_visible_if_changed(&row.stack_ghost_1, ghost_visibility.middle);
+    set_widget_visible_if_changed(&row.stack_ghost_2, ghost_visibility.back);
 
     // Extra state classes give themes better hooks without changing old selectors
     set_class_state(
