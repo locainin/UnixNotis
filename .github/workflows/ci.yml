@@ -120,6 +120,10 @@ jobs:
           -W clippy::undocumented_unsafe_blocks
           -W clippy::multiple_unsafe_ops_per_block
           -W clippy::mem_forget
+          -W clippy::unnecessary_safety_comment
+          -W clippy::unnecessary_safety_doc
+          -W clippy::allow_attributes_without_reason
+          -W clippy::missing_assert_message
           -W clippy::cast_ptr_alignment
           -W clippy::transmute_ptr_to_ptr
           -W clippy::fn_to_numeric_cast_any
