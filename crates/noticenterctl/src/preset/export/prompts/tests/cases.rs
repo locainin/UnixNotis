@@ -47,6 +47,7 @@ impl TempDirGuard {
             source_path,
             size: metadata.len(),
             mode,
+            source_contents: contents.to_vec(),
             contents_override: None,
         }
     }

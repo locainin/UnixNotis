@@ -135,3 +135,17 @@ fn override_collected_file_contents_updates_manifest_size() {
         Some(&b"demo = false\n"[..])
     );
 }
+
+#[test]
+fn selected_collection_keeps_descriptor_validated_bytes_after_path_replacement() {
+    let root = TempDirGuard::new("captured-bytes");
+    root.write("config.toml", "trusted = true");
+    let collected =
+        collect_selected_config_files(&root.path, &[PathBuf::from("config.toml")], None, &[])
+            .expect("collect file");
+
+    fs::write(root.path.join("config.toml"), "replaced = true").expect("replace live path");
+
+    assert_eq!(collected.files[0].source_contents, b"trusted = true");
+    assert_eq!(collected.files[0].size, b"trusted = true".len() as u64);
+}

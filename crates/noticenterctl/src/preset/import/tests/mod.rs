@@ -69,6 +69,7 @@ pub(super) fn write_collected_bundle(
                 PresetFileSource {
                     relative_path: PathBuf::from(relative_path),
                     size: fs::metadata(&source_path).expect("metadata").len(),
+                    source_contents: fs::read(&source_path).expect("read source"),
                     source_path,
                     mode: 0o644,
                     contents_override: None,
