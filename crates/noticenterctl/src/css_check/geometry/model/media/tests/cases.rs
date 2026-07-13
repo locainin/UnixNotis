@@ -23,14 +23,14 @@ fn larger_navigation_gap_increases_inline_reserve_and_pressure() {
     let wide_shell = ModeledMediaShell::from_config(&wide_gap.media);
     assert!(media_text_reserve_px(wide_shell) > media_text_reserve_px(tight_shell));
 
-    let css = r#"
+    let css = r"
         .unixnotis-panel { padding: 12px; }
         .unixnotis-media-card { padding: 8px 10px; border: 1px solid red; }
         .unixnotis-media-body { padding: 0 4px; }
         .unixnotis-media-text { padding: 0 4px; }
         .unixnotis-media-nav { min-width: 20px; }
         .unixnotis-media-button { min-width: 26px; }
-    "#;
+    ";
     let mut model = GeometryModel::default();
     // Parsing has to stay clean before the width comparison means anything
     let file_warnings = collect_geometry_from_contents(css, &mut model);

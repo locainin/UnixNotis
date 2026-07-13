@@ -95,9 +95,9 @@ fn shipped_default_theme_is_quiet_through_file_based_geometry_path() {
 
 #[test]
 fn warns_for_unknown_unixnotis_size_selector() {
-    let css = r#"
+    let css = r"
         .unixnotis-media-image { min-width: 80px; }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -106,68 +106,10 @@ fn warns_for_unknown_unixnotis_size_selector() {
 }
 
 #[test]
-fn warns_for_complex_unixnotis_size_selector() {
-    let css = r#"
+fn models_compound_unixnotis_size_selector() {
+    let css = r"
         .unixnotis-media-button.primary { min-width: 44px; }
-    "#;
-
-    let mut model = GeometryModel::default();
-    let warnings = collect_geometry_from_contents(css, &mut model);
-    assert_eq!(warnings.len(), 1);
-    assert!(warnings[0].contains("complex UnixNotis selector"));
-}
-
-#[test]
-fn warns_for_complex_known_unixnotis_hook_selector() {
-    let css = r#"
-        .unixnotis-panel-action.unixnotis-panel-action-primary {
-            min-width: 96px;
-        }
-    "#;
-
-    let mut model = GeometryModel::default();
-    let warnings = collect_geometry_from_contents(css, &mut model);
-    assert_eq!(warnings.len(), 1);
-    assert!(warnings[0].contains("complex UnixNotis selector"));
-}
-
-#[test]
-fn warns_for_stateful_unixnotis_size_selector() {
-    // Stateful selectors used to stay quiet even though the model could not reason about them
-    let css = r#"
-        .unixnotis-panel-action:hover {
-            min-width: 96px;
-            padding: 8px 12px;
-        }
-    "#;
-
-    let mut model = GeometryModel::default();
-    let warnings = collect_geometry_from_contents(css, &mut model);
-    assert_eq!(warnings.len(), 1);
-    assert!(warnings[0].contains("complex UnixNotis selector"));
-}
-
-#[test]
-fn warns_for_descendant_selector_targeting_unixnotis_width_owner() {
-    let css = r#"
-        .unixnotis-panel .unixnotis-group-row {
-            min-width: 480px;
-        }
-    "#;
-
-    let mut model = GeometryModel::default();
-    let warnings = collect_geometry_from_contents(css, &mut model);
-    assert_eq!(warnings.len(), 1);
-    assert!(warnings[0].contains("complex UnixNotis selector"));
-}
-
-#[test]
-fn suppresses_descendant_selector_targeting_plain_gtk_subnode() {
-    let css = r#"
-        .unixnotis-quick-slider trough {
-            min-width: 280px;
-        }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -175,12 +117,86 @@ fn suppresses_descendant_selector_targeting_plain_gtk_subnode() {
 }
 
 #[test]
+fn keeps_unmodeled_compound_hook_visible() {
+    let css = r"
+        .unixnotis-panel-action.unixnotis-panel-action-primary {
+            min-width: 96px;
+        }
+    ";
+
+    let mut model = GeometryModel::default();
+    let warnings = collect_geometry_from_contents(css, &mut model);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("does not model its width"));
+}
+
+#[test]
+fn keeps_unmodeled_stateful_hook_visible() {
+    let css = r"
+        .unixnotis-panel-action:hover {
+            min-width: 96px;
+            padding: 8px 12px;
+        }
+    ";
+
+    let mut model = GeometryModel::default();
+    let warnings = collect_geometry_from_contents(css, &mut model);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("does not model its width"));
+}
+
+#[test]
+fn keeps_unmodeled_descendant_target_visible() {
+    let css = r"
+        .unixnotis-panel .unixnotis-group-row {
+            min-width: 480px;
+        }
+    ";
+
+    let mut model = GeometryModel::default();
+    let warnings = collect_geometry_from_contents(css, &mut model);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("does not model its width"));
+}
+
+#[test]
+fn suppresses_descendant_selector_targeting_plain_gtk_subnode() {
+    let css = r"
+        .unixnotis-quick-slider trough {
+            min-width: 280px;
+        }
+    ";
+
+    let mut model = GeometryModel::default();
+    let warnings = collect_geometry_from_contents(css, &mut model);
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn suppresses_zero_boundary_margin_resets_but_not_positive_margins() {
+    let mut model = GeometryModel::default();
+    let safe = collect_geometry_from_contents(
+        ".unixnotis-popup-action:first-child { margin-left: 0; }",
+        &mut model,
+    );
+    assert!(safe.is_empty(), "{safe:?}");
+
+    let mut model = GeometryModel::default();
+    let unsafe_margin = collect_geometry_from_contents(
+        ".unixnotis-popup-action:first-child { margin-left: 12px; }",
+        &mut model,
+    );
+    assert_eq!(unsafe_margin.len(), 1);
+    assert!(unsafe_margin[0].contains("does not model its width"));
+}
+
+#[test]
 fn suppresses_absent_thumbnail_collapse_selector() {
-    let css = r#"
+    let css = r"
         .unixnotis-panel-card-no-thumbnail .unixnotis-panel-card-thumbnail {
             margin: 0;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -189,13 +205,13 @@ fn suppresses_absent_thumbnail_collapse_selector() {
 
 #[test]
 fn warns_for_panel_action_width_override_on_unmodeled_hook() {
-    let css = r#"
+    let css = r"
         .unixnotis-panel-action {
             min-width: 120px;
             padding: 8px 12px;
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -206,13 +222,13 @@ fn warns_for_panel_action_width_override_on_unmodeled_hook() {
 #[test]
 fn warns_for_panel_search_width_override_on_known_class() {
     // Known live classes should still warn when they are real width owners but not modeled yet
-    let css = r#"
+    let css = r"
         .unixnotis-panel-search {
             min-width: 240px;
             padding: 0 24px;
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -222,13 +238,13 @@ fn warns_for_panel_search_width_override_on_known_class() {
 
 #[test]
 fn warns_for_panel_count_width_override_on_known_class() {
-    let css = r#"
+    let css = r"
         .unixnotis-panel-count {
             min-width: 120px;
             padding: 2px 20px;
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -238,13 +254,13 @@ fn warns_for_panel_count_width_override_on_known_class() {
 
 #[test]
 fn suppresses_small_panel_count_badge_width_override() {
-    let css = r#"
+    let css = r"
         .unixnotis-panel-count {
             min-width: 26px;
             padding: 2px 10px;
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -254,13 +270,13 @@ fn suppresses_small_panel_count_badge_width_override() {
 #[test]
 fn warns_for_quick_slider_width_override_on_known_class() {
     // Widget-side hooks need the same loud custom behavior as panel and popup hooks
-    let css = r#"
+    let css = r"
         .unixnotis-quick-slider {
             min-width: 280px;
             padding: 12px 32px;
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -270,12 +286,12 @@ fn warns_for_quick_slider_width_override_on_known_class() {
 
 #[test]
 fn warns_for_popup_icon_width_override_on_known_class() {
-    let css = r#"
+    let css = r"
         .unixnotis-popup-icon {
             min-width: 64px;
             margin-right: 24px;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -285,12 +301,12 @@ fn warns_for_popup_icon_width_override_on_known_class() {
 
 #[test]
 fn suppresses_small_popup_icon_width_override() {
-    let css = r#"
+    let css = r"
         .unixnotis-popup-icon {
             min-width: 24px;
             margin-right: 12px;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -299,13 +315,13 @@ fn suppresses_small_popup_icon_width_override() {
 
 #[test]
 fn warns_for_group_row_width_override_on_known_hook() {
-    let css = r#"
+    let css = r"
         .unixnotis-group-row {
             min-width: 280px;
             padding: 8px 20px;
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);
@@ -315,13 +331,13 @@ fn warns_for_group_row_width_override_on_known_hook() {
 
 #[test]
 fn warns_for_popup_action_width_override_on_unmodeled_hook() {
-    let css = r#"
+    let css = r"
         .unixnotis-popup-action {
             min-width: 140px;
             padding: 6px 12px;
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let warnings = collect_geometry_from_contents(css, &mut model);

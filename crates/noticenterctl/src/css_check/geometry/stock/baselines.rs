@@ -34,8 +34,7 @@ pub(in crate::css_check) fn stock_matches_complex_selector_rules(
     current_rules.iter().all(|(name, value)| {
         stock_rules
             .get(name.as_str())
-            .map(|stock_value| stock_value == value)
-            .unwrap_or(false)
+            .is_some_and(|stock_value| stock_value == value)
     })
 }
 

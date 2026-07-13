@@ -8,7 +8,7 @@ use unixnotis_core::{build_modern_theme_custom_properties, gtk_css_features_for_
 fn geometry_can_follow_custom_property_lengths() {
     let mut config = Config::default();
     config.panel.width = 320;
-    let css = r#"
+    let css = r"
         :root {
             --toggle-width: 104px;
             --toggle-pad: 12px;
@@ -20,7 +20,7 @@ fn geometry_can_follow_custom_property_lengths() {
             padding: 10px var(--toggle-pad);
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let file_warnings = collect_geometry_from_contents(css, &mut model);
@@ -36,14 +36,14 @@ fn geometry_can_follow_custom_property_lengths() {
 fn geometry_can_follow_simple_calc_lengths() {
     let mut config = Config::default();
     config.panel.width = 320;
-    let css = r#"
+    let css = r"
         .unixnotis-panel { padding: calc(8px + 8px); }
         .unixnotis-toggle {
             min-width: calc(96px + 8px);
             padding: 10px calc(8px + 4px);
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let file_warnings = collect_geometry_from_contents(css, &mut model);
@@ -59,7 +59,7 @@ fn geometry_can_follow_simple_calc_lengths() {
 fn geometry_can_follow_selector_scoped_custom_properties() {
     let mut config = Config::default();
     config.panel.width = 320;
-    let css = r#"
+    let css = r"
         :root { --toggle-pad: 10px; }
         .unixnotis-panel { padding: 16px; }
         .unixnotis-toggle {
@@ -68,7 +68,7 @@ fn geometry_can_follow_selector_scoped_custom_properties() {
             padding: 10px calc(var(--toggle-pad) + 2px);
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let file_warnings = collect_geometry_from_contents(css, &mut model);
@@ -108,20 +108,20 @@ fn geometry_can_follow_cross_file_root_custom_properties() {
     let mut config = Config::default();
     config.panel.width = 320;
 
-    let base_css = r#"
+    let base_css = r"
         :root {
             --toggle-width: 104px;
             --toggle-pad: 12px;
         }
-    "#;
-    let widgets_css = r#"
+    ";
+    let widgets_css = r"
         .unixnotis-panel { padding: 16px; }
         .unixnotis-toggle {
             min-width: var(--toggle-width);
             padding: 10px var(--toggle-pad);
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let shared_properties = collect_custom_property_scopes(&format!("{base_css}\n{widgets_css}"));
     let mut model = GeometryModel::default();
@@ -142,14 +142,14 @@ fn geometry_can_follow_cross_file_root_custom_properties() {
 fn geometry_can_follow_compare_length_functions() {
     let mut config = Config::default();
     config.panel.width = 320;
-    let css = r#"
+    let css = r"
         .unixnotis-panel { padding: clamp(8px, 12px, 16px); }
         .unixnotis-toggle {
             min-width: max(96px, 104px);
             padding: 10px min(12px, 16px);
             border: 1px solid red;
         }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let file_warnings = collect_geometry_from_contents(css, &mut model);

@@ -1,4 +1,4 @@
-//! var() resolution for geometry length parsing
+//! `var()` resolution for geometry length parsing
 
 use super::{
     parse_length_expression, tokenize::split_top_level_once, CssCustomProperties, ResolvedCssValue,

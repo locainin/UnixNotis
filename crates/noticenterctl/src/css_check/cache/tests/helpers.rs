@@ -22,7 +22,7 @@ impl TempDirGuard {
             .as_nanos();
         let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
         let path =
-            std::env::temp_dir().join(format!("unixnotis-css-cache-{}-{}-{}", name, stamp, serial));
+            std::env::temp_dir().join(format!("unixnotis-css-cache-{name}-{stamp}-{serial}"));
         fs::create_dir_all(&path).expect("create temp dir");
         Self { path }
     }

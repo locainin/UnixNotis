@@ -11,4 +11,5 @@ pub(super) use model::{CssCheckActiveFile, CssCheckCategory, CssCheckDiagnostic,
 pub(super) use render::render_css_check_report_for_stdout;
 
 #[cfg(test)]
+#[path = "tests/cases.rs"]
 mod tests;

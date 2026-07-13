@@ -182,7 +182,7 @@ pub(in super::super) fn collect_css_check_inputs_from(
         ));
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Theme,
-            config_display.clone(),
+            config_display,
             format!(
                 "{outside_root} configured theme file(s) point outside {display_root}; that makes the setup less portable and means those files are loaded from outside the UnixNotis config directory"
             ),

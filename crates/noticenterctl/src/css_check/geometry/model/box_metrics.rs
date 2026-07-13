@@ -48,10 +48,10 @@ impl HorizontalBoxMetrics {
         // Only horizontal size inputs matter for this lint pass
         match name {
             "width" => {
-                self.width = super::super::parse::parse_single_length(value, custom_properties)
+                self.width = super::super::parse::parse_single_length(value, custom_properties);
             }
             "min-width" => {
-                self.min_width = super::super::parse::parse_single_length(value, custom_properties)
+                self.min_width = super::super::parse::parse_single_length(value, custom_properties);
             }
             "margin" => {
                 // Shorthand values can set both left and right in one pass
@@ -61,10 +61,10 @@ impl HorizontalBoxMetrics {
                 }
             }
             "margin-left" => {
-                super::super::parse::set_edge(&mut self.margin.left, value, custom_properties)
+                super::super::parse::set_edge(&mut self.margin.left, value, custom_properties);
             }
             "margin-right" => {
-                super::super::parse::set_edge(&mut self.margin.right, value, custom_properties)
+                super::super::parse::set_edge(&mut self.margin.right, value, custom_properties);
             }
             "padding" => {
                 // Padding still eats panel width even when child content stays the same
@@ -74,10 +74,10 @@ impl HorizontalBoxMetrics {
                 }
             }
             "padding-left" => {
-                super::super::parse::set_edge(&mut self.padding.left, value, custom_properties)
+                super::super::parse::set_edge(&mut self.padding.left, value, custom_properties);
             }
             "padding-right" => {
-                super::super::parse::set_edge(&mut self.padding.right, value, custom_properties)
+                super::super::parse::set_edge(&mut self.padding.right, value, custom_properties);
             }
             "border" | "border-width" => {
                 if let Some(edges) = super::super::parse::parse_box_edges(value, custom_properties)
@@ -86,10 +86,10 @@ impl HorizontalBoxMetrics {
                 }
             }
             "border-left" | "border-left-width" => {
-                super::super::parse::set_edge(&mut self.border.left, value, custom_properties)
+                super::super::parse::set_edge(&mut self.border.left, value, custom_properties);
             }
             "border-right" | "border-right-width" => {
-                super::super::parse::set_edge(&mut self.border.right, value, custom_properties)
+                super::super::parse::set_edge(&mut self.border.right, value, custom_properties);
             }
             _ => {}
         }
@@ -112,7 +112,7 @@ impl HorizontalBoxMetrics {
         self.padding.total_px() + self.border.total_px()
     }
 
-    fn content_width_px(self, fallback_px: i32) -> i32 {
+    const fn content_width_px(self, fallback_px: i32) -> i32 {
         // GTK can honor either width or min-width, so keep the larger one
         match (self.width, self.min_width) {
             (Some(width), Some(min_width)) => width.max(min_width).round() as i32,
@@ -142,10 +142,11 @@ impl VerticalBoxMetrics {
     ) {
         match name {
             "height" => {
-                self.height = super::super::parse::parse_single_length(value, custom_properties)
+                self.height = super::super::parse::parse_single_length(value, custom_properties);
             }
             "min-height" => {
-                self.min_height = super::super::parse::parse_single_length(value, custom_properties)
+                self.min_height =
+                    super::super::parse::parse_single_length(value, custom_properties);
             }
             "margin" => {
                 if let Some(edges) =
@@ -155,10 +156,10 @@ impl VerticalBoxMetrics {
                 }
             }
             "margin-top" => {
-                super::super::parse::set_edge(&mut self.margin.top, value, custom_properties)
+                super::super::parse::set_edge(&mut self.margin.top, value, custom_properties);
             }
             "margin-bottom" => {
-                super::super::parse::set_edge(&mut self.margin.bottom, value, custom_properties)
+                super::super::parse::set_edge(&mut self.margin.bottom, value, custom_properties);
             }
             "padding" => {
                 if let Some(edges) =
@@ -168,10 +169,10 @@ impl VerticalBoxMetrics {
                 }
             }
             "padding-top" => {
-                super::super::parse::set_edge(&mut self.padding.top, value, custom_properties)
+                super::super::parse::set_edge(&mut self.padding.top, value, custom_properties);
             }
             "padding-bottom" => {
-                super::super::parse::set_edge(&mut self.padding.bottom, value, custom_properties)
+                super::super::parse::set_edge(&mut self.padding.bottom, value, custom_properties);
             }
             "border" | "border-width" => {
                 if let Some(edges) =
@@ -181,10 +182,10 @@ impl VerticalBoxMetrics {
                 }
             }
             "border-top" | "border-top-width" => {
-                super::super::parse::set_edge(&mut self.border.top, value, custom_properties)
+                super::super::parse::set_edge(&mut self.border.top, value, custom_properties);
             }
             "border-bottom" | "border-bottom-width" => {
-                super::super::parse::set_edge(&mut self.border.bottom, value, custom_properties)
+                super::super::parse::set_edge(&mut self.border.bottom, value, custom_properties);
             }
             _ => {}
         }
@@ -197,7 +198,7 @@ impl VerticalBoxMetrics {
             + self.border.total_px()
     }
 
-    fn content_height_px(self, fallback_px: i32) -> i32 {
+    const fn content_height_px(self, fallback_px: i32) -> i32 {
         match (self.height, self.min_height) {
             (Some(height), Some(min_height)) => height.max(min_height).round() as i32,
             (Some(height), None) => height.round() as i32,

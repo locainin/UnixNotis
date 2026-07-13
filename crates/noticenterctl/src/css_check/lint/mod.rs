@@ -13,6 +13,7 @@ mod scan;
 mod values;
 
 #[cfg(test)]
+#[path = "tests/cases.rs"]
 mod tests;
 
 #[derive(Debug)]

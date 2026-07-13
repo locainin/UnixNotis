@@ -45,8 +45,7 @@ pub(in super::super) fn has_css_extension(path: &Path) -> bool {
     // Case-insensitive matching keeps css-check aligned with common filesystem behavior
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("css"))
-        .unwrap_or(false)
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("css"))
 }
 
 pub(in super::super) fn normalize_target_key(path: &Path) -> PathBuf {

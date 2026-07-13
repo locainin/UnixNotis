@@ -1,3 +1,8 @@
+#![allow(
+    clippy::float_cmp,
+    reason = "the parser returns exact decimal literals for these integer and finite CSS inputs"
+)]
+
 use std::collections::HashMap;
 
 use super::{parse_box_edges, parse_box_vertical_edges, parse_single_length, set_edge};

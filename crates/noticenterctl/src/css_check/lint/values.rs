@@ -74,8 +74,7 @@ pub(super) fn web_length_value_warning(
         .map(|ctx| format!(" within {ctx}"))
         .unwrap_or_default();
     Some(format!(
-        "property '{}' in selector '{}'{} {}",
-        property, selector, context_note, hint
+        "property '{property}' in selector '{selector}'{context_note} {hint}"
     ))
 }
 
@@ -95,8 +94,7 @@ fn contains_unmodeled_length_unit(value: &str) -> bool {
         let (_, ch) = chars[index];
         let next_is_digit = chars
             .get(index + 1)
-            .map(|(_, next)| next.is_ascii_digit())
-            .unwrap_or(false);
+            .is_some_and(|(_, next)| next.is_ascii_digit());
 
         if !(ch.is_ascii_digit() || (ch == '.' && next_is_digit)) {
             index += 1;
@@ -129,8 +127,7 @@ fn contains_unmodeled_length_unit(value: &str) -> bool {
         let start_byte = chars[unit_start].0;
         let end_byte = chars
             .get(index)
-            .map(|(offset, _)| *offset)
-            .unwrap_or_else(|| lowered.len());
+            .map_or_else(|| lowered.len(), |(offset, _)| *offset);
         let unit = &lowered[start_byte..end_byte];
 
         if unit != "px" {

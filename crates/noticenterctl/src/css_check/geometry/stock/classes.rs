@@ -65,7 +65,7 @@ fn insert_hook_class(classes: &mut HashSet<String>, class_name: &str) {
     classes.insert(format!(".{class_name}"));
 }
 
-fn hook_unixnotis_classes() -> &'static [&'static str] {
+const fn hook_unixnotis_classes() -> &'static [&'static str] {
     // Hook-only classes can be real live selectors before the stock theme gives them rules
     &[
         hooks::panel_action::ROW,
@@ -146,7 +146,7 @@ fn hook_unixnotis_classes() -> &'static [&'static str] {
     ]
 }
 
-fn dynamic_unixnotis_class_prefixes() -> &'static [&'static str] {
+const fn dynamic_unixnotis_class_prefixes() -> &'static [&'static str] {
     &[
         ".unixnotis-toggle-kind-",
         ".unixnotis-stat-kind-",
