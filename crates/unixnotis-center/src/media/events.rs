@@ -142,10 +142,20 @@ pub(super) async fn apply_owner_change(
         return Ok(());
     }
 
-    if state.players.contains_key(name) {
-        // Existing entries keep their listener and cache until the next real update
-        // This avoids tearing down and rebuilding watchers on harmless owner churn
+    if state
+        .players
+        .get(name)
+        .is_some_and(|player| owner_is_unchanged(player.unique_owner.as_deref(), new_owner))
+    {
+        // Duplicate owner announcements do not need to rebuild a healthy listener
         return Ok(());
+    }
+
+    if let Some(previous) = state.players.remove(name) {
+        // A replacement owner invalidates every process-bound proxy and policy decision
+        let _ = previous.listener_cancel.send(true);
+        cancel_delayed_refresh(&mut state.delayed_refreshes, name);
+        state.cache.remove(name);
     }
 
     if let Some(player_state) = build_player_state(connection, name, config).await? {
@@ -176,6 +186,10 @@ pub(super) async fn apply_owner_change(
     }
 
     Ok(())
+}
+
+fn owner_is_unchanged(current_owner: Option<&str>, announced_owner: Option<&str>) -> bool {
+    current_owner.is_some() && current_owner == announced_owner
 }
 
 async fn remove_player(
