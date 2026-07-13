@@ -81,9 +81,7 @@ async fn authorize_control_call_for_executables(
             sender = %sender_name,
             pid,
             executable = exe_path
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
+                .as_ref().map_or_else(|| "unknown".to_string(), |path| path.display().to_string()),
             "rejected untrusted control caller"
         );
         return Err(err);
@@ -92,7 +90,10 @@ async fn authorize_control_call_for_executables(
     Ok(())
 }
 
-pub(in crate::daemon) fn control_owner_uid_is_allowed(caller_uid: u32, expected_uid: u32) -> bool {
+pub(in crate::daemon) const fn control_owner_uid_is_allowed(
+    caller_uid: u32,
+    expected_uid: u32,
+) -> bool {
     caller_uid == expected_uid
 }
 

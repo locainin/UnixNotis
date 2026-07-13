@@ -59,7 +59,7 @@ fn apply_rule(rule: &RuleConfig, notification: &mut Notification) {
     }
     if let Some(expire_timeout_ms) = rule.expire_timeout_ms {
         // Clamp protects against large config values that overflow i32 timeout fields
-        let clamped = expire_timeout_ms.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let clamped = expire_timeout_ms.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
         notification.expire_timeout = clamped;
     }
     if let Some(resident) = rule.resident {

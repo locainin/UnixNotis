@@ -65,8 +65,7 @@ pub(super) fn make_temp_state_dir(label: &str) -> std::path::PathBuf {
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
+        .map_or(0, |duration| duration.as_nanos());
     path.push(format!("unixnotis-test-{label}-{pid}-{nanos}"));
     std::fs::create_dir_all(&path).expect("create temp state dir");
     path

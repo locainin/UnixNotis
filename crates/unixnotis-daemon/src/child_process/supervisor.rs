@@ -139,7 +139,7 @@ async fn handle_wait_result(
     }
 }
 
-fn wait_error_needs_recovery(probe: &std::io::Result<bool>) -> bool {
+const fn wait_error_needs_recovery(probe: &std::io::Result<bool>) -> bool {
     matches!(probe, Ok(false) | Err(_))
 }
 
@@ -165,7 +165,7 @@ async fn wait_for_retry_or_shutdown(delay: Duration, shutdown: &mut watch::Recei
     }
 
     tokio::select! {
-        _ = sleep(delay) => false,
+        () = sleep(delay) => false,
         changed = shutdown.changed() => {
             shutdown_is_terminal(Some(changed), shutdown)
         }
@@ -180,12 +180,11 @@ async fn terminate_child(child: &mut Child, label: &str) {
     let pid = child.id().unwrap_or_default();
     #[cfg(unix)]
     {
-        let pid = match i32::try_from(pid) {
-            Ok(pid) => pid,
-            Err(_) => {
-                warn!(label, pid, "pid exceeds i32 range; skipping SIGTERM");
-                return;
-            }
+        let pid = if let Ok(pid) = i32::try_from(pid) {
+            pid
+        } else {
+            warn!(label, pid, "pid exceeds i32 range; skipping SIGTERM");
+            return;
         };
         if let Some(pid) = Pid::from_raw(pid) {
             let _ = kill_process(pid, Signal::TERM);

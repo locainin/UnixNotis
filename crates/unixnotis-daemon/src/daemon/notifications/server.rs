@@ -28,7 +28,7 @@ pub struct NotificationServer {
 }
 
 impl NotificationServer {
-    pub fn new(state: Arc<DaemonState>, scheduler: ExpirationScheduler) -> Self {
+    pub const fn new(state: Arc<DaemonState>, scheduler: ExpirationScheduler) -> Self {
         // Keep constructor minimal and explicit
         Self { state, scheduler }
     }

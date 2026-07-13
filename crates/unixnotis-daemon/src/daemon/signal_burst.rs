@@ -5,7 +5,7 @@ use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum NotificationSignalMode {
+pub enum NotificationSignalMode {
     // Normal path: send the precise notification signal
     Direct,
     // Burst path: send one invalidation so clients can rebuild from state

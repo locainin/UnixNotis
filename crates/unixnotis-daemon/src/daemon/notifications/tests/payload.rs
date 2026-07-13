@@ -246,7 +246,7 @@ fn normalize_text_for_layout_folds_long_unbroken_tokens() {
     assert!(normalized.contains('…'));
     let longest = normalized
         .split_whitespace()
-        .map(|part| part.chars().filter(|ch| ch.is_ascii_alphanumeric()).count())
+        .map(|part| part.chars().filter(char::is_ascii_alphanumeric).count())
         .max()
         .unwrap_or(0);
     assert!(longest <= 96);

@@ -13,7 +13,7 @@ use crate::daemon::DaemonState;
 use crate::sound::SoundSettings;
 use crate::store::NotificationStore;
 
-pub(crate) fn env_lock() -> MutexGuard<'static, ()> {
+pub fn env_lock() -> MutexGuard<'static, ()> {
     // Environment variables are process-global, so all tests that edit them share one lock
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -21,7 +21,7 @@ pub(crate) fn env_lock() -> MutexGuard<'static, ()> {
         .expect("env lock should not be poisoned")
 }
 
-pub(crate) async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> {
+pub async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> {
     // Signal-heavy daemon tests only need a session connection and default state
     let connection = Connection::session()
         .await
@@ -32,19 +32,19 @@ pub(crate) async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> 
     DaemonState::new_with_store(connection, store, sound, trial_mode)
 }
 
-pub(crate) struct EnvVarGuard {
+pub struct EnvVarGuard {
     name: &'static str,
     previous: Option<std::ffi::OsString>,
 }
 
 impl EnvVarGuard {
-    pub(crate) fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+    pub(super) fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
         let previous = std::env::var_os(name);
         std::env::set_var(name, value);
         Self { name, previous }
     }
 
-    pub(crate) fn remove(name: &'static str) -> Self {
+    pub(super) fn remove(name: &'static str) -> Self {
         let previous = std::env::var_os(name);
         std::env::remove_var(name);
         Self { name, previous }
@@ -61,12 +61,12 @@ impl Drop for EnvVarGuard {
     }
 }
 
-pub(crate) struct TempRoot {
+pub struct TempRoot {
     path: PathBuf,
 }
 
 impl TempRoot {
-    pub(crate) fn new(label: &str) -> Self {
+    pub(super) fn new(label: &str) -> Self {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock should be after unix epoch")
@@ -79,11 +79,11 @@ impl TempRoot {
         Self { path }
     }
 
-    pub(crate) fn path(&self) -> &Path {
+    pub(super) fn path(&self) -> &Path {
         &self.path
     }
 
-    pub(crate) fn join(&self, path: impl AsRef<Path>) -> PathBuf {
+    pub(super) fn join(&self, path: impl AsRef<Path>) -> PathBuf {
         self.path.join(path)
     }
 }

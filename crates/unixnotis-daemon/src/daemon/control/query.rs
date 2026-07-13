@@ -1,4 +1,4 @@
-//! Query helpers for ControlServer
+//! Query helpers for `ControlServer`
 //!
 //! Keeps read-only control methods grouped outside the main interface file
 

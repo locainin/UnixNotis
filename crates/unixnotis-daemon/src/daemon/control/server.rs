@@ -23,7 +23,7 @@ pub struct ControlServer {
 }
 
 impl ControlServer {
-    pub fn new(state: Arc<DaemonState>) -> Self {
+    pub const fn new(state: Arc<DaemonState>) -> Self {
         // Lightweight wrapper around the shared daemon state
         Self { state }
     }

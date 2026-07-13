@@ -1,4 +1,4 @@
-//! Inhibitor mutation and signal fanout helpers for ControlServer
+//! Inhibitor mutation and signal fanout helpers for `ControlServer`
 //!
 //! Keeps inhibit/uninhibit flow and best-effort post-commit fanout isolated
 
@@ -78,7 +78,7 @@ impl ControlServer {
         match SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH) {
             Ok(ctx) => {
                 // Broadcast inhibitor updates so UI clients can refresh badges
-                if let Err(err) = ControlServer::inhibitors_changed(&ctx, active, count).await {
+                if let Err(err) = Self::inhibitors_changed(&ctx, active, count).await {
                     warn!(
                         ?err,
                         inhibitor_count = count,

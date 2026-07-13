@@ -72,7 +72,7 @@ impl NotificationStore {
         inhibitors
     }
 
-    pub(super) fn should_drop_inhibited(&self) -> bool {
+    pub(super) const fn should_drop_inhibited(&self) -> bool {
         // DropAll means suppression happens before insertion and history work
         self.inhibited && matches!(self.config.inhibit.mode, InhibitMode::DropAll)
     }

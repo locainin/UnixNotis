@@ -126,7 +126,10 @@ fn should_play_now_records_first_request_and_throttles_immediate_repeat() {
 fn should_play_now_accepts_when_last_play_is_older_than_interval() {
     let sound = settings(true, SoundBackend::Canberra);
     let now = Instant::now();
-    *sound.last_played.lock().expect("last_played lock") = Some(now - SOUND_MIN_INTERVAL);
+    *sound.last_played.lock().expect("last_played lock") = Some(
+        now.checked_sub(SOUND_MIN_INTERVAL)
+            .expect("test clock should represent the previous playback window"),
+    );
 
     assert!(sound.should_play_at(now));
 }

@@ -35,7 +35,7 @@ impl DaemonState {
         )
     }
 
-    pub(crate) fn trial_mode(&self) -> bool {
+    pub(crate) const fn trial_mode(&self) -> bool {
         self.trial_mode
     }
 }

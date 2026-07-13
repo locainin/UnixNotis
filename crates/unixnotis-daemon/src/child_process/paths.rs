@@ -41,6 +41,7 @@ pub(super) fn resolve_center_path() -> Option<PathBuf> {
 #[cfg(target_os = "linux")]
 pub(super) fn apply_parent_death_signal(command: &mut Command) {
     // If the daemon dies, the UI child should not linger alone
+    // SAFETY: The pre-exec closure performs only the Linux prctl call before process launch
     unsafe {
         command.as_std_mut().pre_exec(|| {
             set_parent_process_death_signal(Some(Signal::TERM)).map_err(std::io::Error::from)

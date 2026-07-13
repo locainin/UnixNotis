@@ -18,7 +18,7 @@ pub(super) struct ClearAllSignalPlan {
     pub(super) emit_state_changed: bool,
 }
 
-pub(super) fn clear_all_signal_plan(ids: &[u32]) -> ClearAllSignalPlan {
+pub(super) const fn clear_all_signal_plan(ids: &[u32]) -> ClearAllSignalPlan {
     ClearAllSignalPlan {
         // Only active rows need close fanout
         emit_close_signals: !ids.is_empty(),

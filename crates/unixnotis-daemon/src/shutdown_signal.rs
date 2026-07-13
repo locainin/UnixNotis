@@ -5,7 +5,7 @@
 use tokio::signal;
 use tracing::warn;
 
-pub(super) async fn shutdown_signal() {
+pub async fn shutdown_signal() {
     let ctrl_c = signal::ctrl_c();
 
     #[cfg(unix)]
@@ -27,10 +27,10 @@ pub(super) async fn shutdown_signal() {
 
     tokio::select! {
         _ = ctrl_c => {},
-        _ = terminate => {},
+        () = terminate => {},
     }
 }
 
 #[cfg(test)]
-#[path = "shutdown_signal/tests/mod.rs"]
+#[path = "shutdown_signal/tests/cases.rs"]
 mod tests;
