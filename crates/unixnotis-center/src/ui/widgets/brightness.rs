@@ -1,4 +1,4 @@
-//! Brightness slider widget wrapper.
+//! Brightness slider widget wrapper
 
 use std::time::{Duration, Instant};
 
@@ -13,7 +13,7 @@ pub struct BrightnessWidget {
 impl BrightnessWidget {
     pub fn new(config: SliderWidgetConfig) -> Self {
         let mut config = config;
-        // Brightness control does not support toggle actions.
+        // Brightness control does not support toggle actions
         config.toggle_cmd = None;
         config.icon_muted = None;
         Self {
@@ -21,7 +21,7 @@ impl BrightnessWidget {
         }
     }
 
-    pub fn root(&self) -> &gtk::Box {
+    pub const fn root(&self) -> &gtk::Box {
         &self.slider.root
     }
 

@@ -7,13 +7,17 @@ use crate::media::MediaInfo;
 
 use super::super::marquee::MarqueeLabel;
 use super::super::media_art::{apply_media_art, MediaArtState};
-use super::format::{position_text_for, source_text_for, title_text_for, MediaDisplayConfig};
+use super::format::{
+    art_slot_visible, artist_text_for, position_text_for, source_text_for, title_text_for,
+    MediaDisplayConfig,
+};
 use unixnotis_core::{hooks, MediaConfig};
 
 #[derive(Clone)]
 pub(super) struct MediaCardWidgets {
     pub(super) root: gtk::Box,
     pub(super) art: gtk::Picture,
+    pub(super) art_frame: gtk::Box,
     pub(super) text_box: gtk::Box,
     pub(super) meta_row: gtk::Box,
     pub(super) source_label: gtk::Label,
@@ -53,7 +57,7 @@ impl MediaCardWidgets {
             &self.title_label,
             title_text_for(info, &display).as_deref(),
         );
-        update_artist_label(&self.artist_label, &info.artist, display.show_artist);
+        update_artist_label(&self.artist_label, artist_text_for(&info.artist, &display));
         self.sync_metadata_visibility();
         update_artist_classes(&self.root, &info.artist);
         update_play_button(&self.play_button, &info.playback_status);
@@ -63,8 +67,9 @@ impl MediaCardWidgets {
         apply_media_art(&self.art, &self.art_state, info.art_source.as_ref());
         update_art_classes(&self.root, info.art_source.is_some());
         update_player_count_classes(&self.root, total);
-        // The art slot stays visible once the card is active, even when the picture is empty
-        set_widget_visible_if_changed(&self.art, true);
+        let has_art = info.art_source.is_some();
+        set_widget_visible_if_changed(&self.art, has_art);
+        set_widget_visible_if_changed(&self.art_frame, art_slot_visible(has_art, &display));
 
         update_playing_class(&self.root, &info.playback_status);
     }
@@ -123,12 +128,15 @@ fn update_title_label(title_widget: &gtk::Fixed, title_label: &MarqueeLabel, tit
     set_widget_visible_if_changed(title_widget, true);
 }
 
-fn update_artist_label(label: &gtk::Label, artist: &str, show_artist: bool) {
-    if !show_artist {
+fn update_artist_label(label: &gtk::Label, artist: Option<&str>) {
+    let Some(artist) = artist else {
+        if label.text() != "" {
+            label.set_text("");
+        }
         set_widget_visible_if_changed(label, false);
         return;
-    }
-    if artist.is_empty() {
+    };
+    if artist.trim().is_empty() {
         // A blank placeholder keeps the card height from jumping
         if label.text() != " " {
             label.set_text(" ");
@@ -220,3 +228,7 @@ fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {
         root.remove_css_class(class_name);
     }
 }
+
+#[cfg(test)]
+#[path = "tests/card.rs"]
+mod tests;

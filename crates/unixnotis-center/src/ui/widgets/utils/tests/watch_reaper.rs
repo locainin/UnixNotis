@@ -3,8 +3,8 @@ use super::{enqueue_watch_cleanup, reaper_sender};
 #[test]
 fn watch_reaper_initializes_once() {
     // The shared cleanup sender should stay stable across repeated lookups
-    let first = reaper_sender().map(|sender| sender as *const _);
-    let second = reaper_sender().map(|sender| sender as *const _);
+    let first = reaper_sender().map(std::ptr::from_ref);
+    let second = reaper_sender().map(std::ptr::from_ref);
 
     assert_eq!(first, second);
 }

@@ -250,12 +250,7 @@ fn flush_rebuild_refreshes_dirty_group_even_when_span_is_stable() {
     let terminal = list.entries.get(&1).expect("terminal").app_key.clone();
     let view = list.entries.get(&1).expect("terminal").view.clone();
     let header = list.group_headers.get(&terminal).expect("header").clone();
-    header.update(RowData::group_header(
-        terminal.clone(),
-        99,
-        false,
-        view.clone(),
-    ));
+    header.update(RowData::group_header(terminal.clone(), 99, false, view));
 
     list.dirty_groups.insert(terminal.clone());
     list.request_rebuild();

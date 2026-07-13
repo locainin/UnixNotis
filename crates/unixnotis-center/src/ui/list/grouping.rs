@@ -1,4 +1,4 @@
-//! Grouping key normalization and list consistency helpers.
+//! Grouping key normalization and list consistency helpers
 
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -11,29 +11,29 @@ impl NotificationList {
         if let Some(value) = self.interned.get(normalized.as_ref()) {
             return value.clone();
         }
-        // Normalize app names to avoid duplicate groups from case/whitespace variations.
+        // Normalize app names to avoid duplicate groups from case/whitespace variations
         let value: Rc<str> = Rc::from(normalized.as_ref());
         self.interned.insert(value.clone());
         value
     }
 
     pub(super) fn normalize_group_key<'a>(&self, key: &'a str) -> Cow<'a, str> {
-        // Trim outer whitespace to avoid duplicate stacks from padded app names.
+        // Trim outer whitespace to avoid duplicate stacks from padded app names
         let trimmed = key.trim();
         if trimmed.is_empty() {
             return Cow::Borrowed("");
         }
         let mut normalized = String::new();
-        // Track normalization to avoid allocations when the key is already clean.
+        // Track normalization to avoid allocations when the key is already clean
         let mut changed = false;
         for ch in trimmed.chars() {
             if is_ignorable_group_char(ch) {
-                // Strip invisible characters to keep visually identical names grouped.
+                // Strip invisible characters to keep visually identical names grouped
                 changed = true;
                 continue;
             }
             if ch.is_ascii_uppercase() {
-                // ASCII-only casing keeps stable group keys without locale-dependent transforms.
+                // ASCII-only casing keeps stable group keys without locale-dependent transforms
                 normalized.push(ch.to_ascii_lowercase());
                 changed = true;
             } else {
@@ -46,7 +46,7 @@ impl NotificationList {
         if changed {
             return Cow::Owned(normalized);
         }
-        // Trim-only normalization keeps display text stable while grouping remains consistent.
+        // Trim-only normalization keeps display text stable while grouping remains consistent
         Cow::Borrowed(trimmed)
     }
 
@@ -72,8 +72,7 @@ impl NotificationList {
         ids.iter().any(|id| {
             self.entries
                 .get(id)
-                .map(|entry| self.entry_matches_filter(&entry.view))
-                .unwrap_or(false)
+                .is_some_and(|entry| self.entry_matches_filter(&entry.view))
         })
     }
 
@@ -123,7 +122,7 @@ impl NotificationList {
 }
 
 fn is_ignorable_group_char(ch: char) -> bool {
-    // Strip control/zero-width characters to keep grouping stable for visually identical names.
+    // Strip control/zero-width characters to keep grouping stable for visually identical names
     ch.is_control()
         || matches!(
             ch,

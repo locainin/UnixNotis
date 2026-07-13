@@ -1,4 +1,4 @@
-//! Notification list row data and GTK object bindings.
+//! Notification list row data and GTK object bindings
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -101,7 +101,7 @@ impl RowData {
         }
     }
 
-    fn is_equivalent(&self, other: &RowData) -> bool {
+    fn is_equivalent(&self, other: &Self) -> bool {
         self.kind == other.kind
             && self.id == other.id
             && Rc::ptr_eq(&self.group_key, &other.group_key)
@@ -127,7 +127,7 @@ impl RowData {
 }
 
 mod imp {
-    use super::*;
+    use super::{glib, ObjectImpl, ObjectSubclass, OnceLock, RefCell, RowData};
 
     #[derive(Default)]
     pub struct RowItem {
@@ -160,7 +160,7 @@ impl RowItem {
     }
 
     pub fn update(&self, data: RowData) {
-        // Batch change notifications so row bindings update once per mutation.
+        // Batch change notifications so row bindings update once per mutation
         let _notify_guard = self.freeze_notify();
         {
             let mut slot = self.imp().data.borrow_mut();

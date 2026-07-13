@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use crate::media::MediaInfo;
 use unixnotis_core::{MediaPositionFormat, MediaTitleFallback};
 
-use super::{position_text_for, source_text_for, title_text_for, MediaDisplayConfig};
+use super::{
+    art_slot_visible, artist_text_for, position_text_for, source_text_for, title_text_for,
+    MediaDisplayConfig,
+};
 
 fn media_info(identity: &str, title: &str, artist: &str) -> MediaInfo {
     MediaInfo {
@@ -30,10 +33,32 @@ fn display() -> MediaDisplayConfig {
         show_position_when_single_player: false,
         show_title: true,
         show_artist: true,
+        collapse_missing_artist: false,
+        collapse_missing_art: false,
         title_fallback: MediaTitleFallback::Identity,
         position_format: MediaPositionFormat::Fraction,
         source_aliases: BTreeMap::new(),
     }
+}
+
+#[test]
+fn missing_metadata_can_collapse_without_hiding_real_values() {
+    let mut display = display();
+    display.collapse_missing_artist = true;
+    display.collapse_missing_art = true;
+
+    assert_eq!(artist_text_for("", &display), None);
+    assert_eq!(artist_text_for("Boards", &display), Some("Boards"));
+    assert!(!art_slot_visible(false, &display));
+    assert!(art_slot_visible(true, &display));
+}
+
+#[test]
+fn stable_metadata_lanes_reserve_space_by_default() {
+    let display = display();
+
+    assert_eq!(artist_text_for("", &display), Some(" "));
+    assert!(art_slot_visible(false, &display));
 }
 
 #[test]

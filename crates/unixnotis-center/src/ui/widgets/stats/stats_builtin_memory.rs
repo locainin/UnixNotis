@@ -1,6 +1,6 @@
-//! Memory reader helpers for builtin stats.
+//! Memory reader helpers for builtin stats
 //!
-//! Parses /proc/meminfo and formats used/total in GiB.
+//! Parses /proc/meminfo and formats used/total in GiB
 
 use std::fs;
 
@@ -24,5 +24,5 @@ pub(super) fn read_memory() -> Option<String> {
     let total = total_kb? as f64 / 1024.0 / 1024.0;
     let avail = avail_kb? as f64 / 1024.0 / 1024.0;
     let used = (total - avail).max(0.0);
-    Some(format!("{:.1}/{:.1} GB", used, total))
+    Some(format!("{used:.1}/{total:.1} GB"))
 }

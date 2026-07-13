@@ -22,7 +22,7 @@ impl CardItem {
                     self.last_calendar_day.set(Some(date_key));
                 }
                 let delay = next_local_midnight_delay(&now)
-                    .unwrap_or_else(|| base_interval.max(Duration::from_secs(60)));
+                    .unwrap_or_else(|| base_interval.max(Duration::from_mins(1)));
                 // Store an absolute instant so the scheduler can use one-shot wakeups
                 self.calendar_next_due.set(Some(Instant::now() + delay));
             }
@@ -53,7 +53,7 @@ pub(super) fn next_local_midnight_delay(now: &glib::DateTime) -> Option<Duration
     let midnight_unix = midnight.to_unix();
     let seconds = midnight_unix.checked_sub(now_unix)?;
     if seconds <= 0 {
-        return Some(Duration::from_secs(60));
+        return Some(Duration::from_mins(1));
     }
     Some(Duration::from_secs(seconds as u64))
 }

@@ -7,7 +7,7 @@ use unixnotis_core::hooks;
 
 use crate::ui::icons::IconResolver;
 
-use super::test_support::{notification_row, row_data, sample_notification};
+use super::test_support::{notification_row, row_data, sample_notification, RowFlags};
 use super::update::{notification_has_thumbnail, update_notification_row};
 
 #[test]
@@ -25,7 +25,13 @@ fn update_notification_row_hides_optional_text_and_thumbnail_when_absent() {
     let mut notification = sample_notification();
     notification.summary = "   ".to_string();
     notification.body.clear();
-    let data = row_data(Rc::new(notification), false, false, 0, false, true);
+    let data = row_data(
+        Rc::new(notification),
+        RowFlags {
+            show_thumbnail: true,
+            ..Default::default()
+        },
+    );
     let (command_tx, _rx) = tokio::sync::mpsc::channel(4);
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
@@ -42,7 +48,13 @@ fn update_notification_row_shows_thumbnail_when_config_and_image_allow_it() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();
     notification.image.image_path = "/tmp/demo.png".to_string();
-    let data = row_data(Rc::new(notification), false, false, 0, false, true);
+    let data = row_data(
+        Rc::new(notification),
+        RowFlags {
+            show_thumbnail: true,
+            ..Default::default()
+        },
+    );
     let (command_tx, _rx) = tokio::sync::mpsc::channel(4);
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);

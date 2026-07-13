@@ -1,4 +1,4 @@
-//! Widget module wiring and shared exports for the center panel.
+//! Widget module wiring and shared exports for the center panel
 
 pub mod brightness;
 pub mod cards;
@@ -15,6 +15,6 @@ pub mod volume;
 // Re-export keeps existing call sites stable while internals stay modular
 pub use utils::CommandSlider;
 
-pub(crate) fn configure_command_config_dir(config_dir: std::path::PathBuf) {
+pub fn configure_command_config_dir(config_dir: std::path::PathBuf) {
     utils::configure_command_config_dir(config_dir);
 }

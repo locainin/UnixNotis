@@ -1,7 +1,7 @@
 use crate::media::MediaInfo;
 
 #[derive(Clone, Default)]
-pub(crate) struct MediaSelectionSnapshot {
+pub struct MediaSelectionSnapshot {
     // The last player list is kept so a rebuilt shell can paint immediately
     pub(super) players: Vec<MediaInfo>,
     // The current bus name keeps the same player selected after a rebuild
@@ -9,7 +9,7 @@ pub(crate) struct MediaSelectionSnapshot {
 }
 
 impl MediaSelectionSnapshot {
-    pub(crate) fn is_empty(&self) -> bool {
+    pub(crate) const fn is_empty(&self) -> bool {
         // Empty snapshots mean there is nothing useful to restore
         self.players.is_empty()
     }
@@ -52,7 +52,7 @@ impl MediaSelection {
         }
     }
 
-    pub(super) fn next(&mut self) {
+    pub(super) const fn next(&mut self) {
         if self.players.len() <= 1 {
             // Single-player snapshots do not need a moving cursor
             return;
@@ -61,7 +61,7 @@ impl MediaSelection {
         self.current_index = (self.current_index + 1) % self.players.len();
     }
 
-    pub(super) fn prev(&mut self) {
+    pub(super) const fn prev(&mut self) {
         if self.players.len() <= 1 {
             // Single-player snapshots do not need a moving cursor
             return;
@@ -74,12 +74,12 @@ impl MediaSelection {
         }
     }
 
-    pub(super) fn has_multiple(&self) -> bool {
+    pub(super) const fn has_multiple(&self) -> bool {
         // The nav buttons and counter badge both key off this one check
         self.players.len() > 1
     }
 
-    pub(super) fn position(&self) -> (usize, usize) {
+    pub(super) const fn position(&self) -> (usize, usize) {
         if self.players.is_empty() {
             return (0, 0);
         }

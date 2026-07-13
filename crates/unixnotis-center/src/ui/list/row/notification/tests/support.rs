@@ -31,25 +31,27 @@ pub(super) fn notification_row() -> (gtk::Box, NotificationRowWidgets) {
     build_notification_row(command_tx)
 }
 
-pub(super) fn row_data(
-    notification: Rc<NotificationView>,
-    is_active: bool,
-    stacked: bool,
-    stack_depth: u8,
-    show_metadata: bool,
-    show_thumbnail: bool,
-) -> RowData {
+#[derive(Default)]
+pub(super) struct RowFlags {
+    pub(super) is_active: bool,
+    pub(super) stacked: bool,
+    pub(super) stack_depth: u8,
+    pub(super) show_metadata: bool,
+    pub(super) show_thumbnail: bool,
+}
+
+pub(super) fn row_data(notification: Rc<NotificationView>, flags: RowFlags) -> RowData {
     RowData::notification(
         Rc::from(notification.app_name.to_ascii_lowercase()),
         notification,
-        stacked,
-        stack_depth,
+        flags.stacked,
+        flags.stack_depth,
         false,
-        is_active,
+        flags.is_active,
         RowPresentation {
             received_at_ms: current_millis(),
-            show_metadata,
-            show_thumbnail,
+            show_metadata: flags.show_metadata,
+            show_thumbnail: flags.show_thumbnail,
         },
     )
 }

@@ -1,13 +1,11 @@
-//! Config reload and widget rebuild logic for `UiState`.
+//! Config reload and widget rebuild logic for `UiState`
 //!
 //! Keeps dynamic configuration changes isolated from event handling and
-//! visibility logic.
+//! visibility logic
 
 use gtk::prelude::*;
 use tracing::debug;
-use unixnotis_core::{
-    css::hooks, Config, PanelClearButtonPlacement, PanelDebugLevel, PanelWidgetSection, ThemePaths,
-};
+use unixnotis_core::{css::hooks, Config, PanelDebugLevel, PanelWidgetSection, ThemePaths};
 
 use super::list;
 use super::panel::notification_header_row_visible;
@@ -74,12 +72,12 @@ impl UiState {
     fn apply_reloaded_theme(&mut self, reload: &ReloadInputs) {
         self.css
             .update_theme(reload.theme_paths.clone(), reload.config.theme.clone());
-        self.css.reload(unixnotis_ui::css::DEFAULT_CSS);
+        let _ = self.css.reload(unixnotis_ui::css::DEFAULT_CSS);
         // New theme assets may replace old cache misses, so clear the miss cache now
         self.icon_resolver.clear_missing_cache();
     }
 
-    fn apply_reloaded_panel(&mut self, config: &Config) {
+    pub(in crate::ui) fn apply_reloaded_panel(&mut self, config: &Config) {
         // Geometry goes first so later sections can size themselves from the final panel width
         panel::apply_panel_config(&self.panel, config, self.work_area);
         self.panel.header_title.set_label(&config.panel.title);
@@ -132,7 +130,12 @@ impl UiState {
             .set_vexpand(config.panel.notification_list_expand);
         panel::apply_reloaded_body_order(&self.panel, &config.panel.section_order);
         self.apply_widget_order(&config.panel.widget_order);
-        self.update_clear_button_visibility(config);
+        panel::apply_widget_density(
+            &self.panel.widget_stack,
+            &self.panel.quick_controls,
+            &self.panel.media_container,
+            config.widgets.density,
+        );
         self.panel
             .footer_label
             .set_label(&config.panel.footer_label);
@@ -142,17 +145,6 @@ impl UiState {
         self.log_debug(PanelDebugLevel::Info, || {
             "panel config applied after reload".to_string()
         });
-    }
-
-    fn update_clear_button_visibility(&self, config: &Config) {
-        self.panel.clear_action_button.set_visible(matches!(
-            config.panel.clear_button_placement,
-            PanelClearButtonPlacement::ActionRow
-        ));
-        self.panel.clear_header_button.set_visible(matches!(
-            config.panel.clear_button_placement,
-            PanelClearButtonPlacement::NotificationHeader
-        ));
     }
 
     fn update_section_header(&self, header: &gtk::Label, label: &str) {
@@ -187,7 +179,7 @@ impl UiState {
         }
     }
 
-    fn apply_list_config_after_reload(&mut self, config: &Config) {
+    pub(in crate::ui) fn apply_list_config_after_reload(&mut self, config: &Config) {
         let list_config = list::NotificationListConfig {
             max_active: config.history.max_active,
             max_entries: config.history.max_entries,
@@ -196,9 +188,9 @@ impl UiState {
             show_notification_thumbnails: config.panel.notification_thumbnails_visible,
             empty_text: config.panel.empty_text.clone(),
             empty_offset_top: config.panel.empty_offset_top,
+            empty_alignment: config.panel.empty_alignment,
         };
-        let has_widgets = !self.widgets_collapsed && self.has_any_widgets();
-        self.list.apply_config(&list_config, has_widgets);
+        self.list.apply_config(&list_config);
         self.set_widgets_collapsed(self.widgets_collapsed);
     }
 

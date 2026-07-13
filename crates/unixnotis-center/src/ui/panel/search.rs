@@ -3,7 +3,7 @@
 use gtk::prelude::*;
 use unixnotis_core::{css::hooks, PanelConfig};
 
-pub(crate) const SEARCH_REVEAL_TRANSITION_MS: u64 = 180;
+pub const SEARCH_REVEAL_TRANSITION_MS: u64 = 180;
 
 pub(super) struct PanelSearchWidgets {
     pub(super) revealer: gtk::Revealer,

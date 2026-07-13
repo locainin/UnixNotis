@@ -10,7 +10,7 @@ fn unique_temp_path(label: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    path.push(format!("unixnotis-css-check-{}-{}-{}", pid, nanos, label));
+    path.push(format!("unixnotis-css-check-{pid}-{nanos}-{label}"));
     path
 }
 

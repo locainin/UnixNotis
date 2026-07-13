@@ -35,7 +35,7 @@ pub(super) fn request_refresh(
         perf_probe::slider_refresh_queued();
         let cmd_snip = util::log_snippet(&request.cmd);
         debug::log(PanelDebugLevel::Verbose, || {
-            format!("slider refresh queued while in flight cmd=\"{}\"", cmd_snip)
+            format!("slider refresh queued while in flight cmd=\"{cmd_snip}\"")
         });
         return;
     }
@@ -43,7 +43,7 @@ pub(super) fn request_refresh(
     perf_probe::slider_refresh_start();
     let cmd_snip = util::log_snippet(&request.cmd);
     debug::log(PanelDebugLevel::Verbose, || {
-        format!("slider refresh start cmd=\"{}\"", cmd_snip)
+        format!("slider refresh start cmd=\"{cmd_snip}\"")
     });
     start_refresh(request, refresh, base_interval);
 }
@@ -107,10 +107,7 @@ fn finish_refresh(
     if refresh.gate.finish() {
         let cmd_snip = util::log_snippet(&request.cmd);
         debug::log(PanelDebugLevel::Verbose, || {
-            format!(
-                "slider refresh consumed pending request cmd=\"{}\"",
-                cmd_snip
-            )
+            format!("slider refresh consumed pending request cmd=\"{cmd_snip}\"")
         });
         request_refresh(request, refresh, base_interval, true);
     }

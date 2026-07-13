@@ -1,9 +1,3 @@
-#![allow(
-    clippy::nursery,
-    clippy::pedantic,
-    reason = "pedantic and nursery cleanup is tracked incrementally across existing code"
-)]
-
 //! CSS validator used by the center during hot reloads
 
 use std::env;
@@ -47,12 +41,9 @@ fn partition_existing_paths(
 fn main() -> Result<()> {
     gtk::init().context("initialize gtk")?;
 
-    let args = match parse_args(env::args().skip(1)) {
-        Some(paths) => paths,
-        None => {
-            eprintln!("{USAGE}");
-            std::process::exit(2);
-        }
+    let Some(args) = parse_args(env::args().skip(1)) else {
+        eprintln!("{USAGE}");
+        std::process::exit(2);
     };
 
     let error_count = Arc::new(AtomicUsize::new(0));
@@ -64,8 +55,7 @@ fn main() -> Result<()> {
         let file = section
             .file()
             .and_then(|file| file.path())
-            .map(|path| path.display().to_string())
-            .unwrap_or_else(|| "<data>".to_string());
+            .map_or_else(|| "<data>".to_string(), |path| path.display().to_string());
         eprintln!(
             "css error: {}:{}:{}: {}",
             file,

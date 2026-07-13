@@ -7,7 +7,7 @@ use unixnotis_core::{hooks, Action, Urgency};
 
 use crate::ui::icons::IconResolver;
 
-use super::test_support::{notification_row, row_data, sample_notification};
+use super::test_support::{notification_row, row_data, sample_notification, RowFlags};
 use super::update::update_notification_row;
 
 #[gtk::test]
@@ -16,7 +16,15 @@ fn update_notification_row_applies_state_classes_and_text() {
     let mut notification = sample_notification();
     notification.urgency = Urgency::Critical as u8;
     let notification = Rc::new(notification);
-    let data = row_data(notification, true, true, 2, false, false);
+    let data = row_data(
+        notification,
+        RowFlags {
+            is_active: true,
+            stacked: true,
+            stack_depth: 2,
+            ..Default::default()
+        },
+    );
     let (command_tx, _rx) = tokio::sync::mpsc::channel(4);
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
@@ -44,7 +52,14 @@ fn update_notification_row_shows_metadata_lanes_and_footer_state() {
         key: "open".to_string(),
         label: "Open".to_string(),
     }];
-    let data = row_data(Rc::new(notification), false, false, 0, true, true);
+    let data = row_data(
+        Rc::new(notification),
+        RowFlags {
+            show_metadata: true,
+            show_thumbnail: true,
+            ..Default::default()
+        },
+    );
     let (command_tx, _rx) = tokio::sync::mpsc::channel(4);
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);

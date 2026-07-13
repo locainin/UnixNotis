@@ -161,7 +161,7 @@ pub(in crate::ui::list) fn build_notification_row(
 
     let notify_id = Rc::new(Cell::new(0));
     // Close click always targets the latest id assigned to this row
-    let close_tx = command_tx.clone();
+    let close_tx = command_tx;
     let notify_id_clone = notify_id.clone();
     close_button.connect_clicked(move |_| {
         let id = notify_id_clone.get();

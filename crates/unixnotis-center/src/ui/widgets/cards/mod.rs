@@ -104,15 +104,14 @@ impl CardItem {
         let last_value = self.last_value.clone();
         let refresh_backoff = self.refresh_backoff.clone();
         glib::MainContext::default().spawn_local(async move {
-            let output = match rx.recv().await {
-                Ok(output) => output,
-                Err(_) => {
-                    inflight.set(false);
-                    refresh_backoff
-                        .borrow_mut()
-                        .note_error(Instant::now(), base_interval);
-                    return;
-                }
+            let output = if let Ok(output) = rx.recv().await {
+                output
+            } else {
+                inflight.set(false);
+                refresh_backoff
+                    .borrow_mut()
+                    .note_error(Instant::now(), base_interval);
+                return;
             };
             inflight.set(false);
             let output = match output {
@@ -189,15 +188,14 @@ impl CardItem {
         let last_value = self.last_value.clone();
         let refresh_backoff = self.refresh_backoff.clone();
         glib::MainContext::default().spawn_local(async move {
-            let output = match rx.recv().await {
-                Ok(output) => output,
-                Err(_) => {
-                    inflight.set(false);
-                    refresh_backoff
-                        .borrow_mut()
-                        .note_error(Instant::now(), base_interval);
-                    return;
-                }
+            let output = if let Ok(output) = rx.recv().await {
+                output
+            } else {
+                inflight.set(false);
+                refresh_backoff
+                    .borrow_mut()
+                    .note_error(Instant::now(), base_interval);
+                return;
             };
             inflight.set(false);
             let output = match output {
@@ -236,12 +234,12 @@ impl CardItem {
                     title_label.set_text(title);
                 }
             }
-            let changed = if last_value.borrow().as_deref() != Some(parsed.text.as_str()) {
+            let changed = if last_value.borrow().as_deref() == Some(parsed.text.as_str()) {
+                false
+            } else {
                 body_label.set_text(&parsed.text);
                 *last_value.borrow_mut() = Some(parsed.text);
                 true
-            } else {
-                false
             };
             refresh_backoff
                 .borrow_mut()

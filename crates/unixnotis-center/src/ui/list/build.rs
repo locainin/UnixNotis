@@ -62,9 +62,9 @@ impl NotificationList {
             set_row_widgets(gtk_item, Rc::new(widgets));
         });
 
-        let command_tx_clone = command_tx.clone();
-        let event_tx_clone = event_tx.clone();
-        let icon_resolver_clone = icon_resolver.clone();
+        let command_tx_clone = command_tx;
+        let event_tx_clone = event_tx;
+        let icon_resolver_clone = icon_resolver;
         factory.connect_bind(move |_, gtk_item| {
             let Some(row_item) = gtk_item.item().and_downcast::<super::item::RowItem>() else {
                 return;
@@ -93,6 +93,7 @@ impl NotificationList {
             store,
             empty_overlay,
             empty_offset_top: config.empty_offset_top,
+            empty_alignment: config.empty_alignment,
             empty_text: config.empty_text,
             entries: std::collections::HashMap::new(),
             active_order: std::collections::VecDeque::new(),
@@ -121,7 +122,7 @@ impl NotificationList {
         }
     }
 
-    pub fn apply_config(&mut self, config: &NotificationListConfig, has_widgets: bool) {
+    pub fn apply_config(&mut self, config: &NotificationListConfig) {
         // Future close handling should use the latest runtime policy
         self.transient_to_history = config.transient_to_history;
         let presentation_changed = self.show_notification_metadata
@@ -136,7 +137,7 @@ impl NotificationList {
         if self.empty_offset_top != config.empty_offset_top {
             self.empty_offset_top = config.empty_offset_top;
         }
-        self.set_empty_layout(has_widgets);
+        self.empty_alignment = config.empty_alignment;
         self.apply_limits(config.max_active, config.max_entries);
         if presentation_changed {
             // Existing rows need fresh RowData so optional lanes hide or show immediately
@@ -145,23 +146,33 @@ impl NotificationList {
     }
 
     pub fn set_empty_layout(&self, has_widgets: bool) {
-        if has_widgets {
-            // When widgets are visible, align the empty state beneath them
-            if self.empty_overlay.valign() != Align::Start {
-                self.empty_overlay.set_valign(Align::Start);
-            }
-            if self.empty_overlay.margin_top() != self.empty_offset_top {
-                self.empty_overlay.set_margin_top(self.empty_offset_top);
-            }
-        } else {
-            // When no widgets are visible, center the empty state in the list area
-            if self.empty_overlay.valign() != Align::Center {
-                self.empty_overlay.set_valign(Align::Center);
-            }
-            if self.empty_overlay.margin_top() != 0 {
-                self.empty_overlay.set_margin_top(0);
-            }
+        let alignment = resolve_empty_alignment(self.empty_alignment, has_widgets);
+        if self.empty_overlay.valign() != alignment {
+            self.empty_overlay.set_valign(alignment);
         }
+        // A top offset is meaningful only when the label starts at the top edge
+        let margin_top = if alignment == Align::Start {
+            self.empty_offset_top
+        } else {
+            0
+        };
+        if self.empty_overlay.margin_top() != margin_top {
+            self.empty_overlay.set_margin_top(margin_top);
+        }
+    }
+}
+
+const fn resolve_empty_alignment(
+    alignment: unixnotis_core::EmptyStateAlignment,
+    has_widgets: bool,
+) -> Align {
+    use unixnotis_core::EmptyStateAlignment;
+
+    match alignment {
+        EmptyStateAlignment::Auto if has_widgets => Align::Start,
+        EmptyStateAlignment::Auto | EmptyStateAlignment::Center => Align::Center,
+        EmptyStateAlignment::Start => Align::Start,
+        EmptyStateAlignment::End => Align::End,
     }
 }
 

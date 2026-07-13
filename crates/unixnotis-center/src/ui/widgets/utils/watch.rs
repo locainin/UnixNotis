@@ -1,4 +1,4 @@
-//! Watcher lifecycle helpers for long-running widget commands.
+//! Watcher lifecycle helpers for long-running widget commands
 
 use std::io::{self, BufRead};
 use std::process::Child;
@@ -27,7 +27,7 @@ pub(in crate::ui::widgets) struct CommandWatch {
     thread: Option<std::thread::JoinHandle<()>>,
     // GTK-side debounce task for event coalescing
     task: Option<glib::JoinHandle<()>>,
-    // Tracks whether the watch process is still emitting events.
+    // Tracks whether the watch process is still emitting events
     active: Arc<AtomicBool>,
 }
 
@@ -77,24 +77,23 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
         }
     };
 
-    let stdout = match child.stdout.take() {
-        Some(stdout) => stdout,
-        None => {
-            let snippet = util::log_snippet(cmd);
-            warn!(command = %snippet, "watch command missing stdout");
-            let _ = child.kill();
-            let _ = child.wait();
-            return None;
-        }
+    let stdout = if let Some(stdout) = child.stdout.take() {
+        stdout
+    } else {
+        let snippet = util::log_snippet(cmd);
+        warn!(command = %snippet, "watch command missing stdout");
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
     };
 
-    // Single-slot channel coalesces bursts from noisy watch commands.
+    // Single-slot channel coalesces bursts from noisy watch commands
     let (tx, rx) = async_channel::bounded::<()>(1);
     let on_event = Rc::new(on_event);
     let debounce = Duration::from_millis(120);
     let active = Arc::new(AtomicBool::new(true));
     let task = glib::MainContext::default().spawn_local({
-        let on_event = on_event.clone();
+        let on_event = on_event;
         let cmd = cmd_string.clone();
         async move {
             // Debounce loop coalesces bursts into fewer refresh callbacks
@@ -102,7 +101,7 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
                 loop {
                     glib::timeout_future(debounce).await;
                     match rx.try_recv() {
-                        Ok(_) => while rx.try_recv().is_ok() {},
+                        Ok(()) => while rx.try_recv().is_ok() {},
                         Err(TryRecvError::Empty) => break,
                         Err(TryRecvError::Closed) => return,
                     }
@@ -134,8 +133,8 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
                 events += 1;
                 match tx.try_send(()) {
                     Ok(()) => {}
-                    Err(TrySendError::Full(_)) => {}
-                    Err(TrySendError::Closed(_)) => break,
+                    Err(TrySendError::Full(())) => {}
+                    Err(TrySendError::Closed(())) => break,
                 }
             }
             active.store(false, Ordering::Release);
@@ -168,20 +167,20 @@ fn should_emit_watch_event(cmd: &str, line: &str) -> bool {
         return false;
     }
 
-    // pactl subscribe emits events for all server activity; filter to sink/server changes.
+    // pactl subscribe emits events for all server activity; filter to sink/server changes
     if cmd.starts_with("pactl subscribe") {
         let line = line.to_ascii_lowercase();
         return contains_token(&line, " on sink") || contains_token(&line, " on server");
     }
     if cmd.starts_with("nmcli") && cmd.contains(" monitor") {
-        // nmcli prints a startup status line before real NetworkManager events.
+        // nmcli prints a startup status line before real NetworkManager events
         return !matches!(
             line,
             "NetworkManager is running" | "NetworkManager is not running"
         );
     }
     if cmd.starts_with("udevadm monitor") {
-        // udevadm prints a banner describing the monitored source before events arrive.
+        // udevadm prints a banner describing the monitored source before events arrive
         return !line.starts_with("monitor will print the received events for:");
     }
     if cmd.starts_with("dbus-monitor") {
@@ -207,7 +206,7 @@ fn is_dbus_monitor_startup_lifecycle(line: &str) -> bool {
 }
 
 fn contains_token(line: &str, token: &str) -> bool {
-    // Ensure the token is followed by whitespace or end-of-line to avoid matching "sink-input".
+    // Ensure the token is followed by whitespace or end-of-line to avoid matching "sink-input"
     let Some(index) = line.find(token) else {
         return false;
     };

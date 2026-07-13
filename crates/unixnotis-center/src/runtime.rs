@@ -28,7 +28,7 @@ struct ReloadGate {
 }
 
 impl ReloadGate {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             css_pending: AtomicBool::new(false),
             config_pending: AtomicBool::new(false),
@@ -133,7 +133,7 @@ fn start_reload_timer(
     *timer_guard = Some(source_id);
 }
 
-pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: ThemePaths) {
+pub fn run_center(config: Config, config_path: PathBuf, theme_paths: ThemePaths) {
     let app = gtk::Application::new(Some("com.unixnotis.Center"), Default::default());
 
     // Activation can fire more than once in one process
@@ -182,12 +182,12 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
             dbus::start_dbus_task(runtime.handle(), connection.clone(), event_tx.clone());
 
         let css_manager = css::CssManager::new_panel(theme_paths.clone(), config.theme.clone());
-        css_manager.apply_to_display();
-        css_manager.reload(css::DEFAULT_CSS);
+        let _ = css_manager.apply_to_display();
+        let _ = css_manager.reload(css::DEFAULT_CSS);
 
         let media_handle = media::start_media_task(
             runtime.handle(),
-            connection.clone(),
+            connection,
             config.media.clone(),
             event_tx.clone(),
         );
@@ -200,10 +200,10 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
             css: css_manager,
             event_tx: event_tx.clone(),
             media_handle,
-            runtime: runtime.clone(),
+            runtime,
         })));
 
-        let ui_clone = ui.clone();
+        let ui_clone = ui;
         let reload_gate_loop = Arc::clone(&reload_gate);
         let event_tx_loop = event_tx.clone();
         let rebuild_source: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
@@ -242,7 +242,7 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
             }
         });
 
-        css::start_css_watcher(&theme_paths, CssKind::Panel, {
+        if let Err(err) = css::start_css_watcher(&theme_paths, CssKind::Panel, {
             let event_tx = event_tx.clone();
             let reload_gate = Arc::clone(&reload_gate);
             let reload_timer = Arc::clone(&reload_timer);
@@ -256,10 +256,12 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
                     });
                 }
             }
-        });
+        }) {
+            warn!(?err, "failed to start panel css watcher");
+        }
 
-        css::start_config_watcher(config_path.clone(), {
-            let event_tx = event_tx.clone();
+        if let Err(err) = css::start_config_watcher(&config_path, {
+            let event_tx = event_tx;
             let reload_gate = Arc::clone(&reload_gate);
             let reload_timer = Arc::clone(&reload_timer);
             move || {
@@ -272,7 +274,9 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
                     });
                 }
             }
-        });
+        }) {
+            warn!(?err, "failed to start panel config watcher");
+        }
 
         info!("unixnotis-center running");
     });

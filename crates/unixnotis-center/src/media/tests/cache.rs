@@ -11,7 +11,7 @@ fn make_info(
     MediaInfo {
         bus_name: bus_name.to_string(),
         identity: identity.to_string(),
-        browser_family: browser_family.map(|family| family.to_string()),
+        browser_family: browser_family.map(std::string::ToString::to_string),
         owner_pid: None,
         title: "title".to_string(),
         artist: "artist".to_string(),

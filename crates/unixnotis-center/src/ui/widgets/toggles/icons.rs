@@ -23,8 +23,8 @@ pub(super) fn resolve_toggle_icon_name(config: &ToggleWidgetConfig) -> String {
     // Kind is inferred once and reused across airplane overrides and fallbacks
     let kind = infer_toggle_icon_kind(config, requested);
 
-    // Prefer flightmode aliases for airplane when available.
-    // Several icon themes provide better airplane visuals under these names.
+    // Prefer flightmode aliases for airplane when available
+    // Several icon themes provide better airplane visuals under these names
     if kind == ToggleIconKind::Airplane {
         if let Some(preferred) = preferred_airplane_icon_name(requested, &theme) {
             return preferred;
@@ -165,7 +165,7 @@ fn preferred_airplane_icon_name(requested: &str, theme: &gtk::IconTheme) -> Opti
     None
 }
 
-fn toggle_icon_fallbacks(kind: ToggleIconKind) -> &'static [&'static str] {
+const fn toggle_icon_fallbacks(kind: ToggleIconKind) -> &'static [&'static str] {
     // Keep candidate ordering deterministic so icon selection remains predictable
     match kind {
         ToggleIconKind::Wifi => &[
@@ -226,7 +226,7 @@ fn toggle_icon_fallbacks(kind: ToggleIconKind) -> &'static [&'static str] {
     }
 }
 
-fn common_icon_fallbacks() -> &'static [&'static str] {
+const fn common_icon_fallbacks() -> &'static [&'static str] {
     &[
         // Generic symbols prevent missing-icon placeholders when kind-specific names are absent
         "applications-system-symbolic",
