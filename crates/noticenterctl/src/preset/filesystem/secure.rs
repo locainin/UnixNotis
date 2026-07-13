@@ -16,7 +16,7 @@ use super::super::pathing::normalize_relative_path;
 
 const BACKUP_PREFIX: &str = "Backup-";
 
-pub(crate) fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
+pub fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
     let mut current_fd = if path.is_absolute() {
         // Start from the real filesystem root so each later segment is opened under a stable dir fd
         openat2(
@@ -59,7 +59,7 @@ pub(crate) fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
     Ok(current_fd)
 }
 
-pub(crate) fn read_relative_file_secure(
+pub fn read_relative_file_secure(
     root_dir: &OwnedFd,
     relative_path: &Path,
 ) -> Result<(Vec<u8>, u32)> {
@@ -94,7 +94,7 @@ pub(crate) fn read_relative_file_secure(
     Ok((contents, metadata.permissions().mode()))
 }
 
-pub(crate) fn write_relative_file_atomic_secure(
+pub fn write_relative_file_atomic_secure(
     root_dir: &OwnedFd,
     relative_path: &Path,
     contents: &[u8],
@@ -109,7 +109,7 @@ pub(crate) fn write_relative_file_atomic_secure(
         .duration_since(UNIX_EPOCH)
         .expect("clock moved backwards")
         .as_nanos();
-    let temp_name = format!(".{}.{}.tmp", file_name, stamp);
+    let temp_name = format!(".{file_name}.{stamp}.tmp");
     let temp_fd = openat2(
         &parent_fd,
         temp_name.as_str(),
@@ -148,7 +148,7 @@ pub(crate) fn write_relative_file_atomic_secure(
     Ok(())
 }
 
-pub(crate) fn remove_relative_file_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
+pub fn remove_relative_file_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
     // Deletes reuse the same secure parent lookup so a raced path cannot redirect the unlink
     let relative_path = normalize_relative_path(relative_path)?;
     let (parent_fd, file_name) = open_or_create_parent_dir(root_dir, &relative_path)?;
@@ -157,7 +157,7 @@ pub(crate) fn remove_relative_file_secure(root_dir: &OwnedFd, relative_path: &Pa
     Ok(())
 }
 
-pub(crate) fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, OwnedFd)> {
+pub fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, OwnedFd)> {
     // Backup names match the rest of the project, but creation stays pinned to the secure root fd
     let stamp = Local::now().format("%Y-%m-%d").to_string();
 
@@ -178,7 +178,7 @@ pub(crate) fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, O
                     Mode::empty(),
                     secure_resolve_flags(),
                 )
-                .with_context(|| format!("open secure backup directory {}", dir_name))?;
+                .with_context(|| format!("open secure backup directory {dir_name}"))?;
                 return Ok((PathBuf::from(dir_name), dir_fd));
             }
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -187,7 +187,7 @@ pub(crate) fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, O
             }
             Err(err) => {
                 return Err(err)
-                    .with_context(|| format!("create secure backup directory {}", dir_name))
+                    .with_context(|| format!("create secure backup directory {dir_name}"))
             }
         }
     }
@@ -195,10 +195,7 @@ pub(crate) fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, O
     unreachable!("backup directory generation should always return or fail")
 }
 
-pub(crate) fn remove_empty_relative_dirs_secure(
-    root_dir: &OwnedFd,
-    relative_path: &Path,
-) -> Result<()> {
+pub fn remove_empty_relative_dirs_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
     // Cleanup walks upward from the deepest parent until one directory is still needed
     let relative_path = normalize_relative_path(relative_path)?;
     let mut current: Option<PathBuf> = relative_path.parent().map(Path::to_path_buf);
@@ -232,7 +229,7 @@ pub(crate) fn remove_empty_relative_dirs_secure(
     Ok(())
 }
 
-pub(crate) fn remove_relative_dir_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
+pub fn remove_relative_dir_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
     // Snapshot-root cleanup happens last, after every nested file has already been removed
     let relative_path = normalize_relative_path(relative_path)?;
     unlinkat(root_dir, &relative_path, AtFlags::REMOVEDIR)
@@ -329,6 +326,6 @@ fn secure_anchor_resolve_flags() -> ResolveFlags {
     ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS
 }
 
-fn mode_from_bits(mode: u32) -> Mode {
+const fn mode_from_bits(mode: u32) -> Mode {
     Mode::from_raw_mode(mode)
 }

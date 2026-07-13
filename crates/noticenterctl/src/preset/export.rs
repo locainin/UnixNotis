@@ -1,4 +1,4 @@
-//! Preset export flow for the live UnixNotis config tree
+//! Preset export flow for the live `UnixNotis` config tree
 //!
 //! Export reads the active config root, applies explicit exclusions,
 //! rejects host-specific escape paths, and writes one shareable bundle file
@@ -6,6 +6,7 @@
 mod checks;
 mod prompts;
 #[cfg(test)]
+#[path = "export/tests/cases.rs"]
 mod tests;
 
 use anyhow::{anyhow, Context, Result};

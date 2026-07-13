@@ -11,7 +11,7 @@ use super::tokens::{
 };
 use super::{HostSpecificCommandPath, OutsideCommandPath};
 
-pub(crate) fn collect_outside_command_paths(
+pub fn collect_outside_command_paths(
     config_dir: &Path,
     config: &Config,
 ) -> Vec<OutsideCommandPath> {
@@ -48,7 +48,7 @@ pub(crate) fn collect_outside_command_paths(
         .collect()
 }
 
-pub(crate) fn collect_host_specific_command_paths(
+pub fn collect_host_specific_command_paths(
     config_dir: &Path,
     config: &Config,
 ) -> Vec<HostSpecificCommandPath> {
@@ -76,7 +76,7 @@ pub(crate) fn collect_host_specific_command_paths(
         .collect()
 }
 
-pub(crate) fn validate_config_command_paths_stay_in_root(
+pub fn validate_config_command_paths_stay_in_root(
     config_dir: &Path,
     config: &Config,
     mode_label: &str,
@@ -104,7 +104,7 @@ pub(crate) fn validate_config_command_paths_stay_in_root(
     ))
 }
 
-pub(crate) fn validate_command_paths_in_config_bytes(
+pub fn validate_command_paths_in_config_bytes(
     config_dir: &Path,
     config_bytes: &[u8],
     mode_label: &str,

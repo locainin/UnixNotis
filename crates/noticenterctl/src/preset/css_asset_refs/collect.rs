@@ -59,7 +59,7 @@ pub(in crate::preset) fn collect_external_css_asset_refs_from_collected(
     Ok(refs)
 }
 
-pub(crate) fn collect_external_css_asset_refs_from_paths(
+pub fn collect_external_css_asset_refs_from_paths(
     config_dir: &Path,
     css_paths: &[PathBuf],
 ) -> Result<Vec<ExternalCssAssetRef>> {

@@ -6,7 +6,7 @@ use super::checks::collect_host_specific_command_paths;
 use super::tokens::rewrite_command_to_config_relative;
 use super::HostSpecificCommandPath;
 
-pub(crate) fn rewrite_host_specific_command_paths(
+pub fn rewrite_host_specific_command_paths(
     config_dir: &Path,
     config: &mut Config,
 ) -> Vec<HostSpecificCommandPath> {

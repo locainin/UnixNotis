@@ -2,7 +2,7 @@ use unixnotis_core::Config;
 
 use super::CommandReference;
 
-pub(crate) fn collect_command_references_from_config(config: &Config) -> Vec<CommandReference> {
+pub fn collect_command_references_from_config(config: &Config) -> Vec<CommandReference> {
     let mut commands = Vec::new();
 
     // Each widget family is collected separately so later checks can reason about real slot names

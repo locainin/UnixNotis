@@ -17,8 +17,7 @@ fn temp_root(name: &str) -> PathBuf {
         .as_nanos();
     let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
-        "unixnotis-preset-import-checks-{}-{}-{}",
-        name, stamp, serial
+        "unixnotis-preset-import-checks-{name}-{stamp}-{serial}"
     ))
 }
 

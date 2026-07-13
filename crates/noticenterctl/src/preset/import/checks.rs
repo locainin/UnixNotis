@@ -286,4 +286,5 @@ fn key_is_exec_slot(key: &str) -> bool {
 }
 
 #[cfg(test)]
+#[path = "checks/tests/cases.rs"]
 mod tests;
