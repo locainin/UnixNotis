@@ -1,16 +1,12 @@
-//! CSS loading, validation, and hot-reload support shared by UnixNotis UIs.
+//! CSS loading, validation, and hot-reload support shared by `UnixNotis` UIs
 
 // Split CSS responsibilities into focused modules to keep files readable
-#[path = "css/loader/root.rs"]
 mod loader;
-#[path = "css/manager/root.rs"]
 mod manager;
 #[cfg(test)]
 #[path = "css/tests/module_wiring.rs"]
 mod module_wiring_tests;
-#[path = "css/overrides.rs"]
 mod overrides;
-#[path = "css/watch.rs"]
 mod watch;
 
 pub use manager::{CssKind, CssManager};

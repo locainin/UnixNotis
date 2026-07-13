@@ -1,9 +1,3 @@
-#![allow(
-    clippy::nursery,
-    clippy::pedantic,
-    reason = "pedantic and nursery cleanup is tracked incrementally across existing code"
-)]
-
 use std::cell::Cell;
 use std::io::{self, Read};
 use std::process::ExitCode;

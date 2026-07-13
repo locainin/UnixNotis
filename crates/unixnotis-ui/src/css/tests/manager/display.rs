@@ -120,6 +120,16 @@ fn popup_manager_registers_base_and_popup_at_popup_priority() {
     );
 }
 
+#[gtk::test]
+fn public_panel_manager_reports_every_registered_provider() {
+    let manager = CssManager::new_panel(
+        theme_paths("/tmp/unixnotis-public-panel-css"),
+        ThemeConfig::default(),
+    );
+
+    assert_eq!(manager.apply_to_display(), 5);
+}
+
 #[test]
 fn provider_lookup_returns_only_layers_owned_by_the_manager() {
     let calls = Rc::new(RefCell::new(Vec::new()));

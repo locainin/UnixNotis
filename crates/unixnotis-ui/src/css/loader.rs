@@ -1,4 +1,4 @@
-//! CSS file loading helpers with fallback and override handling.
+//! CSS file loading helpers with fallback and override handling
 
 use std::fs;
 use std::path::Path;
@@ -13,8 +13,8 @@ use merge::merge_css_with_overrides;
 use tokens::ensure_base_tokens;
 use urls::rebase_relative_css_asset_urls;
 
-/// Load CSS into a provider, applying overrides and falling back to defaults.
-pub(crate) fn load_provider_with_overrides(
+/// Load CSS into a provider, applying overrides and falling back to defaults
+pub fn load_provider_with_overrides(
     load_css_data: impl Fn(&str),
     path: &Path,
     fallback: &str,
@@ -29,7 +29,7 @@ pub(crate) fn load_provider_with_overrides(
                 contents
             };
             if contents.trim().is_empty() {
-                // Empty files fall back to embedded defaults so windows stay styled.
+                // Empty files fall back to embedded defaults so windows stay styled
                 let merged = merge_css_with_overrides(fallback, fallback, overrides);
                 // Relative url(...) assets break when CSS is loaded from raw bytes,
                 // so rebase them against the stylesheet path before GTK sees the data
@@ -67,5 +67,5 @@ pub(crate) fn load_provider_with_overrides(
 }
 
 #[cfg(test)]
-#[path = "../tests/loader/provider.rs"]
+#[path = "tests/loader/provider.rs"]
 mod provider_tests;
