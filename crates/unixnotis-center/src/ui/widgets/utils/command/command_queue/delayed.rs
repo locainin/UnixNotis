@@ -26,8 +26,8 @@ pub(super) struct DelayedState {
 }
 
 pub(super) struct DelayedSlowQueue {
-    state: Mutex<DelayedState>,
-    wake: Condvar,
+    pub(super) state: Mutex<DelayedState>,
+    pub(super) wake: Condvar,
 }
 
 impl DelayedSlowQueue {
@@ -59,7 +59,10 @@ impl DelayedSlowQueue {
     pub(super) fn submit(&self, job: CommandJob, jitter: Duration) -> Result<(), CommandJob> {
         // Set the wake time before worker dispatch
         let ready_at = Instant::now() + jitter;
-        let mut state = self.state.lock().expect("delayed slow queue lock poisoned");
+        let Ok(mut state) = self.state.lock() else {
+            // A poisoned queue cannot safely accept ownership of another job
+            return Err(job);
+        };
         try_enqueue_delayed_job(&mut state, job, ready_at, DELAYED_SLOW_CAPACITY)?;
         self.wake.notify_one();
         Ok(())
