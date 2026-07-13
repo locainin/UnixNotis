@@ -42,7 +42,7 @@ pub fn start_active_window_watcher(
         // This path format is Hyprland-specific and derived from runtime_dir + instance signature
         let socket_path = format!("{runtime_dir}/hypr/{signature}/.socket2.sock");
         let warn_interval = Duration::from_secs(10);
-        let mut last_warn = Instant::now().checked_sub(warn_interval).unwrap();
+        let mut last_warn = retry_start_time(Instant::now(), warn_interval);
 
         // Outer loop: connect -> read until failure -> sleep -> reconnect
         // This makes the watcher resilient to Hyprland restarts, socket restarts, or transient errors
@@ -142,6 +142,11 @@ pub fn start_active_window_watcher(
     // Returning true indicates the watcher was successfully started (at least to the point of spawning the thread)
     // The thread itself will handle reconnect attempts and may still fail to connect if Hyprland isn't running
     true
+}
+
+fn retry_start_time(now: Instant, interval: Duration) -> Instant {
+    // Very large intervals cannot move before the platform clock origin
+    now.checked_sub(interval).unwrap_or(now)
 }
 
 /// Query Hyprland reserved work area for a specific output

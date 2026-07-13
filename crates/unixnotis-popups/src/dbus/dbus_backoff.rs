@@ -64,7 +64,8 @@ impl RetryLog {
 
     pub(crate) fn reset(&mut self) {
         // Allow the next failure after a success to warn right away
-        self.last_warn = Instant::now().checked_sub(self.interval).unwrap();
+        let now = Instant::now();
+        self.last_warn = now.checked_sub(self.interval).unwrap_or(now);
     }
 
     pub(crate) fn warn_or_debug<E: std::fmt::Debug>(&mut self, err: &E, message: &str) -> bool {
