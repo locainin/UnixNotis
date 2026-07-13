@@ -50,7 +50,10 @@ fn temp_bundle_path_uses_safe_fallback_for_empty_output_path() {
         .and_then(|value| value.to_str())
         .expect("temp path should have a file name");
     assert!(name.starts_with(".preset.unixnotis."));
-    assert!(name.ends_with(".tmp"));
+    assert_eq!(
+        temp_path.extension().and_then(|value| value.to_str()),
+        Some("tmp")
+    );
 }
 
 #[test]
@@ -62,5 +65,8 @@ fn temp_bundle_path_includes_non_empty_output_file_name() {
         .and_then(|value| value.to_str())
         .expect("temp path should have a file name");
     assert!(name.starts_with(".custom.unixnotis."));
-    assert!(name.ends_with(".tmp"));
+    assert_eq!(
+        temp_path.extension().and_then(|value| value.to_str()),
+        Some("tmp")
+    );
 }

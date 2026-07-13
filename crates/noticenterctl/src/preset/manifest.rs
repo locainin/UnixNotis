@@ -1,4 +1,4 @@
-//! Manifest types for shareable UnixNotis preset bundles
+//! Manifest types for shareable `UnixNotis` preset bundles
 //!
 //! The manifest is the stable metadata contract inside the bundle
 //! Archive layout can evolve later while this stays the simple source of truth

@@ -1,6 +1,6 @@
 //! Config-root helpers for preset export and import
 //!
-//! This module stays focused on the live UnixNotis config tree:
+//! This module stays focused on the live `UnixNotis` config tree:
 //! walking files for export and filtering out internal snapshot directories
 
 use anyhow::{anyhow, Context, Result};
@@ -193,6 +193,5 @@ fn is_backup_dir(relative_path: &Path) -> bool {
             Component::Normal(part) => Some(part.to_string_lossy()),
             _ => None,
         })
-        .map(|name| name.starts_with(BACKUP_PREFIX))
-        .unwrap_or(false)
+        .is_some_and(|name| name.starts_with(BACKUP_PREFIX))
 }

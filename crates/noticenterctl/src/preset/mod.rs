@@ -4,9 +4,9 @@
 //! so the local-only share flow stays separate from the D-Bus control path
 
 mod archive;
-pub(crate) mod command_rules;
+pub mod command_rules;
 mod config_root;
-pub(crate) mod css_asset_refs;
+pub mod css_asset_refs;
 mod export;
 mod filesystem;
 mod import;
@@ -22,7 +22,7 @@ use std::path::Path;
 
 use crate::cli::PresetCommand;
 
-pub(crate) fn run_preset(command: PresetCommand) -> Result<()> {
+pub fn run_preset(command: PresetCommand) -> Result<()> {
     // Preset commands stay local so sharing configs does not depend on a running daemon
     match command {
         PresetCommand::Export {

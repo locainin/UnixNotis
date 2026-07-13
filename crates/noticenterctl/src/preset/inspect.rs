@@ -174,7 +174,7 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
     Ok(out)
 }
 
-fn yes_no(value: bool) -> &'static str {
+const fn yes_no(value: bool) -> &'static str {
     // Small helper keeps inspect output predictable and grep-friendly
     if value {
         "yes"

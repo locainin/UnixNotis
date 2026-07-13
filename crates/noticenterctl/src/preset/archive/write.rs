@@ -11,7 +11,7 @@ use super::super::manifest::PresetManifest;
 use super::super::pathing::{archive_payload_path, MANIFEST_ARCHIVE_PATH};
 use super::modes::sanitize_payload_mode;
 
-pub(crate) fn write_bundle(
+pub fn write_bundle(
     bundle_path: &Path,
     manifest: &PresetManifest,
     collected: &CollectedConfigFiles,
@@ -120,8 +120,7 @@ fn append_reader<R: Read>(
 pub(super) fn temp_bundle_path(bundle_path: &Path) -> PathBuf {
     let parent = bundle_path
         .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
     let file_name = bundle_path
         .file_name()
         .and_then(|name| name.to_str())

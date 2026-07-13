@@ -7,6 +7,7 @@ mod collect;
 mod parse;
 mod rewrite;
 #[cfg(test)]
+#[path = "css_asset_refs/tests/cases.rs"]
 mod tests;
 
 use std::path::{Path, PathBuf};
@@ -16,14 +17,14 @@ use anyhow::{Context, Result};
 use super::config_root::PresetFileSource;
 use super::pathing::normalize_lexical_path;
 
-pub(crate) use self::collect::collect_external_css_asset_refs_from_paths;
+pub use self::collect::collect_external_css_asset_refs_from_paths;
 pub(super) use self::collect::{
     collect_external_css_asset_refs_from_bundle, collect_external_css_asset_refs_from_collected,
 };
 pub(super) use self::rewrite::rewrite_host_specific_css_asset_refs_in_sources;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ExternalCssAssetRef {
+pub struct ExternalCssAssetRef {
     // CSS file that carried the outside asset reference
     pub(crate) css_file: PathBuf,
     // Raw url(...) payload as written in the stylesheet
@@ -33,7 +34,7 @@ pub(crate) struct ExternalCssAssetRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HostSpecificCssAssetRef {
+pub struct HostSpecificCssAssetRef {
     // CSS file that carried the host-local config path
     pub(crate) css_file: PathBuf,
     // Raw url(...) payload as written in the stylesheet
@@ -46,8 +47,7 @@ fn has_css_extension(path: &Path) -> bool {
     // CSS-only filtering keeps later URL parsing away from binary assets and config files
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("css"))
-        .unwrap_or(false)
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("css"))
 }
 
 fn read_css_text(file: &PresetFileSource) -> Result<String> {

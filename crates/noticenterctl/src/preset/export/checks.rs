@@ -188,4 +188,5 @@ fn is_script_path(relative_path: &Path) -> bool {
 }
 
 #[cfg(test)]
+#[path = "checks/tests/cases.rs"]
 mod tests;

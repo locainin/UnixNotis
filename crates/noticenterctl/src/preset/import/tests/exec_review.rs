@@ -71,6 +71,7 @@ fn exec_review_style_can_add_color() {
 fn exec_review_writer_ignores_pager_environment() {
     let _guard = PAGER_ENV_LOCK.lock().expect("lock pager env");
     let original = env::var_os("PAGER");
+    // SAFETY: The process-wide environment is serialized by PAGER_ENV_LOCK
     unsafe {
         env::set_var("PAGER", "sh -c 'echo pwned'");
     }
@@ -79,12 +80,14 @@ fn exec_review_writer_ignores_pager_environment() {
     write_exec_content_review(&mut written, "review text\n").expect("write review");
 
     match original {
-        Some(value) => unsafe {
-            env::set_var("PAGER", value);
-        },
-        None => unsafe {
-            env::remove_var("PAGER");
-        },
+        Some(value) => {
+            // SAFETY: The process-wide environment is serialized by PAGER_ENV_LOCK
+            unsafe { env::set_var("PAGER", value) };
+        }
+        None => {
+            // SAFETY: The process-wide environment is serialized by PAGER_ENV_LOCK
+            unsafe { env::remove_var("PAGER") };
+        }
     }
 
     assert_eq!(written, b"review text\n");

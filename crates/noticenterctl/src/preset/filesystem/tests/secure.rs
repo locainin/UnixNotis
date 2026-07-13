@@ -18,8 +18,7 @@ impl TempDirGuard {
             .as_nanos();
         let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "unixnotis-preset-filesystem-secure-{}-{}-{}",
-            name, stamp, serial
+            "unixnotis-preset-filesystem-secure-{name}-{stamp}-{serial}"
         ));
         fs::create_dir_all(&path).expect("create temp dir");
         Self { path }
