@@ -9,7 +9,7 @@ use crate::output::{
 
 use super::client::ControlClient;
 
-pub(crate) async fn handle_command(client: &impl ControlClient, command: Command) -> Result<()> {
+pub async fn handle_command(client: &impl ControlClient, command: Command) -> Result<()> {
     handle_command_with_debug_logs(client, command, follow_debug_logs).await
 }
 

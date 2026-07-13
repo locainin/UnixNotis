@@ -7,7 +7,7 @@ use zbus::Connection;
 
 use crate::cli::{Args, Command};
 
-pub(crate) async fn run() -> Result<()> {
+pub async fn run() -> Result<()> {
     // Parse CLI arguments before any daemon work starts
     let args = Args::parse();
     let command = args.command;
