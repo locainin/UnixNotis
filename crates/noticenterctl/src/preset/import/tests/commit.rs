@@ -81,6 +81,31 @@ fn commit_import_plan_rolls_back_when_imported_config_cannot_load() {
 }
 
 #[test]
+fn apply_failure_on_later_file_rolls_back_earlier_publication() {
+    let import_root = TempDirGuard::new("later-apply-failure");
+    import_root.write("config.toml", "[panel]\nwidth = 320\n");
+    let plan = build_import_plan(
+        &import_root.path,
+        vec![
+            bundle_file("config.toml", "[panel]\nwidth = 444\n"),
+            bundle_file("theme/base.css", ".new { color: red; }\n"),
+        ],
+        &[],
+    )
+    .expect("build plan");
+    fs::write(import_root.path.join("theme"), "blocks directory creation")
+        .expect("create blocking file");
+
+    commit_import_plan(&import_root.path, &plan, || Ok(()))
+        .expect_err("later publication should fail");
+
+    assert_eq!(
+        fs::read_to_string(import_root.path.join("config.toml")).expect("read restored config"),
+        "[panel]\nwidth = 320\n"
+    );
+}
+
+#[test]
 fn commit_import_plan_rolls_back_when_imported_config_points_outside_root() {
     let import_root = TempDirGuard::new("commit-outside-theme");
     import_root.write("config.toml", "[panel]\nwidth = 320\n");

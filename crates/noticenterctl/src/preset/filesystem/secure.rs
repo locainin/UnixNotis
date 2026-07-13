@@ -129,6 +129,30 @@ pub fn write_relative_file_atomic_secure(
     contents: &[u8],
     mode: u32,
 ) -> Result<()> {
+    let published = publish_relative_file_atomic_secure(root_dir, relative_path, contents, mode)?;
+    published.sync_parent()
+}
+
+#[must_use = "the published file must have its parent directory synchronized"]
+pub struct PublishedRelativeFile {
+    parent_fd: OwnedFd,
+    relative_path: PathBuf,
+}
+
+impl PublishedRelativeFile {
+    pub fn sync_parent(self) -> Result<()> {
+        // The original parent descriptor keeps durability tied to the published directory
+        rustix::fs::fsync(&self.parent_fd)
+            .with_context(|| format!("flush secure parent for {}", self.relative_path.display()))
+    }
+}
+
+pub fn publish_relative_file_atomic_secure(
+    root_dir: &OwnedFd,
+    relative_path: &Path,
+    contents: &[u8],
+    mode: u32,
+) -> Result<PublishedRelativeFile> {
     // The secure parent walk happens first so the later temp file and rename stay beneath one root
     let relative_path = normalize_relative_path(relative_path)?;
     let (parent_fd, file_name) = open_or_create_parent_dir(root_dir, &relative_path)?;
@@ -173,10 +197,11 @@ pub fn write_relative_file_atomic_secure(
         return Err(err)
             .with_context(|| format!("replace secure target file {}", relative_path.display()));
     }
-    // Directory synchronization makes the rename durable across a sudden system restart
-    rustix::fs::fsync(&parent_fd)
-        .with_context(|| format!("flush secure parent for {}", relative_path.display()))?;
-    Ok(())
+    // Publication is complete, so callers can record the mutation before durability work
+    Ok(PublishedRelativeFile {
+        parent_fd,
+        relative_path,
+    })
 }
 
 fn reserve_secure_temp_file(

@@ -1,7 +1,8 @@
 use super::super::{
-    create_backup_dir_secure, open_secure_dir_all, read_relative_file_secure,
-    read_relative_file_secure_bounded, remove_empty_relative_dirs_secure,
-    remove_relative_dir_secure, remove_relative_file_secure, write_relative_file_atomic_secure,
+    create_backup_dir_secure, open_secure_dir_all, publish_relative_file_atomic_secure,
+    read_relative_file_secure, read_relative_file_secure_bounded,
+    remove_empty_relative_dirs_secure, remove_relative_dir_secure, remove_relative_file_secure,
+    write_relative_file_atomic_secure,
 };
 use crate::preset::filesystem::secure::{
     backup_name_is_taken, child_directory_is_missing, directory_open_flags,
@@ -75,6 +76,26 @@ fn secure_atomic_write_replaces_existing_file() {
         1,
         "atomic write should not leave a temporary file"
     );
+}
+
+#[test]
+fn secure_publication_is_visible_before_explicit_parent_sync() {
+    let root = TempDirGuard::new("publication-stage");
+    let root_fd = open_secure_dir_all(&root.path).expect("open secure root");
+
+    let published = publish_relative_file_atomic_secure(
+        &root_fd,
+        Path::new("nested/value.txt"),
+        b"published",
+        0o640,
+    )
+    .expect("publish file");
+
+    assert_eq!(
+        fs::read_to_string(root.path.join("nested/value.txt")).expect("read published file"),
+        "published"
+    );
+    published.sync_parent().expect("sync published parent");
 }
 
 #[test]
