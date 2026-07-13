@@ -16,14 +16,14 @@ const PANEL_WIDTH_MONITOR_RATIO_CAP: f32 = 0.32;
 // Width floor keeps controls readable when monitor geometry is very small
 const PANEL_WIDTH_MIN: i32 = PANEL_RUNTIME_WIDTH_MIN;
 
-pub fn live_panel_width(root: &gtk::Box) -> i32 {
-    // Allocated width is the real live size once GTK has laid the panel out
-    let allocated = root.allocated_width();
-    if allocated > 0 {
-        return allocated;
-    }
-    // Requested width is only a fallback for early startup and cold rebuild paths
-    root.width_request().max(1)
+pub fn requested_panel_width(root: &gtk::Box) -> i32 {
+    // Config application owns this request, so child allocations must never become width input
+    // Reading an expanded allocation here creates a feedback loop on every media rebuild
+    normalize_panel_width_request(root.width_request())
+}
+
+fn normalize_panel_width_request(width_request: i32) -> i32 {
+    width_request.max(1)
 }
 
 pub(super) fn resolve_panel_size(

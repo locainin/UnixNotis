@@ -1,4 +1,4 @@
-use super::{height_from_percent, resolve_panel_width};
+use super::{height_from_percent, normalize_panel_width_request, resolve_panel_width};
 use unixnotis_core::Config;
 
 #[test]
@@ -20,6 +20,12 @@ fn repeated_width_resolution_uses_config_instead_of_previous_allocation() {
     assert_eq!(resolve_panel_width(&config, None), 512);
     config.panel.width = 380;
     assert_eq!(resolve_panel_width(&config, None), 380);
+}
+
+#[test]
+fn media_width_input_normalizes_the_config_owned_request() {
+    assert_eq!(normalize_panel_width_request(420), 420);
+    assert_eq!(normalize_panel_width_request(-1), 1);
 }
 
 #[test]

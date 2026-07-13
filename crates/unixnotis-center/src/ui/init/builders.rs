@@ -37,7 +37,7 @@ pub(super) fn build_media_widget(
     panel: &panel::PanelWidgets,
     init: &UiStateInit,
 ) -> Option<media_widget::MediaWidget> {
-    let panel_width = panel::live_panel_width(&panel.root);
+    let panel_width = panel::requested_panel_width(&panel.root);
     let media = init.media_handle.as_ref().map(|handle| {
         media_widget::MediaWidget::new(
             &panel.media_container,

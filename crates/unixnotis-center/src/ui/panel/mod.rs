@@ -13,7 +13,7 @@ mod sections;
 mod types;
 
 pub use self::build::build_panel_widgets;
-pub use self::layout::{apply_panel_config, live_panel_width};
+pub use self::layout::{apply_panel_config, requested_panel_width};
 pub use self::reload::{apply_reloaded_body_order, apply_reloaded_panel_chrome};
 pub use self::search::SEARCH_REVEAL_TRANSITION_MS;
 pub use self::sections::apply_widget_density;
