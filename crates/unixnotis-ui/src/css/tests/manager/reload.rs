@@ -74,7 +74,7 @@ fn write_theme(paths: &ThemePaths, marker: &str) {
     .expect("overrides css");
 }
 
-#[allow(
+#[expect(
     clippy::needless_pass_by_value,
     reason = "the helper transfers the complete path bundle into the manager fixture"
 )]

@@ -60,7 +60,9 @@ fn interval_due_runs_immediately_without_a_previous_tick() {
 #[test]
 fn interval_due_saturates_when_the_previous_tick_is_old() {
     let now = Instant::now();
-    let last = now.checked_sub(Duration::from_secs(10)).unwrap();
+    let last = now
+        .checked_sub(Duration::from_secs(10))
+        .expect("test instant should support a ten-second offset");
 
     // Long sleep or resume gaps should not underflow the remaining delay
     assert_eq!(interval_due(now, Some(last), 1_000), Some(Duration::ZERO));
@@ -69,7 +71,9 @@ fn interval_due_saturates_when_the_previous_tick_is_old() {
 #[test]
 fn interval_due_reports_remaining_delay_before_deadline() {
     let now = Instant::now();
-    let last = now.checked_sub(Duration::from_millis(250)).unwrap();
+    let last = now
+        .checked_sub(Duration::from_millis(250))
+        .expect("test instant should support a 250-millisecond offset");
 
     assert_eq!(
         interval_due(now, Some(last), 1_000),

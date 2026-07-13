@@ -90,7 +90,7 @@ impl CoalescedRefreshQueue {
         outcome
     }
 
-    #[allow(
+    #[expect(
         clippy::significant_drop_tightening,
         reason = "the condition-variable guard must remain live across the empty-queue wait"
     )]

@@ -130,7 +130,7 @@ async fn seed_state_with_retry_stops_immediately_after_expired_budget() {
     let (tx, rx) = bounded(1);
     let expired = Instant::now()
         .checked_sub(Duration::from_millis(1))
-        .unwrap();
+        .expect("test instant should support a one-millisecond offset");
 
     tokio::time::timeout(
         Duration::from_millis(50),

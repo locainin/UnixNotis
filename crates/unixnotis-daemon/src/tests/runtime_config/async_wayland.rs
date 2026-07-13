@@ -6,7 +6,7 @@ use super::{ensure_wayland_session, test_support, wait_for_wayland_display};
 
 #[cfg(unix)]
 #[tokio::test]
-#[allow(
+#[expect(
     clippy::await_holding_lock,
     reason = "Wayland env tests must keep process-global env stable while async socket polling runs"
 )]
@@ -27,7 +27,7 @@ async fn ensure_wayland_session_detects_socket_and_applies_env() {
 }
 
 #[tokio::test]
-#[allow(
+#[expect(
     clippy::await_holding_lock,
     reason = "Wayland env tests must keep process-global env stable while async socket polling runs"
 )]
@@ -45,7 +45,7 @@ async fn ensure_wayland_session_rejects_non_wayland_session_without_socket() {
 }
 
 #[tokio::test]
-#[allow(
+#[expect(
     clippy::await_holding_lock,
     reason = "Wayland env tests must keep process-global env stable while async socket polling runs"
 )]
@@ -64,7 +64,7 @@ async fn ensure_wayland_session_times_out_for_wayland_session_without_socket() {
 
 #[cfg(unix)]
 #[tokio::test]
-#[allow(
+#[expect(
     clippy::await_holding_lock,
     reason = "Wayland env tests must keep process-global env stable while async socket polling runs"
 )]

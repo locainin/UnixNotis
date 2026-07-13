@@ -6,7 +6,7 @@ use super::{
 };
 
 #[test]
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "one flat hook inventory makes duplicate public CSS names visible in a single assertion"
 )]

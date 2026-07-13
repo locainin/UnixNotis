@@ -13,10 +13,6 @@ mod projection;
 mod rgb;
 
 /// Raw image data payload from notification hints
-#[allow(
-    clippy::unsafe_derive_deserialize,
-    reason = "deserialization only fills owned fields; optimized image methods validate buffers before unsafe SIMD access"
-)]
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq, Eq)]
 pub struct ImageData {
     pub width: i32,
@@ -29,7 +25,7 @@ pub struct ImageData {
 }
 
 /// Image information derived from standard hints and `app_icon`
-#[allow(
+#[expect(
     clippy::unsafe_derive_deserialize,
     reason = "deserialization only fills owned fields; nested image methods validate buffers before unsafe SIMD access"
 )]
