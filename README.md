@@ -84,7 +84,7 @@ reports when a newer GitHub release is available.
 Maintainers can build a local release archive manually:
 
 ```sh
-scripts/package-release.sh v1.1.2
+scripts/package-release.sh v1.1.3
 ```
 
 ## Development
