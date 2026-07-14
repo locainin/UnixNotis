@@ -29,6 +29,27 @@ fn default_panel_widget_order_keeps_media_first() {
 }
 
 #[test]
+fn omitted_legacy_orders_keep_widgets_and_sliders_first() {
+    let panel: super::super::PanelConfig =
+        toml::from_str("width = 420").expect("legacy panel config should parse");
+
+    assert_eq!(
+        panel.section_order,
+        vec![PanelSection::Widgets, PanelSection::Notifications]
+    );
+    assert_eq!(
+        panel.widget_order,
+        vec![
+            PanelWidgetSection::Sliders,
+            PanelWidgetSection::Media,
+            PanelWidgetSection::Toggles,
+            PanelWidgetSection::Stats,
+            PanelWidgetSection::Cards,
+        ]
+    );
+}
+
+#[test]
 fn panel_sections_parse_from_kebab_case_config_values() {
     let fixture: SectionOrderFixture = toml::from_str(
         r#"

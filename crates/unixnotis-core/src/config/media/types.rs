@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct MediaConfig {
+    // Media geometry became configurable after preset bundles already existed
+    // Missing geometry keys therefore use the old dimensions while new configs serialize current ones
+    // Explicit bundle values remain authoritative in every case
     /// Enable the media widget in the notification center
     pub enabled: bool,
     /// Structural preset for the media card
@@ -50,16 +53,21 @@ pub struct MediaConfig {
     /// Override the navigation placement on top of the structural preset
     pub navigation_position: MediaNavigationPosition,
     /// Preferred art edge length in pixels
+    #[serde(default = "legacy_media_art_size_px")]
     pub art_size_px: i32,
     /// Minimum width budget reserved for the title lane
+    #[serde(default = "legacy_media_text_width_floor_px")]
     pub text_width_floor_px: i32,
     /// Optional exact card height override in pixels
     pub card_height_px: Option<i32>,
     /// Spacing between major media card sections
+    #[serde(default = "legacy_media_content_spacing_px")]
     pub content_spacing_px: i32,
     /// Spacing between transport buttons
+    #[serde(default = "legacy_media_control_spacing_px")]
     pub control_spacing_px: i32,
     /// Spacing between navigation buttons or between nav and controls
+    #[serde(default = "legacy_media_navigation_spacing_px")]
     pub navigation_spacing_px: i32,
     /// Allowlist of player identifiers or bus names
     #[serde(alias = "whitelist")]
@@ -69,6 +77,34 @@ pub struct MediaConfig {
     pub denylist: Vec<String>,
     /// Controls which players may trigger remote media artwork fetches
     pub remote_art_policy: MediaRemoteArtPolicy,
+}
+
+// These helpers are compatibility constants rather than aliases to current media defaults
+// A future stock media redesign can change `MediaConfig::default()` without reshaping old bundles
+
+// Older media configs expected the original artwork footprint
+const fn legacy_media_art_size_px() -> i32 {
+    50
+}
+
+// The wider legacy text floor keeps old metadata and control geometry unchanged
+const fn legacy_media_text_width_floor_px() -> i32 {
+    140
+}
+
+// Legacy cards used a roomier gap between their major regions
+const fn legacy_media_content_spacing_px() -> i32 {
+    10
+}
+
+// Legacy transport buttons used the same six-pixel rhythm as navigation
+const fn legacy_media_control_spacing_px() -> i32 {
+    6
+}
+
+// Keep external navigation aligned with legacy media cards
+const fn legacy_media_navigation_spacing_px() -> i32 {
+    6
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
