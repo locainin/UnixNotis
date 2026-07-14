@@ -5,6 +5,10 @@
 
 mod checks;
 mod prompts;
+mod script_dependencies;
+#[cfg(test)]
+#[path = "export/tests/script_dependencies.rs"]
+mod script_dependency_tests;
 #[cfg(test)]
 #[path = "export/tests/cases.rs"]
 mod tests;
@@ -23,6 +27,7 @@ use self::prompts::{
     rewrite_host_specific_css_asset_refs_if_requested,
     rewrite_host_specific_script_paths_if_requested,
 };
+use self::script_dependencies::collect_script_dependency_closure;
 use super::archive::write_bundle;
 use super::command_rules::{
     collect_command_references_from_config, resolve_command_path_token,
@@ -219,13 +224,18 @@ fn export_preset_from_with_confirm(
         config_dir,
         &existing_theme_files,
     )?);
-    selected_paths.extend(
-        collect_command_references_from_config(&config)
-            .into_iter()
-            .filter_map(|reference| resolve_command_path_token(config_dir, &reference.command))
-            .filter(|path| path.is_file())
-            .filter_map(|path| path.strip_prefix(config_dir).ok().map(Path::to_path_buf)),
-    );
+    let command_script_paths = collect_command_references_from_config(&config)
+        .into_iter()
+        .filter_map(|reference| resolve_command_path_token(config_dir, &reference.command))
+        .filter(|path| path.is_file())
+        .filter_map(|path| path.strip_prefix(config_dir).ok().map(Path::to_path_buf))
+        .collect::<Vec<_>>();
+    // Direct config commands can source small helper libraries that are just as required as the entry script
+    // Resolve that closure before collection so a preset remains usable on a clean installation
+    selected_paths.extend(collect_script_dependency_closure(
+        config_dir,
+        &command_script_paths,
+    )?);
     selected_paths.extend(collect_existing_icon_assets(&config_path, config_dir)?);
     selected_paths.sort();
     selected_paths.dedup();

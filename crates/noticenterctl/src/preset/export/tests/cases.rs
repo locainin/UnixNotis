@@ -75,12 +75,12 @@ fn prompt_fix_host_specific_script_paths_err(
     ))
 }
 
-struct TempDirGuard {
-    path: PathBuf,
+pub(super) struct TempDirGuard {
+    pub(super) path: PathBuf,
 }
 
 impl TempDirGuard {
-    fn new(name: &str) -> Self {
+    pub(super) fn new(name: &str) -> Self {
         // Unique temp roots keep preset tests isolated from each other
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -93,7 +93,7 @@ impl TempDirGuard {
         Self { path }
     }
 
-    fn write(&self, relative_path: &str, contents: &str) {
+    pub(super) fn write(&self, relative_path: &str, contents: &str) {
         // Helper keeps test setup focused on intent instead of path plumbing
         let path = self.path.join(relative_path);
         if let Some(parent) = path.parent() {
