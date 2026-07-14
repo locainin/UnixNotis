@@ -167,7 +167,6 @@ fn export_preset_from_with_confirm(
             ("popup_css", &theme_paths.popup_css),
             ("widgets_css", &theme_paths.widgets_css),
             ("media_css", &theme_paths.media_css),
-            ("overrides_css", &theme_paths.overrides_css),
         ],
     )?;
     // Shared presets should not ship explicit command paths that depend on outside host files
@@ -201,7 +200,6 @@ fn export_preset_from_with_confirm(
         theme_paths.popup_css,
         theme_paths.widgets_css,
         theme_paths.media_css,
-        theme_paths.overrides_css,
     ];
     let mut selected_paths = vec![PathBuf::from("config.toml")];
     let existing_theme_files = theme_files

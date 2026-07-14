@@ -53,7 +53,6 @@ fn theme_paths(root: &Path) -> ThemePaths {
         panel_css: root.join("panel.css"),
         widgets_css: root.join("widgets.css"),
         media_css: root.join("media.css"),
-        overrides_css: root.join("overrides.css"),
     }
 }
 
@@ -67,11 +66,6 @@ fn write_theme(paths: &ThemePaths, marker: &str) {
     .expect("widgets css");
     fs::write(&paths.media_css, format!(".media {{ color: {marker}; }}")).expect("media css");
     fs::write(&paths.popup_css, format!(".popup {{ color: {marker}; }}")).expect("popup css");
-    fs::write(
-        &paths.overrides_css,
-        format!(".override {{ color: {marker}; }}"),
-    )
-    .expect("overrides css");
 }
 
 #[expect(
@@ -90,7 +84,6 @@ fn panel_manager(
         widgets: Some(RecordingProvider::new("widgets", Rc::clone(&loaded))),
         media: Some(RecordingProvider::new("media", Rc::clone(&loaded))),
         popup: None,
-        overrides: RecordingProvider::new("overrides", Rc::clone(&loaded)),
     }
 }
 
@@ -111,15 +104,11 @@ fn panel_reload_loads_base_panel_widgets_and_media_layers() {
             CssProviderLayer::Panel,
             CssProviderLayer::Widgets,
             CssProviderLayer::Media,
-            CssProviderLayer::Overrides,
         ]
     );
     let loaded = loaded.borrow();
     let labels = loaded.iter().map(|(label, _)| *label).collect::<Vec<_>>();
-    assert_eq!(
-        labels,
-        vec!["base", "panel", "widgets", "media", "overrides"]
-    );
+    assert_eq!(labels, vec!["base", "panel", "widgets", "media"]);
     assert!(loaded.iter().all(|(_, css)| css.contains("green")));
 
     fs::remove_dir_all(root).expect("remove css manager test root");
@@ -139,7 +128,7 @@ fn update_theme_changes_the_paths_used_by_the_next_reload() {
     manager.update_theme(new_paths, ThemeConfig::default());
     let layers = manager.reload(".fallback { color: red; }");
 
-    assert_eq!(layers.len(), 5);
+    assert_eq!(layers.len(), 4);
     let loaded = loaded.borrow();
     assert!(loaded.iter().all(|(_, css)| css.contains("blue")));
     assert!(loaded.iter().all(|(_, css)| !css.contains("red")));
@@ -161,7 +150,7 @@ fn public_manager_reload_and_theme_update_report_the_applied_stack() {
     manager.update_theme(new_paths.clone(), ThemeConfig::default());
     let loaded_layers = manager.reload(".fallback { color: red; }");
 
-    assert_eq!(loaded_layers, 5);
+    assert_eq!(loaded_layers, 4);
     assert_eq!(manager.inner.theme_paths.base_css, new_paths.base_css);
 
     fs::remove_dir_all(old_root).expect("remove public old css manager test root");

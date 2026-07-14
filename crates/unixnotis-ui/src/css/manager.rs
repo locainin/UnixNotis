@@ -3,8 +3,8 @@
 use gtk::gdk;
 use gtk::CssProvider;
 use unixnotis_core::{
-    ThemeConfig, ThemePaths, DEFAULT_MEDIA_CSS, DEFAULT_OVERRIDES_CSS, DEFAULT_PANEL_CSS,
-    DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
+    ThemeConfig, ThemePaths, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS,
+    DEFAULT_WIDGETS_CSS,
 };
 
 use super::loader::load_provider_with_overrides;
@@ -83,7 +83,6 @@ where
     widgets: Option<P>,
     media: Option<P>,
     popup: Option<P>,
-    overrides: P,
 }
 
 impl CssManagerInner<CssProvider> {
@@ -96,7 +95,6 @@ impl CssManagerInner<CssProvider> {
             widgets: Some(CssProvider::new()),
             media: Some(CssProvider::new()),
             popup: None,
-            overrides: CssProvider::new(),
         }
     }
 
@@ -109,7 +107,6 @@ impl CssManagerInner<CssProvider> {
             widgets: None,
             media: None,
             popup: Some(CssProvider::new()),
-            overrides: CssProvider::new(),
         }
     }
 }
@@ -193,15 +190,6 @@ where
             loaded.push(CssProviderLayer::Popup);
         }
 
-        // The final layer is shared by both surfaces so one file can own cross-cutting tweaks
-        load_provider_with_overrides(
-            |data| self.overrides.load_css_data(data),
-            &self.theme_paths.overrides_css,
-            DEFAULT_OVERRIDES_CSS,
-            "",
-            false,
-        );
-        loaded.push(CssProviderLayer::Overrides);
         loaded
     }
 
@@ -243,11 +231,6 @@ where
                 priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 3,
             });
         }
-        // User overrides always win over role-specific providers on either surface
-        registrations.push(CssProviderRegistration {
-            layer: CssProviderLayer::Overrides,
-            priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 4,
-        });
         registrations
     }
 
@@ -258,7 +241,6 @@ where
             CssProviderLayer::Popup => self.popup.as_ref(),
             CssProviderLayer::Widgets => self.widgets.as_ref(),
             CssProviderLayer::Media => self.media.as_ref(),
-            CssProviderLayer::Overrides => Some(&self.overrides),
         }
     }
 }

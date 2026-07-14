@@ -5,7 +5,7 @@ use unixnotis_core::ThemePaths;
 
 use super::model::ThemeTarget;
 
-pub(in super::super) fn theme_targets(theme_paths: ThemePaths) -> [ThemeTarget; 6] {
+pub(in super::super) fn theme_targets(theme_paths: ThemePaths) -> [ThemeTarget; 5] {
     // Slot order stays fixed so reports remain stable between runs
     [
         ThemeTarget {
@@ -32,11 +32,6 @@ pub(in super::super) fn theme_targets(theme_paths: ThemePaths) -> [ThemeTarget; 
             slot_name: "media css",
             config_key: "[theme].media_css",
             path: theme_paths.media_css,
-        },
-        ThemeTarget {
-            slot_name: "overrides css",
-            config_key: "[theme].overrides_css",
-            path: theme_paths.overrides_css,
         },
     ]
 }
