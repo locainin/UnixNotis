@@ -26,7 +26,10 @@ fn default_panel_config_keeps_expected_layout_and_text_contract() {
     ));
     assert_eq!(panel.title, "Notifications");
     assert_eq!(panel.empty_text, "NO NOTIFICATIONS");
+    assert_eq!(panel.empty_offset_top, 24);
     assert_eq!(panel.empty_alignment, EmptyStateAlignment::Auto);
+    assert_eq!(panel.quick_actions_label, "Quick settings");
+    assert_eq!(panel.system_status_label, "System health");
     assert_eq!(panel.search_placeholder, "Search app, title, or message");
     assert!(panel.action_row_visible);
     assert!(panel.notification_list_expand);

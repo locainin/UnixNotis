@@ -48,6 +48,17 @@ fn default_media_browser_tokens_cover_common_browser_players() {
 }
 
 #[test]
+fn default_media_geometry_keeps_the_compact_panel_shape() {
+    let config = crate::MediaConfig::default();
+
+    assert_eq!(config.art_size_px, 48);
+    assert_eq!(config.text_width_floor_px, 100);
+    assert_eq!(config.content_spacing_px, 8);
+    assert_eq!(config.control_spacing_px, 4);
+    assert_eq!(config.navigation_spacing_px, 4);
+}
+
+#[test]
 fn explicit_media_positions_win_over_layout_defaults() {
     let config = MediaConfig {
         layout: MediaLayout::Showcase,

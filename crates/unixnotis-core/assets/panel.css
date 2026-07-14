@@ -3,6 +3,7 @@
  * Panel shell, list, and notification group styling.
  */
 .unixnotis-panel {
+  min-width: 420px;
   /* Primary surface gradient.
    * The last stop (panel-grad-3) is intentionally hotpink-leaning to create a
    * bottom-right glow without changing any layout logic. */
@@ -180,35 +181,50 @@
   min-height: 34px;
   min-height: var(--unixnotis-panel-search-min-height);
   border-radius: 12px;
-  background-image: linear-gradient(150deg, alpha(@unixnotis-surface-soft, 0.84), alpha(@unixnotis-surface-strong, 0.92));
-  border: 1px solid alpha(@unixnotis-accent, 0.18);
+  background: alpha(#000000, 0.4);
+  border-top: 1px solid alpha(#ffffff, 0.05);
+  border-left: 1px solid alpha(#ffffff, 0.04);
+  border-right: 1px solid alpha(#ffffff, 0.02);
+  border-bottom: 1px solid alpha(#ffffff, 0.01);
   padding: 0 10px;
   padding: 0 var(--unixnotis-panel-search-padding-x);
-  box-shadow: inset 0 0 0 1px alpha(#ffffff, 0.03);
+  box-shadow: inset 0 1px 3px alpha(#000000, 0.5);
+  transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
 .unixnotis-panel-search:focus-within {
-  border-color: alpha(@unixnotis-accent, 0.45);
+  border-color: alpha(@unixnotis-accent, 0.60);
   box-shadow:
-    inset 0 0 0 1px alpha(#ffffff, 0.05),
-    0 0 20px -16px @unixnotis-glow-cyan;
+    inset 0 1px 3px alpha(#000000, 0.5),
+    0 0 16px alpha(@unixnotis-accent, 0.40);
+}
+
+entry selection {
+  background-color: alpha(@unixnotis-accent, 0.35);
+  color: #ffffff;
 }
 
 .unixnotis-panel-close {
-  background: alpha(#0b111d, 0.5);
+  background: alpha(#ffffff, 0.045);
   border-radius: 999px;
-  border: 1px solid alpha(@unixnotis-accent, 0.18);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
   padding: 2px;
   min-width: 28px;
   min-width: var(--unixnotis-panel-close-size);
   min-height: 28px;
   min-height: var(--unixnotis-panel-close-size);
-  box-shadow: 0 0 16px -14px @unixnotis-glow-cyan;
+  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
 
 .unixnotis-panel-close:hover {
-  background: alpha(@unixnotis-urgent, 0.2);
-  border-color: alpha(@unixnotis-urgent, 0.6);
+  background: alpha(#fb7185, 0.16);
+  border-color: alpha(#fb7185, 0.45);
+  color: #fb7185;
+  box-shadow: 0 0 8px alpha(#fb7185, 0.35);
 }
 
 .unixnotis-panel-list {
@@ -421,16 +437,23 @@
  * state visually matches the rest of the panel.
  */
 .unixnotis-empty {
-  background: transparent;
+  background: alpha(#ffffff, 0.02);
+  border-top: 1px solid alpha(#ffffff, 0.06);
+  border-left: 1px solid alpha(#ffffff, 0.04);
+  border-right: 1px solid alpha(#ffffff, 0.02);
+  border-bottom: 1px solid alpha(#ffffff, 0.01);
+  border-radius: 16px;
+  box-shadow: 0 4px 12px -8px alpha(#000000, 0.5);
+  padding: 16px 24px;
+  margin: 20px 30px;
 }
 
 .unixnotis-empty-label {
-  color: alpha(@unixnotis-text, 0.78);
+  color: alpha(#ffffff, 0.45);
   font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.44em;
+  font-size: 11px;
+  letter-spacing: 0.35em;
   text-transform: uppercase;
-  /* GTK does not support text-shadow; rely on high contrast + layout instead. */
 }
 
 .unixnotis-panel-app {
@@ -469,4 +492,233 @@
 .unixnotis-notification-action:hover {
   background-image: linear-gradient(160deg, alpha(@unixnotis-accent, 0.2), alpha(@unixnotis-accent-2, 0.2));
   border-color: alpha(@unixnotis-accent, 0.5);
+}
+
+/* Restrained default composition
+ *
+ * Navy remains the visual identity while flat surfaces and spacing carry hierarchy
+ */
+.unixnotis-panel {
+  background-image: linear-gradient(155deg, alpha(#080d18, 0.98) 0%, alpha(#10152a, 0.98) 58%, alpha(#241734, 0.97) 100%);
+  border: 1px solid alpha(#9bb8e8, 0.16);
+  border-radius: 20px;
+  font-family: "Inter", "Manrope", "Noto Sans", sans-serif;
+  box-shadow:
+    0 26px 64px -34px alpha(#000000, 0.88),
+    inset 0 1px 0 alpha(#ffffff, 0.035);
+}
+
+.unixnotis-panel-header {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid alpha(#9bb8e8, 0.12);
+  border-radius: 0;
+  box-shadow: none;
+  padding-left: 2px;
+  padding-right: 2px;
+  padding-bottom: 12px;
+}
+
+.unixnotis-panel-title {
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.unixnotis-panel-count,
+.unixnotis-group-count {
+  background: alpha(@unixnotis-accent, 0.12);
+  color: #bffaf5;
+  border-color: alpha(@unixnotis-accent, 0.28);
+  box-shadow: none;
+}
+
+.unixnotis-panel-action {
+  background: alpha(#ffffff, 0.045);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 10px;
+  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
+  color: alpha(#ffffff, 0.75);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.unixnotis-panel-action:hover {
+  background: alpha(#ffffff, 0.08);
+  border-top: 1px solid alpha(#ffffff, 0.14);
+  border-left: 1px solid alpha(#ffffff, 0.10);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.04);
+  color: #ffffff;
+  transform: translateY(-0.5px);
+}
+
+.unixnotis-panel-action:checked {
+  background-image: linear-gradient(135deg, alpha(#00b4db, 0.22), alpha(#0083b0, 0.22));
+  border: 1px solid alpha(#00a2ff, 0.50);
+  box-shadow: 0 4px 12px -8px alpha(#00a2ff, 0.4), inset 0 1px 0 alpha(#ffffff, 0.12);
+}
+
+.unixnotis-panel-action:checked .unixnotis-panel-action-glyph,
+.unixnotis-panel-action:checked .unixnotis-panel-action-label {
+  color: #ffffff;
+}
+
+.unixnotis-panel-action-close,
+.unixnotis-panel-close {
+  background: alpha(#ffffff, 0.045);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 10px;
+  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.unixnotis-panel-action-close:hover,
+.unixnotis-panel-close:hover {
+  background: alpha(#fb7185, 0.16);
+  border-color: alpha(#fb7185, 0.45);
+  color: #fb7185;
+}
+
+.unixnotis-group-header {
+  background: alpha(#ffffff, 0.025);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.03);
+  border-bottom: 1px solid alpha(#ffffff, 0.01);
+  box-shadow: none;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.unixnotis-group-header:hover {
+  background: alpha(#ffffff, 0.05);
+  border-top-color: alpha(#ffffff, 0.14);
+  border-left-color: alpha(#ffffff, 0.10);
+  border-right-color: alpha(#ffffff, 0.05);
+  border-bottom-color: alpha(#ffffff, 0.02);
+}
+
+.unixnotis-group-header:hover .unixnotis-group-count {
+  background: alpha(@unixnotis-accent, 0.22);
+  color: #ffffff;
+  border-color: alpha(@unixnotis-accent, 0.45);
+}
+
+.unixnotis-panel-card {
+  background-image: linear-gradient(135deg, alpha(#17253f, 0.90), alpha(#12182c, 0.96));
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.02), 0 4px 12px -8px alpha(#000000, 0.7);
+  transition: background-image 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.unixnotis-panel-card:hover {
+  background-image: linear-gradient(135deg, alpha(#21355a, 0.92), alpha(#161e38, 0.97));
+  border-top: 1px solid alpha(#ffffff, 0.14);
+  border-left: 1px solid alpha(#ffffff, 0.10);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.03);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.04), 0 10px 24px -16px alpha(#000000, 0.85);
+  transform: translateY(-1.5px);
+}
+
+.unixnotis-panel-card.active {
+  background-image: linear-gradient(135deg, alpha(#1a2e50, 0.93), alpha(#111627, 0.96));
+  border-top: 1px solid alpha(#ffffff, 0.12);
+  border-left: 1px solid alpha(#ffffff, 0.09);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.03);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.03), 0 6px 16px -8px alpha(#000000, 0.8);
+}
+
+.unixnotis-panel-card.active:hover {
+  background-image: linear-gradient(135deg, alpha(#264375, 0.95), alpha(#151b32, 0.97));
+  border-top: 1px solid alpha(#ffffff, 0.18);
+  border-left: 1px solid alpha(#ffffff, 0.14);
+  border-right: 1px solid alpha(#ffffff, 0.08);
+  border-bottom: 1px solid alpha(#ffffff, 0.04);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.05), 0 12px 28px -14px alpha(#000000, 0.9);
+  transform: translateY(-1.5px);
+}
+
+.unixnotis-panel-card.stacked,
+.unixnotis-panel-card.stacked.active {
+  box-shadow: 0 12px 24px -20px alpha(#000000, 0.78);
+}
+
+.unixnotis-stack-ghost {
+  background: #172238;
+  border-color: alpha(#9bb8e8, 0.18);
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.unixnotis-stack-ghost-2 {
+  background: #121c2f;
+  border-color: alpha(#9bb8e8, 0.14);
+  border-radius: 16px;
+}
+
+.unixnotis-panel-app {
+  color: #a3b3cc;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.unixnotis-panel-summary {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.unixnotis-panel-body {
+  color: #cbd5e1;
+}
+
+/*
+ * Premium glowing scrollbars
+ */
+scrollbar {
+  background: transparent;
+  border: none;
+  min-width: 6px;
+  min-height: 6px;
+}
+
+scrollbar trough {
+  background: transparent;
+  border: none;
+}
+
+scrollbar.vertical {
+  margin-left: 4px;
+  margin-right: 2px;
+}
+
+scrollbar slider {
+  background: alpha(#ffffff, 0.16);
+  border-radius: 999px;
+  border: none;
+  min-width: 4px;
+  min-height: 4px;
+  transition: background-color 0.15s ease-out, min-width 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+scrollbar slider:hover {
+  background: alpha(#52d9da, 0.85);
+  box-shadow: 0 0 8px alpha(#52d9da, 0.50);
+  min-width: 6px;
+}
+
+scrollbar slider:active {
+  background: #52d9da;
+  box-shadow: 0 0 12px alpha(#52d9da, 0.80);
+  min-width: 6px;
 }

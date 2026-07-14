@@ -63,10 +63,11 @@ impl SliderWidgetConfig {
             max: 100.0,
             step: 1.0,
             show_value: true,
-            segments: 0,
-            show_sublabels: false,
-            sublabel_min: String::new(),
-            sublabel_max: String::new(),
+            // Ten segments give quick visual feedback without changing slider behavior
+            segments: 10,
+            show_sublabels: true,
+            sublabel_min: "MUTE".to_string(),
+            sublabel_max: "MAX".to_string(),
             parse_mode: NumericParseMode::Auto,
         }
     }
@@ -87,10 +88,11 @@ impl SliderWidgetConfig {
             max: 100.0,
             step: 1.0,
             show_value: true,
-            segments: 0,
-            show_sublabels: false,
-            sublabel_min: String::new(),
-            sublabel_max: String::new(),
+            // Brightness mirrors the volume scale for a consistent control rhythm
+            segments: 10,
+            show_sublabels: true,
+            sublabel_min: "MIN".to_string(),
+            sublabel_max: "MAX".to_string(),
             parse_mode: NumericParseMode::Auto,
         }
     }

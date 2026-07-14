@@ -7,20 +7,20 @@ struct SectionOrderFixture {
 }
 
 #[test]
-fn default_panel_section_order_keeps_widgets_above_notifications() {
+fn default_panel_section_order_keeps_notifications_above_widgets() {
     assert_eq!(
         default_panel_section_order(),
-        vec![PanelSection::Widgets, PanelSection::Notifications]
+        vec![PanelSection::Notifications, PanelSection::Widgets]
     );
 }
 
 #[test]
-fn default_panel_widget_order_keeps_sliders_first() {
+fn default_panel_widget_order_keeps_media_first() {
     assert_eq!(
         default_panel_widget_order(),
         vec![
-            PanelWidgetSection::Sliders,
             PanelWidgetSection::Media,
+            PanelWidgetSection::Sliders,
             PanelWidgetSection::Toggles,
             PanelWidgetSection::Stats,
             PanelWidgetSection::Cards,

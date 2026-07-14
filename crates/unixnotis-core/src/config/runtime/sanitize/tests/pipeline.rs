@@ -126,8 +126,8 @@ fn sanitize_preserves_optional_panel_labels_and_repairs_widget_order() {
         config.panel.widget_order,
         vec![
             PanelWidgetSection::Stats,
-            PanelWidgetSection::Sliders,
             PanelWidgetSection::Media,
+            PanelWidgetSection::Sliders,
             PanelWidgetSection::Toggles,
             PanelWidgetSection::Cards,
         ]
@@ -178,12 +178,11 @@ fn sanitize_preserves_explicit_close_action_order() {
 }
 
 #[test]
-fn default_panel_section_labels_do_not_force_widget_headings() {
+fn default_panel_section_labels_name_the_visible_widget_groups() {
     let config = PanelConfig::default();
 
-    // Widget section headings are config-owned and hidden unless explicitly set
-    assert!(config.quick_actions_label.is_empty());
-    assert!(config.system_status_label.is_empty());
+    assert_eq!(config.quick_actions_label, "Quick settings");
+    assert_eq!(config.system_status_label, "System health");
 }
 
 #[test]

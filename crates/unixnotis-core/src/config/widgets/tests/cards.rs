@@ -6,6 +6,7 @@ fn default_card_widgets_keep_builtin_identity_and_layout() {
     let calendar = &widgets.cards[0];
     let weather = &widgets.cards[1];
 
+    assert!(!calendar.enabled);
     assert_eq!(calendar.kind.as_deref(), Some("calendar"));
     assert_eq!(calendar.layout, CardLayout::Default);
     assert_eq!(calendar.title, "Calendar");
@@ -14,6 +15,7 @@ fn default_card_widgets_keep_builtin_identity_and_layout() {
     assert_eq!(calendar.min_height, 180);
     assert_eq!(calendar.cmd, None);
 
+    assert!(!weather.enabled);
     assert_eq!(weather.kind.as_deref(), Some("weather"));
     assert_eq!(weather.title, "Weather");
     assert_eq!(weather.subtitle.as_deref(), Some("No data"));

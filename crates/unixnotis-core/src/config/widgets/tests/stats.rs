@@ -4,16 +4,27 @@ use crate::{StatWidgetConfig, WidgetPluginConfig, WidgetsConfig};
 fn default_stat_widgets_keep_builtin_commands() {
     let widgets = WidgetsConfig::default();
     let expected = [
-        ("CPU", "utilities-system-monitor-symbolic", "builtin:cpu"),
-        ("RAM", "drive-harddisk-symbolic", "builtin:memory"),
-        ("Battery", "battery-full-symbolic", "builtin:battery"),
+        (
+            "CPU",
+            "utilities-system-monitor-symbolic",
+            "cpu",
+            "builtin:cpu",
+        ),
+        ("RAM", "drive-harddisk-symbolic", "ram", "builtin:memory"),
+        (
+            "Battery",
+            "battery-full-symbolic",
+            "battery",
+            "builtin:battery",
+        ),
     ];
 
-    for (stat, (label, icon, command)) in widgets.stats.iter().zip(expected) {
+    for (stat, (label, icon, kind, command)) in widgets.stats.iter().zip(expected) {
         assert!(stat.enabled);
         assert_eq!(stat.label, label);
         assert_eq!(stat.icon.as_deref(), Some(icon));
         assert_eq!(stat.icon_asset, None);
+        assert_eq!(stat.kind.as_deref(), Some(kind));
         assert_eq!(stat.cmd.as_deref(), Some(command));
         assert_eq!(stat.min_height, 72);
     }

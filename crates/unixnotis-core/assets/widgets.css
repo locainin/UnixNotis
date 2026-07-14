@@ -3,7 +3,14 @@
  * Quick controls, toggles, stats, info cards, and media carousel
  */
 .unixnotis-quick-controls {
-  margin-bottom: 6px;
+  background-image: linear-gradient(155deg, alpha(#11182a, 0.98), alpha(#17162b, 0.96));
+  border: 1px solid alpha(#a9b8d4, 0.16);
+  border-radius: 14px;
+  padding: 4px 10px;
+  margin-bottom: 10px;
+  box-shadow:
+    0 12px 28px -24px alpha(#000000, 0.9),
+    inset 0 1px 0 alpha(#ffffff, 0.045);
 }
 
 .unixnotis-quick-slider {
@@ -328,6 +335,12 @@
 
 .unixnotis-stat-header,
 .unixnotis-info-header {
+  color: #c4ccda;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.025em;
+  text-transform: none;
+  margin-top: 8px;
   margin-bottom: 6px;
 }
 
@@ -704,4 +717,456 @@
 
 .unixnotis-widget-density-compact .unixnotis-stat-card {
   padding: 8px 10px;
+}
+
+/* Restrained widget composition
+ *
+ * Repeated widget types share one surface treatment and reserve color for state
+ */
+.unixnotis-quick-controls {
+  background: alpha(#ffffff, 0.02);
+  border-top: 1px solid alpha(#ffffff, 0.06);
+  border-left: 1px solid alpha(#ffffff, 0.05);
+  border-right: 1px solid alpha(#ffffff, 0.03);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 16px;
+  padding: 8px 14px;
+  margin-bottom: 10px;
+  box-shadow: 0 4px 16px -8px alpha(#000000, 0.5);
+}
+
+.unixnotis-quick-slider,
+.unixnotis-quick-slider-volume,
+.unixnotis-quick-slider-brightness {
+  background: transparent;
+  border: none;
+  border-color: transparent;
+  box-shadow: none;
+  padding: 4px 6px;
+  margin: 0;
+}
+
+.unixnotis-quick-slider:hover,
+.unixnotis-quick-slider-volume:hover,
+.unixnotis-quick-slider-brightness:hover {
+  background: transparent;
+  border: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.unixnotis-quick-slider-icon {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: alpha(#ffffff, 0.65);
+  transition: color 0.15s ease-out;
+}
+
+.unixnotis-quick-slider-volume .unixnotis-quick-slider-icon {
+  color: alpha(#ffffff, 0.65);
+}
+
+.unixnotis-quick-slider-volume:hover .unixnotis-quick-slider-icon {
+  color: #00f2fe;
+}
+
+.unixnotis-quick-slider-brightness .unixnotis-quick-slider-icon {
+  color: alpha(#ffffff, 0.65);
+}
+
+.unixnotis-quick-slider-brightness:hover .unixnotis-quick-slider-icon {
+  color: #ffb86b;
+}
+
+.unixnotis-quick-slider-value {
+  color: alpha(#ffffff, 0.7);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: color 0.15s ease-out;
+}
+
+.unixnotis-quick-slider-volume:hover .unixnotis-quick-slider-value {
+  color: #ffffff;
+}
+
+.unixnotis-quick-slider-brightness:hover .unixnotis-quick-slider-value {
+  color: #ffffff;
+}
+
+.unixnotis-quick-slider-scale trough {
+  background: alpha(#000000, 0.4);
+  border-top: 1px solid alpha(#ffffff, 0.05);
+  border-radius: 999px;
+  min-height: 4px;
+  border: none;
+  box-shadow: none;
+}
+
+.unixnotis-quick-slider-volume .unixnotis-quick-slider-scale highlight {
+  background-image: linear-gradient(90deg, #3b82f6, #00a2ff);
+}
+
+.unixnotis-quick-slider-brightness .unixnotis-quick-slider-scale highlight {
+  background-image: linear-gradient(90deg, #d97706, #ff9f0a);
+}
+
+.unixnotis-quick-slider-scale slider {
+  background-image: linear-gradient(135deg, #ffffff 30%, #e2e8f0 100%);
+  border: 1px solid alpha(#000000, 0.15);
+  border-radius: 999px;
+  min-width: 12px;
+  min-height: 12px;
+  margin-top: -4px; /* Center 12px knob over 4px trough */
+  margin-bottom: -4px;
+  box-shadow: 0 1.5px 3.5px alpha(#000000, 0.40);
+  transition: min-width 0.15s ease-out, min-height 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.unixnotis-quick-slider-volume .unixnotis-quick-slider-scale slider {
+  border-color: alpha(#00a2ff, 0.6);
+}
+
+.unixnotis-quick-slider-brightness .unixnotis-quick-slider-scale slider {
+  border-color: alpha(#ff9f0a, 0.6);
+}
+
+.unixnotis-quick-slider-scale slider:hover {
+  transform: scale(1.10);
+}
+
+.unixnotis-quick-slider-volume:hover slider {
+  border-color: #00a2ff;
+  box-shadow: 0 0 6px alpha(#00a2ff, 0.5), 0 1.5px 3.5px alpha(#000000, 0.40);
+}
+
+.unixnotis-quick-slider-brightness:hover slider {
+  border-color: #ff9f0a;
+  box-shadow: 0 0 6px alpha(#ff9f0a, 0.5), 0 1.5px 3.5px alpha(#000000, 0.40);
+}
+
+/*
+ * Ascending Stair-step Level Indicators
+ */
+.unixnotis-quick-slider-segments {
+  margin-top: 5px;
+  min-height: 10px;
+}
+
+.unixnotis-quick-slider-segment {
+  background-color: alpha(#ffffff, 0.08);
+  min-width: 4px;
+  border-radius: 999px 999px 0 0;
+  margin: 0 1.5px;
+  transition: background-color 0.15s ease-out, box-shadow 0.15s ease-out, min-height 0.15s ease-out;
+}
+
+.unixnotis-quick-slider-segment:nth-child(1) { min-height: 2px; }
+.unixnotis-quick-slider-segment:nth-child(2) { min-height: 2.5px; }
+.unixnotis-quick-slider-segment:nth-child(3) { min-height: 3px; }
+.unixnotis-quick-slider-segment:nth-child(4) { min-height: 4px; }
+.unixnotis-quick-slider-segment:nth-child(5) { min-height: 5px; }
+.unixnotis-quick-slider-segment:nth-child(6) { min-height: 6px; }
+.unixnotis-quick-slider-segment:nth-child(7) { min-height: 7px; }
+.unixnotis-quick-slider-segment:nth-child(8) { min-height: 8px; }
+.unixnotis-quick-slider-segment:nth-child(9) { min-height: 9px; }
+.unixnotis-quick-slider-segment:nth-child(10) { min-height: 10px; }
+
+.unixnotis-quick-slider-volume .unixnotis-quick-slider-segment.active {
+  background-image: linear-gradient(to top, #3b82f6, #00f2fe);
+  box-shadow: 0 0 4px alpha(#00f2fe, 0.4);
+}
+
+.unixnotis-quick-slider-brightness .unixnotis-quick-slider-segment.active {
+  background-image: linear-gradient(to top, #d97706, #ff9f0a);
+  box-shadow: 0 0 4px alpha(#ff9f0a, 0.4);
+}
+
+/*
+ * Sublabel Row Min/Max
+ */
+.unixnotis-quick-slider-sublabel-row {
+  margin-top: 3px;
+}
+
+.unixnotis-quick-slider-sublabel-min,
+.unixnotis-quick-slider-sublabel-max {
+  color: alpha(#ffffff, 0.35);
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  transition: color 0.15s ease-out;
+}
+
+.unixnotis-quick-slider-volume:hover .unixnotis-quick-slider-sublabel-min,
+.unixnotis-quick-slider-volume:hover .unixnotis-quick-slider-sublabel-max {
+  color: alpha(#00a2ff, 0.7);
+}
+
+.unixnotis-quick-slider-brightness:hover .unixnotis-quick-slider-sublabel-min,
+.unixnotis-quick-slider-brightness:hover .unixnotis-quick-slider-sublabel-max {
+  color: alpha(#ff9f0a, 0.7);
+}
+
+.unixnotis-toggle,
+.unixnotis-toggle.unixnotis-toggle-kind-wifi,
+.unixnotis-toggle.unixnotis-toggle-kind-bluetooth,
+.unixnotis-toggle.unixnotis-toggle-kind-airplane,
+.unixnotis-toggle.unixnotis-toggle-kind-night {
+  background: alpha(#ffffff, 0.045);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 14px;
+  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
+  color: alpha(#ffffff, 0.7);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.unixnotis-toggle:hover,
+.unixnotis-toggle.unixnotis-toggle-kind-wifi:hover,
+.unixnotis-toggle.unixnotis-toggle-kind-bluetooth:hover,
+.unixnotis-toggle.unixnotis-toggle-kind-airplane:hover,
+.unixnotis-toggle.unixnotis-toggle-kind-night:hover {
+  background: alpha(#ffffff, 0.08);
+  border-top: 1px solid alpha(#ffffff, 0.12);
+  border-left: 1px solid alpha(#ffffff, 0.10);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.04);
+  color: #ffffff;
+  transform: translateY(-0.5px);
+}
+
+.unixnotis-toggle:checked,
+.unixnotis-toggle.unixnotis-toggle-kind-wifi:checked,
+.unixnotis-toggle.unixnotis-toggle-kind-bluetooth:checked,
+.unixnotis-toggle.unixnotis-toggle-kind-airplane:checked,
+.unixnotis-toggle.unixnotis-toggle-kind-night:checked {
+  color: #ffffff;
+}
+
+.unixnotis-toggle.unixnotis-toggle-kind-wifi:checked {
+  background-image: linear-gradient(135deg, #00b4db, #0083b0);
+  border: 1px solid alpha(#ffffff, 0.15);
+  box-shadow: 0 6px 16px -8px alpha(#0083b0, 0.5), inset 0 1px 0 alpha(#ffffff, 0.12);
+}
+
+.unixnotis-toggle.unixnotis-toggle-kind-wifi:checked:hover {
+  background-image: linear-gradient(135deg, #00c6ff, #0072ff);
+  box-shadow: 0 8px 20px -6px alpha(#0072ff, 0.6), inset 0 1px 0 alpha(#ffffff, 0.18);
+  transform: translateY(-1px);
+}
+
+.unixnotis-toggle.unixnotis-toggle-kind-bluetooth:checked {
+  background-image: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  border: 1px solid alpha(#ffffff, 0.15);
+  box-shadow: 0 6px 16px -8px alpha(#1d4ed8, 0.5), inset 0 1px 0 alpha(#ffffff, 0.12);
+}
+
+.unixnotis-toggle.unixnotis-toggle-kind-bluetooth:checked:hover {
+  background-image: linear-gradient(135deg, #60a5fa, #2563eb);
+  box-shadow: 0 8px 20px -6px alpha(#2563eb, 0.6), inset 0 1px 0 alpha(#ffffff, 0.18);
+  transform: translateY(-1px);
+}
+
+.unixnotis-toggle.unixnotis-toggle-kind-airplane:checked {
+  background-image: linear-gradient(135deg, #f59e0b, #d97706);
+  border: 1px solid alpha(#ffffff, 0.15);
+  box-shadow: 0 6px 16px -8px alpha(#d97706, 0.5), inset 0 1px 0 alpha(#ffffff, 0.15);
+}
+
+.unixnotis-toggle.unixnotis-toggle-kind-airplane:checked:hover {
+  background-image: linear-gradient(135deg, #fbbf24, #b45309);
+  box-shadow: 0 8px 20px -6px alpha(#b45309, 0.6), inset 0 1px 0 alpha(#ffffff, 0.20);
+  transform: translateY(-1px);
+}
+
+.unixnotis-toggle.unixnotis-toggle-kind-night:checked {
+  background-image: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  border: 1px solid alpha(#ffffff, 0.15);
+  box-shadow: 0 6px 16px -8px alpha(#6d28d9, 0.5), inset 0 1px 0 alpha(#ffffff, 0.12);
+}
+
+.unixnotis-toggle.unixnotis-toggle-kind-night:checked:hover {
+  background-image: linear-gradient(135deg, #a78bfa, #5b21b6);
+  box-shadow: 0 8px 20px -6px alpha(#5b21b6, 0.6), inset 0 1px 0 alpha(#ffffff, 0.18);
+  transform: translateY(-1px);
+}
+
+.unixnotis-toggle-icon {
+  color: alpha(#ffffff, 0.65);
+  transition: color 0.15s ease-out;
+}
+
+.unixnotis-toggle:hover .unixnotis-toggle-icon {
+  color: #ffffff;
+}
+
+.unixnotis-toggle:checked .unixnotis-toggle-icon {
+  color: #ffffff;
+}
+
+.unixnotis-stat-card {
+  background: alpha(#ffffff, 0.035);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 14px;
+  box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.unixnotis-stat-card:hover {
+  background: alpha(#ffffff, 0.06);
+  border-top: 1px solid alpha(#ffffff, 0.12);
+  border-left: 1px solid alpha(#ffffff, 0.10);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.04);
+  box-shadow: 0 8px 20px -12px alpha(#000000, 0.6);
+  transform: translateY(-1.5px);
+}
+
+.unixnotis-stat-icon {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 5px;
+  border-radius: 8px;
+  box-shadow: none;
+  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+/* CPU Stat Style (Emerald Green) */
+.unixnotis-stat-kind-cpu .unixnotis-stat-icon {
+  background: alpha(#10b981, 0.08);
+  border: 1px solid alpha(#10b981, 0.15);
+  color: alpha(#34d399, 0.85);
+}
+
+.unixnotis-stat-kind-cpu:hover .unixnotis-stat-icon {
+  background: alpha(#10b981, 0.16);
+  border-color: alpha(#10b981, 0.35);
+  color: #34d399;
+}
+
+/* RAM Stat Style (Royal Blue) */
+.unixnotis-stat-kind-ram .unixnotis-stat-icon {
+  background: alpha(#3b82f6, 0.08);
+  border: 1px solid alpha(#3b82f6, 0.15);
+  color: alpha(#60a5fa, 0.85);
+}
+
+.unixnotis-stat-kind-ram:hover .unixnotis-stat-icon {
+  background: alpha(#3b82f6, 0.16);
+  border-color: alpha(#3b82f6, 0.35);
+  color: #60a5fa;
+}
+
+/* Battery Stat Style (Amber/Gold) */
+.unixnotis-stat-kind-battery .unixnotis-stat-icon {
+  background: alpha(#f59e0b, 0.08);
+  border: 1px solid alpha(#f59e0b, 0.15);
+  color: alpha(#fbbf24, 0.85);
+}
+
+.unixnotis-stat-kind-battery:hover .unixnotis-stat-icon {
+  background: alpha(#f59e0b, 0.16);
+  border-color: alpha(#f59e0b, 0.35);
+  color: #fbbf24;
+}
+
+.unixnotis-info-icon,
+.unixnotis-info-icon-weather {
+  background: alpha(#ffffff, 0.04);
+  border: 1px solid alpha(#ffffff, 0.04);
+  border-radius: 7px;
+  box-shadow: none;
+  color: alpha(#ffffff, 0.6);
+  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.unixnotis-stat-title,
+.unixnotis-info-title {
+  color: alpha(#ffffff, 0.45);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+.unixnotis-stat-value {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.unixnotis-info-card,
+.unixnotis-info-card-weather {
+  background: alpha(#ffffff, 0.035);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 16px;
+  box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.unixnotis-info-card:hover {
+  background: alpha(#ffffff, 0.06);
+  border-top: 1px solid alpha(#ffffff, 0.12);
+  border-left: 1px solid alpha(#ffffff, 0.10);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.04);
+  box-shadow: 0 6px 14px -6px alpha(#000000, 0.6);
+  transform: translateY(-0.5px);
+}
+
+.unixnotis-info-card:hover .unixnotis-info-icon {
+  color: #ffffff;
+  background: alpha(#ffffff, 0.12);
+  border-color: alpha(#ffffff, 0.12);
+}
+
+.unixnotis-info-card-calendar .unixnotis-info-title,
+.unixnotis-info-card-weather .unixnotis-info-title {
+  color: alpha(#ffffff, 0.6);
+}
+
+.unixnotis-calendar {
+  background: alpha(#ffffff, 0.02);
+  border: 1px solid alpha(#ffffff, 0.06);
+  border-radius: 12px;
+  box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
+}
+
+.unixnotis-calendar button {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.unixnotis-calendar button:hover {
+  background: alpha(#ffffff, 0.08);
+  border: 0;
+  box-shadow: none;
+}
+
+.unixnotis-calendar .day-number:selected {
+  background-image: linear-gradient(135deg, alpha(@unixnotis-accent, 0.25), alpha(@unixnotis-accent, 0.15));
+  border: 1px solid alpha(@unixnotis-accent, 0.60);
+  color: #ffffff;
+  box-shadow: 0 0 12px -2px alpha(@unixnotis-accent, 0.4), inset 0 1px 0 alpha(#ffffff, 0.12);
+  border-radius: 8px;
+}
+
+.unixnotis-calendar .day-number.today {
+  background: alpha(#ffffff, 0.08);
+  color: @unixnotis-text;
+  border: 1px solid alpha(#ffffff, 0.20);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.05);
+  border-radius: 8px;
 }

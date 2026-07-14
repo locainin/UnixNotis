@@ -26,7 +26,8 @@ pub struct CardWidgetConfig {
 impl CardWidgetConfig {
     pub(super) fn default_calendar() -> Self {
         Self {
-            enabled: true,
+            // Calendar remains available but hidden in the compact first-install layout
+            enabled: false,
             kind: Some("calendar".to_string()),
             layout: CardLayout::Default,
             title: "Calendar".to_string(),
@@ -45,7 +46,8 @@ impl CardWidgetConfig {
 
     pub(super) fn default_weather() -> Self {
         Self {
-            enabled: true,
+            // Weather needs user data, so the empty placeholder stays opt-in
+            enabled: false,
             kind: Some("weather".to_string()),
             layout: CardLayout::Default,
             title: "Weather".to_string(),

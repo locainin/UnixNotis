@@ -2,20 +2,28 @@
 
 /* Shared close button styling for popup surfaces. */
 .unixnotis-popup-close {
-  background: alpha(#0b111d, 0.5);
+  background: alpha(#ffffff, 0.045);
   border-radius: 999px;
-  border: 1px solid alpha(@unixnotis-accent, 0.18);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
   padding: 3px;
   min-width: 24px;
   min-width: var(--unixnotis-popup-close-size);
   min-height: 24px;
   min-height: var(--unixnotis-popup-close-size);
-  box-shadow: 0 0 14px -12px @unixnotis-glow-cyan;
+  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
+  color: alpha(#ffffff, 0.70);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
 .unixnotis-popup-close:hover {
-  background: alpha(@unixnotis-urgent, 0.2);
-  border-color: alpha(@unixnotis-urgent, 0.6);
+  background: alpha(#fb7185, 0.16);
+  border-color: alpha(#fb7185, 0.45);
+  color: #fb7185;
+  box-shadow: 0 0 8px alpha(#fb7185, 0.35);
+  transform: translateY(-0.5px);
 }
 
 /* Popup stack */
@@ -32,38 +40,45 @@
 }
 
 .unixnotis-popup-card {
-  background-image: linear-gradient(155deg, @unixnotis-popup-bg-1, @unixnotis-popup-bg-2);
-  color: @unixnotis-text;
+  background-image: linear-gradient(135deg, alpha(#141d30, 0.94), alpha(#0a0e1a, 0.98));
+  color: #ffffff;
   border-radius: 20px;
   border-radius: var(--unixnotis-popup-card-radius);
   padding: 14px 16px;
   padding: var(--unixnotis-popup-card-padding-y) var(--unixnotis-popup-card-padding-x);
-  border: 1px solid alpha(@unixnotis-card-border, 0.85);
+  border-top: 1px solid alpha(#ffffff, 0.12);
+  border-left: 1px solid alpha(#ffffff, 0.09);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
   box-shadow:
-    0 18px 32px -18px @unixnotis-shadow-strong,
-    0 10px 18px -16px @unixnotis-shadow-soft,
+    0 20px 40px -20px alpha(#000000, 0.9),
     0 0 26px -22px @unixnotis-glow-pink,
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+    inset 0 1px 0 alpha(#ffffff, 0.08);
 }
 
 .unixnotis-popup-card.critical {
   border-left: 3px solid @unixnotis-urgent;
+  border-top: 1px solid alpha(#ffffff, 0.16);
+  border-right: 1px solid alpha(#ffffff, 0.08);
+  border-bottom: 1px solid alpha(#ffffff, 0.04);
 }
 
 .unixnotis-popup-header-row {
   margin-bottom: 8px;
   padding-bottom: 6px;
-  border-bottom: 1px solid alpha(@unixnotis-card-border, 0.4);
+  border-bottom: 1px solid alpha(#ffffff, 0.06);
 }
 
 .unixnotis-popup-header {
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0.2px;
+  color: @unixnotis-accent;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .unixnotis-popup-summary {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 13px;
   margin-top: 4px;
 }
@@ -75,7 +90,8 @@
 }
 
 .unixnotis-popup-body {
-  color: @unixnotis-muted;
+  color: #cbd5e1;
+  font-weight: 500;
   font-size: 12px;
   margin-top: 2px;
 }
@@ -90,7 +106,7 @@
 }
 
 .unixnotis-popup-card-has-actions .unixnotis-popup-actions {
-  border-top: 1px solid alpha(@unixnotis-card-border, 0.24);
+  border-top: 1px solid alpha(#ffffff, 0.06);
   padding-top: calc(var(--unixnotis-popup-actions-gap) - 2px);
 }
 
@@ -99,20 +115,31 @@
 }
 
 .unixnotis-popup-action {
-  background-image: linear-gradient(160deg, @unixnotis-popup-action-bg, alpha(@unixnotis-surface, 0.95));
-  color: @unixnotis-text;
+  background: alpha(#ffffff, 0.045);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  color: alpha(#ffffff, 0.75);
   border-radius: 10px;
   padding: 4px 10px;
-  border: 1px solid alpha(@unixnotis-accent, 0.2);
   font-size: 12px;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out;
 }
 
 .unixnotis-popup-action:hover {
-  background-image: linear-gradient(160deg, @unixnotis-popup-action-hover, alpha(@unixnotis-accent-2, 0.2));
-  border-color: alpha(@unixnotis-accent, 0.5);
+  background: alpha(#ffffff, 0.08);
+  border-top: 1px solid alpha(#ffffff, 0.14);
+  border-left: 1px solid alpha(#ffffff, 0.10);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.04);
+  color: #ffffff;
+  transform: translateY(-0.5px);
 }
 
 .unixnotis-popup-action:checked {
-  background-image: linear-gradient(160deg, @unixnotis-popup-action-active, alpha(@unixnotis-accent-2, 0.25));
+  background-image: linear-gradient(135deg, alpha(#00b4db, 0.22), alpha(#0083b0, 0.22));
+  border: 1px solid alpha(#00a2ff, 0.50);
+  box-shadow: 0 4px 12px -8px alpha(#00a2ff, 0.4), inset 0 1px 0 alpha(#ffffff, 0.12);
 }
 /* End of popup theme. */

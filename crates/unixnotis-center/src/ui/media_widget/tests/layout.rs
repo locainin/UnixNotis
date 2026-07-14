@@ -83,7 +83,8 @@ fn carousel_text_budget_includes_card_chrome_and_stays_inside_panel() {
 
     // These values model the stock carousel's fixed horizontal allocations
     let card_chrome_width = 22;
-    let art_and_gap_width = 54 + shell.content_spacing_px;
+    // The artwork frame adds two border pixels on each side around the configured slot
+    let art_and_gap_width = (shell.art_size_px + 4) + shell.content_spacing_px;
     let controls_width = (38 * 3) + (shell.control_spacing_px * 2);
     let controls_gap_width = shell.content_spacing_px;
     let navigation_width = (24 * 2) + shell.navigation_spacing_px;
@@ -96,7 +97,7 @@ fn carousel_text_budget_includes_card_chrome_and_stays_inside_panel() {
         + navigation_gap_width
         + navigation_width;
 
-    assert_eq!(text_width, 138);
+    assert_eq!(text_width, 152);
     assert!(required_width <= panel_content_width);
 }
 
@@ -106,7 +107,7 @@ fn single_player_carousel_reclaims_hidden_navigation_width() {
     let multi_width = marquee_width_for_shell_player_count(&shell, 420, true);
     let single_width = marquee_width_for_shell_player_count(&shell, 420, false);
 
-    assert_eq!(single_width - multi_width, 60);
+    assert_eq!(single_width - multi_width, 56);
 }
 
 #[test]
@@ -131,7 +132,7 @@ fn larger_art_slot_reduces_marquee_budget() {
     };
     let shell = MediaShellConfig::from_config(&config);
 
-    assert_eq!(marquee_width_for_shell(&shell, 420), 296);
+    assert_eq!(marquee_width_for_shell(&shell, 420), 298);
 }
 
 #[test]

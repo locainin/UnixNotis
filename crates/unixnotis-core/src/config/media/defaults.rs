@@ -3,8 +3,10 @@ use super::types::{
     MediaPositionFormat, MediaRemoteArtPolicy, MediaTitleFallback,
 };
 
-pub const DEFAULT_MEDIA_ART_SIZE_PX: i32 = 50;
-pub const DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX: i32 = 140;
+// Compact artwork leaves more horizontal space for title metadata and controls
+pub const DEFAULT_MEDIA_ART_SIZE_PX: i32 = 48;
+// The floor protects short titles without forcing the panel wider
+pub const DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX: i32 = 100;
 
 impl Default for MediaConfig {
     fn default() -> Self {
@@ -35,9 +37,10 @@ impl Default for MediaConfig {
             art_size_px: DEFAULT_MEDIA_ART_SIZE_PX,
             text_width_floor_px: DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX,
             card_height_px: None,
-            content_spacing_px: 10,
-            control_spacing_px: 6,
-            navigation_spacing_px: 6,
+            // Tight gaps preserve clear grouping inside the stock 420px panel
+            content_spacing_px: 8,
+            control_spacing_px: 4,
+            navigation_spacing_px: 4,
             allowlist: Vec::new(),
             denylist: vec!["playerctld".to_string()],
             // Browsers stay opt-in because webpage metadata can choose artwork URLs

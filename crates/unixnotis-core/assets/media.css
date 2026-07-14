@@ -4,6 +4,28 @@
  * Keeps media styling in its own layer so users can rice the player card
  * without touching the rest of widgets.css
  */
+:root {
+  --unixnotis-media-card-radius: 20px;
+  --unixnotis-media-card-min-height: 72px;
+  --unixnotis-media-card-padding-x: 10px;
+  --unixnotis-media-card-padding-y: 8px;
+  --unixnotis-media-card-padding-inline-x: 10px;
+  --unixnotis-media-card-padding-inline-y: 8px;
+  --unixnotis-media-card-padding-stacked: 8px;
+  --unixnotis-media-card-padding-showcase-x: 10px;
+  --unixnotis-media-card-padding-showcase-y: 8px;
+  --unixnotis-media-button-padding-x: 6px;
+  --unixnotis-media-button-padding-y: 4px;
+  --unixnotis-media-art-size: 48px;
+  --unixnotis-media-art-radius: 10px;
+  --unixnotis-media-art-frame-radius: 12px;
+  --unixnotis-media-title-font-size: 13px;
+  --unixnotis-media-title-font-weight: 700;
+  --unixnotis-media-source-font-size: 11px;
+  --unixnotis-media-artist-font-size: 12px;
+  --unixnotis-media-button-radius: 999px;
+}
+
 .unixnotis-media-container {
   margin-bottom: var(--unixnotis-media-container-gap);
 }
@@ -39,11 +61,11 @@
 
 .unixnotis-media-nav {
   background-image: linear-gradient(150deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.9));
-  border-radius: var(--unixnotis-media-nav-radius);
+  border-radius: 12px;
   padding: calc((var(--unixnotis-media-nav-size) - 14px) / 2);
   border: 1px solid alpha(@unixnotis-accent, 0.2);
   font-weight: 700;
-  font-size: var(--unixnotis-media-nav-font-size);
+  font-size: 12px;
   min-width: var(--unixnotis-media-nav-size);
   color: @unixnotis-text;
   box-shadow:
@@ -63,16 +85,16 @@
 
 .unixnotis-media-position {
   color: @unixnotis-muted;
-  font-size: var(--unixnotis-media-position-font-size);
-  letter-spacing: var(--unixnotis-media-position-letter-spacing);
+  font-size: 11px;
+  letter-spacing: 0.08em;
 }
 
 .unixnotis-media-card {
   background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, alpha(#0f1828, 0.94));
-  border-radius: var(--unixnotis-media-card-radius);
+  border-radius: 18px;
   border: 1px solid @unixnotis-card-border;
   padding: var(--unixnotis-media-card-padding-y) var(--unixnotis-media-card-padding-x);
-  min-height: var(--unixnotis-media-card-min-height);
+  min-height: 68px;
   box-shadow:
     0 14px 26px -20px @unixnotis-shadow-strong,
     0 0 22px -20px alpha(@unixnotis-accent-2, 0.16),
@@ -81,22 +103,22 @@
 
 .unixnotis-media-card-carousel {
   padding: var(--unixnotis-media-card-padding-y) var(--unixnotis-media-card-padding-x);
-  min-height: var(--unixnotis-media-card-min-height);
+  min-height: 68px;
 }
 
 .unixnotis-media-card-inline {
   padding: var(--unixnotis-media-card-padding-inline-y) var(--unixnotis-media-card-padding-inline-x);
-  min-height: var(--unixnotis-media-card-inline-min-height);
+  min-height: 88px;
 }
 
 .unixnotis-media-card-stacked {
   padding: var(--unixnotis-media-card-padding-stacked);
-  min-height: var(--unixnotis-media-card-stacked-min-height);
+  min-height: 108px;
 }
 
 .unixnotis-media-card-showcase {
   padding: var(--unixnotis-media-card-padding-showcase-y) var(--unixnotis-media-card-padding-showcase-x);
-  min-height: var(--unixnotis-media-card-showcase-min-height);
+  min-height: 92px;
 }
 
 .unixnotis-media-card-player {
@@ -130,9 +152,11 @@
   min-height: 0;
 }
 
+
 .unixnotis-media-art {
   min-width: var(--unixnotis-media-art-size);
   min-height: var(--unixnotis-media-art-size);
+  border-radius: 10px;
   border-radius: var(--unixnotis-media-art-radius);
   background: alpha(#000000, 0.12);
 }
@@ -140,10 +164,14 @@
 .unixnotis-media-art-frame {
   min-width: var(--unixnotis-media-art-frame-size);
   min-height: var(--unixnotis-media-art-frame-size);
+  border-radius: 12px;
   border-radius: var(--unixnotis-media-art-frame-radius);
   background: alpha(#000000, 0.12);
-  border: 1px solid alpha(@unixnotis-outline, 0.35);
-  box-shadow: inset 0 0 0 1px alpha(#ffffff, 0.04);
+  border-top: 1px solid alpha(#ffffff, 0.10);
+  border-left: 1px solid alpha(#ffffff, 0.08);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.06), 0 4px 10px -8px alpha(#000000, 0.6);
 }
 
 .unixnotis-media-art.empty {
@@ -151,15 +179,18 @@
 }
 
 .unixnotis-media-source {
-  font-size: var(--unixnotis-media-source-font-size);
-  letter-spacing: var(--unixnotis-media-source-letter-spacing);
+  color: alpha(@unixnotis-accent, 0.75);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: @unixnotis-muted;
 }
 
 .unixnotis-media-title {
-  font-weight: var(--unixnotis-media-title-font-weight);
-  font-size: var(--unixnotis-media-title-font-size);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: -0.01em;
 }
 
 .unixnotis-marquee {
@@ -169,8 +200,9 @@
 }
 
 .unixnotis-media-artist {
-  color: @unixnotis-muted;
-  font-size: var(--unixnotis-media-artist-font-size);
+  color: #cbd5e1;
+  font-weight: 500;
+  font-size: 12px;
 }
 
 .unixnotis-media-artist.empty {
@@ -183,7 +215,7 @@
 
 .unixnotis-media-button {
   background-image: linear-gradient(160deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.95));
-  border-radius: var(--unixnotis-media-button-radius);
+  border-radius: 10px;
   border: 1px solid alpha(@unixnotis-accent, 0.2);
   padding: var(--unixnotis-media-button-padding-y) var(--unixnotis-media-button-padding-x);
   box-shadow:
@@ -199,4 +231,97 @@
 .unixnotis-media-button.primary {
   background-image: linear-gradient(160deg, @unixnotis-action-bg-active, alpha(@unixnotis-accent-2, 0.28));
   border-color: alpha(@unixnotis-accent, 0.75);
+}
+
+/* Restrained media transport */
+.unixnotis-media-card {
+  background: alpha(#ffffff, 0.035);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 16px;
+  border-radius: var(--unixnotis-media-card-radius);
+  box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.unixnotis-media-card:hover {
+  background-image: linear-gradient(135deg, alpha(#ffffff, 0.075), alpha(#ffffff, 0.025));
+  border-top-color: alpha(#ffffff, 0.14);
+  border-left-color: alpha(#ffffff, 0.10);
+  border-right-color: alpha(#ffffff, 0.06);
+  border-bottom-color: alpha(#ffffff, 0.03);
+  box-shadow: 0 8px 20px -10px alpha(#000000, 0.7), inset 0 1px 0 alpha(#ffffff, 0.05);
+}
+
+.unixnotis-media-card.playing {
+  background-image: linear-gradient(135deg, alpha(#ffffff, 0.075), alpha(#ffffff, 0.025));
+  border-top: 1px solid alpha(#ffffff, 0.16);
+  border-left: 1px solid alpha(#ffffff, 0.12);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.03);
+  box-shadow:
+    0 16px 36px -20px alpha(#000000, 0.8),
+    inset 0 1px 0 alpha(#ffffff, 0.12);
+}
+
+.unixnotis-media-button,
+.unixnotis-media-nav {
+  background: alpha(#ffffff, 0.04);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  box-shadow: none;
+  color: alpha(#ffffff, 0.85);
+  border-radius: 999px;
+  border-radius: var(--unixnotis-media-button-radius);
+  transition: background-color 0.12s ease-out, border-color 0.12s ease-out, transform 0.12s ease-out, color 0.12s ease-out, box-shadow 0.12s ease-out;
+}
+
+.unixnotis-media-button:hover,
+.unixnotis-media-nav:hover {
+  background: alpha(#ffffff, 0.09);
+  border-top-color: alpha(#ffffff, 0.16);
+  border-left-color: alpha(#ffffff, 0.12);
+  border-right-color: alpha(#ffffff, 0.06);
+  border-bottom-color: alpha(#ffffff, 0.03);
+  box-shadow: 0 4px 10px -5px alpha(#000000, 0.4), inset 0 1px 0 alpha(#ffffff, 0.05);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.unixnotis-media-button.primary {
+  background: #ffffff;
+  border: 1px solid #ffffff;
+  color: #0f172a;
+  box-shadow: 0 4px 10px -3px alpha(#000000, 0.3);
+}
+
+.unixnotis-media-button.primary:hover {
+  background: alpha(#ffffff, 0.90);
+  border-color: alpha(#ffffff, 0.90);
+  color: #020617;
+  box-shadow: 0 6px 14px -2px alpha(#000000, 0.45);
+  transform: translateY(-1.5px) scale(1.04);
+}
+
+.unixnotis-media-button:focus,
+.unixnotis-media-nav:focus {
+  /* Remove default blue focus rings from GTK button selections */
+  outline: none;
+}
+
+/* Compact carousel navigation to protect panel width budget */
+.unixnotis-media-nav {
+  min-width: 18px;
+  min-height: 18px;
+  padding: 3px;
+  margin: 0;
+}
+
+.unixnotis-media-nav-prev,
+.unixnotis-media-nav-next {
+  min-width: 18px;
 }

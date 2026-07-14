@@ -6,10 +6,10 @@ fn default_widgets_keep_expected_grid_shape() {
 
     // These counts define the visible stock control-center sections
     assert_eq!(widgets.toggle_layout, ToggleLayout::Horizontal);
-    assert_eq!(widgets.density, WidgetDensity::Comfortable);
-    assert_eq!(widgets.toggle_columns, 4);
-    assert_eq!(widgets.stat_columns, 2);
-    assert_eq!(widgets.card_columns, 2);
+    assert_eq!(widgets.density, WidgetDensity::Compact);
+    assert_eq!(widgets.toggle_columns, 2);
+    assert_eq!(widgets.stat_columns, 3);
+    assert_eq!(widgets.card_columns, 1);
     assert_eq!(widgets.toggles.len(), 4);
     assert_eq!(widgets.stats.len(), 3);
     assert_eq!(widgets.cards.len(), 2);

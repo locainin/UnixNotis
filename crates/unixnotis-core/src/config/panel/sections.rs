@@ -13,7 +13,8 @@ pub enum PanelSection {
 /// Return the stock top-to-bottom panel body section order
 #[must_use]
 pub fn default_panel_section_order() -> Vec<PanelSection> {
-    vec![PanelSection::Widgets, PanelSection::Notifications]
+    // Notifications stay first so new events remain the panel's primary content
+    vec![PanelSection::Notifications, PanelSection::Widgets]
 }
 
 /// Top-level panel widget sections that can be ordered by config
@@ -31,8 +32,8 @@ pub enum PanelWidgetSection {
 #[must_use]
 pub fn default_panel_widget_order() -> Vec<PanelWidgetSection> {
     vec![
-        PanelWidgetSection::Sliders,
         PanelWidgetSection::Media,
+        PanelWidgetSection::Sliders,
         PanelWidgetSection::Toggles,
         PanelWidgetSection::Stats,
         PanelWidgetSection::Cards,

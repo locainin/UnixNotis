@@ -42,15 +42,19 @@ pub struct WidgetsConfig {
 impl Default for WidgetsConfig {
     fn default() -> Self {
         Self {
-            density: WidgetDensity::Comfortable,
+            // Compact density keeps the complete stock control set visible on common displays
+            density: WidgetDensity::Compact,
             volume: SliderWidgetConfig::default_volume(),
             brightness: SliderWidgetConfig::default_brightness(),
             // Tooltips stay opt-in so compact panels do not add hover-only noise
             toggle_tooltips: false,
             toggle_layout: ToggleLayout::Horizontal,
-            toggle_columns: 4,
-            stat_columns: 2,
-            card_columns: 2,
+            // Two wide toggle columns keep labels readable in a narrow side panel
+            toggle_columns: 2,
+            // CPU, memory, and battery share one balanced status row
+            stat_columns: 3,
+            // Optional information cards receive the full width when enabled
+            card_columns: 1,
             toggles: vec![
                 ToggleWidgetConfig::default_wifi(),
                 ToggleWidgetConfig::default_bluetooth(),

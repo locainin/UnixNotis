@@ -18,12 +18,20 @@ fn default_slider_widgets_keep_stock_commands() {
         Some(SliderWidgetConfig::WPCTL_TOGGLE)
     );
     assert_eq!(widgets.volume.watch_cmd, None);
+    assert_eq!(widgets.volume.segments, 10);
+    assert!(widgets.volume.show_sublabels);
+    assert_eq!(widgets.volume.sublabel_min, "MUTE");
+    assert_eq!(widgets.volume.sublabel_max, "MAX");
 
     assert!(widgets.brightness.enabled);
     assert_eq!(widgets.brightness.label, "Brightness");
     assert_eq!(widgets.brightness.get_cmd, "brightnessctl -m");
     assert_eq!(widgets.brightness.set_cmd, "brightnessctl s {value}%");
     assert_eq!(widgets.brightness.watch_cmd, None);
+    assert_eq!(widgets.brightness.segments, 10);
+    assert!(widgets.brightness.show_sublabels);
+    assert_eq!(widgets.brightness.sublabel_min, "MIN");
+    assert_eq!(widgets.brightness.sublabel_max, "MAX");
 }
 
 #[test]
