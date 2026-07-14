@@ -1,8 +1,12 @@
 use std::time::Duration;
 
+use tokio::process::Command;
 use tokio::sync::watch;
+use tokio::time::sleep;
 
-use super::{shutdown_is_terminal, wait_error_needs_recovery, wait_for_retry_or_shutdown};
+use super::{
+    shutdown_is_terminal, terminate_child, wait_error_needs_recovery, wait_for_retry_or_shutdown,
+};
 use crate::child_process::{RestartBackoff, HEALTHY_RUNTIME_SECS, RESTART_BASE_MS, RESTART_MAX_MS};
 
 #[test]
@@ -92,4 +96,24 @@ async fn retry_wait_stops_when_shutdown_changes_before_delay_finishes() {
     tx.send(true).expect("send shutdown");
 
     assert!(waiter.await.expect("waiter task"));
+}
+
+#[tokio::test]
+async fn terminate_child_allows_a_slow_graceful_exit_before_escalating() {
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg("trap 'sleep 0.7; exit 0' TERM; while :; do sleep 0.05; done")
+        .kill_on_drop(true)
+        .spawn()
+        .expect("spawn graceful child");
+    // Give the shell enough time to install its signal handler
+    sleep(Duration::from_millis(50)).await;
+
+    terminate_child(&mut child, "graceful-test").await;
+
+    let status = child
+        .try_wait()
+        .expect("poll graceful child")
+        .expect("graceful child should exit");
+    assert!(status.success(), "SIGTERM handler should exit successfully");
 }

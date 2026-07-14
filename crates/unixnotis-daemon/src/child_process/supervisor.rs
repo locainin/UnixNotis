@@ -1,5 +1,6 @@
 //! Supervisor loop for the popups and center child processes
 
+use std::cmp::Ordering;
 use std::process::ExitStatus;
 use std::time::{Duration, Instant};
 
@@ -14,6 +15,9 @@ use rustix::process::{kill_process, Pid, Signal};
 use super::{RestartBackoff, UiProcessKind};
 use crate::daemon::DaemonState;
 use crate::Args;
+
+// GTK children can need one event-loop turn to unwind after SIGTERM
+const UI_CHILD_TERMINATION_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub(super) async fn supervise_process(
     kind: UiProcessKind,
@@ -192,8 +196,7 @@ async fn terminate_child(child: &mut Child, label: &str) {
     }
 
     let start = Instant::now();
-    let timeout = Duration::from_millis(600);
-    while start.elapsed() < timeout {
+    while start.elapsed().cmp(&UI_CHILD_TERMINATION_TIMEOUT) == Ordering::Less {
         match child.try_wait() {
             Ok(Some(_)) => return,
             Ok(None) => {}
