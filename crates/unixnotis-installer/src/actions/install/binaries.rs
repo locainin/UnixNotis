@@ -15,7 +15,7 @@ use super::super::{
     log_line, ActionContext,
 };
 
-pub(crate) fn install_binaries(ctx: &mut ActionContext) -> Result<()> {
+pub fn install_binaries(ctx: &mut ActionContext) -> Result<()> {
     // Read the managed binary list from installer metadata so install and uninstall stay aligned
     let binaries = resolve_install_binaries(ctx.paths)?;
     // Cargo metadata is the only reliable way to find the active release target directory
@@ -48,16 +48,13 @@ pub(crate) fn install_binaries(ctx: &mut ActionContext) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn remove_binaries(ctx: &mut ActionContext) -> Result<()> {
+pub fn remove_binaries(ctx: &mut ActionContext) -> Result<()> {
     // Best-effort discovery keeps uninstall usable even when the workspace is partially broken
     let (binaries, warning) = resolve_install_binaries_best_effort(ctx.paths);
     if let Some(message) = warning {
         log_line(
             ctx,
-            format!(
-                "Warning: binary discovery failed; using fallback list ({})",
-                message
-            ),
+            format!("Warning: binary discovery failed; using fallback list ({message})"),
         );
     }
 
@@ -106,22 +103,14 @@ fn copy_binary(ctx: &mut ActionContext, source: &Path, destination: &Path) -> Re
     let destination_display = format_with_home(destination);
     // Stage the copy beside the final file so the rename can replace atomically
     let temp_path = stage_binary_copy_with_retry(source, destination).map_err(|err| {
-        anyhow!(
-            "failed to stage {} -> {}: {}",
-            source_display,
-            destination_display,
-            err
-        )
+        anyhow!("failed to stage {source_display} -> {destination_display}: {err}")
     })?;
 
     // Rename replaces the destination in one step so there is no missing-binary window
     if let Err(err) = fs::rename(&temp_path, destination) {
         let _ = fs::remove_file(&temp_path);
         return Err(anyhow!(
-            "failed to install {} -> {}: {}",
-            source_display,
-            destination_display,
-            err
+            "failed to install {source_display} -> {destination_display}: {err}"
         ));
     }
     log_line(
@@ -167,7 +156,10 @@ fn stage_binary_copy(source: &Path, temp_path: &Path) -> io::Result<()> {
     })
 }
 
-fn stage_binary_copy_with_retry(source: &Path, destination: &Path) -> io::Result<PathBuf> {
+pub(in crate::actions::install) fn stage_binary_copy_with_retry(
+    source: &Path,
+    destination: &Path,
+) -> io::Result<PathBuf> {
     for attempt in 0..16 {
         let temp_path = binary_temp_path_attempt(destination, attempt);
         match stage_binary_copy(source, &temp_path) {
@@ -182,7 +174,10 @@ fn stage_binary_copy_with_retry(source: &Path, destination: &Path) -> io::Result
     ))
 }
 
-fn binary_temp_path_attempt(destination: &Path, attempt: u8) -> PathBuf {
+pub(in crate::actions::install) fn binary_temp_path_attempt(
+    destination: &Path,
+    attempt: u8,
+) -> PathBuf {
     if attempt == 0 {
         return binary_temp_path(destination);
     }

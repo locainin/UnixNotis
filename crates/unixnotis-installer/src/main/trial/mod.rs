@@ -5,7 +5,7 @@ mod launch;
 mod paths;
 mod shim;
 
-pub(crate) use launch::run_trial;
+pub use launch::run_trial;
 
 #[cfg(test)]
 #[path = "tests/build.rs"]

@@ -1,8 +1,8 @@
-//! Popup UI state, layout, and event handling.
+//! Popup UI state, layout, and event handling
 //!
-//! Keeps popup layout, icon decode, and list management in focused modules.
+//! Keeps popup layout, icon decode, and list management in focused modules
 
-// Load the shared icon helpers without pulling them into the crate root module list.
+// Load the shared icon helpers without pulling them into the crate root module list
 #[path = "../icons/mod.rs"]
 mod icons;
 mod ui_entry;
@@ -25,7 +25,7 @@ use icons::{DesktopIconIndex, TextureCache};
 use ui_entry::PopupEntry;
 use ui_window::{apply_popup_config, build_popup_window, PopupInputRegionState};
 
-/// Popup-only GTK state for notification toasts.
+/// Popup-only GTK state for notification toasts
 pub struct UiState {
     config: Config,
     config_path: std::path::PathBuf,
@@ -41,13 +41,13 @@ pub struct UiState {
     visible_popups: Vec<u32>,
     // Latest daemon gate state used to keep visible popups in policy
     control_state: ControlState,
-    // Desktop icon index caches resolved icon themes for known applications.
+    // Desktop icon index caches resolved icon themes for known applications
     desktop_icons: DesktopIconIndex,
-    // Cache resolved icon names per app to reduce repeated theme lookups.
+    // Cache resolved icon names per app to reduce repeated theme lookups
     icon_cache: HashMap<String, Option<String>>,
-    // FIFO order used to cap icon cache growth.
+    // FIFO order used to cap icon cache growth
     icon_cache_order: VecDeque<String>,
-    // Small LRU for decoded textures to avoid repeated PNG decode work.
+    // Small LRU for decoded textures to avoid repeated PNG decode work
     icon_texture_cache: Rc<RefCell<TextureCache>>,
 }
 
@@ -120,7 +120,7 @@ impl UiState {
             }
             UiEvent::CssReload => {
                 debug!("popup css reload requested");
-                self.css.reload(css::DEFAULT_CSS);
+                let _ = self.css.reload(css::DEFAULT_CSS);
             }
             UiEvent::ConfigReload => {
                 debug!("popup config reload requested");
@@ -160,7 +160,7 @@ impl UiState {
         debug!("popup config reloaded");
         // CSS updates are applied before window geometry so visual updates are atomic
         self.css.update_theme(theme_paths, config.theme.clone());
-        self.css.reload(css::DEFAULT_CSS);
+        let _ = self.css.reload(css::DEFAULT_CSS);
         apply_popup_config(
             &self.popup_window,
             &self.popup_stack,

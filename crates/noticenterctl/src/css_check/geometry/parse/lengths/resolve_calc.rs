@@ -1,4 +1,4 @@
-//! calc() resolution for geometry length parsing
+//! `calc()` resolution for geometry length parsing
 
 use super::{parse_length_expression, CssCustomProperties, ResolvedCssValue};
 

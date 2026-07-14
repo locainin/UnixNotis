@@ -12,14 +12,13 @@ impl NotificationList {
         let id = notification.id;
         let existing_entry = self.entries.get(&id);
         let old_group = existing_entry.map(|entry| entry.app_key.clone());
-        let was_in_active = existing_entry.map(|entry| entry.is_active).unwrap_or(false);
+        let was_in_active = existing_entry.is_some_and(|entry| entry.is_active);
         let was_in_history = existing_entry.is_some() && !was_in_active;
         // Snapshot ordering state before any mutations; used to decide whether a full rebuild
         // is necessary because rebuilds are expensive for large histories
         let was_front = self.active_order.front().copied() == Some(id);
-        let needs_new_key = existing_entry
-            .map(|entry| entry.view.app_name != notification.app_name)
-            .unwrap_or(false);
+        let needs_new_key =
+            existing_entry.is_some_and(|entry| entry.view.app_name != notification.app_name);
         let new_key = if needs_new_key {
             Some(self.intern_key(&notification.app_name))
         } else {
@@ -159,13 +158,9 @@ impl NotificationList {
 
     pub fn mark_closed(&mut self, id: u32, reason: CloseReason) {
         let group_key = self.entries.get(&id).map(|entry| entry.app_key.clone());
-        let should_archive = self
-            .entries
-            .get(&id)
-            .map(|entry| {
-                should_archive_entry(entry.view.as_ref(), reason, self.transient_to_history)
-            })
-            .unwrap_or(false);
+        let should_archive = self.entries.get(&id).is_some_and(|entry| {
+            should_archive_entry(entry.view.as_ref(), reason, self.transient_to_history)
+        });
 
         if !should_archive {
             // Rows that do not belong in history should disappear fully from the list
@@ -230,20 +225,23 @@ impl NotificationList {
         let desired_len = self.group_block_len(key, visible_ids.as_ref());
         self.group_ranges
             .get(key)
-            .map(|range| range.len == desired_len)
-            .unwrap_or(false)
+            .is_some_and(|range| range.len == desired_len)
     }
 }
 
-fn should_move_active_to_front(was_in_history: bool, was_in_active: bool, was_front: bool) -> bool {
+const fn should_move_active_to_front(
+    was_in_history: bool,
+    was_in_active: bool,
+    was_front: bool,
+) -> bool {
     was_in_history || !was_in_active || !was_front
 }
 
-fn collapsed_group_is_stacked(expanded: bool, group_len: usize) -> bool {
+const fn collapsed_group_is_stacked(expanded: bool, group_len: usize) -> bool {
     !expanded && group_len > 1
 }
 
-fn should_archive_entry(
+const fn should_archive_entry(
     notification: &NotificationView,
     reason: CloseReason,
     transient_to_history: bool,

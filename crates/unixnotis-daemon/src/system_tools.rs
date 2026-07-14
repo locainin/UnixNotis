@@ -9,17 +9,17 @@ use tokio::process::Command as TokioCommand;
 #[cfg(test)]
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-pub(crate) fn command(program: &str) -> std::io::Result<Command> {
+pub fn command(program: &str) -> std::io::Result<Command> {
     let path = program_path(program)?;
     Ok(Command::new(path))
 }
 
-pub(crate) fn tokio_command(program: &str) -> std::io::Result<TokioCommand> {
+pub fn tokio_command(program: &str) -> std::io::Result<TokioCommand> {
     let path = program_path(program)?;
     Ok(TokioCommand::new(path))
 }
 
-pub(crate) fn program_path(program: &str) -> std::io::Result<PathBuf> {
+pub fn program_path(program: &str) -> std::io::Result<PathBuf> {
     trusted_program_path(program).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -80,7 +80,7 @@ fn fake_program_path(program: &str) -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-pub(crate) struct FakeToolBinGuard {
+pub struct FakeToolBinGuard {
     _lock: MutexGuard<'static, ()>,
     previous: Option<PathBuf>,
 }
@@ -93,7 +93,7 @@ impl Drop for FakeToolBinGuard {
 }
 
 #[cfg(test)]
-pub(crate) fn use_fake_tool_bin(path: &Path) -> FakeToolBinGuard {
+pub fn use_fake_tool_bin(path: &Path) -> FakeToolBinGuard {
     let lock = fake_tool_bin_test_lock()
         .lock()
         .expect("fake tool bin test lock");

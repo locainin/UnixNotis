@@ -21,21 +21,14 @@ pub enum ReleaseUpdateState {
 
 impl ReleaseStatus {
     pub fn detect() -> Self {
+        Self::detect_with(fetch_latest_release_tag)
+    }
+
+    fn detect_with(fetch_latest: impl FnOnce() -> Result<String, String>) -> Self {
         // Current version comes from Cargo so source and release builds agree
         let current = current_version_tag();
 
-        #[cfg(test)]
-        {
-            // Unit tests must not depend on GitHub, network access, or curl timing
-            Self {
-                current,
-                latest: None,
-                state: ReleaseUpdateState::Unknown,
-            }
-        }
-
-        #[cfg(not(test))]
-        match fetch_latest_release_tag() {
+        match fetch_latest() {
             Ok(latest) => {
                 // GitHub can return any valid tag name, but the UI only treats stable tags as updates
                 // Invalid or unexpected tag formats fail closed as "not newer"
@@ -104,7 +97,7 @@ fn fetch_latest_release_tag() -> Result<String, String> {
     latest_tag_from_json(&output.stdout)
 }
 
-fn latest_release_curl_args() -> [&'static str; 14] {
+const fn latest_release_curl_args() -> [&'static str; 14] {
     [
         // Disable .curlrc so local flags cannot rewrite the release-check request
         "-q",

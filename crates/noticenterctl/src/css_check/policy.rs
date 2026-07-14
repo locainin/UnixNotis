@@ -44,21 +44,6 @@ pub(super) fn is_vertical_size_property(name: &str) -> bool {
     )
 }
 
-pub(super) fn is_complex_geometry_warning_property(name: &str) -> bool {
-    // Border-only tweaks are common state styling and usually do not drive row width by themselves
-    matches!(
-        name.trim(),
-        "width"
-            | "min-width"
-            | "margin"
-            | "margin-left"
-            | "margin-right"
-            | "padding"
-            | "padding-left"
-            | "padding-right"
-    )
-}
-
 pub(super) fn parsing_error_hint(line_text: &str) -> Option<String> {
     // Trim once so the checks stay simple
     let trimmed = line_text.trim();

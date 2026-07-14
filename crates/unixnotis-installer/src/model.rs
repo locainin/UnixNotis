@@ -1,4 +1,4 @@
-//! Shared installer types for action selection and progress reporting.
+//! Shared installer types for action selection and progress reporting
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActionMode {
@@ -9,12 +9,12 @@ pub enum ActionMode {
 }
 
 impl ActionMode {
-    pub fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
-            ActionMode::Test => "Trial run",
-            ActionMode::Install => "Install",
-            ActionMode::Uninstall => "Uninstall",
-            ActionMode::Reset => "Reset config",
+            Self::Test => "Trial run",
+            Self::Install => "Install",
+            Self::Uninstall => "Uninstall",
+            Self::Reset => "Reset config",
         }
     }
 }

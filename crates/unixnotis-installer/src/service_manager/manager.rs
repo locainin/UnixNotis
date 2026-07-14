@@ -26,7 +26,7 @@ enum ServiceManagerKind {
 }
 
 impl ServiceManagerKind {
-    fn label(self) -> &'static str {
+    const fn label(self) -> &'static str {
         match self {
             Self::Systemd => "systemd --user",
             Self::Dinit => "dinit --user",
@@ -46,7 +46,7 @@ pub struct ServiceManager {
 }
 
 impl ServiceManager {
-    pub fn systemd_user(artifact_root: PathBuf) -> Self {
+    pub const fn systemd_user(artifact_root: PathBuf) -> Self {
         Self {
             kind: ServiceManagerKind::Systemd,
             artifact_root,
@@ -54,7 +54,7 @@ impl ServiceManager {
         }
     }
 
-    pub fn dinit_user(artifact_root: PathBuf) -> Self {
+    pub const fn dinit_user(artifact_root: PathBuf) -> Self {
         Self {
             kind: ServiceManagerKind::Dinit,
             artifact_root,
@@ -62,7 +62,7 @@ impl ServiceManager {
         }
     }
 
-    pub fn runit_user(artifact_root: PathBuf) -> Self {
+    pub const fn runit_user(artifact_root: PathBuf) -> Self {
         Self {
             kind: ServiceManagerKind::Runit,
             artifact_root,
@@ -70,7 +70,7 @@ impl ServiceManager {
         }
     }
 
-    pub fn s6_user(artifact_root: PathBuf, live_root: PathBuf) -> Self {
+    pub const fn s6_user(artifact_root: PathBuf, live_root: PathBuf) -> Self {
         Self {
             kind: ServiceManagerKind::S6,
             artifact_root,
@@ -83,7 +83,7 @@ impl ServiceManager {
         self.kind.label()
     }
 
-    pub fn service_name(&self) -> &'static str {
+    pub const fn service_name(&self) -> &'static str {
         // Backends can choose names that match their manager's normal service naming
         match self.kind {
             ServiceManagerKind::Systemd => systemd::SERVICE_NAME,
@@ -295,7 +295,7 @@ impl ServiceManager {
         }
     }
 
-    pub fn uses_dbus_environment_helper(&self) -> bool {
+    pub const fn uses_dbus_environment_helper(&self) -> bool {
         // Only the systemd path benefits directly from dbus-update-activation-environment
         // Dinit imports env through dinitctl, while runit and s6 use envdir artifacts
         matches!(self.kind, ServiceManagerKind::Systemd)

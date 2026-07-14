@@ -30,7 +30,7 @@ impl RefreshCommandKey {
             timeout_ms: job
                 .plan
                 .timeout_override
-                .map(|timeout| timeout.as_millis().min(u64::MAX as u128) as u64),
+                .map(|timeout| timeout.as_millis().min(u128::from(u64::MAX)) as u64),
         }
     }
 }
@@ -57,7 +57,7 @@ impl CoalescedRefreshQueue {
     pub(super) fn global() -> &'static Self {
         static QUEUE: OnceLock<CoalescedRefreshQueue> = OnceLock::new();
         // One shared overflow queue
-        QUEUE.get_or_init(|| CoalescedRefreshQueue {
+        QUEUE.get_or_init(|| Self {
             state: Mutex::new(CoalescedRefreshState {
                 pending: HashMap::new(),
                 order: VecDeque::new(),
@@ -80,13 +80,20 @@ impl CoalescedRefreshQueue {
     }
 
     pub(super) fn enqueue(&self, job: CommandJob) -> CoalescedInsertOutcome {
-        let mut state = self.state.lock().expect("coalesced refresh lock poisoned");
-        // Keep only the newest job for a key
-        let outcome = insert_coalesced_job(&mut state, job);
+        let outcome = {
+            let mut state = self.state.lock().expect("coalesced refresh lock poisoned");
+            // Keep only the newest job for a key
+            insert_coalesced_job(&mut state, job)
+        };
+        // Wake the worker after releasing the queue lock so it can make progress immediately
         self.wake.notify_one();
         outcome
     }
 
+    #[expect(
+        clippy::significant_drop_tightening,
+        reason = "the condition-variable guard must remain live across the empty-queue wait"
+    )]
     fn drain_loop(&'static self, worker_tx: channel::Sender<CommandJob>) {
         loop {
             let (key, job) = {

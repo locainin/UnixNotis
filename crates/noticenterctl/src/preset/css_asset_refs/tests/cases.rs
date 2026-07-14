@@ -1,5 +1,6 @@
 use super::{
     collect_external_css_asset_refs_from_bundle, collect_external_css_asset_refs_from_paths,
+    collect_local_css_asset_paths_from_paths,
 };
 use crate::preset::archive::BundleFile;
 use std::fs;
@@ -21,10 +22,8 @@ impl TempDirGuard {
             .expect("clock moved backwards")
             .as_nanos();
         let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "unixnotis-css-asset-refs-{}-{}-{}",
-            name, stamp, serial
-        ));
+        let path =
+            std::env::temp_dir().join(format!("unixnotis-css-asset-refs-{name}-{stamp}-{serial}"));
         fs::create_dir_all(&path).expect("create temp dir");
         Self { path }
     }
@@ -101,4 +100,23 @@ fn finds_remote_url_in_live_css() {
 
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].reason, "remote url");
+}
+
+#[test]
+fn local_dependency_collection_ignores_embedded_and_remote_urls() {
+    let root = TempDirGuard::new("local-dependencies");
+    let config_dir = root.path.join("xdg/unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config dir");
+    let css_path = root.write(
+        "xdg/unixnotis/base.css",
+        ".a { background: url('assets/local.png'); }\n\
+         .b { background: url('data:image/png;base64,AAAA'); }\n\
+         .c { background: url('http://example.com/a.png'); }\n\
+         .d { background: url('https://example.com/b.png'); }\n",
+    );
+
+    let paths = collect_local_css_asset_paths_from_paths(&config_dir, &[css_path])
+        .expect("collect local dependencies");
+
+    assert_eq!(paths, vec![PathBuf::from("assets/local.png")]);
 }

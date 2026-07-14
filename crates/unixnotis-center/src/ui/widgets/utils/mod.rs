@@ -3,8 +3,6 @@
 // Command execution and queueing internals
 mod command;
 // Command-driven slider widget implementation
-// The module root lives inside the folder so helper files stay grouped by topic
-#[path = "command_slider/root.rs"]
 mod command_slider;
 // Shared refresh backoff policy used by cards and stats
 mod refresh_backoff;
@@ -18,7 +16,7 @@ mod watch_reaper;
 mod watch;
 
 // Shared command helpers are scoped to widget internals
-pub(crate) use command::configure_command_config_dir;
+pub use command::configure_command_config_dir;
 pub(super) use command::{
     run_action_command_with_completion, run_command_capture_async,
     run_command_capture_status_async, run_command_capture_with_timeout_async,

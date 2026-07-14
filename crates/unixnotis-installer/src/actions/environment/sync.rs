@@ -10,7 +10,7 @@ use super::super::{
     install::write_service_artifact, log_line, run_command_without_stdout, ActionContext,
 };
 
-pub(crate) const HYPR_IMPORT_VARS: [&str; 8] = [
+pub const HYPR_IMPORT_VARS: [&str; 8] = [
     // Keep this list narrow so debug output and service environments do not inherit full shells
     "WAYLAND_DISPLAY",
     "XDG_CURRENT_DESKTOP",
@@ -24,7 +24,7 @@ pub(crate) const HYPR_IMPORT_VARS: [&str; 8] = [
 ];
 const HYPR_REQUIRED_VARS: [&str; 2] = ["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"];
 
-pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
+pub fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
     // This step only updates manager environment
     // Service start or restart stays owned by the caller
     // Require the minimum Wayland session state before import is attempted
@@ -39,7 +39,7 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
             "missing session variables: {}; run from a Wayland session",
             missing_required.join(", ")
         );
-        log_line(ctx, format!("Error: {}", message));
+        log_line(ctx, format!("Error: {message}"));
         return Err(anyhow!(message));
     }
 
@@ -62,7 +62,7 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
         .collect::<Vec<_>>();
     if vars.is_empty() {
         let message = "no session environment variables found to import for the service manager";
-        log_line(ctx, format!("Error: {}", message));
+        log_line(ctx, format!("Error: {message}"));
         return Err(anyhow!(message));
     } else {
         let env_artifacts = ctx
@@ -88,12 +88,12 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
             let command = match spec.to_command() {
                 Ok(command) => command,
                 Err(err) => {
-                    log_line(ctx, format!("Warning: {}", err));
+                    log_line(ctx, format!("Warning: {err}"));
                     continue;
                 }
             };
             if let Err(err) = run_command_without_stdout(ctx, spec.label(), command, None) {
-                log_line(ctx, format!("Warning: {}", err));
+                log_line(ctx, format!("Warning: {err}"));
                 continue;
             }
             log_line(ctx, format!("Environment synced with {}", spec.program()));
@@ -104,7 +104,7 @@ pub(crate) fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
     if !updated {
         // At least one manager must accept the import or the next service start can inherit stale env
         let message = "failed to synchronize service manager environment";
-        log_line(ctx, format!("Error: {}", message));
+        log_line(ctx, format!("Error: {message}"));
         return Err(anyhow!(message));
     }
 

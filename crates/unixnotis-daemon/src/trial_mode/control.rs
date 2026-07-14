@@ -8,7 +8,7 @@ use crate::system_tools;
 use super::owner::{is_unit_active, run_command_status};
 use super::{Args, OwnerInfo, RestoreAction, RestoreStrategy, KNOWN_DAEMONS};
 
-pub(crate) fn restore_previous(action: RestoreAction) -> Result<()> {
+pub fn restore_previous(action: RestoreAction) -> Result<()> {
     match action {
         RestoreAction::Systemd { unit } => {
             // Unit-based restore is safest when daemon was systemd-managed
@@ -18,7 +18,7 @@ pub(crate) fn restore_previous(action: RestoreAction) -> Result<()> {
             if status.success() {
                 Ok(())
             } else {
-                Err(anyhow!("systemctl start failed for {}", unit))
+                Err(anyhow!("systemctl start failed for {unit}"))
             }
         }
         RestoreAction::Command { program, args } => {
@@ -133,12 +133,12 @@ async fn stop_via_systemd(unit: &str) -> Result<()> {
     command.arg("--user").arg("stop").arg(unit);
     let status = run_command_status(&mut command, &command_snip)
         .await
-        .ok_or_else(|| anyhow!("systemctl stop failed for {} (command error)", unit))?;
+        .ok_or_else(|| anyhow!("systemctl stop failed for {unit} (command error)"))?;
     if status.success() {
         Ok(())
     } else {
         warn!(command = %command_snip, "systemctl stop returned non-zero status");
-        Err(anyhow!("systemctl stop failed for {}", unit))
+        Err(anyhow!("systemctl stop failed for {unit}"))
     }
 }
 
@@ -151,12 +151,12 @@ async fn stop_via_process(pid: u32) -> Result<()> {
     command.arg("-TERM").arg(pid.to_string());
     let status = run_command_status(&mut command, &command_snip)
         .await
-        .ok_or_else(|| anyhow!("failed to stop process {} (command error)", pid))?;
+        .ok_or_else(|| anyhow!("failed to stop process {pid} (command error)"))?;
     if status.success() {
         Ok(())
     } else {
         warn!(command = %command_snip, "kill returned non-zero status");
-        Err(anyhow!("failed to stop process {}", pid))
+        Err(anyhow!("failed to stop process {pid}"))
     }
 }
 

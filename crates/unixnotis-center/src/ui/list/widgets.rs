@@ -1,6 +1,6 @@
-//! Row widgets and rendering logic for the notification list.
+//! Row widgets and rendering logic for the notification list
 //!
-//! Keeps GTK widget creation and updates isolated from list state.
+//! Keeps GTK widget creation and updates isolated from list state
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -21,7 +21,7 @@ use super::row::notification::{
     build_notification_row, update_notification_row, NotificationRowWidgets,
 };
 
-/// GTK wrapper widgets for each row type.
+/// GTK wrapper widgets for each row type
 pub(super) struct RowWidgets {
     kind: RowKind,
     root: gtk::Box,
@@ -108,7 +108,7 @@ pub(super) fn ensure_row_widgets(
 ) -> Rc<RowWidgets> {
     if let Some(existing) = get_row_widgets(item) {
         if existing.kind == kind {
-            return existing.clone();
+            return existing;
         }
     }
 
@@ -128,7 +128,7 @@ pub(super) fn bind_row(
     widgets.refresh(data, &icon_resolver);
     let item_clone = item.clone();
     let widgets_clone = widgets.clone();
-    let icon_resolver = icon_resolver.clone();
+    let icon_resolver = icon_resolver;
     let handler = item.connect_local("updated", false, move |_| {
         let data = item_clone.data();
         widgets_clone.refresh(&data, &icon_resolver);
@@ -142,19 +142,19 @@ pub(super) fn set_row_widgets(item: &gtk::ListItem, widgets: Rc<RowWidgets>) {
     // Setup also uses this so GTK never keeps an empty placeholder child
     item.set_child(Some(&widgets.root));
     unsafe {
-        // SAFETY: gtk::ListItem stays on the GTK main thread and never crosses threads.
+        // SAFETY: gtk::ListItem stays on the GTK main thread and never crosses threads
         // RowWidgets uses Rc and is only accessed from list factory callbacks on the
         // main thread. Data is replaced in ensure_row_widgets when the row kind changes
-        // and otherwise kept to let GTK reuse the row widgets across scroll events.
+        // and otherwise kept to let GTK reuse the row widgets across scroll events
         item.set_qdata(row_widgets_quark(), widgets);
     }
 }
 
 pub(super) fn get_row_widgets(item: &gtk::ListItem) -> Option<Rc<RowWidgets>> {
-    unsafe {
-        item.qdata::<Rc<RowWidgets>>(row_widgets_quark())
-            .map(|ptr| ptr.as_ref().clone())
-    }
+    // SAFETY: The stable quark is written with Rc<RowWidgets> on the GTK main thread only
+    let stored = unsafe { item.qdata::<Rc<RowWidgets>>(row_widgets_quark()) }?;
+    // SAFETY: Gtk owns the qdata value while the list item remains alive
+    Some(unsafe { stored.as_ref().clone() })
 }
 
 #[cfg(test)]

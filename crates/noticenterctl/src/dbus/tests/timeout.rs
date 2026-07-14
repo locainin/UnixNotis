@@ -15,7 +15,7 @@ async fn run_control_call_with_timeout_returns_ready_value() {
 #[tokio::test]
 async fn run_control_call_with_timeout_reports_expired_call_quickly() {
     let result = run_control_call_with_timeout(Duration::from_millis(1), async {
-        tokio::time::sleep(Duration::from_secs(60)).await;
+        tokio::time::sleep(Duration::from_mins(1)).await;
         Ok::<_, zbus::Error>(())
     })
     .await;

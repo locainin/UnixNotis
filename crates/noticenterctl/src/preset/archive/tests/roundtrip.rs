@@ -1,3 +1,4 @@
+use super::super::write::{validate_export_manifest_size, validate_export_payload_sizes};
 use super::super::{read_bundle, write_bundle};
 use super::support::TempDirGuard;
 use crate::preset::config_root::{CollectedConfigFiles, PresetFileSource};
@@ -19,6 +20,7 @@ fn archive_round_trip_keeps_manifest_and_payload() {
                 source_path: css_path,
                 size: 18,
                 mode: 0o644,
+                source_contents: b".a { color: red; }".to_vec(),
                 contents_override: None,
             },
             PresetFileSource {
@@ -26,6 +28,7 @@ fn archive_round_trip_keeps_manifest_and_payload() {
                 source_path: config_path,
                 size: 11,
                 mode: 0o644,
+                source_contents: b"demo = true".to_vec(),
                 contents_override: None,
             },
         ],
@@ -67,6 +70,7 @@ fn archive_round_trip_uses_overridden_file_bytes() {
             source_path: config_path,
             size: 12,
             mode: 0o644,
+            source_contents: b"demo = true".to_vec(),
             contents_override: Some(b"demo = false\n".to_vec()),
         }],
         skipped_symlinks: Vec::new(),
@@ -87,4 +91,30 @@ fn archive_round_trip_uses_overridden_file_bytes() {
 
     assert_eq!(bundle.files.len(), 1);
     assert_eq!(bundle.files[0].contents, b"demo = false\n");
+}
+
+#[test]
+fn export_size_validation_uses_override_bytes() {
+    let collected = CollectedConfigFiles {
+        files: vec![PresetFileSource {
+            relative_path: PathBuf::from("config.toml"),
+            source_path: PathBuf::from("config.toml"),
+            size: 1,
+            mode: 0o644,
+            source_contents: vec![b'a'],
+            contents_override: Some(vec![b'x'; 16_777_217]),
+        }],
+        skipped_symlinks: Vec::new(),
+        skipped_non_regular: Vec::new(),
+    };
+
+    let error = validate_export_payload_sizes(&collected)
+        .expect_err("oversized override should be rejected");
+    assert!(error.to_string().contains("exceeds 16777216 bytes"));
+}
+
+#[test]
+fn export_manifest_size_accepts_limit_and_rejects_next_byte() {
+    assert!(validate_export_manifest_size(1_048_576).is_ok());
+    assert!(validate_export_manifest_size(1_048_577).is_err());
 }

@@ -1,6 +1,6 @@
-//! Incremental per-group index maintenance for the notification list.
+//! Incremental per-group index maintenance for the notification list
 //!
-//! Keeps grouped ordering caches synchronized with per-notification mutations.
+//! Keeps grouped ordering caches synchronized with per-notification mutations
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
@@ -9,7 +9,7 @@ use super::types::NotificationList;
 
 impl NotificationList {
     pub(super) fn clear_group_indices(&mut self) {
-        // Clear all parallel caches together to keep index invariants aligned.
+        // Clear all parallel caches together to keep index invariants aligned
         self.group_active_index.clear();
         self.group_history_index.clear();
         self.grouped_cache.clear();
@@ -23,7 +23,7 @@ impl NotificationList {
         };
         let bucket = map.entry(key.clone()).or_insert_with(VecDeque::new);
         if bucket.front().copied() != Some(id) {
-            // Deduplicate before front insert so IDs remain unique inside each bucket.
+            // Deduplicate before front insert so IDs remain unique inside each bucket
             bucket.retain(|entry| *entry != id);
             bucket.push_front(id);
         }
@@ -88,8 +88,8 @@ impl NotificationList {
     pub(super) fn sync_group_cache_for_key(&mut self, key: &Rc<str>) {
         let active = self.group_active_index.get(key);
         let history = self.group_history_index.get(key);
-        let total =
-            active.map(|ids| ids.len()).unwrap_or(0) + history.map(|ids| ids.len()).unwrap_or(0);
+        let total = active.map_or(0, std::collections::VecDeque::len)
+            + history.map_or(0, std::collections::VecDeque::len);
         if total == 0 {
             self.grouped_cache.remove(key);
             return;
@@ -98,7 +98,7 @@ impl NotificationList {
         merged.clear();
         merged.reserve(total);
         if let Some(ids) = active {
-            // Active rows are always listed before history rows inside one group.
+            // Active rows are always listed before history rows inside one group
             merged.extend(ids.iter().copied());
         }
         if let Some(ids) = history {
@@ -125,7 +125,7 @@ impl NotificationList {
                 continue;
             }
             if seen.insert(key.clone()) {
-                // First-seen ordering preserves recency across both active/history queues.
+                // First-seen ordering preserves recency across both active/history queues
                 out.push(key);
             }
         }

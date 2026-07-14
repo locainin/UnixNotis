@@ -18,6 +18,7 @@ pub(super) fn write_executable(path: &Path) {
 }
 
 pub(super) fn test_signature(len: u64) -> FileFingerprintSignature {
+    let signed_len = i64::try_from(len).expect("test length should fit i64");
     FileFingerprintSignature {
         len,
         #[cfg(unix)]
@@ -31,13 +32,13 @@ pub(super) fn test_signature(len: u64) -> FileFingerprintSignature {
         #[cfg(unix)]
         gid: 1000,
         #[cfg(unix)]
-        mtime: len as i64 + 3,
+        mtime: signed_len + 3,
         #[cfg(unix)]
-        mtime_nsec: len as i64 + 4,
+        mtime_nsec: signed_len + 4,
         #[cfg(unix)]
-        ctime: len as i64 + 5,
+        ctime: signed_len + 5,
         #[cfg(unix)]
-        ctime_nsec: len as i64 + 6,
+        ctime_nsec: signed_len + 6,
     }
 }
 

@@ -4,7 +4,7 @@ use unixnotis_core::{parse_command, util, ExecutionMode, ParsedCommand};
 
 use super::super::pathing::{format_relative_path, normalize_lexical_path};
 
-pub(crate) fn resolve_command_path_token(config_dir: &Path, command: &str) -> Option<PathBuf> {
+pub fn resolve_command_path_token(config_dir: &Path, command: &str) -> Option<PathBuf> {
     let trimmed = command.trim();
     if trimmed.is_empty() {
         return None;
@@ -22,10 +22,7 @@ pub(crate) fn resolve_command_path_token(config_dir: &Path, command: &str) -> Op
     Some(config_dir.join(expanded))
 }
 
-pub(crate) fn collect_outside_env_path_tokens(
-    config_dir: &Path,
-    command: &str,
-) -> Vec<(String, PathBuf)> {
+pub fn collect_outside_env_path_tokens(config_dir: &Path, command: &str) -> Vec<(String, PathBuf)> {
     let trimmed = command.trim();
     if trimmed.is_empty() {
         return Vec::new();
@@ -55,10 +52,7 @@ pub(crate) fn collect_outside_env_path_tokens(
         .collect()
 }
 
-pub(crate) fn rewrite_command_to_config_relative(
-    config_dir: &Path,
-    command: &str,
-) -> Option<String> {
+pub fn rewrite_command_to_config_relative(config_dir: &Path, command: &str) -> Option<String> {
     let trimmed = command.trim();
     if trimmed.is_empty() {
         return None;
@@ -107,7 +101,7 @@ pub(crate) fn rewrite_command_to_config_relative(
     Some(shell_words::join(words))
 }
 
-pub(crate) fn first_command_token(command: &str) -> Option<String> {
+pub fn first_command_token(command: &str) -> Option<String> {
     // Returning the parsed program prevents quote characters from becoming path data
     let parsed = parse_command(command).ok()?;
     effective_program(&parsed).map(str::to_string)
@@ -175,7 +169,7 @@ fn resolve_env_path_value(config_dir: &Path, value: &str) -> Option<PathBuf> {
     None
 }
 
-pub(crate) fn looks_like_path_token(token: &str) -> bool {
+pub fn looks_like_path_token(token: &str) -> bool {
     token == "~"
         || token.starts_with("~/")
         || token.starts_with("./")
@@ -183,6 +177,6 @@ pub(crate) fn looks_like_path_token(token: &str) -> bool {
         || token.contains('/')
 }
 
-pub(crate) fn is_host_specific_path_token(token: &str) -> bool {
+pub fn is_host_specific_path_token(token: &str) -> bool {
     token.starts_with('/') || token == "~" || token.starts_with("~/")
 }

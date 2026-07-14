@@ -12,11 +12,11 @@ use super::super::super::{log_line, ActionContext};
 use super::write::write_atomic;
 
 const INSTALLER_CONFIG_FILE: &str = "installer.toml";
-const INSTALLER_CONFIG_TEMPLATE: &str = r#"# UnixNotis installer settings
+const INSTALLER_CONFIG_TEMPLATE: &str = r"# UnixNotis installer settings
 # Backup retention for config/theme resets
 [backups]
 keep = 3
-"#;
+";
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]

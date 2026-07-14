@@ -14,7 +14,7 @@ use super::backup::{
     write_atomic,
 };
 
-pub(crate) fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
+pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
     let config = Config::default();
     let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
     let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;
@@ -53,7 +53,6 @@ pub(crate) fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
         ("popup.css", &theme_paths.popup_css),
         ("widgets.css", &theme_paths.widgets_css),
         ("media.css", &theme_paths.media_css),
-        ("overrides.css", &theme_paths.overrides_css),
     ];
 
     let pre_existing = theme_entries
@@ -81,7 +80,7 @@ pub(crate) fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn reset_config(ctx: &mut ActionContext) -> Result<()> {
+pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     let config = Config::default();
     let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
     let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;
@@ -140,12 +139,6 @@ pub(crate) fn reset_config(ctx: &mut ActionContext) -> Result<()> {
         "media.css",
         backup_dir.as_deref(),
     )?;
-    backup_existing_file(
-        ctx,
-        &theme_paths.overrides_css,
-        "overrides.css",
-        backup_dir.as_deref(),
-    )?;
     backup_default_scripts(ctx, &config_dir, backup_dir.as_deref())?;
 
     write_atomic(&theme_paths.base_css, unixnotis_core::DEFAULT_BASE_CSS)
@@ -161,11 +154,6 @@ pub(crate) fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     .with_context(|| "failed to write widgets.css")?;
     write_atomic(&theme_paths.media_css, unixnotis_core::DEFAULT_MEDIA_CSS)
         .with_context(|| "failed to write media.css")?;
-    write_atomic(
-        &theme_paths.overrides_css,
-        unixnotis_core::DEFAULT_OVERRIDES_CSS,
-    )
-    .with_context(|| "failed to write overrides.css")?;
     write_default_scripts(&config_dir)?;
 
     log_line(

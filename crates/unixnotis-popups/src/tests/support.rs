@@ -6,7 +6,7 @@
 
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-pub(crate) fn gtk_test_lock() -> MutexGuard<'static, ()> {
+pub fn gtk_test_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     // A poisoned lock means a GTK-touching test already failed

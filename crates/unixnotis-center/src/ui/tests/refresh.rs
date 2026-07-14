@@ -4,14 +4,14 @@ use std::time::Instant;
 
 #[test]
 fn deadline_scheduler_supports_lower_idle_wakeups_than_fixed_ticks() {
-    // Legacy slow polling wakes every 3s with defaults (20 wakeups/minute).
+    // Legacy slow polling wakes every 3s with defaults (20 wakeups/minute)
     let legacy_wakeups_per_min = 60.0 / 3.0;
 
     // Deadline model uses each widget's own due time. Stable stats at 12s and
-    // calendar at daily cadence produce a 12s next wakeup (5 wakeups/minute).
+    // calendar at daily cadence produce a 12s next wakeup (5 wakeups/minute)
     let mut next = None;
     update_next_delay(&mut next, Some(Duration::from_secs(12)));
-    update_next_delay(&mut next, Some(Duration::from_secs(24 * 60 * 60)));
+    update_next_delay(&mut next, Some(Duration::from_hours(24)));
     let delay = next.expect("next deadline");
     let deadline_wakeups_per_min = 60.0 / delay.as_secs_f64();
 
@@ -60,7 +60,9 @@ fn interval_due_runs_immediately_without_a_previous_tick() {
 #[test]
 fn interval_due_saturates_when_the_previous_tick_is_old() {
     let now = Instant::now();
-    let last = now - Duration::from_secs(10);
+    let last = now
+        .checked_sub(Duration::from_secs(10))
+        .expect("test instant should support a ten-second offset");
 
     // Long sleep or resume gaps should not underflow the remaining delay
     assert_eq!(interval_due(now, Some(last), 1_000), Some(Duration::ZERO));
@@ -69,7 +71,9 @@ fn interval_due_saturates_when_the_previous_tick_is_old() {
 #[test]
 fn interval_due_reports_remaining_delay_before_deadline() {
     let now = Instant::now();
-    let last = now - Duration::from_millis(250);
+    let last = now
+        .checked_sub(Duration::from_millis(250))
+        .expect("test instant should support a 250-millisecond offset");
 
     assert_eq!(
         interval_due(now, Some(last), 1_000),

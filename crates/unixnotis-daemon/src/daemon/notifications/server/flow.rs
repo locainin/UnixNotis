@@ -34,7 +34,10 @@ struct WireNotification {
 }
 
 impl NotificationServer {
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the freedesktop notification method defines this wire-level argument list"
+    )]
     pub(super) async fn ingest_notify(
         &self,
         app_name: String,
@@ -255,7 +258,7 @@ impl NotificationServer {
 
         for id in evicted {
             // Emit both freedesktop and control close signals for consistent subscribers
-            NotificationServer::notification_closed(&notif_ctx, id, CloseReason::Undefined as u32)
+            Self::notification_closed(&notif_ctx, id, CloseReason::Undefined as u32)
                 .await
                 .map_err(to_fdo_error)?;
             ControlServer::notification_closed(&control_ctx, id, CloseReason::Undefined)

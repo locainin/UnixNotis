@@ -1,11 +1,22 @@
 use std::cell::Cell;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use super::{
-    evolve_jitter_seed, jitter_duration, seed_from_nanos, set_jitter_seed_for_test, Backoff,
-    RetryLog,
+    advance_jitter_state, evolve_jitter_seed, jitter_duration, seed_from_nanos,
+    set_jitter_seed_for_test, Backoff, RetryLog,
 };
+
+#[test]
+fn atomic_jitter_updates_advance_from_distinct_states() {
+    let state = AtomicU64::new(7);
+    let first = advance_jitter_state(&state, 1);
+    let second = advance_jitter_state(&state, 1);
+
+    assert_ne!(first, second);
+    assert_eq!(state.load(Ordering::Relaxed), second);
+}
 
 fn jitter_test_lock() -> MutexGuard<'static, ()> {
     // Jitter state is process-global, so exact-seed tests must run one at a time
@@ -91,11 +102,11 @@ fn backoff_sleep_doubles_until_max_and_clamps_jitter() {
     );
     assert_eq!(
         backoff.next_sleep_with_jitter(Duration::from_millis(10)),
-        Duration::from_millis(1_000)
+        Duration::from_secs(1)
     );
     assert_eq!(
         backoff.next_sleep_with_jitter(Duration::from_millis(500)),
-        Duration::from_millis(1_000)
+        Duration::from_secs(1)
     );
 }
 
@@ -115,7 +126,7 @@ fn backoff_reset_returns_next_sleep_to_base_delay() {
 
 #[test]
 fn retry_log_warns_immediately_then_debugs_until_reset() {
-    let mut log = RetryLog::new(Duration::from_secs(60));
+    let mut log = RetryLog::new(Duration::from_mins(1));
     let warnings = Cell::new(0usize);
     let debugs = Cell::new(0usize);
 
@@ -148,9 +159,17 @@ fn retry_log_warns_immediately_then_debugs_until_reset() {
 
 #[test]
 fn retry_log_warn_or_debug_reports_warning_status() {
-    let mut log = RetryLog::new(Duration::from_secs(60));
+    let mut log = RetryLog::new(Duration::from_mins(1));
     let err = "offline";
 
     assert!(log.warn_or_debug(&err, "dbus retry"));
     assert!(!log.warn_or_debug(&err, "dbus retry"));
+}
+
+#[test]
+fn retry_log_accepts_an_interval_larger_than_the_instant_clock_history() {
+    // Extreme configuration must not panic while preparing the first warning
+    let mut log = RetryLog::new(Duration::MAX);
+
+    assert!(!log.log_with(|| {}, || {}));
 }

@@ -12,7 +12,7 @@ use zbus::SignalContext;
 
 use crate::daemon::{ControlServer, DaemonState};
 
-pub(crate) async fn spawn_inhibitor_owner_watch(state: Arc<DaemonState>) -> zbus::Result<()> {
+pub async fn spawn_inhibitor_owner_watch(state: Arc<DaemonState>) -> zbus::Result<()> {
     // Subscribe once and process updates in the background
     let proxy = DBusProxy::new(state.connection()).await?;
     let mut stream = proxy.receive_name_owner_changed().await?;

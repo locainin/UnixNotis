@@ -20,7 +20,7 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
     artifact_label: &str,
 ) -> Result<bool> {
     // Refuse unsafe existing paths before looking at file contents
-    let existed_before = ensure_regular_artifact_file_path(path)?;
+    ensure_regular_artifact_file_path(path)?;
     let mode_changed = match mode {
         Some(mode) => {
             #[cfg(unix)]
@@ -53,7 +53,7 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
         // Only artifacts that requested a mode receive chmod
         #[cfg(unix)]
         {
-            if changed || mode_changed || !existed_before {
+            if changed || mode_changed {
                 // Mode is explicit because service scripts must not depend on process umask
                 fs::set_permissions(path, fs::Permissions::from_mode(mode))
                     .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
@@ -61,7 +61,7 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
         }
     }
 
-    Ok(changed || mode_changed || !existed_before)
+    Ok(changed || mode_changed)
 }
 
 pub(in crate::actions::install::service) fn write_shared_service_file(
@@ -115,7 +115,7 @@ pub(in crate::actions::install::service) fn remove_shared_service_file(
 }
 
 #[cfg(unix)]
-fn current_mode(path: &Path) -> Result<Option<u32>> {
+pub(in crate::actions::install) fn current_mode(path: &Path) -> Result<Option<u32>> {
     match fs::symlink_metadata(path) {
         Ok(metadata) => Ok(Some(metadata.permissions().mode() & 0o777)),
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
@@ -159,12 +159,10 @@ fn shared_creation_marker_is_valid(path: &Path) -> bool {
     let Ok(metadata) = fs::symlink_metadata(path) else {
         return false;
     };
-    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+    if !metadata.file_type().is_file() {
         return false;
     }
-    fs::read_to_string(path)
-        .map(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
-        .unwrap_or(false)
+    fs::read_to_string(path).is_ok_and(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
 }
 
 fn shared_file_contents_match(path: &Path, expected_contents: &str) -> Result<bool> {
@@ -176,7 +174,7 @@ fn shared_file_contents_match(path: &Path, expected_contents: &str) -> Result<bo
                 .with_context(|| format!("failed to inspect {}", format_with_home(path)));
         }
     };
-    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+    if !metadata.file_type().is_file() {
         // A marker does not make a replaced symlink, socket, or directory removable
         return Err(anyhow!(
             "refusing to remove non-regular shared service artifact at {}",
@@ -215,9 +213,7 @@ fn remove_dir_if_empty(path: &Path) -> Result<()> {
     }
 }
 
-pub(in crate::actions::install::service) fn ensure_regular_artifact_file_path(
-    path: &Path,
-) -> Result<bool> {
+pub(in crate::actions::install) fn ensure_regular_artifact_file_path(path: &Path) -> Result<bool> {
     // Existing service files may be replaced only when the old path is a plain file
     match fs::symlink_metadata(path) {
         // Replacing a symlink would write through attacker-controlled filesystem state

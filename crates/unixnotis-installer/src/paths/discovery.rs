@@ -85,9 +85,7 @@ impl InstallPaths {
 fn service_manager_from_selection(
     service_manager: Option<ServiceManagerChoice>,
 ) -> Result<ServiceManager> {
-    let choice = service_manager
-        .map(Ok)
-        .unwrap_or_else(service_manager_choice_from_environment)?;
+    let choice = service_manager.map_or_else(service_manager_choice_from_environment, Ok)?;
     service_manager_from_choice(choice)
 }
 

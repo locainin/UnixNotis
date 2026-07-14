@@ -32,6 +32,12 @@ pub enum CommandParseError {
     MissingProgram,
 }
 
+/// Parse one simple command into environment assignments, program, and arguments
+///
+/// # Errors
+///
+/// Returns an error when the command is empty, has malformed quoting, or contains only
+/// environment assignments without a program
 pub fn parse_command(command: &str) -> Result<ParsedCommand, CommandParseError> {
     let trimmed = command.trim();
     if trimmed.is_empty() {
@@ -61,7 +67,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, CommandParseError> 
     })
 }
 
-fn split_leading_env_assignments(parts: Vec<String>) -> (Vec<(String, String)>, Vec<String>) {
+fn split_leading_env_assignments(mut parts: Vec<String>) -> (Vec<(String, String)>, Vec<String>) {
     let mut env = Vec::new();
     let mut index = 0;
 
@@ -74,7 +80,9 @@ fn split_leading_env_assignments(parts: Vec<String>) -> (Vec<(String, String)>, 
         index += 1;
     }
 
-    (env, parts[index..].to_vec())
+    // Split ownership at the first program token so arguments are not cloned
+    let remaining = parts.split_off(index);
+    (env, remaining)
 }
 
 fn split_env_assignment(token: &str) -> Option<(&str, &str)> {

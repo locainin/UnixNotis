@@ -135,20 +135,34 @@ pub(super) async fn apply_owner_change(
         return Ok(());
     }
 
-    let has_owner = new_owner.map(|owner| !owner.is_empty()).unwrap_or(false);
+    let has_owner = new_owner.is_some_and(|owner| !owner.is_empty());
     if !has_owner {
         // Losing the bus owner means the player has gone away
         remove_player(name, state, sender).await;
         return Ok(());
     }
 
-    if state.players.contains_key(name) {
-        // Existing entries keep their listener and cache until the next real update
-        // This avoids tearing down and rebuilding watchers on harmless owner churn
+    if state
+        .players
+        .get(name)
+        .is_some_and(|player| owner_is_unchanged(player.unique_owner.as_deref(), new_owner))
+    {
+        // Duplicate owner announcements do not need to rebuild a healthy listener
         return Ok(());
     }
 
-    if let Some(player_state) = build_player_state(connection, name, config).await? {
+    let removed_previous = if let Some(previous) = state.players.remove(name) {
+        // A replacement owner invalidates every process-bound proxy and policy decision
+        let _ = previous.listener_cancel.send(true);
+        cancel_delayed_refresh(&mut state.delayed_refreshes, name);
+        state.cache.remove(name);
+        true
+    } else {
+        false
+    };
+
+    let rebuilt = build_player_state(connection, name, config).await;
+    if let Ok(Some(player_state)) = rebuilt.as_ref() {
         // The listener is started before the state is published so late property
         // traffic does not slip in between player creation and cache refresh
         spawn_properties_listener(
@@ -157,7 +171,7 @@ pub(super) async fn apply_owner_change(
             signal_tx.clone(),
             player_state.listener_cancel.subscribe(),
         );
-        state.players.insert(name.to_string(), player_state);
+        state.players.insert(name.to_string(), player_state.clone());
         // A late-joining player still needs one snapshot pass through the cache
         refresh_player_cache(
             &state.players,
@@ -175,7 +189,15 @@ pub(super) async fn apply_owner_change(
         );
     }
 
-    Ok(())
+    // Removing the prior cache must reach GTK even when replacement probing fails
+    if removed_previous && !matches!(&rebuilt, Ok(Some(_))) {
+        send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
+    }
+    rebuilt.map(|_state| ())
+}
+
+fn owner_is_unchanged(current_owner: Option<&str>, announced_owner: Option<&str>) -> bool {
+    current_owner.is_some() && current_owner == announced_owner
 }
 
 async fn remove_player(
@@ -217,13 +239,13 @@ fn should_schedule_metadata_fallback(origin: MediaRefreshOrigin) -> bool {
     origin == MediaRefreshOrigin::Bus
 }
 
-fn should_publish_immediate_command_snapshot(command: &MediaCommand) -> bool {
+const fn should_publish_immediate_command_snapshot(command: &MediaCommand) -> bool {
     // Track skip commands often produce one partial metadata frame before the real update settles
     // Let the bus event or bounded retry publish those instead of flashing a blank card
     matches!(command, MediaCommand::PlayPause { .. })
 }
 
-fn merge_mode_for_signal(origin: MediaRefreshOrigin) -> MediaCacheMergeMode {
+const fn merge_mode_for_signal(origin: MediaRefreshOrigin) -> MediaCacheMergeMode {
     match origin {
         // Native property bursts can still be mid-transition
         MediaRefreshOrigin::Bus => MediaCacheMergeMode::Transitioning,

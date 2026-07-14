@@ -84,14 +84,25 @@ reports when a newer GitHub release is available.
 Maintainers can build a local release archive manually:
 
 ```sh
-scripts/package-release.sh v1.1.2
+scripts/package-release.sh v1.1.3
 ```
 
 ## Development
 
 ```sh
 cargo test --workspace
-cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery
+cargo clippy --all-targets --all-features -- \
+  -D warnings \
+  -W clippy::pedantic \
+  -W clippy::nursery \
+  -W clippy::undocumented_unsafe_blocks \
+  -W clippy::multiple_unsafe_ops_per_block \
+  -W clippy::mem_forget \
+  -W clippy::cast_ptr_alignment \
+  -W clippy::transmute_ptr_to_ptr \
+  -W clippy::fn_to_numeric_cast_any \
+  -W clippy::as_pointer_underscore \
+  -W clippy::lossy_float_literal
 ```
 
 ## Contributing

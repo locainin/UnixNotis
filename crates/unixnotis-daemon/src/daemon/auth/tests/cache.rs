@@ -22,10 +22,7 @@ fn fingerprint_cache_loads_only_same_path_and_signature() {
 
     store_cached_fingerprint(&path, signature, fingerprint.clone());
 
-    assert_eq!(
-        load_cached_fingerprint(&path, signature),
-        Some(fingerprint.clone())
-    );
+    assert_eq!(load_cached_fingerprint(&path, signature), Some(fingerprint));
     assert!(load_cached_fingerprint(&other, signature).is_none());
     assert!(load_cached_fingerprint(&path, test_signature(11)).is_none());
 }
@@ -70,11 +67,11 @@ fn trusted_snapshot_cache_loads_replaces_and_evicts_by_directory() {
     let ctl_path = first_dir.join("noticenterctl");
     let center_path = first_dir.join("unixnotis-center");
     let first_snapshot = TrustedExecutableSnapshot {
-        canonical_path: ctl_path.clone(),
+        canonical_path: ctl_path,
         fingerprint: test_fingerprint(1),
     };
     let replacement_snapshot = TrustedExecutableSnapshot {
-        canonical_path: center_path.clone(),
+        canonical_path: center_path,
         fingerprint: test_fingerprint(2),
     };
     let mut snapshots = HashMap::new();

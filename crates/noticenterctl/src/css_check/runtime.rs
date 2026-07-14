@@ -36,11 +36,10 @@ pub(super) fn display_config_path(
     config_path: &Path,
 ) -> String {
     // Keep config.toml paths in the same display style as css warnings
-    config_path
-        .strip_prefix(config_dir)
-        .map(|path| format!("{display_root}/{}", path.display()))
-        // Keep the message usable even when config.toml lives outside the root
-        .unwrap_or_else(|_| config_path.display().to_string())
+    config_path.strip_prefix(config_dir).map_or_else(
+        |_| config_path.display().to_string(),
+        |path| format!("{display_root}/{}", path.display()),
+    )
 }
 
 pub(super) fn panel_width_floor_warning(config: &Config) -> Option<String> {

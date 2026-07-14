@@ -1,21 +1,21 @@
 /* UnixNotis base theme (ExampleOne+)
  *
  * Purpose:
- * - Owns the shared palette and reusable theme tokens.
- * - Keeps higher-level CSS files (panel/popup/widgets) mostly declarative.
+ * - Owns the shared palette and reusable theme tokens
+ * - Keeps higher-level CSS files (panel/popup/widgets) mostly declarative
  *
  * Notes:
  * - GTK CSS does not support every web-CSS feature; this theme sticks to
- *   conservative constructs already used elsewhere in the project.
+ *   conservative constructs already used elsewhere in the project
  * - Alpha values are also configurable in config.toml; these colors provide the
- *   visual direction while the config controls overall translucency.
+ *   visual direction while the config controls overall translucency
  */
 
 /*
  * Color palette: "Neon Noir"
  *
- * Deep navy base with a cyan -> hotpink accent split.
- * Designed for translucent panels that sit over bright wallpapers.
+ * Deep navy base with a cyan -> hotpink accent split
+ * Designed for translucent panels that sit over bright wallpapers
  */
 @define-color unixnotis-surface-base #0b1020;        /* primary backdrop */
 @define-color unixnotis-surface-strong-base #0c1430; /* headers / focus surfaces */
@@ -67,8 +67,8 @@
 /*
  * Theme hooks
  *
- * These are the primary knobs to recolor the UI without rewriting selectors.
- * Most rules should reference these tokens, not hard-coded hex values.
+ * These are the primary knobs to recolor the UI without rewriting selectors
+ * Most rules should reference these tokens, not hard-coded hex values
  */
 @define-color unixnotis-panel-grad-1 alpha(#0c1226, 0.92);
 @define-color unixnotis-panel-grad-2 alpha(#121a35, 0.94);
@@ -95,11 +95,12 @@
 /*
  * Global window styling
  *
- * Applied to both the panel and the popup surfaces.
+ * Applied to both the panel and the popup surfaces
  */
 .unixnotis-panel-window,
 .unixnotis-popup-window {
   background: transparent;
   font-family: "Manrope", "SF Pro Text", "CaskaydiaCove Nerd Font Propo", "Noto Sans", sans-serif;
+  font-family: var(--unixnotis-ui-font-family);
 }
 /* End of base theme. */

@@ -18,10 +18,10 @@ use zbus::Connection;
 use crate::dbus::UiEvent;
 
 // MPRIS base identifiers used to discover players on the session bus
-pub(super) const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
-pub(super) const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
-pub(super) const MPRIS_PLAYER: &str = "org.mpris.MediaPlayer2.Player";
-pub(super) const MPRIS_APP: &str = "org.mpris.MediaPlayer2";
+pub const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
+pub const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
+pub const MPRIS_PLAYER: &str = "org.mpris.MediaPlayer2.Player";
+pub const MPRIS_APP: &str = "org.mpris.MediaPlayer2";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaInfo {
@@ -90,6 +90,15 @@ pub struct MediaHandle {
 }
 
 impl MediaHandle {
+    #[cfg(test)]
+    pub(crate) const fn disconnected(runtime: tokio::runtime::Handle) -> Self {
+        // UI construction tests need a real runtime handle without starting a D-Bus media task
+        Self {
+            command_tx: None,
+            runtime,
+        }
+    }
+
     pub fn refresh(&self) {
         self.send_command(MediaCommand::Refresh);
     }

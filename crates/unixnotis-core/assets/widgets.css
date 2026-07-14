@@ -1,6 +1,6 @@
 /* UnixNotis widgets + media theme
  *
- * Quick controls, toggles, stats, info cards, and media carousel.
+ * Quick controls, toggles, stats, info cards, and media carousel
  */
 .unixnotis-quick-controls {
   margin-bottom: 6px;
@@ -134,7 +134,7 @@
 
 /* Kind-specific toggle accents
  *
- * The center UI assigns a stable class: `.unixnotis-toggle-kind-<kind>`.
+ * The center UI assigns a stable class: `.unixnotis-toggle-kind-<kind>`
  * These overrides provide a distinct accent per control while preserving the
  * same layout and interaction behavior. */
 .unixnotis-toggle.unixnotis-toggle-kind-wifi {
@@ -236,7 +236,7 @@
 }
 
 .unixnotis-toggle:checked {
-  /* Active toggles should feel "energized" without turning into a solid block.
+  /* Active toggles should feel "energized" without turning into a solid block
    * A light accent bloom layered over the base glass achieves this. */
   background-image:
     radial-gradient(circle at 22% 20%, alpha(@unixnotis-accent, 0.18), transparent 64%),
@@ -487,6 +487,7 @@
 
 .unixnotis-info-card-mono .unixnotis-info-body {
   font-family: "CaskaydiaCove Nerd Font Mono", "JetBrains Mono", monospace;
+  font-family: var(--unixnotis-monospace-font-family);
 }
 
 .unixnotis-info-card-calendar .unixnotis-info-title {
@@ -496,7 +497,7 @@
 /*
  * Calendar: "Neon Glass Ledger"
  *
- * Purpose: make the calendar read as a premium card while keeping retro cues.
+ * Purpose: make the calendar read as a premium card while keeping retro cues
  */
 .unixnotis-calendar {
   background-image:
@@ -690,4 +691,17 @@
   box-shadow:
     0 12px 18px -14px alpha(@unixnotis-accent-2, 0.6),
     inset 0 0 0 1px alpha(#ffffff, 0.1);
+}
+/* Compact density trims shell padding without shrinking interactive targets below 36px */
+.unixnotis-widget-density-compact .unixnotis-quick-slider {
+  padding: 8px 10px;
+}
+
+.unixnotis-widget-density-compact .unixnotis-toggle {
+  padding: 3px 6px;
+  min-height: 36px;
+}
+
+.unixnotis-widget-density-compact .unixnotis-stat-card {
+  padding: 8px 10px;
 }

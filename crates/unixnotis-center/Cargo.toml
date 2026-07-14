@@ -28,3 +28,6 @@ zbus.workspace = true
 url.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
 unixnotis-ui = { path = "../unixnotis-ui" }
+
+[dev-dependencies]
+toml.workspace = true

@@ -12,14 +12,16 @@ pub struct ThemeCardStyleValues {
     pub card_alpha: f32,
 }
 
+#[must_use]
 pub fn theme_card_style_values(theme: &ThemeConfig) -> ThemeCardStyleValues {
     ThemeCardStyleValues {
-        border_width_px: theme.border_width as f32,
-        card_radius_px: theme.card_radius as f32,
+        border_width_px: f32::from(theme.border_width),
+        card_radius_px: f32::from(theme.card_radius),
         card_alpha: clamp_alpha(theme.card_alpha),
     }
 }
 
+#[must_use]
 pub fn build_legacy_theme_color_overrides(theme: &ThemeConfig) -> String {
     // Legacy alpha colors stay first so old themes keep working as-is
     let surface_alpha = clamp_alpha(theme.surface_alpha);
@@ -29,16 +31,17 @@ pub fn build_legacy_theme_color_overrides(theme: &ThemeConfig) -> String {
     let shadow_strong = clamp_alpha(theme.shadow_strong_alpha);
 
     format!(
-        r#"
+        r"
 @define-color unixnotis-surface alpha(@unixnotis-surface-base, {surface_alpha});
 @define-color unixnotis-surface-strong alpha(@unixnotis-surface-strong-base, {surface_strong_alpha});
 @define-color unixnotis-card alpha(@unixnotis-card-base, {card_alpha});
 @define-color unixnotis-shadow-soft alpha(#000000, {shadow_soft});
 @define-color unixnotis-shadow-strong alpha(#000000, {shadow_strong});
-"#
+"
     )
 }
 
+#[must_use]
 pub fn build_modern_theme_custom_properties(
     theme: &ThemeConfig,
     features: GtkCssFeatures,
@@ -93,7 +96,7 @@ pub fn build_modern_theme_custom_properties(
     block
 }
 
-fn clamp_alpha(value: f32) -> f32 {
+const fn clamp_alpha(value: f32) -> f32 {
     value.clamp(0.0, 1.0)
 }
 
@@ -121,7 +124,7 @@ fn trim_float(value: f32) -> String {
     text
 }
 
-fn color_alias_tokens() -> &'static [(&'static str, &'static str)] {
+const fn color_alias_tokens() -> &'static [(&'static str, &'static str)] {
     // Color aliases mirror the stock palette so modern themes can stay readable
     &[
         ("--unixnotis-surface-base-color", "@unixnotis-surface-base"),
@@ -206,9 +209,17 @@ fn color_alias_tokens() -> &'static [(&'static str, &'static str)] {
     ]
 }
 
-fn layout_tokens() -> &'static [(&'static str, &'static str)] {
+const fn layout_tokens() -> &'static [(&'static str, &'static str)] {
     // These numbers match the shipped layout so custom themes can override safely
     &[
+        (
+            "--unixnotis-ui-font-family",
+            r#""Manrope", "SF Pro Text", "CaskaydiaCove Nerd Font Propo", "Noto Sans", sans-serif"#,
+        ),
+        (
+            "--unixnotis-monospace-font-family",
+            r#""CaskaydiaCove Nerd Font Mono", "JetBrains Mono", monospace"#,
+        ),
         ("--unixnotis-panel-radius", "30px"),
         ("--unixnotis-panel-padding", "16px"),
         ("--unixnotis-panel-header-radius", "18px"),
@@ -263,6 +274,23 @@ fn layout_tokens() -> &'static [(&'static str, &'static str)] {
         ("--unixnotis-media-button-padding-y", "4px"),
         ("--unixnotis-media-button-padding-x", "6px"),
         ("--unixnotis-media-nav-size", "22px"),
+        ("--unixnotis-media-nav-radius", "12px"),
+        ("--unixnotis-media-nav-font-size", "12px"),
+        ("--unixnotis-media-card-radius", "18px"),
+        ("--unixnotis-media-card-min-height", "68px"),
+        ("--unixnotis-media-card-inline-min-height", "88px"),
+        ("--unixnotis-media-card-stacked-min-height", "108px"),
+        ("--unixnotis-media-card-showcase-min-height", "92px"),
+        ("--unixnotis-media-art-radius", "12px"),
+        ("--unixnotis-media-art-frame-radius", "14px"),
+        ("--unixnotis-media-source-font-size", "11px"),
+        ("--unixnotis-media-source-letter-spacing", "0.1em"),
+        ("--unixnotis-media-position-font-size", "11px"),
+        ("--unixnotis-media-position-letter-spacing", "0.08em"),
+        ("--unixnotis-media-title-font-size", "13px"),
+        ("--unixnotis-media-title-font-weight", "700"),
+        ("--unixnotis-media-artist-font-size", "12px"),
+        ("--unixnotis-media-button-radius", "10px"),
     ]
 }
 

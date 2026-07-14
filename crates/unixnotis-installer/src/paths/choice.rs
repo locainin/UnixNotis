@@ -15,7 +15,7 @@ pub enum ServiceManagerChoice {
 }
 
 impl ServiceManagerChoice {
-    pub(super) fn all() -> [Self; 4] {
+    pub(super) const fn all() -> [Self; 4] {
         // Conflict scans need to inspect every supported backend, including experimental ones
         [Self::Systemd, Self::Dinit, Self::Runit, Self::S6]
     }

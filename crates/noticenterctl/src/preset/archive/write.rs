@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use tar::{Builder, Header};
 
@@ -10,12 +10,17 @@ use super::super::config_root::CollectedConfigFiles;
 use super::super::manifest::PresetManifest;
 use super::super::pathing::{archive_payload_path, MANIFEST_ARCHIVE_PATH};
 use super::modes::sanitize_payload_mode;
+use super::read::{
+    MAX_PRESET_FILE_BYTES, MAX_PRESET_MANIFEST_BYTES, MAX_PRESET_PAYLOAD_FILES,
+    MAX_PRESET_TOTAL_PAYLOAD_BYTES,
+};
 
-pub(crate) fn write_bundle(
+pub fn write_bundle(
     bundle_path: &Path,
     manifest: &PresetManifest,
     collected: &CollectedConfigFiles,
 ) -> Result<()> {
+    validate_export_payload_sizes(collected)?;
     if let Some(parent) = bundle_path.parent() {
         // Export can target nested output paths, so create the parent tree first
         std::fs::create_dir_all(parent)
@@ -30,6 +35,7 @@ pub(crate) fn write_bundle(
 
     // Manifest always goes in first so a partial or broken bundle is easy to spot
     let manifest_bytes = manifest.encode()?.into_bytes();
+    validate_export_manifest_size(manifest_bytes.len() as u64)?;
     append_bytes(
         &mut builder,
         Path::new(MANIFEST_ARCHIVE_PATH),
@@ -40,25 +46,15 @@ pub(crate) fn write_bundle(
     for file in &collected.files {
         let mode = sanitize_payload_mode(file.mode, &file.relative_path)?;
 
-        if let Some(contents) = &file.contents_override {
-            // Overridden files stay in memory so export can patch config.toml in the bundle only
-            append_bytes(
-                &mut builder,
-                &archive_payload_path(&file.relative_path),
-                contents,
-                mode,
-            )?;
-            continue;
-        }
-
-        // Files are streamed from disk so export memory stays bounded by one file at a time
-        let mut source_file = File::open(&file.source_path)
-            .with_context(|| format!("open {} for preset archive", file.source_path.display()))?;
-        append_reader(
+        // Every payload comes from bytes captured through the secure config-root descriptor
+        let contents = file
+            .contents_override
+            .as_deref()
+            .unwrap_or(&file.source_contents);
+        append_bytes(
             &mut builder,
             &archive_payload_path(&file.relative_path),
-            &mut source_file,
-            file.size,
+            contents,
             mode,
         )?;
     }
@@ -83,6 +79,41 @@ pub(crate) fn write_bundle(
     Ok(())
 }
 
+pub(super) fn validate_export_manifest_size(size: u64) -> Result<()> {
+    if size > MAX_PRESET_MANIFEST_BYTES {
+        anyhow::bail!("preset export manifest exceeds {MAX_PRESET_MANIFEST_BYTES} bytes");
+    }
+    Ok(())
+}
+
+pub(super) fn validate_export_payload_sizes(collected: &CollectedConfigFiles) -> Result<()> {
+    if collected.files.len() > MAX_PRESET_PAYLOAD_FILES {
+        anyhow::bail!("preset export contains more than {MAX_PRESET_PAYLOAD_FILES} files");
+    }
+    let mut total = 0u64;
+    for file in &collected.files {
+        let size = file
+            .contents_override
+            .as_ref()
+            .map_or(file.source_contents.len(), Vec::len) as u64;
+        if size > MAX_PRESET_FILE_BYTES {
+            anyhow::bail!(
+                "preset export file exceeds {MAX_PRESET_FILE_BYTES} bytes: {}",
+                file.relative_path.display()
+            );
+        }
+        total = total
+            .checked_add(size)
+            .filter(|value| *value <= MAX_PRESET_TOTAL_PAYLOAD_BYTES)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "preset export payload exceeds {MAX_PRESET_TOTAL_PAYLOAD_BYTES} bytes"
+                )
+            })?;
+    }
+    Ok(())
+}
+
 fn append_bytes(
     builder: &mut Builder<GzEncoder<File>>,
     path: &Path,
@@ -100,28 +131,10 @@ fn append_bytes(
     Ok(())
 }
 
-fn append_reader<R: Read>(
-    builder: &mut Builder<GzEncoder<File>>,
-    path: &Path,
-    reader: &mut R,
-    size: u64,
-    mode: u32,
-) -> Result<()> {
-    let mut header = Header::new_gnu();
-    header.set_mode(mode);
-    header.set_size(size);
-    header.set_cksum();
-    builder
-        .append_data(&mut header, path, reader)
-        .with_context(|| format!("append {} to preset archive", path.display()))?;
-    Ok(())
-}
-
 pub(super) fn temp_bundle_path(bundle_path: &Path) -> PathBuf {
     let parent = bundle_path
         .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
     let file_name = bundle_path
         .file_name()
         .and_then(|name| name.to_str())

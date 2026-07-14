@@ -73,8 +73,8 @@ impl RefreshBackoff {
 
 fn scale_duration(base: Duration, mult: u64) -> Duration {
     let base_ms = base.as_millis();
-    let scaled = base_ms.saturating_mul(mult as u128);
-    Duration::from_millis(scaled.min(u64::MAX as u128) as u64)
+    let scaled = base_ms.saturating_mul(u128::from(mult));
+    Duration::from_millis(scaled.min(u128::from(u64::MAX)) as u64)
 }
 
 #[cfg(test)]

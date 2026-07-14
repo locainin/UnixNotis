@@ -1,4 +1,4 @@
-//! Shared helper utilities used across UnixNotis components.
+//! Shared helper utilities used across `UnixNotis` components
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -10,9 +10,9 @@ use std::sync::{Mutex, OnceLock};
 use std::os::unix::fs::PermissionsExt;
 
 struct ProgramCache {
-    // Snapshot of PATH used to invalidate cached entries when environment changes.
+    // Snapshot of PATH used to invalidate cached entries when environment changes
     path: Option<String>,
-    // Cached program presence results keyed by program name.
+    // Cached program presence results keyed by program name
     results: HashMap<String, bool>,
 }
 
@@ -25,12 +25,12 @@ pub const TRUSTED_SYSTEM_TOOL_DIRS: [&str; 4] = ["/usr/bin", "/bin", "/usr/sbin"
 const DEFAULT_LOG_LIMIT: usize = 160;
 const DIAGNOSTIC_LOG_LIMIT: usize = 512;
 
-/// Check whether a program exists in $PATH, caching results to avoid repeated scans.
+/// Check whether a program exists in $PATH, caching results to avoid repeated scans
 pub fn program_in_path(program: &str) -> bool {
     if program.contains(std::path::MAIN_SEPARATOR) {
         return is_executable_path(Path::new(program));
     }
-    // Capture PATH once per call to avoid repeated env lookups.
+    // Capture PATH once per call to avoid repeated env lookups
     let current_path = env::var("PATH").ok();
     let cache = PROGRAM_CACHE.get_or_init(|| {
         Mutex::new(ProgramCache {
@@ -39,7 +39,7 @@ pub fn program_in_path(program: &str) -> bool {
         })
     });
     if let Ok(mut cache) = cache.lock() {
-        // Reset cached lookups whenever PATH changes to avoid stale results in long-lived sessions.
+        // Reset cached lookups whenever PATH changes to avoid stale results in long-lived sessions
         if cache.path.as_deref() != current_path.as_deref() {
             cache.path = current_path.clone();
             cache.results.clear();
@@ -48,21 +48,20 @@ pub fn program_in_path(program: &str) -> bool {
             return *result;
         }
 
-        let found = current_path
-            .as_ref()
-            .map(|paths| env::split_paths(paths).any(|dir| is_executable_path(&dir.join(program))))
-            .unwrap_or(false);
+        let found = current_path.as_ref().is_some_and(|paths| {
+            env::split_paths(paths).any(|dir| is_executable_path(&dir.join(program)))
+        });
 
         cache.results.insert(program.to_string(), found);
         return found;
     }
 
-    current_path
-        .as_ref()
-        .map(|paths| env::split_paths(paths).any(|dir| is_executable_path(&dir.join(program))))
-        .unwrap_or(false)
+    current_path.as_ref().is_some_and(|paths| {
+        env::split_paths(paths).any(|dir| is_executable_path(&dir.join(program)))
+    })
 }
 
+#[must_use]
 pub fn trusted_system_program_path(program: &str) -> Option<PathBuf> {
     if program.is_empty() || program.contains(std::path::MAIN_SEPARATOR) {
         return None;
@@ -75,7 +74,8 @@ pub fn trusted_system_program_path(program: &str) -> Option<PathBuf> {
         .find(|path| is_executable_path(path))
 }
 
-/// Resolve XDG_STATE_HOME with the specification defaults.
+/// Resolve `XDG_STATE_HOME` with the specification defaults
+#[must_use]
 pub fn resolve_state_dir() -> Option<PathBuf> {
     resolve_state_dir_from_env(
         env::var("XDG_STATE_HOME").ok().as_deref(),
@@ -83,7 +83,8 @@ pub fn resolve_state_dir() -> Option<PathBuf> {
     )
 }
 
-/// Resolve the state directory from explicit environment values.
+/// Resolve the state directory from explicit environment values
+#[must_use]
 pub fn resolve_state_dir_from_env(
     xdg_state_home: Option<&str>,
     home: Option<&str>,
@@ -110,7 +111,7 @@ pub fn resolve_state_dir_from_env(
 }
 
 fn is_executable_path(path: &Path) -> bool {
-    // Ensure backend selection only succeeds when the program can actually be executed.
+    // Ensure backend selection only succeeds when the program can actually be executed
     let Ok(metadata) = std::fs::metadata(path) else {
         return false;
     };
@@ -127,7 +128,8 @@ fn is_executable_path(path: &Path) -> bool {
     }
 }
 
-/// Expand leading `~`/`~/` to $HOME, preserving other paths as-is.
+/// Expand leading `~`/`~/` to $HOME, preserving other paths as-is
+#[must_use]
 pub fn expand_tilde(value: &str) -> Cow<'_, str> {
     let trimmed = value.trim();
     if trimmed == "~" || trimmed.starts_with("~/") {
@@ -142,7 +144,7 @@ pub fn expand_tilde(value: &str) -> Cow<'_, str> {
     value.into()
 }
 
-/// Returns true when the command can run without a shell wrapper.
+/// Returns true when the command can run without a shell wrapper
 ///
 /// # Example
 /// ```
@@ -151,6 +153,7 @@ pub fn expand_tilde(value: &str) -> Cow<'_, str> {
 /// assert!(is_simple_command("echo hello"));
 /// assert!(!is_simple_command("echo hello | wc -l"));
 /// ```
+#[must_use]
 pub fn is_simple_command(cmd: &str) -> bool {
     if cmd
         .chars()
@@ -167,7 +170,8 @@ pub fn is_simple_command(cmd: &str) -> bool {
     true
 }
 
-/// Returns true when diagnostics are explicitly enabled via environment.
+/// Returns true when diagnostics are explicitly enabled via environment
+#[must_use]
 pub fn diagnostic_mode() -> bool {
     diagnostic_mode_from(env::var("UNIXNOTIS_DIAGNOSTIC").ok().as_deref())
 }
@@ -183,22 +187,25 @@ fn diagnostic_mode_from(value: Option<&str>) -> bool {
     )
 }
 
-/// Returns the default redaction length for logs.
-pub fn default_log_limit() -> usize {
+/// Returns the default redaction length for logs
+#[must_use]
+pub const fn default_log_limit() -> usize {
     DEFAULT_LOG_LIMIT
 }
 
-/// Returns the diagnostic redaction length for logs.
-pub fn diagnostic_log_limit() -> usize {
+/// Returns the diagnostic redaction length for logs
+#[must_use]
+pub const fn diagnostic_log_limit() -> usize {
     DIAGNOSTIC_LOG_LIMIT
 }
 
-/// Returns the effective log snippet limit for the current mode.
+/// Returns the effective log snippet limit for the current mode
+#[must_use]
 pub fn log_limit() -> usize {
     log_limit_for(diagnostic_mode())
 }
 
-fn log_limit_for(diagnostic: bool) -> usize {
+const fn log_limit_for(diagnostic: bool) -> usize {
     if diagnostic {
         diagnostic_log_limit()
     } else {
@@ -206,21 +213,22 @@ fn log_limit_for(diagnostic: bool) -> usize {
     }
 }
 
-/// Sanitizes a log string by stripping newlines and capping length.
+/// Sanitizes a log string by stripping newlines and capping length
+#[must_use]
 pub fn sanitize_log_value(value: &str, max_len: usize) -> String {
     if max_len == 0 {
         return String::new();
     }
-    // Pre-allocate to reduce churn when sanitizing frequent log values.
+    // Pre-allocate to reduce churn when sanitizing frequent log values
     let mut cleaned = String::with_capacity(max_len.min(value.len()));
     let mut count = 0usize;
     let mut truncated = false;
     for ch in value.chars() {
-        // Directionality controls can visually reorder terminal output, so drop them.
+        // Directionality controls can visually reorder terminal output, so drop them
         if is_bidi_control(ch) {
             continue;
         }
-        // Replace control/newline bytes with spaces to keep logs single-line and safe.
+        // Replace control/newline bytes with spaces to keep logs single-line and safe
         let ch = if ch.is_control() { ' ' } else { ch };
         cleaned.push(ch);
         count += 1;
@@ -237,18 +245,21 @@ pub fn sanitize_log_value(value: &str, max_len: usize) -> String {
     }
 }
 
-/// Produces a safe log snippet honoring diagnostic mode limits.
+/// Produces a safe log snippet honoring diagnostic mode limits
+#[must_use]
 pub fn log_snippet(value: &str) -> String {
     sanitize_log_value(value, log_limit())
 }
 
-/// Sanitizes text that will be shown to the user inside the UI.
+/// Sanitizes text that will be shown to the user inside the UI
+#[must_use]
 pub fn sanitize_display_text(value: &str) -> String {
     // Keep line breaks here
     sanitize_display_text_with(value, true)
 }
 
-/// Sanitizes text that must remain single-line and safe for display.
+/// Sanitizes text that must remain single-line and safe for display
+#[must_use]
 pub fn sanitize_inline_display_text(value: &str) -> String {
     // Keep inline text on one line
     sanitize_display_text_with(value, false)
@@ -275,8 +286,8 @@ fn sanitize_display_text_with(value: &str, keep_newlines: bool) -> String {
     cleaned
 }
 
-fn is_bidi_control(ch: char) -> bool {
-    // Covers directional embeddings/overrides/isolates and directional marks.
+const fn is_bidi_control(ch: char) -> bool {
+    // Covers directional embeddings/overrides/isolates and directional marks
     matches!(
         ch,
         '\u{061C}'

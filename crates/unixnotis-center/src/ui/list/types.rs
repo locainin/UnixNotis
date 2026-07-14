@@ -6,16 +6,18 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 use gtk::glib;
+use unixnotis_core::EmptyStateAlignment;
 use unixnotis_core::NotificationView;
 
 use super::item::RowItem;
 
-/// Maintains notification data and renders grouped widgets into the panel list.
+/// Maintains notification data and renders grouped widgets into the panel list
 pub struct NotificationList {
     pub(super) store: gio::ListStore,
-    pub(super) empty_overlay: gtk::Box,
+    pub(in crate::ui) empty_overlay: gtk::Box,
     pub(super) empty_offset_top: i32,
-    pub(super) empty_text: String,
+    pub(super) empty_alignment: EmptyStateAlignment,
+    pub(in crate::ui) empty_text: String,
     pub(super) entries: HashMap<u32, NotificationEntry>,
     // Active notifications render first to match the in-flight stack
     pub(super) active_order: VecDeque<u32>,
@@ -50,7 +52,7 @@ pub struct NotificationList {
     pub(super) max_entries: usize,
 }
 
-/// Input settings that influence list rendering and empty-state behavior.
+/// Input settings that influence list rendering and empty-state behavior
 pub struct NotificationListConfig {
     pub max_active: usize,
     pub max_entries: usize,
@@ -59,6 +61,7 @@ pub struct NotificationListConfig {
     pub show_notification_thumbnails: bool,
     pub empty_text: String,
     pub empty_offset_top: i32,
+    pub empty_alignment: EmptyStateAlignment,
 }
 
 pub(super) struct NotificationEntry {

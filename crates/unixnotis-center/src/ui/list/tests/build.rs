@@ -1,5 +1,6 @@
 use gtk::prelude::WidgetExt;
 use gtk::Align;
+use unixnotis_core::EmptyStateAlignment;
 
 use crate::ui::list::test_support as support;
 
@@ -30,7 +31,8 @@ fn apply_config_updates_empty_copy_and_offset() {
     config.empty_text = "All clear".to_string();
     config.empty_offset_top = 48;
 
-    list.apply_config(&config, true);
+    list.apply_config(&config);
+    list.set_empty_layout(true);
 
     assert_eq!(list.empty_text, "All clear");
     assert_eq!(list.empty_offset_top, 48);
@@ -43,7 +45,7 @@ fn apply_config_requests_rebuild_when_metadata_or_thumbnail_flags_change() {
     let mut config = support::list_config();
     config.show_notification_metadata = true;
 
-    list.apply_config(&config, true);
+    list.apply_config(&config);
 
     assert!(list.show_notification_metadata);
     assert!(!list.show_notification_thumbnails);
@@ -52,7 +54,7 @@ fn apply_config_requests_rebuild_when_metadata_or_thumbnail_flags_change() {
     list.needs_rebuild = false;
     config.show_notification_thumbnails = true;
 
-    list.apply_config(&config, true);
+    list.apply_config(&config);
 
     assert!(list.show_notification_metadata);
     assert!(list.show_notification_thumbnails);
@@ -74,4 +76,25 @@ fn set_empty_layout_switches_between_widget_offset_and_centered_empty_state() {
 
     assert_eq!(list.empty_overlay.valign(), Align::Center);
     assert_eq!(list.empty_overlay.margin_top(), 0);
+}
+
+#[gtk::test]
+fn explicit_empty_alignment_overrides_widget_dependent_default() {
+    let mut list = support::make_list();
+    let mut config = support::list_config();
+    config.empty_alignment = EmptyStateAlignment::End;
+
+    list.apply_config(&config);
+    list.set_empty_layout(true);
+
+    assert_eq!(list.empty_overlay.valign(), Align::End);
+    assert_eq!(list.empty_overlay.margin_top(), 0);
+
+    config.empty_alignment = EmptyStateAlignment::Start;
+    config.empty_offset_top = 36;
+    list.apply_config(&config);
+    list.set_empty_layout(false);
+
+    assert_eq!(list.empty_overlay.valign(), Align::Start);
+    assert_eq!(list.empty_overlay.margin_top(), 36);
 }

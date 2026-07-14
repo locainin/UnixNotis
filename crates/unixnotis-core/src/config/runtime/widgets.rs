@@ -15,8 +15,7 @@ pub(in super::super) fn apply_volume_backend(volume: &mut SliderWidgetConfig) {
         && volume
             .toggle_cmd
             .as_deref()
-            .map(|cmd| cmd == SliderWidgetConfig::WPCTL_TOGGLE)
-            .unwrap_or(false);
+            .is_some_and(|cmd| cmd == SliderWidgetConfig::WPCTL_TOGGLE);
     let watch_is_legacy = volume.watch_cmd.as_deref() == Some(LEGACY_WPCTL_WATCH);
     let pactl_available = program_in_path("pactl");
     let wpctl_available = program_in_path("wpctl");

@@ -1,5 +1,6 @@
 //! Supervisor loop for the popups and center child processes
 
+use std::cmp::Ordering;
 use std::process::ExitStatus;
 use std::time::{Duration, Instant};
 
@@ -14,6 +15,9 @@ use rustix::process::{kill_process, Pid, Signal};
 use super::{RestartBackoff, UiProcessKind};
 use crate::daemon::DaemonState;
 use crate::Args;
+
+// GTK children can need one event-loop turn to unwind after SIGTERM
+const UI_CHILD_TERMINATION_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub(super) async fn supervise_process(
     kind: UiProcessKind,
@@ -139,7 +143,7 @@ async fn handle_wait_result(
     }
 }
 
-fn wait_error_needs_recovery(probe: &std::io::Result<bool>) -> bool {
+const fn wait_error_needs_recovery(probe: &std::io::Result<bool>) -> bool {
     matches!(probe, Ok(false) | Err(_))
 }
 
@@ -165,7 +169,7 @@ async fn wait_for_retry_or_shutdown(delay: Duration, shutdown: &mut watch::Recei
     }
 
     tokio::select! {
-        _ = sleep(delay) => false,
+        () = sleep(delay) => false,
         changed = shutdown.changed() => {
             shutdown_is_terminal(Some(changed), shutdown)
         }
@@ -180,12 +184,11 @@ async fn terminate_child(child: &mut Child, label: &str) {
     let pid = child.id().unwrap_or_default();
     #[cfg(unix)]
     {
-        let pid = match i32::try_from(pid) {
-            Ok(pid) => pid,
-            Err(_) => {
-                warn!(label, pid, "pid exceeds i32 range; skipping SIGTERM");
-                return;
-            }
+        let pid = if let Ok(pid) = i32::try_from(pid) {
+            pid
+        } else {
+            warn!(label, pid, "pid exceeds i32 range; skipping SIGTERM");
+            return;
         };
         if let Some(pid) = Pid::from_raw(pid) {
             let _ = kill_process(pid, Signal::TERM);
@@ -193,8 +196,7 @@ async fn terminate_child(child: &mut Child, label: &str) {
     }
 
     let start = Instant::now();
-    let timeout = Duration::from_millis(600);
-    while start.elapsed() < timeout {
+    while start.elapsed().cmp(&UI_CHILD_TERMINATION_TIMEOUT) == Ordering::Less {
         match child.try_wait() {
             Ok(Some(_)) => return,
             Ok(None) => {}

@@ -13,6 +13,7 @@ mod prompts;
 mod runner;
 mod summary;
 #[cfg(test)]
+#[path = "tests/helpers.rs"]
 mod test_helpers;
 
 pub(super) use self::runner::run_import;

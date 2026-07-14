@@ -1,6 +1,6 @@
-//! Notification list rebuild and incremental update logic.
+//! Notification list rebuild and incremental update logic
 //!
-//! Keeps list-store mutation logic separate from data mutation methods.
+//! Keeps list-store mutation logic separate from data mutation methods
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -29,7 +29,7 @@ impl NotificationList {
         self.apply_updates();
     }
 
-    pub fn needs_rebuild(&self) -> bool {
+    pub const fn needs_rebuild(&self) -> bool {
         self.needs_rebuild
     }
 
@@ -55,7 +55,7 @@ impl NotificationList {
             if visible_ids.is_empty() {
                 continue;
             }
-            // Range map allows incremental updates to splice only changed groups later.
+            // Range map allows incremental updates to splice only changed groups later
             let start = items.len();
             let (block_items, block_keys) = self.build_group_block(key, &visible_ids);
             items.extend(block_items);
@@ -90,7 +90,7 @@ impl NotificationList {
         if current_mid != 0 || next_mid != 0 {
             let mut objects = std::mem::take(&mut self.objects_scratch);
             objects.clear();
-            // Splice only the changed middle segment to reduce GTK churn.
+            // Splice only the changed middle segment to reduce GTK churn
             for item in &items[prefix..prefix + next_mid] {
                 objects.push(item.clone().upcast::<glib::Object>());
             }
@@ -111,11 +111,11 @@ impl NotificationList {
 
         let group_count = group_order.len();
         let mut old_group_order = std::mem::replace(&mut self.group_order, group_order);
-        // Drop stale group keys while keeping the scratch capacity for reuse.
+        // Drop stale group keys while keeping the scratch capacity for reuse
         old_group_order.clear();
         self.group_order_scratch = old_group_order;
         self.group_ranges = group_ranges;
-        // Prune interned keys that are no longer referenced by any list state.
+        // Prune interned keys that are no longer referenced by any list state
         self.interned.retain(intern_key_is_live);
         self.dirty_groups.clear();
 
@@ -130,7 +130,7 @@ impl NotificationList {
     }
 
     fn apply_updates(&mut self) {
-        // Rebuild only affected group blocks while keeping stable spans intact.
+        // Rebuild only affected group blocks while keeping stable spans intact
         let mut group_order = std::mem::take(&mut self.group_order_scratch);
         self.collect_group_order(&mut group_order);
 
@@ -142,7 +142,7 @@ impl NotificationList {
         let mut keep_groups: HashSet<Rc<str>> = HashSet::new();
         let mut removed_groups: HashSet<Rc<str>> = HashSet::new();
         let mut remove_ranges: Vec<GroupRange> = Vec::new();
-        for (key, range) in self.group_ranges.iter() {
+        for (key, range) in &self.group_ranges {
             let Some(ids) = self.grouped_cache.get(key) else {
                 remove_ranges.push(*range);
                 removed_groups.insert(key.clone());
@@ -156,10 +156,10 @@ impl NotificationList {
             }
             let desired_len = self.group_block_len(key, visible_ids.as_ref());
             if should_keep_group(&self.dirty_groups, key, range.len, desired_len) {
-                // Stable groups with identical span lengths are kept in place.
+                // Stable groups with identical span lengths are kept in place
                 keep_groups.insert(key.clone());
             } else {
-                // Dirty or shape-changed groups are removed and rebuilt.
+                // Dirty or shape-changed groups are removed and rebuilt
                 remove_ranges.push(*range);
                 removed_groups.insert(key.clone());
             }
@@ -212,7 +212,7 @@ impl NotificationList {
                 cursor += desired_len;
                 pending_start = cursor;
             } else {
-                // Rebuild changed groups into a contiguous insertion batch.
+                // Rebuild changed groups into a contiguous insertion batch
                 // The pending start is the final position after earlier removals
                 let start = pending_start + pending_items.len();
                 let (items, keys) = self.build_group_block(key, &visible_ids);
@@ -237,20 +237,19 @@ impl NotificationList {
         self.group_order_scratch = old_group_order;
         self.dirty_groups.clear();
 
-        // Prune interned keys that are no longer referenced by any list state.
+        // Prune interned keys that are no longer referenced by any list state
         self.interned.retain(intern_key_is_live);
 
         self.update_empty_overlay();
 
-        // Cross-check the cached grouping against the GTK store after incremental edits.
+        // Cross-check the cached grouping against the GTK store after incremental edits
         let expected_ranges = self
             .group_order
             .iter()
             .filter(|key| {
                 self.grouped_cache
                     .get(*key)
-                    .map(|ids| self.group_ids_are_visible(ids))
-                    .unwrap_or(false)
+                    .is_some_and(|ids| self.group_ids_are_visible(ids))
             })
             .count();
         if range_count_mismatch(self.group_ranges.len(), expected_ranges) {
@@ -266,13 +265,13 @@ impl NotificationList {
         let expected_len = self.expected_list_len();
         let actual_len = self.store.n_items() as usize;
         if actual_len != expected_len {
-            // Guard against stale spans or insert/remove drift by forcing a full rebuild.
+            // Guard against stale spans or insert/remove drift by forcing a full rebuild
             debug!(expected_len, actual_len, "list length mismatch; rebuilding");
             self.rebuild_list();
         }
     }
 
-    pub(super) fn request_rebuild(&mut self) {
+    pub(super) const fn request_rebuild(&mut self) {
         self.needs_rebuild = true;
     }
 
@@ -290,15 +289,15 @@ impl NotificationList {
     }
 }
 
-fn should_rebuild_from_scratch(store_items: u32, group_range_count: usize) -> bool {
+const fn should_rebuild_from_scratch(store_items: u32, group_range_count: usize) -> bool {
     store_items == 0 || group_range_count == 0
 }
 
-fn has_pending_items(count: usize) -> bool {
+const fn has_pending_items(count: usize) -> bool {
     count > 0
 }
 
-fn range_count_mismatch(actual: usize, expected: usize) -> bool {
+const fn range_count_mismatch(actual: usize, expected: usize) -> bool {
     actual.abs_diff(expected) > 0
 }
 

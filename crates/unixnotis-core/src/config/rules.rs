@@ -1,4 +1,4 @@
-//! Notification rule configuration and validation.
+//! Notification rule configuration and validation
 
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ pub enum RuleUrgency {
 }
 
 impl RuleUrgency {
-    /// Strictly validate numeric urgency values during deserialization.
+    /// Strictly validate numeric urgency values during deserialization
     fn from_u8(value: u8) -> Result<Self, String> {
         match value {
             0 => Ok(Self::Low),
@@ -24,7 +24,8 @@ impl RuleUrgency {
         }
     }
 
-    pub fn as_u8(self) -> u8 {
+    #[must_use]
+    pub const fn as_u8(self) -> u8 {
         match self {
             Self::Low => 0,
             Self::Normal => 1,
@@ -48,7 +49,7 @@ impl Serialize for RuleUrgency {
     where
         S: serde::Serializer,
     {
-        // Persist numeric urgency values for stable config output.
+        // Persist numeric urgency values for stable config output
         serializer.serialize_u8(self.as_u8())
     }
 }
@@ -60,7 +61,7 @@ impl<'de> Deserialize<'de> for RuleUrgency {
     {
         struct RuleUrgencyVisitor;
 
-        impl<'de> Visitor<'de> for RuleUrgencyVisitor {
+        impl Visitor<'_> for RuleUrgencyVisitor {
             type Value = RuleUrgency;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -78,7 +79,7 @@ impl<'de> Deserialize<'de> for RuleUrgency {
             where
                 E: de::Error,
             {
-                let value = u8::try_from(value).map_err(|_| {
+                let value = u8::try_from(value).map_err(|_error| {
                     E::custom("urgency must be 0 (low), 1 (normal), or 2 (critical)")
                 })?;
                 RuleUrgency::from_u8(value).map_err(E::custom)
@@ -118,29 +119,29 @@ impl<'de> Deserialize<'de> for RuleUrgency {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RuleConfig {
-    /// Optional rule name for logging or debugging.
+    /// Optional rule name for logging or debugging
     pub name: Option<String>,
-    /// Match against the notification app name (case-insensitive substring).
+    /// Match against the notification app name (case-insensitive substring)
     pub app: Option<String>,
-    /// Match against the notification summary (case-insensitive substring).
+    /// Match against the notification summary (case-insensitive substring)
     pub summary: Option<String>,
-    /// Match against the notification body (case-insensitive substring).
+    /// Match against the notification body (case-insensitive substring)
     pub body: Option<String>,
-    /// Match against the notification category hint (case-insensitive substring).
+    /// Match against the notification category hint (case-insensitive substring)
     pub category: Option<String>,
-    /// Match against urgency (0=low, 1=normal, 2=critical).
+    /// Match against urgency (0=low, 1=normal, 2=critical)
     pub urgency: Option<RuleUrgency>,
-    /// Suppress popups when true.
+    /// Suppress popups when true
     pub no_popup: Option<bool>,
-    /// Suppress sound when true.
+    /// Suppress sound when true
     pub silent: Option<bool>,
-    /// Force urgency when set (0=low, 1=normal, 2=critical).
+    /// Force urgency when set (0=low, 1=normal, 2=critical)
     pub force_urgency: Option<RuleUrgency>,
-    /// Override expire timeout in milliseconds (-1 for default, 0 for no expire).
+    /// Override expire timeout in milliseconds (-1 for default, 0 for no expire)
     pub expire_timeout_ms: Option<i64>,
-    /// Override resident flag when set.
+    /// Override resident flag when set
     pub resident: Option<bool>,
-    /// Override transient flag when set.
+    /// Override transient flag when set
     pub transient: Option<bool>,
 }
 

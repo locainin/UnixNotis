@@ -10,6 +10,7 @@ use super::{
     validate_command_paths_in_config_bytes,
 };
 
+#[path = "env_paths.rs"]
 mod env_paths;
 
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -22,8 +23,7 @@ fn temp_root(name: &str) -> PathBuf {
         .as_nanos();
     let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
-        "unixnotis-preset-command-rules-{}-{}-{}",
-        name, stamp, serial
+        "unixnotis-preset-command-rules-{name}-{stamp}-{serial}"
     ))
 }
 

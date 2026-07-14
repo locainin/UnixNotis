@@ -1,7 +1,14 @@
 use super::{
-    merge_mode_for_signal, should_publish_immediate_command_snapshot,
+    merge_mode_for_signal, owner_is_unchanged, should_publish_immediate_command_snapshot,
     should_schedule_metadata_fallback, MediaCacheMergeMode,
 };
+
+#[test]
+fn owner_replacement_rebuilds_state_but_duplicate_signal_does_not() {
+    assert!(owner_is_unchanged(Some(":1.42"), Some(":1.42")));
+    assert!(!owner_is_unchanged(Some(":1.42"), Some(":1.43")));
+    assert!(!owner_is_unchanged(None, Some(":1.43")));
+}
 use crate::media::{MediaCommand, MediaRefreshOrigin};
 
 #[test]

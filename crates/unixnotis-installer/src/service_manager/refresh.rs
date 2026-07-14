@@ -21,7 +21,7 @@ pub struct S6DatabaseRefresh {
 }
 
 impl S6DatabaseRefresh {
-    pub(super) fn new(data_root: PathBuf, live_root: PathBuf) -> Self {
+    pub(super) const fn new(data_root: PathBuf, live_root: PathBuf) -> Self {
         Self {
             data_root,
             live_root,

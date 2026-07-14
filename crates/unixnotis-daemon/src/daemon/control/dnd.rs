@@ -1,4 +1,4 @@
-//! DND mutation and persistence helpers for ControlServer
+//! DND mutation and persistence helpers for `ControlServer`
 //!
 //! Keeps toggle/set flow and guarded rollback logic out of the main interface file
 

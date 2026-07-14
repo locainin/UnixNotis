@@ -1,14 +1,3 @@
-#![allow(
-    clippy::implicit_return,
-    clippy::nursery,
-    clippy::needless_return,
-    clippy::panic_in_result_fn,
-    clippy::pedantic,
-    clippy::question_mark_used,
-    clippy::std_instead_of_core,
-    reason = "pedantic and nursery cleanup is tracked incrementally across existing code"
-)]
-
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -29,7 +18,7 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        return Ok(());
+        Ok(())
     }
 
     #[test]
@@ -42,7 +31,7 @@ mod tests {
         assert!(stderr.contains("gtk css parse error"), "{stderr}");
         assert!(stderr.contains("gtk css validation found"), "{stderr}");
 
-        return Ok(());
+        Ok(())
     }
 
     fn run_validator(css: &str) -> Result<Output, IoError> {
@@ -63,6 +52,6 @@ mod tests {
         stdin.write_all(css.as_bytes())?;
         drop(stdin);
 
-        return child.wait_with_output();
+        child.wait_with_output()
     }
 }

@@ -66,12 +66,22 @@ jobs:
 
       - name: Check packaging script
         run: |
-          shellcheck scripts/package-release.sh
-          shellharden --check scripts/package-release.sh
+          shellcheck scripts/package-release.sh tests/package-release.sh
+          shellharden --check scripts/package-release.sh tests/package-release.sh
+          tests/package-release.sh
 
       - name: Build package archive
         # The script checks that Cargo's version matches the requested release tag
-        run: scripts/package-release.sh "${{ inputs.tag }}"
+        env:
+          # Environment transport prevents workflow input from becoming Bash source text
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'release tag must look like v1.1.0: %s\n' "$RELEASE_TAG" >&2
+            exit 2
+          fi
+          scripts/package-release.sh "$RELEASE_TAG"
 
       - name: Upload package archive
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

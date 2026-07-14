@@ -4,11 +4,11 @@
 
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::path::PathBuf;
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use unixnotis_core::filesystem::write_file_atomic;
 use unixnotis_core::util;
 
 pub(super) const DND_STATE_VERSION: u32 = 1;
@@ -22,7 +22,7 @@ pub(super) struct PersistedDndState {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DndStateStore {
+pub struct DndStateStore {
     path: PathBuf,
 }
 
@@ -55,35 +55,7 @@ impl DndStateStore {
             updated_at: Some(Utc::now().to_rfc3339()),
         };
         let body = serde_json::to_vec(&payload)?;
-        let parent = match self.path.parent() {
-            Some(parent) => parent,
-            None => return Ok(()),
-        };
-        fs::create_dir_all(parent)?;
-        let temp_path = self.temp_path(parent);
-        let mut file = fs::File::create(&temp_path)?;
-        // Write and flush the file before renaming to avoid partially written state files
-        io::Write::write_all(&mut file, &body)?;
-        // Ensure temp contents are durable before the atomic rename
-        file.sync_all()?;
-        fs::rename(&temp_path, &self.path)?;
-        // Sync the directory entry so the rename survives sudden power loss
-        sync_parent_dir(parent)?;
-        Ok(())
+        // State is private to the current user and durable across sudden restarts
+        write_file_atomic(&self.path, &body, 0o600)
     }
-
-    fn temp_path(&self, parent: &Path) -> PathBuf {
-        let pid = std::process::id();
-        let nanos = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or(0);
-        let name = format!(".{DND_STATE_FILE}.tmp.{pid}.{nanos}");
-        parent.join(name)
-    }
-}
-
-fn sync_parent_dir(parent: &Path) -> io::Result<()> {
-    let dir = fs::File::open(parent)?;
-    dir.sync_all()
 }

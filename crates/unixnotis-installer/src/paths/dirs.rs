@@ -4,10 +4,10 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 
 pub fn home_dir() -> Result<PathBuf> {
-    let home = env::var("HOME").map_err(|_| anyhow!("HOME is not set"))?;
+    let home = env::var("HOME").context("HOME is not set")?;
     Ok(PathBuf::from(home))
 }
 
@@ -74,7 +74,7 @@ pub(super) fn s6_live_dir(data_root: &Path) -> Result<PathBuf> {
         // Explicit live roots are for testers and advanced users who already know their tree
         return Ok(path);
     }
-    let user = env::var("USER").map_err(|_| anyhow!("USER is not set"))?;
+    let user = env::var("USER").context("USER is not set")?;
     let integrated = PathBuf::from("/run").join(&user).join("s6-rc");
     if path_is_directory_or_symlink_to_directory(&integrated) {
         // Artix integrated local supervision wires the user s6-rc tree under /run/$USER
@@ -164,13 +164,11 @@ fn dedupe_path_results(candidates: Vec<Result<PathBuf>>) -> Vec<Result<PathBuf>>
 fn path_is_directory_or_symlink_to_directory(path: &Path) -> bool {
     fs::metadata(path)
         // s6 live roots are expected to be symlinks that point at the current live tree
-        .map(|metadata| metadata.is_dir())
-        .unwrap_or(false)
+        .is_ok_and(|metadata| metadata.is_dir())
 }
 
 fn path_is_plain_directory(path: &Path) -> bool {
     fs::symlink_metadata(path)
         // Auto-detected /tmp roots must not follow symlinks into surprising locations
-        .map(|metadata| metadata.file_type().is_dir())
-        .unwrap_or(false)
+        .is_ok_and(|metadata| metadata.file_type().is_dir())
 }

@@ -45,8 +45,7 @@ pub(super) fn journalctl_is_available() -> bool {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+        .is_ok_and(|status| status.success())
 }
 
 pub(super) fn journal_has_user_unit_logs(unit: &str) -> Result<bool> {
@@ -72,6 +71,6 @@ pub(super) fn follow_user_unit_logs(unit: &str) -> Result<()> {
         Ok(())
     } else {
         // Propagate a clear failure when the subprocess exits non-zero
-        Err(anyhow!("journalctl exited with status {}", status))
+        Err(anyhow!("journalctl exited with status {status}"))
     }
 }

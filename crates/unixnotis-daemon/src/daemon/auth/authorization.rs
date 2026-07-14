@@ -54,7 +54,7 @@ async fn authorize_control_call_for_executables(
         .await
         .map_err(to_fdo_error)?;
     let bus_name = zbus::names::BusName::try_from(sender_name.as_str())
-        .map_err(|_| zbus::fdo::Error::AccessDenied("invalid sender".to_string()))?;
+        .map_err(|_error| zbus::fdo::Error::AccessDenied("invalid sender".to_string()))?;
 
     // Same desktop uid is required before any executable trust checks are considered
     let caller_uid = proxy.get_connection_unix_user(bus_name.clone()).await?;
@@ -81,9 +81,7 @@ async fn authorize_control_call_for_executables(
             sender = %sender_name,
             pid,
             executable = exe_path
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
+                .as_ref().map_or_else(|| "unknown".to_string(), |path| path.display().to_string()),
             "rejected untrusted control caller"
         );
         return Err(err);
@@ -92,7 +90,10 @@ async fn authorize_control_call_for_executables(
     Ok(())
 }
 
-pub(in crate::daemon) fn control_owner_uid_is_allowed(caller_uid: u32, expected_uid: u32) -> bool {
+pub(in crate::daemon) const fn control_owner_uid_is_allowed(
+    caller_uid: u32,
+    expected_uid: u32,
+) -> bool {
     caller_uid == expected_uid
 }
 

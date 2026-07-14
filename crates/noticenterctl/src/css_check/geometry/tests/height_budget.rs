@@ -21,7 +21,7 @@ fn warns_when_media_card_height_is_too_small_for_tall_top_art_shell() {
     config.media.card_height_px = Some(126);
     config.media.art_size_px = 96;
 
-    let css = r#"
+    let css = r"
         .unixnotis-media-card { padding: 12px 16px; border: 1px solid red; }
         .unixnotis-media-header { padding: 6px 0; }
         .unixnotis-media-main { padding: 4px 0; }
@@ -35,7 +35,7 @@ fn warns_when_media_card_height_is_too_small_for_tall_top_art_shell() {
         .unixnotis-media-nav-strip { min-height: 40px; }
         .unixnotis-media-button { min-height: 40px; }
         .unixnotis-media-nav { min-height: 40px; }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let file_warnings = collect_geometry_from_contents(css, &mut model);
@@ -57,7 +57,7 @@ fn skips_media_height_warning_when_card_budget_matches_shell_height() {
     config.media.card_height_px = Some(340);
     config.media.art_size_px = 96;
 
-    let css = r#"
+    let css = r"
         .unixnotis-media-card { padding: 12px 16px; border: 1px solid red; }
         .unixnotis-media-header { padding: 6px 0; }
         .unixnotis-media-main { padding: 4px 0; }
@@ -71,7 +71,7 @@ fn skips_media_height_warning_when_card_budget_matches_shell_height() {
         .unixnotis-media-nav-strip { min-height: 40px; }
         .unixnotis-media-button { min-height: 40px; }
         .unixnotis-media-nav { min-height: 40px; }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let file_warnings = collect_geometry_from_contents(css, &mut model);
@@ -95,7 +95,7 @@ fn player_layout_height_stays_quiet_with_compact_centered_budget() {
     let mut config = Config::default();
     config.media.layout = MediaLayout::Player;
 
-    let css = r#"
+    let css = r"
         .unixnotis-media-card-player { padding: 8px 10px; border: 1px solid red; }
         .unixnotis-media-header { padding: 2px 0; }
         .unixnotis-media-main { padding: 2px 0; }
@@ -106,7 +106,7 @@ fn player_layout_height_stays_quiet_with_compact_centered_budget() {
         .unixnotis-media-control-strip { padding: 5px 0; }
         .unixnotis-media-controls { min-height: 33px; }
         .unixnotis-media-button { min-height: 33px; }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let file_warnings = collect_geometry_from_contents(css, &mut model);
@@ -125,7 +125,7 @@ fn compact_player_height_stays_quiet_when_art_and_controls_are_small() {
     config.media.content_spacing_px = 4;
     config.media.control_spacing_px = 4;
 
-    let css = r#"
+    let css = r"
         .unixnotis-media-card-player { padding: 6px 8px; border: 1px solid red; }
         .unixnotis-media-header { padding: 2px 0; }
         .unixnotis-media-main { padding: 2px 0; }
@@ -136,7 +136,7 @@ fn compact_player_height_stays_quiet_when_art_and_controls_are_small() {
         .unixnotis-media-control-strip { padding: 4px 0; }
         .unixnotis-media-controls { min-height: 28px; }
         .unixnotis-media-button { min-height: 28px; }
-    "#;
+    ";
 
     let mut model = GeometryModel::default();
     let file_warnings = collect_geometry_from_contents(css, &mut model);

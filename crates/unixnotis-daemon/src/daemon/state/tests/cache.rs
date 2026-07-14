@@ -49,7 +49,7 @@ fn cached_state_emits_after_counter_change() {
     };
     let changed = ControlState {
         history_count: 1,
-        ..first.clone()
+        ..first
     };
 
     assert!(cached_state_would_emit(&cache, &first));

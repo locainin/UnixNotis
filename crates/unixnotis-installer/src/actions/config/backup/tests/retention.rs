@@ -48,7 +48,12 @@ fn prune_old_backups_keeps_newest() {
     // Only the two newest entries should remain
     let mut remaining = list_backup_dirs(&root)
         .into_iter()
-        .map(|path: std::path::PathBuf| path.file_name().unwrap().to_string_lossy().to_string())
+        .map(|path: std::path::PathBuf| {
+            path.file_name()
+                .expect("backup directory should have a file name")
+                .to_string_lossy()
+                .to_string()
+        })
         .collect::<Vec<_>>();
     remaining.sort();
     assert_eq!(

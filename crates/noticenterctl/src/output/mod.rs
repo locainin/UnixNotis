@@ -4,14 +4,14 @@ mod gate;
 
 use unixnotis_core::{util, NotificationView};
 
-pub(crate) use gate::{allow_full_output, warn_full_requires_diagnostic};
+pub use gate::{allow_full_output, warn_full_requires_diagnostic};
 
-pub(crate) fn print_notifications(label: &str, notifications: &[NotificationView], full: bool) {
+pub fn print_notifications(label: &str, notifications: &[NotificationView], full: bool) {
     // One place for CLI output
     print!("{}", format_notifications(label, notifications, full));
 }
 
-pub(crate) fn print_inhibitors(inhibitors: &[(u64, String, u32, String)]) {
+pub fn print_inhibitors(inhibitors: &[(u64, String, u32, String)]) {
     // Same output path for inhibitor rows
     print!("{}", format_inhibitors(inhibitors));
 }
@@ -73,5 +73,5 @@ fn format_inhibitors(inhibitors: &[(u64, String, u32, String)]) -> String {
 }
 
 #[cfg(test)]
-#[path = "tests/mod.rs"]
+#[path = "tests/cases.rs"]
 mod tests;

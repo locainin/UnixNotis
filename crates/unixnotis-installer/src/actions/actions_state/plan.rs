@@ -1,7 +1,7 @@
-//! Planning and dispatch for installer steps.
+//! Planning and dispatch for installer steps
 //!
 //! Keeps the sequencing logic in one place so install, uninstall, and reset
-//! flows stay predictable.
+//! flows stay predictable
 
 use anyhow::Result;
 
@@ -82,7 +82,7 @@ pub fn run_step(step: StepKind, ctx: &mut ActionContext) -> Result<()> {
     }
 }
 
-pub fn step_label(kind: StepKind) -> &'static str {
+pub const fn step_label(kind: StepKind) -> &'static str {
     match kind {
         StepKind::InstallCheck => "Check existing install",
         StepKind::StopDaemon => "Stop existing daemon",

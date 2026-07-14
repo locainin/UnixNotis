@@ -123,7 +123,7 @@ pub(super) fn normalize_lexical_path(path: &Path) -> PathBuf {
                     normalized.pop();
                 }
                 // Parent segments at the filesystem root stay pinned there
-                Some(Component::RootDir) | Some(Component::Prefix(_)) => {}
+                Some(Component::RootDir | Component::Prefix(_)) => {}
                 // Relative paths may still carry leading `..` segments at this stage
                 _ => normalized.push(".."),
             },
@@ -189,7 +189,7 @@ where
     }
 
     let Some(suggested_path) = suggested_preset_bundle_path(path) else {
-        return validate_preset_bundle_path(path).map(|_| path.to_path_buf());
+        return validate_preset_bundle_path(path).map(|()| path.to_path_buf());
     };
 
     // Missing extension is a common CLI typo, so offer to fix it in interactive shells

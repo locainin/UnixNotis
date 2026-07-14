@@ -69,7 +69,7 @@ pub(in crate::ui::list) fn build_group_row(
     root.append(&button);
 
     let group_key: Rc<RefCell<Rc<str>>> = Rc::new(RefCell::new(Rc::from("")));
-    let event_tx_clone = event_tx.clone();
+    let event_tx_clone = event_tx;
     let group_key_clone = group_key.clone();
     button.connect_clicked(move |_| {
         let group = group_key_clone.borrow().clone();

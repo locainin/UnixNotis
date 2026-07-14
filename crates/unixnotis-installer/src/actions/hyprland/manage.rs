@@ -9,6 +9,7 @@ use super::detect::{
     hyprland_startup_line,
 };
 use super::paths::{existing_hyprland_config_targets, hyprland_config_target};
+use super::write_target::resolve_hyprland_write_path;
 use crate::paths::format_with_home;
 use crate::safe_write::{reject_unsafe_write_target, write_text_preserving_mode};
 
@@ -17,7 +18,7 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     let target = match hyprland_config_target() {
         Ok(target) => target,
         Err(err) => {
-            log_line(ctx, format!("Warning: {}", err));
+            log_line(ctx, format!("Warning: {err}"));
             return;
         }
     };
@@ -33,14 +34,24 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
         return;
     }
 
-    if let Err(err) = reject_unsafe_write_target(&hypr_config) {
+    let write_path = match resolve_hyprland_write_path(&hypr_config) {
+        Ok(write_path) => write_path,
+        Err(err) => {
+            log_line(
+                ctx,
+                format!("Warning: failed to update Hyprland config: {err}"),
+            );
+            return;
+        }
+    };
+    if let Err(err) = reject_unsafe_write_target(&write_path) {
         log_line(
             ctx,
-            format!("Warning: failed to update Hyprland config: {}", err),
+            format!("Warning: failed to update Hyprland config: {err}"),
         );
         return;
     }
-    let contents = match fs::read_to_string(&hypr_config) {
+    let contents = match fs::read_to_string(&write_path) {
         Ok(contents) => contents,
         Err(err) => {
             log_line(
@@ -87,10 +98,10 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     if additions.is_empty() {
         // If the live file already has everything, drop stale managed blocks and stop
         if block_found {
-            if let Err(err) = write_text_preserving_mode(&hypr_config, &stripped, 0o644) {
+            if let Err(err) = write_text_preserving_mode(&write_path, &stripped, 0o644) {
                 log_line(
                     ctx,
-                    format!("Warning: failed to update Hyprland config: {}", err),
+                    format!("Warning: failed to update Hyprland config: {err}"),
                 );
             } else {
                 log_line(
@@ -115,10 +126,10 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
         &additions,
     ));
 
-    if let Err(err) = write_text_preserving_mode(&hypr_config, &updated_contents, 0o644) {
+    if let Err(err) = write_text_preserving_mode(&write_path, &updated_contents, 0o644) {
         log_line(
             ctx,
-            format!("Warning: failed to update Hyprland config: {}", err),
+            format!("Warning: failed to update Hyprland config: {err}"),
         );
     } else {
         log_line(
@@ -146,7 +157,7 @@ pub(in crate::actions) fn remove_hyprland_autostart(ctx: &mut ActionContext) {
     let targets = match existing_hyprland_config_targets() {
         Ok(targets) => targets,
         Err(err) => {
-            log_line(ctx, format!("Warning: {}", err));
+            log_line(ctx, format!("Warning: {err}"));
             return;
         }
     };
@@ -154,14 +165,24 @@ pub(in crate::actions) fn remove_hyprland_autostart(ctx: &mut ActionContext) {
     for target in targets {
         // Cleanup is best-effort per file so one broken config does not block the other format
         let hypr_config = target.path;
-        if let Err(err) = reject_unsafe_write_target(&hypr_config) {
+        let write_path = match resolve_hyprland_write_path(&hypr_config) {
+            Ok(write_path) => write_path,
+            Err(err) => {
+                log_line(
+                    ctx,
+                    format!("Warning: failed to update Hyprland config: {err}"),
+                );
+                continue;
+            }
+        };
+        if let Err(err) = reject_unsafe_write_target(&write_path) {
             log_line(
                 ctx,
-                format!("Warning: failed to update Hyprland config: {}", err),
+                format!("Warning: failed to update Hyprland config: {err}"),
             );
             continue;
         }
-        let contents = match fs::read_to_string(&hypr_config) {
+        let contents = match fs::read_to_string(&write_path) {
             Ok(contents) => contents,
             Err(err) => {
                 log_line(
@@ -185,10 +206,10 @@ pub(in crate::actions) fn remove_hyprland_autostart(ctx: &mut ActionContext) {
             continue;
         }
 
-        if let Err(err) = write_text_preserving_mode(&hypr_config, &strip_result.stripped, 0o644) {
+        if let Err(err) = write_text_preserving_mode(&write_path, &strip_result.stripped, 0o644) {
             log_line(
                 ctx,
-                format!("Warning: failed to update Hyprland config: {}", err),
+                format!("Warning: failed to update Hyprland config: {err}"),
             );
         } else {
             log_line(

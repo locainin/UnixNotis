@@ -94,7 +94,7 @@ impl ToggleGrid {
         Some(Self { root, items })
     }
 
-    pub fn root(&self) -> &gtk::FlowBox {
+    pub const fn root(&self) -> &gtk::FlowBox {
         // Root widget is embedded directly in the center layout
         &self.root
     }
@@ -110,7 +110,7 @@ impl ToggleGrid {
 
     pub fn needs_polling(&self) -> bool {
         // Shared scheduler uses this to decide whether periodic refresh is needed
-        self.items.iter().any(|item| item.needs_polling())
+        self.items.iter().any(ToggleItem::needs_polling)
     }
 
     pub fn set_watch_active(&self, active: bool) {
@@ -134,7 +134,10 @@ fn toggle_action_command<'a>(
     toggle_cmd.or(if active { on_cmd } else { off_cmd })
 }
 
-fn should_reset_after_action(toggle_cmd: Option<&String>, state_cmd: Option<&String>) -> bool {
+const fn should_reset_after_action(
+    toggle_cmd: Option<&String>,
+    state_cmd: Option<&String>,
+) -> bool {
     // Without a state command, the card cannot know whether the action changed system state
     toggle_cmd.is_some() && state_cmd.is_none()
 }
@@ -277,8 +280,7 @@ impl ToggleItem {
                     if failed {
                         debug::log(PanelDebugLevel::Warn, || {
                             format!(
-                                "toggle action failed; reconciling '{}' back to real state",
-                                label_for_retry
+                                "toggle action failed; reconciling '{label_for_retry}' back to real state"
                             )
                         });
                     }
@@ -289,7 +291,7 @@ impl ToggleItem {
                             expected,
                             button.clone(),
                             guard.clone(),
-                            refresh_gen.clone(),
+                            refresh_gen,
                         );
                     } else if reset_after_action {
                         // Stateless custom actions should not leave the card visually checked

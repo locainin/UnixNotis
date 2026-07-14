@@ -20,7 +20,7 @@ pub(super) struct ImportSummary {
     pub(super) dry_run: bool,
 }
 
-pub(super) fn build_summary(
+pub(super) const fn build_summary(
     plan: &ImportPlan,
     backup_dir: Option<PathBuf>,
     dry_run: bool,

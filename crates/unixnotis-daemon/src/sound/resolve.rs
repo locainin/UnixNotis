@@ -59,7 +59,7 @@ fn decode_file_uri(value: &str) -> Option<PathBuf> {
     // Only local file URIs are accepted to avoid accidental remote sources
     let stripped = value.strip_prefix("file://")?;
     let (host, path) = match stripped.split_once('/') {
-        Some((host, path)) => (host, format!("/{}", path)),
+        Some((host, path)) => (host, format!("/{path}")),
         None => ("", stripped.to_string()),
     };
     if !host.is_empty() && host != "localhost" {

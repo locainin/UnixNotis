@@ -87,10 +87,8 @@ impl TempDirGuard {
             .expect("clock moved backwards")
             .as_nanos();
         let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "unixnotis-preset-export-{}-{}-{}",
-            name, stamp, serial
-        ));
+        let path =
+            std::env::temp_dir().join(format!("unixnotis-preset-export-{name}-{stamp}-{serial}"));
         fs::create_dir_all(&path).expect("create temp dir");
         Self { path }
     }
@@ -116,7 +114,10 @@ fn export_builds_bundle_from_config_root() {
     // Export should pack the live config tree into one bundle file
     let root = TempDirGuard::new("bundle");
     root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
-    root.write("base.css", ".panel { color: red; }");
+    root.write(
+        "base.css",
+        ".panel { background-image: url('assets/bg.png'); }",
+    );
     root.write("assets/bg.png", "png");
 
     let bundle_path = root.path.join("demo.unixnotis");
@@ -124,6 +125,55 @@ fn export_builds_bundle_from_config_root() {
 
     assert_eq!(summary.file_count, 3);
     assert!(bundle_path.exists());
+}
+
+#[test]
+fn export_includes_only_active_files_and_referenced_dependencies() {
+    let root = TempDirGuard::new("dependency-closure");
+    root.write(
+        "config.toml",
+        r#"
+[theme]
+base_css = "base.css"
+
+[[widgets.stats]]
+enabled = true
+label = "Probe"
+icon_asset = "icons/probe.svg"
+cmd = "scripts/probe"
+"#,
+    );
+    root.write(
+        "base.css",
+        ".panel { background-image: url('assets/background.png'); }",
+    );
+    root.write("assets/background.png", "png");
+    root.write("assets/unused.png", "unused");
+    root.write(
+        "icons/probe.svg",
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"/>"#,
+    );
+    root.write("scripts/probe", "#!/bin/sh\nprintf '%s\\n' ok\n");
+    root.write("videos/capture.webm", "private video");
+    root.write("UnixNotis.wiki/.git/config", "private repository metadata");
+
+    let bundle_path = root.path.join("demo.unixnotis");
+    export_preset_from(&root.path, &bundle_path, &[], false).expect("export dependency closure");
+    let bundle = read_bundle(&bundle_path).expect("read bundle");
+    let paths = bundle
+        .files
+        .iter()
+        .map(|file| file.relative_path.as_path())
+        .collect::<Vec<_>>();
+
+    assert!(paths.contains(&Path::new("config.toml")));
+    assert!(paths.contains(&Path::new("base.css")));
+    assert!(paths.contains(&Path::new("assets/background.png")));
+    assert!(paths.contains(&Path::new("icons/probe.svg")));
+    assert!(paths.contains(&Path::new("scripts/probe")));
+    assert!(!paths.contains(&Path::new("assets/unused.png")));
+    assert!(!paths.contains(&Path::new("videos/capture.webm")));
+    assert!(!paths.contains(&Path::new("UnixNotis.wiki/.git/config")));
 }
 
 #[test]
@@ -169,25 +219,6 @@ fn export_rejects_theme_paths_that_leave_root_through_parent_traversal() {
 }
 
 #[test]
-fn export_rejects_override_path_that_leaves_root() {
-    // The last-loaded layer must follow the same containment policy as every other theme file
-    let root = TempDirGuard::new("override-theme-escape");
-    root.write(
-        "config.toml",
-        "[theme]\noverrides_css = \"../outside-overrides.css\"\n",
-    );
-
-    let bundle_path = root.path.join("demo.unixnotis");
-    let error = export_preset_from(&root.path, &bundle_path, &[], false)
-        .expect_err("reject override escape");
-
-    assert!(error
-        .to_string()
-        .contains("requires overrides_css to live under the config root"));
-    assert!(!bundle_path.exists());
-}
-
-#[test]
 fn export_rejects_absolute_plugin_command_outside_root() {
     // Shared presets should stay self-contained when commands point at local scripts
     let root = TempDirGuard::new("outside-command");
@@ -212,7 +243,10 @@ fn export_rejects_script_path_leaks_in_noninteractive_runs() {
     // Non-interactive runs should fail when script rewrite confirmation is unavailable
     let root = TempDirGuard::new("script-host-path-leak");
     let config_root_text = root.path.display().to_string();
-    root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    root.write(
+        "config.toml",
+        "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Demo\"\ncmd = \"scripts/demo-widget\"\n",
+    );
     root.write("base.css", ".panel { color: red; }");
     root.write(
         "scripts/demo-widget",
@@ -444,7 +478,10 @@ fn export_can_rewrite_host_specific_script_paths_in_bundle_scripts() {
     // Accepting rewrite should change only bundled script bytes
     let root = TempDirGuard::new("rewrite-script-path-leak");
     let config_root_text = root.path.display().to_string();
-    root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    root.write(
+        "config.toml",
+        "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Demo\"\ncmd = \"scripts/demo-widget\"\n",
+    );
     root.write("base.css", ".panel { color: red; }");
     root.write(
         "scripts/demo-widget",
@@ -486,7 +523,10 @@ fn export_can_keep_host_specific_script_paths_when_fix_is_declined() {
     // Declining rewrite should keep original script bytes in the bundle
     let root = TempDirGuard::new("keep-script-path-leak");
     let config_root_text = root.path.display().to_string();
-    root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    root.write(
+        "config.toml",
+        "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Demo\"\ncmd = \"scripts/demo-widget\"\n",
+    );
     root.write("base.css", ".panel { color: red; }");
     root.write(
         "scripts/demo-widget",

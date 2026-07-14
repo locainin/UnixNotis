@@ -16,14 +16,14 @@ const SEED_RETRY_LOG_INTERVAL_SECS: u64 = 10;
 
 // Seed failures are tracked without forcing an immediate reconnect
 #[derive(Debug)]
-pub(crate) struct SeedError {
+pub struct SeedError {
     state_error: Option<String>,
     active_error: Option<String>,
     send_error: Option<String>,
 }
 
 #[derive(Debug)]
-pub(crate) struct SeedSnapshot {
+pub struct SeedSnapshot {
     // State and active rows are sent together so reconnect seeding cannot mix old and new data
     state: ControlState,
     active: Vec<NotificationView>,
@@ -46,11 +46,11 @@ impl SeedSnapshot {
     }
 }
 
-pub(crate) trait PopupSeedSource {
+pub trait PopupSeedSource {
     async fn seed_snapshot(&self) -> Result<SeedSnapshot, SeedError>;
 }
 
-pub(crate) async fn seed_state_with_retry<S>(proxy: &S, sender: &async_channel::Sender<UiEvent>)
+pub async fn seed_state_with_retry<S>(proxy: &S, sender: &async_channel::Sender<UiEvent>)
 where
     S: PopupSeedSource,
 {

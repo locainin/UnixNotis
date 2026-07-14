@@ -56,26 +56,24 @@ pub(in crate::actions::hyprland) fn strip_hyprland_bootstrap_block(
     let mut remaining = contents.to_string();
     let mut block_found = false;
 
-    while let Some(start) = remaining.find(HYPR_BOOTSTRAP_START) {
-        let Some(end_rel) = remaining[start..].find(HYPR_BOOTSTRAP_END) else {
+    while let Some((start, start_end)) = marker_line_range(&remaining, HYPR_BOOTSTRAP_START) {
+        let Some((_, end_rel)) = marker_line_range(&remaining[start_end..], HYPR_BOOTSTRAP_END)
+        else {
             return HyprlandStripResult {
                 stripped: remaining,
                 block_found: false,
                 malformed: true,
             };
         };
-        let end = start + end_rel + HYPR_BOOTSTRAP_END.len();
-        // Remove one trailing newline with the block to avoid leaving empty gaps behind
-        let after_end = if remaining[end..].starts_with('\n') {
-            end + 1
-        } else {
-            end
-        };
-        remaining.replace_range(start..after_end, "");
+        // Whole marker lines include the Lua or Hyprlang comment prefix and trailing newline
+        let end = start_end + end_rel;
+        remaining.replace_range(start..end, "");
         block_found = true;
     }
 
-    if contents.contains(HYPR_BOOTSTRAP_END) && !contents.contains(HYPR_BOOTSTRAP_START) {
+    if marker_line_range(contents, HYPR_BOOTSTRAP_END).is_some()
+        && marker_line_range(contents, HYPR_BOOTSTRAP_START).is_none()
+    {
         log_line(
             ctx,
             format!(
@@ -95,6 +93,26 @@ pub(in crate::actions::hyprland) fn strip_hyprland_bootstrap_block(
         block_found,
         malformed: false,
     }
+}
+
+fn marker_line_range(contents: &str, marker: &str) -> Option<(usize, usize)> {
+    let mut offset = 0;
+    for line in contents.split_inclusive('\n') {
+        let candidate = line.trim_end_matches(['\r', '\n']).trim();
+        let matches = candidate == marker
+            || candidate
+                .strip_prefix("# ")
+                .is_some_and(|text| text == marker)
+            || candidate
+                .strip_prefix("-- ")
+                .is_some_and(|text| text == marker);
+        let end = offset + line.len();
+        if matches {
+            return Some((offset, end));
+        }
+        offset = end;
+    }
+    None
 }
 
 fn comment_line(syntax: HyprlandConfigSyntax, text: &str) -> String {

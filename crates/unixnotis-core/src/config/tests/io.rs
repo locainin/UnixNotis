@@ -6,8 +6,6 @@ mod load;
 mod paths;
 #[path = "io/scripts.rs"]
 mod scripts;
-#[path = "io/security.rs"]
-mod security;
 #[path = "io/support.rs"]
 mod support;
 #[path = "io/theme_files.rs"]

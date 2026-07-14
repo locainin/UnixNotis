@@ -21,7 +21,7 @@ pub(in super::super) enum CssCheckCategory {
 }
 
 impl CssCheckCategory {
-    pub(in super::super) fn label(self) -> &'static str {
+    pub(in super::super) const fn label(self) -> &'static str {
         match self {
             Self::Parse => "parse",
             Self::Theme => "theme",
@@ -31,7 +31,7 @@ impl CssCheckCategory {
         }
     }
 
-    pub(in super::super) fn summary_label(self) -> &'static str {
+    pub(in super::super) const fn summary_label(self) -> &'static str {
         match self {
             Self::Parse => "parse",
             Self::Theme => "theme",
@@ -41,7 +41,7 @@ impl CssCheckCategory {
         }
     }
 
-    pub(in super::super) fn sort_rank(self) -> u8 {
+    pub(in super::super) const fn sort_rank(self) -> u8 {
         match self {
             Self::Parse => 0,
             Self::Theme => 1,
@@ -154,7 +154,7 @@ impl CssCheckReport {
             .count()
     }
 
-    pub(in super::super) fn is_clean(&self) -> bool {
+    pub(in super::super) const fn is_clean(&self) -> bool {
         // A clean report means no diagnostics and no extra notes
         self.diagnostics.is_empty() && self.notes.is_empty()
     }

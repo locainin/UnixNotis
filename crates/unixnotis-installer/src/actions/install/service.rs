@@ -20,7 +20,9 @@ mod refresh;
 mod symlinks;
 
 pub(in crate::actions::install) use artifacts::remove_service_artifact;
-pub(crate) use artifacts::write_service_artifact;
+pub use artifacts::write_service_artifact;
+#[cfg(test)]
+pub(in crate::actions::install) use files::{current_mode, ensure_regular_artifact_file_path};
 #[cfg(test)]
 pub(in crate::actions::install) use lifecycle::{
     service_start_mode_from_enabled, ServiceStartMode,
@@ -38,8 +40,10 @@ use refresh::refresh_service_artifacts;
 pub(in crate::actions::install) use refresh::{
     s6_stderr_diagnostic, sanitize_diagnostic_line, strip_ansi_csi_sequences, truncate_diagnostic,
 };
+#[cfg(test)]
+pub(in crate::actions::install) use symlinks::{remove_service_symlink, write_service_symlink};
 
-pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
+pub fn install_service(ctx: &mut ActionContext) -> Result<()> {
     match write_service_artifacts(ctx)? {
         ServiceArtifactWrite::CreatedOrUpdated => {
             log_line(
@@ -62,7 +66,7 @@ pub(crate) fn install_service(ctx: &mut ActionContext) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn enable_service(ctx: &mut ActionContext) -> Result<()> {
+pub fn enable_service(ctx: &mut ActionContext) -> Result<()> {
     if ctx.service_reload_required.load(Ordering::Acquire) {
         // Refresh work can be a single reload command or a backend-owned database update
         refresh_service_artifacts(ctx)?;
@@ -98,7 +102,7 @@ pub(crate) fn enable_service(ctx: &mut ActionContext) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
+pub fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
     let artifacts = ctx.paths.service.install_artifacts(&ctx.paths.bin_dir);
     let artifact_exists = artifacts.iter().any(service_artifact_path_exists);
     let unsafe_artifact_exists = log_unsafe_service_artifacts(ctx, &artifacts);
@@ -106,7 +110,7 @@ pub(crate) fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
     if artifact_exists {
         if let Some(spec) = ctx.paths.service.disable_now_command() {
             if let Err(err) = run_command_spec(ctx, &spec) {
-                log_line(ctx, format!("Warning: {}", err));
+                log_line(ctx, format!("Warning: {err}"));
             }
         } else {
             log_line(

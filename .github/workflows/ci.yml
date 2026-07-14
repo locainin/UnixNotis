@@ -91,11 +91,15 @@ jobs:
           set -euo pipefail
           shellcheck \
             scripts/package-release.sh \
+            tests/package-release.sh \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-lib \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-state \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-on \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-off
-          shellharden --check scripts/package-release.sh
+          shellharden --check scripts/package-release.sh tests/package-release.sh
+
+      - name: Test release packaging helpers
+        run: tests/package-release.sh
 
       - name: Run workspace tests
         run: xvfb-run -a dbus-run-session -- cargo test --workspace --all-targets --all-features
@@ -107,11 +111,29 @@ jobs:
         run: scripts/package-release.sh "v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "unixnotis-core") | .version')"
 
       - name: Run strict clippy
+        # Restriction is intentionally selected per lint because Clippy rejects the blanket group
         run: >
           cargo clippy --all-targets --all-features --
           -D warnings
           -W clippy::pedantic
           -W clippy::nursery
+          -W clippy::undocumented_unsafe_blocks
+          -W clippy::multiple_unsafe_ops_per_block
+          -W clippy::mem_forget
+          -W clippy::unnecessary_safety_comment
+          -W clippy::unnecessary_safety_doc
+          -W clippy::allow_attributes_without_reason
+          -W clippy::allow_attributes
+          -W clippy::missing_assert_message
+          -W clippy::map_err_ignore
+          -W clippy::unwrap_used
+          -W clippy::unwrap_in_result
+          -W clippy::cfg_not_test
+          -W clippy::cast_ptr_alignment
+          -W clippy::transmute_ptr_to_ptr
+          -W clippy::fn_to_numeric_cast_any
+          -W clippy::as_pointer_underscore
+          -W clippy::lossy_float_literal
 
       - name: Check patch whitespace
         run: git diff --check

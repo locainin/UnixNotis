@@ -1,4 +1,4 @@
-//! Notification daemon detection for install workflows.
+//! Notification daemon detection for install workflows
 
 use std::fs;
 use std::io::ErrorKind;
@@ -31,12 +31,12 @@ pub struct Detection {
     pub daemons: Vec<DetectedDaemon>,
 }
 
-pub(crate) struct KnownDaemon {
+pub struct KnownDaemon {
     pub(crate) name: &'static str,
     pub(crate) unit: &'static str,
 }
 
-pub(crate) const KNOWN_DAEMONS: &[KnownDaemon] = &[
+pub const KNOWN_DAEMONS: &[KnownDaemon] = &[
     KnownDaemon {
         name: "unixnotis-daemon",
         unit: "unixnotis-daemon.service",
@@ -77,8 +77,8 @@ pub fn detect() -> Detection {
     Detection { owner, daemons }
 }
 
-pub(crate) fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
-    // Parses `busctl --user status` output and tolerates the indented key/value format.
+pub fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
+    // Parses `busctl --user status` output and tolerates the indented key/value format
     let mut comm = None;
     let mut pid = None;
 
@@ -87,21 +87,21 @@ pub(crate) fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
         let Some((raw_key, raw_value)) = trimmed.split_once('=') else {
             continue;
         };
-        // Normalize key/value parsing to accept both `Key=Value` and `Key = Value` variants.
+        // Normalize key/value parsing to accept both `Key=Value` and `Key = Value` variants
         let key = raw_key.trim();
         let value = raw_value.trim();
         if value.is_empty() {
-            // Empty values are ignored to avoid masking earlier valid data.
+            // Empty values are ignored to avoid masking earlier valid data
             continue;
         }
         match key {
             "Comm" => {
-                // Preserve the reported command name for fallback owner matching.
+                // Preserve the reported command name for fallback owner matching
                 comm = Some(value.to_string());
             }
             "PID" => {
                 if let Ok(parsed) = value.parse::<u32>() {
-                    // PID 0 is not a valid user process; ignore it to avoid false positives.
+                    // PID 0 is not a valid user process; ignore it to avoid false positives
                     if parsed != 0 {
                         pid = Some(parsed);
                     }
@@ -118,8 +118,8 @@ pub(crate) fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
     Some(OwnerInfo { pid, comm })
 }
 
-pub(crate) fn parse_busctl_json(status: &str) -> Option<OwnerInfo> {
-    // Accept loosely structured JSON and search for PID/Comm fields anywhere in the tree.
+pub fn parse_busctl_json(status: &str) -> Option<OwnerInfo> {
+    // Accept loosely structured JSON and search for PID/Comm fields anywhere in the tree
     let value: Value = serde_json::from_str(status).ok()?;
     let mut comm = None;
     let mut pid = None;
@@ -139,7 +139,7 @@ fn walk_busctl_json(value: &Value, comm: &mut Option<String>, pid: &mut Option<u
                 if key == "Comm" && comm.is_none() {
                     if let Value::String(text) = value {
                         if !text.trim().is_empty() {
-                            *comm = Some(text.to_string());
+                            *comm = Some(text.clone());
                         }
                     }
                 }
@@ -180,7 +180,7 @@ fn parse_pid_value(value: &Value) -> Option<u32> {
 
 fn detect_owner() -> Option<OwnerInfo> {
     let OwnerInfo { pid, comm } = read_busctl_owner()?;
-    // Prefer the executable name derived from argv0; fall back to busctl and /proc data.
+    // Prefer the executable name derived from argv0; fall back to busctl and /proc data
     let comm = pid
         .and_then(read_cmdline_program)
         .or_else(|| comm.or_else(|| pid.and_then(read_comm)));
@@ -188,7 +188,7 @@ fn detect_owner() -> Option<OwnerInfo> {
 }
 
 fn read_busctl_owner() -> Option<OwnerInfo> {
-    // Prefer JSON output when supported; fall back to the textual format otherwise.
+    // Prefer JSON output when supported; fall back to the textual format otherwise
     if let Some(status) = run_busctl(&[
         "--user",
         "--json=short",
@@ -248,7 +248,7 @@ fn is_unit_active(unit: &str) -> (bool, Option<String>) {
     }
 }
 
-pub(crate) fn systemctl_spawn_error(err: &std::io::Error) -> Option<String> {
+pub fn systemctl_spawn_error(err: &std::io::Error) -> Option<String> {
     if err.kind() == ErrorKind::NotFound {
         // Non-systemd systems often do not install systemctl; pgrep/D-Bus still give signal
         None
@@ -258,7 +258,7 @@ pub(crate) fn systemctl_spawn_error(err: &std::io::Error) -> Option<String> {
 }
 
 fn pgrep_exact(name: &str) -> Vec<u32> {
-    // Limit process discovery to the current user to avoid cross-user noise.
+    // Limit process discovery to the current user to avoid cross-user noise
     let uid = geteuid().as_raw();
     let output = match system_tools::command("pgrep") {
         Ok(mut command) => command.args(["-x", "-u", &uid.to_string(), name]).output(),
@@ -277,8 +277,8 @@ fn pgrep_exact(name: &str) -> Vec<u32> {
         .collect()
 }
 
-pub(crate) fn read_comm(pid: u32) -> Option<String> {
-    let path = format!("/proc/{}/comm", pid);
+pub fn read_comm(pid: u32) -> Option<String> {
+    let path = format!("/proc/{pid}/comm");
     if let Ok(contents) = fs::read_to_string(path) {
         let comm = contents.trim().to_string();
         if !comm.is_empty() {
@@ -297,7 +297,7 @@ pub(crate) fn read_comm(pid: u32) -> Option<String> {
         return None;
     }
     let comm = String::from_utf8_lossy(&output.stdout);
-    // Avoid returning empty command names from ps output.
+    // Avoid returning empty command names from ps output
     let comm = comm.trim();
     if comm.is_empty() {
         None
@@ -306,8 +306,8 @@ pub(crate) fn read_comm(pid: u32) -> Option<String> {
     }
 }
 
-pub(crate) fn read_cmdline_program(pid: u32) -> Option<String> {
-    let path = format!("/proc/{}/cmdline", pid);
+pub fn read_cmdline_program(pid: u32) -> Option<String> {
+    let path = format!("/proc/{pid}/cmdline");
     let contents = fs::read(path).ok()?;
     let mut parts = contents
         .split(|byte| *byte == 0)

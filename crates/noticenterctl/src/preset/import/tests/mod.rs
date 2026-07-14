@@ -31,10 +31,8 @@ impl TempDirGuard {
             .expect("clock moved backwards")
             .as_nanos();
         let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "unixnotis-preset-import-{}-{}-{}",
-            name, stamp, serial
-        ));
+        let path =
+            std::env::temp_dir().join(format!("unixnotis-preset-import-{name}-{stamp}-{serial}"));
         fs::create_dir_all(&path).expect("create temp dir");
         Self { path }
     }
@@ -71,6 +69,7 @@ pub(super) fn write_collected_bundle(
                 PresetFileSource {
                     relative_path: PathBuf::from(relative_path),
                     size: fs::metadata(&source_path).expect("metadata").len(),
+                    source_contents: fs::read(&source_path).expect("read source"),
                     source_path,
                     mode: 0o644,
                     contents_override: None,

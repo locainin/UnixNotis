@@ -15,7 +15,7 @@ use std::path::{Component, Path, PathBuf};
 
 use super::super::pathing::normalize_relative_path;
 
-pub(crate) fn ensure_safe_target_path(config_dir: &Path, relative_path: &Path) -> Result<PathBuf> {
+pub fn ensure_safe_target_path(config_dir: &Path, relative_path: &Path) -> Result<PathBuf> {
     // Normalize first so later checks only deal with one clean relative path form
     let relative_path = normalize_relative_path(relative_path)?;
     // Join stays local only if every live path segment under the root is a real directory
@@ -46,7 +46,7 @@ pub(crate) fn ensure_safe_target_path(config_dir: &Path, relative_path: &Path) -
     Ok(target_path)
 }
 
-pub(crate) fn ensure_no_symlink_ancestors(path: &Path) -> Result<()> {
+pub fn ensure_no_symlink_ancestors(path: &Path) -> Result<()> {
     // A symlink anywhere on the live config root path can redirect all later writes
     let mut probe = PathBuf::new();
     for component in path.components() {
@@ -88,7 +88,7 @@ pub(crate) fn ensure_no_symlink_ancestors(path: &Path) -> Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn ensure_dir_fd_matches_live_path(root_dir: &OwnedFd, live_path: &Path) -> Result<()> {
+pub fn ensure_dir_fd_matches_live_path(root_dir: &OwnedFd, live_path: &Path) -> Result<()> {
     let live_metadata = fs::metadata(live_path)
         .with_context(|| format!("inspect live config directory {}", live_path.display()))?;
     let fd_stat = fstat(root_dir)

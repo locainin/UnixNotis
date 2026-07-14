@@ -6,7 +6,7 @@ mod commands;
 mod labels;
 
 #[cfg(test)]
-#[path = "tests/mod.rs"]
+#[path = "tests/cases.rs"]
 mod tests;
 
 use gtk::pango::{EllipsizeMode, WrapMode};
@@ -32,7 +32,7 @@ pub(super) struct PopupEntry {
 }
 
 impl PopupEntry {
-    pub(super) fn queued(notification: NotificationView) -> Self {
+    pub(super) const fn queued(notification: NotificationView) -> Self {
         // Backlog rows start as plain data and only grow GTK nodes when they become visible
         Self {
             notification,
@@ -41,7 +41,7 @@ impl PopupEntry {
         }
     }
 
-    pub(super) fn is_materialized(&self) -> bool {
+    pub(super) const fn is_materialized(&self) -> bool {
         // Both widgets must exist before stack operations can touch this row safely
         self.revealer.is_some() && self.root.is_some()
     }

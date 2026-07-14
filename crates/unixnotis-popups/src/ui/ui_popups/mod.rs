@@ -194,5 +194,5 @@ impl UiState {
 }
 
 #[cfg(test)]
-#[path = "tests/mod.rs"]
+#[path = "tests/cases.rs"]
 mod tests;

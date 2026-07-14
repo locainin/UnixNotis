@@ -205,7 +205,7 @@ fn art_dimensions_from_bytes(bytes: &[u8]) -> Option<(u32, u32)> {
     reader.into_dimensions().ok()
 }
 
-fn art_dimensions_allowed(width: u32, height: u32) -> bool {
+const fn art_dimensions_allowed(width: u32, height: u32) -> bool {
     if width == 0 || height == 0 {
         return false;
     }

@@ -24,10 +24,8 @@ impl TempRoot {
             .expect("clock moved backwards")
             .as_nanos();
         let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "unixnotis-icon-assets-{}-{}-{}",
-            name, stamp, serial
-        ));
+        let path =
+            std::env::temp_dir().join(format!("unixnotis-icon-assets-{name}-{stamp}-{serial}"));
         std::fs::create_dir_all(&path).expect("create temp root");
         Self { path }
     }
@@ -74,11 +72,11 @@ fn resolver_object_applies_config_root_and_policy() {
     let expected = root.write("assets/ram.svg", b"<svg/>");
     let resolver = IconAssetResolver::new(root.path.clone());
 
-    let resolved = resolver
+    let resolved_path = resolver
         .resolve_icon_asset_path("assets/ram.svg")
         .expect("resolve with resolver object");
 
-    assert_eq!(resolved, expected);
+    assert_eq!(resolved_path, expected);
 }
 
 #[test]
@@ -97,12 +95,12 @@ fn largest_valid_png_is_rendered_inside_requested_icon_slot() {
     root.write("assets/large.png", &png_bytes(512, 512));
     let resolver = IconAssetResolver::new(root.path.clone());
 
-    let resolved = resolver
+    let rendered_icon = resolver
         .resolve_icon_asset("assets/large.png", 16)
         .expect("decode bounded icon");
 
-    assert_eq!((resolved.width, resolved.height), (16, 16));
-    assert_eq!(resolved.rgba.len(), 16 * 16 * 4);
+    assert_eq!((rendered_icon.width, rendered_icon.height), (16, 16));
+    assert_eq!(rendered_icon.rgba.len(), 16 * 16 * 4);
 }
 
 #[test]

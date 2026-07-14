@@ -38,30 +38,33 @@ struct IconRequestKey {
 }
 
 impl IconRequestKey {
-    fn new(path: PathBuf, target_size: i32) -> Self {
+    const fn new(path: PathBuf, target_size: i32) -> Self {
         Self { path, target_size }
     }
 }
 
 // Arc shares decoded bytes across waiters without cloning large buffers
-pub(crate) type IconDecodeResult = Result<Arc<RasterIcon>, String>;
+pub type IconDecodeResult = Result<Arc<RasterIcon>, String>;
 type IconReply = async_channel::Sender<IconDecodeResult>;
 type IconWaiters = Arc<Mutex<HashMap<IconRequestKey, Vec<IconReply>>>>;
 
-pub(crate) struct IconDecodePool {
+pub struct IconDecodePool {
     tx: async_channel::Sender<IconDecodeJob>,
     in_flight: IconWaiters,
     // Test-only receiver guard keeps the channel open when no workers are spawned
     #[cfg(test)]
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "the test guard keeps the worker channel alive without being read"
+    )]
     rx_guard: async_channel::Receiver<IconDecodeJob>,
 }
 
 impl IconDecodePool {
-    pub(crate) fn global() -> &'static IconDecodePool {
+    pub(crate) fn global() -> &'static Self {
         // One shared pool is enough for the popup process
         static POOL: OnceLock<IconDecodePool> = OnceLock::new();
-        POOL.get_or_init(|| IconDecodePool::new(ICON_DECODE_WORKERS))
+        POOL.get_or_init(|| Self::new(ICON_DECODE_WORKERS))
     }
 
     fn new(worker_count: usize) -> Self {
@@ -113,14 +116,11 @@ impl IconDecodePool {
                 return;
             }
             // First caller owns the actual worker submission
-            in_flight.insert(key.clone(), vec![reply]);
+            in_flight.insert(key, vec![reply]);
         }
 
         // Avoid blocking the GTK thread; drop on overflow and signal failure to the caller
-        match self.tx.try_send(IconDecodeJob {
-            path: path.clone(),
-            target_size,
-        }) {
+        match self.tx.try_send(IconDecodeJob { path, target_size }) {
             Ok(()) => {}
             Err(async_channel::TrySendError::Full(job)) => {
                 let reason = match ICON_DECODE_DROP_POLICY {
@@ -176,13 +176,12 @@ impl IconDecodePool {
         };
         in_flight
             .get(&IconRequestKey::new(path.to_path_buf(), target_size))
-            .map(|waiters| waiters.len())
-            .unwrap_or(0)
+            .map_or(0, std::vec::Vec::len)
     }
 }
 
 // Small LRU cache for decoded file textures to avoid repeated decoding
-pub(crate) struct TextureCache {
+pub struct TextureCache {
     // File path and requested size both shape the resulting texture bytes
     entries: HashMap<IconRequestKey, gdk::Texture>,
     order: VecDeque<IconRequestKey>,

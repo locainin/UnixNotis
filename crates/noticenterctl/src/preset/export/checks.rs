@@ -126,14 +126,7 @@ fn read_script_text(file: &PresetFileSource) -> Result<Option<String>> {
         return Ok(decode_script_text(contents));
     }
 
-    let bytes = std::fs::read(&file.source_path).map_err(|err| {
-        anyhow!(
-            "read script file for host-path checks {}: {}",
-            file.source_path.display(),
-            err
-        )
-    })?;
-    Ok(decode_script_text(&bytes))
+    Ok(decode_script_text(&file.source_contents))
 }
 
 fn decode_script_text(bytes: &[u8]) -> Option<String> {
@@ -188,4 +181,5 @@ fn is_script_path(relative_path: &Path) -> bool {
 }
 
 #[cfg(test)]
+#[path = "checks/tests/cases.rs"]
 mod tests;

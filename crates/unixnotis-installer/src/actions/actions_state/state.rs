@@ -1,6 +1,6 @@
-//! Installer state snapshots and install checks.
+//! Installer state snapshots and install checks
 //!
-//! Formats read-only state inspection into progress-log output.
+//! Formats read-only state inspection into progress-log output
 
 use anyhow::{anyhow, Result};
 
@@ -11,7 +11,7 @@ use crate::service_manager::ReadinessIssue;
 use super::{context::ActionContext, install_state::check_install_state, log_line};
 
 pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
-    // Use cached install state when available to keep the UI consistent with the plan.
+    // Use cached install state when available to keep the UI consistent with the plan
     let state = ctx
         .install_state
         .clone()
@@ -19,11 +19,11 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
 
     log_line(ctx, "Install state:");
     if let Some(warning) = state.binary_warning.as_ref() {
-        // Surface discovery failures so the install state output stays actionable.
+        // Surface discovery failures so the install state output stays actionable
         log_line(ctx, format!("Warning: binary discovery failed ({warning})"));
     }
     if state.binaries.is_empty() {
-        // Surface metadata/discovery issues early so installer output is actionable.
+        // Surface metadata/discovery issues early so installer output is actionable
         log_line(ctx, "Warning: no installable binaries discovered");
     }
     for binary in &state.binaries {
@@ -54,10 +54,10 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
         ),
     );
     if let Some(err) = state.service_active_error.as_ref() {
-        log_line(ctx, format!("- service status check failed: {}", err));
+        log_line(ctx, format!("- service status check failed: {err}"));
     }
     if let Some(err) = state.service_enabled_error.as_ref() {
-        log_line(ctx, format!("- service enable check failed: {}", err));
+        log_line(ctx, format!("- service enable check failed: {err}"));
     }
     for warning in &state.service_conflict_warnings {
         // Non-selected backend path issues are diagnostics, not blockers for the selected backend
@@ -141,7 +141,7 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
             log_line(ctx, "Already installed.");
         }
     } else if state.is_installed() {
-        // Service inactivity is flagged without blocking installation workflows.
+        // Service inactivity is flagged without blocking installation workflows
         log_line(
             ctx,
             format!(

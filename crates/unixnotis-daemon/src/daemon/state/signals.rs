@@ -175,7 +175,9 @@ pub(in crate::daemon::state) fn control_state_from_store(
     }
 }
 
-pub(in crate::daemon::state) fn popup_gate_from_state(state: &ControlState) -> PopupGateState {
+pub(in crate::daemon::state) const fn popup_gate_from_state(
+    state: &ControlState,
+) -> PopupGateState {
     // Popup policy only depends on the gate, so history churn should not wake it up
     PopupGateState {
         dnd_enabled: state.dnd_enabled,

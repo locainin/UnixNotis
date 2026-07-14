@@ -178,7 +178,7 @@ fn progress_screen_respects_ready_delay_after_completion() {
     let mut app = App::new(None);
     app.screen = Screen::Progress(ActionMode::Reset);
     app.progress_state = ProgressState::Completed;
-    app.progress_ready_at = Some(Instant::now() + Duration::from_secs(60));
+    app.progress_ready_at = Some(Instant::now() + Duration::from_mins(1));
 
     let action = handle_progress_key(&mut app, key(KeyCode::Enter)).expect("delayed enter");
 

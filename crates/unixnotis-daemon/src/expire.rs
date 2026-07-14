@@ -48,7 +48,7 @@ impl ExpirationScheduler {
                         apply_command(cmd, &mut heap, &mut scheduled);
                         maybe_compact(&mut heap, &scheduled);
                     }
-                    _ = tokio::time::sleep_until(deadline.into()) => {
+                    () = tokio::time::sleep_until(deadline.into()) => {
                         let now = Instant::now();
                         while let Some(item) = heap.peek() {
                             if item.deadline > now {
@@ -59,8 +59,7 @@ impl ExpirationScheduler {
                             };
                             let is_current = scheduled
                                 .get(&item.id)
-                                .map(|deadline| *deadline == item.deadline)
-                                .unwrap_or(false);
+                                .is_some_and(|deadline| *deadline == item.deadline);
                             if !is_current {
                                 continue;
                             }
@@ -70,8 +69,7 @@ impl ExpirationScheduler {
                                 store.expiration_for(item.id)
                             };
                             let is_still_current = expiration
-                                .map(|deadline| deadline == item.deadline)
-                                .unwrap_or(false);
+                                .is_some_and(|deadline| deadline == item.deadline);
                             if is_still_current {
                                 // Remove the scheduled entry only once the deadline is confirmed
                                 // to still be active. This avoids dropping new schedules created
@@ -202,5 +200,5 @@ fn maybe_compact(heap: &mut BinaryHeap<ExpirationItem>, scheduled: &HashMap<u32,
 }
 
 #[cfg(test)]
-#[path = "expire/tests/mod.rs"]
+#[path = "expire/tests/cases.rs"]
 mod tests;

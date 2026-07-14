@@ -7,11 +7,11 @@ mod apply;
 mod build;
 mod gate;
 #[cfg(test)]
-#[path = "tests/gate.rs"]
+#[path = "command_slider/tests/gate.rs"]
 mod gate_tests;
 mod layout;
 #[cfg(test)]
-#[path = "tests/layout.rs"]
+#[path = "command_slider/tests/layout.rs"]
 mod layout_tests;
 mod poll;
 mod refresh;
@@ -20,7 +20,7 @@ mod schedule;
 mod state;
 mod value;
 #[cfg(test)]
-#[path = "tests/value.rs"]
+#[path = "command_slider/tests/value.rs"]
 mod value_tests;
 mod watching;
 

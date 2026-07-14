@@ -7,10 +7,10 @@ use unixnotis_core::{ControlProxy, InhibitorInfo, NotificationView, PanelDebugLe
 use super::timeout::run_control_call;
 
 // A boxed future lets every control command return the same kind of async wrapper
-pub(crate) type ControlFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + 'a>>;
+pub type ControlFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + 'a>>;
 
 // This trait lists every command a control client knows how to ask the daemon to do
-pub(crate) trait ControlClient {
+pub trait ControlClient {
     // Ask the panel to switch between open and closed
     fn toggle_panel(&self) -> ControlFuture<'_, ()>;
 

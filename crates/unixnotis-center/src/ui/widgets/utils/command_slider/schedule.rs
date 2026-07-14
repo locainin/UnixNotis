@@ -28,7 +28,7 @@ pub(super) fn schedule_command(
         format!("slider set scheduled value={value_text}")
     });
     let pending_guard = pending.clone();
-    let pending_value = pending_value.clone();
+    let pending_value = pending_value;
     let id = glib::timeout_add_local(std::time::Duration::from_millis(120), move || {
         // Drain pending state and execute the most recent queued command
         let value = pending_value.replace(None);

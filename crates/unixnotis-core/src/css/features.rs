@@ -9,11 +9,13 @@ pub struct GtkCssFeatures {
 }
 
 impl GtkCssFeatures {
+    #[must_use]
     pub const fn supports_modern_theme_tokens(self) -> bool {
         self.custom_properties
     }
 }
 
+#[must_use]
 pub const fn gtk_css_features_for_version(major: u32, minor: u32) -> GtkCssFeatures {
     // GTK 4.16 added custom properties and var()
     GtkCssFeatures {
@@ -21,6 +23,7 @@ pub const fn gtk_css_features_for_version(major: u32, minor: u32) -> GtkCssFeatu
     }
 }
 
+#[must_use]
 pub fn gtk_css_features_from_version_string(version: &str) -> Option<GtkCssFeatures> {
     // pkg-config output can include patch and distro suffixes, but only major/minor matter here
     let (major, minor) = parse_major_minor(version)?;
@@ -39,7 +42,7 @@ fn parse_version_part(part: &str) -> Option<u32> {
     let digits = part
         .trim()
         .chars()
-        .take_while(|ch| ch.is_ascii_digit())
+        .take_while(char::is_ascii_digit)
         .collect::<String>();
     (!digits.is_empty())
         .then(|| digits.parse::<u32>().ok())

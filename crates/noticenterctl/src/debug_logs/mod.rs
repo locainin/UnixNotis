@@ -3,7 +3,7 @@
 mod command;
 mod journal;
 
-pub(crate) use command::follow_debug_logs;
+pub use command::follow_debug_logs;
 
 #[cfg(test)]
 mod tests;

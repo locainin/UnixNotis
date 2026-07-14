@@ -293,4 +293,5 @@ fn format_host_specific_script_path_lines(leaked_refs: &[HostSpecificScriptLeak]
 }
 
 #[cfg(test)]
+#[path = "prompts/tests/cases.rs"]
 mod tests;

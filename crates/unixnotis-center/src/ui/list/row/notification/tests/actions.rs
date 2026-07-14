@@ -8,7 +8,7 @@ use unixnotis_core::{hooks, Action};
 use crate::dbus::UiCommand;
 use crate::ui::icons::IconResolver;
 
-use super::test_support::{child_count, notification_row, row_data, sample_notification};
+use super::test_support::{child_count, notification_row, row_data, sample_notification, RowFlags};
 use super::update::update_notification_row;
 
 #[gtk::test]
@@ -19,7 +19,14 @@ fn update_notification_row_rebuilds_actions_only_when_signature_changes() {
         key: "open".to_string(),
         label: "Open".to_string(),
     }];
-    let data = row_data(Rc::new(notification.clone()), true, false, 0, false, true);
+    let data = row_data(
+        Rc::new(notification.clone()),
+        RowFlags {
+            is_active: true,
+            show_thumbnail: true,
+            ..Default::default()
+        },
+    );
     let (command_tx, _rx) = tokio::sync::mpsc::channel(4);
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
@@ -35,7 +42,14 @@ fn update_notification_row_rebuilds_actions_only_when_signature_changes() {
     assert_eq!(child_count(&row.actions_box), 1);
 
     notification.actions[0].label = "Open notification details now".to_string();
-    let data = row_data(Rc::new(notification), true, false, 0, false, true);
+    let data = row_data(
+        Rc::new(notification),
+        RowFlags {
+            is_active: true,
+            show_thumbnail: true,
+            ..Default::default()
+        },
+    );
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
     assert_eq!(child_count(&row.actions_box), 1);
@@ -48,7 +62,14 @@ fn update_notification_row_rebuilds_actions_only_when_signature_changes() {
         key: "reply".to_string(),
         label: "Open notification details now".to_string(),
     }];
-    let data = row_data(Rc::new(notification), true, false, 0, false, true);
+    let data = row_data(
+        Rc::new(notification),
+        RowFlags {
+            is_active: true,
+            show_thumbnail: true,
+            ..Default::default()
+        },
+    );
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
     assert_eq!(child_count(&row.actions_box), 1);
@@ -63,7 +84,13 @@ fn update_notification_row_action_button_sends_command_once_per_click_window() {
         key: "open".to_string(),
         label: "Open".to_string(),
     }];
-    let data = row_data(Rc::new(notification), true, false, 0, false, false);
+    let data = row_data(
+        Rc::new(notification),
+        RowFlags {
+            is_active: true,
+            ..Default::default()
+        },
+    );
     let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(4);
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);

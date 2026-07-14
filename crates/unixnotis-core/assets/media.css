@@ -5,7 +5,7 @@
  * without touching the rest of widgets.css
  */
 .unixnotis-media-container {
-  margin-bottom: 10px;
+  margin-bottom: var(--unixnotis-media-container-gap);
 }
 
 .unixnotis-media-stack {
@@ -20,10 +20,12 @@
 .unixnotis-media-stack-inline,
 .unixnotis-media-stack-stacked,
 .unixnotis-media-stack-showcase,
+.unixnotis-media-stack-player,
 .unixnotis-media-row-carousel,
 .unixnotis-media-row-inline,
 .unixnotis-media-row-stacked,
 .unixnotis-media-row-showcase,
+.unixnotis-media-row-player,
 .unixnotis-media-header,
 .unixnotis-media-body,
 .unixnotis-media-text,
@@ -37,12 +39,12 @@
 
 .unixnotis-media-nav {
   background-image: linear-gradient(150deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.9));
-  border-radius: 12px;
-  padding: 4px;
+  border-radius: var(--unixnotis-media-nav-radius);
+  padding: calc((var(--unixnotis-media-nav-size) - 14px) / 2);
   border: 1px solid alpha(@unixnotis-accent, 0.2);
   font-weight: 700;
-  font-size: 12px;
-  min-width: 22px;
+  font-size: var(--unixnotis-media-nav-font-size);
+  min-width: var(--unixnotis-media-nav-size);
   color: @unixnotis-text;
   box-shadow:
     0 6px 12px -10px @unixnotis-shadow-soft,
@@ -56,21 +58,21 @@
 
 .unixnotis-media-nav-prev,
 .unixnotis-media-nav-next {
-  min-width: 22px;
+  min-width: var(--unixnotis-media-nav-size);
 }
 
 .unixnotis-media-position {
   color: @unixnotis-muted;
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--unixnotis-media-position-font-size);
+  letter-spacing: var(--unixnotis-media-position-letter-spacing);
 }
 
 .unixnotis-media-card {
   background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, alpha(#0f1828, 0.94));
-  border-radius: 18px;
+  border-radius: var(--unixnotis-media-card-radius);
   border: 1px solid @unixnotis-card-border;
-  padding: 8px 10px;
-  min-height: 68px;
+  padding: var(--unixnotis-media-card-padding-y) var(--unixnotis-media-card-padding-x);
+  min-height: var(--unixnotis-media-card-min-height);
   box-shadow:
     0 14px 26px -20px @unixnotis-shadow-strong,
     0 0 22px -20px alpha(@unixnotis-accent-2, 0.16),
@@ -78,23 +80,27 @@
 }
 
 .unixnotis-media-card-carousel {
-  padding: 8px 10px;
-  min-height: 68px;
+  padding: var(--unixnotis-media-card-padding-y) var(--unixnotis-media-card-padding-x);
+  min-height: var(--unixnotis-media-card-min-height);
 }
 
 .unixnotis-media-card-inline {
-  padding: 10px 12px;
-  min-height: 88px;
+  padding: var(--unixnotis-media-card-padding-inline-y) var(--unixnotis-media-card-padding-inline-x);
+  min-height: var(--unixnotis-media-card-inline-min-height);
 }
 
 .unixnotis-media-card-stacked {
-  padding: 12px;
-  min-height: 108px;
+  padding: var(--unixnotis-media-card-padding-stacked);
+  min-height: var(--unixnotis-media-card-stacked-min-height);
 }
 
 .unixnotis-media-card-showcase {
-  padding: 10px 12px;
-  min-height: 92px;
+  padding: var(--unixnotis-media-card-padding-showcase-y) var(--unixnotis-media-card-padding-showcase-x);
+  min-height: var(--unixnotis-media-card-showcase-min-height);
+}
+
+.unixnotis-media-card-player {
+  padding: var(--unixnotis-media-card-padding-showcase-y) var(--unixnotis-media-card-padding-showcase-x);
 }
 
 .unixnotis-media-card.playing {
@@ -125,16 +131,16 @@
 }
 
 .unixnotis-media-art {
-  min-width: 50px;
-  min-height: 50px;
-  border-radius: 12px;
+  min-width: var(--unixnotis-media-art-size);
+  min-height: var(--unixnotis-media-art-size);
+  border-radius: var(--unixnotis-media-art-radius);
   background: alpha(#000000, 0.12);
 }
 
 .unixnotis-media-art-frame {
-  min-width: 54px;
-  min-height: 54px;
-  border-radius: 14px;
+  min-width: var(--unixnotis-media-art-frame-size);
+  min-height: var(--unixnotis-media-art-frame-size);
+  border-radius: var(--unixnotis-media-art-frame-radius);
   background: alpha(#000000, 0.12);
   border: 1px solid alpha(@unixnotis-outline, 0.35);
   box-shadow: inset 0 0 0 1px alpha(#ffffff, 0.04);
@@ -145,15 +151,15 @@
 }
 
 .unixnotis-media-source {
-  font-size: 11px;
-  letter-spacing: 0.1em;
+  font-size: var(--unixnotis-media-source-font-size);
+  letter-spacing: var(--unixnotis-media-source-letter-spacing);
   text-transform: uppercase;
   color: @unixnotis-muted;
 }
 
 .unixnotis-media-title {
-  font-weight: 700;
-  font-size: 13px;
+  font-weight: var(--unixnotis-media-title-font-weight);
+  font-size: var(--unixnotis-media-title-font-size);
 }
 
 .unixnotis-marquee {
@@ -164,7 +170,7 @@
 
 .unixnotis-media-artist {
   color: @unixnotis-muted;
-  font-size: 12px;
+  font-size: var(--unixnotis-media-artist-font-size);
 }
 
 .unixnotis-media-artist.empty {
@@ -177,9 +183,9 @@
 
 .unixnotis-media-button {
   background-image: linear-gradient(160deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.95));
-  border-radius: 10px;
+  border-radius: var(--unixnotis-media-button-radius);
   border: 1px solid alpha(@unixnotis-accent, 0.2);
-  padding: 4px 6px;
+  padding: var(--unixnotis-media-button-padding-y) var(--unixnotis-media-button-padding-x);
   box-shadow:
     0 6px 14px -12px @unixnotis-shadow-soft,
     0 0 14px -14px @unixnotis-glow-cyan;

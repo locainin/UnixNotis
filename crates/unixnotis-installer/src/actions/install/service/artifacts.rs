@@ -54,10 +54,7 @@ fn install_artifact_is_steady(
     steady_artifacts.iter().any(|steady| steady == artifact)
 }
 
-pub(crate) fn write_service_artifact(
-    ctx: &ActionContext,
-    artifact: &ServiceArtifact,
-) -> Result<bool> {
+pub fn write_service_artifact(ctx: &ActionContext, artifact: &ServiceArtifact) -> Result<bool> {
     if let Some(parent) = artifact.path.parent() {
         // Parent setup walks one component at a time so symlinks cannot redirect writes
         dirs::ensure_directory_without_symlink(parent)

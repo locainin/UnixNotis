@@ -5,7 +5,7 @@ use unixnotis_core::ThemePaths;
 
 use super::model::ThemeTarget;
 
-pub(in super::super) fn theme_targets(theme_paths: ThemePaths) -> [ThemeTarget; 6] {
+pub(in super::super) fn theme_targets(theme_paths: ThemePaths) -> [ThemeTarget; 5] {
     // Slot order stays fixed so reports remain stable between runs
     [
         ThemeTarget {
@@ -33,11 +33,6 @@ pub(in super::super) fn theme_targets(theme_paths: ThemePaths) -> [ThemeTarget; 
             config_key: "[theme].media_css",
             path: theme_paths.media_css,
         },
-        ThemeTarget {
-            slot_name: "overrides css",
-            config_key: "[theme].overrides_css",
-            path: theme_paths.overrides_css,
-        },
     ]
 }
 
@@ -45,8 +40,7 @@ pub(in super::super) fn has_css_extension(path: &Path) -> bool {
     // Case-insensitive matching keeps css-check aligned with common filesystem behavior
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("css"))
-        .unwrap_or(false)
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("css"))
 }
 
 pub(in super::super) fn normalize_target_key(path: &Path) -> PathBuf {

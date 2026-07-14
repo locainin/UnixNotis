@@ -87,6 +87,31 @@ fn dnd_state_persists_on_change() {
     cleanup_temp_dir(&state_dir);
 }
 
+#[cfg(unix)]
+#[test]
+fn dnd_state_persistence_rejects_symlink_without_touching_outside_file() {
+    use std::os::unix::fs::symlink;
+
+    let state_dir = make_temp_state_dir("dnd-write-symlink");
+    let state_parent = state_dir.join("unixnotis");
+    std::fs::create_dir_all(&state_parent).expect("create state directory");
+    let outside = state_dir.join("outside.json");
+    std::fs::write(&outside, "keep").expect("write outside state");
+    symlink(&outside, state_parent.join(DND_STATE_FILE)).expect("create state symlink");
+    let state_store = super::super::state::DndStateStore::from_state_dir(state_dir.clone());
+
+    let error = state_store
+        .persist(true)
+        .expect_err("state symlink should be rejected");
+
+    assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
+    assert_eq!(
+        std::fs::read_to_string(outside).expect("read outside state"),
+        "keep"
+    );
+    cleanup_temp_dir(&state_dir);
+}
+
 #[test]
 fn dnd_toggle_flips_state_in_one_store_mutation() {
     let state_dir = make_temp_state_dir("dnd-toggle");

@@ -19,6 +19,7 @@ pub(super) fn build_notification_list(
         show_notification_thumbnails: init.config.panel.notification_thumbnails_visible,
         empty_text: init.config.panel.empty_text.clone(),
         empty_offset_top: init.config.panel.empty_offset_top,
+        empty_alignment: init.config.panel.empty_alignment,
     };
 
     // Notification list owns row virtualization and icon resolution
@@ -36,7 +37,7 @@ pub(super) fn build_media_widget(
     panel: &panel::PanelWidgets,
     init: &UiStateInit,
 ) -> Option<media_widget::MediaWidget> {
-    let panel_width = panel::live_panel_width(&panel.root);
+    let panel_width = panel::requested_panel_width(&panel.root);
     let media = init.media_handle.as_ref().map(|handle| {
         media_widget::MediaWidget::new(
             &panel.media_container,

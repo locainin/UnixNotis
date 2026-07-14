@@ -74,7 +74,7 @@ impl NotificationStore {
         self.expirations.remove(&id);
         if let Some(notification) = removed.clone() {
             // Closed rows and panel rows should follow the same archive rule
-            self.push_history(notification.clone(), reason);
+            self.push_history(notification, reason);
         }
         removed
     }
@@ -171,7 +171,7 @@ impl NotificationStore {
         self.history.evict_to_limit(self.config.history.max_entries);
     }
 
-    fn should_show_popup(&self, notification: &Notification) -> bool {
+    const fn should_show_popup(&self, notification: &Notification) -> bool {
         // Rule-level popup suppression is highest priority
         if notification.suppress_popup {
             return false;

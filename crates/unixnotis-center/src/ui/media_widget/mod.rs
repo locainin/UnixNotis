@@ -16,8 +16,8 @@ use crate::media::{MediaHandle, MediaInfo};
 use unixnotis_core::MediaConfig;
 
 use self::build::build_media_widget;
-use self::card::MediaCardWidgets;
-use self::layout::marquee_width_for_shell;
+use self::card::{set_scrolled_content_width, MediaCardWidgets};
+use self::layout::{marquee_width_for_shell, marquee_width_for_shell_player_count};
 use self::selection::{MediaSelection, MediaSelectionSnapshot};
 use self::shell::MediaShellConfig;
 
@@ -109,10 +109,17 @@ impl MediaWidget {
     pub(super) fn apply_layout(&mut self, panel_width: i32, config: &MediaConfig) {
         // Width updates stay lightweight when the structural preset is unchanged
         let marquee_width = marquee_width_for_shell(&self.shell, panel_width);
+        let single_player_width =
+            marquee_width_for_shell_player_count(&self.shell, panel_width, false);
+        self.card.single_player_text_width.set(single_player_width);
+        self.card.multi_player_text_width.set(marquee_width);
+        // The next selection pass applies the width for the current player count exactly once
+        self.card.applied_text_width.set(0);
         // Metadata formatting and visibility are light enough to update in place
         self.card.apply_display_config(config);
         // Text width stays the only size request that changes on a light relayout
         self.card.text_box.set_size_request(marquee_width, -1);
+        set_scrolled_content_width(&self.card.title_boundary, marquee_width);
         self.card
             .title_label
             .update_limits(marquee_width, config.title_char_limit);
@@ -133,8 +140,8 @@ fn connect_prev_button(
     selection: Rc<RefCell<MediaSelection>>,
     card: MediaCardWidgets,
 ) {
-    let selection_prev = selection.clone();
-    let card_prev = card.clone();
+    let selection_prev = selection;
+    let card_prev = card;
     nav_prev.connect_clicked(clone!(
         #[weak]
         root,
@@ -203,6 +210,7 @@ fn apply_selection(
 ) {
     if let Some(info) = selection.current() {
         let (current, total) = selection.position();
+        card.apply_player_count_width(total);
         // One update call refreshes labels, controls, and artwork together
         card.update(info, current, total);
         root.set_visible(true);
@@ -215,4 +223,6 @@ fn apply_selection(
     // Single-player snapshots do not need navigation affordances
     nav_prev.set_sensitive(has_multiple);
     nav_next.set_sensitive(has_multiple);
+    nav_prev.set_visible(has_multiple);
+    nav_next.set_visible(has_multiple);
 }

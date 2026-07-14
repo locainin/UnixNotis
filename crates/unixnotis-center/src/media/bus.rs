@@ -17,6 +17,8 @@ use crate::debug;
 #[derive(Clone)]
 pub(super) struct PlayerState {
     pub(super) bus_name: String,
+    // Unique owner distinguishes a restarted process that reused the same MPRIS name
+    pub(super) unique_owner: Option<String>,
     pub(super) identity: String,
     pub(super) browser_family: Option<String>,
     pub(super) owner_pid: Option<u32>,
@@ -220,12 +222,18 @@ pub(super) async fn build_player_state(
     name: &str,
     config: &MediaConfig,
 ) -> zbus::Result<Option<PlayerState>> {
-    let identity = fetch_identity(connection, name)
-        .await
-        .unwrap_or_else(|| name.to_string());
     // DBus owner data is captured once so snapshots do not need another bus round trip
     // Browser bridges may later override this PID with a stronger metadata source PID
-    let (owner_pid, owner_executable) = resolve_player_owner(connection, name).await;
+    let Some((unique_owner, owner_pid, owner_executable)) =
+        resolve_player_owner(connection, name).await
+    else {
+        // Ownership changed during probing, so a later bus event should rebuild from stable data
+        return Ok(None);
+    };
+    // Every process-bound proxy targets the verified unique owner instead of the mutable alias
+    let identity = fetch_identity(connection, &unique_owner)
+        .await
+        .unwrap_or_else(|| name.to_string());
     let browser_family = detect_browser_family(&identity, name, &config.browser_tokens);
     let remote_art_allowed = remote_art_allowed(
         browser_family.as_deref(),
@@ -233,13 +241,13 @@ pub(super) async fn build_player_state(
         config.remote_art_policy,
     );
     let player = ProxyBuilder::new(connection)
-        .destination(name.to_string())?
+        .destination(unique_owner.clone())?
         .path(MPRIS_PATH)?
         .interface(MPRIS_PLAYER)?
         .build()
         .await?;
     let properties = PropertiesProxy::builder(connection)
-        .destination(name.to_string())?
+        .destination(unique_owner.clone())?
         .path(MPRIS_PATH)?
         .build()
         .await?;
@@ -247,6 +255,7 @@ pub(super) async fn build_player_state(
 
     Ok(Some(PlayerState {
         bus_name: name.to_string(),
+        unique_owner: Some(unique_owner),
         identity,
         browser_family,
         owner_pid,
@@ -274,25 +283,37 @@ async fn fetch_identity(connection: &Connection, name: &str) -> Option<String> {
 async fn resolve_player_owner(
     connection: &Connection,
     name: &str,
-) -> (Option<u32>, Option<String>) {
+) -> Option<(String, Option<u32>, Option<String>)> {
     // Some synthetic names cannot be converted into a DBus bus name
     // Treat those as unknown instead of rejecting the whole media player
     let Ok(bus_name) = zbus::names::BusName::try_from(name) else {
-        return (None, None);
+        return None;
     };
     let Ok(proxy) = DBusProxy::new(connection).await else {
-        return (None, None);
+        return None;
     };
+    let unique_owner = proxy.get_name_owner(bus_name.clone()).await.ok()?;
     // The bus owner PID is useful for normal players and art trust policy
     // It is weaker than bridge metadata when a helper owns the MPRIS name
-    let pid = proxy.get_connection_unix_process_id(bus_name).await.ok();
+    let pid = proxy
+        .get_connection_unix_process_id((&unique_owner).into())
+        .await
+        .ok();
     let executable = match pid {
         Some(pid) => read_process_executable_path(pid)
             .await
             .map(|path| path.display().to_string()),
         None => None,
     };
-    (pid, executable)
+    let observed_owner = proxy.get_name_owner(bus_name).await.ok()?;
+    if !owner_probe_is_stable(unique_owner.as_str(), observed_owner.as_str()) {
+        return None;
+    }
+    Some((unique_owner.to_string(), pid, executable))
+}
+
+fn owner_probe_is_stable(initial_owner: &str, observed_owner: &str) -> bool {
+    initial_owner == observed_owner
 }
 
 #[cfg(target_os = "linux")]

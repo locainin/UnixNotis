@@ -1,4 +1,5 @@
 use gtk::prelude::*;
+use unixnotis_core::{hooks, WidgetDensity};
 use unixnotis_core::{PanelClearButtonPlacement, PanelConfig, PanelSection};
 
 use super::{
@@ -16,6 +17,21 @@ fn notification_header_row_stays_visible_for_header_clear_button() {
 
     config.clear_button_placement = PanelClearButtonPlacement::ActionRow;
     assert!(!notification_header_row_visible(&config));
+}
+
+#[gtk::test]
+fn compact_widget_density_updates_spacing_and_state_class() {
+    let sections = build_panel_sections(&PanelConfig::default(), WidgetDensity::Compact);
+
+    assert_eq!(sections.widget_stack.spacing(), 6);
+    assert_eq!(sections.quick_controls.spacing(), 6);
+    assert_eq!(sections.media_container.spacing(), 6);
+    assert!(sections
+        .widget_stack
+        .has_css_class(hooks::panel_shell::WIDGET_DENSITY_COMPACT));
+    assert!(!sections
+        .widget_stack
+        .has_css_class(hooks::panel_shell::WIDGET_DENSITY_COMFORTABLE));
 }
 
 #[test]
@@ -37,12 +53,12 @@ fn build_panel_sections_can_place_notifications_before_widgets() {
         ..PanelConfig::default()
     };
 
-    let sections = build_panel_sections(&config);
+    let sections = build_panel_sections(&config, unixnotis_core::WidgetDensity::Comfortable);
     let first = sections
         .body_stack
         .first_child()
         .expect("body stack should contain notification section");
-    let expected: gtk::Widget = sections.notification_container.clone().upcast();
+    let expected: gtk::Widget = sections.notification_container.upcast();
 
     assert_eq!(first, expected);
 }
@@ -50,7 +66,7 @@ fn build_panel_sections_can_place_notifications_before_widgets() {
 #[gtk::test]
 fn apply_panel_body_section_order_can_move_notifications_before_widgets() {
     let config = PanelConfig::default();
-    let sections = build_panel_sections(&config);
+    let sections = build_panel_sections(&config, unixnotis_core::WidgetDensity::Comfortable);
 
     apply_panel_body_section_order(
         &sections.body_stack,
@@ -62,7 +78,7 @@ fn apply_panel_body_section_order_can_move_notifications_before_widgets() {
         .body_stack
         .first_child()
         .expect("body stack should contain notification section");
-    let expected: gtk::Widget = sections.notification_container.clone().upcast();
+    let expected: gtk::Widget = sections.notification_container.upcast();
 
     assert_eq!(first, expected);
 }

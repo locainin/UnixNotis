@@ -3,7 +3,6 @@
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -23,78 +22,142 @@ const RELOAD_FLUSH_INTERVAL_MS: u64 = 200;
 
 // Coalesces reload requests so CSS/config edits are retried when the UI queue is full
 struct ReloadGate {
-    css_pending: AtomicBool,
-    config_pending: AtomicBool,
+    css: ReloadSlot,
+    config: ReloadSlot,
+}
+
+struct ReloadSlot {
+    state: Mutex<ReloadSlotState>,
+}
+
+#[derive(Default)]
+struct ReloadSlotState {
+    represented: bool,
+    retry_pending: bool,
+    dirty_again: bool,
+}
+
+impl ReloadSlot {
+    const fn new() -> Self {
+        Self {
+            state: Mutex::new(ReloadSlotState {
+                represented: false,
+                retry_pending: false,
+                dirty_again: false,
+            }),
+        }
+    }
+
+    fn request(&self, sender: &async_channel::Sender<dbus::UiEvent>, event: dbus::UiEvent) -> bool {
+        let mut state = self.lock_state();
+        let needs_retry = if state.represented {
+            // Preserve one trailing reload when a change lands during processing
+            state.dirty_again = true;
+            false
+        } else {
+            state.represented = true;
+            Self::dispatch(&mut state, sender, event)
+        };
+        drop(state);
+        needs_retry
+    }
+
+    fn dispatch(
+        state: &mut ReloadSlotState,
+        sender: &async_channel::Sender<dbus::UiEvent>,
+        event: dbus::UiEvent,
+    ) -> bool {
+        match sender.try_send(event) {
+            Ok(()) => {
+                state.retry_pending = false;
+                false
+            }
+            Err(async_channel::TrySendError::Full(_)) => {
+                state.retry_pending = true;
+                true
+            }
+            Err(async_channel::TrySendError::Closed(_)) => {
+                *state = ReloadSlotState::default();
+                false
+            }
+        }
+    }
+
+    fn flush(&self, sender: &async_channel::Sender<dbus::UiEvent>, event: dbus::UiEvent) {
+        let mut state = self.lock_state();
+        if state.retry_pending {
+            // A successful retry covers every change observed before it entered the queue
+            let had_trailing_change = std::mem::take(&mut state.dirty_again);
+            let _needs_retry = Self::dispatch(&mut state, sender, event);
+            if state.retry_pending && had_trailing_change {
+                state.dirty_again = true;
+            }
+        }
+        drop(state);
+    }
+
+    fn complete(
+        &self,
+        sender: &async_channel::Sender<dbus::UiEvent>,
+        event: dbus::UiEvent,
+    ) -> bool {
+        let mut state = self.lock_state();
+        let needs_retry = if std::mem::take(&mut state.dirty_again) {
+            Self::dispatch(&mut state, sender, event)
+        } else {
+            state.represented = false;
+            false
+        };
+        drop(state);
+        needs_retry
+    }
+
+    fn has_retry_pending(&self) -> bool {
+        let state = self.lock_state();
+        let retry_pending = state.retry_pending;
+        drop(state);
+        retry_pending
+    }
+
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, ReloadSlotState> {
+        match self.state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
 }
 
 impl ReloadGate {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
-            css_pending: AtomicBool::new(false),
-            config_pending: AtomicBool::new(false),
+            css: ReloadSlot::new(),
+            config: ReloadSlot::new(),
         }
     }
 
     fn request_css(&self, sender: &async_channel::Sender<dbus::UiEvent>) -> bool {
-        self.request(sender, dbus::UiEvent::CssReload, &self.css_pending)
+        self.css.request(sender, dbus::UiEvent::CssReload)
     }
 
     fn request_config(&self, sender: &async_channel::Sender<dbus::UiEvent>) -> bool {
-        self.request(sender, dbus::UiEvent::ConfigReload, &self.config_pending)
+        self.config.request(sender, dbus::UiEvent::ConfigReload)
     }
 
     fn flush(&self, sender: &async_channel::Sender<dbus::UiEvent>) {
-        self.flush_one(sender, dbus::UiEvent::CssReload, &self.css_pending);
-        self.flush_one(sender, dbus::UiEvent::ConfigReload, &self.config_pending);
+        self.css.flush(sender, dbus::UiEvent::CssReload);
+        self.config.flush(sender, dbus::UiEvent::ConfigReload);
     }
 
     fn has_pending(&self) -> bool {
-        self.css_pending.load(Ordering::Acquire) || self.config_pending.load(Ordering::Acquire)
+        self.css.has_retry_pending() || self.config.has_retry_pending()
     }
 
-    fn request(
-        &self,
-        sender: &async_channel::Sender<dbus::UiEvent>,
-        event: dbus::UiEvent,
-        pending: &AtomicBool,
-    ) -> bool {
-        // One bit tracks whether this reload kind still needs another queue attempt
-        if pending.swap(true, Ordering::AcqRel) {
-            return false;
-        }
-
-        match sender.try_send(event) {
-            Ok(()) => {
-                pending.store(false, Ordering::Release);
-                false
-            }
-            Err(async_channel::TrySendError::Full(_)) => true,
-            Err(async_channel::TrySendError::Closed(_)) => {
-                pending.store(false, Ordering::Release);
-                false
-            }
-        }
+    fn complete_css(&self, sender: &async_channel::Sender<dbus::UiEvent>) -> bool {
+        self.css.complete(sender, dbus::UiEvent::CssReload)
     }
 
-    fn flush_one(
-        &self,
-        sender: &async_channel::Sender<dbus::UiEvent>,
-        event: dbus::UiEvent,
-        pending: &AtomicBool,
-    ) {
-        if !pending.load(Ordering::Acquire) {
-            return;
-        }
-
-        match sender.try_send(event) {
-            Ok(()) => {
-                pending.store(false, Ordering::Release);
-            }
-            Err(async_channel::TrySendError::Full(_)) => {}
-            Err(async_channel::TrySendError::Closed(_)) => {
-                pending.store(false, Ordering::Release);
-            }
-        }
+    fn complete_config(&self, sender: &async_channel::Sender<dbus::UiEvent>) -> bool {
+        self.config.complete(sender, dbus::UiEvent::ConfigReload)
     }
 }
 
@@ -133,7 +196,7 @@ fn start_reload_timer(
     *timer_guard = Some(source_id);
 }
 
-pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: ThemePaths) {
+pub fn run_center(config: Config, config_path: PathBuf, theme_paths: ThemePaths) {
     let app = gtk::Application::new(Some("com.unixnotis.Center"), Default::default());
 
     // Activation can fire more than once in one process
@@ -182,12 +245,12 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
             dbus::start_dbus_task(runtime.handle(), connection.clone(), event_tx.clone());
 
         let css_manager = css::CssManager::new_panel(theme_paths.clone(), config.theme.clone());
-        css_manager.apply_to_display();
-        css_manager.reload(css::DEFAULT_CSS);
+        let _ = css_manager.apply_to_display();
+        let _ = css_manager.reload(css::DEFAULT_CSS);
 
         let media_handle = media::start_media_task(
             runtime.handle(),
-            connection.clone(),
+            connection,
             config.media.clone(),
             event_tx.clone(),
         );
@@ -200,24 +263,46 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
             css: css_manager,
             event_tx: event_tx.clone(),
             media_handle,
-            runtime: runtime.clone(),
+            runtime,
         })));
 
-        let ui_clone = ui.clone();
+        let ui_clone = ui;
         let reload_gate_loop = Arc::clone(&reload_gate);
+        let reload_timer_loop = Arc::clone(&reload_timer);
         let event_tx_loop = event_tx.clone();
         let rebuild_source: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
         MainContext::default().spawn_local(async move {
             while let Ok(event) = event_rx.recv().await {
                 let mut ui = ui_clone.borrow_mut();
+                let is_css_reload = matches!(&event, dbus::UiEvent::CssReload);
+                let is_config_reload = matches!(&event, dbus::UiEvent::ConfigReload);
                 ui.handle_event(event);
+                let mut needs_retry_timer = if is_css_reload {
+                    reload_gate_loop.complete_css(&event_tx_loop)
+                } else if is_config_reload {
+                    reload_gate_loop.complete_config(&event_tx_loop)
+                } else {
+                    false
+                };
 
                 // Drain the queue in batches so bursts do not schedule extra GTK work
                 while let Ok(next_event) = event_rx.try_recv() {
+                    let is_css_reload = matches!(&next_event, dbus::UiEvent::CssReload);
+                    let is_config_reload = matches!(&next_event, dbus::UiEvent::ConfigReload);
                     ui.handle_event(next_event);
+                    needs_retry_timer |= if is_css_reload {
+                        reload_gate_loop.complete_css(&event_tx_loop)
+                    } else if is_config_reload {
+                        reload_gate_loop.complete_config(&event_tx_loop)
+                    } else {
+                        false
+                    };
                 }
 
                 reload_gate_loop.flush(&event_tx_loop);
+                if needs_retry_timer || reload_gate_loop.has_pending() {
+                    start_reload_timer(&reload_gate_loop, &event_tx_loop, &reload_timer_loop);
+                }
 
                 // Rebuild at most once per frame
                 // Hidden panels keep the rebuild deferred until the next open
@@ -242,7 +327,7 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
             }
         });
 
-        css::start_css_watcher(&theme_paths, CssKind::Panel, {
+        if let Err(err) = css::start_css_watcher(&theme_paths, CssKind::Panel, {
             let event_tx = event_tx.clone();
             let reload_gate = Arc::clone(&reload_gate);
             let reload_timer = Arc::clone(&reload_timer);
@@ -256,10 +341,12 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
                     });
                 }
             }
-        });
+        }) {
+            warn!(?err, "failed to start panel css watcher");
+        }
 
-        css::start_config_watcher(config_path.clone(), {
-            let event_tx = event_tx.clone();
+        if let Err(err) = css::start_config_watcher(&config_path, {
+            let event_tx = event_tx;
             let reload_gate = Arc::clone(&reload_gate);
             let reload_timer = Arc::clone(&reload_timer);
             move || {
@@ -272,7 +359,9 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
                     });
                 }
             }
-        });
+        }) {
+            warn!(?err, "failed to start panel config watcher");
+        }
 
         info!("unixnotis-center running");
     });
@@ -280,3 +369,7 @@ pub(crate) fn run_center(config: Config, config_path: PathBuf, theme_paths: Them
     // GTK can use the real process argv here because daemon-launched config paths now travel by env
     app.run();
 }
+
+#[cfg(test)]
+#[path = "tests/runtime.rs"]
+mod tests;

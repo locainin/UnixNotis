@@ -1,4 +1,4 @@
-//! CSS validation and lint helpers for UnixNotis themes
+//! CSS validation and lint helpers for `UnixNotis` themes
 
 mod cache;
 mod files;
@@ -25,7 +25,7 @@ use self::report::{
 use self::runtime::lint_runtime_config;
 use self::theme::collect_css_check_inputs;
 
-pub(crate) fn run() -> Result<()> {
+pub fn run() -> Result<()> {
     // GTK needs to be ready before CSS parsing starts
     gtk::init().context("initialize gtk")?;
 
@@ -33,17 +33,17 @@ pub(crate) fn run() -> Result<()> {
     let config_dir = Config::default_config_dir().context("resolve config directory")?;
     let display_root = display_config_root(&config_dir);
     if !config_dir.exists() {
-        return Err(anyhow!("config directory not found: {}", display_root));
+        return Err(anyhow!("config directory not found: {display_root}"));
     }
     if !config_dir.is_dir() {
-        return Err(anyhow!("config path is not a directory: {}", display_root));
+        return Err(anyhow!("config path is not a directory: {display_root}"));
     }
 
     // Follow the same theme targets the live UI resolves from config.toml
     let css_inputs = collect_css_check_inputs(&config_dir, &display_root)?;
     let css_files = css_inputs.files;
     if css_files.is_empty() {
-        return Err(anyhow!("no active css files found for {}", display_root));
+        return Err(anyhow!("no active css files found for {display_root}"));
     }
 
     let mut diagnostics = css_inputs.diagnostics;
@@ -93,7 +93,7 @@ pub(crate) fn run() -> Result<()> {
     )?);
 
     let report = CssCheckReport {
-        display_root: display_root.clone(),
+        display_root,
         checked_files: css_files.len(),
         active_files: css_inputs.active_files,
         notes: css_inputs.notes,
@@ -121,4 +121,5 @@ fn source_line_text(path: Option<&Path>, line_number: usize) -> Option<String> {
         .map(str::to_string)
 }
 #[cfg(test)]
+#[path = "tests/cases.rs"]
 mod tests;

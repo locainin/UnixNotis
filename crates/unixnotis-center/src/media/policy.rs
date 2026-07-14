@@ -25,7 +25,7 @@ pub(super) fn detect_browser_family(
         if !identity_lower.contains("browser") {
             return None;
         }
-        mpris_suffix(&bus_lower).map(|suffix| suffix.to_string())
+        mpris_suffix(&bus_lower).map(std::string::ToString::to_string)
     })
 }
 
@@ -35,9 +35,7 @@ pub(super) fn remote_art_allowed(
     policy: MediaRemoteArtPolicy,
 ) -> bool {
     // A missing owner executable means the bus owner is not concrete enough to trust
-    let has_owner = owner_executable
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
+    let has_owner = owner_executable.is_some_and(|value| !value.trim().is_empty());
     if !has_owner {
         return false;
     }
@@ -99,7 +97,7 @@ fn normalize_remote_https(value: &str) -> Option<Url> {
     Some(url)
 }
 
-fn is_blocked_remote_host(host: &Host<&str>) -> bool {
+const fn is_blocked_remote_host(host: &Host<&str>) -> bool {
     match host {
         Host::Domain(domain) => domain.eq_ignore_ascii_case("localhost"),
         Host::Ipv4(addr) => is_blocked_ip(&IpAddr::V4(*addr)),
@@ -107,7 +105,7 @@ fn is_blocked_remote_host(host: &Host<&str>) -> bool {
     }
 }
 
-fn is_blocked_ip(addr: &IpAddr) -> bool {
+const fn is_blocked_ip(addr: &IpAddr) -> bool {
     match addr {
         IpAddr::V4(addr) => {
             addr.is_private()

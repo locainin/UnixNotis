@@ -1,4 +1,4 @@
-//! Theme-driven CSS overrides used by the UI CSS manager.
+//! Theme-driven CSS overrides used by the UI CSS manager
 
 use gtk::{major_version, minor_version};
 use unixnotis_core::{
@@ -6,7 +6,7 @@ use unixnotis_core::{
     gtk_css_features_for_version, theme_card_style_values, GtkCssFeatures, ThemeConfig,
 };
 
-pub(crate) fn build_base_overrides(theme: &ThemeConfig) -> String {
+pub fn build_base_overrides(theme: &ThemeConfig) -> String {
     // Runtime gating keeps older GTK builds on the legacy-safe token path
     build_base_overrides_for_runtime(theme, current_gtk_css_features())
 }
@@ -19,49 +19,49 @@ fn build_base_overrides_for_runtime(theme: &ThemeConfig, features: GtkCssFeature
     overrides
 }
 
-pub(crate) fn build_panel_overrides(theme: &ThemeConfig) -> String {
+pub fn build_panel_overrides(theme: &ThemeConfig) -> String {
     // Panel and widgets share the same card shell values
     let card_style = theme_card_style_values(theme);
     format!(
-        r#"
+        r"
 .unixnotis-panel-card {{
   border-width: {}px;
   border-style: solid;
   border-radius: {}px;
   background: @unixnotis-card;
 }}
-"#,
+",
         card_style.border_width_px, card_style.card_radius_px,
     )
 }
 
-pub(crate) fn build_widgets_overrides(theme: &ThemeConfig) -> String {
+pub fn build_widgets_overrides(theme: &ThemeConfig) -> String {
     // Media cards use the same base shell so one theme knob moves both
     let card_style = theme_card_style_values(theme);
     format!(
-        r#"
+        r"
 .unixnotis-media-card {{
   border-width: {}px;
   border-style: solid;
   border-radius: {}px;
   background: @unixnotis-card;
 }}
-"#,
+",
         card_style.border_width_px, card_style.card_radius_px,
     )
 }
 
-pub(crate) fn build_popup_overrides(theme: &ThemeConfig) -> String {
+pub fn build_popup_overrides(theme: &ThemeConfig) -> String {
     // Popups keep the same border and radius contract as the panel cards
     let card_style = theme_card_style_values(theme);
     format!(
-        r#"
+        r"
 .unixnotis-popup-card {{
   border-width: {}px;
   border-style: solid;
   border-radius: {}px;
 }}
-"#,
+",
         card_style.border_width_px, card_style.card_radius_px,
     )
 }

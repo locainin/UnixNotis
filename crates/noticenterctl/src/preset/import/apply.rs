@@ -10,9 +10,9 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use super::super::filesystem::ensure_dir_fd_matches_live_path;
 use super::super::filesystem::{
-    create_backup_dir_secure, open_secure_dir_all, read_relative_file_secure,
-    remove_empty_relative_dirs_secure, remove_relative_dir_secure, remove_relative_file_secure,
-    write_relative_file_atomic_secure,
+    create_backup_dir_secure, open_secure_dir_all, publish_relative_file_atomic_secure,
+    read_relative_file_secure, remove_empty_relative_dirs_secure, remove_relative_dir_secure,
+    remove_relative_file_secure, write_relative_file_atomic_secure,
 };
 use super::plan::ImportPlan;
 
@@ -63,20 +63,41 @@ pub(super) fn apply_import_plan(config_dir: &Path, plan: &ImportPlan) -> Result<
             previous_mode = Some(existing_mode);
         }
 
-        // The final payload write stays beneath the open config-root fd even if the path is raced
-        write_relative_file_atomic_secure(
+        let published = match publish_relative_file_atomic_secure(
             &config_root_fd,
             &item.file.relative_path,
             &item.file.contents,
             item.file.mode,
         )
-        .with_context(|| format!("write imported file {}", item.target_path.display()))?;
+        .with_context(|| format!("publish imported file {}", item.target_path.display()))
+        {
+            Ok(published) => published,
+            Err(err) => {
+                return Err(rollback_after_apply_failure(
+                    &config_root_fd,
+                    &applied_items,
+                    err,
+                ));
+            }
+        };
 
+        // Publication is visible, so rollback bookkeeping must precede durability work
         applied_items.push(AppliedImportItem {
             relative_path: item.file.relative_path.clone(),
             previous_contents,
             previous_mode,
         });
+
+        if let Err(err) = published
+            .sync_parent()
+            .with_context(|| format!("make imported file durable {}", item.target_path.display()))
+        {
+            return Err(rollback_after_apply_failure(
+                &config_root_fd,
+                &applied_items,
+                err,
+            ));
+        }
     }
 
     // One last root check closes the window between the final write and the staged return
@@ -118,56 +139,66 @@ pub(super) fn finalize_import_transaction(
 
         #[cfg(test)]
         if backup_write_failure_should_fire(written_backup_paths.len()) {
-            cleanup_backup_snapshot(
-                &transaction.config_root_fd,
+            return Err(cleanup_and_rollback_backup_failure(
+                &transaction,
                 &backup_relative_dir,
                 &backup_root_fd,
                 &written_backup_paths,
-            )?;
-            rollback_applied_import_items(&transaction.config_root_fd, &transaction.applied_items)?;
-            return Err(anyhow::anyhow!("forced backup write failure"));
+                anyhow::anyhow!("forced backup write failure"),
+            ));
         }
 
         // Backup bytes come from the captured pre-import state, not from the live tree after apply
-        if let Err(err) = write_relative_file_atomic_secure(
+        let backup_path = transaction
+            .config_dir
+            .join(&backup_relative_dir)
+            .join(&item.relative_path);
+        let published = match publish_relative_file_atomic_secure(
             &backup_root_fd,
             &item.relative_path,
             previous_contents,
             previous_mode,
         )
-        .with_context(|| {
-            format!(
-                "write backup file {}",
-                transaction
-                    .config_dir
-                    .join(&backup_relative_dir)
-                    .join(&item.relative_path)
-                    .display()
-            )
-        }) {
-            cleanup_backup_snapshot(
-                &transaction.config_root_fd,
+        .with_context(|| format!("publish backup file {}", backup_path.display()))
+        {
+            Ok(published) => published,
+            Err(err) => {
+                return Err(cleanup_and_rollback_backup_failure(
+                    &transaction,
+                    &backup_relative_dir,
+                    &backup_root_fd,
+                    &written_backup_paths,
+                    err,
+                ));
+            }
+        };
+
+        // Published backups must be tracked before their parent sync can fail
+        written_backup_paths.push(item.relative_path.clone());
+
+        if let Err(err) = published
+            .sync_parent()
+            .with_context(|| format!("make backup file durable {}", backup_path.display()))
+        {
+            return Err(cleanup_and_rollback_backup_failure(
+                &transaction,
                 &backup_relative_dir,
                 &backup_root_fd,
                 &written_backup_paths,
-            )?;
-            rollback_applied_import_items(&transaction.config_root_fd, &transaction.applied_items)?;
-            return Err(err);
+                err,
+            ));
         }
-
-        written_backup_paths.push(item.relative_path.clone());
     }
 
     // One last root check catches a root swap that lands during the backup commit itself
     if let Err(err) = ensure_import_root_matches_live_path(&transaction) {
-        cleanup_backup_snapshot(
-            &transaction.config_root_fd,
+        return Err(cleanup_and_rollback_backup_failure(
+            &transaction,
             &backup_relative_dir,
             &backup_root_fd,
             &written_backup_paths,
-        )?;
-        rollback_applied_import_items(&transaction.config_root_fd, &transaction.applied_items)?;
-        return Err(err);
+            err,
+        ));
     }
 
     Ok(Some(transaction.config_dir.join(&backup_relative_dir)))
@@ -266,6 +297,44 @@ fn rollback_applied_import_items(
     }
 
     Ok(())
+}
+
+fn rollback_after_apply_failure(
+    config_root_fd: &std::os::fd::OwnedFd,
+    applied_items: &[AppliedImportItem],
+    error: anyhow::Error,
+) -> anyhow::Error {
+    match rollback_applied_import_items(config_root_fd, applied_items) {
+        Ok(()) => error,
+        Err(rollback_error) => {
+            error.context(format!("import rollback also failed: {rollback_error:#}"))
+        }
+    }
+}
+
+fn cleanup_and_rollback_backup_failure(
+    transaction: &ImportTransaction,
+    backup_relative_dir: &Path,
+    backup_root_fd: &std::os::fd::OwnedFd,
+    written_backup_paths: &[PathBuf],
+    mut error: anyhow::Error,
+) -> anyhow::Error {
+    if let Err(cleanup_error) = cleanup_backup_snapshot(
+        &transaction.config_root_fd,
+        backup_relative_dir,
+        backup_root_fd,
+        written_backup_paths,
+    ) {
+        error = error.context(format!("backup cleanup also failed: {cleanup_error:#}"));
+    }
+    if let Err(rollback_error) =
+        rollback_applied_import_items(&transaction.config_root_fd, &transaction.applied_items)
+    {
+        error = error.context(format!(
+            "configuration rollback also failed: {rollback_error:#}"
+        ));
+    }
+    error
 }
 
 fn cleanup_backup_snapshot(

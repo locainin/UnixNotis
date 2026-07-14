@@ -150,7 +150,7 @@ fn assert_css_validates_in_gtk(css: &str) {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .unwrap_or_else(|error| panic!("failed to spawn css validator {:?}: {error}", helper));
+        .unwrap_or_else(|error| panic!("failed to spawn css validator {helper:?}: {error}"));
 
     child
         .stdin
@@ -189,8 +189,7 @@ fn css_provider_validator_binary() -> &'static std::path::PathBuf {
         }
         assert!(
             fs::metadata(&candidate).is_ok(),
-            "css validator binary is missing at {:?}",
-            candidate
+            "css validator binary is missing at {candidate:?}"
         );
         candidate
     })

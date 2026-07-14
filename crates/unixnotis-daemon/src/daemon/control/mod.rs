@@ -10,7 +10,7 @@ mod server;
 mod watch;
 
 pub use server::ControlServer;
-pub(crate) use watch::spawn_inhibitor_owner_watch;
+pub use watch::spawn_inhibitor_owner_watch;
 
 // Cap inhibitor count so memory use stays bounded even under abusive clients
 const MAX_ACTIVE_INHIBITORS: u32 = 128;

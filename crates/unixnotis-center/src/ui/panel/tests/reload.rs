@@ -1,10 +1,16 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use gtk::prelude::*;
-use unixnotis_core::{css::hooks, PanelActionId, PanelClearButtonPlacement, PanelConfig};
+use unixnotis_core::{
+    css::hooks, PanelActionId, PanelClearButtonPlacement, PanelConfig, PanelSection,
+};
 
 use super::super::header::build_panel_header;
 use super::super::sections::build_panel_sections;
 use super::super::types::PanelWidgets;
-use super::apply_reloaded_panel_chrome;
+use super::{apply_reloaded_body_order, apply_reloaded_panel_chrome};
+
+static APP_ID: AtomicUsize = AtomicUsize::new(0);
 
 fn child_with_class(parent: &gtk::Box, class_name: &str) -> Option<gtk::Widget> {
     let mut child = parent.first_child();
@@ -18,14 +24,15 @@ fn child_with_class(parent: &gtk::Box, class_name: &str) -> Option<gtk::Widget> 
 }
 
 fn panel_widgets(config: &PanelConfig) -> PanelWidgets {
+    let serial = APP_ID.fetch_add(1, Ordering::Relaxed);
     let app = gtk::Application::builder()
-        .application_id("dev.unixnotis.panel.reload.test")
+        .application_id(format!("dev.unixnotis.panel.reload.test{serial}"))
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
         .build();
     app.register(None::<&gtk::gio::Cancellable>)
         .expect("test application should register");
     let header = build_panel_header(config);
-    let sections = build_panel_sections(config);
+    let sections = build_panel_sections(config, unixnotis_core::WidgetDensity::Comfortable);
 
     PanelWidgets {
         window: gtk::ApplicationWindow::new(&app),
@@ -84,4 +91,24 @@ fn apply_reloaded_panel_chrome_updates_clear_buttons_and_close_placement() {
     assert!(panel.clear_header_button.get_visible());
     assert!(child_with_class(&panel.header_top, hooks::panel_action::CLOSE).is_none());
     assert!(child_with_class(&panel.header_action_group, hooks::panel_action::CLOSE).is_some());
+}
+
+#[gtk::test]
+fn apply_reloaded_body_order_moves_notifications_before_widgets() {
+    let panel = panel_widgets(&PanelConfig::default());
+
+    apply_reloaded_body_order(
+        &panel,
+        &[PanelSection::Notifications, PanelSection::Widgets],
+    );
+
+    let first = panel
+        .body_stack
+        .first_child()
+        .expect("body stack should retain both sections");
+    assert_eq!(first, panel.notification_container);
+    let second = first
+        .next_sibling()
+        .expect("widget section should follow notifications");
+    assert_eq!(second, panel.widget_revealer);
 }

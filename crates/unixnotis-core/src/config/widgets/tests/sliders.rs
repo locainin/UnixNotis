@@ -1,3 +1,8 @@
+#![allow(
+    clippy::float_cmp,
+    reason = "TOML parsing preserves these exactly representable slider values"
+)]
+
 use crate::{NumericParseMode, SliderWidgetConfig, WidgetsConfig};
 
 #[test]

@@ -9,7 +9,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) fn write_text_preserving_mode(
+pub fn write_text_preserving_mode(
     path: &Path,
     contents: &str,
     default_mode: u32,
@@ -18,7 +18,7 @@ pub(crate) fn write_text_preserving_mode(
     write_text_with_mode(path, contents, mode)
 }
 
-pub(crate) fn write_text_with_mode(path: &Path, contents: &str, mode: u32) -> io::Result<()> {
+pub fn write_text_with_mode(path: &Path, contents: &str, mode: u32) -> io::Result<()> {
     let (parent_fd, file_name) = open_secure_parent(path)?;
     validate_target_at(&parent_fd, &file_name)?;
     let (temp_name, mut temp_file) = create_atomic_temp_at(&parent_fd, &file_name, mode)?;
@@ -55,7 +55,7 @@ pub(crate) fn write_text_with_mode(path: &Path, contents: &str, mode: u32) -> io
     })?)
 }
 
-pub(crate) fn reject_unsafe_write_target(path: &Path) -> io::Result<()> {
+pub fn reject_unsafe_write_target(path: &Path) -> io::Result<()> {
     match fs::symlink_metadata(path) {
         Ok(metadata) => {
             if metadata.file_type().is_symlink() {
@@ -250,7 +250,7 @@ fn validate_target_at(parent_fd: &OwnedFd, file_name: &str) -> io::Result<()> {
     }
 }
 
-fn secure_resolve_flags() -> ResolveFlags {
+const fn secure_resolve_flags() -> ResolveFlags {
     ResolveFlags::BENEATH
         .union(ResolveFlags::NO_SYMLINKS)
         .union(ResolveFlags::NO_MAGICLINKS)

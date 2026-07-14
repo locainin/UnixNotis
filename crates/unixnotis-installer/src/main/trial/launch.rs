@@ -11,7 +11,7 @@ use crate::system_tools;
 
 const TRIAL_DAEMON_ARGS: [&str; 4] = ["--trial", "--restore", "auto", "--yes"];
 
-pub(crate) fn run_trial(repo_root: PathBuf) -> Result<()> {
+pub fn run_trial(repo_root: PathBuf) -> Result<()> {
     println!("Starting UnixNotis trial run.");
     println!("Press Ctrl+C to stop and restore the previous daemon.");
 
@@ -40,7 +40,7 @@ fn run_trial_process(daemon_bin: &Path) -> Result<std::process::ExitStatus> {
     std::process::Command::new(daemon_bin)
         .args(TRIAL_DAEMON_ARGS)
         .status()
-        .map_err(|err| anyhow!("failed to run trial: {}", err))
+        .map_err(|err| anyhow!("failed to run trial: {err}"))
 }
 
 pub(super) fn run_trial_with_shim_cleanup(
@@ -54,13 +54,13 @@ pub(super) fn run_trial_with_shim_cleanup(
     let target = shell_quote(expected_target.display().to_string().as_str());
     let script = trial_launch_script(&daemon, &shim, &target);
     system_tools::command("sh")
-        .map_err(|err| anyhow!("failed to locate trusted shell: {}", err))?
+        .map_err(|err| anyhow!("failed to locate trusted shell: {err}"))?
         .arg("-c")
         .arg(script)
         // Cleanup helpers must not resolve through an attacker-controlled inherited PATH
         .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
         .status()
-        .map_err(|err| anyhow!("failed to run trial: {}", err))
+        .map_err(|err| anyhow!("failed to run trial: {err}"))
 }
 
 pub(super) fn trial_launch_script(daemon: &str, shim: &str, target: &str) -> String {

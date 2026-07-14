@@ -1,6 +1,6 @@
-//! Icon source discovery for notifications.
+//! Icon source discovery for notifications
 //!
-//! Groups desktop icon lookup, themed icon resolution, and image decoding helpers.
+//! Groups desktop icon lookup, themed icon resolution, and image decoding helpers
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -13,7 +13,7 @@ use unixnotis_core::{NotificationImage, NotificationView};
 
 use super::cache::CachedPaintable;
 
-// Guard against blocking loads of unusually large icons on the GTK thread.
+// Guard against blocking loads of unusually large icons on the GTK thread
 const MAX_SYNC_ICON_BYTES: u64 = 4 * 1024 * 1024;
 
 pub(super) enum IconSource {
@@ -22,35 +22,35 @@ pub(super) enum IconSource {
 }
 
 pub(super) fn resolve_icon_source(name: &str, size: i32, scale: i32) -> Option<IconSource> {
-    // Resolve a themed icon into a GTK paintable at the requested size/scale.
+    // Resolve a themed icon into a GTK paintable at the requested size/scale
     // If the paintable originates from a non-SVG file on disk, we prefer returning the path
-    // so the raster decode pipeline can cache + decode off-thread (avoids main-thread spikes).
+    // so the raster decode pipeline can cache + decode off-thread (avoids main-thread spikes)
     let paintable = resolve_icon_paintable(name, size, scale)?;
 
     // Some paintables are backed by a gio::File (theme icons loaded from disk). If we can get a real
-    // filesystem path and it's not SVG, treat it as a raster path source.
+    // filesystem path and it's not SVG, treat it as a raster path source
     if let Some(file) = paintable.file() {
         if let Some(path) = file.path() {
-            // SVG decoding/rendering often stays on the GTK side; only fast-path raster files here.
+            // SVG decoding/rendering often stays on the GTK side; only fast-path raster files here
             if !is_svg_path(&path) {
                 return Some(IconSource::RasterPath(path));
             }
         }
     }
 
-    // Fallback: keep the paintable (covers SVGs, non-file paintables, and theme backends).
+    // Fallback: keep the paintable (covers SVGs, non-file paintables, and theme backends)
     Some(IconSource::Paintable(paintable))
 }
 
 pub(super) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
-    // Accept raw absolute paths and file:// URIs, decoding percent escapes when present.
+    // Accept raw absolute paths and file:// URIs, decoding percent escapes when present
     if path.starts_with('/') {
         return Some(PathBuf::from(path));
     }
     if path.starts_with("file://") {
-        // gio::File handles URI decoding and local filesystem resolution.
+        // gio::File handles URI decoding and local filesystem resolution
         let file = gio::File::for_uri(path);
-        // Only accept native filesystem paths to avoid non-local URIs.
+        // Only accept native filesystem paths to avoid non-local URIs
         if !file.is_native() {
             return None;
         }
@@ -60,16 +60,16 @@ pub(super) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn resolve_path_texture(path: &Path) -> Option<CachedPaintable> {
-    // Avoid synchronous SVG loads on the GTK thread; SVGs are routed through async paths.
+    // Avoid synchronous SVG loads on the GTK thread; SVGs are routed through async paths
     if is_svg_path(path) {
         return None;
     }
-    // Only load real files from disk; avoids weird behavior for directories/symlinks/invalid paths.
+    // Only load real files from disk; avoids weird behavior for directories/symlinks/invalid paths
     if !path.is_file() {
         return None;
     }
 
-    // Avoid synchronous decoding for unusually large icon files to reduce UI stalls.
+    // Avoid synchronous decoding for unusually large icon files to reduce UI stalls
     if let Ok(metadata) = std::fs::metadata(path) {
         if metadata.len() > MAX_SYNC_ICON_BYTES {
             return None;
@@ -77,19 +77,18 @@ pub(super) fn resolve_path_texture(path: &Path) -> Option<CachedPaintable> {
     }
 
     // Let GDK load the texture directly. This is a synchronous path and is typically fine for small icons;
-    // heavy/large loads should prefer the async raster decode pipeline when possible.
+    // heavy/large loads should prefer the async raster decode pipeline when possible
     let file = gio::File::for_path(path);
     let texture = gdk::Texture::from_file(&file).ok()?;
     Some(CachedPaintable::from_texture(texture))
 }
 
 pub(super) fn is_svg_path(path: &Path) -> bool {
-    // SVG/SVGZ should stay on GTK's paintable path (scaling/vector rendering rules differ from raster).
-    // Case-insensitive check on extension.
+    // SVG/SVGZ should stay on GTK's paintable path (scaling/vector rendering rules differ from raster)
+    // Case-insensitive check on extension
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "svg" | "svgz"))
-        .unwrap_or(false)
+        .is_some_and(|ext| matches!(ext.to_ascii_lowercase().as_str(), "svg" | "svgz"))
 }
 
 fn resolve_icon_paintable(name: &str, size: i32, scale: i32) -> Option<IconPaintable> {
@@ -140,8 +139,8 @@ pub(super) fn collect_icon_candidates(notification: &NotificationView) -> Vec<St
 }
 
 fn is_missing_icon(path: &Path) -> bool {
-    // Ignore theme placeholders to avoid rendering missing-icon glyphs.
-    // Many icon themes provide an "image-missing" asset; treating it as a real icon looks bad.
+    // Ignore theme placeholders to avoid rendering missing-icon glyphs
+    // Many icon themes provide an "image-missing" asset; treating it as a real icon looks bad
     let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
         return false; // Non-UTF8 or missing filename stem; don't classify as missing placeholder.
     };
@@ -149,24 +148,24 @@ fn is_missing_icon(path: &Path) -> bool {
 }
 
 pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Texture> {
-    // Only proceed if the notification actually carried image-data (not just a name/path hint).
+    // Only proceed if the notification actually carried image-data (not just a name/path hint)
     if !image.has_image_data {
         return None;
     }
 
     let data = &image.image_data;
 
-    // The standard image-data payload for notifications is typically 8 bits per channel.
-    // If it's not 8, the byte layout is ambiguous for this path, so reject it.
+    // The standard image-data payload for notifications is typically 8 bits per channel
+    // If it's not 8, the byte layout is ambiguous for this path, so reject it
     if data.bits_per_sample != 8 {
         return None;
     }
-    // Negative rowstride is invalid for pixel buffers.
+    // Negative rowstride is invalid for pixel buffers
     if data.rowstride < 0 {
         return None;
     }
 
-    // Reject non-positive dimensions before creating the texture.
+    // Reject non-positive dimensions before creating the texture
     if data.width <= 0 || data.height <= 0 {
         return None;
     }
@@ -175,19 +174,19 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Textu
     let width_i32 = i32::try_from(width).ok()?;
     let height_i32 = i32::try_from(height).ok()?;
 
-    // Select a conversion path based on the channel layout.
-    // RGBA can be used directly, RGB is expanded to RGBA with an opaque alpha.
+    // Select a conversion path based on the channel layout
+    // RGBA can be used directly, RGB is expanded to RGBA with an opaque alpha
     let (bytes, stride) = match data.channels {
         4 => {
-            // Rowstride is bytes per row; hint payloads may include padding.
-            // If rowstride is invalid/zero, fall back to tightly packed RGBA (width * 4).
+            // Rowstride is bytes per row; hint payloads may include padding
+            // If rowstride is invalid/zero, fall back to tightly packed RGBA (width * 4)
             let min_stride = width.checked_mul(4)?;
             let stride = if data.rowstride > 0 {
                 data.rowstride as usize
             } else {
                 min_stride
             };
-            // Validate rowstride and buffer length before building the texture.
+            // Validate rowstride and buffer length before building the texture
             if stride < min_stride {
                 return None;
             }
@@ -198,17 +197,17 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Textu
             (gtk::glib::Bytes::from(&data.data), stride)
         }
         3 => {
-            // RGB payloads are valid per spec; expand to RGBA with alpha=255.
+            // RGB payloads are valid per spec; expand to RGBA with alpha=255
             let (expanded, stride) = expand_rgb_to_rgba(data)?;
             (gtk::glib::Bytes::from(&expanded), stride)
         }
         _ => {
-            // Other channel counts are not supported by the RGBA texture path.
+            // Other channel counts are not supported by the RGBA texture path
             return None;
         }
     };
 
-    // Build a GPU texture from the raw pixel bytes. MemoryFormat must match the byte layout.
+    // Build a GPU texture from the raw pixel bytes. MemoryFormat must match the byte layout
     Some(
         gdk::MemoryTexture::new(
             width_i32,
@@ -222,14 +221,14 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Textu
 }
 
 fn expand_rgb_to_rgba(data: &unixnotis_core::ImageData) -> Option<(Vec<u8>, usize)> {
-    // Expand RGB to RGBA while honoring per-row padding in the source buffer.
+    // Expand RGB to RGBA while honoring per-row padding in the source buffer
     let width = usize::try_from(data.width).ok()?;
     let height = usize::try_from(data.height).ok()?;
     if width == 0 || height == 0 {
         return None;
     }
 
-    // Source stride handles optional per-row padding for RGB input.
+    // Source stride handles optional per-row padding for RGB input
     let min_src_stride = width.checked_mul(3)?;
     let src_stride = if data.rowstride > 0 {
         data.rowstride as usize
@@ -244,11 +243,11 @@ fn expand_rgb_to_rgba(data: &unixnotis_core::ImageData) -> Option<(Vec<u8>, usiz
         return None;
     }
 
-    // Destination uses tightly packed RGBA rows.
+    // Destination uses tightly packed RGBA rows
     let dst_stride = width.checked_mul(4)?;
     let mut rgba = vec![0u8; dst_stride.checked_mul(height)?];
 
-    // Copy RGB per pixel and append opaque alpha.
+    // Copy RGB per pixel and append opaque alpha
     for y in 0..height {
         let src_row_start = y * src_stride;
         let dst_row_start = y * dst_stride;

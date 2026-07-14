@@ -1,4 +1,14 @@
-use super::{monitor_matches_output, parse_reserved};
+use std::time::{Duration, Instant};
+
+use super::{monitor_matches_output, parse_reserved, retry_start_time};
+
+#[test]
+fn retry_start_time_saturates_before_the_platform_clock_origin() {
+    let now = Instant::now();
+
+    assert_eq!(retry_start_time(now, Duration::MAX), now);
+    assert_eq!(retry_start_time(now, Duration::ZERO), now);
+}
 
 #[test]
 fn parse_reserved_array_order() {

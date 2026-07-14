@@ -3,7 +3,10 @@ use unixnotis_core::{
 };
 
 use super::super::shell::MediaShellConfig;
-use super::{card_height_for_shell, marquee_width_for_shell, media_content_width};
+use super::{
+    card_height_for_shell, marquee_width_for_shell, marquee_width_for_shell_player_count,
+    media_content_width,
+};
 
 fn shell_for(layout: MediaLayout) -> MediaShellConfig {
     let config = MediaConfig {
@@ -41,7 +44,7 @@ fn media_layout_height_presets_match_expected_profiles() {
 }
 
 #[test]
-fn marquee_width_never_drops_below_text_floor() {
+fn marquee_width_uses_absolute_floor_when_configured_floor_cannot_fit() {
     for layout in [
         MediaLayout::Carousel,
         MediaLayout::Inline,
@@ -50,17 +53,60 @@ fn marquee_width_never_drops_below_text_floor() {
         MediaLayout::Player,
     ] {
         let shell = shell_for(layout);
-        assert_eq!(
-            marquee_width_for_shell(&shell, 80),
-            shell.text_width_floor_px
-        );
+        let width = marquee_width_for_shell(&shell, 80);
+        assert!(width >= 48);
+        assert!(width < shell.text_width_floor_px);
     }
+    assert_eq!(
+        marquee_width_for_shell(&shell_for(MediaLayout::Carousel), 80),
+        48
+    );
 }
 
 #[test]
-fn media_content_width_reserves_panel_surface_chrome() {
-    assert_eq!(media_content_width(420), 384);
-    assert_eq!(media_content_width(20), 1);
+fn media_content_width_uses_the_panel_content_box_directly() {
+    assert_eq!(media_content_width(420), 420);
+    assert_eq!(media_content_width(20), 20);
+    assert_eq!(media_content_width(0), 1);
+}
+
+#[test]
+fn carousel_text_budget_includes_card_chrome_and_stays_inside_panel() {
+    let config = MediaConfig {
+        layout: MediaLayout::Carousel,
+        text_width_floor_px: 110,
+        ..MediaConfig::default()
+    };
+    let shell = MediaShellConfig::from_config(&config);
+    let panel_content_width = media_content_width(420);
+    let text_width = marquee_width_for_shell(&shell, 420);
+
+    // These values model the stock carousel's fixed horizontal allocations
+    let card_chrome_width = 22;
+    let art_and_gap_width = 54 + shell.content_spacing_px;
+    let controls_width = (38 * 3) + (shell.control_spacing_px * 2);
+    let controls_gap_width = shell.content_spacing_px;
+    let navigation_width = (24 * 2) + shell.navigation_spacing_px;
+    let navigation_gap_width = shell.navigation_spacing_px;
+    let required_width = card_chrome_width
+        + art_and_gap_width
+        + text_width
+        + controls_gap_width
+        + controls_width
+        + navigation_gap_width
+        + navigation_width;
+
+    assert_eq!(text_width, 138);
+    assert!(required_width <= panel_content_width);
+}
+
+#[test]
+fn single_player_carousel_reclaims_hidden_navigation_width() {
+    let shell = shell_for(MediaLayout::Carousel);
+    let multi_width = marquee_width_for_shell_player_count(&shell, 420, true);
+    let single_width = marquee_width_for_shell_player_count(&shell, 420, false);
+
+    assert_eq!(single_width - multi_width, 60);
 }
 
 #[test]
@@ -73,7 +119,7 @@ fn hidden_art_and_bottom_controls_free_title_width() {
     };
     let shell = MediaShellConfig::from_config(&config);
 
-    assert_eq!(marquee_width_for_shell(&shell, 420), 384);
+    assert_eq!(marquee_width_for_shell(&shell, 420), 398);
 }
 
 #[test]
@@ -85,7 +131,7 @@ fn larger_art_slot_reduces_marquee_budget() {
     };
     let shell = MediaShellConfig::from_config(&config);
 
-    assert_eq!(marquee_width_for_shell(&shell, 420), 282);
+    assert_eq!(marquee_width_for_shell(&shell, 420), 296);
 }
 
 #[test]

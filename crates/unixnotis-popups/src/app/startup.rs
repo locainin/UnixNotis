@@ -59,8 +59,7 @@ pub(super) fn init_tracing(config: &Config) {
             let filter = EnvFilter::try_new(configured.as_str()).unwrap_or_else(|err| {
                 // Bad config should fall back to a safe default instead of crashing
                 eprintln!(
-                    "unixnotis-popups: invalid log level '{}': {err}; falling back to info",
-                    configured
+                    "unixnotis-popups: invalid log level '{configured}': {err}; falling back to info"
                 );
                 EnvFilter::new("info")
             });

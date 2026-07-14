@@ -17,8 +17,8 @@ impl UiState {
         }
 
         self.panel.media_container.set_visible(true);
-        // Rebuilds should follow the real live panel width when GTK already knows it
-        let panel_width = super::panel::live_panel_width(&self.panel.root);
+        // The resolved request stays stable even when a child reports a wider natural allocation
+        let panel_width = super::panel::requested_panel_width(&self.panel.root);
         if self.media_layout_changed(config) {
             self.rebuild_media_widget(config, panel_width);
             return;

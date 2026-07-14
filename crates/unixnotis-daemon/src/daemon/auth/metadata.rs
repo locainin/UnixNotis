@@ -19,6 +19,9 @@ pub(in crate::daemon) fn trusted_control_file_metadata_is_safe(
     trusted_control_owner_uid_is_allowed(uid, expected_uid)
 }
 
-pub(in crate::daemon) fn trusted_control_owner_uid_is_allowed(uid: u32, expected_uid: u32) -> bool {
+pub(in crate::daemon) const fn trusted_control_owner_uid_is_allowed(
+    uid: u32,
+    expected_uid: u32,
+) -> bool {
     uid == expected_uid || uid == 0
 }

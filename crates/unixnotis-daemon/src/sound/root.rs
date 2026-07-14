@@ -37,7 +37,7 @@ pub struct SoundSettings {
 }
 
 #[derive(Debug, Clone)]
-pub(super) enum SoundSource {
+pub enum SoundSource {
     Name(String),
     File(PathBuf),
 }

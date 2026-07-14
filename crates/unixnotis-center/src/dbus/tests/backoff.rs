@@ -1,4 +1,17 @@
+use std::cell::Cell;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use super::*;
+
+#[test]
+fn atomic_jitter_updates_advance_from_distinct_states() {
+    let state = AtomicU64::new(7);
+    let first = advance_jitter_state(&state, 1);
+    let second = advance_jitter_state(&state, 1);
+
+    assert_ne!(first, second);
+    assert_eq!(state.load(Ordering::Relaxed), second);
+}
 
 #[test]
 fn backoff_resets_to_base() {
@@ -35,4 +48,37 @@ fn jitter_duration_is_bounded() {
     // Ensure jitter never exceeds the configured maximum.
     let jitter = jitter_duration(5);
     assert!(jitter <= Duration::from_millis(5));
+}
+
+#[test]
+fn retry_log_accepts_an_interval_larger_than_the_instant_clock_history() {
+    // Extreme configuration must not panic while preparing the first warning
+    let mut log = RetryLog::new(Duration::MAX);
+    let debugged = Cell::new(false);
+
+    log.log_with(|| {}, || debugged.set(true));
+
+    assert!(debugged.get());
+}
+
+#[test]
+fn retry_warning_start_time_saturates_when_the_interval_exceeds_clock_history() {
+    let now = Instant::now();
+
+    assert_eq!(instant_before_or_now(now, Duration::MAX), now);
+    assert_eq!(instant_before_or_now(now, Duration::ZERO), now);
+}
+
+#[test]
+fn retry_log_reset_makes_the_next_failure_visible_immediately() {
+    let mut log = RetryLog::new(Duration::from_mins(1));
+    let warnings = Cell::new(0usize);
+
+    log.log_with(|| warnings.set(warnings.get() + 1), || {});
+    log.log_with(|| warnings.set(warnings.get() + 1), || {});
+    assert_eq!(warnings.get(), 1);
+
+    log.reset();
+    log.log_with(|| warnings.set(warnings.get() + 1), || {});
+    assert_eq!(warnings.get(), 2);
 }

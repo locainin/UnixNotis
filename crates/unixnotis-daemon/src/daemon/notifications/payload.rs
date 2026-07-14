@@ -203,7 +203,7 @@ fn string_to_owned_value(value: &str) -> Option<OwnedValue> {
 fn parse_urgency_hint(value: &OwnedValue) -> Option<u32> {
     // Accept both byte and integer variants from mixed clients
     if let Ok(raw) = u8::try_from(value) {
-        return Some((raw as u32).min(2));
+        return Some(u32::from(raw).min(2));
     }
     if let Ok(raw) = u32::try_from(value) {
         return Some(raw.min(2));

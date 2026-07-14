@@ -36,7 +36,7 @@ enum UiProcessKind {
 }
 
 impl UiProcessKind {
-    fn label(self) -> &'static str {
+    const fn label(self) -> &'static str {
         match self {
             Self::Popups => "unixnotis-popups",
             Self::Center => "unixnotis-center",
@@ -109,9 +109,7 @@ fn child_config_env_path(config: &Path) -> PathBuf {
     }
 
     // Child processes may start from a different working dir later, so make the path stable now
-    std::env::current_dir()
-        .map(|cwd| cwd.join(config))
-        .unwrap_or_else(|_| config.to_path_buf())
+    std::env::current_dir().map_or_else(|_| config.to_path_buf(), |cwd| cwd.join(config))
 }
 
 #[derive(Debug)]
@@ -120,7 +118,7 @@ struct RestartBackoff {
 }
 
 impl RestartBackoff {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             current: Duration::ZERO,
         }
@@ -146,7 +144,7 @@ impl RestartBackoff {
     }
 }
 
-pub(super) fn spawn_popups_supervisor(
+pub fn spawn_popups_supervisor(
     args: Args,
     state: std::sync::Arc<DaemonState>,
     shutdown: watch::Receiver<bool>,
@@ -156,7 +154,7 @@ pub(super) fn spawn_popups_supervisor(
     })
 }
 
-pub(super) fn spawn_center_supervisor(
+pub fn spawn_center_supervisor(
     args: Args,
     state: std::sync::Arc<DaemonState>,
     shutdown: watch::Receiver<bool>,

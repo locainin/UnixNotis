@@ -16,6 +16,17 @@ use crate::ui::try_send_command;
 
 use super::state::NotificationRowWidgets;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum StackLayer {
+    Back,
+    Middle,
+    Foreground,
+}
+
+// Later GTK siblings paint above earlier siblings when card margins overlap
+pub(super) const STACK_LAYER_ORDER: [StackLayer; 3] =
+    [StackLayer::Back, StackLayer::Middle, StackLayer::Foreground];
+
 pub(in crate::ui::list) fn build_notification_row(
     command_tx: mpsc::Sender<UiCommand>,
 ) -> (gtk::Box, NotificationRowWidgets) {
@@ -154,14 +165,18 @@ pub(in crate::ui::list) fn build_notification_row(
     let stack_ghost_1 = build_stack_ghost(1);
     let stack_ghost_2 = build_stack_ghost(2);
 
-    // Ghost cards are part of the same row so stack depth updates in one bind pass
-    root.append(&card);
-    root.append(&stack_ghost_1);
-    root.append(&stack_ghost_2);
+    // The explicit plan makes paint order reviewable without starting GTK in unit tests
+    for layer in STACK_LAYER_ORDER {
+        match layer {
+            StackLayer::Back => root.append(&stack_ghost_2),
+            StackLayer::Middle => root.append(&stack_ghost_1),
+            StackLayer::Foreground => root.append(&card),
+        }
+    }
 
     let notify_id = Rc::new(Cell::new(0));
     // Close click always targets the latest id assigned to this row
-    let close_tx = command_tx.clone();
+    let close_tx = command_tx;
     let notify_id_clone = notify_id.clone();
     close_button.connect_clicked(move |_| {
         let id = notify_id_clone.get();

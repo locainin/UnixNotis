@@ -101,15 +101,14 @@ impl StatItem {
         let refresh_backoff = self.refresh_backoff.clone();
         glib::MainContext::default().spawn_local(async move {
             // Receive first so broken worker paths do not leave the card stuck in-flight
-            let output = match rx.recv().await {
-                Ok(output) => output,
-                Err(_) => {
-                    inflight.set(false);
-                    refresh_backoff
-                        .borrow_mut()
-                        .note_error(Instant::now(), base_interval);
-                    return;
-                }
+            let output = if let Ok(output) = rx.recv().await {
+                output
+            } else {
+                inflight.set(false);
+                refresh_backoff
+                    .borrow_mut()
+                    .note_error(Instant::now(), base_interval);
+                return;
             };
             inflight.set(false);
             let output = match output {
@@ -214,15 +213,14 @@ impl StatItem {
         let refresh_backoff = self.refresh_backoff.clone();
         glib::MainContext::default().spawn_local(async move {
             // Plugin output uses the same cache rules as plain commands
-            let output = match rx.recv().await {
-                Ok(output) => output,
-                Err(_) => {
-                    inflight.set(false);
-                    refresh_backoff
-                        .borrow_mut()
-                        .note_error(Instant::now(), base_interval);
-                    return;
-                }
+            let output = if let Ok(output) = rx.recv().await {
+                output
+            } else {
+                inflight.set(false);
+                refresh_backoff
+                    .borrow_mut()
+                    .note_error(Instant::now(), base_interval);
+                return;
             };
             inflight.set(false);
             let output = match output {
@@ -256,12 +254,12 @@ impl StatItem {
                     return;
                 }
             };
-            let changed = if last_value.borrow().as_deref() != Some(parsed.text.as_str()) {
+            let changed = if last_value.borrow().as_deref() == Some(parsed.text.as_str()) {
+                false
+            } else {
                 label.set_text(&parsed.text);
                 *last_value.borrow_mut() = Some(parsed.text);
                 true
-            } else {
-                false
             };
             refresh_backoff
                 .borrow_mut()

@@ -9,20 +9,25 @@ use rustix::fs::{mkdirat, openat2, renameat, unlinkat, AtFlags, Mode, OFlags, Re
 use std::fs;
 use std::io::{Read, Write};
 use std::os::fd::{AsFd, OwnedFd};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::pathing::normalize_relative_path;
 
 const BACKUP_PREFIX: &str = "Backup-";
+const MAX_BACKUP_SUFFIX_ATTEMPTS: usize = 10_000;
+const MAX_TEMP_FILE_ATTEMPTS: u8 = 16;
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
+pub fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
     let mut current_fd = if path.is_absolute() {
         // Start from the real filesystem root so each later segment is opened under a stable dir fd
         openat2(
             CWD,
             "/",
-            OFlags::DIRECTORY | OFlags::CLOEXEC,
+            directory_open_flags(),
             Mode::empty(),
             secure_anchor_resolve_flags(),
         )
@@ -32,7 +37,7 @@ pub(crate) fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
         openat2(
             CWD,
             ".",
-            OFlags::DIRECTORY | OFlags::CLOEXEC,
+            directory_open_flags(),
             Mode::empty(),
             secure_anchor_resolve_flags(),
         )
@@ -59,21 +64,29 @@ pub(crate) fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
     Ok(current_fd)
 }
 
-pub(crate) fn read_relative_file_secure(
+pub fn read_relative_file_secure(
     root_dir: &OwnedFd,
     relative_path: &Path,
+) -> Result<(Vec<u8>, u32)> {
+    read_relative_file_secure_bounded(root_dir, relative_path, u64::MAX)
+}
+
+pub fn read_relative_file_secure_bounded(
+    root_dir: &OwnedFd,
+    relative_path: &Path,
+    max_bytes: u64,
 ) -> Result<(Vec<u8>, u32)> {
     // Normalize first so every later open call sees one clean relative path shape
     let relative_path = normalize_relative_path(relative_path)?;
     let file_fd = openat2(
         root_dir,
         &relative_path,
-        OFlags::RDONLY | OFlags::CLOEXEC,
+        read_open_flags(),
         Mode::empty(),
         secure_resolve_flags(),
     )
     .with_context(|| format!("open file under secure root {}", relative_path.display()))?;
-    let mut file = fs::File::from(file_fd);
+    let file = fs::File::from(file_fd);
     let metadata = file
         .metadata()
         .with_context(|| format!("inspect file under secure root {}", relative_path.display()))?;
@@ -84,40 +97,69 @@ pub(crate) fn read_relative_file_secure(
             relative_path.display()
         ));
     }
+    if metadata.len() > max_bytes {
+        return Err(anyhow!(
+            "secure file read exceeds the {max_bytes} byte limit: {}",
+            relative_path.display()
+        ));
+    }
 
     let mut contents = Vec::new();
+    let reserve = usize::try_from(metadata.len()).context("file size does not fit in memory")?;
+    contents
+        .try_reserve_exact(reserve)
+        .context("reserve memory for secure file read")?;
     // Reads stay fully in-memory here because backup and rollback both reuse the original bytes
-    file.read_to_end(&mut contents)
+    file.take(max_bytes.saturating_add(1))
+        .read_to_end(&mut contents)
         .with_context(|| format!("read file under secure root {}", relative_path.display()))?;
+    if contents.len() as u64 > max_bytes {
+        return Err(anyhow!(
+            "secure file grew beyond the {max_bytes} byte limit while reading: {}",
+            relative_path.display()
+        ));
+    }
 
-    use std::os::unix::fs::PermissionsExt;
     Ok((contents, metadata.permissions().mode()))
 }
 
-pub(crate) fn write_relative_file_atomic_secure(
+pub fn write_relative_file_atomic_secure(
     root_dir: &OwnedFd,
     relative_path: &Path,
     contents: &[u8],
     mode: u32,
 ) -> Result<()> {
+    let published = publish_relative_file_atomic_secure(root_dir, relative_path, contents, mode)?;
+    published.sync_parent()
+}
+
+#[must_use = "the published file must have its parent directory synchronized"]
+pub struct PublishedRelativeFile {
+    parent_fd: OwnedFd,
+    relative_path: PathBuf,
+}
+
+impl PublishedRelativeFile {
+    pub fn sync_parent(self) -> Result<()> {
+        // The original parent descriptor keeps durability tied to the published directory
+        rustix::fs::fsync(&self.parent_fd)
+            .with_context(|| format!("flush secure parent for {}", self.relative_path.display()))
+    }
+}
+
+pub fn publish_relative_file_atomic_secure(
+    root_dir: &OwnedFd,
+    relative_path: &Path,
+    contents: &[u8],
+    mode: u32,
+) -> Result<PublishedRelativeFile> {
     // The secure parent walk happens first so the later temp file and rename stay beneath one root
     let relative_path = normalize_relative_path(relative_path)?;
     let (parent_fd, file_name) = open_or_create_parent_dir(root_dir, &relative_path)?;
 
     // Temp files stay in the final parent dir so the rename does not cross filesystems
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock moved backwards")
-        .as_nanos();
-    let temp_name = format!(".{}.{}.tmp", file_name, stamp);
-    let temp_fd = openat2(
-        &parent_fd,
-        temp_name.as_str(),
-        OFlags::WRONLY | OFlags::CLOEXEC | OFlags::CREATE | OFlags::EXCL,
-        mode_from_bits(mode),
-        secure_resolve_flags(),
-    )
-    .with_context(|| format!("create secure temp file for {}", relative_path.display()))?;
+    let (temp_name, temp_fd) = reserve_secure_temp_file(&parent_fd, &file_name, mode)
+        .with_context(|| format!("create secure temp file for {}", relative_path.display()))?;
     let mut temp_file = fs::File::from(temp_fd);
 
     let write_result = (|| -> Result<()> {
@@ -125,6 +167,10 @@ pub(crate) fn write_relative_file_atomic_secure(
         temp_file
             .write_all(contents)
             .with_context(|| format!("write secure temp file for {}", relative_path.display()))?;
+        // Exact descriptor permissions prevent the process umask from changing imported modes
+        temp_file
+            .set_permissions(fs::Permissions::from_mode(mode & 0o777))
+            .with_context(|| format!("set secure temp mode for {}", relative_path.display()))?;
         temp_file
             .sync_all()
             .with_context(|| format!("flush secure temp file for {}", relative_path.display()))?;
@@ -132,23 +178,63 @@ pub(crate) fn write_relative_file_atomic_secure(
     })();
 
     if let Err(err) = write_result {
+        drop(temp_file);
         // Failed temp writes should not leave junk beside the final target path
         let _ = unlinkat(&parent_fd, temp_name.as_str(), AtFlags::empty());
         return Err(err);
     }
+    drop(temp_file);
 
     // Rename is the only point where the new contents become visible at the target path
-    renameat(
+    if let Err(err) = renameat(
         &parent_fd,
         temp_name.as_str(),
         &parent_fd,
         file_name.as_str(),
-    )
-    .with_context(|| format!("replace secure target file {}", relative_path.display()))?;
-    Ok(())
+    ) {
+        // Failed publication must not retain configuration payloads in hidden temp files
+        let _ = unlinkat(&parent_fd, temp_name.as_str(), AtFlags::empty());
+        return Err(err)
+            .with_context(|| format!("replace secure target file {}", relative_path.display()));
+    }
+    // Publication is complete, so callers can record the mutation before durability work
+    Ok(PublishedRelativeFile {
+        parent_fd,
+        relative_path,
+    })
 }
 
-pub(crate) fn remove_relative_file_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
+fn reserve_secure_temp_file(
+    parent_fd: &OwnedFd,
+    file_name: &str,
+    mode: u32,
+) -> Result<(String, OwnedFd)> {
+    for attempt in 0..MAX_TEMP_FILE_ATTEMPTS {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("system clock is earlier than the Unix epoch")?
+            .as_nanos();
+        let serial = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let temp_name = format!(
+            ".{file_name}.{}.{stamp}.{serial}.{attempt}.tmp",
+            std::process::id()
+        );
+        match openat2(
+            parent_fd,
+            temp_name.as_str(),
+            temp_file_open_flags(),
+            mode_from_bits(mode),
+            secure_resolve_flags(),
+        ) {
+            Ok(fd) => return Ok((temp_name, fd)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(err.into()),
+        }
+    }
+    Err(anyhow!("unable to reserve an exclusive secure temp file"))
+}
+
+pub fn remove_relative_file_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
     // Deletes reuse the same secure parent lookup so a raced path cannot redirect the unlink
     let relative_path = normalize_relative_path(relative_path)?;
     let (parent_fd, file_name) = open_or_create_parent_dir(root_dir, &relative_path)?;
@@ -157,11 +243,12 @@ pub(crate) fn remove_relative_file_secure(root_dir: &OwnedFd, relative_path: &Pa
     Ok(())
 }
 
-pub(crate) fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, OwnedFd)> {
+pub fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, OwnedFd)> {
     // Backup names match the rest of the project, but creation stays pinned to the secure root fd
     let stamp = Local::now().format("%Y-%m-%d").to_string();
 
-    for suffix in 0usize.. {
+    // A finite cap prevents a corrupted directory from causing an endless retry loop
+    for suffix in 0..MAX_BACKUP_SUFFIX_ATTEMPTS {
         let dir_name = if suffix == 0 {
             format!("{BACKUP_PREFIX}{stamp}")
         } else {
@@ -174,31 +261,28 @@ pub(crate) fn create_backup_dir_secure(root_dir: &OwnedFd) -> Result<(PathBuf, O
                 let dir_fd = openat2(
                     root_dir,
                     dir_name.as_str(),
-                    OFlags::DIRECTORY | OFlags::CLOEXEC,
+                    directory_open_flags(),
                     Mode::empty(),
                     secure_resolve_flags(),
                 )
-                .with_context(|| format!("open secure backup directory {}", dir_name))?;
+                .with_context(|| format!("open secure backup directory {dir_name}"))?;
                 return Ok((PathBuf::from(dir_name), dir_fd));
             }
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err(err) if backup_name_is_taken(err.kind()) => {
                 // Existing backup names are skipped so repeated imports keep every earlier snapshot
                 continue;
             }
             Err(err) => {
                 return Err(err)
-                    .with_context(|| format!("create secure backup directory {}", dir_name))
+                    .with_context(|| format!("create secure backup directory {dir_name}"))
             }
         }
     }
 
-    unreachable!("backup directory generation should always return or fail")
+    Err(anyhow!("exhausted every available backup directory suffix"))
 }
 
-pub(crate) fn remove_empty_relative_dirs_secure(
-    root_dir: &OwnedFd,
-    relative_path: &Path,
-) -> Result<()> {
+pub fn remove_empty_relative_dirs_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
     // Cleanup walks upward from the deepest parent until one directory is still needed
     let relative_path = normalize_relative_path(relative_path)?;
     let mut current: Option<PathBuf> = relative_path.parent().map(Path::to_path_buf);
@@ -213,12 +297,7 @@ pub(crate) fn remove_empty_relative_dirs_secure(
                 // Keep walking upward until a parent still contains something else
                 current = path.parent().map(PathBuf::from);
             }
-            Err(err)
-                if matches!(
-                    err.kind(),
-                    std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
-                ) =>
-            {
+            Err(err) if empty_dir_cleanup_is_complete(err.kind()) => {
                 // Missing or non-empty directories mean cleanup is already done far enough
                 break;
             }
@@ -232,7 +311,7 @@ pub(crate) fn remove_empty_relative_dirs_secure(
     Ok(())
 }
 
-pub(crate) fn remove_relative_dir_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
+pub fn remove_relative_dir_secure(root_dir: &OwnedFd, relative_path: &Path) -> Result<()> {
     // Snapshot-root cleanup happens last, after every nested file has already been removed
     let relative_path = normalize_relative_path(relative_path)?;
     unlinkat(root_dir, &relative_path, AtFlags::REMOVEDIR)
@@ -260,7 +339,7 @@ fn open_or_create_parent_dir(
     let mut current_fd = openat2(
         root_dir,
         ".",
-        OFlags::DIRECTORY | OFlags::CLOEXEC,
+        directory_open_flags(),
         Mode::empty(),
         secure_resolve_flags(),
     )
@@ -292,13 +371,13 @@ fn open_or_create_child_dir<Fd: AsFd>(parent_fd: Fd, name: &std::ffi::OsStr) -> 
     match openat2(
         parent_fd.as_fd(),
         name,
-        OFlags::DIRECTORY | OFlags::CLOEXEC,
+        directory_open_flags(),
         Mode::empty(),
         secure_resolve_flags(),
     ) {
         // Existing directories are reopened under the already trusted parent dir fd
         Ok(fd) => Ok(fd),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        Err(err) if child_directory_is_missing(err.kind()) => {
             // Create the next directory segment under the already verified parent dir fd
             mkdirat(parent_fd.as_fd(), name, mode_from_bits(0o755)).with_context(|| {
                 format!("create secure directory {}", Path::new(name).display())
@@ -306,7 +385,7 @@ fn open_or_create_child_dir<Fd: AsFd>(parent_fd: Fd, name: &std::ffi::OsStr) -> 
             openat2(
                 parent_fd.as_fd(),
                 name,
-                OFlags::DIRECTORY | OFlags::CLOEXEC,
+                directory_open_flags(),
                 Mode::empty(),
                 secure_resolve_flags(),
             )
@@ -319,16 +398,54 @@ fn open_or_create_child_dir<Fd: AsFd>(parent_fd: Fd, name: &std::ffi::OsStr) -> 
     }
 }
 
-fn secure_resolve_flags() -> ResolveFlags {
+pub(super) const fn secure_resolve_flags() -> ResolveFlags {
     // BENEATH pins all later lookups under the starting dir fd while the symlink bans stop jumps
-    ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS
+    ResolveFlags::BENEATH
+        .union(ResolveFlags::NO_SYMLINKS)
+        .union(ResolveFlags::NO_MAGICLINKS)
 }
 
-fn secure_anchor_resolve_flags() -> ResolveFlags {
+pub(super) const fn secure_anchor_resolve_flags() -> ResolveFlags {
     // The anchor walk may start from / or . so it skips BENEATH and only bans link-like detours
-    ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS
+    ResolveFlags::NO_SYMLINKS.union(ResolveFlags::NO_MAGICLINKS)
 }
 
-fn mode_from_bits(mode: u32) -> Mode {
+// Only a name collision is safe to retry with the next backup suffix
+pub(super) fn backup_name_is_taken(kind: std::io::ErrorKind) -> bool {
+    kind == std::io::ErrorKind::AlreadyExists
+}
+
+// Missing and non-empty parents both mean upward cleanup has reached its safe limit
+pub(super) const fn empty_dir_cleanup_is_complete(kind: std::io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+    )
+}
+
+// Directory creation is allowed only when the lookup proved the segment is absent
+pub(super) fn child_directory_is_missing(kind: std::io::ErrorKind) -> bool {
+    kind == std::io::ErrorKind::NotFound
+}
+
+pub(super) const fn directory_open_flags() -> OFlags {
+    // Directory handles must never leak through a later process launch
+    OFlags::DIRECTORY.union(OFlags::CLOEXEC)
+}
+
+pub(super) const fn read_open_flags() -> OFlags {
+    // Secure reads need no write capability and must close across exec
+    OFlags::RDONLY.union(OFlags::CLOEXEC)
+}
+
+pub(super) const fn temp_file_open_flags() -> OFlags {
+    // Exclusive creation prevents a stale or attacker-planted temp file from being reused
+    OFlags::WRONLY
+        .union(OFlags::CLOEXEC)
+        .union(OFlags::CREATE)
+        .union(OFlags::EXCL)
+}
+
+const fn mode_from_bits(mode: u32) -> Mode {
     Mode::from_raw_mode(mode)
 }

@@ -19,7 +19,7 @@ use crate::paths::InstallPaths;
 use crate::terminal::TerminalGuard;
 use crate::ui;
 
-pub(crate) fn start_action(
+pub fn start_action(
     app: &mut App,
     terminal_guard: &mut TerminalGuard,
     ui_tx: &mpsc::SyncSender<UiMessage>,
@@ -126,7 +126,7 @@ fn run_action_worker(
     let _ = ui_tx.send(UiMessage::Worker(WorkerEvent::Finished));
 }
 
-pub(crate) fn apply_worker_event(app: &mut App, event: WorkerEvent) {
+pub fn apply_worker_event(app: &mut App, event: WorkerEvent) {
     match event {
         WorkerEvent::StepStarted(index) => {
             // Missing indices are ignored because UI state may have reset after worker start
@@ -146,7 +146,7 @@ pub(crate) fn apply_worker_event(app: &mut App, event: WorkerEvent) {
                 step.status = StepStatus::Failed;
             }
             app.last_error = Some(err.clone());
-            append_log(app, format!("Error: {}", err));
+            append_log(app, format!("Error: {err}"));
             app.progress_state = ProgressState::Failed;
             app.progress_ready_at = Some(std::time::Instant::now() + Duration::from_millis(400));
         }
@@ -179,7 +179,7 @@ fn append_log(app: &mut App, line: String) {
     }
 }
 
-pub(crate) fn reset_to_menu(app: &mut App) {
+pub fn reset_to_menu(app: &mut App) {
     // Return every transient menu and progress field to the welcome state
     app.screen = Screen::Welcome;
     app.last_error = None;
@@ -196,7 +196,7 @@ pub(crate) fn reset_to_menu(app: &mut App) {
     app.refresh();
 }
 
-pub(crate) fn prepare_build_accel_prompt(app: &mut App) {
+pub fn prepare_build_accel_prompt(app: &mut App) {
     // Snapshot detection so the prompt remains stable while the user decides
     let detection = match InstallPaths::discover_with_service_manager(app.service_manager) {
         Ok(paths) => detect_build_accel(&paths.repo_root),
@@ -229,7 +229,7 @@ fn apply_build_accel_setup(app: &mut App) {
     state.detection = detect_build_accel(&paths.repo_root);
 }
 
-pub(crate) fn handle_build_accel_enter(app: &mut App) {
+pub fn handle_build_accel_enter(app: &mut App) {
     match app.build_accel_menu_mode() {
         crate::app::BuildAccelMenuMode::ReturnOnly => {
             // Completed prompt returns directly to the main menu

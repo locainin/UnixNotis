@@ -16,10 +16,10 @@ fn duplicate_selector_warns_inside_same_at_rule_context() {
 
 #[test]
 fn duplicate_selector_in_different_at_rule_contexts_stays_quiet() {
-    let css = r#"
+    let css = r"
         @media (min-width: 1px) { .a { color: red; } }
         @media (min-width: 2px) { .a { color: blue; } }
-    "#;
+    ";
 
     let warnings = lint_css_contents(css);
 
@@ -30,7 +30,7 @@ fn duplicate_selector_in_different_at_rule_contexts_stays_quiet() {
 
 #[test]
 fn duplicate_property_suppresses_identical_value_and_resolved_modern_fallback() {
-    let css = r#"
+    let css = r"
         :root { --wide: 144px; }
         .unixnotis-toggle {
             color: red;
@@ -38,7 +38,7 @@ fn duplicate_property_suppresses_identical_value_and_resolved_modern_fallback() 
             min-width: 120px;
             min-width: var(--wide);
         }
-    "#;
+    ";
     let custom_properties = collect_custom_property_scopes(css);
 
     let warnings = lint_css_contents_with_properties(css, &custom_properties);
@@ -48,12 +48,12 @@ fn duplicate_property_suppresses_identical_value_and_resolved_modern_fallback() 
 
 #[test]
 fn duplicate_property_warns_when_modern_width_fallback_cannot_resolve() {
-    let css = r#"
+    let css = r"
         .unixnotis-toggle {
             min-width: 120px;
             min-width: var(--missing-width);
         }
-    "#;
+    ";
     let custom_properties = collect_custom_property_scopes(css);
 
     let warnings = lint_css_contents_with_properties(css, &custom_properties);
@@ -68,11 +68,11 @@ fn duplicate_property_warns_when_modern_width_fallback_cannot_resolve() {
 
 #[test]
 fn width_values_warn_for_percentage_non_px_and_unresolved_compare_math() {
-    let css = r#"
+    let css = r"
         .unixnotis-panel { min-width: 80%; }
         .unixnotis-toggle { min-width: 12rem; }
         .unixnotis-stat-card { min-width: max(10px, var(--missing)); }
-    "#;
+    ";
 
     let messages = lint_css_contents(css)
         .into_iter()

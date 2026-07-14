@@ -14,12 +14,12 @@ use super::modes::sanitize_payload_mode;
 use super::{BundleArchive, BundleFile};
 
 pub(super) const MAX_PRESET_ARCHIVE_ENTRIES: usize = 2_048;
-pub(super) const MAX_PRESET_PAYLOAD_FILES: usize = 512;
+pub(in crate::preset) const MAX_PRESET_PAYLOAD_FILES: usize = 512;
 pub(super) const MAX_PRESET_MANIFEST_BYTES: u64 = 1_048_576;
-pub(super) const MAX_PRESET_FILE_BYTES: u64 = 16_777_216;
-pub(super) const MAX_PRESET_TOTAL_PAYLOAD_BYTES: u64 = 67_108_864;
+pub(in crate::preset) const MAX_PRESET_FILE_BYTES: u64 = 16_777_216;
+pub(in crate::preset) const MAX_PRESET_TOTAL_PAYLOAD_BYTES: u64 = 67_108_864;
 
-pub(crate) fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
+pub fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
     // Import and inspect use the same reader so validation stays consistent
     let input = File::open(bundle_path)
         .with_context(|| format!("open preset bundle {}", bundle_path.display()))?;
@@ -37,8 +37,7 @@ pub(crate) fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
         entry_count += 1;
         if entry_count > MAX_PRESET_ARCHIVE_ENTRIES {
             return Err(anyhow!(
-                "preset bundle contains too many archive entries: max {}",
-                MAX_PRESET_ARCHIVE_ENTRIES
+                "preset bundle contains too many archive entries: max {MAX_PRESET_ARCHIVE_ENTRIES}"
             ));
         }
 
@@ -86,8 +85,7 @@ pub(crate) fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
         payload_count += 1;
         if payload_count > MAX_PRESET_PAYLOAD_FILES {
             return Err(anyhow!(
-                "preset bundle contains too many payload files: max {}",
-                MAX_PRESET_PAYLOAD_FILES
+                "preset bundle contains too many payload files: max {MAX_PRESET_PAYLOAD_FILES}"
             ));
         }
         validate_entry_size(
@@ -154,9 +152,7 @@ pub(crate) fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
             .map(|path| format_relative_path(path))
             .collect::<BTreeSet<_>>();
         return Err(anyhow!(
-            "preset manifest file list does not match archive payload\nexpected: {:?}\nactual: {:?}",
-            expected,
-            actual
+            "preset manifest file list does not match archive payload\nexpected: {expected:?}\nactual: {actual:?}"
         ));
     }
 
@@ -185,9 +181,7 @@ pub(super) fn checked_payload_total(current: u64, next: u64) -> Result<u64> {
         .ok_or_else(|| anyhow!("preset bundle payload size overflow"))?;
     if total > MAX_PRESET_TOTAL_PAYLOAD_BYTES {
         return Err(anyhow!(
-            "preset bundle payload is too large: {} bytes, max {} bytes",
-            total,
-            MAX_PRESET_TOTAL_PAYLOAD_BYTES
+            "preset bundle payload is too large: {total} bytes, max {MAX_PRESET_TOTAL_PAYLOAD_BYTES} bytes"
         ));
     }
 
@@ -197,8 +191,7 @@ pub(super) fn checked_payload_total(current: u64, next: u64) -> Result<u64> {
 fn validate_manifest_budget(manifest: &super::super::manifest::PresetManifest) -> Result<()> {
     if manifest.files.len() > MAX_PRESET_PAYLOAD_FILES {
         return Err(anyhow!(
-            "preset manifest lists too many payload files: max {}",
-            MAX_PRESET_PAYLOAD_FILES
+            "preset manifest lists too many payload files: max {MAX_PRESET_PAYLOAD_FILES}"
         ));
     }
 
@@ -219,9 +212,7 @@ fn validate_manifest_budget(manifest: &super::super::manifest::PresetManifest) -
 
     if total > MAX_PRESET_TOTAL_PAYLOAD_BYTES {
         return Err(anyhow!(
-            "preset manifest payload is too large: {} bytes, max {} bytes",
-            total,
-            MAX_PRESET_TOTAL_PAYLOAD_BYTES
+            "preset manifest payload is too large: {total} bytes, max {MAX_PRESET_TOTAL_PAYLOAD_BYTES} bytes"
         ));
     }
 

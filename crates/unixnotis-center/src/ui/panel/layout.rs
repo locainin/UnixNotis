@@ -16,14 +16,14 @@ const PANEL_WIDTH_MONITOR_RATIO_CAP: f32 = 0.32;
 // Width floor keeps controls readable when monitor geometry is very small
 const PANEL_WIDTH_MIN: i32 = PANEL_RUNTIME_WIDTH_MIN;
 
-pub fn live_panel_width(root: &gtk::Box) -> i32 {
-    // Allocated width is the real live size once GTK has laid the panel out
-    let allocated = root.allocated_width();
-    if allocated > 0 {
-        return allocated;
-    }
-    // Requested width is only a fallback for early startup and cold rebuild paths
-    root.width_request().max(1)
+pub fn requested_panel_width(root: &gtk::Box) -> i32 {
+    // Config application owns this request, so child allocations must never become width input
+    // Reading an expanded allocation here creates a feedback loop on every media rebuild
+    normalize_panel_width_request(root.width_request())
+}
+
+fn normalize_panel_width_request(width_request: i32) -> i32 {
+    width_request.max(1)
 }
 
 pub(super) fn resolve_panel_size(
@@ -117,7 +117,7 @@ pub fn apply_panel_config(panel: &PanelWidgets, config: &Config, reserved: Optio
     // margins, so only the outer shell receives an exact width request
 }
 
-pub(super) fn map_keyboard_mode(mode: PanelKeyboardInteractivity) -> KeyboardMode {
+pub(super) const fn map_keyboard_mode(mode: PanelKeyboardInteractivity) -> KeyboardMode {
     match mode {
         PanelKeyboardInteractivity::None => KeyboardMode::None,
         PanelKeyboardInteractivity::OnDemand => KeyboardMode::OnDemand,
@@ -153,8 +153,7 @@ fn resolve_panel_height(
         // Pixel override is still bounded by the current monitor work area
         return Some(
             usable_height
-                .map(|usable| height_override.min(usable))
-                .unwrap_or(height_override)
+                .map_or(height_override, |usable| height_override.min(usable))
                 .max(1),
         );
     }

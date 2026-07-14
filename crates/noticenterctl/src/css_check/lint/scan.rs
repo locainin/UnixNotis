@@ -37,8 +37,7 @@ pub(super) fn lint_css_contents_with_properties(
                         line: Some(lint_line),
                         column: Some(lint_column),
                         message: format!(
-                            "duplicate @define-color '{}' (later definition overrides earlier)",
-                            name
+                            "duplicate @define-color '{name}' (later definition overrides earlier)"
                         ),
                     });
                 }
@@ -126,8 +125,7 @@ fn lint_css_block(
                     line: Some(lint_line),
                     column: Some(lint_column),
                     message: format!(
-                        "duplicate selector '{}'{} (later rules override earlier)",
-                        selector_part, context_note
+                        "duplicate selector '{selector_part}'{context_note} (later rules override earlier)"
                     ),
                 });
             }
@@ -175,14 +173,13 @@ fn lint_css_properties(
                     line: Some(lint_line),
                     column: Some(lint_column),
                     message: format!(
-                        "duplicate property '{}' in selector '{}'{} (later value overrides earlier)",
-                        prop, selector, context_note
+                        "duplicate property '{prop}' in selector '{selector}'{context_note} (later value overrides earlier)"
                     ),
                 });
             }
         }
         // The later declaration is what GTK keeps, so the duplicate check needs the same rule
-        seen.insert(prop.to_string(), value.clone());
+        seen.insert(prop.clone(), value.clone());
 
         if let Some(message) =
             web_length_value_warning(&prop, &value, selector, context, custom_properties)
@@ -208,8 +205,7 @@ fn selector_part_locations(selector: &str) -> Vec<(String, usize)> {
 
         let offset = selector[search_start..]
             .find(raw_part.as_str())
-            .map(|index| search_start + index)
-            .unwrap_or(search_start);
+            .map_or(search_start, |index| search_start + index);
         // Search resumes after the current match so repeated selectors still get the right offset
         search_start = offset + raw_part.len();
         parts.push((normalized, offset));

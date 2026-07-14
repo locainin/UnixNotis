@@ -46,7 +46,7 @@ impl StatGrid {
         Some(Self { root, items })
     }
 
-    pub fn root(&self) -> &gtk::FlowBox {
+    pub const fn root(&self) -> &gtk::FlowBox {
         &self.root
     }
 
@@ -78,8 +78,7 @@ impl StatGrid {
 
     pub fn is_due(&self, now: std::time::Instant) -> bool {
         self.next_refresh_in(now)
-            .map(|delay| delay.is_zero())
-            .unwrap_or(false)
+            .is_some_and(|delay| delay.is_zero())
     }
 }
 

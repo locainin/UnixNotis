@@ -16,11 +16,11 @@ mod signal_burst;
 mod state;
 
 pub use bus_names::{log_name_reply, request_control_name, request_well_known_name};
-pub(crate) use control::spawn_inhibitor_owner_watch;
+pub use control::spawn_inhibitor_owner_watch;
 pub use control::ControlServer;
-pub(crate) use errors::to_fdo_error;
+pub use errors::to_fdo_error;
 pub use notifications::NotificationServer;
 pub(in crate::daemon) use signal_burst::NotificationSignalMode;
 pub use state::DaemonState;
 
-pub(crate) const NOTIFICATIONS_OBJECT_PATH: &str = "/org/freedesktop/Notifications";
+pub const NOTIFICATIONS_OBJECT_PATH: &str = "/org/freedesktop/Notifications";

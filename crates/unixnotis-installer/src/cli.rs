@@ -1,7 +1,7 @@
 //! Command-line options for installer startup
 //!
 //! This module is intentionally small and side-effect-light:
-//! it only turns process arguments into an installer action.
+//! it only turns process arguments into an installer action
 //! The actual installer startup code can then decide whether to
 //! print help or continue into the TUI/install flow
 
@@ -18,7 +18,7 @@ use crate::paths::ServiceManagerChoice;
 /// running. Actions that short-circuit startup, such as `--help`, belong in
 /// `CliAction` instead
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct CliArgs {
+pub struct CliArgs {
     /// Optional service-manager override selected by the user
     ///
     /// When this is `None`, the path/service discovery layer decides which
@@ -31,7 +31,7 @@ pub(crate) struct CliArgs {
 /// Parsing can either produce arguments for a normal installer run or a
 /// short-circuit action such as help output
 #[derive(Debug)]
-pub(crate) enum CliAction {
+pub enum CliAction {
     /// Continue into installer startup using the parsed options
     Run(CliArgs),
 
@@ -47,7 +47,7 @@ pub(crate) enum CliAction {
 /// This is the production entry point. Tests use `parse_args` directly so they
 /// can provide exact argument vectors without depending on the test binary's
 /// own command-line arguments
-pub(crate) fn parse_env_args() -> Result<CliAction> {
+pub fn parse_env_args() -> Result<CliAction> {
     // Skip argv[0], which is the executable path/name and not an installer
     // option
     parse_args(env::args_os().skip(1))
@@ -56,11 +56,11 @@ pub(crate) fn parse_env_args() -> Result<CliAction> {
 /// Return the installer usage text
 ///
 /// Keep this as a plain static string so help output is cheap and cannot fail
-pub(crate) fn usage() -> &'static str {
+pub const fn usage() -> &'static str {
     "Usage: unixnotis-installer [--service-manager systemd|dinit|runit|s6] [-h|--help] [-V|--version]\n"
 }
 
-pub(crate) fn version() -> &'static str {
+pub const fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 

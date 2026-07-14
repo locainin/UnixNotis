@@ -88,14 +88,14 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
             log_line(ctx, format!("Stopping {} (pid {})", daemon.name, pid));
             // If the process is already gone, the stop goal is satisfied
             if !pid_alive(pid)? {
-                log_line(ctx, format!("Process {} already stopped.", pid));
+                log_line(ctx, format!("Process {pid} already stopped."));
                 return Ok(());
             }
             // Re-check the command name to avoid signaling a recycled PID
             if !pid_matches_comm(pid, &daemon.name)? {
                 // Re-check liveness to treat a natural exit as success
                 if !pid_alive(pid)? {
-                    log_line(ctx, format!("Process {} already stopped.", pid));
+                    log_line(ctx, format!("Process {pid} already stopped."));
                     return Ok(());
                 }
                 return Err(anyhow!(
@@ -119,16 +119,14 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
 
     if let Some(comm) = owner_comm {
         let message = format!(
-            "Detected owner '{}' is not managed by a known unit; stop it manually before install.",
-            comm
+            "Detected owner '{comm}' is not managed by a known unit; stop it manually before install."
         );
         log_line(ctx, message.clone());
         return Err(anyhow!(message));
     }
     if let Some(pid) = owner_pid {
         let message = format!(
-            "Detected owner pid {} is not managed by a known unit; stop it manually before install.",
-            pid
+            "Detected owner pid {pid} is not managed by a known unit; stop it manually before install."
         );
         log_line(ctx, message.clone());
         return Err(anyhow!(message));
@@ -146,21 +144,19 @@ fn wait_for_exit(ctx: &mut ActionContext, pid: u32, expected_comm: &str) -> Resu
 
     while start.elapsed() < timeout {
         if !pid_alive(pid)? {
-            log_line(ctx, format!("Process {} stopped.", pid));
+            log_line(ctx, format!("Process {pid} stopped."));
             return Ok(());
         }
         // PID reuse protection verifies the command name during the wait loop
         if !pid_matches_comm(pid, expected_comm)? {
             return Err(anyhow!(
-                "pid {} no longer matches expected daemon {}; aborting wait",
-                pid,
-                expected_comm
+                "pid {pid} no longer matches expected daemon {expected_comm}; aborting wait"
             ));
         }
         thread::sleep(poll);
     }
 
-    Err(anyhow!("process {} did not exit after 5s", pid))
+    Err(anyhow!("process {pid} did not exit after 5s"))
 }
 
 fn pid_alive(pid: u32) -> Result<bool> {

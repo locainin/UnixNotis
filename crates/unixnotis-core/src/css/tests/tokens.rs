@@ -1,3 +1,8 @@
+#![allow(
+    clippy::float_cmp,
+    reason = "theme-token resolution returns exact configured and clamped constants"
+)]
+
 use super::{
     build_legacy_theme_color_overrides, build_modern_theme_custom_properties,
     theme_card_style_values,
@@ -45,6 +50,12 @@ fn modern_theme_custom_properties_stay_additive() {
     assert!(overrides.contains("--unixnotis-card-radius: 12px;"));
     assert!(overrides.contains("--unixnotis-panel-card-padding-y: 10px;"));
     assert!(overrides.contains("--unixnotis-popup-reveal-duration: 200ms;"));
+    assert!(overrides.contains("--unixnotis-media-card-radius: 18px;"));
+    assert!(overrides.contains("--unixnotis-media-title-font-size: 13px;"));
+    assert!(overrides.contains("--unixnotis-ui-font-family: \"Manrope\", \"SF Pro Text\","));
+    assert!(
+        overrides.contains("--unixnotis-monospace-font-family: \"CaskaydiaCove Nerd Font Mono\",")
+    );
     assert!(overrides.contains("--unixnotis-accent-color: @unixnotis-accent;"));
     assert!(overrides.contains("--unixnotis-surface-alpha: 0.88;"));
     assert!(overrides.contains("--unixnotis-card-alpha: 0.94;"));

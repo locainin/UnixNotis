@@ -28,7 +28,6 @@ panel_css = "themes/custom/panel.css"
 popup_css = "themes/custom/popup.css"
 widgets_css = "themes/custom/widgets.css"
 media_css = "themes/custom/media.css"
-overrides_css = "themes/custom/overrides.css"
 "#;
     fs::write(backup_dir.join("config.toml"), config_toml).expect("write config");
     fs::write(backup_dir.join("base.css"), "base").expect("write base");
@@ -36,7 +35,6 @@ overrides_css = "themes/custom/overrides.css"
     fs::write(backup_dir.join("popup.css"), "popup").expect("write popup");
     fs::write(backup_dir.join("widgets.css"), "widgets").expect("write widgets");
     fs::write(backup_dir.join("media.css"), "media").expect("write media");
-    fs::write(backup_dir.join("overrides.css"), "overrides").expect("write overrides");
 
     // Restore path selection is driven through ActionContext just like runtime
     let detection = Detection {
@@ -51,7 +49,7 @@ overrides_css = "themes/custom/overrides.css"
         install_state: None,
         log_tx: tx,
         action_mode: ActionMode::Install,
-        restore_backup: Some(backup_dir.clone()),
+        restore_backup: Some(backup_dir),
         service_reload_required: Arc::new(AtomicBool::new(false)),
     };
 
@@ -65,16 +63,11 @@ overrides_css = "themes/custom/overrides.css"
     let custom_popup = config_dir.join("themes").join("custom").join("popup.css");
     let custom_widgets = config_dir.join("themes").join("custom").join("widgets.css");
     let custom_media = config_dir.join("themes").join("custom").join("media.css");
-    let custom_overrides = config_dir
-        .join("themes")
-        .join("custom")
-        .join("overrides.css");
     assert!(custom_base.exists());
     assert!(custom_panel.exists());
     assert!(custom_popup.exists());
     assert!(custom_widgets.exists());
     assert!(custom_media.exists());
-    assert!(custom_overrides.exists());
 
     let _ = fs::remove_dir_all(&root);
 }
@@ -108,7 +101,7 @@ fn restore_config_skips_absolute_theme_targets() {
     let _ = fs::remove_file(&escaped_target);
 
     let config_toml = format!(
-        "[theme]\nbase_css = \"{}\"\npanel_css = \"panel.css\"\npopup_css = \"popup.css\"\nwidgets_css = \"widgets.css\"\nmedia_css = \"media.css\"\noverrides_css = \"overrides.css\"\n",
+        "[theme]\nbase_css = \"{}\"\npanel_css = \"panel.css\"\npopup_css = \"popup.css\"\nwidgets_css = \"widgets.css\"\nmedia_css = \"media.css\"\n",
         escaped_target.display()
     );
     fs::write(backup_dir.join("config.toml"), config_toml).expect("write config");
@@ -117,7 +110,6 @@ fn restore_config_skips_absolute_theme_targets() {
     fs::write(backup_dir.join("popup.css"), "popup").expect("write popup");
     fs::write(backup_dir.join("widgets.css"), "widgets").expect("write widgets");
     fs::write(backup_dir.join("media.css"), "media").expect("write media");
-    fs::write(backup_dir.join("overrides.css"), "overrides").expect("write overrides");
 
     let detection = Detection {
         owner: None,
@@ -131,7 +123,7 @@ fn restore_config_skips_absolute_theme_targets() {
         install_state: None,
         log_tx: tx,
         action_mode: ActionMode::Install,
-        restore_backup: Some(backup_dir.clone()),
+        restore_backup: Some(backup_dir),
         service_reload_required: Arc::new(AtomicBool::new(false)),
     };
 
@@ -146,7 +138,6 @@ fn restore_config_skips_absolute_theme_targets() {
     assert!(config_dir.join("popup.css").exists());
     assert!(config_dir.join("widgets.css").exists());
     assert!(config_dir.join("media.css").exists());
-    assert!(config_dir.join("overrides.css").exists());
 
     let _ = fs::remove_file(&escaped_target);
     let _ = fs::remove_dir_all(&root);

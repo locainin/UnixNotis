@@ -3,10 +3,10 @@
 mod args;
 mod command;
 
-pub(crate) use args::{Args, DndState, PresetCommand};
+pub use args::{Args, DndState, PresetCommand};
 #[cfg(test)]
-pub(crate) use args::{DebugLevelArg, InhibitScopeArg};
-pub(crate) use command::Command;
+pub use args::{DebugLevelArg, InhibitScopeArg};
+pub use command::Command;
 
 #[cfg(test)]
 mod tests;

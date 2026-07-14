@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context, Result};
 
 use crate::paths::format_with_home;
 
-pub(in crate::actions::install::service) fn write_service_symlink(
+pub(in crate::actions::install) fn write_service_symlink(
     path: &Path,
     target: &Path,
 ) -> Result<bool> {
@@ -24,10 +24,9 @@ pub(in crate::actions::install::service) fn write_service_symlink(
             format_with_home(&existing),
             format_with_home(target)
         ));
-    } else {
-        // Existing non-links are left alone so enablement links cannot overwrite user files
-        reject_existing_non_symlink(path)?;
     }
+    // Existing non-links are left alone so enablement links cannot overwrite user files
+    reject_existing_non_symlink(path)?;
 
     // Create the link exactly as the backend requested, often with a relative target
     std::os::unix::fs::symlink(target, path)
@@ -35,7 +34,7 @@ pub(in crate::actions::install::service) fn write_service_symlink(
     Ok(true)
 }
 
-pub(in crate::actions::install::service) fn remove_service_symlink(
+pub(in crate::actions::install) fn remove_service_symlink(
     path: &Path,
     expected_target: &Path,
 ) -> Result<()> {
