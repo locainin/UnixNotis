@@ -1,6 +1,6 @@
 # UnixNotis
 
-![Example output](assets/images/ExampleDisplay.png)
+![UnixNotis default control center](assets/images/DefaultConfig.png)
 
 UnixNotis is a Wayland-first notification system with a D-Bus daemon, a control-center
 panel, toast popups, shareable presets, and installer-managed startup.
