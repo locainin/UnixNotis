@@ -29,7 +29,6 @@ fn theme_paths(root: &std::path::Path) -> ThemePaths {
         panel_css: root.join("panel.css"),
         widgets_css: root.join("widgets.css"),
         media_css: root.join("media.css"),
-        overrides_css: root.join("overrides.css"),
     }
 }
 

@@ -212,7 +212,6 @@ fn collect_theme_path_warnings(config: &Config) -> Vec<String> {
         ("popup_css", &theme_paths.popup_css),
         ("widgets_css", &theme_paths.widgets_css),
         ("media_css", &theme_paths.media_css),
-        ("overrides_css", &theme_paths.overrides_css),
     ] {
         let normalized_path = normalize_lexical_path(path);
         if !normalized_path.starts_with(&normalized_root) {

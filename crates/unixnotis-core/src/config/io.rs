@@ -13,8 +13,8 @@ use tracing::warn;
 use crate::filesystem::{make_file_executable, write_file_atomic, write_file_if_missing};
 use crate::util::expand_tilde;
 use crate::{
-    DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_OVERRIDES_CSS, DEFAULT_PANEL_CSS,
-    DEFAULT_POPUP_CSS, DEFAULT_SCRIPTS, DEFAULT_WIDGETS_CSS,
+    DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_SCRIPTS,
+    DEFAULT_WIDGETS_CSS,
 };
 
 use super::runtime::{apply_brightness_backend, apply_volume_backend, sanitize_config};
@@ -32,7 +32,6 @@ pub struct ThemePaths {
     pub panel_css: PathBuf,
     pub widgets_css: PathBuf,
     pub media_css: PathBuf,
-    pub overrides_css: PathBuf,
 }
 
 #[derive(Debug, Error)]
@@ -125,7 +124,6 @@ impl Config {
             panel_css: Self::resolve_path(base, &self.theme.panel_css),
             widgets_css: Self::resolve_path(base, &self.theme.widgets_css),
             media_css: Self::resolve_path(base, &self.theme.media_css),
-            overrides_css: Self::resolve_path(base, &self.theme.overrides_css),
         })
     }
 
@@ -156,7 +154,6 @@ impl Config {
         write_if_missing(&theme_paths.popup_css, DEFAULT_POPUP_CSS)?;
         write_if_missing(&theme_paths.widgets_css, DEFAULT_WIDGETS_CSS)?;
         write_if_missing(&theme_paths.media_css, DEFAULT_MEDIA_CSS)?;
-        write_if_missing(&theme_paths.overrides_css, DEFAULT_OVERRIDES_CSS)?;
 
         if legacy_contents.is_some() && legacy.exists() {
             let backup = legacy.with_extension("css.bak");

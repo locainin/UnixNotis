@@ -37,7 +37,6 @@ fn theme_paths(root: &str) -> ThemePaths {
         panel_css: base.join("panel.css"),
         widgets_css: base.join("widgets.css"),
         media_css: base.join("media.css"),
-        overrides_css: base.join("overrides.css"),
     }
 }
 
@@ -52,7 +51,6 @@ fn panel_manager_registers_base_panel_widgets_and_media_priorities() {
         widgets: Some(RecordingProvider::new("widgets", Rc::clone(&calls))),
         media: Some(RecordingProvider::new("media", Rc::clone(&calls))),
         popup: None,
-        overrides: RecordingProvider::new("overrides", Rc::clone(&calls)),
     };
 
     let registrations = manager.apply_to_display();
@@ -77,10 +75,6 @@ fn panel_manager_registers_base_panel_widgets_and_media_priorities() {
                 layer: CssProviderLayer::Media,
                 priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 3,
             },
-            CssProviderRegistration {
-                layer: CssProviderLayer::Overrides,
-                priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 4,
-            },
         ]
     );
 }
@@ -96,7 +90,6 @@ fn popup_manager_registers_base_and_popup_at_popup_priority() {
         widgets: None,
         media: None,
         popup: Some(RecordingProvider::new("popup", Rc::clone(&calls))),
-        overrides: RecordingProvider::new("overrides", Rc::clone(&calls)),
     };
 
     let registrations = manager.apply_to_display();
@@ -112,10 +105,6 @@ fn popup_manager_registers_base_and_popup_at_popup_priority() {
                 layer: CssProviderLayer::Popup,
                 priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
             },
-            CssProviderRegistration {
-                layer: CssProviderLayer::Overrides,
-                priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 4,
-            },
         ]
     );
 }
@@ -127,7 +116,7 @@ fn public_panel_manager_reports_every_registered_provider() {
         ThemeConfig::default(),
     );
 
-    assert_eq!(manager.apply_to_display(), 5);
+    assert_eq!(manager.apply_to_display(), 4);
 }
 
 #[test]
@@ -141,7 +130,6 @@ fn provider_lookup_returns_only_layers_owned_by_the_manager() {
         widgets: None,
         media: None,
         popup: None,
-        overrides: RecordingProvider::new("overrides", Rc::clone(&calls)),
     };
 
     assert_eq!(
@@ -159,10 +147,4 @@ fn provider_lookup_returns_only_layers_owned_by_the_manager() {
     assert!(manager
         .provider_for_layer(CssProviderLayer::Popup)
         .is_none());
-    assert_eq!(
-        manager
-            .provider_for_layer(CssProviderLayer::Overrides)
-            .map(|provider| provider.label),
-        Some("overrides")
-    );
 }

@@ -30,9 +30,8 @@ pub fn start_css_watcher(
             &paths.panel_css,
             &paths.widgets_css,
             &paths.media_css,
-            &paths.overrides_css,
         ],
-        CssKind::Popup => vec![&paths.base_css, &paths.popup_css, &paths.overrides_css],
+        CssKind::Popup => vec![&paths.base_css, &paths.popup_css],
     };
     for path in css_paths {
         if let Some(dir) = path.parent() {
