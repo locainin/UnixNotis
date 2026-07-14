@@ -92,11 +92,18 @@ jobs:
           shellcheck \
             scripts/package-release.sh \
             tests/package-release.sh \
+            tests/check-no-personal-paths.sh \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-lib \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-state \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-on \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-off
-          shellharden --check scripts/package-release.sh tests/package-release.sh
+          shellharden --check \
+            scripts/package-release.sh \
+            tests/package-release.sh \
+            tests/check-no-personal-paths.sh
+
+      - name: Check tracked paths for personal data
+        run: tests/check-no-personal-paths.sh
 
       - name: Test release packaging helpers
         run: tests/package-release.sh
