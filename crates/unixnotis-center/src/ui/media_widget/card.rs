@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::cmp::Ordering;
 use std::rc::Rc;
 
 use gtk::prelude::*;
@@ -12,6 +13,19 @@ use super::format::{
     MediaDisplayConfig,
 };
 use unixnotis_core::{hooks, MediaConfig};
+
+pub(super) fn set_scrolled_content_width(boundary: &gtk::ScrolledWindow, width: i32) {
+    // GTK rejects a new minimum that is larger than the currently stored maximum
+    let current_max = boundary.max_content_width();
+    if let (0.., Ordering::Greater) = (current_max, width.cmp(&current_max)) {
+        boundary.set_max_content_width(width);
+        boundary.set_min_content_width(width);
+    } else {
+        // Shrinking has the inverse constraint, so lower the minimum before the maximum
+        boundary.set_min_content_width(width);
+        boundary.set_max_content_width(width);
+    }
+}
 
 #[derive(Clone)]
 pub(super) struct MediaCardWidgets {
@@ -48,8 +62,7 @@ impl MediaCardWidgets {
             return;
         }
         self.text_box.set_size_request(width, -1);
-        self.title_boundary.set_min_content_width(width);
-        self.title_boundary.set_max_content_width(width);
+        set_scrolled_content_width(&self.title_boundary, width);
         self.title_label.update_width(width);
         self.applied_text_width.set(width);
     }

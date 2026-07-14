@@ -9,11 +9,28 @@ use crate::ui::marquee::MarqueeLabel;
 use crate::ui::media_art::MediaArtState;
 
 use super::super::format::MediaDisplayConfig;
+use super::set_scrolled_content_width;
 use super::{
     set_class_state, update_art_classes, update_artist_classes, update_artist_label,
     update_control_sensitivity, update_optional_label, update_play_button,
     update_player_count_classes, update_playing_class, update_title_label, MediaCardWidgets,
 };
+
+#[gtk::test]
+fn scrolled_content_width_transitions_preserve_an_exact_valid_range() {
+    let boundary = gtk::ScrolledWindow::new();
+    set_scrolled_content_width(&boundary, 100);
+
+    // Growing must raise GTK's maximum before its minimum
+    set_scrolled_content_width(&boundary, 240);
+    assert_eq!(boundary.min_content_width(), 240);
+    assert_eq!(boundary.max_content_width(), 240);
+
+    // Shrinking must lower GTK's minimum before its maximum
+    set_scrolled_content_width(&boundary, 80);
+    assert_eq!(boundary.min_content_width(), 80);
+    assert_eq!(boundary.max_content_width(), 80);
+}
 
 fn card() -> MediaCardWidgets {
     let title_label = MarqueeLabel::new(hooks::media_shell::TITLE, 180, 32);
