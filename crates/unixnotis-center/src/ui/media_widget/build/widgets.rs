@@ -143,8 +143,7 @@ pub(super) fn build_media_width_boundary(
     // External horizontal policy allows clipping without a visible scrollbar or child minimum leak
     width_boundary.set_policy(config.horizontal_policy, config.vertical_policy);
     width_boundary.set_propagate_natural_width(config.propagate_natural_width);
-    width_boundary.set_min_content_width(config.content_width);
-    width_boundary.set_max_content_width(config.content_width);
+    super::super::card::set_scrolled_content_width(&width_boundary, config.content_width);
     width_boundary.set_hexpand(true);
     width_boundary.set_halign(Align::Fill);
     width_boundary.set_overflow(Overflow::Hidden);

@@ -10,7 +10,7 @@ use crate::ui::input_guard::ClickCooldown;
 
 use super::super::marquee::MarqueeLabel;
 use super::super::media_art::MediaArtState;
-use super::card::MediaCardWidgets;
+use super::card::{set_scrolled_content_width, MediaCardWidgets};
 use super::format::MediaDisplayConfig;
 use super::selection::MediaSelection;
 use super::shell::MediaShellConfig;
@@ -77,8 +77,7 @@ pub(super) fn build_media_card_parts(
     let title_boundary = gtk::ScrolledWindow::new();
     title_boundary.set_policy(PolicyType::External, PolicyType::Never);
     title_boundary.set_propagate_natural_width(false);
-    title_boundary.set_min_content_width(marquee_width);
-    title_boundary.set_max_content_width(marquee_width);
+    set_scrolled_content_width(&title_boundary, marquee_width);
     title_boundary.set_overflow(Overflow::Hidden);
     title_boundary.set_child(Some(&title_widget));
 

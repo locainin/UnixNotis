@@ -16,7 +16,7 @@ use crate::media::{MediaHandle, MediaInfo};
 use unixnotis_core::MediaConfig;
 
 use self::build::build_media_widget;
-use self::card::MediaCardWidgets;
+use self::card::{set_scrolled_content_width, MediaCardWidgets};
 use self::layout::{marquee_width_for_shell, marquee_width_for_shell_player_count};
 use self::selection::{MediaSelection, MediaSelectionSnapshot};
 use self::shell::MediaShellConfig;
@@ -119,12 +119,7 @@ impl MediaWidget {
         self.card.apply_display_config(config);
         // Text width stays the only size request that changes on a light relayout
         self.card.text_box.set_size_request(marquee_width, -1);
-        self.card
-            .title_boundary
-            .set_min_content_width(marquee_width);
-        self.card
-            .title_boundary
-            .set_max_content_width(marquee_width);
+        set_scrolled_content_width(&self.card.title_boundary, marquee_width);
         self.card
             .title_label
             .update_limits(marquee_width, config.title_char_limit);
