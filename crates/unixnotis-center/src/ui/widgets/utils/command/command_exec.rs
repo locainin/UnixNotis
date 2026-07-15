@@ -447,5 +447,5 @@ pub(in crate::ui::widgets) fn kill_process_group(pid: i32) {
 }
 
 #[cfg(test)]
-#[path = "tests/exec.rs"]
+#[path = "tests/command_exec.rs"]
 mod tests;

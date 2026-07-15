@@ -70,3 +70,7 @@ pub(in crate::ui::widgets) fn run_action_command_with_completion<F>(
         on_complete(failed);
     });
 }
+
+#[cfg(test)]
+#[path = "tests/action.rs"]
+mod tests;
