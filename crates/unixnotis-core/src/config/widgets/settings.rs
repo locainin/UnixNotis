@@ -82,5 +82,5 @@ impl Default for WidgetsConfig {
 }
 
 #[cfg(test)]
-#[path = "tests/mod.rs"]
+#[path = "tests/settings.rs"]
 mod tests;

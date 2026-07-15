@@ -10,7 +10,7 @@ use super::media::MediaConfig;
 use super::panel::PanelConfig;
 use super::rules::RuleConfig;
 use super::theme::ThemeConfig;
-use super::widget_config::WidgetsConfig;
+use super::widgets::WidgetsConfig;
 
 pub const CURRENT_CONFIG_VERSION: u32 = 2;
 
