@@ -87,6 +87,12 @@ pub(super) fn collect_script_dependency_closure(
             continue;
         };
 
+        if matches!(scan_kind, ScriptScanKind::Entry) && !has_shell_shebang(bytes) {
+            // UTF-8 executables may be Python, Ruby, JavaScript, or plain native payloads
+            // Only a shell shebang makes `source` syntax meaningful for an entry file
+            continue;
+        }
+
         // Own the small operand list before captures grow so no map entry stays borrowed
         let operands = source_operands(contents).collect::<Vec<_>>();
         for operand in operands {
@@ -178,27 +184,52 @@ fn has_shell_shebang(bytes: &[u8]) -> bool {
         return false;
     };
 
-    // Checking each shebang word also covers portable forms such as `/usr/bin/env sh`
-    command.split_ascii_whitespace().any(|word| {
-        Path::new(word)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| {
-                matches!(
-                    name,
-                    "sh" | "ash"
-                        | "bash"
-                        | "csh"
-                        | "dash"
-                        | "fish"
-                        | "ksh"
-                        | "mksh"
-                        | "tcsh"
-                        | "yash"
-                        | "zsh"
-                )
-            })
-    })
+    let mut words = command.split_ascii_whitespace();
+    let Some(interpreter) = words.next().and_then(executable_name) else {
+        return false;
+    };
+    if is_shell_name(interpreter) {
+        return true;
+    }
+    if interpreter == "busybox" {
+        return words
+            .next()
+            .and_then(executable_name)
+            .is_some_and(is_shell_name);
+    }
+    if interpreter != "env" {
+        return false;
+    }
+
+    env_interpreter(&mut words)
+        .and_then(executable_name)
+        .is_some_and(is_shell_name)
+}
+
+fn env_interpreter<'a>(words: &mut impl Iterator<Item = &'a str>) -> Option<&'a str> {
+    // `env` may carry flags, flag values, and assignments before the interpreter
+    while let Some(word) = words.next() {
+        match word {
+            "-u" | "--unset" | "-C" | "--chdir" => {
+                // These options consume one following value before command lookup resumes
+                words.next()?;
+            }
+            _ if word.starts_with('-') || word.contains('=') => {}
+            _ => return Some(word),
+        }
+    }
+    None
+}
+
+fn executable_name(word: &str) -> Option<&str> {
+    Path::new(word).file_name()?.to_str()
+}
+
+fn is_shell_name(name: &str) -> bool {
+    matches!(
+        name,
+        "sh" | "ash" | "bash" | "csh" | "dash" | "fish" | "ksh" | "mksh" | "tcsh" | "yash" | "zsh"
+    )
 }
 
 fn normalize_relative_path(path: &Path) -> Option<PathBuf> {

@@ -97,7 +97,7 @@ fn exact_scan_limit_still_discovers_a_required_helper() {
         "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"scripts/probe\"\n",
     );
     root.write("base.css", ".panel { color: red; }");
-    let source_line = ". \"$script_dir/probe-lib\"\n";
+    let source_line = "#!/bin/sh\n. \"$script_dir/probe-lib\"\n";
     let padding_length = usize::try_from(MAX_SCANNED_SCRIPT_BYTES)
         .expect("scan limit should fit usize")
         .checked_sub(source_line.len())
@@ -251,6 +251,70 @@ fn non_utf8_native_entry_remains_a_valid_bundled_executable() {
         .expect("native executable does not require shell dependency scanning");
 
     assert_eq!(closure.paths, vec![PathBuf::from("scripts/probe")]);
+}
+
+#[test]
+fn utf8_python_entry_with_source_assignment_is_bundled_without_shell_scanning() {
+    let root = TempDirGuard::new("python-source-assignment");
+    root.write(
+        "config.toml",
+        "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"scripts/probe.py\"\n",
+    );
+    root.write("base.css", ".panel { color: red; }");
+    root.write(
+        "scripts/probe.py",
+        "#!/usr/bin/env python3\nsource = \"./not-a-shell-dependency\"\nprint(source)\n",
+    );
+
+    let bundle_path = root.path.join("python.unixnotis");
+    export_preset_from(&root.path, &bundle_path, &[], false)
+        .expect("Python entry should not use shell dependency parsing");
+    let bundle = read_bundle(&bundle_path).expect("read Python preset");
+
+    assert!(bundle
+        .files
+        .iter()
+        .any(|file| file.relative_path == Path::new("scripts/probe.py")));
+    assert!(!bundle
+        .files
+        .iter()
+        .any(|file| file.relative_path == Path::new("not-a-shell-dependency")));
+}
+
+#[test]
+fn env_shell_entry_with_option_value_still_discovers_source_dependencies() {
+    let root = TempDirGuard::new("env-shell-options");
+    root.write(
+        "scripts/probe",
+        "#!/usr/bin/env -S -u UNUSED sh\n. \"$script_dir/helper\"\n",
+    );
+    root.write("scripts/helper", "value=1\n");
+
+    let closure = collect_script_dependency_closure(&root.path, &[PathBuf::from("scripts/probe")])
+        .expect("env shell interpreter should remain scannable");
+
+    assert_eq!(
+        closure.paths,
+        vec![
+            PathBuf::from("scripts/helper"),
+            PathBuf::from("scripts/probe")
+        ]
+    );
+}
+
+#[test]
+fn env_shell_entry_skips_flags_and_assignments_before_interpreter() {
+    let root = TempDirGuard::new("env-shell-flags");
+    root.write(
+        "scripts/probe",
+        "#!/usr/bin/env -S -i MODE=test sh\n. \"$script_dir/helper\"\n",
+    );
+    root.write("scripts/helper", "value=1\n");
+
+    let closure = collect_script_dependency_closure(&root.path, &[PathBuf::from("scripts/probe")])
+        .expect("env flags and assignments should precede a shell interpreter");
+
+    assert!(closure.paths.contains(&PathBuf::from("scripts/helper")));
 }
 
 #[test]
