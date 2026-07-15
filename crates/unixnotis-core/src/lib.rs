@@ -22,6 +22,7 @@ pub mod control;
 pub mod css;
 pub mod filesystem;
 pub mod model;
+pub mod reconnect;
 #[cfg(test)]
 #[path = "tests/support.rs"]
 mod test_support;
