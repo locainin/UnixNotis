@@ -25,3 +25,7 @@ pub enum UiCommand {
     Dismiss(u32),
     InvokeAction { id: u32, action_key: String },
 }
+
+#[cfg(test)]
+#[path = "tests/types.rs"]
+mod tests;

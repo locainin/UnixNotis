@@ -5,7 +5,7 @@ use tracing::warn;
 use unixnotis_core::ControlProxy;
 use zbus::Result as ZbusResult;
 
-use super::dbus_types::UiCommand;
+use super::types::UiCommand;
 
 pub async fn handle_command(proxy: &ControlProxy<'_>, command: UiCommand) -> ZbusResult<()> {
     match command {

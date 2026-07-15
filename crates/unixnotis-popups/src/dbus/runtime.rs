@@ -9,12 +9,12 @@ use tracing::{info, warn};
 use unixnotis_core::ControlProxy;
 use zbus::Connection;
 
-use super::dbus_backoff::{
+use super::backoff::{
     Backoff, RetryLog, BACKOFF_BASE_MS, BACKOFF_MAX_MS, RETRY_WARN_INTERVAL_SECS,
 };
-use super::dbus_commands::{drain_offline_commands, handle_command};
-use super::dbus_seed::{seed_state_with_retry, PopupSeedSource, SeedError, SeedSnapshot};
-use super::dbus_types::{UiCommand, UiEvent};
+use super::commands::{drain_offline_commands, handle_command};
+use super::seed::{seed_state_with_retry, PopupSeedSource, SeedError, SeedSnapshot};
+use super::types::{UiCommand, UiEvent};
 
 // Bound UI commands to avoid unbounded memory growth under a stuck UI event loop
 const UI_COMMAND_QUEUE_CAPACITY: usize = 64;
@@ -272,3 +272,7 @@ async fn push_active_notification_event(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/runtime.rs"]
+mod tests;

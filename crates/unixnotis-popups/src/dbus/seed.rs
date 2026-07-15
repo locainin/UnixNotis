@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 use unixnotis_core::{ControlState, NotificationView};
 
-use super::dbus_backoff::{Backoff, RetryLog};
-use super::dbus_types::UiEvent;
+use super::backoff::{Backoff, RetryLog};
+use super::types::UiEvent;
 
 // Seed retries tolerate short startup hiccups without blocking indefinitely
 const SEED_RETRY_BASE_MS: u64 = 250;
