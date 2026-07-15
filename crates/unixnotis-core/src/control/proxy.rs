@@ -1,0 +1,77 @@
+//! Generated D-Bus control proxy contract
+
+use zbus::proxy;
+
+use crate::NotificationView;
+
+use super::{
+    CloseReason, ControlState, InhibitorInfo, PanelDebugLevel, PanelRequest, PopupGateState,
+};
+
+#[proxy(
+    interface = "com.unixnotis.Control",
+    default_service = "com.unixnotis.Control",
+    default_path = "/com/unixnotis/Control"
+)]
+trait Control {
+    /// Current daemon state
+    fn get_state(&self) -> zbus::Result<ControlState>;
+    /// Active notifications intended for popups
+    fn list_active(&self) -> zbus::Result<Vec<NotificationView>>;
+    /// History notifications for the panel
+    fn list_history(&self) -> zbus::Result<Vec<NotificationView>>;
+    /// Fetch one currently active notification by identifier
+    fn get_active_notification(&self, id: u32) -> zbus::Result<Vec<NotificationView>>;
+    /// Open the control center panel
+    fn open_panel(&self) -> zbus::Result<()>;
+    /// Open the control center panel with debug logging
+    fn open_panel_debug(&self, level: PanelDebugLevel) -> zbus::Result<()>;
+    /// Close the control center panel
+    fn close_panel(&self) -> zbus::Result<()>;
+    /// Toggle the control center panel
+    fn toggle_panel(&self) -> zbus::Result<()>;
+    /// Update the Do Not Disturb state
+    fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
+    /// Toggle the Do Not Disturb state atomically in the daemon
+    fn toggle_dnd(&self) -> zbus::Result<()>;
+    /// Register an inhibitor and return its token
+    fn inhibit(&self, reason: &str, scope: u32) -> zbus::Result<u64>;
+    /// Remove a previously registered inhibitor token
+    fn uninhibit(&self, id: u64) -> zbus::Result<()>;
+    /// List active inhibitors
+    fn list_inhibitors(&self) -> zbus::Result<Vec<InhibitorInfo>>;
+    /// Remove a notification by identifier
+    fn dismiss(&self, id: u32) -> zbus::Result<()>;
+    /// Invoke an action key for a notification
+    fn invoke_action(&self, id: u32, action_key: &str) -> zbus::Result<()>;
+    /// Clear active notifications and saved history
+    fn clear_all(&self) -> zbus::Result<()>;
+    /// Clear active notifications without deleting saved history
+    fn clear_active(&self) -> zbus::Result<()>;
+    /// Clear saved history without closing active notifications
+    fn clear_history(&self) -> zbus::Result<()>;
+    /// Mark the panel UI ready after signal subscriptions are active
+    fn mark_panel_ready(&self) -> zbus::Result<()>;
+    /// Clear panel readiness while the UI reconnects or shuts down
+    fn mark_panel_not_ready(&self) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn notification_added(&self, id: u32, show_popup: bool) -> zbus::Result<()>;
+    #[zbus(signal)]
+    fn notification_updated(&self, id: u32, show_popup: bool) -> zbus::Result<()>;
+    #[zbus(signal)]
+    fn notification_closed(&self, id: u32, reason: CloseReason) -> zbus::Result<()>;
+    #[zbus(signal)]
+    fn state_changed(&self, state: ControlState) -> zbus::Result<()>;
+    /// Emitted only when popup gating changes
+    #[zbus(signal)]
+    fn popup_gate_changed(&self, gate: PopupGateState) -> zbus::Result<()>;
+    /// Emitted when local notification snapshots must refresh
+    #[zbus(signal)]
+    fn snapshot_invalidated(&self) -> zbus::Result<()>;
+    /// Emitted when inhibitor state or count changes
+    #[zbus(signal)]
+    fn inhibitors_changed(&self, active: bool, count: u32) -> zbus::Result<()>;
+    #[zbus(signal)]
+    fn panel_requested(&self, request: PanelRequest) -> zbus::Result<()>;
+}

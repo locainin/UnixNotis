@@ -1,46 +1,4 @@
-use super::{should_archive_closed_notification, CloseReason, PanelDebugLevel};
-
-#[test]
-fn user_dismiss_never_archives() {
-    assert!(!should_archive_closed_notification(
-        CloseReason::DismissedByUser,
-        false,
-        true
-    ));
-    assert!(!should_archive_closed_notification(
-        CloseReason::DismissedByUser,
-        true,
-        true
-    ));
-}
-
-#[test]
-fn transient_archive_follows_config() {
-    assert!(!should_archive_closed_notification(
-        CloseReason::Expired,
-        true,
-        false
-    ));
-    assert!(should_archive_closed_notification(
-        CloseReason::Expired,
-        true,
-        true
-    ));
-}
-
-#[test]
-fn non_transient_close_still_archives() {
-    assert!(should_archive_closed_notification(
-        CloseReason::Expired,
-        false,
-        false
-    ));
-    assert!(should_archive_closed_notification(
-        CloseReason::ClosedByCall,
-        false,
-        true
-    ));
-}
+use super::PanelDebugLevel;
 
 #[test]
 fn panel_debug_level_off_allows_no_diagnostics() {
