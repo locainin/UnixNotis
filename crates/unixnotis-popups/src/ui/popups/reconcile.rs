@@ -4,7 +4,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use tracing::debug;
 use unixnotis_core::{popup_allowed_by_state, ControlState, NotificationView};
 
-use super::{ReconcilePlan, UiState};
+use super::super::UiState;
+use super::mutation::ReconcilePlan;
 
 impl UiState {
     pub(in super::super) fn reconcile_seed(&mut self, active: Vec<NotificationView>) {
@@ -110,3 +111,7 @@ pub(super) fn desired_seed_popups(
         .filter(|notification| popup_allowed_by_state(notification.urgency, state))
         .collect()
 }
+
+#[cfg(test)]
+#[path = "tests/reconcile.rs"]
+mod tests;

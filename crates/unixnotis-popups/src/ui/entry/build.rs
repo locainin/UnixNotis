@@ -1,38 +1,29 @@
 //! Popup entry construction and UI action wiring
-//!
-//! Keeps popup row assembly split into focused helpers
-
-mod commands;
-mod labels;
-
-#[cfg(test)]
-#[path = "tests/cases.rs"]
-mod tests;
 
 use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{hooks, NotificationView, Urgency};
 
-use super::ui_window::refresh_popup_input_region;
-use super::UiState;
-use crate::dbus::UiCommand;
-use commands::try_send_command;
-use labels::{
+use super::super::window::refresh_popup_input_region;
+use super::super::UiState;
+use super::commands::try_send_command;
+use super::labels::{
     clamp_label_text, has_visible_text, update_optional_label, POPUP_ACTION_LABEL_MAX_CHARS,
     POPUP_APP_MAX_CHARS, POPUP_BODY_MAX_CHARS, POPUP_SUMMARY_MAX_CHARS,
 };
+use crate::dbus::UiCommand;
 
-pub(super) struct PopupEntry {
+pub(in crate::ui) struct PopupEntry {
     // Keep the last payload so seed reconcile can detect real content changes
-    pub(super) notification: NotificationView,
+    pub(in crate::ui) notification: NotificationView,
     // Hidden backlog rows stay lightweight until they enter the visible slice
-    pub(super) revealer: Option<gtk::Revealer>,
-    pub(super) root: Option<gtk::Box>,
+    pub(in crate::ui) revealer: Option<gtk::Revealer>,
+    pub(in crate::ui) root: Option<gtk::Box>,
 }
 
 impl PopupEntry {
-    pub(super) const fn queued(notification: NotificationView) -> Self {
+    pub(in crate::ui) const fn queued(notification: NotificationView) -> Self {
         // Backlog rows start as plain data and only grow GTK nodes when they become visible
         Self {
             notification,
@@ -41,7 +32,7 @@ impl PopupEntry {
         }
     }
 
-    pub(super) const fn is_materialized(&self) -> bool {
+    pub(in crate::ui) const fn is_materialized(&self) -> bool {
         // Both widgets must exist before stack operations can touch this row safely
         self.revealer.is_some() && self.root.is_some()
     }
@@ -50,7 +41,10 @@ impl PopupEntry {
 const MAX_POPUP_ACTIONS: usize = 3;
 
 impl UiState {
-    pub(super) fn build_popup_entry(&mut self, notification: &NotificationView) -> PopupEntry {
+    pub(in crate::ui) fn build_popup_entry(
+        &mut self,
+        notification: &NotificationView,
+    ) -> PopupEntry {
         // Build the GTK row first so the revealer always wraps a ready child
         let root = self.build_popup_root(notification);
         let revealer = self.build_popup_revealer(&root);
@@ -63,7 +57,7 @@ impl UiState {
         }
     }
 
-    pub(super) fn build_popup_root(&mut self, notification: &NotificationView) -> gtk::Box {
+    pub(in crate::ui) fn build_popup_root(&mut self, notification: &NotificationView) -> gtk::Box {
         // One vertical box owns the whole popup card layout
         let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
         root.add_css_class("unixnotis-popup-card");
@@ -290,3 +284,7 @@ fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {
         root.remove_css_class(class_name);
     }
 }
+
+#[cfg(test)]
+#[path = "tests/build.rs"]
+mod tests;

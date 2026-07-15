@@ -1,7 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use super::super::ui_window::refresh_popup_input_region;
-use super::{UiState, VisiblePopupUpdate};
+use super::super::window::refresh_popup_input_region;
+use super::super::UiState;
+use super::mutation::VisiblePopupUpdate;
 use gtk::prelude::*;
 use tracing::{debug, warn};
 
@@ -166,21 +167,12 @@ pub(super) fn visible_popup_restack_ids(
 ) -> HashSet<u32> {
     // Work on a local order copy so move decisions stay deterministic and testable
     let mut working = previous_visible.to_vec();
-    let mut positions = previous_visible
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(index, id)| (id, index))
-        .collect::<HashMap<u32, usize>>();
     let mut moved = HashSet::new();
 
     for (target_index, id) in desired_visible.iter().copied().enumerate() {
-        let Some(current_index) = positions.get(&id).copied() else {
+        let Some(current_index) = working.iter().position(|current| *current == id) else {
             // New ids need one attach at their final slot
             working.insert(target_index, id);
-            for (index, current_id) in working.iter().copied().enumerate().skip(target_index) {
-                positions.insert(current_id, index);
-            }
             moved.insert(id);
             continue;
         };
@@ -193,20 +185,13 @@ pub(super) fn visible_popup_restack_ids(
         // Move only the row that is actually out of place
         let moved_id = working.remove(current_index);
         working.insert(target_index, moved_id);
-        let start = target_index.min(current_index);
-        let end = target_index.max(current_index);
-        for (index, current_id) in working
-            .iter()
-            .copied()
-            .enumerate()
-            .skip(start)
-            .take(end - start + 1)
-        {
-            positions.insert(current_id, index);
-        }
         moved.insert(id);
     }
 
     // Return only rows that need a GTK attach or reorder call
     moved
 }
+
+#[cfg(test)]
+#[path = "tests/visibility.rs"]
+mod tests;

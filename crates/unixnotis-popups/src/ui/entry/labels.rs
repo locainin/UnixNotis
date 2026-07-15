@@ -89,3 +89,7 @@ fn set_label_text_if_changed(label: &gtk::Label, text: &str) {
         label.set_text(text);
     }
 }
+
+#[cfg(test)]
+#[path = "tests/labels.rs"]
+mod tests;

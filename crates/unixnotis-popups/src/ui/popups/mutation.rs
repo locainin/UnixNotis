@@ -1,39 +1,39 @@
-//! Popup list management and visibility updates
-//!
-//! Keeps popup reconcile, mutation, and visibility logic in focused files
-
-mod reconcile;
-mod visibility;
+//! Popup list mutation and materialization
 
 use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::NotificationView;
 
-use super::ui_window::refresh_popup_input_region;
-use super::{PopupEntry, UiState};
+use super::super::entry::PopupEntry;
+use super::super::window::refresh_popup_input_region;
+use super::super::UiState;
 
 pub(super) struct ReconcilePlan {
     // Local rows missing from the daemon snapshot
-    stale_ids: Vec<u32>,
+    pub(super) stale_ids: Vec<u32>,
     // Rows that must be inserted or updated to match daemon truth
-    updates: Vec<NotificationView>,
+    pub(super) updates: Vec<NotificationView>,
     // Final order copied from the daemon seed
-    desired_order: std::collections::VecDeque<u32>,
+    pub(super) desired_order: std::collections::VecDeque<u32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) struct VisiblePopupUpdate {
     // True when stack order, materialization, or reveal state changed
-    stack_changed: bool,
+    pub(super) stack_changed: bool,
 }
 
 impl UiState {
-    pub(super) fn add_popup(&mut self, notification: NotificationView) {
+    pub(in crate::ui) fn add_popup(&mut self, notification: NotificationView) {
         // Runtime insert path keeps one place for add semantics
         self.add_popup_internal(notification, true);
     }
 
-    fn add_popup_internal(&mut self, notification: NotificationView, refresh_visibility: bool) {
+    pub(super) fn add_popup_internal(
+        &mut self,
+        notification: NotificationView,
+        refresh_visibility: bool,
+    ) {
         let id = notification.id;
         // Duplicate ids point at an upstream state bug
         if self.popups.contains_key(&id) {
@@ -50,12 +50,12 @@ impl UiState {
         debug!(id, total = self.popup_order.len(), "popup inserted");
     }
 
-    pub(super) fn update_popup(&mut self, notification: NotificationView, show_popup: bool) {
+    pub(in crate::ui) fn update_popup(&mut self, notification: NotificationView, show_popup: bool) {
         // Update path can also hide a popup when policy says not to show it
         self.update_popup_internal(notification, show_popup, true);
     }
 
-    fn update_popup_internal(
+    pub(super) fn update_popup_internal(
         &mut self,
         notification: NotificationView,
         show_popup: bool,
@@ -96,12 +96,12 @@ impl UiState {
         rebuilt_visible_row
     }
 
-    pub(super) fn remove_popup(&mut self, id: u32) {
+    pub(in crate::ui) fn remove_popup(&mut self, id: u32) {
         // Runtime close path keeps one place for remove semantics
         self.remove_popup_internal(id, true);
     }
 
-    fn remove_popup_internal(&mut self, id: u32, refresh_visibility: bool) {
+    pub(super) fn remove_popup_internal(&mut self, id: u32, refresh_visibility: bool) {
         if let Some(entry) = self.popups.remove(&id) {
             if let Some(revealer) = entry.revealer {
                 // Visible rows animate out before leaving the stack
@@ -156,7 +156,7 @@ impl UiState {
         rebuilt_visible_row
     }
 
-    fn materialize_popup(&mut self, id: u32) {
+    pub(super) fn materialize_popup(&mut self, id: u32) {
         // Visible rows get rebuilt from the stored payload only when they are actually needed
         let notification = match self.popups.get(&id) {
             Some(entry) if !entry.is_materialized() => entry.notification.clone(),
@@ -171,7 +171,7 @@ impl UiState {
         entry.root = built.root;
     }
 
-    fn dematerialize_popup(&mut self, id: u32) {
+    pub(super) fn dematerialize_popup(&mut self, id: u32) {
         // Hidden rows keep only plain Rust data so backlog size does not scale GTK memory
         let Some(entry) = self.popups.get_mut(&id) else {
             return;
@@ -194,5 +194,5 @@ impl UiState {
 }
 
 #[cfg(test)]
-#[path = "tests/cases.rs"]
+#[path = "tests/mutation.rs"]
 mod tests;

@@ -33,3 +33,7 @@ fn enqueue_async_send(tx: Sender<UiCommand>, command: UiCommand) {
         }
     });
 }
+
+#[cfg(test)]
+#[path = "tests/commands.rs"]
+mod tests;
