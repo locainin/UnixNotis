@@ -27,27 +27,23 @@ pub(super) fn find_monitor(output: &str) -> Option<gtk::gdk::Monitor> {
 }
 
 fn monitor_matches_output(monitor: &gtk::gdk::Monitor, output: &str) -> bool {
+    output_alias_matches(
+        monitor.connector().as_deref(),
+        monitor.model().as_deref(),
+        output,
+    )
+}
+
+fn output_alias_matches(connector: Option<&str>, model: Option<&str>, output: &str) -> bool {
     let output = output.trim();
     if output.is_empty() {
         // Empty output is treated as no explicit target
         return false;
     }
 
-    // Connector names map best to compositor output identifiers
-    if monitor
-        .connector()
-        .as_deref()
-        .is_some_and(|connector| connector.eq_ignore_ascii_case(output))
-    {
-        // Connector match is authoritative for compositor-facing output names
-        return true;
-    }
-
-    // Model fallback preserves compatibility with existing output strings
-    monitor
-        .model()
-        .as_deref()
-        .is_some_and(|model| model.eq_ignore_ascii_case(output))
+    // Connector names take priority while model names keep compatibility
+    connector.is_some_and(|value| value.eq_ignore_ascii_case(output))
+        || model.is_some_and(|value| value.eq_ignore_ascii_case(output))
 }
 
 pub(super) fn default_monitor() -> Option<gtk::gdk::Monitor> {
@@ -85,3 +81,7 @@ pub(super) fn default_monitor() -> Option<gtk::gdk::Monitor> {
     let item = monitors.item(0)?;
     item.downcast::<gtk::gdk::Monitor>().ok()
 }
+
+#[cfg(test)]
+#[path = "tests/monitor.rs"]
+mod tests;

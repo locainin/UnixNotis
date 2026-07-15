@@ -1,27 +1,20 @@
-//! Window construction and layout helpers for the popup surface
-//!
-//! This module keeps top-level window wiring compact while delegating
-//! anchor, monitor selection, and input-region shaping to focused helpers
+//! Window construction and popup configuration
 
 use gtk::prelude::*;
 use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
 use tracing::warn;
 use unixnotis_core::Config;
 
-mod anchor;
-mod input_region;
-mod monitor;
-
-use self::anchor::apply_anchor;
-pub(super) use self::input_region::{refresh_popup_input_region, PopupInputRegionState};
-use self::monitor::{default_monitor, find_monitor};
+use super::anchor::apply_anchor;
+use super::input_region::{refresh_popup_input_region, PopupInputRegionState};
+use super::monitor::{default_monitor, find_monitor};
 
 // Keep popup width proportional on compact displays to avoid oversized cards.
 const POPUP_WIDTH_MONITOR_RATIO_CAP: f32 = 0.28;
 // Width floor keeps popup text readable on very small displays.
 const POPUP_WIDTH_MIN: i32 = 260;
 
-pub(super) fn build_popup_window(
+pub(in crate::ui) fn build_popup_window(
     app: &gtk::Application,
     config: &Config,
 ) -> (gtk::ApplicationWindow, gtk::Box, PopupInputRegionState) {
@@ -108,7 +101,7 @@ pub(super) fn build_popup_window(
     (window, stack, input_region)
 }
 
-pub(super) fn apply_popup_config(
+pub(in crate::ui) fn apply_popup_config(
     window: &gtk::ApplicationWindow,
     stack: &gtk::Box,
     config: &Config,
@@ -176,3 +169,7 @@ fn resolve_popup_width(config: &Config, monitor: Option<&gtk::gdk::Monitor>) -> 
     let bounded_cap = ratio_cap.clamp(min_width, max_width);
     requested.min(bounded_cap).max(1)
 }
+
+#[cfg(test)]
+#[path = "tests/build.rs"]
+mod tests;
