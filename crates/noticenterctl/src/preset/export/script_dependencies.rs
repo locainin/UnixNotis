@@ -3,21 +3,32 @@
 //! This intentionally recognizes only direct shell source statements
 //! Broad shell evaluation would execute user content and could recapture unrelated files
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Component, Path, PathBuf};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
+
+use super::super::config_root::SecureFileCapture;
+use super::super::filesystem::{open_secure_dir_all, read_relative_file_secure_bounded};
 
 // Source scanning is only dependency metadata work, so a small cap prevents an oversized command
 // file from consuming memory before the normal preset file limits are applied
 pub(super) const MAX_SCANNED_SCRIPT_BYTES: u64 = 1024 * 1024;
 
+pub(super) struct ScriptDependencyClosure {
+    pub(super) paths: Vec<PathBuf>,
+    pub(super) captures: BTreeMap<PathBuf, SecureFileCapture>,
+}
+
 pub(super) fn collect_script_dependency_closure(
     config_dir: &Path,
     entry_scripts: &[PathBuf],
-) -> Result<Vec<PathBuf>> {
+) -> Result<ScriptDependencyClosure> {
+    let root_fd = open_secure_dir_all(config_dir)
+        .with_context(|| format!("open config directory {}", config_dir.display()))?;
     let mut discovered = BTreeSet::new();
     let mut pending = VecDeque::new();
+    let mut captures = BTreeMap::new();
 
     for entry in entry_scripts {
         // Config command resolution has already constrained entries to the config root
@@ -26,58 +37,60 @@ pub(super) fn collect_script_dependency_closure(
             continue;
         };
         if discovered.insert(entry.clone()) {
+            let (contents, mode) =
+                read_relative_file_secure_bounded(&root_fd, &entry, MAX_SCANNED_SCRIPT_BYTES)
+                    .with_context(|| {
+                        format!(
+                            "preset export cannot verify dependencies for script {}",
+                            entry.display()
+                        )
+                    })?;
+            captures.insert(entry.clone(), SecureFileCapture { contents, mode });
             pending.push_back(entry);
         }
     }
 
     while let Some(script_relative) = pending.pop_front() {
-        let script_path = config_dir.join(&script_relative);
-        let metadata = match std::fs::symlink_metadata(&script_path) {
-            Ok(metadata) if metadata.file_type().is_file() => metadata,
-            // The collector later reports or skips non-regular entry paths using its shared policy
-            Ok(_) | Err(_) => continue,
-        };
-        if metadata.len() > MAX_SCANNED_SCRIPT_BYTES {
-            // Large command payloads are not treated as shell source because dependency parsing is bounded
-            continue;
-        }
-
-        let bytes = std::fs::read(&script_path)
-            .with_context(|| format!("read script dependency source {}", script_path.display()))?;
-        let Ok(contents) = std::str::from_utf8(&bytes) else {
+        let bytes = &captures
+            .get(&script_relative)
+            .expect("queued script capture must exist")
+            .contents;
+        let Ok(contents) = std::str::from_utf8(bytes) else {
             // Binary command helpers cannot contain portable shell source statements
             continue;
         };
 
-        for operand in source_operands(contents) {
+        // Own the small operand list before captures grow so no map entry stays borrowed
+        let operands = source_operands(contents).collect::<Vec<_>>();
+        for operand in operands {
             let Some(dependency) = resolve_source_operand(&script_relative, &operand) else {
                 // Dynamic variables and absolute system libraries are runtime concerns, not bundle paths
                 continue;
             };
-            let dependency_path = config_dir.join(&dependency);
-            let dependency_metadata =
-                std::fs::symlink_metadata(&dependency_path).with_context(|| {
+            if discovered.insert(dependency.clone()) {
+                let (contents, mode) = read_relative_file_secure_bounded(
+                    &root_fd,
+                    &dependency,
+                    MAX_SCANNED_SCRIPT_BYTES,
+                )
+                .with_context(|| {
                     format!(
-                        "script {} sources missing preset dependency {}",
+                        "script {} sources missing, unsafe, or oversized preset dependency {}",
                         script_relative.display(),
                         dependency.display()
                     )
                 })?;
-            if !dependency_metadata.file_type().is_file() {
-                return Err(anyhow!(
-                    "script {} sources non-regular preset dependency {}",
-                    script_relative.display(),
-                    dependency.display()
-                ));
-            }
-            if discovered.insert(dependency.clone()) {
+                captures.insert(dependency.clone(), SecureFileCapture { contents, mode });
                 // Newly found helpers are scanned too because shell libraries can source another local file
                 pending.push_back(dependency);
             }
         }
     }
 
-    Ok(discovered.into_iter().collect())
+    Ok(ScriptDependencyClosure {
+        paths: discovered.into_iter().collect(),
+        captures,
+    })
 }
 
 fn source_operands(contents: &str) -> impl Iterator<Item = String> + '_ {
@@ -111,14 +124,18 @@ fn resolve_source_operand(script_relative: &Path, operand: &str) -> Option<PathB
 }
 
 fn normalize_relative_path(path: &Path) -> Option<PathBuf> {
-    let mut normalized = PathBuf::new();
+    let mut parts = Vec::new();
     for component in path.components() {
         match component {
-            Component::Normal(value) => normalized.push(value),
+            Component::Normal(value) => parts.push(value.to_os_string()),
             Component::CurDir => {}
-            // Parent, root, and platform prefixes could leave the shared config tree
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+            // Parent traversal is safe only while a prior config-relative segment remains to pop
+            Component::ParentDir => {
+                parts.pop()?;
+            }
+            Component::RootDir | Component::Prefix(_) => return None,
         }
     }
+    let normalized = parts.into_iter().collect::<PathBuf>();
     (!normalized.as_os_str().is_empty()).then_some(normalized)
 }

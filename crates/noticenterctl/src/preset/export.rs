@@ -33,7 +33,9 @@ use super::command_rules::{
     collect_command_references_from_config, resolve_command_path_token,
     validate_config_command_paths_stay_in_root, HostSpecificCommandPath,
 };
-use super::config_root::{collect_selected_config_files, override_collected_file_contents};
+use super::config_root::{
+    collect_selected_config_files_with_captures, override_collected_file_contents,
+};
 use super::css_asset_refs::{
     collect_external_css_asset_refs_from_collected, collect_local_css_asset_paths_from_paths,
     ExternalCssAssetRef, HostSpecificCssAssetRef,
@@ -232,16 +234,19 @@ fn export_preset_from_with_confirm(
         .collect::<Vec<_>>();
     // Direct config commands can source small helper libraries that are just as required as the entry script
     // Resolve that closure before collection so a preset remains usable on a clean installation
-    selected_paths.extend(collect_script_dependency_closure(
-        config_dir,
-        &command_script_paths,
-    )?);
+    let script_dependencies = collect_script_dependency_closure(config_dir, &command_script_paths)?;
+    selected_paths.extend(script_dependencies.paths.iter().cloned());
     selected_paths.extend(collect_existing_icon_assets(&config_path, config_dir)?);
     selected_paths.sort();
     selected_paths.dedup();
 
-    let mut collected =
-        collect_selected_config_files(config_dir, &selected_paths, Some(output_path), &exclusions)?;
+    let mut collected = collect_selected_config_files_with_captures(
+        config_dir,
+        &selected_paths,
+        Some(output_path),
+        &exclusions,
+        &script_dependencies.captures,
+    )?;
     if !collected
         .files
         .iter()
