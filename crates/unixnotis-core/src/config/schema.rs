@@ -60,7 +60,8 @@ fn migrate_document(document: &mut toml::Value) -> Result<MigrationResult, Strin
 }
 
 fn migrate_legacy_layout(root: &mut toml::Table) -> MigrationResult {
-    if let Some(panel) = child_table(root, "panel") {
+    // Missing legacy tables still represent omitted old fields, not a request for new defaults
+    if let Some(panel) = child_table_or_insert(root, "panel") {
         insert_string(panel, "quick_actions_label", "");
         insert_string(panel, "system_status_label", "");
         insert_integer(panel, "empty_offset_top", 120);
@@ -73,14 +74,15 @@ fn migrate_legacy_layout(root: &mut toml::Table) -> MigrationResult {
     }
 
     let mut restore_legacy_cards = false;
-    if let Some(widgets) = child_table(root, "widgets") {
+    if let Some(widgets) = child_table_or_insert(root, "widgets") {
         insert_string(widgets, "density", "comfortable");
         insert_integer(widgets, "toggle_columns", 4);
         insert_integer(widgets, "stat_columns", 2);
         insert_integer(widgets, "card_columns", 2);
         restore_legacy_cards = !widgets.contains_key("cards");
         for slider_name in ["volume", "brightness"] {
-            if let Some(slider) = child_table(widgets, slider_name) {
+            // Both sliders existed in the old effective config even when their tables were omitted
+            if let Some(slider) = child_table_or_insert(widgets, slider_name) {
                 insert_integer(slider, "segments", 0);
                 insert_bool(slider, "show_sublabels", false);
                 insert_string(slider, "sublabel_min", "");
@@ -89,7 +91,7 @@ fn migrate_legacy_layout(root: &mut toml::Table) -> MigrationResult {
         }
     }
 
-    if let Some(media) = child_table(root, "media") {
+    if let Some(media) = child_table_or_insert(root, "media") {
         insert_integer(media, "art_size_px", 50);
         insert_integer(media, "text_width_floor_px", 140);
         insert_integer(media, "content_spacing_px", 10);
@@ -102,8 +104,12 @@ fn migrate_legacy_layout(root: &mut toml::Table) -> MigrationResult {
     }
 }
 
-fn child_table<'a>(table: &'a mut toml::Table, key: &str) -> Option<&'a mut toml::Table> {
-    table.get_mut(key)?.as_table_mut()
+fn child_table_or_insert<'a>(table: &'a mut toml::Table, key: &str) -> Option<&'a mut toml::Table> {
+    // Existing invalid scalar values stay intact so deserialization can report the real type error
+    table
+        .entry(key.to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
 }
 
 fn insert_string(table: &mut toml::Table, key: &str, value: &str) {

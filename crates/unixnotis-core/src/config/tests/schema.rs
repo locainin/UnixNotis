@@ -1,5 +1,5 @@
 use super::*;
-use crate::{PanelSection, PanelWidgetSection};
+use crate::{PanelSection, PanelWidgetSection, WidgetDensity};
 
 const LEGACY_FIXTURE: &str = include_str!("fixtures/config-v0.toml");
 const CURRENT_PARTIAL_FIXTURE: &str = include_str!("fixtures/config-v2-partial.toml");
@@ -67,4 +67,91 @@ fn explicit_legacy_values_remain_authoritative_during_migration() {
 
     assert_eq!(config.panel.quick_actions_label, "Custom");
     assert_eq!(config.panel.empty_offset_top, 77);
+}
+
+#[test]
+fn empty_unversioned_config_receives_complete_legacy_defaults() {
+    let (config, ignored) = deserialize_config("").expect("migrate empty legacy config");
+
+    assert!(ignored.is_empty());
+    assert!(config.panel.quick_actions_label.is_empty());
+    assert!(config.panel.system_status_label.is_empty());
+    assert_eq!(config.panel.empty_offset_top, 120);
+    assert_eq!(config.widgets.density, WidgetDensity::Comfortable);
+    assert_eq!(config.widgets.toggle_columns, 4);
+    assert_eq!(config.widgets.stat_columns, 2);
+    assert_eq!(config.widgets.card_columns, 2);
+    assert_eq!(config.widgets.volume.segments, 0);
+    assert_eq!(config.widgets.brightness.segments, 0);
+    assert!(config.widgets.cards.iter().all(|card| card.enabled));
+    assert_eq!(config.media.art_size_px, 50);
+    assert_eq!(config.media.text_width_floor_px, 140);
+    assert_eq!(config.media.content_spacing_px, 10);
+    assert_eq!(config.media.control_spacing_px, 6);
+    assert_eq!(config.media.navigation_spacing_px, 6);
+}
+
+#[test]
+fn legacy_widgets_without_slider_tables_receive_slider_compatibility() {
+    let (config, _) = deserialize_config("[widgets]\ntoggle_columns = 3\n")
+        .expect("migrate legacy widgets without sliders");
+
+    // Explicit layout remains authoritative while omitted slider visuals stay historic
+    assert_eq!(config.widgets.toggle_columns, 3);
+    assert_eq!(config.widgets.volume.segments, 0);
+    assert!(!config.widgets.volume.show_sublabels);
+    assert!(config.widgets.volume.sublabel_min.is_empty());
+    assert!(config.widgets.volume.sublabel_max.is_empty());
+    assert_eq!(config.widgets.brightness.segments, 0);
+    assert!(!config.widgets.brightness.show_sublabels);
+    assert!(config.widgets.brightness.sublabel_min.is_empty());
+    assert!(config.widgets.brightness.sublabel_max.is_empty());
+}
+
+#[test]
+fn legacy_config_without_panel_table_receives_panel_compatibility() {
+    let (config, _) = deserialize_config("[general]\ndnd_default = true\n")
+        .expect("migrate legacy config without panel");
+
+    assert!(config.panel.quick_actions_label.is_empty());
+    assert!(config.panel.system_status_label.is_empty());
+    assert_eq!(config.panel.empty_offset_top, 120);
+    assert_eq!(
+        config.panel.section_order,
+        vec![PanelSection::Widgets, PanelSection::Notifications]
+    );
+}
+
+#[test]
+fn legacy_config_without_media_table_receives_media_compatibility() {
+    let (config, _) =
+        deserialize_config("[panel]\nwidth = 480\n").expect("migrate legacy config without media");
+
+    assert_eq!(config.media.art_size_px, 50);
+    assert_eq!(config.media.text_width_floor_px, 140);
+    assert_eq!(config.media.content_spacing_px, 10);
+    assert_eq!(config.media.control_spacing_px, 6);
+    assert_eq!(config.media.navigation_spacing_px, 6);
+}
+
+#[test]
+fn legacy_config_without_widgets_table_receives_widget_compatibility() {
+    let (config, _) = deserialize_config("[panel]\nwidth = 480\n")
+        .expect("migrate legacy config without widgets");
+
+    assert_eq!(config.widgets.density, WidgetDensity::Comfortable);
+    assert_eq!(config.widgets.toggle_columns, 4);
+    assert_eq!(config.widgets.stat_columns, 2);
+    assert_eq!(config.widgets.card_columns, 2);
+    assert_eq!(config.widgets.volume.segments, 0);
+    assert_eq!(config.widgets.brightness.segments, 0);
+    assert!(config.widgets.cards.iter().all(|card| card.enabled));
+}
+
+#[test]
+fn malformed_legacy_table_is_reported_instead_of_replaced() {
+    let error = deserialize_config("panel = 'not a table'\n")
+        .expect_err("invalid legacy table should remain a type error");
+
+    assert!(error.contains("invalid type"));
 }
