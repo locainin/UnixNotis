@@ -13,8 +13,15 @@ pub(super) const MAX_PLUGIN_OUTPUT_BYTES: usize = 128 * 1024;
 const MAX_SLIDER_SEGMENTS: usize = 64;
 const MAX_SLIDER_SUBLABEL_CHARS: usize = 32;
 const MAX_CARD_CAROUSEL_DOTS: usize = 12;
+// These limits keep one compact config from allocating an excessive GTK tree
+// The total cap also prevents a preset from exhausting every per-type allowance at once
+pub const MAX_TOGGLE_WIDGETS: usize = 16;
+pub const MAX_STAT_WIDGETS: usize = 24;
+pub const MAX_CARD_WIDGETS: usize = 16;
+pub const MAX_TOTAL_WIDGETS: usize = 48;
 
 pub(super) fn sanitize_widget_configs(config: &mut Config) {
+    limit_widget_counts(config);
     sanitize_slider_widget(&mut config.widgets.volume);
     sanitize_slider_widget(&mut config.widgets.brightness);
     // Stats and cards share the same geometry and plugin contract
@@ -27,6 +34,32 @@ pub(super) fn sanitize_widget_configs(config: &mut Config) {
         card.carousel_dots = card.carousel_dots.min(MAX_CARD_CAROUSEL_DOTS);
         sanitize_widget_plugin(&mut card.plugin, "card", &card.title);
     }
+}
+
+fn limit_widget_counts(config: &mut Config) {
+    truncate_widgets(&mut config.widgets.toggles, MAX_TOGGLE_WIDGETS, "toggle");
+    truncate_widgets(&mut config.widgets.stats, MAX_STAT_WIDGETS, "stat");
+    truncate_widgets(&mut config.widgets.cards, MAX_CARD_WIDGETS, "card");
+
+    // Keep earlier groups first because toggles and compact stats are the primary controls
+    let used = config.widgets.toggles.len() + config.widgets.stats.len();
+    let card_budget = MAX_TOTAL_WIDGETS.saturating_sub(used);
+    truncate_widgets(&mut config.widgets.cards, card_budget, "card");
+}
+
+fn truncate_widgets<T>(widgets: &mut Vec<T>, limit: usize, widget_type: &str) {
+    let requested = widgets.len();
+    if requested <= limit {
+        return;
+    }
+    widgets.truncate(limit);
+    warn!(
+        widget_type,
+        requested,
+        kept = limit,
+        ignored = requested - limit,
+        "widget count exceeded the safe runtime limit"
+    );
 }
 
 fn sanitize_slider_widget(slider: &mut SliderWidgetConfig) {
