@@ -8,18 +8,10 @@ use anyhow::{anyhow, Result};
 use tracing::debug;
 use zbus::fdo::DBusProxy;
 
-use super::dbus_owner::wait_for_owner_state;
-use super::{Args, RestoreStrategy};
+use crate::cli::Args;
+use crate::dbus_owner::wait_for_owner_state;
 
-#[path = "control.rs"]
-mod control;
-#[path = "owner.rs"]
-mod owner;
-#[path = "prompt.rs"]
-mod prompt;
-
-// Re-export keeps main.rs call sites unchanged after the split
-pub use control::restore_previous;
+use super::{control, owner, prompt};
 
 #[derive(Default)]
 pub struct TrialState {
@@ -28,13 +20,13 @@ pub struct TrialState {
 }
 
 impl TrialState {
-    pub(super) const fn take_restore_action(&mut self) -> Option<RestoreAction> {
+    pub(crate) const fn take_restore_action(&mut self) -> Option<RestoreAction> {
         // take moves out the action so restore runs at most once
         self.restore_action.take()
     }
 
     #[cfg(test)]
-    pub(super) const fn with_restore_action_for_test(action: RestoreAction) -> Self {
+    pub(crate) const fn with_restore_action_for_test(action: RestoreAction) -> Self {
         // Tests construct an armed guard without stopping a real desktop daemon
         Self {
             restore_action: Some(action),
@@ -184,5 +176,5 @@ fn restore_after_prepare_failure(
 #[path = "tests/known_daemons.rs"]
 mod known_daemons_tests;
 #[cfg(test)]
-#[path = "tests/root.rs"]
+#[path = "tests/state.rs"]
 mod tests;

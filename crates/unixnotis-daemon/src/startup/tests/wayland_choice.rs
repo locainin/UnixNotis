@@ -1,6 +1,6 @@
 use crate::test_support::{env_lock, EnvVarGuard};
 
-use super::{apply_wayland_env, choose_wayland_fallback};
+use crate::startup::wayland::{apply_wayland_env, choose_wayland_fallback};
 
 #[test]
 fn choose_wayland_fallback_prefers_wayland_zero() {

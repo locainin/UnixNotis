@@ -12,38 +12,33 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use unixnotis_core::util::CONFIG_PATH_ENV;
 
-use super::Args;
+use crate::cli::Args;
 use crate::daemon::DaemonState;
 
-#[path = "paths.rs"]
-mod paths;
-#[path = "supervisor.rs"]
-mod supervisor;
-
-use paths::{apply_parent_death_signal, resolve_center_path, resolve_popups_path};
-use supervisor::supervise_process;
+use super::paths::{apply_parent_death_signal, resolve_center_path, resolve_popups_path};
+use super::supervisor::supervise_process;
 
 // A short loop should not hammer respawns forever
 // A long healthy run should restart right away
-const RESTART_BASE_MS: u64 = 250;
-const RESTART_MAX_MS: u64 = 5000;
-const HEALTHY_RUNTIME_SECS: u64 = 30;
+pub(super) const RESTART_BASE_MS: u64 = 250;
+pub(super) const RESTART_MAX_MS: u64 = 5000;
+pub(super) const HEALTHY_RUNTIME_SECS: u64 = 30;
 
 #[derive(Clone, Copy, Debug)]
-enum UiProcessKind {
+pub(super) enum UiProcessKind {
     Popups,
     Center,
 }
 
 impl UiProcessKind {
-    const fn label(self) -> &'static str {
+    pub(super) const fn label(self) -> &'static str {
         match self {
             Self::Popups => "unixnotis-popups",
             Self::Center => "unixnotis-center",
         }
     }
 
-    fn mark_running(self, state: &DaemonState, running: bool) {
+    pub(super) fn mark_running(self, state: &DaemonState, running: bool) {
         match self {
             Self::Popups => state.set_popups_running(running),
             Self::Center => {
@@ -57,7 +52,7 @@ impl UiProcessKind {
         }
     }
 
-    fn build_command(self, args: &Args) -> Command {
+    pub(super) fn build_command(self, args: &Args) -> Command {
         let mut command = match self {
             Self::Popups => {
                 if let Some(path) = resolve_popups_path() {
@@ -94,7 +89,7 @@ impl UiProcessKind {
         command
     }
 
-    fn start(self, args: &Args) -> Result<Child> {
+    pub(super) fn start(self, args: &Args) -> Result<Child> {
         let mut command = self.build_command(args);
         let label = self.label();
         command.spawn().map_err(|err| {
@@ -113,18 +108,18 @@ fn child_config_env_path(config: &Path) -> PathBuf {
 }
 
 #[derive(Debug)]
-struct RestartBackoff {
-    current: Duration,
+pub(super) struct RestartBackoff {
+    pub(super) current: Duration,
 }
 
 impl RestartBackoff {
-    const fn new() -> Self {
+    pub(super) const fn new() -> Self {
         Self {
             current: Duration::ZERO,
         }
     }
 
-    fn next_delay(&mut self, runtime: Duration) -> Duration {
+    pub(super) fn next_delay(&mut self, runtime: Duration) -> Duration {
         // A healthy long run should come back fast
         if runtime >= Duration::from_secs(HEALTHY_RUNTIME_SECS) {
             self.current = Duration::ZERO;

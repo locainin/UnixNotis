@@ -6,7 +6,7 @@ use crate::system_tools::use_fake_tool_bin;
 
 use super::super::{OwnerInfo, RestoreAction};
 use super::{build_restart_command, stop_active_owner, stop_via_process, stop_via_systemd};
-use crate::{Args, RestoreStrategy};
+use crate::cli::{Args, RestoreStrategy};
 
 struct TempDirGuard {
     path: std::path::PathBuf,

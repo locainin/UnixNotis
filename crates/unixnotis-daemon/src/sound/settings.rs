@@ -9,16 +9,9 @@ use tracing::{debug, warn};
 use unixnotis_core::Config;
 use zbus::zvariant::OwnedValue;
 
-#[path = "backend.rs"]
-mod backend;
-#[path = "command.rs"]
-mod command;
-#[path = "resolve.rs"]
-mod resolve;
-
-use backend::{detect_backend, SoundBackend};
-use command::{play_with_canberra, play_with_paplay, play_with_pw_play};
-use resolve::{hint_bool, resolve_default_file, resolve_hint_sound};
+use super::backend::{detect_backend, SoundBackend};
+use super::command::{play_with_canberra, play_with_paplay, play_with_pw_play};
+use super::resolve::{hint_bool, resolve_default_file, resolve_hint_sound};
 
 const SOUND_MIN_INTERVAL: Duration = Duration::from_millis(150);
 

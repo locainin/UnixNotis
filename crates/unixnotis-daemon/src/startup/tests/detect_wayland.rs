@@ -2,7 +2,8 @@
 use crate::test_support::{env_lock, EnvVarGuard, TempRoot};
 
 #[cfg(unix)]
-use super::{detect_wayland_display, test_support, wayland_socket_exists};
+use crate::startup::tests::support as test_support;
+use crate::startup::wayland::{detect_wayland_display, wayland_socket_exists};
 
 #[cfg(unix)]
 #[test]

@@ -1,6 +1,6 @@
 use crate::test_support::{env_lock, EnvVarGuard};
 
-use super::init_tracing;
+use crate::startup::tracing::init_tracing;
 
 #[test]
 fn init_tracing_installs_a_global_dispatcher() {

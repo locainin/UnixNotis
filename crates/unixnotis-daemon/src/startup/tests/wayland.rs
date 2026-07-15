@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use crate::test_support::{env_lock, EnvVarGuard, TempRoot};
 
-use super::{ensure_wayland_session, test_support, wait_for_wayland_display};
+use crate::startup::tests::support as test_support;
+use crate::startup::wayland::{ensure_wayland_session, wait_for_wayland_display};
 
 #[cfg(unix)]
 #[tokio::test]

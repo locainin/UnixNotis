@@ -30,7 +30,3 @@ pub async fn shutdown_signal() {
         () = terminate => {},
     }
 }
-
-#[cfg(test)]
-#[path = "shutdown_signal/tests/cases.rs"]
-mod tests;

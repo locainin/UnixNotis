@@ -1,4 +1,4 @@
-use crate::{Args, RestoreStrategy};
+use crate::cli::{Args, RestoreStrategy};
 
 pub(super) fn default_args() -> Args {
     Args {

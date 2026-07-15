@@ -1,6 +1,4 @@
-//! Configuration loading and tracing setup
-//!
-//! Keeps environment handling and logging setup out of the main control flow
+//! Wayland discovery and bounded session readiness
 
 use std::env;
 use std::fs;
@@ -9,63 +7,7 @@ use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
-use tracing_subscriber::EnvFilter;
-use unixnotis_core::Config;
-
-use super::Args;
-
-pub fn load_config(args: &Args) -> Result<Config> {
-    match args.config.as_ref() {
-        Some(path) => Config::load_from_path(path).context("read config from path"),
-        None => Config::load_default().context("read default config"),
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct TracingInitOutcome {
-    pub(super) attempted_init: bool,
-    pub(super) had_env_warning: bool,
-}
-
-pub fn init_tracing(config: &Config) -> TracingInitOutcome {
-    let (filter, warning) = match EnvFilter::try_from_default_env() {
-        Ok(filter) => (filter, None),
-        Err(err) => {
-            // Only warn if RUST_LOG was set but invalid; missing env should remain quiet
-            let env_warning = if env::var("RUST_LOG").is_ok() {
-                Some(format!(
-                    "invalid RUST_LOG value: {err}; falling back to config log_level"
-                ))
-            } else {
-                None
-            };
-            let configured = config
-                .general
-                .log_level
-                .clone()
-                .unwrap_or_else(|| "info".to_string());
-            let fallback = EnvFilter::try_new(configured.clone()).unwrap_or_else(|err| {
-                eprintln!(
-                    "unixnotis-daemon: invalid log level '{configured}': {err}; falling back to info"
-                );
-                EnvFilter::new("info")
-            });
-            (fallback, env_warning)
-        }
-    };
-    if let Err(err) = tracing_subscriber::fmt().with_env_filter(filter).try_init() {
-        eprintln!("unixnotis-daemon: tracing already initialized or unavailable: {err}");
-    }
-    let had_env_warning = warning.is_some();
-    if let Some(message) = warning {
-        tracing::warn!("{message}");
-    }
-    TracingInitOutcome {
-        attempted_init: true,
-        had_env_warning,
-    }
-}
+use anyhow::Result;
 
 pub async fn ensure_wayland_session(timeout: Duration) -> Result<()> {
     if let Some(display) = detect_wayland_display() {
@@ -91,7 +33,7 @@ pub async fn ensure_wayland_session(timeout: Duration) -> Result<()> {
     ))
 }
 
-async fn wait_for_wayland_display(timeout: Duration) -> Option<String> {
+pub(super) async fn wait_for_wayland_display(timeout: Duration) -> Option<String> {
     if timeout.is_zero() {
         return None;
     }
@@ -109,7 +51,7 @@ async fn wait_for_wayland_display(timeout: Duration) -> Option<String> {
     .ok()
 }
 
-fn detect_wayland_display() -> Option<String> {
+pub(super) fn detect_wayland_display() -> Option<String> {
     if let Ok(display) = env::var("WAYLAND_DISPLAY") {
         if wayland_socket_exists(&display) {
             return Some(display);
@@ -150,7 +92,7 @@ fn detect_wayland_display() -> Option<String> {
     choose_wayland_fallback(candidates)
 }
 
-fn choose_wayland_fallback(mut candidates: Vec<String>) -> Option<String> {
+pub(super) fn choose_wayland_fallback(mut candidates: Vec<String>) -> Option<String> {
     candidates.sort();
     candidates.dedup();
 
@@ -173,7 +115,7 @@ fn choose_wayland_fallback(mut candidates: Vec<String>) -> Option<String> {
 }
 
 #[cfg(unix)]
-fn wayland_socket_exists(display: &str) -> bool {
+pub(super) fn wayland_socket_exists(display: &str) -> bool {
     let Ok(runtime_dir) = env::var("XDG_RUNTIME_DIR") else {
         return false;
     };
@@ -186,32 +128,13 @@ fn wayland_socket_exists(display: &str) -> bool {
 }
 
 #[cfg(not(unix))]
-fn wayland_socket_exists(_display: &str) -> bool {
+pub(super) fn wayland_socket_exists(_display: &str) -> bool {
     false
 }
 
-fn apply_wayland_env(display: &str) {
+pub(super) fn apply_wayland_env(display: &str) {
     env::set_var("WAYLAND_DISPLAY", display);
     if env::var("XDG_SESSION_TYPE").is_err() {
         env::set_var("XDG_SESSION_TYPE", "wayland");
     }
 }
-
-#[cfg(test)]
-#[path = "tests/runtime_config/async_wayland.rs"]
-mod async_wayland_tests;
-#[cfg(test)]
-#[path = "tests/runtime_config/config.rs"]
-mod config_tests;
-#[cfg(test)]
-#[path = "tests/runtime_config/detect_wayland.rs"]
-mod detect_wayland_tests;
-#[cfg(test)]
-#[path = "tests/runtime_config/support.rs"]
-mod test_support;
-#[cfg(test)]
-#[path = "tests/runtime_config/tracing.rs"]
-mod tracing_tests;
-#[cfg(test)]
-#[path = "tests/runtime_config/wayland_choice.rs"]
-mod wayland_choice_tests;

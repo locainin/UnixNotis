@@ -1,6 +1,6 @@
 use crate::test_support::TempRoot;
 
-use super::{load_config, test_support};
+use crate::startup::{load_config, tests::support as test_support};
 
 #[test]
 fn load_config_rejects_missing_custom_config_path() {
