@@ -3,6 +3,7 @@
 //! Keeps icon decoding, caching, and texture reuse isolated from UI state handling
 
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use gtk::glib::object::Cast;
 use gtk::prelude::*;
@@ -14,6 +15,7 @@ use super::icons::{
     collect_icon_candidates, file_path_from_hint, image_data_texture, resolve_icon_image,
     IconDecodePool, IconDecodeResult,
 };
+use super::state::IconCacheEntry;
 use super::UiState;
 
 const ICON_CACHE_MAX_ENTRIES: usize = 256;
@@ -21,12 +23,15 @@ const ICON_CACHE_MAX_ENTRIES: usize = 256;
 const ICON_TEXTURE_CACHE_MAX_BYTES: usize = 1024 * 1024;
 // Popup icon size is fixed so rows stay visually consistent across icon sources
 const POPUP_ICON_SIZE: i32 = 20;
+// Missing icons are retried soon so package and theme installs heal without a process restart
+const NEGATIVE_ICON_CACHE_TTL: Duration = Duration::from_secs(15);
 
 impl UiState {
     pub(super) fn build_image_widget(
         &mut self,
         notification: &NotificationView,
     ) -> Option<gtk::Image> {
+        self.refresh_icon_sources_if_needed();
         let image = &notification.image;
         if let Some(texture) = image_data_texture(image) {
             let widget = gtk::Image::from_paintable(Some(&texture));
@@ -41,9 +46,15 @@ impl UiState {
 
         let cache_key = format!("{}|{}", notification.app_name, notification.image.icon_name);
         if let Some(cached) = self.icon_cache.get(&cache_key) {
-            return cached
-                .as_ref()
-                .and_then(|icon_name| self.resolve_icon_widget(icon_name, POPUP_ICON_SIZE));
+            if let Some(icon_name) = &cached.resolved {
+                return self.resolve_icon_widget(icon_name, POPUP_ICON_SIZE);
+            }
+            if negative_cache_is_fresh(cached.cached_at, Instant::now()) {
+                return None;
+            }
+            // Expired misses fall through to a real desktop and icon-theme lookup
+            self.icon_cache.remove(&cache_key);
+            self.icon_cache_order.retain(|key| key != &cache_key);
         }
 
         let candidates = collect_icon_candidates(notification);
@@ -85,15 +96,19 @@ impl UiState {
     }
 
     fn cache_icon(&mut self, cache_key: String, resolved: Option<String>) {
+        let cached = IconCacheEntry {
+            resolved,
+            cached_at: Instant::now(),
+        };
         // Bound the icon cache to avoid unbounded growth in long-running sessions
         match self.icon_cache.entry(cache_key) {
             std::collections::hash_map::Entry::Occupied(mut entry) => {
-                entry.insert(resolved);
+                entry.insert(cached);
                 return;
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 let key = entry.key().clone();
-                entry.insert(resolved);
+                entry.insert(cached);
                 self.icon_cache_order.push_back(key);
             }
         }
@@ -101,6 +116,21 @@ impl UiState {
             if let Some(evicted) = self.icon_cache_order.pop_front() {
                 self.icon_cache.remove(&evicted);
             }
+        }
+    }
+
+    pub(super) fn invalidate_icon_sources(&mut self) {
+        // Positive names remain useful while misses must be retried against the rebuilt index
+        self.desktop_icons.rebuild();
+        self.icon_cache.retain(|_, entry| entry.resolved.is_some());
+        self.icon_cache_order
+            .retain(|key| self.icon_cache.contains_key(key));
+        self.icon_sources_dirty.set(false);
+    }
+
+    fn refresh_icon_sources_if_needed(&mut self) {
+        if self.icon_sources_dirty.replace(false) {
+            self.invalidate_icon_sources();
         }
     }
 
@@ -165,6 +195,14 @@ impl UiState {
         widget
     }
 }
+
+fn negative_cache_is_fresh(cached_at: Instant, now: Instant) -> bool {
+    now.saturating_duration_since(cached_at) < NEGATIVE_ICON_CACHE_TTL
+}
+
+#[cfg(test)]
+#[path = "tests/icon_state.rs"]
+mod tests;
 
 fn set_popup_icon_size(widget: &gtk::Image, size: i32) {
     let size = size.max(1);
