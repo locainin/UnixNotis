@@ -3,11 +3,11 @@ use std::env;
 use crate::checks::{CheckItem, CheckState, Checks};
 use crate::model::ActionMode;
 
-use super::system::{hyprland_check, wayland_check};
+use crate::checks::system::{hyprland_check, wayland_check};
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     // Session checks read process env directly, so tests use the crate-wide guard
-    crate::tests::env::test_env_lock()
+    crate::test_support::env::test_env_lock()
 }
 
 struct EnvGuard {

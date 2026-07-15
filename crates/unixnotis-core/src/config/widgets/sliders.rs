@@ -19,37 +19,15 @@ pub struct SliderWidgetConfig {
     /// Show the current numeric value at the end of the row
     pub show_value: bool,
     /// Optional decorative segment count below the slider track
-    #[serde(default = "legacy_slider_segments")]
     pub segments: usize,
     /// Show min/max sublabels below the slider track
-    #[serde(default = "legacy_slider_sublabel_visibility")]
     pub show_sublabels: bool,
     /// Left sublabel. Empty uses the slider min value
-    #[serde(default = "legacy_slider_sublabel")]
     pub sublabel_min: String,
     /// Right sublabel. Empty uses the slider max value
-    #[serde(default = "legacy_slider_sublabel")]
     pub sublabel_max: String,
     /// Controls how numeric command output is interpreted for slider values
     pub parse_mode: NumericParseMode,
-}
-
-// These helpers apply only during deserialization of missing keys
-// Keeping them separate from the constructors lets the stock theme evolve without rewriting presets
-
-// Legacy slider rows used one continuous track without decorative segments
-const fn legacy_slider_segments() -> usize {
-    0
-}
-
-// Legacy slider rows did not reserve a second line for min and max labels
-const fn legacy_slider_sublabel_visibility() -> bool {
-    false
-}
-
-// Empty text lets the legacy hidden-sublabel behavior remain data-free
-const fn legacy_slider_sublabel() -> String {
-    String::new()
 }
 
 impl SliderWidgetConfig {

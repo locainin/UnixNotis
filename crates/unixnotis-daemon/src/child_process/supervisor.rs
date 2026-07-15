@@ -13,8 +13,8 @@ use tracing::{info, warn};
 use rustix::process::{kill_process, Pid, Signal};
 
 use super::{RestartBackoff, UiProcessKind};
+use crate::cli::Args;
 use crate::daemon::DaemonState;
-use crate::Args;
 
 // GTK children can need one event-loop turn to unwind after SIGTERM
 const UI_CHILD_TERMINATION_TIMEOUT: Duration = Duration::from_secs(2);

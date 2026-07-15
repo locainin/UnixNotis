@@ -6,16 +6,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::checks::CheckState;
 use crate::paths::InstallPaths;
 use crate::service_manager::{ReadinessIssue, ServiceManager};
-use crate::tests::fs::write_executable;
+use crate::test_support::fs::write_executable;
 
-use super::system::{
+use super::{
     command_success, dbus_update_env_check, install_paths_check, readiness_error_detail,
     readiness_messages, readiness_warning_detail, service_manager_check_from,
 };
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     // PATH is process-wide, so service-manager check tests use the crate-wide guard
-    crate::tests::env::test_env_lock()
+    crate::test_support::env::test_env_lock()
 }
 
 #[test]

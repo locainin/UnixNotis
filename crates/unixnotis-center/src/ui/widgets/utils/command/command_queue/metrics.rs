@@ -102,3 +102,7 @@ impl CommandQueueMetricsSnapshot {
         )
     }
 }
+
+#[cfg(test)]
+#[path = "tests/metrics.rs"]
+mod tests;

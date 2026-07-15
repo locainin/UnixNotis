@@ -106,5 +106,5 @@ pub fn use_fake_tool_bin(path: &Path) -> FakeToolBinGuard {
 }
 
 #[cfg(test)]
-#[path = "tests/system_tools.rs"]
+#[path = "system_tools/tests.rs"]
 mod tests;

@@ -11,7 +11,6 @@
     clippy::option_if_let_else,
     clippy::struct_field_names,
     clippy::too_many_lines,
-    clippy::unreadable_literal,
     reason = "reviewed GTK pixel math, main-thread futures, and popup state boundaries retain stable compositor-facing behavior"
 )]
 

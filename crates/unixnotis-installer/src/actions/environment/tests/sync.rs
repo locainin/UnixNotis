@@ -3,8 +3,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 
 use crate::actions::{run_command_without_stdout, ActionContext};
+use crate::app::events::{UiMessage, WorkerEvent};
 use crate::detect::Detection;
-use crate::events::{UiMessage, WorkerEvent};
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
@@ -12,7 +12,7 @@ use crate::service_manager::ServiceManager;
 #[test]
 fn env_sync_command_stdout_is_not_copied_into_logs() {
     // Command lookup reads PATH, so it must not race tests that replace process env
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let (tx, rx) = mpsc::sync_channel::<UiMessage>(16);
     let detection = Detection {
         owner: None,

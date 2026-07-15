@@ -3,10 +3,11 @@ use std::process::Command as StdCommand;
 use tracing::{debug, info, warn};
 use unixnotis_core::util;
 
+use crate::cli::{Args, RestoreStrategy};
 use crate::system_tools;
 
 use super::owner::{is_unit_active, run_command_status};
-use super::{Args, OwnerInfo, RestoreAction, RestoreStrategy, KNOWN_DAEMONS};
+use super::{OwnerInfo, RestoreAction, KNOWN_DAEMONS};
 
 pub fn restore_previous(action: RestoreAction) -> Result<()> {
     match action {

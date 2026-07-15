@@ -18,6 +18,7 @@ use crate::{
 };
 
 use super::runtime::{apply_brightness_backend, apply_volume_backend, sanitize_config};
+use super::schema::deserialize_config;
 use super::Config;
 
 static LEGACY_RENAME_WARNED: AtomicBool = AtomicBool::new(false);
@@ -53,13 +54,17 @@ impl Config {
     pub fn load_from_path(path: &Path) -> Result<Self, ConfigError> {
         let contents =
             fs::read_to_string(path).map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
-        let mut ignored_keys = Vec::new();
-        // Build the TOML deserializer from the file text
-        let deserializer = toml::de::Deserializer::new(&contents);
-        let mut config: Self = serde_ignored::deserialize(deserializer, |path| {
-            ignored_keys.push(path.to_string());
-        })
-        .map_err(|err| ConfigError::ParseFailed(err.to_string()))?;
+        Self::parse(&contents)
+    }
+
+    /// Parse and migrate configuration text without reading the filesystem
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid TOML or unsupported schema versions
+    pub fn parse(contents: &str) -> Result<Self, ConfigError> {
+        let (mut config, ignored_keys) =
+            deserialize_config(contents).map_err(ConfigError::ParseFailed)?;
         for key in ignored_keys {
             warn!(key = %key, "unknown config key ignored");
         }

@@ -22,7 +22,6 @@
     clippy::struct_excessive_bools,
     clippy::struct_field_names,
     clippy::too_many_lines,
-    clippy::unreadable_literal,
     clippy::unused_self,
     clippy::useless_let_if_seq,
     reason = "reviewed GTK ownership, pixel conversion, callback, and state-container boundaries require stable signatures and main-thread futures"

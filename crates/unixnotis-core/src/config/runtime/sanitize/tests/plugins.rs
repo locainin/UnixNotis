@@ -1,4 +1,4 @@
-use super::super::super::super::widget_config::WidgetPluginConfig;
+use super::super::super::super::widgets::WidgetPluginConfig;
 use super::super::*;
 use crate::Config;
 
@@ -65,4 +65,37 @@ fn plugin_contract_limits_stay_at_expected_byte_and_time_caps() {
     assert_eq!(super::super::plugins::MAX_PLUGIN_TIMEOUT_MS, 30_000);
     assert_eq!(super::super::plugins::MIN_PLUGIN_OUTPUT_BYTES, 128);
     assert_eq!(super::super::plugins::MAX_PLUGIN_OUTPUT_BYTES, 128 * 1024);
+}
+
+#[test]
+fn sanitize_widget_counts_bounds_each_group_and_the_combined_tree() {
+    let defaults = Config::default();
+    let mut config = Config::default();
+    config.widgets.toggles = vec![defaults.widgets.toggles[0].clone(); MAX_TOGGLE_WIDGETS + 5];
+    config.widgets.stats = vec![defaults.widgets.stats[0].clone(); MAX_STAT_WIDGETS + 5];
+    config.widgets.cards = vec![defaults.widgets.cards[0].clone(); MAX_CARD_WIDGETS + 5];
+
+    sanitize_config(&mut config);
+
+    // Group priority keeps all controls and stats while cards use the remaining budget
+    assert_eq!(config.widgets.toggles.len(), MAX_TOGGLE_WIDGETS);
+    assert_eq!(config.widgets.stats.len(), MAX_STAT_WIDGETS);
+    assert_eq!(
+        config.widgets.cards.len(),
+        MAX_TOTAL_WIDGETS - MAX_TOGGLE_WIDGETS - MAX_STAT_WIDGETS
+    );
+    assert_eq!(
+        config.widgets.toggles.len() + config.widgets.stats.len() + config.widgets.cards.len(),
+        MAX_TOTAL_WIDGETS
+    );
+}
+
+#[test]
+fn sanitize_widget_counts_keeps_normal_configs_unchanged() {
+    let mut config = Config::default();
+    let expected = config.widgets.clone();
+
+    sanitize_config(&mut config);
+
+    assert_eq!(config.widgets, expected);
 }

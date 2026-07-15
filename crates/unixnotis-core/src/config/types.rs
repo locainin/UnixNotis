@@ -10,12 +10,16 @@ use super::media::MediaConfig;
 use super::panel::PanelConfig;
 use super::rules::RuleConfig;
 use super::theme::ThemeConfig;
-use super::widget_config::WidgetsConfig;
+use super::widgets::WidgetsConfig;
+
+pub const CURRENT_CONFIG_VERSION: u32 = 2;
 
 /// Top-level configuration loaded from config.toml
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
+    // Serialized schema marker keeps compatibility decisions independent of missing keys
+    pub config_version: u32,
     // Main config sections
     pub general: GeneralConfig,
     pub inhibit: InhibitConfig,
@@ -27,6 +31,24 @@ pub struct Config {
     pub sound: SoundConfig,
     pub theme: ThemeConfig,
     pub rules: Vec<RuleConfig>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            config_version: CURRENT_CONFIG_VERSION,
+            general: GeneralConfig::default(),
+            inhibit: InhibitConfig::default(),
+            popups: PopupConfig::default(),
+            panel: PanelConfig::default(),
+            history: HistoryConfig::default(),
+            media: MediaConfig::default(),
+            widgets: WidgetsConfig::default(),
+            sound: SoundConfig::default(),
+            theme: ThemeConfig::default(),
+            rules: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

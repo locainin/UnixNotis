@@ -7,7 +7,7 @@ use std::time::Duration;
 use crossbeam_channel as channel;
 use tracing::warn;
 
-use super::CommandJob;
+use super::worker::CommandJob;
 use crate::ui::widgets::utils::command::CommandKind;
 
 // Keep refresh overflow bounded
@@ -165,3 +165,7 @@ pub(super) fn insert_coalesced_job(
         evicted_oldest,
     }
 }
+
+#[cfg(test)]
+#[path = "tests/coalesced.rs"]
+mod tests;

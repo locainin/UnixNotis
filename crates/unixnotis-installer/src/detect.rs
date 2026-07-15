@@ -323,3 +323,7 @@ pub fn read_cmdline_program(pid: u32) -> Option<String> {
         Some(name.to_string())
     }
 }
+
+#[cfg(test)]
+#[path = "detect/tests.rs"]
+mod tests;

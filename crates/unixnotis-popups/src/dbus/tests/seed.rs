@@ -6,7 +6,7 @@ use super::{
     log_seed_retry, seed_retry_deadline, seed_state, seed_state_with_retry,
     seed_state_with_retry_until, send_seed_event, PopupSeedSource, SeedError, SeedSnapshot,
 };
-use crate::dbus::dbus_backoff::RetryLog;
+use crate::dbus::backoff::RetryLog;
 use crate::dbus::UiEvent;
 
 struct FakeSeedSource {

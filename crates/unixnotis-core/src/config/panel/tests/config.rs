@@ -38,13 +38,13 @@ fn default_panel_config_keeps_expected_layout_and_text_contract() {
 }
 
 #[test]
-fn omitted_legacy_presentation_fields_keep_the_original_panel_shape() {
+fn partial_panel_values_use_current_presentation_defaults() {
     let panel: PanelConfig =
-        toml::from_str("width = 420").expect("legacy panel config should parse");
+        toml::from_str("width = 420").expect("partial panel config should parse");
 
-    assert!(panel.quick_actions_label.is_empty());
-    assert!(panel.system_status_label.is_empty());
-    assert_eq!(panel.empty_offset_top, 120);
+    assert_eq!(panel.quick_actions_label, "Quick settings");
+    assert_eq!(panel.system_status_label, "System health");
+    assert_eq!(panel.empty_offset_top, 24);
 }
 
 #[test]

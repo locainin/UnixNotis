@@ -3,8 +3,8 @@ use std::os::unix::fs::symlink;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 
+use crate::app::events::{UiMessage, WorkerEvent};
 use crate::detect::Detection;
-use crate::events::{UiMessage, WorkerEvent};
 use crate::model::ActionMode;
 use crate::service_manager::ServiceManager;
 

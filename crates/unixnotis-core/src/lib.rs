@@ -16,22 +16,31 @@
     reason = "reviewed compatibility, wire-format, and bounded numeric conversions that cannot change without breaking public configuration behavior"
 )]
 
-pub mod assets;
 pub mod config;
 pub mod control;
 pub mod css;
+pub mod embedded;
 pub mod filesystem;
 pub mod model;
+pub mod reconnect;
 #[cfg(test)]
 #[path = "tests/support.rs"]
 mod test_support;
-pub mod theme;
 pub mod util;
 
-pub use assets::*;
 pub use config::*;
 pub use control::*;
 pub use css::*;
+pub use embedded::*;
 pub use model::*;
-pub use theme::*;
 pub use util::program_in_path;
+
+/// Compatibility path for script resources published before the embedded module was introduced
+pub mod assets {
+    pub use crate::embedded::scripts::*;
+}
+
+/// Compatibility path for CSS resources published before the embedded module was introduced
+pub mod theme {
+    pub use crate::embedded::css::*;
+}

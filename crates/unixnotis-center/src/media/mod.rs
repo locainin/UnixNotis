@@ -13,7 +13,6 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 use unixnotis_core::MediaConfig;
 use url::Url;
-use zbus::Connection;
 
 use crate::dbus::UiEvent;
 
@@ -142,12 +141,11 @@ impl MediaHandle {
 
 pub fn start_media_task(
     runtime: &tokio::runtime::Handle,
-    connection: Connection,
     config: MediaConfig,
     sender: async_channel::Sender<UiEvent>,
 ) -> Option<MediaHandle> {
     // The heavy runtime loop lives in its own file so this module can stay type-focused
-    runtime::start_media_task(runtime, connection, config, sender)
+    runtime::start_media_task(runtime, config, sender)
 }
 
 #[cfg(test)]

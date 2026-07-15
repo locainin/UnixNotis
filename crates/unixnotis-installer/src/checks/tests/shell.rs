@@ -69,7 +69,7 @@ fn shell_path_is_ok_only_when_path_and_command_are_both_present() {
 
 #[test]
 fn path_check_item_reads_real_path_and_managed_command_state() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("shell-path-real-state");
     let bin_dir = root.join("bin");
     fs::create_dir_all(&bin_dir).expect("bin dir");
@@ -91,7 +91,7 @@ fn path_check_item_reads_real_path_and_managed_command_state() {
 
 #[test]
 fn path_check_item_warns_when_command_exists_but_path_is_missing() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("shell-path-missing-path");
     let bin_dir = root.join("bin");
     fs::create_dir_all(&bin_dir).expect("bin dir");

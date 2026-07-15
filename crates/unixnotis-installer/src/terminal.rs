@@ -60,3 +60,7 @@ impl Drop for TerminalGuard {
         let _ = self.restore();
     }
 }
+
+#[cfg(test)]
+#[path = "terminal/tests.rs"]
+mod tests;

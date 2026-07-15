@@ -70,5 +70,5 @@ fn shell_script_arg(args: &[String]) -> Option<&str> {
 }
 
 #[cfg(test)]
-#[path = "tests/parse.rs"]
+#[path = "tests/command_parse.rs"]
 mod tests;

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::service_manager::{ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_RUNIT_SERVICE};
 use crate::system_tools::use_fake_tool_bin;
-use crate::tests::fs::write_executable as write_test_executable;
+use crate::test_support::fs::write_executable as write_test_executable;
 
 #[test]
 fn runit_backend_renders_service_directory_and_run_script() {
@@ -280,7 +280,7 @@ fn runit_backend_escapes_run_script_command_path_with_quotes() {
 
 #[test]
 fn runit_readiness_rejects_chpst_that_exists_only_on_path() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("runit-path-only-chpst");
     let path_bin = root.join("path-bin");
     let trusted_bin = root.join("trusted-bin");

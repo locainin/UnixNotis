@@ -11,9 +11,10 @@ mod media;
 mod panel;
 mod rules;
 mod runtime;
+mod schema;
 mod theme;
 mod types;
-mod widget_config;
+mod widgets;
 
 pub use command_parse::{parse_command, CommandParseError, ExecutionMode, ParsedCommand};
 pub use icon_assets::{
@@ -27,6 +28,7 @@ pub use layout::*;
 pub use media::*;
 pub use panel::*;
 pub use rules::*;
+pub use runtime::{MAX_CARD_WIDGETS, MAX_STAT_WIDGETS, MAX_TOGGLE_WIDGETS, MAX_TOTAL_WIDGETS};
 pub use theme::*;
 pub use types::*;
-pub use widget_config::*;
+pub use widgets::*;

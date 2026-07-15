@@ -1,6 +1,5 @@
 use tokio::sync::mpsc;
 use unixnotis_core::MediaConfig;
-use zbus::Connection;
 
 use crate::dbus::UiEvent;
 
@@ -12,7 +11,6 @@ pub(super) const MEDIA_SIGNAL_CAPACITY: usize = 256;
 
 pub(super) fn start_media_task(
     runtime: &tokio::runtime::Handle,
-    connection: Connection,
     config: MediaConfig,
     sender: async_channel::Sender<UiEvent>,
 ) -> Option<MediaHandle> {
@@ -26,7 +24,7 @@ pub(super) fn start_media_task(
     // The command channel stays small because button presses arrive in short bursts
     let (command_tx, command_rx) = mpsc::channel(MEDIA_COMMAND_CAPACITY);
     // The runtime task owns player state and feeds snapshots back to the UI
-    runtime.spawn(run_event_loop(connection, config, sender, command_rx));
+    runtime.spawn(run_event_loop(config, sender, command_rx));
 
     Some(MediaHandle {
         command_tx: Some(command_tx),

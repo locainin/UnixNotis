@@ -4,6 +4,7 @@
 //! walking files for export and filtering out internal snapshot directories
 
 use anyhow::{anyhow, Context, Result};
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -30,6 +31,13 @@ pub(super) struct PresetFileSource {
     pub(super) contents_override: Option<Vec<u8>>,
 }
 
+#[derive(Debug)]
+pub(super) struct SecureFileCapture {
+    // Bytes and mode come from one descriptor so later collection cannot observe a replacement file
+    pub(super) contents: Vec<u8>,
+    pub(super) mode: u32,
+}
+
 #[derive(Debug, Default)]
 pub(super) struct CollectedConfigFiles {
     // Portable regular files that should go into the bundle
@@ -40,11 +48,28 @@ pub(super) struct CollectedConfigFiles {
     pub(super) skipped_non_regular: Vec<PathBuf>,
 }
 
+#[cfg(test)]
 pub(super) fn collect_selected_config_files(
     config_dir: &Path,
     relative_paths: &[PathBuf],
     output_path: Option<&Path>,
     exclusions: &[PathBuf],
+) -> Result<CollectedConfigFiles> {
+    collect_selected_config_files_with_captures(
+        config_dir,
+        relative_paths,
+        output_path,
+        exclusions,
+        &BTreeMap::new(),
+    )
+}
+
+pub(super) fn collect_selected_config_files_with_captures(
+    config_dir: &Path,
+    relative_paths: &[PathBuf],
+    output_path: Option<&Path>,
+    exclusions: &[PathBuf],
+    captures: &BTreeMap<PathBuf, SecureFileCapture>,
 ) -> Result<CollectedConfigFiles> {
     // Export follows an explicit dependency list so unrelated private files never enter a bundle
     let root_fd = open_secure_dir_all(config_dir)
@@ -65,22 +90,26 @@ pub(super) fn collect_selected_config_files(
             continue;
         }
 
-        let metadata = fs::symlink_metadata(&path)
-            .with_context(|| format!("read selected config file {}", path.display()))?;
-        if metadata.file_type().is_symlink() {
-            // Referenced symlinks stay visible in the export summary without being followed
-            collected.skipped_symlinks.push(relative);
-            continue;
-        }
-        if !metadata.is_file() {
-            // Directories, sockets, and devices are not portable preset dependencies
-            collected.skipped_non_regular.push(relative);
-            continue;
-        }
+        let (source_contents, descriptor_mode) = if let Some(capture) = captures.get(&relative) {
+            // Dependency scanning already captured this exact file through the secure root descriptor
+            (capture.contents.clone(), capture.mode)
+        } else {
+            let metadata = fs::symlink_metadata(&path)
+                .with_context(|| format!("read selected config file {}", path.display()))?;
+            if metadata.file_type().is_symlink() {
+                // Referenced symlinks stay visible in the export summary without being followed
+                collected.skipped_symlinks.push(relative);
+                continue;
+            }
+            if !metadata.is_file() {
+                // Directories, sockets, and devices are not portable preset dependencies
+                collected.skipped_non_regular.push(relative);
+                continue;
+            }
 
-        // Secure descriptor-relative reading closes the validation-to-read race
-        let (source_contents, descriptor_mode) =
-            read_relative_file_secure_bounded(&root_fd, &relative, MAX_PRESET_FILE_BYTES)?;
+            // Secure descriptor-relative reading closes the validation-to-read race
+            read_relative_file_secure_bounded(&root_fd, &relative, MAX_PRESET_FILE_BYTES)?
+        };
         total_bytes = checked_export_total(
             total_bytes,
             source_contents.len() as u64,
