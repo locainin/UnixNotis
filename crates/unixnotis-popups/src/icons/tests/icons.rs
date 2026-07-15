@@ -2,8 +2,6 @@
 
 #[path = "icons/candidates.rs"]
 mod candidates;
-#[path = "icons/desktop_index.rs"]
-mod desktop_index;
 #[path = "icons/image_data.rs"]
 mod image_data;
 #[path = "icons/path_hints.rs"]
