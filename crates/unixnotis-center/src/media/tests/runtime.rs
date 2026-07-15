@@ -1,5 +1,7 @@
 use unixnotis_core::{MediaConfig, MediaRemoteArtPolicy};
 
+use super::super::event_loop::drain_stale_media_commands;
+use super::super::MediaCommand;
 use super::normalize_media_config;
 
 #[test]
@@ -22,4 +24,24 @@ fn normalize_media_config_lowercases_all_matching_lists() {
         normalized.remote_art_policy,
         MediaRemoteArtPolicy::BrowsersToo
     );
+}
+
+#[test]
+fn reconnect_drops_player_commands_from_the_previous_bus_generation() {
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(4);
+    sender
+        .try_send(MediaCommand::Next {
+            bus_name: "org.mpris.MediaPlayer2.old".to_string(),
+        })
+        .expect("queue stale player command");
+    sender
+        .try_send(MediaCommand::Refresh)
+        .expect("queue redundant refresh");
+
+    drain_stale_media_commands(&mut receiver);
+
+    assert!(matches!(
+        receiver.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
 }

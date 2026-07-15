@@ -1,6 +1,9 @@
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
 use tracing::warn;
+use unixnotis_core::reconnect::{
+    Backoff, RetryLog, BACKOFF_BASE_MS, BACKOFF_MAX_MS, RETRY_WARN_INTERVAL_SECS,
+};
 use unixnotis_core::MediaConfig;
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
@@ -39,16 +42,53 @@ impl MediaRuntimeState {
 }
 
 pub(super) async fn run_event_loop(
-    connection: Connection,
     config: MediaConfig,
     sender: async_channel::Sender<UiEvent>,
     mut command_rx: mpsc::Receiver<MediaCommand>,
 ) {
-    let dbus_proxy = match DBusProxy::new(&connection).await {
+    let mut backoff = Backoff::new(BACKOFF_BASE_MS, BACKOFF_MAX_MS);
+    let mut retry_log = RetryLog::new(std::time::Duration::from_secs(RETRY_WARN_INTERVAL_SECS));
+
+    loop {
+        // Player commands contain names from one bus generation and cannot cross reconnects
+        drain_stale_media_commands(&mut command_rx);
+        if command_rx.is_closed() {
+            return;
+        }
+        let connection = match Connection::session().await {
+            Ok(connection) => connection,
+            Err(err) => {
+                retry_log.warn_or_debug(&err, "failed to connect media runtime to session bus");
+                let _ = sender.send(UiEvent::MediaCleared).await;
+                tokio::time::sleep(backoff.next_sleep()).await;
+                continue;
+            }
+        };
+        backoff.reset();
+        retry_log.reset();
+
+        if run_connection_once(&connection, &config, &sender, &mut command_rx).await {
+            return;
+        }
+
+        // Dropping the session clears every stale proxy before another generation is accepted
+        let _ = sender.send(UiEvent::MediaCleared).await;
+        tokio::time::sleep(backoff.next_sleep()).await;
+    }
+}
+
+// Returns true only when the command sender closed and the runtime should stop
+async fn run_connection_once(
+    connection: &Connection,
+    config: &MediaConfig,
+    sender: &async_channel::Sender<UiEvent>,
+    command_rx: &mut mpsc::Receiver<MediaCommand>,
+) -> bool {
+    let dbus_proxy = match DBusProxy::new(connection).await {
         Ok(proxy) => proxy,
         Err(err) => {
             warn!(?err, "failed to create D-Bus proxy for media");
-            return;
+            return false;
         }
     };
 
@@ -56,7 +96,7 @@ pub(super) async fn run_event_loop(
         Ok(stream) => stream,
         Err(err) => {
             warn!(?err, "failed to subscribe to name owner changes");
-            return;
+            return false;
         }
     };
 
@@ -68,14 +108,13 @@ pub(super) async fn run_event_loop(
 
     loop {
         if refresh {
-            // Full refresh rebuilds the visible player set from the bus
             refresh_all_players(
-                &connection,
+                connection,
                 &dbus_proxy,
-                &config,
+                config,
                 &signal_tx,
                 &mut state,
-                &sender,
+                sender,
             )
             .await;
             refresh = false;
@@ -85,42 +124,30 @@ pub(super) async fn run_event_loop(
             command = command_rx.recv() => {
                 let Some(command) = command else {
                     // Closing the command side shuts the media runtime down cleanly
-                    break;
+                    return true;
                 };
                 match command {
                     MediaCommand::Refresh => {
-                        // Full refresh is used after startup and explicit reloads
                         refresh = true;
                     }
                     command => {
-                        handle_runtime_command(
-                            &mut state,
-                            &signal_tx,
-                            &sender,
-                            command,
-                        ).await;
+                        handle_runtime_command(&mut state, &signal_tx, sender, command).await;
                     }
                 }
             }
             signal = signal_rx.recv() => {
                 let Some(signal) = signal else {
-                    // A closed signal channel means no more property updates can arrive
-                    break;
+                    // Property listeners belong to this connection and must be rebuilt together
+                    return false;
                 };
-                handle_runtime_signal(
-                    &mut state,
-                    &signal_tx,
-                    &sender,
-                    signal,
-                ).await;
+                handle_runtime_signal(&mut state, &signal_tx, sender, signal).await;
             }
             signal = owner_stream.next() => {
                 let Some(signal) = signal else {
-                    // If the owner stream ends, the bus subscription is gone too
-                    break;
+                    // Stream termination means zbus can no longer deliver this bus generation
+                    return false;
                 };
                 if let Ok(args) = signal.args() {
-                    // Name owner changes tell the loop when players appear or vanish
                     let name = args.name();
                     let new_owner = args
                         .new_owner()
@@ -129,11 +156,11 @@ pub(super) async fn run_event_loop(
                     if let Err(err) = apply_owner_change(
                         name,
                         new_owner.as_deref(),
-                        &connection,
-                        &config,
+                        connection,
+                        config,
                         &signal_tx,
                         &mut state,
-                        &sender,
+                        sender,
                     )
                     .await
                     {
@@ -142,5 +169,11 @@ pub(super) async fn run_event_loop(
                 }
             }
         }
+    }
+}
+
+pub(super) fn drain_stale_media_commands(command_rx: &mut mpsc::Receiver<MediaCommand>) {
+    while command_rx.try_recv().is_ok() {
+        // Startup refreshes all players, so queued commands from the dead bus are obsolete
     }
 }
