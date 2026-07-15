@@ -59,15 +59,15 @@ fn default_media_geometry_keeps_the_compact_panel_shape() {
 }
 
 #[test]
-fn omitted_legacy_media_geometry_keeps_the_original_spacing() {
+fn partial_media_config_uses_current_geometry_defaults() {
     let config: MediaConfig =
-        toml::from_str("enabled = true").expect("legacy media config should parse");
+        toml::from_str("enabled = true").expect("partial media config should parse");
 
-    assert_eq!(config.art_size_px, 50);
-    assert_eq!(config.text_width_floor_px, 140);
-    assert_eq!(config.content_spacing_px, 10);
-    assert_eq!(config.control_spacing_px, 6);
-    assert_eq!(config.navigation_spacing_px, 6);
+    assert_eq!(config.art_size_px, 48);
+    assert_eq!(config.text_width_floor_px, 100);
+    assert_eq!(config.content_spacing_px, 8);
+    assert_eq!(config.control_spacing_px, 4);
+    assert_eq!(config.navigation_spacing_px, 4);
 }
 
 #[test]

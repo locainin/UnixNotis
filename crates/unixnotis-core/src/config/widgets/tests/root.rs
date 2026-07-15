@@ -16,7 +16,7 @@ fn default_widgets_keep_expected_grid_shape() {
 }
 
 #[test]
-fn partial_widgets_toml_keeps_explicit_values_and_legacy_missing_fields() {
+fn partial_widgets_toml_keeps_explicit_values_and_current_missing_fields() {
     let widgets: WidgetsConfig = toml::from_str(
         r#"
         toggle_layout = "vertical"
@@ -31,22 +31,22 @@ fn partial_widgets_toml_keeps_explicit_values_and_legacy_missing_fields() {
     assert_eq!(widgets.density, WidgetDensity::Compact);
     assert_eq!(widgets.toggle_columns, 3);
     assert_eq!(widgets.refresh_interval_ms, 2500);
-    assert_eq!(widgets.stat_columns, 2);
-    assert_eq!(widgets.card_columns, 2);
+    assert_eq!(widgets.stat_columns, 3);
+    assert_eq!(widgets.card_columns, 1);
     assert_eq!(widgets.cards.len(), WidgetsConfig::default().cards.len());
-    assert!(widgets.cards.iter().all(|card| card.enabled));
+    assert!(widgets.cards.iter().all(|card| !card.enabled));
     assert_eq!(widgets.volume.label, "Volume");
 }
 
 #[test]
-fn omitted_legacy_widget_layout_keeps_the_original_grid_shape() {
+fn partial_widgets_use_the_current_grid_shape() {
     let widgets: WidgetsConfig =
-        toml::from_str("refresh_interval_ms = 2500").expect("legacy widgets should parse");
+        toml::from_str("refresh_interval_ms = 2500").expect("partial widgets should parse");
 
-    assert_eq!(widgets.density, WidgetDensity::Comfortable);
-    assert_eq!(widgets.toggle_columns, 4);
-    assert_eq!(widgets.stat_columns, 2);
-    assert_eq!(widgets.card_columns, 2);
+    assert_eq!(widgets.density, WidgetDensity::Compact);
+    assert_eq!(widgets.toggle_columns, 2);
+    assert_eq!(widgets.stat_columns, 3);
+    assert_eq!(widgets.card_columns, 1);
 }
 
 #[test]

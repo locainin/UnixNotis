@@ -35,19 +35,19 @@ fn default_slider_widgets_keep_stock_commands() {
 }
 
 #[test]
-fn omitted_legacy_slider_decoration_keeps_the_original_single_row() {
+fn partial_slider_uses_current_decoration_defaults() {
     let slider: SliderWidgetConfig = toml::from_str(
         r#"
         enabled = true
         label = "Volume"
         "#,
     )
-    .expect("legacy slider should parse");
+    .expect("partial slider should parse");
 
-    assert_eq!(slider.segments, 0);
-    assert!(!slider.show_sublabels);
-    assert!(slider.sublabel_min.is_empty());
-    assert!(slider.sublabel_max.is_empty());
+    assert_eq!(slider.segments, 10);
+    assert!(slider.show_sublabels);
+    assert_eq!(slider.sublabel_min, "MUTE");
+    assert_eq!(slider.sublabel_max, "MAX");
 }
 
 #[test]

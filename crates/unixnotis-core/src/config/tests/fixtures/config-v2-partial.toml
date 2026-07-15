@@ -1,0 +1,13 @@
+config_version = 2
+
+[panel]
+width = 470
+
+[widgets]
+refresh_interval_ms = 1000
+
+[widgets.volume]
+enabled = true
+
+[media]
+enabled = true

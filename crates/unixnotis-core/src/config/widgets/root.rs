@@ -22,7 +22,6 @@ pub struct WidgetsConfig {
     // Older files that omit a newer key use the field-level compatibility defaults below
     // This distinction keeps theme bundles visually stable across UnixNotis upgrades
     /// Shared density profile applied before theme-specific CSS
-    #[serde(default = "legacy_widget_density")]
     pub density: WidgetDensity,
     pub volume: SliderWidgetConfig,
     pub brightness: SliderWidgetConfig,
@@ -31,56 +30,16 @@ pub struct WidgetsConfig {
     /// Controls icon and label placement inside toggle cards
     pub toggle_layout: ToggleLayout,
     /// Fixed column count used by the toggle grid
-    #[serde(default = "legacy_toggle_columns")]
     pub toggle_columns: usize,
     /// Fixed column count used by the stat grid
-    #[serde(default = "legacy_stat_columns")]
     pub stat_columns: usize,
     /// Fixed column count used by the card grid
-    #[serde(default = "legacy_card_columns")]
     pub card_columns: usize,
     pub toggles: Vec<ToggleWidgetConfig>,
     pub stats: Vec<StatWidgetConfig>,
-    #[serde(default = "legacy_cards")]
     pub cards: Vec<CardWidgetConfig>,
     pub refresh_interval_ms: u64,
     pub refresh_interval_slow_ms: u64,
-}
-
-// These helpers must remain independent from `WidgetsConfig::default()`
-// Pointing them at current defaults would recreate the same legacy-preset regression
-
-// Configs written before density was configurable used the comfortable spacing profile
-const fn legacy_widget_density() -> WidgetDensity {
-    WidgetDensity::Comfortable
-}
-
-// Four toggle columns preserve the original single-row quick-action layout
-const fn legacy_toggle_columns() -> usize {
-    4
-}
-
-// Two columns preserve the original balanced stat grid
-const fn legacy_stat_columns() -> usize {
-    2
-}
-
-// Two columns preserve the original paired information-card layout
-const fn legacy_card_columns() -> usize {
-    2
-}
-
-// Calendar and weather were visible when an older partial widget table omitted cards
-// Build the current card definitions first so command and metadata fixes still reach legacy configs
-fn legacy_cards() -> Vec<CardWidgetConfig> {
-    let mut cards = vec![
-        CardWidgetConfig::default_calendar(),
-        CardWidgetConfig::default_weather(),
-    ];
-    for card in &mut cards {
-        card.enabled = true;
-    }
-    cards
 }
 
 impl Default for WidgetsConfig {
