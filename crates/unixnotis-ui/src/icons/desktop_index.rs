@@ -110,5 +110,5 @@ fn normalize_key(value: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "tests/icons.rs"]
+#[path = "tests/desktop_index.rs"]
 mod tests;
