@@ -2,9 +2,6 @@
 //!
 //! Separates icon lookup and image decoding from UI state management.
 
-mod cache;
-mod decode;
-
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -14,10 +11,7 @@ use gtk::gdk::prelude::*;
 use gtk::{gdk::Texture, IconLookupFlags, IconPaintable, TextDirection};
 use unixnotis_core::{NotificationImage, NotificationView};
 
-pub(super) use cache::{IconDecodePool, IconDecodeResult, TextureCache};
-pub(super) use decode::{decode_icon_file, RasterIcon};
-
-pub(super) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
+pub(in crate::ui) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
     // Accept raw absolute paths and file:// URIs, decoding percent escapes when present.
     if path.starts_with('/') {
         return Some(PathBuf::from(path));
@@ -59,7 +53,7 @@ fn resolve_icon_paintable(name: &str, size: i32) -> Option<IconPaintable> {
     Some(paintable)
 }
 
-pub(super) fn resolve_icon_image(name: &str, size: i32) -> Option<gtk::Image> {
+pub(in crate::ui) fn resolve_icon_image(name: &str, size: i32) -> Option<gtk::Image> {
     // File-path icons are resolved asynchronously in the UI layer to avoid blocking the GTK thread.
     let paintable = resolve_icon_paintable(name, size)?;
     let widget = gtk::Image::from_paintable(Some(&paintable));
@@ -67,7 +61,7 @@ pub(super) fn resolve_icon_image(name: &str, size: i32) -> Option<gtk::Image> {
     Some(widget)
 }
 
-pub(super) fn collect_icon_candidates(notification: &NotificationView) -> Vec<String> {
+pub(in crate::ui) fn collect_icon_candidates(notification: &NotificationView) -> Vec<String> {
     let mut candidates = Vec::new();
     if !notification.image.icon_name.is_empty() {
         candidates.push(notification.image.icon_name.clone());
@@ -99,7 +93,7 @@ fn is_missing_icon(path: &Path) -> bool {
     stem.starts_with("image-missing")
 }
 
-pub(super) fn image_data_texture(image: &NotificationImage) -> Option<Texture> {
+pub(in crate::ui) fn image_data_texture(image: &NotificationImage) -> Option<Texture> {
     if !image.has_image_data {
         return None;
     }
@@ -205,5 +199,5 @@ fn expand_rgb_to_rgba(data: &unixnotis_core::ImageData) -> Option<(Vec<u8>, usiz
 }
 
 #[cfg(test)]
-#[path = "tests/icons.rs"]
+#[path = "tests/resolver.rs"]
 mod tests;

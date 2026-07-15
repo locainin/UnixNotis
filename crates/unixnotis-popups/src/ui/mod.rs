@@ -2,7 +2,6 @@
 
 mod entry;
 mod icon_state;
-#[path = "../icons/mod.rs"]
 mod icons;
 mod popups;
 mod state;
