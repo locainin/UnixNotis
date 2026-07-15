@@ -1,4 +1,4 @@
-use crate::tests::fs::write_executable;
+use crate::test_support::fs::write_executable;
 use std::fs;
 use std::io::{Error, ErrorKind};
 
@@ -206,7 +206,7 @@ fn missing_systemctl_does_not_emit_per_daemon_status_errors() {
 
 #[test]
 fn detect_uses_bus_owner_systemd_status_and_pgrep_results() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("detect-fake-commands");
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin dir");
@@ -269,7 +269,7 @@ fn detect_uses_bus_owner_systemd_status_and_pgrep_results() {
 
 #[test]
 fn detect_falls_back_to_text_busctl_status_when_json_status_fails() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("detect-text-busctl-fallback");
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin dir");

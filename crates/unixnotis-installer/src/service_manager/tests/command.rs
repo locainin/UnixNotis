@@ -1,8 +1,8 @@
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::{use_fake_command_bin, CommandSpec};
-use crate::tests::fs::write_executable;
+use crate::service_manager::{use_fake_command_bin, CommandSpec};
+use crate::test_support::fs::write_executable;
 
 struct TempDirGuard {
     path: std::path::PathBuf,
@@ -75,7 +75,7 @@ fn command_spec_uses_explicit_fake_bin_for_backend_tools() {
 
 #[test]
 fn command_spec_ignores_inherited_path_backend_tools() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = TempDirGuard::new("path-hijack");
     let marker = root.path.join("marker");
     root.write_executable(

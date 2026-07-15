@@ -3,11 +3,11 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::tests::fs::write_executable;
+use crate::test_support::fs::write_executable;
 
 #[test]
 fn trusted_command_ignores_inherited_path_entries() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("trusted-tool-path-ignore");
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin");

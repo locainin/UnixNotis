@@ -228,3 +228,7 @@ fn path_is_writable(path: &Path) -> bool {
     let _ = std::fs::remove_file(&probe_path);
     true
 }
+
+#[cfg(test)]
+#[path = "tests/system.rs"]
+mod tests;

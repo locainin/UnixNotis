@@ -5,13 +5,13 @@ use crossterm::event::{self, Event};
 use std::sync::mpsc;
 use std::thread;
 
-use crate::action_workflow::apply_worker_event;
-use crate::app::{App, Screen};
-use crate::events::UiMessage;
-use crate::main_handlers::{
+use crate::app::events::UiMessage;
+use crate::app::handlers::{
     handle_build_accel_key, handle_confirm_key, handle_progress_key, handle_reset_menu_key,
     handle_restore_select_key, handle_welcome_key,
 };
+use crate::app::workflow::apply_worker_event;
+use crate::app::{App, Screen};
 use crate::terminal::TerminalGuard;
 use crate::ui;
 use crate::ExitAction;

@@ -15,3 +15,7 @@ pub enum WorkerEvent {
     LogLine(String),
     Finished,
 }
+
+#[cfg(test)]
+#[path = "tests/events.rs"]
+mod tests;

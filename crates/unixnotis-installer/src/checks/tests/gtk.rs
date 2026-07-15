@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use super::{gtk4_css_features_check, gtk4_layer_shell_check};
 use crate::checks::{CheckItem, CheckState};
-use crate::tests::fs::write_executable;
+use crate::test_support::fs::write_executable;
 
 #[test]
 fn gtk_css_feature_parser_handles_major_and_minor_checks() {
@@ -38,7 +38,7 @@ fn gtk_css_feature_parser_handles_major_and_minor_checks() {
 
 #[test]
 fn gtk_css_features_check_warns_for_old_gtk_and_okays_modern_gtk() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("gtk-css-features");
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin");
@@ -62,7 +62,7 @@ fn gtk_css_features_check_warns_for_old_gtk_and_okays_modern_gtk() {
 
 #[test]
 fn gtk_checks_distinguish_pkg_config_missing_from_package_missing() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("gtk-pkg-config-missing");
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin");
@@ -83,7 +83,7 @@ fn gtk_checks_distinguish_pkg_config_missing_from_package_missing() {
 
 #[test]
 fn gtk_layer_shell_check_reports_found_version() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("gtk-layer-shell-found");
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin");

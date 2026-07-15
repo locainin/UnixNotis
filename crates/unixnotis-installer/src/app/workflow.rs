@@ -12,8 +12,8 @@ use crate::actions::{
     build_plan, check_install_state, detect_build_accel, detect_build_accel_without_repo, run_step,
     steps_from_plan, write_build_accel_config, ActionContext, BuildAccelOutcome, StepKind,
 };
+use crate::app::events::{UiMessage, WorkerEvent};
 use crate::app::{App, ProgressState, Screen};
-use crate::events::{UiMessage, WorkerEvent};
 use crate::model::{ActionMode, StepStatus};
 use crate::paths::InstallPaths;
 use crate::terminal::TerminalGuard;
@@ -253,3 +253,7 @@ pub fn handle_build_accel_enter(app: &mut App) {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/workflow.rs"]
+mod tests;

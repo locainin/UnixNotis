@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::shell::{
+use crate::service_manager::shell::{
     envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
     shell_quote,
 };

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::tests::fs::write_executable;
+use crate::test_support::fs::write_executable;
 
 use super::{
     current_version_tag, fetch_latest_release_tag, latest_release_curl_args, latest_tag_from_json,
@@ -33,7 +33,7 @@ fn current_version_tag_uses_cargo_package_version_with_release_prefix() {
 
 #[test]
 fn fetch_latest_release_tag_reads_tag_from_successful_curl_json() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = temp_dir("release-fetch-success");
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake curl directory");
@@ -50,7 +50,7 @@ fn fetch_latest_release_tag_reads_tag_from_successful_curl_json() {
 
 #[test]
 fn fetch_latest_release_tag_rejects_failed_curl_status() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = temp_dir("release-fetch-failure");
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake curl directory");

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     // Path discovery tests share the crate-wide env lock with checks and flow tests
-    crate::tests::env::test_env_lock()
+    crate::test_support::env::test_env_lock()
 }
 
 fn set_env(key: &str, value: Option<&str>) -> Option<String> {

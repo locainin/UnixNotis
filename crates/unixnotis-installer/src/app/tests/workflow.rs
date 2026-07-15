@@ -1,10 +1,10 @@
-use crate::action_workflow::{apply_worker_event, reset_to_menu};
+use crate::app::events::WorkerEvent;
+use crate::app::workflow::{apply_worker_event, reset_to_menu};
 use crate::app::{App, BuildAccelState, ProgressState, Screen};
-use crate::events::WorkerEvent;
 use crate::model::{ActionStep, ResetAction, StepStatus};
 
 fn app_with_steps() -> App {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
     app.steps = vec![
         ActionStep {
@@ -76,7 +76,7 @@ fn worker_logs_keep_recent_two_hundred_entries() {
 
 #[test]
 fn reset_to_menu_clears_transient_action_state() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
     app.steps = vec![ActionStep {
         name: "first",

@@ -45,35 +45,5 @@ pub use manager::{
     UNIXNOTIS_DAEMON_SERVICE,
 };
 
-// Unit tests live under service_manager/tests so backend modules do not become test dumps
 #[cfg(test)]
-#[path = "service_manager/tests/artifacts.rs"]
-mod artifact_tests;
-
-#[cfg(test)]
-#[path = "service_manager/tests/systemd.rs"]
-mod systemd_tests;
-
-#[cfg(test)]
-#[path = "service_manager/tests/dinit.rs"]
-mod dinit_tests;
-
-#[cfg(test)]
-#[path = "service_manager/tests/runit.rs"]
-mod runit_tests;
-
-#[cfg(test)]
-#[path = "service_manager/tests/s6.rs"]
-mod s6_tests;
-
-#[cfg(test)]
-#[path = "service_manager/tests/shell.rs"]
-mod shell_tests;
-
-#[cfg(test)]
-#[path = "service_manager/tests/probe.rs"]
-mod probe_tests;
-
-#[cfg(test)]
-#[path = "service_manager/tests/command.rs"]
-mod command_tests;
+mod tests;

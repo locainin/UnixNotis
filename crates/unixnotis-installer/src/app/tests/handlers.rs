@@ -2,11 +2,11 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
 
 use crate::actions::{BuildAccelConfigStatus, BuildAccelDetection};
-use crate::app::{App, BuildAccelState, ProgressState, Screen};
-use crate::main_handlers::{
+use crate::app::handlers::{
     handle_build_accel_key, handle_progress_key, handle_reset_menu_key, handle_restore_select_key,
     handle_welcome_key,
 };
+use crate::app::{App, BuildAccelState, ProgressState, Screen};
 use crate::model::ActionMode;
 use crate::ExitAction;
 
@@ -17,7 +17,7 @@ fn key(code: KeyCode) -> KeyEvent {
 
 #[test]
 fn vim_keys_move_welcome_menu_like_arrow_keys() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
 
     // j/k should mirror Down/Up without changing menu bounds
@@ -34,7 +34,7 @@ fn vim_keys_move_welcome_menu_like_arrow_keys() {
 
 #[test]
 fn welcome_menu_quit_key_exits_without_starting_action() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
 
     let action = handle_welcome_key(&mut app, key(KeyCode::Char('q'))).expect("q should exit");
@@ -46,7 +46,7 @@ fn welcome_menu_quit_key_exits_without_starting_action() {
 
 #[test]
 fn welcome_enter_opens_confirm_or_reset_submenu_for_selected_action() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
 
     app.menu_index = 1;
@@ -63,7 +63,7 @@ fn welcome_enter_opens_confirm_or_reset_submenu_for_selected_action() {
 
 #[test]
 fn vim_keys_move_reset_menu_like_arrow_keys() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
 
     // Reset has a fixed three-entry menu, so j/k must stay within 0..=2
@@ -78,7 +78,7 @@ fn vim_keys_move_reset_menu_like_arrow_keys() {
 
 #[test]
 fn reset_menu_escape_and_enter_select_expected_destinations() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
     app.screen = Screen::ResetMenu;
 
@@ -103,7 +103,7 @@ fn reset_menu_escape_and_enter_select_expected_destinations() {
 
 #[test]
 fn vim_keys_move_restore_selection_only_when_backups_exist() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
 
     // Empty restore lists should not underflow or invent a selection
@@ -120,7 +120,7 @@ fn vim_keys_move_restore_selection_only_when_backups_exist() {
 
 #[test]
 fn restore_selection_escape_and_enter_only_confirm_existing_backup() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
     app.screen = Screen::RestoreSelect;
 
@@ -139,7 +139,7 @@ fn restore_selection_escape_and_enter_only_confirm_existing_backup() {
 
 #[test]
 fn progress_screen_ignores_keys_while_running_and_returns_after_completion() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
     app.screen = Screen::Progress(ActionMode::Uninstall);
     app.progress_state = ProgressState::Running;
@@ -157,7 +157,7 @@ fn progress_screen_ignores_keys_while_running_and_returns_after_completion() {
 
 #[test]
 fn progress_screen_quit_and_escape_work_after_action_finishes() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
     app.screen = Screen::Progress(ActionMode::Install);
     app.progress_state = ProgressState::Failed;
@@ -174,7 +174,7 @@ fn progress_screen_quit_and_escape_work_after_action_finishes() {
 
 #[test]
 fn progress_screen_respects_ready_delay_after_completion() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
     app.screen = Screen::Progress(ActionMode::Reset);
     app.progress_state = ProgressState::Completed;
@@ -190,7 +190,7 @@ fn progress_screen_respects_ready_delay_after_completion() {
 
 #[test]
 fn completed_install_progress_enters_build_accel_prompt() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
     app.screen = Screen::Progress(ActionMode::Install);
     app.progress_state = ProgressState::Completed;
@@ -205,7 +205,7 @@ fn completed_install_progress_enters_build_accel_prompt() {
 
 #[test]
 fn vim_keys_move_build_accel_menu_like_arrow_keys() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
     app.build_accel = Some(BuildAccelState {
         detection: BuildAccelDetection {
@@ -227,7 +227,7 @@ fn vim_keys_move_build_accel_menu_like_arrow_keys() {
 
 #[test]
 fn build_accel_escape_and_quit_have_distinct_outcomes() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
     app.screen = Screen::BuildAccel;
     app.progress_state = ProgressState::Completed;

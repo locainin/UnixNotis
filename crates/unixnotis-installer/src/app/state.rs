@@ -23,6 +23,10 @@ pub enum ProgressState {
     Failed,
 }
 
+#[cfg(test)]
+#[path = "tests/state.rs"]
+mod tests;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Screen {
     // Landing screen with status and menu

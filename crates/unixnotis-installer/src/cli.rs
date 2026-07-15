@@ -158,14 +158,14 @@ fn parse_service_manager_arg(value: &OsString) -> Result<ServiceManagerChoice> {
 }
 
 #[cfg(test)]
-#[path = "tests/cli/errors.rs"]
+#[path = "cli/tests/errors.rs"]
 mod error_tests;
 #[cfg(test)]
-#[path = "tests/cli/help.rs"]
+#[path = "cli/tests/help.rs"]
 mod help_tests;
 #[cfg(test)]
-#[path = "tests/cli/service_manager.rs"]
+#[path = "cli/tests/service_manager.rs"]
 mod service_manager_tests;
 #[cfg(test)]
-#[path = "tests/cli/support.rs"]
+#[path = "cli/tests/support.rs"]
 mod test_support;

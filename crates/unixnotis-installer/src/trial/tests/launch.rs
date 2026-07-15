@@ -2,7 +2,7 @@ use std::os::unix::fs::symlink;
 
 use super::launch::{run_trial_with_shim_cleanup, trial_launch_script};
 use super::paths::shell_quote;
-use crate::tests::fs::write_executable;
+use crate::test_support::fs::write_executable;
 
 #[test]
 fn trial_launch_script_guards_cleanup_with_expected_symlink_target() {
@@ -29,7 +29,7 @@ fn shell_quote_preserves_spaces_and_embedded_single_quotes() {
 
 #[test]
 fn trial_launch_ignores_shell_from_inherited_path() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root =
         std::env::temp_dir().join(format!("unixnotis-trial-shell-path-{}", std::process::id()));
     let path_bin = root.join("path-bin");

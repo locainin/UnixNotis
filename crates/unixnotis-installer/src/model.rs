@@ -37,3 +37,7 @@ pub struct ActionStep {
     pub name: &'static str,
     pub status: StepStatus,
 }
+
+#[cfg(test)]
+#[path = "model/tests.rs"]
+mod tests;

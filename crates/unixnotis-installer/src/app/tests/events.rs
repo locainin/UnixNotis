@@ -1,6 +1,6 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
-use crate::events::{UiMessage, WorkerEvent};
+use crate::app::events::{UiMessage, WorkerEvent};
 
 #[test]
 fn ui_message_can_carry_keyboard_input() {

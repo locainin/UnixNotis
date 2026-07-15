@@ -21,17 +21,6 @@ mod app;
 mod checks;
 mod cli;
 mod detect;
-mod events;
-// Keep installer entrypoint lean by delegating to modules stored under src/main/
-#[path = "main/action_workflow.rs"]
-mod action_workflow;
-#[path = "main/main_flow.rs"]
-mod main_flow;
-#[path = "main/main_handlers.rs"]
-mod main_handlers;
-#[cfg(test)]
-#[path = "main/tests/mod.rs"]
-mod main_tests;
 mod model;
 mod paths;
 mod release;
@@ -40,17 +29,16 @@ mod service_manager;
 mod system_tools;
 mod terminal;
 #[cfg(test)]
-#[path = "tests/mod.rs"]
-mod tests;
-#[path = "main/trial/mod.rs"]
+mod test_support;
 mod trial;
 mod ui;
 
 use anyhow::Result;
 use std::path::PathBuf;
 
+use crate::app::runtime::run_app;
+use crate::app::App;
 use crate::cli::CliAction;
-use crate::main_flow::run_app;
 use crate::terminal::TerminalGuard;
 use crate::trial::run_trial;
 
@@ -66,7 +54,7 @@ fn main() -> Result<()> {
             return Ok(());
         }
     };
-    let mut app = app::App::new(cli.service_manager);
+    let mut app = App::new(cli.service_manager);
     let mut terminal_guard = TerminalGuard::new()?;
     let exit_action = run_app(&mut terminal_guard, &mut app);
     terminal_guard.restore()?;

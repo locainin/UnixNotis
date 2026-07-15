@@ -257,5 +257,5 @@ const fn secure_resolve_flags() -> ResolveFlags {
 }
 
 #[cfg(test)]
-#[path = "tests/safe_write.rs"]
+#[path = "safe_write/tests.rs"]
 mod tests;
