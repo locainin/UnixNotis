@@ -13,14 +13,12 @@ use crate::child_process::{spawn_center_supervisor, spawn_popups_supervisor};
 use crate::cli::Args;
 use crate::daemon::{
     log_name_reply, request_control_name, request_well_known_name, spawn_inhibitor_owner_watch,
-    ControlServer, DaemonState, NotificationServer,
+    ControlServer, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH,
 };
 use crate::dbus_owner::log_current_owner;
 use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
 use unixnotis_core::{Config, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH};
-
-const NOTIFICATIONS_OBJECT_PATH: &str = "/org/freedesktop/Notifications";
 
 pub(super) async fn run_daemon(
     args: &Args,
