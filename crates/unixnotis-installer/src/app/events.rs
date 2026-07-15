@@ -1,6 +1,14 @@
 //! Event types used to coordinate the installer UI and worker thread.
 
 use crossterm::event::Event;
+use std::path::PathBuf;
+
+pub enum ExitAction {
+    // Return from the installer without launching follow-up work
+    None,
+    // Restore the terminal before starting a trial from this repository
+    RunTrial { repo_root: PathBuf },
+}
 
 pub enum UiMessage {
     Input(Event),

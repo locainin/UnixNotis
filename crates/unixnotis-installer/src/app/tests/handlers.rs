@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
 
+use super::super::ExitAction;
 use crate::actions::{BuildAccelConfigStatus, BuildAccelDetection};
 use crate::app::handlers::{
     handle_build_accel_key, handle_progress_key, handle_reset_menu_key, handle_restore_select_key,
@@ -8,7 +9,6 @@ use crate::app::handlers::{
 };
 use crate::app::{App, BuildAccelState, ProgressState, Screen};
 use crate::model::ActionMode;
-use crate::ExitAction;
 
 fn key(code: KeyCode) -> KeyEvent {
     // Tests build real crossterm key events so handler behavior matches the TUI path

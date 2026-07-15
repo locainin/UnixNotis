@@ -5,6 +5,7 @@ use crossterm::event::{self, Event};
 use std::sync::mpsc;
 use std::thread;
 
+use super::ExitAction;
 use crate::app::events::UiMessage;
 use crate::app::handlers::{
     handle_build_accel_key, handle_confirm_key, handle_progress_key, handle_reset_menu_key,
@@ -14,7 +15,6 @@ use crate::app::workflow::apply_worker_event;
 use crate::app::{App, Screen};
 use crate::terminal::TerminalGuard;
 use crate::ui;
-use crate::ExitAction;
 
 pub fn run_app(terminal_guard: &mut TerminalGuard, app: &mut App) -> Result<ExitAction> {
     // Bound UI event channel to avoid unbounded memory growth if worker output

@@ -5,6 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use std::sync::mpsc;
 use std::time::Instant;
 
+use super::ExitAction;
 use crate::app::events::UiMessage;
 use crate::app::workflow::{
     handle_build_accel_enter, prepare_build_accel_prompt, reset_to_menu, start_action,
@@ -13,7 +14,6 @@ use crate::app::{App, MenuItem, ProgressState, Screen};
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::terminal::TerminalGuard;
-use crate::ExitAction;
 
 pub fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Result<Option<ExitAction>> {
     match key.code {

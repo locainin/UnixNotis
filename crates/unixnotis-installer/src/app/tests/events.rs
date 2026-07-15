@@ -1,6 +1,6 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
-use crate::app::events::{UiMessage, WorkerEvent};
+use crate::app::events::{ExitAction, UiMessage, WorkerEvent};
 
 #[test]
 fn ui_message_can_carry_keyboard_input() {
@@ -48,5 +48,19 @@ fn worker_log_line_keeps_original_text() {
     match event {
         WorkerEvent::LogLine(message) => assert_eq!(message, "Installed service artifact"),
         _ => panic!("expected log line"),
+    }
+}
+
+#[test]
+fn trial_exit_action_keeps_selected_repository_path() {
+    let action = ExitAction::RunTrial {
+        repo_root: "workspace/UnixNotis".into(),
+    };
+
+    match action {
+        ExitAction::RunTrial { repo_root } => {
+            assert_eq!(repo_root, std::path::Path::new("workspace/UnixNotis"));
+        }
+        ExitAction::None => panic!("expected trial action"),
     }
 }

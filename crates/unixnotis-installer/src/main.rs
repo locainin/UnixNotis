@@ -34,10 +34,9 @@ mod trial;
 mod ui;
 
 use anyhow::Result;
-use std::path::PathBuf;
 
 use crate::app::runtime::run_app;
-use crate::app::App;
+use crate::app::{App, ExitAction};
 use crate::cli::CliAction;
 use crate::terminal::TerminalGuard;
 use crate::trial::run_trial;
@@ -64,9 +63,4 @@ fn main() -> Result<()> {
         Ok(ExitAction::RunTrial { repo_root }) => run_trial(repo_root),
         Err(err) => Err(err),
     }
-}
-
-pub(crate) enum ExitAction {
-    None,
-    RunTrial { repo_root: PathBuf },
 }
