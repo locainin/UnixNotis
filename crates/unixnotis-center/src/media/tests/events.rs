@@ -2,6 +2,7 @@ use super::{
     merge_mode_for_signal, owner_is_unchanged, should_publish_immediate_command_snapshot,
     should_schedule_metadata_fallback, MediaCacheMergeMode,
 };
+use crate::media::{MediaCommand, MediaRefreshOrigin};
 
 #[test]
 fn owner_replacement_rebuilds_state_but_duplicate_signal_does_not() {
@@ -9,7 +10,6 @@ fn owner_replacement_rebuilds_state_but_duplicate_signal_does_not() {
     assert!(!owner_is_unchanged(Some(":1.42"), Some(":1.43")));
     assert!(!owner_is_unchanged(None, Some(":1.43")));
 }
-use crate::media::{MediaCommand, MediaRefreshOrigin};
 
 #[test]
 fn fallback_generated_refreshes_do_not_rearm_followup_sweeps() {

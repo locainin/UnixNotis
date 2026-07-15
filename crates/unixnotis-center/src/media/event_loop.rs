@@ -18,6 +18,8 @@ use super::runtime::MEDIA_SIGNAL_CAPACITY;
 use super::schedule::DelayedRefreshTasks;
 use super::{MediaCommand, MediaInfo, MediaSignal};
 
+const OWNER_REBUILD_RETRY_MS: u64 = 200;
+
 pub(super) struct MediaRuntimeState {
     // Live player proxies keyed by bus name
     pub(super) players: std::collections::HashMap<String, PlayerState>,
@@ -102,9 +104,11 @@ async fn run_connection_once(
 
     // This channel keeps property updates away from the GTK thread
     let (signal_tx, mut signal_rx) = mpsc::channel::<MediaSignal>(MEDIA_SIGNAL_CAPACITY);
+    let (owner_retry_tx, mut owner_retry_rx) = mpsc::channel::<()>(1);
     let mut state = MediaRuntimeState::new();
     // Startup begins with one full refresh so the UI gets a complete snapshot
     let mut refresh = true;
+    let mut owner_retry_scheduled = false;
 
     loop {
         if refresh {
@@ -142,6 +146,14 @@ async fn run_connection_once(
                 };
                 handle_runtime_signal(&mut state, &signal_tx, sender, signal).await;
             }
+            retry = owner_retry_rx.recv() => {
+                if retry.is_none() {
+                    return false;
+                }
+                // One delayed discovery pass repairs a transient owner-proxy construction failure
+                owner_retry_scheduled = false;
+                refresh = true;
+            }
             signal = owner_stream.next() => {
                 let Some(signal) = signal else {
                     // Stream termination means zbus can no longer deliver this bus generation
@@ -165,6 +177,14 @@ async fn run_connection_once(
                     .await
                     {
                         warn!(?err, "failed to apply media owner change");
+                        if !owner_retry_scheduled {
+                            // Only one timer may exist so repeated owner noise cannot become polling
+                            owner_retry_scheduled = true;
+                            tokio::spawn(send_owner_rebuild_retry_after(
+                                std::time::Duration::from_millis(OWNER_REBUILD_RETRY_MS),
+                                owner_retry_tx.clone(),
+                            ));
+                        }
                     }
                 }
             }
@@ -172,8 +192,18 @@ async fn run_connection_once(
     }
 }
 
+async fn send_owner_rebuild_retry_after(delay: std::time::Duration, sender: mpsc::Sender<()>) {
+    tokio::time::sleep(delay).await;
+    // A closed receiver means the bus generation already ended and no retry remains useful
+    let _ = sender.send(()).await;
+}
+
 pub(super) fn drain_stale_media_commands(command_rx: &mut mpsc::Receiver<MediaCommand>) {
     while command_rx.try_recv().is_ok() {
         // Startup refreshes all players, so queued commands from the dead bus are obsolete
     }
 }
+
+#[cfg(test)]
+#[path = "tests/event_loop.rs"]
+mod tests;

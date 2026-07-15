@@ -255,5 +255,5 @@ const fn merge_mode_for_signal(origin: MediaRefreshOrigin) -> MediaCacheMergeMod
 }
 
 #[cfg(test)]
-#[path = "tests/loop_events.rs"]
+#[path = "tests/events.rs"]
 mod tests;
