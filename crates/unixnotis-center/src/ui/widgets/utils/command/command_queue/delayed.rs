@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use tracing::warn;
 
-use super::{dispatch_ready_job, CommandJob, CommandWorker};
+use super::worker::{dispatch_ready_job, CommandJob, CommandWorker};
 
 // Keep slow-job wait time out of worker threads
 const DELAYED_SLOW_CAPACITY: usize = 128;
@@ -137,3 +137,7 @@ pub(super) fn next_delayed_wake(pending: &[DelayedJob], now: Instant) -> Option<
         .map(|job| job.ready_at.saturating_duration_since(now))
         .min()
 }
+
+#[cfg(test)]
+#[path = "tests/delayed.rs"]
+mod tests;
