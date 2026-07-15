@@ -10,8 +10,8 @@ use super::super::{
     remove_shell_path_entry, shell_path_entry_exists, shell_startup_files,
 };
 use crate::actions::ActionContext;
+use crate::app::events::{UiMessage, WorkerEvent};
 use crate::detect::Detection;
-use crate::events::{UiMessage, WorkerEvent};
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
@@ -432,5 +432,5 @@ impl Drop for EnvGuard {
 fn env_lock() -> MutexGuard<'static, ()> {
     // HOME and SHELL share one process namespace with every installer test
     // Reusing the crate lock prevents unrelated path tests from restoring them mid-assertion
-    crate::tests::env::test_env_lock()
+    crate::test_support::env::test_env_lock()
 }

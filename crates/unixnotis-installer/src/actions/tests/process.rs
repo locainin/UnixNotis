@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 
-use crate::events::{UiMessage, WorkerEvent};
+use crate::app::events::{UiMessage, WorkerEvent};
 
 use super::{sanitize_log_line, send_log_line};
 

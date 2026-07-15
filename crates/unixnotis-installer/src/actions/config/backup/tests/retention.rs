@@ -1,6 +1,6 @@
 use super::super::{create_backup_dir, list_backup_dirs, prune_old_backups, BackupConfig};
+use crate::app::events::UiMessage;
 use crate::detect::Detection;
-use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use std::fs;
@@ -10,7 +10,7 @@ use std::sync::{mpsc, Arc};
 
 #[test]
 fn prune_old_backups_keeps_newest() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     // Backup names are date-ordered, so lexical sort can drive retention
     let root = PathBuf::from("target").join(format!(
         "unixnotis-installer-backup-prune-test-{}",
@@ -76,7 +76,7 @@ fn backup_config_defaults_to_three() {
 
 #[test]
 fn create_backup_dir_keeps_new_directory_when_retention_is_full() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = PathBuf::from("target").join(format!(
         "unixnotis-installer-backup-create-test-{}",
         std::process::id()
@@ -122,7 +122,7 @@ fn create_backup_dir_keeps_new_directory_when_retention_is_full() {
 
 #[test]
 fn create_backup_dir_returns_none_when_retention_is_disabled() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = PathBuf::from("target").join(format!(
         "unixnotis-installer-backup-disabled-test-{}",
         std::process::id()
@@ -153,7 +153,7 @@ fn create_backup_dir_returns_none_when_retention_is_disabled() {
     let log = rx.try_recv().expect("disabled backup log");
     assert!(matches!(
         log,
-        UiMessage::Worker(crate::events::WorkerEvent::LogLine(message))
+        UiMessage::Worker(crate::app::events::WorkerEvent::LogLine(message))
             if message.contains("Backups disabled")
     ));
     let _ = fs::remove_dir_all(&root);

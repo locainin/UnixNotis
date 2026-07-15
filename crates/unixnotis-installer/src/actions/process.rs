@@ -9,7 +9,7 @@ use std::thread;
 
 use anyhow::{Context, Result};
 
-use crate::events::{UiMessage, WorkerEvent};
+use crate::app::events::{UiMessage, WorkerEvent};
 
 use super::ActionContext;
 

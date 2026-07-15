@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc::SyncSender, Arc};
 
+use crate::app::events::UiMessage;
 use crate::detect::Detection;
-use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 

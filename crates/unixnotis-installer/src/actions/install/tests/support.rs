@@ -3,8 +3,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::app::events::UiMessage;
 use crate::detect::Detection;
-use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;

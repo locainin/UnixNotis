@@ -5,21 +5,21 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 
+use crate::app::events::{UiMessage, WorkerEvent};
 use crate::detect::Detection;
-use crate::events::{UiMessage, WorkerEvent};
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::{
     use_fake_command_bin, ServiceManager, MANAGED_DIRECTORY_MARKER,
     MANAGED_DIRECTORY_MARKER_CONTENTS,
 };
-use crate::tests::fs::write_executable;
+use crate::test_support::fs::write_executable;
 
 use super::{check_install_state, check_install_state_step, ActionContext};
 
 #[test]
 fn dinit_artifact_backed_enablement_does_not_log_missing_enabled_command_error() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("dinit-artifact-enabled-state");
     let service_root = root.join("dinit.d");
     let boot_dir = service_root.join("boot.d");
@@ -47,7 +47,7 @@ fn dinit_artifact_backed_enablement_does_not_log_missing_enabled_command_error()
 
 #[test]
 fn install_state_rejects_foreign_runit_service_directory() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("runit-foreign-install-state");
     let service_root = root.join("service");
     let service_dir = service_root.join("unixnotis-daemon");
@@ -71,7 +71,7 @@ fn install_state_rejects_foreign_runit_service_directory() {
 
 #[test]
 fn selected_backend_artifacts_do_not_count_as_cross_backend_conflict() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("selected-backend-conflict");
     // Discovery reads global HOME/XDG vars, so every path stays inside the test root
     let _env = service_scan_env(&root);
@@ -97,7 +97,7 @@ fn selected_backend_artifacts_do_not_count_as_cross_backend_conflict() {
 
 #[test]
 fn different_backend_artifacts_are_reported_as_install_conflict() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("different-backend-artifact-conflict");
     // Match real discovery paths so the conflict scanner sees the dinit artifacts
     let _env = service_scan_env(&root);
@@ -129,7 +129,7 @@ fn different_backend_artifacts_are_reported_as_install_conflict() {
 
 #[test]
 fn same_backend_different_root_artifacts_are_reported_as_install_conflict() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("same-backend-different-root-conflict");
     let _env = service_scan_env(&root);
     let selected_root = root.join("custom-runit-service");
@@ -167,7 +167,7 @@ fn same_backend_different_root_artifacts_are_reported_as_install_conflict() {
 
 #[test]
 fn active_probe_errors_are_reported_as_conflict_warnings() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("active-probe-warning");
     let _env = service_scan_env(&root);
     let fake_bin = root.join("fake-probe-bin");
@@ -201,7 +201,7 @@ fn active_probe_errors_are_reported_as_conflict_warnings() {
 
 #[test]
 fn install_check_blocks_when_different_backend_is_active() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("different-backend-active-conflict");
     let _env = service_scan_env(&root);
     let fake_bin = root.join("fake-bin");

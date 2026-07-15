@@ -8,12 +8,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 
 use crate::actions::ActionContext;
+use crate::app::events::UiMessage;
 use crate::detect::Detection;
-use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
-use crate::tests::env::EnvGuard;
+use crate::test_support::env::EnvGuard;
 use unixnotis_core::util;
 
 #[test]
@@ -126,7 +126,7 @@ fn remove_state_file_propagates_non_missing_filesystem_errors() {
 
 #[test]
 fn remove_state_uses_xdg_state_home_and_deletes_persisted_state() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let state_home = std::env::temp_dir().join(format!(
         "unixnotis-installer-remove-state-test-{}",
         std::process::id()
@@ -162,7 +162,7 @@ fn remove_state_uses_xdg_state_home_and_deletes_persisted_state() {
     assert!(!state_file.exists());
     assert!(log_rx.try_iter().any(|message| matches!(
         message,
-        UiMessage::Worker(crate::events::WorkerEvent::LogLine(line))
+        UiMessage::Worker(crate::app::events::WorkerEvent::LogLine(line))
             if line.contains("Removed persisted state file")
     )));
     let _ = fs::remove_dir_all(&state_home);
@@ -197,7 +197,7 @@ fn cleanup_warning_message_flags_empty_directory_removal_failures() {
 #[test]
 fn format_with_state_env_uses_xdg_state_home_prefix() {
     // Ensures state paths are rendered with $XDG_STATE_HOME when available
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let _xdg_state_home = EnvGuard::set("XDG_STATE_HOME", "state-root");
 
     let path = PathBuf::from("state-root")

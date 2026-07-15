@@ -7,14 +7,14 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::{use_fake_command_bin, ServiceManager};
-use crate::tests::fs::write_executable;
+use crate::test_support::fs::write_executable;
 
 use super::super::super::service::{enable_service, install_service, uninstall_service};
 use super::super::support::{test_context, test_root};
 
 pub(super) fn lock_env() -> MutexGuard<'static, ()> {
     // Flow tests share one crate-wide env lock with path and readiness tests
-    crate::tests::env::test_env_lock()
+    crate::test_support::env::test_env_lock()
 }
 
 pub(super) struct EnvGuard {

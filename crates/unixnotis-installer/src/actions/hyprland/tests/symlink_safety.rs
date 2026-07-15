@@ -1,12 +1,12 @@
 use super::super::{ensure_hyprland_autostart, remove_hyprland_autostart};
 use super::super::{HYPR_BOOTSTRAP_END, HYPR_BOOTSTRAP_START};
 use crate::actions::ActionContext;
+use crate::app::events::UiMessage;
 use crate::detect::Detection;
-use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
-use crate::tests::env::EnvGuard;
+use crate::test_support::env::EnvGuard;
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::sync::atomic::AtomicBool;
@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn hyprland_autostart_supports_config_symlink_to_regular_file_inside_home() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("hyprland-config-symlink");
     let home = root.join("home");
     let config_home = home.join("xdg");
@@ -65,7 +65,7 @@ fn hyprland_autostart_supports_config_symlink_to_regular_file_inside_home() {
     let logs = rx.try_iter().collect::<Vec<_>>();
     assert!(logs.iter().any(|message| matches!(
         message,
-        UiMessage::Worker(crate::events::WorkerEvent::LogLine(line))
+        UiMessage::Worker(crate::app::events::WorkerEvent::LogLine(line))
             if line.contains("Updated Hyprland config")
     )));
     let _ = fs::remove_dir_all(&root);
@@ -73,7 +73,7 @@ fn hyprland_autostart_supports_config_symlink_to_regular_file_inside_home() {
 
 #[test]
 fn ensure_hyprland_autostart_rejects_config_symlink_outside_home() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("hyprland-config-outside-home");
     let home = root.join("home");
     let config_home = home.join("xdg");
@@ -114,7 +114,7 @@ fn ensure_hyprland_autostart_rejects_config_symlink_outside_home() {
     let logs = rx.try_iter().collect::<Vec<_>>();
     assert!(logs.iter().any(|message| matches!(
         message,
-        UiMessage::Worker(crate::events::WorkerEvent::LogLine(line))
+        UiMessage::Worker(crate::app::events::WorkerEvent::LogLine(line))
             if line.contains("outside the home directory")
     )));
     let _ = fs::remove_dir_all(&root);
@@ -122,7 +122,7 @@ fn ensure_hyprland_autostart_rejects_config_symlink_outside_home() {
 
 #[test]
 fn remove_hyprland_autostart_strips_managed_block_from_real_config() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("hyprland-remove-block");
     let config_home = root.join("xdg");
     let hypr_dir = config_home.join("hypr");

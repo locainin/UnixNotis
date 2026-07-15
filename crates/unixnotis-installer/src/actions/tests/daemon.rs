@@ -2,12 +2,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 
 use crate::actions::ActionContext;
+use crate::app::events::UiMessage;
 use crate::detect::{DetectedDaemon, Detection, OwnerInfo};
-use crate::events::UiMessage;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
-use crate::tests::fs::write_executable;
+use crate::test_support::fs::write_executable;
 
 use super::{
     is_systemd_unit_inactive, pid_alive, pid_matches_comm, stop_active_daemon,
@@ -185,7 +185,7 @@ fn systemd_stop_error_rejects_unrecognized_non_running_words() {
 
 #[test]
 fn is_systemd_unit_inactive_reads_trusted_systemctl_state() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root = std::env::temp_dir().join(format!(
         "unixnotis-daemon-systemctl-state-{}",
         std::process::id()
@@ -246,7 +246,7 @@ fn pid_alive_reports_zero_pid_as_not_alive() {
 
 #[test]
 fn pid_alive_ignores_kill_from_inherited_path() {
-    let _lock = crate::tests::env::test_env_lock();
+    let _lock = crate::test_support::env::test_env_lock();
     let root =
         std::env::temp_dir().join(format!("unixnotis-daemon-kill-path-{}", std::process::id()));
     let path_bin = root.join("path-bin");

@@ -1,32 +1,18 @@
 //! Installer action orchestration and shared exports
 
-#[path = "actions/actions_state/binaries.rs"]
 mod binaries;
-#[path = "actions/build/mod.rs"]
 mod build;
-#[path = "actions/config/mod.rs"]
 mod config;
-#[path = "actions/actions_state/conflicts.rs"]
 mod conflicts;
-#[path = "actions/actions_state/context.rs"]
 mod context;
-#[path = "actions/actions_state/daemon.rs"]
 mod daemon;
-#[path = "actions/environment/mod.rs"]
 mod environment;
-#[path = "actions/format/mod.rs"]
 mod format;
-#[path = "actions/hyprland/mod.rs"]
 mod hyprland;
-#[path = "actions/install/mod.rs"]
 mod install;
-#[path = "actions/actions_state/install_state.rs"]
 mod install_state;
-#[path = "actions/actions_state/plan.rs"]
 mod plan;
-#[path = "actions/actions_state/process.rs"]
 mod process;
-#[path = "actions/actions_state/state.rs"]
 mod state;
 
 pub use build::{
