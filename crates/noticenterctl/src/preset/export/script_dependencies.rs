@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Component, Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 
 use super::super::config_root::SecureFileCapture;
 use super::super::filesystem::{open_secure_dir_all, read_relative_file_secure_bounded};
@@ -18,6 +18,27 @@ pub(super) const MAX_SCANNED_SCRIPT_BYTES: u64 = 1024 * 1024;
 pub(super) struct ScriptDependencyClosure {
     pub(super) paths: Vec<PathBuf>,
     pub(super) captures: BTreeMap<PathBuf, SecureFileCapture>,
+}
+
+#[derive(Clone, Copy)]
+enum ScriptScanKind {
+    // Entry files can be native executables that have no shell dependency syntax
+    Entry,
+    // A file reached through source syntax is shell input even when it has no shebang
+    Sourced,
+}
+
+enum SourceOperand {
+    // Dependency path is proven to stay under the config root
+    Portable(PathBuf),
+    // Shell expansion decides the path only when the command runs
+    RuntimeDynamic,
+    // Absolute system files are supplied by the destination host
+    AbsoluteSystem,
+    // A script-dir path is known to leave the portable config tree
+    UnsafeEscape,
+    // Relative shell lookup depends on process state UnixNotis does not control
+    AmbiguousRelative,
 }
 
 pub(super) fn collect_script_dependency_closure(
@@ -46,26 +67,45 @@ pub(super) fn collect_script_dependency_closure(
                         )
                     })?;
             captures.insert(entry.clone(), SecureFileCapture { contents, mode });
-            pending.push_back(entry);
+            pending.push_back((entry, ScriptScanKind::Entry));
         }
     }
 
-    while let Some(script_relative) = pending.pop_front() {
+    while let Some((script_relative, scan_kind)) = pending.pop_front() {
         let bytes = &captures
             .get(&script_relative)
             .expect("queued script capture must exist")
             .contents;
         let Ok(contents) = std::str::from_utf8(bytes) else {
-            // Binary command helpers cannot contain portable shell source statements
+            if matches!(scan_kind, ScriptScanKind::Sourced) || has_shell_shebang(bytes) {
+                return Err(anyhow!(
+                    "preset export cannot verify non-UTF-8 shell dependency {}",
+                    script_relative.display()
+                ));
+            }
+            // Native executables are valid preset files and do not contain shell source syntax
             continue;
         };
 
         // Own the small operand list before captures grow so no map entry stays borrowed
         let operands = source_operands(contents).collect::<Vec<_>>();
         for operand in operands {
-            let Some(dependency) = resolve_source_operand(&script_relative, &operand) else {
-                // Dynamic variables and absolute system libraries are runtime concerns, not bundle paths
-                continue;
+            let dependency = match resolve_source_operand(&script_relative, &operand) {
+                SourceOperand::Portable(dependency) => dependency,
+                // Dynamic and absolute system dependencies intentionally remain destination concerns
+                SourceOperand::RuntimeDynamic | SourceOperand::AbsoluteSystem => continue,
+                SourceOperand::UnsafeEscape => {
+                    return Err(anyhow!(
+                        "script {} source operand {operand:?} escapes the UnixNotis config root",
+                        script_relative.display()
+                    ));
+                }
+                SourceOperand::AmbiguousRelative => {
+                    return Err(anyhow!(
+                        "script {} source operand {operand:?} depends on the runtime working directory; use $script_dir or ${{script_dir}}",
+                        script_relative.display()
+                    ));
+                }
             };
             if discovered.insert(dependency.clone()) {
                 let (contents, mode) = read_relative_file_secure_bounded(
@@ -82,7 +122,7 @@ pub(super) fn collect_script_dependency_closure(
                 })?;
                 captures.insert(dependency.clone(), SecureFileCapture { contents, mode });
                 // Newly found helpers are scanned too because shell libraries can source another local file
-                pending.push_back(dependency);
+                pending.push_back((dependency, ScriptScanKind::Sourced));
             }
         }
     }
@@ -107,20 +147,58 @@ fn source_operands(contents: &str) -> impl Iterator<Item = String> + '_ {
     })
 }
 
-fn resolve_source_operand(script_relative: &Path, operand: &str) -> Option<PathBuf> {
+fn resolve_source_operand(script_relative: &Path, operand: &str) -> SourceOperand {
     let script_parent = script_relative.parent().unwrap_or_else(|| Path::new(""));
     let relative = if let Some(value) = operand.strip_prefix("$script_dir/") {
         script_parent.join(value)
     } else if let Some(value) = operand.strip_prefix("${script_dir}/") {
         script_parent.join(value)
     } else {
-        // Any remaining expansion requires a shell and must never be guessed during export
-        if operand.contains('$') || operand.contains('`') || Path::new(operand).is_absolute() {
-            return None;
+        // Expansions and absolute system libraries are runtime concerns rather than bundle paths
+        if operand.contains('$') || operand.contains('`') {
+            return SourceOperand::RuntimeDynamic;
         }
-        PathBuf::from(operand)
+        if Path::new(operand).is_absolute() {
+            return SourceOperand::AbsoluteSystem;
+        }
+        // Shells resolve ordinary relative operands from process state or PATH, not from config root
+        return SourceOperand::AmbiguousRelative;
     };
-    normalize_relative_path(&relative)
+    normalize_relative_path(&relative).map_or(SourceOperand::UnsafeEscape, SourceOperand::Portable)
+}
+
+fn has_shell_shebang(bytes: &[u8]) -> bool {
+    let Some(first_line) = bytes.split(|byte| *byte == b'\n').next() else {
+        return false;
+    };
+    let Ok(first_line) = std::str::from_utf8(first_line) else {
+        return false;
+    };
+    let Some(command) = first_line.strip_prefix("#!") else {
+        return false;
+    };
+
+    // Checking each shebang word also covers portable forms such as `/usr/bin/env sh`
+    command.split_ascii_whitespace().any(|word| {
+        Path::new(word)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                matches!(
+                    name,
+                    "sh" | "ash"
+                        | "bash"
+                        | "csh"
+                        | "dash"
+                        | "fish"
+                        | "ksh"
+                        | "mksh"
+                        | "tcsh"
+                        | "yash"
+                        | "zsh"
+                )
+            })
+    })
 }
 
 fn normalize_relative_path(path: &Path) -> Option<PathBuf> {

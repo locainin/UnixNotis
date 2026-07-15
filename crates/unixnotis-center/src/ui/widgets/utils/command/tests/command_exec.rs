@@ -1,7 +1,9 @@
 use std::io::{self, Cursor};
 use std::path::Path;
 
-use super::{read_to_end_limited, resolve_simple_program_from_root, MAX_CAPTURE_BYTES};
+use super::{
+    build_command, read_to_end_limited, resolve_simple_program_from_root, MAX_CAPTURE_BYTES,
+};
 
 #[test]
 fn read_to_end_limited_accepts_small_payloads() {
@@ -45,4 +47,12 @@ fn resolve_simple_program_blocks_parent_traversal_paths() {
         resolve_simple_program_from_root(Some(config_dir), "../outside-script"),
         config_dir.join(".unixnotis-blocked-command-path")
     );
+}
+
+#[test]
+fn shell_commands_inherit_process_working_directory() {
+    let command = build_command(". ./lib/common.sh");
+
+    // No implicit config-root directory exists, so relative shell operands are not portable
+    assert_eq!(command.get_current_dir(), None);
 }

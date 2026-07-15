@@ -159,15 +159,96 @@ fn safe_parent_relative_helper_is_normalized_inside_config_root() {
 }
 
 #[test]
-fn parent_relative_helpers_that_escape_config_root_are_ignored() {
+fn parent_relative_helpers_that_escape_config_root_stop_export() {
     let root = TempDirGuard::new("escaping-parent-helper");
     root.write(
         "scripts/probe",
-        "#!/bin/sh\n. \"$script_dir/../../outside.sh\"\n. ../outside.sh\n",
+        "#!/bin/sh\n. \"$script_dir/../../outside.sh\"\n",
     );
 
+    let error = collect_script_dependency_closure(&root.path, &[PathBuf::from("scripts/probe")])
+        .err()
+        .expect("known config-relative escape must fail closed");
+
+    assert!(error
+        .to_string()
+        .contains("escapes the UnixNotis config root"));
+}
+
+#[test]
+fn ordinary_relative_source_operand_stops_export() {
+    let root = TempDirGuard::new("working-directory-source");
+    root.write("scripts/probe", "#!/bin/sh\n. ./lib/common.sh\n");
+
+    let error = collect_script_dependency_closure(&root.path, &[PathBuf::from("scripts/probe")])
+        .err()
+        .expect("working-directory-relative source cannot be portable");
+
+    assert!(error
+        .to_string()
+        .contains("depends on the runtime working directory"));
+    assert!(error.to_string().contains("use $script_dir"));
+}
+
+#[test]
+fn bare_source_operand_stops_export_instead_of_guessing_shell_path() {
+    let root = TempDirGuard::new("shell-path-source");
+    root.write("scripts/probe", "#!/bin/sh\n. common.sh\n");
+
+    let error = collect_script_dependency_closure(&root.path, &[PathBuf::from("scripts/probe")])
+        .err()
+        .expect("bare source can use shell PATH and must not be guessed");
+
+    assert!(error
+        .to_string()
+        .contains("depends on the runtime working directory"));
+}
+
+#[test]
+fn non_utf8_shell_entry_stops_dependency_export() {
+    let root = TempDirGuard::new("non-utf8-shell-entry");
+    let script_path = root.path.join("scripts/probe");
+    fs::create_dir_all(script_path.parent().expect("script parent")).expect("create scripts");
+    fs::write(
+        &script_path,
+        b"#!/bin/sh\n# invalid byte: \xff\n. \"$script_dir/helper\"\n",
+    )
+    .expect("write non-UTF-8 shell script");
+
+    let error = collect_script_dependency_closure(&root.path, &[PathBuf::from("scripts/probe")])
+        .err()
+        .expect("non-UTF-8 shell dependency cannot be verified");
+
+    assert!(error
+        .to_string()
+        .contains("cannot verify non-UTF-8 shell dependency scripts/probe"));
+}
+
+#[test]
+fn non_utf8_sourced_helper_stops_dependency_export_without_a_shebang() {
+    let root = TempDirGuard::new("non-utf8-sourced-helper");
+    root.write("scripts/probe", "#!/bin/sh\n. \"$script_dir/helper\"\n");
+    fs::write(root.path.join("scripts/helper"), b"value='\xff'\n")
+        .expect("write non-UTF-8 sourced helper");
+
+    let error = collect_script_dependency_closure(&root.path, &[PathBuf::from("scripts/probe")])
+        .err()
+        .expect("sourced files are shell input even without a shebang");
+
+    assert!(error
+        .to_string()
+        .contains("cannot verify non-UTF-8 shell dependency scripts/helper"));
+}
+
+#[test]
+fn non_utf8_native_entry_remains_a_valid_bundled_executable() {
+    let root = TempDirGuard::new("non-utf8-native-entry");
+    let script_path = root.path.join("scripts/probe");
+    fs::create_dir_all(script_path.parent().expect("script parent")).expect("create scripts");
+    fs::write(&script_path, b"\x7fELF\x02\x01\xff").expect("write native executable bytes");
+
     let closure = collect_script_dependency_closure(&root.path, &[PathBuf::from("scripts/probe")])
-        .expect("external source operands remain runtime concerns");
+        .expect("native executable does not require shell dependency scanning");
 
     assert_eq!(closure.paths, vec![PathBuf::from("scripts/probe")]);
 }
