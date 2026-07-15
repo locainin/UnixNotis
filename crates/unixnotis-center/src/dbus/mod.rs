@@ -1,10 +1,10 @@
 //! D-Bus runtime for center UI events and control commands.
 
 // Submodules live in src/dbus/ to keep the control loop focused and readable.
-mod dbus_backoff;
-mod dbus_commands;
-mod dbus_seed;
-mod dbus_types;
+mod backoff;
+mod commands;
+mod seed;
+mod types;
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -15,29 +15,31 @@ use tracing::{info, warn};
 use unixnotis_core::ControlProxy;
 use zbus::Connection;
 
-use dbus_backoff::{Backoff, RetryLog, BACKOFF_BASE_MS, BACKOFF_MAX_MS, RETRY_WARN_INTERVAL_SECS};
-use dbus_commands::{
+use backoff::{Backoff, RetryLog, BACKOFF_BASE_MS, BACKOFF_MAX_MS, RETRY_WARN_INTERVAL_SECS};
+use commands::{
     drop_stale_offline_commands, flush_offline_commands, handle_command, stash_offline_commands,
 };
-use dbus_seed::seed_state_with_retry;
+use seed::seed_state_with_retry;
 
-pub use dbus_types::{UiCommand, UiEvent};
+pub use types::{UiCommand, UiEvent};
+
+#[cfg(test)]
+#[path = "tests/reconnect.rs"]
+mod reconnect_tests;
 
 // Bound UI command queue to prevent unbounded growth during stalls.
 const UI_COMMAND_QUEUE_CAPACITY: usize = 64;
 
 pub fn start_dbus_task(
     runtime: &tokio::runtime::Handle,
-    connection: Connection,
     sender: async_channel::Sender<UiEvent>,
 ) -> mpsc::Sender<UiCommand> {
     let (command_tx, command_rx) = mpsc::channel(UI_COMMAND_QUEUE_CAPACITY);
-    runtime.spawn(run_dbus_loop(connection, sender, command_rx));
+    runtime.spawn(run_dbus_loop(sender, command_rx));
     command_tx
 }
 
 async fn run_dbus_loop(
-    connection: Connection,
     sender: async_channel::Sender<UiEvent>,
     mut command_rx: mpsc::Receiver<UiCommand>,
 ) {
@@ -49,6 +51,19 @@ async fn run_dbus_loop(
     let mut subscribe_log = RetryLog::new(Duration::from_secs(RETRY_WARN_INTERVAL_SECS));
 
     loop {
+        // A disconnected zbus socket is terminal, so each loop owns a fresh bus generation
+        let connection = match Connection::session().await {
+            Ok(connection) => connection,
+            Err(err) => {
+                connect_log.warn_or_debug(&err, "failed to connect to session bus; retrying");
+                stash_offline_commands(&mut command_rx, &mut offline_commands);
+                tokio::time::sleep(connect_backoff.next_sleep()).await;
+                continue;
+            }
+        };
+        connect_backoff.reset();
+        connect_log.reset();
+
         let proxy = match ControlProxy::new(&connection).await {
             Ok(proxy) => proxy,
             Err(err) => {
@@ -58,8 +73,6 @@ async fn run_dbus_loop(
                 continue;
             }
         };
-        connect_backoff.reset();
-        connect_log.reset();
         info!("connected to unixnotis control interface");
 
         // Subscribe to signal streams before seeding so match rules are installed

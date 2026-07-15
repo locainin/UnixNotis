@@ -6,8 +6,8 @@ use tokio::time::sleep;
 use tracing::{debug, warn};
 use unixnotis_core::ControlProxy;
 
-use super::dbus_backoff::RetryLog;
-use super::dbus_types::UiEvent;
+use super::backoff::RetryLog;
+use super::types::UiEvent;
 
 // Seed retries tolerate short startup hiccups without blocking indefinitely
 pub const SEED_RETRY_BASE_MS: u64 = 250;
@@ -28,8 +28,8 @@ pub async fn seed_state_with_retry(
     sender: &async_channel::Sender<UiEvent>,
 ) {
     // Seed retries are bounded to keep startup responsive while tolerating transient failures
-    let mut backoff = super::dbus_backoff::Backoff::new(SEED_RETRY_BASE_MS, SEED_RETRY_MAX_MS);
-    let deadline = Instant::now() + Duration::from_secs(SEED_RETRY_BUDGET_SECS);
+    let mut backoff = super::backoff::Backoff::new(SEED_RETRY_BASE_MS, SEED_RETRY_MAX_MS);
+    let deadline = seed_retry_deadline(Instant::now());
     let mut log = RetryLog::new(Duration::from_secs(SEED_RETRY_LOG_INTERVAL_SECS));
 
     loop {
@@ -68,6 +68,15 @@ pub async fn seed_state_with_retry(
         }
     }
 }
+
+fn seed_retry_deadline(now: Instant) -> Instant {
+    // A fixed deadline prevents repeated seed failures from blocking forever
+    now + Duration::from_secs(SEED_RETRY_BUDGET_SECS)
+}
+
+#[cfg(test)]
+#[path = "tests/seed.rs"]
+mod tests;
 
 pub async fn seed_state(
     proxy: &ControlProxy<'_>,

@@ -43,3 +43,7 @@ pub enum UiCommand {
     SetDnd(bool),
     ClosePanel,
 }
+
+#[cfg(test)]
+#[path = "tests/types.rs"]
+mod tests;
