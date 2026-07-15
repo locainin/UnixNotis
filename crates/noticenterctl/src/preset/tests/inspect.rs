@@ -63,11 +63,31 @@ fn inspect_lists_bundle_metadata_and_commands() {
     let report = inspect_preset_at(&bundle_path).expect("inspect");
 
     assert!(report.contains("preset: demo"));
+    assert!(report.contains("widgets requested:"));
     assert!(report.contains("widgets.volume.get_cmd"));
     assert!(report.contains("command path warnings:"));
     assert!(report.contains("host-specific command paths:"));
     assert!(report.contains("file list:"));
     assert!(report.contains("config.toml"));
+}
+
+#[test]
+fn inspect_warns_before_an_oversized_widget_tree_is_imported() {
+    let root = TempDirGuard::new("widget-limits");
+    let bundle_path = root.path.join("widget-limits.unixnotis");
+    let mut config = String::from("[theme]\nbase_css = \"base.css\"\n");
+    for index in 0..20 {
+        config.push_str(&format!(
+            "[[widgets.toggles]]\nlabel = \"Toggle {index}\"\nicon = \"network-wireless-symbolic\"\n"
+        ));
+    }
+    write_bundle_with_files(&bundle_path, "widget-limits", &[("config.toml", &config)]);
+
+    let report = inspect_preset_at(&bundle_path).expect("inspect");
+
+    assert!(report.contains("widgets requested:"));
+    assert!(report.contains("toggles=20"));
+    assert!(report.contains("widget limit warning:"));
 }
 
 #[test]

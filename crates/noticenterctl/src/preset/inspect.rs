@@ -5,7 +5,9 @@
 
 use anyhow::{Context, Result};
 use std::path::Path;
-use unixnotis_core::{util, Config};
+use unixnotis_core::{
+    util, Config, MAX_CARD_WIDGETS, MAX_STAT_WIDGETS, MAX_TOGGLE_WIDGETS, MAX_TOTAL_WIDGETS,
+};
 
 use super::archive::read_bundle;
 use super::command_rules::{
@@ -62,8 +64,9 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
     {
         // config.toml is parsed from the bundle bytes without touching the local config root
         match std::str::from_utf8(&config_file.contents) {
-            Ok(contents) => match toml::from_str::<Config>(contents) {
+            Ok(contents) => match Config::parse(contents) {
                 Ok(config) => {
+                    append_widget_counts(&mut out, requested_widget_counts(contents));
                     let commands = collect_command_references_from_config(&config);
                     out.push_str(&format!("command refs: {}\n", commands.len()));
                     if commands.is_empty() {
@@ -172,6 +175,40 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
         out.push_str(&format!("  - {}\n", safe_report_value(&file.path)));
     }
     Ok(out)
+}
+
+fn requested_widget_counts(contents: &str) -> (usize, usize, usize) {
+    let Ok(document) = contents.parse::<toml::Value>() else {
+        return (0, 0, 0);
+    };
+    let widgets = document.get("widgets");
+    let count = |key: &str| {
+        widgets
+            .and_then(|value| value.get(key))
+            .and_then(toml::Value::as_array)
+            .map_or(0, Vec::len)
+    };
+    (count("toggles"), count("stats"), count("cards"))
+}
+
+fn append_widget_counts(out: &mut String, counts: (usize, usize, usize)) {
+    let (toggles, stats, cards) = counts;
+    let total = toggles.saturating_add(stats).saturating_add(cards);
+    out.push_str(&format!(
+        "widgets requested: {total} (toggles={toggles}, stats={stats}, cards={cards})\n"
+    ));
+
+    // Inspection is read-only, so report the unsafe shape before import sanitizes it
+    if toggles > MAX_TOGGLE_WIDGETS
+        || stats > MAX_STAT_WIDGETS
+        || cards > MAX_CARD_WIDGETS
+        || total > MAX_TOTAL_WIDGETS
+    {
+        out.push_str(&format!(
+            "widget limit warning: runtime keeps at most {MAX_TOTAL_WIDGETS} total \
+(toggles={MAX_TOGGLE_WIDGETS}, stats={MAX_STAT_WIDGETS}, cards={MAX_CARD_WIDGETS})\n"
+        ));
+    }
 }
 
 const fn yes_no(value: bool) -> &'static str {
