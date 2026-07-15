@@ -3,9 +3,6 @@
 // Split CSS responsibilities into focused modules to keep files readable
 mod loader;
 mod manager;
-#[cfg(test)]
-#[path = "css/tests/module_wiring.rs"]
-mod module_wiring_tests;
 mod overrides;
 mod watch;
 

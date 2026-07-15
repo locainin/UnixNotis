@@ -7,16 +7,13 @@ use unixnotis_core::{
     DEFAULT_WIDGETS_CSS,
 };
 
-use super::loader::load_provider_with_overrides;
-use super::overrides::{
+use super::super::loader::load_provider_with_overrides;
+use super::super::overrides::{
     build_base_overrides, build_panel_overrides, build_popup_overrides, build_widgets_overrides,
 };
 
-mod layers;
-mod provider;
-
-use layers::{CssProviderLayer, CssProviderRegistration};
-use provider::CssProviderBackend;
+use super::layers::{CssProviderLayer, CssProviderRegistration};
+use super::provider::CssProviderBackend;
 
 /// Identifies which UI surface is loading CSS
 #[derive(Clone, Copy, Debug)]
@@ -246,8 +243,8 @@ where
 }
 
 #[cfg(test)]
-#[path = "tests/manager/display.rs"]
+#[path = "tests/stack_display.rs"]
 mod display_tests;
 #[cfg(test)]
-#[path = "tests/manager/reload.rs"]
+#[path = "tests/stack_reload.rs"]
 mod reload_tests;
