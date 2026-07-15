@@ -13,6 +13,7 @@ use crate::dbus::UiEvent;
 use super::bus::PlayerState;
 use super::events::{
     apply_owner_change, handle_runtime_command, handle_runtime_signal, refresh_all_players,
+    OwnerChangeOutcome,
 };
 use super::runtime::MEDIA_SIGNAL_CAPACITY;
 use super::schedule::DelayedRefreshTasks;
@@ -165,7 +166,7 @@ async fn run_connection_once(
                         .new_owner()
                         .as_ref()
                         .map(|owner| owner.as_str().to_string());
-                    if let Err(err) = apply_owner_change(
+                    let owner_change = apply_owner_change(
                         name,
                         new_owner.as_deref(),
                         connection,
@@ -174,22 +175,30 @@ async fn run_connection_once(
                         &mut state,
                         sender,
                     )
-                    .await
-                    {
-                        warn!(?err, "failed to apply media owner change");
-                        if !owner_retry_scheduled {
-                            // Only one timer may exist so repeated owner noise cannot become polling
-                            owner_retry_scheduled = true;
-                            tokio::spawn(send_owner_rebuild_retry_after(
-                                std::time::Duration::from_millis(OWNER_REBUILD_RETRY_MS),
-                                owner_retry_tx.clone(),
-                            ));
+                    .await;
+                    let retry_needed = match owner_change {
+                        Ok(outcome) => owner_change_needs_retry(outcome),
+                        Err(err) => {
+                            warn!(?err, "failed to apply media owner change");
+                            true
                         }
+                    };
+                    if retry_needed && !owner_retry_scheduled {
+                        // Only one timer may exist so repeated owner noise cannot become polling
+                        owner_retry_scheduled = true;
+                        tokio::spawn(send_owner_rebuild_retry_after(
+                            std::time::Duration::from_millis(OWNER_REBUILD_RETRY_MS),
+                            owner_retry_tx.clone(),
+                        ));
                     }
                 }
             }
         }
     }
+}
+
+const fn owner_change_needs_retry(outcome: OwnerChangeOutcome) -> bool {
+    matches!(outcome, OwnerChangeOutcome::RetryNeeded)
 }
 
 async fn send_owner_rebuild_retry_after(delay: std::time::Duration, sender: mpsc::Sender<()>) {

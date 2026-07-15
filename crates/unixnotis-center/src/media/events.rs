@@ -21,6 +21,16 @@ use super::schedule::{
 use super::snapshot::send_snapshot_if_changed;
 use super::{MediaCommand, MediaRefreshOrigin, MediaSignal, MPRIS_PREFIX};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum OwnerChangeOutcome {
+    // The announced owner is represented by the current player state
+    Applied,
+    // The announcement intentionally leaves no player under this bus name
+    Removed,
+    // Owner identity changed during probing and needs one bounded discovery retry
+    RetryNeeded,
+}
+
 pub(super) async fn refresh_all_players(
     connection: &Connection,
     dbus_proxy: &DBusProxy<'_>,
@@ -121,25 +131,25 @@ pub(super) async fn apply_owner_change(
     signal_tx: &mpsc::Sender<MediaSignal>,
     state: &mut MediaRuntimeState,
     sender: &async_channel::Sender<UiEvent>,
-) -> zbus::Result<()> {
+) -> zbus::Result<OwnerChangeOutcome> {
     // Owner changes are the one place where the loop has to answer
     // "did a player appear or disappear" instead of "did one player update"
     if !name.starts_with(MPRIS_PREFIX) {
         // Ignore unrelated bus names so the loop only tracks real MPRIS owners
-        return Ok(());
+        return Ok(OwnerChangeOutcome::Applied);
     }
 
     if !is_allowed_player(name, config) {
         // A now-disallowed player must disappear from the UI right away
         remove_player(name, state, sender).await;
-        return Ok(());
+        return Ok(OwnerChangeOutcome::Removed);
     }
 
     let has_owner = new_owner.is_some_and(|owner| !owner.is_empty());
     if !has_owner {
         // Losing the bus owner means the player has gone away
         remove_player(name, state, sender).await;
-        return Ok(());
+        return Ok(OwnerChangeOutcome::Removed);
     }
 
     if state
@@ -148,7 +158,7 @@ pub(super) async fn apply_owner_change(
         .is_some_and(|player| owner_is_unchanged(player.unique_owner.as_deref(), new_owner))
     {
         // Duplicate owner announcements do not need to rebuild a healthy listener
-        return Ok(());
+        return Ok(OwnerChangeOutcome::Applied);
     }
 
     let removed_previous = if let Some(previous) = state.players.remove(name) {
@@ -190,10 +200,35 @@ pub(super) async fn apply_owner_change(
     }
 
     // Removing the prior cache must reach GTK even when replacement probing fails
-    if removed_previous && !matches!(&rebuilt, Ok(Some(_))) {
+    let outcome = match rebuilt {
+        Ok(state) => owner_rebuild_outcome(state.is_some()),
+        Err(err) => {
+            if removed_previous {
+                // The stale card must disappear even when proxy construction itself errors
+                send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
+            }
+            return Err(err);
+        }
+    };
+    if replacement_removal_needs_snapshot(removed_previous, outcome) {
         send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
     }
-    rebuilt.map(|_state| ())
+    Ok(outcome)
+}
+
+const fn owner_rebuild_outcome(rebuilt: bool) -> OwnerChangeOutcome {
+    if rebuilt {
+        OwnerChangeOutcome::Applied
+    } else {
+        OwnerChangeOutcome::RetryNeeded
+    }
+}
+
+const fn replacement_removal_needs_snapshot(
+    removed_previous: bool,
+    outcome: OwnerChangeOutcome,
+) -> bool {
+    removed_previous && !matches!(outcome, OwnerChangeOutcome::Applied)
 }
 
 fn owner_is_unchanged(current_owner: Option<&str>, announced_owner: Option<&str>) -> bool {

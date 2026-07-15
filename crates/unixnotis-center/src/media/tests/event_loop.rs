@@ -1,4 +1,14 @@
-use super::{send_owner_rebuild_retry_after, OWNER_REBUILD_RETRY_MS};
+use super::{
+    owner_change_needs_retry, send_owner_rebuild_retry_after, OwnerChangeOutcome,
+    OWNER_REBUILD_RETRY_MS,
+};
+
+#[test]
+fn only_unstable_owner_outcome_schedules_rebuild_retry() {
+    assert!(owner_change_needs_retry(OwnerChangeOutcome::RetryNeeded));
+    assert!(!owner_change_needs_retry(OwnerChangeOutcome::Applied));
+    assert!(!owner_change_needs_retry(OwnerChangeOutcome::Removed));
+}
 
 #[tokio::test]
 async fn owner_rebuild_retry_emits_one_delayed_refresh_signal() {
