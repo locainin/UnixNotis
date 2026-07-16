@@ -12,12 +12,14 @@ use super::report::render_css_check_report_for_stdout;
 ///
 /// Returns an error when GTK cannot initialize, configuration loading fails, report building
 /// fails, or CSS parsing reports an objective error
-pub fn run() -> Result<()> {
+pub fn run(requested_path: Option<std::path::PathBuf>) -> Result<()> {
     // GTK must be ready before providers parse the resolved theme layers
     gtk::init().context("initialize gtk")?;
 
-    // Match the path selected by the daemon and control center
-    let config_path = Config::active_config_path().context("resolve config path")?;
+    // An explicit command path must outrank the environment and normal default location
+    let config_path = requested_path
+        .map_or_else(Config::active_config_path, Ok)
+        .context("resolve config path")?;
     let config = load_config_for_path(&config_path)?;
     let report = build_report(&config_path, &config)?;
     let parse_error_count = report.error_count();

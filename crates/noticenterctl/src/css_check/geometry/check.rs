@@ -1,10 +1,4 @@
-//! Geometry-aware lint rules for css-check
-
-mod model;
-mod parse;
-mod stock;
-#[cfg(test)]
-mod tests;
+//! Geometry-aware lint execution for css-check
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,34 +6,14 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use unixnotis_core::{build_modern_theme_custom_properties, gtk_css_features_for_version, Config};
 
-use self::model::GeometryModel;
-use self::parse::collect_geometry_from_contents_with_properties;
-pub(super) use self::parse::{
-    can_model_horizontal_size_value, collect_custom_property_scopes, CssCustomPropertyScopes,
+use super::super::files::format_display_path;
+use super::super::report::{CssCheckCategory, CssCheckDiagnostic};
+use super::model::GeometryModel;
+use super::parse::{
+    collect_custom_property_scopes, collect_geometry_from_contents_with_properties,
 };
-use super::files::format_display_path;
-use super::report::{CssCheckCategory, CssCheckDiagnostic};
-use super::runtime::display_config_path;
 
-pub(super) fn lint_geometry_css_files(
-    files: &[PathBuf],
-    config_dir: &Path,
-    display_root: &str,
-) -> Result<Vec<CssCheckDiagnostic>> {
-    // Geometry warnings depend on the live panel width, so there is nothing useful to do
-    // until the real config can be loaded
-    let config_path = Config::default_config_path()?;
-    if !config_path.exists() {
-        // Geometry lint needs the live config because panel width still matters
-        return Ok(Vec::new());
-    }
-
-    let config = Config::load_from_path(&config_path)?;
-    let config_display = display_config_path(config_dir, display_root, &config_path);
-    lint_geometry_css_files_with_config(files, config_dir, display_root, &config_display, &config)
-}
-
-pub(super) fn lint_geometry_css_files_with_config(
+pub(in crate::css_check) fn lint_geometry_css_files_with_config(
     files: &[PathBuf],
     config_dir: &Path,
     display_root: &str,
@@ -98,3 +72,7 @@ pub(super) fn lint_geometry_css_files_with_config(
 
     Ok(diagnostics)
 }
+
+#[cfg(test)]
+#[path = "tests/check.rs"]
+mod tests;

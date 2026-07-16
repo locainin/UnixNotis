@@ -1,65 +1,51 @@
-//! Geometry model and width-pressure math for css-check
+//! Collected geometry state and final panel budget warnings
 
 use unixnotis_core::Config;
 
-use super::stock::baselines::{stock_config, stock_geometry_model};
-
-// Keep the geometry model split by job so width math changes stay easy to trace
-mod box_metrics;
-mod constants;
-mod fixed_grid;
-mod media;
-mod tracking;
-
-#[cfg(test)]
-#[path = "model/tests/cases.rs"]
-mod tests;
-
-pub(super) use self::box_metrics::{
-    HorizontalBoxMetrics, HorizontalEdges, VerticalBoxMetrics, VerticalEdges,
-};
-use self::constants::WIDTH_WARNING_TOLERANCE_PX;
+use super::box_metrics::HorizontalBoxMetrics;
+use super::constants::WIDTH_WARNING_TOLERANCE_PX;
+use super::media;
 
 #[derive(Default)]
-pub(super) struct GeometryModel {
+pub(in crate::css_check::geometry) struct GeometryModel {
     // Panel chrome is the first width budget every child must fit inside
-    panel: HorizontalBoxMetrics,
+    pub(super) panel: HorizontalBoxMetrics,
     // Toggle widths are tracked as section, grid, and item layers
-    toggle_section: HorizontalBoxMetrics,
-    toggle_grid: HorizontalBoxMetrics,
-    toggle_item: HorizontalBoxMetrics,
+    pub(super) toggle_section: HorizontalBoxMetrics,
+    pub(super) toggle_grid: HorizontalBoxMetrics,
+    pub(super) toggle_item: HorizontalBoxMetrics,
     // Stat widths follow the same pattern with a different grid size
-    stat_section: HorizontalBoxMetrics,
-    stat_grid: HorizontalBoxMetrics,
-    stat_item: HorizontalBoxMetrics,
+    pub(super) stat_section: HorizontalBoxMetrics,
+    pub(super) stat_grid: HorizontalBoxMetrics,
+    pub(super) stat_item: HorizontalBoxMetrics,
     // Info cards share the fixed-grid math too
-    card_section: HorizontalBoxMetrics,
-    card_grid: HorizontalBoxMetrics,
-    card_item: HorizontalBoxMetrics,
+    pub(super) card_section: HorizontalBoxMetrics,
+    pub(super) card_grid: HorizontalBoxMetrics,
+    pub(super) card_item: HorizontalBoxMetrics,
     // Media carries more moving parts, so each width-owning node is tracked on its own
-    media_container: HorizontalBoxMetrics,
-    media_stack: HorizontalBoxMetrics,
-    media_row: HorizontalBoxMetrics,
-    media_header: HorizontalBoxMetrics,
-    media_body: HorizontalBoxMetrics,
-    media_text: HorizontalBoxMetrics,
-    media_main: HorizontalBoxMetrics,
-    media_meta: HorizontalBoxMetrics,
-    media_nav: HorizontalBoxMetrics,
-    media_nav_strip: HorizontalBoxMetrics,
-    media_card: HorizontalBoxMetrics,
-    media_art: HorizontalBoxMetrics,
-    media_art_frame: HorizontalBoxMetrics,
-    media_control_strip: HorizontalBoxMetrics,
-    media_action_rail: HorizontalBoxMetrics,
-    media_controls: HorizontalBoxMetrics,
-    media_button: HorizontalBoxMetrics,
+    pub(super) media_container: HorizontalBoxMetrics,
+    pub(super) media_stack: HorizontalBoxMetrics,
+    pub(super) media_row: HorizontalBoxMetrics,
+    pub(super) media_header: HorizontalBoxMetrics,
+    pub(super) media_body: HorizontalBoxMetrics,
+    pub(super) media_text: HorizontalBoxMetrics,
+    pub(super) media_main: HorizontalBoxMetrics,
+    pub(super) media_meta: HorizontalBoxMetrics,
+    pub(super) media_nav: HorizontalBoxMetrics,
+    pub(super) media_nav_strip: HorizontalBoxMetrics,
+    pub(super) media_card: HorizontalBoxMetrics,
+    pub(super) media_art: HorizontalBoxMetrics,
+    pub(super) media_art_frame: HorizontalBoxMetrics,
+    pub(super) media_control_strip: HorizontalBoxMetrics,
+    pub(super) media_action_rail: HorizontalBoxMetrics,
+    pub(super) media_controls: HorizontalBoxMetrics,
+    pub(super) media_button: HorizontalBoxMetrics,
     // Media height feasibility uses a separate vertical box model to avoid disturbing width math
-    media_vertical: media::MediaVerticalModel,
+    pub(super) media_vertical: media::MediaVerticalModel,
 }
 
 impl GeometryModel {
-    pub(super) fn finalize_warnings(&self, config: &Config) -> Vec<String> {
+    pub(in crate::css_check::geometry) fn finalize_warnings(&self, config: &Config) -> Vec<String> {
         let mut warnings = Vec::new();
 
         // The file-level scan only gathers numbers
@@ -89,7 +75,7 @@ impl GeometryModel {
     }
 }
 
-fn width_warning(
+pub(in crate::css_check::geometry) fn width_warning(
     label: &str,
     required_panel_width_px: i32,
     panel_width_px: i32,

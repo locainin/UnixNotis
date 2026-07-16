@@ -1,39 +1,28 @@
-//! CSS parsing helpers for geometry lint
+//! Geometry declaration and selector scanning
 
 use std::collections::{HashMap, HashSet};
 
-use super::super::parse::{
+use super::super::super::parse::{
     next_css_block, normalize_selector, parse_css_declarations, should_recurse_at_rule,
     split_selectors, strip_css_comments,
 };
-use super::super::policy::{is_horizontal_size_property, is_vertical_size_property};
-use super::model::GeometryModel;
-use super::stock::baselines::stock_matches_complex_selector_rules;
-use super::stock::classes::is_known_unixnotis_class;
-use super::stock::should_warn_for_unmodeled_known_class;
+use super::super::super::policy::{is_horizontal_size_property, is_vertical_size_property};
+use super::super::model::GeometryModel;
+use super::super::stock::baselines::stock_matches_complex_selector_rules;
+use super::super::stock::classes::is_known_unixnotis_class;
+use super::super::stock::should_warn_for_unmodeled_known_class;
 
-// Split the parser by job so width parsing, selector checks, and token collection stay separate
-mod custom_properties;
-mod lengths;
-mod selectors;
+pub(in crate::css_check::geometry) type CssCustomProperties = HashMap<String, String>;
 
-#[cfg(test)]
-#[path = "parse/tests/cases.rs"]
-mod tests;
-
-pub(super) type CssCustomProperties = HashMap<String, String>;
-
-use self::custom_properties::collect_custom_properties;
-pub(in crate::css_check) use self::custom_properties::CssCustomPropertyScopes;
-pub(super) use self::lengths::{
-    parse_box_edges, parse_box_vertical_edges, parse_single_length, set_edge,
-};
-use self::selectors::{
+use super::custom_properties::collect_custom_properties;
+use super::custom_properties::CssCustomPropertyScopes;
+use super::lengths::{parse_box_edges, parse_single_length};
+use super::selectors::{
     complex_target_class, is_nonexpanding_boundary_reset, simple_class_selector,
 };
 
 #[cfg(test)]
-pub(super) fn collect_geometry_from_contents(
+pub(in crate::css_check::geometry) fn collect_geometry_from_contents(
     contents: &str,
     model: &mut GeometryModel,
 ) -> Vec<String> {
@@ -44,7 +33,7 @@ pub(super) fn collect_geometry_from_contents(
     collect_geometry_from_contents_with_properties(&stripped, &custom_properties, model)
 }
 
-pub(super) fn collect_geometry_from_contents_with_properties(
+pub(in crate::css_check::geometry) fn collect_geometry_from_contents_with_properties(
     contents: &str,
     custom_properties: &CssCustomPropertyScopes,
     model: &mut GeometryModel,
