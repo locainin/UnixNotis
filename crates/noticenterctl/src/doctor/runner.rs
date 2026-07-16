@@ -1,4 +1,6 @@
-//! Doctor check orchestration and exit aggregation
+//! Doctor check orchestration, output, and exit aggregation
+
+use std::io::{self, Write};
 
 use anyhow::{anyhow, Result};
 
@@ -48,17 +50,27 @@ pub async fn run(
 
     let report = DoctorReport::new(checks, logs);
     // Rendering happens before exit aggregation so failed reports remain attachable
-    if json {
-        println!("{}", render_json(&report)?);
+    let rendered = if json {
+        render_json(&report)?
     } else {
-        println!("{}", render_human(&report));
-    }
+        render_human(&report)
+    };
+    // Closed pipelines are normal CLI shutdown, while other output failures remain actionable
+    write_report(io::stdout().lock(), &rendered)?;
 
     if report.has_errors() {
         // One generic process error avoids duplicating sensitive check details on stderr
         Err(anyhow!("doctor found one or more hard failures"))
     } else {
         Ok(())
+    }
+}
+
+fn write_report(mut writer: impl Write, report: &str) -> Result<()> {
+    match writeln!(writer, "{report}") {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(error) => Err(error.into()),
     }
 }
 
