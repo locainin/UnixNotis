@@ -160,8 +160,8 @@ fn follow_debug_logs_runs_probe_then_follow_for_available_unit() {
 
     let calls = fs::read_to_string(calls).expect("read journalctl calls");
     assert!(calls.contains("--version"));
-    assert!(calls.contains("--user --no-pager -n 1 -u custom.service -o cat"));
-    assert!(calls.contains("--user -f -u custom.service -o cat"));
+    assert!(calls.contains("--user --no-pager --lines=1 --unit=custom.service -o cat"));
+    assert!(calls.contains("--user -f --unit=custom.service -o cat"));
 }
 
 #[test]

@@ -12,7 +12,7 @@ pub fn follow_debug_logs() -> Result<()> {
             "journalctl is not available; run unixnotis-daemon in a terminal to watch logs directly"
         ));
     }
-    let unit = daemon_unit_from_env(|key| env::var(key));
+    let unit = daemon_unit_from_env(|key| env::var(key))?;
     if !journal_has_user_unit_logs(&unit)? {
         return Err(anyhow!(
             "no user journal stream for {unit}; debug panel open will continue without log follow"

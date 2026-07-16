@@ -1995,6 +1995,7 @@ dependencies = [
  "serde_json",
  "shell-words",
  "tar",
+ "thiserror 1.0.69",
  "tokio",
  "toml 0.8.23",
  "unixnotis-core",
