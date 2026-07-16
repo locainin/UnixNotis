@@ -1,19 +1,14 @@
-//! CSS file loading helpers with fallback and override handling
+//! CSS provider loading with explicit fallback outcomes
 
 use std::fs;
 use std::path::Path;
 
 use tracing::warn;
 
-mod merge;
-mod model;
-mod tokens;
-mod urls;
-
-use merge::merge_css_with_overrides;
-pub(super) use model::{CssFileLoadResult, CssFileLoadSource};
-use tokens::ensure_base_tokens;
-use urls::rebase_relative_css_asset_urls;
+use super::merge::merge_css_with_overrides;
+use super::model::CssFileLoadResult;
+use super::tokens::ensure_base_tokens;
+use super::urls::rebase_relative_css_asset_urls;
 
 /// Load CSS into a provider, applying overrides and falling back to defaults
 pub fn load_provider_with_overrides(
@@ -69,7 +64,3 @@ pub fn load_provider_with_overrides(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "tests/loader/provider.rs"]
-mod provider_tests;

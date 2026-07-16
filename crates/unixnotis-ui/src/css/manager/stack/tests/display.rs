@@ -5,7 +5,9 @@ use std::rc::Rc;
 use gtk::gdk;
 use unixnotis_core::{ThemeConfig, ThemePaths};
 
-use super::*;
+use super::super::model::{CssManager, CssManagerInner};
+use crate::css::manager::layers::{CssProviderLayer, CssProviderRegistration};
+use crate::css::manager::provider::CssProviderBackend;
 
 #[derive(Clone)]
 struct RecordingProvider {
@@ -46,6 +48,7 @@ fn panel_manager_registers_base_panel_widgets_and_media_priorities() {
     let manager = CssManagerInner {
         theme_paths: theme_paths("/tmp/unixnotis-panel-css"),
         theme_config: ThemeConfig::default(),
+        internal_structure: RecordingProvider::new("internal", Rc::clone(&calls)),
         base: RecordingProvider::new("base", Rc::clone(&calls)),
         panel: Some(RecordingProvider::new("panel", Rc::clone(&calls))),
         widgets: Some(RecordingProvider::new("widgets", Rc::clone(&calls))),
@@ -59,6 +62,10 @@ fn panel_manager_registers_base_panel_widgets_and_media_priorities() {
     assert_eq!(
         registrations,
         vec![
+            CssProviderRegistration {
+                layer: CssProviderLayer::InternalStructure,
+                priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION - 1,
+            },
             CssProviderRegistration {
                 layer: CssProviderLayer::Base,
                 priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
@@ -85,6 +92,7 @@ fn popup_manager_registers_base_and_popup_at_popup_priority() {
     let manager = CssManagerInner {
         theme_paths: theme_paths("/tmp/unixnotis-popup-css"),
         theme_config: ThemeConfig::default(),
+        internal_structure: RecordingProvider::new("internal", Rc::clone(&calls)),
         base: RecordingProvider::new("base", Rc::clone(&calls)),
         panel: None,
         widgets: None,
@@ -97,6 +105,10 @@ fn popup_manager_registers_base_and_popup_at_popup_priority() {
     assert_eq!(
         registrations,
         vec![
+            CssProviderRegistration {
+                layer: CssProviderLayer::InternalStructure,
+                priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION - 1,
+            },
             CssProviderRegistration {
                 layer: CssProviderLayer::Base,
                 priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
@@ -116,7 +128,7 @@ fn public_panel_manager_reports_every_registered_provider() {
         ThemeConfig::default(),
     );
 
-    assert_eq!(manager.apply_to_display(), 4);
+    assert_eq!(manager.apply_to_display(), 5);
 }
 
 #[test]
@@ -125,6 +137,7 @@ fn provider_lookup_returns_only_layers_owned_by_the_manager() {
     let manager = CssManagerInner {
         theme_paths: theme_paths("/tmp/unixnotis-provider-lookup-css"),
         theme_config: ThemeConfig::default(),
+        internal_structure: RecordingProvider::new("internal", Rc::clone(&calls)),
         base: RecordingProvider::new("base", Rc::clone(&calls)),
         panel: Some(RecordingProvider::new("panel", Rc::clone(&calls))),
         widgets: None,
@@ -132,6 +145,12 @@ fn provider_lookup_returns_only_layers_owned_by_the_manager() {
         popup: None,
     };
 
+    assert_eq!(
+        manager
+            .provider_for_layer(CssProviderLayer::InternalStructure)
+            .map(|provider| provider.label),
+        Some("internal")
+    );
     assert_eq!(
         manager
             .provider_for_layer(CssProviderLayer::Base)

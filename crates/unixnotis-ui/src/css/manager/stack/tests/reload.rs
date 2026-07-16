@@ -7,7 +7,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use gtk::gdk;
 use unixnotis_core::{ThemeConfig, ThemePaths};
 
-use super::*;
+use super::super::model::{CssManager, CssManagerInner};
+use crate::css::manager::layers::CssProviderLayer;
+use crate::css::manager::provider::CssProviderBackend;
+use crate::css::manager::report::CssLayerSource;
 
 #[derive(Clone)]
 struct RecordingProvider {
@@ -79,6 +82,7 @@ fn panel_manager(
     CssManagerInner {
         theme_paths: paths,
         theme_config: ThemeConfig::default(),
+        internal_structure: RecordingProvider::new("internal", Rc::clone(&loaded)),
         base: RecordingProvider::new("base", Rc::clone(&loaded)),
         panel: Some(RecordingProvider::new("panel", Rc::clone(&loaded))),
         widgets: Some(RecordingProvider::new("widgets", Rc::clone(&loaded))),
@@ -112,8 +116,18 @@ fn panel_reload_loads_base_panel_widgets_and_media_layers() {
     );
     let loaded = loaded.borrow();
     let labels = loaded.iter().map(|(label, _)| *label).collect::<Vec<_>>();
-    assert_eq!(labels, vec!["base", "panel", "widgets", "media"]);
-    assert!(loaded.iter().all(|(_, css)| css.contains("green")));
+    assert_eq!(
+        labels,
+        vec!["internal", "base", "panel", "widgets", "media"]
+    );
+    assert!(loaded
+        .iter()
+        .filter(|(label, _)| *label != "internal")
+        .all(|(_, css)| css.contains("green")));
+    assert!(loaded
+        .iter()
+        .find(|(label, _)| *label == "internal")
+        .is_some_and(|(_, css)| css.contains(".unixnotis-reload-notice")));
 
     fs::remove_dir_all(root).expect("remove css manager test root");
 }
@@ -134,8 +148,14 @@ fn update_theme_changes_the_paths_used_by_the_next_reload() {
 
     assert_eq!(report.layers.len(), 4);
     let loaded = loaded.borrow();
-    assert!(loaded.iter().all(|(_, css)| css.contains("blue")));
-    assert!(loaded.iter().all(|(_, css)| !css.contains("red")));
+    assert!(loaded
+        .iter()
+        .filter(|(label, _)| *label != "internal")
+        .all(|(_, css)| css.contains("blue")));
+    assert!(loaded
+        .iter()
+        .filter(|(label, _)| *label != "internal")
+        .all(|(_, css)| !css.contains("red")));
 
     fs::remove_dir_all(old_root).expect("remove old css manager test root");
     fs::remove_dir_all(new_root).expect("remove new css manager test root");
