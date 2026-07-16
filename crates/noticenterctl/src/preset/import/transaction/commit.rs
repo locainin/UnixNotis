@@ -5,13 +5,13 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use unixnotis_core::Config;
 
-use super::apply::{apply_import_plan, finalize_import_transaction, rollback_import_transaction};
-use super::checks::{
+use super::super::review::checks::{
     validate_config_command_paths_for_import, validate_config_theme_paths_stay_in_root,
 };
+use super::apply::{apply_import_plan, finalize_import_transaction, rollback_import_transaction};
 use super::plan::ImportPlan;
 
-pub(super) fn commit_import_plan(
+pub(in crate::preset) fn commit_import_plan(
     config_dir: &Path,
     plan: &ImportPlan,
     run_css_check: impl FnOnce() -> Result<()>,

@@ -2,10 +2,10 @@
 
 use anyhow::Result;
 
-use super::super::css_asset_refs::ExternalCssAssetRef;
-use super::super::pathing::confirm_continue_or_abort;
+use super::super::super::css_asset_refs::ExternalCssAssetRef;
+use super::super::super::pathing::confirm_continue_or_abort;
 
-pub(super) fn confirm_import_external_css_refs(
+pub(in crate::preset) fn confirm_import_external_css_refs(
     external_refs: &[ExternalCssAssetRef],
 ) -> Result<()> {
     if external_refs.is_empty() {
@@ -31,7 +31,9 @@ pub(super) fn confirm_import_external_css_refs(
     )
 }
 
-pub(super) fn format_external_css_ref_lines(external_refs: &[ExternalCssAssetRef]) -> Vec<String> {
+pub(in crate::preset) fn format_external_css_ref_lines(
+    external_refs: &[ExternalCssAssetRef],
+) -> Vec<String> {
     external_refs
         .iter()
         .map(|asset_ref| {

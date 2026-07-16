@@ -4,26 +4,26 @@ use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 
-use super::super::archive::read_bundle;
-use super::super::css_asset_refs::{
+use super::super::super::archive::read_bundle;
+use super::super::super::css_asset_refs::{
     collect_external_css_asset_refs_from_bundle, ExternalCssAssetRef,
 };
-use super::super::filesystem::ensure_no_symlink_ancestors;
-use super::super::pathing::{
+use super::super::super::filesystem::ensure_no_symlink_ancestors;
+use super::super::super::pathing::{
     parse_except_paths, relative_path_matches_exclusion, validate_preset_bundle_path,
 };
-use super::checks::{
+use super::super::review::checks::{
     collect_imported_exec_content, validate_imported_command_paths_stay_in_root,
     validate_imported_icon_assets, validate_imported_theme_paths_stay_in_root, ImportedExecContent,
 };
 use super::plan::{build_import_plan, ImportPlan};
 
-pub(super) struct PreparedImport {
+pub(in crate::preset) struct PreparedImport {
     // The write plan is reused by dry-run, the test helper, and the CLI import path
-    pub(super) plan: ImportPlan,
+    pub(in crate::preset) plan: ImportPlan,
 }
 
-pub(super) fn prepare_import(
+pub(in crate::preset) fn prepare_import(
     config_dir: &Path,
     input_path: &Path,
     except: &[String],

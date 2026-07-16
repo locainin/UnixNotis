@@ -7,11 +7,11 @@ use unixnotis_core::Config;
 
 use crate::css_check::run as run_css_check;
 
-use super::super::pathing::resolve_cli_bundle_path;
-use super::commit::commit_import_plan;
-use super::exec_review::confirm_import_exec_content;
-use super::prepare::prepare_import;
-use super::prompts::confirm_import_external_css_refs;
+use super::super::super::pathing::resolve_cli_bundle_path;
+use super::super::review::exec_review::confirm_import_exec_content;
+use super::super::review::prompts::confirm_import_external_css_refs;
+use super::super::transaction::commit::commit_import_plan;
+use super::super::transaction::prepare::prepare_import;
 use super::summary::{build_summary, print_summary};
 
 pub(in crate::preset) fn run_import(
@@ -40,7 +40,7 @@ pub(in crate::preset) fn run_import(
     }
 
     let (backup_dir, css_check_result) =
-        commit_import_plan(&config_dir, &prepared.plan, run_css_check)?;
+        commit_import_plan(&config_dir, &prepared.plan, || run_css_check(None))?;
     let summary = build_summary(&prepared.plan, backup_dir, false);
     print_summary(&summary);
 

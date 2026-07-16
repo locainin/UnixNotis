@@ -8,15 +8,15 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use super::super::filesystem::ensure_dir_fd_matches_live_path;
-use super::super::filesystem::{
+use super::super::super::filesystem::ensure_dir_fd_matches_live_path;
+use super::super::super::filesystem::{
     create_backup_dir_secure, open_secure_dir_all, publish_relative_file_atomic_secure,
     read_relative_file_secure, remove_empty_relative_dirs_secure, remove_relative_dir_secure,
     remove_relative_file_secure, write_relative_file_atomic_secure,
 };
 use super::plan::ImportPlan;
 
-pub(super) struct ImportTransaction {
+pub(in crate::preset) struct ImportTransaction {
     // The visible config root path is kept so later checks can spot root swaps
     config_dir: PathBuf,
     // All import writes stay pinned to this one opened directory until commit or rollback
@@ -35,7 +35,10 @@ struct AppliedImportItem {
     previous_mode: Option<u32>,
 }
 
-pub(super) fn apply_import_plan(config_dir: &Path, plan: &ImportPlan) -> Result<ImportTransaction> {
+pub(in crate::preset) fn apply_import_plan(
+    config_dir: &Path,
+    plan: &ImportPlan,
+) -> Result<ImportTransaction> {
     // Real import pins the visible config root to one open directory fd before any write starts
     let config_root_fd = open_secure_dir_all(config_dir)
         .with_context(|| format!("open secure config directory {}", config_dir.display()))?;
@@ -109,7 +112,7 @@ pub(super) fn apply_import_plan(config_dir: &Path, plan: &ImportPlan) -> Result<
     })
 }
 
-pub(super) fn finalize_import_transaction(
+pub(in crate::preset) fn finalize_import_transaction(
     transaction: ImportTransaction,
 ) -> Result<Option<PathBuf>> {
     // Commit only happens if the live root still points at the same directory after post-checks
@@ -205,12 +208,12 @@ pub(super) fn finalize_import_transaction(
 }
 
 #[cfg(test)]
-pub(super) struct BackupWriteFailureGuard {
+pub(in crate::preset) struct BackupWriteFailureGuard {
     _lock: MutexGuard<'static, ()>,
 }
 
 #[cfg(test)]
-pub(super) fn fail_backup_write_after_for_test(
+pub(in crate::preset) fn fail_backup_write_after_for_test(
     successful_writes: usize,
 ) -> BackupWriteFailureGuard {
     let lock = backup_write_failure_lock()
@@ -251,7 +254,7 @@ impl Drop for BackupWriteFailureGuard {
     }
 }
 
-pub(super) fn rollback_import_transaction(transaction: ImportTransaction) -> Result<()> {
+pub(in crate::preset) fn rollback_import_transaction(transaction: ImportTransaction) -> Result<()> {
     rollback_applied_import_items(&transaction.config_root_fd, &transaction.applied_items)
 }
 

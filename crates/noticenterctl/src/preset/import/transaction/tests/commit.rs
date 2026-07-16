@@ -236,7 +236,7 @@ fn commit_import_plan_keeps_import_committed_when_css_check_fails() {
     .expect("build plan");
 
     let (backup_dir, css_result) = commit_import_plan(&import_root.path, &plan, || {
-        Err(anyhow!("css-check failed for test"))
+        Err(anyhow::anyhow!("css-check failed for test"))
     })
     .expect("import should commit before reporting css-check failure");
 

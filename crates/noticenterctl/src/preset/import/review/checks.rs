@@ -10,12 +10,12 @@ use unixnotis_core::{
     validate_icon_asset_contents, validate_icon_asset_reference, Config, ThemePaths,
 };
 
-use super::super::archive::BundleFile;
+use super::super::super::archive::BundleFile;
 
-use super::super::command_rules::{
+use super::super::super::command_rules::{
     validate_command_paths_in_config_bytes, validate_config_command_paths_stay_in_root,
 };
-use super::super::pathing::normalize_lexical_path;
+use super::super::super::pathing::normalize_lexical_path;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::preset) struct ImportedExecContent {
@@ -40,7 +40,7 @@ pub(in crate::preset) struct ImportedExecFile {
     pub(in crate::preset) mode: u32,
 }
 
-pub(super) fn validate_imported_theme_paths_stay_in_root(
+pub(in crate::preset) fn validate_imported_theme_paths_stay_in_root(
     config_dir: &Path,
     config_bytes: &[u8],
 ) -> Result<()> {
@@ -52,7 +52,7 @@ pub(super) fn validate_imported_theme_paths_stay_in_root(
     validate_config_theme_paths_stay_in_root(config_dir, &config)
 }
 
-pub(super) fn validate_imported_command_paths_stay_in_root(
+pub(in crate::preset) fn validate_imported_command_paths_stay_in_root(
     config_dir: &Path,
     config_bytes: &[u8],
 ) -> Result<()> {
@@ -60,7 +60,7 @@ pub(super) fn validate_imported_command_paths_stay_in_root(
     validate_command_paths_in_config_bytes(config_dir, config_bytes, "preset import blocked")
 }
 
-pub(super) fn validate_imported_icon_assets(
+pub(in crate::preset) fn validate_imported_icon_assets(
     config_bytes: &[u8],
     bundle_files: &[BundleFile],
 ) -> Result<()> {
@@ -102,7 +102,7 @@ pub(super) fn validate_imported_icon_assets(
     Ok(())
 }
 
-pub(super) fn validate_config_theme_paths_stay_in_root(
+pub(in crate::preset) fn validate_config_theme_paths_stay_in_root(
     config_dir: &Path,
     config: &Config,
 ) -> Result<()> {
@@ -113,7 +113,7 @@ pub(super) fn validate_config_theme_paths_stay_in_root(
     validate_resolved_theme_paths_stay_in_root(config_dir, &theme_paths)
 }
 
-pub(super) fn validate_config_command_paths_for_import(
+pub(in crate::preset) fn validate_config_command_paths_for_import(
     config_dir: &Path,
     config: &Config,
 ) -> Result<()> {
@@ -121,7 +121,7 @@ pub(super) fn validate_config_command_paths_for_import(
     validate_config_command_paths_stay_in_root(config_dir, config, "preset import blocked")
 }
 
-pub(super) fn collect_imported_exec_content(
+pub(in crate::preset) fn collect_imported_exec_content(
     config_bytes: &[u8],
     bundle_files: &[BundleFile],
 ) -> Result<ImportedExecContent> {
@@ -283,7 +283,3 @@ fn key_is_exec_slot(key: &str) -> bool {
             | "off_cmd"
     )
 }
-
-#[cfg(test)]
-#[path = "checks/tests/cases.rs"]
-mod tests;

@@ -1,4 +1,4 @@
-use super::{
+use super::super::super::checks::{
     collect_imported_exec_content, validate_imported_command_paths_stay_in_root,
     validate_imported_icon_assets, validate_imported_theme_paths_stay_in_root,
 };

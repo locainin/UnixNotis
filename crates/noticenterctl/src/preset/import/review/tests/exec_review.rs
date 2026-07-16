@@ -1,8 +1,10 @@
-use super::super::exec_review::{
+use super::super::super::exec_review::{
     confirm_import_exec_content, render_exec_content_review_with_style, write_exec_content_review,
     ReviewStyle,
 };
-use crate::preset::import::checks::{ImportedExecCommand, ImportedExecContent, ImportedExecFile};
+use crate::preset::import::review::checks::{
+    ImportedExecCommand, ImportedExecContent, ImportedExecFile,
+};
 use std::env;
 use std::path::PathBuf;
 use std::sync::Mutex;

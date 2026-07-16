@@ -26,7 +26,7 @@ fn import_rejects_outside_css_asset_refs_in_noninteractive_runs() {
         false,
         false,
         |_refs| {
-            Err(anyhow!(
+            Err(anyhow::anyhow!(
                 "preset import found CSS asset references that leave the UnixNotis config directory or use remote URLs"
             ))
         },

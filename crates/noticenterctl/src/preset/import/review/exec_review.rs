@@ -6,10 +6,10 @@ use anyhow::{anyhow, Context, Result};
 use std::env;
 use std::io::{self, IsTerminal, Write};
 
-use super::super::pathing::prompt_yes_no;
+use super::super::super::pathing::prompt_yes_no;
 use super::checks::ImportedExecContent;
 
-pub(super) fn confirm_import_exec_content(
+pub(in crate::preset) fn confirm_import_exec_content(
     exec_content: &ImportedExecContent,
     allow_exec: bool,
 ) -> Result<()> {
@@ -56,7 +56,10 @@ pub(super) fn confirm_import_exec_content(
     Err(anyhow!("preset command canceled"))
 }
 
-pub(super) fn write_exec_content_review(writer: &mut impl Write, review: &str) -> Result<()> {
+pub(in crate::preset) fn write_exec_content_review(
+    writer: &mut impl Write,
+    review: &str,
+) -> Result<()> {
     // Security review text is written directly; no pager or shell can run while trust is undecided
     writer
         .write_all(review.as_bytes())
@@ -64,7 +67,7 @@ pub(super) fn write_exec_content_review(writer: &mut impl Write, review: &str) -
     writer.flush().context("flush executable content review")
 }
 
-pub(super) fn render_exec_content_review_with_style(
+pub(in crate::preset) fn render_exec_content_review_with_style(
     exec_content: &ImportedExecContent,
     style: ReviewStyle,
 ) -> String {
@@ -114,8 +117,8 @@ pub(super) fn render_exec_content_review_with_style(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct ReviewStyle {
-    pub(super) color: bool,
+pub(in crate::preset) struct ReviewStyle {
+    pub(in crate::preset) color: bool,
 }
 
 impl ReviewStyle {
@@ -137,7 +140,7 @@ impl ReviewStyle {
         format!("\u{1b}[{prefix}m{text}\u{1b}[0m")
     }
 
-    pub(super) fn title(self, text: impl Into<String>) -> String {
+    pub(in crate::preset) fn title(self, text: impl Into<String>) -> String {
         self.paint(text, "1;36")
     }
 

@@ -1,22 +1,16 @@
-//! Preset import flow for applying a bundle into the live config tree
-//!
-//! Import validates the bundle first, builds a write plan, optionally reports it,
-//! then commits the final backup snapshot only after the staged import is ready to finish
+//! Preset import validation, review, and transactional application
 
-mod apply;
-mod checks;
-mod commit;
-mod exec_review;
-mod plan;
-mod prepare;
-mod prompts;
-mod runner;
-mod summary;
+mod command;
+mod review;
+mod transaction;
+
+pub(in crate::preset) use command::run_import;
+
 #[cfg(test)]
-#[path = "tests/helpers.rs"]
-mod test_helpers;
-
-pub(super) use self::runner::run_import;
-
+pub(in crate::preset) use command::summary;
+#[cfg(test)]
+pub(in crate::preset) use review::{checks, exec_review, prompts};
+#[cfg(test)]
+pub(in crate::preset) use transaction::{apply, commit, plan, prepare};
 #[cfg(test)]
 mod tests;

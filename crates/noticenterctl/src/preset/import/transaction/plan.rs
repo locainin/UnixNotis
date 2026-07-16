@@ -7,33 +7,33 @@ use anyhow::{anyhow, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::super::archive::BundleFile;
-use super::super::filesystem::ensure_safe_target_path;
-use super::super::pathing::relative_path_matches_exclusion;
+use super::super::super::archive::BundleFile;
+use super::super::super::filesystem::ensure_safe_target_path;
+use super::super::super::pathing::relative_path_matches_exclusion;
 
 #[derive(Debug)]
-pub(super) struct ImportPlan {
+pub(in crate::preset) struct ImportPlan {
     // Ordered write list used by both dry-run and the real apply step
-    pub(super) items: Vec<ImportPlanItem>,
+    pub(in crate::preset) items: Vec<ImportPlanItem>,
     // Files that do not exist yet under the live config root
-    pub(super) created: usize,
+    pub(in crate::preset) created: usize,
     // Files that already exist and need a backup before replacement
-    pub(super) overwritten: usize,
+    pub(in crate::preset) overwritten: usize,
     // Bundle files skipped because --except kept the local copy in place
-    pub(super) excluded: usize,
+    pub(in crate::preset) excluded: usize,
 }
 
 #[derive(Debug)]
-pub(super) struct ImportPlanItem {
+pub(in crate::preset) struct ImportPlanItem {
     // Bundle file contents plus the bundle-relative target path
-    pub(super) file: BundleFile,
+    pub(in crate::preset) file: BundleFile,
     // Final on-disk target under the live config root
-    pub(super) target_path: PathBuf,
+    pub(in crate::preset) target_path: PathBuf,
     // Real files need to be copied into the backup root before replacement
-    pub(super) overwrite_existing: bool,
+    pub(in crate::preset) overwrite_existing: bool,
 }
 
-pub(super) fn build_import_plan(
+pub(in crate::preset) fn build_import_plan(
     config_dir: &Path,
     bundle_files: Vec<BundleFile>,
     exclusions: &[PathBuf],
