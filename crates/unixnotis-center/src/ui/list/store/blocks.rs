@@ -10,7 +10,7 @@ use super::types::{NotificationList, RowKey};
 use super::RowItem;
 
 impl NotificationList {
-    pub(super) fn build_group_block(
+    pub(in crate::ui::list) fn build_group_block(
         &mut self,
         key: &Rc<str>,
         ids: &[u32],
@@ -72,7 +72,7 @@ impl NotificationList {
         (items, keys)
     }
 
-    pub(super) fn group_block_len(&self, key: &Rc<str>, ids: &[u32]) -> usize {
+    pub(in crate::ui::list) fn group_block_len(&self, key: &Rc<str>, ids: &[u32]) -> usize {
         let expanded = self.group_expanded.get(key).copied().unwrap_or(false);
         let mut len = 1; // header
         if expanded {
@@ -83,7 +83,7 @@ impl NotificationList {
         len
     }
 
-    pub(super) fn remove_block(&mut self, start: usize, len: usize) {
+    pub(in crate::ui::list) fn remove_block(&mut self, start: usize, len: usize) {
         if len == 0 {
             return;
         }
@@ -93,7 +93,7 @@ impl NotificationList {
         self.shift_group_ranges(start, -(len as isize), false);
     }
 
-    pub(super) fn insert_block(
+    pub(in crate::ui::list) fn insert_block(
         &mut self,
         start: usize,
         items: &[RowItem],
@@ -115,7 +115,12 @@ impl NotificationList {
         items.len()
     }
 
-    pub(super) fn shift_group_ranges(&mut self, start: usize, delta: isize, inclusive: bool) {
+    pub(in crate::ui::list) fn shift_group_ranges(
+        &mut self,
+        start: usize,
+        delta: isize,
+        inclusive: bool,
+    ) {
         if delta == 0 {
             return;
         }
@@ -140,7 +145,10 @@ fn collapsed_stack_depth(count: usize, expanded: bool) -> u8 {
     count.saturating_sub(1).min(2) as u8
 }
 
-pub(super) fn common_prefix_suffix(current: &[RowKey], next: &[RowKey]) -> (usize, usize) {
+pub(in crate::ui::list) fn common_prefix_suffix(
+    current: &[RowKey],
+    next: &[RowKey],
+) -> (usize, usize) {
     // Compute shared prefix/suffix so list-store splices only touch the minimal changed window.
     let prefix = current
         .iter()

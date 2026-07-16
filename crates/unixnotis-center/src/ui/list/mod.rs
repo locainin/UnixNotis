@@ -2,21 +2,16 @@
 //!
 //! The folder root stays focused on module wiring and the public list surface
 
-mod blocks;
-mod build;
-mod grouping;
-mod index;
-mod item;
-mod lifecycle;
-mod mutation;
+mod model;
 mod row;
+mod store;
 #[cfg(test)]
 #[path = "tests/support.rs"]
 pub(super) mod test_support;
-mod types;
-mod update;
-mod widgets;
+mod view;
 
-pub use self::types::{NotificationList, NotificationListConfig};
+pub use model::types::{NotificationList, NotificationListConfig};
 
-pub(super) use self::item::RowItem;
+pub(in crate::ui::list) use model::item;
+#[cfg(test)]
+pub(in crate::ui::list) use model::types;

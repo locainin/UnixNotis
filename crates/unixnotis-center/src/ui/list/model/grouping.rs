@@ -6,7 +6,7 @@ use std::rc::Rc;
 use super::types::{FilterQuery, NotificationList};
 
 impl NotificationList {
-    pub(super) fn intern_key(&mut self, key: &str) -> Rc<str> {
+    pub(in crate::ui::list) fn intern_key(&mut self, key: &str) -> Rc<str> {
         let normalized = self.normalize_group_key(key);
         if let Some(value) = self.interned.get(normalized.as_ref()) {
             return value.clone();
@@ -17,7 +17,7 @@ impl NotificationList {
         value
     }
 
-    pub(super) fn normalize_group_key<'a>(&self, key: &'a str) -> Cow<'a, str> {
+    pub(in crate::ui::list) fn normalize_group_key<'a>(&self, key: &'a str) -> Cow<'a, str> {
         // Trim outer whitespace to avoid duplicate stacks from padded app names
         let trimmed = key.trim();
         if trimmed.is_empty() {
@@ -50,7 +50,7 @@ impl NotificationList {
         Cow::Borrowed(trimmed)
     }
 
-    pub(super) fn expected_list_len(&self) -> usize {
+    pub(in crate::ui::list) fn expected_list_len(&self) -> usize {
         // Sum visible group block sizes so incremental updates can detect stale spans
         self.group_order
             .iter()
@@ -65,7 +65,7 @@ impl NotificationList {
             .sum()
     }
 
-    pub(super) fn group_has_visible_entries(&self, ids: &[u32]) -> bool {
+    pub(in crate::ui::list) fn group_has_visible_entries(&self, ids: &[u32]) -> bool {
         if self.filter_query.is_none() {
             return !ids.is_empty();
         }
@@ -76,7 +76,7 @@ impl NotificationList {
         })
     }
 
-    pub(super) fn visible_ids_for_group<'a>(&self, ids: &'a [u32]) -> Cow<'a, [u32]> {
+    pub(in crate::ui::list) fn visible_ids_for_group<'a>(&self, ids: &'a [u32]) -> Cow<'a, [u32]> {
         if self.filter_query.is_none() {
             return Cow::Borrowed(ids);
         }
@@ -91,7 +91,7 @@ impl NotificationList {
         Cow::Owned(out)
     }
 
-    pub(super) fn normalize_filter_query(&self, query: &str) -> Option<FilterQuery> {
+    pub(in crate::ui::list) fn normalize_filter_query(&self, query: &str) -> Option<FilterQuery> {
         let trimmed = query.trim();
         if trimmed.is_empty() {
             return None;

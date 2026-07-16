@@ -8,14 +8,19 @@ use std::rc::Rc;
 use super::types::NotificationList;
 
 impl NotificationList {
-    pub(super) fn clear_group_indices(&mut self) {
+    pub(in crate::ui::list) fn clear_group_indices(&mut self) {
         // Clear all parallel caches together to keep index invariants aligned
         self.group_active_index.clear();
         self.group_history_index.clear();
         self.grouped_cache.clear();
     }
 
-    pub(super) fn index_insert_front(&mut self, key: &Rc<str>, id: u32, is_active: bool) {
+    pub(in crate::ui::list) fn index_insert_front(
+        &mut self,
+        key: &Rc<str>,
+        id: u32,
+        is_active: bool,
+    ) {
         let map = if is_active {
             &mut self.group_active_index
         } else {
@@ -30,7 +35,7 @@ impl NotificationList {
         self.sync_group_cache_for_key(key);
     }
 
-    pub(super) fn index_remove(&mut self, key: &Rc<str>, id: u32, was_active: bool) {
+    pub(in crate::ui::list) fn index_remove(&mut self, key: &Rc<str>, id: u32, was_active: bool) {
         let map = if was_active {
             &mut self.group_active_index
         } else {
@@ -40,7 +45,12 @@ impl NotificationList {
         self.sync_group_cache_for_key(key);
     }
 
-    pub(super) fn index_move_to_front(&mut self, key: &Rc<str>, id: u32, is_active: bool) {
+    pub(in crate::ui::list) fn index_move_to_front(
+        &mut self,
+        key: &Rc<str>,
+        id: u32,
+        is_active: bool,
+    ) {
         let map = if is_active {
             &mut self.group_active_index
         } else {
@@ -55,7 +65,7 @@ impl NotificationList {
         self.sync_group_cache_for_key(key);
     }
 
-    pub(super) fn rebuild_group_index_for_key(&mut self, key: &Rc<str>) {
+    pub(in crate::ui::list) fn rebuild_group_index_for_key(&mut self, key: &Rc<str>) {
         let mut active_ids = VecDeque::new();
         let mut history_ids = VecDeque::new();
         for id in &self.active_order {
@@ -85,7 +95,7 @@ impl NotificationList {
         self.sync_group_cache_for_key(key);
     }
 
-    pub(super) fn sync_group_cache_for_key(&mut self, key: &Rc<str>) {
+    pub(in crate::ui::list) fn sync_group_cache_for_key(&mut self, key: &Rc<str>) {
         let active = self.group_active_index.get(key);
         let history = self.group_history_index.get(key);
         let total = active.map_or(0, std::collections::VecDeque::len)
@@ -107,7 +117,7 @@ impl NotificationList {
         self.grouped_cache.insert(key.clone(), merged);
     }
 
-    pub(super) fn collect_group_order(&self, out: &mut Vec<Rc<str>>) {
+    pub(in crate::ui::list) fn collect_group_order(&self, out: &mut Vec<Rc<str>>) {
         out.clear();
         let mut seen = HashSet::<Rc<str>>::new();
         for id in self.active_order.iter().chain(self.history_order.iter()) {

@@ -12,11 +12,11 @@ use tokio::sync::mpsc;
 
 use crate::dbus::{UiCommand, UiEvent};
 
-use super::super::icons::IconResolver;
 use super::item::RowKind;
 use super::row::empty::{build_empty_row, update_empty_row};
 use super::types::{NotificationList, NotificationListConfig};
 use super::widgets::{bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets};
+use crate::ui::icons::IconResolver;
 
 impl NotificationList {
     pub fn new(

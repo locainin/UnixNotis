@@ -63,7 +63,7 @@ impl NotificationList {
         self.request_rebuild();
     }
 
-    pub(super) fn trim_to_limits(&mut self) {
+    pub(in crate::ui::list) fn trim_to_limits(&mut self) {
         // Active order is newest-first, so trimming from the back drops oldest rows
         for id in drain_order_over_limit(&mut self.active_order, self.max_active) {
             if let Some(entry) = self.entries.remove(&id) {
@@ -81,7 +81,7 @@ impl NotificationList {
         }
     }
 
-    pub(super) fn insert_entry(
+    pub(in crate::ui::list) fn insert_entry(
         &mut self,
         notification: NotificationView,
         is_active: bool,
@@ -121,7 +121,7 @@ impl NotificationList {
         app_key
     }
 
-    pub(super) fn remove_entry(&mut self, id: u32) {
+    pub(in crate::ui::list) fn remove_entry(&mut self, id: u32) {
         if let Some(entry) = self.entries.remove(&id) {
             self.index_remove(&entry.app_key, id, entry.is_active);
         }

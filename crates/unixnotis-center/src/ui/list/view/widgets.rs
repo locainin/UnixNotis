@@ -14,12 +14,12 @@ use tracing::debug;
 
 use crate::dbus::{UiCommand, UiEvent};
 
-use super::super::icons::IconResolver;
 use super::item::{RowData, RowItem, RowKind};
 use super::row::group::{build_group_row, update_group_row, GroupRowWidgets};
 use super::row::notification::{
     build_notification_row, update_notification_row, NotificationRowWidgets,
 };
+use crate::ui::icons::IconResolver;
 
 /// GTK wrapper widgets for each row type
 pub(super) struct RowWidgets {

@@ -271,7 +271,7 @@ impl NotificationList {
         }
     }
 
-    pub(super) const fn request_rebuild(&mut self) {
+    pub(in crate::ui::list) const fn request_rebuild(&mut self) {
         self.needs_rebuild = true;
     }
 
