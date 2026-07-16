@@ -1,5 +1,6 @@
 //! Popup UI state, layout, and event handling
 
+mod config_reload;
 pub mod css_reload;
 mod entry;
 mod icon_state;

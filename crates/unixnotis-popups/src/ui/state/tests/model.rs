@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use super::IconCacheEntry;
+use super::super::IconCacheEntry;
 
 #[test]
 fn unresolved_icon_cache_entry_preserves_negative_lookup_state() {

@@ -195,7 +195,8 @@ proptest! {
         operations in prop::collection::vec(0_u8..5, 0..=100),
     ) {
         let gate = ReloadGate::new();
-        let (tx, rx) = async_channel::bounded(2);
+        // Capacity one ensures generated sequences exercise full and retry transitions
+        let (tx, rx) = async_channel::bounded(1);
 
         for operation in operations {
             match operation {

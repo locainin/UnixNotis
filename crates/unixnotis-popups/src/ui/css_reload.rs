@@ -5,14 +5,17 @@ use unixnotis_ui::css::CssReloadReport;
 pub fn log_reload_failures(report: &CssReloadReport, context: &str) {
     // Popup reload failures stay log-only so transient errors never steal focus
     for failure in report.read_failures() {
-        // Sanitization removes terminal controls before structured logging
-        let detail = failure.error.as_deref().unwrap_or("CSS file read failed");
-        let detail = unixnotis_core::util::sanitize_inline_display_text(detail);
+        // A filename identifies the configured layer without disclosing the account path
+        let file = failure
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("CSS file");
         tracing::warn!(
             layer = ?failure.layer,
-            path = %failure.path.display(),
+            %file,
             %context,
-            error = %detail,
+            read_error = failure.error.is_some(),
             "popup CSS reload used embedded fallback"
         );
     }
