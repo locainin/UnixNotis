@@ -28,7 +28,7 @@ enum ScriptScanKind {
     Sourced,
 }
 
-enum SourceOperand {
+pub(super) enum SourceOperand {
     // Dependency path is proven to stay under the config root
     Portable(PathBuf),
     // Shell expansion decides the path only when the command runs
@@ -153,7 +153,7 @@ fn source_operands(contents: &str) -> impl Iterator<Item = String> + '_ {
     })
 }
 
-fn resolve_source_operand(script_relative: &Path, operand: &str) -> SourceOperand {
+pub(super) fn resolve_source_operand(script_relative: &Path, operand: &str) -> SourceOperand {
     let script_parent = script_relative.parent().unwrap_or_else(|| Path::new(""));
     let relative = if let Some(value) = operand.strip_prefix("$script_dir/") {
         script_parent.join(value)
@@ -232,7 +232,7 @@ fn is_shell_name(name: &str) -> bool {
     )
 }
 
-fn normalize_relative_path(path: &Path) -> Option<PathBuf> {
+pub(super) fn normalize_relative_path(path: &Path) -> Option<PathBuf> {
     let mut parts = Vec::new();
     for component in path.components() {
         match component {
