@@ -9,22 +9,15 @@ use zbus::{interface, SignalContext};
 
 use crate::expire::ExpirationScheduler;
 
+use super::capabilities::notification_capabilities;
 use crate::daemon::DaemonState;
-use capabilities::notification_capabilities;
-
-mod capabilities;
-mod close;
-mod flow;
-#[cfg(test)]
-#[path = "tests/server.rs"]
-mod tests;
 
 /// D-Bus server for org.freedesktop.Notifications
 pub struct NotificationServer {
     // Shared daemon state for store access, sounds, and signal emission
-    state: Arc<DaemonState>,
+    pub(super) state: Arc<DaemonState>,
     // Scheduler handles expiration deadlines without blocking D-Bus handlers
-    scheduler: ExpirationScheduler,
+    pub(super) scheduler: ExpirationScheduler,
 }
 
 impl NotificationServer {
@@ -36,7 +29,8 @@ impl NotificationServer {
 
 #[interface(name = "org.freedesktop.Notifications")]
 impl NotificationServer {
-    async fn get_capabilities(&self) -> Vec<String> {
+    pub(super) async fn get_capabilities(&self) -> Vec<String> {
+        // Advertise sound support only when the configured backend can deliver it
         notification_capabilities(self.state.sound.supports_sound())
     }
 
@@ -44,7 +38,7 @@ impl NotificationServer {
         clippy::too_many_arguments,
         reason = "the freedesktop notification D-Bus signature fixes this argument list"
     )]
-    async fn notify(
+    pub(super) async fn notify(
         &self,
         app_name: String,
         replaces_id: u32,
@@ -56,6 +50,7 @@ impl NotificationServer {
         #[zbus(header)] header: Header<'_>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
+        // The interface adapter forwards the authenticated header with the exact wire payload
         self.ingest_notify(
             app_name,
             replaces_id,
@@ -70,15 +65,16 @@ impl NotificationServer {
         .await
     }
 
-    async fn close_notification(
+    pub(super) async fn close_notification(
         &self,
         id: u32,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
+        // Ownership checks remain in the shared close path used by all D-Bus callers
         self.close_notification_if_owned(id, &header).await
     }
 
-    async fn get_server_information(&self) -> (String, String, String, String) {
+    pub(super) async fn get_server_information(&self) -> (String, String, String, String) {
         // Keep server information stable for freedesktop client compatibility
         (
             "UnixNotis".to_string(),
@@ -89,6 +85,7 @@ impl NotificationServer {
     }
 
     #[zbus(signal)]
+    // Signal declarations define the freedesktop wire contract and are emitted elsewhere
     pub(crate) async fn notification_closed(
         ctx: &SignalContext<'_>,
         id: u32,
@@ -96,6 +93,7 @@ impl NotificationServer {
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
+    // Action keys are passed through unchanged so clients can match their registered action
     pub(crate) async fn action_invoked(
         ctx: &SignalContext<'_>,
         id: u32,
