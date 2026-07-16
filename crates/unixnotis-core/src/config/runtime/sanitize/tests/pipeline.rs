@@ -2,8 +2,10 @@ use super::super::super::super::widgets::{CardWidgetConfig, StatWidgetConfig};
 use super::*;
 use crate::{
     Config, PanelActionConfig, PanelActionId, PanelConfig, PanelSection, PanelWidgetSection,
-    PopupConfig, ToggleLayout,
+    PopupConfig, ToggleLayout, CURRENT_CONFIG_VERSION,
 };
+use proptest::prelude::*;
+use proptest::test_runner::RngSeed;
 
 #[test]
 fn sanitize_clamps_refresh_intervals_and_preserves_ordering() {
@@ -56,6 +58,43 @@ fn sanitize_clamps_refresh_intervals_and_preserves_ordering() {
     sanitize_config(&mut config);
     assert_eq!(config.widgets.refresh_interval_ms, MIN_REFRESH_MS);
     assert_eq!(config.widgets.refresh_interval_slow_ms, MIN_REFRESH_MS);
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 256,
+        rng_seed: RngSeed::Fixed(0x554e_4958_4e4f_5449),
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn parsed_config_reports_are_deterministic_bounded_and_current(
+        fast in 0_u64..200_000,
+        slow in 0_u64..250_000,
+        max_active in 0_usize..10_000,
+        max_entries in 0_usize..20_000,
+        width in -10_000_i32..10_000,
+        label in "[a-zA-Z0-9 _-]{0,256}",
+    ) {
+        // Backend detection reads PATH, so paired parses must exclude env-mutating tests
+        let _environment = crate::test_support::test_env_lock();
+        let input = format!(
+            "config_version = {CURRENT_CONFIG_VERSION}\n[panel]\nwidth = {width}\n[history]\nmax_active = {max_active}\nmax_entries = {max_entries}\n[widgets]\nrefresh_interval_ms = {fast}\nrefresh_interval_slow_ms = {slow}\nquick_actions_label = {label:?}\n"
+        );
+        let first = Config::parse_with_report(&input).expect("generated config should parse");
+        let second = Config::parse_with_report(&input).expect("same generated config should parse");
+
+        prop_assert_eq!(first.config.config_version, CURRENT_CONFIG_VERSION);
+        prop_assert!(first.config.widgets.refresh_interval_ms <= MAX_REFRESH_MS);
+        prop_assert!(first.config.widgets.refresh_interval_slow_ms <= MAX_REFRESH_SLOW_MS);
+        prop_assert!(first.config.history.max_active <= MAX_HISTORY_ACTIVE);
+        prop_assert!(first.config.history.max_entries <= MAX_HISTORY_ENTRIES);
+        // Table ordering can differ because user aliases are stored in hash maps
+        let first_value = toml::Value::try_from(&first.config).expect("serialize first config");
+        let second_value = toml::Value::try_from(&second.config).expect("serialize second config");
+        prop_assert_eq!(first_value, second_value);
+        prop_assert_eq!(first.diagnostics, second.diagnostics);
+    }
 }
 
 #[test]
