@@ -1,4 +1,4 @@
-use super::*;
+use super::super::ServiceManagerKind;
 
 #[test]
 fn service_manager_parser_accepts_supported_aliases_and_rejects_unknown_values() {
@@ -10,8 +10,14 @@ fn service_manager_parser_accepts_supported_aliases_and_rejects_unknown_values()
         ServiceManagerKind::parse("s6-user").expect("s6 alias"),
         ServiceManagerKind::S6
     );
-    assert!(ServiceManagerKind::parse_explicit("").is_err());
+    assert!(ServiceManagerKind::parse("").is_err());
     assert!(ServiceManagerKind::parse("openrc").is_err());
+    assert_eq!(
+        "runit"
+            .parse::<ServiceManagerKind>()
+            .expect("FromStr runit"),
+        ServiceManagerKind::Runit
+    );
 }
 
 #[test]

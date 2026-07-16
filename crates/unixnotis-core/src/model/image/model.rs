@@ -1,4 +1,4 @@
-//! Image handling for notification hints and icon metadata
+//! Public notification image records and shared limits
 //!
 //! The public types live here so callers keep importing `NotificationImage`
 //! and `ImageData` from the same place. Parsing, projection, validation, and
@@ -6,11 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::Type;
-
-mod hints;
-mod normalize;
-mod projection;
-mod rgb;
 
 /// Raw image data payload from notification hints
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq, Eq)]
@@ -38,18 +33,7 @@ pub struct NotificationImage {
 }
 
 // Bound untrusted image payloads to keep daemon/UI memory predictable under floods
-pub(super) const MAX_IMAGE_BYTES: usize = 256 * 1024;
-pub(super) const MAX_IMAGE_DIMENSION: i32 = 256;
-pub(super) const MAX_IMAGE_PATH_BYTES: usize = 1024;
-pub(super) const MAX_ICON_NAME_BYTES: usize = 256;
-
-#[cfg(test)]
-use hints::{owned_to_string, strip_desktop_suffix};
-#[cfg(test)]
-use rgb::expand_rgb_row_scalar;
-#[cfg(all(test, target_arch = "x86_64"))]
-use rgb::expand_rgb_row_ssse3;
-
-#[cfg(test)]
-#[path = "tests/image/index.rs"]
-mod tests;
+pub(in crate::model) const MAX_IMAGE_BYTES: usize = 256 * 1024;
+pub(in crate::model) const MAX_IMAGE_DIMENSION: i32 = 256;
+pub(in crate::model) const MAX_IMAGE_PATH_BYTES: usize = 1024;
+pub(in crate::model) const MAX_ICON_NAME_BYTES: usize = 256;

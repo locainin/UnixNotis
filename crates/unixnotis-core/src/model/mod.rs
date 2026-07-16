@@ -1,4 +1,4 @@
-//! Notification data model and image hint parsing.
+//! Notification data model and image hint parsing
 
 // Keep the public model surface small by splitting large helpers into files.
 mod image;

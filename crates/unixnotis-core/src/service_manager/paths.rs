@@ -1,70 +1,11 @@
-//! Shared service-manager identity and user-path resolution
+//! Service-manager artifact and runtime-path resolution
 
 use std::env;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
 use thiserror::Error;
 
-/// Service managers supported by the `UnixNotis` installer and diagnostics
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ServiceManagerKind {
-    /// Systemd user service
-    Systemd,
-    /// Dinit user service
-    Dinit,
-    /// Runit user service directory
-    Runit,
-    /// S6-rc user service database
-    S6,
-}
-
-impl ServiceManagerKind {
-    /// Every supported manager in stable probe order
-    #[must_use]
-    pub const fn all() -> [Self; 4] {
-        [Self::Systemd, Self::Dinit, Self::Runit, Self::S6]
-    }
-
-    /// Parse environment and CLI aliases
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the value does not name a supported manager
-    pub fn parse(raw: &str) -> Result<Self, ServiceManagerPathError> {
-        match raw.trim() {
-            "" | "systemd" | "systemd-user" => Ok(Self::Systemd),
-            "dinit" | "dinit-user" => Ok(Self::Dinit),
-            "runit" | "runit-user" => Ok(Self::Runit),
-            "s6" | "s6-user" => Ok(Self::S6),
-            other => Err(ServiceManagerPathError::Unsupported(other.to_string())),
-        }
-    }
-
-    /// Parse an intentional CLI value without treating empty text as the default
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the value is empty or unsupported
-    pub fn parse_explicit(raw: &str) -> Result<Self, ServiceManagerPathError> {
-        if raw.trim().is_empty() {
-            return Err(ServiceManagerPathError::Unsupported(String::new()));
-        }
-        Self::parse(raw)
-    }
-
-    /// Stable user-facing backend label
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Systemd => "systemd",
-            Self::Dinit => "dinit",
-            Self::Runit => "runit",
-            Self::S6 => "s6-rc",
-        }
-    }
-}
+use super::ServiceManagerKind;
 
 /// Resolved paths needed to inspect one service-manager installation
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -108,6 +49,7 @@ pub fn resolve_service_manager_paths(
         ServiceManagerKind::Runit => runit_user_dir()?,
         ServiceManagerKind::S6 => s6_user_dir()?,
     };
+    // Only s6-rc separates its compiled database from its live supervision tree
     let live_root = if kind == ServiceManagerKind::S6 {
         Some(s6_live_dir(&artifact_root)?)
     } else {
@@ -175,10 +117,12 @@ pub fn s6_live_dir(data_root: &Path) -> Result<PathBuf, ServiceManagerPathError>
         return Ok(path);
     }
     let user = env::var("USER").map_err(|_error| ServiceManagerPathError::MissingUser)?;
+    // Integrated installations conventionally expose the live tree below /run
     let integrated = PathBuf::from("/run").join(&user).join("s6-rc");
     if directory_or_directory_symlink(&integrated) {
         return Ok(integrated);
     }
+    // Standalone user supervisors commonly keep their live tree below /tmp
     let standalone = PathBuf::from("/tmp").join(&user).join("s6-rc");
     if plain_directory(&standalone) {
         return Ok(standalone);
@@ -187,6 +131,7 @@ pub fn s6_live_dir(data_root: &Path) -> Result<PathBuf, ServiceManagerPathError>
     if directory_or_directory_symlink(&local) {
         return Ok(local);
     }
+    // Preserve the installer contract when no live tree exists yet
     Ok(integrated)
 }
 
@@ -237,7 +182,3 @@ fn directory_or_directory_symlink(path: &Path) -> bool {
 fn plain_directory(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
 }
-
-#[cfg(test)]
-#[path = "tests/service_manager.rs"]
-mod tests;

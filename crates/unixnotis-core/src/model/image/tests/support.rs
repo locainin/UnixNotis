@@ -1,17 +1,12 @@
 use zbus::zvariant::{OwnedValue, Structure, Value};
 
-mod hints;
-mod normalization;
-mod projection;
-mod rgb_expansion;
-
-fn string_value(value: &str) -> OwnedValue {
+pub(in crate::model::image) fn string_value(value: &str) -> OwnedValue {
     Value::from(value)
         .try_into()
         .expect("string value should convert")
 }
 
-fn image_data_value(
+pub(in crate::model::image) fn image_data_value(
     width: i32,
     height: i32,
     rowstride: i32,

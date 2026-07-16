@@ -192,7 +192,7 @@ fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
     value.get(..end).unwrap_or_default().to_string()
 }
 
-pub(super) fn owned_to_string(value: &OwnedValue) -> Option<String> {
+pub(in crate::model) fn owned_to_string(value: &OwnedValue) -> Option<String> {
     // Clone the owned D-Bus value first, then attempt to extract it as a String
     // Any clone or conversion failure is represented as None
     value
@@ -201,7 +201,7 @@ pub(super) fn owned_to_string(value: &OwnedValue) -> Option<String> {
         .and_then(|owned| String::try_from(owned).ok())
 }
 
-pub(super) fn strip_desktop_suffix(value: &str) -> String {
+pub(in crate::model) fn strip_desktop_suffix(value: &str) -> String {
     // Desktop entries may include ".desktop"; icon themes usually omit it
     if let Some(stripped) = value.strip_suffix(".desktop") {
         stripped.to_string()
