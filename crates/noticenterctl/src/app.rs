@@ -12,6 +12,16 @@ pub async fn run() -> Result<()> {
     let args = Args::parse();
     let command = args.command;
 
+    if let Command::Doctor {
+        json,
+        verbose,
+        service_manager,
+    } = command
+    {
+        // Doctor owns its D-Bus connection so one failed probe cannot stop later checks
+        return crate::doctor::run(json, verbose, service_manager).await;
+    }
+
     if command.is_local_only() {
         // Local commands must work even when the daemon is not running
         handle_local_command(command, crate::css_check::run, crate::preset::run_preset)?;

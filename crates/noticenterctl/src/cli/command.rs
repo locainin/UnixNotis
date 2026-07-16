@@ -1,6 +1,8 @@
 use clap::Subcommand;
 
-use super::args::{DebugLevelArg, DndState, InhibitScopeArg, PresetCommand};
+use super::args::{
+    DebugLevelArg, DndState, DoctorServiceManagerArg, InhibitScopeArg, PresetCommand,
+};
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
@@ -54,6 +56,15 @@ pub enum Command {
     ListInhibitors,
     // Validate theme CSS files without touching D-Bus
     CssCheck,
+    // Collect independent configuration, theme, bus, service, and log diagnostics
+    Doctor {
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        verbose: bool,
+        #[arg(long, value_enum, default_value = "auto")]
+        service_manager: DoctorServiceManagerArg,
+    },
     // Export, inspect, or import a shareable preset bundle
     Preset {
         #[command(subcommand)]
@@ -64,6 +75,9 @@ pub enum Command {
 impl Command {
     pub(crate) const fn is_local_only(&self) -> bool {
         // Local-only commands should not fail just because D-Bus is unavailable
-        matches!(self, Self::CssCheck | Self::Preset { .. })
+        matches!(
+            self,
+            Self::CssCheck | Self::Doctor { .. } | Self::Preset { .. }
+        )
     }
 }

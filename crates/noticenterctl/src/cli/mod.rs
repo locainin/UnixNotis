@@ -3,7 +3,7 @@
 mod args;
 mod command;
 
-pub use args::{Args, DndState, PresetCommand};
+pub use args::{Args, DndState, DoctorServiceManagerArg, PresetCommand};
 #[cfg(test)]
 pub use args::{DebugLevelArg, InhibitScopeArg};
 pub use command::Command;

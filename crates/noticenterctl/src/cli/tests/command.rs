@@ -1,10 +1,16 @@
 use clap::Parser;
 
-use super::super::{Args, Command, PresetCommand};
+use super::super::{Args, Command, DoctorServiceManagerArg, PresetCommand};
 
 #[test]
 fn local_only_classification_distinguishes_local_and_control_commands() {
     assert!(Command::CssCheck.is_local_only());
+    assert!(Command::Doctor {
+        json: false,
+        verbose: false,
+        service_manager: DoctorServiceManagerArg::Auto,
+    }
+    .is_local_only());
     assert!(Command::Preset {
         command: PresetCommand::Inspect {
             input: "bundle.unixnotis".to_string()

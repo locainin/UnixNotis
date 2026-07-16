@@ -21,6 +21,7 @@ mod cli;
 mod css_check;
 mod dbus;
 mod debug_logs;
+mod doctor;
 mod output;
 mod preset;
 mod system_tools;

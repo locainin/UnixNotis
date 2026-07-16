@@ -52,6 +52,22 @@ pub enum InhibitScopeArg {
     Popups,
 }
 
+#[derive(ValueEnum, Debug, Clone, Copy, Eq, PartialEq)]
+pub enum DoctorServiceManagerArg {
+    // Inspect installed artifacts and active state without guessing between matches
+    Auto,
+    // Inspect the systemd user unit
+    Systemd,
+    // Inspect the dinit user service
+    Dinit,
+    // Inspect the runit user service
+    Runit,
+    // Inspect the s6-rc user service
+    S6,
+    // Treat the daemon as a manually launched process
+    Manual,
+}
+
 impl InhibitScopeArg {
     pub(crate) const fn as_scope(self) -> u32 {
         // Map CLI scope to the daemon bitmask value

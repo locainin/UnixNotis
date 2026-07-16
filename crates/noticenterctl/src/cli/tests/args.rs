@@ -1,7 +1,9 @@
 use clap::Parser;
 use unixnotis_core::{PanelDebugLevel, INHIBIT_SCOPE_ALL, INHIBIT_SCOPE_POPUPS};
 
-use super::super::{Args, Command, DebugLevelArg, DndState, InhibitScopeArg, PresetCommand};
+use super::super::{
+    Args, Command, DebugLevelArg, DndState, DoctorServiceManagerArg, InhibitScopeArg, PresetCommand,
+};
 
 #[test]
 fn parses_open_panel_debug_default() {
@@ -158,6 +160,28 @@ fn parses_preset_inspect() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parses_doctor_output_and_service_manager_options() {
+    let args = Args::try_parse_from([
+        "noticenterctl",
+        "doctor",
+        "--json",
+        "--verbose",
+        "--service-manager",
+        "dinit",
+    ])
+    .expect("parse doctor args");
+
+    assert!(matches!(
+        args.command,
+        Command::Doctor {
+            json: true,
+            verbose: true,
+            service_manager: DoctorServiceManagerArg::Dinit,
+        }
+    ));
 }
 
 #[test]
