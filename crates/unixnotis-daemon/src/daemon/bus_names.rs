@@ -1,7 +1,7 @@
 //! D-Bus name acquisition helpers for the daemon entry flow
 
 use tracing::info;
-use unixnotis_core::CONTROL_BUS_NAME;
+use unixnotis_core::{CONTROL_BUS_NAME, NOTIFICATIONS_BUS_NAME};
 use zbus::fdo::{RequestNameFlags, RequestNameReply};
 use zbus::Connection;
 
@@ -17,7 +17,7 @@ pub async fn request_well_known_name(
         zbus::fdo::RequestNameFlags::DoNotQueue.into()
     };
     connection
-        .request_name_with_flags("org.freedesktop.Notifications", flags)
+        .request_name_with_flags(NOTIFICATIONS_BUS_NAME, flags)
         .await
 }
 

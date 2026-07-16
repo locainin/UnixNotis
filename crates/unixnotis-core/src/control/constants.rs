@@ -6,6 +6,8 @@ pub const CONTROL_BUS_NAME: &str = "com.unixnotis.Control";
 pub const CONTROL_OBJECT_PATH: &str = "/com/unixnotis/Control";
 /// D-Bus interface name for control calls
 pub const CONTROL_INTERFACE: &str = "com.unixnotis.Control";
+/// Freedesktop notification service name owned by the active notification daemon
+pub const NOTIFICATIONS_BUS_NAME: &str = "org.freedesktop.Notifications";
 /// Inhibit scope meaning all notification output
 pub const INHIBIT_SCOPE_ALL: u32 = 0;
 /// Inhibit scope bitmask value for suppressing popups
