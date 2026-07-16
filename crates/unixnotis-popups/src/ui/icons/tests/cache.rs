@@ -51,9 +51,8 @@ fn icon_decode_queue_overflow_notifies_waiters() {
     assert_eq!(pool.waiter_count(&path_b, 20), 0);
 }
 
-#[test]
+#[gtk::test]
 fn texture_cache_keeps_sizes_separate() {
-    let _guard = crate::test_support::gtk_test_lock();
     let mut cache = TextureCache::new(4);
     let path = PathBuf::from("icon-test.png");
     let bytes = glib::Bytes::from_owned(vec![255; 4]);

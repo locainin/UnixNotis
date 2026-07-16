@@ -7,18 +7,14 @@ fn popup_header_spacer_expands_to_hold_close_alignment() {
     assert!(popup_header_spacer_expands());
 }
 
-#[test]
+#[gtk::test]
 fn default_card_action_is_blocked_for_button_widgets() {
-    let _guard = crate::test_support::gtk_test_lock();
-
     // Button clicks must remain owned by the button action
     assert!(widget_type_blocks_default_action(gtk::Button::static_type()));
 }
 
-#[test]
+#[gtk::test]
 fn default_card_action_is_allowed_for_plain_content_widgets() {
-    let _guard = crate::test_support::gtk_test_lock();
-
     // Plain card content may use the notification default action
     assert!(!widget_type_blocks_default_action(gtk::Label::static_type()));
 }
