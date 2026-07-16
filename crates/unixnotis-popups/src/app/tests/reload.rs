@@ -1,5 +1,7 @@
 use crate::app::reload::ReloadGate;
 use crate::dbus;
+use proptest::prelude::*;
+use proptest::test_runner::RngSeed;
 use std::sync::{Arc, Mutex};
 
 fn queued_event(rx: &async_channel::Receiver<dbus::UiEvent>) -> dbus::UiEvent {
@@ -179,4 +181,63 @@ fn start_reload_timer_registers_only_one_timer_source() {
         .expect("timer source should be registered");
     // The source is not meant to run in this unit test; removing it keeps the GLib context tidy
     source_id.remove();
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 256,
+        rng_seed: RngSeed::Fixed(0x504f_5055_5053_4741),
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn arbitrary_reload_sequences_settle_without_stuck_atomic_state(
+        operations in prop::collection::vec(0_u8..5, 0..=100),
+    ) {
+        let gate = ReloadGate::new();
+        let (tx, rx) = async_channel::bounded(2);
+
+        for operation in operations {
+            match operation {
+                0 => { let _needs_retry = gate.request_css(&tx); }
+                1 => { let _needs_retry = gate.request_config(&tx); }
+                2 => gate.flush(&tx),
+                3 | 4 => complete_one(&gate, &tx, &rx),
+                _ => unreachable!("operation generator stays inside range"),
+            }
+        }
+
+        for _ in 0..16 {
+            gate.flush(&tx);
+            if rx.is_empty() && !gate.has_pending() {
+                break;
+            }
+            complete_one(&gate, &tx, &rx);
+        }
+        while !rx.is_empty() {
+            complete_one(&gate, &tx, &rx);
+        }
+
+        prop_assert!(!gate.has_pending());
+        prop_assert!(rx.is_empty());
+    }
+}
+
+fn complete_one(
+    gate: &ReloadGate,
+    sender: &async_channel::Sender<dbus::UiEvent>,
+    receiver: &async_channel::Receiver<dbus::UiEvent>,
+) {
+    let Ok(event) = receiver.try_recv() else {
+        return;
+    };
+    match event {
+        dbus::UiEvent::CssReload => {
+            let _needs_retry = gate.complete_css(sender);
+        }
+        dbus::UiEvent::ConfigReload => {
+            let _needs_retry = gate.complete_config(sender);
+        }
+        _ => unreachable!("reload gate emits only reload events"),
+    }
 }
