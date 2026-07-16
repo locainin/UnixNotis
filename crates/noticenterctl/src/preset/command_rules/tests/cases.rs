@@ -1,31 +1,11 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use unixnotis_core::Config;
 
-use super::{
+use super::super::{
     collect_command_references_from_config, collect_host_specific_command_paths,
     collect_outside_command_paths, rewrite_host_specific_command_paths,
     validate_command_paths_in_config_bytes,
 };
-
-#[path = "env_paths.rs"]
-mod env_paths;
-
-static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-fn temp_root(name: &str) -> PathBuf {
-    // Unique paths keep lexical path checks stable under parallel test runs
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock moved backwards")
-        .as_nanos();
-    let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "unixnotis-preset-command-rules-{name}-{stamp}-{serial}"
-    ))
-}
+use super::support::temp_root;
 
 #[test]
 fn collects_widget_command_references() {

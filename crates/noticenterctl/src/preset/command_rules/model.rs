@@ -1,26 +1,6 @@
-//! Shared command rules for preset config
-//!
-//! Import, export, inspect, and css-check all need the same command view:
-//! what command slots exist, which ones point outside the config root,
-//! and which ones can be rewritten into portable config-relative paths
-
-mod checks;
-mod collect;
-mod rewrite;
-#[cfg(test)]
-#[path = "command_rules/tests/cases.rs"]
-mod tests;
-mod tokens;
+//! Command references and path findings shared by preset checks
 
 use std::path::PathBuf;
-
-pub use self::checks::{
-    collect_host_specific_command_paths, collect_outside_command_paths,
-    validate_command_paths_in_config_bytes, validate_config_command_paths_stay_in_root,
-};
-pub use self::collect::collect_command_references_from_config;
-pub use self::rewrite::rewrite_host_specific_command_paths;
-pub(super) use self::tokens::resolve_command_path_token;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandReference {
@@ -49,3 +29,7 @@ pub struct HostSpecificCommandPath {
     // Resolved first-token path under the config root
     pub(crate) resolved_path: PathBuf,
 }
+
+#[cfg(test)]
+#[path = "tests/model.rs"]
+mod tests;

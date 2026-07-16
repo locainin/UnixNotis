@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use super::super::tokens::collect_outside_env_path_tokens;
 use super::super::validate_command_paths_in_config_bytes;
-use super::temp_root;
+use super::support::temp_root;
 
 #[test]
 fn validation_rejects_ld_preload_path_that_leaves_root() {

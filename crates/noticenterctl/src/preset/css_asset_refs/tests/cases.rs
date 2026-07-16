@@ -1,4 +1,4 @@
-use super::{
+use super::super::{
     collect_external_css_asset_refs_from_bundle, collect_external_css_asset_refs_from_paths,
     collect_local_css_asset_paths_from_paths,
 };
