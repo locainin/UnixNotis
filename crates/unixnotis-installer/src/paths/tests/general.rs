@@ -205,14 +205,18 @@ fn write_release_archive(root: &std::path::Path) {
 
 #[test]
 fn empty_service_manager_choice_keeps_env_default_but_rejects_explicit_cli_value() {
+    let _guard = env_lock();
+    let previous = set_env("UNIXNOTIS_SERVICE_MANAGER", Some(""));
+
     // Environment parsing keeps the historical fallback for an empty export
     assert_eq!(
-        ServiceManagerChoice::parse("").expect("empty env fallback"),
+        service_manager_choice_from_environment().expect("empty env fallback"),
         ServiceManagerChoice::Systemd
     );
+    restore_env("UNIXNOTIS_SERVICE_MANAGER", previous);
 
     // CLI parsing is stricter because an empty flag value is almost always a typo
-    assert!(ServiceManagerChoice::parse_explicit("").is_err());
+    assert!(ServiceManagerChoice::parse("").is_err());
 }
 
 #[test]

@@ -129,8 +129,13 @@ fn service_manager_candidates_from_choice(
     }
 }
 
-fn service_manager_choice_from_environment() -> Result<ServiceManagerChoice> {
+pub(super) fn service_manager_choice_from_environment() -> Result<ServiceManagerChoice> {
     match env::var("UNIXNOTIS_SERVICE_MANAGER") {
+        // Existing shell profiles may export an empty value
+        //
+        // The environment is an optional default source, so an empty value has
+        // the same meaning as an unset value while explicit CLI input stays strict
+        Ok(raw) if raw.trim().is_empty() => Ok(ServiceManagerChoice::Systemd),
         Ok(raw) => Ok(ServiceManagerChoice::parse(&raw)?),
         Err(_) => Ok(ServiceManagerChoice::Systemd),
     }
