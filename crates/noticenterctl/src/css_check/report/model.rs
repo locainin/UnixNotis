@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(in super::super) enum CssCheckSeverity {
+pub enum CssCheckSeverity {
     // Errors should always stand out first in the final report
     Error,
     // Warnings keep the run successful but still need attention
@@ -7,7 +7,7 @@ pub(in super::super) enum CssCheckSeverity {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(in super::super) enum CssCheckCategory {
+pub enum CssCheckCategory {
     // Parser failures come from GTK itself
     Parse,
     // Theme warnings come from file paths and shareability checks
@@ -53,7 +53,7 @@ impl CssCheckCategory {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in super::super) struct CssCheckDiagnostic {
+pub struct CssCheckDiagnostic {
     // Severity decides both ordering and final result color
     pub(in super::super) severity: CssCheckSeverity,
     // Category keeps related warnings grouped together
@@ -119,14 +119,14 @@ impl CssCheckDiagnostic {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in super::super) struct CssCheckActiveFile {
+pub struct CssCheckActiveFile {
     // The slot name shows which config key resolved to this file
     pub(in super::super) slot_name: &'static str,
     pub(in super::super) display_path: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(in super::super) struct CssCheckReport {
+pub struct CssCheckReport {
     // The displayed root may be $HOME or $XDG_CONFIG_HOME based
     pub(in super::super) display_root: String,
     pub(in super::super) checked_files: usize,
@@ -134,11 +134,11 @@ pub(in super::super) struct CssCheckReport {
     pub(in super::super) active_files: Vec<CssCheckActiveFile>,
     // Notes are extra context that should not count as warnings
     pub(in super::super) notes: Vec<String>,
-    pub(in super::super) diagnostics: Vec<CssCheckDiagnostic>,
+    pub(crate) diagnostics: Vec<CssCheckDiagnostic>,
 }
 
 impl CssCheckReport {
-    pub(in super::super) fn error_count(&self) -> usize {
+    pub(crate) fn error_count(&self) -> usize {
         // Errors decide whether css-check returns a failure
         self.diagnostics
             .iter()
@@ -146,7 +146,7 @@ impl CssCheckReport {
             .count()
     }
 
-    pub(in super::super) fn warning_count(&self) -> usize {
+    pub(crate) fn warning_count(&self) -> usize {
         // Warnings keep the run successful but change the final verdict
         self.diagnostics
             .iter()

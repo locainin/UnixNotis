@@ -17,16 +17,6 @@ use super::paths::{
     theme_targets,
 };
 
-pub(in super::super) fn collect_css_check_inputs(
-    config_dir: &Path,
-    display_root: &str,
-) -> Result<CssCheckInputs> {
-    // css-check always reflects the live config tree, not a detached preset view
-    let config_path = Config::default_config_path().context("resolve config path")?;
-    let config = Config::load_default().context("load config for active theme paths")?;
-    collect_css_check_inputs_from(config_dir, display_root, &config_path, &config)
-}
-
 pub(in super::super) fn collect_css_check_inputs_from(
     config_dir: &Path,
     display_root: &str,

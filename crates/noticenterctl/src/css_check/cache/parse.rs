@@ -7,8 +7,21 @@ use std::path::Path;
 use super::super::files::format_display_path;
 use super::super::policy::parsing_error_hint;
 use super::super::report::{CssCheckCategory, CssCheckDiagnostic};
-use super::super::source_line_text;
 use super::model::{CachedDiagnosticSource, CachedParseDiagnostic, CssParseWorkItem};
+
+fn source_line_text(path: Option<&Path>, line_number: usize) -> Option<String> {
+    let path = path?;
+    if line_number == 0 {
+        return None;
+    }
+    // Read only when a parser error needs a hint
+    let contents = fs::read_to_string(path).ok()?;
+    contents
+        .lines()
+        // GTK line numbers start at one
+        .nth(line_number.saturating_sub(1))
+        .map(str::to_string)
+}
 
 pub(in super::super) fn parse_css_file_with_gtk(
     work_item: &CssParseWorkItem,
