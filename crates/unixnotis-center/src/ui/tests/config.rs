@@ -1,5 +1,6 @@
+use std::io::{self, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::{fs, path::Path};
 
 use gtk::prelude::*;
@@ -9,10 +10,25 @@ use unixnotis_core::{
 use unixnotis_ui::css::CssManager;
 
 use super::super::{UiState, UiStateInit};
-use super::{ConfigReloadOutcome, ReloadFailure};
+use super::{log_reload_rejection, ConfigReloadOutcome, ReloadFailure};
 use crate::dbus::{UiCommand, UiEvent};
 
 static APP_ID: AtomicUsize = AtomicUsize::new(0);
+
+struct CapturedWriter(Arc<Mutex<Vec<u8>>>);
+
+impl Write for CapturedWriter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.0
+            .lock()
+            .map_err(|_poisoned| io::Error::other("captured log lock poisoned"))?
+            .write(buffer)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
 
 #[test]
 fn reload_failure_kinds_remain_stable_for_structured_logs() {
@@ -28,6 +44,29 @@ fn reload_failure_kinds_remain_stable_for_structured_logs() {
         ReloadFailure::ThemePaths("invalid".to_string()).kind(),
         "theme-paths"
     );
+}
+
+#[test]
+fn rejected_config_logs_never_include_private_parser_text() {
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let writer_output = Arc::clone(&output);
+    let subscriber = tracing_subscriber::fmt()
+        .without_time()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::DEBUG)
+        .with_writer(move || CapturedWriter(Arc::clone(&writer_output)))
+        .finish();
+    let failure = ReloadFailure::Config(ConfigError::ParseFailed(
+        "private-center-parser-sentinel".to_string(),
+    ));
+
+    tracing::subscriber::with_default(subscriber, || log_reload_rejection(&failure));
+
+    let rendered = String::from_utf8(output.lock().expect("lock captured center output").clone())
+        .expect("center output should be UTF-8");
+    assert!(rendered.contains("kind=\"config\""));
+    assert!(rendered.contains("fingerprint="));
+    assert!(!rendered.contains("private-center-parser-sentinel"));
 }
 
 fn state() -> UiState {
@@ -316,6 +355,24 @@ fn successful_css_only_reload_does_not_clear_config_rejection_notice() {
     assert_eq!(report.read_failures().count(), 0);
     assert!(state.panel.reload_notice_revealer.reveals_child());
     assert_eq!(state.panel.reload_notice_label.text(), rejection);
+}
+
+#[gtk::test]
+fn css_failure_cannot_replace_an_active_config_rejection() {
+    let mut state = state();
+    fs::write(&state.config_path, "[panel\ntitle = broken").expect("broken config");
+    let _outcome = state.reload_config();
+    let rejection = state.panel.reload_notice_label.text();
+
+    let report = state.reload_css();
+
+    assert!(report.read_failures().count() > 0);
+    assert!(state.panel.reload_notice_revealer.reveals_child());
+    assert_eq!(state.panel.reload_notice_label.text(), rejection);
+    assert!(state
+        .panel
+        .reload_notice_shell
+        .has_css_class(unixnotis_core::css::hooks::panel_shell::RELOAD_NOTICE_ERROR));
 }
 
 #[gtk::test]

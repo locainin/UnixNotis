@@ -188,7 +188,7 @@ impl UiState {
                         );
                     }
                     super::config::ConfigReloadOutcome::Rejected { failure } => {
-                        debug!(?failure, "config reload rejected");
+                        super::config::log_reload_rejection(&failure);
                     }
                 }
             }

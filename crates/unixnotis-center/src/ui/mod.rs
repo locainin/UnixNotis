@@ -16,6 +16,7 @@ mod media_widget;
 mod panel;
 mod perf_probe;
 mod refresh;
+mod reload_notice;
 mod state;
 mod visibility;
 mod widget_builders;

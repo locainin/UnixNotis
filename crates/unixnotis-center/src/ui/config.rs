@@ -16,6 +16,7 @@ use unixnotis_ui::css::CssReloadReport;
 
 use super::list;
 use super::panel::notification_header_row_visible;
+use super::reload_notice::{ReloadNotice, ReloadNoticeFingerprint, ReloadNoticeKind};
 use super::widget_builders::{build_extra_widgets, build_quick_controls, clear_container};
 use super::{panel, UiState};
 
@@ -23,18 +24,6 @@ struct ReloadInputs {
     config: Config,
     diagnostics: Vec<ConfigDiagnostic>,
     theme_paths: ThemePaths,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ReloadNoticeKind {
-    Config,
-    Css,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ReloadNoticeFingerprint {
-    kind: ReloadNoticeKind,
-    identity: String,
 }
 
 #[derive(Debug)]
@@ -57,6 +46,7 @@ pub(super) enum ConfigReloadOutcome {
 
 impl UiState {
     pub(super) fn reload_config(&mut self) -> ConfigReloadOutcome {
+        self.capture_notice_dismissal();
         let reload = match self.load_reload_inputs() {
             Ok(reload) => reload,
             Err(failure) => {
@@ -80,7 +70,7 @@ impl UiState {
         self.apply_list_config_after_reload(&reload.config);
         self.finish_reload_runtime(&reload.config);
         // Any accepted config replaces a prior rejection before CSS reports its own result
-        self.clear_reload_notice();
+        self.clear_reload_notice(ReloadNoticeKind::Config);
         self.apply_css_reload_notice(&css);
         ConfigReloadOutcome::Applied {
             diagnostics: reload.diagnostics,
@@ -120,6 +110,7 @@ impl UiState {
     }
 
     pub(super) fn reload_css(&mut self) -> CssReloadReport {
+        self.capture_notice_dismissal();
         let report = self.css.reload(unixnotis_ui::css::DEFAULT_CSS);
         self.apply_css_reload_notice(&report);
         report
@@ -133,21 +124,15 @@ impl UiState {
         let detail = unixnotis_core::util::sanitize_inline_display_text(detail);
         let message =
             format!("Config reload rejected\nThe previous configuration is still active\n{detail}");
-        let identity = failure.fingerprint();
-        self.show_reload_notice_with_identity(ReloadNoticeKind::Config, &message, true, &identity);
+        let identity = failure.safe_fingerprint();
+        self.set_reload_notice(ReloadNoticeKind::Config, &message, true, &identity);
     }
 
     fn apply_css_reload_notice(&mut self, report: &CssReloadReport) {
         // Intentional empty files are valid fallback requests and do not produce a notice
         let failures = report.read_failures().collect::<Vec<_>>();
         if failures.is_empty() {
-            if self
-                .last_reload_notice
-                .as_ref()
-                .is_some_and(|notice| notice.kind == ReloadNoticeKind::Css)
-            {
-                self.clear_reload_notice();
-            }
+            self.clear_reload_notice(ReloadNoticeKind::Css);
             return;
         }
         let first = failures[0];
@@ -165,48 +150,62 @@ impl UiState {
         let message = format!(
             "Theme fallback active\n{file}{suffix} could not be read; embedded styling is active"
         );
-        self.show_reload_notice(ReloadNoticeKind::Css, &message, false);
+        let identity = css_failure_fingerprint(&failures);
+        self.set_reload_notice(ReloadNoticeKind::Css, &message, false, &identity);
     }
 
-    fn show_reload_notice(&mut self, kind: ReloadNoticeKind, message: &str, error: bool) {
-        self.show_reload_notice_with_identity(kind, message, error, message);
-    }
-
-    fn show_reload_notice_with_identity(
+    fn set_reload_notice(
         &mut self,
         kind: ReloadNoticeKind,
         message: &str,
         error: bool,
         identity: &str,
     ) {
-        let fingerprint = ReloadNoticeFingerprint {
-            kind,
-            identity: identity.to_string(),
-        };
-        if self.last_reload_notice.as_ref() == Some(&fingerprint) {
-            // Watcher bursts must not reopen a notice that was already dismissed
+        self.reload_notices.set(ReloadNotice {
+            fingerprint: ReloadNoticeFingerprint {
+                kind,
+                identity: identity.to_string(),
+            },
+            message: message.to_string(),
+            error,
+        });
+        self.render_reload_notice();
+    }
+
+    fn render_reload_notice(&self) {
+        let Some(notice) = self.reload_notices.visible() else {
+            self.panel.reload_notice_revealer.set_reveal_child(false);
             return;
-        }
-        // Store identity before revealing so dismissal belongs to this exact failure
-        self.last_reload_notice = Some(fingerprint);
-        self.panel.reload_notice_label.set_label(message);
+        };
+        self.panel.reload_notice_label.set_label(&notice.message);
         self.panel
             .reload_notice_shell
             .remove_css_class(hooks::panel_shell::RELOAD_NOTICE_ERROR);
         self.panel
             .reload_notice_shell
             .remove_css_class(hooks::panel_shell::RELOAD_NOTICE_WARNING);
-        self.panel.reload_notice_shell.add_css_class(if error {
-            hooks::panel_shell::RELOAD_NOTICE_ERROR
-        } else {
-            hooks::panel_shell::RELOAD_NOTICE_WARNING
-        });
+        self.panel
+            .reload_notice_shell
+            .add_css_class(if notice.error {
+                hooks::panel_shell::RELOAD_NOTICE_ERROR
+            } else {
+                hooks::panel_shell::RELOAD_NOTICE_WARNING
+            });
         self.panel.reload_notice_revealer.set_reveal_child(true);
     }
 
-    fn clear_reload_notice(&mut self) {
-        self.last_reload_notice = None;
-        self.panel.reload_notice_revealer.set_reveal_child(false);
+    fn clear_reload_notice(&mut self, kind: ReloadNoticeKind) {
+        self.reload_notices.clear(kind);
+        self.render_reload_notice();
+    }
+
+    fn capture_notice_dismissal(&mut self) {
+        // The close button hides GTK immediately, then the next event records that dismissal
+        if !self.panel.reload_notice_revealer.reveals_child()
+            && self.reload_notices.visible().is_some()
+        {
+            self.reload_notices.dismiss_visible();
+        }
     }
 
     pub(in crate::ui) fn apply_reloaded_panel(&mut self, config: &Config) {
@@ -371,12 +370,32 @@ impl ReloadFailure {
         }
     }
 
-    fn fingerprint(&self) -> String {
+    pub(super) fn safe_fingerprint(&self) -> String {
         // Hash private parser details so distinct failures remain distinguishable without display
         let mut hasher = DefaultHasher::new();
         format!("{self:?}").hash(&mut hasher);
         format!("{:016x}", hasher.finish())
     }
+}
+
+pub(super) fn log_reload_rejection(failure: &ReloadFailure) {
+    // Raw parser errors can contain complete config lines, commands, labels, and paths
+    tracing::debug!(
+        kind = failure.kind(),
+        fingerprint = %failure.safe_fingerprint(),
+        "config reload rejected"
+    );
+}
+
+fn css_failure_fingerprint(failures: &[&unixnotis_ui::css::CssLayerReload]) -> String {
+    // The UI message stays compact while the hash distinguishes changed files and read errors
+    let mut hasher = DefaultHasher::new();
+    for failure in failures {
+        format!("{:?}", failure.layer).hash(&mut hasher);
+        failure.path.hash(&mut hasher);
+        failure.error.hash(&mut hasher);
+    }
+    format!("{:016x}", hasher.finish())
 }
 
 #[cfg(test)]

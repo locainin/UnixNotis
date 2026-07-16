@@ -107,10 +107,24 @@ fn css_and_config_reload_slots_are_independent() {
 }
 
 #[test]
+fn closed_reload_channel_clears_all_pending_state() {
+    let gate = ReloadGate::new();
+    let (sender, receiver) = async_channel::bounded(1);
+    drop(receiver);
+
+    assert!(!gate.request_css(&sender));
+    assert!(!gate.request_config(&sender));
+    gate.flush(&sender);
+
+    assert!(!gate.has_pending());
+}
+
+#[test]
 fn concurrent_request_and_completion_never_strand_a_reload() {
     for _attempt in 0..1_000 {
         let gate = Arc::new(ReloadGate::new());
-        let (sender, receiver) = async_channel::bounded(2);
+        // Capacity one forces CSS and config requests through the real retry path
+        let (sender, receiver) = async_channel::bounded(1);
         assert!(!gate.request_css(&sender));
         let _initial = queued_event(&receiver);
         let barrier = Arc::new(Barrier::new(2));
