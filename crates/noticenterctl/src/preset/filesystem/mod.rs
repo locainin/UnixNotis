@@ -1,7 +1,4 @@
-//! Preset filesystem module root
-//!
-//! Keeps filesystem validation and secure write helpers grouped under one tree
-//! so callers can import one module name instead of a flat list of files
+//! Preset filesystem validation and descriptor-relative operations
 
 mod checks;
 mod secure;
