@@ -6,7 +6,9 @@ mod manager;
 mod overrides;
 mod watch;
 
-pub use manager::{CssKind, CssManager};
+pub use manager::{
+    CssKind, CssLayerReload, CssLayerSource, CssManager, CssProviderLayer, CssReloadReport,
+};
 pub use watch::{start_config_watcher, start_css_watcher};
 
 use unixnotis_core::DEFAULT_BASE_CSS;

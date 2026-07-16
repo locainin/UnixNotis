@@ -6,10 +6,12 @@ use std::path::Path;
 use tracing::warn;
 
 mod merge;
+mod model;
 mod tokens;
 mod urls;
 
 use merge::merge_css_with_overrides;
+pub(super) use model::{CssFileLoadResult, CssFileLoadSource};
 use tokens::ensure_base_tokens;
 use urls::rebase_relative_css_asset_urls;
 
@@ -20,7 +22,7 @@ pub fn load_provider_with_overrides(
     fallback: &str,
     overrides: &str,
     inject_base_tokens: bool,
-) {
+) -> CssFileLoadResult {
     match fs::read_to_string(path) {
         Ok(contents) => {
             let contents = if inject_base_tokens {
@@ -34,11 +36,12 @@ pub fn load_provider_with_overrides(
                 // Relative url(...) assets break when CSS is loaded from raw bytes,
                 // so rebase them against the stylesheet path before GTK sees the data
                 load_css_data(&rebase_relative_css_asset_urls(&merged, path));
-                return;
+                return CssFileLoadResult::empty_fallback();
             }
             let merged = merge_css_with_overrides(&contents, fallback, overrides);
             // The provider still loads merged data, but the asset URLs now point at real files
             load_css_data(&rebase_relative_css_asset_urls(&merged, path));
+            CssFileLoadResult::custom()
         }
         Err(err) => {
             let file = path
@@ -57,11 +60,12 @@ pub fn load_provider_with_overrides(
             if overrides.trim().is_empty() {
                 // Fallback CSS can carry relative assets too, so it needs the same rebasing path
                 load_css_data(&rebase_relative_css_asset_urls(&fallback, path));
-                return;
+                return CssFileLoadResult::read_failure(err.to_string());
             }
             let merged = format!("{fallback}\n{overrides}");
             // Overrides are merged before rebasing so later asset refs all see one final stylesheet
             load_css_data(&rebase_relative_css_asset_urls(&merged, path));
+            CssFileLoadResult::read_failure(err.to_string())
         }
     }
 }

@@ -1,11 +1,16 @@
 //! CSS provider layer ordering types
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum CssProviderLayer {
+pub enum CssProviderLayer {
+    /// Shared token and common component layer
     Base,
+    /// Control-center shell layer
     Panel,
+    /// Popup surface layer
     Popup,
+    /// Quick-control and custom-widget layer
     Widgets,
+    /// MPRIS media card layer
     Media,
 }
 

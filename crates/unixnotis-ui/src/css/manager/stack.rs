@@ -7,13 +7,14 @@ use unixnotis_core::{
     DEFAULT_WIDGETS_CSS,
 };
 
-use super::super::loader::load_provider_with_overrides;
+use super::super::loader::{load_provider_with_overrides, CssFileLoadResult, CssFileLoadSource};
 use super::super::overrides::{
     build_base_overrides, build_panel_overrides, build_popup_overrides, build_widgets_overrides,
 };
 
 use super::layers::{CssProviderLayer, CssProviderRegistration};
 use super::provider::CssProviderBackend;
+use super::report::{CssLayerReload, CssLayerSource, CssReloadReport};
 
 /// Identifies which UI surface is loading CSS
 #[derive(Clone, Copy, Debug)]
@@ -52,9 +53,8 @@ impl CssManager {
 
     /// Reload CSS from disk or fall back to embedded defaults
     #[must_use]
-    pub fn reload(&self, fallback: &str) -> usize {
-        // Returning the layer count confirms every configured provider was refreshed
-        self.inner.reload(fallback).len()
+    pub fn reload(&self, fallback: &str) -> CssReloadReport {
+        self.inner.reload(fallback)
     }
 
     pub fn update_theme(&mut self, theme_paths: ThemePaths, theme_config: ThemeConfig) {
@@ -126,68 +126,91 @@ where
     }
 
     /// Reload CSS from disk or fall back to embedded defaults
-    fn reload(&self, fallback: &str) -> Vec<CssProviderLayer> {
+    fn reload(&self, fallback: &str) -> CssReloadReport {
         let mut loaded = Vec::new();
         // Base CSS gets the token injection to preserve alpha calculations
         let base_overrides = build_base_overrides(&self.theme_config);
-        load_provider_with_overrides(
+        let result = load_provider_with_overrides(
             |data| self.base.load_css_data(data),
             &self.theme_paths.base_css,
             fallback,
             &base_overrides,
             true,
         );
-        loaded.push(CssProviderLayer::Base);
+        loaded.push(layer_reload(
+            CssProviderLayer::Base,
+            self.theme_paths.base_css.clone(),
+            result,
+        ));
 
         if let Some(panel) = self.panel.as_ref() {
+            // Panel overrides are generated from typed theme values before custom CSS wins
             let panel_overrides = build_panel_overrides(&self.theme_config);
-            load_provider_with_overrides(
+            let result = load_provider_with_overrides(
                 |data| panel.load_css_data(data),
                 &self.theme_paths.panel_css,
                 DEFAULT_PANEL_CSS,
                 &panel_overrides,
                 false,
             );
-            loaded.push(CssProviderLayer::Panel);
+            loaded.push(layer_reload(
+                CssProviderLayer::Panel,
+                self.theme_paths.panel_css.clone(),
+                result,
+            ));
         }
 
         if let Some(widgets) = self.widgets.as_ref() {
+            // Widget tokens stay isolated from shell geometry and popup styling
             let widgets_overrides = build_widgets_overrides(&self.theme_config);
-            load_provider_with_overrides(
+            let result = load_provider_with_overrides(
                 |data| widgets.load_css_data(data),
                 &self.theme_paths.widgets_css,
                 DEFAULT_WIDGETS_CSS,
                 &widgets_overrides,
                 false,
             );
-            loaded.push(CssProviderLayer::Widgets);
+            loaded.push(layer_reload(
+                CssProviderLayer::Widgets,
+                self.theme_paths.widgets_css.clone(),
+                result,
+            ));
         }
 
         if let Some(media) = self.media.as_ref() {
             // Media css is intentionally isolated so ricing one widget does not pollute widgets.css
-            load_provider_with_overrides(
+            let result = load_provider_with_overrides(
                 |data| media.load_css_data(data),
                 &self.theme_paths.media_css,
                 DEFAULT_MEDIA_CSS,
                 "",
                 false,
             );
-            loaded.push(CssProviderLayer::Media);
+            loaded.push(layer_reload(
+                CssProviderLayer::Media,
+                self.theme_paths.media_css.clone(),
+                result,
+            ));
         }
 
         if let Some(popup) = self.popup.as_ref() {
+            // Popup processes register only base and popup providers
             let popup_overrides = build_popup_overrides(&self.theme_config);
-            load_provider_with_overrides(
+            let result = load_provider_with_overrides(
                 |data| popup.load_css_data(data),
                 &self.theme_paths.popup_css,
                 DEFAULT_POPUP_CSS,
                 &popup_overrides,
                 false,
             );
-            loaded.push(CssProviderLayer::Popup);
+            loaded.push(layer_reload(
+                CssProviderLayer::Popup,
+                self.theme_paths.popup_css.clone(),
+                result,
+            ));
         }
 
-        loaded
+        CssReloadReport { layers: loaded }
     }
 
     fn update_theme(&mut self, theme_paths: ThemePaths, theme_config: ThemeConfig) {
@@ -239,6 +262,25 @@ where
             CssProviderLayer::Widgets => self.widgets.as_ref(),
             CssProviderLayer::Media => self.media.as_ref(),
         }
+    }
+}
+
+fn layer_reload(
+    layer: CssProviderLayer,
+    path: std::path::PathBuf,
+    result: CssFileLoadResult,
+) -> CssLayerReload {
+    // Internal loader outcomes map one-to-one onto the public reload report
+    let source = match result.source {
+        CssFileLoadSource::Custom => CssLayerSource::Custom,
+        CssFileLoadSource::EmptyFallback => CssLayerSource::EmptyFallback,
+        CssFileLoadSource::ReadFailureFallback => CssLayerSource::ReadFailureFallback,
+    };
+    CssLayerReload {
+        layer,
+        path,
+        source,
+        error: result.error,
     }
 }
 

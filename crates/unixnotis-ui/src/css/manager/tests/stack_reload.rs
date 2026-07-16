@@ -95,10 +95,14 @@ fn panel_reload_loads_base_panel_widgets_and_media_layers() {
     write_theme(&paths, "green");
     let manager = panel_manager(paths, Rc::clone(&loaded));
 
-    let layers = manager.reload(".fallback { color: red; }");
+    let report = manager.reload(".fallback { color: red; }");
 
     assert_eq!(
-        layers,
+        report
+            .layers
+            .iter()
+            .map(|layer| layer.layer)
+            .collect::<Vec<_>>(),
         vec![
             CssProviderLayer::Base,
             CssProviderLayer::Panel,
@@ -126,9 +130,9 @@ fn update_theme_changes_the_paths_used_by_the_next_reload() {
     let mut manager = panel_manager(old_paths, Rc::clone(&loaded));
 
     manager.update_theme(new_paths, ThemeConfig::default());
-    let layers = manager.reload(".fallback { color: red; }");
+    let report = manager.reload(".fallback { color: red; }");
 
-    assert_eq!(layers.len(), 4);
+    assert_eq!(report.layers.len(), 4);
     let loaded = loaded.borrow();
     assert!(loaded.iter().all(|(_, css)| css.contains("blue")));
     assert!(loaded.iter().all(|(_, css)| !css.contains("red")));
@@ -148,11 +152,41 @@ fn public_manager_reload_and_theme_update_report_the_applied_stack() {
     let mut manager = CssManager::new_panel(old_paths, ThemeConfig::default());
 
     manager.update_theme(new_paths.clone(), ThemeConfig::default());
-    let loaded_layers = manager.reload(".fallback { color: red; }");
+    let report = manager.reload(".fallback { color: red; }");
 
-    assert_eq!(loaded_layers, 4);
+    assert_eq!(report.layers.len(), 4);
     assert_eq!(manager.inner.theme_paths.base_css, new_paths.base_css);
 
     fs::remove_dir_all(old_root).expect("remove public old css manager test root");
     fs::remove_dir_all(new_root).expect("remove public new css manager test root");
+}
+
+#[test]
+fn reload_report_distinguishes_empty_and_unreadable_theme_files() {
+    let root = unique_theme_root("fallback-sources");
+    let paths = theme_paths(&root);
+    let loaded = Rc::new(RefCell::new(Vec::new()));
+    write_theme(&paths, "green");
+    fs::write(&paths.panel_css, "  \n").expect("empty panel css");
+    fs::remove_file(&paths.media_css).expect("remove media css");
+    let manager = panel_manager(paths, loaded);
+
+    let report = manager.reload(".fallback { color: red; }");
+
+    let panel = report
+        .layers
+        .iter()
+        .find(|layer| layer.layer == CssProviderLayer::Panel)
+        .expect("panel layer");
+    assert_eq!(panel.source, CssLayerSource::EmptyFallback);
+    assert!(panel.error.is_none());
+    let media = report
+        .layers
+        .iter()
+        .find(|layer| layer.layer == CssProviderLayer::Media)
+        .expect("media layer");
+    assert_eq!(media.source, CssLayerSource::ReadFailureFallback);
+    assert!(media.error.is_some());
+
+    fs::remove_dir_all(root).expect("remove css fallback test root");
 }
