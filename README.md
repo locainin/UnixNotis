@@ -88,9 +88,12 @@ For a shareable configuration, theme, D-Bus, and service report, run:
 noticenterctl doctor
 noticenterctl doctor --verbose
 noticenterctl doctor --json
+noticenterctl doctor --config "$HOME/path/to/config.toml"
+noticenterctl css-check --config "$HOME/path/to/config.toml"
 ```
 
 Verbose systemd reports include a sanitized, bounded window of up to 30 user-journal lines.
+Review verbose output before posting it because application metadata can still be present.
 Dinit, runit, s6-rc, manual, and unknown launches report service status without pretending that
 the installed artifacts provide persistent logs.
 

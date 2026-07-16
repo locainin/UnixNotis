@@ -91,10 +91,11 @@ body:
     attributes:
       label: UnixNotis doctor output
       description: |
-        Run `noticenterctl doctor --verbose` in the affected graphical session and paste the complete
-        text report. Use `noticenterctl doctor --json` when machine-readable output is easier to attach.
+        Run `noticenterctl doctor` in the affected graphical session and paste the text report.
+        Use `--json` when machine-readable output is easier to attach. Add `--verbose` only when
+        journal context is needed, and review that output for application metadata before posting it.
       placeholder: |
-        noticenterctl doctor --verbose
+        noticenterctl doctor
 
   - type: textarea
     id: css_check_output

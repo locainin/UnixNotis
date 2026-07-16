@@ -59,12 +59,13 @@ body:
     attributes:
       label: Installer and doctor output
       description: |
-        Paste installer output followed by `noticenterctl doctor --verbose`. Doctor reports status for
+        Paste installer output followed by `noticenterctl doctor`. Doctor reports status for
         every supported backend and only collects persistent logs when systemd journald provides them.
       render: shell
       placeholder: |
         cargo run --release -p unixnotis-installer -- --service-manager ...
-        noticenterctl doctor --verbose --service-manager ...
+        noticenterctl doctor --service-manager ...
+        Add --verbose only after reviewing journal output for application metadata
     validations:
       required: true
 
@@ -90,5 +91,5 @@ body:
           required: true
         - label: I pasted terminal output as text instead of only attaching screenshots
           required: true
-        - label: I included `noticenterctl doctor --verbose` output, or explained why it could not run
+        - label: I included `noticenterctl doctor` output, or explained why it could not run
           required: true
