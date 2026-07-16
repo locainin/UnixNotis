@@ -4,10 +4,10 @@ use std::path::Path;
 
 use unixnotis_core::Config;
 
-use super::config::redact_home;
-use super::model::{DoctorCheck, DoctorSeverity};
+use super::super::report::{redact_home, safe_doctor_text};
+use super::super::report::{DoctorCheck, DoctorSeverity};
 
-pub(super) fn inspect_css(config_path: &Path, config: &Config) -> Vec<DoctorCheck> {
+pub(in crate::doctor) fn inspect_css(config_path: &Path, config: &Config) -> Vec<DoctorCheck> {
     // Theme paths stay anchored beside the accepted configuration file
     let config_dir = match Config::config_dir_for_path(config_path) {
         Ok(path) => path,
@@ -18,7 +18,7 @@ pub(super) fn inspect_css(config_path: &Path, config: &Config) -> Vec<DoctorChec
                 DoctorSeverity::Error,
                 "Theme base directory could not be resolved",
             )
-            .details(error.to_string())];
+            .details(safe_doctor_text(&error.to_string()))];
         }
     };
     let theme = match config.resolve_theme_paths_from(&config_dir) {
@@ -30,20 +30,20 @@ pub(super) fn inspect_css(config_path: &Path, config: &Config) -> Vec<DoctorChec
                 DoctorSeverity::Error,
                 "Active theme paths could not be resolved",
             )
-            .details(error.to_string())];
+            .details(safe_doctor_text(&error.to_string()))];
         }
     };
     // List every active layer even when a later parser check is incomplete
     let details = [
-        ("base", theme.base_css),
-        ("panel", theme.panel_css),
-        ("popup", theme.popup_css),
-        ("widgets", theme.widgets_css),
-        ("media", theme.media_css),
+        ("base", &theme.base_css),
+        ("panel", &theme.panel_css),
+        ("popup", &theme.popup_css),
+        ("widgets", &theme.widgets_css),
+        ("media", &theme.media_css),
     ]
     .into_iter()
     // Each slot name stays stable even when the configured file name changes
-    .map(|(slot, path)| format!("{slot}: {}", redact_home(&path)))
+    .map(|(slot, path)| format!("{slot}: {}", redact_home(path)))
     .collect::<Vec<_>>()
     .join("\n");
     let mut checks = vec![DoctorCheck::new(
@@ -52,7 +52,12 @@ pub(super) fn inspect_css(config_path: &Path, config: &Config) -> Vec<DoctorChec
         DoctorSeverity::Pass,
         "Active theme paths resolved",
     )
-    .details(details)];
+    .details(details)
+    .data("base", redact_home(&theme.base_css))
+    .data("panel", redact_home(&theme.panel_css))
+    .data("popup", redact_home(&theme.popup_css))
+    .data("widgets", redact_home(&theme.widgets_css))
+    .data("media", redact_home(&theme.media_css))];
 
     // Headless sessions cannot run GTK parsing but should still receive all other checks
     if let Err(error) = gtk::init() {
@@ -63,7 +68,7 @@ pub(super) fn inspect_css(config_path: &Path, config: &Config) -> Vec<DoctorChec
                 DoctorSeverity::Warning,
                 "CSS validation is incomplete because GTK could not initialize",
             )
-            .details(error.to_string())
+            .details(safe_doctor_text(&error.to_string()))
             .hint("Run doctor inside the graphical desktop session for full CSS checks"),
         );
         return checks;
@@ -105,13 +110,9 @@ pub(super) fn inspect_css(config_path: &Path, config: &Config) -> Vec<DoctorChec
                 DoctorSeverity::Warning,
                 "CSS validation could not be completed",
             )
-            .details(error.to_string())
+            .details(safe_doctor_text(&error.to_string()))
             .hint("Run noticenterctl css-check for more context"),
         ),
     }
     checks
 }
-
-#[cfg(test)]
-#[path = "tests/css.rs"]
-mod tests;

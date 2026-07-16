@@ -1,6 +1,7 @@
 use std::path::Path;
 
-use super::*;
+use super::super::css::*;
+use unixnotis_core::Config;
 
 #[test]
 fn theme_path_check_always_precedes_the_environment_dependent_css_check() {

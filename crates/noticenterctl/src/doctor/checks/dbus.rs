@@ -7,16 +7,18 @@ use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
 use zbus::Connection;
 
-use super::model::{DoctorCheck, DoctorSeverity};
+use super::super::report::safe_doctor_text;
+use super::super::report::{DoctorCheck, DoctorSeverity};
 
 const DBUS_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
 
-pub(super) struct DoctorBusResult {
+pub(in crate::doctor) struct DoctorBusResult {
     pub checks: Vec<DoctorCheck>,
     pub control_owned: bool,
+    pub connected: bool,
 }
 
-pub(super) async fn inspect_bus() -> DoctorBusResult {
+pub(in crate::doctor) async fn inspect_bus() -> DoctorBusResult {
     // Every bus operation is bounded so doctor cannot hang on a broken session
     let connection = match tokio::time::timeout(DBUS_CHECK_TIMEOUT, Connection::session()).await {
         Ok(Ok(connection)) => connection,
@@ -29,7 +31,7 @@ pub(super) async fn inspect_bus() -> DoctorBusResult {
     inspect_bus_connection(&connection).await
 }
 
-async fn inspect_bus_connection(connection: &Connection) -> DoctorBusResult {
+pub(super) async fn inspect_bus_connection(connection: &Connection) -> DoctorBusResult {
     let mut checks = vec![DoctorCheck::new(
         "dbus.session",
         "Session bus",
@@ -47,11 +49,12 @@ async fn inspect_bus_connection(connection: &Connection) -> DoctorBusResult {
                     DoctorSeverity::Error,
                     "D-Bus daemon proxy construction failed",
                 )
-                .details(error.to_string()),
+                .details(safe_doctor_text(&error.to_string())),
             );
             return DoctorBusResult {
                 checks,
                 control_owned: false,
+                connected: true,
             };
         }
         Err(_) => {
@@ -64,6 +67,7 @@ async fn inspect_bus_connection(connection: &Connection) -> DoctorBusResult {
             return DoctorBusResult {
                 checks,
                 control_owned: false,
+                connected: true,
             };
         }
     };
@@ -116,6 +120,7 @@ async fn inspect_bus_connection(connection: &Connection) -> DoctorBusResult {
     DoctorBusResult {
         checks,
         control_owned,
+        connected: true,
     }
 }
 
@@ -155,7 +160,7 @@ async fn check_owner(
                     DoctorSeverity::Error,
                     format!("Unable to inspect {name} ownership"),
                 )
-                .details(error.to_string()),
+                .details(safe_doctor_text(&error.to_string())),
             );
             false
         }
@@ -184,7 +189,7 @@ async fn inspect_control_proxy(connection: &Connection, checks: &mut Vec<DoctorC
                         DoctorSeverity::Error,
                         "Control proxy construction failed",
                     )
-                    .details(error.to_string()),
+                    .details(safe_doctor_text(&error.to_string())),
                 );
                 return;
             }
@@ -217,7 +222,10 @@ async fn inspect_control_proxy(connection: &Connection, checks: &mut Vec<DoctorC
             .details(format!(
                 "DND: {}\nHistory entries: {}\nInhibitors: {}",
                 state.dnd_enabled, state.history_count, state.inhibitor_count
-            )),
+            ))
+            .data("dnd_enabled", state.dnd_enabled)
+            .data("history_count", state.history_count)
+            .data("inhibitor_count", state.inhibitor_count),
         ),
         Ok(Err(error)) => checks.push(control_state_failure_check(&error)),
         Err(_) => checks.push(DoctorCheck::new(
@@ -229,7 +237,7 @@ async fn inspect_control_proxy(connection: &Connection, checks: &mut Vec<DoctorC
     }
 }
 
-fn control_state_failure_check(error: &zbus::Error) -> DoctorCheck {
+pub(super) fn control_state_failure_check(error: &zbus::Error) -> DoctorCheck {
     // Access denial is expected when a development binary calls a strict installed daemon
     if control_access_was_denied(error) {
         return DoctorCheck::new(
@@ -251,7 +259,7 @@ fn control_state_failure_check(error: &zbus::Error) -> DoctorCheck {
         DoctorSeverity::Error,
         "GetState failed",
     )
-    .details(error.to_string())
+    .details(safe_doctor_text(&error.to_string()))
 }
 
 fn control_access_was_denied(error: &zbus::Error) -> bool {
@@ -264,7 +272,7 @@ fn control_access_was_denied(error: &zbus::Error) -> bool {
     }
 }
 
-fn unavailable_bus_result(details: String) -> DoctorBusResult {
+pub(super) fn unavailable_bus_result(details: String) -> DoctorBusResult {
     // Dependent checks become one note instead of a chain of misleading errors
     DoctorBusResult {
         checks: vec![
@@ -274,7 +282,7 @@ fn unavailable_bus_result(details: String) -> DoctorBusResult {
                 DoctorSeverity::Error,
                 "Session bus is unavailable",
             )
-            .details(details),
+            .details(safe_doctor_text(&details)),
             DoctorCheck::new(
                 "dbus.dependent-checks",
                 "D-Bus dependent checks",
@@ -283,9 +291,6 @@ fn unavailable_bus_result(details: String) -> DoctorBusResult {
             ),
         ],
         control_owned: false,
+        connected: false,
     }
 }
-
-#[cfg(test)]
-#[path = "tests/dbus.rs"]
-mod tests;

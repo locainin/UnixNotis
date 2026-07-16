@@ -1,7 +1,11 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use super::*;
+use super::super::config::*;
+use crate::doctor::report::DoctorSeverity;
+use crate::doctor::report::{redact_home, redact_home_text};
+use unixnotis_core::util::CONFIG_PATH_ENV;
+use unixnotis_core::CURRENT_CONFIG_VERSION;
 
 struct EnvGuard {
     name: &'static str,
@@ -68,29 +72,49 @@ fn free_form_output_replaces_the_literal_home_prefix() {
 #[test]
 fn shareable_parse_errors_never_echo_original_config_text() {
     let error = unixnotis_core::ConfigError::ParseFailed(
-        "secret_command = '/home/private/tool'".to_string(),
+        "secret_command = 'private-parser-sentinel'".to_string(),
     );
 
     let detail = error.shareable_summary();
 
     assert_eq!(detail, "Configuration TOML or schema is invalid");
     assert!(!detail.contains("secret_command"));
-    assert!(!detail.contains("/home/private"));
+    assert!(!detail.contains("private-parser-sentinel"));
 }
 
 #[test]
-fn explicit_config_detection_distinguishes_missing_empty_and_present_values() {
+fn config_resolution_reports_default_environment_and_cli_sources() {
     let _lock = env_lock();
     let missing_guard = EnvGuard::remove(CONFIG_PATH_ENV);
-    assert!(!explicit_config_path_is_set());
+    assert_eq!(
+        resolve_config_path(None)
+            .expect("resolve default config path")
+            .1,
+        ConfigPathSource::Default
+    );
     drop(missing_guard);
 
     let empty_guard = EnvGuard::set(CONFIG_PATH_ENV, "");
-    assert!(!explicit_config_path_is_set());
+    assert_eq!(
+        resolve_config_path(None).expect("resolve empty override").1,
+        ConfigPathSource::Default
+    );
     drop(empty_guard);
 
-    let _present = EnvGuard::set(CONFIG_PATH_ENV, "/tmp/unixnotis-doctor-config.toml");
-    assert!(explicit_config_path_is_set());
+    let present = EnvGuard::set(CONFIG_PATH_ENV, "/tmp/unixnotis-doctor-config.toml");
+    assert_eq!(
+        resolve_config_path(None)
+            .expect("resolve environment override")
+            .1,
+        ConfigPathSource::Environment
+    );
+    drop(present);
+    assert_eq!(
+        resolve_config_path(Some(PathBuf::from("/tmp/doctor-cli.toml")))
+            .expect("resolve CLI override")
+            .1,
+        ConfigPathSource::Cli
+    );
 }
 
 #[test]
@@ -111,21 +135,21 @@ fn config_override_drives_resolution_and_preserves_diagnostic_details() {
     let _config = EnvGuard::set(CONFIG_PATH_ENV, &config_path);
 
     assert_eq!(
-        resolve_config_path().expect("resolve overridden config path"),
-        config_path
+        resolve_config_path(None).expect("resolve overridden config path"),
+        (config_path.clone(), ConfigPathSource::Environment)
     );
-    let result = inspect_config();
+    let result = inspect_config(None);
 
     assert_eq!(result.config_path, config_path);
     let diagnostic = result
-        .checks
+        .diagnostics
         .iter()
-        .find(|check| check.id.contains("config.unknown-key"))
+        .find(|diagnostic| diagnostic.code == "config.unknown-key")
         .expect("unknown key diagnostic");
     assert!(diagnostic
-        .details
+        .path
         .as_deref()
-        .is_some_and(|details| details.contains("Key: panel.unknown_doctor_key")));
+        .is_some_and(|path| path == "panel.unknown_doctor_key"));
     std::fs::remove_dir_all(root).expect("remove doctor config directory");
 }
 
@@ -139,7 +163,7 @@ fn explicit_missing_config_is_an_error_instead_of_a_default_request() {
     let _ = std::fs::remove_file(&path);
     let _config = EnvGuard::set(CONFIG_PATH_ENV, &path);
 
-    let result = inspect_config();
+    let result = inspect_config(None);
 
     assert!(result.report.is_none());
     assert!(result.checks.iter().any(|check| {
@@ -147,4 +171,15 @@ fn explicit_missing_config_is_an_error_instead_of_a_default_request() {
             && check.severity == DoctorSeverity::Error
             && check.summary == "Explicit configuration file does not exist"
     }));
+}
+
+#[test]
+fn cli_config_path_outranks_the_environment_override() {
+    let _lock = env_lock();
+    let _environment = EnvGuard::set(CONFIG_PATH_ENV, "/tmp/environment-config.toml");
+    let cli = PathBuf::from("/tmp/cli-config.toml");
+
+    let resolved = resolve_config_path(Some(cli.clone())).expect("resolve CLI config path");
+
+    assert_eq!(resolved, (cli, ConfigPathSource::Cli));
 }

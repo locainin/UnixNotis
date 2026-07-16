@@ -1,10 +1,9 @@
 use std::io::{self, Write};
 
-use crate::doctor::model::{
-    DoctorCheck, DoctorLogResult, DoctorLogSource, DoctorReport, DoctorSeverity,
-};
+use crate::doctor::report::{DoctorCheck, DoctorLogResult, DoctorLogSource, DoctorSeverity};
 
-use super::write_report;
+use super::super::model::DoctorReport;
+use super::super::runner::write_report;
 
 #[test]
 fn ordered_check_aggregation_keeps_insertion_order_and_error_semantics() {
@@ -15,6 +14,7 @@ fn ordered_check_aggregation_keeps_insertion_order_and_error_semantics() {
     ];
     let report = DoctorReport::new(
         checks,
+        Vec::new(),
         DoctorLogResult::Unavailable {
             source: DoctorLogSource::Unknown,
             reason: "unknown".to_string(),

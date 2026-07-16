@@ -28,6 +28,27 @@ pub(super) fn render_human(report: &DoctorReport) -> String {
         if let Some(hint) = &check.hint {
             lines.push(format!("Hint: {hint}"));
         }
+        for (key, value) in &check.data {
+            lines.push(format!("{key}: {}", render_data_value(value)));
+        }
+    }
+
+    if !report.config_diagnostics.is_empty() {
+        lines.push(String::new());
+        lines.push("CONFIGURATION DIAGNOSTICS".to_string());
+        for diagnostic in &report.config_diagnostics {
+            lines.push(format!("[{:?}] {}", diagnostic.kind, diagnostic.message));
+            lines.push(format!("Code: {}", diagnostic.code));
+            if let Some(path) = &diagnostic.path {
+                lines.push(format!("Key: {path}"));
+            }
+            if let Some(original) = &diagnostic.original {
+                lines.push(format!("Original: {original}"));
+            }
+            if let Some(effective) = &diagnostic.effective {
+                lines.push(format!("Effective: {effective}"));
+            }
+        }
     }
 
     lines.push(String::new());
@@ -37,9 +58,14 @@ pub(super) fn render_human(report: &DoctorReport) -> String {
         DoctorLogResult::Collected {
             source,
             lines: logs,
+            truncated,
+            line_limit,
+            byte_limit,
         } => {
             // Indentation distinguishes collected log lines from report fields
             lines.push(format!("Source: {source:?}"));
+            lines.push(format!("Limits: {line_limit} lines, {byte_limit} bytes"));
+            lines.push(format!("Truncated: {truncated}"));
             lines.extend(logs.iter().map(|line| format!("  {line}")));
         }
         DoctorLogResult::Unavailable { reason, hint, .. } => {
@@ -54,6 +80,9 @@ pub(super) fn render_human(report: &DoctorReport) -> String {
     lines.join("\n")
 }
 
-#[cfg(test)]
-#[path = "tests/render.rs"]
-mod tests;
+fn render_data_value(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(value) => value.clone(),
+        other => other.to_string(),
+    }
+}

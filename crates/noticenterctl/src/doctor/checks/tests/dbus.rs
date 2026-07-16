@@ -4,9 +4,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::*;
-use crate::doctor::model::DoctorSeverity;
-use unixnotis_core::{ControlState, CONTROL_OBJECT_PATH};
+use super::super::dbus::*;
+use crate::doctor::report::DoctorSeverity;
+use unixnotis_core::{ControlState, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH, NOTIFICATIONS_BUS_NAME};
 use zbus::ConnectionBuilder;
 
 static NEXT_BROKER: AtomicUsize = AtomicUsize::new(0);

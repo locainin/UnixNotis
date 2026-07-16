@@ -1,12 +1,8 @@
 //! Independent configuration, theme, bus, service, and log diagnostics
 
-mod config;
-mod css;
-mod dbus;
+mod checks;
 mod logs;
-mod model;
-mod render;
-mod runner;
+mod report;
 mod service;
 
-pub use runner::run;
+pub use report::run;
