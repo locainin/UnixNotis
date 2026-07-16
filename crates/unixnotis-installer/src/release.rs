@@ -144,5 +144,5 @@ fn parse_version_tag(tag: &str) -> Option<semver::Version> {
 }
 
 #[cfg(test)]
-#[path = "release/tests.rs"]
+#[path = "tests/release.rs"]
 mod tests;
