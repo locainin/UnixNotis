@@ -4,13 +4,38 @@ use serde::de::IntoDeserializer;
 
 use super::{Config, CURRENT_CONFIG_VERSION};
 
+#[cfg(test)]
 pub(super) fn deserialize_config(contents: &str) -> Result<(Config, Vec<String>), String> {
+    let (config, ignored_keys, _migrated_paths) = deserialize_config_with_migrations(contents)?;
+    Ok((config, ignored_keys))
+}
+
+pub(super) fn deserialize_config_with_migrations(
+    contents: &str,
+) -> Result<(Config, Vec<String>, Vec<String>), String> {
+    // Keep the original tree so migration reporting can describe every inserted field
     let mut document = contents
         .parse::<toml::Value>()
         .map_err(|err| err.to_string())?;
+    let original_document = document.clone();
     let migration = migrate_document(&mut document)?;
+    let mut migrated_paths = Vec::new();
+    collect_changed_paths(
+        "",
+        Some(&original_document),
+        Some(&document),
+        &mut migrated_paths,
+    );
+    if migration.restore_legacy_cards {
+        // Card restoration changes the typed config after the document migration finishes
+        // Card restoration happens after deserialization, so record it outside the TOML diff
+        migrated_paths.push("widgets.cards".to_string());
+    }
+    migrated_paths.sort();
+    migrated_paths.dedup();
     let mut ignored_keys = Vec::new();
     let deserializer = document.into_deserializer();
+    // Unknown fields are collected without weakening normal serde type validation
     let mut config: Config = serde_ignored::deserialize(deserializer, |path| {
         ignored_keys.push(path.to_string());
     })
@@ -24,7 +49,48 @@ pub(super) fn deserialize_config(contents: &str) -> Result<(Config, Vec<String>)
         }
     }
     config.config_version = CURRENT_CONFIG_VERSION;
-    Ok((config, ignored_keys))
+    Ok((config, ignored_keys, migrated_paths))
+}
+
+fn collect_changed_paths(
+    path: &str,
+    before: Option<&toml::Value>,
+    after: Option<&toml::Value>,
+    paths: &mut Vec<String>,
+) {
+    if before == after {
+        return;
+    }
+    match (before, after) {
+        (Some(toml::Value::Table(before)), Some(toml::Value::Table(after))) => {
+            // Union traversal catches inserted, removed, and changed child keys
+            let mut keys = before.keys().chain(after.keys()).collect::<Vec<_>>();
+            keys.sort();
+            keys.dedup();
+            for key in keys {
+                let child = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                collect_changed_paths(&child, before.get(key), after.get(key), paths);
+            }
+        }
+        (None, Some(toml::Value::Table(after))) => {
+            // Newly created compatibility tables report their leaf fields instead of one table
+            for (key, value) in after {
+                let child = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                collect_changed_paths(&child, None, Some(value), paths);
+            }
+        }
+        _ if !path.is_empty() => paths.push(path.to_string()),
+        // The root itself is not a useful config-key path
+        _ => {}
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -42,12 +108,14 @@ fn migrate_document(document: &mut toml::Value) -> Result<MigrationResult, Strin
         Some(_) => return Err("config_version must be a non-negative integer".to_string()),
     };
     if version > CURRENT_CONFIG_VERSION {
+        // Future schemas fail closed because silently dropping fields would corrupt intent
         return Err(format!(
             "config version {version} is newer than supported version {CURRENT_CONFIG_VERSION}"
         ));
     }
 
     let result = match version {
+        // Schema one used the same legacy layout compatibility values as unversioned files
         0 | 1 => migrate_legacy_layout(root),
         CURRENT_CONFIG_VERSION => MigrationResult::default(),
         _ => return Err(format!("unsupported config version {version}")),
@@ -113,24 +181,28 @@ fn child_table_or_insert<'a>(table: &'a mut toml::Table, key: &str) -> Option<&'
 }
 
 fn insert_string(table: &mut toml::Table, key: &str, value: &str) {
+    // Explicit user values always win over compatibility defaults
     table
         .entry(key.to_string())
         .or_insert_with(|| toml::Value::String(value.to_string()));
 }
 
 fn insert_integer(table: &mut toml::Table, key: &str, value: i64) {
+    // Entry insertion preserves existing values including values later rejected by serde
     table
         .entry(key.to_string())
         .or_insert(toml::Value::Integer(value));
 }
 
 fn insert_bool(table: &mut toml::Table, key: &str, value: bool) {
+    // Missing booleans receive legacy behavior without rewriting explicit false values
     table
         .entry(key.to_string())
         .or_insert(toml::Value::Boolean(value));
 }
 
 fn insert_strings(table: &mut toml::Table, key: &str, values: &[&str]) {
+    // Ordered arrays preserve the historic panel and widget placement
     table.entry(key.to_string()).or_insert_with(|| {
         toml::Value::Array(
             values

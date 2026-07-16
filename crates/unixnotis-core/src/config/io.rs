@@ -17,9 +17,12 @@ use crate::{
     DEFAULT_WIDGETS_CSS,
 };
 
+use super::diagnostics::{
+    adjustment_diagnostics, migrated_field_diagnostic, migration_diagnostic, unknown_key_diagnostic,
+};
 use super::runtime::{apply_brightness_backend, apply_volume_backend, sanitize_config};
-use super::schema::deserialize_config;
-use super::Config;
+use super::schema::deserialize_config_with_migrations;
+use super::{log_config_diagnostics, Config, ConfigLoadReport};
 
 static LEGACY_RENAME_WARNED: AtomicBool = AtomicBool::new(false);
 static INVALID_XDG_WARNED: AtomicBool = AtomicBool::new(false);
@@ -45,6 +48,18 @@ pub enum ConfigError {
     MissingHome,
 }
 
+impl ConfigError {
+    /// Return a stable summary that never includes configuration contents
+    #[must_use]
+    pub const fn shareable_summary(&self) -> &'static str {
+        match self {
+            Self::ReadFailed(_) => "Configuration file could not be read",
+            Self::ParseFailed(_) => "Configuration TOML or schema is invalid",
+            Self::MissingHome => "HOME is missing, so the configuration path cannot resolve",
+        }
+    }
+}
+
 impl Config {
     /// Load configuration from a specific path
     ///
@@ -52,9 +67,20 @@ impl Config {
     ///
     /// Returns an error when the file cannot be read or its TOML cannot be parsed
     pub fn load_from_path(path: &Path) -> Result<Self, ConfigError> {
+        let report = Self::load_from_path_with_report(path)?;
+        log_config_diagnostics(&report.diagnostics);
+        Ok(report.config)
+    }
+
+    /// Load configuration from a specific path with structured diagnostics
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be read or its TOML cannot be parsed
+    pub fn load_from_path_with_report(path: &Path) -> Result<ConfigLoadReport, ConfigError> {
         let contents =
             fs::read_to_string(path).map_err(|err| ConfigError::ReadFailed(err.to_string()))?;
-        Self::parse(&contents)
+        Self::parse_with_report(&contents)
     }
 
     /// Parse and migrate configuration text without reading the filesystem
@@ -63,13 +89,31 @@ impl Config {
     ///
     /// Returns an error for invalid TOML or unsupported schema versions
     pub fn parse(contents: &str) -> Result<Self, ConfigError> {
-        let (mut config, ignored_keys) =
-            deserialize_config(contents).map_err(ConfigError::ParseFailed)?;
-        for key in ignored_keys {
-            warn!(key = %key, "unknown config key ignored");
-        }
+        let report = Self::parse_with_report(contents)?;
+        log_config_diagnostics(&report.diagnostics);
+        Ok(report.config)
+    }
+
+    /// Parse and migrate configuration text with structured diagnostics
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid TOML or unsupported schema versions
+    pub fn parse_with_report(contents: &str) -> Result<ConfigLoadReport, ConfigError> {
+        let (mut config, ignored_keys, migrated_paths) =
+            deserialize_config_with_migrations(contents).map_err(ConfigError::ParseFailed)?;
+        let mut diagnostics = migration_diagnostic(contents)
+            .into_iter()
+            .collect::<Vec<_>>();
+        diagnostics.extend(migrated_paths.into_iter().map(migrated_field_diagnostic));
+        diagnostics.extend(ignored_keys.into_iter().map(unknown_key_diagnostic));
+        let before_runtime = config.clone();
         config.apply_runtime_defaults();
-        Ok(config)
+        diagnostics.extend(adjustment_diagnostics(&before_runtime, &config));
+        Ok(ConfigLoadReport {
+            config,
+            diagnostics,
+        })
     }
 
     /// Load configuration from the default XDG config location, if present
@@ -79,13 +123,28 @@ impl Config {
     /// Returns an error when the default location cannot be resolved or an existing config file
     /// cannot be read and parsed
     pub fn load_default() -> Result<Self, ConfigError> {
+        let report = Self::load_default_with_report()?;
+        log_config_diagnostics(&report.diagnostics);
+        Ok(report.config)
+    }
+
+    /// Load default configuration with structured diagnostics
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the default location cannot be resolved or read
+    pub fn load_default_with_report() -> Result<ConfigLoadReport, ConfigError> {
         let path = Self::default_config_path()?;
         if !path.exists() {
             let mut config = Self::default();
+            let before_runtime = config.clone();
             config.apply_runtime_defaults();
-            return Ok(config);
+            return Ok(ConfigLoadReport {
+                diagnostics: adjustment_diagnostics(&before_runtime, &config),
+                config,
+            });
         }
-        Self::load_from_path(&path)
+        Self::load_from_path_with_report(&path)
     }
 
     /// Resolve configured CSS paths relative to the config directory
@@ -254,6 +313,17 @@ impl Config {
     /// Returns an error when the default config directory cannot be resolved
     pub fn default_config_path() -> Result<PathBuf, ConfigError> {
         Ok(Self::default_config_dir()?.join("config.toml"))
+    }
+
+    /// Resolve the environment-selected config file or the normal default file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no explicit path is set and the default directory cannot resolve
+    pub fn active_config_path() -> Result<PathBuf, ConfigError> {
+        let configured =
+            env::var_os(crate::util::CONFIG_PATH_ENV).filter(|value| !value.is_empty());
+        configured.map_or_else(Self::default_config_path, |path| Ok(PathBuf::from(path)))
     }
 
     fn resolve_path(base: &Path, value: &str) -> PathBuf {

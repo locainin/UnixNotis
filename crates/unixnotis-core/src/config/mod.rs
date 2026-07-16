@@ -4,6 +4,7 @@
 
 mod command_parse;
 mod commands;
+mod diagnostics;
 mod icon_assets;
 mod io;
 mod layout;
@@ -17,6 +18,9 @@ mod types;
 mod widgets;
 
 pub use command_parse::{parse_command, CommandParseError, ExecutionMode, ParsedCommand};
+pub use diagnostics::{
+    log_config_diagnostics, ConfigDiagnostic, ConfigDiagnosticKind, ConfigLoadReport,
+};
 pub use icon_assets::{
     resolve_icon_asset_path, resolve_icon_asset_path_with_policy, validate_icon_asset_contents,
     validate_icon_asset_reference, AssetPolicy, IconAssetError, IconAssetResolver,

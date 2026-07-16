@@ -51,6 +51,17 @@ fn load_from_path_returns_parse_error_for_invalid_toml() {
 }
 
 #[test]
+fn shareable_error_summaries_never_echo_private_error_details() {
+    let error = ConfigError::ParseFailed("secret_command = '/home/private/tool'".to_string());
+
+    let summary = error.shareable_summary();
+
+    assert_eq!(summary, "Configuration TOML or schema is invalid");
+    assert!(!summary.contains("secret_command"));
+    assert!(!summary.contains("/home/private"));
+}
+
+#[test]
 fn load_default_reads_config_when_default_file_exists() {
     let _guard = env_lock();
     let root = test_root("load-default-existing");

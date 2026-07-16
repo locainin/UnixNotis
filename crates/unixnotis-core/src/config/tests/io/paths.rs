@@ -89,6 +89,18 @@ fn default_config_path_joins_config_file_name() {
 }
 
 #[test]
+fn active_config_path_prefers_nonempty_environment_override() {
+    let _guard = env_lock();
+    let selected = test_root("active-config-path").join("chosen.toml");
+    let _config = EnvGuard::set("UNIXNOTIS_CONFIG_PATH", selected.as_os_str());
+
+    assert_eq!(
+        Config::active_config_path().expect("active config path"),
+        selected
+    );
+}
+
+#[test]
 fn config_dir_for_path_uses_current_dir_for_bare_file_name() {
     let dir = Config::config_dir_for_path(std::path::Path::new("config.toml")).expect("config dir");
 
