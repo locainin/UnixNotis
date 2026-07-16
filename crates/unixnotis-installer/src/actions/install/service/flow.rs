@@ -1,4 +1,4 @@
-//! Service artifact install and lifecycle helpers
+//! Service installation, enablement, and uninstall flow
 
 use std::sync::atomic::Ordering;
 
@@ -6,42 +6,20 @@ use anyhow::{Context, Result};
 
 use crate::paths::format_with_home;
 
-use super::super::{
+use super::super::super::{
     ensure_shell_path_entry,
     hyprland::{ensure_hyprland_autostart, remove_hyprland_autostart},
     log_line, remove_shell_path_entry, sync_user_environment, ActionContext,
 };
 
-mod artifacts;
-mod dirs;
-mod files;
-mod lifecycle;
-mod refresh;
-mod symlinks;
-
-pub(in crate::actions::install) use artifacts::remove_service_artifact;
-pub use artifacts::write_service_artifact;
-#[cfg(test)]
-pub(in crate::actions::install) use files::{current_mode, ensure_regular_artifact_file_path};
-#[cfg(test)]
-pub(in crate::actions::install) use lifecycle::{
-    service_start_mode_from_enabled, ServiceStartMode,
+use super::artifacts::{
+    remove_service_artifact, service_artifact_path_conflicts, service_artifact_path_exists,
+    write_service_artifacts, ServiceArtifactWrite,
 };
-
-use artifacts::{
-    service_artifact_path_conflicts, service_artifact_path_exists, write_service_artifacts,
-    ServiceArtifactWrite,
-};
-use lifecycle::{
+use super::lifecycle::{
     remove_pre_start_artifacts, run_command_spec, run_service_start, warn_pre_start_artifacts_left,
 };
-use refresh::refresh_service_artifacts;
-#[cfg(test)]
-pub(in crate::actions::install) use refresh::{
-    s6_stderr_diagnostic, sanitize_diagnostic_line, strip_ansi_csi_sequences, truncate_diagnostic,
-};
-#[cfg(test)]
-pub(in crate::actions::install) use symlinks::{remove_service_symlink, write_service_symlink};
+use super::refresh::refresh_service_artifacts;
 
 pub fn install_service(ctx: &mut ActionContext) -> Result<()> {
     match write_service_artifacts(ctx)? {

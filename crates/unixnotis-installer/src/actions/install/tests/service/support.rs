@@ -1,18 +1,7 @@
 use crate::paths::InstallPaths;
 
-mod backend_artifacts;
-mod backend_idempotence;
-mod flow;
-mod flow_failures;
-mod flow_support;
-mod lifecycle;
-mod refresh;
-mod uninstall_safety;
-mod writes;
-
-fn expected_primary_artifact_contents(paths: &InstallPaths) -> String {
+pub(super) fn expected_primary_artifact_contents(paths: &InstallPaths) -> String {
     // Lifecycle tests only care that the selected backend artifact is already current
-    // The primary artifact is backend-selected, so tests avoid assuming a systemd unit path
     paths
         .service
         .artifacts(&paths.bin_dir)
