@@ -39,5 +39,5 @@ pub struct ActionStep {
 }
 
 #[cfg(test)]
-#[path = "model/tests.rs"]
+#[path = "tests/model.rs"]
 mod tests;
