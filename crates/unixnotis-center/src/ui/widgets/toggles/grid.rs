@@ -1,7 +1,4 @@
-//! Toggle widgets and state synchronization logic
-//!
-//! This module owns toggle widget construction and interaction wiring
-//! Heavy helper logic is split into focused submodules for maintainability
+//! Toggle grid construction and interaction wiring
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -13,17 +10,13 @@ use unixnotis_core::{
     css::hooks, IconAssetResolver, PanelDebugLevel, ToggleLayout, ToggleWidgetConfig,
 };
 
-use super::icon_image::image_from_icon_config;
-use super::utils::{run_action_command_with_completion, start_command_watch, CommandWatch};
+use super::super::icon_image::image_from_icon_config;
+use super::super::utils::{run_action_command_with_completion, start_command_watch, CommandWatch};
 use crate::debug;
 
-mod css;
-mod icons;
-mod state;
-
-use self::css::toggle_kind_css_class;
-use self::icons::resolve_toggle_icon_name;
-use self::state::{refresh_toggle_state, schedule_toggle_refresh_with_retry, ToggleRefreshGate};
+use super::css::toggle_kind_css_class;
+use super::icons::resolve_toggle_icon_name;
+use super::state::{refresh_toggle_state, schedule_toggle_refresh_with_retry, ToggleRefreshGate};
 
 pub struct ToggleGrid {
     // FlowBox root is exposed to the panel layout
@@ -125,7 +118,7 @@ fn flowbox_columns(columns: usize) -> u32 {
     u32::try_from(columns.max(1)).unwrap_or(u32::MAX)
 }
 
-fn toggle_action_command<'a>(
+pub(super) fn toggle_action_command<'a>(
     toggle_cmd: Option<&'a String>,
     on_cmd: Option<&'a String>,
     off_cmd: Option<&'a String>,
@@ -134,7 +127,7 @@ fn toggle_action_command<'a>(
     toggle_cmd.or(if active { on_cmd } else { off_cmd })
 }
 
-const fn should_reset_after_action(
+pub(super) const fn should_reset_after_action(
     toggle_cmd: Option<&String>,
     state_cmd: Option<&String>,
 ) -> bool {
@@ -386,7 +379,3 @@ impl ToggleItem {
         })
     }
 }
-
-#[cfg(test)]
-#[path = "tests/toggles.rs"]
-mod tests;

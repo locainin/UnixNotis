@@ -1,28 +1,4 @@
-//! Command-backed slider widget entry point
-
-// Keep this file as the public widget shell
-// Behavior lives in named helper files so this folder stays navigable
-mod actions;
-mod apply;
-mod build;
-mod gate;
-#[cfg(test)]
-#[path = "command_slider/tests/gate.rs"]
-mod gate_tests;
-mod layout;
-#[cfg(test)]
-#[path = "command_slider/tests/layout.rs"]
-mod layout_tests;
-mod poll;
-mod refresh;
-mod request;
-mod schedule;
-mod state;
-mod value;
-#[cfg(test)]
-#[path = "command_slider/tests/value.rs"]
-mod value_tests;
-mod watching;
+//! Command-backed slider widget shell
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -30,11 +6,11 @@ use std::time::{Duration, Instant};
 
 use unixnotis_core::SliderWidgetConfig;
 
-use self::build::build_slider_widgets;
-use self::gate::SliderRefreshGate;
-use self::refresh::request_refresh;
-use self::request::SliderRefreshRequest;
-use self::state::{SliderRefreshMeta, SliderRefreshState};
+use super::build::build_slider_widgets;
+use super::gate::SliderRefreshGate;
+use super::refresh::request_refresh;
+use super::request::SliderRefreshRequest;
+use super::state::{SliderRefreshMeta, SliderRefreshState};
 use super::{CommandWatch, RefreshBackoff};
 
 pub struct CommandSlider {
@@ -51,7 +27,7 @@ pub struct CommandSlider {
     // Optional icon variant for muted state
     icon_muted: Option<String>,
     // Config is retained for refresh and watch lifecycle operations
-    config: SliderWidgetConfig,
+    pub(super) config: SliderWidgetConfig,
     // Guard blocks recursive value-changed signals during internal updates
     updating: Rc<Cell<bool>>,
     // Generation token avoids stale async refresh races
@@ -61,7 +37,7 @@ pub struct CommandSlider {
     // Stable poll results back off so unchanged sliders do not drive panel wakeups
     refresh_backoff: Rc<RefCell<RefreshBackoff>>,
     // Optional watch command handle for event-driven refresh
-    watch_handle: RefCell<Option<CommandWatch>>,
+    pub(super) watch_handle: RefCell<Option<CommandWatch>>,
 }
 
 impl CommandSlider {
@@ -84,7 +60,7 @@ impl CommandSlider {
             backoff: refresh_backoff.clone(),
         };
 
-        actions::attach_icon_action(
+        super::actions::attach_icon_action(
             &widgets.root,
             &widgets.icon_image,
             &widgets.scale,
@@ -94,7 +70,7 @@ impl CommandSlider {
         );
         // Scale changes and icon clicks both feed the same refresh state
         // That prevents action failures from leaving stale values on screen
-        actions::attach_scale_action(
+        super::actions::attach_scale_action(
             &widgets.scale,
             &widgets.value_label,
             &widgets.icon_image,
@@ -131,7 +107,7 @@ impl CommandSlider {
 
     pub fn next_poll_in(&self, now: Instant, base_interval: Duration) -> Option<Duration> {
         // Scheduler asks each slider for its own deadline instead of using one fast global tick
-        poll::next_poll_in(
+        super::poll::next_poll_in(
             &self.watch_handle,
             &self.refresh_gate,
             &self.refresh_backoff,
@@ -142,10 +118,10 @@ impl CommandSlider {
 
     pub fn set_watch_active(&self, active: bool) {
         // Panel visibility owns watch lifecycle so hidden panels do not keep monitor commands alive
-        watching::set_watch_active(self, active);
+        super::watching::set_watch_active(self, active);
     }
 
-    fn refresh_state(&self) -> SliderRefreshState {
+    pub(super) fn refresh_state(&self) -> SliderRefreshState {
         // Build one refresh bundle so call sites stay small
         SliderRefreshState {
             scale: self.scale.clone(),
@@ -160,3 +136,7 @@ impl CommandSlider {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/widget.rs"]
+mod tests;
