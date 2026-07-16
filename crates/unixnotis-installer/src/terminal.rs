@@ -62,5 +62,5 @@ impl Drop for TerminalGuard {
 }
 
 #[cfg(test)]
-#[path = "terminal/tests.rs"]
+#[path = "tests/terminal.rs"]
 mod tests;
