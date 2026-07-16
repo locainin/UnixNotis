@@ -57,15 +57,14 @@ body:
   - type: textarea
     id: output
     attributes:
-      label: Installer output or service status
-      description: Paste terminal output, service status, or relevant logs as text.
+      label: Installer and doctor output
+      description: |
+        Paste installer output followed by `noticenterctl doctor --verbose`. Doctor reports status for
+        every supported backend and only collects persistent logs when systemd journald provides them.
       render: shell
       placeholder: |
         cargo run --release -p unixnotis-installer -- --service-manager ...
-        systemctl --user status unixnotis-daemon.service
-        dinitctl --user status unixnotis-daemon
-        sv status "$HOME/.config/service/unixnotis-daemon"
-        s6-rc -l "$UNIXNOTIS_S6RC_LIVE_DIR" -a list
+        noticenterctl doctor --verbose --service-manager ...
     validations:
       required: true
 
@@ -90,4 +89,6 @@ body:
         - label: I included the selected service manager and install command
           required: true
         - label: I pasted terminal output as text instead of only attaching screenshots
+          required: true
+        - label: I included `noticenterctl doctor --verbose` output, or explained why it could not run
           required: true
