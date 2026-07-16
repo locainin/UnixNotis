@@ -20,3 +20,6 @@ toml.workspace = true
 zbus.workspace = true
 shell-words = "1"
 unixnotis-core = { path = "../unixnotis-core" }
+
+[dev-dependencies]
+proptest.workspace = true

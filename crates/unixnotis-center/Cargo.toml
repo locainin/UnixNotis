@@ -30,4 +30,5 @@ unixnotis-core = { path = "../unixnotis-core" }
 unixnotis-ui = { path = "../unixnotis-ui" }
 
 [dev-dependencies]
+proptest.workspace = true
 toml.workspace = true
