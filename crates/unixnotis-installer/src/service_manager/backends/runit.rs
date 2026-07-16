@@ -3,13 +3,10 @@ use std::path::{Path, PathBuf};
 
 use crate::system_tools;
 
-use super::artifact::{ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER};
-use super::command::CommandSpec;
-use super::probe::ServiceProbe;
-use super::readiness::ReadinessIssue;
-use super::shell::{
+use super::super::contract::{
     envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
-    shell_quote, shell_quote_path,
+    shell_quote, shell_quote_path, CommandSpec, ReadinessIssue, ServiceArtifact,
+    ServiceArtifactKind, ServiceProbe, MANAGED_DIRECTORY_MARKER,
 };
 
 // Runit service directories use the service name directly under the supervision root

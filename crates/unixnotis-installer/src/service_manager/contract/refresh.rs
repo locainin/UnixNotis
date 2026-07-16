@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::CommandSpec;
+use super::command::CommandSpec;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ServiceArtifactRefresh {
@@ -21,7 +21,7 @@ pub struct S6DatabaseRefresh {
 }
 
 impl S6DatabaseRefresh {
-    pub(super) const fn new(data_root: PathBuf, live_root: PathBuf) -> Self {
+    pub(in crate::service_manager) const fn new(data_root: PathBuf, live_root: PathBuf) -> Self {
         Self {
             data_root,
             live_root,

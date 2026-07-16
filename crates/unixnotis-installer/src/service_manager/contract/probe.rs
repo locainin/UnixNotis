@@ -14,11 +14,14 @@ pub enum ServiceProbe {
 }
 
 impl ServiceProbe {
-    pub(super) const fn exit_status(command: CommandSpec) -> Self {
+    pub(in crate::service_manager) const fn exit_status(command: CommandSpec) -> Self {
         Self::ExitStatus(command)
     }
 
-    pub(super) fn stdout(command: CommandSpec, parser: fn(&str) -> bool) -> Self {
+    pub(in crate::service_manager) fn stdout(
+        command: CommandSpec,
+        parser: fn(&str) -> bool,
+    ) -> Self {
         Self::Stdout { command, parser }
     }
 

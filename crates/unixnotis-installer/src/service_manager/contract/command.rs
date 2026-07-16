@@ -30,7 +30,11 @@ pub struct CommandSpec {
 }
 
 impl CommandSpec {
-    pub(super) fn new<I, S>(label: impl Into<String>, program: impl Into<String>, args: I) -> Self
+    pub(in crate::service_manager) fn new<I, S>(
+        label: impl Into<String>,
+        program: impl Into<String>,
+        args: I,
+    ) -> Self
     where
         I: IntoIterator<Item = S>,
         S: ToString,
@@ -45,13 +49,17 @@ impl CommandSpec {
         }
     }
 
-    pub(super) fn env(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+    pub(in crate::service_manager) fn env(
+        mut self,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
         // Values live in the child environment instead of the process argument list
         self.envs.push((name.into(), value.into()));
         self
     }
 
-    pub(super) const fn quiet(mut self) -> Self {
+    pub(in crate::service_manager) const fn quiet(mut self) -> Self {
         // Availability probes should not leak command output into the parent process
         self.suppress_stdout = true;
         self.suppress_stderr = true;

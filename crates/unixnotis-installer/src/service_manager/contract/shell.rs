@@ -4,7 +4,7 @@ use std::path::Path;
 ///
 /// Each returned item is a shell fragment. Backends join them into one
 /// `sh -lc` line because Hyprland startup entries are single command strings
-pub(super) fn envdir_sync_prelude(env_dir: &Path) -> Vec<String> {
+pub(in crate::service_manager) fn envdir_sync_prelude(env_dir: &Path) -> Vec<String> {
     let envdir = shell_quote_path(env_dir);
 
     vec![
@@ -20,7 +20,7 @@ pub(super) fn envdir_sync_prelude(env_dir: &Path) -> Vec<String> {
 ///
 /// Missing variables intentionally create empty files. Both chpst and
 /// s6-envdir treat empty envdir files as an unset request
-pub(super) fn render_envdir_shell_update(name: &str) -> String {
+pub(in crate::service_manager) fn render_envdir_shell_update(name: &str) -> String {
     [
         create_envdir_temp_file(name),
         write_envdir_temp_file(name),
@@ -34,12 +34,12 @@ pub(super) fn render_envdir_shell_update(name: &str) -> String {
 ///
 /// Envdir readers only use the first line and trim trailing blanks. Matching
 /// that behavior before writing avoids keeping stale shell noise
-pub(super) fn envdir_file_contents(value: Option<&str>) -> String {
+pub(in crate::service_manager) fn envdir_file_contents(value: Option<&str>) -> String {
     value.map_or_else(String::new, |value| format!("{}\n", envdir_value(value)))
 }
 
 /// Return true when a variable name can safely become an envdir file name
-pub(super) fn is_safe_env_name(name: &str) -> bool {
+pub(in crate::service_manager) fn is_safe_env_name(name: &str) -> bool {
     let mut chars = name.chars();
     let Some(first) = chars.next() else {
         return false;
@@ -50,11 +50,11 @@ pub(super) fn is_safe_env_name(name: &str) -> bool {
         && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
-pub(super) fn shell_quote_path(path: &Path) -> String {
+pub(in crate::service_manager) fn shell_quote_path(path: &Path) -> String {
     shell_quote(&path.display().to_string())
 }
 
-pub(super) fn shell_quote(raw: &str) -> String {
+pub(in crate::service_manager) fn shell_quote(raw: &str) -> String {
     if raw.is_empty() {
         return "''".to_string();
     }

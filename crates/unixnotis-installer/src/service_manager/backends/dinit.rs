@@ -1,9 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::artifact::{ServiceArtifact, ServiceArtifactKind};
-use super::command::CommandSpec;
-use super::readiness::ReadinessIssue;
+use super::super::contract::{CommandSpec, ReadinessIssue, ServiceArtifact, ServiceArtifactKind};
 
 // Dinit service names are file names without the .service suffix used by systemd
 pub const SERVICE_NAME: &str = "unixnotis-daemon";

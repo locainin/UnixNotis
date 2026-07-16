@@ -2,8 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::paths::format_with_home;
 
-use super::artifact::ServiceArtifact;
-use super::command::CommandSpec;
+use super::super::contract::{CommandSpec, ServiceArtifact};
 
 // Keep the systemd unit name stable for existing installs and migration cleanup
 pub const SERVICE_NAME: &str = "unixnotis-daemon.service";

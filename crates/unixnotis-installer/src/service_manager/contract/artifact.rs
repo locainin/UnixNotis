@@ -33,7 +33,7 @@ pub struct ServiceArtifact {
 }
 
 impl ServiceArtifact {
-    pub(super) const fn file(path: PathBuf, contents: String) -> Self {
+    pub(in crate::service_manager) const fn file(path: PathBuf, contents: String) -> Self {
         // File artifacts are the simplest manager-owned shape, used by systemd and dinit
         Self {
             path,
