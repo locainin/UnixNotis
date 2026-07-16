@@ -130,7 +130,8 @@ impl UiState {
             }
             UiEvent::CssReload => {
                 debug!("popup css reload requested");
-                let _ = self.css.reload(css::DEFAULT_CSS);
+                let report = self.css.reload(css::DEFAULT_CSS);
+                super::css_reload::log_reload_failures(&report, "watcher reload");
                 self.invalidate_icon_sources();
             }
             UiEvent::ConfigReload => {
@@ -171,7 +172,8 @@ impl UiState {
         debug!("popup config reloaded");
         // CSS updates are applied before window geometry so visual updates are atomic
         self.css.update_theme(theme_paths, config.theme.clone());
-        let _ = self.css.reload(css::DEFAULT_CSS);
+        let report = self.css.reload(css::DEFAULT_CSS);
+        super::css_reload::log_reload_failures(&report, "config reload");
         self.invalidate_icon_sources();
         apply_popup_config(
             &self.popup_window,
