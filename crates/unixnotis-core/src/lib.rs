@@ -23,6 +23,7 @@ pub mod embedded;
 pub mod filesystem;
 pub mod model;
 pub mod reconnect;
+pub mod service_manager;
 #[cfg(test)]
 #[path = "tests/support.rs"]
 mod test_support;

@@ -131,7 +131,7 @@ fn service_manager_candidates_from_choice(
 
 fn service_manager_choice_from_environment() -> Result<ServiceManagerChoice> {
     match env::var("UNIXNOTIS_SERVICE_MANAGER") {
-        Ok(raw) => ServiceManagerChoice::parse(&raw),
+        Ok(raw) => Ok(ServiceManagerChoice::parse(&raw)?),
         Err(_) => Ok(ServiceManagerChoice::Systemd),
     }
 }

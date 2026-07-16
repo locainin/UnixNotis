@@ -154,7 +154,7 @@ fn parse_service_manager_arg(value: &OsString) -> Result<ServiceManagerChoice> {
         .ok_or_else(|| anyhow!("--service-manager value must be valid UTF-8"))?;
 
     // Keep accepted names centralized in `ServiceManagerChoice`
-    ServiceManagerChoice::parse_explicit(value)
+    Ok(ServiceManagerChoice::parse_explicit(value)?)
 }
 
 #[cfg(test)]
