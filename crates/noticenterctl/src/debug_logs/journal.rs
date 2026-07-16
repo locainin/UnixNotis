@@ -6,10 +6,21 @@ use crate::system_tools;
 
 const DEFAULT_DAEMON_UNIT: &str = "unixnotis-daemon.service";
 
-pub(super) fn daemon_unit_from_env(
-    get_var: impl FnOnce(&str) -> Result<String, env::VarError>,
-) -> String {
+pub fn daemon_unit_from_env(get_var: impl FnOnce(&str) -> Result<String, env::VarError>) -> String {
     get_var("UNIXNOTIS_DAEMON_UNIT").unwrap_or_else(|_| DEFAULT_DAEMON_UNIT.to_string())
+}
+
+pub fn recent_args(unit: &str, line_limit: usize) -> Vec<String> {
+    vec![
+        "--user".to_string(),
+        "--no-pager".to_string(),
+        "-n".to_string(),
+        line_limit.to_string(),
+        "-u".to_string(),
+        unit.to_string(),
+        "-o".to_string(),
+        "cat".to_string(),
+    ]
 }
 
 pub(super) fn follow_args(unit: &str) -> Vec<String> {

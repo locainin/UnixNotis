@@ -1,6 +1,6 @@
 use std::env;
 
-use super::super::journal::{daemon_unit_from_env, follow_args, probe_args};
+use super::super::journal::{daemon_unit_from_env, follow_args, probe_args, recent_args};
 
 #[test]
 fn daemon_unit_from_env_uses_override_when_present() {
@@ -38,6 +38,23 @@ fn probe_args_read_one_user_unit_entry_without_pager() {
             "1",
             "-u",
             "custom.service",
+            "-o",
+            "cat"
+        ]
+    );
+}
+
+#[test]
+fn recent_journal_args_request_only_the_given_window() {
+    assert_eq!(
+        recent_args("unixnotis-daemon.service", 30),
+        vec![
+            "--user",
+            "--no-pager",
+            "-n",
+            "30",
+            "-u",
+            "unixnotis-daemon.service",
             "-o",
             "cat"
         ]

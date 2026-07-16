@@ -18,7 +18,7 @@ pub fn command(program: &str) -> std::io::Result<Command> {
     Ok(Command::new(path))
 }
 
-fn trusted_program_path(program: &str) -> Option<PathBuf> {
+pub fn trusted_program_path(program: &str) -> Option<PathBuf> {
     if program.contains(std::path::MAIN_SEPARATOR) || program.is_empty() {
         return None;
     }
