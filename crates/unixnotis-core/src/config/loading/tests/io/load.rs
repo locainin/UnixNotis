@@ -52,13 +52,13 @@ fn load_from_path_returns_parse_error_for_invalid_toml() {
 
 #[test]
 fn shareable_error_summaries_never_echo_private_error_details() {
-    let error = ConfigError::ParseFailed("secret_command = '/home/private/tool'".to_string());
+    let error = ConfigError::ParseFailed("secret_command = 'private-parser-sentinel'".to_string());
 
     let summary = error.shareable_summary();
 
     assert_eq!(summary, "Configuration TOML or schema is invalid");
     assert!(!summary.contains("secret_command"));
-    assert!(!summary.contains("/home/private"));
+    assert!(!summary.contains("private-parser-sentinel"));
 }
 
 #[test]

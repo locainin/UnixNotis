@@ -2,7 +2,7 @@
 
 use serde::de::IntoDeserializer;
 
-use super::{Config, CURRENT_CONFIG_VERSION};
+use super::super::{Config, CURRENT_CONFIG_VERSION};
 
 #[cfg(test)]
 pub(super) fn deserialize_config(contents: &str) -> Result<(Config, Vec<String>), String> {
@@ -10,7 +10,7 @@ pub(super) fn deserialize_config(contents: &str) -> Result<(Config, Vec<String>)
     Ok((config, ignored_keys))
 }
 
-pub(super) fn deserialize_config_with_migrations(
+pub(in crate::config) fn deserialize_config_with_migrations(
     contents: &str,
 ) -> Result<(Config, Vec<String>, Vec<String>), String> {
     // Keep the original tree so migration reporting can describe every inserted field

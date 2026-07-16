@@ -1,14 +1,14 @@
-use super::{parse_command, CommandParseError, ExecutionMode};
+use super::super::{parse_command, CommandParseError, ExecutionMode};
 
 #[test]
 fn quoted_assignments_and_arguments_are_unquoted_once() {
-    let parsed = parse_command("LD_PRELOAD=\"/tmp/evil.so\" VAR='two words' /bin/true done")
+    let parsed = parse_command("LD_PRELOAD=\"/tmp/library.so\" VAR='two words' /bin/true done")
         .expect("parse quoted command");
 
     assert_eq!(
         parsed.env,
         vec![
-            ("LD_PRELOAD".to_string(), "/tmp/evil.so".to_string()),
+            ("LD_PRELOAD".to_string(), "/tmp/library.so".to_string()),
             ("VAR".to_string(), "two words".to_string()),
         ]
     );
@@ -18,19 +18,15 @@ fn quoted_assignments_and_arguments_are_unquoted_once() {
 }
 
 #[test]
-fn tilde_and_shell_operators_are_classified_for_shell_execution() {
-    assert_eq!(
-        parse_command("~/bin/probe")
-            .expect("parse tilde command")
-            .execution_mode,
-        ExecutionMode::Shell
-    );
-    assert_eq!(
-        parse_command("echo ok | wc -l")
-            .expect("parse pipeline")
-            .execution_mode,
-        ExecutionMode::Shell
-    );
+fn shell_syntax_is_classified_for_shell_execution() {
+    for command in ["~/bin/probe", "echo ok | wc -l", "echo one\recho two"] {
+        assert_eq!(
+            parse_command(command)
+                .expect("parse shell command")
+                .execution_mode,
+            ExecutionMode::Shell
+        );
+    }
 }
 
 #[test]
@@ -51,13 +47,6 @@ fn invalid_environment_names_remain_program_tokens() {
 
     assert!(parsed.env.is_empty());
     assert_eq!(parsed.program, "1INVALID=value");
-}
-
-#[test]
-fn carriage_returns_force_shell_execution() {
-    let parsed = parse_command("echo one\recho two").expect("parse carriage return command");
-
-    assert_eq!(parsed.execution_mode, ExecutionMode::Shell);
 }
 
 #[test]

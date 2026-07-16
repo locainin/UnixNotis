@@ -8,7 +8,7 @@ pub const WIFI_WATCH_NMCLI: &str = "nmcli -t monitor";
 pub const BLUETOOTH_STATE_BLUETOOTHCTL: &str = "bluetoothctl show";
 pub const BLUETOOTH_ON_BLUETOOTHCTL: &str = "bluetoothctl power on";
 pub const BLUETOOTH_OFF_BLUETOOTHCTL: &str = "bluetoothctl power off";
-// D-Bus monitor keeps updates flowing without a controlling TTY
+// D-Bus monitoring keeps updates flowing without a controlling terminal
 pub const BLUETOOTH_WATCH_DBUS: &str = "dbus-monitor --system type=signal,sender=org.bluez";
 
 pub const AIRPLANE_STATE_CMD: &str =

@@ -36,15 +36,14 @@ pub enum CommandParseError {
 ///
 /// # Errors
 ///
-/// Returns an error when the command is empty, has malformed quoting, or contains only
-/// environment assignments without a program
+/// Returns an error when the command is empty, malformed, or contains no program
 pub fn parse_command(command: &str) -> Result<ParsedCommand, CommandParseError> {
     let trimmed = command.trim();
     if trimmed.is_empty() {
         return Err(CommandParseError::Empty);
     }
 
-    // One parser owns quote removal for both runtime execution and preset review
+    // One parser owns quote removal for runtime execution and preset review
     let parts = shell_words::split(trimmed)
         .map_err(|error| CommandParseError::Malformed(error.to_string()))?;
     let (env, remaining) = split_leading_env_assignments(parts);
@@ -52,7 +51,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, CommandParseError> 
     let program = remaining.next().ok_or(CommandParseError::MissingProgram)?;
     let args = remaining.collect();
 
-    // Shell syntax stays visible in the mode even though tokens are available for review
+    // Shell syntax remains explicit even when tokenization succeeds
     let execution_mode = if requires_shell(trimmed) {
         ExecutionMode::Shell
     } else {
@@ -106,7 +105,3 @@ fn requires_shell(command: &str) -> bool {
             || character == '\r'
     })
 }
-
-#[cfg(test)]
-#[path = "tests/command_parse.rs"]
-mod tests;

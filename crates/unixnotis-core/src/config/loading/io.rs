@@ -17,12 +17,12 @@ use crate::{
     DEFAULT_WIDGETS_CSS,
 };
 
+use super::super::runtime::{apply_brightness_backend, apply_volume_backend, sanitize_config};
+use super::super::schema::deserialize_config_with_migrations;
+use super::super::{log_config_diagnostics, Config, ConfigLoadReport};
 use super::diagnostics::{
     adjustment_diagnostics, migrated_field_diagnostic, migration_diagnostic, unknown_key_diagnostic,
 };
-use super::runtime::{apply_brightness_backend, apply_volume_backend, sanitize_config};
-use super::schema::deserialize_config_with_migrations;
-use super::{log_config_diagnostics, Config, ConfigLoadReport};
 
 static LEGACY_RENAME_WARNED: AtomicBool = AtomicBool::new(false);
 static INVALID_XDG_WARNED: AtomicBool = AtomicBool::new(false);
@@ -362,5 +362,5 @@ fn set_executable(_path: &Path) -> Result<(), ConfigError> {
 }
 
 #[cfg(test)]
-#[path = "tests/io.rs"]
+#[path = "tests/io/mod.rs"]
 mod tests;

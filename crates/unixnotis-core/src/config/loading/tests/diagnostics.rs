@@ -44,7 +44,7 @@ fn current_schema_produces_no_migration_diagnostic() {
 fn adjustment_diagnostics_report_safe_scalar_changes_and_hide_commands() {
     let mut before = Config::default();
     before.widgets.refresh_interval_ms = 1;
-    before.widgets.volume.get_cmd = "/home/private/bin/get-volume".to_string();
+    before.widgets.volume.get_cmd = "private-volume-command-sentinel".to_string();
     let mut after = before.clone();
     after.widgets.refresh_interval_ms = 100;
     after.widgets.volume.get_cmd = "pactl get-sink-volume".to_string();
@@ -61,7 +61,7 @@ fn adjustment_diagnostics_report_safe_scalar_changes_and_hide_commands() {
             && item.code == "config.widgets.volume-backend-selected"
     }));
     let rendered = format!("{diagnostics:?}");
-    assert!(!rendered.contains("/home/private"));
+    assert!(!rendered.contains("private-volume-command-sentinel"));
     assert!(!rendered.contains("pactl"));
 }
 

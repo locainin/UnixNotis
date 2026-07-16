@@ -1,4 +1,4 @@
-//! Theme configuration values and defaults.
+//! Theme configuration values and defaults
 
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +27,10 @@ pub struct ThemeConfig {
     /// Alpha for stronger drop shadows (0.0 - 1.0).
     pub shadow_strong_alpha: f32,
 }
+
+#[cfg(test)]
+#[path = "tests/theme.rs"]
+mod tests;
 
 impl Default for ThemeConfig {
     fn default() -> Self {

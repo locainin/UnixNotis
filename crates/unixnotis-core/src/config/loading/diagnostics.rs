@@ -6,7 +6,7 @@ use serde::Serialize;
 use toml::Value;
 use tracing::{info, warn};
 
-use super::{Config, CURRENT_CONFIG_VERSION};
+use super::super::{Config, CURRENT_CONFIG_VERSION};
 
 /// Classification used by configuration diagnostics and doctor output
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]

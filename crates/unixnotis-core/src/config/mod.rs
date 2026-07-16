@@ -2,22 +2,19 @@
 //!
 //! Keeps config types, I/O, and runtime cleanup in separate files
 
-mod command_parse;
-mod commands;
-mod diagnostics;
-mod icon_assets;
-mod io;
+mod appearance;
+mod command;
 mod layout;
+mod loading;
 mod media;
 mod panel;
-mod rules;
 mod runtime;
-mod schema;
-mod theme;
 mod types;
+mod validation;
 mod widgets;
 
-pub use command_parse::{parse_command, CommandParseError, ExecutionMode, ParsedCommand};
+pub(in crate::config) use appearance::{icon_assets, theme};
+pub use command::{parse_command, CommandParseError, ExecutionMode, ParsedCommand};
 pub use diagnostics::{
     log_config_diagnostics, ConfigDiagnostic, ConfigDiagnosticKind, ConfigLoadReport,
 };
@@ -29,10 +26,12 @@ pub use icon_assets::{
 };
 pub use io::{ConfigError, ThemePaths};
 pub use layout::*;
+pub(in crate::config) use loading::{diagnostics, io};
 pub use media::*;
 pub use panel::*;
 pub use rules::*;
 pub use runtime::{MAX_CARD_WIDGETS, MAX_STAT_WIDGETS, MAX_TOGGLE_WIDGETS, MAX_TOTAL_WIDGETS};
 pub use theme::*;
 pub use types::*;
+pub(in crate::config) use validation::{rules, schema};
 pub use widgets::*;
