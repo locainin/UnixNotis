@@ -15,6 +15,10 @@ use crate::debug;
 use super::{try_send_command, UiState};
 
 impl UiState {
+    pub const fn panel_is_visible(&self) -> bool {
+        self.panel_visible
+    }
+
     pub(super) const fn has_any_widgets(&self) -> bool {
         self.volume.is_some()
             || self.brightness.is_some()

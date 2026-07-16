@@ -85,6 +85,7 @@ impl UiState {
             widgets_collapsed: false,
             refresh_source: None,
             last_slow_refresh: None,
+            last_reload_notice: None,
             _runtime: init.runtime,
         }
     }

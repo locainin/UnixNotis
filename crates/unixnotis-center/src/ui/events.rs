@@ -5,7 +5,6 @@
 
 use tracing::debug;
 use unixnotis_core::PanelDebugLevel;
-use unixnotis_ui::css;
 
 use crate::dbus::UiEvent;
 
@@ -175,12 +174,23 @@ impl UiState {
             }
             UiEvent::CssReload => {
                 debug!("css reload requested");
-                let _ = self.css.reload(css::DEFAULT_CSS);
+                let _report = self.reload_css();
                 self.log_debug(PanelDebugLevel::Info, || "css reloaded".to_string());
             }
             UiEvent::ConfigReload => {
                 debug!("config reload requested");
-                self.reload_config();
+                match self.reload_config() {
+                    super::config::ConfigReloadOutcome::Applied { diagnostics, css } => {
+                        debug!(
+                            diagnostics = diagnostics.len(),
+                            css_layers = css.layers.len(),
+                            "config reload applied"
+                        );
+                    }
+                    super::config::ConfigReloadOutcome::Rejected { failure } => {
+                        debug!(?failure, "config reload rejected");
+                    }
+                }
             }
         }
     }
