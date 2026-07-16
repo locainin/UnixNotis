@@ -1,15 +1,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::export_preset_from;
+use super::super::export_preset_from;
+use super::support::TempDirGuard;
 use crate::preset::archive::read_bundle;
 use crate::preset::config_root::collect_selected_config_files_with_captures;
 
-use super::script_dependencies::{
+use super::super::script_dependencies::{
     collect_script_dependency_closure, normalize_relative_path, resolve_source_operand,
     SourceOperand, MAX_SCANNED_SCRIPT_BYTES,
 };
-use super::tests::TempDirGuard;
 use proptest::prelude::*;
 use proptest::test_runner::RngSeed;
 

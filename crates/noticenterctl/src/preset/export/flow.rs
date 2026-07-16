@@ -1,91 +1,38 @@
-//! Preset export flow for the live `UnixNotis` config tree
-//!
-//! Export reads the active config root, applies explicit exclusions,
-//! rejects host-specific escape paths, and writes one shareable bundle file
-
-mod checks;
-mod prompts;
-mod script_dependencies;
-#[cfg(test)]
-#[path = "export/tests/script_dependencies.rs"]
-mod script_dependency_tests;
-#[cfg(test)]
-#[path = "export/tests/cases.rs"]
-mod tests;
+//! Secure preset selection, rewrite, and archive flow
 
 use anyhow::{anyhow, Context, Result};
 use chrono::Local;
 use std::path::{Path, PathBuf};
-use toml::Value;
-use unixnotis_core::{validate_icon_asset_reference, Config};
+use unixnotis_core::Config;
 
-use self::checks::{validate_theme_paths_stay_in_root, HostSpecificScriptLeak};
-use self::prompts::{
+use super::assets::collect_existing_icon_assets;
+use super::checks::validate_theme_paths_stay_in_root;
+use super::model::{ExportConfirmers, ExportSummary};
+use super::prompts::{
     confirm_export_external_css_refs, prompt_to_fix_host_specific_command_paths,
     prompt_to_fix_host_specific_css_asset_refs, prompt_to_fix_host_specific_script_paths,
     rewrite_host_specific_command_paths_if_requested,
     rewrite_host_specific_css_asset_refs_if_requested,
     rewrite_host_specific_script_paths_if_requested,
 };
-use self::script_dependencies::collect_script_dependency_closure;
-use super::archive::write_bundle;
-use super::command_rules::{
+use super::script_dependencies::collect_script_dependency_closure;
+use crate::preset::archive::write_bundle;
+use crate::preset::command_rules::{
     collect_command_references_from_config, resolve_command_path_token,
-    validate_config_command_paths_stay_in_root, HostSpecificCommandPath,
+    validate_config_command_paths_stay_in_root,
 };
-use super::config_root::{
+use crate::preset::config_root::{
     collect_selected_config_files_with_captures, override_collected_file_contents,
 };
-use super::css_asset_refs::{
+use crate::preset::css_asset_refs::{
     collect_external_css_asset_refs_from_collected, collect_local_css_asset_paths_from_paths,
-    ExternalCssAssetRef, HostSpecificCssAssetRef,
 };
-use super::manifest::{PresetManifest, PresetManifestFile};
-use super::pathing::{
-    bundle_name_from_path, format_relative_path, parse_except_paths, resolve_cli_bundle_path,
-    validate_preset_bundle_path,
+use crate::preset::manifest::{PresetManifest, PresetManifestFile};
+use crate::preset::pathing::{
+    bundle_name_from_path, format_relative_path, parse_except_paths, validate_preset_bundle_path,
 };
 
-#[derive(Debug)]
-pub(super) struct ExportSummary {
-    // Final bundle file path shown back to the CLI caller
-    pub(super) bundle_path: PathBuf,
-    // Count of regular files actually stored in the bundle
-    pub(super) file_count: usize,
-    // Symlinks are reported so the caller can clean them up if needed
-    pub(super) skipped_symlinks: Vec<PathBuf>,
-    // Non-regular paths are ignored because they are not portable preset content
-    pub(super) skipped_non_regular: Vec<PathBuf>,
-}
-
-pub(super) fn run_export(output_path: &Path, except: &[String], force: bool) -> Result<()> {
-    // Resolve the live config root exactly once for the CLI path
-    let config_dir = Config::default_config_dir().context("resolve config directory")?;
-    // CLI export accepts a missing extension and can append it after confirmation
-    let output_path = resolve_cli_bundle_path(output_path)?;
-    let summary = export_preset_from(&config_dir, &output_path, except, force)?;
-
-    println!(
-        "preset export ok: {} file(s) -> {}",
-        summary.file_count,
-        summary.bundle_path.display()
-    );
-    if !summary.skipped_symlinks.is_empty() {
-        eprintln!(
-            "preset export warning: skipped {} symlink path(s)",
-            summary.skipped_symlinks.len()
-        );
-    }
-    if !summary.skipped_non_regular.is_empty() {
-        eprintln!(
-            "preset export warning: skipped {} non-regular path(s)",
-            summary.skipped_non_regular.len()
-        );
-    }
-    Ok(())
-}
-
-pub(super) fn export_preset_from(
+pub(in crate::preset) fn export_preset_from(
     config_dir: &Path,
     output_path: &Path,
     except: &[String],
@@ -106,23 +53,7 @@ pub(super) fn export_preset_from(
     )
 }
 
-type ConfirmExternalCssRefsFn = fn(&[ExternalCssAssetRef]) -> Result<()>;
-type PromptFixCommandPathsFn = fn(&[HostSpecificCommandPath]) -> Result<bool>;
-type PromptFixCssAssetRefsFn = fn(&[HostSpecificCssAssetRef]) -> Result<bool>;
-type PromptFixScriptPathsFn = fn(&[HostSpecificScriptLeak]) -> Result<bool>;
-
-struct ExportConfirmers {
-    // Guard for CSS refs that leave the config root
-    confirm_external_css_refs: ConfirmExternalCssRefsFn,
-    // Prompt hook for command path rewrite flow
-    prompt_fix_host_specific_command_paths: PromptFixCommandPathsFn,
-    // Prompt hook for CSS asset rewrite flow
-    prompt_fix_host_specific_css_asset_refs: PromptFixCssAssetRefsFn,
-    // Prompt hook for script text rewrite flow
-    prompt_fix_host_specific_script_paths: PromptFixScriptPathsFn,
-}
-
-fn export_preset_from_with_confirm(
+pub(in crate::preset) fn export_preset_from_with_confirm(
     config_dir: &Path,
     output_path: &Path,
     except: &[String],
@@ -326,46 +257,4 @@ fn export_preset_from_with_confirm(
         skipped_symlinks: collected.skipped_symlinks,
         skipped_non_regular: collected.skipped_non_regular,
     })
-}
-
-fn collect_existing_icon_assets(config_path: &Path, config_dir: &Path) -> Result<Vec<PathBuf>> {
-    let config_text = std::fs::read_to_string(config_path)
-        .with_context(|| format!("read config file {}", config_path.display()))?;
-    let value: Value = toml::from_str(&config_text).context("parse config.toml icon assets")?;
-    let mut raw_assets = Vec::new();
-    collect_icon_asset_values(&value, &mut raw_assets);
-
-    let mut paths = Vec::new();
-    for asset in raw_assets {
-        validate_icon_asset_reference(&asset)
-            .with_context(|| format!("validate configured icon asset {asset}"))?;
-        let relative = PathBuf::from(asset);
-        if config_dir.join(&relative).is_file() {
-            paths.push(relative);
-        }
-    }
-    paths.sort();
-    paths.dedup();
-    Ok(paths)
-}
-
-fn collect_icon_asset_values(value: &Value, assets: &mut Vec<String>) {
-    match value {
-        Value::Table(table) => {
-            for (key, child) in table {
-                if key == "icon_asset" {
-                    if let Some(asset) = child.as_str().filter(|asset| !asset.trim().is_empty()) {
-                        assets.push(asset.trim().to_string());
-                    }
-                }
-                collect_icon_asset_values(child, assets);
-            }
-        }
-        Value::Array(items) => {
-            for child in items {
-                collect_icon_asset_values(child, assets);
-            }
-        }
-        _ => {}
-    }
 }

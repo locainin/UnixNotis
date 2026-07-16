@@ -1,53 +1,33 @@
-//! Export-only validation helpers
-//!
-//! These checks are specific to building a shareable preset from the live tree
+//! Portable script path detection and in-memory rewriting
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 use crate::preset::config_root::PresetFileSource;
 use crate::preset::pathing::normalize_lexical_path;
 
-pub(super) fn validate_theme_paths_stay_in_root(
-    config_dir: &Path,
-    theme_paths: &[(&'static str, &Path)],
-) -> Result<()> {
-    let normalized_root = normalize_lexical_path(config_dir);
-
-    // A shareable preset should not depend on files stored outside the config root
-    for (slot_name, path) in theme_paths {
-        let normalized_path = normalize_lexical_path(path);
-        if !normalized_path.starts_with(&normalized_root) {
-            return Err(anyhow!(
-                "preset export requires {} to live under the config root: {}",
-                slot_name,
-                path.display()
-            ));
-        }
-    }
-    Ok(())
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct HostSpecificScriptLeak {
+pub(in crate::preset::export) struct HostSpecificScriptLeak {
     // Relative script path inside the bundled preset
-    pub(super) script_path: PathBuf,
+    pub(in crate::preset::export) script_path: PathBuf,
     // Every matched path form is kept so the warning output does not underreport
-    pub(super) needles: Vec<String>,
+    pub(in crate::preset::export) needles: Vec<String>,
     // Replacement shown in warning output
-    pub(super) rewritten_to: String,
+    pub(in crate::preset::export) rewritten_to: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct FileOverrideSnapshot {
+pub(in crate::preset::export) struct FileOverrideSnapshot {
     // Relative path is the stable key inside the collected export set
-    pub(super) relative_path: PathBuf,
+    pub(in crate::preset::export) relative_path: PathBuf,
     // Size and bytes need to roll back together
-    pub(super) size: u64,
-    pub(super) contents_override: Option<Vec<u8>>,
+    pub(in crate::preset::export) size: u64,
+    pub(in crate::preset::export) contents_override: Option<Vec<u8>>,
 }
 
-pub(super) fn capture_file_overrides(files: &[PresetFileSource]) -> Vec<FileOverrideSnapshot> {
+pub(in crate::preset::export) fn capture_file_overrides(
+    files: &[PresetFileSource],
+) -> Vec<FileOverrideSnapshot> {
     files
         .iter()
         .map(|file| FileOverrideSnapshot {
@@ -58,7 +38,7 @@ pub(super) fn capture_file_overrides(files: &[PresetFileSource]) -> Vec<FileOver
         .collect()
 }
 
-pub(super) fn restore_file_overrides(
+pub(in crate::preset::export) fn restore_file_overrides(
     files: &mut [PresetFileSource],
     snapshots: &[FileOverrideSnapshot],
 ) {
@@ -74,7 +54,7 @@ pub(super) fn restore_file_overrides(
     }
 }
 
-pub(super) fn rewrite_host_specific_script_paths_in_sources(
+pub(in crate::preset::export) fn rewrite_host_specific_script_paths_in_sources(
     config_dir: &Path,
     files: &mut [PresetFileSource],
 ) -> Result<Vec<HostSpecificScriptLeak>> {
@@ -181,5 +161,5 @@ fn is_script_path(relative_path: &Path) -> bool {
 }
 
 #[cfg(test)]
-#[path = "checks/tests/cases.rs"]
+#[path = "tests/scripts.rs"]
 mod tests;
