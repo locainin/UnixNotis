@@ -1,6 +1,8 @@
 use std::ffi::OsString;
 
-use unixnotis_core::service_manager::ServiceManagerKind;
+use std::path::PathBuf;
+
+use unixnotis_core::service_manager::{ServiceManagerKind, ServiceManagerPaths};
 
 use super::super::selection::{
     add_stale_artifact_check, collect_evidence, explicit_selection, manager_from_environment,
@@ -191,7 +193,7 @@ fn probe_error_note_exists_only_for_relevant_failed_backends() {
 }
 
 #[tokio::test]
-async fn evidence_collection_always_returns_one_record_per_supported_manager() {
+async fn resolved_evidence_collection_returns_each_supported_manager_in_order() {
     let root = std::env::temp_dir().join(format!(
         "unixnotis-doctor-empty-tools-{}",
         std::process::id()
@@ -199,7 +201,23 @@ async fn evidence_collection_always_returns_one_record_per_supported_manager() {
     std::fs::create_dir_all(&root).expect("create empty fake tool directory");
     let tools = crate::system_tools::use_fake_tool_bin(&root);
 
-    let (evidence, _checks) = collect_evidence().await;
+    let resolved = ServiceManagerKind::all()
+        .into_iter()
+        .map(|kind| {
+            let artifact_root = root.join(kind.label());
+            let live_root = (kind == ServiceManagerKind::S6).then(|| root.join("s6-live"));
+            (
+                kind,
+                Ok(ServiceManagerPaths {
+                    kind,
+                    artifact_root,
+                    live_root,
+                }),
+            )
+        })
+        .collect();
+
+    let (evidence, checks) = collect_evidence(resolved).await;
 
     drop(tools);
     let _ = std::fs::remove_dir_all(root);
@@ -207,5 +225,40 @@ async fn evidence_collection_always_returns_one_record_per_supported_manager() {
     assert_eq!(
         evidence.iter().map(|item| item.kind).collect::<Vec<_>>(),
         ServiceManagerKind::all()
+    );
+    assert!(
+        checks.is_empty(),
+        "fully resolved inactive managers should not create path warnings"
+    );
+}
+
+#[tokio::test]
+async fn unresolved_manager_path_is_reported_without_hiding_resolved_managers() {
+    let resolved = vec![
+        (
+            ServiceManagerKind::Systemd,
+            Ok(ServiceManagerPaths {
+                kind: ServiceManagerKind::Systemd,
+                artifact_root: PathBuf::from("/tmp/systemd-user"),
+                live_root: None,
+            }),
+        ),
+        (ServiceManagerKind::S6, Err("USER is not set".to_string())),
+    ];
+
+    let (evidence, checks) = collect_evidence(resolved).await;
+
+    assert_eq!(evidence.len(), 1);
+    assert_eq!(evidence[0].kind, ServiceManagerKind::Systemd);
+    let warning = checks
+        .iter()
+        .find(|check| check.id == "service.path-inspection")
+        .expect("path inspection warning");
+    assert!(
+        warning
+            .details
+            .as_deref()
+            .is_some_and(|details| details.contains("s6-rc: USER is not set")),
+        "path warning should identify the omitted manager"
     );
 }

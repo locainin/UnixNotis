@@ -55,8 +55,18 @@ pub(super) async fn select_service_manager(
         Ok(None) => {}
     }
 
+    // Resolve environment-backed paths once before asynchronous manager probes begin
+    let resolved = ServiceManagerKind::all()
+        .into_iter()
+        .map(|kind| {
+            (
+                kind,
+                resolve_service_manager_paths(kind).map_err(|error| error.to_string()),
+            )
+        })
+        .collect::<Vec<_>>();
     // Auto mode compares live probes and installed artifacts instead of guessing by platform
-    let (evidence, mut checks) = collect_evidence().await;
+    let (evidence, mut checks) = collect_evidence(resolved).await;
     let selected = select_from_evidence(&evidence, control_owned, &mut checks);
     add_stale_artifact_check(&evidence, selected, &mut checks);
     ServiceSelection { selected, checks }
@@ -107,12 +117,14 @@ pub(super) fn manager_from_environment(
         })
 }
 
-pub(super) async fn collect_evidence() -> (Vec<ServiceEvidence>, Vec<DoctorCheck>) {
+pub(super) async fn collect_evidence(
+    resolved: Vec<(ServiceManagerKind, Result<ServiceManagerPaths, String>)>,
+) -> (Vec<ServiceEvidence>, Vec<DoctorCheck>) {
     let mut evidence = Vec::new();
     let mut path_errors = Vec::new();
-    // Stable manager order keeps human and JSON reports deterministic
-    for kind in ServiceManagerKind::all() {
-        match resolve_service_manager_paths(kind) {
+    // Caller order stays stable so human and JSON reports remain deterministic
+    for (kind, paths) in resolved {
+        match paths {
             Ok(paths) => evidence.push(evidence_for_paths(kind, &paths).await),
             Err(error) => path_errors.push(format!("{}: {error}", kind.label())),
         }
@@ -188,15 +200,16 @@ pub(super) fn select_from_evidence(
         .iter()
         .filter(|item| item.active)
         .collect::<Vec<_>>();
-    if let [item] = active.as_slice() {
-        return SelectedServiceManager::Managed(item.kind);
-    }
-    if active.len() > 1 {
-        checks.push(ambiguity_check(
-            "Multiple service managers report UnixNotis as active",
-            active.iter().map(|item| item.kind),
-        ));
-        return SelectedServiceManager::Unknown;
+    match active.as_slice() {
+        [] => {}
+        [item] => return SelectedServiceManager::Managed(item.kind),
+        items => {
+            checks.push(ambiguity_check(
+                "Multiple service managers report UnixNotis as active",
+                items.iter().map(|item| item.kind),
+            ));
+            return SelectedServiceManager::Unknown;
+        }
     }
     // A healthy control owner without an active managed backend indicates a manual launch
     if control_owned {
