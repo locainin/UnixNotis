@@ -43,6 +43,11 @@ pub mod panel_shell {
     pub const SEARCH_ACCENT: &str = "unixnotis-panel-search-accent";
     pub const SEARCH_STAR: &str = "unixnotis-panel-search-star";
     pub const SEARCH_REVEALER: &str = "unixnotis-panel-search-revealer";
+    pub const RELOAD_NOTICE: &str = "unixnotis-reload-notice";
+    pub const RELOAD_NOTICE_ERROR: &str = "unixnotis-reload-notice-error";
+    pub const RELOAD_NOTICE_WARNING: &str = "unixnotis-reload-notice-warning";
+    pub const RELOAD_NOTICE_TEXT: &str = "unixnotis-reload-notice-text";
+    pub const RELOAD_NOTICE_CLOSE: &str = "unixnotis-reload-notice-close";
     pub const BODY_STACK: &str = "unixnotis-panel-body-stack";
     pub const EDGE_TOP: &str = "unixnotis-panel-edge-top";
     pub const EDGE_BOTTOM: &str = "unixnotis-panel-edge-bottom";

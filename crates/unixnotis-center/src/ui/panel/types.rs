@@ -36,4 +36,7 @@ pub struct PanelWidgets {
     pub clear_action_button: gtk::Button,
     pub clear_header_button: gtk::Button,
     pub close_button: gtk::Button,
+    pub reload_notice_revealer: gtk::Revealer,
+    pub reload_notice_shell: gtk::Box,
+    pub reload_notice_label: gtk::Label,
 }

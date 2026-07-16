@@ -40,6 +40,34 @@
   min-height: 32px;
 }
 
+.unixnotis-reload-notice {
+  margin: 0 2px;
+  padding: 10px 12px;
+  border: 1px solid alpha(@theme_fg_color, 0.14);
+  border-radius: 12px;
+  background: alpha(@theme_bg_color, 0.92);
+}
+
+.unixnotis-reload-notice-error {
+  border-color: alpha(#ff6b7a, 0.55);
+  background: alpha(#5a1f2a, 0.38);
+}
+
+.unixnotis-reload-notice-warning {
+  border-color: alpha(#f2b84b, 0.48);
+  background: alpha(#513b18, 0.30);
+}
+
+.unixnotis-reload-notice-text {
+  color: @theme_fg_color;
+}
+
+.unixnotis-reload-notice-close {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+}
+
 .unixnotis-panel-title-stack {
   min-width: 0;
 }

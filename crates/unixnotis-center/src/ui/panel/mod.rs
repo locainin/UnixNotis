@@ -7,6 +7,7 @@ mod build;
 mod header;
 mod layout;
 mod monitor;
+mod notice;
 mod reload;
 mod search;
 mod sections;

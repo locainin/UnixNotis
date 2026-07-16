@@ -6,6 +6,7 @@ use unixnotis_core::{
 };
 
 use super::super::header::build_panel_header;
+use super::super::notice::build_reload_notice;
 use super::super::sections::build_panel_sections;
 use super::super::types::PanelWidgets;
 use super::{apply_reloaded_body_order, apply_reloaded_panel_chrome};
@@ -33,6 +34,7 @@ fn panel_widgets(config: &PanelConfig) -> PanelWidgets {
         .expect("test application should register");
     let header = build_panel_header(config);
     let sections = build_panel_sections(config, unixnotis_core::WidgetDensity::Comfortable);
+    let notice = build_reload_notice();
 
     PanelWidgets {
         window: gtk::ApplicationWindow::new(&app),
@@ -67,6 +69,9 @@ fn panel_widgets(config: &PanelConfig) -> PanelWidgets {
         clear_action_button: header.actions.clear_button,
         clear_header_button: sections.clear_header_button,
         close_button: header.actions.close_button,
+        reload_notice_revealer: notice.revealer,
+        reload_notice_shell: notice.shell,
+        reload_notice_label: notice.label,
     }
 }
 
