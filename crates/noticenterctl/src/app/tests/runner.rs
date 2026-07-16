@@ -11,8 +11,9 @@ fn handle_local_command_runs_css_check_branch() {
     let css_called = Cell::new(false);
 
     handle_local_command(
-        Command::CssCheck,
-        || {
+        Command::CssCheck { config: None },
+        |config| {
+            assert!(config.is_none());
             css_called.set(true);
             Ok(())
         },
@@ -33,7 +34,7 @@ fn handle_local_command_runs_preset_branch_with_command_payload() {
                 input: "theme.unixnotis".to_string(),
             },
         },
-        || -> Result<()> { panic!("css runner should not be called for preset command") },
+        |_| -> Result<()> { panic!("css runner should not be called for preset command") },
         |command| {
             let PresetCommand::Inspect { input } = command else {
                 panic!("expected inspect preset command");

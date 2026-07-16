@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Subcommand;
 
 use super::args::{
@@ -55,7 +57,10 @@ pub enum Command {
     // Print current inhibitors to stdout
     ListInhibitors,
     // Validate theme CSS files without touching D-Bus
-    CssCheck,
+    CssCheck {
+        #[arg(long, value_name = "PATH")]
+        config: Option<PathBuf>,
+    },
     // Collect independent configuration, theme, bus, service, and log diagnostics
     Doctor {
         #[arg(long)]
@@ -64,6 +69,8 @@ pub enum Command {
         verbose: bool,
         #[arg(long, value_enum, default_value = "auto")]
         service_manager: DoctorServiceManagerArg,
+        #[arg(long, value_name = "PATH")]
+        config: Option<PathBuf>,
     },
     // Export, inspect, or import a shareable preset bundle
     Preset {
@@ -77,7 +84,7 @@ impl Command {
         // Local-only commands should not fail just because D-Bus is unavailable
         matches!(
             self,
-            Self::CssCheck | Self::Doctor { .. } | Self::Preset { .. }
+            Self::CssCheck { .. } | Self::Doctor { .. } | Self::Preset { .. }
         )
     }
 }

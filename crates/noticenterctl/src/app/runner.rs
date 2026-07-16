@@ -7,6 +7,8 @@ use zbus::Connection;
 
 use crate::cli::{Args, Command};
 
+use super::local::handle_local_command;
+
 pub async fn run() -> Result<()> {
     // Parse CLI arguments before any daemon work starts
     let args = Args::parse();
@@ -16,10 +18,11 @@ pub async fn run() -> Result<()> {
         json,
         verbose,
         service_manager,
+        config,
     } = command
     {
         // Doctor owns its D-Bus connection so one failed probe cannot stop later checks
-        return crate::doctor::run(json, verbose, service_manager).await;
+        return crate::doctor::run(json, verbose, service_manager, config).await;
     }
 
     if command.is_local_only() {
@@ -38,19 +41,3 @@ pub async fn run() -> Result<()> {
 
     crate::dbus::handle_command(&proxy, command).await
 }
-
-fn handle_local_command(
-    command: Command,
-    mut run_css: impl FnMut() -> Result<()>,
-    mut run_preset: impl FnMut(crate::cli::PresetCommand) -> Result<()>,
-) -> Result<()> {
-    match command {
-        Command::CssCheck => run_css(),
-        Command::Preset { command } => run_preset(command).context("preset command failed"),
-        _ => Ok(()),
-    }
-}
-
-#[cfg(test)]
-#[path = "app/tests/command.rs"]
-mod tests;

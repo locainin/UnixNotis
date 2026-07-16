@@ -4,11 +4,12 @@ use super::super::{Args, Command, DoctorServiceManagerArg, PresetCommand};
 
 #[test]
 fn local_only_classification_distinguishes_local_and_control_commands() {
-    assert!(Command::CssCheck.is_local_only());
+    assert!(Command::CssCheck { config: None }.is_local_only());
     assert!(Command::Doctor {
         json: false,
         verbose: false,
         service_manager: DoctorServiceManagerArg::Auto,
+        config: None,
     }
     .is_local_only());
     assert!(Command::Preset {

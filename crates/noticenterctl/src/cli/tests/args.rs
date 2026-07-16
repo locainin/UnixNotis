@@ -180,7 +180,39 @@ fn parses_doctor_output_and_service_manager_options() {
             json: true,
             verbose: true,
             service_manager: DoctorServiceManagerArg::Dinit,
+            config: None,
         }
+    ));
+}
+
+#[test]
+fn doctor_and_css_check_accept_explicit_config_paths() {
+    let doctor = Args::try_parse_from([
+        "noticenterctl",
+        "doctor",
+        "--config",
+        "/tmp/doctor-config.toml",
+    ])
+    .expect("parse doctor config path");
+    assert!(matches!(
+        doctor.command,
+        Command::Doctor {
+            config: Some(path),
+            ..
+        } if path == std::path::Path::new("/tmp/doctor-config.toml")
+    ));
+
+    let css = Args::try_parse_from([
+        "noticenterctl",
+        "css-check",
+        "--config",
+        "/tmp/css-config.toml",
+    ])
+    .expect("parse CSS config path");
+    assert!(matches!(
+        css.command,
+        Command::CssCheck { config: Some(path) }
+            if path == std::path::Path::new("/tmp/css-config.toml")
     ));
 }
 
