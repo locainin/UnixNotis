@@ -57,6 +57,7 @@ impl UiState {
             );
         }
 
+        // Long-lived state owns every channel, guard, and optional widget built above
         Self {
             config: init.config,
             config_path: init.config_path,
@@ -74,6 +75,7 @@ impl UiState {
             media,
             media_handle: init.media_handle,
             pending_media: None,
+            // A separate cleared flag distinguishes no update from an explicit empty snapshot
             pending_media_cleared: false,
             volume: extra_widgets.volume,
             brightness: extra_widgets.brightness,
@@ -85,7 +87,8 @@ impl UiState {
             widgets_collapsed: false,
             refresh_source: None,
             last_slow_refresh: None,
-            last_reload_notice: None,
+            // Reload notices preserve independent config and CSS failure identities
+            reload_notices: super::super::reload_notice::ReloadNoticeState::default(),
             _runtime: init.runtime,
         }
     }

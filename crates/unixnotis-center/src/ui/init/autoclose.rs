@@ -32,11 +32,20 @@ pub(super) fn connect_auto_close(
     if init.config.panel.close_on_click_outside {
         let started =
             hyprland::start_active_window_watcher(init.event_tx.clone(), visible_flag.clone());
-        if !started && init.config.panel.close_on_blur {
+        if should_connect_blur_close(true, init.config.panel.close_on_blur, started) {
             // Hyprland watcher is preferred, but blur close is a safe fallback
             connect_blur_close(init.command_tx.clone(), visible_flag, &panel.window);
         }
-    } else if init.config.panel.close_on_blur {
+    } else if should_connect_blur_close(false, init.config.panel.close_on_blur, false) {
         connect_blur_close(init.command_tx.clone(), visible_flag, &panel.window);
     }
+}
+
+pub(super) const fn should_connect_blur_close(
+    close_on_click_outside: bool,
+    close_on_blur: bool,
+    watcher_started: bool,
+) -> bool {
+    // Blur is needed only when enabled and no active outside-click watcher owns closing
+    close_on_blur && (!close_on_click_outside || !watcher_started)
 }

@@ -20,6 +20,7 @@ pub(super) fn connect_widget_collapse_toggle(
     let collapse_click_gate =
         ClickCooldown::new(Duration::from_millis(panel::WIDGET_REVEAL_TRANSITION_MS));
     let accepted_collapsed = Rc::new(Cell::new(false));
+    // Restore guard prevents a rejected click rollback from re-entering this handler
     let collapse_restore = Rc::new(Cell::new(false));
 
     panel.focus_toggle.connect_toggled(move |button| {
@@ -28,6 +29,7 @@ pub(super) fn connect_widget_collapse_toggle(
         }
 
         let collapsed = button.is_active();
+        // Ignore clicks while the previous reveal animation is still changing layout
         if !collapse_click_gate.try_start() {
             let accepted = accepted_collapsed.get();
             if collapsed != accepted {
@@ -39,6 +41,7 @@ pub(super) fn connect_widget_collapse_toggle(
         }
 
         accepted_collapsed.set(collapsed);
+        // Disable the control until GTK finishes the matching reveal transition
         button.set_sensitive(false);
         let button_enable = button.clone();
         gtk::glib::timeout_add_local_once(
@@ -55,20 +58,25 @@ pub(super) fn connect_filter_entry(
     panel: &panel::PanelWidgets,
     event_tx: async_channel::Sender<UiEvent>,
 ) {
+    // SearchChanged covers typing, clear actions, and programmatic text resets
     panel.search_entry.connect_search_changed(move |entry| {
-        let event = UiEvent::FilterChanged(entry.text().to_string());
-        match event_tx.try_send(event) {
-            Ok(()) => {}
-            Err(TrySendError::Full(event)) => {
-                // Search changes are small and should retry instead of disappearing under bursts
-                let event_tx = event_tx.clone();
-                gtk::glib::MainContext::default().spawn_local(async move {
-                    let _ = event_tx.send(event).await;
-                });
-            }
-            Err(TrySendError::Closed(_)) => {}
-        }
+        send_filter_event(&event_tx, entry.text().to_string());
     });
+}
+
+pub(super) fn send_filter_event(event_tx: &async_channel::Sender<UiEvent>, filter: String) {
+    let event = UiEvent::FilterChanged(filter);
+    match event_tx.try_send(event) {
+        Ok(()) => {}
+        Err(TrySendError::Full(event)) => {
+            // Search changes are small and should retry instead of disappearing under bursts
+            let event_tx = event_tx.clone();
+            gtk::glib::MainContext::default().spawn_local(async move {
+                let _ = event_tx.send(event).await;
+            });
+        }
+        Err(TrySendError::Closed(_)) => {} // A closed UI channel means shutdown already owns the pending filter state
+    }
 }
 
 pub(super) fn connect_search_toggle(
@@ -80,6 +88,7 @@ pub(super) fn connect_search_toggle(
     let search_click_gate =
         ClickCooldown::new(Duration::from_millis(panel::SEARCH_REVEAL_TRANSITION_MS));
     let accepted_search_reveal = Rc::new(Cell::new(false));
+    // Programmatic rollback must not be mistaken for a fresh user click
     let search_restore = Rc::new(Cell::new(false));
 
     panel.search_toggle.connect_toggled(move |button| {
@@ -99,6 +108,7 @@ pub(super) fn connect_search_toggle(
         }
 
         accepted_search_reveal.set(reveal);
+        // Freeze the toggle while its revealer animates to the accepted state
         button.set_sensitive(false);
         let button_enable = button.clone();
         gtk::glib::timeout_add_local_once(
@@ -109,9 +119,11 @@ pub(super) fn connect_search_toggle(
         );
         search_revealer.set_reveal_child(reveal);
         if reveal {
+            // Selecting existing text makes the next query replace it immediately
             search_entry.grab_focus();
             search_entry.select_region(0, -1);
         } else if !search_entry.text().is_empty() {
+            // Closing search restores the full notification list
             search_entry.set_text("");
         }
     });
