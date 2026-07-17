@@ -262,6 +262,53 @@ fn read_bundle_rejects_duplicate_manifest_entries() {
 }
 
 #[test]
+fn read_bundle_rejects_duplicate_manifest_file_paths() {
+    let root = TempDirGuard::new("duplicate-manifest-file-path");
+    let bundle_path = root.path.join("demo.unixnotis");
+    let manifest = manifest_with_files(vec![
+        PresetManifestFile {
+            path: "config.toml".to_string(),
+            size: 0,
+        },
+        PresetManifestFile {
+            path: "config.toml".to_string(),
+            size: 0,
+        },
+    ]);
+    let manifest_bytes = manifest.encode().expect("encode manifest").into_bytes();
+
+    write_raw_gzip_tar(&bundle_path, |encoder| {
+        append_raw_tar_file(encoder, Path::new("manifest.toml"), &manifest_bytes, 0o644);
+        append_raw_tar_file(encoder, Path::new("payload/config.toml"), b"", 0o644);
+    });
+
+    let error = read_bundle(&bundle_path).expect_err("duplicate manifest paths must fail");
+
+    assert!(error.to_string().contains("duplicate file path"));
+}
+
+#[test]
+fn read_bundle_rejects_spoofed_script_summary() {
+    let root = TempDirGuard::new("spoofed-script-summary");
+    let bundle_path = root.path.join("demo.unixnotis");
+    let mut manifest = manifest_with_files(vec![PresetManifestFile {
+        path: "scripts/run".to_string(),
+        size: 0,
+    }]);
+    manifest.has_scripts = false;
+    let manifest_bytes = manifest.encode().expect("encode manifest").into_bytes();
+
+    write_raw_gzip_tar(&bundle_path, |encoder| {
+        append_raw_tar_file(encoder, Path::new("manifest.toml"), &manifest_bytes, 0o644);
+        append_raw_tar_file(encoder, Path::new("payload/scripts/run"), b"", 0o755);
+    });
+
+    let error = read_bundle(&bundle_path).expect_err("spoofed script flag must fail");
+
+    assert!(error.to_string().contains("summary does not match"));
+}
+
+#[test]
 fn checked_payload_total_allows_exact_total_payload_budget() {
     let total = checked_payload_total(MAX_PRESET_TOTAL_PAYLOAD_BYTES - 1, 1)
         .expect("exact total budget should be allowed");

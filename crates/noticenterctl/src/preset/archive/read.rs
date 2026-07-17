@@ -8,7 +8,7 @@ use tar::Archive;
 
 use super::super::manifest::PRESET_FORMAT_VERSION;
 use super::super::pathing::{
-    archive_payload_relative, format_relative_path, MANIFEST_ARCHIVE_PATH,
+    archive_payload_relative, format_relative_path, normalize_relative_path, MANIFEST_ARCHIVE_PATH,
 };
 use super::modes::sanitize_payload_mode;
 use super::{BundleArchive, BundleFile};
@@ -132,11 +132,7 @@ pub fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
     }
     validate_manifest_budget(&manifest)?;
 
-    let expected_paths = manifest
-        .files
-        .iter()
-        .map(|file| (PathBuf::from(&file.path), file.size))
-        .collect::<BTreeMap<_, _>>();
+    let expected_paths = validated_manifest_paths(&manifest)?;
     let actual_paths = files
         .iter()
         .map(|(path, file)| (path.clone(), file.contents.len() as u64))
@@ -160,6 +156,33 @@ pub fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
         manifest,
         files: files.into_values().collect(),
     })
+}
+
+fn validated_manifest_paths(
+    manifest: &super::super::manifest::PresetManifest,
+) -> Result<BTreeMap<PathBuf, u64>> {
+    let mut expected = BTreeMap::new();
+    for file in &manifest.files {
+        // Manifest paths follow the same relative-path contract as archive payload entries
+        let path = normalize_relative_path(Path::new(&file.path))?;
+        if expected.insert(path, file.size).is_some() {
+            return Err(anyhow!(
+                "preset manifest contains a duplicate file path: {}",
+                file.path
+            ));
+        }
+    }
+
+    // Inspect summaries must describe the payload instead of trusting attacker-provided flags
+    let has_assets = expected.keys().any(|path| path.starts_with("assets"));
+    let has_scripts = expected.keys().any(|path| path.starts_with("scripts"));
+    if manifest.has_assets != has_assets || manifest.has_scripts != has_scripts {
+        return Err(anyhow!(
+            "preset manifest asset or script summary does not match its file list"
+        ));
+    }
+
+    Ok(expected)
 }
 
 fn validate_entry_size(kind: &str, path: &Path, declared_size: u64, max: u64) -> Result<()> {
