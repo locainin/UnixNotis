@@ -6,7 +6,7 @@ use crate::model::{ActionStep, StepStatus};
 use std::collections::VecDeque;
 
 pub(super) fn render_steps(steps: &[ActionStep], width: u16) -> List<'static> {
-    // Step list is compact and uses status tags for quick scanning.
+    // Step list is compact and uses status tags for quick scanning
     let inner_width = width.saturating_sub(2) as usize;
     let items = steps
         .iter()
@@ -30,14 +30,20 @@ pub(super) fn render_steps(steps: &[ActionStep], width: u16) -> List<'static> {
     List::new(items)
 }
 
-pub(super) fn render_logs(logs: &VecDeque<String>) -> Text<'static> {
-    // Use Ratatui's native wrapping to avoid per-frame manual wrapping allocations.
-    let lines: Vec<Line<'static>> = logs.iter().map(|line| Line::from(line.clone())).collect();
+pub(super) fn render_logs(logs: &VecDeque<String>, visible_lines: usize) -> Text<'static> {
+    // A completed command is most useful at its tail where Cargo prints the actual failure
+    let first_visible = logs.len().saturating_sub(visible_lines);
+    // Use Ratatui's native wrapping to avoid per-frame manual wrapping allocations
+    let lines: Vec<Line<'static>> = logs
+        .iter()
+        .skip(first_visible)
+        .map(|line| Line::from(line.clone()))
+        .collect();
     Text::from(lines)
 }
 
 pub(super) fn truncate_to_width(text: &str, width: usize) -> String {
-    // Truncate and append ellipsis so menus stay aligned.
+    // Truncate and append ellipsis so menus stay aligned
     if width == 0 {
         return String::new();
     }
@@ -57,7 +63,7 @@ pub(super) fn truncate_to_width(text: &str, width: usize) -> String {
 }
 
 pub(super) fn summarize_error(err: &str) -> String {
-    // Provide a short, user-friendly error line for the UI while keeping full details in logs.
+    // Provide a short user-friendly error line while keeping full details in logs
     if err.contains("failed to install") {
         return "failed to install binary (see logs)".to_string();
     }

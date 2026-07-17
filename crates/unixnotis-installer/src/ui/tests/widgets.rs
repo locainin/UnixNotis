@@ -59,11 +59,26 @@ fn summarize_error_covers_known_installer_failures() {
 fn render_logs_preserves_each_log_line() {
     let logs = VecDeque::from(["first".to_string(), "second".to_string()]);
 
-    let rendered = format!("{:?}", super::widgets::render_logs(&logs));
+    let rendered = format!("{:?}", super::widgets::render_logs(&logs, 2));
 
     // Logs are rendered line-for-line so command diagnostics stay readable
     assert!(rendered.contains("first"));
     assert!(rendered.contains("second"));
+}
+
+#[test]
+fn render_logs_keeps_the_newest_lines_visible() {
+    let logs = VecDeque::from([
+        "old setup detail".to_string(),
+        "compiler diagnostic".to_string(),
+        "final failure".to_string(),
+    ]);
+
+    let rendered = format!("{:?}", super::widgets::render_logs(&logs, 2));
+
+    assert!(!rendered.contains("old setup detail"));
+    assert!(rendered.contains("compiler diagnostic"));
+    assert!(rendered.contains("final failure"));
 }
 
 #[test]
