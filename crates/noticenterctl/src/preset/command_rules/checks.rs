@@ -108,10 +108,9 @@ pub fn validate_config_command_paths_stay_in_root(
 
     let first = &outside_paths[0];
     Err(anyhow!(
-        "{} because {} points outside the UnixNotis config directory: {}",
+        "{} because {} resolves outside the UnixNotis config directory",
         mode_label,
-        first.slot,
-        first.command
+        first.slot
     ))
 }
 

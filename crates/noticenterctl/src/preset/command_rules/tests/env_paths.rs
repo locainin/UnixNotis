@@ -19,7 +19,7 @@ fn validation_rejects_ld_preload_path_that_leaves_root() {
 
     assert!(error
         .to_string()
-        .contains("points outside the UnixNotis config directory"));
+        .contains("resolves outside the UnixNotis config directory"));
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn validation_rejects_colon_separated_env_path_that_leaves_root() {
 
     assert!(error
         .to_string()
-        .contains("points outside the UnixNotis config directory"));
+        .contains("resolves outside the UnixNotis config directory"));
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn validation_does_not_mistake_env_option_values_for_the_child_program() {
 
     assert!(error
         .to_string()
-        .contains("points outside the UnixNotis config directory"));
+        .contains("resolves outside the UnixNotis config directory"));
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn validation_checks_env_assignments_that_follow_options() {
 
     assert!(error
         .to_string()
-        .contains("points outside the UnixNotis config directory"));
+        .contains("resolves outside the UnixNotis config directory"));
 }
 
 #[test]

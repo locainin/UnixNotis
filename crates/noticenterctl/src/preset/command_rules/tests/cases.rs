@@ -54,7 +54,23 @@ fn validation_rejects_relative_command_path_that_leaves_root() {
 
     assert!(error
         .to_string()
-        .contains("points outside the UnixNotis config directory"));
+        .contains("resolves outside the UnixNotis config directory"));
+}
+
+#[test]
+fn validation_error_does_not_echo_rejected_command_text() {
+    let config_dir = temp_root("redacted-command");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.toggles]]\nlabel = \"Probe\"\nicon = \"applications-system-symbolic\"\nwatch_cmd = \"../outside-watch --token private-value\"\n";
+
+    let error =
+        validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+            .expect_err("reject escaped command without exposing its arguments");
+    let message = error.to_string();
+
+    assert!(message.contains("widgets.toggles[0].watch_cmd"));
+    assert!(message.contains("resolves outside the UnixNotis config directory"));
+    assert!(!message.contains("outside-watch"));
+    assert!(!message.contains("private-value"));
 }
 
 #[test]
@@ -68,7 +84,7 @@ fn validation_rejects_absolute_command_path_with_equals_that_leaves_root() {
 
     assert!(error
         .to_string()
-        .contains("points outside the UnixNotis config directory"));
+        .contains("resolves outside the UnixNotis config directory"));
 }
 
 #[test]
