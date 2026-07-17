@@ -4,7 +4,7 @@ mod action;
 mod capture;
 mod command_exec;
 mod command_parse;
-mod command_queue;
+mod queue;
 mod plan;
 
 pub(in crate::ui::widgets) use action::run_action_command_with_completion;

@@ -7,7 +7,7 @@ use std::time::Duration;
 use unixnotis_core::{util, PanelDebugLevel};
 
 use super::command_exec::set_command_config_dir;
-use super::command_queue::enqueue_command;
+use super::queue::enqueue_command;
 use super::plan::{resolve_command_plan, CommandKind};
 use crate::diagnostics::panel_debug as debug;
 
