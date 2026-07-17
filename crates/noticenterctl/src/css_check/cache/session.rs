@@ -42,7 +42,7 @@ where
     for work_item in work_items {
         // Cached hits still get rendered into fresh user-facing diagnostics
         if let Some(cached_diagnostics) = cache
-            .as_ref()
+            .as_mut()
             .map(|cache| cache.lookup(work_item))
             .transpose()?
             .flatten()
