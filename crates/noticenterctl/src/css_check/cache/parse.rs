@@ -13,9 +13,9 @@ use super::super::report::{CssCheckCategory, CssCheckDiagnostic};
 use super::model::{CachedDiagnosticSource, CachedParseDiagnostic, CssParseWorkItem};
 
 const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(10);
-const MAX_VALIDATOR_OUTPUT_BYTES: usize = 64 * 1024;
+pub(super) const MAX_VALIDATOR_OUTPUT_BYTES: usize = 64 * 1024;
 
-fn source_line_text(path: Option<&Path>, line_number: usize) -> Option<String> {
+pub(super) fn source_line_text(path: Option<&Path>, line_number: usize) -> Option<String> {
     let path = path?;
     if line_number == 0 {
         return None;
@@ -185,8 +185,32 @@ struct ValidatorDiagnostic {
 }
 
 fn css_validator_binary() -> Result<PathBuf> {
+    #[cfg(test)]
+    if let Some(path) = validator_override() {
+        return Ok(path);
+    }
     let current_exe = std::env::current_exe().context("resolve noticenterctl executable")?;
     css_validator_binary_from(&current_exe)
+}
+
+#[cfg(test)]
+static VALIDATOR_OVERRIDE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
+fn validator_override() -> Option<PathBuf> {
+    VALIDATOR_OVERRIDE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+#[cfg(test)]
+pub(super) fn replace_validator_override(path: Option<PathBuf>) -> Option<PathBuf> {
+    // One process-wide slot lets tests exercise the production locator without touching PATH
+    let mut override_path = VALIDATOR_OVERRIDE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    std::mem::replace(&mut *override_path, path)
 }
 
 pub(super) fn css_validator_binary_from(current_exe: &Path) -> Result<PathBuf> {
@@ -261,7 +285,7 @@ pub(in super::super) fn render_cached_diagnostics(
         .collect()
 }
 
-fn classify_cached_source_path(
+pub(super) fn classify_cached_source_path(
     source_path: Option<&Path>,
     current_file: &Path,
 ) -> CachedDiagnosticSource {
