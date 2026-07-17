@@ -152,7 +152,8 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
     let css_asset_warnings = collect_external_css_asset_refs_from_bundle(
         Path::new("$XDG_CONFIG_HOME/unixnotis"),
         &bundle.files,
-    );
+    )
+    .context("scan preset CSS references")?;
     out.push_str(&format!(
         "css asset path warnings: {}\n",
         css_asset_warnings.len()

@@ -22,7 +22,7 @@ pub(in crate::preset) fn rewrite_host_specific_css_asset_refs_in_sources(
         // Export rewrites the effective stylesheet text, not only the on-disk source bytes
         let css_text = read_css_text(file)?;
         let (rewritten_text, file_rewrites) =
-            rewrite_host_specific_refs_in_text(config_dir, &file.source_path, &css_text);
+            rewrite_host_specific_refs_in_text(config_dir, &file.source_path, &css_text)?;
         if file_rewrites.is_empty() {
             continue;
         }
@@ -40,16 +40,18 @@ fn rewrite_host_specific_refs_in_text(
     config_dir: &Path,
     css_path: &Path,
     css_text: &str,
-) -> (String, Vec<HostSpecificCssAssetRef>) {
+) -> Result<(String, Vec<HostSpecificCssAssetRef>)> {
     let mut rewritten = String::with_capacity(css_text.len());
     let mut rewrites = Vec::new();
     let mut last_index = 0usize;
 
-    for span in collect_url_spans(css_text) {
+    for span in collect_url_spans(css_text)? {
         // Everything before the current url(...) payload is copied through unchanged
         rewritten.push_str(&css_text[last_index..span.value_start]);
 
-        if let Some(rewritten_ref) =
+        if span.ambiguous {
+            rewritten.push_str(&span.value);
+        } else if let Some(rewritten_ref) =
             rewrite_host_specific_asset_ref(config_dir, css_path, &span.value)
         {
             rewritten.push_str(&rewritten_ref);
@@ -66,7 +68,7 @@ fn rewrite_host_specific_refs_in_text(
     }
 
     rewritten.push_str(&css_text[last_index..]);
-    (rewritten, rewrites)
+    Ok((rewritten, rewrites))
 }
 
 fn rewrite_host_specific_asset_ref(
@@ -154,3 +156,7 @@ fn format_css_relative_path(path: &Path) -> String {
         .collect::<Vec<_>>()
         .join("/")
 }
+
+#[cfg(test)]
+#[path = "tests/rewrite.rs"]
+mod tests;

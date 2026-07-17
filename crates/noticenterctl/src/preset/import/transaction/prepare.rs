@@ -100,7 +100,7 @@ pub(in crate::preset) fn prepare_import(
     confirm_exec_content(&exec_content, allow_exec)?;
     // CSS asset refs are warning-only, but the prompt still needs to happen before any write starts
     let external_css_refs =
-        collect_external_css_asset_refs_from_bundle(config_dir, &included_bundle_files);
+        collect_external_css_asset_refs_from_bundle(config_dir, &included_bundle_files)?;
     confirm_external_css_refs(&external_css_refs)?;
     // The write plan is built last so prompts cannot leave behind partial staging state
     let plan = build_import_plan(config_dir, bundle.files, &exclusions)?;
