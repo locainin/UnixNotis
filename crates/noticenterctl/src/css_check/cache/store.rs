@@ -114,12 +114,9 @@ pub(in super::super) fn default_css_parse_cache_path() -> Option<PathBuf> {
     // Cache storage should follow the usual XDG rules first
     if let Ok(cache_home) = env::var("XDG_CACHE_HOME") {
         let trimmed = cache_home.trim();
-        if !trimmed.is_empty() {
-            return Some(
-                PathBuf::from(trimmed)
-                    .join("unixnotis")
-                    .join(CSS_PARSE_CACHE_FILE),
-            );
+        let cache_home = PathBuf::from(trimmed);
+        if cache_home.is_absolute() {
+            return Some(cache_home.join("unixnotis").join(CSS_PARSE_CACHE_FILE));
         }
     }
 
