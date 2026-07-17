@@ -6,9 +6,9 @@ use std::sync::Arc;
 use gtk::prelude::*;
 
 use super::super::hyprland;
-use super::super::panel;
 use super::super::try_send_command;
 use super::super::UiStateInit;
+use super::PanelWidgets;
 use crate::control::UiCommand;
 
 fn connect_blur_close(
@@ -24,8 +24,8 @@ fn connect_blur_close(
     });
 }
 
-pub(super) fn connect_auto_close(
-    panel: &panel::PanelWidgets,
+pub(in crate::ui) fn connect_auto_close(
+    panel: &PanelWidgets,
     init: &UiStateInit,
     visible_flag: Arc<AtomicBool>,
 ) {
@@ -40,6 +40,10 @@ pub(super) fn connect_auto_close(
         connect_blur_close(init.command_tx.clone(), visible_flag, &panel.window);
     }
 }
+
+#[cfg(test)]
+#[path = "tests/autoclose.rs"]
+mod tests;
 
 pub(super) const fn should_connect_blur_close(
     close_on_click_outside: bool,

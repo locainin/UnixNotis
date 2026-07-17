@@ -4,8 +4,8 @@ use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{css::hooks, PanelConfig};
 
-use super::actions::{action_order_contains_close, build_panel_actions, PanelActionWidgets};
-use super::search::{build_panel_search, PanelSearchWidgets};
+use super::action_widgets::{action_order_contains_close, build_panel_actions, PanelActionWidgets};
+use super::search_widgets::{build_panel_search, PanelSearchWidgets};
 
 pub(super) struct PanelHeaderWidgets {
     pub(super) root: gtk::Box,

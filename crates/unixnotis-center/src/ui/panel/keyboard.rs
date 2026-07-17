@@ -3,8 +3,8 @@
 use gtk::gdk;
 use gtk::prelude::*;
 
-use super::super::panel;
 use super::super::try_send_command;
+use super::PanelWidgets;
 use crate::control::UiCommand;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,8 +66,8 @@ pub(super) fn keyboard_action_for(
     KeyboardPanelAction::Continue
 }
 
-pub(super) fn connect_keyboard_shortcuts(
-    panel: &panel::PanelWidgets,
+pub(in crate::ui) fn connect_keyboard_shortcuts(
+    panel: &PanelWidgets,
     command_tx: tokio::sync::mpsc::Sender<UiCommand>,
 ) {
     let focus_toggle = panel.focus_toggle.clone();
@@ -119,6 +119,10 @@ pub(super) fn connect_keyboard_shortcuts(
     });
     panel.root.add_controller(key_controller);
 }
+
+#[cfg(test)]
+#[path = "tests/keyboard.rs"]
+mod tests;
 
 fn reveal_and_focus_search(
     search_toggle: &gtk::ToggleButton,

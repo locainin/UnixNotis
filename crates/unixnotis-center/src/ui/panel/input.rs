@@ -13,21 +13,21 @@ use gtk::glib;
 use crate::control::UiEvent;
 
 #[derive(Clone)]
-pub(super) struct ClickCooldown {
+pub(in crate::ui) struct ClickCooldown {
     // One bit is enough because callers only care whether a new click may start
     blocked: Rc<Cell<bool>>,
     duration: Duration,
 }
 
 impl ClickCooldown {
-    pub(super) fn new(duration: Duration) -> Self {
+    pub(in crate::ui) fn new(duration: Duration) -> Self {
         Self {
             blocked: Rc::new(Cell::new(false)),
             duration,
         }
     }
 
-    pub(super) fn try_start(&self) -> bool {
+    pub(in crate::ui) fn try_start(&self) -> bool {
         if self.blocked.replace(true) {
             return false;
         }
@@ -42,7 +42,7 @@ impl ClickCooldown {
 }
 
 #[derive(Clone)]
-pub(super) struct LatestBoolEventGate {
+pub(in crate::ui) struct LatestBoolEventGate {
     // Stores the newest requested toggle state while one queued send is pending
     latest: Rc<Cell<bool>>,
     pending: Rc<RefCell<Option<glib::SourceId>>>,
@@ -50,7 +50,7 @@ pub(super) struct LatestBoolEventGate {
 }
 
 impl LatestBoolEventGate {
-    pub(super) fn new(delay: Duration) -> Self {
+    pub(in crate::ui) fn new(delay: Duration) -> Self {
         Self {
             latest: Rc::new(Cell::new(false)),
             pending: Rc::new(RefCell::new(None)),
@@ -58,7 +58,11 @@ impl LatestBoolEventGate {
         }
     }
 
-    pub(super) fn request_widgets_collapsed(&self, sender: &Sender<UiEvent>, collapsed: bool) {
+    pub(in crate::ui) fn request_widgets_collapsed(
+        &self,
+        sender: &Sender<UiEvent>,
+        collapsed: bool,
+    ) {
         self.latest.set(collapsed);
         schedule_widgets_collapsed(
             sender.clone(),
@@ -101,3 +105,7 @@ fn schedule_widgets_collapsed(
     });
     *pending.borrow_mut() = Some(id);
 }
+
+#[cfg(test)]
+#[path = "tests/input.rs"]
+mod tests;

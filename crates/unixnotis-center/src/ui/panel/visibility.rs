@@ -12,14 +12,14 @@ use unixnotis_core::{PanelAction, PanelDebugLevel, PanelRequest};
 use crate::control::UiCommand;
 use crate::debug;
 
-use super::{try_send_command, UiState};
+use super::super::{try_send_command, UiState};
 
 impl UiState {
     pub const fn panel_is_visible(&self) -> bool {
         self.panel_visible
     }
 
-    pub(super) const fn has_any_widgets(&self) -> bool {
+    pub(in crate::ui) const fn has_any_widgets(&self) -> bool {
         self.volume.is_some()
             || self.brightness.is_some()
             || self.toggles.is_some()
@@ -28,7 +28,7 @@ impl UiState {
             || (self.media.is_some() && self.config.media.enabled)
     }
 
-    pub(super) fn set_widgets_collapsed(&mut self, collapsed: bool) {
+    pub(in crate::ui) fn set_widgets_collapsed(&mut self, collapsed: bool) {
         self.widgets_collapsed = collapsed;
         if self.panel.focus_toggle.is_active() != collapsed {
             // Mirror external collapse requests into the header toggle state
@@ -41,14 +41,14 @@ impl UiState {
             .set_empty_layout(!collapsed && self.has_any_widgets());
     }
 
-    pub(super) fn update_state(&mut self, state: unixnotis_core::ControlState) {
+    pub(in crate::ui) fn update_state(&mut self, state: unixnotis_core::ControlState) {
         // Avoid re-entrant DND toggles while applying daemon state
         self.dnd_guard.set(true);
         self.panel.dnd_toggle.set_active(state.dnd_enabled);
         self.dnd_guard.set(false);
     }
 
-    pub(super) fn refresh_counts(&mut self) {
+    pub(in crate::ui) fn refresh_counts(&mut self) {
         if !self.panel_visible {
             // Skip label updates while hidden to avoid unnecessary UI work
             // Counts are refreshed on the next open to keep the header accurate
@@ -63,24 +63,23 @@ impl UiState {
         self.panel.header_count.set_text(&format!("{total}"));
     }
 
-    pub(super) fn apply_panel_request(&mut self, request: PanelRequest) {
+    pub(in crate::ui) fn apply_panel_request(&mut self, request: PanelRequest) {
+        let requested_visibility = panel_visibility_for_action(self.panel_visible, request.action);
         // Request-driven changes always flow through set_visible for consistent side effects
         match request.action {
             PanelAction::Open => {
                 debug::set_level(PanelDebugLevel::Off);
-                self.set_visible(true);
             }
             PanelAction::Close => {
                 debug::set_level(PanelDebugLevel::Off);
-                self.set_visible(false);
             }
             PanelAction::Toggle => {
                 if !self.panel_visible {
                     debug::set_level(PanelDebugLevel::Off);
                 }
-                self.set_visible(!self.panel_visible);
             }
         }
+        self.set_visible(requested_visibility);
 
         if request.debug != PanelDebugLevel::Off {
             // Debug level overrides apply immediately when requested via control plane
@@ -100,7 +99,7 @@ impl UiState {
         });
         if visible {
             // Start a new probe window each time panel becomes visible
-            super::perf_probe::on_panel_open(self.panel_visible_flag.clone());
+            super::super::perf_probe::on_panel_open(self.panel_visible_flag.clone());
             // Activate watches so widgets only poll while the panel is open
             if let Some(volume) = self.volume.as_ref() {
                 volume.set_watch_active(true);
@@ -140,9 +139,10 @@ impl UiState {
             // Only hit the compositor once per open when the cache is empty
             // Keeps open latency stable while avoiding repeated IPC work
             if self.config.panel.respect_work_area && self.work_area.is_none() {
-                self.work_area =
-                    super::hyprland::reserved_work_area_sync(self.config.panel.output.as_deref());
-                super::panel::apply_panel_config(&self.panel, &self.config, self.work_area);
+                self.work_area = super::super::hyprland::reserved_work_area_sync(
+                    self.config.panel.output.as_deref(),
+                );
+                super::apply_panel_config(&self.panel, &self.config, self.work_area);
             }
             // Only show the window after geometry is correct to avoid visible jitter
             self.panel.window.set_visible(true);
@@ -158,7 +158,7 @@ impl UiState {
             self.log_debug(PanelDebugLevel::Verbose, move || message);
         } else {
             // Emit a final snapshot before timers and watches are torn down
-            super::perf_probe::on_panel_close();
+            super::super::perf_probe::on_panel_close();
             // Hide first so any teardown work does not trigger visible reflow
             self.panel.window.set_visible(false);
             // Reset transient search UI so each open starts from the full notification list
@@ -187,7 +187,7 @@ impl UiState {
         }
     }
 
-    pub(super) fn close_if_click_outside(&self) {
+    pub(in crate::ui) fn close_if_click_outside(&self) {
         if !self.panel_visible {
             return;
         }
@@ -205,7 +205,11 @@ impl UiState {
         try_send_command(&self.command_tx, UiCommand::ClosePanel);
     }
 
-    pub(super) fn log_debug(&self, level: PanelDebugLevel, message: impl FnOnce() -> String) {
+    pub(in crate::ui) fn log_debug(
+        &self,
+        level: PanelDebugLevel,
+        message: impl FnOnce() -> String,
+    ) {
         debug::log(level, message);
     }
 
@@ -252,3 +256,15 @@ impl UiState {
         true
     }
 }
+
+const fn panel_visibility_for_action(current: bool, action: PanelAction) -> bool {
+    match action {
+        PanelAction::Open => true,
+        PanelAction::Close => false,
+        PanelAction::Toggle => !current,
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/visibility.rs"]
+mod tests;

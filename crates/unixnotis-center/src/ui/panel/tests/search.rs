@@ -1,4 +1,4 @@
-use super::search::send_filter_event;
+use super::send_filter_event;
 use crate::control::UiEvent;
 
 #[test]

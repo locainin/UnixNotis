@@ -1,4 +1,4 @@
-use super::autoclose::should_connect_blur_close;
+use super::should_connect_blur_close;
 
 #[test]
 fn blur_close_is_used_when_outside_watcher_is_unavailable() {

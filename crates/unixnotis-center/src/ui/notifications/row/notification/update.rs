@@ -14,7 +14,7 @@ use unixnotis_core::{hooks, NotificationView, Urgency};
 
 use crate::control::UiCommand;
 use crate::ui::icons::IconResolver;
-use crate::ui::input_guard::ClickCooldown;
+use crate::ui::panel::input::ClickCooldown;
 use crate::ui::try_send_command;
 
 use super::super::super::item::RowData;

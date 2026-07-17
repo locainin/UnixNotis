@@ -7,7 +7,7 @@ use unixnotis_core::{
     WidgetDensity,
 };
 
-use super::actions::build_clear_button;
+use super::action_widgets::build_clear_button;
 
 pub const WIDGET_REVEAL_TRANSITION_MS: u64 = 180;
 

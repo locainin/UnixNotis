@@ -1,4 +1,4 @@
-use super::timing::{CONTROL_CLICK_GUARD_MS, WIDGETS_TOGGLE_COALESCE_MS};
+use super::{CONTROL_CLICK_GUARD_MS, WIDGETS_TOGGLE_COALESCE_MS};
 
 #[test]
 fn startup_timing_keeps_click_guard_above_event_coalescing() {

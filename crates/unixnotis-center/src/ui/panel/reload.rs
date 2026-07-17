@@ -5,9 +5,9 @@ use unixnotis_core::{PanelConfig, PanelSection};
 use super::types::PanelWidgets;
 
 pub fn apply_reloaded_panel_chrome(panel: &PanelWidgets, config: &PanelConfig) {
-    super::actions::apply_panel_action_config(
+    super::action_widgets::apply_panel_action_config(
         &panel.header_top,
-        &super::actions::PanelActionWidgets {
+        &super::action_widgets::PanelActionWidgets {
             group: panel.header_action_group.clone(),
             focus_toggle: panel.focus_toggle.clone(),
             dnd_toggle: panel.dnd_toggle.clone(),
@@ -17,7 +17,7 @@ pub fn apply_reloaded_panel_chrome(panel: &PanelWidgets, config: &PanelConfig) {
         },
         config,
     );
-    super::actions::apply_clear_button_config(&panel.clear_header_button, config);
+    super::action_widgets::apply_clear_button_config(&panel.clear_header_button, config);
 }
 
 pub fn apply_reloaded_body_order(panel: &PanelWidgets, order: &[PanelSection]) {

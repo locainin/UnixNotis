@@ -8,14 +8,10 @@ use std::sync::Arc;
 use unixnotis_core::{Config, PanelDebugLevel};
 
 use super::super::{hyprland, icons, panel, widgets, UiState, UiStateInit};
-use super::actions::{connect_clear_button, connect_close_button, connect_dnd_toggle};
-use super::autoclose::connect_auto_close;
 use super::builders::{
     build_media_widget, build_notification_list, build_widget_sections, has_visible_widget_section,
     icon_resolver_for_widgets,
 };
-use super::keyboard::connect_keyboard_shortcuts;
-use super::search::{connect_filter_entry, connect_search_toggle, connect_widget_collapse_toggle};
 use crate::debug;
 
 impl UiState {
@@ -39,15 +35,15 @@ impl UiState {
         let extra_widgets = build_widget_sections(&panel, &init, &widget_icon_resolver);
         list.set_empty_layout(has_visible_widget_section(&panel));
 
-        connect_dnd_toggle(&panel, dnd_guard.clone(), init.command_tx.clone());
-        connect_clear_button(&panel.clear_action_button, init.command_tx.clone());
-        connect_clear_button(&panel.clear_header_button, init.command_tx.clone());
-        connect_close_button(&panel, init.command_tx.clone());
-        connect_widget_collapse_toggle(&panel, init.event_tx.clone());
-        connect_filter_entry(&panel, init.event_tx.clone());
-        connect_search_toggle(&panel, search_toggle_guard.clone());
-        connect_auto_close(&panel, &init, panel_visible_flag.clone());
-        connect_keyboard_shortcuts(&panel, init.command_tx.clone());
+        panel::connect_dnd_toggle(&panel, dnd_guard.clone(), init.command_tx.clone());
+        panel::connect_clear_button(&panel.clear_action_button, init.command_tx.clone());
+        panel::connect_clear_button(&panel.clear_header_button, init.command_tx.clone());
+        panel::connect_close_button(&panel, init.command_tx.clone());
+        panel::connect_widget_collapse_toggle(&panel, init.event_tx.clone());
+        panel::connect_filter_entry(&panel, init.event_tx.clone());
+        panel::connect_search_toggle(&panel, search_toggle_guard.clone());
+        panel::connect_auto_close(&panel, &init, panel_visible_flag.clone());
+        panel::connect_keyboard_shortcuts(&panel, init.command_tx.clone());
 
         if init.config.panel.respect_work_area {
             // Work area is refreshed early to ensure the panel anchors correctly

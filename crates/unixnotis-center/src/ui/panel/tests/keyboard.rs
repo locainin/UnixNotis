@@ -1,6 +1,6 @@
 use gtk::gdk;
 
-use super::keyboard::{keyboard_action_for, KeyboardPanelAction};
+use super::{keyboard_action_for, KeyboardPanelAction};
 
 #[test]
 fn escape_closes_search_before_panel() {
