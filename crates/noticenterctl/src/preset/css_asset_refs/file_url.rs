@@ -6,14 +6,14 @@ use std::path::PathBuf;
 use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum FileUrlClassification {
+pub enum FileUrlClassification {
     Local(PathBuf),
     NonLocalAuthority,
     Malformed,
     NotFileUrl,
 }
 
-pub(crate) fn classify_file_url(value: &str) -> FileUrlClassification {
+pub fn classify_file_url(value: &str) -> FileUrlClassification {
     let Some(prefix) = value.get(..5) else {
         return FileUrlClassification::NotFileUrl;
     };
