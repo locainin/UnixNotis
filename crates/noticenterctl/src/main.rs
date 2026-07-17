@@ -30,7 +30,6 @@ mod system_tools;
 #[path = "tests/support.rs"]
 mod test_support;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    app::run().await
+fn main() -> anyhow::Result<()> {
+    app::run()
 }

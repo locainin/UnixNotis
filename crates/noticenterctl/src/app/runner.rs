@@ -9,11 +9,26 @@ use crate::cli::{Args, Command};
 
 use super::local::handle_local_command;
 
-pub async fn run() -> Result<()> {
+pub fn run() -> Result<()> {
     // Parse CLI arguments before any daemon work starts
     let args = Args::parse();
     let command = args.command;
 
+    if command.is_synchronous() {
+        // Preset and CSS work should not pay for an unused asynchronous runtime
+        handle_local_command(command, crate::css_check::run, crate::preset::run_preset)?;
+        return Ok(());
+    }
+
+    // A current-thread runtime avoids a worker pool for short control commands
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("build command runtime")?;
+    runtime.block_on(run_async(command))
+}
+
+async fn run_async(command: Command) -> Result<()> {
     if let Command::Doctor {
         json,
         verbose,
@@ -25,11 +40,8 @@ pub async fn run() -> Result<()> {
         return crate::doctor::run(json, verbose, service_manager, config).await;
     }
 
-    if command.is_local_only() {
-        // Local commands must work even when the daemon is not running
-        handle_local_command(command, crate::css_check::run, crate::preset::run_preset)?;
-        return Ok(());
-    }
+    // Every remaining command is backed by the running daemon
+    debug_assert!(!command.is_local_only());
 
     // Control commands need the session bus and the daemon proxy
     let connection = Connection::session()

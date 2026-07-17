@@ -87,4 +87,9 @@ impl Command {
             Self::CssCheck { .. } | Self::Doctor { .. } | Self::Preset { .. }
         )
     }
+
+    pub(crate) const fn is_synchronous(&self) -> bool {
+        // Doctor uses local inputs but still needs asynchronous D-Bus and process timeouts
+        matches!(self, Self::CssCheck { .. } | Self::Preset { .. })
+    }
 }

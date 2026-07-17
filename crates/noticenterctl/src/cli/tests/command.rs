@@ -29,3 +29,23 @@ fn preset_commands_are_local_only() {
         .expect("parse args");
     assert!(args.command.is_local_only());
 }
+
+#[test]
+fn synchronous_classification_builds_a_runtime_only_when_needed() {
+    assert!(Command::CssCheck { config: None }.is_synchronous());
+    assert!(Command::Preset {
+        command: PresetCommand::Inspect {
+            input: "bundle.unixnotis".to_string()
+        }
+    }
+    .is_synchronous());
+
+    assert!(!Command::Doctor {
+        json: false,
+        verbose: false,
+        service_manager: DoctorServiceManagerArg::Auto,
+        config: None,
+    }
+    .is_synchronous());
+    assert!(!Command::ClearActive.is_synchronous());
+}
