@@ -9,6 +9,7 @@ use unixnotis_core::util;
 
 use super::super::super::pathing::{prompt_yes_no, terminal_interaction_available};
 use super::checks::ImportedExecContent;
+use super::pager::page_exec_content_review;
 
 const MAX_REVIEW_COMMANDS: usize = 64;
 const MAX_REVIEW_FILES: usize = 32;
@@ -61,9 +62,12 @@ pub(in crate::preset) fn confirm_import_exec_content_with_terminal_state(
     if prompt_yes_no("Inspect executable content now?")? {
         let review =
             render_exec_content_review_with_style(exec_content, ReviewStyle::for_terminal());
-        let stderr = io::stderr();
-        let mut stderr = stderr.lock();
-        write_exec_content_review(&mut stderr, &review)?;
+        if !page_exec_content_review(&review)? {
+            // Minimal systems still receive the full review when no trusted pager is installed
+            let stderr = io::stderr();
+            let mut stderr = stderr.lock();
+            write_exec_content_review(&mut stderr, &review)?;
+        }
     }
 
     // A second prompt keeps pager exit from being treated as implicit approval
@@ -78,7 +82,7 @@ pub(in crate::preset) fn write_exec_content_review(
     writer: &mut impl Write,
     review: &str,
 ) -> Result<()> {
-    // Security review text is written directly; no pager or shell can run while trust is undecided
+    // This path is also the safe fallback when the trusted pager is unavailable
     writer
         .write_all(review.as_bytes())
         .context("write executable content review")?;
