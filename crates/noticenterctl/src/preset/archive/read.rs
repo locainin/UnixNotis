@@ -42,16 +42,22 @@ pub fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
         }
 
         let mut entry = entry.context("read preset bundle entry")?;
-        if entry.header().entry_type().is_dir() {
-            // Tar archives can carry directory records, but preset logic only cares about files
-            continue;
-        }
-
         let archive_path = entry.path().context("read bundle entry path")?.into_owned();
         let declared_size = entry
             .header()
             .size()
             .with_context(|| format!("read bundle entry size {}", archive_path.display()))?;
+        if entry.header().entry_type().is_dir() {
+            if declared_size != 0 {
+                // Skipping a sized directory would still decompress its body while seeking ahead
+                return Err(anyhow!(
+                    "preset bundle directory entry has a nonzero size: {}",
+                    archive_path.display()
+                ));
+            }
+            // Ordinary zero-sized directory records do not contribute preset payloads
+            continue;
+        }
 
         if archive_path == Path::new(MANIFEST_ARCHIVE_PATH) {
             if manifest_contents.is_some() {

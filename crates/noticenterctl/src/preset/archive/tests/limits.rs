@@ -7,6 +7,7 @@ use super::support::{
     TempDirGuard,
 };
 use crate::preset::manifest::{PresetManifest, PresetManifestFile};
+use std::io::Write as _;
 use std::path::Path;
 
 #[test]
@@ -58,6 +59,32 @@ fn read_bundle_rejects_oversized_manifest_header_before_reading_body() {
         read_bundle(&bundle_path).expect_err("oversized manifest must fail before body read");
 
     assert!(error.to_string().contains("manifest entry is too large"));
+}
+
+#[test]
+fn read_bundle_rejects_sized_directory_before_decompressing_its_body() {
+    let root = TempDirGuard::new("sized-directory-header");
+    let bundle_path = root.path.join("demo.unixnotis");
+
+    write_raw_gzip_tar(&bundle_path, |encoder| {
+        let mut header = tar::Header::new_gnu();
+        header
+            .set_path("payload/assets")
+            .expect("set directory path");
+        header.set_entry_type(tar::EntryType::Directory);
+        header.set_mode(0o755);
+        header.set_size(MAX_PRESET_TOTAL_PAYLOAD_BYTES + 1);
+        header.set_cksum();
+        encoder
+            .write_all(header.as_bytes())
+            .expect("write sized directory header");
+    });
+
+    let error = read_bundle(&bundle_path).expect_err("sized directory must fail before body read");
+
+    assert!(error
+        .to_string()
+        .contains("directory entry has a nonzero size"));
 }
 
 #[test]
