@@ -27,12 +27,12 @@ pub(in crate::preset) fn confirm_import_external_css_refs_with_terminal_state(
 
     // The caller needs the concrete file and ref before deciding whether portability matters here
     let details = format_external_css_ref_lines(external_refs);
-    eprintln!(
-        "preset import warning: found {} CSS asset reference(s) that leave the UnixNotis config directory or use remote URLs",
+    crate::output::write_stderr(&format!(
+        "preset import warning: found {} CSS asset reference(s) that leave the UnixNotis config directory or use remote URLs\n",
         external_refs.len()
-    );
+    ))?;
     for line in &details {
-        eprintln!("{line}");
+        crate::output::write_stderr(&format!("{line}\n"))?;
     }
 
     confirm_continue_or_abort_with_terminal_state(

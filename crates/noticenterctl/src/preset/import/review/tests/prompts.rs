@@ -111,7 +111,7 @@ fn print_summary_returns_the_lines_it_prints() {
     };
 
     assert_eq!(
-        print_summary(&summary),
+        print_summary(&summary).expect("print summary"),
         vec![
             "preset import ok: 3 file(s), 2 created, 1 overwritten, 4 excluded",
             "preset import backup: Backup-printed",

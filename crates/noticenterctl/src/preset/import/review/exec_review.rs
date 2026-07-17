@@ -48,15 +48,15 @@ pub(in crate::preset) fn confirm_import_exec_content_with_terminal_state(
         ));
     }
 
-    eprintln!("preset import warning: this preset contains executable commands or bundled scripts");
-    eprintln!("preset import warning: be sure the source is trusted");
-    eprintln!(
-        "preset import warning: found {} command entr{} and {} bundled file{} with executable content",
+    crate::output::write_stderr(&format!(
+        "preset import warning: this preset contains executable commands or bundled scripts\n\
+         preset import warning: be sure the source is trusted\n\
+         preset import warning: found {} command entr{} and {} bundled file{} with executable content\n",
         exec_content.commands.len(),
         if exec_content.commands.len() == 1 { "y" } else { "ies" },
         exec_content.files.len(),
         if exec_content.files.len() == 1 { "" } else { "s" }
-    );
+    ))?;
 
     // Review happens before the final trust prompt so the decision is made with context
     if prompt_yes_no("Inspect executable content now?")? {

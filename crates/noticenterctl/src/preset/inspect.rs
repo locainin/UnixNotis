@@ -24,8 +24,7 @@ pub(super) fn run_inspect(input_path: &Path) -> Result<()> {
     let input_path = resolve_cli_bundle_path(input_path)?;
     // CLI path just prints the already-formatted report
     let report = inspect_preset_at(&input_path)?;
-    print!("{report}");
-    Ok(())
+    crate::output::write_stdout(&report)
 }
 
 pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {

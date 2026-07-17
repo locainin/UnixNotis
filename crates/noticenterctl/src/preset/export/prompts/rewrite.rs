@@ -31,19 +31,19 @@ where
 
     // Show exact command slots so the choice is explicit
     let details = format_host_specific_command_path_lines(&leaked_paths);
-    eprintln!(
-        "preset export warning: found {} host-specific command path(s) under the UnixNotis config directory",
+    crate::output::write_stderr(&format!(
+        "preset export warning: found {} host-specific command path(s) under the UnixNotis config directory\n",
         leaked_paths.len()
-    );
+    ))?;
     for line in &details {
-        eprintln!("{line}");
+        crate::output::write_stderr(&format!("{line}\n"))?;
     }
 
     // Decline keeps current values and still exports
     if !prompt_fix_host_specific_command_paths(&leaked_paths)? {
-        eprintln!(
-            "preset export warning: leaving host-specific command paths unchanged in the bundle"
-        );
+        crate::output::write_stderr(
+            "preset export warning: leaving host-specific command paths unchanged in the bundle\n",
+        )?;
         return Ok(Vec::new());
     }
 
@@ -69,12 +69,12 @@ where
 
     // Show exact url(...) values before keeping or dropping rewrites
     let details = format_host_specific_css_asset_ref_lines(&leaked_refs);
-    eprintln!(
-        "preset export warning: found {} host-specific CSS asset reference(s) under the UnixNotis config directory",
+    crate::output::write_stderr(&format!(
+        "preset export warning: found {} host-specific CSS asset reference(s) under the UnixNotis config directory\n",
         leaked_refs.len()
-    );
+    ))?;
     for line in &details {
-        eprintln!("{line}");
+        crate::output::write_stderr(&format!("{line}\n"))?;
     }
 
     match prompt_fix_host_specific_css_asset_refs(&leaked_refs) {
@@ -85,9 +85,9 @@ where
         Ok(false) => {
             // Declining rewrite restores the exact staged file state from before the rewrite pass
             restore_file_overrides(&mut collected.files, &snapshots);
-            eprintln!(
-                "preset export warning: leaving host-specific CSS asset references unchanged in the bundle"
-            );
+            crate::output::write_stderr(
+                "preset export warning: leaving host-specific CSS asset references unchanged in the bundle\n",
+            )?;
             Ok(Vec::new())
         }
         Err(err) => {
@@ -117,12 +117,12 @@ where
 
     // Print one line per leak so prompt output is easy to scan
     let details = format_host_specific_script_path_lines(&leaked_refs);
-    eprintln!(
-        "preset export warning: found {} host-specific script path reference(s) under the UnixNotis config directory",
+    crate::output::write_stderr(&format!(
+        "preset export warning: found {} host-specific script path reference(s) under the UnixNotis config directory\n",
         leaked_refs.len()
-    );
+    ))?;
     for line in &details {
-        eprintln!("{line}");
+        crate::output::write_stderr(&format!("{line}\n"))?;
     }
 
     match prompt_fix_host_specific_script_paths(&leaked_refs) {
@@ -133,9 +133,9 @@ where
         Ok(false) => {
             // Declining rewrite keeps the original script bytes and size in the staged archive
             restore_file_overrides(&mut collected.files, &snapshots);
-            eprintln!(
-                "preset export warning: leaving host-specific script path references unchanged in the bundle"
-            );
+            crate::output::write_stderr(
+                "preset export warning: leaving host-specific script path references unchanged in the bundle\n",
+            )?;
             Ok(Vec::new())
         }
         Err(err) => {

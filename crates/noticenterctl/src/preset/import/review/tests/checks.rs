@@ -46,7 +46,7 @@ fn imported_command_checks_reject_absolute_plugin_command() {
 
     assert!(error
         .to_string()
-        .contains("points outside the UnixNotis config directory"));
+        .contains("resolves outside the UnixNotis config directory"));
 }
 
 #[test]

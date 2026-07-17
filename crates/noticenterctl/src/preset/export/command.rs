@@ -19,18 +19,18 @@ pub(in crate::preset) fn run_export(
     let output_path = resolve_cli_bundle_path(output_path)?;
     let summary = export_preset_from(&config_dir, &output_path, except, force)?;
 
-    println!("{}", export_success_line(&summary));
+    crate::output::write_stdout(&format!("{}\n", export_success_line(&summary)))?;
     if !summary.skipped_symlinks.is_empty() {
-        eprintln!(
-            "preset export warning: skipped {} symlink path(s)",
+        crate::output::write_stderr(&format!(
+            "preset export warning: skipped {} symlink path(s)\n",
             summary.skipped_symlinks.len()
-        );
+        ))?;
     }
     if !summary.skipped_non_regular.is_empty() {
-        eprintln!(
-            "preset export warning: skipped {} non-regular path(s)",
+        crate::output::write_stderr(&format!(
+            "preset export warning: skipped {} non-regular path(s)\n",
             summary.skipped_non_regular.len()
-        );
+        ))?;
     }
     Ok(())
 }

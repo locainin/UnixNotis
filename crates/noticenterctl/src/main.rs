@@ -36,7 +36,7 @@ fn main() -> ExitCode {
     match app::run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprint!("{}", output::format_cli_error(&error));
+            let _ = output::write_stderr(&output::format_cli_error(&error));
             ExitCode::FAILURE
         }
     }

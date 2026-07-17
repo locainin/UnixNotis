@@ -23,7 +23,10 @@ pub fn run(requested_path: Option<std::path::PathBuf>) -> Result<()> {
     let parse_error_count = report.error_count();
 
     // Keep the complete report visible even when its final status is an error
-    println!("{}", render_css_check_report_for_stdout(&report));
+    crate::output::write_stdout(&format!(
+        "{}\n",
+        render_css_check_report_for_stdout(&report)
+    ))?;
 
     if parse_error_count > 0 {
         return Err(anyhow!("css-check found {parse_error_count} error(s)"));

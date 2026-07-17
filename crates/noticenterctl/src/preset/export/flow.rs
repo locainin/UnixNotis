@@ -197,10 +197,10 @@ pub(in crate::preset) fn export_preset_from_with_confirm(
     )?;
     if !leaked_script_paths.is_empty() {
         // Report bundled script rewrites for audit visibility
-        eprintln!(
-            "preset export note: rewrote {} host-specific script path reference(s) in bundled script files",
+        crate::output::write_stderr(&format!(
+            "preset export note: rewrote {} host-specific script path reference(s) in bundled script files\n",
             leaked_script_paths.len()
-        );
+        ))?;
     }
 
     if !leaked_command_paths.is_empty() {
@@ -209,10 +209,10 @@ pub(in crate::preset) fn export_preset_from_with_confirm(
             .context("encode fixed config.toml for preset export")?
             .into_bytes();
         override_collected_file_contents(&mut collected, Path::new("config.toml"), config_bytes)?;
-        eprintln!(
-            "preset export note: rewrote {} host-specific command path(s) in the bundled config.toml",
+        crate::output::write_stderr(&format!(
+            "preset export note: rewrote {} host-specific command path(s) in the bundled config.toml\n",
             leaked_command_paths.len()
-        );
+        ))?;
     }
 
     let leaked_css_asset_refs = rewrite_host_specific_css_asset_refs_if_requested(
@@ -221,10 +221,10 @@ pub(in crate::preset) fn export_preset_from_with_confirm(
         confirmers.prompt_fix_host_specific_css_asset_refs,
     )?;
     if !leaked_css_asset_refs.is_empty() {
-        eprintln!(
-            "preset export note: rewrote {} host-specific CSS asset reference(s) in the bundled stylesheet(s)",
+        crate::output::write_stderr(&format!(
+            "preset export note: rewrote {} host-specific CSS asset reference(s) in the bundled stylesheet(s)\n",
             leaked_css_asset_refs.len()
-        );
+        ))?;
     }
 
     // Warn before writing the bundle when shared CSS depends on outside assets

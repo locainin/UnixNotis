@@ -20,12 +20,12 @@ pub(in crate::preset::export) fn confirm_export_external_css_refs(
 
     // Print every dependency before asking whether a non-portable export should continue
     let details = format_external_css_ref_lines(external_refs);
-    eprintln!(
-        "preset export warning: found {} CSS asset reference(s) that leave the UnixNotis config directory or use remote URLs",
+    crate::output::write_stderr(&format!(
+        "preset export warning: found {} CSS asset reference(s) that leave the UnixNotis config directory or use remote URLs\n",
         external_refs.len()
-    );
+    ))?;
     for line in &details {
-        eprintln!("{line}");
+        crate::output::write_stderr(&format!("{line}\n"))?;
     }
 
     confirm_continue_or_abort(

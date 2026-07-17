@@ -33,7 +33,9 @@ pub(in crate::preset) fn commit_import_plan(
     }
 
     // Imported presets should be checked right away so broken shared CSS is obvious
-    println!("preset import check: running css-check on imported theme files");
+    crate::output::write_stdout(
+        "preset import check: running css-check on imported theme files\n",
+    )?;
     let css_check_result = run_css_check();
     let backup_dir = finalize_import_transaction(transaction)?;
     Ok((backup_dir, css_check_result))

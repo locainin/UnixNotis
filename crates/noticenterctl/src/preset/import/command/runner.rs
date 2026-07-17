@@ -35,7 +35,7 @@ pub(in crate::preset) fn run_import(
 
     if dry_run {
         let summary = build_summary(&prepared.plan, None, true);
-        print_summary(&summary);
+        print_summary(&summary)?;
         return Ok(());
     }
 
@@ -43,7 +43,7 @@ pub(in crate::preset) fn run_import(
         post_import_css_check(&config_dir)
     })?;
     let summary = build_summary(&prepared.plan, backup_dir, false);
-    print_summary(&summary);
+    print_summary(&summary)?;
 
     if let Err(err) = css_check_result {
         // The import committed, but the shared theme still has CSS problems the user should see

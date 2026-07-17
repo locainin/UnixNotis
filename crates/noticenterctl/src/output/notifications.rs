@@ -2,14 +2,18 @@
 
 use unixnotis_core::{util, NotificationView};
 
-pub fn print_notifications(label: &str, notifications: &[NotificationView], full: bool) {
+pub fn print_notifications(
+    label: &str,
+    notifications: &[NotificationView],
+    full: bool,
+) -> anyhow::Result<()> {
     // One formatter keeps terminal output and tests on the same sanitization path
-    print!("{}", format_notifications(label, notifications, full));
+    super::write_stdout(&format_notifications(label, notifications, full))
 }
 
-pub fn print_inhibitors(inhibitors: &[(u64, String, u32, String)]) {
+pub fn print_inhibitors(inhibitors: &[(u64, String, u32, String)]) -> anyhow::Result<()> {
     // Inhibitor rows share the same bounded rendering policy
-    print!("{}", format_inhibitors(inhibitors));
+    super::write_stdout(&format_inhibitors(inhibitors))
 }
 
 fn format_notifications(label: &str, notifications: &[NotificationView], full: bool) -> String {

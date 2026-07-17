@@ -5,7 +5,7 @@
 //! can work with validated config-root-relative paths
 
 use anyhow::{anyhow, Context, Result};
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal};
 use std::path::{Component, Path, PathBuf};
 
 pub(super) const PRESET_EXTENSION: &str = "unixnotis";
@@ -238,8 +238,7 @@ fn prompt_to_append_extension(original: &Path, suggested: &Path) -> Result<bool>
 
 pub(super) fn prompt_yes_no(prompt: &str) -> Result<bool> {
     // Shared yes/no prompt keeps import and export warnings consistent
-    print!("{prompt} [y/N] ");
-    io::stdout().flush().context("flush preset prompt")?;
+    crate::output::write_stdout(&format!("{prompt} [y/N] "))?;
 
     let mut reply = String::new();
     io::stdin()

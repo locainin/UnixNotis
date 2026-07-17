@@ -35,12 +35,10 @@ pub(in crate::preset) const fn build_summary(
     }
 }
 
-pub(in crate::preset) fn print_summary(summary: &ImportSummary) -> Vec<String> {
+pub(in crate::preset) fn print_summary(summary: &ImportSummary) -> anyhow::Result<Vec<String>> {
     let lines = summary_lines(summary);
-    for line in &lines {
-        println!("{line}");
-    }
-    lines
+    crate::output::write_stdout(&format!("{}\n", lines.join("\n")))?;
+    Ok(lines)
 }
 
 pub(in crate::preset) fn summary_lines(summary: &ImportSummary) -> Vec<String> {
