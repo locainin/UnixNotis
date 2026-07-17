@@ -146,3 +146,63 @@ fn validation_accepts_dangerous_env_paths_inside_root() {
     validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
         .expect("config-root-relative env paths should be allowed");
 }
+
+#[test]
+fn validation_does_not_mistake_env_option_values_for_the_child_program() {
+    let config_dir = temp_root("env-option-program");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"env -u HOME /tmp/outside-probe\"\n";
+
+    let error =
+        validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+            .expect_err("reject external child after env option value");
+
+    assert!(error
+        .to_string()
+        .contains("points outside the UnixNotis config directory"));
+}
+
+#[test]
+fn validation_checks_env_assignments_that_follow_options() {
+    let config_dir = temp_root("env-option-assignment");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"env -i LD_PRELOAD=/tmp/evil.so scripts/probe\"\n";
+
+    let error =
+        validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+            .expect_err("reject external environment path after env option");
+
+    assert!(error
+        .to_string()
+        .contains("points outside the UnixNotis config directory"));
+}
+
+#[test]
+fn validation_rejects_nonportable_env_reinterpretation_options() {
+    let config_dir = temp_root("env-nonportable-options");
+    for command in [
+        "env -C scripts ./probe",
+        "env --chdir=scripts ./probe",
+        "env -S 'MODE=safe /tmp/outside-probe'",
+        "env --split-string='MODE=safe /tmp/outside-probe'",
+    ] {
+        let config = format!(
+            "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {command:?}\n"
+        );
+        let error = validate_command_paths_in_config_bytes(
+            &config_dir,
+            config.as_bytes(),
+            "preset import blocked",
+        )
+        .expect_err("reject nonportable env option");
+
+        assert!(error.to_string().contains("unsafe env wrapper"));
+    }
+}
+
+#[test]
+fn validation_accepts_supported_env_options_before_a_portable_program() {
+    let config_dir = temp_root("env-supported-options");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"env -iv -u HOME MODE=safe scripts/probe\"\n";
+
+    validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+        .expect("supported env options should preserve child discovery");
+}

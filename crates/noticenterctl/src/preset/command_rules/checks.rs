@@ -7,7 +7,7 @@ use super::super::pathing::normalize_lexical_path;
 use super::collect::collect_command_references_from_config;
 use super::tokens::{
     collect_outside_env_path_tokens, first_command_token, is_host_specific_path_token,
-    resolve_command_path_token,
+    resolve_command_path_token, validate_env_command_layout,
 };
 use super::{HostSpecificCommandPath, OutsideCommandPath};
 
@@ -82,9 +82,15 @@ pub fn validate_config_command_paths_stay_in_root(
     mode_label: &str,
 ) -> Result<()> {
     for reference in collect_command_references_from_config(config) {
-        parse_command(&reference.command).with_context(|| {
+        let parsed = parse_command(&reference.command).with_context(|| {
             format!(
                 "{mode_label} because {} contains an invalid command",
+                reference.slot
+            )
+        })?;
+        validate_env_command_layout(&parsed).map_err(|reason| {
+            anyhow!(
+                "{mode_label} because {} contains an unsafe env wrapper: {reason}",
                 reference.slot
             )
         })?;
