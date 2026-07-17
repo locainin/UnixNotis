@@ -39,8 +39,9 @@ pub(in crate::preset) fn run_import(
         return Ok(());
     }
 
-    let (backup_dir, css_check_result) =
-        commit_import_plan(&config_dir, &prepared.plan, || run_css_check(None))?;
+    let (backup_dir, css_check_result) = commit_import_plan(&config_dir, &prepared.plan, || {
+        post_import_css_check(&config_dir)
+    })?;
     let summary = build_summary(&prepared.plan, backup_dir, false);
     print_summary(&summary);
 
@@ -52,4 +53,19 @@ pub(in crate::preset) fn run_import(
     }
 
     Ok(())
+}
+
+pub(in crate::preset) fn post_import_css_check(config_dir: &Path) -> Result<()> {
+    post_import_css_check_with(config_dir, run_css_check)
+}
+
+pub(in crate::preset) fn post_import_css_check_with<F>(
+    config_dir: &Path,
+    run_check: F,
+) -> Result<()>
+where
+    F: FnOnce(Option<std::path::PathBuf>) -> Result<()>,
+{
+    // Import always writes this exact file, so environment overrides must not redirect validation
+    run_check(Some(config_dir.join("config.toml")))
 }
