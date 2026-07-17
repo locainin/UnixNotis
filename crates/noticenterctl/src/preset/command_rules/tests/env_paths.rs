@@ -134,6 +134,66 @@ fn validation_keeps_single_path_environment_values_unsplit() {
 }
 
 #[test]
+fn validation_rejects_pythonhome_exec_prefix_outside_root() {
+    let config_dir = temp_root("pythonhome-outside");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"PYTHONHOME='runtime:/tmp/outside' python3 -c pass\"\n";
+
+    let error =
+        validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+            .expect_err("reject external Python exec prefix");
+
+    assert!(error
+        .to_string()
+        .contains("resolves outside the UnixNotis config directory"));
+}
+
+#[test]
+fn validation_accepts_pythonhome_single_and_relative_prefix_pair() {
+    let config_dir = temp_root("pythonhome-relative");
+    for command in [
+        "PYTHONHOME=runtime python3 -c pass",
+        "PYTHONHOME='runtime:exec-runtime' python3 -c pass",
+    ] {
+        let config = format!(
+            "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {command:?}\n"
+        );
+
+        validate_command_paths_in_config_bytes(
+            &config_dir,
+            config.as_bytes(),
+            "preset import blocked",
+        )
+        .unwrap_or_else(|error| panic!("valid PYTHONHOME was rejected for {command}: {error}"));
+    }
+}
+
+#[test]
+fn validation_rejects_pythonhome_empty_or_ambiguous_prefixes() {
+    for (command, reason) in [
+        (
+            "PYTHONHOME=':exec-runtime' python3 -c pass",
+            "PYTHONHOME contains an empty prefix",
+        ),
+        (
+            "PYTHONHOME='runtime:' python3 -c pass",
+            "PYTHONHOME contains an empty prefix",
+        ),
+        (
+            "PYTHONHOME='a:b:c' python3 -c pass",
+            "PYTHONHOME contains more than one prefix separator",
+        ),
+    ] {
+        let parsed = parse_command(command).expect("parse PYTHONHOME command");
+
+        assert_eq!(
+            validate_env_path_semantics(&parsed),
+            Err(reason),
+            "wrong PYTHONHOME result for {command}"
+        );
+    }
+}
+
+#[test]
 fn validation_rejects_dynamic_loader_tokens_and_ambiguous_bare_objects() {
     for command in [
         "LD_PRELOAD='$ORIGIN/libevil.so' /bin/true",

@@ -329,8 +329,10 @@ fn env_path_components<'a>(
         // These are colon-separated lists on Unix and empty fields resolve from the child cwd
         "PATH" | "LD_AUDIT" | "PYTHONPATH" | "PERL5LIB" | "RUBYLIB" | "NODE_PATH"
         | "GCONV_PATH" => value.split(':').collect::<Vec<_>>(),
+        // Python accepts separate installation and platform-specific roots
+        "PYTHONHOME" => python_home_components(value)?,
         // These consumers interpret the complete value as one path
-        "HOME" | "LD_CONFIG_FILE" | "PYTHONHOME" | "BASH_ENV" | "ENV" | "ZDOTDIR" => {
+        "HOME" | "LD_CONFIG_FILE" | "BASH_ENV" | "ENV" | "ZDOTDIR" => {
             vec![value]
         }
         _ => return Ok(None),
@@ -346,6 +348,25 @@ fn env_path_components<'a>(
     }
 
     Ok(Some(components))
+}
+
+fn python_home_components(value: &str) -> Result<Vec<&str>, &'static str> {
+    let mut parts = value.splitn(3, ':');
+    let prefix = parts.next().unwrap_or_default();
+    let exec_prefix = parts.next();
+
+    // More than two roots cannot match Python's documented environment format
+    if parts.next().is_some() {
+        return Err("PYTHONHOME contains more than one prefix separator");
+    }
+
+    match exec_prefix {
+        Some(exec_prefix) if !prefix.is_empty() && !exec_prefix.is_empty() => {
+            Ok(vec![prefix, exec_prefix])
+        }
+        Some(_) => Err("PYTHONHOME contains an empty prefix"),
+        None => Ok(vec![prefix]),
+    }
 }
 
 fn is_dynamic_loader_variable(name: &str) -> bool {
