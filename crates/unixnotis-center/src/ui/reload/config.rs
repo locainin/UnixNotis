@@ -14,11 +14,11 @@ use unixnotis_core::{
 };
 use unixnotis_ui::css::CssReloadReport;
 
-use super::list;
-use super::panel::notification_header_row_visible;
-use super::reload_notice::{ReloadNotice, ReloadNoticeFingerprint, ReloadNoticeKind};
-use super::widget_builders::{build_extra_widgets, build_quick_controls, clear_container};
-use super::{panel, UiState};
+use super::super::list;
+use super::super::panel::notification_header_row_visible;
+use super::super::widget_builders::{build_extra_widgets, build_quick_controls, clear_container};
+use super::super::{panel, UiState};
+use super::notices::{ReloadNotice, ReloadNoticeFingerprint, ReloadNoticeKind};
 
 struct ReloadInputs {
     config: Config,
@@ -27,14 +27,14 @@ struct ReloadInputs {
 }
 
 #[derive(Debug)]
-pub(super) enum ReloadFailure {
+pub(in crate::ui) enum ReloadFailure {
     Config(ConfigError),
     ThemeBase(String),
     ThemePaths(String),
 }
 
 #[derive(Debug)]
-pub(super) enum ConfigReloadOutcome {
+pub(in crate::ui) enum ConfigReloadOutcome {
     Applied {
         diagnostics: Vec<ConfigDiagnostic>,
         css: CssReloadReport,
@@ -45,7 +45,7 @@ pub(super) enum ConfigReloadOutcome {
 }
 
 impl UiState {
-    pub(super) fn reload_config(&mut self) -> ConfigReloadOutcome {
+    pub(in crate::ui) fn reload_config(&mut self) -> ConfigReloadOutcome {
         self.capture_notice_dismissal();
         let reload = match self.load_reload_inputs() {
             Ok(reload) => reload,
@@ -109,7 +109,7 @@ impl UiState {
         report
     }
 
-    pub(super) fn reload_css(&mut self) -> CssReloadReport {
+    pub(in crate::ui) fn reload_css(&mut self) -> CssReloadReport {
         self.capture_notice_dismissal();
         let report = self.css.reload(unixnotis_ui::css::DEFAULT_CSS);
         self.apply_css_reload_notice(&report);
@@ -336,7 +336,7 @@ impl UiState {
             // Clearing the cache prevents stale compositor margins from surviving reload
             self.work_area = None;
             // Work area is refreshed after reload so compositor margins can update one more time
-            super::hyprland::refresh_reserved_work_area(
+            super::super::hyprland::refresh_reserved_work_area(
                 config.panel.output.clone(),
                 self.event_tx.clone(),
             );
@@ -378,7 +378,7 @@ impl ReloadFailure {
     }
 }
 
-pub(super) fn log_reload_rejection(failure: &ReloadFailure) {
+pub(in crate::ui) fn log_reload_rejection(failure: &ReloadFailure) {
     // Raw parser errors can contain complete config lines, commands, labels, and paths
     tracing::debug!(
         kind = failure.kind(),

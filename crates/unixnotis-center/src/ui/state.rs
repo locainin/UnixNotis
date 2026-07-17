@@ -12,7 +12,7 @@ use unixnotis_ui::css::CssManager;
 
 use crate::control::{UiCommand, UiEvent};
 
-use super::{icons, list, media_widget, panel, reload_notice, widgets};
+use super::{icons, list, media_widget, panel, reload, widgets};
 
 /// GTK state for the notification center panel
 pub struct UiState {
@@ -51,7 +51,7 @@ pub struct UiState {
     pub(super) refresh_source: Option<gtk::glib::SourceId>,
     pub(super) last_slow_refresh: Option<Instant>,
     // Separate config and CSS state preserves severity priority across watcher races
-    pub(super) reload_notices: reload_notice::ReloadNoticeState,
+    pub(super) reload_notices: reload::ReloadNoticeState,
     // Keeps the shared async runtime alive for D-Bus and media tasks
     pub(super) _runtime: Arc<tokio::runtime::Runtime>,
 }

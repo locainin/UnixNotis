@@ -1,11 +1,11 @@
 //! Center UI state, widget wiring, and event-handling modules
 
 mod command;
-mod config;
 mod config_media;
 mod events;
 mod hyprland;
 mod icons;
+mod reload;
 // Startup wiring remains a child module so constructors can access private UI parts
 mod init;
 mod input_guard;
@@ -15,8 +15,7 @@ mod media_art;
 mod media_widget;
 mod panel;
 mod perf_probe;
-mod refresh;
-mod reload_notice;
+
 mod state;
 mod visibility;
 mod widget_builders;

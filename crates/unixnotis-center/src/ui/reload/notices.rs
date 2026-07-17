@@ -20,7 +20,7 @@ pub(super) struct ReloadNotice {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(super) struct ReloadNoticeState {
+pub(in crate::ui) struct ReloadNoticeState {
     config: Option<ReloadNotice>,
     css: Option<ReloadNotice>,
     dismissed_config: Option<ReloadNoticeFingerprint>,
@@ -97,5 +97,5 @@ impl ReloadNoticeState {
 }
 
 #[cfg(test)]
-#[path = "tests/reload_notice.rs"]
+#[path = "tests/notices.rs"]
 mod tests;

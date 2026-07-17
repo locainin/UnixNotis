@@ -11,12 +11,12 @@ use unixnotis_core::PanelDebugLevel;
 use crate::control::UiEvent;
 use crate::debug;
 
-use super::UiState;
+use super::super::UiState;
 
 impl UiState {
-    pub(super) fn refresh_widgets(&mut self, force: bool) {
+    pub(in crate::ui) fn refresh_widgets(&mut self, force: bool) {
         // Global refresh entry counter helps compare open vs settled churn
-        super::perf_probe::refresh_widgets_called();
+        super::super::perf_probe::refresh_widgets_called();
         let now = Instant::now();
         let fast_ms = self.config.widgets.refresh_interval_ms;
         let slow_ms = self.config.widgets.refresh_interval_slow_ms;
@@ -39,16 +39,16 @@ impl UiState {
             .is_some_and(is_due_delay);
         let fast_due = force || (fast_ms > 0 && (volume_due || brightness_due));
         if fast_due {
-            super::perf_probe::refresh_fast_lane_due();
+            super::super::perf_probe::refresh_fast_lane_due();
             if let Some(volume) = self.volume.as_ref() {
                 if force || volume_due {
-                    super::perf_probe::refresh_volume_called();
+                    super::super::perf_probe::refresh_volume_called();
                     volume.refresh(fast_base, force);
                 }
             }
             if let Some(brightness) = self.brightness.as_ref() {
                 if force || brightness_due {
-                    super::perf_probe::refresh_brightness_called();
+                    super::super::perf_probe::refresh_brightness_called();
                     brightness.refresh(fast_base, force);
                 }
             }
@@ -58,10 +58,10 @@ impl UiState {
         let toggles_due =
             force || interval_due(now, self.last_slow_refresh, slow_ms).is_some_and(is_due_delay);
         if toggles_due {
-            super::perf_probe::refresh_slow_lane_due();
+            super::super::perf_probe::refresh_slow_lane_due();
             if let Some(toggles) = self.toggles.as_ref() {
                 if force || toggles.needs_polling() {
-                    super::perf_probe::refresh_toggles_called();
+                    super::super::perf_probe::refresh_toggles_called();
                     toggles.refresh();
                 }
             }
@@ -72,19 +72,19 @@ impl UiState {
         let slow_base = Duration::from_millis(slow_ms.max(1));
         if let Some(stats) = self.stats.as_ref() {
             if force || stats.is_due(now) {
-                super::perf_probe::refresh_stats_called();
+                super::super::perf_probe::refresh_stats_called();
                 stats.refresh(slow_base, force);
             }
         }
         if let Some(cards) = self.cards.as_ref() {
             if force || cards.is_due(now) {
-                super::perf_probe::refresh_cards_called();
+                super::super::perf_probe::refresh_cards_called();
                 cards.refresh(slow_base, force);
             }
         }
     }
 
-    pub(super) fn start_refresh_timer(&mut self) {
+    pub(in crate::ui) fn start_refresh_timer(&mut self) {
         if self.refresh_source.is_some() {
             return;
         }
@@ -104,7 +104,7 @@ impl UiState {
             let _ = event_tx.try_send(UiEvent::RefreshWidgets);
         });
         self.refresh_source = Some(id);
-        super::perf_probe::refresh_timer_armed();
+        super::super::perf_probe::refresh_timer_armed();
         self.log_debug(PanelDebugLevel::Info, move || {
             format!("refresh timer armed for {} ms", delay.as_millis())
         });
@@ -125,7 +125,7 @@ impl UiState {
         let toggles_poll = self
             .toggles
             .as_ref()
-            .is_some_and(super::widgets::toggles::ToggleGrid::needs_polling);
+            .is_some_and(super::super::widgets::toggles::ToggleGrid::needs_polling);
         if toggles_poll {
             // Slow lane uses the configured slower interval by default
             update_next_delay(
@@ -148,7 +148,7 @@ impl UiState {
         next
     }
 
-    pub(super) fn stop_refresh_timer(&mut self) {
+    pub(in crate::ui) fn stop_refresh_timer(&mut self) {
         if let Some(id) = self.refresh_source.take() {
             id.remove();
         }
@@ -158,7 +158,7 @@ impl UiState {
         });
     }
 
-    pub(super) fn restart_refresh_timer(&mut self) {
+    pub(in crate::ui) fn restart_refresh_timer(&mut self) {
         if self.panel_visible {
             self.stop_refresh_timer();
             self.start_refresh_timer();

@@ -180,15 +180,15 @@ impl UiState {
             UiEvent::ConfigReload => {
                 debug!("config reload requested");
                 match self.reload_config() {
-                    super::config::ConfigReloadOutcome::Applied { diagnostics, css } => {
+                    super::reload::ConfigReloadOutcome::Applied { diagnostics, css } => {
                         debug!(
                             diagnostics = diagnostics.len(),
                             css_layers = css.layers.len(),
                             "config reload applied"
                         );
                     }
-                    super::config::ConfigReloadOutcome::Rejected { failure } => {
-                        super::config::log_reload_rejection(&failure);
+                    super::reload::ConfigReloadOutcome::Rejected { failure } => {
+                        super::reload::log_reload_rejection(&failure);
                     }
                 }
             }

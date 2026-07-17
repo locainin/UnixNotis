@@ -88,7 +88,7 @@ impl UiState {
             refresh_source: None,
             last_slow_refresh: None,
             // Reload notices preserve independent config and CSS failure identities
-            reload_notices: super::super::reload_notice::ReloadNoticeState::default(),
+            reload_notices: super::super::reload::ReloadNoticeState::default(),
             _runtime: init.runtime,
         }
     }
