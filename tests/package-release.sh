@@ -49,3 +49,18 @@ fi
   cd -- "$(dirname -- "$archive")"
   sha256sum -c "$(basename -- "${archive}.sha256")"
 )
+
+# The CSS validator proves that an installed binary name can differ from its Cargo package
+cargo_args="${test_root}/cargo-args"
+cargo() {
+  printf '%s\n' "$@" > "$cargo_args"
+}
+build_release_binaries unixnotis-daemon unixnotis-css-validate
+unset -f cargo
+
+expected_args=$'build\n--release\n--bin\nunixnotis-installer\n--bin\nunixnotis-daemon\n--bin\nunixnotis-css-validate'
+actual_args="$(cat -- "$cargo_args")"
+if [[ "$actual_args" != "$expected_args" ]]; then
+  printf 'release build did not select exact binary targets\n' >&2
+  exit 1
+fi

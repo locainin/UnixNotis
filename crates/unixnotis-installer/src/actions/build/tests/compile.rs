@@ -10,7 +10,35 @@ use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
 
-use super::run_build;
+use super::{add_binary_targets, run_build};
+
+#[test]
+fn source_build_selects_binary_targets_instead_of_assuming_package_names() {
+    let mut command = std::process::Command::new("cargo");
+    command.args(["build", "--release"]);
+
+    add_binary_targets(
+        &mut command,
+        &["runtime-package".to_string(), "runtime-helper".to_string()],
+    );
+
+    let args = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        args,
+        [
+            "build",
+            "--release",
+            "--bin",
+            "runtime-package",
+            "--bin",
+            "runtime-helper"
+        ]
+    );
+    assert!(!args.iter().any(|arg| arg == "-p"));
+}
 
 #[test]
 fn run_build_accepts_complete_release_archive_without_cargo() {

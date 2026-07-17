@@ -57,10 +57,11 @@ assert_workspace_version() {
 
 build_release_binaries() {
   local binaries=("$@")
-  local args=(build --release -p unixnotis-installer)
+  local args=(build --release --bin unixnotis-installer)
 
   for binary in "${binaries[@]}"; do
-    args+=(-p "$binary")
+    # Managed values are executable targets and do not have to match Cargo package names
+    args+=(--bin "$binary")
   done
 
   # Build only the programs the installer deploys plus the installer itself
