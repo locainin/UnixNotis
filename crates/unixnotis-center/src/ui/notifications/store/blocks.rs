@@ -1,4 +1,4 @@
-//! Notification list block assembly and list-store mutation helpers.
+//! Notification list block assembly and list-store mutation helpers
 
 use std::rc::Rc;
 
@@ -20,6 +20,7 @@ impl NotificationList {
             return (Vec::new(), Vec::new());
         };
 
+        // Cached header objects preserve GTK bindings across incremental rebuilds
         let header = self.group_headers.entry(key.clone()).or_insert_with(|| {
             RowItem::new(RowData::group_header(
                 key.clone(),
@@ -91,6 +92,7 @@ impl NotificationList {
         if len == 0 {
             return;
         }
+        // Store and key vectors must change in the same window
         self.store
             .splice(start as u32, len as u32, &[] as &[glib::Object]);
         self.current_keys.drain(start..start + len);
@@ -106,6 +108,7 @@ impl NotificationList {
         if items.is_empty() {
             return 0;
         }
+        // Reuse the conversion buffer to avoid allocating during notification bursts
         let mut objects = std::mem::take(&mut self.objects_scratch);
         objects.clear();
         for item in items {
@@ -153,7 +156,7 @@ pub(in crate::ui::notifications) fn common_prefix_suffix(
     current: &[RowKey],
     next: &[RowKey],
 ) -> (usize, usize) {
-    // Compute shared prefix/suffix so list-store splices only touch the minimal changed window.
+    // Compute shared prefix and suffix so splices touch only the changed window
     let prefix = current
         .iter()
         .zip(next.iter())

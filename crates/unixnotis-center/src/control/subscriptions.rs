@@ -41,6 +41,7 @@ pub(super) async fn run_control_generation(
     subscribe_backoff: &mut Backoff,
     subscribe_log: &mut RetryLog,
 ) -> ControlGenerationExit {
+    // Every stream below belongs to the same verified proxy generation
     // Install every match rule before seeding so in-flight signals remain buffered
     let mut added_stream = match proxy.receive_notification_added().await {
         Ok(stream) => stream,
@@ -90,6 +91,7 @@ pub(super) async fn run_control_generation(
             return ControlGenerationExit::RetryDelayed;
         }
     };
+    // All match rules are live before retry history is cleared
     subscribe_backoff.reset();
     subscribe_log.reset();
 
@@ -97,15 +99,18 @@ pub(super) async fn run_control_generation(
     seed_state_with_retry(proxy, sender).await;
     drop_stale_offline_commands(offline_commands);
     flush_offline_commands(proxy, sender, offline_commands).await;
+    // Readiness is published only after initial state and buffered commands settle
     if let Err(err) = proxy.mark_panel_ready().await {
         subscribe_log.warn_or_debug(&err, "failed to mark panel ready");
         retry_subscription(subscribe_backoff).await;
         return ControlGenerationExit::RetryDelayed;
     }
 
+    // A single select loop preserves signal order within each D-Bus stream
     let exit = loop {
         tokio::select! {
             command = command_rx.recv() => {
+                // Closing the final UI sender retires this generation immediately
                 let Some(command) = command else {
                     break ControlGenerationExit::Shutdown;
                 };
@@ -114,6 +119,7 @@ pub(super) async fn run_control_generation(
                 }
             }
             signal = added_stream.next() => {
+                // Fetch the complete row after receiving the lightweight identifier
                 let Some(signal) = signal else {
                     warn!("notification_added stream ended");
                     break ControlGenerationExit::Disconnected;
@@ -189,6 +195,7 @@ pub(super) async fn run_control_generation(
 }
 
 async fn retry_subscription(backoff: &mut Backoff) {
+    // Setup failures consume their delay here so the outer loop does not sleep twice
     tokio::time::sleep(backoff.next_sleep()).await;
 }
 

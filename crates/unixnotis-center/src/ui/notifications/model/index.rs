@@ -21,6 +21,7 @@ impl NotificationList {
         id: u32,
         is_active: bool,
     ) {
+        // Active and history buckets retain independent recency order
         let map = if is_active {
             &mut self.group_active_index
         } else {
@@ -41,6 +42,7 @@ impl NotificationList {
         id: u32,
         was_active: bool,
     ) {
+        // The prior lane identifies which bucket still contains the row
         let map = if was_active {
             &mut self.group_active_index
         } else {
@@ -56,6 +58,7 @@ impl NotificationList {
         id: u32,
         is_active: bool,
     ) {
+        // In-place moves avoid rebuilding unrelated group buckets
         let map = if is_active {
             &mut self.group_active_index
         } else {
@@ -71,6 +74,7 @@ impl NotificationList {
     }
 
     pub(in crate::ui::notifications) fn rebuild_group_index_for_key(&mut self, key: &Rc<str>) {
+        // Full per-key repair is reserved for stale or missing incremental state
         let mut active_ids = VecDeque::new();
         let mut history_ids = VecDeque::new();
         for id in &self.active_order {
@@ -101,6 +105,7 @@ impl NotificationList {
     }
 
     pub(in crate::ui::notifications) fn sync_group_cache_for_key(&mut self, key: &Rc<str>) {
+        // The merged cache is the render order consumed by list updates
         let active = self.group_active_index.get(key);
         let history = self.group_history_index.get(key);
         let total = active.map_or(0, std::collections::VecDeque::len)
@@ -123,6 +128,7 @@ impl NotificationList {
     }
 
     pub(in crate::ui::notifications) fn collect_group_order(&self, out: &mut Vec<Rc<str>>) {
+        // Reuse the caller buffer because this path runs on every filtered rebuild
         out.clear();
         let mut seen = HashSet::<Rc<str>>::new();
         for id in self.active_order.iter().chain(self.history_order.iter()) {
@@ -148,6 +154,7 @@ impl NotificationList {
 }
 
 fn remove_from_group_bucket(map: &mut HashMap<Rc<str>, VecDeque<u32>>, key: &Rc<str>, id: u32) {
+    // Empty buckets are removed so group presence stays an exact invariant
     if let Some(bucket) = map.get_mut(key) {
         bucket.retain(|entry| *entry != id);
         if bucket.is_empty() {

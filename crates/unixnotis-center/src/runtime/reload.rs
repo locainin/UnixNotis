@@ -8,6 +8,7 @@ use crate::control::UiEvent;
 const RELOAD_FLUSH_INTERVAL_MS: u64 = 200;
 
 pub(super) struct ReloadGate {
+    // CSS and config changes coalesce independently
     css: ReloadSlot,
     config: ReloadSlot,
 }
@@ -18,8 +19,11 @@ struct ReloadSlot {
 
 #[derive(Default)]
 struct ReloadSlotState {
+    // Represented means queued, retrying, or currently handled by the UI
     represented: bool,
+    // Retry pending means the bounded UI queue was full
     retry_pending: bool,
+    // Dirty again preserves one trailing change during active processing
     dirty_again: bool,
 }
 
@@ -53,6 +57,7 @@ impl ReloadSlot {
         sender: &async_channel::Sender<UiEvent>,
         event: UiEvent,
     ) -> bool {
+        // Watcher callbacks never block the GLib thread on a full async queue
         match sender.try_send(event) {
             Ok(()) => {
                 state.retry_pending = false;
@@ -71,6 +76,7 @@ impl ReloadSlot {
 
     fn flush(&self, sender: &async_channel::Sender<UiEvent>, event: UiEvent) {
         let mut state = self.lock_state();
+        // Flush only work that previously lost the race for queue capacity
         if state.retry_pending {
             // A successful retry covers every change observed before it entered the queue
             let had_trailing_change = std::mem::take(&mut state.dirty_again);
@@ -84,6 +90,7 @@ impl ReloadSlot {
 
     fn complete(&self, sender: &async_channel::Sender<UiEvent>, event: UiEvent) -> bool {
         let mut state = self.lock_state();
+        // Completion immediately promotes one change observed during processing
         let needs_retry = if std::mem::take(&mut state.dirty_again) {
             Self::dispatch(&mut state, sender, event)
         } else {
@@ -102,6 +109,7 @@ impl ReloadSlot {
     }
 
     fn lock_state(&self) -> std::sync::MutexGuard<'_, ReloadSlotState> {
+        // Poison recovery keeps file watching alive after an unrelated panic
         match self.state.lock() {
             Ok(state) => state,
             Err(poisoned) => poisoned.into_inner(),
@@ -153,6 +161,7 @@ pub(super) fn start_reload_timer(
         Err(poisoned) => poisoned.into_inner(),
     };
     if timer_guard.is_some() {
+        // One timer services both reload lanes until all retry work drains
         return;
     }
 
@@ -161,6 +170,7 @@ pub(super) fn start_reload_timer(
     let timer_state = Arc::clone(timer_state);
     let source_id =
         glib::timeout_add_local(Duration::from_millis(RELOAD_FLUSH_INTERVAL_MS), move || {
+            // Fixed retry cadence avoids an idle spin while the UI queue is saturated
             reload_gate.flush(&sender);
             if reload_gate.has_pending() {
                 glib::ControlFlow::Continue
@@ -169,6 +179,7 @@ pub(super) fn start_reload_timer(
                     Ok(guard) => guard,
                     Err(poisoned) => poisoned.into_inner(),
                 };
+                // Clearing the identifier allows the next full-queue event to restart polling
                 *timer_guard = None;
                 glib::ControlFlow::Break
             }

@@ -20,6 +20,7 @@ pub(super) struct MediaDisplayConfig {
 
 impl MediaDisplayConfig {
     pub(super) fn from_config(config: &MediaConfig) -> Self {
+        // Capture one immutable display policy for the live card
         Self {
             show_source: config.show_source,
             show_source_when_single_player: config.show_source_when_single_player,
@@ -53,12 +54,14 @@ pub(super) const fn art_slot_visible(has_art: bool, display: &MediaDisplayConfig
 }
 
 pub(super) fn title_text_for(info: &MediaInfo, display: &MediaDisplayConfig) -> Option<String> {
+    // Hidden title lanes never reserve fallback content
     if !display.show_title {
         return None;
     }
     if !info.title.trim().is_empty() {
         return Some(info.title.clone());
     }
+    // Fallbacks apply only after the player supplied no meaningful title
     match display.title_fallback {
         MediaTitleFallback::Identity => Some(resolve_source_label(info, &display.source_aliases)),
         MediaTitleFallback::Artist => {
@@ -77,6 +80,7 @@ pub(super) fn source_text_for(
     total: usize,
     display: &MediaDisplayConfig,
 ) -> Option<String> {
+    // Single-player source labels are independently configurable
     if !display.show_source {
         return None;
     }
@@ -91,6 +95,7 @@ pub(super) fn position_text_for(
     total: usize,
     display: &MediaDisplayConfig,
 ) -> Option<String> {
+    // Position follows the current selection rather than stale player metadata
     if !display.show_position {
         return None;
     }
@@ -131,6 +136,7 @@ fn resolve_source_label(info: &MediaInfo, aliases: &BTreeMap<String, String>) ->
 }
 
 fn default_source_label(info: &MediaInfo) -> String {
+    // MPRIS identity is the least technical stable label
     if !info.identity.trim().is_empty() {
         return info.identity.trim().to_string();
     }

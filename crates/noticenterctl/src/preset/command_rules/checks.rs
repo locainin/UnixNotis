@@ -15,6 +15,7 @@ pub fn collect_outside_command_paths(
     config_dir: &Path,
     config: &Config,
 ) -> Vec<OutsideCommandPath> {
+    // Lexical comparison avoids requiring referenced files to exist during review
     let normalized_root = normalize_lexical_path(config_dir);
 
     collect_command_references_from_config(config)
@@ -34,6 +35,7 @@ pub fn collect_outside_command_paths(
                 }
             }
 
+            // Loader-sensitive environment paths receive the same containment check
             outside.extend(
                 collect_outside_env_path_tokens(config_dir, &reference.command)
                     .into_iter()
@@ -52,6 +54,7 @@ pub fn collect_host_specific_command_paths(
     config_dir: &Path,
     config: &Config,
 ) -> Vec<HostSpecificCommandPath> {
+    // Host-specific paths inside the bundle remain portable warnings rather than escapes
     let normalized_root = normalize_lexical_path(config_dir);
 
     collect_command_references_from_config(config)
@@ -81,6 +84,7 @@ pub fn validate_config_command_paths_stay_in_root(
     config: &Config,
     mode_label: &str,
 ) -> Result<()> {
+    // Wrapper validation runs before path collection so ambiguous env forms fail closed
     for reference in collect_command_references_from_config(config) {
         let parsed = parse_command(&reference.command).with_context(|| {
             format!(
@@ -96,6 +100,7 @@ pub fn validate_config_command_paths_stay_in_root(
         })?;
     }
 
+    // A single stable error avoids exposing every configured command in normal output
     let outside_paths = collect_outside_command_paths(config_dir, config);
     if outside_paths.is_empty() {
         return Ok(());
@@ -115,6 +120,7 @@ pub fn validate_command_paths_in_config_bytes(
     config_bytes: &[u8],
     mode_label: &str,
 ) -> Result<()> {
+    // Byte validation is used before imported configuration reaches the live directory
     let config_text =
         std::str::from_utf8(config_bytes).context("preset config.toml is not valid UTF-8")?;
     let config: Config =

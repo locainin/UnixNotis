@@ -35,6 +35,7 @@ impl MediaHandle {
     }
 
     pub fn refresh(&self) {
+        // Refresh follows the same bounded delivery path as player controls
         self.send_command(MediaCommand::Refresh);
     }
 
@@ -57,6 +58,7 @@ impl MediaHandle {
     }
 
     fn send_command(&self, command: MediaCommand) {
+        // Disconnected handles intentionally behave as no-op presentation handles
         let Some(tx) = &self.command_tx else {
             return;
         };
@@ -80,6 +82,7 @@ pub fn start_media_task(
     config: MediaConfig,
     sender: async_channel::Sender<UiEvent>,
 ) -> Option<MediaHandle> {
+    // Runtime ownership remains outside GTK so shutdown can retire the task cleanly
     super::runtime::start_media_task(runtime, config, sender)
 }
 

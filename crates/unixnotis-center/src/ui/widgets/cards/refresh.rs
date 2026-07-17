@@ -17,6 +17,7 @@ use crate::ui::widgets::utils::{
 
 impl CardItem {
     pub(super) fn refresh(&self, base_interval: Duration, force: bool) {
+        // Calendar cards use a date boundary instead of command polling
         if self.is_calendar {
             debug::log(PanelDebugLevel::Verbose, || "calendar refresh".to_string());
             let now = Instant::now();
@@ -31,6 +32,7 @@ impl CardItem {
             self.refresh_calendar(base_interval);
             return;
         }
+        // Hidden cards do not spend process or plugin resources
         if !self.root.is_visible() {
             return;
         }
@@ -41,6 +43,7 @@ impl CardItem {
         debug::log(PanelDebugLevel::Verbose, || {
             format!("card refresh: {}", self.config.title)
         });
+        // One in-flight request per card prevents slow commands from piling up
         if self.inflight.get() {
             return;
         }
@@ -48,6 +51,7 @@ impl CardItem {
             self.refresh_plugin(plugin, base_interval);
             return;
         }
+        // Static cards still advance backoff so the scheduler remains calm
         let Some(cmd) = self.config.cmd.as_ref() else {
             self.refresh_backoff
                 .borrow_mut()
@@ -61,6 +65,7 @@ impl CardItem {
         let inflight = self.inflight.clone();
         let last_value = self.last_value.clone();
         let refresh_backoff = self.refresh_backoff.clone();
+        // Completion returns to the GLib owner before touching labels
         glib::MainContext::default().spawn_local(async move {
             let output = if let Ok(output) = rx.recv().await {
                 output
@@ -91,6 +96,7 @@ impl CardItem {
                     .note_error(Instant::now(), base_interval);
                 return;
             }
+            // Lossy decoding keeps a malformed helper from breaking the panel loop
             let stdout = String::from_utf8_lossy(&output.stdout);
             let value = stdout.trim();
             if value.is_empty() {
@@ -112,6 +118,7 @@ impl CardItem {
     }
 
     pub(super) fn next_refresh_in(&self, now: Instant) -> Option<Duration> {
+        // The panel scheduler asks every visible card for its nearest deadline
         if !self.root.is_visible() {
             return None;
         }
@@ -133,6 +140,7 @@ impl CardItem {
     }
 
     fn refresh_plugin(&self, plugin: &WidgetPluginConfig, base_interval: Duration) {
+        // Plugin limits come from validated config and are enforced by the parser
         self.inflight.set(true);
         let command = plugin.command.clone();
         let timeout = Duration::from_millis(plugin.timeout_ms);
@@ -145,6 +153,7 @@ impl CardItem {
         let inflight = self.inflight.clone();
         let last_value = self.last_value.clone();
         let refresh_backoff = self.refresh_backoff.clone();
+        // Worker output crosses back to the main context before widget mutation
         glib::MainContext::default().spawn_local(async move {
             let output = if let Ok(output) = rx.recv().await {
                 output
@@ -176,6 +185,7 @@ impl CardItem {
                 return;
             }
 
+            // Parsing validates the versioned payload before either label changes
             let parsed = match parse_card_plugin_payload(&output.stdout, output_limits) {
                 Ok(parsed) => parsed,
                 Err(err) => {

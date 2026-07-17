@@ -79,6 +79,7 @@ fn run_path_protocol(path: &Path) -> ExitCode {
 }
 
 fn run_stdin_protocol() -> ExitCode {
+    // Stdin mode is intentionally small for build-time generated CSS checks
     let mut css = String::new();
     if let Err(error) = io::stdin().read_to_string(&mut css) {
         eprintln!("failed to read css from stdin: {error}");
@@ -89,6 +90,7 @@ fn run_stdin_protocol() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    // Parse errors are counted without retaining unbounded GTK messages
     let provider = CssProvider::new();
     let parse_errors = Rc::new(Cell::new(0usize));
     let parse_errors_for_signal = Rc::clone(&parse_errors);
@@ -104,6 +106,7 @@ fn run_stdin_protocol() -> ExitCode {
     });
     provider.load_from_data(&css);
 
+    // Success remains silent for easy use from build scripts
     if parse_errors.get() == 0 {
         return ExitCode::SUCCESS;
     }
@@ -115,6 +118,7 @@ fn run_stdin_protocol() -> ExitCode {
 }
 
 fn parse_path(path: &Path) -> (Vec<ValidatorDiagnostic>, bool) {
+    // Path mode returns structured diagnostics to the bounded parent process
     let provider = CssProvider::new();
     let diagnostics = Rc::new(RefCell::new(Vec::new()));
     let truncated = Rc::new(Cell::new(false));
@@ -126,6 +130,7 @@ fn parse_path(path: &Path) -> (Vec<ValidatorDiagnostic>, bool) {
             truncated_for_signal.set(true);
             return;
         }
+        // Locations are converted to one-based values for terminal and JSON consumers
         let start = section.start_location();
         let message = error.message();
         diagnostics_for_signal

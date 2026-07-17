@@ -42,6 +42,7 @@ pub struct RowData {
 
 impl Default for RowData {
     fn default() -> Self {
+        // Empty notification data is safe for a newly allocated GTK object
         Self {
             kind: RowKind::Notification,
             id: 0,
@@ -64,6 +65,7 @@ impl RowData {
         expanded: bool,
         sample: Rc<NotificationView>,
     ) -> Self {
+        // Group rows carry one sample only for shared app presentation
         Self {
             kind: RowKind::GroupHeader,
             id: 0,
@@ -87,6 +89,7 @@ impl RowData {
         is_active: bool,
         presentation: RowPresentation,
     ) -> Self {
+        // Notification rows own the complete immutable render snapshot
         Self {
             kind: RowKind::Notification,
             id: notification.id,
@@ -102,6 +105,7 @@ impl RowData {
     }
 
     fn is_equivalent(&self, other: &Self) -> bool {
+        // Pointer identity avoids deep comparisons of already interned snapshots
         self.kind == other.kind
             && self.id == other.id
             && Rc::ptr_eq(&self.group_key, &other.group_key)
@@ -119,6 +123,7 @@ impl RowData {
         right: &Option<Rc<NotificationView>>,
     ) -> bool {
         match (left, right) {
+            // Matching shared snapshots guarantee matching notification contents
             (None, None) => true,
             (Some(left), Some(right)) => Rc::ptr_eq(left, right),
             _ => false,
@@ -142,6 +147,7 @@ mod imp {
 
     impl ObjectImpl for RowItem {
         fn signals() -> &'static [glib::subclass::Signal] {
+            // Signal metadata is allocated once for every row instance
             static SIGNALS: OnceLock<Vec<glib::subclass::Signal>> = OnceLock::new();
             SIGNALS.get_or_init(|| vec![glib::subclass::Signal::builder("updated").build()])
         }
@@ -154,6 +160,7 @@ glib::wrapper! {
 
 impl RowItem {
     pub fn new(data: RowData) -> Self {
+        // Initial data is installed before the object reaches a list binding
         let item: Self = glib::Object::new::<Self>();
         item.imp().data.replace(data);
         item
@@ -173,6 +180,7 @@ impl RowItem {
     }
 
     pub fn data(&self) -> RowData {
+        // Callers receive a snapshot so no RefCell borrow crosses GTK callbacks
         self.imp().data.borrow().clone()
     }
 }

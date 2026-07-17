@@ -33,6 +33,7 @@ pub async fn seed_state_with_retry(
     let mut log = RetryLog::new(Duration::from_secs(SEED_RETRY_LOG_INTERVAL_SECS));
 
     loop {
+        // Each attempt fetches a coherent three-part snapshot from one proxy
         match seed_state(proxy, sender).await {
             Ok(()) => return,
             Err(err) => {
@@ -45,6 +46,7 @@ pub async fn seed_state_with_retry(
                     );
                     return;
                 }
+                // Throttled warnings keep prolonged outages useful without log flooding
                 log.log_with(
                     || {
                         warn!(
@@ -63,6 +65,7 @@ pub async fn seed_state_with_retry(
                         );
                     },
                 );
+                // Exponential delay stays bounded by the shared seed maximum
                 sleep(backoff.next_sleep()).await;
             }
         }
@@ -88,6 +91,7 @@ pub async fn seed_state(
 
     match (state, active, history) {
         (Ok(state), Ok(active), Ok(history)) => {
+            // Publish only complete snapshots so the UI never mixes generations
             let _ = sender
                 .send(UiEvent::Seed {
                     state,
@@ -97,6 +101,7 @@ pub async fn seed_state(
                 .await;
             Ok(())
         }
+        // Individual errors remain separate for useful diagnostics
         (state, active, history) => Err(SeedError {
             state_error: state.err().map(|err| err.to_string()),
             active_error: active.err().map(|err| err.to_string()),

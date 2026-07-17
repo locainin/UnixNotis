@@ -56,6 +56,7 @@ impl MediaShellConfig {
         };
         let navigation_position = resolve_navigation_position(config, controls_position);
 
+        // Geometry values stay config-owned so CSS can react through state hooks
         Self {
             layout: config.layout,
             art_position: match config.effective_art_position() {
@@ -100,6 +101,7 @@ const fn resolve_navigation_position(
 pub(super) fn apply_shell_state_classes<W: IsA<gtk::Widget>>(widget: &W, shell: &MediaShellConfig) {
     let widget = widget.as_ref();
     // State classes are applied to every structural box so CSS can style any shell depth directly
+    // Capability classes describe whether control and navigation groups exist
     set_class_state(
         widget,
         hooks::media_shell::HAS_CONTROLS,
@@ -120,7 +122,7 @@ pub(super) fn apply_shell_state_classes<W: IsA<gtk::Widget>>(widget: &W, shell: 
         hooks::media_shell::NO_NAV,
         shell.navigation_position == ResolvedMediaNavigationPosition::Hidden,
     );
-
+    // Artwork placement classes are mutually exclusive
     set_class_state(
         widget,
         hooks::media_shell::ART_START,
@@ -136,7 +138,7 @@ pub(super) fn apply_shell_state_classes<W: IsA<gtk::Widget>>(widget: &W, shell: 
         hooks::media_shell::ART_HIDDEN,
         shell.art_position == ResolvedMediaArtPosition::Hidden,
     );
-
+    // Control placement classes expose the resolved auto policy to CSS
     set_class_state(
         widget,
         hooks::media_shell::CONTROLS_INLINE,
@@ -157,7 +159,7 @@ pub(super) fn apply_shell_state_classes<W: IsA<gtk::Widget>>(widget: &W, shell: 
         hooks::media_shell::CONTROLS_HIDDEN,
         shell.controls_position == ResolvedMediaControlsPosition::Hidden,
     );
-
+    // Navigation placement remains separate from transport placement
     set_class_state(
         widget,
         hooks::media_shell::NAV_EXTERNAL,
@@ -186,6 +188,7 @@ pub(super) fn apply_shell_state_classes<W: IsA<gtk::Widget>>(widget: &W, shell: 
 }
 
 fn set_class_state(widget: &gtk::Widget, class_name: &str, enabled: bool) {
+    // Skip redundant GTK style invalidations when a class already matches
     if enabled {
         if !widget.has_css_class(class_name) {
             widget.add_css_class(class_name);
