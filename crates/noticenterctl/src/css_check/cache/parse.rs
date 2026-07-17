@@ -1,13 +1,19 @@
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 use std::fs;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
+use std::time::Duration;
+use wait_timeout::ChildExt as _;
 
 use super::super::files::format_display_path;
 use super::super::policy::parsing_error_hint;
 use super::super::report::{CssCheckCategory, CssCheckDiagnostic};
 use super::model::{CachedDiagnosticSource, CachedParseDiagnostic, CssParseWorkItem};
+
+const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_VALIDATOR_OUTPUT_BYTES: usize = 64 * 1024;
 
 fn source_line_text(path: Option<&Path>, line_number: usize) -> Option<String> {
     let path = path?;
@@ -28,14 +34,7 @@ pub(in super::super) fn parse_css_file_with_gtk(
 ) -> Result<Vec<CachedParseDiagnostic>> {
     // GTK lives in an installer-managed helper so ordinary control calls stay lightweight
     let validator = css_validator_binary()?;
-    let output = Command::new(&validator)
-        .arg("--json-path")
-        .arg(&work_item.load_path)
-        .stdin(Stdio::null())
-        .stderr(Stdio::piped())
-        .stdout(Stdio::piped())
-        .output()
-        .with_context(|| format!("start CSS validator {}", validator.display()))?;
+    let output = run_css_validator(&validator, &work_item.load_path, VALIDATOR_TIMEOUT)?;
     if !output.status.success() {
         return Err(anyhow!(
             "CSS validator exited with {}: {}",
@@ -44,8 +43,85 @@ pub(in super::super) fn parse_css_file_with_gtk(
         ));
     }
 
+    decode_validator_report(&output.stdout, work_item)
+}
+
+#[derive(Debug)]
+pub(super) struct ValidatorOutput {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+pub(super) fn run_css_validator(
+    validator: &Path,
+    load_path: &Path,
+    timeout: Duration,
+) -> Result<ValidatorOutput> {
+    let mut child = Command::new(validator)
+        .arg("--json-path")
+        .arg(load_path)
+        .stdin(Stdio::null())
+        .stderr(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .with_context(|| format!("start CSS validator {}", validator.display()))?;
+    // A malformed stylesheet must not leave diagnostics waiting forever
+    let Some(status) = child
+        .wait_timeout(timeout)
+        .context("wait for CSS validator")?
+    else {
+        child.kill().context("stop timed-out CSS validator")?;
+        child.wait().context("reap timed-out CSS validator")?;
+        return Err(anyhow!(
+            "CSS validator exceeded its {} second deadline",
+            timeout.as_secs_f64()
+        ));
+    };
+
+    // Read only after exit because the managed helper keeps each pipe below its OS buffer budget
+    let stdout = read_bounded_pipe(
+        child.stdout.take(),
+        MAX_VALIDATOR_OUTPUT_BYTES,
+        "CSS validator stdout",
+    )?;
+    let stderr = read_bounded_pipe(
+        child.stderr.take(),
+        MAX_VALIDATOR_OUTPUT_BYTES,
+        "CSS validator stderr",
+    )?;
+    Ok(ValidatorOutput {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+pub(super) fn read_bounded_pipe(
+    pipe: Option<impl std::io::Read>,
+    limit: usize,
+    label: &str,
+) -> Result<Vec<u8>> {
+    let Some(pipe) = pipe else {
+        return Err(anyhow!("{label} pipe was unavailable"));
+    };
+    let take_limit = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
+    let mut bytes = Vec::new();
+    pipe.take(take_limit)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("read {label}"))?;
+    if bytes.len() > limit {
+        return Err(anyhow!("{label} exceeded {limit} bytes"));
+    }
+    Ok(bytes)
+}
+
+pub(super) fn decode_validator_report(
+    bytes: &[u8],
+    work_item: &CssParseWorkItem,
+) -> Result<Vec<CachedParseDiagnostic>> {
     let report: ValidatorReport =
-        serde_json::from_slice(&output.stdout).context("decode CSS validator report")?;
+        serde_json::from_slice(bytes).context("decode CSS validator report")?;
     if !report.available {
         return Err(anyhow!(
             "GTK CSS validation is unavailable: {}",
@@ -56,7 +132,7 @@ pub(in super::super) fn parse_css_file_with_gtk(
         ));
     }
 
-    Ok(report
+    let mut diagnostics = report
         .diagnostics
         .into_iter()
         .map(|diagnostic| {
@@ -77,13 +153,26 @@ pub(in super::super) fn parse_css_file_with_gtk(
                 hint,
             }
         })
-        .collect())
+        .collect::<Vec<_>>();
+    if report.truncated {
+        // One stable finding makes a capped report visible without repeating untrusted text
+        diagnostics.push(CachedParseDiagnostic {
+            source: CachedDiagnosticSource::TopLevel,
+            line: None,
+            column: None,
+            message: "additional GTK CSS diagnostics were omitted after the safety limit"
+                .to_string(),
+            hint: None,
+        });
+    }
+    Ok(diagnostics)
 }
 
 #[derive(Deserialize)]
 struct ValidatorReport {
     available: bool,
     error: Option<String>,
+    truncated: bool,
     diagnostics: Vec<ValidatorDiagnostic>,
 }
 

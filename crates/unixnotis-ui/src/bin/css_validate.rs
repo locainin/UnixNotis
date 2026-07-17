@@ -10,10 +10,14 @@ use gtk::prelude::*;
 use gtk::CssProvider;
 use serde::Serialize;
 
+const MAX_PATH_DIAGNOSTICS: usize = 4;
+const MAX_DIAGNOSTIC_MESSAGE_CHARS: usize = 512;
+
 #[derive(Debug, Serialize)]
 struct ValidatorReport {
     available: bool,
     error: Option<String>,
+    truncated: bool,
     diagnostics: Vec<ValidatorDiagnostic>,
 }
 
@@ -44,14 +48,19 @@ fn main() -> ExitCode {
 fn run_path_protocol(path: &Path) -> ExitCode {
     // Initialization stays inside this helper so ordinary CLI commands do not load GTK
     let report = match gtk::init() {
-        Ok(()) => ValidatorReport {
-            available: true,
-            error: None,
-            diagnostics: parse_path(path),
-        },
+        Ok(()) => {
+            let (diagnostics, truncated) = parse_path(path);
+            ValidatorReport {
+                available: true,
+                error: None,
+                truncated,
+                diagnostics,
+            }
+        }
         Err(error) => ValidatorReport {
             available: false,
             error: Some(error.to_string()),
+            truncated: false,
             diagnostics: Vec::new(),
         },
     };
@@ -105,20 +114,30 @@ fn run_stdin_protocol() -> ExitCode {
     ExitCode::from(1)
 }
 
-fn parse_path(path: &Path) -> Vec<ValidatorDiagnostic> {
+fn parse_path(path: &Path) -> (Vec<ValidatorDiagnostic>, bool) {
     let provider = CssProvider::new();
     let diagnostics = Rc::new(RefCell::new(Vec::new()));
+    let truncated = Rc::new(Cell::new(false));
     let diagnostics_for_signal = Rc::clone(&diagnostics);
+    let truncated_for_signal = Rc::clone(&truncated);
     // GTK reports imported-file locations through the parsing-error signal
     provider.connect_parsing_error(move |_, section, error| {
+        if diagnostics_for_signal.borrow().len() >= MAX_PATH_DIAGNOSTICS {
+            truncated_for_signal.set(true);
+            return;
+        }
         let start = section.start_location();
+        let message = error.message();
         diagnostics_for_signal
             .borrow_mut()
             .push(ValidatorDiagnostic {
                 source: section.file().and_then(|file| file.path()),
                 line: start.lines() + 1,
                 column: start.line_chars() + 1,
-                message: error.message().to_string(),
+                message: unixnotis_core::util::sanitize_log_value(
+                    message,
+                    MAX_DIAGNOSTIC_MESSAGE_CHARS,
+                ),
             });
     });
     // Loading after signal registration preserves every parser diagnostic
@@ -126,5 +145,5 @@ fn parse_path(path: &Path) -> Vec<ValidatorDiagnostic> {
 
     // Clone before the signal-owned reference is dropped with the provider
     let parsed = diagnostics.borrow().clone();
-    parsed
+    (parsed, truncated.get())
 }

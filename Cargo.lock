@@ -1998,6 +1998,7 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "unixnotis-core",
+ "wait-timeout",
  "zbus",
 ]
 

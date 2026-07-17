@@ -174,3 +174,33 @@ fn render_report_can_add_terminal_color() {
     assert!(rendered.contains("\u{1b}[2;35mlint:\u{1b}[0m"));
     assert!(rendered.contains("css-check result: \u{1b}[1;33mwarnings found\u{1b}[0m"));
 }
+
+#[test]
+fn render_report_sanitizes_every_user_controlled_terminal_field() {
+    let report = CssCheckReport {
+        display_root: "root\u{1b}[31m\u{202e}".to_string(),
+        checked_files: 1,
+        active_files: vec![CssCheckActiveFile {
+            slot_name: "[theme].base_css",
+            display_path: "bad\u{1b}[2J.css".to_string(),
+        }],
+        notes: vec!["first line\nforged line".to_string()],
+        diagnostics: vec![CssCheckDiagnostic::error(
+            CssCheckCategory::Parse,
+            "bad\u{1b}[2J.css".to_string(),
+            Some(1),
+            Some(1),
+            "failure\u{1b}[31m\u{202e}",
+            Some("hint\nforged".to_string()),
+        )],
+    };
+
+    let rendered = render_css_check_report_with_style(&report, ReportStyle { color: false });
+
+    assert!(!rendered.contains('\u{1b}'));
+    assert!(!rendered.contains('\u{202e}'));
+    assert!(!rendered.contains("first line\nforged line"));
+    assert!(!rendered.contains("hint\nforged"));
+    assert!(rendered.contains("first line forged line"));
+    assert!(rendered.contains("hint: hint forged"));
+}

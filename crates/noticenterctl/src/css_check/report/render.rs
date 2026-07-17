@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use unixnotis_core::util;
 
 use super::model::{CssCheckDiagnostic, CssCheckReport, CssCheckSeverity};
 use super::style::ReportStyle;
@@ -18,7 +19,10 @@ pub(in super::super) fn render_css_check_report_with_style(
 
     // The summary stays first no matter how noisy the report gets
     lines.push(style.bold("css-check summary"));
-    lines.push(format!("  root: {}", report.display_root));
+    lines.push(format!(
+        "  root: {}",
+        safe_report_text(&report.display_root)
+    ));
     lines.push(format!("  checked: {} files", report.checked_files));
     lines.push(format!("  errors: {errors}"));
     lines.push(format!("  warnings: {warnings}"));
@@ -40,7 +44,10 @@ pub(in super::super) fn render_css_check_report_with_style(
             lines.push(String::new());
             lines.push(style.bold("top problem files"));
             for (display_path, count) in top_files {
-                lines.push(format!("  {}: {count} issue(s)", style.bold(display_path)));
+                lines.push(format!(
+                    "  {}: {count} issue(s)",
+                    style.bold(safe_report_text(&display_path))
+                ));
             }
         }
     }
@@ -59,7 +66,7 @@ pub(in super::super) fn render_css_check_report_with_style(
             lines.push(format!(
                 "  {slot:<width$} -> {path}",
                 slot = active_file.slot_name,
-                path = style.bold(&active_file.display_path),
+                path = style.bold(safe_report_text(&active_file.display_path)),
                 width = slot_width
             ));
         }
@@ -70,7 +77,7 @@ pub(in super::super) fn render_css_check_report_with_style(
         lines.push(String::new());
         lines.push(style.notes_title("notes"));
         for note in &report.notes {
-            lines.push(format!("  {note}"));
+            lines.push(format!("  {}", safe_report_text(note)));
         }
     }
 
@@ -191,7 +198,7 @@ fn append_diagnostic_section(
         lines.push(String::new());
         lines.push(format!(
             "  {} ({})",
-            style.bold(display_path),
+            style.bold(safe_report_text(display_path)),
             diagnostics.len()
         ));
         for diagnostic in diagnostics {
@@ -205,12 +212,17 @@ fn append_diagnostic_section(
                 "    {}{} {}",
                 style.diagnostic_code(format!("{}:", diagnostic.category.label())),
                 location,
-                diagnostic.message
+                safe_report_text(&diagnostic.message)
             ));
             if let Some(hint) = diagnostic.hint.as_ref() {
                 // Hints stay on their own line so the main warning text stays short
-                lines.push(format!("      hint: {hint}"));
+                lines.push(format!("      hint: {}", safe_report_text(hint)));
             }
         }
     }
+}
+
+fn safe_report_text(value: &str) -> String {
+    // CSS and paths are user-controlled, so every terminal field stays single-line and bounded
+    util::sanitize_log_value(value, util::diagnostic_log_limit())
 }

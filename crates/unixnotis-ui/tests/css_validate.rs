@@ -1,10 +1,14 @@
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::fmt::Write as _;
     use std::io::{Error as IoError, ErrorKind, Write as _};
     use std::process::{Command, Output, Stdio};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     type TestResult = Result<(), Box<dyn Error>>;
+
+    static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     #[test]
     fn css_validate_accepts_parseable_css() -> TestResult {
@@ -36,10 +40,7 @@ mod tests {
 
     #[test]
     fn path_protocol_returns_structured_parser_diagnostics() -> TestResult {
-        let root = std::env::temp_dir().join(format!(
-            "unixnotis-css-validator-path-protocol-{}",
-            std::process::id()
-        ));
+        let root = temp_root("path-protocol");
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root)?;
         let stylesheet = root.join("broken.css");
@@ -64,6 +65,36 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn path_protocol_caps_large_diagnostic_sets() -> TestResult {
+        let root = temp_root("diagnostic-cap");
+        std::fs::create_dir_all(&root)?;
+        let stylesheet = root.join("many-errors.css");
+        let mut css = String::new();
+        for index in 0..12 {
+            writeln!(css, ".broken-{index} {{ color: ; }}")?;
+        }
+        std::fs::write(&stylesheet, css)?;
+
+        let output = Command::new(env!("CARGO_BIN_EXE_unixnotis-css-validate"))
+            .arg("--json-path")
+            .arg(&stylesheet)
+            .stdin(Stdio::null())
+            .output()?;
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+
+        assert!(output.status.success());
+        if report["available"] == true {
+            let diagnostics = report["diagnostics"]
+                .as_array()
+                .ok_or("diagnostics must be an array")?;
+            assert!(diagnostics.len() <= 4);
+            assert_eq!(report["truncated"], true);
+        }
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
     fn run_validator(css: &str) -> Result<Output, IoError> {
         let binary = env!("CARGO_BIN_EXE_unixnotis-css-validate");
         let mut child = Command::new(binary)
@@ -83,5 +114,13 @@ mod tests {
         drop(stdin);
 
         child.wait_with_output()
+    }
+
+    fn temp_root(name: &str) -> std::path::PathBuf {
+        let serial = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "unixnotis-css-validator-{name}-{}-{serial}",
+            std::process::id()
+        ))
     }
 }
