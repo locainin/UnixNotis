@@ -6,6 +6,7 @@ use std::os::unix::fs::PermissionsExt as _;
 
 use super::super::source::ExportSourceSnapshot;
 use super::super::tests::support::TempDirGuard;
+use crate::preset::config_root::SecureFileCapture;
 
 #[test]
 fn config_capture_keeps_the_bytes_that_were_validated() {
@@ -106,4 +107,29 @@ fn source_snapshot_rejects_a_replaced_live_config_root() {
     assert!(error.to_string().contains("config directory changed"));
     fs::remove_dir_all(&root.path).expect("remove replacement root");
     fs::rename(&moved, &root.path).expect("restore captured config root");
+}
+
+#[test]
+fn extending_source_snapshot_retains_dependency_bytes_and_mode() {
+    let root = TempDirGuard::new("source-extend-captures");
+    root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    let mut snapshot = ExportSourceSnapshot::capture(&root.path).expect("capture config source");
+    let relative = PathBuf::from("scripts/helper.sh");
+    let expected_contents = b"#!/bin/sh\n".to_vec();
+    let expected_mode = 0o755;
+
+    snapshot.extend_captures(std::collections::BTreeMap::from([(
+        relative.clone(),
+        SecureFileCapture {
+            contents: expected_contents.clone(),
+            mode: expected_mode,
+        },
+    )]));
+
+    let captured = snapshot
+        .captures()
+        .get(&relative)
+        .expect("dependency capture should be retained");
+    assert_eq!(captured.contents, expected_contents);
+    assert_eq!(captured.mode, expected_mode);
 }

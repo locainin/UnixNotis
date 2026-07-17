@@ -275,7 +275,7 @@ fn is_split_string_option(token: &str) -> bool {
         || attached_short_option(token, 'S')
 }
 
-fn split_env_assignment(token: &str) -> Option<(&str, &str)> {
+pub(super) fn split_env_assignment(token: &str) -> Option<(&str, &str)> {
     let (name, value) = token.split_once('=')?;
     let mut characters = name.chars();
     let first = characters.next()?;
@@ -334,11 +334,8 @@ fn resolve_env_path_value(config_dir: &Path, value: &str) -> Option<PathBuf> {
 }
 
 pub fn looks_like_path_token(token: &str) -> bool {
-    token == "~"
-        || token.starts_with("~/")
-        || token.starts_with("./")
-        || token.starts_with("../")
-        || token.contains('/')
+    // Every supported relative prefix already contains a path separator
+    token == "~" || token.contains('/')
 }
 
 pub fn is_host_specific_path_token(token: &str) -> bool {

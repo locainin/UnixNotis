@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use super::super::tokens::{
-    collect_outside_env_path_tokens, first_command_token, validate_env_command_layout,
+    collect_outside_env_path_tokens, first_command_token, is_host_specific_path_token,
+    looks_like_path_token, split_env_assignment, validate_env_command_layout,
 };
 use super::super::validate_command_paths_in_config_bytes;
 use super::support::temp_root;
@@ -329,6 +330,59 @@ fn nonportable_env_options_keep_specific_actionable_reasons() {
             validate_env_command_layout(&parsed),
             Err("env split-string options are ambiguous in preset commands"),
             "wrong split-string reason for {command}"
+        );
+    }
+}
+
+#[test]
+fn env_assignment_names_follow_portable_shell_identifier_rules() {
+    assert_eq!(split_env_assignment("NAME=value"), Some(("NAME", "value")));
+    assert_eq!(split_env_assignment("_NAME=a=b"), Some(("_NAME", "a=b")));
+    assert_eq!(split_env_assignment("A1="), Some(("A1", "")));
+
+    for token in [
+        "1NAME=value",
+        "-NAME=value",
+        "NA-ME=value",
+        "=value",
+        "NAME",
+    ] {
+        assert_eq!(
+            split_env_assignment(token),
+            None,
+            "invalid assignment name accepted for {token}"
+        );
+    }
+}
+
+#[test]
+fn path_token_detection_covers_every_supported_relative_form() {
+    for token in ["~", "~/tool", "./tool", "../tool", "dir/tool", "/tool"] {
+        assert!(
+            looks_like_path_token(token),
+            "path form not detected: {token}"
+        );
+    }
+    for token in ["", "tool", "tool-name", ".", ".."] {
+        assert!(
+            !looks_like_path_token(token),
+            "plain command was treated as a path: {token}"
+        );
+    }
+}
+
+#[test]
+fn host_specific_path_detection_excludes_portable_relative_paths() {
+    for token in ["/usr/bin/tool", "~", "~/bin/tool"] {
+        assert!(
+            is_host_specific_path_token(token),
+            "host path not detected: {token}"
+        );
+    }
+    for token in ["tool", "./tool", "../tool", "dir/tool"] {
+        assert!(
+            !is_host_specific_path_token(token),
+            "portable path was treated as host-specific: {token}"
         );
     }
 }
