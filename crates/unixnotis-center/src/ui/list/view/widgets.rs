@@ -12,7 +12,7 @@ use gtk::{self};
 use tokio::sync::mpsc;
 use tracing::debug;
 
-use crate::dbus::{UiCommand, UiEvent};
+use crate::control::{UiCommand, UiEvent};
 
 use super::item::{RowData, RowItem, RowKind};
 use super::row::group::{build_group_row, update_group_row, GroupRowWidgets};

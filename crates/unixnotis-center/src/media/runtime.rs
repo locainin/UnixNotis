@@ -1,7 +1,7 @@
 use tokio::sync::mpsc;
 use unixnotis_core::MediaConfig;
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 use super::event_loop::run_event_loop;
 use super::MediaHandle;

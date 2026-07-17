@@ -9,7 +9,7 @@ use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::{PanelAction, PanelDebugLevel, PanelRequest};
 
-use crate::dbus::UiCommand;
+use crate::control::UiCommand;
 use crate::debug;
 
 use super::{try_send_command, UiState};

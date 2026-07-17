@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tokio::runtime::Builder;
 
 use super::{build_snapshot, normalize_token, send_snapshot_if_changed};
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 use crate::media::{MediaArtSource, MediaInfo};
 
 fn make_info(

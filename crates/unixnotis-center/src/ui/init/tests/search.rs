@@ -1,5 +1,5 @@
 use super::search::send_filter_event;
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 #[test]
 fn filter_event_sends_exact_query_without_waiting() {

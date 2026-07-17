@@ -10,7 +10,7 @@ use gtk::prelude::*;
 use super::super::input_guard::{ClickCooldown, LatestBoolEventGate};
 use super::super::panel;
 use super::timing::WIDGETS_TOGGLE_COALESCE_MS;
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 pub(super) fn connect_widget_collapse_toggle(
     panel: &panel::PanelWidgets,

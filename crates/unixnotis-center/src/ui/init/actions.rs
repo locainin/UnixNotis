@@ -11,7 +11,7 @@ use super::super::input_guard::ClickCooldown;
 use super::super::panel;
 use super::super::try_send_command;
 use super::timing::CONTROL_CLICK_GUARD_MS;
-use crate::dbus::UiCommand;
+use crate::control::UiCommand;
 
 pub(super) fn connect_clear_button(
     button: &gtk::Button,

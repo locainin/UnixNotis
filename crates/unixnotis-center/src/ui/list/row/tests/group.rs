@@ -4,7 +4,7 @@ use gtk::prelude::*;
 use unixnotis_core::{NotificationImage, NotificationView};
 
 use super::{build_group_row, update_group_row};
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 use crate::ui::icons::IconResolver;
 use crate::ui::list::item::{RowData, RowKind};
 

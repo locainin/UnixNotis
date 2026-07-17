@@ -8,7 +8,7 @@ use gtk::glib;
 use tracing::info;
 use unixnotis_core::PanelDebugLevel;
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 use crate::debug;
 
 use super::UiState;

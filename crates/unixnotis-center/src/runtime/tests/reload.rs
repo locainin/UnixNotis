@@ -1,10 +1,10 @@
 use super::{start_reload_timer, ReloadGate};
-use crate::dbus;
+use crate::control;
 use proptest::prelude::*;
 use proptest::test_runner::RngSeed;
 use std::sync::{Arc, Barrier, Mutex};
 
-fn queued_event(receiver: &async_channel::Receiver<dbus::UiEvent>) -> dbus::UiEvent {
+fn queued_event(receiver: &async_channel::Receiver<control::UiEvent>) -> control::UiEvent {
     receiver.try_recv().expect("reload event should be queued")
 }
 
@@ -16,10 +16,16 @@ fn repeated_reload_requests_coalesce_until_processing_completes() {
     assert!(!gate.request_css(&sender));
     assert!(!gate.request_css(&sender));
     assert_eq!(receiver.len(), 1);
-    assert!(matches!(queued_event(&receiver), dbus::UiEvent::CssReload));
+    assert!(matches!(
+        queued_event(&receiver),
+        control::UiEvent::CssReload
+    ));
 
     assert!(!gate.complete_css(&sender));
-    assert!(matches!(queued_event(&receiver), dbus::UiEvent::CssReload));
+    assert!(matches!(
+        queued_event(&receiver),
+        control::UiEvent::CssReload
+    ));
     assert!(!gate.complete_css(&sender));
     assert!(receiver.is_empty());
 }
@@ -38,7 +44,7 @@ fn full_queue_reload_retries_once_space_is_available() {
 
     assert!(matches!(
         queued_event(&receiver),
-        dbus::UiEvent::ConfigReload
+        control::UiEvent::ConfigReload
     ));
     assert!(!gate.has_pending());
     assert!(!gate.complete_config(&sender));
@@ -53,11 +59,14 @@ fn retry_without_a_trailing_change_does_not_create_an_extra_reload() {
     assert!(gate.request_config(&sender));
     // A flush while still full must preserve only the original pending config reload
     gate.flush(&sender);
-    assert!(matches!(queued_event(&receiver), dbus::UiEvent::CssReload));
+    assert!(matches!(
+        queued_event(&receiver),
+        control::UiEvent::CssReload
+    ));
     gate.flush(&sender);
     assert!(matches!(
         queued_event(&receiver),
-        dbus::UiEvent::ConfigReload
+        control::UiEvent::ConfigReload
     ));
 
     assert!(!gate.complete_config(&sender));
@@ -76,7 +85,7 @@ fn config_completion_reports_when_a_trailing_reload_needs_retry() {
     assert!(gate.has_pending());
     assert!(matches!(
         queued_event(&receiver),
-        dbus::UiEvent::ConfigReload
+        control::UiEvent::ConfigReload
     ));
 }
 
@@ -141,7 +150,10 @@ fn concurrent_request_and_completion_never_strand_a_reload() {
             let _needs_retry = gate.complete_css(&sender);
         });
 
-        assert!(matches!(queued_event(&receiver), dbus::UiEvent::CssReload));
+        assert!(matches!(
+            queued_event(&receiver),
+            control::UiEvent::CssReload
+        ));
         assert!(receiver.is_empty());
     }
 }
@@ -188,17 +200,17 @@ proptest! {
 
 fn complete_one(
     gate: &ReloadGate,
-    sender: &async_channel::Sender<dbus::UiEvent>,
-    receiver: &async_channel::Receiver<dbus::UiEvent>,
+    sender: &async_channel::Sender<control::UiEvent>,
+    receiver: &async_channel::Receiver<control::UiEvent>,
 ) {
     let Ok(event) = receiver.try_recv() else {
         return;
     };
     match event {
-        dbus::UiEvent::CssReload => {
+        control::UiEvent::CssReload => {
             let _needs_retry = gate.complete_css(sender);
         }
-        dbus::UiEvent::ConfigReload => {
+        control::UiEvent::ConfigReload => {
             let _needs_retry = gate.complete_config(sender);
         }
         _ => unreachable!("reload gate emits only reload events"),

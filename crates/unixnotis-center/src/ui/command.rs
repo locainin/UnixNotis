@@ -3,7 +3,7 @@
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 
-use crate::dbus::UiCommand;
+use crate::control::UiCommand;
 
 pub fn try_send_command(command_tx: &mpsc::Sender<UiCommand>, command: UiCommand) {
     // Non-blocking send keeps GTK handlers responsive under D-Bus stalls

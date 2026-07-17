@@ -6,7 +6,7 @@ use unixnotis_core::MediaConfig;
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 use super::bus::{
     build_player_state, handle_command, is_allowed_player, refresh_players,

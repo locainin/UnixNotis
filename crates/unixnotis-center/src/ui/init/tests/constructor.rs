@@ -7,7 +7,7 @@ use unixnotis_core::Config;
 use unixnotis_ui::css::CssManager;
 
 use super::super::{UiState, UiStateInit};
-use crate::dbus::{UiCommand, UiEvent};
+use crate::control::{UiCommand, UiEvent};
 
 #[gtk::test]
 fn constructor_builds_disabled_optional_sections_without_reserving_space() {

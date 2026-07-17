@@ -5,7 +5,7 @@ use tracing::warn;
 use unixnotis_core::{ControlProxy, PanelDebugLevel};
 use zbus::Result as ZbusResult;
 
-use super::types::UiCommand;
+use super::model::UiCommand;
 use crate::debug;
 
 // Cap offline queue length so a dead bus does not keep growing memory use
@@ -15,7 +15,7 @@ pub async fn handle_command(
     proxy: &ControlProxy<'_>,
     // The runtime still passes the UI sender here so the call shape stays uniform
     // Clear-all recovery no longer needs it because daemon invalidation handles reseed
-    _sender: &async_channel::Sender<super::types::UiEvent>,
+    _sender: &async_channel::Sender<super::model::UiEvent>,
     command: UiCommand,
 ) -> ZbusResult<()> {
     match command {
@@ -80,7 +80,7 @@ fn enqueue_offline_command(offline: &mut VecDeque<UiCommand>, command: UiCommand
 
 pub async fn flush_offline_commands(
     proxy: &ControlProxy<'_>,
-    sender: &async_channel::Sender<super::types::UiEvent>,
+    sender: &async_channel::Sender<super::model::UiEvent>,
     offline: &mut VecDeque<UiCommand>,
 ) {
     if offline.is_empty() {

@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use tracing::debug;
 use unixnotis_core::{hooks, NotificationView, Urgency};
 
-use crate::dbus::UiCommand;
+use crate::control::UiCommand;
 use crate::ui::icons::IconResolver;
 use crate::ui::input_guard::ClickCooldown;
 use crate::ui::try_send_command;

@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use tracing::debug;
 use unixnotis_core::css::hooks;
 
-use crate::dbus::UiCommand;
+use crate::control::UiCommand;
 use crate::ui::try_send_command;
 
 use super::state::NotificationRowWidgets;

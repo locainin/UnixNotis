@@ -10,7 +10,7 @@ use std::time::Duration;
 use async_channel::{Sender, TrySendError};
 use gtk::glib;
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 #[derive(Clone)]
 pub(super) struct ClickCooldown {

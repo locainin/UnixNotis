@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 const RELOAD_FLUSH_INTERVAL_MS: u64 = 200;
 

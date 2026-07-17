@@ -1,5 +1,5 @@
 use super::try_send_command;
-use crate::dbus::UiCommand;
+use crate::control::UiCommand;
 
 #[test]
 fn available_command_queue_receives_the_original_command() {

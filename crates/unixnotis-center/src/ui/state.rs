@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use unixnotis_core::{Config, IconAssetResolver, Margins};
 use unixnotis_ui::css::CssManager;
 
-use crate::dbus::{UiCommand, UiEvent};
+use crate::control::{UiCommand, UiEvent};
 
 use super::{icons, list, media_widget, panel, reload_notice, widgets};
 

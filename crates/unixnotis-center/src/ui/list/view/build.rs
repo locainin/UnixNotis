@@ -10,7 +10,7 @@ use gtk::prelude::*;
 use gtk::Align;
 use tokio::sync::mpsc;
 
-use crate::dbus::{UiCommand, UiEvent};
+use crate::control::{UiCommand, UiEvent};
 
 use super::item::RowKind;
 use super::row::empty::{build_empty_row, update_empty_row};

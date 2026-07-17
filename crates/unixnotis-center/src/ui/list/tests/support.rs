@@ -5,7 +5,7 @@ use async_channel::Sender;
 use tokio::sync::mpsc;
 use unixnotis_core::{NotificationImage, NotificationView};
 
-use crate::dbus::{UiCommand, UiEvent};
+use crate::control::{UiCommand, UiEvent};
 use crate::ui::icons::IconResolver;
 use crate::ui::list::{NotificationList, NotificationListConfig};
 

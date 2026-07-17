@@ -5,7 +5,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use unixnotis_core::{hooks, Action};
 
-use crate::dbus::UiCommand;
+use crate::control::UiCommand;
 use crate::ui::icons::IconResolver;
 
 use super::test_support::{child_count, notification_row, row_data, sample_notification, RowFlags};

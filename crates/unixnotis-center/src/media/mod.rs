@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use unixnotis_core::MediaConfig;
 use url::Url;
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 // MPRIS base identifiers used to discover players on the session bus
 pub const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";

@@ -7,7 +7,7 @@ use tracing::{debug, warn};
 use unixnotis_core::ControlProxy;
 
 use super::backoff::RetryLog;
-use super::types::UiEvent;
+use super::model::UiEvent;
 
 // Seed retries tolerate short startup hiccups without blocking indefinitely
 pub const SEED_RETRY_BASE_MS: u64 = 250;

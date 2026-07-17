@@ -11,7 +11,7 @@ use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::{css::hooks, util};
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 use super::super::super::icons::IconResolver;
 use super::super::item::RowData;

@@ -45,5 +45,5 @@ pub enum UiCommand {
 }
 
 #[cfg(test)]
-#[path = "tests/types.rs"]
+#[path = "tests/model.rs"]
 mod tests;

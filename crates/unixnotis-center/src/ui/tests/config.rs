@@ -11,7 +11,7 @@ use unixnotis_ui::css::CssManager;
 
 use super::super::{UiState, UiStateInit};
 use super::{log_reload_rejection, ConfigReloadOutcome, ReloadFailure};
-use crate::dbus::{UiCommand, UiEvent};
+use crate::control::{UiCommand, UiEvent};
 
 static APP_ID: AtomicUsize = AtomicUsize::new(0);
 

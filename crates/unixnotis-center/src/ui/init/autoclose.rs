@@ -9,7 +9,7 @@ use super::super::hyprland;
 use super::super::panel;
 use super::super::try_send_command;
 use super::super::UiStateInit;
-use crate::dbus::UiCommand;
+use crate::control::UiCommand;
 
 fn connect_blur_close(
     command_tx: tokio::sync::mpsc::Sender<UiCommand>,

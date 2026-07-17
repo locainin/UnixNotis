@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_channel::Sender;
 use tracing::debug;
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 use super::MediaInfo;
 

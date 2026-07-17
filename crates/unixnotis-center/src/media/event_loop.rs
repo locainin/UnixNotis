@@ -8,7 +8,7 @@ use unixnotis_core::MediaConfig;
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 use super::bus::PlayerState;
 use super::events::{

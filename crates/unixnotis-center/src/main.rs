@@ -32,7 +32,7 @@ use clap::Parser;
 use tracing::info;
 use unixnotis_core::Config;
 
-mod dbus;
+mod control;
 mod debug;
 mod media;
 mod runtime;

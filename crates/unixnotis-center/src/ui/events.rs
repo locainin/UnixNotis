@@ -6,7 +6,7 @@
 use tracing::debug;
 use unixnotis_core::PanelDebugLevel;
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 use super::{panel, UiState};
 

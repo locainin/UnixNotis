@@ -1,7 +1,7 @@
 use gtk::prelude::*;
 
 use super::actions::connect_clear_button;
-use crate::dbus::UiCommand;
+use crate::control::UiCommand;
 
 #[gtk::test]
 fn clear_button_sends_once_while_click_guard_is_active() {

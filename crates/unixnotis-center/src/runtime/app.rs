@@ -13,7 +13,7 @@ use unixnotis_core::{Config, ThemePaths};
 use unixnotis_ui::css::{self, CssKind};
 
 use super::reload::{start_reload_timer, ReloadGate};
-use crate::{dbus, media, ui};
+use crate::{control, media, ui};
 
 const UI_EVENT_QUEUE_CAPACITY: usize = 512;
 
@@ -41,7 +41,7 @@ pub fn run_center(config: Config, config_path: PathBuf, theme_paths: ThemePaths)
         };
 
         // Background runtimes own bus connections so broker restarts do not require a new GTK app
-        let command_tx = dbus::start_dbus_task(runtime.handle(), event_tx.clone());
+        let command_tx = control::start_control_task(runtime.handle(), event_tx.clone());
         let css_manager = css::CssManager::new_panel(theme_paths.clone(), config.theme.clone());
         let _ = css_manager.apply_to_display();
         let _ = css_manager.reload(css::DEFAULT_CSS);
@@ -95,8 +95,8 @@ fn build_runtime() -> Option<tokio::runtime::Runtime> {
 
 fn start_ui_event_loop(
     ui: Rc<RefCell<ui::UiState>>,
-    event_tx: async_channel::Sender<dbus::UiEvent>,
-    event_rx: async_channel::Receiver<dbus::UiEvent>,
+    event_tx: async_channel::Sender<control::UiEvent>,
+    event_rx: async_channel::Receiver<control::UiEvent>,
     reload_gate: Arc<ReloadGate>,
     reload_timer: Arc<Mutex<Option<glib::SourceId>>>,
 ) {
@@ -140,12 +140,12 @@ fn start_ui_event_loop(
 
 fn handle_event(
     ui: &mut ui::UiState,
-    event: dbus::UiEvent,
+    event: control::UiEvent,
     reload_gate: &ReloadGate,
-    event_tx: &async_channel::Sender<dbus::UiEvent>,
+    event_tx: &async_channel::Sender<control::UiEvent>,
 ) -> bool {
-    let is_css_reload = matches!(&event, dbus::UiEvent::CssReload);
-    let is_config_reload = matches!(&event, dbus::UiEvent::ConfigReload);
+    let is_css_reload = matches!(&event, control::UiEvent::CssReload);
+    let is_config_reload = matches!(&event, control::UiEvent::ConfigReload);
     ui.handle_event(event);
     if is_css_reload {
         reload_gate.complete_css(event_tx)
@@ -159,7 +159,7 @@ fn handle_event(
 fn start_watchers(
     theme_paths: &ThemePaths,
     config_path: &std::path::Path,
-    event_tx: async_channel::Sender<dbus::UiEvent>,
+    event_tx: async_channel::Sender<control::UiEvent>,
     reload_gate: Arc<ReloadGate>,
     reload_timer: Arc<Mutex<Option<glib::SourceId>>>,
 ) {
@@ -181,7 +181,7 @@ fn start_watchers(
 
 fn request_reload(
     reload_gate: &Arc<ReloadGate>,
-    event_tx: &async_channel::Sender<dbus::UiEvent>,
+    event_tx: &async_channel::Sender<control::UiEvent>,
     reload_timer: &Arc<Mutex<Option<glib::SourceId>>>,
     config: bool,
 ) {
