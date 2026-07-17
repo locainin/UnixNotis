@@ -8,6 +8,7 @@ use std::sync::mpsc::{SyncSender, TrySendError};
 use std::thread;
 
 use anyhow::{Context, Result};
+use unixnotis_core::util;
 
 use crate::app::events::{UiMessage, WorkerEvent};
 
@@ -18,6 +19,9 @@ use super::ActionContext;
 // loss to the UI once capacity returns, keeping the installer responsive
 // under noisy subprocess output
 static DROPPED_LOG_LINES: AtomicUsize = AtomicUsize::new(0);
+
+// Eight thousand characters keep Cargo diagnostics useful while bounding TUI wrapping work
+const MAX_INSTALLER_LOG_LINE_CHARS: usize = 8 * 1024;
 
 pub fn run_command(
     ctx: &mut ActionContext,
@@ -112,7 +116,8 @@ pub fn log_line(ctx: &mut ActionContext, line: impl Into<String>) {
 }
 
 fn sanitize_log_line(line: &str) -> String {
-    line.replace('\r', "")
+    // Reserve room for the truncation marker while stripping terminal and bidi controls
+    util::sanitize_log_value(line, MAX_INSTALLER_LOG_LINE_CHARS.saturating_sub(3))
 }
 
 fn read_stream(
@@ -125,7 +130,7 @@ fn read_stream(
     for line in reader.lines() {
         match line {
             Ok(line) => {
-                send_log_line(&tx, sanitize_log_line(&line));
+                send_log_line(&tx, line);
             }
             Err(err) => {
                 send_log_line(
@@ -139,6 +144,8 @@ fn read_stream(
 }
 
 fn send_log_line(tx: &SyncSender<UiMessage>, line: String) {
+    // Every producer crosses one bounded, terminal-safe queue boundary
+    let line = sanitize_log_line(&line);
     // Non-blocking send keeps worker/log threads from stalling on a full UI queue
     // When the channel is full, the line is dropped and a summary warning is
     // emitted later once capacity frees up
