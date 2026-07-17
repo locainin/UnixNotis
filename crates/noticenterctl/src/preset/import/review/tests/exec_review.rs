@@ -5,12 +5,9 @@ use super::super::super::exec_review::{
 use crate::preset::import::review::checks::{
     ImportedExecCommand, ImportedExecContent, ImportedExecFile,
 };
-use std::env;
 use std::path::PathBuf;
-use std::sync::Mutex;
 
-// Pager tests mutate one process-global env var, so they need one tiny lock
-static PAGER_ENV_LOCK: Mutex<()> = Mutex::new(());
+use crate::test_support::{test_env_lock, EnvGuard};
 
 #[test]
 fn exec_review_renders_commands_and_files() {
@@ -71,26 +68,11 @@ fn exec_review_style_can_add_color() {
 
 #[test]
 fn exec_review_writer_ignores_pager_environment() {
-    let _guard = PAGER_ENV_LOCK.lock().expect("lock pager env");
-    let original = env::var_os("PAGER");
-    // SAFETY: The process-wide environment is serialized by PAGER_ENV_LOCK
-    unsafe {
-        env::set_var("PAGER", "sh -c 'echo pwned'");
-    }
+    let _lock = test_env_lock();
+    let _pager = EnvGuard::set("PAGER", "sh -c 'echo pwned'");
 
     let mut written = Vec::new();
     write_exec_content_review(&mut written, "review text\n").expect("write review");
-
-    match original {
-        Some(value) => {
-            // SAFETY: The process-wide environment is serialized by PAGER_ENV_LOCK
-            unsafe { env::set_var("PAGER", value) };
-        }
-        None => {
-            // SAFETY: The process-wide environment is serialized by PAGER_ENV_LOCK
-            unsafe { env::remove_var("PAGER") };
-        }
-    }
 
     assert_eq!(written, b"review text\n");
 }

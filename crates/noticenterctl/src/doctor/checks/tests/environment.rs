@@ -1,47 +1,12 @@
 use std::os::unix::net::UnixListener;
-use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use super::super::environment::*;
 use crate::doctor::report::DoctorSeverity;
-
-struct EnvGuard {
-    name: &'static str,
-    previous: Option<std::ffi::OsString>,
-}
-
-impl EnvGuard {
-    fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
-        let previous = std::env::var_os(name);
-        std::env::set_var(name, value);
-        Self { name, previous }
-    }
-
-    fn remove(name: &'static str) -> Self {
-        let previous = std::env::var_os(name);
-        std::env::remove_var(name);
-        Self { name, previous }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match self.previous.take() {
-            Some(value) => std::env::set_var(self.name, value),
-            None => std::env::remove_var(self.name),
-        }
-    }
-}
-
-fn env_lock() -> MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("doctor environment lock")
-}
+use crate::test_support::{test_env_lock, EnvGuard};
 
 #[test]
 fn healthy_session_environment_reports_transport_without_exposing_address() {
-    let _lock = env_lock();
+    let _lock = test_env_lock();
     let root = std::env::temp_dir().join(format!(
         "unixnotis-doctor-session-environment-{}",
         std::process::id()
@@ -70,7 +35,7 @@ fn healthy_session_environment_reports_transport_without_exposing_address() {
 
 #[test]
 fn missing_environment_becomes_actionable_when_bus_connection_failed() {
-    let _lock = env_lock();
+    let _lock = test_env_lock();
     let _runtime = EnvGuard::remove("XDG_RUNTIME_DIR");
     let _address = EnvGuard::remove("DBUS_SESSION_BUS_ADDRESS");
     let _wayland = EnvGuard::remove("WAYLAND_DISPLAY");
@@ -87,7 +52,7 @@ fn missing_environment_becomes_actionable_when_bus_connection_failed() {
 
 #[test]
 fn malformed_bus_transport_is_classified_without_echoing_untrusted_text() {
-    let _lock = env_lock();
+    let _lock = test_env_lock();
     let malicious_prefix = format!("{}\u{1b}[31m{}", "x".repeat(8_192), "injected");
     let address = format!("{malicious_prefix}:value");
     let _address = EnvGuard::set("DBUS_SESSION_BUS_ADDRESS", address);

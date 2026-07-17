@@ -27,6 +27,10 @@ mod output;
 mod preset;
 mod system_tools;
 
+#[cfg(test)]
+#[path = "tests/support.rs"]
+mod test_support;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     app::run().await
