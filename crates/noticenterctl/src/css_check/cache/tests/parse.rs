@@ -93,6 +93,14 @@ fn validator_pipe_reader_rejects_output_over_its_limit() {
 }
 
 #[test]
+fn validator_pipe_reader_accepts_output_at_its_exact_limit() {
+    let bytes = read_bounded_pipe(Some(Cursor::new(vec![b'x'; 8])), 8, "test output")
+        .expect("exact validator output limit should remain valid");
+
+    assert_eq!(bytes, vec![b'x'; 8]);
+}
+
+#[test]
 fn truncated_validator_report_adds_an_explicit_finding() {
     let root = TempDirGuard::new("validator-truncation");
     let path = root.write("style.css", ".panel {}");

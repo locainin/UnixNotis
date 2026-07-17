@@ -1,5 +1,6 @@
 use super::super::render::*;
 use crate::doctor::report::{DoctorCheck, DoctorLogResult, DoctorLogSource, DoctorSeverity};
+use unixnotis_core::{ConfigDiagnostic, ConfigDiagnosticKind};
 
 use super::super::model::DoctorReport;
 
@@ -48,6 +49,35 @@ fn human_output_omits_machine_data_that_duplicates_curated_details() {
     assert!(rendered.contains("Manager: systemd\nState: active"));
     assert!(!rendered.contains("manager: systemd"));
     assert!(!rendered.contains("active: true"));
+}
+
+#[test]
+fn human_output_renders_typed_configuration_diagnostics() {
+    let report = DoctorReport::new(
+        Vec::new(),
+        vec![ConfigDiagnostic {
+            code: "config.value.adjusted",
+            kind: ConfigDiagnosticKind::Adjustment,
+            path: Some("widgets.refresh_ms".to_string()),
+            message: "Configuration value was adjusted to a safe range".to_string(),
+            original: Some("1".to_string()),
+            effective: Some("100".to_string()),
+        }],
+        DoctorLogResult::Unavailable {
+            source: DoctorLogSource::Manual,
+            reason: "persistent logs are unavailable".to_string(),
+            hint: None,
+        },
+    );
+
+    let rendered = render_human(&report);
+
+    assert!(rendered.contains("CONFIGURATION DIAGNOSTICS"));
+    assert!(rendered.contains("[Adjustment] Configuration value was adjusted to a safe range"));
+    assert!(rendered.contains("Code: config.value.adjusted"));
+    assert!(rendered.contains("Key: widgets.refresh_ms"));
+    assert!(rendered.contains("Original: 1"));
+    assert!(rendered.contains("Effective: 100"));
 }
 
 #[test]
