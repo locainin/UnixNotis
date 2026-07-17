@@ -43,8 +43,9 @@ fn confirm_import_external_css_refs_errors_without_interactive_confirmation() {
         reason: "local path points outside the config root".to_string(),
     }];
 
-    let error = super::super::prompts::confirm_import_external_css_refs(&refs)
-        .expect_err("noninteractive import should reject external refs");
+    let error =
+        super::super::prompts::confirm_import_external_css_refs_with_terminal_state(&refs, false)
+            .expect_err("noninteractive import should reject external refs");
 
     assert!(error.to_string().contains(
         "CSS asset references that leave the UnixNotis config directory or use remote URLs"

@@ -43,8 +43,20 @@ pub(super) fn resolve_cli_bundle_path(path: &Path) -> Result<PathBuf> {
 }
 
 pub(super) fn confirm_continue_or_abort(prompt: &str, noninteractive_message: &str) -> Result<()> {
+    confirm_continue_or_abort_with_terminal_state(
+        prompt,
+        noninteractive_message,
+        terminal_interaction_available(),
+    )
+}
+
+pub(super) fn confirm_continue_or_abort_with_terminal_state(
+    prompt: &str,
+    noninteractive_message: &str,
+    terminal_interactive: bool,
+) -> Result<()> {
     // Real shells get a yes/no prompt, while scripts fail with a clear message instead of hanging
-    if io::stdin().is_terminal() && io::stdout().is_terminal() {
+    if terminal_interactive {
         if prompt_yes_no(prompt)? {
             return Ok(());
         }
@@ -52,6 +64,10 @@ pub(super) fn confirm_continue_or_abort(prompt: &str, noninteractive_message: &s
     }
 
     Err(anyhow!(noninteractive_message.to_string()))
+}
+
+pub(super) fn terminal_interaction_available() -> bool {
+    io::stdin().is_terminal() && io::stdout().is_terminal()
 }
 
 pub(super) fn parse_except_paths(values: &[String]) -> Result<Vec<PathBuf>> {

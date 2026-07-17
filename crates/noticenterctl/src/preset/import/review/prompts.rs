@@ -3,10 +3,22 @@
 use anyhow::Result;
 
 use super::super::super::css_asset_refs::ExternalCssAssetRef;
-use super::super::super::pathing::confirm_continue_or_abort;
+use super::super::super::pathing::{
+    confirm_continue_or_abort_with_terminal_state, terminal_interaction_available,
+};
 
 pub(in crate::preset) fn confirm_import_external_css_refs(
     external_refs: &[ExternalCssAssetRef],
+) -> Result<()> {
+    confirm_import_external_css_refs_with_terminal_state(
+        external_refs,
+        terminal_interaction_available(),
+    )
+}
+
+pub(in crate::preset) fn confirm_import_external_css_refs_with_terminal_state(
+    external_refs: &[ExternalCssAssetRef],
+    terminal_interactive: bool,
 ) -> Result<()> {
     if external_refs.is_empty() {
         return Ok(());
@@ -22,12 +34,13 @@ pub(in crate::preset) fn confirm_import_external_css_refs(
         eprintln!("{line}");
     }
 
-    confirm_continue_or_abort(
+    confirm_continue_or_abort_with_terminal_state(
         "External CSS asset references were found; continue importing anyway?",
         &format!(
             "preset import found CSS asset references that leave the UnixNotis config directory or use remote URLs; rerun interactively to confirm anyway\n{}",
             details.join("\n")
         ),
+        terminal_interactive,
     )
 }
 

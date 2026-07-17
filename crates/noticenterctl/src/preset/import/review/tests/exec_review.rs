@@ -1,6 +1,6 @@
 use super::super::super::exec_review::{
-    confirm_import_exec_content, render_exec_content_review_with_style, write_exec_content_review,
-    ReviewStyle,
+    confirm_import_exec_content, confirm_import_exec_content_with_terminal_state,
+    render_exec_content_review_with_style, write_exec_content_review, ReviewStyle,
 };
 use crate::preset::import::review::checks::{
     ImportedExecCommand, ImportedExecContent, ImportedExecFile,
@@ -54,7 +54,7 @@ fn exec_review_allows_empty_or_explicitly_trusted_exec_content() {
 fn exec_review_rejects_untrusted_exec_content_when_not_interactive() {
     let content = imported_exec_content();
 
-    let error = confirm_import_exec_content(&content, false)
+    let error = confirm_import_exec_content_with_terminal_state(&content, false, false)
         .expect_err("noninteractive untrusted exec content should fail closed");
 
     assert!(error

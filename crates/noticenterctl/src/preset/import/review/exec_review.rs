@@ -6,12 +6,24 @@ use anyhow::{anyhow, Context, Result};
 use std::env;
 use std::io::{self, IsTerminal, Write};
 
-use super::super::super::pathing::prompt_yes_no;
+use super::super::super::pathing::{prompt_yes_no, terminal_interaction_available};
 use super::checks::ImportedExecContent;
 
 pub(in crate::preset) fn confirm_import_exec_content(
     exec_content: &ImportedExecContent,
     allow_exec: bool,
+) -> Result<()> {
+    confirm_import_exec_content_with_terminal_state(
+        exec_content,
+        allow_exec,
+        terminal_interaction_available(),
+    )
+}
+
+pub(in crate::preset) fn confirm_import_exec_content_with_terminal_state(
+    exec_content: &ImportedExecContent,
+    allow_exec: bool,
+    terminal_interactive: bool,
 ) -> Result<()> {
     // Empty bundles stay on the normal import path without extra prompts
     if exec_content.commands.is_empty() && exec_content.files.is_empty() {
@@ -23,7 +35,7 @@ pub(in crate::preset) fn confirm_import_exec_content(
         return Ok(());
     }
 
-    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+    if !terminal_interactive {
         return Err(anyhow!(
             "preset import found executable commands or bundled scripts; rerun interactively to inspect them or use --allow-exec only if the preset is trusted"
         ));
