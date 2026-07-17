@@ -14,7 +14,7 @@ use unixnotis_core::{
 };
 use unixnotis_ui::css::CssReloadReport;
 
-use super::super::list;
+use super::super::notifications;
 use super::super::panel::notification_header_row_visible;
 use super::super::widget_builders::{build_extra_widgets, build_quick_controls, clear_container};
 use super::super::{panel, UiState};
@@ -314,7 +314,7 @@ impl UiState {
 
     pub(in crate::ui) fn apply_list_config_after_reload(&mut self, config: &Config) {
         // A compact value object prevents the list from reading half-applied UI state
-        let list_config = list::NotificationListConfig {
+        let list_config = notifications::NotificationListConfig {
             max_active: config.history.max_active,
             max_entries: config.history.max_entries,
             transient_to_history: config.history.transient_to_history,

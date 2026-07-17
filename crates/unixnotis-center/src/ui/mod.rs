@@ -8,8 +8,8 @@ mod reload;
 // Startup wiring remains a child module so constructors can access private UI parts
 mod init;
 mod input_guard;
-mod list;
 mod media;
+mod notifications;
 mod panel;
 mod perf_probe;
 mod state;

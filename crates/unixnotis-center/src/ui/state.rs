@@ -12,7 +12,7 @@ use unixnotis_ui::css::CssManager;
 
 use crate::control::{UiCommand, UiEvent};
 
-use super::{icons, list, media, panel, reload, widgets};
+use super::{icons, media, notifications, panel, reload, widgets};
 
 /// GTK state for the notification center panel
 pub struct UiState {
@@ -20,7 +20,7 @@ pub struct UiState {
     pub(super) config_path: std::path::PathBuf,
     pub(super) css: CssManager,
     pub(super) panel: panel::PanelWidgets,
-    pub(super) list: list::NotificationList,
+    pub(super) list: notifications::NotificationList,
     // Shared resolver keeps icon cache and inflight decode tracking centralized
     pub(super) icon_resolver: Rc<icons::IconResolver>,
     // Widget assets are resolved relative to the active config file root

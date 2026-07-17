@@ -4,14 +4,14 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 
-use super::super::{icons, list, media, panel, widgets, UiStateInit};
+use super::super::{icons, media, notifications, panel, widgets, UiStateInit};
 
 pub(super) fn build_notification_list(
     panel: &panel::PanelWidgets,
     init: &UiStateInit,
     icon_resolver: Rc<icons::IconResolver>,
-) -> list::NotificationList {
-    let list_config = list::NotificationListConfig {
+) -> notifications::NotificationList {
+    let list_config = notifications::NotificationListConfig {
         max_active: init.config.history.max_active,
         max_entries: init.config.history.max_entries,
         transient_to_history: init.config.history.transient_to_history,
@@ -24,7 +24,7 @@ pub(super) fn build_notification_list(
 
     // Notification list owns row virtualization and icon resolution
     // Startup only passes the resolved policy and shared channels
-    list::NotificationList::new(
+    notifications::NotificationList::new(
         panel.scroller.clone(),
         init.command_tx.clone(),
         init.event_tx.clone(),
