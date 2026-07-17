@@ -203,3 +203,7 @@ fn skip_exact(input: &mut impl Read, mut remaining: u64) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/preflight.rs"]
+mod tests;
