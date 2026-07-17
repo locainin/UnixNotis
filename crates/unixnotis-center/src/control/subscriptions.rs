@@ -19,11 +19,17 @@ pub(super) enum ControlGenerationExit {
     RetryDelayed,
     // A live stream ended and the reconnect owner must perform cleanup
     Disconnected,
+    // The UI dropped every command sender and no longer needs a control task
+    Shutdown,
 }
 
 impl ControlGenerationExit {
     pub(super) const fn requires_reconnect_cleanup(self) -> bool {
         matches!(self, Self::Disconnected)
+    }
+
+    pub(super) const fn should_stop(self) -> bool {
+        matches!(self, Self::Shutdown)
     }
 }
 
@@ -97,11 +103,11 @@ pub(super) async fn run_control_generation(
         return ControlGenerationExit::RetryDelayed;
     }
 
-    loop {
+    let exit = loop {
         tokio::select! {
             command = command_rx.recv() => {
                 let Some(command) = command else {
-                    break;
+                    break ControlGenerationExit::Shutdown;
                 };
                 if let Err(err) = handle_command(proxy, sender, command).await {
                     warn!(?err, "control command failed");
@@ -110,7 +116,7 @@ pub(super) async fn run_control_generation(
             signal = added_stream.next() => {
                 let Some(signal) = signal else {
                     warn!("notification_added stream ended");
-                    break;
+                    break ControlGenerationExit::Disconnected;
                 };
                 if let Ok(args) = signal.args() {
                     push_active_notification_event(
@@ -125,7 +131,7 @@ pub(super) async fn run_control_generation(
             signal = updated_stream.next() => {
                 let Some(signal) = signal else {
                     warn!("notification_updated stream ended");
-                    break;
+                    break ControlGenerationExit::Disconnected;
                 };
                 if let Ok(args) = signal.args() {
                     push_active_notification_event(
@@ -140,7 +146,7 @@ pub(super) async fn run_control_generation(
             signal = closed_stream.next() => {
                 let Some(signal) = signal else {
                     warn!("notification_closed stream ended");
-                    break;
+                    break ControlGenerationExit::Disconnected;
                 };
                 if let Ok(args) = signal.args() {
                     let _ = sender
@@ -151,7 +157,7 @@ pub(super) async fn run_control_generation(
             signal = state_stream.next() => {
                 let Some(signal) = signal else {
                     warn!("state_changed stream ended");
-                    break;
+                    break ControlGenerationExit::Disconnected;
                 };
                 if let Ok(args) = signal.args() {
                     let _ = sender.send(UiEvent::StateChanged(args.state().clone())).await;
@@ -160,7 +166,7 @@ pub(super) async fn run_control_generation(
             signal = invalidated_stream.next() => {
                 let Some(_signal) = signal else {
                     warn!("snapshot_invalidated stream ended");
-                    break;
+                    break ControlGenerationExit::Disconnected;
                 };
                 // A full seed is required because another client may have deleted any row
                 seed_state_with_retry(proxy, sender).await;
@@ -168,18 +174,18 @@ pub(super) async fn run_control_generation(
             signal = panel_stream.next() => {
                 let Some(signal) = signal else {
                     warn!("panel_requested stream ended");
-                    break;
+                    break ControlGenerationExit::Disconnected;
                 };
                 if let Ok(args) = signal.args() {
                     let _ = sender.send(UiEvent::PanelRequested(*args.request())).await;
                 }
             }
         }
-    }
+    };
 
     // Readiness is best effort because a closed transport cannot accept cleanup calls
     let _ = proxy.mark_panel_not_ready().await;
-    ControlGenerationExit::Disconnected
+    exit
 }
 
 async fn retry_subscription(backoff: &mut Backoff) {

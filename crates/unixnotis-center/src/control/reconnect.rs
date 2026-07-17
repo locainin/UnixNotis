@@ -31,6 +31,10 @@ pub(super) async fn run_control_loop(
     let mut subscribe_log = RetryLog::new(Duration::from_secs(RETRY_WARN_INTERVAL_SECS));
 
     loop {
+        // No sender means every UI owner is gone and reconnecting would leak this task
+        if command_rx.is_closed() {
+            return;
+        }
         // A disconnected zbus socket is terminal, so each loop owns a fresh bus generation
         let connection = match Connection::session().await {
             Ok(connection) => connection,
@@ -64,6 +68,9 @@ pub(super) async fn run_control_loop(
             &mut subscribe_log,
         )
         .await;
+        if generation.should_stop() {
+            return;
+        }
         if !generation.requires_reconnect_cleanup() {
             continue;
         }

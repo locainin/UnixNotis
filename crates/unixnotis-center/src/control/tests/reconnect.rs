@@ -98,6 +98,26 @@ async fn wait_for_replacement(address: &str) -> zbus::Connection {
 }
 
 #[test]
+fn closed_command_channel_stops_before_attempting_a_bus_connection() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build test runtime");
+    runtime.block_on(async {
+        let (event_tx, _event_rx) = async_channel::bounded(1);
+        let (command_tx, command_rx) = tokio::sync::mpsc::channel(1);
+        drop(command_tx);
+
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            super::run_control_loop(event_tx, command_rx),
+        )
+        .await
+        .expect("closed control loop should stop without waiting for D-Bus");
+    });
+}
+
+#[test]
 fn new_connection_recovers_after_private_session_bus_restart() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
