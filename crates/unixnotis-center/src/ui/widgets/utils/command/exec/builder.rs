@@ -219,3 +219,7 @@ fn normalize_lexical_path(path: &Path) -> PathBuf {
     }
     normalized
 }
+
+#[cfg(test)]
+#[path = "tests/builder.rs"]
+mod tests;

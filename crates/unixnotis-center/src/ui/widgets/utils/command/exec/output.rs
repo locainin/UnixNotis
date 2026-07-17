@@ -77,3 +77,7 @@ pub(super) async fn read_to_end_limited_async<R: AsyncRead + Unpin>(
     }
     Ok(output)
 }
+
+#[cfg(test)]
+#[path = "tests/output.rs"]
+mod tests;
