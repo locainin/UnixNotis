@@ -26,10 +26,7 @@ pub(super) fn start_media_task(
     // The runtime task owns player state and feeds snapshots back to the UI
     runtime.spawn(run_event_loop(config, sender, command_rx));
 
-    Some(MediaHandle {
-        command_tx: Some(command_tx),
-        runtime: runtime.clone(),
-    })
+    Some(MediaHandle::connected(command_tx, runtime.clone()))
 }
 
 fn normalize_media_config(mut config: MediaConfig) -> MediaConfig {

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use url::Url;
 
-use super::MediaArtSource;
+use super::super::MediaArtSource;
 
 #[test]
 fn media_art_source_stable_key_keeps_source_kind_visible() {
