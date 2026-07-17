@@ -52,6 +52,17 @@ fn ensure_no_symlink_ancestors_rejects_symlinked_parent_path() {
         .contains("config directory path goes through a symlink"));
 }
 
+#[test]
+fn ensure_safe_target_path_rejects_a_regular_file_parent() {
+    let root = TempDirGuard::new("regular-file-parent");
+    fs::write(root.path.join("config.toml"), "").expect("write regular file parent");
+
+    let error = ensure_safe_target_path(&root.path, Path::new("config.toml/child"))
+        .expect_err("a regular file cannot be traversed as a directory");
+
+    assert!(error.to_string().contains("non-directory parent component"));
+}
+
 #[cfg(unix)]
 #[test]
 fn ensure_safe_target_path_rejects_symlinked_child_path() {

@@ -40,6 +40,13 @@ pub fn ensure_safe_target_path(config_dir: &Path, relative_path: &Path) -> Resul
                     probe.display()
                 ));
             }
+            if probe != target_path && !metadata.is_dir() {
+                // A regular file cannot act as a parent even though it cannot escape the root
+                return Err(anyhow!(
+                    "preset import target has a non-directory parent component: {}",
+                    probe.display()
+                ));
+            }
         }
     }
 

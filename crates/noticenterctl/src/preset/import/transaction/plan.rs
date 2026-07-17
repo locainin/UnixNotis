@@ -70,6 +70,8 @@ pub(in crate::preset) fn build_import_plan(
         });
     }
 
+    validate_no_file_ancestor_conflicts(&items)?;
+
     // These counters are derived once so dry-run and the real apply path report the same numbers
     let overwritten = items.iter().filter(|item| item.overwrite_existing).count();
     let created = items.len().saturating_sub(overwritten);
@@ -80,4 +82,21 @@ pub(in crate::preset) fn build_import_plan(
         overwritten,
         excluded,
     })
+}
+
+fn validate_no_file_ancestor_conflicts(items: &[ImportPlanItem]) -> Result<()> {
+    for (index, item) in items.iter().enumerate() {
+        for other in items.iter().skip(index + 1) {
+            let first = &item.file.relative_path;
+            let second = &other.file.relative_path;
+            if first.starts_with(second) || second.starts_with(first) {
+                return Err(anyhow!(
+                    "preset import contains file paths that cannot both exist: {} and {}",
+                    first.display(),
+                    second.display()
+                ));
+            }
+        }
+    }
+    Ok(())
 }
