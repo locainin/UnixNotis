@@ -1,7 +1,8 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use unixnotis_core::util;
+use url::Url;
 
 use super::parse::collect_url_spans;
 use super::{
@@ -104,61 +105,42 @@ fn rewrite_host_specific_asset_ref(
     // Rewritten asset paths stay relative to the stylesheet so imports work on any machine
     let css_base_dir = css_path.parent().unwrap_or(config_dir);
     let normalized_css_base = normalize_lexical_path(css_base_dir);
-    Some(relative_css_path(
-        &normalized_css_base,
-        &normalized_root.join(relative_asset),
-    ))
+    relative_css_url(&normalized_css_base, &normalized_root.join(relative_asset))
 }
 
-fn relative_css_path(base_dir: &Path, target_path: &Path) -> String {
-    let base_parts = base_dir
-        .components()
-        .filter_map(normal_component)
-        .collect::<Vec<_>>();
-    let target_parts = target_path
-        .components()
-        .filter_map(normal_component)
-        .collect::<Vec<_>>();
-
-    let mut shared = 0usize;
-    while shared < base_parts.len()
-        && shared < target_parts.len()
-        && base_parts[shared] == target_parts[shared]
-    {
-        // Shared leading path segments are dropped before building the relative path
-        shared += 1;
-    }
-
-    let mut relative = PathBuf::new();
-    for _ in shared..base_parts.len() {
-        // Every extra base segment needs one `..` to walk back out of that folder
-        relative.push("..");
-    }
-    for part in &target_parts[shared..] {
-        // The remaining target path is then appended in order
-        relative.push(part);
-    }
-
-    format_css_relative_path(&relative)
+fn relative_css_url(base_dir: &Path, target_path: &Path) -> Option<String> {
+    // Directory URL conversion keeps the trailing slash needed for correct relative resolution
+    let base_url = Url::from_directory_path(base_dir).ok()?;
+    // File URL conversion serializes spaces and CSS-significant bytes as percent escapes
+    let target_url = Url::from_file_path(target_path).ok()?;
+    base_url
+        .make_relative(&target_url)
+        .map(|reference| encode_css_url_token_delimiters(&reference))
 }
 
-fn normal_component(component: Component<'_>) -> Option<String> {
-    match component {
-        Component::Normal(part) => Some(part.to_string_lossy().to_string()),
-        _ => None,
-    }
-}
-
-fn format_css_relative_path(path: &Path) -> String {
-    // CSS URLs need a slash-joined relative string, not an OS-dependent display path
-    path.components()
-        .filter_map(|component| match component {
-            Component::ParentDir => Some("..".to_string()),
-            Component::Normal(part) => Some(part.to_string_lossy().to_string()),
+fn encode_css_url_token_delimiters(reference: &str) -> String {
+    let mut encoded = String::with_capacity(reference.len());
+    for character in reference.chars() {
+        let escape = match character {
+            // These bytes can quote, terminate, escape, or invalidate an unquoted CSS URL token
+            '"' => Some("%22"),
+            '\'' => Some("%27"),
+            '(' => Some("%28"),
+            ')' => Some("%29"),
+            '\\' => Some("%5C"),
+            '\t' => Some("%09"),
+            '\n' => Some("%0A"),
+            '\r' => Some("%0D"),
+            '\u{000C}' => Some("%0C"),
             _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/")
+        };
+        if let Some(escape) = escape {
+            encoded.push_str(escape);
+        } else {
+            encoded.push(character);
+        }
+    }
+    encoded
 }
 
 #[cfg(test)]

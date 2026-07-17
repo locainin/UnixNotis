@@ -38,6 +38,52 @@ fn rebase_relative_css_asset_urls_preserves_unicode_path() {
 }
 
 #[test]
+fn rebase_relative_css_asset_urls_preserves_portable_percent_encoding_once() {
+    let css = concat!(
+        ".a { background: url(../assets/icon%20one.png); }\n",
+        ".b { background: url(\"../assets/icon%23one.png\"); }\n",
+        ".c { background: url('../assets/icon%25one.png'); }\n",
+        ".d { background: url(../assets/icon%29one.png); }\n",
+        ".e { background: url(\"../assets/icon%22one.png\"); }",
+    );
+    let css_path = Path::new("/tmp/unixnotis/themes/widgets.css");
+
+    let rebased = rebase_relative_css_asset_urls(css, css_path);
+
+    for encoded_name in [
+        "icon%20one.png",
+        "icon%23one.png",
+        "icon%25one.png",
+        "icon%29one.png",
+        "icon%22one.png",
+    ] {
+        assert!(
+            rebased.contains(&format!("file:///tmp/unixnotis/assets/{encoded_name}")),
+            "missing encoded target {encoded_name}: {rebased}"
+        );
+    }
+    assert!(!rebased.contains("%2520"));
+    assert!(!rebased.contains("%2523"));
+    assert!(!rebased.contains("%2525"));
+    assert!(!rebased.contains("%2529"));
+    assert!(!rebased.contains("%2522"));
+}
+
+#[test]
+fn rebase_relative_css_asset_urls_keeps_other_absolute_uri_schemes_external() {
+    let css = concat!(
+        ".a { background-image: url(ftp://example.invalid/a.png); }\n",
+        ".b { background-image: url(\"ipfs://example/a.png\"); }\n",
+        ".c { background-image: url(custom:asset-name); }",
+    );
+    let css_path = Path::new("/tmp/unixnotis/widgets.css");
+
+    let rebased = rebase_relative_css_asset_urls(css, css_path);
+
+    assert_eq!(rebased, css);
+}
+
+#[test]
 fn rebase_relative_css_asset_urls_keeps_absolute_remote_data_and_file_urls() {
     let css = concat!(
         ".a { background-image: url(\"file:///tmp/outside.png\"); }\n",

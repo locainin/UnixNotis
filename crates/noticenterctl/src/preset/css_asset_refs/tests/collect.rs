@@ -88,6 +88,23 @@ fn finds_relative_parent_escape_in_live_css() {
 }
 
 #[test]
+fn percent_encoded_parent_traversal_is_decoded_before_containment_checks() {
+    let root = TempDirGuard::new("encoded-relative-escape");
+    let config_dir = root.path.join("xdg/unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config dir");
+    let css_path = root.write(
+        "xdg/unixnotis/themes/base.css",
+        ".panel { background-image: url('..%2f..%2foutside.png'); }\n",
+    );
+
+    let refs =
+        collect_external_css_asset_refs_from_paths(&config_dir, &[css_path]).expect("scan css");
+
+    assert_eq!(refs.len(), 1);
+    assert_eq!(refs[0].reason, "relative path leaves the config root");
+}
+
+#[test]
 fn finds_remote_url_in_live_css() {
     // Remote URLs stay valid css syntax, but they are still called out as non-local asset refs
     let root = TempDirGuard::new("remote");
@@ -103,6 +120,36 @@ fn finds_remote_url_in_live_css() {
 
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].reason, "remote url");
+}
+
+#[test]
+fn valid_non_file_uri_schemes_are_external_and_never_collected_as_local_paths() {
+    let root = TempDirGuard::new("external-uri-schemes");
+    let config_dir = root.path.join("xdg/unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config dir");
+    let css_path = root.write(
+        "xdg/unixnotis/base.css",
+        ".a { background: url('ftp://example.invalid/a.png'); }\n\
+         .b { background: url('ipfs://example/a.png'); }\n\
+         .c { background: url('custom:asset-name'); }\n",
+    );
+    let captures = BTreeMap::from([(
+        PathBuf::from("base.css"),
+        SecureFileCapture {
+            contents: fs::read(&css_path).expect("read css fixture"),
+            mode: 0o644,
+        },
+    )]);
+
+    let refs =
+        collect_external_css_asset_refs_from_paths(&config_dir, std::slice::from_ref(&css_path))
+            .expect("classify external URI schemes");
+    let paths = collect_local_css_asset_paths_from_captures(&config_dir, &[css_path], &captures)
+        .expect("collect local dependencies");
+
+    assert_eq!(refs.len(), 3);
+    assert!(refs.iter().all(|finding| finding.reason == "external URI"));
+    assert!(paths.is_empty());
 }
 
 #[test]
@@ -152,6 +199,45 @@ fn local_dependency_collection_uses_captured_stylesheet_bytes() {
         .expect("collect captured local dependencies");
 
     assert_eq!(paths, vec![PathBuf::from("assets/captured.png")]);
+}
+
+#[test]
+fn local_dependency_collection_decodes_percent_encoded_relative_url_paths() {
+    let root = TempDirGuard::new("encoded-local-dependencies");
+    let config_dir = root.path.join("xdg/unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config dir");
+    let css_path = root.write(
+        "xdg/unixnotis/base.css",
+        ".a { background: url(assets/icon%20one.png); }\n\
+         .b { background: url('assets/icon%23one.png'); }\n\
+         .c { background: url(\"assets/icon%25one.png\"); }\n\
+         .d { background: url(assets/icon%29one.png); }\n\
+         .e { background: url('assets/icon%22one.png'); }\n",
+    );
+    let captures = BTreeMap::from([(
+        PathBuf::from("base.css"),
+        SecureFileCapture {
+            contents: fs::read(&css_path).expect("read css fixture"),
+            mode: 0o644,
+        },
+    )]);
+
+    let paths = collect_local_css_asset_paths_from_captures(&config_dir, &[css_path], &captures)
+        .expect("collect encoded local dependencies");
+
+    assert_eq!(
+        paths,
+        [
+            "assets/icon one.png",
+            "assets/icon\"one.png",
+            "assets/icon#one.png",
+            "assets/icon%one.png",
+            "assets/icon)one.png",
+        ]
+        .into_iter()
+        .map(PathBuf::from)
+        .collect::<Vec<_>>()
+    );
 }
 
 #[test]

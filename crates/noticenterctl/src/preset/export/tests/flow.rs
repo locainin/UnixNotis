@@ -5,6 +5,7 @@ use crate::preset::archive::read_bundle;
 use anyhow::anyhow;
 use std::fs;
 use std::path::Path;
+use url::Url;
 
 fn confirm_external_css_refs_ok(
     _refs: &[crate::preset::css_asset_refs::ExternalCssAssetRef],
@@ -387,19 +388,17 @@ fn export_can_keep_host_specific_command_paths_when_fix_is_declined() {
 fn export_can_rewrite_host_specific_css_asset_refs_to_css_relative_paths() {
     // Shared presets should rewrite host-local CSS URLs into portable stylesheet-relative paths
     let root = TempDirGuard::new("host-specific-css-asset");
-    let asset_relative = "assets/example-image.png";
+    let asset_relative = "assets/example image#%()\".png";
     let stylesheet_relative = "themes/widgets.css";
     let asset_path = root.path.join(asset_relative);
+    let asset_url = Url::from_file_path(&asset_path).expect("build asset file URL");
     root.write(
         "config.toml",
         "[theme]\nbase_css = \"themes/widgets.css\"\npanel_css = \"panel.css\"\npopup_css = \"popup.css\"\nwidgets_css = \"themes/widgets.css\"\nmedia_css = \"media.css\"\n",
     );
     root.write(
         stylesheet_relative,
-        &format!(
-            ".card {{ background-image: url(\"file://{}\"); }}\n",
-            asset_path.display()
-        ),
+        &format!(".card {{ background-image: url(\"{asset_url}\"); }}\n"),
     );
     root.write("panel.css", ".panel { color: red; }");
     root.write("popup.css", ".popup { color: red; }");
@@ -431,10 +430,10 @@ fn export_can_rewrite_host_specific_css_asset_refs_to_css_relative_paths() {
     let css_text = std::str::from_utf8(&css_file.contents).expect("utf8 css");
 
     // The rewritten URL should be relative to the stylesheet location, not the machine home path
-    assert!(css_text.contains("../assets/example-image.png"));
+    assert!(css_text.contains("../assets/example%20image%23%25%28%29%22.png"));
     assert!(!css_text.contains(&asset_path.display().to_string()));
     let live_css = fs::read_to_string(root.path.join(stylesheet_relative)).expect("live css");
-    assert!(live_css.contains(&asset_path.display().to_string()));
+    assert!(live_css.contains(asset_url.as_str()));
 }
 
 #[test]

@@ -47,7 +47,7 @@ pub fn classify_file_url(value: &str) -> FileUrlClassification {
     FileUrlClassification::Local(path)
 }
 
-fn has_valid_percent_encoding(bytes: &[u8]) -> bool {
+pub(super) fn has_valid_percent_encoding(bytes: &[u8]) -> bool {
     let mut index = 0usize;
     while index < bytes.len() {
         if bytes[index] == b'%' {

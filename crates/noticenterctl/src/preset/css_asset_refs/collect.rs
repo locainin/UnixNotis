@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use unixnotis_core::util;
+use url::Url;
 
+use super::file_url::has_valid_percent_encoding;
 use super::parse::{collect_import_values, collect_url_values, CssImportReference};
 use super::{
     asset_path_reason, classify_file_url, has_css_extension, read_css_path_text_bounded,
@@ -152,12 +154,7 @@ fn collect_local_path(
     paths: &mut Vec<PathBuf>,
 ) -> Result<()> {
     let trimmed = asset_ref.trim();
-    let lowered = trimmed.to_ascii_lowercase();
-    if trimmed.is_empty()
-        || lowered.starts_with("data:")
-        || lowered.starts_with("http://")
-        || lowered.starts_with("https://")
-    {
+    if trimmed.is_empty() {
         return Ok(());
     }
 
@@ -167,11 +164,13 @@ fn collect_local_path(
             return Ok(())
         }
         FileUrlClassification::NotFileUrl => {
-            let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
-            if expanded.is_absolute() {
-                expanded
-            } else {
-                css_path.parent().unwrap_or(config_dir).join(expanded)
+            if Url::parse(trimmed).is_ok() {
+                // Absolute non-file URIs are external dependencies, never local bundle paths
+                return Ok(());
+            }
+            match resolve_relative_asset_path(css_path.parent().unwrap_or(config_dir), trimmed) {
+                RelativeAssetPath::Resolved(path) => path,
+                RelativeAssetPath::InvalidUrl => return Ok(()),
             }
         }
     };
@@ -259,15 +258,6 @@ fn classify_external_asset_ref(
         return None;
     }
 
-    let lowered = trimmed.to_ascii_lowercase();
-    if lowered.starts_with("data:") {
-        // Embedded data stays self-contained inside the stylesheet
-        return None;
-    }
-    if lowered.starts_with("http://") || lowered.starts_with("https://") {
-        // Remote assets are not portable bundle content and should stay visible in warnings
-        return Some("remote url".to_string());
-    }
     match classify_file_url(trimmed) {
         FileUrlClassification::Local(path) => {
             // Local file URLs are decoded before the same containment check as plain paths
@@ -280,6 +270,17 @@ fn classify_external_asset_ref(
         FileUrlClassification::NotFileUrl => {}
     }
 
+    if let Ok(url) = Url::parse(trimmed) {
+        return match url.scheme() {
+            // Embedded data stays self-contained inside the stylesheet
+            "data" => None,
+            // Keep the established reason for the common network schemes
+            "http" | "https" => Some("remote url".to_string()),
+            // Every other absolute URI remains external instead of becoming a fake relative path
+            _ => Some("external URI".to_string()),
+        };
+    }
+
     let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
     if expanded.is_absolute() {
         // Plain absolute paths leak the local machine layout the same way file:/// paths do
@@ -288,13 +289,42 @@ fn classify_external_asset_ref(
 
     // Relative refs are anchored to the stylesheet location, not the config root itself
     let base_dir = css_path.parent().unwrap_or(config_dir);
-    let resolved = normalize_lexical_path(&base_dir.join(expanded));
+    let resolved = match resolve_relative_asset_path(base_dir, trimmed) {
+        RelativeAssetPath::Resolved(path) => normalize_lexical_path(&path),
+        RelativeAssetPath::InvalidUrl => return Some("unrecognized relative URL path".to_string()),
+    };
     let normalized_root = normalize_lexical_path(config_dir);
     if !resolved.starts_with(&normalized_root) {
         return Some("relative path leaves the config root".to_string());
     }
 
     None
+}
+
+enum RelativeAssetPath {
+    Resolved(PathBuf),
+    InvalidUrl,
+}
+
+fn resolve_relative_asset_path(base_dir: &Path, value: &str) -> RelativeAssetPath {
+    if value.as_bytes().contains(&b'%') && has_valid_percent_encoding(value.as_bytes()) {
+        let normalized_base = normalize_lexical_path(base_dir);
+        let Ok(base_url) = Url::from_directory_path(normalized_base) else {
+            return RelativeAssetPath::InvalidUrl;
+        };
+        let Ok(resolved_url) = base_url.join(value) else {
+            return RelativeAssetPath::InvalidUrl;
+        };
+        if resolved_url.query().is_none() && resolved_url.fragment().is_none() {
+            return resolved_url
+                .to_file_path()
+                .map_or(RelativeAssetPath::InvalidUrl, RelativeAssetPath::Resolved);
+        }
+    }
+
+    // Raw delimiters and invalid percent escapes retain the legacy filesystem-path behavior
+    let expanded = PathBuf::from(util::expand_tilde(value).into_owned());
+    RelativeAssetPath::Resolved(normalize_lexical_path(&base_dir.join(expanded)))
 }
 
 #[cfg(test)]

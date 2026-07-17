@@ -3632,6 +3632,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "unixnotis-core",
+ "url",
 ]
 
 [[package]]

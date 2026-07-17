@@ -26,6 +26,52 @@ mod tests {
     }
 
     #[test]
+    fn path_protocol_accepts_percent_encoded_asset_urls_in_quoted_and_unquoted_forms() -> TestResult
+    {
+        let root = temp_root("encoded-imports");
+        let assets = root.join("assets");
+        std::fs::create_dir_all(&assets)?;
+        let cases = [
+            ("icon%20one.svg", "icon one.svg"),
+            ("icon%23one.svg", "icon#one.svg"),
+            ("icon%25one.svg", "icon%one.svg"),
+            ("icon%29one.svg", "icon)one.svg"),
+            ("icon%22one.svg", "icon\"one.svg"),
+        ];
+        let mut stylesheet = String::new();
+        for (index, (encoded_name, decoded_name)) in cases.into_iter().enumerate() {
+            std::fs::write(
+                assets.join(decoded_name),
+                "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\"><rect width=\"1\" height=\"1\" fill=\"red\"/></svg>",
+            )?;
+            writeln!(
+                stylesheet,
+                ".encoded-{index}-plain {{ background-image: url(assets/{encoded_name}); }}"
+            )?;
+            writeln!(
+                stylesheet,
+                ".encoded-{index}-quoted {{ background-image: url(\"assets/{encoded_name}\"); }}"
+            )?;
+        }
+        let stylesheet_path = root.join("base.css");
+        std::fs::write(&stylesheet_path, stylesheet)?;
+
+        let output = Command::new(env!("CARGO_BIN_EXE_unixnotis-css-validate"))
+            .arg("--json-path")
+            .arg(&stylesheet_path)
+            .stdin(Stdio::null())
+            .output()?;
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+
+        assert!(output.status.success());
+        if report["available"] == true {
+            assert_eq!(report["diagnostics"], serde_json::json!([]), "{report}");
+        }
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
     fn css_validate_rejects_invalid_css_with_diagnostic() -> TestResult {
         let output = run_validator(".panel { color: ;")?;
         let stderr = String::from_utf8_lossy(&output.stderr);
