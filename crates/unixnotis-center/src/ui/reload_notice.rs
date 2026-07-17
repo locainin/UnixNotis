@@ -29,20 +29,45 @@ pub(super) struct ReloadNoticeState {
 
 impl ReloadNoticeState {
     pub(super) fn set(&mut self, notice: ReloadNotice) {
-        // A changed fingerprint represents a genuinely new failure and may reopen the surface
-        let slot = match notice.fingerprint.kind {
-            ReloadNoticeKind::Config => &mut self.config,
-            ReloadNoticeKind::Css => &mut self.css,
-        };
-        *slot = Some(notice);
+        match notice.fingerprint.kind {
+            ReloadNoticeKind::Config => {
+                // A distinct failure starts a fresh dismissal lifecycle
+                Self::replace_notice(&mut self.config, &mut self.dismissed_config, notice);
+            }
+            ReloadNoticeKind::Css => {
+                // Duplicate watcher events retain dismissal for the same failure
+                Self::replace_notice(&mut self.css, &mut self.dismissed_css, notice);
+            }
+        }
     }
 
     pub(super) fn clear(&mut self, kind: ReloadNoticeKind) {
-        // Successful reloads clear only their own failure class
+        // Recovery ends both the active failure and its dismissal lifecycle
         match kind {
-            ReloadNoticeKind::Config => self.config = None,
-            ReloadNoticeKind::Css => self.css = None,
+            ReloadNoticeKind::Config => {
+                self.config = None;
+                self.dismissed_config = None;
+            }
+            ReloadNoticeKind::Css => {
+                self.css = None;
+                self.dismissed_css = None;
+            }
         }
+    }
+
+    fn replace_notice(
+        active: &mut Option<ReloadNotice>,
+        dismissed: &mut Option<ReloadNoticeFingerprint>,
+        notice: ReloadNotice,
+    ) {
+        let same_failure = active
+            .as_ref()
+            .is_some_and(|current| current.fingerprint == notice.fingerprint);
+        if !same_failure {
+            // An intervening fingerprint makes every older dismissal stale
+            *dismissed = None;
+        }
+        *active = Some(notice);
     }
 
     pub(super) fn dismiss_visible(&mut self) {

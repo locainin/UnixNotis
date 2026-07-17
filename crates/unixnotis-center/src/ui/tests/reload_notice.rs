@@ -62,3 +62,55 @@ fn successful_recovery_clears_only_the_matching_notice_kind() {
     state.clear(ReloadNoticeKind::Css);
     assert!(state.visible().is_none());
 }
+
+#[test]
+fn dismissed_config_failure_reopens_after_successful_recovery() {
+    let mut state = ReloadNoticeState::default();
+    state.set(notice(ReloadNoticeKind::Config, "config-a"));
+    state.dismiss_visible();
+    state.clear(ReloadNoticeKind::Config);
+
+    state.set(notice(ReloadNoticeKind::Config, "config-a"));
+
+    assert_eq!(
+        state
+            .visible()
+            .map(|notice| notice.fingerprint.identity.as_str()),
+        Some("config-a")
+    );
+}
+
+#[test]
+fn dismissed_css_failure_reopens_after_successful_recovery() {
+    let mut state = ReloadNoticeState::default();
+    state.set(notice(ReloadNoticeKind::Css, "css-a"));
+    state.dismiss_visible();
+    state.clear(ReloadNoticeKind::Css);
+
+    state.set(notice(ReloadNoticeKind::Css, "css-a"));
+
+    assert_eq!(
+        state
+            .visible()
+            .map(|notice| notice.fingerprint.identity.as_str()),
+        Some("css-a")
+    );
+}
+
+#[test]
+fn old_dismissal_does_not_hide_a_failure_after_an_intervening_fingerprint() {
+    let mut state = ReloadNoticeState::default();
+    state.set(notice(ReloadNoticeKind::Config, "config-a"));
+    state.dismiss_visible();
+    state.set(notice(ReloadNoticeKind::Config, "config-b"));
+    state.dismiss_visible();
+
+    state.set(notice(ReloadNoticeKind::Config, "config-a"));
+
+    assert_eq!(
+        state
+            .visible()
+            .map(|notice| notice.fingerprint.identity.as_str()),
+        Some("config-a")
+    );
+}
