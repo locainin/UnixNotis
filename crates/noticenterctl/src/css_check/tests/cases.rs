@@ -1,4 +1,4 @@
-use super::lint::lint_css_contents;
+use super::lint::test_support::lint_css_contents;
 use super::parse::{parse_css_declarations, split_selectors};
 use super::runtime::panel_width_floor_warning;
 use unixnotis_core::{

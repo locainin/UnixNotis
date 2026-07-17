@@ -8,10 +8,8 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::service_manager::ServiceManager;
 
-use super::super::super::service::{
-    install_service, service_start_mode_from_enabled, uninstall_service, write_service_artifact,
-    ServiceStartMode,
-};
+use super::super::super::service::lifecycle::{service_start_mode_from_enabled, ServiceStartMode};
+use super::super::super::service::{install_service, uninstall_service, write_service_artifact};
 use super::super::support::{test_context, test_paths, test_root};
 use super::expected_primary_artifact_contents;
 use super::flow_support::{flow_env, lock_env, write_fake_tools, FakeToolMode};

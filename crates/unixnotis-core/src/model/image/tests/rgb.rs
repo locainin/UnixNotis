@@ -1,4 +1,7 @@
-use super::super::{expand_rgb_row_scalar, ImageData, NotificationImage, MAX_IMAGE_BYTES};
+use super::super::rgb::expand_rgb_row_scalar;
+#[cfg(target_arch = "x86_64")]
+use super::super::rgb::expand_rgb_row_ssse3;
+use super::super::{ImageData, NotificationImage, MAX_IMAGE_BYTES};
 
 #[test]
 fn expand_rgb_to_rgba_preserves_rows_with_padding() {
@@ -93,7 +96,7 @@ fn ssse3_rgb_expansion_matches_scalar_when_supported() {
 
     expand_rgb_row_scalar(&src, &mut scalar);
     // SAFETY: The test is guarded by the same runtime feature probe as production
-    unsafe { super::super::expand_rgb_row_ssse3(&src, &mut simd) };
+    unsafe { expand_rgb_row_ssse3(&src, &mut simd) };
 
     assert_eq!(simd, scalar);
 }

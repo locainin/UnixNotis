@@ -13,8 +13,6 @@ use std::path::{Path, PathBuf};
 use super::archive::{
     MAX_PRESET_FILE_BYTES, MAX_PRESET_PAYLOAD_FILES, MAX_PRESET_TOTAL_PAYLOAD_BYTES,
 };
-#[cfg(test)]
-use super::filesystem::open_secure_dir_all;
 use super::filesystem::read_relative_file_secure_bounded;
 use super::pathing::{normalize_relative_path, relative_path_matches_exclusion};
 
@@ -49,43 +47,6 @@ pub(super) struct CollectedConfigFiles {
     pub(super) skipped_symlinks: Vec<PathBuf>,
     // Sockets and special files are skipped for the same portability reason
     pub(super) skipped_non_regular: Vec<PathBuf>,
-}
-
-#[cfg(test)]
-pub(super) fn collect_selected_config_files(
-    config_dir: &Path,
-    relative_paths: &[PathBuf],
-    output_path: Option<&Path>,
-    exclusions: &[PathBuf],
-) -> Result<CollectedConfigFiles> {
-    collect_selected_config_files_with_captures(
-        config_dir,
-        relative_paths,
-        output_path,
-        exclusions,
-        &BTreeMap::new(),
-    )
-}
-
-#[cfg(test)]
-pub(super) fn collect_selected_config_files_with_captures(
-    config_dir: &Path,
-    relative_paths: &[PathBuf],
-    output_path: Option<&Path>,
-    exclusions: &[PathBuf],
-    captures: &BTreeMap<PathBuf, SecureFileCapture>,
-) -> Result<CollectedConfigFiles> {
-    // Export follows an explicit dependency list so unrelated private files never enter a bundle
-    let root_fd = open_secure_dir_all(config_dir)
-        .with_context(|| format!("open config directory {}", config_dir.display()))?;
-    collect_selected_config_files_from_root(
-        &root_fd,
-        config_dir,
-        relative_paths,
-        output_path,
-        exclusions,
-        captures,
-    )
 }
 
 pub(super) fn collect_selected_config_files_from_root(

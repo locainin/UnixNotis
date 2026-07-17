@@ -10,8 +10,6 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::{anyhow, Context, Result};
 
 use super::super::config_root::SecureFileCapture;
-#[cfg(test)]
-use super::super::filesystem::open_secure_dir_all;
 use super::super::filesystem::read_relative_file_secure_bounded;
 
 // Source scanning is only dependency metadata work, so a small cap prevents an oversized command
@@ -42,16 +40,6 @@ pub(super) enum SourceOperand {
     UnsafeEscape,
     // Relative shell lookup depends on process state UnixNotis does not control
     AmbiguousRelative,
-}
-
-#[cfg(test)]
-pub(super) fn collect_script_dependency_closure(
-    config_dir: &Path,
-    entry_scripts: &[PathBuf],
-) -> Result<ScriptDependencyClosure> {
-    let root_fd = open_secure_dir_all(config_dir)
-        .with_context(|| format!("open config directory {}", config_dir.display()))?;
-    collect_script_dependency_closure_from_root(&root_fd, entry_scripts)
 }
 
 pub(super) fn collect_script_dependency_closure_from_root(

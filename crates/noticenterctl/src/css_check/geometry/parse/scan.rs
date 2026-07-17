@@ -21,18 +21,6 @@ use super::selectors::{
     complex_target_class, is_nonexpanding_boundary_reset, simple_class_selector,
 };
 
-#[cfg(test)]
-pub(in crate::css_check::geometry) fn collect_geometry_from_contents(
-    contents: &str,
-    model: &mut GeometryModel,
-) -> Vec<String> {
-    // Single-file callers still get the old behavior through this small wrapper
-    // This path is still used by unit tests and by stock-baseline helpers
-    let stripped = strip_css_comments(contents);
-    let custom_properties = collect_custom_properties(&stripped);
-    collect_geometry_from_contents_with_properties(&stripped, &custom_properties, model)
-}
-
 pub(in crate::css_check::geometry) fn collect_geometry_from_contents_with_properties(
     contents: &str,
     custom_properties: &CssCustomPropertyScopes,

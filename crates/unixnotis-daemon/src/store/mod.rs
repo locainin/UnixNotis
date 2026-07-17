@@ -20,7 +20,4 @@ pub use types::DndWrite;
 pub use types::{DismissOutcome, InsertOutcome, NotificationStore};
 
 #[cfg(test)]
-use rules::contains_ci;
-
-#[cfg(test)]
 mod tests;

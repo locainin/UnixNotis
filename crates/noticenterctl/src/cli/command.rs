@@ -2,9 +2,8 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 
-use super::args::{
-    DebugLevelArg, DndState, DoctorServiceManagerArg, InhibitScopeArg, PresetCommand,
-};
+use super::args::{DndState, DoctorServiceManagerArg, PresetCommand};
+use super::{DebugLevelArg, InhibitScopeArg};
 
 #[derive(Subcommand, Debug)]
 pub enum Command {

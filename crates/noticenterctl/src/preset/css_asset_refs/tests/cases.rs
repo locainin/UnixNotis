@@ -1,6 +1,6 @@
 use super::super::{
     collect_external_css_asset_refs_from_bundle, collect_external_css_asset_refs_from_paths,
-    collect_local_css_asset_paths_from_captures, collect_local_css_asset_paths_from_paths,
+    collect_local_css_asset_paths_from_captures,
 };
 use crate::preset::archive::BundleFile;
 use crate::preset::config_root::SecureFileCapture;
@@ -116,8 +116,15 @@ fn local_dependency_collection_ignores_embedded_and_remote_urls() {
          .c { background: url('http://example.com/a.png'); }\n\
          .d { background: url('https://example.com/b.png'); }\n",
     );
+    let captures = BTreeMap::from([(
+        PathBuf::from("base.css"),
+        SecureFileCapture {
+            contents: fs::read(&css_path).expect("read css fixture"),
+            mode: 0o644,
+        },
+    )]);
 
-    let paths = collect_local_css_asset_paths_from_paths(&config_dir, &[css_path])
+    let paths = collect_local_css_asset_paths_from_captures(&config_dir, &[css_path], &captures)
         .expect("collect local dependencies");
 
     assert_eq!(paths, vec![PathBuf::from("assets/local.png")]);

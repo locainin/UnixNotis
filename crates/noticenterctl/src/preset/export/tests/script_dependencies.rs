@@ -1,17 +1,26 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::super::export_preset_from;
+use super::super::flow::export_preset_from;
 use super::support::TempDirGuard;
 use crate::preset::archive::read_bundle;
-use crate::preset::config_root::collect_selected_config_files_with_captures;
+use crate::preset::config_root::collect_selected_config_files_from_root;
+use crate::preset::filesystem::open_secure_dir_all;
 
 use super::super::script_dependencies::{
-    collect_script_dependency_closure, normalize_relative_path, resolve_source_operand,
-    SourceOperand, MAX_SCANNED_SCRIPT_BYTES,
+    collect_script_dependency_closure_from_root, normalize_relative_path, resolve_source_operand,
+    ScriptDependencyClosure, SourceOperand, MAX_SCANNED_SCRIPT_BYTES,
 };
 use proptest::prelude::*;
 use proptest::test_runner::RngSeed;
+
+fn collect_script_dependency_closure(
+    config_dir: &Path,
+    entry_scripts: &[PathBuf],
+) -> anyhow::Result<ScriptDependencyClosure> {
+    let root_fd = open_secure_dir_all(config_dir)?;
+    collect_script_dependency_closure_from_root(&root_fd, entry_scripts)
+}
 
 #[test]
 fn export_includes_recursive_script_dir_source_dependencies() {
@@ -379,7 +388,9 @@ fn dependency_collection_reuses_the_bytes_scanned_securely() {
         .expect("capture script");
 
     root.write("scripts/probe", "replacement=1\n");
-    let collected = collect_selected_config_files_with_captures(
+    let root_fd = open_secure_dir_all(&root.path).expect("open captured config root");
+    let collected = collect_selected_config_files_from_root(
+        &root_fd,
         &root.path,
         &closure.paths,
         None,

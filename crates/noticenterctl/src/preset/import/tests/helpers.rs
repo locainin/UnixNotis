@@ -11,14 +11,14 @@ pub(in crate::preset::import) use crate::preset::archive::write_bundle;
 pub(in crate::preset::import) use crate::preset::config_root::{
     CollectedConfigFiles, PresetFileSource,
 };
-pub(in crate::preset::import) use crate::preset::export::export_preset_from;
+pub(in crate::preset::import) use crate::preset::export::flow::export_preset_from;
 pub(in crate::preset::import) use crate::preset::manifest::{PresetManifest, PresetManifestFile};
 
 use super::super::super::css_asset_refs::ExternalCssAssetRef;
-use super::super::apply::{apply_import_plan, finalize_import_transaction};
-use super::super::checks::ImportedExecContent;
-use super::super::prepare::prepare_import;
-use super::super::summary::{build_summary, ImportSummary};
+use super::super::command::summary::{build_summary, ImportSummary};
+use super::super::review::checks::ImportedExecContent;
+use super::super::transaction::apply::{apply_import_plan, finalize_import_transaction};
+use super::super::transaction::prepare::prepare_import;
 
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -155,7 +155,7 @@ fn confirm_import_external_css_refs_for_tests(external_refs: &[ExternalCssAssetR
     }
 
     // Test runs should fail fast instead of waiting for a terminal answer
-    let details = super::super::prompts::format_external_css_ref_lines(external_refs);
+    let details = super::super::review::prompts::format_external_css_ref_lines(external_refs);
     Err(anyhow::anyhow!(
         "preset import found CSS asset references that leave the UnixNotis config directory or use remote URLs; rerun interactively to confirm anyway\n{}",
         details.join("\n")

@@ -1,11 +1,9 @@
 use super::selectors::{
     complex_target_class, is_nonexpanding_boundary_reset, simple_class_selector,
 };
-use super::{
-    can_model_horizontal_size_value, collect_custom_property_scopes,
-    collect_geometry_from_contents, CssCustomProperties,
-};
+use super::{can_model_horizontal_size_value, collect_custom_property_scopes, CssCustomProperties};
 use crate::css_check::geometry::model::GeometryModel;
+use crate::css_check::geometry::test_support::collect_geometry_from_contents;
 
 #[test]
 fn custom_property_scopes_apply_root_tokens_and_selector_overrides() {

@@ -1,5 +1,5 @@
-use super::super::parse::collect_geometry_from_contents;
-use super::super::GeometryModel;
+use super::super::model::GeometryModel;
+use super::super::test_support::collect_geometry_from_contents;
 use unixnotis_core::{Config, MediaLayout};
 
 #[test]

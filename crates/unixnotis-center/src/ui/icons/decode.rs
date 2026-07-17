@@ -30,20 +30,6 @@ const ICON_DECODE_DROP_POLICY: IconDecodeDropPolicy = IconDecodeDropPolicy::Drop
 
 pub(super) struct IconWorker {
     sender: channel::Sender<IconJob>,
-    // Test-only guard keeps the update channel open when no workers are spawned
-    #[cfg(test)]
-    #[expect(
-        dead_code,
-        reason = "the test guard keeps the update channel alive without being read"
-    )]
-    update_tx_guard: async_channel::Sender<IconUpdate>,
-    // Test-only receiver guard keeps the channel open when no workers are spawned
-    #[cfg(test)]
-    #[expect(
-        dead_code,
-        reason = "the test guard keeps the worker channel alive without being read"
-    )]
-    receiver_guard: channel::Receiver<IconJob>,
 }
 
 pub(super) struct IconUpdate {
@@ -101,63 +87,43 @@ pub(super) enum IconDecodeMode {
 
 impl IconWorker {
     pub(super) fn new(update_tx: async_channel::Sender<IconUpdate>) -> Self {
-        Self::new_with_capacity(update_tx, ICON_DECODE_QUEUE_CAPACITY, true)
-    }
-
-    fn new_with_capacity(
-        update_tx: async_channel::Sender<IconUpdate>,
-        capacity: usize,
-        spawn_workers: bool,
-    ) -> Self {
         // Bounded job queue; drop policy applies when overload occurs
-        let (sender, receiver) = channel::bounded::<IconJob>(capacity);
-        #[cfg(test)]
-        let receiver_guard = receiver.clone();
-        #[cfg(test)]
-        let update_tx_guard = update_tx.clone();
+        let (sender, receiver) = channel::bounded::<IconJob>(ICON_DECODE_QUEUE_CAPACITY);
 
         // Keep worker count small (<=2) because decode is CPU-heavy and we don't want to starve GTK
         // available_parallelism() may fail in constrained environments, so default to 1
         let worker_count = thread::available_parallelism().map_or(1, |count| count.get().min(2));
 
-        if spawn_workers {
-            for _ in 0..worker_count {
-                let receiver = receiver.clone();
-                let update_tx = update_tx.clone();
+        for _ in 0..worker_count {
+            let receiver = receiver.clone();
+            let update_tx = update_tx.clone();
 
-                thread::spawn(move || {
-                    // Blocking worker loop: wait for decode jobs, run decode, report back to UI via update_tx
-                    for job in &receiver {
-                        let IconJob::Decode {
-                            key,
-                            path,
-                            size,
-                            scale,
-                            mode,
-                        } = job;
+            thread::spawn(move || {
+                // Blocking worker loop: wait for decode jobs, run decode, report back to UI via update_tx
+                for job in &receiver {
+                    let IconJob::Decode {
+                        key,
+                        path,
+                        size,
+                        scale,
+                        mode,
+                    } = job;
 
-                        // Decode off-thread; GTK objects should be created/applied on the main loop later
-                        let result = match mode {
-                            IconDecodeMode::Raster => decode_raster(&path, size, scale),
-                            // Bytes mode keeps file I/O off the GTK thread for formats that
-                            // are still decoded on the main loop (e.g., SVG via GDK)
-                            IconDecodeMode::Bytes => load_bytes(&path),
-                        };
+                    // Decode off-thread; GTK objects should be created/applied on the main loop later
+                    let result = match mode {
+                        IconDecodeMode::Raster => decode_raster(&path, size, scale),
+                        // Bytes mode keeps file I/O off the GTK thread for formats that
+                        // are still decoded on the main loop (e.g., SVG via GDK)
+                        IconDecodeMode::Bytes => load_bytes(&path),
+                    };
 
-                        // send_blocking is fine here (worker thread), avoids busy looping if UI is momentarily slow
-                        let _ = update_tx.send_blocking(IconUpdate { key, result });
-                    }
-                });
-            }
+                    // send_blocking is fine here (worker thread), avoids busy looping if UI is momentarily slow
+                    let _ = update_tx.send_blocking(IconUpdate { key, result });
+                }
+            });
         }
 
-        Self {
-            sender,
-            #[cfg(test)]
-            update_tx_guard,
-            #[cfg(test)]
-            receiver_guard,
-        }
+        Self { sender }
     }
 
     pub(super) fn submit_decode(
@@ -183,13 +149,6 @@ impl IconWorker {
             Err(channel::TrySendError::Full(_job)) => Err(IconSubmitError::Full),
             Err(channel::TrySendError::Disconnected(_)) => Err(IconSubmitError::Closed),
         }
-    }
-}
-
-#[cfg(test)]
-impl IconWorker {
-    fn new_for_tests(update_tx: async_channel::Sender<IconUpdate>, capacity: usize) -> Self {
-        Self::new_with_capacity(update_tx, capacity, false)
     }
 }
 

@@ -1,4 +1,11 @@
 use super::*;
+
+impl ExpirationScheduler {
+    pub(crate) fn channel_for_test() -> (Self, mpsc::UnboundedReceiver<ExpirationCommand>) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        (Self { sender }, receiver)
+    }
+}
 use chrono::Utc;
 use std::collections::HashMap;
 use std::time::Duration;

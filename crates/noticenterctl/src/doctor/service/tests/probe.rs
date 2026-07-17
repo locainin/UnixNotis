@@ -147,7 +147,7 @@ async fn non_systemd_status_checks_execute_their_native_read_only_probe() {
     tools.write("dinitctl", "");
     tools.write("sv", "run: unixnotis-daemon: (pid 42) 10s");
     tools.write("s6-svstat", "true");
-    let _tools = crate::system_tools::use_fake_tool_bin(&tools.path);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&tools.path);
 
     for kind in [
         ServiceManagerKind::Dinit,
@@ -179,7 +179,7 @@ async fn non_systemd_status_checks_execute_their_native_read_only_probe() {
 async fn active_candidate_distinguishes_active_inactive_and_unavailable_probes() {
     let tools = FakeToolDirectory::new();
     tools.write("dinitctl", "");
-    let _tools = crate::system_tools::use_fake_tool_bin(&tools.path);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&tools.path);
     let dinit_paths = paths(ServiceManagerKind::Dinit);
 
     assert_eq!(

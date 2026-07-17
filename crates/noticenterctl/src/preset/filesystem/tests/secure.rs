@@ -1,8 +1,8 @@
 use super::super::{
     create_backup_dir_secure, open_secure_dir_all, publish_relative_file_atomic_secure,
-    read_relative_file_secure, read_relative_file_secure_bounded,
-    remove_empty_relative_dirs_secure, remove_relative_dir_secure, remove_relative_file_secure,
-    try_read_relative_file_secure, write_relative_file_atomic_secure,
+    read_relative_file_secure_bounded, remove_empty_relative_dirs_secure,
+    remove_relative_dir_secure, remove_relative_file_secure, try_read_relative_file_secure,
+    write_relative_file_atomic_secure,
 };
 use crate::preset::filesystem::secure::{
     backup_name_is_taken, child_directory_is_missing, directory_open_flags,
@@ -174,14 +174,17 @@ fn secure_read_returns_contents_and_mode_but_rejects_non_files() {
     root.write("nested/value.txt", "payload");
     let root_fd = open_secure_dir_all(&root.path).expect("open secure root");
 
-    let (contents, mode) = read_relative_file_secure(&root_fd, Path::new("nested/value.txt"))
-        .expect("read regular file");
+    let (contents, mode) =
+        read_relative_file_secure_bounded(&root_fd, Path::new("nested/value.txt"), 1024)
+            .expect("read regular file");
     assert_eq!(contents, b"payload");
     assert_ne!(mode & 0o600, 0, "fixture should retain owner access");
-    assert!(read_relative_file_secure(&root_fd, Path::new("nested")).is_err());
+    assert!(read_relative_file_secure_bounded(&root_fd, Path::new("nested"), 1024).is_err());
 
     symlink("value.txt", root.path.join("nested/link.txt")).expect("create file symlink");
-    assert!(read_relative_file_secure(&root_fd, Path::new("nested/link.txt")).is_err());
+    assert!(
+        read_relative_file_secure_bounded(&root_fd, Path::new("nested/link.txt"), 1024).is_err()
+    );
 }
 
 #[test]

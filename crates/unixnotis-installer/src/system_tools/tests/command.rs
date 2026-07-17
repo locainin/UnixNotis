@@ -1,4 +1,4 @@
-use super::{command, program_path, use_fake_tool_bin};
+use super::super::{command, program_path, routing::use_fake_tool_bin};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::time::{SystemTime, UNIX_EPOCH};

@@ -1,8 +1,10 @@
 use std::cell::Cell;
 use std::fs;
 
-use super::super::{parse_diagnostic_for_test, validate_css_parse_files_with};
-use super::helpers::{pause_for_metadata_tick, validate_with_counter, TempDirGuard};
+use super::helpers::{
+    parse_diagnostic, pause_for_metadata_tick, validate_with_counter, validate_with_parser,
+    TempDirGuard,
+};
 
 #[test]
 fn imported_css_changes_miss_the_cache() {
@@ -12,15 +14,14 @@ fn imported_css_changes_miss_the_cache() {
     let cache_path = root.path().join("cache.json");
     let invocations = Cell::new(0usize);
 
-    let first = validate_css_parse_files_with(
+    let first = validate_with_parser(
         std::slice::from_ref(&css_path),
         root.path(),
-        "$TMP/unixnotis",
         &cache_path,
         |_work_item| {
             invocations.set(invocations.get() + 1);
             let contents = fs::read_to_string(&imported_path)?;
-            Ok(parse_diagnostic_for_test(contents))
+            Ok(parse_diagnostic(contents))
         },
     )
     .expect("first parse");
@@ -29,17 +30,11 @@ fn imported_css_changes_miss_the_cache() {
     pause_for_metadata_tick();
     fs::write(&imported_path, "broken-two").expect("rewrite imported css");
 
-    let second = validate_css_parse_files_with(
-        &[css_path],
-        root.path(),
-        "$TMP/unixnotis",
-        &cache_path,
-        |_work_item| {
-            invocations.set(invocations.get() + 1);
-            let contents = fs::read_to_string(&imported_path)?;
-            Ok(parse_diagnostic_for_test(contents))
-        },
-    )
+    let second = validate_with_parser(&[css_path], root.path(), &cache_path, |_work_item| {
+        invocations.set(invocations.get() + 1);
+        let contents = fs::read_to_string(&imported_path)?;
+        Ok(parse_diagnostic(contents))
+    })
     .expect("second parse");
 
     assert_eq!(invocations.get(), 2);
@@ -54,17 +49,16 @@ fn missing_import_that_appears_misses_the_cache() {
     let cache_path = root.path().join("cache.json");
     let invocations = Cell::new(0usize);
 
-    let first = validate_css_parse_files_with(
+    let first = validate_with_parser(
         std::slice::from_ref(&css_path),
         root.path(),
-        "$TMP/unixnotis",
         &cache_path,
         |_work_item| {
             invocations.set(invocations.get() + 1);
             if imported_path.exists() {
                 Ok(Vec::new())
             } else {
-                Ok(parse_diagnostic_for_test("missing import"))
+                Ok(parse_diagnostic("missing import"))
             }
         },
     )
@@ -74,20 +68,14 @@ fn missing_import_that_appears_misses_the_cache() {
     pause_for_metadata_tick();
     fs::write(&imported_path, ".ok { color: red; }").expect("create imported css");
 
-    let second = validate_css_parse_files_with(
-        &[css_path],
-        root.path(),
-        "$TMP/unixnotis",
-        &cache_path,
-        |_work_item| {
-            invocations.set(invocations.get() + 1);
-            if imported_path.exists() {
-                Ok(Vec::new())
-            } else {
-                Ok(parse_diagnostic_for_test("missing import"))
-            }
-        },
-    )
+    let second = validate_with_parser(&[css_path], root.path(), &cache_path, |_work_item| {
+        invocations.set(invocations.get() + 1);
+        if imported_path.exists() {
+            Ok(Vec::new())
+        } else {
+            Ok(parse_diagnostic("missing import"))
+        }
+    })
     .expect("second parse");
 
     assert_eq!(invocations.get(), 2);

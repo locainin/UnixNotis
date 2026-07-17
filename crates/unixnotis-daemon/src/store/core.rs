@@ -6,20 +6,10 @@ use unixnotis_core::{Config, NotificationView};
 
 use super::{DndStateStore, HistoryStore, NotificationStore, DND_STATE_VERSION};
 
-#[cfg(test)]
-use std::path::PathBuf;
-
 impl NotificationStore {
     pub fn new(config: Config) -> Self {
         // Default constructor attempts to bind persistence to XDG state dir
         let dnd_state_store = DndStateStore::new();
-        Self::new_with_state_store(config, dnd_state_store)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn new_with_state_dir(config: Config, state_dir: PathBuf) -> Self {
-        // Test helper with explicit state path and no env mutations
-        let dnd_state_store = Some(DndStateStore::from_state_dir(state_dir));
         Self::new_with_state_store(config, dnd_state_store)
     }
 

@@ -130,10 +130,5 @@ const fn evolve_jitter_seed(seed: u64) -> u64 {
 }
 
 #[cfg(test)]
-fn set_jitter_seed_for_test(seed: u64) {
-    JITTER_STATE.store(seed, Ordering::Relaxed);
-}
-
-#[cfg(test)]
 #[path = "tests/reconnect.rs"]
 mod tests;

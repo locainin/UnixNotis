@@ -2,10 +2,9 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 
-use crate::service_manager::{
-    ServiceArtifact, ServiceArtifactKind, ServiceManager, MANAGED_DIRECTORY_MARKER,
-    UNIXNOTIS_DAEMON_SERVICE,
-};
+use crate::service_manager::backends::systemd::SERVICE_NAME as UNIXNOTIS_DAEMON_SERVICE;
+use crate::service_manager::contract::MANAGED_DIRECTORY_MARKER;
+use crate::service_manager::{ServiceArtifact, ServiceArtifactKind, ServiceManager};
 
 #[test]
 fn systemd_backend_reports_primary_artifact_path() {

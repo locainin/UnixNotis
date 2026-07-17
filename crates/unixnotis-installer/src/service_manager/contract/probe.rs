@@ -25,13 +25,6 @@ impl ServiceProbe {
         Self::Stdout { command, parser }
     }
 
-    #[cfg(test)]
-    pub const fn command(&self) -> &CommandSpec {
-        match self {
-            Self::ExitStatus(command) | Self::Stdout { command, .. } => command,
-        }
-    }
-
     pub fn evaluate(&self) -> io::Result<bool> {
         match self {
             Self::ExitStatus(command) => {
@@ -49,14 +42,6 @@ impl ServiceProbe {
                 }
                 Ok(parser(&String::from_utf8_lossy(&output.stdout)))
             }
-        }
-    }
-
-    #[cfg(test)]
-    pub fn parser_matches(&self, stdout: &str) -> Option<bool> {
-        match self {
-            Self::ExitStatus(_) => None,
-            Self::Stdout { parser, .. } => Some(parser(stdout)),
         }
     }
 }

@@ -1,5 +1,6 @@
-use super::{lint_css_contents, lint_css_contents_with_properties};
+use super::lint_css_contents_with_properties;
 use crate::css_check::geometry::collect_custom_property_scopes;
+use crate::css_check::lint::test_support::lint_css_contents;
 
 #[test]
 fn duplicate_selector_warns_inside_same_at_rule_context() {

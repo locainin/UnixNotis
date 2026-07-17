@@ -66,16 +66,7 @@ pub(in crate::actions::config::backup) fn list_backup_dirs(config_dir: &Path) ->
         .collect()
 }
 
-#[cfg(test)]
-pub(in crate::actions::config::backup) fn prune_old_backups(
-    ctx: &mut ActionContext,
-    config_dir: &Path,
-    keep: usize,
-) -> Result<()> {
-    prune_old_backups_except(ctx, config_dir, keep, None)
-}
-
-fn prune_old_backups_except(
+pub(in crate::actions::config::backup) fn prune_old_backups_except(
     ctx: &mut ActionContext,
     config_dir: &Path,
     keep: usize,

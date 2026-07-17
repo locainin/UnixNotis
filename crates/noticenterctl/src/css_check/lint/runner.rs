@@ -64,11 +64,6 @@ pub(in crate::css_check) fn lint_css_files(
     Ok(diagnostics)
 }
 
-#[cfg(test)]
-pub(in crate::css_check) fn lint_css_contents(contents: &str) -> Vec<CssCheckLintFinding> {
-    lint_css_contents_with_properties(contents, &collect_custom_property_scopes(contents))
-}
-
 pub(in crate::css_check::lint) fn lint_css_contents_with_properties(
     contents: &str,
     custom_properties: &CssCustomPropertyScopes,

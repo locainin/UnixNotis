@@ -9,7 +9,7 @@ use super::MediaCommand;
 
 #[derive(Clone)]
 pub struct MediaHandle {
-    command_tx: Option<mpsc::Sender<MediaCommand>>,
+    command_tx: mpsc::Sender<MediaCommand>,
     // Overflow work uses the shared runtime so GTK callbacks never block
     runtime: tokio::runtime::Handle,
 }
@@ -20,16 +20,7 @@ impl MediaHandle {
         runtime: tokio::runtime::Handle,
     ) -> Self {
         Self {
-            command_tx: Some(command_tx),
-            runtime,
-        }
-    }
-
-    #[cfg(test)]
-    pub const fn disconnected(runtime: tokio::runtime::Handle) -> Self {
-        // UI construction tests need a real runtime without starting a D-Bus task
-        Self {
-            command_tx: None,
+            command_tx,
             runtime,
         }
     }
@@ -58,15 +49,11 @@ impl MediaHandle {
     }
 
     fn send_command(&self, command: MediaCommand) {
-        // Disconnected handles intentionally behave as no-op presentation handles
-        let Some(tx) = &self.command_tx else {
-            return;
-        };
-        match tx.try_send(command) {
+        match self.command_tx.try_send(command) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(command)) => {
                 // A bounded async retry preserves input responsiveness during short bursts
-                let tx = tx.clone();
+                let tx = self.command_tx.clone();
                 let runtime = self.runtime.clone();
                 runtime.spawn(async move {
                     let _ = tx.send(command).await;

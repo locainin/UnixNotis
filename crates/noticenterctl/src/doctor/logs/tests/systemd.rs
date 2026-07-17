@@ -32,7 +32,7 @@ async fn oversized_journal_output_returns_a_bounded_report() {
     .expect("write fake journal command");
     std::fs::set_permissions(&journalctl, std::fs::Permissions::from_mode(0o755))
         .expect("make fake journal executable");
-    let _tools = crate::system_tools::use_fake_tool_bin(&root);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&root);
 
     let collection = read_recent_journal("unixnotis-daemon.service")
         .await
@@ -60,7 +60,7 @@ async fn failed_journal_command_is_not_reported_as_collected_output() {
         .expect("write failing journal command");
     std::fs::set_permissions(&journalctl, std::fs::Permissions::from_mode(0o755))
         .expect("make fake journal executable");
-    let _tools = crate::system_tools::use_fake_tool_bin(&root);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&root);
 
     let error = read_recent_journal("unixnotis-daemon.service")
         .await

@@ -34,7 +34,15 @@ pub(in super::super) fn parse_css_file_with_gtk(
 ) -> Result<Vec<CachedParseDiagnostic>> {
     // GTK lives in an installer-managed helper so ordinary control calls stay lightweight
     let validator = css_validator_binary()?;
-    let output = run_css_validator(&validator, &work_item.load_path, VALIDATOR_TIMEOUT)?;
+    parse_css_file_with_validator(work_item, &validator)
+}
+
+pub(super) fn parse_css_file_with_validator(
+    work_item: &CssParseWorkItem,
+    validator: &Path,
+) -> Result<Vec<CachedParseDiagnostic>> {
+    // An explicit helper path keeps process handling testable without hidden global overrides
+    let output = run_css_validator(validator, &work_item.load_path, VALIDATOR_TIMEOUT)?;
     if !output.status.success() {
         return Err(anyhow!(
             "CSS validator exited with {}: {}",
@@ -185,32 +193,8 @@ struct ValidatorDiagnostic {
 }
 
 fn css_validator_binary() -> Result<PathBuf> {
-    #[cfg(test)]
-    if let Some(path) = validator_override() {
-        return Ok(path);
-    }
     let current_exe = std::env::current_exe().context("resolve noticenterctl executable")?;
     css_validator_binary_from(&current_exe)
-}
-
-#[cfg(test)]
-static VALIDATOR_OVERRIDE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
-
-#[cfg(test)]
-fn validator_override() -> Option<PathBuf> {
-    VALIDATOR_OVERRIDE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
-}
-
-#[cfg(test)]
-pub(super) fn replace_validator_override(path: Option<PathBuf>) -> Option<PathBuf> {
-    // One process-wide slot lets tests exercise the production locator without touching PATH
-    let mut override_path = VALIDATOR_OVERRIDE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    std::mem::replace(&mut *override_path, path)
 }
 
 pub(super) fn css_validator_binary_from(current_exe: &Path) -> Result<PathBuf> {

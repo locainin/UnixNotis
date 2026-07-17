@@ -6,7 +6,7 @@ use super::super::command::follow_debug_logs;
 use super::super::journal::{
     follow_user_unit_logs, journal_has_user_unit_logs, journalctl_is_available,
 };
-use crate::system_tools::use_fake_tool_bin;
+use crate::system_tools::routing::use_fake_tool_bin;
 use crate::test_support::{test_env_lock, EnvGuard};
 
 struct TempDirGuard {

@@ -1,10 +1,9 @@
 use super::*;
 use crate::preset::archive::BundleFile;
-use crate::preset::import::apply::{
-    apply_import_plan, ensure_live_config_root_or_rollback_for_test, finalize_import_transaction,
-    rollback_import_transaction,
+use crate::preset::import::transaction::apply::{
+    apply_import_plan, finalize_import_transaction, rollback_import_transaction,
 };
-use crate::preset::import::plan::build_import_plan;
+use crate::preset::import::transaction::plan::build_import_plan;
 
 #[test]
 fn applied_import_can_restore_the_exact_previous_file() {
@@ -114,7 +113,8 @@ fn root_drift_check_rolls_back_files_through_the_pinned_descriptor() {
     fs::rename(&root.path, &moved).expect("move imported config root");
     fs::create_dir(&root.path).expect("create replacement config root");
 
-    ensure_live_config_root_or_rollback_for_test(&transaction)
+    transaction
+        .ensure_live_root_or_rollback()
         .expect_err("root drift must stop and roll back the import");
 
     assert_eq!(

@@ -1,7 +1,5 @@
-use super::super::{
-    owned_to_string, strip_desktop_suffix, NotificationImage, MAX_ICON_NAME_BYTES,
-    MAX_IMAGE_PATH_BYTES,
-};
+use super::super::hints::{owned_to_string, strip_desktop_suffix};
+use super::super::{NotificationImage, MAX_ICON_NAME_BYTES, MAX_IMAGE_PATH_BYTES};
 use super::{image_data_value, string_value};
 use std::collections::HashMap;
 use zbus::zvariant::{OwnedValue, Structure, Value};

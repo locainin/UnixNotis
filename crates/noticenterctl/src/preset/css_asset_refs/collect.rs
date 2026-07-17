@@ -78,31 +78,6 @@ pub fn collect_external_css_asset_refs_from_paths(
     Ok(refs)
 }
 
-#[cfg(test)]
-pub(in crate::preset) fn collect_local_css_asset_paths_from_paths(
-    config_dir: &Path,
-    css_paths: &[PathBuf],
-) -> Result<Vec<PathBuf>> {
-    let normalized_root = normalize_lexical_path(config_dir);
-    let mut paths = Vec::new();
-
-    for css_path in css_paths {
-        let css_text = std::fs::read_to_string(css_path)
-            .with_context(|| format!("read css file {}", css_path.display()))?;
-        collect_local_paths_from_text(
-            config_dir,
-            css_path,
-            &css_text,
-            &normalized_root,
-            &mut paths,
-        );
-    }
-
-    paths.sort();
-    paths.dedup();
-    Ok(paths)
-}
-
 pub(in crate::preset) fn collect_local_css_asset_paths_from_captures(
     config_dir: &Path,
     css_paths: &[PathBuf],

@@ -65,7 +65,7 @@ fn jitter_is_zero_or_strictly_below_its_bound() {
 
 #[test]
 fn seeded_jitter_uses_the_evolved_state() {
-    set_jitter_seed_for_test(7);
+    JITTER_STATE.store(7, Ordering::Relaxed);
     let expected = evolve_jitter_seed(7) % 11;
 
     assert_eq!(jitter_duration(11), Duration::from_millis(expected));

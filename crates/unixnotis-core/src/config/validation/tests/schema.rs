@@ -4,6 +4,11 @@ use crate::{PanelSection, PanelWidgetSection, WidgetDensity};
 const LEGACY_FIXTURE: &str = include_str!("fixtures/config-v0.toml");
 const CURRENT_PARTIAL_FIXTURE: &str = include_str!("fixtures/config-v2-partial.toml");
 
+fn deserialize_config(contents: &str) -> Result<(Config, Vec<String>), String> {
+    let (config, ignored_keys, _migrated_paths) = deserialize_config_with_migrations(contents)?;
+    Ok((config, ignored_keys))
+}
+
 #[test]
 fn unversioned_fixture_migrates_to_the_legacy_layout() {
     let (config, ignored) = deserialize_config(LEGACY_FIXTURE).expect("migrate legacy config");

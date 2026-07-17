@@ -56,13 +56,6 @@ struct BuiltinStatWorker {
     tx: crossbeam_channel::Sender<BuiltinStatJob>,
     // True when worker startup failed and callers should read inline
     inline_fallback: bool,
-    // Test-only receiver guard keeps the queue alive when no workers are spawned
-    #[cfg(test)]
-    #[expect(
-        dead_code,
-        reason = "the test guard keeps the bounded worker queue alive without being read"
-    )]
-    receiver_guard: crossbeam_channel::Receiver<BuiltinStatJob>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

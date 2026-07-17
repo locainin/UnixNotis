@@ -2,12 +2,14 @@ use std::fs;
 use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
 
+use crate::service_manager::contract::MANAGED_DIRECTORY_MARKER;
 use crate::service_manager::{
     ReadinessIssue, ServiceArtifactKind, ServiceArtifactRefresh, ServiceManager,
-    MANAGED_DIRECTORY_MARKER, UNIXNOTIS_DAEMON_S6_SERVICE,
 };
-use crate::system_tools::use_fake_tool_bin;
+use crate::system_tools::routing::use_fake_tool_bin;
 use crate::test_support::fs::write_executable as write_test_executable;
+
+use super::super::s6::SERVICE_NAME as UNIXNOTIS_DAEMON_S6_SERVICE;
 
 #[test]
 fn s6_backend_renders_service_source_and_default_bundle_member() {

@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::preset::css_asset_refs::ExternalCssAssetRef;
-use crate::preset::import::summary::{print_summary, summary_lines, ImportSummary};
+use crate::preset::import::command::summary::{print_summary, summary_lines, ImportSummary};
 
 #[test]
 fn format_external_css_ref_lines_normalizes_remote_url_reason() {

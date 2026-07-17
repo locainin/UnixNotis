@@ -234,7 +234,7 @@ fn detect_uses_bus_owner_systemd_status_and_pgrep_results() {
          fi\n\
          exit 1\n",
     );
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
 
     let detection = crate::detect::detect();
 
@@ -281,7 +281,7 @@ fn detect_falls_back_to_text_busctl_status_when_json_status_fails() {
     );
     write_executable(&fake_bin.join("systemctl"), "#!/bin/sh\nexit 3\n");
     write_executable(&fake_bin.join("pgrep"), "#!/bin/sh\nexit 1\n");
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
 
     let detection = crate::detect::detect();
 

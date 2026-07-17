@@ -3,8 +3,8 @@ use gtk::prelude::WidgetExt;
 use std::rc::Rc;
 
 use crate::ui::notifications::item::RowData;
+use crate::ui::notifications::model::types::{GroupRange, RowKey};
 use crate::ui::notifications::test_support as support;
-use crate::ui::notifications::types::{GroupRange, RowKey};
 
 use super::{
     has_pending_items, intern_key_is_live, merge_adjacent_ranges, range_count_mismatch,

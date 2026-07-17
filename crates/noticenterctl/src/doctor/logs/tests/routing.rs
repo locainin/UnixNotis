@@ -47,7 +47,7 @@ async fn non_systemd_log_collection_executes_no_logger_command() {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
             .expect("make fake logger executable");
     }
-    let _tools = crate::system_tools::use_fake_tool_bin(&root);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&root);
 
     for manager in [
         ServiceManagerKind::Dinit,

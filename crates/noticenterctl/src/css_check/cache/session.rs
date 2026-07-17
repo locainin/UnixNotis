@@ -24,7 +24,7 @@ pub(in super::super) fn validate_css_parse_files(
     )
 }
 
-fn run_cached_parse_session<F>(
+pub(in super::super) fn run_cached_parse_session<F>(
     work_items: &[CssParseWorkItem],
     config_dir: &Path,
     display_root: &str,
@@ -78,7 +78,7 @@ where
     })
 }
 
-fn build_parse_work_items(files: &[PathBuf]) -> Result<Vec<CssParseWorkItem>> {
+pub(in super::super) fn build_parse_work_items(files: &[PathBuf]) -> Result<Vec<CssParseWorkItem>> {
     let mut work_items = Vec::with_capacity(files.len());
     for path in files {
         // Metadata should come from the real target, not the symlink shell
@@ -95,36 +95,4 @@ fn build_parse_work_items(files: &[PathBuf]) -> Result<Vec<CssParseWorkItem>> {
         });
     }
     Ok(work_items)
-}
-
-#[cfg(test)]
-pub(in super::super) fn validate_css_parse_files_with(
-    files: &[PathBuf],
-    config_dir: &Path,
-    display_root: &str,
-    cache_path: &Path,
-    parse_file: impl FnMut(&CssParseWorkItem) -> Result<Vec<CachedParseDiagnostic>>,
-) -> Result<CssParseReport> {
-    let work_items = build_parse_work_items(files)?;
-    run_cached_parse_session(
-        &work_items,
-        config_dir,
-        display_root,
-        Some(cache_path),
-        parse_file,
-    )
-}
-
-#[cfg(test)]
-pub(in super::super) fn parse_diagnostic_for_test(
-    message: impl Into<String>,
-) -> Vec<CachedParseDiagnostic> {
-    // Tests only need one stable top-level parser finding shape
-    vec![CachedParseDiagnostic {
-        source: super::model::CachedDiagnosticSource::TopLevel,
-        line: Some(1),
-        column: Some(1),
-        message: message.into(),
-        hint: None,
-    }]
 }

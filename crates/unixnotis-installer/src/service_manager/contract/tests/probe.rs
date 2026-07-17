@@ -2,7 +2,24 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::service_manager::{use_fake_command_bin, CommandSpec, ServiceProbe};
+use super::super::command_routing::use_fake_command_bin;
+use crate::service_manager::contract::ServiceProbe;
+use crate::service_manager::CommandSpec;
+
+impl ServiceProbe {
+    pub(crate) const fn command(&self) -> &CommandSpec {
+        match self {
+            Self::ExitStatus(command) | Self::Stdout { command, .. } => command,
+        }
+    }
+
+    pub(crate) fn parser_matches(&self, stdout: &str) -> Option<bool> {
+        match self {
+            Self::ExitStatus(_) => None,
+            Self::Stdout { parser, .. } => Some(parser(stdout)),
+        }
+    }
+}
 
 struct TempDirGuard {
     path: std::path::PathBuf,

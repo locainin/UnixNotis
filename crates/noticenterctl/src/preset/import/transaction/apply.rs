@@ -5,15 +5,13 @@
 
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
-#[cfg(test)]
-use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use super::super::super::filesystem::ensure_dir_fd_matches_live_path;
 use super::super::super::filesystem::{
     create_backup_dir_secure, open_secure_dir_all, publish_relative_file_atomic_secure,
     read_relative_file_secure_bounded, remove_empty_relative_dirs_secure,
     remove_relative_dir_secure, remove_relative_file_secure, try_read_relative_file_secure,
-    write_relative_file_atomic_secure,
+    write_relative_file_atomic_secure, PublishedRelativeFile,
 };
 use super::plan::ImportPlan;
 
@@ -34,6 +32,15 @@ impl ImportTransaction {
     ) -> Result<(Vec<u8>, u32)> {
         // Post-apply checks must use the same root descriptor as publication and rollback
         read_relative_file_secure_bounded(&self.config_root_fd, relative_path, max_bytes)
+    }
+
+    pub(in crate::preset) fn ensure_live_root_or_rollback(&self) -> Result<()> {
+        // Callers can verify a staged transaction without exposing its pinned descriptor
+        ensure_live_config_root_or_rollback(
+            &self.config_root_fd,
+            &self.config_dir,
+            &self.applied_items,
+        )
     }
 }
 
@@ -135,14 +142,18 @@ pub(in crate::preset) fn apply_import_plan(
 pub(in crate::preset) fn finalize_import_transaction(
     transaction: ImportTransaction,
 ) -> Result<Option<PathBuf>> {
+    finalize_import_transaction_with_publisher(transaction, publish_relative_file_atomic_secure)
+}
+
+pub(in crate::preset) fn finalize_import_transaction_with_publisher<F>(
+    transaction: ImportTransaction,
+    mut publish_backup: F,
+) -> Result<Option<PathBuf>>
+where
+    F: FnMut(&std::os::fd::OwnedFd, &Path, &[u8], u32) -> Result<PublishedRelativeFile>,
+{
     // Commit only happens if the live root still points at the same directory after post-checks
-    if let Err(error) = ensure_import_root_matches_live_path(&transaction) {
-        return Err(rollback_after_apply_failure(
-            &transaction.config_root_fd,
-            &transaction.applied_items,
-            error,
-        ));
-    }
+    transaction.ensure_live_root_or_rollback()?;
 
     let overwritten_items = transaction
         .applied_items
@@ -166,23 +177,12 @@ pub(in crate::preset) fn finalize_import_transaction(
             continue;
         };
 
-        #[cfg(test)]
-        if backup_write_failure_should_fire(written_backup_paths.len()) {
-            return Err(cleanup_and_rollback_backup_failure(
-                &transaction,
-                &backup_relative_dir,
-                &backup_root_fd,
-                &written_backup_paths,
-                anyhow::anyhow!("forced backup write failure"),
-            ));
-        }
-
         // Backup bytes come from the captured pre-import state, not from the live tree after apply
         let backup_path = transaction
             .config_dir
             .join(&backup_relative_dir)
             .join(&item.relative_path);
-        let published = match publish_relative_file_atomic_secure(
+        let published = match publish_backup(
             &backup_root_fd,
             &item.relative_path,
             previous_contents,
@@ -233,53 +233,6 @@ pub(in crate::preset) fn finalize_import_transaction(
     Ok(Some(transaction.config_dir.join(&backup_relative_dir)))
 }
 
-#[cfg(test)]
-pub(in crate::preset) struct BackupWriteFailureGuard {
-    _lock: MutexGuard<'static, ()>,
-}
-
-#[cfg(test)]
-pub(in crate::preset) fn fail_backup_write_after_for_test(
-    successful_writes: usize,
-) -> BackupWriteFailureGuard {
-    let lock = backup_write_failure_lock()
-        .lock()
-        .expect("backup failpoint test lock");
-    *backup_write_failure_after()
-        .lock()
-        .expect("backup failpoint lock") = Some(successful_writes);
-    BackupWriteFailureGuard { _lock: lock }
-}
-
-#[cfg(test)]
-fn backup_write_failure_should_fire(successful_writes: usize) -> bool {
-    backup_write_failure_after()
-        .lock()
-        .expect("backup failpoint lock")
-        .is_some_and(|target| target == successful_writes)
-}
-
-#[cfg(test)]
-fn backup_write_failure_after() -> &'static Mutex<Option<usize>> {
-    static FAILURE_AFTER: OnceLock<Mutex<Option<usize>>> = OnceLock::new();
-    FAILURE_AFTER.get_or_init(|| Mutex::new(None))
-}
-
-#[cfg(test)]
-fn backup_write_failure_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
-#[cfg(test)]
-impl Drop for BackupWriteFailureGuard {
-    fn drop(&mut self) {
-        *backup_write_failure_after()
-            .lock()
-            .expect("backup failpoint lock") = None;
-    }
-}
-
 pub(in crate::preset) fn rollback_import_transaction(transaction: ImportTransaction) -> Result<()> {
     rollback_applied_import_items(&transaction.config_root_fd, &transaction.applied_items)
 }
@@ -299,18 +252,6 @@ fn ensure_live_config_root_or_rollback(
         return Err(err);
     }
     Ok(())
-}
-
-#[cfg(test)]
-pub(in crate::preset) fn ensure_live_config_root_or_rollback_for_test(
-    transaction: &ImportTransaction,
-) -> Result<()> {
-    // The test seam exercises the real drift and rollback boundary without a timing race
-    ensure_live_config_root_or_rollback(
-        &transaction.config_root_fd,
-        &transaction.config_dir,
-        &transaction.applied_items,
-    )
 }
 
 fn rollback_applied_import_items(

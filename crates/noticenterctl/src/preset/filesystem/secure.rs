@@ -64,14 +64,6 @@ pub fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
     Ok(current_fd)
 }
 
-#[cfg(test)]
-pub fn read_relative_file_secure(
-    root_dir: &OwnedFd,
-    relative_path: &Path,
-) -> Result<(Vec<u8>, u32)> {
-    read_relative_file_secure_bounded(root_dir, relative_path, u64::MAX)
-}
-
 pub fn try_read_relative_file_secure(
     root_dir: &OwnedFd,
     relative_path: &Path,

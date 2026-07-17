@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use crate::service_manager::{
-    ServiceArtifactKind, ServiceArtifactRefresh, ServiceManager, UNIXNOTIS_DAEMON_SERVICE,
-};
+use crate::service_manager::{ServiceArtifactKind, ServiceArtifactRefresh, ServiceManager};
+
+use super::super::systemd::SERVICE_NAME as UNIXNOTIS_DAEMON_SERVICE;
 
 #[test]
 fn systemd_backend_renders_exact_unit_artifact() {

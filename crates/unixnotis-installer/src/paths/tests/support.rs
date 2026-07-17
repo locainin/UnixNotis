@@ -1,7 +1,9 @@
 pub(super) use super::super::{
-    discovery::{service_manager_choice_from_environment, RELEASE_BIN_DIR, RELEASE_MANIFEST_FILE},
-    format_with_home, is_unixnotis_release_archive, is_unixnotis_repo, InstallPaths,
-    ServiceManagerChoice,
+    discovery::{
+        is_unixnotis_release_archive, is_unixnotis_repo, service_manager_choice_from_environment,
+        RELEASE_BIN_DIR, RELEASE_MANIFEST_FILE,
+    },
+    format_with_home, InstallPaths, ServiceManagerChoice,
 };
 pub(super) use std::env;
 pub(super) use std::fs;

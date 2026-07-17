@@ -12,11 +12,4 @@ pub(super) use model::{
 };
 
 #[cfg(test)]
-pub(super) use hints::{owned_to_string, strip_desktop_suffix};
-#[cfg(test)]
-pub(super) use rgb::expand_rgb_row_scalar;
-#[cfg(all(test, target_arch = "x86_64"))]
-pub(super) use rgb::expand_rgb_row_ssse3;
-
-#[cfg(test)]
 mod tests;

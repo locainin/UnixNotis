@@ -2,6 +2,16 @@
 
 mod artifact;
 mod command;
+// Fake service-manager routing lives under /tests and never enters production binaries
+#[expect(
+    clippy::cfg_not_test,
+    reason = "production routing must not compile beside its test double"
+)]
+#[cfg(not(test))]
+mod command_routing;
+#[cfg(test)]
+#[path = "tests/command_routing.rs"]
+pub mod command_routing;
 mod probe;
 mod readiness;
 mod refresh;
@@ -19,9 +29,6 @@ pub(super) use shell::{
     envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
     shell_quote, shell_quote_path,
 };
-
-#[cfg(test)]
-pub use command::use_fake_command_bin;
 
 #[cfg(test)]
 mod tests;

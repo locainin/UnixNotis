@@ -41,7 +41,7 @@ fn fetch_latest_release_tag_reads_tag_from_successful_curl_json() {
         &fake_bin.join("curl"),
         "#!/bin/sh\nprintf '%s\\n' '{\"tag_name\":\"v9.9.9\"}'\n",
     );
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
 
     let latest = fetch_latest_release_tag().expect("fake curl should return release JSON");
 
@@ -55,7 +55,7 @@ fn fetch_latest_release_tag_rejects_failed_curl_status() {
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake curl directory");
     write_executable(&fake_bin.join("curl"), "#!/bin/sh\nexit 22\n");
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
 
     let err = fetch_latest_release_tag().expect_err("failed curl must not look like an update");
 

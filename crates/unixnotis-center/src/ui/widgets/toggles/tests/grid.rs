@@ -1,4 +1,4 @@
-use super::{should_reset_after_action, toggle_action_command};
+use super::grid::{should_reset_after_action, toggle_action_command};
 
 #[test]
 fn toggle_action_command_prefers_custom_toggle_command() {

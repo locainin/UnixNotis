@@ -6,7 +6,7 @@
 //! systemd assumptions by accident
 
 mod backends;
-mod contract;
+pub mod contract;
 mod orchestration;
 
 pub use contract::{
@@ -17,16 +17,3 @@ pub use contract::{
     ServiceArtifactRefresh,
 };
 pub use orchestration::ServiceManager;
-
-// Tests assert exact service names to keep refactors behavior-preserving
-#[cfg(test)]
-pub use contract::use_fake_command_bin;
-#[cfg(test)]
-pub use contract::ServiceProbe;
-#[cfg(test)]
-pub use contract::MANAGED_DIRECTORY_MARKER;
-#[cfg(test)]
-pub use orchestration::{
-    UNIXNOTIS_DAEMON_DINIT_SERVICE, UNIXNOTIS_DAEMON_RUNIT_SERVICE, UNIXNOTIS_DAEMON_S6_SERVICE,
-    UNIXNOTIS_DAEMON_SERVICE,
-};

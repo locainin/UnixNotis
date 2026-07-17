@@ -5,28 +5,13 @@ use std::time::Duration;
 use super::super::model::{CachedDiagnosticSource, CssFileIdentity, CssParseWorkItem};
 use super::super::parse::{
     classify_cached_source_path, css_validator_binary_from, decode_validator_report,
-    is_executable_regular_file, parse_css_file_with_gtk, read_bounded_pipe,
-    replace_validator_override, run_css_validator, source_line_text, MAX_VALIDATOR_OUTPUT_BYTES,
+    is_executable_regular_file, parse_css_file_with_validator, read_bounded_pipe,
+    run_css_validator, source_line_text, MAX_VALIDATOR_OUTPUT_BYTES,
 };
 use super::helpers::TempDirGuard;
 
 #[cfg(unix)]
 use std::os::unix::fs::{symlink, PermissionsExt as _};
-
-struct ValidatorOverrideGuard(Option<std::path::PathBuf>);
-
-impl ValidatorOverrideGuard {
-    fn install(path: std::path::PathBuf) -> Self {
-        Self(replace_validator_override(Some(path)))
-    }
-}
-
-impl Drop for ValidatorOverrideGuard {
-    fn drop(&mut self) {
-        let previous = self.0.take();
-        let _ = replace_validator_override(previous);
-    }
-}
 
 fn work_item_for(path: &std::path::Path) -> CssParseWorkItem {
     let metadata = fs::metadata(path).expect("read stylesheet metadata");
@@ -125,11 +110,10 @@ fn production_css_parser_honors_helper_status_and_payload() {
     .expect("write successful validator");
     fs::set_permissions(&validator, fs::Permissions::from_mode(0o700))
         .expect("mark validator executable");
-    let _override_guard = ValidatorOverrideGuard::install(validator.clone());
     let work_item = work_item_for(&stylesheet);
 
-    let diagnostics =
-        parse_css_file_with_gtk(&work_item).expect("successful helper report should decode");
+    let diagnostics = parse_css_file_with_validator(&work_item, &validator)
+        .expect("successful helper report should decode");
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].message, "bad rule");
@@ -139,7 +123,7 @@ fn production_css_parser_honors_helper_status_and_payload() {
         format!("#!/bin/sh\nprintf '%s\\n' '{report}'\nexit 9\n"),
     )
     .expect("write failing validator");
-    let error = parse_css_file_with_gtk(&work_item)
+    let error = parse_css_file_with_validator(&work_item, &validator)
         .expect_err("nonzero helper status must reject an otherwise valid payload");
     assert!(error.to_string().contains("exited with"));
 }

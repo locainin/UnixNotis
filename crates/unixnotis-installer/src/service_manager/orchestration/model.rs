@@ -4,15 +4,6 @@ use std::path::{Path, PathBuf};
 
 use super::super::backends::{dinit, runit, s6, systemd};
 
-#[cfg(test)]
-pub const UNIXNOTIS_DAEMON_SERVICE: &str = systemd::SERVICE_NAME;
-#[cfg(test)]
-pub const UNIXNOTIS_DAEMON_DINIT_SERVICE: &str = dinit::SERVICE_NAME;
-#[cfg(test)]
-pub const UNIXNOTIS_DAEMON_RUNIT_SERVICE: &str = runit::SERVICE_NAME;
-#[cfg(test)]
-pub const UNIXNOTIS_DAEMON_S6_SERVICE: &str = s6::SERVICE_NAME;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ServiceManagerKind {
     // Each value selects one backend contract without leaking branching to callers

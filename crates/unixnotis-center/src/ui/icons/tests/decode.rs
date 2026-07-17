@@ -4,8 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn icon_worker_queue_overflow_reports_failure() {
-    let (update_tx, update_rx) = async_channel::bounded(2);
-    let worker = IconWorker::new_for_tests(update_tx, 1);
+    let (update_tx, update_rx) = async_channel::bounded::<IconUpdate>(2);
+    let (sender, _worker_rx) = channel::bounded(1);
+    let worker = IconWorker { sender };
+    let _update_guard = update_tx;
     let key_a = IconKey::Path {
         path: "icon-a.png".to_string(),
         size: 16,

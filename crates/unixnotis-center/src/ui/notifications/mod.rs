@@ -13,5 +13,3 @@ mod view;
 pub use model::types::{NotificationList, NotificationListConfig};
 
 pub(in crate::ui::notifications) use model::item;
-#[cfg(test)]
-pub(in crate::ui::notifications) use model::types;

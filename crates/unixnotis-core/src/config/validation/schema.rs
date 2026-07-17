@@ -4,12 +4,6 @@ use serde::de::IntoDeserializer;
 
 use super::super::{Config, CURRENT_CONFIG_VERSION};
 
-#[cfg(test)]
-pub(super) fn deserialize_config(contents: &str) -> Result<(Config, Vec<String>), String> {
-    let (config, ignored_keys, _migrated_paths) = deserialize_config_with_migrations(contents)?;
-    Ok((config, ignored_keys))
-}
-
 pub(in crate::config) fn deserialize_config_with_migrations(
     contents: &str,
 ) -> Result<(Config, Vec<String>, Vec<String>), String> {

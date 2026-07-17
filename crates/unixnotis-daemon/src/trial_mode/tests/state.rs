@@ -2,6 +2,14 @@ use anyhow::anyhow;
 
 use super::{restore_after_prepare_failure, RestoreAction, TrialState};
 
+impl TrialState {
+    pub(crate) const fn with_restore_action_for_test(action: RestoreAction) -> Self {
+        Self {
+            restore_action: Some(action),
+        }
+    }
+}
+
 #[test]
 fn preparation_failure_restores_once_and_preserves_both_errors() {
     let mut trial = TrialState::with_restore_action_for_test(RestoreAction::Command {

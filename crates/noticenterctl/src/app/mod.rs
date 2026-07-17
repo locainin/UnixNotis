@@ -3,8 +3,6 @@
 mod local;
 mod runner;
 
-#[cfg(test)]
-use local::handle_local_command;
 pub use runner::run;
 
 #[cfg(test)]

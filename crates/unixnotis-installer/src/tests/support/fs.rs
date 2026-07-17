@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub(super) static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const FAKE_TOOL_DISPATCHER: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/src/test_support/fixtures/fake-tool"
+    "/src/tests/support/fixtures/fake-tool"
 );
 
 pub fn write_executable(path: &Path, contents: &str) {

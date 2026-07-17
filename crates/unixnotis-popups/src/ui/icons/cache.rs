@@ -51,13 +51,6 @@ type IconWaiters = Arc<Mutex<HashMap<IconRequestKey, Vec<IconReply>>>>;
 pub struct IconDecodePool {
     tx: async_channel::Sender<IconDecodeJob>,
     in_flight: IconWaiters,
-    // Test-only receiver guard keeps the channel open when no workers are spawned
-    #[cfg(test)]
-    #[expect(
-        dead_code,
-        reason = "the test guard keeps the worker channel alive without being read"
-    )]
-    rx_guard: async_channel::Receiver<IconDecodeJob>,
 }
 
 impl IconDecodePool {
@@ -68,37 +61,24 @@ impl IconDecodePool {
     }
 
     fn new(worker_count: usize) -> Self {
-        Self::new_with_capacity(worker_count, ICON_DECODE_QUEUE_CAPACITY, true)
-    }
-
-    fn new_with_capacity(worker_count: usize, capacity: usize, spawn_workers: bool) -> Self {
         // Keep the decode queue bounded to prevent unbounded memory growth on bursts
-        let (tx, rx) = async_channel::bounded::<IconDecodeJob>(capacity);
+        let (tx, rx) = async_channel::bounded::<IconDecodeJob>(ICON_DECODE_QUEUE_CAPACITY);
         let in_flight: IconWaiters = Arc::new(Mutex::new(HashMap::new()));
-        #[cfg(test)]
-        let rx_guard = rx.clone();
-        if spawn_workers {
-            // Limit decode concurrency to keep bursty icon loads from spawning unbounded threads
-            for idx in 0..worker_count.max(1) {
-                let rx = rx.clone();
-                let in_flight = Arc::clone(&in_flight);
-                let name = format!("unixnotis-icon-decode-{idx}");
-                if thread::Builder::new()
-                    .name(name)
-                    .spawn(move || worker_loop(rx, in_flight))
-                    .is_err()
-                {
-                    // Failed workers are logged and the queue still stays bounded
-                    warn!("failed to spawn icon decode worker");
-                }
+        // Limit decode concurrency to keep bursty icon loads from spawning unbounded threads
+        for idx in 0..worker_count.max(1) {
+            let rx = rx.clone();
+            let in_flight = Arc::clone(&in_flight);
+            let name = format!("unixnotis-icon-decode-{idx}");
+            if thread::Builder::new()
+                .name(name)
+                .spawn(move || worker_loop(rx, in_flight))
+                .is_err()
+            {
+                // Failed workers are logged and the queue still stays bounded
+                warn!("failed to spawn icon decode worker");
             }
         }
-        Self {
-            tx,
-            in_flight,
-            #[cfg(test)]
-            rx_guard,
-        }
+        Self { tx, in_flight }
     }
 
     pub(crate) fn submit(&self, path: PathBuf, target_size: i32, reply: IconReply) {
@@ -156,27 +136,6 @@ impl IconDecodePool {
         if matches!(ICON_DECODE_DROP_POLICY, IconDecodeDropPolicy::DropNewest) {
             debug!(path = ?key.path, size = key.target_size, "dropped newest icon decode request");
         }
-    }
-}
-
-#[cfg(test)]
-impl IconDecodePool {
-    fn new_for_tests(worker_count: usize, capacity: usize) -> Self {
-        Self::new_with_capacity(worker_count, capacity, false)
-    }
-
-    fn queue_len(&self) -> usize {
-        self.tx.len()
-    }
-
-    fn waiter_count(&self, path: &Path, target_size: i32) -> usize {
-        let in_flight = match self.in_flight.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        in_flight
-            .get(&IconRequestKey::new(path.to_path_buf(), target_size))
-            .map_or(0, std::vec::Vec::len)
     }
 }
 

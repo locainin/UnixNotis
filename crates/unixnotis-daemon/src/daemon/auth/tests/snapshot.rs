@@ -1,7 +1,29 @@
-use super::paths::is_trusted_control_executable_path_in_dir;
+use super::filesystem::canonicalize_best_effort;
+use super::paths::trusted_snapshot_matches_observed;
+use super::policy::{TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES};
 use super::snapshots::build_trusted_control_snapshots;
 use super::support::write_executable;
 use crate::test_support::TempRoot;
+use std::collections::HashMap;
+use std::path::Path;
+
+fn is_trusted_control_executable_path_in_dir(
+    path: &Path,
+    _trusted_dir: &Path,
+    snapshots: &HashMap<String, TrustedExecutableSnapshot>,
+) -> bool {
+    let observed = canonicalize_best_effort(path);
+    let Some(observed_name) = observed.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    if !TRUSTED_CONTROL_EXECUTABLES.contains(&observed_name) {
+        return false;
+    }
+
+    snapshots
+        .get(observed_name)
+        .is_some_and(|snapshot| trusted_snapshot_matches_observed(snapshot, &observed))
+}
 
 #[test]
 fn strict_snapshot_rejects_unknown_or_untrusted_paths() {

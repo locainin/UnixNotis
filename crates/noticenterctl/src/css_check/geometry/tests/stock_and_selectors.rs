@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::lint_geometry_css_files_with_config;
-use super::super::parse::collect_geometry_from_contents;
-use super::super::GeometryModel;
+use super::super::model::GeometryModel;
+use super::super::test_support::collect_geometry_from_contents;
 use unixnotis_core::{
     Config, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS,
     DEFAULT_WIDGETS_CSS,

@@ -74,12 +74,14 @@ fn navigation_button_exposes_role_hook_and_centered_text() {
 
 #[gtk::test]
 fn media_widget_build_keeps_width_requests_in_the_panel_coordinate_space() {
-    // A disconnected handle is sufficient because construction sends no media commands
+    // A closed command channel is sufficient because construction sends no media commands
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("test runtime");
-    let handle = MediaHandle::disconnected(runtime.handle().clone());
+    let (sender, receiver) = tokio::sync::mpsc::channel(1);
+    drop(receiver);
+    let handle = MediaHandle::connected(sender, runtime.handle().clone());
     let config = MediaConfig::default();
     let shell = MediaShellConfig::from_config(&config);
     let parts = build_media_widget(

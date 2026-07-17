@@ -2,9 +2,11 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
-use crate::service_manager::{ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_RUNIT_SERVICE};
-use crate::system_tools::use_fake_tool_bin;
+use crate::service_manager::{ServiceArtifactKind, ServiceManager};
+use crate::system_tools::routing::use_fake_tool_bin;
 use crate::test_support::fs::write_executable as write_test_executable;
+
+use super::super::runit::SERVICE_NAME as UNIXNOTIS_DAEMON_RUNIT_SERVICE;
 
 #[test]
 fn runit_backend_renders_service_directory_and_run_script() {

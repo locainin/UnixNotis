@@ -85,7 +85,7 @@ fn invalid_environment_selection_is_sanitized_redacted_and_bounded() {
 
     assert!(!details.contains(&home));
     assert!(!details.contains('\u{1b}'));
-    assert!(details.chars().count() <= crate::doctor::report::DOCTOR_DETAIL_CHAR_LIMIT);
+    assert!(details.chars().count() <= 1_024);
 }
 
 #[test]
@@ -199,7 +199,7 @@ async fn resolved_evidence_collection_returns_each_supported_manager_in_order() 
         std::process::id()
     ));
     std::fs::create_dir_all(&root).expect("create empty fake tool directory");
-    let tools = crate::system_tools::use_fake_tool_bin(&root);
+    let tools = crate::system_tools::routing::use_fake_tool_bin(&root);
 
     let resolved = ServiceManagerKind::all()
         .into_iter()

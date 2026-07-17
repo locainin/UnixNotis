@@ -1,6 +1,6 @@
 use super::*;
 use crate::preset::archive::BundleFile;
-use crate::preset::import::plan::build_import_plan;
+use crate::preset::import::transaction::plan::build_import_plan;
 
 #[test]
 fn import_plan_counts_created_overwritten_and_excluded_files() {

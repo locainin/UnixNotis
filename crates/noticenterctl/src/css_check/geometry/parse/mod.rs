@@ -9,8 +9,6 @@ pub(in crate::css_check) use custom_properties::CssCustomPropertyScopes;
 pub(in crate::css_check::geometry) use lengths::{
     parse_box_edges, parse_box_vertical_edges, parse_single_length, set_edge,
 };
-#[cfg(test)]
-pub(in crate::css_check::geometry) use scan::collect_geometry_from_contents;
 pub(in crate::css_check::geometry) use scan::collect_geometry_from_contents_with_properties;
 pub(in crate::css_check::geometry) use scan::CssCustomProperties;
 pub(in crate::css_check) use scan::{

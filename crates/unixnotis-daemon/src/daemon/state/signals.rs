@@ -1,6 +1,3 @@
-#[cfg(test)]
-use std::sync::Mutex as StdMutex;
-
 use unixnotis_core::{CloseReason, ControlState, PopupGateState, CONTROL_OBJECT_PATH};
 use zbus::SignalContext;
 
@@ -199,12 +196,4 @@ pub(in crate::daemon::state) fn record_signal_error(
     if first_error.is_none() {
         *first_error = Some(err);
     }
-}
-
-#[cfg(test)]
-pub(in crate::daemon::state) fn cached_state_would_emit<T: Clone + PartialEq>(
-    cache: &StdMutex<Option<T>>,
-    value: &T,
-) -> bool {
-    should_emit_cached(cache, value)
 }

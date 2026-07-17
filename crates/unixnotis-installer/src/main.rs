@@ -29,6 +29,7 @@ mod service_manager;
 mod system_tools;
 mod terminal;
 #[cfg(test)]
+#[path = "tests/support/mod.rs"]
 mod test_support;
 mod trial;
 mod ui;

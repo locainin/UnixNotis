@@ -4,9 +4,8 @@ use gio::prelude::ListModelExt;
 
 use super::{collapsed_stack_depth, common_prefix_suffix};
 use crate::ui::notifications::item::{RowData, RowItem};
+use crate::ui::notifications::model::types::{GroupRange, RowKey};
 use crate::ui::notifications::test_support as support;
-use crate::ui::notifications::types::GroupRange;
-use crate::ui::notifications::types::RowKey;
 
 #[test]
 fn collapsed_stack_depth_caps_at_two() {

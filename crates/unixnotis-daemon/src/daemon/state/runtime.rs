@@ -15,12 +15,6 @@ impl DaemonState {
         self.popups_running.store(running, Ordering::SeqCst);
     }
 
-    #[cfg(test)]
-    pub(crate) fn popups_running(&self) -> bool {
-        // Read path is used by supervision tests and diagnostics without mutating daemon state
-        self.popups_running.load(Ordering::SeqCst)
-    }
-
     pub(crate) fn panel_ready(&self) -> bool {
         self.panel_ready.load(Ordering::SeqCst)
     }

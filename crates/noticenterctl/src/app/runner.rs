@@ -41,7 +41,10 @@ async fn run_async(command: Command) -> Result<()> {
     }
 
     // Every remaining command is backed by the running daemon
-    debug_assert!(!command.is_local_only());
+    debug_assert!(
+        !command.is_local_only(),
+        "local-only commands must return before D-Bus dispatch"
+    );
 
     // Control commands need the session bus and the daemon proxy
     let connection = Connection::session()

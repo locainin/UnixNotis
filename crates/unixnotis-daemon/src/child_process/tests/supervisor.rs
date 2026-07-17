@@ -7,7 +7,9 @@ use tokio::time::sleep;
 use super::{
     shutdown_is_terminal, terminate_child, wait_error_needs_recovery, wait_for_retry_or_shutdown,
 };
-use crate::child_process::{RestartBackoff, HEALTHY_RUNTIME_SECS, RESTART_BASE_MS, RESTART_MAX_MS};
+use crate::child_process::process::{
+    RestartBackoff, HEALTHY_RUNTIME_SECS, RESTART_BASE_MS, RESTART_MAX_MS,
+};
 use crate::test_support::TempRoot;
 
 #[test]

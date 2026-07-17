@@ -2,9 +2,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::*;
 use crate::preset::archive::BundleFile;
-use crate::preset::import::apply::fail_backup_write_after_for_test;
-use crate::preset::import::commit::commit_import_plan;
-use crate::preset::import::plan::build_import_plan;
+use crate::preset::filesystem::publish_relative_file_atomic_secure;
+use crate::preset::import::transaction::apply::{
+    apply_import_plan, finalize_import_transaction_with_publisher,
+};
+use crate::preset::import::transaction::commit::commit_import_plan;
+use crate::preset::import::transaction::plan::build_import_plan;
 
 fn bundle_file(relative_path: &str, contents: &str) -> BundleFile {
     BundleFile {
@@ -196,17 +199,21 @@ fn commit_import_plan_cleans_partial_backup_and_rolls_back_when_backup_write_fai
         &[],
     )
     .expect("build plan");
-    let _failure = fail_backup_write_after_for_test(1);
-    let css_calls = AtomicUsize::new(0);
-
-    let error = commit_import_plan(&import_root.path, &plan, || {
-        css_calls.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-    })
+    let transaction = apply_import_plan(&import_root.path, &plan).expect("apply import plan");
+    let writes = AtomicUsize::new(0);
+    let error = finalize_import_transaction_with_publisher(
+        transaction,
+        |root_fd, relative_path, contents, mode| {
+            if writes.fetch_add(1, Ordering::Relaxed) == 1 {
+                return Err(anyhow::anyhow!("injected backup publisher failure"));
+            }
+            publish_relative_file_atomic_secure(root_fd, relative_path, contents, mode)
+        },
+    )
     .expect_err("backup failure should rollback");
 
-    assert!(error.to_string().contains("forced backup write failure"));
-    assert_eq!(css_calls.load(Ordering::Relaxed), 1);
+    assert!(format!("{error:#}").contains("injected backup publisher failure"));
+    assert_eq!(writes.load(Ordering::Relaxed), 2);
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read restored config"),
         "[panel]\nwidth = 320\n"

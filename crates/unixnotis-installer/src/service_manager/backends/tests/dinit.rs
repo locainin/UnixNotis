@@ -2,9 +2,9 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
-use crate::service_manager::{
-    ReadinessIssue, ServiceArtifactKind, ServiceManager, UNIXNOTIS_DAEMON_DINIT_SERVICE,
-};
+use crate::service_manager::{ReadinessIssue, ServiceArtifactKind, ServiceManager};
+
+use super::super::dinit::SERVICE_NAME as UNIXNOTIS_DAEMON_DINIT_SERVICE;
 
 #[test]
 fn dinit_backend_renders_exact_service_artifact() {

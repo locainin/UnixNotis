@@ -1,4 +1,4 @@
-use crate::preset::import::summary::{summary_lines, ImportSummary};
+use crate::preset::import::command::summary::{summary_lines, ImportSummary};
 
 #[test]
 fn import_summary_reports_counts_without_inventing_a_backup() {

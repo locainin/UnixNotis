@@ -9,8 +9,6 @@ mod rewrite;
 mod tests;
 
 pub use collect::collect_external_css_asset_refs_from_paths;
-#[cfg(test)]
-pub(super) use collect::collect_local_css_asset_paths_from_paths;
 pub(super) use collect::{
     collect_external_css_asset_refs_from_bundle, collect_external_css_asset_refs_from_collected,
     collect_local_css_asset_paths_from_captures,

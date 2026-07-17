@@ -28,7 +28,9 @@ fn media_controls_send_the_requested_player_commands() {
 #[test]
 fn disconnected_handle_accepts_controls_without_queueing_work() {
     let runtime = tokio::runtime::Runtime::new().expect("create test runtime");
-    let handle = MediaHandle::disconnected(runtime.handle().clone());
+    let (sender, receiver) = mpsc::channel(1);
+    drop(receiver);
+    let handle = MediaHandle::connected(sender, runtime.handle().clone());
 
     handle.next("org.mpris.MediaPlayer2.missing");
     handle.refresh();

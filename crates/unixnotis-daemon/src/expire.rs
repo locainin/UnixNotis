@@ -113,12 +113,6 @@ impl ExpirationScheduler {
             warn!(?err, "expiration schedule request dropped");
         }
     }
-
-    #[cfg(test)]
-    pub(crate) fn channel_for_test() -> (Self, mpsc::UnboundedReceiver<ExpirationCommand>) {
-        let (sender, receiver) = mpsc::unbounded_channel();
-        (Self { sender }, receiver)
-    }
 }
 
 #[derive(Debug, Copy, Clone)]

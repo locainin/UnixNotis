@@ -2,7 +2,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::{command, program_path, tokio_command, use_fake_tool_bin};
+use super::super::{command, program_path, routing::use_fake_tool_bin, tokio_command};
 
 struct TempDirGuard {
     path: std::path::PathBuf,

@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::cli::{Command, PresetCommand};
 
-use super::handle_local_command;
+use super::local::handle_local_command;
 
 #[test]
 fn handle_local_command_runs_css_check_branch() {

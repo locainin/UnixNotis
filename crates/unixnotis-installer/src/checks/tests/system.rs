@@ -67,7 +67,7 @@ fn service_manager_check_fails_for_s6_missing_live_directory() {
     let root = test_root("s6-missing-live-check");
     let fake_bin = root.join("fake-bin");
     write_fake_s6_tools(&fake_bin);
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
     let data = root.join("s6");
     let default_dir = data.join("sv").join("default");
     fs::create_dir_all(&default_dir).expect("default bundle dir");
@@ -87,7 +87,7 @@ fn service_manager_check_warns_for_initializable_s6_layout() {
     let root = test_root("s6-initializable-check");
     let fake_bin = root.join("fake-bin");
     write_fake_s6_tools(&fake_bin);
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
     let data = root.join("s6");
     let live = root.join("run").join("s6-rc");
     fs::create_dir_all(&live).expect("live dir");
@@ -110,7 +110,7 @@ fn service_manager_check_fails_when_s6_required_tool_is_missing() {
     let root = test_root("s6-missing-tool-check");
     let fake_bin = root.join("fake-bin");
     write_fake_s6_tools_except(&fake_bin, "s6-envdir");
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
     let data = root.join("s6");
     let default_dir = data.join("sv").join("default");
     fs::create_dir_all(&default_dir).expect("default bundle dir");
@@ -132,7 +132,7 @@ fn service_manager_check_fails_for_user_owned_s6_default_type() {
     let root = test_root("s6-invalid-default-type-check");
     let fake_bin = root.join("fake-bin");
     write_fake_s6_tools(&fake_bin);
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
     let data = root.join("s6");
     let default_dir = data.join("sv").join("default");
     fs::create_dir_all(&default_dir).expect("default bundle dir");
@@ -156,7 +156,7 @@ fn dbus_update_env_check_warns_when_helper_is_not_on_path() {
     let root = test_root("missing-dbus-update-env-check");
     let fake_bin = root.join("fake-bin");
     fs::create_dir_all(&fake_bin).expect("fake bin dir");
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
 
     let manager = ServiceManager::systemd_user(root.join("systemd"));
 
@@ -173,7 +173,7 @@ fn dbus_update_env_check_is_ok_when_selected_backend_does_not_need_helper() {
     let root = test_root("missing-dbus-update-env-non-systemd-check");
     let fake_bin = root.join("fake-bin");
     fs::create_dir_all(&fake_bin).expect("fake bin dir");
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
     let manager = ServiceManager::runit_user(root.join("service"));
 
     let item = dbus_update_env_check(Some(&manager));
@@ -211,7 +211,7 @@ fn command_success_distinguishes_success_failure_and_missing_trusted_tools() {
     fs::create_dir_all(&fake_bin).expect("fake bin dir");
     write_fake_tool(&fake_bin.join("ok-tool"), "#!/bin/sh\nexit 0\n");
     write_fake_tool(&fake_bin.join("fail-tool"), "#!/bin/sh\nexit 7\n");
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
 
     assert_eq!(command_success("ok-tool", &[]), Ok(true));
     assert_eq!(command_success("fail-tool", &[]), Ok(false));

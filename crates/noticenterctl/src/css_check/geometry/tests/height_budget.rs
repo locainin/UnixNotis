@@ -1,6 +1,6 @@
-use super::super::parse::collect_geometry_from_contents;
+use super::super::model::GeometryModel;
 use super::super::stock::baselines::stock_geometry_model;
-use super::super::GeometryModel;
+use super::super::test_support::collect_geometry_from_contents;
 use unixnotis_core::{
     Config, MediaArtPosition, MediaControlsPosition, MediaLayout, MediaNavigationPosition,
 };
