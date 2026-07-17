@@ -46,10 +46,10 @@ while IFS= read -r -d '' file; do
                     report(cfg_line, "test module declaration is incomplete")
                 }
             }
-        ' "${file}"
+        ' "$file"
     } || true)"
-    if [[ -n "${file_violations}" ]]; then
-        violations+="${file_violations}"$'\n'
+    if [[ -n "$file_violations" ]]; then
+        violations+="$file_violations"$'\n'
     fi
 done < <(find crates -type f -path '*/src/*.rs' ! -path '*/tests/*' -print0)
 
@@ -58,8 +58,8 @@ while IFS= read -r path; do
     violations+="${path}: test support must live under a /tests directory"$'\n'
 done < <(find crates -path '*/src/test_support*' -print)
 
-if [[ -n "${violations}" ]]; then
-    printf 'test placement violations:\n%s' "${violations}" >&2
+if [[ -n "$violations" ]]; then
+    printf 'test placement violations:\n%s' "$violations" >&2
     exit 1
 fi
 
