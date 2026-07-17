@@ -4,11 +4,13 @@ use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 
-use super::super::super::archive::read_bundle;
+use super::super::super::archive::{read_bundle, MAX_PRESET_FILE_BYTES};
 use super::super::super::css_asset_refs::{
     collect_external_css_asset_refs_from_bundle, ExternalCssAssetRef,
 };
-use super::super::super::filesystem::ensure_no_symlink_ancestors;
+use super::super::super::filesystem::{
+    ensure_no_symlink_ancestors, open_secure_dir_all, read_relative_file_secure_bounded,
+};
 use super::super::super::pathing::{
     parse_except_paths, relative_path_matches_exclusion, validate_preset_bundle_path,
 };
@@ -65,14 +67,16 @@ pub(in crate::preset) fn prepare_import(
             })?;
         bundled_config.contents.clone()
     } else {
-        let local_config_path = config_dir.join("config.toml");
-        // Keeping the local config means its theme paths still control the later css-check setup
-        std::fs::read(&local_config_path).with_context(|| {
-            format!(
-                "read existing config.toml kept by --except from {}",
-                local_config_path.display()
-            )
-        })?
+        let config_root_fd = open_secure_dir_all(config_dir)
+            .with_context(|| format!("open config directory {}", config_dir.display()))?;
+        // Keeping local config still requires a contained descriptor read before it drives review
+        read_relative_file_secure_bounded(
+            &config_root_fd,
+            Path::new("config.toml"),
+            MAX_PRESET_FILE_BYTES,
+        )
+        .context("securely read existing config.toml kept by --except")?
+        .0
     };
 
     let included_bundle_files = bundle

@@ -213,6 +213,38 @@ fn import_rejects_kept_local_config_that_points_outside_root() {
     assert!(!import_root.path.join("base.css").exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn import_rejects_a_symlinked_config_kept_by_exclusion() {
+    let export_root = TempDirGuard::new("kept-symlink-config-export");
+    export_root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    export_root.write("base.css", ".a { color: red; }");
+    let bundle_path = export_root.path.join("demo.unixnotis");
+    export_preset_from(&export_root.path, &bundle_path, &[], false).expect("export bundle");
+
+    let import_root = TempDirGuard::new("kept-symlink-config-import");
+    let outside = import_root
+        .path
+        .with_file_name("kept-symlink-config-outside.toml");
+    fs::write(&outside, "[theme]\nbase_css = \"base.css\"\n").expect("write outside config");
+    std::os::unix::fs::symlink(&outside, import_root.path.join("config.toml"))
+        .expect("create config symlink");
+
+    let error = import_preset_into(
+        &import_root.path,
+        &bundle_path,
+        &["config.toml".to_string()],
+        false,
+    )
+    .expect_err("reject kept config symlink");
+
+    assert!(error
+        .to_string()
+        .contains("securely read existing config.toml"));
+    assert!(!import_root.path.join("base.css").exists());
+    fs::remove_file(outside).expect("remove outside config");
+}
+
 #[test]
 fn import_accepts_widget_icon_asset_bundled_inside_config_root() {
     let export_root = TempDirGuard::new("icon-asset-export");
