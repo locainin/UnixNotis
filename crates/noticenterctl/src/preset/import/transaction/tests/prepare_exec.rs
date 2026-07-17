@@ -91,7 +91,7 @@ cmd = "scripts/probe.sh"
 }
 
 #[test]
-fn import_can_continue_after_exec_review_confirmation() {
+fn import_exec_review_receives_every_included_file_before_confirmation() {
     let export_root = TempDirGuard::new("command-reviewed-export");
     export_root.write(
         "config.toml",
@@ -118,7 +118,11 @@ cmd = "scripts/probe.sh"
         |exec_content, allow_exec| {
             assert!(!allow_exec);
             assert_eq!(exec_content.commands.len(), 1);
-            assert_eq!(exec_content.files.len(), 1);
+            assert_eq!(exec_content.files.len(), 3);
+            assert!(exec_content
+                .files
+                .iter()
+                .any(|file| file.relative_path == Path::new("base.css")));
             Ok(())
         },
     )

@@ -4,6 +4,7 @@
 //! crafted bundles fail early instead of escaping through later setup steps
 
 use anyhow::{anyhow, Context, Result};
+use std::collections::HashSet;
 use std::path::Path;
 use toml::Value;
 use unixnotis_core::{
@@ -13,7 +14,8 @@ use unixnotis_core::{
 use super::super::super::archive::BundleFile;
 
 use super::super::super::command_rules::{
-    validate_command_paths_in_config_bytes, validate_config_command_paths_stay_in_root,
+    collect_command_references_from_config, validate_command_paths_in_config_bytes,
+    validate_config_command_paths_stay_in_root,
 };
 use super::super::super::pathing::normalize_lexical_path;
 
@@ -125,19 +127,22 @@ pub(in crate::preset) fn collect_imported_exec_content(
     config_bytes: &[u8],
     bundle_files: &[BundleFile],
 ) -> Result<ImportedExecContent> {
-    // Only explicit command keys from the bundle count here
-    // Runtime defaults should not make ordinary presets fail import
+    // Use the runtime configuration model so unknown lookalike keys cannot consume review space
     let commands = collect_explicit_exec_commands_from_config_bytes(config_bytes)?;
-    let files = bundle_files
-        .iter()
-        // The review should show every runnable payload before anything is written
-        .filter(|file| import_file_looks_executable(file))
-        .map(|file| ImportedExecFile {
-            relative_path: file.relative_path.clone(),
-            contents: file.contents.clone(),
-            mode: file.mode,
-        })
-        .collect();
+    let has_executable_file = bundle_files.iter().any(import_file_looks_executable);
+    // A command or script can pass any neighboring file to another interpreter or loader
+    let files = if commands.is_empty() && !has_executable_file {
+        Vec::new()
+    } else {
+        bundle_files
+            .iter()
+            .map(|file| ImportedExecFile {
+                relative_path: file.relative_path.clone(),
+                contents: file.contents.clone(),
+                mode: file.mode,
+            })
+            .collect()
+    };
 
     Ok(ImportedExecContent { commands, files })
 }
@@ -187,12 +192,107 @@ fn collect_explicit_exec_commands_from_config_bytes(
 ) -> Result<Vec<ImportedExecCommand>> {
     let config_text =
         std::str::from_utf8(config_bytes).context("preset config.toml is not valid UTF-8")?;
-    let value: Value =
+    let document: Value =
         toml::from_str(config_text).context("parse bundled config.toml for exec validation")?;
-    let mut commands = Vec::new();
-    // Walking the parsed value keeps nested widget tables and plugin blocks covered
-    collect_explicit_exec_commands("", &value, &mut commands);
-    Ok(commands)
+    // The normal parser applies the same migrations, limits, and cleanup as the running UI
+    let report = Config::parse_with_report(config_text)
+        .context("parse bundled config.toml through the runtime configuration model")?;
+    let explicit_slots = collect_known_explicit_exec_slots(&document);
+
+    Ok(collect_command_references_from_config(&report.config)
+        .into_iter()
+        // Defaults are useful at runtime but should not make a data-only preset require approval
+        .filter(|reference| explicit_slots.contains(&reference.slot))
+        .map(|reference| ImportedExecCommand {
+            slot: reference.slot,
+            command: reference.command,
+        })
+        .collect())
+}
+
+fn collect_known_explicit_exec_slots(document: &Value) -> HashSet<String> {
+    let mut slots = HashSet::new();
+    let Some(widgets) = document.get("widgets").and_then(Value::as_table) else {
+        return slots;
+    };
+
+    // Slider commands live in fixed tables rather than user-defined plugin namespaces
+    for slider_name in ["volume", "brightness"] {
+        let Some(slider) = widgets.get(slider_name).and_then(Value::as_table) else {
+            continue;
+        };
+        collect_present_table_fields(
+            slider,
+            &format!("widgets.{slider_name}"),
+            &["get_cmd", "set_cmd", "toggle_cmd", "watch_cmd"],
+            &mut slots,
+        );
+    }
+
+    collect_present_widget_fields(
+        widgets,
+        "toggles",
+        &["state_cmd", "toggle_cmd", "on_cmd", "off_cmd", "watch_cmd"],
+        &mut slots,
+    );
+    collect_present_widget_fields(widgets, "stats", &["cmd"], &mut slots);
+    collect_present_plugin_fields(widgets, "stats", &mut slots);
+    collect_present_widget_fields(widgets, "cards", &["cmd"], &mut slots);
+    collect_present_plugin_fields(widgets, "cards", &mut slots);
+    slots
+}
+
+fn collect_present_widget_fields(
+    widgets: &toml::Table,
+    collection_name: &str,
+    command_fields: &[&str],
+    slots: &mut HashSet<String>,
+) {
+    let Some(items) = widgets.get(collection_name).and_then(Value::as_array) else {
+        return;
+    };
+
+    for (index, item) in items.iter().enumerate() {
+        let Some(table) = item.as_table() else {
+            continue;
+        };
+        let base = format!("widgets.{collection_name}[{index}]");
+        collect_present_table_fields(table, &base, command_fields, slots);
+    }
+}
+
+fn collect_present_plugin_fields(
+    widgets: &toml::Table,
+    collection_name: &str,
+    slots: &mut HashSet<String>,
+) {
+    let Some(items) = widgets.get(collection_name).and_then(Value::as_array) else {
+        return;
+    };
+
+    for (index, item) in items.iter().enumerate() {
+        if item
+            .get("plugin")
+            .and_then(Value::as_table)
+            .is_some_and(|plugin| plugin.contains_key("command"))
+        {
+            slots.insert(format!("widgets.{collection_name}[{index}].plugin.command"));
+        }
+    }
+}
+
+fn collect_present_table_fields(
+    table: &toml::Table,
+    base: &str,
+    fields: &[&str],
+    slots: &mut HashSet<String>,
+) {
+    for field in fields {
+        // Presence is enough here because typed parsing already checked the value type
+        if table.contains_key(*field) {
+            slots.insert(format!("{base}.{field}"));
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,59 +327,10 @@ fn collect_explicit_icon_assets(prefix: &str, value: &Value, assets: &mut Vec<Im
     }
 }
 
-fn collect_explicit_exec_commands(
-    prefix: &str,
-    value: &Value,
-    commands: &mut Vec<ImportedExecCommand>,
-) {
-    match value {
-        Value::Table(table) => {
-            for (key, child) in table {
-                let next = join_toml_slot(prefix, key);
-                // A direct string command is enough to make the preset runnable
-                if key_is_exec_slot(key) {
-                    if let Some(command) = child.as_str().filter(|value| !value.trim().is_empty()) {
-                        commands.push(ImportedExecCommand {
-                            slot: next.clone(),
-                            command: command.trim().to_string(),
-                        });
-                    }
-                }
-                // Walk deeper so nested plugin tables and widget arrays are covered too
-                collect_explicit_exec_commands(&next, child, commands);
-            }
-        }
-        Value::Array(items) => {
-            for (index, child) in items.iter().enumerate() {
-                let next = format!("{prefix}[{index}]");
-                // Arrays carry indexed widget rows, so keep their slot names stable in errors
-                collect_explicit_exec_commands(&next, child, commands);
-            }
-        }
-        _ => {}
-    }
-}
-
 fn join_toml_slot(prefix: &str, key: &str) -> String {
     if prefix.is_empty() {
         key.to_string()
     } else {
         format!("{prefix}.{key}")
     }
-}
-
-fn key_is_exec_slot(key: &str) -> bool {
-    // This stays explicit so import review only flags fields that are known to run something
-    matches!(
-        key,
-        "cmd"
-            | "command"
-            | "get_cmd"
-            | "set_cmd"
-            | "toggle_cmd"
-            | "watch_cmd"
-            | "state_cmd"
-            | "on_cmd"
-            | "off_cmd"
-    )
 }
