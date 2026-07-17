@@ -92,6 +92,7 @@ jobs:
           shellcheck \
             scripts/package-release.sh \
             tests/package-release.sh \
+            tests/check-test-placement.sh \
             tests/check-no-personal-paths.sh \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-lib \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-state \
@@ -100,7 +101,11 @@ jobs:
           shellharden --check \
             scripts/package-release.sh \
             tests/package-release.sh \
+            tests/check-test-placement.sh \
             tests/check-no-personal-paths.sh
+
+      - name: Check test code placement
+        run: tests/check-test-placement.sh
 
       - name: Check tracked paths for personal data
         run: tests/check-no-personal-paths.sh
