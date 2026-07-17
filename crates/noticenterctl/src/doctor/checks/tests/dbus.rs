@@ -21,7 +21,10 @@ impl PrivateBroker {
     fn start() -> Self {
         let socket = broker_socket();
         let listen_address = format!("unix:path={}", socket.display());
-        let mut child = Command::new("dbus-daemon")
+        // Other tests may temporarily replace PATH, so resolve the broker from fixed system roots
+        let daemon = unixnotis_core::util::trusted_system_program_path("dbus-daemon")
+            .expect("find dbus-daemon in a trusted system directory");
+        let mut child = Command::new(daemon)
             .args([
                 "--session",
                 "--nofork",

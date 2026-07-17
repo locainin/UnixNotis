@@ -19,7 +19,10 @@ struct PrivateBroker {
 impl PrivateBroker {
     fn start(socket: PathBuf) -> Self {
         let listen_address = format!("unix:path={}", socket.display());
-        let mut child = Command::new("dbus-daemon")
+        // Parallel tests can alter PATH, so the private broker uses fixed trusted roots
+        let daemon = unixnotis_core::util::trusted_system_program_path("dbus-daemon")
+            .expect("find dbus-daemon in a trusted system directory");
+        let mut child = Command::new(daemon)
             .args([
                 "--session",
                 "--nofork",
