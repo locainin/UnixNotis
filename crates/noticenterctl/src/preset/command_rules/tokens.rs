@@ -33,20 +33,13 @@ pub fn collect_outside_env_path_tokens(config_dir: &Path, command: &str) -> Vec<
     let Ok(parsed) = parse_command(trimmed) else {
         return Vec::new();
     };
-    if parsed.execution_mode != ExecutionMode::Direct {
-        // Shell operators change assignment scope, so executable-content review owns that case
-        return Vec::new();
-    }
     command_env_assignments(&parsed)
         .into_iter()
         .filter_map(|(name, value)| {
-            if !env_name_needs_path_validation(name) {
-                return None;
-            }
-            let outside_path = value
-                .split(':')
-                .filter(|part| !part.trim().is_empty())
-                .filter_map(|part| resolve_env_path_value(config_dir, part))
+            let components = env_path_components(name, value).ok().flatten()?;
+            let outside_path = components
+                .into_iter()
+                .map(|part| resolve_env_path_value(config_dir, part))
                 .find(|path| !normalize_lexical_path(path).starts_with(&normalized_root))?;
             Some((name.to_string(), outside_path))
         })
@@ -116,6 +109,7 @@ fn command_env_assignments(parsed: &ParsedCommand) -> Vec<(&str, &str)> {
         .collect::<Vec<_>>();
 
     // `env NAME=value program` applies assignments to the eventual child too
+    // Shell-mode parsing is conservative because unsafe assignments must fail closed
     if parsed.program == "env" {
         if let Ok(layout) = env_command_layout(parsed) {
             assignments.extend(
@@ -147,6 +141,13 @@ pub(super) fn validate_env_command_layout(parsed: &ParsedCommand) -> Result<(), 
     }
 
     env_command_layout(parsed).map(|_| ())
+}
+
+pub(super) fn validate_env_path_semantics(parsed: &ParsedCommand) -> Result<(), &'static str> {
+    for (name, value) in command_env_assignments(parsed) {
+        let _ = env_path_components(name, value)?;
+    }
+    Ok(())
 }
 
 struct EnvCommandLayout {
@@ -301,36 +302,79 @@ fn is_flag_only_short_cluster(token: &str) -> bool {
     })
 }
 
-fn env_name_needs_path_validation(name: &str) -> bool {
-    matches!(
-        name,
-        "PATH"
-            | "HOME"
-            | "LD_PRELOAD"
-            | "LD_LIBRARY_PATH"
-            | "LD_AUDIT"
-            | "LD_CONFIG_FILE"
-            | "PYTHONPATH"
-            | "PYTHONHOME"
-            | "PERL5LIB"
-            | "RUBYLIB"
-            | "NODE_PATH"
-            | "GCONV_PATH"
-            | "BASH_ENV"
-            | "ENV"
-            | "ZDOTDIR"
-    )
+fn env_path_components<'a>(
+    name: &str,
+    value: &'a str,
+) -> Result<Option<Vec<&'a str>>, &'static str> {
+    if is_dynamic_loader_variable(name) && contains_dynamic_loader_token(value) {
+        return Err("dynamic loader tokens are not portable in preset commands");
+    }
+    if matches!(name, "BASH_ENV" | "ENV")
+        && value
+            .chars()
+            .any(|character| matches!(character, '$' | '`' | '~'))
+    {
+        // Shells expand these startup-file values before opening them
+        return Err("shell startup environment paths cannot contain expansions");
+    }
+
+    let components = match name {
+        // glibc accepts ASCII whitespace or colons with no escaping for preload objects
+        "LD_PRELOAD" => value
+            .split(|character: char| character == ':' || character.is_ascii_whitespace())
+            .filter(|component| !component.is_empty())
+            .collect::<Vec<_>>(),
+        // glibc accepts both directory separators and treats empty fields as the child cwd
+        "LD_LIBRARY_PATH" => value.split([':', ';']).collect::<Vec<_>>(),
+        // These are colon-separated lists on Unix and empty fields resolve from the child cwd
+        "PATH" | "LD_AUDIT" | "PYTHONPATH" | "PERL5LIB" | "RUBYLIB" | "NODE_PATH"
+        | "GCONV_PATH" => value.split(':').collect::<Vec<_>>(),
+        // These consumers interpret the complete value as one path
+        "HOME" | "LD_CONFIG_FILE" | "PYTHONHOME" | "BASH_ENV" | "ENV" | "ZDOTDIR" => {
+            vec![value]
+        }
+        _ => return Ok(None),
+    };
+
+    if matches!(name, "LD_PRELOAD" | "LD_AUDIT")
+        && components
+            .iter()
+            .any(|component| !component.is_empty() && !component.contains('/'))
+    {
+        // Bare object names use the system loader search order rather than the config directory
+        return Err("loader object names must use an explicit config-relative path");
+    }
+
+    Ok(Some(components))
 }
 
-fn resolve_env_path_value(config_dir: &Path, value: &str) -> Option<PathBuf> {
-    let expanded = PathBuf::from(util::expand_tilde(value.trim()).into_owned());
-    if expanded.is_absolute() {
-        return Some(expanded);
+fn is_dynamic_loader_variable(name: &str) -> bool {
+    matches!(name, "LD_PRELOAD" | "LD_LIBRARY_PATH" | "LD_AUDIT")
+}
+
+fn contains_dynamic_loader_token(value: &str) -> bool {
+    [
+        "$ORIGIN",
+        "${ORIGIN}",
+        "$LIB",
+        "${LIB}",
+        "$PLATFORM",
+        "${PLATFORM}",
+    ]
+    .iter()
+    .any(|token| value.contains(token))
+}
+
+fn resolve_env_path_value(config_dir: &Path, value: &str) -> PathBuf {
+    if value.is_empty() {
+        // Empty list components mean cwd for loaders and path-search consumers
+        return config_dir.to_path_buf();
     }
-    if looks_like_path_token(value) {
-        return Some(config_dir.join(expanded));
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        return path;
     }
-    None
+    config_dir.join(path)
 }
 
 pub fn looks_like_path_token(token: &str) -> bool {

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use super::super::tokens::{
     collect_outside_env_path_tokens, first_command_token, is_host_specific_path_token,
     looks_like_path_token, split_env_assignment, validate_env_command_layout,
+    validate_env_path_semantics,
 };
 use super::super::validate_command_paths_in_config_bytes;
 use super::support::temp_root;
@@ -82,6 +83,89 @@ fn env_path_token_collector_finds_ld_preload_outside_root() {
 }
 
 #[test]
+fn validation_rejects_space_separated_ld_preload_path_that_leaves_root() {
+    let config_dir = temp_root("space-separated-ld-preload");
+    let inside = config_dir.join("libsafe.so");
+    let command = format!(
+        "LD_PRELOAD='{} /tmp/libevil.so' scripts/probe",
+        inside.display()
+    );
+    let config = format!(
+        "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {command:?}\n"
+    );
+
+    let error = validate_command_paths_in_config_bytes(
+        &config_dir,
+        config.as_bytes(),
+        "preset import blocked",
+    )
+    .expect_err("reject second preload object outside config root");
+
+    assert!(error
+        .to_string()
+        .contains("resolves outside the UnixNotis config directory"));
+}
+
+#[test]
+fn validation_rejects_semicolon_separated_library_directory_that_leaves_root() {
+    let config_dir = temp_root("semicolon-library-path");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"LD_LIBRARY_PATH='lib;/tmp/evil' scripts/probe\"\n";
+
+    validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+        .expect_err("reject semicolon-separated loader directory outside config root");
+}
+
+#[test]
+fn validation_accepts_empty_list_components_with_the_pinned_config_cwd() {
+    let config_dir = temp_root("empty-loader-component");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"LD_LIBRARY_PATH=':lib;' PATH=:bin scripts/probe\"\n";
+
+    validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+        .expect("empty path components should resolve to the pinned config cwd");
+}
+
+#[test]
+fn validation_keeps_single_path_environment_values_unsplit() {
+    let config_dir = temp_root("single-path-colon");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"HOME=profiles/home:secondary BASH_ENV=scripts/start:up scripts/probe\"\n";
+
+    validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+        .expect("single path values containing colons should remain one relative path");
+}
+
+#[test]
+fn validation_rejects_dynamic_loader_tokens_and_ambiguous_bare_objects() {
+    for command in [
+        "LD_PRELOAD='$ORIGIN/libevil.so' /bin/true",
+        "LD_LIBRARY_PATH='${LIB}' /bin/true",
+        "LD_AUDIT='$PLATFORM/audit.so' /bin/true",
+        "LD_PRELOAD=libprobe.so /bin/true",
+        "LD_AUDIT=audit.so /bin/true",
+    ] {
+        let parsed = parse_command(command).expect("parse loader environment command");
+        assert!(
+            validate_env_path_semantics(&parsed).is_err(),
+            "unsafe loader value was accepted: {command}"
+        );
+    }
+}
+
+#[test]
+fn validation_rejects_shell_startup_path_expansions() {
+    for command in [
+        "BASH_ENV='$HOME/evil' /bin/true",
+        "ENV='$(touch marker)' /bin/true",
+        "BASH_ENV='~/evil' /bin/true",
+    ] {
+        let parsed = parse_command(command).expect("parse shell environment command");
+        assert!(
+            validate_env_path_semantics(&parsed).is_err(),
+            "expanded shell startup path was accepted: {command}"
+        );
+    }
+}
+
+#[test]
 fn env_path_token_collector_ignores_invalid_env_assignment_names() {
     let config_dir = temp_root("invalid-env-token");
 
@@ -110,22 +194,37 @@ fn env_path_token_collector_ignores_unknown_env_names() {
 }
 
 #[test]
-fn env_path_token_collector_defers_shell_assignment_scope_to_exec_review() {
+fn validation_ignores_loader_tokens_in_unknown_environment_variables() {
+    let parsed = parse_command("WIDGET_DATA='$ORIGIN/data' scripts/probe")
+        .expect("parse unknown environment variable");
+
+    validate_env_path_semantics(&parsed)
+        .expect("unknown variables do not use loader path semantics");
+}
+
+#[test]
+fn env_path_token_collector_fails_closed_for_shell_assignment_scope() {
     let config_dir = temp_root("complex-env-token");
 
     let outside =
         collect_outside_env_path_tokens(&config_dir, "LD_PRELOAD=/tmp/evil.so; /bin/true");
 
-    assert!(outside.is_empty());
+    assert_eq!(outside.len(), 1);
+    assert_eq!(outside[0].0, "LD_PRELOAD");
 }
 
 #[test]
-fn env_path_token_collector_ignores_bare_library_names() {
+fn validation_rejects_bare_library_names_with_ambiguous_loader_search() {
     let config_dir = temp_root("bare-env-token");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"LD_PRELOAD=libprobe.so scripts/probe\"\n";
 
-    let outside = collect_outside_env_path_tokens(&config_dir, "LD_PRELOAD=libprobe.so /bin/true");
+    let error =
+        validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+            .expect_err("reject loader object without an explicit path");
 
-    assert!(outside.is_empty());
+    assert!(error
+        .to_string()
+        .contains("unsafe environment path semantics"));
 }
 
 #[test]
