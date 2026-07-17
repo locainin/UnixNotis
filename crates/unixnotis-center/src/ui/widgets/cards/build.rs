@@ -10,7 +10,8 @@ use unixnotis_core::{css::hooks, CardLayout, CardWidgetConfig, IconAssetResolver
 
 use super::super::icon_image::image_from_icon_config;
 use super::weather::{apply_card_kind_classes, card_icon_size, configure_card_icon};
-use super::{CardGrid, CardItem, RefreshBackoff};
+use super::{CardGrid, CardItem};
+use crate::ui::widgets::utils::RefreshBackoff;
 
 impl CardGrid {
     pub fn new(

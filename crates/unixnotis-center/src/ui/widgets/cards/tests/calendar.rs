@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use gtk::glib;
 
-use super::calendar::next_local_midnight_delay;
+use super::next_local_midnight_delay;
 
 #[test]
 fn midnight_delay_targets_next_day_boundary() {

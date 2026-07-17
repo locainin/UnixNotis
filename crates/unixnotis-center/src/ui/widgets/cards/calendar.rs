@@ -7,6 +7,10 @@ use tracing::warn;
 
 use super::CardItem;
 
+#[cfg(test)]
+#[path = "tests/calendar.rs"]
+mod tests;
+
 impl CardItem {
     pub(super) fn refresh_calendar(&self, base_interval: Duration) {
         let Some(calendar) = self.calendar.as_ref() else {
