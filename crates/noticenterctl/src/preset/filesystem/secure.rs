@@ -64,6 +64,7 @@ pub fn open_secure_dir_all(path: &Path) -> Result<OwnedFd> {
     Ok(current_fd)
 }
 
+#[cfg(test)]
 pub fn read_relative_file_secure(
     root_dir: &OwnedFd,
     relative_path: &Path,
@@ -71,21 +72,48 @@ pub fn read_relative_file_secure(
     read_relative_file_secure_bounded(root_dir, relative_path, u64::MAX)
 }
 
+pub fn try_read_relative_file_secure(
+    root_dir: &OwnedFd,
+    relative_path: &Path,
+) -> Result<Option<(Vec<u8>, u32)>> {
+    try_read_relative_file_secure_bounded(root_dir, relative_path, u64::MAX)
+}
+
 pub fn read_relative_file_secure_bounded(
     root_dir: &OwnedFd,
     relative_path: &Path,
     max_bytes: u64,
 ) -> Result<(Vec<u8>, u32)> {
+    try_read_relative_file_secure_bounded(root_dir, relative_path, max_bytes)?.ok_or_else(|| {
+        anyhow!(
+            "secure file does not exist under the UnixNotis config directory: {}",
+            relative_path.display()
+        )
+    })
+}
+
+fn try_read_relative_file_secure_bounded(
+    root_dir: &OwnedFd,
+    relative_path: &Path,
+    max_bytes: u64,
+) -> Result<Option<(Vec<u8>, u32)>> {
     // Normalize first so every later open call sees one clean relative path shape
     let relative_path = normalize_relative_path(relative_path)?;
-    let file_fd = openat2(
+    let file_fd = match openat2(
         root_dir,
         &relative_path,
         read_open_flags(),
         Mode::empty(),
         secure_resolve_flags(),
-    )
-    .with_context(|| format!("open file under secure root {}", relative_path.display()))?;
+    ) {
+        Ok(file_fd) => file_fd,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!("open file under secure root {}", relative_path.display())
+            })
+        }
+    };
     let file = fs::File::from(file_fd);
     let metadata = file
         .metadata()
@@ -120,7 +148,7 @@ pub fn read_relative_file_secure_bounded(
         ));
     }
 
-    Ok((contents, metadata.permissions().mode()))
+    Ok(Some((contents, metadata.permissions().mode())))
 }
 
 pub fn write_relative_file_atomic_secure(

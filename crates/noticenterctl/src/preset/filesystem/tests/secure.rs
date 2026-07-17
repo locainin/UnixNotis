@@ -2,7 +2,7 @@ use super::super::{
     create_backup_dir_secure, open_secure_dir_all, publish_relative_file_atomic_secure,
     read_relative_file_secure, read_relative_file_secure_bounded,
     remove_empty_relative_dirs_secure, remove_relative_dir_secure, remove_relative_file_secure,
-    write_relative_file_atomic_secure,
+    try_read_relative_file_secure, write_relative_file_atomic_secure,
 };
 use crate::preset::filesystem::secure::{
     backup_name_is_taken, child_directory_is_missing, directory_open_flags,
@@ -182,6 +182,17 @@ fn secure_read_returns_contents_and_mode_but_rejects_non_files() {
 
     symlink("value.txt", root.path.join("nested/link.txt")).expect("create file symlink");
     assert!(read_relative_file_secure(&root_fd, Path::new("nested/link.txt")).is_err());
+}
+
+#[test]
+fn optional_secure_read_distinguishes_a_missing_file() {
+    let root = TempDirGuard::new("optional-secure-read");
+    let root_fd = open_secure_dir_all(&root.path).expect("open secure test root");
+
+    let missing = try_read_relative_file_secure(&root_fd, Path::new("missing.txt"))
+        .expect("probe missing file");
+
+    assert!(missing.is_none());
 }
 
 #[test]

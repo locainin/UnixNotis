@@ -11,8 +11,9 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use super::super::super::filesystem::ensure_dir_fd_matches_live_path;
 use super::super::super::filesystem::{
     create_backup_dir_secure, open_secure_dir_all, publish_relative_file_atomic_secure,
-    read_relative_file_secure, remove_empty_relative_dirs_secure, remove_relative_dir_secure,
-    remove_relative_file_secure, write_relative_file_atomic_secure,
+    read_relative_file_secure_bounded, remove_empty_relative_dirs_secure,
+    remove_relative_dir_secure, remove_relative_file_secure, try_read_relative_file_secure,
+    write_relative_file_atomic_secure,
 };
 use super::plan::ImportPlan;
 
@@ -23,6 +24,17 @@ pub(in crate::preset) struct ImportTransaction {
     config_root_fd: std::os::fd::OwnedFd,
     // The captured pre-import file state drives both rollback and the final backup snapshot
     applied_items: Vec<AppliedImportItem>,
+}
+
+impl ImportTransaction {
+    pub(in crate::preset) fn read_file_bounded(
+        &self,
+        relative_path: &Path,
+        max_bytes: u64,
+    ) -> Result<(Vec<u8>, u32)> {
+        // Post-apply checks must use the same root descriptor as publication and rollback
+        read_relative_file_secure_bounded(&self.config_root_fd, relative_path, max_bytes)
+    }
 }
 
 #[derive(Debug)]
@@ -51,17 +63,25 @@ pub(in crate::preset) fn apply_import_plan(
         let mut previous_contents = None;
         let mut previous_mode = None;
 
-        if item.overwrite_existing {
-            // Existing bytes are kept in memory until commit so rollback can restore them exactly
-            let (existing_bytes, existing_mode) =
-                read_relative_file_secure(&config_root_fd, &item.file.relative_path).with_context(
-                    || {
-                        format!(
-                            "read existing imported file {}",
-                            item.file.relative_path.display()
-                        )
-                    },
-                )?;
+        let existing =
+            match try_read_relative_file_secure(&config_root_fd, &item.file.relative_path)
+                .with_context(|| {
+                    format!(
+                        "inspect existing imported file {}",
+                        item.file.relative_path.display()
+                    )
+                }) {
+                Ok(existing) => existing,
+                Err(error) => {
+                    return Err(rollback_after_apply_failure(
+                        &config_root_fd,
+                        &applied_items,
+                        error,
+                    ));
+                }
+            };
+        if let Some((existing_bytes, existing_mode)) = existing {
+            // Capture the descriptor-visible state even when it changed after planning
             previous_contents = Some(existing_bytes);
             previous_mode = Some(existing_mode);
         }

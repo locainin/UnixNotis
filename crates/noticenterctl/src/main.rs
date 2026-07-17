@@ -12,7 +12,6 @@
     clippy::unnecessary_wraps,
     clippy::unused_peekable,
     clippy::unused_self,
-    clippy::useless_let_if_seq,
     reason = "reviewed CLI parsing, report assembly, and async D-Bus boundaries retain explicit forms for stable diagnostics and command behavior"
 )]
 
