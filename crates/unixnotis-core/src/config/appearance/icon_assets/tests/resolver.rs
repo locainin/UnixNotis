@@ -5,9 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use image::codecs::png::PngEncoder;
 use image::{ExtendedColorType, ImageEncoder};
 
+use super::super::decode::validate_dimensions;
+use super::super::{validate_icon_asset_contents, validate_icon_asset_reference};
 use super::{
-    resolve_icon_asset_path, resolve_icon_asset_path_with_policy, validate_dimensions,
-    validate_icon_asset_contents, validate_icon_asset_reference, AssetPolicy, IconAssetError,
+    resolve_icon_asset_path, resolve_icon_asset_path_with_policy, AssetPolicy, IconAssetError,
     IconAssetResolver,
 };
 
@@ -154,6 +155,12 @@ fn content_size_limit_is_inclusive_and_svg_image_nodes_are_rejected() {
     let embedded = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><image href="/tmp/evil.png"/></svg>"#;
     assert!(matches!(
         validate_icon_asset_contents("assets/embedded.svg", embedded),
+        Err(IconAssetError::EmbeddedSvgImage(_))
+    ));
+
+    let namespaced = br#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" width="16" height="16"><s:image href="/tmp/external.png" width="16" height="16"/></svg>"#;
+    assert!(matches!(
+        validate_icon_asset_contents("assets/namespaced.svg", namespaced),
         Err(IconAssetError::EmbeddedSvgImage(_))
     ));
 }
