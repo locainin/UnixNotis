@@ -26,7 +26,7 @@ pub(in crate::doctor) fn inspect_session_environment(bus_connected: bool) -> Doc
     let bus_transport = bus_address
         .as_deref()
         .and_then(|value| value.split_once(':').map(|(transport, _)| transport))
-        .unwrap_or("unset");
+        .map_or("unset", classify_bus_transport);
     let wayland = env::var_os("WAYLAND_DISPLAY").is_some_and(|value| !value.is_empty())
         || env::var("XDG_SESSION_TYPE").is_ok_and(|value| value.eq_ignore_ascii_case("wayland"));
 
@@ -88,6 +88,16 @@ pub(in crate::doctor) fn inspect_session_environment(bus_connected: bool) -> Doc
         check = check.hint(anomalies.join("; "));
     }
     check
+}
+
+pub(super) const fn classify_bus_transport(transport: &str) -> &'static str {
+    match transport.as_bytes() {
+        b"unix" => "unix",
+        b"tcp" => "tcp",
+        b"nonce-tcp" => "nonce-tcp",
+        b"autolaunch" => "autolaunch",
+        _ => "other",
+    }
 }
 
 const fn runtime_description(present: bool, absolute: bool, directory: bool) -> &'static str {

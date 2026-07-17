@@ -28,9 +28,6 @@ pub(super) fn render_human(report: &DoctorReport) -> String {
         if let Some(hint) = &check.hint {
             lines.push(format!("Hint: {hint}"));
         }
-        for (key, value) in &check.data {
-            lines.push(format!("{key}: {}", render_data_value(value)));
-        }
     }
 
     if !report.config_diagnostics.is_empty() {
@@ -78,11 +75,4 @@ pub(super) fn render_human(report: &DoctorReport) -> String {
         }
     }
     lines.join("\n")
-}
-
-fn render_data_value(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::String(value) => value.clone(),
-        other => other.to_string(),
-    }
 }

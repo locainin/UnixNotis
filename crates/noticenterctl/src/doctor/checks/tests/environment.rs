@@ -84,3 +84,29 @@ fn missing_environment_becomes_actionable_when_bus_connection_failed() {
         .as_deref()
         .is_some_and(|hint| hint.contains("XDG_RUNTIME_DIR is not set")));
 }
+
+#[test]
+fn malformed_bus_transport_is_classified_without_echoing_untrusted_text() {
+    let _lock = env_lock();
+    let malicious_prefix = format!("{}\u{1b}[31m{}", "x".repeat(8_192), "injected");
+    let address = format!("{malicious_prefix}:value");
+    let _address = EnvGuard::set("DBUS_SESSION_BUS_ADDRESS", address);
+
+    let check = inspect_session_environment(true);
+
+    assert_eq!(check.data["dbus_transport"], "other");
+    let details = check.details.expect("session environment details");
+    assert!(details.contains("other transport"));
+    assert!(!details.contains("injected"));
+    assert!(!details.contains('\u{1b}'));
+    assert!(details.len() < 512);
+}
+
+#[test]
+fn recognized_bus_transports_use_a_fixed_classification() {
+    assert_eq!(classify_bus_transport("unix"), "unix");
+    assert_eq!(classify_bus_transport("tcp"), "tcp");
+    assert_eq!(classify_bus_transport("nonce-tcp"), "nonce-tcp");
+    assert_eq!(classify_bus_transport("autolaunch"), "autolaunch");
+    assert_eq!(classify_bus_transport("UNIX"), "other");
+}
