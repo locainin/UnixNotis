@@ -1,9 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt as _;
-
 use super::super::source::ExportSourceSnapshot;
 use super::super::tests::support::TempDirGuard;
 use crate::preset::config_root::SecureFileCapture;
@@ -74,19 +71,15 @@ fn config_capture_rejects_a_symlink_instead_of_following_it() {
 #[test]
 fn active_file_capture_propagates_metadata_errors_other_than_missing_files() {
     let root = TempDirGuard::new("active-source-metadata-error");
-    root.write("config.toml", "[theme]\nbase_css = \"locked/base.css\"\n");
-    let locked = root.path.join("locked");
-    fs::create_dir(&locked).expect("create locked directory");
-    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000))
-        .expect("lock active file parent");
+    root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
     let mut snapshot = ExportSourceSnapshot::capture(&root.path).expect("capture config source");
+    // Linux rejects one component beyond NAME_MAX before user permissions affect the result
+    let invalid_path = root.path.join("x".repeat(300));
 
     let error = snapshot
-        .capture_active_files(&root.path, &[locked.join("base.css")])
-        .expect_err("permission errors must not look like missing optional files");
+        .capture_active_files(&root.path, &[invalid_path])
+        .expect_err("path errors must not look like missing optional files");
 
-    fs::set_permissions(&locked, fs::Permissions::from_mode(0o700))
-        .expect("unlock active file parent");
     assert!(error.to_string().contains("inspect active file"));
 }
 
