@@ -1,8 +1,10 @@
 use super::super::{
     collect_external_css_asset_refs_from_bundle, collect_external_css_asset_refs_from_paths,
-    collect_local_css_asset_paths_from_paths,
+    collect_local_css_asset_paths_from_captures, collect_local_css_asset_paths_from_paths,
 };
 use crate::preset::archive::BundleFile;
+use crate::preset::config_root::SecureFileCapture;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -119,4 +121,27 @@ fn local_dependency_collection_ignores_embedded_and_remote_urls() {
         .expect("collect local dependencies");
 
     assert_eq!(paths, vec![PathBuf::from("assets/local.png")]);
+}
+
+#[test]
+fn local_dependency_collection_uses_captured_stylesheet_bytes() {
+    let root = TempDirGuard::new("captured-local-dependencies");
+    let config_dir = root.path.join("xdg/unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config dir");
+    let css_path = root.write(
+        "xdg/unixnotis/base.css",
+        ".panel { background: url('assets/replaced.png'); }\n",
+    );
+    let captures = BTreeMap::from([(
+        PathBuf::from("base.css"),
+        SecureFileCapture {
+            contents: b".panel { background: url('assets/captured.png'); }\n".to_vec(),
+            mode: 0o644,
+        },
+    )]);
+
+    let paths = collect_local_css_asset_paths_from_captures(&config_dir, &[css_path], &captures)
+        .expect("collect captured local dependencies");
+
+    assert_eq!(paths, vec![PathBuf::from("assets/captured.png")]);
 }

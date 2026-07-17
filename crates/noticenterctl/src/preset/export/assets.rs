@@ -7,12 +7,12 @@ use toml::Value;
 use unixnotis_core::validate_icon_asset_reference;
 
 pub(super) fn collect_existing_icon_assets(
-    config_path: &Path,
+    config_bytes: &[u8],
     config_dir: &Path,
 ) -> Result<Vec<PathBuf>> {
-    let config_text = std::fs::read_to_string(config_path)
-        .with_context(|| format!("read config file {}", config_path.display()))?;
-    let value: Value = toml::from_str(&config_text).context("parse config.toml icon assets")?;
+    let config_text =
+        std::str::from_utf8(config_bytes).context("config.toml is not valid UTF-8")?;
+    let value: Value = toml::from_str(config_text).context("parse config.toml icon assets")?;
     let mut raw_assets = Vec::new();
     collect_icon_asset_values(&value, &mut raw_assets);
 

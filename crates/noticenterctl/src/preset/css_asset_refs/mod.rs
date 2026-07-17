@@ -9,9 +9,11 @@ mod rewrite;
 mod tests;
 
 pub use collect::collect_external_css_asset_refs_from_paths;
+#[cfg(test)]
+pub(super) use collect::collect_local_css_asset_paths_from_paths;
 pub(super) use collect::{
     collect_external_css_asset_refs_from_bundle, collect_external_css_asset_refs_from_collected,
-    collect_local_css_asset_paths_from_paths,
+    collect_local_css_asset_paths_from_captures,
 };
 pub use model::{ExternalCssAssetRef, HostSpecificCssAssetRef};
 pub(super) use paths::{asset_path_reason, has_css_extension, local_file_url_path, read_css_text};

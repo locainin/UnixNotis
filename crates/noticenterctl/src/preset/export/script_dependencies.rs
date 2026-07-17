@@ -4,12 +4,15 @@
 //! Broad shell evaluation would execute user content and could recapture unrelated files
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::os::fd::OwnedFd;
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 
 use super::super::config_root::SecureFileCapture;
-use super::super::filesystem::{open_secure_dir_all, read_relative_file_secure_bounded};
+#[cfg(test)]
+use super::super::filesystem::open_secure_dir_all;
+use super::super::filesystem::read_relative_file_secure_bounded;
 
 // Source scanning is only dependency metadata work, so a small cap prevents an oversized command
 // file from consuming memory before the normal preset file limits are applied
@@ -41,12 +44,20 @@ pub(super) enum SourceOperand {
     AmbiguousRelative,
 }
 
+#[cfg(test)]
 pub(super) fn collect_script_dependency_closure(
     config_dir: &Path,
     entry_scripts: &[PathBuf],
 ) -> Result<ScriptDependencyClosure> {
     let root_fd = open_secure_dir_all(config_dir)
         .with_context(|| format!("open config directory {}", config_dir.display()))?;
+    collect_script_dependency_closure_from_root(&root_fd, entry_scripts)
+}
+
+pub(super) fn collect_script_dependency_closure_from_root(
+    root_fd: &OwnedFd,
+    entry_scripts: &[PathBuf],
+) -> Result<ScriptDependencyClosure> {
     let mut discovered = BTreeSet::new();
     let mut pending = VecDeque::new();
     let mut captures = BTreeMap::new();
@@ -59,7 +70,7 @@ pub(super) fn collect_script_dependency_closure(
         };
         if discovered.insert(entry.clone()) {
             let (contents, mode) =
-                read_relative_file_secure_bounded(&root_fd, &entry, MAX_SCANNED_SCRIPT_BYTES)
+                read_relative_file_secure_bounded(root_fd, &entry, MAX_SCANNED_SCRIPT_BYTES)
                     .with_context(|| {
                         format!(
                             "preset export cannot verify dependencies for script {}",
@@ -115,7 +126,7 @@ pub(super) fn collect_script_dependency_closure(
             };
             if discovered.insert(dependency.clone()) {
                 let (contents, mode) = read_relative_file_secure_bounded(
-                    &root_fd,
+                    root_fd,
                     &dependency,
                     MAX_SCANNED_SCRIPT_BYTES,
                 )

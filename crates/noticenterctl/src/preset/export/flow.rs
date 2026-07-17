@@ -3,7 +3,6 @@
 use anyhow::{anyhow, Context, Result};
 use chrono::Local;
 use std::path::{Path, PathBuf};
-use unixnotis_core::Config;
 
 use super::assets::collect_existing_icon_assets;
 use super::checks::validate_theme_paths_stay_in_root;
@@ -15,17 +14,18 @@ use super::prompts::{
     rewrite_host_specific_css_asset_refs_if_requested,
     rewrite_host_specific_script_paths_if_requested,
 };
-use super::script_dependencies::collect_script_dependency_closure;
+use super::script_dependencies::collect_script_dependency_closure_from_root;
+use super::source::ExportSourceSnapshot;
 use crate::preset::archive::write_bundle;
 use crate::preset::command_rules::{
     collect_command_references_from_config, resolve_command_path_token,
     validate_config_command_paths_stay_in_root,
 };
 use crate::preset::config_root::{
-    collect_selected_config_files_with_captures, override_collected_file_contents,
+    collect_selected_config_files_from_root, override_collected_file_contents,
 };
 use crate::preset::css_asset_refs::{
-    collect_external_css_asset_refs_from_collected, collect_local_css_asset_paths_from_paths,
+    collect_external_css_asset_refs_from_collected, collect_local_css_asset_paths_from_captures,
 };
 use crate::preset::manifest::{PresetManifest, PresetManifestFile};
 use crate::preset::pathing::{
@@ -82,17 +82,9 @@ pub(in crate::preset) fn export_preset_from_with_confirm(
         ));
     }
 
-    let config_path = config_dir.join("config.toml");
-    if !config_path.exists() {
-        return Err(anyhow!(
-            "preset export requires config.toml in {}",
-            config_dir.display()
-        ));
-    }
-
-    // Loading the live config up front catches broken bundles before export starts
-    let mut config =
-        Config::load_from_path(&config_path).context("load config.toml for preset export")?;
+    // One snapshot pins every validation and archive read to the same config directory
+    let mut source = ExportSourceSnapshot::capture(config_dir)?;
+    let mut config = source.config().clone();
     let theme_paths = config
         .resolve_theme_paths_from(config_dir)
         .context("resolve active theme paths for preset export")?;
@@ -139,24 +131,23 @@ pub(in crate::preset) fn export_preset_from_with_confirm(
         theme_paths.widgets_css,
         theme_paths.media_css,
     ];
-    let mut selected_paths = vec![PathBuf::from("config.toml")];
-    let existing_theme_files = theme_files
+    let active_theme_paths = source.capture_active_files(config_dir, &theme_files)?;
+    let existing_theme_files = active_theme_paths
         .iter()
-        .filter(|path| path.is_file())
-        .cloned()
+        .map(|relative| config_dir.join(relative))
         .collect::<Vec<_>>();
-    for theme_file in &existing_theme_files {
-        selected_paths.push(
-            theme_file
-                .strip_prefix(config_dir)
-                .context("make active theme path relative to config root")?
-                .to_path_buf(),
-        );
-    }
-    selected_paths.extend(collect_local_css_asset_paths_from_paths(
+    let mut selected_paths = vec![PathBuf::from("config.toml")];
+    selected_paths.extend(active_theme_paths);
+    let css_asset_paths = collect_local_css_asset_paths_from_captures(
         config_dir,
         &existing_theme_files,
-    )?);
+        source.captures(),
+    )?;
+    let css_asset_files = css_asset_paths
+        .iter()
+        .map(|relative| config_dir.join(relative))
+        .collect::<Vec<_>>();
+    selected_paths.extend(source.capture_active_files(config_dir, &css_asset_files)?);
     let command_script_paths = collect_command_references_from_config(&config)
         .into_iter()
         .filter_map(|reference| resolve_command_path_token(config_dir, &reference.command))
@@ -165,18 +156,26 @@ pub(in crate::preset) fn export_preset_from_with_confirm(
         .collect::<Vec<_>>();
     // Direct config commands can source small helper libraries that are just as required as the entry script
     // Resolve that closure before collection so a preset remains usable on a clean installation
-    let script_dependencies = collect_script_dependency_closure(config_dir, &command_script_paths)?;
+    let script_dependencies =
+        collect_script_dependency_closure_from_root(source.root_fd(), &command_script_paths)?;
     selected_paths.extend(script_dependencies.paths.iter().cloned());
-    selected_paths.extend(collect_existing_icon_assets(&config_path, config_dir)?);
+    source.extend_captures(script_dependencies.captures);
+    let icon_paths = collect_existing_icon_assets(source.config_bytes(), config_dir)?;
+    let icon_files = icon_paths
+        .iter()
+        .map(|relative| config_dir.join(relative))
+        .collect::<Vec<_>>();
+    selected_paths.extend(source.capture_active_files(config_dir, &icon_files)?);
     selected_paths.sort();
     selected_paths.dedup();
 
-    let mut collected = collect_selected_config_files_with_captures(
+    let mut collected = collect_selected_config_files_from_root(
+        source.root_fd(),
         config_dir,
         &selected_paths,
         Some(output_path),
         &exclusions,
-        &script_dependencies.captures,
+        source.captures(),
     )?;
     if !collected
         .files
@@ -249,6 +248,8 @@ pub(in crate::preset) fn export_preset_from_with_confirm(
         env!("CARGO_PKG_VERSION").to_string(),
         manifest_files,
     );
+    // A renamed config root would otherwise publish a stale snapshot under a new live path
+    source.ensure_live_root(config_dir)?;
     write_bundle(output_path, &manifest, &collected).context("write preset bundle")?;
 
     Ok(ExportSummary {

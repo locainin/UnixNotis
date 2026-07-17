@@ -7,6 +7,7 @@ mod flow;
 mod model;
 mod prompts;
 mod script_dependencies;
+mod source;
 #[cfg(test)]
 mod tests;
 
