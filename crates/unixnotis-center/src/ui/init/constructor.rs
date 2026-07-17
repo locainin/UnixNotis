@@ -12,7 +12,7 @@ use super::builders::{
     build_media_widget, build_notification_list, build_widget_sections, has_visible_widget_section,
     icon_resolver_for_widgets,
 };
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
 impl UiState {
     pub fn new(init: UiStateInit) -> Self {

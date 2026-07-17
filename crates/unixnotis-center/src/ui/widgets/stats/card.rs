@@ -12,7 +12,7 @@ use super::super::utils::{
     run_command_capture_async, run_command_capture_with_timeout_async, INFLIGHT_REFRESH_RECHECK,
 };
 use super::{apply_cached_value, BuiltinStat, BuiltinStatKey, StatItem};
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
 impl StatItem {
     pub(super) fn has_builtin_source(&self) -> bool {

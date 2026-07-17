@@ -10,7 +10,7 @@ use tracing::debug;
 use unixnotis_core::{PanelAction, PanelDebugLevel, PanelRequest};
 
 use crate::control::UiCommand;
-use crate::debug;
+use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
 use super::super::{try_send_command, UiState};
 
@@ -99,7 +99,7 @@ impl UiState {
         });
         if visible {
             // Start a new probe window each time panel becomes visible
-            super::super::perf_probe::on_panel_open(self.panel_visible_flag.clone());
+            perf_probe::on_panel_open(self.panel_visible_flag.clone());
             // Activate watches so widgets only poll while the panel is open
             if let Some(volume) = self.volume.as_ref() {
                 volume.set_watch_active(true);
@@ -158,7 +158,7 @@ impl UiState {
             self.log_debug(PanelDebugLevel::Verbose, move || message);
         } else {
             // Emit a final snapshot before timers and watches are torn down
-            super::super::perf_probe::on_panel_close();
+            perf_probe::on_panel_close();
             // Hide first so any teardown work does not trigger visible reflow
             self.panel.window.set_visible(false);
             // Reset transient search UI so each open starts from the full notification list

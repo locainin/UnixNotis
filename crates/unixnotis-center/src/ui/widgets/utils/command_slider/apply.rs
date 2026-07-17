@@ -9,8 +9,7 @@ use super::super::slider_parse::{format_value, parse_muted, parse_numeric};
 use super::request::SliderRefreshRequest;
 use super::state::SliderRefreshState;
 use super::value::slider_value_changed;
-use crate::debug;
-use crate::ui::perf_probe;
+use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
 pub(super) fn apply_successful_output(
     request: &SliderRefreshRequest,

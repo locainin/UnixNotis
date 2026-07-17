@@ -102,8 +102,12 @@ fn probe() -> &'static Probe {
 
 fn read_enabled_from_env() -> bool {
     // Accept common truthy forms so shell scripts can toggle probe ergonomically
+    enabled_value(env::var("UNIXNOTIS_PERF_PROBE").ok().as_deref())
+}
+
+pub(super) fn enabled_value(value: Option<&str>) -> bool {
     matches!(
-        env::var("UNIXNOTIS_PERF_PROBE").ok().as_deref(),
+        value,
         Some("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON")
     )
 }
@@ -115,7 +119,7 @@ fn inc(counter: &AtomicU64) {
     }
 }
 
-pub(super) fn on_panel_open(panel_visible_flag: Arc<AtomicBool>) {
+pub fn on_panel_open(panel_visible_flag: Arc<AtomicBool>) {
     let probe = probe();
     if !probe.enabled() {
         return;
@@ -139,7 +143,7 @@ pub(super) fn on_panel_open(panel_visible_flag: Arc<AtomicBool>) {
     schedule_snapshot("steady+12s", Duration::from_secs(12), panel_visible_flag);
 }
 
-pub(super) fn on_panel_close() {
+pub fn on_panel_close() {
     if !probe().enabled() {
         return;
     }
@@ -158,7 +162,7 @@ fn schedule_snapshot(label: &'static str, delay: Duration, panel_visible_flag: A
     });
 }
 
-pub(super) fn log_snapshot(label: &str) {
+pub fn log_snapshot(label: &str) {
     let probe = probe();
     if !probe.enabled() {
         return;
@@ -197,102 +201,102 @@ pub(super) fn log_snapshot(label: &str) {
 }
 
 // Small wrappers keep call sites readable and keep counter ownership local
-pub(in crate::ui) fn refresh_timer_armed() {
+pub fn refresh_timer_armed() {
     inc(&probe().counters.refresh_timer_armed);
 }
 
-pub(in crate::ui) fn refresh_timer_fired() {
+pub fn refresh_timer_fired() {
     inc(&probe().counters.refresh_timer_fired);
 }
 
-pub(in crate::ui) fn refresh_widgets_called() {
+pub fn refresh_widgets_called() {
     inc(&probe().counters.refresh_widgets_calls);
 }
 
-pub(in crate::ui) fn refresh_fast_lane_due() {
+pub fn refresh_fast_lane_due() {
     inc(&probe().counters.refresh_fast_lane_due);
 }
 
-pub(in crate::ui) fn refresh_slow_lane_due() {
+pub fn refresh_slow_lane_due() {
     inc(&probe().counters.refresh_slow_lane_due);
 }
 
-pub(in crate::ui) fn refresh_volume_called() {
+pub fn refresh_volume_called() {
     inc(&probe().counters.refresh_volume_calls);
 }
 
-pub(in crate::ui) fn refresh_brightness_called() {
+pub fn refresh_brightness_called() {
     inc(&probe().counters.refresh_brightness_calls);
 }
 
-pub(in crate::ui) fn refresh_toggles_called() {
+pub fn refresh_toggles_called() {
     inc(&probe().counters.refresh_toggles_calls);
 }
 
-pub(in crate::ui) fn refresh_stats_called() {
+pub fn refresh_stats_called() {
     inc(&probe().counters.refresh_stats_calls);
 }
 
-pub(in crate::ui) fn refresh_cards_called() {
+pub fn refresh_cards_called() {
     inc(&probe().counters.refresh_cards_calls);
 }
 
-pub(in crate::ui) fn watch_event() {
+pub fn watch_event() {
     inc(&probe().counters.watch_events);
 }
 
-pub(in crate::ui) fn slider_refresh_start() {
+pub fn slider_refresh_start() {
     inc(&probe().counters.slider_refresh_start);
 }
 
-pub(in crate::ui) fn slider_refresh_queued() {
+pub fn slider_refresh_queued() {
     inc(&probe().counters.slider_refresh_queued);
 }
 
-pub(in crate::ui) fn slider_value_write() {
+pub fn slider_value_write() {
     inc(&probe().counters.slider_value_writes);
 }
 
-pub(in crate::ui) fn slider_label_write() {
+pub fn slider_label_write() {
     inc(&probe().counters.slider_label_writes);
 }
 
-pub(in crate::ui) fn slider_icon_write() {
+pub fn slider_icon_write() {
     inc(&probe().counters.slider_icon_writes);
 }
 
-pub(in crate::ui) fn toggle_refresh_start() {
+pub fn toggle_refresh_start() {
     inc(&probe().counters.toggle_refresh_start);
 }
 
-pub(in crate::ui) fn toggle_refresh_queued() {
+pub fn toggle_refresh_queued() {
     inc(&probe().counters.toggle_refresh_queued);
 }
 
-pub(in crate::ui) fn toggle_state_write() {
+pub fn toggle_state_write() {
     inc(&probe().counters.toggle_state_writes);
 }
 
-pub(in crate::ui) fn toggle_class_write() {
+pub fn toggle_class_write() {
     inc(&probe().counters.toggle_class_writes);
 }
 
-pub(in crate::ui) fn marquee_start() {
+pub fn marquee_start() {
     inc(&probe().counters.marquee_start);
 }
 
-pub(in crate::ui) fn marquee_stop() {
+pub fn marquee_stop() {
     inc(&probe().counters.marquee_stop);
 }
 
-pub(in crate::ui) fn marquee_tick() {
+pub fn marquee_tick() {
     inc(&probe().counters.marquee_tick);
 }
 
-pub(in crate::ui) fn marquee_hold_skip() {
+pub fn marquee_hold_skip() {
     inc(&probe().counters.marquee_hold_skip);
 }
 
-pub(in crate::ui) fn marquee_label_write() {
+pub fn marquee_label_write() {
     inc(&probe().counters.marquee_label_writes);
 }

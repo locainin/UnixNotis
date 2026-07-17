@@ -1,4 +1,4 @@
-//! Debug logging helpers gated by panel debug level.
+//! Debug logging helpers gated by panel debug level
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -12,7 +12,11 @@ pub fn set_level(level: PanelDebugLevel) {
 }
 
 pub fn level() -> PanelDebugLevel {
-    match DEBUG_LEVEL.load(Ordering::Relaxed) {
+    level_from_raw(DEBUG_LEVEL.load(Ordering::Relaxed))
+}
+
+pub(super) const fn level_from_raw(raw: u8) -> PanelDebugLevel {
+    match raw {
         1 => PanelDebugLevel::Critical,
         2 => PanelDebugLevel::Warn,
         3 => PanelDebugLevel::Info,

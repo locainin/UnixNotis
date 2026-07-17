@@ -7,7 +7,7 @@ use std::thread::{self, JoinHandle};
 use tracing::warn;
 use unixnotis_core::{util, PanelDebugLevel};
 
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
 use super::command::kill_process_group;
 

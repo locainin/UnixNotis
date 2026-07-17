@@ -12,7 +12,7 @@ use super::{
     MediaCommand, MediaRefreshOrigin, MediaSignal, MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER,
     MPRIS_PREFIX,
 };
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
 #[derive(Clone)]
 pub(super) struct PlayerState {

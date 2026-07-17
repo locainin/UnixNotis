@@ -12,8 +12,7 @@ use tracing::warn;
 use unixnotis_core::{css::hooks, util, PanelDebugLevel};
 
 use super::super::utils::run_command_capture_status_async;
-use crate::debug;
-use crate::ui::perf_probe;
+use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
 // Staggered retry delays keep UI responsive without long-lived polling loops
 const TOGGLE_REFRESH_DELAYS_MS: &[u64] = &[0, 50, 100, 200, 400, 800];

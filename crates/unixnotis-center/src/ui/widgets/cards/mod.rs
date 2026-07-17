@@ -23,7 +23,7 @@ use super::utils::{
     run_command_capture_async, run_command_capture_with_timeout_async, RefreshBackoff,
     INFLIGHT_REFRESH_RECHECK,
 };
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
 pub struct CardGrid {
     // FlowBox root is embedded directly by the panel widget layout

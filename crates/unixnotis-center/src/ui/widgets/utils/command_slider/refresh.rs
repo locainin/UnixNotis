@@ -13,8 +13,7 @@ use super::super::run_command_capture_status_async;
 use super::apply::{apply_successful_output, note_slider_error};
 use super::request::SliderRefreshRequest;
 use super::state::SliderRefreshState;
-use crate::debug;
-use crate::ui::perf_probe;
+use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
 pub(super) fn request_refresh(
     request: SliderRefreshRequest,

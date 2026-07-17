@@ -12,8 +12,7 @@ use gtk::glib;
 use tracing::warn;
 use unixnotis_core::{util, PanelDebugLevel};
 
-use crate::debug;
-use crate::ui::perf_probe;
+use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
 use super::command::{resolve_command_plan, CommandKind};
 use super::watch_reaper::enqueue_watch_cleanup;

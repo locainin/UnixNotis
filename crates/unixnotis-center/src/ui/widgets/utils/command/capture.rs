@@ -9,7 +9,7 @@ use unixnotis_core::{util, PanelDebugLevel};
 use super::command_exec::set_command_config_dir;
 use super::command_queue::enqueue_command;
 use super::plan::{resolve_command_plan, CommandKind};
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
 pub fn configure_command_config_dir(config_dir: std::path::PathBuf) {
     set_command_config_dir(config_dir);

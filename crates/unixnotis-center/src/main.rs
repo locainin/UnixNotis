@@ -33,7 +33,7 @@ use tracing::info;
 use unixnotis_core::Config;
 
 mod control;
-mod debug;
+mod diagnostics;
 mod media;
 mod runtime;
 mod startup;

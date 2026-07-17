@@ -12,7 +12,7 @@ use unixnotis_core::{
 
 use super::super::icon_image::image_from_icon_config;
 use super::super::utils::{run_action_command_with_completion, start_command_watch, CommandWatch};
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
 use super::css::toggle_kind_css_class;
 use super::icons::resolve_toggle_icon_name;

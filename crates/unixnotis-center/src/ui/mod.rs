@@ -11,7 +11,6 @@ mod init;
 mod media;
 mod notifications;
 mod panel;
-mod perf_probe;
 mod state;
 
 mod widget_builders;

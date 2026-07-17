@@ -6,7 +6,7 @@ use unixnotis_core::{ControlProxy, PanelDebugLevel};
 use zbus::Result as ZbusResult;
 
 use super::model::UiCommand;
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
 // Cap offline queue length so a dead bus does not keep growing memory use
 const MAX_OFFLINE_COMMANDS: usize = 128;

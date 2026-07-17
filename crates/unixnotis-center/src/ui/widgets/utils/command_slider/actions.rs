@@ -14,7 +14,7 @@ use super::refresh::request_refresh;
 use super::request::SliderRefreshRequest;
 use super::schedule::schedule_command;
 use super::state::{build_refresh_state_from_weak, SliderRefreshMeta};
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
 pub(super) fn attach_icon_action(
     root: &gtk::Box,

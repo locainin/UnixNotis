@@ -7,7 +7,7 @@ use crossbeam_channel as channel;
 use tracing::warn;
 use unixnotis_core::{util, PanelDebugLevel};
 
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
 use super::super::command_exec::{build_command_runtime, run_command_with_timeout};
 use super::super::{CommandKind, CommandPlan};
