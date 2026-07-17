@@ -1,39 +1,16 @@
 use super::super::exec_review::{
-    confirm_import_exec_content, confirm_import_exec_content_with_terminal_state,
-    render_exec_content_review_with_style, write_exec_content_review, ReviewStyle,
+    confirm_import_exec_content, confirm_import_exec_content_with_interaction,
+    confirm_import_exec_content_with_terminal_state, ensure_exec_review_complete,
+    write_exec_content_review,
 };
+use super::super::render::RenderedExecReview;
 use crate::preset::import::review::checks::{
     ImportedExecCommand, ImportedExecContent, ImportedExecFile,
 };
+use std::cell::Cell;
 use std::path::PathBuf;
 
 use crate::test_support::{test_env_lock, EnvGuard};
-
-#[test]
-fn exec_review_renders_commands_and_files() {
-    let review = render_exec_content_review_with_style(
-        &ImportedExecContent {
-            commands: vec![ImportedExecCommand {
-                slot: "widgets.stats[0].cmd".to_string(),
-                command: "scripts/check.sh".to_string(),
-            }],
-            files: vec![ImportedExecFile {
-                relative_path: PathBuf::from("scripts/check.sh"),
-                contents: b"#!/bin/sh\necho ok\n".to_vec(),
-                mode: 0o755,
-            }],
-        },
-        ReviewStyle { color: false },
-    );
-
-    assert!(review.contains("widgets.stats[0].cmd = scripts/check.sh"));
-    assert!(review.contains("This preset contains executable commands or bundled scripts"));
-    assert!(review.contains("Only continue if the source is trusted"));
-    assert!(review.contains("Command entries"));
-    assert!(review.contains("Bundled executable files"));
-    assert!(review.contains("== scripts/check.sh (mode 755) =="));
-    assert!(review.contains("#!/bin/sh"));
-}
 
 #[test]
 fn exec_review_allows_empty_or_explicitly_trusted_exec_content() {
@@ -89,23 +66,6 @@ fn exec_review_public_entry_rejects_untrusted_content_without_a_terminal() {
 }
 
 #[test]
-fn exec_review_style_can_add_color() {
-    let title = ReviewStyle { color: true }.title("review");
-    assert!(title.contains("\u{1b}[1;36m"));
-    assert!(title.ends_with("\u{1b}[0m"));
-}
-
-#[test]
-fn exec_review_style_honors_every_color_precondition() {
-    assert!(ReviewStyle::for_terminal_state(true, false, None, None).color);
-    assert!(!ReviewStyle::for_terminal_state(false, false, None, None).color);
-    assert!(!ReviewStyle::for_terminal_state(true, true, None, None).color);
-    assert!(!ReviewStyle::for_terminal_state(true, false, Some("0"), None).color);
-    assert!(!ReviewStyle::for_terminal_state(true, false, None, Some("dumb")).color);
-    assert!(ReviewStyle::for_terminal_state(true, false, Some("1"), Some("xterm")).color);
-}
-
-#[test]
 fn exec_review_writer_ignores_pager_environment() {
     let _lock = test_env_lock();
     let _pager = EnvGuard::set("PAGER", "sh -c 'echo pwned'");
@@ -117,81 +77,109 @@ fn exec_review_writer_ignores_pager_environment() {
 }
 
 #[test]
-fn exec_review_sanitizes_terminal_controls_and_bounds_script_text() {
-    let mut contents = b"#!/bin/sh\nprintf '\\033[2Jspoof'\n".to_vec();
-    contents.extend(std::iter::repeat_n(b'x', 8_192));
-    let review = render_exec_content_review_with_style(
-        &ImportedExecContent {
-            commands: vec![ImportedExecCommand {
-                slot: "widgets.stats[0].cmd\u{001b}[2J".to_string(),
-                command: "scripts/check.sh\u{202e}spoof".to_string(),
-            }],
-            files: vec![ImportedExecFile {
-                relative_path: PathBuf::from("scripts/check\u{001b}[2J.sh"),
-                contents,
-                mode: 0o755,
-            }],
+fn exec_review_incomplete_result_requires_explicit_override() {
+    let review = RenderedExecReview {
+        rendered: "Review status: incomplete\n".to_string(),
+        complete: false,
+    };
+
+    let error = ensure_exec_review_complete(&review)
+        .expect_err("partial review must require the explicit override");
+
+    assert!(error.to_string().contains("--allow-exec"));
+}
+
+#[test]
+fn exec_review_incomplete_flow_never_reaches_final_approval_prompt() {
+    let content = ImportedExecContent {
+        commands: vec![ImportedExecCommand {
+            slot: "widgets.stats[0].cmd".to_string(),
+            command: "sh assets/large.txt".to_string(),
+        }],
+        files: vec![ImportedExecFile {
+            relative_path: PathBuf::from("assets/large.txt"),
+            contents: vec![b'x'; 70 * 1_024],
+            mode: 0o644,
+        }],
+    };
+    let mut questions = Vec::new();
+    let review_was_shown = Cell::new(false);
+
+    let error = confirm_import_exec_content_with_interaction(
+        &content,
+        false,
+        true,
+        |question| {
+            questions.push(question.to_string());
+            Ok(true)
         },
-        ReviewStyle { color: false },
-    );
+        |review| {
+            review_was_shown.set(true);
+            assert!(!review.complete);
+            Ok(())
+        },
+    )
+    .expect_err("incomplete review must stop before approval");
 
-    assert!(!review.contains('\u{001b}'));
-    assert!(!review.contains('\u{202e}'));
-    assert!(review.contains("spoof"));
-    assert!(review.contains("..."));
-    assert!(review.len() < 6_000);
+    assert!(review_was_shown.get());
+    assert_eq!(questions, ["Inspect executable content now?"]);
+    assert!(error.to_string().contains("--allow-exec"));
 }
 
 #[test]
-fn exec_review_reports_entries_omitted_by_display_limits() {
-    let commands = (0..65)
-        .map(|index| ImportedExecCommand {
-            slot: format!("slot-{index}"),
-            command: "true".to_string(),
-        })
-        .collect();
-    let files = (0..33)
-        .map(|index| ImportedExecFile {
-            relative_path: PathBuf::from(format!("scripts/{index}")),
-            contents: b"true\n".to_vec(),
-            mode: 0o755,
-        })
-        .collect();
+fn exec_review_complete_flow_requires_inspection_before_final_approval() {
+    let mut questions = Vec::new();
+    let review_was_shown = Cell::new(false);
 
-    let review = render_exec_content_review_with_style(
-        &ImportedExecContent { commands, files },
-        ReviewStyle { color: false },
+    confirm_import_exec_content_with_interaction(
+        &imported_exec_content(),
+        false,
+        true,
+        |question| {
+            questions.push(question.to_string());
+            Ok(true)
+        },
+        |review| {
+            review_was_shown.set(true);
+            assert!(review.complete);
+            Ok(())
+        },
+    )
+    .expect("complete inspected review can reach final approval");
+
+    assert!(review_was_shown.get());
+    assert_eq!(
+        questions,
+        [
+            "Inspect executable content now?",
+            "Import this preset anyway?"
+        ]
     );
-
-    assert!(review.contains("<1 additional command entries omitted>"));
-    assert!(review.contains("<1 additional executable files omitted>"));
-    assert!(!review.contains("slot-64"));
-    assert!(!review.contains("scripts/32"));
 }
 
 #[test]
-fn exec_review_does_not_report_omissions_at_exact_display_limits() {
-    let commands = (0..64)
-        .map(|index| ImportedExecCommand {
-            slot: format!("slot-{index}"),
-            command: "true".to_string(),
-        })
-        .collect();
-    let files = (0..32)
-        .map(|index| ImportedExecFile {
-            relative_path: PathBuf::from(format!("scripts/{index}")),
-            contents: b"true\n".to_vec(),
-            mode: 0o755,
-        })
-        .collect();
+fn exec_review_declined_inspection_never_shows_or_approves_content() {
+    let review_was_shown = Cell::new(false);
+    let mut prompt_count = 0;
 
-    let review = render_exec_content_review_with_style(
-        &ImportedExecContent { commands, files },
-        ReviewStyle { color: false },
-    );
+    let error = confirm_import_exec_content_with_interaction(
+        &imported_exec_content(),
+        false,
+        true,
+        |_question| {
+            prompt_count += 1;
+            Ok(false)
+        },
+        |_review| {
+            review_was_shown.set(true);
+            Ok(())
+        },
+    )
+    .expect_err("declining required inspection must cancel import");
 
-    assert!(!review.contains("additional command entries omitted"));
-    assert!(!review.contains("additional executable files omitted"));
+    assert_eq!(prompt_count, 1);
+    assert!(!review_was_shown.get());
+    assert!(error.to_string().contains("review is required"));
 }
 
 fn imported_exec_content() -> ImportedExecContent {
