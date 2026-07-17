@@ -1,6 +1,6 @@
 use std::io::{BufReader, Cursor};
 use std::sync::atomic::Ordering;
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex, MutexGuard, PoisonError};
 
 use crate::app::events::{UiMessage, WorkerEvent};
 
@@ -9,6 +9,17 @@ use super::{
     sanitize_log_line_with_source_truncation, send_log_line, DROPPED_LOG_LINES,
     MAX_INSTALLER_LOG_LINE_BYTES, MAX_INSTALLER_LOG_LINE_CHARS,
 };
+
+static DROPPED_LOG_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock_dropped_log_state() -> MutexGuard<'static, ()> {
+    let guard = DROPPED_LOG_TEST_LOCK
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    // Each shared-counter test starts from the same state regardless of test order
+    DROPPED_LOG_LINES.store(0, Ordering::Relaxed);
+    guard
+}
 
 #[test]
 fn sanitize_log_line_flattens_terminal_controls() {
@@ -113,6 +124,7 @@ fn bounded_log_reader_preserves_retained_carriage_return_when_suffix_is_truncate
 
 #[test]
 fn send_log_line_delivers_worker_log_event() {
+    let _guard = lock_dropped_log_state();
     let (tx, rx) = mpsc::sync_channel(1);
 
     send_log_line(&tx, "hello".to_string());
@@ -126,6 +138,7 @@ fn send_log_line_delivers_worker_log_event() {
 
 #[test]
 fn send_log_line_sanitizes_before_queueing() {
+    let _guard = lock_dropped_log_state();
     let (tx, rx) = mpsc::sync_channel(1);
 
     send_log_line(&tx, "unsafe\u{1b}[2Jline".to_string());
@@ -139,6 +152,7 @@ fn send_log_line_sanitizes_before_queueing() {
 
 #[test]
 fn flush_dropped_log_lines_emits_and_clears_the_retained_count() {
+    let _guard = lock_dropped_log_state();
     let (tx, rx) = mpsc::sync_channel(1);
     DROPPED_LOG_LINES.store(3, Ordering::Relaxed);
 
