@@ -2,17 +2,21 @@
 
 mod action;
 mod capture;
-mod command_exec;
 mod command_parse;
-mod queue;
+mod exec;
 mod plan;
+mod queue;
+
+#[cfg(test)]
+#[path = "tests/support.rs"]
+mod test_support;
 
 pub(in crate::ui::widgets) use action::run_action_command_with_completion;
 pub(in crate::ui::widgets) use capture::{
     run_command_capture_async, run_command_capture_status_async,
     run_command_capture_with_timeout_async,
 };
-pub(in crate::ui::widgets) use command_exec::kill_process_group;
+pub(in crate::ui::widgets) use exec::kill_process_group;
 pub(in crate::ui::widgets) use plan::{resolve_command_plan, CommandKind, CommandPlan};
 
 pub use capture::configure_command_config_dir;

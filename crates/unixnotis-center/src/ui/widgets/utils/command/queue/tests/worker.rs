@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use super::super::super::test_support::configure_command_test_root;
 use super::{
     dispatch_ready_job, should_warn_queue_full_from, CommandJob, CommandKind, CommandPlan,
     CommandWorker,
@@ -43,6 +44,7 @@ fn queue_warning_throttle_allows_warning_after_window() {
 
 #[test]
 fn action_lane_starts_while_refresh_worker_is_blocked() {
+    configure_command_test_root();
     let worker = CommandWorker::new(1);
     let mut blocked_refresh = job("sleep 1", CommandKind::Fast);
     blocked_refresh.plan.timeout_override = Some(Duration::from_secs(2));

@@ -6,13 +6,13 @@ use std::time::Duration;
 
 use unixnotis_core::{util, PanelDebugLevel};
 
-use super::command_exec::set_command_config_dir;
-use super::queue::enqueue_command;
+use super::exec::set_command_config_dir;
 use super::plan::{resolve_command_plan, CommandKind};
+use super::queue::enqueue_command;
 use crate::diagnostics::panel_debug as debug;
 
 pub fn configure_command_config_dir(config_dir: std::path::PathBuf) {
-    set_command_config_dir(config_dir);
+    let _ = set_command_config_dir(config_dir);
 }
 
 pub(in crate::ui::widgets) fn run_command_capture_async(

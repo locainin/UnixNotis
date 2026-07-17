@@ -4,8 +4,8 @@ use std::io;
 use std::process::Child;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::command_exec::build_command;
 use super::command_parse::is_probably_slow;
+use super::exec::build_command;
 
 const FAST_TIMEOUT_MS: u64 = 350;
 const SLOW_TIMEOUT_MS: u64 = 800;

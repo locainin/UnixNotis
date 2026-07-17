@@ -9,7 +9,7 @@ use unixnotis_core::{util, PanelDebugLevel};
 
 use crate::diagnostics::panel_debug as debug;
 
-use super::super::command_exec::{build_command_runtime, run_command_with_timeout};
+use super::super::exec::{build_command_runtime, run_command_with_timeout};
 use super::super::{CommandKind, CommandPlan};
 use super::coalesced::CoalescedRefreshQueue;
 use super::delayed::DelayedSlowQueue;
