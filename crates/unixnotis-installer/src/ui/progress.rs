@@ -75,15 +75,11 @@ pub(super) fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) 
 
     // Reserve border rows and keep the latest failure output visible without manual scrolling
     let visible_log_lines = body[1].height.saturating_sub(2) as usize;
-    let logs = render_logs(&app.logs, visible_log_lines);
+    let visible_log_width = body[1].width.saturating_sub(2) as usize;
+    let logs = render_logs(&app.logs, visible_log_lines, visible_log_width);
     let logs_block = Block::default().title("Logs").borders(Borders::ALL);
-    // Let Ratatui handle wrapping to avoid per-frame manual layout work
-    frame.render_widget(
-        Paragraph::new(logs)
-            .block(logs_block)
-            .wrap(Wrap { trim: true }),
-        body[1],
-    );
+    // Rows are prewrapped from the tail so the last failure stays visible
+    frame.render_widget(Paragraph::new(logs).block(logs_block), body[1]);
 
     // Footer text varies by state to make next action explicit
     let footer_text = match app.progress_state {

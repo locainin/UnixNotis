@@ -15,3 +15,4 @@ serde.workspace = true
 chrono.workspace = true
 rustix.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
+unicode-width.workspace = true
