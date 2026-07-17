@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Cursor;
 use std::time::Duration;
+use std::time::Instant;
 
 use super::super::model::{CachedDiagnosticSource, CssFileIdentity, CssParseWorkItem};
 use super::super::parse::{
@@ -160,6 +161,36 @@ fn source_line_lookup_uses_one_based_parser_locations() {
     assert_eq!(source_line_text(Some(&path), 0), None);
     assert_eq!(source_line_text(Some(&path), 4), None);
     assert_eq!(source_line_text(None, 1), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn source_line_lookup_rejects_fifo_without_blocking() {
+    use rustix::fs::{mkfifoat, Mode, CWD};
+
+    let root = TempDirGuard::new("validator-source-fifo");
+    let path = root.path().join("style.css");
+    mkfifoat(CWD, &path, Mode::RUSR | Mode::WUSR).expect("create source FIFO");
+
+    let started = Instant::now();
+    let line = source_line_text(Some(&path), 1);
+
+    assert_eq!(line, None);
+    assert!(started.elapsed() < Duration::from_secs(1));
+}
+
+#[test]
+fn source_line_lookup_rejects_files_over_the_css_limit() {
+    let root = TempDirGuard::new("validator-source-large");
+    let path = root.write("style.css", "");
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("open source fixture")
+        .set_len(16_777_217)
+        .expect("grow source fixture");
+
+    assert_eq!(source_line_text(Some(&path), 1), None);
 }
 
 #[test]

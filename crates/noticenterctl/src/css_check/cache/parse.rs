@@ -20,8 +20,8 @@ pub(super) fn source_line_text(path: Option<&Path>, line_number: usize) -> Optio
     if line_number == 0 {
         return None;
     }
-    // Read only when a parser error needs a hint
-    let contents = fs::read_to_string(path).ok()?;
+    // Reuse the bounded regular-file reader so a diagnostic source cannot block on a FIFO
+    let contents = crate::preset::css_asset_refs::read_css_path_text_bounded(path).ok()?;
     contents
         .lines()
         // GTK line numbers start at one
