@@ -5,9 +5,15 @@
 use anyhow::{anyhow, Context, Result};
 use std::env;
 use std::io::{self, IsTerminal, Write};
+use unixnotis_core::util;
 
 use super::super::super::pathing::{prompt_yes_no, terminal_interaction_available};
 use super::checks::ImportedExecContent;
+
+const MAX_REVIEW_COMMANDS: usize = 64;
+const MAX_REVIEW_FILES: usize = 32;
+const MAX_REVIEW_INLINE_CHARS: usize = 512;
+const MAX_REVIEW_FILE_CHARS: usize = 4_096;
 
 pub(in crate::preset) fn confirm_import_exec_content(
     exec_content: &ImportedExecContent,
@@ -93,39 +99,75 @@ pub(in crate::preset) fn render_exec_content_review_with_style(
     if !exec_content.commands.is_empty() {
         lines.push(String::new());
         lines.push(style.section("Command entries"));
-        for command in &exec_content.commands {
+        for command in exec_content.commands.iter().take(MAX_REVIEW_COMMANDS) {
             // Slot names make it obvious which config field would become runnable
             lines.push(format!(
                 "  {} = {}",
-                style.slot(&command.slot),
-                style.command(&command.command)
+                style.slot(safe_review_inline(&command.slot)),
+                style.command(safe_review_inline(&command.command))
             ));
         }
+        append_omitted_count(
+            &mut lines,
+            style,
+            exec_content.commands.len(),
+            MAX_REVIEW_COMMANDS,
+            "command entries",
+        );
     }
 
     if !exec_content.files.is_empty() {
         lines.push(String::new());
         lines.push(style.section("Bundled executable files"));
-        for file in &exec_content.files {
+        for file in exec_content.files.iter().take(MAX_REVIEW_FILES) {
             lines.push(String::new());
             lines.push(style.file_header(format!(
                 "== {} (mode {:o}) ==",
-                file.relative_path.display(),
+                safe_review_inline(&file.relative_path.display().to_string()),
                 file.mode
             )));
             match std::str::from_utf8(&file.contents) {
                 // Text payloads are shown directly so the trust check can happen without unpacking
-                Ok(text) => lines.push(style.file_body(text)),
+                Ok(text) => lines.push(style.file_body(util::sanitize_display_text_bounded(
+                    text,
+                    MAX_REVIEW_FILE_CHARS,
+                ))),
                 Err(_) => lines.push(style.note(format!(
                     "<non-UTF-8 file omitted; {} byte(s)>",
                     file.contents.len()
                 ))),
             }
         }
+        append_omitted_count(
+            &mut lines,
+            style,
+            exec_content.files.len(),
+            MAX_REVIEW_FILES,
+            "executable files",
+        );
     }
 
     lines.push(String::new());
     lines.join("\n")
+}
+
+fn safe_review_inline(value: &str) -> String {
+    // Commands and paths stay on one row so embedded controls cannot rewrite the prompt
+    util::sanitize_log_value(value, MAX_REVIEW_INLINE_CHARS)
+}
+
+fn append_omitted_count(
+    lines: &mut Vec<String>,
+    style: ReviewStyle,
+    total: usize,
+    shown: usize,
+    label: &str,
+) {
+    let omitted = total.saturating_sub(shown);
+    if omitted > 0 {
+        // The summary makes a bounded review explicit instead of implying every payload was shown
+        lines.push(style.note(format!("<{omitted} additional {label} omitted>")));
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -136,10 +178,22 @@ pub(in crate::preset) struct ReviewStyle {
 impl ReviewStyle {
     fn for_terminal() -> Self {
         // Pager review is only useful with color on real terminals
-        let color = io::stdout().is_terminal()
-            && env::var_os("NO_COLOR").is_none()
-            && env::var("CLICOLOR").map_or(true, |value| value != "0")
-            && env::var("TERM").map_or(true, |value| value != "dumb");
+        Self::for_terminal_state(
+            io::stdout().is_terminal(),
+            env::var_os("NO_COLOR").is_some(),
+            env::var("CLICOLOR").ok().as_deref(),
+            env::var("TERM").ok().as_deref(),
+        )
+    }
+
+    pub(in crate::preset) fn for_terminal_state(
+        terminal: bool,
+        no_color: bool,
+        clicolor: Option<&str>,
+        term: Option<&str>,
+    ) -> Self {
+        // Every opt-out is independent so redirected and accessibility-friendly output stays plain
+        let color = terminal && !no_color && clicolor != Some("0") && term != Some("dumb");
         Self { color }
     }
 

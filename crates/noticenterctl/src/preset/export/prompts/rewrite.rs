@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use std::path::Path;
-use unixnotis_core::Config;
+use unixnotis_core::{util, Config};
 
 use crate::preset::command_rules::{
     collect_host_specific_command_paths, rewrite_host_specific_command_paths,
@@ -155,7 +155,7 @@ fn format_host_specific_command_path_lines(
             // Show exact slot and command for quick review
             format!(
                 "  - {} = {} (absolute path under the config root; let noticenterctl rewrite it to a config-root-relative command)",
-                leak.slot, leak.command
+                safe_prompt_value(&leak.slot), safe_prompt_value(&leak.command)
             )
         })
         .collect()
@@ -170,9 +170,9 @@ fn format_host_specific_css_asset_ref_lines(
             // Include target rewrite so prompt answer is clear
             format!(
                 "  - {} -> {} (host-local config path; let noticenterctl rewrite it to {})",
-                leak.css_file.display(),
-                leak.asset_ref,
-                leak.rewritten_ref
+                safe_prompt_value(&leak.css_file.display().to_string()),
+                safe_prompt_value(&leak.asset_ref),
+                safe_prompt_value(&leak.rewritten_ref)
             )
         })
         .collect()
@@ -182,16 +182,21 @@ fn format_host_specific_script_path_lines(leaked_refs: &[HostSpecificScriptLeak]
     leaked_refs
         .iter()
         .map(|leak| {
-            let matched = leak.needles.join(", ");
+            let matched = safe_prompt_value(&leak.needles.join(", "));
             // Include replacement text to show final form
             format!(
                 "  - {} contains {} (let noticenterctl rewrite it to {})",
-                leak.script_path.display(),
+                safe_prompt_value(&leak.script_path.display().to_string()),
                 matched,
-                leak.rewritten_to
+                safe_prompt_value(&leak.rewritten_to)
             )
         })
         .collect()
+}
+
+fn safe_prompt_value(value: &str) -> String {
+    // Rewrite previews appear before consent and must not carry terminal control sequences
+    util::sanitize_log_value(value, util::diagnostic_log_limit())
 }
 
 #[cfg(test)]

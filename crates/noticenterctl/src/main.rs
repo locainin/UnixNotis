@@ -26,10 +26,18 @@ mod output;
 mod preset;
 mod system_tools;
 
+use std::process::ExitCode;
+
 #[cfg(test)]
 #[path = "tests/support.rs"]
 mod test_support;
 
-fn main() -> anyhow::Result<()> {
-    app::run()
+fn main() -> ExitCode {
+    match app::run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprint!("{}", output::format_cli_error(&error));
+            ExitCode::FAILURE
+        }
+    }
 }

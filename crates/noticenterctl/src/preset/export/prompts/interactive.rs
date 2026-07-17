@@ -3,6 +3,7 @@
 use std::io::IsTerminal;
 
 use anyhow::{anyhow, Result};
+use unixnotis_core::util;
 
 use crate::preset::command_rules::HostSpecificCommandPath;
 use crate::preset::css_asset_refs::{ExternalCssAssetRef, HostSpecificCssAssetRef};
@@ -95,12 +96,17 @@ fn format_external_css_ref_lines(external_refs: &[ExternalCssAssetRef]) -> Vec<S
             };
             format!(
                 "  - {} -> {} ({})",
-                asset_ref.css_file.display(),
-                asset_ref.asset_ref,
-                detail
+                safe_prompt_value(&asset_ref.css_file.display().to_string()),
+                safe_prompt_value(&asset_ref.asset_ref),
+                safe_prompt_value(&detail)
             )
         })
         .collect()
+}
+
+fn safe_prompt_value(value: &str) -> String {
+    // Config text may originate from a downloaded preset, so prompt rows stay terminal-safe
+    util::sanitize_log_value(value, util::diagnostic_log_limit())
 }
 
 #[cfg(test)]

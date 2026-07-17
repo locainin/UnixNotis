@@ -21,3 +21,17 @@ fn external_reference_lines_label_remote_urls_without_echoing_internal_terms() {
     assert_eq!(lines.len(), 1);
     assert!(lines[0].contains("remote URL"));
 }
+
+#[test]
+fn external_reference_lines_remove_terminal_controls() {
+    let references = vec![ExternalCssAssetRef {
+        css_file: PathBuf::from("panel.css"),
+        asset_ref: "https://example.invalid/\u{1b}[2Jimage.png".to_string(),
+        reason: "remote url".to_string(),
+    }];
+
+    let lines = format_external_css_ref_lines(&references);
+
+    assert_eq!(lines.len(), 1);
+    assert!(!lines[0].contains('\u{1b}'));
+}

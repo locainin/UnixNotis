@@ -137,6 +137,25 @@ icon_asset = "assets/ram.svg"
 }
 
 #[test]
+fn imported_icon_asset_checks_reject_namespaced_external_image_nodes() {
+    let config = br#"
+[[widgets.cards]]
+title = "Probe"
+icon_asset = "assets/probe.svg"
+"#;
+    let files = [BundleFile {
+        relative_path: PathBuf::from("assets/probe.svg"),
+        contents: br#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" width="16" height="16"><s:image href="/tmp/external.png" width="16" height="16"/></svg>"#.to_vec(),
+        mode: 0o644,
+    }];
+
+    let error = validate_imported_icon_assets(config, &files)
+        .expect_err("namespaced image elements must not reach usvg's file resolver");
+
+    assert!(error.to_string().contains("unsafe icon asset"));
+}
+
+#[test]
 fn imported_exec_collection_finds_command_bearing_config() {
     let config = br#"
 [theme]

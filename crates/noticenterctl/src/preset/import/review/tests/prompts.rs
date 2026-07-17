@@ -36,6 +36,21 @@ fn format_external_css_ref_lines_preserves_local_path_reason() {
 }
 
 #[test]
+fn format_external_css_ref_lines_removes_terminal_controls() {
+    let refs = vec![ExternalCssAssetRef {
+        css_file: PathBuf::from("base.css"),
+        asset_ref: "/tmp/evil\u{1b}[2Jasset.png".to_string(),
+        reason: "outside\nroot".to_string(),
+    }];
+
+    let lines = super::super::prompts::format_external_css_ref_lines(&refs);
+
+    assert_eq!(lines.len(), 1);
+    assert!(!lines[0].contains('\u{1b}'));
+    assert!(!lines[0].contains('\n'));
+}
+
+#[test]
 fn confirm_import_external_css_refs_errors_without_interactive_confirmation() {
     let refs = vec![ExternalCssAssetRef {
         css_file: PathBuf::from("base.css"),

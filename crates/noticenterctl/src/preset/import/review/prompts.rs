@@ -1,6 +1,7 @@
 //! Interactive import warning prompts
 
 use anyhow::Result;
+use unixnotis_core::util;
 
 use super::super::super::css_asset_refs::ExternalCssAssetRef;
 use super::super::super::pathing::{
@@ -58,10 +59,15 @@ pub(in crate::preset) fn format_external_css_ref_lines(
             // One-line rows make the warning easy to scan before the prompt is shown
             format!(
                 "  - {} -> {} ({})",
-                asset_ref.css_file.display(),
-                asset_ref.asset_ref,
-                detail
+                safe_prompt_value(&asset_ref.css_file.display().to_string()),
+                safe_prompt_value(&asset_ref.asset_ref),
+                safe_prompt_value(&detail)
             )
         })
         .collect()
+}
+
+fn safe_prompt_value(value: &str) -> String {
+    // Preset text is untrusted until this prompt succeeds, so controls and long rows are removed
+    util::sanitize_log_value(value, util::diagnostic_log_limit())
 }

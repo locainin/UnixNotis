@@ -1,8 +1,7 @@
 use unixnotis_core::{Action, NotificationImage, NotificationView};
 
-use super::{
-    allow_full_output, format_inhibitors, format_notifications, warn_full_requires_diagnostic,
-};
+use super::{format_inhibitors, format_notifications};
+use crate::output::{allow_full_output, warn_full_requires_diagnostic};
 
 fn sample_notification() -> NotificationView {
     // Bad bytes on purpose
