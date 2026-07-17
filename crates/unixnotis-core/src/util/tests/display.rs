@@ -45,3 +45,21 @@ fn sanitize_display_text_maps_tabs_and_carriage_returns_separately() {
     assert_eq!(sanitize_display_text(value), "a b c\nnext");
     assert_eq!(sanitize_inline_display_text(value), "a b c next");
 }
+
+#[test]
+fn bounded_display_text_sanitizes_controls_without_scanning_the_full_value() {
+    let value = "safe\u{001b}[2J\nnext\u{202e}spoof";
+
+    let sanitized = sanitize_display_text_bounded(value, 10);
+
+    assert_eq!(sanitized, "safe [2J\nn...");
+    assert!(!sanitized.contains('\u{001b}'));
+    assert!(!sanitized.contains('\u{202e}'));
+}
+
+#[test]
+fn bounded_display_text_handles_zero_and_exact_limits() {
+    assert_eq!(sanitize_display_text_bounded("value", 0), "");
+    assert_eq!(sanitize_display_text_bounded("value", 5), "value...");
+    assert_eq!(sanitize_display_text_bounded("ok", 5), "ok");
+}
