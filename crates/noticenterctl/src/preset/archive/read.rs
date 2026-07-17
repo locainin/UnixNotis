@@ -10,43 +10,66 @@ use super::super::manifest::PRESET_FORMAT_VERSION;
 use super::super::pathing::{
     archive_payload_relative, format_relative_path, normalize_relative_path, MANIFEST_ARCHIVE_PATH,
 };
+use super::budget::{
+    DecompressedBudget, MAX_PRESET_COMPRESSED_BYTES, MAX_PRESET_DECOMPRESSED_BYTES,
+};
 use super::modes::sanitize_payload_mode;
+use super::preflight::preflight_archive;
 use super::{BundleArchive, BundleFile};
 
-pub(super) const MAX_PRESET_ARCHIVE_ENTRIES: usize = 2_048;
 pub(in crate::preset) const MAX_PRESET_PAYLOAD_FILES: usize = 512;
 pub(super) const MAX_PRESET_MANIFEST_BYTES: u64 = 1_048_576;
 pub(in crate::preset) const MAX_PRESET_FILE_BYTES: u64 = 16_777_216;
 pub(in crate::preset) const MAX_PRESET_TOTAL_PAYLOAD_BYTES: u64 = 67_108_864;
 
 pub fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
+    read_bundle_with_limits(
+        bundle_path,
+        MAX_PRESET_COMPRESSED_BYTES,
+        MAX_PRESET_DECOMPRESSED_BYTES,
+    )
+}
+
+pub(super) fn read_bundle_with_limits(
+    bundle_path: &Path,
+    compressed_limit: u64,
+    decompressed_limit: u64,
+) -> Result<BundleArchive> {
     // Import and inspect use the same reader so validation stays consistent
-    let input = File::open(bundle_path)
+    let mut input = File::open(bundle_path)
         .with_context(|| format!("open preset bundle {}", bundle_path.display()))?;
+    let metadata = input
+        .metadata()
+        .with_context(|| format!("inspect preset bundle {}", bundle_path.display()))?;
+    if !metadata.is_file() {
+        return Err(anyhow!("preset bundle input must be a regular file"));
+    }
+    if metadata.len() > compressed_limit {
+        return Err(anyhow!(
+            "preset bundle is too large: {} compressed bytes, max {compressed_limit} bytes",
+            metadata.len()
+        ));
+    }
+
+    // Raw preflight exposes extension records that tar normally consumes internally
+    preflight_archive(&mut input, decompressed_limit)?;
+
+    // The decoder budget also covers extension records that tar consumes before yielding entries
     let decoder = GzDecoder::new(input);
-    let mut archive = Archive::new(decoder);
+    let bounded = DecompressedBudget::new(decoder, decompressed_limit);
+    let mut archive = Archive::new(bounded);
 
     let mut manifest_contents = None::<String>;
     let mut files = BTreeMap::<PathBuf, BundleFile>::new();
 
-    let mut entry_count = 0usize;
     let mut payload_count = 0usize;
     let mut total_payload_bytes = 0u64;
 
     for entry in archive.entries().context("read preset bundle entries")? {
-        entry_count += 1;
-        if entry_count > MAX_PRESET_ARCHIVE_ENTRIES {
-            return Err(anyhow!(
-                "preset bundle contains too many archive entries: max {MAX_PRESET_ARCHIVE_ENTRIES}"
-            ));
-        }
-
         let mut entry = entry.context("read preset bundle entry")?;
         let archive_path = entry.path().context("read bundle entry path")?.into_owned();
-        let declared_size = entry
-            .header()
-            .size()
-            .with_context(|| format!("read bundle entry size {}", archive_path.display()))?;
+        // Entry::size includes PAX size overrides while Header::size only reads the raw header
+        let declared_size = entry.size();
         if entry.header().entry_type().is_dir() {
             if declared_size != 0 {
                 // Skipping a sized directory would still decompress its body while seeking ahead
@@ -191,7 +214,12 @@ fn validated_manifest_paths(
     Ok(expected)
 }
 
-fn validate_entry_size(kind: &str, path: &Path, declared_size: u64, max: u64) -> Result<()> {
+pub(super) fn validate_entry_size(
+    kind: &str,
+    path: &Path,
+    declared_size: u64,
+    max: u64,
+) -> Result<()> {
     if declared_size <= max {
         return Ok(());
     }

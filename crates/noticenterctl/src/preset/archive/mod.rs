@@ -1,7 +1,9 @@
 //! Archive reads, writes, limits, and stored file metadata
 
+mod budget;
 mod model;
 mod modes;
+mod preflight;
 mod read;
 #[cfg(test)]
 mod tests;
