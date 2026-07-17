@@ -154,84 +154,125 @@ struct EnvCommandLayout {
     program_index: Option<usize>,
 }
 
-fn env_command_layout(parsed: &ParsedCommand) -> Result<EnvCommandLayout, &'static str> {
-    let mut index = 0;
-    let mut options_finished = false;
+enum EnvOptionStep {
+    Continue(usize),
+    Finish(usize),
+    Stop,
+}
 
-    while !options_finished {
-        let Some(token) = parsed.args.get(index).map(String::as_str) else {
-            break;
-        };
-        match token {
-            "--" => {
-                options_finished = true;
-                index += 1;
+fn env_command_layout(parsed: &ParsedCommand) -> Result<EnvCommandLayout, &'static str> {
+    let mut option_count = 0usize;
+    let mut remaining = parsed.args.as_slice();
+    loop {
+        match env_option_step(remaining)? {
+            EnvOptionStep::Continue(width) => {
+                option_count = option_count
+                    .checked_add(width)
+                    .ok_or("env option count overflowed")?;
+                remaining = &remaining[width..];
             }
-            "-"
-            | "-i"
+            EnvOptionStep::Finish(width) => {
+                option_count = option_count
+                    .checked_add(width)
+                    .ok_or("env option count overflowed")?;
+                remaining = &remaining[width..];
+                break;
+            }
+            EnvOptionStep::Stop => break,
+        }
+    }
+
+    // Counting a slice cannot get stuck when a malformed option shifts the child position
+    let assignment_count = remaining
+        .iter()
+        .take_while(|token| split_env_assignment(token).is_some())
+        .count();
+    let program_index = option_count
+        .checked_add(assignment_count)
+        .ok_or("env argument count overflowed")?;
+
+    Ok(EnvCommandLayout {
+        assignment_range: option_count..program_index,
+        program_index: (program_index < parsed.args.len()).then_some(program_index),
+    })
+}
+
+fn env_option_step(arguments: &[String]) -> Result<EnvOptionStep, &'static str> {
+    let Some(token) = arguments.first().map(String::as_str) else {
+        return Ok(EnvOptionStep::Stop);
+    };
+    if token == "--" {
+        return Ok(EnvOptionStep::Finish(1));
+    }
+    if is_flag_only_env_option(token)
+        || is_attached_value_option(token)
+        || is_signal_option(token)
+        || is_flag_only_short_cluster(token)
+    {
+        return Ok(EnvOptionStep::Continue(1));
+    }
+    if is_separate_value_option(token) {
+        // The following operand belongs to env rather than the eventual child process
+        return (arguments.len() >= 2)
+            .then_some(EnvOptionStep::Continue(2))
+            .ok_or("env option is missing its required value");
+    }
+    if is_working_directory_option(token) {
+        return Err("env working-directory options are not portable in preset commands");
+    }
+    if is_split_string_option(token) {
+        return Err("env split-string options are ambiguous in preset commands");
+    }
+    if token.starts_with('-') {
+        return Err("env command contains an unsupported option form");
+    }
+    Ok(EnvOptionStep::Stop)
+}
+
+fn is_flag_only_env_option(token: &str) -> bool {
+    matches!(
+        token,
+        "-" | "-i"
             | "-0"
             | "-v"
             | "--ignore-environment"
             | "--null"
             | "--debug"
-            | "--list-signal-handling" => index += 1,
-            "-u" | "--unset" | "-a" | "--argv0" => {
-                // These options consume a value that must not be mistaken for the child program
-                index = index
-                    .checked_add(2)
-                    .filter(|next| *next <= parsed.args.len())
-                    .ok_or("env option is missing its required value")?;
-            }
-            "-C" | "--chdir" => {
-                return Err("env working-directory options are not portable in preset commands");
-            }
-            "-S" | "--split-string" => {
-                return Err("env split-string options are ambiguous in preset commands");
-            }
-            _ if token.starts_with("--chdir=") || token.starts_with("-C") => {
-                return Err("env working-directory options are not portable in preset commands");
-            }
-            _ if token.starts_with("--split-string=") || token.starts_with("-S") => {
-                return Err("env split-string options are ambiguous in preset commands");
-            }
-            _ if token.starts_with("--unset=")
-                || token.starts_with("--argv0=")
-                || attached_short_option(token, 'u')
-                || attached_short_option(token, 'a') =>
-            {
-                index += 1;
-            }
-            _ if token == "--block-signal"
-                || token.starts_with("--block-signal=")
-                || token == "--default-signal"
-                || token.starts_with("--default-signal=")
-                || token == "--ignore-signal"
-                || token.starts_with("--ignore-signal=") =>
-            {
-                index += 1;
-            }
-            _ if is_flag_only_short_cluster(token) => index += 1,
-            _ if token.starts_with('-') => {
-                return Err("env command contains an unsupported option form");
-            }
-            _ => break,
-        }
-    }
+            | "--list-signal-handling"
+    )
+}
 
-    let assignment_start = index;
-    while parsed
-        .args
-        .get(index)
-        .and_then(|token| split_env_assignment(token))
-        .is_some()
-    {
-        index += 1;
-    }
+fn is_separate_value_option(token: &str) -> bool {
+    matches!(token, "-u" | "--unset" | "-a" | "--argv0")
+}
 
-    Ok(EnvCommandLayout {
-        assignment_range: assignment_start..index,
-        program_index: (index < parsed.args.len()).then_some(index),
-    })
+fn is_attached_value_option(token: &str) -> bool {
+    token.starts_with("--unset=")
+        || token.starts_with("--argv0=")
+        || attached_short_option(token, 'u')
+        || attached_short_option(token, 'a')
+}
+
+fn is_signal_option(token: &str) -> bool {
+    let name = token.split_once('=').map_or(token, |(name, _)| name);
+    matches!(
+        name,
+        "--block-signal" | "--default-signal" | "--ignore-signal"
+    )
+}
+
+fn is_working_directory_option(token: &str) -> bool {
+    token == "-C"
+        || token == "--chdir"
+        || token.starts_with("--chdir=")
+        || attached_short_option(token, 'C')
+}
+
+fn is_split_string_option(token: &str) -> bool {
+    token == "-S"
+        || token == "--split-string"
+        || token.starts_with("--split-string=")
+        || attached_short_option(token, 'S')
 }
 
 fn split_env_assignment(token: &str) -> Option<(&str, &str)> {

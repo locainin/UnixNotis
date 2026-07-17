@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 
-use super::super::tokens::collect_outside_env_path_tokens;
+use super::super::tokens::{
+    collect_outside_env_path_tokens, first_command_token, validate_env_command_layout,
+};
 use super::super::validate_command_paths_in_config_bytes;
 use super::support::temp_root;
+use unixnotis_core::parse_command;
 
 #[test]
 fn validation_rejects_ld_preload_path_that_leaves_root() {
@@ -205,4 +208,127 @@ fn validation_accepts_supported_env_options_before_a_portable_program() {
 
     validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
         .expect("supported env options should preserve child discovery");
+}
+
+#[test]
+fn every_supported_env_option_preserves_the_real_child_program() {
+    for command in [
+        "env -- scripts/probe",
+        "env - scripts/probe",
+        "env -i scripts/probe",
+        "env -0 scripts/probe",
+        "env -v scripts/probe",
+        "env --ignore-environment scripts/probe",
+        "env --null scripts/probe",
+        "env --debug scripts/probe",
+        "env --list-signal-handling scripts/probe",
+        "env -u HOME scripts/probe",
+        "env --unset HOME scripts/probe",
+        "env -a probe scripts/probe",
+        "env --argv0 probe scripts/probe",
+        "env -uHOME scripts/probe",
+        "env --unset=HOME scripts/probe",
+        "env -aprobe scripts/probe",
+        "env --argv0=probe scripts/probe",
+        "env --block-signal scripts/probe",
+        "env --block-signal=PIPE scripts/probe",
+        "env --default-signal scripts/probe",
+        "env --default-signal=PIPE scripts/probe",
+        "env --ignore-signal scripts/probe",
+        "env --ignore-signal=PIPE scripts/probe",
+        "env -iv0 scripts/probe",
+    ] {
+        assert_eq!(
+            first_command_token(command).as_deref(),
+            Some("scripts/probe"),
+            "wrong env child for {command}"
+        );
+    }
+}
+
+#[test]
+fn env_layout_counts_assignments_after_every_option() {
+    for command in [
+        "env -- MODE=safe LEVEL=2 scripts/probe",
+        "env -iv0 MODE=safe LEVEL=2 scripts/probe",
+        "env --unset=HOME MODE=safe LEVEL=2 scripts/probe",
+        "env --block-signal=PIPE MODE=safe LEVEL=2 scripts/probe",
+    ] {
+        assert_eq!(
+            first_command_token(command).as_deref(),
+            Some("scripts/probe"),
+            "assignment range consumed the wrong child for {command}"
+        );
+    }
+
+    assert_eq!(first_command_token("env MODE=safe LEVEL=2"), None);
+}
+
+#[test]
+fn unsupported_and_incomplete_env_options_never_become_child_programs() {
+    for command in [
+        "env -u",
+        "env --unset",
+        "env -a",
+        "env --argv0",
+        "env --unknown scripts/probe",
+        "env -ix scripts/probe",
+    ] {
+        assert_eq!(
+            first_command_token(command),
+            None,
+            "unsafe env layout was accepted for {command}"
+        );
+    }
+}
+
+#[test]
+fn every_nonportable_env_option_form_is_rejected() {
+    for command in [
+        "env -C scripts scripts/probe",
+        "env -Cscripts scripts/probe",
+        "env --chdir scripts scripts/probe",
+        "env --chdir=scripts scripts/probe",
+        "env -S scripts/probe",
+        "env -SMODE=safe scripts/probe",
+        "env --split-string scripts/probe",
+        "env --split-string=MODE=safe scripts/probe",
+    ] {
+        assert_eq!(
+            first_command_token(command),
+            None,
+            "nonportable env layout was accepted for {command}"
+        );
+    }
+}
+
+#[test]
+fn nonportable_env_options_keep_specific_actionable_reasons() {
+    for command in [
+        "env -C scripts scripts/probe",
+        "env -Cscripts scripts/probe",
+        "env --chdir scripts scripts/probe",
+        "env --chdir=scripts scripts/probe",
+    ] {
+        let parsed = parse_command(command).expect("parse env command");
+        assert_eq!(
+            validate_env_command_layout(&parsed),
+            Err("env working-directory options are not portable in preset commands"),
+            "wrong working-directory reason for {command}"
+        );
+    }
+
+    for command in [
+        "env -S scripts/probe",
+        "env -SMODE=safe scripts/probe",
+        "env --split-string scripts/probe",
+        "env --split-string=MODE=safe scripts/probe",
+    ] {
+        let parsed = parse_command(command).expect("parse env command");
+        assert_eq!(
+            validate_env_command_layout(&parsed),
+            Err("env split-string options are ambiguous in preset commands"),
+            "wrong split-string reason for {command}"
+        );
+    }
 }
