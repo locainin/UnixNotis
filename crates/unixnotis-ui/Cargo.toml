@@ -9,8 +9,10 @@ gtk.workspace = true
 notify.workspace = true
 tracing.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
+serde.workspace = true
+serde_json.workspace = true
 
 [[bin]]
-name = "css_provider_validate"
-path = "src/bin/css_provider_validate.rs"
+name = "unixnotis-css-validate"
+path = "src/bin/css_validate.rs"
 test = false

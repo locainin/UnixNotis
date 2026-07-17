@@ -225,6 +225,7 @@ fn legacy_binaries_keep_full_installed_surface() {
             "unixnotis-daemon".to_string(),
             "unixnotis-popups".to_string(),
             "unixnotis-center".to_string(),
+            "unixnotis-css-validate".to_string(),
             "noticenterctl".to_string()
         ]
     );

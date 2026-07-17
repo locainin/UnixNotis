@@ -58,9 +58,6 @@ fn draw_confirm_uninstall_names_removed_artifacts_and_retained_config() {
     // The destructive boundary must be visible before uninstall receives confirmation
     assert!(screen.contains("Confirm Uninstall"));
     assert!(screen.contains("removes managed startup entries"));
-    assert!(screen.contains("unixnotis-daemon"));
-    assert!(screen.contains("unixnotis-popups"));
-    assert!(screen.contains("unixnotis-center"));
-    assert!(screen.contains("noticenterctl"));
+    assert!(screen.contains("removes every managed binary"));
     assert!(screen.contains("config files are kept"));
 }

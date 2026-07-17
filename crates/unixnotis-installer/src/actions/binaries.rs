@@ -79,6 +79,7 @@ fn legacy_binaries() -> Vec<String> {
         "unixnotis-daemon".to_string(),
         "unixnotis-popups".to_string(),
         "unixnotis-center".to_string(),
+        "unixnotis-css-validate".to_string(),
         "noticenterctl".to_string(),
     ]
 }

@@ -10,7 +10,6 @@ blake3.workspace = true
 chrono.workspace = true
 clap.workspace = true
 flate2.workspace = true
-gtk.workspace = true
 rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -59,21 +59,6 @@ pub(in crate::doctor) fn inspect_css(config_path: &Path, config: &Config) -> Vec
     .data("widgets", redact_home(&theme.widgets_css))
     .data("media", redact_home(&theme.media_css))];
 
-    // Headless sessions cannot run GTK parsing but should still receive all other checks
-    if let Err(error) = gtk::init() {
-        checks.push(
-            DoctorCheck::new(
-                "css.validation",
-                "CSS validation",
-                DoctorSeverity::Warning,
-                "CSS validation is incomplete because GTK could not initialize",
-            )
-            .details(safe_doctor_text(&error.to_string()))
-            .hint("Run doctor inside the graphical desktop session for full CSS checks"),
-        );
-        return checks;
-    }
-
     // Doctor and css-check share one builder so their findings cannot drift
     match crate::css_check::build_report(config_path, config) {
         // Parser errors are objective because GTK would reject the same active stylesheet

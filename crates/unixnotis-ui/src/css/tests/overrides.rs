@@ -171,7 +171,7 @@ fn css_provider_validator_binary() -> &'static std::path::PathBuf {
     static BIN: OnceLock<std::path::PathBuf> = OnceLock::new();
 
     BIN.get_or_init(|| {
-        if let Some(path) = option_env!("CARGO_BIN_EXE_css_provider_validate") {
+        if let Some(path) = option_env!("CARGO_BIN_EXE_unixnotis-css-validate") {
             return path.into();
         }
 
@@ -183,7 +183,7 @@ fn css_provider_validator_binary() -> &'static std::path::PathBuf {
         let target_root = target_dir.parent().expect("target root dir");
         // Unit tests do not always prebuild sibling binaries, so build the validator on demand
         let candidate =
-            target_dir.join(format!("css_provider_validate{}", env::consts::EXE_SUFFIX));
+            target_dir.join(format!("unixnotis-css-validate{}", env::consts::EXE_SUFFIX));
         if fs::metadata(&candidate).is_err() {
             build_css_provider_validator(target_root);
         }
@@ -203,7 +203,7 @@ fn build_css_provider_validator(target_root: &std::path::Path) {
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
     let output = Command::new(cargo)
         .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .args(["build", "--bin", "css_provider_validate", "--target-dir"])
+        .args(["build", "--bin", "unixnotis-css-validate", "--target-dir"])
         .arg(target_root)
         .output()
         .expect("run cargo build for css validator");

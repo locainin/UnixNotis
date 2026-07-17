@@ -13,7 +13,7 @@ use super::support::{test_context, test_paths, test_root, write_fake_workspace};
 use std::os::unix::fs::symlink;
 
 #[test]
-fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
+fn install_binaries_copies_all_managed_binaries_and_runtime_helpers() {
     let _lock = crate::test_support::env::test_env_lock();
     // A fake workspace keeps the test focused on copy behavior instead of the real repo layout
     let root = test_root("install-binaries");
@@ -23,6 +23,7 @@ fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
             "unixnotis-daemon",
             "unixnotis-popups",
             "unixnotis-center",
+            "unixnotis-css-validate",
             "noticenterctl",
         ],
     );
@@ -32,6 +33,7 @@ fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         let source = paths.repo_root.join("target").join("release").join(binary);
@@ -51,6 +53,7 @@ fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         let installed = paths.bin_dir.join(binary);
@@ -82,6 +85,7 @@ fn install_binaries_copies_from_release_archive_bin_dir() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         let installed = paths.bin_dir.join(binary);
@@ -106,6 +110,7 @@ fn install_binaries_bypasses_preexisting_temp_symlink_without_touching_it() {
             "unixnotis-daemon",
             "unixnotis-popups",
             "unixnotis-center",
+            "unixnotis-css-validate",
             "noticenterctl",
         ],
     );
@@ -114,6 +119,7 @@ fn install_binaries_bypasses_preexisting_temp_symlink_without_touching_it() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         let source = paths.repo_root.join("target").join("release").join(binary);
@@ -184,7 +190,7 @@ fn stage_binary_copy_propagates_errors_other_than_path_collisions() {
 }
 
 #[test]
-fn remove_binaries_removes_all_managed_binaries_including_noticenterctl() {
+fn remove_binaries_removes_all_managed_binaries_and_runtime_helpers() {
     // Uninstall must remove the same managed set that install copied in
     let root = test_root("remove-binaries");
     write_fake_workspace(
@@ -193,6 +199,7 @@ fn remove_binaries_removes_all_managed_binaries_including_noticenterctl() {
             "unixnotis-daemon",
             "unixnotis-popups",
             "unixnotis-center",
+            "unixnotis-css-validate",
             "noticenterctl",
         ],
     );
@@ -203,6 +210,7 @@ fn remove_binaries_removes_all_managed_binaries_including_noticenterctl() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         fs::write(paths.bin_dir.join(binary), format!("installed:{binary}"))
@@ -221,6 +229,7 @@ fn remove_binaries_removes_all_managed_binaries_including_noticenterctl() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         assert!(
@@ -237,7 +246,7 @@ fn write_fake_release_archive(root: &std::path::Path) {
     fs::create_dir_all(&bin_dir).expect("release bin dir");
     fs::write(
         root.join("unixnotis-release.json"),
-        r#"{"version":"1.0.0","binaries":["unixnotis-daemon","unixnotis-popups","unixnotis-center","noticenterctl"]}"#,
+        r#"{"version":"1.0.0","binaries":["unixnotis-daemon","unixnotis-popups","unixnotis-center","unixnotis-css-validate","noticenterctl"]}"#,
     )
     .expect("release manifest");
 
@@ -245,6 +254,7 @@ fn write_fake_release_archive(root: &std::path::Path) {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         fs::write(bin_dir.join(binary), format!("release:{binary}")).expect("release binary");
