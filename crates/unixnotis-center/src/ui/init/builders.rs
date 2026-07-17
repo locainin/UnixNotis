@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 
-use super::super::{icons, list, media_widget, panel, widgets, UiStateInit};
+use super::super::{icons, list, media, panel, widgets, UiStateInit};
 
 pub(super) fn build_notification_list(
     panel: &panel::PanelWidgets,
@@ -36,10 +36,10 @@ pub(super) fn build_notification_list(
 pub(super) fn build_media_widget(
     panel: &panel::PanelWidgets,
     init: &UiStateInit,
-) -> Option<media_widget::MediaWidget> {
+) -> Option<media::MediaWidget> {
     let panel_width = panel::requested_panel_width(&panel.root);
     let media = init.media_handle.as_ref().map(|handle| {
-        media_widget::MediaWidget::new(
+        media::MediaWidget::new(
             &panel.media_container,
             handle.clone(),
             panel_width,

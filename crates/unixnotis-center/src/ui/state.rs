@@ -12,7 +12,7 @@ use unixnotis_ui::css::CssManager;
 
 use crate::control::{UiCommand, UiEvent};
 
-use super::{icons, list, media_widget, panel, reload, widgets};
+use super::{icons, list, media, panel, reload, widgets};
 
 /// GTK state for the notification center panel
 pub struct UiState {
@@ -32,7 +32,7 @@ pub struct UiState {
     pub(super) work_area: Option<Margins>,
     // Tracks the last rendered count to avoid redundant label updates
     pub(super) last_count: Option<usize>,
-    pub(super) media: Option<media_widget::MediaWidget>,
+    pub(super) media: Option<media::MediaWidget>,
     pub(super) media_handle: Option<crate::media::MediaHandle>,
     // Holds the most recent media snapshot while the panel is hidden
     // Defers GTK updates until visible to keep idle CPU near zero

@@ -36,7 +36,7 @@ pub struct MediaWidget {
 }
 
 impl MediaWidget {
-    pub(super) fn new(
+    pub(in crate::ui) fn new(
         container: &gtk::Box,
         handle: MediaHandle,
         panel_width: i32,
@@ -67,7 +67,7 @@ impl MediaWidget {
         }
     }
 
-    pub(super) fn update(&mut self, infos: &[MediaInfo]) {
+    pub(in crate::ui) fn update(&mut self, infos: &[MediaInfo]) {
         // Snapshot replacement keeps the carousel in sync with the latest media list
         self.selection.borrow_mut().set_players(infos.to_vec());
         apply_selection(
@@ -79,22 +79,22 @@ impl MediaWidget {
         );
     }
 
-    pub(super) fn clear(&mut self) {
+    pub(in crate::ui) fn clear(&mut self) {
         // Clearing hides the whole media stack so stale art never lingers
         self.selection.borrow_mut().players.clear();
         self.root.set_visible(false);
     }
 
-    pub(super) fn matches_layout(&self, config: &MediaConfig) -> bool {
+    pub(in crate::ui) fn matches_layout(&self, config: &MediaConfig) -> bool {
         self.shell == MediaShellConfig::from_config(config)
     }
 
-    pub(super) fn snapshot(&self) -> MediaSelectionSnapshot {
+    pub(in crate::ui) fn snapshot(&self) -> MediaSelectionSnapshot {
         // Reload code uses this to rebuild the shell without losing context
         self.selection.borrow().snapshot()
     }
 
-    pub(super) fn restore_snapshot(&mut self, snapshot: &MediaSelectionSnapshot) {
+    pub(in crate::ui) fn restore_snapshot(&mut self, snapshot: &MediaSelectionSnapshot) {
         // Layout rebuilds should preserve the visible player when the old bus still exists
         self.selection.borrow_mut().restore_snapshot(snapshot);
         apply_selection(
@@ -106,7 +106,7 @@ impl MediaWidget {
         );
     }
 
-    pub(super) fn apply_layout(&mut self, panel_width: i32, config: &MediaConfig) {
+    pub(in crate::ui) fn apply_layout(&mut self, panel_width: i32, config: &MediaConfig) {
         // Width updates stay lightweight when the structural preset is unchanged
         let marquee_width = marquee_width_for_shell(&self.shell, panel_width);
         let single_player_width =

@@ -288,5 +288,5 @@ impl MediaArtState {
 }
 
 #[cfg(test)]
-#[path = "tests/media_art.rs"]
+#[path = "tests/artwork.rs"]
 mod tests;

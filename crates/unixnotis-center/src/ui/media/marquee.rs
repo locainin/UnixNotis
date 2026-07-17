@@ -8,7 +8,7 @@ use glib::clone;
 use gtk::prelude::*;
 use gtk::{glib, Align, Overflow};
 
-use super::perf_probe;
+use super::super::perf_probe;
 
 const MARQUEE_SPEED_CHARS_PER_SEC: f64 = 8.0;
 const MARQUEE_PAUSE_MS: u64 = 900;

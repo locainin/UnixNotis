@@ -7,10 +7,11 @@ use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::Config;
 
-use super::{media_widget, UiState};
+use super::super::UiState;
+use super::widget;
 
 impl UiState {
-    pub(super) fn apply_media_config(&mut self, config: &Config) {
+    pub(in crate::ui) fn apply_media_config(&mut self, config: &Config) {
         if !config.media.enabled {
             self.disable_media_widget();
             return;
@@ -18,7 +19,7 @@ impl UiState {
 
         self.panel.media_container.set_visible(true);
         // The resolved request stays stable even when a child reports a wider natural allocation
-        let panel_width = super::panel::requested_panel_width(&self.panel.root);
+        let panel_width = super::super::panel::requested_panel_width(&self.panel.root);
         if self.media_layout_changed(config) {
             self.rebuild_media_widget(config, panel_width);
             return;
@@ -45,7 +46,7 @@ impl UiState {
         let snapshot = self
             .media
             .as_ref()
-            .map(media_widget::MediaWidget::snapshot)
+            .map(widget::MediaWidget::snapshot)
             .unwrap_or_default();
 
         // The old shell is removed before the new one is attached to avoid duplicate cards
@@ -59,7 +60,7 @@ impl UiState {
         };
 
         debug!("media widget rebuilt for layout change");
-        let mut media = media_widget::MediaWidget::new(
+        let mut media = widget::MediaWidget::new(
             &self.panel.media_container,
             handle.clone(),
             panel_width,
@@ -81,7 +82,7 @@ impl UiState {
             }
             (None, Some(handle)) => {
                 debug!("media widget created");
-                let media = media_widget::MediaWidget::new(
+                let media = widget::MediaWidget::new(
                     &self.panel.media_container,
                     handle.clone(),
                     panel_width,

@@ -6,8 +6,8 @@ use gtk::prelude::*;
 
 use crate::media::MediaInfo;
 
+use super::super::artwork::{apply_media_art, MediaArtState};
 use super::super::marquee::MarqueeLabel;
-use super::super::media_art::{apply_media_art, MediaArtState};
 use super::format::{
     art_slot_visible, artist_text_for, position_text_for, source_text_for, title_text_for,
     MediaDisplayConfig,

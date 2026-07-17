@@ -8,8 +8,8 @@ use gtk::{Align, Overflow, PolicyType};
 use crate::media::MediaHandle;
 use crate::ui::input_guard::ClickCooldown;
 
+use super::super::artwork::MediaArtState;
 use super::super::marquee::MarqueeLabel;
-use super::super::media_art::MediaArtState;
 use super::card::{set_scrolled_content_width, MediaCardWidgets};
 use super::format::MediaDisplayConfig;
 use super::selection::MediaSelection;

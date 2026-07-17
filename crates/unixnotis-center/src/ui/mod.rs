@@ -1,7 +1,6 @@
 //! Center UI state, widget wiring, and event-handling modules
 
 mod command;
-mod config_media;
 mod events;
 mod hyprland;
 mod icons;
@@ -10,12 +9,9 @@ mod reload;
 mod init;
 mod input_guard;
 mod list;
-mod marquee;
-mod media_art;
-mod media_widget;
+mod media;
 mod panel;
 mod perf_probe;
-
 mod state;
 mod visibility;
 mod widget_builders;

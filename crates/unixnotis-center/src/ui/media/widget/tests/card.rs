@@ -5,8 +5,8 @@ use gtk::prelude::*;
 use unixnotis_core::{hooks, MediaConfig};
 
 use crate::media::MediaInfo;
-use crate::ui::marquee::MarqueeLabel;
-use crate::ui::media_art::MediaArtState;
+use crate::ui::media::artwork::MediaArtState;
+use crate::ui::media::marquee::MarqueeLabel;
 
 use super::super::format::MediaDisplayConfig;
 use super::set_scrolled_content_width;
