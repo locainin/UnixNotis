@@ -1,6 +1,9 @@
 use super::*;
 use crate::preset::archive::BundleFile;
-use crate::preset::import::apply::{apply_import_plan, rollback_import_transaction};
+use crate::preset::import::apply::{
+    apply_import_plan, ensure_live_config_root_or_rollback_for_test, finalize_import_transaction,
+    rollback_import_transaction,
+};
 use crate::preset::import::plan::build_import_plan;
 
 #[test]
@@ -58,4 +61,66 @@ fn apply_captures_a_file_that_appears_after_planning() {
         fs::read_to_string(root.path.join("theme/base.css")).expect("read restored late file"),
         "appeared after planning"
     );
+}
+
+#[test]
+fn transaction_rejects_a_replaced_live_root_before_finalize() {
+    let root = TempDirGuard::new("finalize-root-replacement");
+    root.write("config.toml", "before");
+    let plan = build_import_plan(
+        &root.path,
+        vec![BundleFile {
+            relative_path: PathBuf::from("config.toml"),
+            contents: b"after".to_vec(),
+            mode: 0o644,
+        }],
+        &[],
+    )
+    .expect("build import plan");
+    let transaction = apply_import_plan(&root.path, &plan).expect("apply import");
+    let moved = root.path.with_extension("moved");
+    let _ = fs::remove_dir_all(&moved);
+    fs::rename(&root.path, &moved).expect("move imported config root");
+    fs::create_dir(&root.path).expect("create replacement config root");
+
+    finalize_import_transaction(transaction)
+        .expect_err("finalize must reject a replacement config root");
+
+    assert_eq!(
+        fs::read_to_string(moved.join("config.toml")).expect("read rolled-back old root"),
+        "before"
+    );
+    fs::remove_dir_all(&root.path).expect("remove replacement root");
+    fs::rename(&moved, &root.path).expect("restore imported config root");
+}
+
+#[test]
+fn root_drift_check_rolls_back_files_through_the_pinned_descriptor() {
+    let root = TempDirGuard::new("apply-root-drift-rollback");
+    root.write("config.toml", "before");
+    let plan = build_import_plan(
+        &root.path,
+        vec![BundleFile {
+            relative_path: PathBuf::from("config.toml"),
+            contents: b"after".to_vec(),
+            mode: 0o644,
+        }],
+        &[],
+    )
+    .expect("build import plan");
+    let transaction = apply_import_plan(&root.path, &plan).expect("apply import");
+    let moved = root.path.with_extension("moved");
+    let _ = fs::remove_dir_all(&moved);
+    fs::rename(&root.path, &moved).expect("move imported config root");
+    fs::create_dir(&root.path).expect("create replacement config root");
+
+    ensure_live_config_root_or_rollback_for_test(&transaction)
+        .expect_err("root drift must stop and roll back the import");
+
+    assert_eq!(
+        fs::read_to_string(moved.join("config.toml")).expect("read descriptor-root config"),
+        "before"
+    );
+    fs::remove_dir_all(&root.path).expect("remove replacement root");
+    fs::rename(&moved, &root.path).expect("restore rolled-back config root");
 }

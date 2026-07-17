@@ -1,6 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
+
 use super::super::source::ExportSourceSnapshot;
 use super::super::tests::support::TempDirGuard;
 
@@ -64,4 +67,43 @@ fn config_capture_rejects_a_symlink_instead_of_following_it() {
 
     assert!(error.to_string().contains("securely capture config.toml"));
     fs::remove_file(outside).expect("remove outside config");
+}
+
+#[cfg(unix)]
+#[test]
+fn active_file_capture_propagates_metadata_errors_other_than_missing_files() {
+    let root = TempDirGuard::new("active-source-metadata-error");
+    root.write("config.toml", "[theme]\nbase_css = \"locked/base.css\"\n");
+    let locked = root.path.join("locked");
+    fs::create_dir(&locked).expect("create locked directory");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000))
+        .expect("lock active file parent");
+    let mut snapshot = ExportSourceSnapshot::capture(&root.path).expect("capture config source");
+
+    let error = snapshot
+        .capture_active_files(&root.path, &[locked.join("base.css")])
+        .expect_err("permission errors must not look like missing optional files");
+
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o700))
+        .expect("unlock active file parent");
+    assert!(error.to_string().contains("inspect active file"));
+}
+
+#[test]
+fn source_snapshot_rejects_a_replaced_live_config_root() {
+    let root = TempDirGuard::new("source-root-replacement");
+    root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    let snapshot = ExportSourceSnapshot::capture(&root.path).expect("capture config source");
+    let moved = root.path.with_extension("moved");
+    let _ = fs::remove_dir_all(&moved);
+    fs::rename(&root.path, &moved).expect("move captured config root");
+    fs::create_dir(&root.path).expect("create replacement config root");
+
+    let error = snapshot
+        .ensure_live_root(&root.path)
+        .expect_err("replaced config root must invalidate the source snapshot");
+
+    assert!(error.to_string().contains("config directory changed"));
+    fs::remove_dir_all(&root.path).expect("remove replacement root");
+    fs::rename(&moved, &root.path).expect("restore captured config root");
 }

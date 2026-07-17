@@ -136,7 +136,13 @@ pub(in crate::preset) fn finalize_import_transaction(
     transaction: ImportTransaction,
 ) -> Result<Option<PathBuf>> {
     // Commit only happens if the live root still points at the same directory after post-checks
-    ensure_import_root_matches_live_path(&transaction)?;
+    if let Err(error) = ensure_import_root_matches_live_path(&transaction) {
+        return Err(rollback_after_apply_failure(
+            &transaction.config_root_fd,
+            &transaction.applied_items,
+            error,
+        ));
+    }
 
     let overwritten_items = transaction
         .applied_items
@@ -293,6 +299,18 @@ fn ensure_live_config_root_or_rollback(
         return Err(err);
     }
     Ok(())
+}
+
+#[cfg(test)]
+pub(in crate::preset) fn ensure_live_config_root_or_rollback_for_test(
+    transaction: &ImportTransaction,
+) -> Result<()> {
+    // The test seam exercises the real drift and rollback boundary without a timing race
+    ensure_live_config_root_or_rollback(
+        &transaction.config_root_fd,
+        &transaction.config_dir,
+        &transaction.applied_items,
+    )
 }
 
 fn rollback_applied_import_items(
