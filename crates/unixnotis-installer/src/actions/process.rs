@@ -1,6 +1,6 @@
 //! Subprocess execution and log streaming helpers
 
-use std::io::{BufRead, BufReader};
+use std::io::{self, BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -21,7 +21,9 @@ use super::ActionContext;
 static DROPPED_LOG_LINES: AtomicUsize = AtomicUsize::new(0);
 
 // Eight thousand characters keep Cargo diagnostics useful while bounding TUI wrapping work
-const MAX_INSTALLER_LOG_LINE_CHARS: usize = 8 * 1024;
+const MAX_INSTALLER_LOG_LINE_CHARS: usize = 8_192;
+// Thirty-two KiB retains valid UTF-8 up to the display cap without buffering an unlimited line
+const MAX_INSTALLER_LOG_LINE_BYTES: usize = 32_768;
 
 pub fn run_command(
     ctx: &mut ActionContext,
@@ -116,8 +118,18 @@ pub fn log_line(ctx: &mut ActionContext, line: impl Into<String>) {
 }
 
 fn sanitize_log_line(line: &str) -> String {
+    sanitize_log_line_with_source_truncation(line, false)
+}
+
+fn sanitize_log_line_with_source_truncation(line: &str, source_truncated: bool) -> String {
     // Reserve room for the truncation marker while stripping terminal and bidi controls
-    util::sanitize_log_value(line, MAX_INSTALLER_LOG_LINE_CHARS.saturating_sub(3))
+    let mut sanitized =
+        util::sanitize_log_value(line, MAX_INSTALLER_LOG_LINE_CHARS.saturating_sub(3));
+    if source_truncated && !sanitized.ends_with("...") {
+        // A drained suffix still needs a visible marker when controls made the retained text short
+        sanitized.push_str("...");
+    }
+    sanitized
 }
 
 fn read_stream(
@@ -126,12 +138,17 @@ fn read_stream(
     label: String,
     stream_name: &str,
 ) {
-    let reader = BufReader::new(stream);
-    for line in reader.lines() {
-        match line {
-            Ok(line) => {
-                send_log_line(&tx, line);
+    let mut reader = BufReader::new(stream);
+    // One reusable allocation bounds retained bytes across every physical input line
+    let mut line = Vec::with_capacity(MAX_INSTALLER_LOG_LINE_BYTES);
+    loop {
+        match read_bounded_log_line(&mut reader, &mut line) {
+            Ok(Some(source_truncated)) => {
+                // Invalid subprocess bytes are replaced only after the retained input is bounded
+                let line = String::from_utf8_lossy(&line);
+                send_log_line_with_source_truncation(&tx, &line, source_truncated);
             }
+            Ok(None) => break,
             Err(err) => {
                 send_log_line(
                     &tx,
@@ -143,9 +160,64 @@ fn read_stream(
     }
 }
 
+fn read_bounded_log_line(
+    reader: &mut impl BufRead,
+    line: &mut Vec<u8>,
+) -> io::Result<Option<bool>> {
+    line.clear();
+    let mut saw_input = false;
+    let mut truncated = false;
+
+    loop {
+        // fill_buf exposes one bounded reader chunk without allocating for the full physical line
+        let buffer = reader.fill_buf()?;
+        if buffer.is_empty() {
+            return if saw_input {
+                Ok(Some(truncated))
+            } else {
+                Ok(None)
+            };
+        }
+
+        let newline_offset = buffer.iter().position(|byte| *byte == b'\n');
+        let content_len = newline_offset.unwrap_or(buffer.len());
+        let remaining = MAX_INSTALLER_LOG_LINE_BYTES.saturating_sub(line.len());
+        let copy_len = content_len.min(remaining);
+        line.extend_from_slice(&buffer[..copy_len]);
+        truncated |= copy_len < content_len;
+
+        // Once the cap is reached later chunks are consumed without being copied
+        let consumed = content_len + usize::from(newline_offset.is_some());
+        let complete = newline_offset.is_some();
+        reader.consume(consumed);
+        saw_input = true;
+
+        if complete {
+            // Match BufRead::lines by removing the carriage return from a complete CRLF line
+            if !truncated && line.last() == Some(&b'\r') {
+                line.pop();
+            }
+            return Ok(Some(truncated));
+        }
+    }
+}
+
 fn send_log_line(tx: &SyncSender<UiMessage>, line: String) {
-    // Every producer crosses one bounded, terminal-safe queue boundary
     let line = sanitize_log_line(&line);
+    send_sanitized_log_line(tx, line);
+}
+
+fn send_log_line_with_source_truncation(
+    tx: &SyncSender<UiMessage>,
+    line: &str,
+    source_truncated: bool,
+) {
+    // Every producer crosses one bounded, terminal-safe queue boundary
+    let line = sanitize_log_line_with_source_truncation(line, source_truncated);
+    send_sanitized_log_line(tx, line);
+}
+
+fn send_sanitized_log_line(tx: &SyncSender<UiMessage>, line: String) {
     // Non-blocking send keeps worker/log threads from stalling on a full UI queue
     // When the channel is full, the line is dropped and a summary warning is
     // emitted later once capacity frees up
