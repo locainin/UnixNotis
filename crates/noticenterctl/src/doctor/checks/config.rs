@@ -2,20 +2,11 @@
 
 use std::path::PathBuf;
 
-use unixnotis_core::util::CONFIG_PATH_ENV;
 use unixnotis_core::{Config, ConfigDiagnostic, ConfigLoadReport, CURRENT_CONFIG_VERSION};
 
 use super::super::report::{redact_home, safe_doctor_text};
 use super::super::report::{DoctorCheck, DoctorSeverity};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(super) enum ConfigPathSource {
-    Cli,
-    Environment,
-    Default,
-    Builtin,
-}
+pub(super) use crate::config_path::{resolve_config_path, ConfigPathSource};
 
 pub(in crate::doctor) struct DoctorConfigResult {
     pub config_path: PathBuf,
@@ -82,10 +73,7 @@ pub(in crate::doctor) fn inspect_config(requested_path: Option<PathBuf>) -> Doct
                 None
             }
         }
-    } else if matches!(
-        source,
-        ConfigPathSource::Cli | ConfigPathSource::Environment
-    ) {
+    } else if source.is_explicit() {
         // An explicit missing path is a real setup error rather than a default request
         checks.push(
             DoctorCheck::new(
@@ -167,20 +155,4 @@ pub(in crate::doctor) fn inspect_config(requested_path: Option<PathBuf>) -> Doct
         diagnostics,
         checks,
     }
-}
-
-pub(super) fn resolve_config_path(
-    requested_path: Option<PathBuf>,
-) -> Result<(PathBuf, ConfigPathSource), unixnotis_core::ConfigError> {
-    // CLI input outranks environment and default path discovery
-    if let Some(path) = requested_path {
-        return Ok((path, ConfigPathSource::Cli));
-    }
-    // Empty environment overrides retain the normal config location
-    let source = if std::env::var_os(CONFIG_PATH_ENV).is_some_and(|value| !value.is_empty()) {
-        ConfigPathSource::Environment
-    } else {
-        ConfigPathSource::Default
-    };
-    Config::active_config_path().map(|path| (path, source))
 }

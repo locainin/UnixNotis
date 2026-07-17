@@ -18,6 +18,7 @@
 
 mod app;
 mod cli;
+mod config_path;
 mod css_check;
 mod dbus;
 mod debug_logs;
