@@ -47,24 +47,59 @@ where
             .transpose()?
             .flatten()
         {
-            let cached_diagnostics =
-                render_cached_diagnostics(cached_diagnostics, work_item, config_dir, display_root);
-            error_count += cached_diagnostics.len();
-            diagnostics.extend(cached_diagnostics);
-            continue;
+            // A cache hit is usable only while the live path still matches its captured key
+            let current = build_parse_work_item(&work_item.load_path)?;
+            if current == *work_item {
+                let cached_diagnostics = render_cached_diagnostics(
+                    cached_diagnostics,
+                    work_item,
+                    config_dir,
+                    display_root,
+                );
+                error_count += cached_diagnostics.len();
+                diagnostics.extend(cached_diagnostics);
+                continue;
+            }
         }
 
-        // Cache misses always go through the same parse path as a cold run
-        let fresh_diagnostics = parse_file(work_item)?;
-        error_count += fresh_diagnostics.len();
-        diagnostics.extend(render_cached_diagnostics(
-            &fresh_diagnostics,
-            work_item,
-            config_dir,
-            display_root,
-        ));
-        if let Some(cache) = cache.as_mut() {
-            cache.store(work_item, fresh_diagnostics)?;
+        let mut current = build_parse_work_item(&work_item.load_path)?;
+        let mut completed = false;
+        for attempt in 0..2 {
+            // The helper may read a live path, so its result needs a matching post-parse snapshot
+            let fresh_diagnostics = parse_file(&current)?;
+            let after_parse = build_parse_work_item(&current.load_path)?;
+            if after_parse == current {
+                error_count += fresh_diagnostics.len();
+                diagnostics.extend(render_cached_diagnostics(
+                    &fresh_diagnostics,
+                    &current,
+                    config_dir,
+                    display_root,
+                ));
+                if let Some(cache) = cache.as_mut() {
+                    cache.store(&current, fresh_diagnostics)?;
+                }
+                completed = true;
+                break;
+            }
+
+            if attempt == 0 {
+                // One retry handles ordinary editor replace-and-rename saves without polling
+                current = after_parse;
+            }
+        }
+
+        if !completed {
+            let display_path = super::super::files::format_display_path(
+                config_dir,
+                display_root,
+                &current.load_path,
+            );
+            diagnostics.push(super::super::report::CssCheckDiagnostic::warning(
+                super::super::report::CssCheckCategory::Parse,
+                display_path,
+                "stylesheet changed repeatedly during validation; run css-check again after edits settle",
+            ));
         }
     }
 
@@ -81,18 +116,22 @@ where
 pub(in super::super) fn build_parse_work_items(files: &[PathBuf]) -> Result<Vec<CssParseWorkItem>> {
     let mut work_items = Vec::with_capacity(files.len());
     for path in files {
-        // Metadata should come from the real target, not the symlink shell
-        let metadata =
-            fs::metadata(path).with_context(|| format!("read css metadata {}", path.display()))?;
-        let canonical_path = fs::canonicalize(path)
-            .with_context(|| format!("resolve css file {}", path.display()))?;
-        work_items.push(CssParseWorkItem {
-            load_path: path.clone(),
-            canonical_path,
-            identity: CssFileIdentity::from_metadata(&metadata)?,
-            content_hash: hash_css_file_bytes(path)?,
-            dependencies: collect_import_dependency_states(path)?,
-        });
+        work_items.push(build_parse_work_item(path)?);
     }
     Ok(work_items)
+}
+
+fn build_parse_work_item(path: &Path) -> Result<CssParseWorkItem> {
+    // Metadata should come from the real target, not the symlink shell
+    let metadata =
+        fs::metadata(path).with_context(|| format!("read css metadata {}", path.display()))?;
+    let canonical_path =
+        fs::canonicalize(path).with_context(|| format!("resolve css file {}", path.display()))?;
+    Ok(CssParseWorkItem {
+        load_path: path.to_path_buf(),
+        canonical_path,
+        identity: CssFileIdentity::from_metadata(&metadata)?,
+        content_hash: hash_css_file_bytes(path)?,
+        dependencies: collect_import_dependency_states(path)?,
+    })
 }

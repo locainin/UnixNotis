@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::fs;
 
+use super::helpers::{parse_diagnostic, validate_with_parser};
 use super::helpers::{pause_for_metadata_tick, validate_with_counter, TempDirGuard};
 
 #[test]
@@ -216,4 +217,69 @@ fn same_size_same_inode_same_mtime_still_misses_when_contents_change() {
 
     assert_eq!(invocations.get(), 2);
     assert!(second.diagnostics[0].message.contains("bbbbb"));
+}
+
+#[test]
+fn file_change_during_parse_retries_and_caches_only_the_stable_snapshot() {
+    let root = TempDirGuard::new("change-during-parse");
+    let css_path = root.write("config/base.css", "snapshot-a");
+    let cache_path = root.path().join("cache.json");
+    let invocations = Cell::new(0usize);
+
+    let first = validate_with_parser(
+        std::slice::from_ref(&css_path),
+        root.path(),
+        &cache_path,
+        |work_item| {
+            invocations.set(invocations.get() + 1);
+            let contents = fs::read_to_string(&work_item.load_path)?;
+            if contents == "snapshot-a" {
+                fs::write(&work_item.load_path, "snapshot-b")?;
+            }
+            Ok(parse_diagnostic(contents))
+        },
+    )
+    .expect("retry changed stylesheet");
+    let second = validate_with_counter(
+        &invocations,
+        std::slice::from_ref(&css_path),
+        root.path(),
+        &cache_path,
+    )
+    .expect("reuse stable snapshot");
+
+    assert_eq!(invocations.get(), 2);
+    assert_eq!(first.error_count, 1);
+    assert!(first.diagnostics[0].message.contains("snapshot-b"));
+    assert_eq!(first.diagnostics, second.diagnostics);
+}
+
+#[test]
+fn repeated_file_changes_skip_cache_and_report_a_warning() {
+    let root = TempDirGuard::new("repeated-change-during-parse");
+    let css_path = root.write("config/base.css", "snapshot-a");
+    let cache_path = root.path().join("cache.json");
+    let invocations = Cell::new(0usize);
+
+    let report = validate_with_parser(
+        std::slice::from_ref(&css_path),
+        root.path(),
+        &cache_path,
+        |work_item| {
+            let invocation = invocations.get() + 1;
+            invocations.set(invocation);
+            let contents = fs::read_to_string(&work_item.load_path)?;
+            fs::write(&work_item.load_path, format!("snapshot-{invocation}"))?;
+            Ok(parse_diagnostic(contents))
+        },
+    )
+    .expect("report unstable stylesheet");
+
+    assert_eq!(invocations.get(), 2);
+    assert_eq!(report.error_count, 0);
+    assert_eq!(report.diagnostics.len(), 1);
+    assert!(report.diagnostics[0]
+        .message
+        .contains("changed repeatedly during validation"));
+    assert!(!cache_path.exists());
 }
