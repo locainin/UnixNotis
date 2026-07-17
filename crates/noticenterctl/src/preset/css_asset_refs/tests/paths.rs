@@ -1,22 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use super::{
-    asset_path_reason, has_css_extension, local_file_url_path, read_css_file_bounded,
-    MAX_CSS_FILE_BYTES,
-};
+use super::{asset_path_reason, has_css_extension, read_css_file_bounded, MAX_CSS_FILE_BYTES};
 
 #[test]
-fn css_path_helpers_accept_css_and_local_file_urls_only() {
+fn css_path_helpers_accept_css_extensions_case_insensitively() {
     assert!(has_css_extension(Path::new("PANEL.CSS")));
     assert!(!has_css_extension(Path::new("panel.toml")));
-    assert_eq!(
-        local_file_url_path("file://localhost/config/image.png"),
-        Some(PathBuf::from("/config/image.png"))
-    );
-    assert_eq!(
-        local_file_url_path("https://example.invalid/image.png"),
-        None
-    );
 }
 
 #[test]

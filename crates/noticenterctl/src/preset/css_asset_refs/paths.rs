@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use rustix::fs::{open, Mode, OFlags};
@@ -74,18 +74,6 @@ pub fn read_css_file_bounded(path: &Path) -> Result<(Vec<u8>, fs::Metadata)> {
     }
 
     Ok((bytes, metadata))
-}
-
-pub(in crate::preset) fn local_file_url_path(value: &str) -> Option<PathBuf> {
-    // Only local file URLs are treated as path leaks here
-    let path = value.strip_prefix("file://")?;
-    // file://localhost/path is still a local file URL and should be treated the same
-    // Keep the leading slash because it is part of the absolute local path
-    let path = path.strip_prefix("localhost").unwrap_or(path);
-    if !path.starts_with('/') {
-        return None;
-    }
-    Some(PathBuf::from(path))
 }
 
 pub(in crate::preset) fn asset_path_reason(config_dir: &Path, candidate: &Path) -> Option<String> {

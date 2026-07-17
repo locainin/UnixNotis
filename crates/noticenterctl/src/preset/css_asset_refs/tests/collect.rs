@@ -193,6 +193,71 @@ fn quoted_relative_import_is_selected_for_export() {
 }
 
 #[test]
+fn quoted_url_preserves_literal_comment_delimiters() {
+    let root = TempDirGuard::new("quoted-url-comment-markers");
+    let config_dir = root.path.join("xdg/unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config dir");
+    let css_path = root.write(
+        "xdg/unixnotis/base.css",
+        ".panel { background: url('assets/theme/*dark*/image.png'); }\n",
+    );
+    let captures = BTreeMap::from([(
+        PathBuf::from("base.css"),
+        SecureFileCapture {
+            contents: fs::read(&css_path).expect("read css fixture"),
+            mode: 0o644,
+        },
+    )]);
+
+    let paths = collect_local_css_asset_paths_from_captures(&config_dir, &[css_path], &captures)
+        .expect("collect quoted URL dependency");
+
+    assert_eq!(paths, vec![PathBuf::from("assets/theme/*dark*/image.png")]);
+}
+
+#[test]
+fn quoted_import_preserves_literal_comment_delimiters() {
+    let root = TempDirGuard::new("quoted-import-comment-markers");
+    let config_dir = root.path.join("xdg/unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config dir");
+    let css_path = root.write(
+        "xdg/unixnotis/base.css",
+        "@import 'styles/*variant*/colors.css';\n",
+    );
+    let captures = BTreeMap::from([(
+        PathBuf::from("base.css"),
+        SecureFileCapture {
+            contents: fs::read(&css_path).expect("read css fixture"),
+            mode: 0o644,
+        },
+    )]);
+
+    let paths = collect_local_css_asset_paths_from_captures(&config_dir, &[css_path], &captures)
+        .expect("collect quoted import dependency");
+
+    assert_eq!(paths, vec![PathBuf::from("styles/*variant*/colors.css")]);
+}
+
+#[test]
+fn nonlocal_and_malformed_file_urls_require_review() {
+    let root = TempDirGuard::new("file-url-classification");
+    let config_dir = root.path.join("xdg/unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config dir");
+    let css_path = root.write(
+        "xdg/unixnotis/base.css",
+        ".a { background: url('FILE://remote.invalid/image.png'); }\n\
+         .b { background: url('file:///config/bad%ZZ.png'); }\n",
+    );
+
+    let refs = collect_external_css_asset_refs_from_paths(&config_dir, &[css_path])
+        .expect("classify file URLs");
+
+    assert_eq!(refs.len(), 2);
+    assert_eq!(refs[0].reason, "non-local file URL");
+    assert_eq!(refs[1].reason, "malformed file URL");
+}
+
+#[test]
 fn escaped_import_and_url_require_review() {
     let root = TempDirGuard::new("escaped-refs");
     let config_dir = root.path.join("xdg/unixnotis");

@@ -159,3 +159,20 @@ fn dependency_parser_tracks_local_targets_and_ignores_remote_schemes() {
         ]
     );
 }
+
+#[test]
+fn dependency_parser_decodes_local_file_urls_and_rejects_nonlocal_authorities() {
+    let root = TempDirGuard::new("dependency-file-urls");
+    let css_path = root.path().join("config/base.css");
+    let encoded = format!(
+        "file://{}",
+        root.path().join("shared/image one.css").display()
+    )
+    .replace(' ', "%20");
+    let contents =
+        format!("@import '{encoded}';\n@import 'FILE://remote.invalid/not-local.css';\n");
+
+    let paths = imported_css_paths(&contents, &css_path).expect("classify file URL imports");
+
+    assert_eq!(paths, vec![root.path().join("shared/image one.css")]);
+}

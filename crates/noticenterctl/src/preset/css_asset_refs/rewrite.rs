@@ -4,7 +4,10 @@ use anyhow::Result;
 use unixnotis_core::util;
 
 use super::parse::collect_url_spans;
-use super::{has_css_extension, local_file_url_path, read_css_text, HostSpecificCssAssetRef};
+use super::{
+    classify_file_url, has_css_extension, read_css_text, FileUrlClassification,
+    HostSpecificCssAssetRef,
+};
 use crate::preset::config_root::PresetFileSource;
 use crate::preset::pathing::normalize_lexical_path;
 
@@ -81,16 +84,17 @@ fn rewrite_host_specific_asset_ref(
         return None;
     }
 
-    let asset_path = if let Some(path) = local_file_url_path(trimmed) {
-        // file:/// refs already point at one concrete path, so they can be checked directly
-        path
-    } else {
-        let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
-        if !expanded.is_absolute() {
-            // Only host-local absolute paths are rewritten here
-            return None;
+    let asset_path = match classify_file_url(trimmed) {
+        FileUrlClassification::Local(path) => path,
+        FileUrlClassification::NonLocalAuthority | FileUrlClassification::Malformed => return None,
+        FileUrlClassification::NotFileUrl => {
+            let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
+            if !expanded.is_absolute() {
+                // Only host-local absolute paths are rewritten here
+                return None;
+            }
+            expanded
         }
-        expanded
     };
 
     let normalized_root = normalize_lexical_path(config_dir);

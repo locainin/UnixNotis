@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use super::model::{CssDependencyState, CssFileIdentity};
 use crate::preset::css_asset_refs::{
-    collect_import_dependency_values, read_css_file_bounded, read_css_path_text_bounded,
-    CssImportReference,
+    classify_file_url, collect_import_dependency_values, read_css_file_bounded,
+    read_css_path_text_bounded, CssImportReference, FileUrlClassification,
 };
 
 const MAX_CSS_IMPORT_FILES: usize = 256;
@@ -117,8 +117,10 @@ fn resolve_import_target(css_path: &Path, target: &str) -> Option<PathBuf> {
         // Remote and embedded imports are runtime concerns rather than local cache dependencies
         return None;
     }
-    if let Some(path) = local_file_url_path(trimmed) {
-        return Some(path);
+    match classify_file_url(trimmed) {
+        FileUrlClassification::Local(path) => return Some(path),
+        FileUrlClassification::NonLocalAuthority | FileUrlClassification::Malformed => return None,
+        FileUrlClassification::NotFileUrl => {}
     }
     if trimmed.contains("://") {
         return None;
@@ -131,16 +133,6 @@ fn resolve_import_target(css_path: &Path, target: &str) -> Option<PathBuf> {
     }
 
     css_path.parent().map(|parent| parent.join(target_path))
-}
-
-fn local_file_url_path(value: &str) -> Option<PathBuf> {
-    let path = value.strip_prefix("file://")?;
-    // Strip only the host name so the absolute-path slash remains intact
-    let path = path.strip_prefix("localhost").unwrap_or(path);
-    if !path.starts_with('/') {
-        return None;
-    }
-    Some(PathBuf::from(path))
 }
 
 fn canonical_or_resolved_path(path: &Path) -> Result<PathBuf> {

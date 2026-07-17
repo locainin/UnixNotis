@@ -1,7 +1,7 @@
 use super::{
     collect_import_dependency_values, collect_import_values, collect_url_spans, collect_url_values,
     parse_import_value, parse_url_value, skip_comment, skip_quoted_value, starts_with_import,
-    strip_css_comments, CssImportReference,
+    CssImportReference,
 };
 
 #[test]
@@ -245,17 +245,4 @@ fn parser_helpers_stop_at_exact_quote_comment_and_url_boundaries() {
     assert_eq!(span.value, "quoted.png");
     assert_eq!(&quoted[span.value_start..span.value_end], "quoted.png");
     assert_eq!(&quoted[next..], "tail");
-}
-
-#[test]
-fn comment_stripping_handles_complete_and_unterminated_comments() {
-    assert_eq!(
-        strip_css_comments("a/* hidden * and / still hidden */b/* tail").as_ref(),
-        "ab"
-    );
-    let unchanged = "a / b";
-    assert!(matches!(
-        strip_css_comments(unchanged),
-        std::borrow::Cow::Borrowed(value) if value == unchanged
-    ));
 }

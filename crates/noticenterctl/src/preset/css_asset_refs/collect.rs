@@ -3,12 +3,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use unixnotis_core::util;
 
-use super::parse::{
-    collect_import_values, collect_url_values, strip_css_comments, CssImportReference,
-};
+use super::parse::{collect_import_values, collect_url_values, CssImportReference};
 use super::{
-    asset_path_reason, has_css_extension, local_file_url_path, read_css_path_text_bounded,
-    read_css_text, ExternalCssAssetRef,
+    asset_path_reason, classify_file_url, has_css_extension, read_css_path_text_bounded,
+    read_css_text, ExternalCssAssetRef, FileUrlClassification,
 };
 use crate::preset::archive::BundleFile;
 use crate::preset::config_root::PresetFileSource;
@@ -123,8 +121,8 @@ fn collect_local_paths_from_text(
     normalized_root: &Path,
     paths: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    let stripped = strip_css_comments(css_text);
-    for reference in collect_url_values(&stripped)? {
+    // The tokenizer skips real comments while preserving comment markers inside quoted paths
+    for reference in collect_url_values(css_text)? {
         if reference.ambiguous {
             continue;
         }
@@ -136,7 +134,7 @@ fn collect_local_paths_from_text(
             paths,
         )?;
     }
-    for import_ref in collect_import_values(&stripped)? {
+    for import_ref in collect_import_values(css_text)? {
         // Quoted imports are local file dependencies just like url(...) references
         let CssImportReference::Target(asset_ref) = import_ref else {
             continue;
@@ -163,14 +161,18 @@ fn collect_local_path(
         return Ok(());
     }
 
-    let candidate = if let Some(path) = local_file_url_path(trimmed) {
-        path
-    } else {
-        let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
-        if expanded.is_absolute() {
-            expanded
-        } else {
-            css_path.parent().unwrap_or(config_dir).join(expanded)
+    let candidate = match classify_file_url(trimmed) {
+        FileUrlClassification::Local(path) => path,
+        FileUrlClassification::NonLocalAuthority | FileUrlClassification::Malformed => {
+            return Ok(())
+        }
+        FileUrlClassification::NotFileUrl => {
+            let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
+            if expanded.is_absolute() {
+                expanded
+            } else {
+                css_path.parent().unwrap_or(config_dir).join(expanded)
+            }
         }
     };
     let normalized = normalize_lexical_path(&candidate);
@@ -207,10 +209,8 @@ fn collect_external_refs_from_text(
     css_text: &str,
 ) -> Result<Vec<ExternalCssAssetRef>> {
     let mut refs = Vec::new();
-    let stripped = strip_css_comments(css_text);
-
-    // URL extraction happens after comments are stripped so dead example paths do not warn
-    for reference in collect_url_values(&stripped)? {
+    // Scanner state ignores real comments without corrupting quoted `/*` and `*/` bytes
+    for reference in collect_url_values(css_text)? {
         let reason = if reference.ambiguous {
             Some("unrecognized CSS url syntax".to_string())
         } else {
@@ -224,7 +224,7 @@ fn collect_external_refs_from_text(
             });
         }
     }
-    for import_ref in collect_import_values(&stripped)? {
+    for import_ref in collect_import_values(css_text)? {
         // Ambiguous imports remain visible instead of being guessed as safe relative paths
         let (asset_ref, reason) = match import_ref {
             CssImportReference::Target(asset_ref) => {
@@ -268,9 +268,16 @@ fn classify_external_asset_ref(
         // Remote assets are not portable bundle content and should stay visible in warnings
         return Some("remote url".to_string());
     }
-    if let Some(path) = local_file_url_path(trimmed) {
-        // file:/// paths are already absolute, so they can be checked against the config root directly
-        return asset_path_reason(config_dir, &path);
+    match classify_file_url(trimmed) {
+        FileUrlClassification::Local(path) => {
+            // Local file URLs are decoded before the same containment check as plain paths
+            return asset_path_reason(config_dir, &path);
+        }
+        FileUrlClassification::NonLocalAuthority => {
+            return Some("non-local file URL".to_string());
+        }
+        FileUrlClassification::Malformed => return Some("malformed file URL".to_string()),
+        FileUrlClassification::NotFileUrl => {}
     }
 
     let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());

@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use anyhow::{bail, Result};
 
 const MAX_CSS_REFERENCES_PER_FILE: usize = 4_096;
@@ -121,37 +119,6 @@ pub(super) fn collect_url_spans(css_text: &str) -> Result<Vec<UrlValueSpan>> {
     }
 
     Ok(spans)
-}
-
-pub(super) fn strip_css_comments(input: &str) -> Cow<'_, str> {
-    let mut output = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
-    let mut in_comment = false;
-    let mut changed = false;
-
-    while let Some(ch) = chars.next() {
-        if in_comment {
-            if ch == '*' && matches!(chars.peek(), Some('/')) {
-                chars.next();
-                in_comment = false;
-            }
-            changed = true;
-            continue;
-        }
-        if ch == '/' && matches!(chars.peek(), Some('*')) {
-            chars.next();
-            in_comment = true;
-            changed = true;
-            continue;
-        }
-        output.push(ch);
-    }
-
-    if changed {
-        Cow::Owned(output)
-    } else {
-        Cow::Borrowed(input)
-    }
 }
 
 fn starts_with_url(bytes: &[u8], index: usize) -> bool {
