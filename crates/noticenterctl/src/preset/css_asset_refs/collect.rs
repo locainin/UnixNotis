@@ -1,10 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use unixnotis_core::util;
+use unixnotis_core::{has_valid_percent_encoding, util};
 use url::Url;
 
-use super::file_url::has_valid_percent_encoding;
 use super::parse::{collect_import_values, collect_url_values, CssImportReference};
 use super::{
     asset_path_reason, classify_file_url, has_css_extension, read_css_path_text_bounded,

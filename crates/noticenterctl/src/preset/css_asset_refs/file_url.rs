@@ -3,6 +3,7 @@
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 
+use unixnotis_core::has_valid_percent_encoding;
 use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,24 +46,6 @@ pub fn classify_file_url(value: &str) -> FileUrlClassification {
         return FileUrlClassification::Malformed;
     }
     FileUrlClassification::Local(path)
-}
-
-pub(super) fn has_valid_percent_encoding(bytes: &[u8]) -> bool {
-    let mut index = 0usize;
-    while index < bytes.len() {
-        if bytes[index] == b'%' {
-            let Some(encoded) = bytes.get(index + 1..index + 3) else {
-                return false;
-            };
-            if !encoded.iter().all(u8::is_ascii_hexdigit) {
-                return false;
-            }
-            index += 3;
-        } else {
-            index += 1;
-        }
-    }
-    true
 }
 
 #[cfg(test)]
