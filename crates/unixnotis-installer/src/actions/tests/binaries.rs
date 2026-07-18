@@ -38,14 +38,16 @@ members = ["crates/unixnotis-daemon"]
 }
 
 #[test]
-fn parse_install_binaries_metadata_handles_empty_entries() {
-    // Blank entries are ignored rather than becoming invalid binary names
+fn parse_install_binaries_metadata_rejects_blank_entries() {
+    // An explicit list is checked as one complete managed-file policy
     let input = r#"
 [workspace.metadata.unixnotis.installer]
 binaries = ["unixnotis-daemon", "  ", ""]
 "#;
-    let binaries = parse_install_binaries_metadata(input).expect("valid metadata");
-    assert_eq!(binaries, vec!["unixnotis-daemon".to_string()]);
+    let error = parse_install_binaries_metadata(input)
+        .expect_err("blank managed binary names must be rejected");
+
+    assert!(error.to_string().contains("invalid path"));
 }
 
 #[test]
@@ -63,6 +65,18 @@ binaries = ["unixnotis-popups", "unixnotis-daemon", "unixnotis-popups"]
             "unixnotis-daemon".to_string()
         ]
     );
+}
+
+#[test]
+fn parse_install_binaries_metadata_rejects_paths_and_unknown_names() {
+    for name in ["../../.bashrc", "/tmp/victim", "unixnotis-unknown"] {
+        let input = format!("[workspace.metadata.unixnotis.installer]\nbinaries = [\"{name}\"]\n");
+
+        let error = parse_install_binaries_metadata(&input)
+            .expect_err("unmanaged workspace entry must be rejected");
+
+        assert!(error.to_string().contains("managed binary"), "{name:?}");
+    }
 }
 
 #[test]
@@ -118,7 +132,7 @@ fn release_resolution_does_not_compare_archive_names_with_cargo_metadata() {
 }
 
 #[test]
-fn workspace_resolution_keeps_declared_names_when_cargo_has_no_binary_targets() {
+fn workspace_resolution_rejects_declared_names_when_cargo_has_no_binary_targets() {
     let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("workspace-empty-cargo-targets");
     let paths = test_paths(&root);
@@ -126,9 +140,10 @@ fn workspace_resolution_keeps_declared_names_when_cargo_has_no_binary_targets() 
     let fake_bin = write_fake_cargo(&root, r#"{"target_directory":"target","packages":[]}"#);
     let _path = EnvGuard::set("PATH", &fake_bin);
 
-    let binaries = resolve_install_binaries(&paths).expect("workspace list should remain usable");
+    let error = resolve_install_binaries(&paths)
+        .expect_err("an empty Cargo inventory must not widen declared names");
 
-    assert_eq!(binaries, vec!["noticenterctl".to_string()]);
+    assert!(error.to_string().contains("managed binary list"));
     let _ = fs::remove_dir_all(root);
 }
 
@@ -244,7 +259,7 @@ fn extract_bins_from_cargo_metadata_skips_installer_binary() {
 }
 "#;
     let metadata: CargoMetadata = serde_json::from_str(input).expect("metadata");
-    let binaries = extract_bins_from_metadata(&metadata);
+    let binaries = extract_bins_from_metadata(&metadata).expect("managed Cargo targets");
     assert_eq!(binaries, vec!["unixnotis-daemon".to_string()]);
 }
 
@@ -267,7 +282,7 @@ fn extract_bins_from_cargo_metadata_sorts_bins_and_keeps_non_installer_targets()
 "#;
     let metadata: CargoMetadata = serde_json::from_str(input).expect("metadata");
 
-    let binaries = extract_bins_from_metadata(&metadata);
+    let binaries = extract_bins_from_metadata(&metadata).expect("managed Cargo targets");
 
     // Cargo metadata order can vary by package layout, so install planning sorts names
     assert_eq!(
@@ -278,6 +293,28 @@ fn extract_bins_from_cargo_metadata_sorts_bins_and_keeps_non_installer_targets()
             "unixnotis-popups".to_string()
         ]
     );
+}
+
+#[test]
+fn extract_bins_from_cargo_metadata_rejects_unknown_targets() {
+    let input = r#"
+{
+  "target_directory": "target",
+  "packages": [
+    {
+      "targets": [
+        { "name": "unixnotis-unknown", "kind": ["bin"] }
+      ]
+    }
+  ]
+}
+"#;
+    let metadata: CargoMetadata = serde_json::from_str(input).expect("metadata");
+
+    let error = extract_bins_from_metadata(&metadata)
+        .expect_err("unknown Cargo targets must not become managed files");
+
+    assert!(error.to_string().contains("unsupported name"));
 }
 
 #[test]

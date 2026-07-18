@@ -1,14 +1,14 @@
 //! Shared logic for resolving which binaries the installer manages.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
 
+use crate::managed_binaries::{is_managed_binary_name, validate_managed_binary_names};
 use crate::paths::InstallPaths;
-use crate::release_manifest::validate_release_binary_names;
 use unixnotis_core::program_in_path;
 
 pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<String>> {
@@ -18,19 +18,18 @@ pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<Strin
     if !metadata_list.is_empty() {
         // Validate against cargo metadata when available to catch stale entries.
         if cargo_available && !paths.is_release_archive() {
+            // An empty Cargo inventory is an error and cannot widen the declared list
             let available = load_install_binaries_from_cargo_metadata(paths)?;
-            if !available.is_empty() {
-                let missing = metadata_list
-                    .iter()
-                    .filter(|name| !available.contains(*name))
-                    .cloned()
-                    .collect::<Vec<_>>();
-                if !missing.is_empty() {
-                    return Err(anyhow!(
-                        "installer metadata lists binaries missing from workspace: {}",
-                        missing.join(", ")
-                    ));
-                }
+            let missing = metadata_list
+                .iter()
+                .filter(|name| !available.contains(*name))
+                .cloned()
+                .collect::<Vec<_>>();
+            if !missing.is_empty() {
+                return Err(anyhow!(
+                    "installer metadata lists binaries missing from workspace: {}",
+                    missing.join(", ")
+                ));
             }
         }
         return Ok(metadata_list);
@@ -38,10 +37,8 @@ pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<Strin
 
     // Fall back to cargo metadata when no installer list is declared.
     if cargo_available {
-        let metadata = load_install_binaries_from_cargo_metadata(paths)?;
-        if !metadata.is_empty() {
-            return Ok(metadata);
-        }
+        return load_install_binaries_from_cargo_metadata(paths)
+            .with_context(|| "no installable binaries discovered from cargo metadata");
     }
 
     // Install should stop here instead of guessing a binary list
@@ -109,7 +106,7 @@ fn parse_release_manifest_binaries(contents: &str) -> Result<Vec<String>> {
     let manifest: ReleaseManifest = serde_json::from_str(contents)
         .with_context(|| "failed to parse UnixNotis release manifest")?;
     // Release data is external to the binary, so accept only known runtime targets
-    validate_release_binary_names(manifest.binaries)
+    validate_managed_binary_names(manifest.binaries)
 }
 
 fn parse_install_binaries_metadata(contents: &str) -> Result<Vec<String>> {
@@ -121,27 +118,10 @@ fn parse_install_binaries_metadata(contents: &str) -> Result<Vec<String>> {
         .and_then(|workspace| workspace.metadata)
         .and_then(|metadata| metadata.unixnotis)
         .and_then(|unixnotis| unixnotis.installer)
-        .and_then(|installer| installer.binaries)
-        .unwrap_or_default();
+        .and_then(|installer| installer.binaries);
 
-    Ok(dedup_binary_names(array))
-}
-
-fn dedup_binary_names(names: Vec<String>) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut binaries = Vec::new();
-    for name in names {
-        // Blank names cannot map to a real binary and should not create bad install paths
-        let name = name.trim();
-        if name.is_empty() {
-            continue;
-        }
-        if seen.insert(name.to_string()) {
-            // First mention wins so release and workspace metadata keep stable order
-            binaries.push(name.to_string());
-        }
-    }
-    binaries
+    // A missing list enables Cargo discovery while every explicit list uses the common policy
+    array.map_or_else(|| Ok(Vec::new()), validate_managed_binary_names)
 }
 
 fn discover_installed_binaries(paths: &InstallPaths) -> Vec<String> {
@@ -160,8 +140,11 @@ fn discover_installed_binaries(paths: &InstallPaths) -> Vec<String> {
             continue;
         }
         let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name == "noticenterctl" || name.starts_with("unixnotis-") {
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        // Prefix matches are too broad for a path that uninstall may remove
+        if is_managed_binary_name(name) {
             candidates.insert(name.to_string());
         }
     }
@@ -201,7 +184,7 @@ struct ReleaseManifest {
 
 fn load_install_binaries_from_cargo_metadata(paths: &InstallPaths) -> Result<Vec<String>> {
     let metadata = load_cargo_metadata(paths)?;
-    Ok(extract_bins_from_metadata(&metadata))
+    extract_bins_from_metadata(&metadata)
 }
 
 fn load_cargo_metadata(paths: &InstallPaths) -> Result<CargoMetadata> {
@@ -222,7 +205,7 @@ fn load_cargo_metadata(paths: &InstallPaths) -> Result<CargoMetadata> {
     serde_json::from_slice(&output.stdout).with_context(|| "failed to parse cargo metadata")
 }
 
-fn extract_bins_from_metadata(metadata: &CargoMetadata) -> Vec<String> {
+fn extract_bins_from_metadata(metadata: &CargoMetadata) -> Result<Vec<String>> {
     let mut binaries = BTreeSet::new();
     for package in &metadata.packages {
         for target in &package.targets {
@@ -234,7 +217,8 @@ fn extract_bins_from_metadata(metadata: &CargoMetadata) -> Vec<String> {
             }
         }
     }
-    binaries.into_iter().collect()
+    // Cargo is another external inventory source and must not bypass the managed-name policy
+    validate_managed_binary_names(binaries.into_iter().collect())
 }
 
 #[derive(serde::Deserialize)]

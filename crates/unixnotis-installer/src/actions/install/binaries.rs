@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 
+use crate::managed_binaries::validate_managed_binary_names;
 use crate::paths::format_with_home;
 
 use super::super::{
@@ -38,6 +39,9 @@ pub fn install_binaries(ctx: &mut ActionContext) -> Result<()> {
         ));
     }
 
+    // Validate again at the copy boundary so future discovery changes cannot widen file access
+    let binaries = validate_managed_binary_names(binaries)
+        .with_context(|| "refusing to install an unmanaged binary path")?;
     for binary in binaries {
         let source = release_dir.join(&binary);
         let destination = ctx.paths.bin_dir.join(&binary);
@@ -58,6 +62,16 @@ pub fn remove_binaries(ctx: &mut ActionContext) -> Result<()> {
         );
     }
 
+    remove_resolved_binaries(ctx, binaries)
+}
+
+pub(in crate::actions::install) fn remove_resolved_binaries(
+    ctx: &mut ActionContext,
+    binaries: Vec<String>,
+) -> Result<()> {
+    // Uninstall is destructive, so validate again immediately before building removal paths
+    let binaries = validate_managed_binary_names(binaries)
+        .with_context(|| "refusing to remove an unmanaged binary path")?;
     for binary in binaries {
         let path = ctx.paths.bin_dir.join(binary);
         if path.exists() {

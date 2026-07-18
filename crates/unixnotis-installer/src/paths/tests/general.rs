@@ -81,11 +81,36 @@ fn repo_detection_requires_each_workspace_marker() {
     for contents in [
         "[workspace]\nmembers = [\"crates/unixnotis-daemon\"]\n",
         "[workspace]\nmembers = [\"crates/unixnotis-core\"]\n",
+        "[workspace]\nmembers = [\"crates/other-a\", \"crates/other-b\"]\n",
         "[package]\nname = \"crates/unixnotis-daemon crates/unixnotis-core\"\n",
     ] {
         fs::write(&cargo_path, contents).expect("incomplete workspace manifest");
         assert!(!is_unixnotis_repo(&cargo_path), "{contents:?}");
     }
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn repo_detection_ignores_required_crate_names_inside_comments() {
+    let root = env::temp_dir().join(format!(
+        "unixnotis-workspace-comment-reject-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("test root");
+    let cargo_path = root.join("Cargo.toml");
+    fs::write(
+        &cargo_path,
+        r"
+[workspace]
+members = []
+# crates/unixnotis-daemon
+# crates/unixnotis-core
+",
+    )
+    .expect("comment-only workspace manifest");
+
+    assert!(!is_unixnotis_repo(&cargo_path));
 
     let _ = fs::remove_dir_all(root);
 }

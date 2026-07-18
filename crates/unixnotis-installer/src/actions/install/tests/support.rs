@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::fs;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
@@ -37,15 +38,28 @@ pub(super) fn test_paths(root: &std::path::Path) -> InstallPaths {
 }
 
 pub(super) fn write_fake_workspace(root: &std::path::Path, binaries: &[&str]) {
-    // Cargo metadata only needs a valid workspace root to report the target directory
+    // Real target declarations keep install tests aligned with strict Cargo inventory checks
     fs::create_dir_all(root).expect("make fake workspace");
     let quoted = binaries
         .iter()
         .map(|name| format!("\"{name}\""))
         .collect::<Vec<_>>()
         .join(", ");
+    let mut targets = String::new();
+    for binary in binaries {
+        let relative_source = format!("test-targets/{binary}.rs");
+        let source = root.join(&relative_source);
+        fs::create_dir_all(source.parent().expect("target source parent"))
+            .expect("make target source directory");
+        fs::write(&source, "fn main() {}\n").expect("write fake binary source");
+        write!(
+            &mut targets,
+            "\n[[bin]]\nname = \"{binary}\"\npath = \"{relative_source}\"\n"
+        )
+        .expect("render fake binary target");
+    }
     let cargo_toml = format!(
-        "[workspace]\nmembers = []\n\n[workspace.metadata.unixnotis.installer]\nbinaries = [{quoted}]\n"
+        "[package]\nname = \"unixnotis-installer-test-workspace\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\nmembers = []\n\n[workspace.metadata.unixnotis.installer]\nbinaries = [{quoted}]\n{targets}"
     );
     fs::write(root.join("Cargo.toml"), cargo_toml).expect("write fake Cargo.toml");
 }

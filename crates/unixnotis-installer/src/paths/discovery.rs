@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 
-use crate::release_manifest::validate_release_binary_names;
+use crate::managed_binaries::validate_managed_binary_names;
 use crate::service_manager::ServiceManager;
 
 use super::choice::ServiceManagerChoice;
@@ -183,10 +183,20 @@ pub(in crate::paths) fn is_unixnotis_repo(cargo_toml: &Path) -> bool {
     let Ok(contents) = fs::read_to_string(cargo_toml) else {
         return false;
     };
-    // Repo-root discovery must identify the workspace, not a member crate with a matching name
-    contents.contains("[workspace]")
-        && contents.contains("crates/unixnotis-daemon")
-        && contents.contains("crates/unixnotis-core")
+    let Ok(manifest) = toml::from_str::<WorkspaceIdentityManifest>(&contents) else {
+        return false;
+    };
+    let Some(workspace) = manifest.workspace else {
+        return false;
+    };
+
+    // Exact parsed members prevent comments and unrelated strings from identifying a repository
+    REQUIRED_WORKSPACE_MEMBERS.iter().all(|required| {
+        workspace
+            .members
+            .iter()
+            .any(|member| Path::new(member) == Path::new(required))
+    })
 }
 
 pub(in crate::paths) fn release_root_from_executable(executable: &Path) -> Option<PathBuf> {
@@ -219,7 +229,7 @@ pub(in crate::paths) fn is_unixnotis_release_archive(root: &Path) -> bool {
     }
 
     // Detection and installation share the same name rules so neither accepts a wider layout
-    let Ok(names) = validate_release_binary_names(manifest.binaries) else {
+    let Ok(names) = validate_managed_binary_names(manifest.binaries) else {
         return false;
     };
 
@@ -233,4 +243,17 @@ pub(in crate::paths) fn is_unixnotis_release_archive(root: &Path) -> bool {
 struct ReleaseArchiveManifest {
     // The manifest declares the runtime binary filenames expected inside RELEASE_BIN_DIR
     binaries: Vec<String>,
+}
+
+const REQUIRED_WORKSPACE_MEMBERS: [&str; 2] = ["crates/unixnotis-daemon", "crates/unixnotis-core"];
+
+#[derive(serde::Deserialize)]
+struct WorkspaceIdentityManifest {
+    workspace: Option<WorkspaceIdentity>,
+}
+
+#[derive(serde::Deserialize)]
+struct WorkspaceIdentity {
+    #[serde(default)]
+    members: Vec<String>,
 }

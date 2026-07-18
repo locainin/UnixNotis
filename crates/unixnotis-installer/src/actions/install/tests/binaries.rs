@@ -4,7 +4,8 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 
 use super::super::binaries::{
-    binary_temp_path, binary_temp_path_attempt, stage_binary_copy_with_retry,
+    binary_temp_path, binary_temp_path_attempt, remove_resolved_binaries,
+    stage_binary_copy_with_retry,
 };
 use super::super::{install_binaries, remove_binaries};
 use super::support::{test_context, test_paths, test_root, write_fake_workspace};
@@ -238,6 +239,65 @@ fn remove_binaries_removes_all_managed_binaries_and_runtime_helpers() {
         );
     }
 
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn remove_binaries_never_removes_a_file_outside_the_bin_directory() {
+    let root = test_root("remove-binaries-contained");
+    let paths = test_paths(&root);
+    fs::create_dir_all(&paths.repo_root).expect("workspace root");
+    fs::write(
+        paths.repo_root.join("Cargo.toml"),
+        r#"
+[workspace]
+members = []
+
+[workspace.metadata.unixnotis.installer]
+binaries = ["../../.bashrc"]
+"#,
+    )
+    .expect("crafted workspace metadata");
+    let sentinel = root.join("home").join(".bashrc");
+    fs::create_dir_all(sentinel.parent().expect("sentinel parent")).expect("home directory");
+    fs::write(&sentinel, "keep this file").expect("outside sentinel");
+
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, &paths, ActionMode::Uninstall);
+
+    remove_binaries(&mut ctx).expect("fallback uninstall should stay contained");
+
+    assert_eq!(
+        fs::read_to_string(&sentinel).expect("outside sentinel remains"),
+        "keep this file"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn resolved_binary_removal_rejects_traversal_before_touching_an_outside_file() {
+    let root = test_root("remove-resolved-binaries-contained");
+    let paths = test_paths(&root);
+    fs::create_dir_all(&paths.bin_dir).expect("bin directory");
+    let sentinel = root.join("home").join("sentinel");
+    fs::write(&sentinel, "keep this file").expect("outside sentinel");
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, &paths, ActionMode::Uninstall);
+
+    let error = remove_resolved_binaries(&mut ctx, vec!["../../sentinel".to_string()])
+        .expect_err("removal must reject a path that escapes the bin directory");
+
+    assert!(error.to_string().contains("unmanaged binary path"));
+    assert_eq!(
+        fs::read_to_string(&sentinel).expect("outside sentinel remains"),
+        "keep this file"
+    );
     let _ = fs::remove_dir_all(&root);
 }
 
