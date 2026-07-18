@@ -3,7 +3,7 @@
 //! Encapsulates cache storage and keying logic used by the icon resolver
 
 use std::collections::{HashMap, VecDeque};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -25,7 +25,7 @@ pub(super) enum IconKey {
         scale: i32,
     },
     Path {
-        path: String,
+        path: PathBuf,
         size: i32,
         scale: i32,
     },
@@ -75,11 +75,9 @@ pub(super) fn icon_key_for_path(path: &Path, size: i32, scale: i32) -> Option<Ic
         return None;
     }
 
-    // Convert the path into an owned String for the cache key
-    // to_string_lossy() avoids panics on non-UTF8 paths by substituting invalid bytes,
-    // which is acceptable for a cache key (it only needs to be stable enough for lookups)
+    // PathBuf preserves every Unix filename byte so distinct files cannot share a cache entry
     Some(IconKey::Path {
-        path: path.to_string_lossy().to_string(),
+        path: path.to_path_buf(),
         size,  // Target icon size in logical pixels (used to avoid cross-size cache collisions).
         scale, // Output scale factor (used to avoid mixing 1x/2x assets in the same entry).
     })

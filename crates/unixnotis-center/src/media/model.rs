@@ -28,13 +28,19 @@ pub enum MediaArtSource {
     RemoteHttps(Url),
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum MediaArtKey {
+    Local(PathBuf),
+    Remote(Url),
+}
+
 impl MediaArtSource {
-    pub fn stable_key(&self) -> String {
+    pub(crate) fn stable_key(&self) -> MediaArtKey {
         match self {
-            // Source prefixes prevent a local path from colliding with a remote URL
-            Self::LocalFile(path) => format!("file:{}", path.to_string_lossy()),
-            // Remote URLs are normalized during policy validation
-            Self::RemoteHttps(url) => format!("https:{}", url.as_str()),
+            // Native paths retain every platform byte instead of using a display conversion
+            Self::LocalFile(path) => MediaArtKey::Local(path.clone()),
+            // URL keeps its parsed normalized identity and cannot overlap the local variant
+            Self::RemoteHttps(url) => MediaArtKey::Remote(url.clone()),
         }
     }
 }

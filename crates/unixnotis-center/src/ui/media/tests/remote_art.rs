@@ -62,7 +62,7 @@ fn literal_remote_target_resolution_preserves_the_validated_address() {
 }
 
 #[cfg(unix)]
-#[test]
+#[gtk::test]
 fn remote_art_reader_runs_the_validated_request_and_returns_exact_output() {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;

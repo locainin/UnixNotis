@@ -1,12 +1,16 @@
+use std::cell::RefCell;
 use std::fs;
+use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use gtk::prelude::WidgetExt;
 
 use super::{
     art_dimensions_allowed, load_art_bytes, MediaArtCompletion, MediaArtState, MAX_LOCAL_ART_BYTES,
     MAX_MEDIA_ART_DECODE_ALLOC_BYTES,
 };
 
-use crate::media::MediaArtSource;
+use crate::media::{MediaArtKey, MediaArtSource};
 use image::codecs::png::PngEncoder;
 use image::{ExtendedColorType, ImageEncoder};
 
@@ -59,16 +63,60 @@ fn local_art_loader_returns_the_complete_nonempty_file() {
     fs::remove_file(path).expect("remove local art fixture");
 }
 
+#[gtk::test]
+fn apply_media_art_without_a_source_clears_visible_and_pending_state() {
+    let picture = gtk::Picture::new();
+    let state = Rc::new(RefCell::new(MediaArtState {
+        displayed_key: Some(art_key("visible")),
+        pending_key: Some(art_key("pending")),
+        pending_gen: 4,
+    }));
+
+    super::apply_media_art(&picture, &state, None);
+
+    let state = state.borrow();
+    assert_eq!(state.displayed_key, None);
+    assert_eq!(state.pending_key, None);
+    assert_eq!(state.pending_gen, 5);
+    assert!(picture.has_css_class("empty"));
+}
+
+#[cfg(unix)]
+#[test]
+fn local_art_loader_rejects_last_component_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "unixnotis-center-art-symlink-{}-{stamp}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("create artwork test root");
+    let target = root.join("target.png");
+    let link = root.join("link.png");
+    fs::write(&target, b"art bytes").expect("write artwork target");
+    symlink(&target, &link).expect("create artwork symlink");
+    let source = MediaArtSource::LocalFile(link);
+
+    let loaded = glib::MainContext::new().block_on(load_art_bytes(&source));
+
+    assert_eq!(loaded, None);
+    fs::remove_dir_all(root).expect("remove artwork test root");
+}
+
 #[test]
 fn same_displayed_key_cancels_pending_work() {
     let mut state = MediaArtState {
-        displayed_key: Some("cover-a".to_string()),
-        pending_key: Some("cover-b".to_string()),
+        displayed_key: Some(art_key("cover-a")),
+        pending_key: Some(art_key("cover-b")),
         pending_gen: 7,
     };
 
-    assert!(state.keep_displayed_if_current(&Some("cover-a".to_string())));
-    assert_eq!(state.displayed_key.as_deref(), Some("cover-a"));
+    assert!(state.keep_displayed_if_current(&Some(art_key("cover-a"))));
+    assert_eq!(state.displayed_key, Some(art_key("cover-a")));
     assert_eq!(state.pending_key, None);
     assert_eq!(state.pending_gen, 8);
 }
@@ -76,7 +124,7 @@ fn same_displayed_key_cancels_pending_work() {
 #[test]
 fn changed_key_failure_does_not_poison_same_key_retry() {
     let mut state = MediaArtState::default();
-    let key = Some("cover-b".to_string());
+    let key = Some(art_key("cover-b"));
 
     let request_gen = state.begin_request(key.clone());
     assert_eq!(
@@ -92,8 +140,8 @@ fn changed_key_failure_does_not_poison_same_key_retry() {
 #[test]
 fn stale_completion_cannot_overwrite_newer_request() {
     let mut state = MediaArtState::default();
-    let old_key = Some("cover-a".to_string());
-    let new_key = Some("cover-b".to_string());
+    let old_key = Some(art_key("cover-a"));
+    let new_key = Some(art_key("cover-b"));
 
     let old_gen = state.begin_request(old_key.clone());
     let new_gen = state.begin_request(new_key.clone());
@@ -112,8 +160,8 @@ fn stale_completion_cannot_overwrite_newer_request() {
 #[test]
 fn clear_now_invalidates_inflight_requests() {
     let mut state = MediaArtState {
-        displayed_key: Some("cover-a".to_string()),
-        pending_key: Some("cover-b".to_string()),
+        displayed_key: Some(art_key("cover-a")),
+        pending_key: Some(art_key("cover-b")),
         pending_gen: 11,
     };
 
@@ -122,4 +170,8 @@ fn clear_now_invalidates_inflight_requests() {
     assert_eq!(state.displayed_key, None);
     assert_eq!(state.pending_key, None);
     assert_eq!(state.pending_gen, 12);
+}
+
+fn art_key(name: &str) -> MediaArtKey {
+    MediaArtKey::Local(std::path::PathBuf::from(name))
 }

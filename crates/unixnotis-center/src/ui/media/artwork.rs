@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::io::Cursor;
-use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -10,11 +9,11 @@ use image::{ImageReader, Limits};
 use tracing::debug;
 use unixnotis_core::util::trusted_system_program_path;
 
-use crate::media::MediaArtSource;
+use crate::media::{MediaArtKey, MediaArtSource};
+use crate::ui::local_file::read_regular_file;
 
 // Small budgets keep artwork from becoming a memory or latency sink
 const MEDIA_ART_TIMEOUT: Duration = Duration::from_secs(3);
-const MEDIA_ART_CHUNK_BYTES: usize = 64 * 1024;
 const MAX_LOCAL_ART_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_MEDIA_ART_DIMENSION: u32 = 2048;
 const MAX_MEDIA_ART_PIXELS: u32 = 4_194_304;
@@ -23,9 +22,9 @@ const MAX_MEDIA_ART_DECODE_ALLOC_BYTES: u64 = 32 * 1_024 * 1_024;
 #[derive(Debug, Default)]
 pub(super) struct MediaArtState {
     // Tracks the art key that is actually visible right now
-    displayed_key: Option<String>,
+    displayed_key: Option<MediaArtKey>,
     // Tracks the latest key still loading in the background
-    pending_key: Option<String>,
+    pending_key: Option<MediaArtKey>,
     // Bumps every time a fresh request takes ownership of the slot
     pending_gen: u64,
 }
@@ -63,14 +62,6 @@ pub(super) fn apply_media_art(
         show_empty_picture(picture);
         return;
     };
-
-    // Invalid local files fail fast before any async work is queued
-    if matches!(&source, MediaArtSource::LocalFile(path) if !local_art_file_allowed(path)) {
-        // Bad sources should not poison later retries for the same key
-        art_state.borrow_mut().clear_displayed_now();
-        show_empty_picture(picture);
-        return;
-    }
 
     let request_gen = art_state.borrow_mut().begin_request(next_key.clone());
     let picture_weak = picture.downgrade();
@@ -114,14 +105,6 @@ fn show_empty_picture(picture: &gtk::Picture) {
     picture.add_css_class("empty");
 }
 
-fn local_art_file_allowed(path: &Path) -> bool {
-    let Ok(metadata) = std::fs::metadata(path) else {
-        return false;
-    };
-    // Only regular files are allowed here to avoid device and fifo edge cases
-    metadata.is_file() && metadata.len() <= MAX_LOCAL_ART_BYTES
-}
-
 async fn load_art_texture(source: &MediaArtSource) -> Option<gdk::Texture> {
     // The timeout drops the GIO future which cancels the in-flight read
     let bytes = glib::future_with_timeout(MEDIA_ART_TIMEOUT, load_art_bytes(source))
@@ -138,9 +121,19 @@ async fn load_art_texture(source: &MediaArtSource) -> Option<gdk::Texture> {
 async fn load_art_bytes(source: &MediaArtSource) -> Option<Vec<u8>> {
     match source {
         MediaArtSource::LocalFile(path) => {
-            // Native paths are safer to load through a local file handle
-            let file = gio::File::for_path(path);
-            read_file_bytes_limited(&file, MAX_LOCAL_ART_BYTES as usize).await
+            let path = path.clone();
+            // The worker opens, validates, and reads one descriptor away from the GTK thread
+            let result = gio::spawn_blocking(move || read_regular_file(&path, MAX_LOCAL_ART_BYTES))
+                .await
+                .ok()?;
+            match result {
+                Ok(bytes) if !bytes.is_empty() => Some(bytes),
+                Ok(_) => None,
+                Err(error) => {
+                    debug!(%error, "media artwork rejected by local file policy");
+                    None
+                }
+            }
         }
         MediaArtSource::RemoteHttps(url) => {
             // Remote reads validate and pin DNS before the transfer starts
@@ -148,33 +141,6 @@ async fn load_art_bytes(source: &MediaArtSource) -> Option<Vec<u8>> {
             super::remote_art::read_remote_art(url, &curl).await
         }
     }
-}
-
-async fn read_file_bytes_limited(file: &gio::File, max_bytes: usize) -> Option<Vec<u8>> {
-    let stream = file.read_future(glib::Priority::default()).await.ok()?;
-    let mut out = Vec::new();
-    loop {
-        let chunk = stream
-            .read_bytes_future(MEDIA_ART_CHUNK_BYTES, glib::Priority::default())
-            .await
-            .ok()?;
-        if chunk.is_empty() {
-            break;
-        }
-        let bytes = chunk.as_ref();
-        if out.len().saturating_add(bytes.len()) > max_bytes {
-            debug!(
-                max_bytes,
-                "media artwork rejected because it exceeded the byte cap"
-            );
-            return None;
-        }
-        out.extend_from_slice(bytes);
-    }
-    if out.is_empty() {
-        return None;
-    }
-    Some(out)
 }
 
 fn decode_art_raster(bytes: Vec<u8>) -> Option<DecodedArt> {
@@ -246,7 +212,7 @@ struct DecodedArt {
 }
 
 impl MediaArtState {
-    fn keep_displayed_if_current(&mut self, next_key: &Option<String>) -> bool {
+    fn keep_displayed_if_current(&mut self, next_key: &Option<MediaArtKey>) -> bool {
         if self.displayed_key != *next_key {
             return false;
         }
@@ -258,11 +224,11 @@ impl MediaArtState {
         true
     }
 
-    fn pending_key_matches(&self, next_key: &Option<String>) -> bool {
+    fn pending_key_matches(&self, next_key: &Option<MediaArtKey>) -> bool {
         self.pending_key == *next_key
     }
 
-    fn begin_request(&mut self, next_key: Option<String>) -> u64 {
+    fn begin_request(&mut self, next_key: Option<MediaArtKey>) -> u64 {
         self.pending_gen = self.pending_gen.wrapping_add(1);
         self.pending_key = next_key;
         self.pending_gen
@@ -277,7 +243,7 @@ impl MediaArtState {
     fn finish_request(
         &mut self,
         request_gen: u64,
-        request_key: Option<String>,
+        request_key: Option<MediaArtKey>,
         success: bool,
     ) -> MediaArtCompletion {
         if self.pending_gen != request_gen {

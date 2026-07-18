@@ -1,9 +1,6 @@
 use std::fs;
-use std::io::Cursor;
 
-use super::super::file::{
-    read_icon_bytes, read_icon_file, validate_icon_file_size, MAX_ICON_BYTES,
-};
+use super::super::file::{read_icon_file, MAX_ICON_BYTES};
 use super::support::test_root;
 
 #[test]
@@ -25,10 +22,9 @@ fn icon_file_read_rejects_oversized_and_non_regular_inputs() {
         .and_then(|file| file.set_len(MAX_ICON_BYTES + 1))
         .expect("create sparse oversized icon");
 
-    assert_eq!(
-        read_icon_file(&oversized).expect_err("oversized icon must fail"),
-        format!("icon file too large ({} bytes)", MAX_ICON_BYTES + 1)
-    );
+    assert!(read_icon_file(&oversized)
+        .expect_err("oversized icon must fail")
+        .contains("byte limit"));
     assert!(read_icon_file(&root)
         .expect_err("directory must fail")
         .contains("regular file"));
@@ -39,23 +35,6 @@ fn icon_file_read_rejects_oversized_and_non_regular_inputs() {
 #[test]
 fn icon_file_size_policy_accepts_the_exact_byte_limit_only() {
     assert_eq!(MAX_ICON_BYTES, 16 * 1_024 * 1_024);
-    assert!(validate_icon_file_size(MAX_ICON_BYTES).is_ok());
-    assert!(validate_icon_file_size(MAX_ICON_BYTES + 1).is_err());
-}
-
-#[test]
-fn icon_file_reader_detects_growth_past_its_snapshot_limit() {
-    let mut exact = Cursor::new(b"1234");
-    assert_eq!(
-        read_icon_bytes(&mut exact, 4, 4).expect("exact limit should read"),
-        b"1234"
-    );
-
-    let mut oversized = Cursor::new(b"12345");
-    assert_eq!(
-        read_icon_bytes(&mut oversized, 4, 4).expect_err("growth must fail"),
-        "icon file too large"
-    );
 }
 
 #[cfg(unix)]

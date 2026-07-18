@@ -4,6 +4,7 @@ mod command;
 mod events;
 mod hyprland;
 mod icons;
+mod local_file;
 mod reload;
 // Startup wiring remains a child module so constructors can access private UI parts
 mod init;

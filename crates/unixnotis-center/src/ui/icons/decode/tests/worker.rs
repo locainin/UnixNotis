@@ -8,7 +8,7 @@ use crate::ui::icons::cache::IconKey;
 
 fn key(name: &str) -> IconKey {
     IconKey::Path {
-        path: name.to_string(),
+        path: PathBuf::from(name),
         size: 16,
         scale: 1,
     }
