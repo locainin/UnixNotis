@@ -8,6 +8,8 @@ pub mod hooks;
 pub mod references;
 // Token builders keep legacy colors and newer custom properties in sync
 pub mod tokens;
+// URI byte checks are shared by import policy and runtime rebasing
+mod uri;
 
 pub use self::features::{
     gtk_css_features_for_version, gtk_css_features_from_version_string, GtkCssFeatures,
@@ -22,3 +24,4 @@ pub use self::tokens::{
     build_legacy_theme_color_overrides, build_modern_theme_custom_properties,
     theme_card_style_values, ThemeCardStyleValues,
 };
+pub use self::uri::has_valid_percent_encoding;
