@@ -1,6 +1,31 @@
 use tokio::sync::mpsc;
+use unixnotis_core::MediaConfig;
 
-use super::super::{MediaCommand, MediaHandle};
+use super::super::{start_media_task, MediaCommand, MediaHandle};
+
+#[test]
+fn disabled_media_does_not_start_a_runtime_task() {
+    let runtime = tokio::runtime::Runtime::new().expect("create test runtime");
+    let (event_tx, _event_rx) = async_channel::bounded(1);
+    let config = MediaConfig {
+        enabled: false,
+        ..MediaConfig::default()
+    };
+
+    let handle = start_media_task(runtime.handle(), config, event_tx);
+
+    assert!(handle.is_none());
+}
+
+#[test]
+fn enabled_media_returns_a_connected_command_handle() {
+    let runtime = tokio::runtime::Runtime::new().expect("create test runtime");
+    let (event_tx, _event_rx) = async_channel::bounded(1);
+
+    let handle = start_media_task(runtime.handle(), MediaConfig::default(), event_tx);
+
+    assert!(handle.is_some());
+}
 
 #[test]
 fn media_controls_send_the_requested_player_commands() {

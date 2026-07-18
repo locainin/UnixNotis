@@ -41,6 +41,9 @@ fn artwork_source_normalization_keeps_local_and_allowed_https_inputs() {
     let local = normalize_art_source("file:///tmp/track%20art.png", false);
     assert!(matches!(local, Some(MediaArtSource::LocalFile(_))));
 
+    let localhost = normalize_art_source("file://localhost/tmp/track%20art.png", false);
+    assert!(matches!(localhost, Some(MediaArtSource::LocalFile(_))));
+
     let remote = normalize_art_source("https://example.com/art.png", true);
     assert!(matches!(remote, Some(MediaArtSource::RemoteHttps(_))));
 }
@@ -49,6 +52,7 @@ fn artwork_source_normalization_keeps_local_and_allowed_https_inputs() {
 fn artwork_source_normalization_rejects_disallowed_remote_targets() {
     for value in [
         "http://example.com/art.png",
+        "file://player.example/tmp/art.png",
         "https://127.0.0.1/art.png",
         "https://localhost/art.png",
         "https://player.localhost/art.png",

@@ -59,9 +59,9 @@ fn normalize_local_file(value: &str) -> Option<PathBuf> {
         return None;
     }
     // Only empty hosts and localhost are treated as native local files
-    match url.host_str() {
-        None => {}
-        Some(host) if host.eq_ignore_ascii_case("localhost") => {}
+    let normalized_host = url.host_str().map(str::to_ascii_lowercase);
+    match normalized_host.as_deref() {
+        None | Some("localhost") => {}
         Some(_) => return None,
     }
     url.to_file_path().ok()
