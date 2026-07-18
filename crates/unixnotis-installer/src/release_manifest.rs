@@ -49,3 +49,7 @@ pub fn validate_release_binary_names(names: Vec<String>) -> Result<Vec<String>> 
 
     Ok(binaries)
 }
+
+#[cfg(test)]
+#[path = "tests/release_manifest.rs"]
+mod tests;
