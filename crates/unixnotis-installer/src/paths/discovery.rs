@@ -1,12 +1,12 @@
 //! Install path discovery and service-manager construction
 
-use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 
+use crate::release_manifest::validate_release_binary_names;
 use crate::service_manager::ServiceManager;
 
 use super::choice::ServiceManagerChoice;
@@ -146,9 +146,11 @@ fn find_repo_root() -> Result<PathBuf> {
         }
     }
 
-    if let Some(root) = find_release_root_from_current_exe() {
-        // Downloaded archives should resolve here before the source checkout walk below
-        return Ok(root);
+    if let Ok(executable) = env::current_exe() {
+        if let Some(root) = release_root_from_executable(&executable) {
+            // Downloaded archives should resolve here before the source checkout walk below
+            return Ok(root);
+        }
     }
 
     if let Ok(root) = env::var("UNIXNOTIS_REPO_ROOT") {
@@ -187,10 +189,9 @@ pub(in crate::paths) fn is_unixnotis_repo(cargo_toml: &Path) -> bool {
         && contents.contains("crates/unixnotis-core")
 }
 
-fn find_release_root_from_current_exe() -> Option<PathBuf> {
+pub(in crate::paths) fn release_root_from_executable(executable: &Path) -> Option<PathBuf> {
     // Installed tarballs run the installer from the archive root, next to the manifest
-    let exe = env::current_exe().ok()?;
-    let root = exe.parent()?.to_path_buf();
+    let root = executable.parent()?.to_path_buf();
     // This check prevents a random copied installer from pretending to be a full release
     is_unixnotis_release_archive(&root).then_some(root)
 }
@@ -217,33 +218,15 @@ pub(in crate::paths) fn is_unixnotis_release_archive(root: &Path) -> bool {
         return false;
     }
 
-    // Normalize manifest binary names by trimming whitespace and collecting into a set
-    // The set removes duplicates so each listed binary only needs to be checked once
-    let names = manifest
-        .binaries
-        .into_iter()
-        .map(|name| name.trim().to_string())
-        .collect::<BTreeSet<_>>();
-
-    // An archive with no declared binaries is incomplete, even if the bin directory exists
-    if names.is_empty() {
+    // Detection and installation share the same name rules so neither accepts a wider layout
+    let Ok(names) = validate_release_binary_names(manifest.binaries) else {
         return false;
-    }
+    };
 
-    // Every declared binary must have a safe filename and exist as a regular file in bin
+    // Every declared runtime target must exist as a regular file below the release bin directory
     names
         .iter()
-        .all(|binary| is_release_binary_name(binary) && release_bin_dir.join(binary).is_file())
-}
-
-fn is_release_binary_name(binary: &str) -> bool {
-    // Only allow plain file names. Empty names, current/parent directory references,
-    // and path separators are rejected to prevent escaping the release bin directory
-    !binary.is_empty()
-        && binary != "."
-        && binary != ".."
-        && !binary.contains('/')
-        && !binary.contains('\\')
+        .all(|binary| release_bin_dir.join(binary).is_file())
 }
 
 #[derive(serde::Deserialize)]

@@ -8,6 +8,7 @@ use std::process::Command;
 use anyhow::{anyhow, Context, Result};
 
 use crate::paths::InstallPaths;
+use crate::release_manifest::validate_release_binary_names;
 use unixnotis_core::program_in_path;
 
 pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<String>> {
@@ -107,8 +108,8 @@ fn parse_release_manifest_binaries(contents: &str) -> Result<Vec<String>> {
     // The release manifest intentionally stores only deployable runtime binary names
     let manifest: ReleaseManifest = serde_json::from_str(contents)
         .with_context(|| "failed to parse UnixNotis release manifest")?;
-    // Dedup here so a bad manifest cannot copy or remove the same path twice
-    Ok(dedup_binary_names(manifest.binaries))
+    // Release data is external to the binary, so accept only known runtime targets
+    validate_release_binary_names(manifest.binaries)
 }
 
 fn parse_install_binaries_metadata(contents: &str) -> Result<Vec<String>> {

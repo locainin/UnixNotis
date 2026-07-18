@@ -24,6 +24,7 @@ mod detect;
 mod model;
 mod paths;
 mod release;
+mod release_manifest;
 mod safe_write;
 mod service_manager;
 mod system_tools;
