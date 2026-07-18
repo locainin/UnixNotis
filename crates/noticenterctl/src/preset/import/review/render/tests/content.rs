@@ -168,8 +168,9 @@ fn exec_review_marks_oversized_command_as_incomplete() {
 }
 
 #[test]
-fn exec_review_represents_binary_files_with_size_and_digest() {
-    let contents = vec![0, 159, 146, 150];
+fn exec_review_marks_opaque_binary_files_as_incomplete() {
+    // Execute bits are not required when a configured command can load a neighboring file
+    let contents = b"\x7fELF\x02\x01\x01\0\x9f\x92\x96".to_vec();
     let digest = blake3::hash(&contents).to_hex().to_string();
     let review = render_exec_content_review_with_style(
         &ImportedExecContent {
@@ -186,10 +187,11 @@ fn exec_review_represents_binary_files_with_size_and_digest() {
         ReviewStyle { color: false },
     );
 
-    assert!(review.complete);
-    assert!(review.rendered.contains("4 bytes"));
+    assert!(!review.complete);
+    assert!(review.rendered.contains("Review status: incomplete"));
+    assert!(review.rendered.contains("11 bytes"));
     assert!(review.rendered.contains(&digest));
     assert!(review
         .rendered
-        .contains("binary content represented by metadata above"));
+        .contains("binary body cannot be displayed; ordinary approval is disabled"));
 }
