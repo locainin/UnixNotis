@@ -24,6 +24,9 @@ mod authorization_tests;
 #[path = "tests/cache.rs"]
 mod cache_tests;
 #[cfg(test)]
+#[path = "tests/credentials.rs"]
+mod credentials_tests;
+#[cfg(test)]
 #[path = "tests/metadata.rs"]
 mod metadata_tests;
 #[cfg(test)]
