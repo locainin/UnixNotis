@@ -14,7 +14,9 @@ pub use self::features::{
     GTK_CSS_CUSTOM_PROPERTIES_MIN_VERSION_LABEL,
 };
 pub use self::references::{
-    collect_css_url_spans, collect_css_url_values, CssReference, CssReferenceError, CssUrlSpan,
+    collect_css_import_dependency_values, collect_css_import_url_spans, collect_css_import_values,
+    collect_css_url_spans, collect_css_url_values, CssImportReference, CssReference,
+    CssReferenceError, CssUrlSpan,
 };
 pub use self::tokens::{
     build_legacy_theme_color_overrides, build_modern_theme_custom_properties,
