@@ -166,6 +166,25 @@ fn workspace_resolution_accepts_declared_names_present_in_cargo_metadata() {
 }
 
 #[test]
+fn workspace_resolution_ignores_internal_binary_targets() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("workspace-internal-cargo-target");
+    let paths = test_paths(&root);
+    write_workspace_manifest(&paths, Some(&["unixnotis-center"]));
+    let fake_bin = write_fake_cargo(
+        &root,
+        r#"{"target_directory":"target","packages":[{"targets":[{"name":"css-check","kind":["bin"]},{"name":"unixnotis-center","kind":["bin"]}]}]}"#,
+    );
+    let _path = EnvGuard::set("PATH", &fake_bin);
+
+    let binaries =
+        resolve_install_binaries(&paths).expect("internal tools must not block source installs");
+
+    assert_eq!(binaries, vec!["unixnotis-center".to_string()]);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn workspace_resolution_rejects_declared_names_missing_from_cargo_metadata() {
     let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("workspace-missing-cargo-target");
@@ -296,14 +315,15 @@ fn extract_bins_from_cargo_metadata_sorts_bins_and_keeps_non_installer_targets()
 }
 
 #[test]
-fn extract_bins_from_cargo_metadata_rejects_unknown_targets() {
+fn extract_bins_from_cargo_metadata_ignores_non_managed_targets() {
     let input = r#"
 {
   "target_directory": "target",
   "packages": [
     {
       "targets": [
-        { "name": "unixnotis-unknown", "kind": ["bin"] }
+        { "name": "css-check", "kind": ["bin"] },
+        { "name": "unixnotis-center", "kind": ["bin"] }
       ]
     }
   ]
@@ -311,10 +331,40 @@ fn extract_bins_from_cargo_metadata_rejects_unknown_targets() {
 "#;
     let metadata: CargoMetadata = serde_json::from_str(input).expect("metadata");
 
-    let error = extract_bins_from_metadata(&metadata)
-        .expect_err("unknown Cargo targets must not become managed files");
+    let binaries =
+        extract_bins_from_metadata(&metadata).expect("managed Cargo targets should remain valid");
 
-    assert!(error.to_string().contains("unsupported name"));
+    // Internal workspace tools can coexist but must never enter managed install paths
+    assert_eq!(binaries, vec!["unixnotis-center".to_string()]);
+}
+
+#[test]
+fn checked_in_workspace_resolves_against_real_cargo_targets() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("checked-in workspace root");
+    let root = test_root("checked-in-workspace");
+    let paths = InstallPaths {
+        repo_root,
+        bin_dir: root.join("bin"),
+        service: ServiceManager::systemd_user(root.join("systemd")),
+    };
+
+    let binaries = resolve_install_binaries(&paths)
+        .expect("checked-in source installer inventory must resolve");
+
+    assert_eq!(
+        binaries,
+        vec![
+            "unixnotis-daemon".to_string(),
+            "unixnotis-popups".to_string(),
+            "unixnotis-center".to_string(),
+            "unixnotis-css-validate".to_string(),
+            "noticenterctl".to_string()
+        ]
+    );
 }
 
 #[test]

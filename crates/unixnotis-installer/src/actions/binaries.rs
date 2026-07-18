@@ -209,15 +209,14 @@ fn extract_bins_from_metadata(metadata: &CargoMetadata) -> Result<Vec<String>> {
     let mut binaries = BTreeSet::new();
     for package in &metadata.packages {
         for target in &package.targets {
-            if target.kind.iter().any(|kind| kind == "bin") {
-                if target.name == "unixnotis-installer" {
-                    continue;
-                }
+            if target.kind.iter().any(|kind| kind == "bin") && is_managed_binary_name(&target.name)
+            {
+                // Cargo also reports internal helper binaries that are not installed
                 binaries.insert(target.name.clone());
             }
         }
     }
-    // Cargo is another external inventory source and must not bypass the managed-name policy
+    // Only allowlisted targets can reach install or uninstall planning
     validate_managed_binary_names(binaries.into_iter().collect())
 }
 
