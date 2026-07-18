@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use zbus::zvariant::OwnedValue;
 
 use super::PlayerState;
-use crate::media::policy::normalize_art_source;
+use crate::media::art::normalize_art_source;
 use crate::media::MediaInfo;
 
 pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {

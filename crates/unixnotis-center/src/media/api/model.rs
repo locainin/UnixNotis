@@ -1,8 +1,6 @@
 //! Media snapshots and commands shared between the runtime and UI
 
-use std::path::PathBuf;
-
-use url::Url;
+use crate::media::art::MediaArtSource;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaInfo {
@@ -20,29 +18,6 @@ pub struct MediaInfo {
     pub can_pause: bool,
     pub can_next: bool,
     pub can_prev: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MediaArtSource {
-    LocalFile(PathBuf),
-    RemoteHttps(Url),
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum MediaArtKey {
-    Local(PathBuf),
-    Remote(Url),
-}
-
-impl MediaArtSource {
-    pub(crate) fn stable_key(&self) -> MediaArtKey {
-        match self {
-            // Native paths retain every platform byte instead of using a display conversion
-            Self::LocalFile(path) => MediaArtKey::Local(path.clone()),
-            // URL keeps its parsed normalized identity and cannot overlap the local variant
-            Self::RemoteHttps(url) => MediaArtKey::Remote(url.clone()),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

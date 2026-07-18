@@ -5,8 +5,8 @@ use unixnotis_core::MediaConfig;
 use zbus::fdo::{DBusProxy, PropertiesProxy};
 use zbus::{Connection, Proxy, ProxyBuilder};
 
+use super::admission::{detect_browser_family, remote_art_allowed};
 use super::constants::{MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER};
-use crate::media::policy::{detect_browser_family, remote_art_allowed};
 
 #[derive(Clone)]
 pub(in crate::media) struct PlayerState {

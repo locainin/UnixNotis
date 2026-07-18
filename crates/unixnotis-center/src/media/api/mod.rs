@@ -3,5 +3,6 @@
 mod handle;
 mod model;
 
+pub use super::art::{MediaArtKey, MediaArtSource};
 pub use handle::{start_media_task, MediaHandle};
-pub use model::{MediaArtKey, MediaArtSource, MediaCommand, MediaInfo};
+pub use model::{MediaCommand, MediaInfo};
