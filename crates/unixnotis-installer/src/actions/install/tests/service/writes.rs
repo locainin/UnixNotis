@@ -6,10 +6,10 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::service_manager::{ServiceArtifact, ServiceArtifactKind};
 
-use super::super::super::service::{
-    current_mode, ensure_regular_artifact_file_path, remove_service_artifact,
-    remove_service_symlink, write_service_artifact, write_service_symlink,
-};
+use super::super::super::service::artifacts::remove_service_artifact;
+use super::super::super::service::files::{current_mode, ensure_regular_artifact_file_path};
+use super::super::super::service::symlinks::{remove_service_symlink, write_service_symlink};
+use super::super::super::service::write_service_artifact;
 use super::super::support::{test_context, test_paths, test_root};
 
 // Write-path tests cover the low-level artifact writer before backend-specific lists use it

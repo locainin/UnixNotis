@@ -7,6 +7,7 @@ use gtk4_layer_shell::{Layer, LayerShell};
 use unixnotis_core::{css::hooks, Config};
 
 use super::header::build_panel_header;
+use super::notice::build_reload_notice;
 use super::sections::build_panel_sections;
 use super::types::PanelWidgets;
 
@@ -32,6 +33,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     ));
 
     let monitor = if let Some(output) = config.panel.output.as_ref() {
+        // Named outputs fall back to the compositor default when the monitor disappears
         super::monitor::find_monitor(output).or_else(super::monitor::default_monitor)
     } else {
         super::monitor::default_monitor()
@@ -41,6 +43,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     }
 
     let (width, height) = super::layout::resolve_panel_size(config, monitor.as_ref(), None);
+    // Default size guides the compositor while size request constrains GTK children
     window.set_default_size(width, height);
     if height > 0 {
         window.set_size_request(width, height);
@@ -57,7 +60,9 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     root.set_size_request(width, -1);
 
     let header = build_panel_header(&config.panel);
+    let reload_notice = build_reload_notice();
     let sections = build_panel_sections(&config.panel, config.widgets.density);
+    // Body chrome wraps the content without becoming part of configurable section ordering
     let body_chrome = build_panel_body_chrome(&sections.body_stack);
     let overlay = gtk::Overlay::new();
     overlay.set_hexpand(false);
@@ -72,6 +77,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     // Overlay-only edge chrome avoids adding GTK box spacing to compact themes
     append_panel_edge_chrome(&overlay, true);
     root.append(&header.root);
+    root.append(&reload_notice.revealer);
     root.append(&body_chrome);
     root.append(&sections.footer);
     append_panel_edge_chrome(&overlay, false);
@@ -112,11 +118,15 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
         clear_action_button: header.actions.clear_button,
         clear_header_button: sections.clear_header_button,
         close_button: header.actions.close_button,
+        reload_notice_revealer: reload_notice.revealer,
+        reload_notice_shell: reload_notice.shell,
+        reload_notice_label: reload_notice.label,
     }
 }
 
 fn build_panel_body_chrome(body_stack: &gtk::Box) -> gtk::Box {
     let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    // Rails flank the only expanding body child and can remain visually empty
     body.set_hexpand(true);
     body.set_vexpand(true);
 
@@ -134,14 +144,17 @@ fn build_panel_body_chrome(body_stack: &gtk::Box) -> gtk::Box {
 
 fn append_panel_edge_chrome(overlay: &gtk::Overlay, top: bool) {
     let edge = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    // Overlay placement keeps decorative edges outside normal box measurement
     edge.set_hexpand(true);
     edge.set_halign(gtk::Align::Fill);
     if top {
+        // Shared edge and corner hooks let themes draw one continuous top treatment
         edge.add_css_class(hooks::panel_shell::EDGE_TOP);
         edge.add_css_class(hooks::panel_shell::TICK_TOP_LEFT);
         edge.add_css_class(hooks::panel_shell::TICK_TOP_RIGHT);
         edge.set_valign(gtk::Align::Start);
     } else {
+        // Bottom hooks mirror the top without requiring a second layout implementation
         edge.add_css_class(hooks::panel_shell::EDGE_BOTTOM);
         edge.add_css_class(hooks::panel_shell::TICK_BOTTOM_LEFT);
         edge.add_css_class(hooks::panel_shell::TICK_BOTTOM_RIGHT);

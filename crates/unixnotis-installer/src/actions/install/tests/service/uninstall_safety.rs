@@ -6,7 +6,8 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::service_manager::{ServiceArtifact, ServiceArtifactKind};
 
-use super::super::super::service::{remove_service_artifact, write_service_artifact};
+use super::super::super::service::artifacts::remove_service_artifact;
+use super::super::super::service::write_service_artifact;
 use super::super::support::{test_context, test_paths, test_root};
 
 // Uninstall safety tests model hostile or stale filesystem shapes at service artifact paths

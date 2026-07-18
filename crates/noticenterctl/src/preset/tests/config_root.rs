@@ -6,11 +6,47 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::config_root::{
-    checked_export_total, collect_selected_config_files, override_collected_file_contents,
+    checked_export_total, collect_selected_config_files_from_root,
+    override_collected_file_contents, CollectedConfigFiles, SecureFileCapture,
 };
+use super::super::filesystem::open_secure_dir_all;
 use super::super::pathing::format_relative_path;
+use std::collections::BTreeMap;
 
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn collect_selected_config_files(
+    config_dir: &Path,
+    relative_paths: &[PathBuf],
+    output_path: Option<&Path>,
+    exclusions: &[PathBuf],
+) -> anyhow::Result<CollectedConfigFiles> {
+    collect_selected_config_files_with_captures(
+        config_dir,
+        relative_paths,
+        output_path,
+        exclusions,
+        &BTreeMap::new(),
+    )
+}
+
+fn collect_selected_config_files_with_captures(
+    config_dir: &Path,
+    relative_paths: &[PathBuf],
+    output_path: Option<&Path>,
+    exclusions: &[PathBuf],
+    captures: &BTreeMap<PathBuf, SecureFileCapture>,
+) -> anyhow::Result<CollectedConfigFiles> {
+    let root_fd = open_secure_dir_all(config_dir)?;
+    collect_selected_config_files_from_root(
+        &root_fd,
+        config_dir,
+        relative_paths,
+        output_path,
+        exclusions,
+        captures,
+    )
+}
 
 struct TempDirGuard {
     path: PathBuf,

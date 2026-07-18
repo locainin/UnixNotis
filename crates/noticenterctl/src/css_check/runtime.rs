@@ -8,21 +8,16 @@ use super::report::{CssCheckCategory, CssCheckDiagnostic};
 pub(super) fn lint_runtime_config(
     config_dir: &Path,
     display_root: &str,
+    config_path: &Path,
+    config: &Config,
 ) -> Result<Vec<CssCheckDiagnostic>> {
-    let config_path = Config::default_config_path()?;
-    if !config_path.exists() {
-        // No live config means there is nothing runtime-specific to compare
-        return Ok(Vec::new());
-    }
-
-    let config = Config::load_from_path(&config_path)?;
     let mut diagnostics = Vec::new();
 
-    if let Some(message) = panel_width_floor_warning(&config) {
+    if let Some(message) = panel_width_floor_warning(config) {
         // Runtime warnings should point at config.toml instead of a css file
         diagnostics.push(CssCheckDiagnostic::warning(
             CssCheckCategory::Runtime,
-            display_config_path(config_dir, display_root, &config_path),
+            display_config_path(config_dir, display_root, config_path),
             message,
         ));
     }

@@ -5,7 +5,8 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::service_manager::ServiceManager;
 
-use super::super::super::service::{remove_service_artifact, write_service_artifact};
+use super::super::super::service::artifacts::remove_service_artifact;
+use super::super::super::service::write_service_artifact;
 use super::super::support::{test_context, test_paths, test_root};
 
 // These tests verify the actual filesystem shape rendered by each non-systemd backend

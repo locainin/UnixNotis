@@ -1,10 +1,17 @@
 use clap::Parser;
 
-use super::super::{Args, Command, PresetCommand};
+use super::super::{Args, Command, DoctorServiceManagerArg, PresetCommand};
 
 #[test]
 fn local_only_classification_distinguishes_local_and_control_commands() {
-    assert!(Command::CssCheck.is_local_only());
+    assert!(Command::CssCheck { config: None }.is_local_only());
+    assert!(Command::Doctor {
+        json: false,
+        verbose: false,
+        service_manager: DoctorServiceManagerArg::Auto,
+        config: None,
+    }
+    .is_local_only());
     assert!(Command::Preset {
         command: PresetCommand::Inspect {
             input: "bundle.unixnotis".to_string()
@@ -21,4 +28,24 @@ fn preset_commands_are_local_only() {
     let args = Args::try_parse_from(["noticenterctl", "preset", "inspect", "bundle.unixnotis"])
         .expect("parse args");
     assert!(args.command.is_local_only());
+}
+
+#[test]
+fn synchronous_classification_builds_a_runtime_only_when_needed() {
+    assert!(Command::CssCheck { config: None }.is_synchronous());
+    assert!(Command::Preset {
+        command: PresetCommand::Inspect {
+            input: "bundle.unixnotis".to_string()
+        }
+    }
+    .is_synchronous());
+
+    assert!(!Command::Doctor {
+        json: false,
+        verbose: false,
+        service_manager: DoctorServiceManagerArg::Auto,
+        config: None,
+    }
+    .is_synchronous());
+    assert!(!Command::ClearActive.is_synchronous());
 }

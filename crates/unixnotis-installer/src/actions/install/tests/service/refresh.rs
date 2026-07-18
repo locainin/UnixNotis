@@ -1,4 +1,4 @@
-use super::super::super::service::{
+use super::super::super::service::refresh::{
     s6_stderr_diagnostic, sanitize_diagnostic_line, strip_ansi_csi_sequences, truncate_diagnostic,
 };
 

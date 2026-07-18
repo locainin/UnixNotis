@@ -1,5 +1,5 @@
+use super::super::block::{HYPR_BOOTSTRAP_END, HYPR_BOOTSTRAP_START};
 use super::super::{ensure_hyprland_autostart, remove_hyprland_autostart};
-use super::super::{HYPR_BOOTSTRAP_END, HYPR_BOOTSTRAP_START};
 use crate::actions::ActionContext;
 use crate::app::events::UiMessage;
 use crate::detect::Detection;

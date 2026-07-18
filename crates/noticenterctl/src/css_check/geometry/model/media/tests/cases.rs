@@ -1,9 +1,7 @@
 use unixnotis_core::{Config, MediaControlsPosition, MediaLayout, MediaNavigationPosition};
 
-use super::super::super::parse::collect_geometry_from_contents;
 use super::super::GeometryModel;
-use super::shell::ModeledMediaShell;
-use super::width::media_text_reserve_px;
+use crate::css_check::geometry::test_support::collect_geometry_from_contents;
 
 #[test]
 fn larger_navigation_gap_increases_inline_reserve_and_pressure() {
@@ -19,9 +17,10 @@ fn larger_navigation_gap_increases_inline_reserve_and_pressure() {
     let mut wide_gap = tight_gap.clone();
     wide_gap.media.navigation_spacing_px = 42;
 
-    let tight_shell = ModeledMediaShell::from_config(&tight_gap.media);
-    let wide_shell = ModeledMediaShell::from_config(&wide_gap.media);
-    assert!(media_text_reserve_px(wide_shell) > media_text_reserve_px(tight_shell));
+    let model = GeometryModel::default();
+    assert!(
+        model.media_minimum_pressure_px(&wide_gap) > model.media_minimum_pressure_px(&tight_gap)
+    );
 
     let css = r"
         .unixnotis-panel { padding: 12px; }
@@ -31,7 +30,7 @@ fn larger_navigation_gap_increases_inline_reserve_and_pressure() {
         .unixnotis-media-nav { min-width: 20px; }
         .unixnotis-media-button { min-width: 26px; }
     ";
-    let mut model = GeometryModel::default();
+    let mut model = model;
     // Parsing has to stay clean before the width comparison means anything
     let file_warnings = collect_geometry_from_contents(css, &mut model);
     assert!(file_warnings.is_empty());

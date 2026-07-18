@@ -1,7 +1,9 @@
 use anyhow::anyhow;
 use unixnotis_core::PanelDebugLevel;
 
-use crate::cli::{Command, DebugLevelArg, DndState, InhibitScopeArg, PresetCommand};
+use crate::cli::{
+    Command, DebugLevelArg, DndState, DoctorServiceManagerArg, InhibitScopeArg, PresetCommand,
+};
 
 use super::super::commands::{handle_command, handle_command_with_debug_logs};
 use super::support::{RecordedCall, RecordedEvent, RecordingControlClient};
@@ -177,7 +179,13 @@ async fn inhibitor_commands_dispatch_to_matching_control_calls() {
 #[tokio::test]
 async fn local_commands_do_not_touch_control_client() {
     let cases = [
-        Command::CssCheck,
+        Command::CssCheck { config: None },
+        Command::Doctor {
+            json: false,
+            verbose: false,
+            service_manager: DoctorServiceManagerArg::Auto,
+            config: None,
+        },
         Command::Preset {
             command: PresetCommand::Inspect {
                 input: "bundle.unixnotis".to_string(),

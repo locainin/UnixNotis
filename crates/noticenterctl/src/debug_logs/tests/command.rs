@@ -1,41 +1,13 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::command::follow_debug_logs;
 use super::super::journal::{
     follow_user_unit_logs, journal_has_user_unit_logs, journalctl_is_available,
 };
-use crate::system_tools::use_fake_tool_bin;
-
-struct EnvGuard {
-    name: &'static str,
-    previous: Option<std::ffi::OsString>,
-}
-
-impl EnvGuard {
-    fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
-        let previous = std::env::var_os(name);
-        std::env::set_var(name, value);
-        Self { name, previous }
-    }
-
-    fn remove(name: &'static str) -> Self {
-        let previous = std::env::var_os(name);
-        std::env::remove_var(name);
-        Self { name, previous }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match &self.previous {
-            Some(value) => std::env::set_var(self.name, value),
-            None => std::env::remove_var(self.name),
-        }
-    }
-}
+use crate::system_tools::routing::use_fake_tool_bin;
+use crate::test_support::{test_env_lock, EnvGuard};
 
 struct TempDirGuard {
     path: std::path::PathBuf,
@@ -72,16 +44,9 @@ impl Drop for TempDirGuard {
     }
 }
 
-fn env_lock() -> MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("debug log env lock")
-}
-
 #[test]
 fn journalctl_availability_tracks_executable_status() {
-    let _lock = env_lock();
+    let _lock = test_env_lock();
     let root = TempDirGuard::new("availability");
     root.write_journalctl("#!/bin/sh\nexit 0\n");
     let _tools = use_fake_tool_bin(&root.path);
@@ -95,7 +60,7 @@ fn journalctl_availability_tracks_executable_status() {
 
 #[test]
 fn journal_probe_reports_user_unit_presence_from_exit_status() {
-    let _lock = env_lock();
+    let _lock = test_env_lock();
     let root = TempDirGuard::new("probe");
     root.write_journalctl("#!/bin/sh\nexit 0\n");
     let _tools = use_fake_tool_bin(&root.path);
@@ -109,7 +74,7 @@ fn journal_probe_reports_user_unit_presence_from_exit_status() {
 
 #[test]
 fn journal_follow_returns_error_for_nonzero_journalctl_exit() {
-    let _lock = env_lock();
+    let _lock = test_env_lock();
     let root = TempDirGuard::new("follow-failure");
     root.write_journalctl("#!/bin/sh\nexit 11\n");
     let _tools = use_fake_tool_bin(&root.path);
@@ -121,7 +86,7 @@ fn journal_follow_returns_error_for_nonzero_journalctl_exit() {
 
 #[test]
 fn follow_debug_logs_requires_journalctl_on_path() {
-    let _lock = env_lock();
+    let _lock = test_env_lock();
     let root = TempDirGuard::new("missing");
     let _tools = use_fake_tool_bin(&root.path);
     let _unit = EnvGuard::remove("UNIXNOTIS_DAEMON_UNIT");
@@ -133,7 +98,7 @@ fn follow_debug_logs_requires_journalctl_on_path() {
 
 #[test]
 fn follow_debug_logs_rejects_missing_user_unit_logs_before_following() {
-    let _lock = env_lock();
+    let _lock = test_env_lock();
     let root = TempDirGuard::new("no-logs");
     root.write_journalctl("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then exit 0; fi\nexit 4\n");
     let _tools = use_fake_tool_bin(&root.path);
@@ -147,7 +112,7 @@ fn follow_debug_logs_rejects_missing_user_unit_logs_before_following() {
 
 #[test]
 fn follow_debug_logs_runs_probe_then_follow_for_available_unit() {
-    let _lock = env_lock();
+    let _lock = test_env_lock();
     let root = TempDirGuard::new("follow-success");
     let calls = root.path.join("calls");
     root.write_journalctl(&format!(
@@ -160,13 +125,13 @@ fn follow_debug_logs_runs_probe_then_follow_for_available_unit() {
 
     let calls = fs::read_to_string(calls).expect("read journalctl calls");
     assert!(calls.contains("--version"));
-    assert!(calls.contains("--user --no-pager -n 1 -u custom.service -o cat"));
-    assert!(calls.contains("--user -f -u custom.service -o cat"));
+    assert!(calls.contains("--user --no-pager --lines=1 --unit=custom.service -o cat"));
+    assert!(calls.contains("--user -f --unit=custom.service -o cat"));
 }
 
 #[test]
 fn journalctl_lookup_ignores_inherited_path_entries() {
-    let _lock = env_lock();
+    let _lock = test_env_lock();
     let root = TempDirGuard::new("path-hijack");
     let marker = root.path.join("marker");
     root.write_journalctl(&format!("#!/bin/sh\nprintf hit > {marker:?}\nexit 0\n"));

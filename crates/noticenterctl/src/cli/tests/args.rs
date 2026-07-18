@@ -1,7 +1,9 @@
 use clap::Parser;
 use unixnotis_core::{PanelDebugLevel, INHIBIT_SCOPE_ALL, INHIBIT_SCOPE_POPUPS};
 
-use super::super::{Args, Command, DebugLevelArg, DndState, InhibitScopeArg, PresetCommand};
+use super::super::{
+    Args, Command, DebugLevelArg, DndState, DoctorServiceManagerArg, InhibitScopeArg, PresetCommand,
+};
 
 #[test]
 fn parses_open_panel_debug_default() {
@@ -135,15 +137,39 @@ fn parses_preset_import_dry_run() {
                     except,
                     dry_run,
                     allow_exec,
+                    allow_external_css,
                 },
         } => {
             assert_eq!(input, "bundle.unixnotis");
             assert!(except.is_empty());
             assert!(dry_run);
             assert!(!allow_exec);
+            assert!(!allow_external_css);
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parses_preset_import_external_css_expert_override() {
+    let args = Args::try_parse_from([
+        "noticenterctl",
+        "preset",
+        "import",
+        "bundle.unixnotis",
+        "--allow-external-css",
+    ])
+    .expect("parse external CSS override");
+
+    assert!(matches!(
+        args.command,
+        Command::Preset {
+            command: PresetCommand::Import {
+                allow_external_css: true,
+                ..
+            }
+        }
+    ));
 }
 
 #[test]
@@ -158,6 +184,60 @@ fn parses_preset_inspect() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parses_doctor_output_and_service_manager_options() {
+    let args = Args::try_parse_from([
+        "noticenterctl",
+        "doctor",
+        "--json",
+        "--verbose",
+        "--service-manager",
+        "dinit",
+    ])
+    .expect("parse doctor args");
+
+    assert!(matches!(
+        args.command,
+        Command::Doctor {
+            json: true,
+            verbose: true,
+            service_manager: DoctorServiceManagerArg::Dinit,
+            config: None,
+        }
+    ));
+}
+
+#[test]
+fn doctor_and_css_check_accept_explicit_config_paths() {
+    let doctor = Args::try_parse_from([
+        "noticenterctl",
+        "doctor",
+        "--config",
+        "/tmp/doctor-config.toml",
+    ])
+    .expect("parse doctor config path");
+    assert!(matches!(
+        doctor.command,
+        Command::Doctor {
+            config: Some(path),
+            ..
+        } if path == std::path::Path::new("/tmp/doctor-config.toml")
+    ));
+
+    let css = Args::try_parse_from([
+        "noticenterctl",
+        "css-check",
+        "--config",
+        "/tmp/css-config.toml",
+    ])
+    .expect("parse CSS config path");
+    assert!(matches!(
+        css.command,
+        Command::CssCheck { config: Some(path) }
+            if path == std::path::Path::new("/tmp/css-config.toml")
+    ));
 }
 
 #[test]

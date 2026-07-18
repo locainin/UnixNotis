@@ -1,3 +1,8 @@
+#![allow(
+    clippy::float_cmp,
+    reason = "sanitization assigns exact finite constants and test inputs"
+)]
+
 use super::super::super::super::widgets::WidgetPluginConfig;
 use super::super::*;
 use crate::Config;
@@ -56,6 +61,71 @@ fn sanitize_widget_options_caps_decorative_layout_counts() {
         "abcdefghijklmnopqrstuvwxyz012345"
     );
     assert_eq!(config.widgets.cards[0].carousel_dots, 12);
+}
+
+#[test]
+fn sanitize_slider_bounds_reset_reversed_equal_and_non_finite_ranges() {
+    for (min, max) in [
+        (100.0, 0.0),
+        (10.0, 10.0),
+        (f64::NAN, 100.0),
+        (0.0, f64::NAN),
+        (f64::NEG_INFINITY, 100.0),
+        (0.0, f64::INFINITY),
+    ] {
+        let mut config = Config::default();
+        config.widgets.volume.min = min;
+        config.widgets.volume.max = max;
+
+        sanitize_config(&mut config);
+
+        assert_eq!(config.widgets.volume.min, 0.0, "min={min}, max={max}");
+        assert_eq!(config.widgets.volume.max, 100.0, "min={min}, max={max}");
+    }
+}
+
+#[test]
+fn sanitize_slider_step_resets_non_finite_non_positive_and_oversized_values() {
+    for step in [0.0, -1.0, 25.1, f64::NAN, f64::NEG_INFINITY, f64::INFINITY] {
+        let mut config = Config::default();
+        config.widgets.volume.min = -12.5;
+        config.widgets.volume.max = 12.5;
+        config.widgets.volume.step = step;
+
+        sanitize_config(&mut config);
+
+        assert_eq!(config.widgets.volume.step, 1.0, "step={step}");
+    }
+}
+
+#[test]
+fn sanitize_slider_keeps_valid_signed_and_narrow_ranges() {
+    let mut config = Config::default();
+    config.widgets.volume.min = -12.5;
+    config.widgets.volume.max = 12.5;
+    config.widgets.volume.step = 0.5;
+    config.widgets.brightness.min = 0.0;
+    config.widgets.brightness.max = 0.25;
+    config.widgets.brightness.step = 1.0;
+
+    sanitize_config(&mut config);
+
+    assert_eq!(config.widgets.volume.min, -12.5);
+    assert_eq!(config.widgets.volume.max, 12.5);
+    assert_eq!(config.widgets.volume.step, 0.5);
+    assert_eq!(config.widgets.brightness.step, 0.25);
+}
+
+#[test]
+fn sanitize_slider_step_keeps_a_step_equal_to_the_full_range() {
+    let mut config = Config::default();
+    config.widgets.volume.min = -12.5;
+    config.widgets.volume.max = 12.5;
+    config.widgets.volume.step = 25.0;
+
+    sanitize_config(&mut config);
+
+    assert_eq!(config.widgets.volume.step, 25.0);
 }
 
 #[test]

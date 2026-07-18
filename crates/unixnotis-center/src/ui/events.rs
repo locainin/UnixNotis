@@ -5,9 +5,8 @@
 
 use tracing::debug;
 use unixnotis_core::PanelDebugLevel;
-use unixnotis_ui::css;
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 use super::{panel, UiState};
 
@@ -157,7 +156,7 @@ impl UiState {
                 // One-shot timers are re-armed after each refresh tick
                 self.refresh_source = None;
                 // Track actual timer fire count to spot reschedule churn
-                super::perf_probe::refresh_timer_fired();
+                crate::diagnostics::performance::refresh_timer_fired();
                 if self.panel_visible {
                     self.refresh_widgets(false);
                     self.start_refresh_timer();
@@ -175,12 +174,23 @@ impl UiState {
             }
             UiEvent::CssReload => {
                 debug!("css reload requested");
-                let _ = self.css.reload(css::DEFAULT_CSS);
+                let _report = self.reload_css();
                 self.log_debug(PanelDebugLevel::Info, || "css reloaded".to_string());
             }
             UiEvent::ConfigReload => {
                 debug!("config reload requested");
-                self.reload_config();
+                match self.reload_config() {
+                    super::reload::ConfigReloadOutcome::Applied { diagnostics, css } => {
+                        debug!(
+                            diagnostics = diagnostics.len(),
+                            css_layers = css.layers.len(),
+                            "config reload applied"
+                        );
+                    }
+                    super::reload::ConfigReloadOutcome::Rejected { failure } => {
+                        super::reload::log_reload_rejection(&failure);
+                    }
+                }
             }
         }
     }

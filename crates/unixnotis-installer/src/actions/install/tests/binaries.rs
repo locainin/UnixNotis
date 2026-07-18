@@ -4,7 +4,8 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 
 use super::super::binaries::{
-    binary_temp_path, binary_temp_path_attempt, stage_binary_copy_with_retry,
+    binary_temp_path, binary_temp_path_attempt, remove_resolved_binaries,
+    stage_binary_copy_with_retry,
 };
 use super::super::{install_binaries, remove_binaries};
 use super::support::{test_context, test_paths, test_root, write_fake_workspace};
@@ -13,7 +14,7 @@ use super::support::{test_context, test_paths, test_root, write_fake_workspace};
 use std::os::unix::fs::symlink;
 
 #[test]
-fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
+fn install_binaries_copies_all_managed_binaries_and_runtime_helpers() {
     let _lock = crate::test_support::env::test_env_lock();
     // A fake workspace keeps the test focused on copy behavior instead of the real repo layout
     let root = test_root("install-binaries");
@@ -23,6 +24,7 @@ fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
             "unixnotis-daemon",
             "unixnotis-popups",
             "unixnotis-center",
+            "unixnotis-css-validate",
             "noticenterctl",
         ],
     );
@@ -32,6 +34,7 @@ fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         let source = paths.repo_root.join("target").join("release").join(binary);
@@ -51,6 +54,7 @@ fn install_binaries_copies_all_managed_binaries_including_noticenterctl() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         let installed = paths.bin_dir.join(binary);
@@ -82,6 +86,7 @@ fn install_binaries_copies_from_release_archive_bin_dir() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         let installed = paths.bin_dir.join(binary);
@@ -106,6 +111,7 @@ fn install_binaries_bypasses_preexisting_temp_symlink_without_touching_it() {
             "unixnotis-daemon",
             "unixnotis-popups",
             "unixnotis-center",
+            "unixnotis-css-validate",
             "noticenterctl",
         ],
     );
@@ -114,6 +120,7 @@ fn install_binaries_bypasses_preexisting_temp_symlink_without_touching_it() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         let source = paths.repo_root.join("target").join("release").join(binary);
@@ -184,7 +191,7 @@ fn stage_binary_copy_propagates_errors_other_than_path_collisions() {
 }
 
 #[test]
-fn remove_binaries_removes_all_managed_binaries_including_noticenterctl() {
+fn remove_binaries_removes_all_managed_binaries_and_runtime_helpers() {
     // Uninstall must remove the same managed set that install copied in
     let root = test_root("remove-binaries");
     write_fake_workspace(
@@ -193,6 +200,7 @@ fn remove_binaries_removes_all_managed_binaries_including_noticenterctl() {
             "unixnotis-daemon",
             "unixnotis-popups",
             "unixnotis-center",
+            "unixnotis-css-validate",
             "noticenterctl",
         ],
     );
@@ -203,6 +211,7 @@ fn remove_binaries_removes_all_managed_binaries_including_noticenterctl() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         fs::write(paths.bin_dir.join(binary), format!("installed:{binary}"))
@@ -221,6 +230,7 @@ fn remove_binaries_removes_all_managed_binaries_including_noticenterctl() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         assert!(
@@ -232,12 +242,71 @@ fn remove_binaries_removes_all_managed_binaries_including_noticenterctl() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[test]
+fn remove_binaries_never_removes_a_file_outside_the_bin_directory() {
+    let root = test_root("remove-binaries-contained");
+    let paths = test_paths(&root);
+    fs::create_dir_all(&paths.repo_root).expect("workspace root");
+    fs::write(
+        paths.repo_root.join("Cargo.toml"),
+        r#"
+[workspace]
+members = []
+
+[workspace.metadata.unixnotis.installer]
+binaries = ["../../.bashrc"]
+"#,
+    )
+    .expect("crafted workspace metadata");
+    let sentinel = root.join("home").join(".bashrc");
+    fs::create_dir_all(sentinel.parent().expect("sentinel parent")).expect("home directory");
+    fs::write(&sentinel, "keep this file").expect("outside sentinel");
+
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, &paths, ActionMode::Uninstall);
+
+    remove_binaries(&mut ctx).expect("fallback uninstall should stay contained");
+
+    assert_eq!(
+        fs::read_to_string(&sentinel).expect("outside sentinel remains"),
+        "keep this file"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn resolved_binary_removal_rejects_traversal_before_touching_an_outside_file() {
+    let root = test_root("remove-resolved-binaries-contained");
+    let paths = test_paths(&root);
+    fs::create_dir_all(&paths.bin_dir).expect("bin directory");
+    let sentinel = root.join("home").join("sentinel");
+    fs::write(&sentinel, "keep this file").expect("outside sentinel");
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, &paths, ActionMode::Uninstall);
+
+    let error = remove_resolved_binaries(&mut ctx, vec!["../../sentinel".to_string()])
+        .expect_err("removal must reject a path that escapes the bin directory");
+
+    assert!(error.to_string().contains("unmanaged binary path"));
+    assert_eq!(
+        fs::read_to_string(&sentinel).expect("outside sentinel remains"),
+        "keep this file"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
 fn write_fake_release_archive(root: &std::path::Path) {
     let bin_dir = root.join("bin");
     fs::create_dir_all(&bin_dir).expect("release bin dir");
     fs::write(
         root.join("unixnotis-release.json"),
-        r#"{"version":"1.0.0","binaries":["unixnotis-daemon","unixnotis-popups","unixnotis-center","noticenterctl"]}"#,
+        r#"{"version":"1.0.0","binaries":["unixnotis-daemon","unixnotis-popups","unixnotis-center","unixnotis-css-validate","noticenterctl"]}"#,
     )
     .expect("release manifest");
 
@@ -245,6 +314,7 @@ fn write_fake_release_archive(root: &std::path::Path) {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-css-validate",
         "noticenterctl",
     ] {
         fs::write(bin_dir.join(binary), format!("release:{binary}")).expect("release binary");

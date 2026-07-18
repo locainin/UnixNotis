@@ -1,262 +1,63 @@
-//! Panel action row construction
+//! Panel action signal wiring
+
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::Duration;
 
 use gtk::prelude::*;
-use unixnotis_core::{
-    css::hooks, PanelActionConfig, PanelActionId, PanelClearButtonPlacement, PanelConfig,
-};
+use tracing::debug;
 
-pub(super) struct PanelActionWidgets {
-    pub(super) group: gtk::Box,
-    pub(super) focus_toggle: gtk::ToggleButton,
-    pub(super) dnd_toggle: gtk::ToggleButton,
-    pub(super) clear_button: gtk::Button,
-    pub(super) search_toggle: gtk::ToggleButton,
-    pub(super) close_button: gtk::Button,
-}
+use super::super::try_send_command;
+use super::input::ClickCooldown;
+use super::timing::CONTROL_CLICK_GUARD_MS;
+use super::PanelWidgets;
+use crate::control::UiCommand;
 
-pub(super) struct PanelActionArea {
-    pub(super) row: gtk::Box,
-    pub(super) widgets: PanelActionWidgets,
-}
-
-pub(super) fn build_panel_actions(config: &PanelConfig) -> PanelActionArea {
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    actions.add_css_class(hooks::panel_action::ROW);
-
-    // Keep the primary row separate so the close action can stay visually isolated
-    let action_primary = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    action_primary.add_css_class(hooks::panel_action::GROUP);
-
-    let focus_toggle = build_toggle_action(hooks::panel_action::FOCUS, &config.focus_action);
-
-    let dnd_toggle = build_toggle_action(hooks::panel_action::PRIMARY, &config.dnd_action);
-
-    let clear_button =
-        build_button_action(hooks::panel_action::MUTED, &resolved_clear_action(config));
-    clear_button.set_visible(matches!(
-        config.clear_button_placement,
-        PanelClearButtonPlacement::ActionRow
-    ));
-
-    let search_toggle = build_toggle_action(hooks::panel_action::SEARCH, &config.search_action);
-
-    let close_button = build_button_action(hooks::panel_action::CLOSE, &config.close_action);
-    close_button.add_css_class(hooks::panel_action::ROOT);
-
-    append_ordered_actions(
-        &action_primary,
-        &focus_toggle,
-        &dnd_toggle,
-        &clear_button,
-        &search_toggle,
-        &close_button,
-        &config.action_order,
-    );
-    actions.append(&action_primary);
-
-    PanelActionArea {
-        row: actions,
-        widgets: PanelActionWidgets {
-            group: action_primary,
-            focus_toggle,
-            dnd_toggle,
-            clear_button,
-            search_toggle,
-            close_button,
-        },
-    }
-}
-
-pub(super) fn build_clear_button(config: &PanelConfig) -> gtk::Button {
-    build_button_action(hooks::panel_action::MUTED, &resolved_clear_action(config))
-}
-
-pub(in crate::ui::panel) fn apply_panel_action_config(
-    header_top: &gtk::Box,
-    widgets: &PanelActionWidgets,
-    config: &PanelConfig,
+pub(in crate::ui) fn connect_clear_button(
+    button: &gtk::Button,
+    command_tx: tokio::sync::mpsc::Sender<UiCommand>,
 ) {
-    update_action_button(
-        &widgets.focus_toggle,
-        hooks::panel_action::FOCUS,
-        &config.focus_action,
-    );
-    update_action_button(
-        &widgets.dnd_toggle,
-        hooks::panel_action::PRIMARY,
-        &config.dnd_action,
-    );
-    update_action_button(
-        &widgets.clear_button,
-        hooks::panel_action::MUTED,
-        &resolved_clear_action(config),
-    );
-    widgets.clear_button.set_visible(matches!(
-        config.clear_button_placement,
-        PanelClearButtonPlacement::ActionRow
-    ));
-    update_action_button(
-        &widgets.search_toggle,
-        hooks::panel_action::SEARCH,
-        &config.search_action,
-    );
-    update_action_button(
-        &widgets.close_button,
-        hooks::panel_action::CLOSE,
-        &config.close_action,
-    );
-    append_ordered_actions(
-        &widgets.group,
-        &widgets.focus_toggle,
-        &widgets.dnd_toggle,
-        &widgets.clear_button,
-        &widgets.search_toggle,
-        &widgets.close_button,
-        &config.action_order,
-    );
-    if !action_order_contains_close(&config.action_order) {
-        move_child_to_box(header_top, &widgets.close_button.clone().upcast());
-    }
+    let clear_gate = ClickCooldown::new(Duration::from_millis(CONTROL_CLICK_GUARD_MS));
+    button.connect_clicked(move |_| {
+        if !clear_gate.try_start() {
+            return;
+        }
+
+        debug!("clear all clicked");
+        // Non-blocking send avoids UI stalls on D-Bus backpressure
+        try_send_command(&command_tx, UiCommand::ClearAll);
+    });
 }
 
-pub(in crate::ui::panel) fn apply_clear_button_config(button: &gtk::Button, config: &PanelConfig) {
-    update_action_button(
-        button,
-        hooks::panel_action::MUTED,
-        &resolved_clear_action(config),
-    );
-    button.set_visible(matches!(
-        config.clear_button_placement,
-        PanelClearButtonPlacement::NotificationHeader
-    ));
-}
-
-fn build_toggle_action(role_class: &str, config: &PanelActionConfig) -> gtk::ToggleButton {
-    let button = gtk::ToggleButton::new();
-    // Shared button setup keeps text and icon actions visually aligned
-    configure_action_button(&button, role_class, config.icon_only);
-    button.set_tooltip_text(Some(&config.tooltip));
-
-    let content = build_action_content(config);
-    button.set_child(Some(&content));
-    button
-}
-
-fn build_button_action(role_class: &str, config: &PanelActionConfig) -> gtk::Button {
-    let button = gtk::Button::new();
-    // Plain buttons reuse the same shell so role classes stay the only visual difference
-    configure_action_button(&button, role_class, config.icon_only);
-    button.set_tooltip_text(Some(&config.tooltip));
-
-    let content = build_action_content(config);
-    button.set_child(Some(&content));
-    button
-}
-
-fn build_action_content(config: &PanelActionConfig) -> gtk::Box {
-    let spacing = if config.icon_only { 0 } else { 6 };
-    let content = gtk::Box::new(gtk::Orientation::Horizontal, spacing);
-    content.add_css_class(hooks::panel_action::CONTENT);
-    content.set_halign(gtk::Align::Center);
-    content.set_valign(gtk::Align::Center);
-
-    let icon = gtk::Image::from_icon_name(&config.icon);
-    icon.add_css_class(hooks::panel_action::GLYPH);
-    icon.set_halign(gtk::Align::Center);
-    icon.set_valign(gtk::Align::Center);
-
-    let label = gtk::Label::new(Some(&config.label));
-    label.add_css_class(hooks::panel_action::LABEL);
-    label.set_visible(!config.icon_only && !config.label.is_empty());
-    if config.icon_only || config.label.is_empty() {
-        label.add_css_class(hooks::panel_action::LABEL_HIDDEN);
-    }
-
-    // One small content box keeps icon spacing and text alignment consistent
-    content.append(&icon);
-    if !config.icon_only {
-        content.append(&label);
-    }
-    content
-}
-
-fn update_action_button(
-    button: &impl IsA<gtk::Widget>,
-    role_class: &str,
-    config: &PanelActionConfig,
+pub(in crate::ui) fn connect_dnd_toggle(
+    panel: &PanelWidgets,
+    dnd_guard: Rc<Cell<bool>>,
+    command_tx: tokio::sync::mpsc::Sender<UiCommand>,
 ) {
-    // Replacing the tiny content box is simpler and safer than walking child internals
-    configure_action_button(button, role_class, config.icon_only);
-    button.set_tooltip_text(Some(&config.tooltip));
-    let content = build_action_content(config);
-    if let Some(button) = button.dynamic_cast_ref::<gtk::Button>() {
-        button.set_child(Some(&content));
-    } else if let Some(button) = button.dynamic_cast_ref::<gtk::ToggleButton>() {
-        button.set_child(Some(&content));
-    }
+    panel.dnd_toggle.connect_toggled(move |button| {
+        if dnd_guard.get() {
+            // Daemon-driven state sync should not echo another DND command
+            return;
+        }
+
+        debug!(enabled = button.is_active(), "dnd toggled");
+        try_send_command(&command_tx, UiCommand::SetDnd(button.is_active()));
+    });
 }
 
-fn configure_action_button(button: &impl IsA<gtk::Widget>, role_class: &str, icon_only: bool) {
-    // Base class keeps the shared shell while role hooks handle per-action styling
-    button.add_css_class(hooks::panel_action::ROOT);
-    button.add_css_class(role_class);
-    button.set_halign(gtk::Align::Center);
-    button.set_valign(gtk::Align::Center);
-    if icon_only {
-        button.remove_css_class(hooks::panel_action::WITH_ICON);
-        button.add_css_class(hooks::panel_action::ICON_ONLY);
-    } else {
-        button.remove_css_class(hooks::panel_action::ICON_ONLY);
-        button.add_css_class(hooks::panel_action::WITH_ICON);
-    }
-}
-
-fn append_ordered_actions(
-    group: &gtk::Box,
-    focus_toggle: &gtk::ToggleButton,
-    dnd_toggle: &gtk::ToggleButton,
-    clear_button: &gtk::Button,
-    search_toggle: &gtk::ToggleButton,
-    close_button: &gtk::Button,
-    order: &[PanelActionId],
+pub(in crate::ui) fn connect_close_button(
+    panel: &PanelWidgets,
+    command_tx: tokio::sync::mpsc::Sender<UiCommand>,
 ) {
-    let mut previous: Option<gtk::Widget> = None;
-    for action in order {
-        let child: gtk::Widget = match action {
-            PanelActionId::Widgets => focus_toggle.clone().upcast(),
-            PanelActionId::Dnd => dnd_toggle.clone().upcast(),
-            PanelActionId::Clear => clear_button.clone().upcast(),
-            PanelActionId::Search => search_toggle.clone().upcast(),
-            PanelActionId::Close => close_button.clone().upcast(),
-        };
-        move_child_to_box(group, &child);
-        group.reorder_child_after(&child, previous.as_ref());
-        previous = Some(child);
-    }
-}
+    let close_gate = ClickCooldown::new(Duration::from_millis(CONTROL_CLICK_GUARD_MS));
+    panel.close_button.connect_clicked(move |_| {
+        if !close_gate.try_start() {
+            return;
+        }
 
-pub(in crate::ui::panel) fn action_order_contains_close(order: &[PanelActionId]) -> bool {
-    order.contains(&PanelActionId::Close)
-}
-
-fn move_child_to_box(parent: &gtk::Box, child: &gtk::Widget) {
-    let target: gtk::Widget = parent.clone().upcast();
-    if child.parent().as_ref() == Some(&target) {
-        return;
-    }
-    if child.parent().is_some() {
-        child.unparent();
-    }
-    parent.append(child);
-}
-
-fn resolved_clear_action(config: &PanelConfig) -> PanelActionConfig {
-    let mut action = config.clear_action.clone();
-    if action == PanelActionConfig::clear() {
-        // Keep the legacy clear_label field as the default source for old configs
-        action.label.clone_from(&config.clear_label);
-    }
-    action
+        debug!("close panel clicked");
+        try_send_command(&command_tx, UiCommand::ClosePanel);
+    });
 }
 
 #[cfg(test)]

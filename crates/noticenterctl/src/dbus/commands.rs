@@ -5,6 +5,7 @@ use crate::cli::{Command, DndState};
 use crate::debug_logs::follow_debug_logs;
 use crate::output::{
     allow_full_output, print_inhibitors, print_notifications, warn_full_requires_diagnostic,
+    write_stderr, write_stdout,
 };
 
 use super::client::ControlClient;
@@ -30,7 +31,7 @@ pub(super) async fn handle_command_with_debug_logs(
                 client.open_panel_debug(level.into()).await?;
                 // Panel open should still succeed when journal follow is unavailable
                 if let Err(err) = follow_logs() {
-                    eprintln!("debug log follow unavailable: {err}");
+                    write_stderr(&format!("debug log follow unavailable: {err}\n"))?;
                 }
             } else {
                 client.open_panel().await?;
@@ -59,19 +60,19 @@ pub(super) async fn handle_command_with_debug_logs(
             let allow_full = allow_full_output(full, diagnostic_mode);
             if warn_full_requires_diagnostic(full, diagnostic_mode) {
                 // Fall back to the safe view
-                eprintln!("--full requires UNIXNOTIS_DIAGNOSTIC=1; using redacted output");
+                write_stderr("--full requires UNIXNOTIS_DIAGNOSTIC=1; using redacted output\n")?;
             }
             let notifications = client.list_active().await?;
-            print_notifications("active", &notifications, allow_full);
+            print_notifications("active", &notifications, allow_full)?;
         }
         Command::ListHistory { full } => {
             let diagnostic_mode = util::diagnostic_mode();
             let allow_full = allow_full_output(full, diagnostic_mode);
             if warn_full_requires_diagnostic(full, diagnostic_mode) {
-                eprintln!("--full requires UNIXNOTIS_DIAGNOSTIC=1; using redacted output");
+                write_stderr("--full requires UNIXNOTIS_DIAGNOSTIC=1; using redacted output\n")?;
             }
             let notifications = client.list_history().await?;
-            print_notifications("history", &notifications, allow_full);
+            print_notifications("history", &notifications, allow_full)?;
         }
         Command::Dnd { state } => match state {
             DndState::On => {
@@ -89,7 +90,7 @@ pub(super) async fn handle_command_with_debug_logs(
         },
         Command::Inhibit { reason, scope } => {
             let token = client.inhibit(&reason, scope.as_scope()).await?;
-            println!("{token}");
+            write_stdout(&format!("{token}\n"))?;
         }
         Command::Uninhibit { id } => {
             // Token removal is safe to repeat if a previous call already released it
@@ -97,9 +98,9 @@ pub(super) async fn handle_command_with_debug_logs(
         }
         Command::ListInhibitors => {
             let inhibitors = client.list_inhibitors().await?;
-            print_inhibitors(&inhibitors);
+            print_inhibitors(&inhibitors)?;
         }
-        Command::CssCheck | Command::Preset { .. } => {}
+        Command::CssCheck { .. } | Command::Doctor { .. } | Command::Preset { .. } => {}
     }
 
     Ok(())

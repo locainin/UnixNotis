@@ -17,11 +17,4 @@ pub use snapshot::list_backup_dirs_for_ui;
 pub use write::write_atomic;
 
 #[cfg(test)]
-pub(in crate::actions::config::backup) use restore::is_restore_target_allowed;
-#[cfg(test)]
-pub(in crate::actions::config::backup) use retention::{list_backup_dirs, prune_old_backups};
-#[cfg(test)]
-pub(in crate::actions::config::backup) use settings::BackupConfig;
-
-#[cfg(test)]
 mod tests;

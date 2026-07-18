@@ -8,7 +8,7 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use tar::{Builder, Header};
 
-use super::super::export::export_preset_from;
+use super::super::export::flow::export_preset_from;
 use super::super::inspect::inspect_preset_at;
 use super::super::manifest::{PresetManifest, PresetManifestFile};
 

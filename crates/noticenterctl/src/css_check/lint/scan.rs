@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use super::super::geometry::CssCustomPropertyScopes;
 use super::super::parse::{
     next_css_block_with_offsets, normalize_selector, parse_css_declarations_with_offsets,
     should_recurse_at_rule, split_selectors, strip_css_comments,
@@ -7,12 +8,13 @@ use super::super::parse::{
 use super::values::{
     line_column_for_offset, should_suppress_duplicate_property_warning, web_length_value_warning,
 };
-use super::{CssCheckLintFinding, CssCustomPropertyScopes};
+use super::CssCheckLintFinding;
 
 pub(super) fn lint_css_contents_with_properties(
     contents: &str,
     custom_properties: &CssCustomPropertyScopes,
 ) -> Vec<CssCheckLintFinding> {
+    // One collection keeps source order stable across color and rule diagnostics
     let mut warnings = Vec::new();
 
     // Strip comments first so block scanning stays honest
@@ -26,10 +28,12 @@ pub(super) fn lint_css_contents_with_properties(
         let line = segment.strip_suffix('\n').unwrap_or(segment);
         let trimmed = line.trim_start();
         if let Some(rest) = trimmed.strip_prefix("@define-color") {
+            // GTK color definitions use the first token after the directive as their key
             if let Some(name) = rest.split_whitespace().next() {
                 let count = color_defs.entry(name.to_string()).or_insert(0);
                 *count += 1;
                 if *count > 1 {
+                    // Report the later definition because that is the value GTK keeps
                     let trimmed_start = line.len().saturating_sub(trimmed.len());
                     let (lint_line, lint_column) =
                         line_column_for_offset(&stripped, offset + trimmed_start);
@@ -60,6 +64,10 @@ pub(super) fn lint_css_contents_with_properties(
     warnings
 }
 
+#[cfg(test)]
+#[path = "tests/scan.rs"]
+mod tests;
+
 fn lint_css_block(
     contents: &str,
     source_contents: &str,
@@ -73,6 +81,7 @@ fn lint_css_block(
     let mut cursor = 0usize;
     let bytes = contents.as_bytes();
     while let Some(css_block) = next_css_block_with_offsets(bytes, cursor) {
+        // Advance before branch handling so malformed or ignored blocks cannot stall scanning
         cursor = css_block.next;
         let selector = normalize_selector(&css_block.selector);
         if selector.is_empty() {
@@ -80,6 +89,7 @@ fn lint_css_block(
         }
 
         if selector.starts_with('@') {
+            // Only selector-bearing at-rules contain declarations this linter understands
             if should_recurse_at_rule(&selector) {
                 // At-rules still matter because duplicate selectors and bad layout values can
                 // hide inside the nested block
@@ -107,12 +117,14 @@ fn lint_css_block(
                 continue;
             }
             let key = match context.as_ref() {
+                // At-rule scope is part of identity so media variants are not false duplicates
                 Some(prefix) => format!("{prefix}::{selector_part}"),
                 None => selector_part.clone(),
             };
             let count = selector_seen.entry(key).or_insert(0);
             *count += 1;
             if *count > 1 {
+                // Point to the repeated selector rather than the opening block delimiter
                 let context_note = context
                     .as_ref()
                     .map(|ctx| format!(" within {ctx}"))
@@ -159,6 +171,7 @@ fn lint_css_properties(
         let (lint_line, lint_column) =
             line_column_for_offset(contents, block_start + declaration.start);
         if let Some(previous_value) = seen.get(&prop) {
+            // Modern fallback pairs can repeat a property intentionally and are filtered below
             let context_note = context
                 .map(|ctx| format!(" within {ctx}"))
                 .unwrap_or_default();
@@ -184,6 +197,7 @@ fn lint_css_properties(
         if let Some(message) =
             web_length_value_warning(&prop, &value, selector, context, custom_properties)
         {
+            // Web-only or unresolved lengths often parse differently in GTK CSS
             warnings.push(CssCheckLintFinding {
                 line: Some(lint_line),
                 column: Some(lint_column),
@@ -195,6 +209,7 @@ fn lint_css_properties(
 }
 
 fn selector_part_locations(selector: &str) -> Vec<(String, usize)> {
+    // Keep normalized text together with its original byte position for precise diagnostics
     let mut parts = Vec::new();
     let mut search_start = 0usize;
     for raw_part in split_selectors(selector) {

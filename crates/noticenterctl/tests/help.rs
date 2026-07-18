@@ -15,7 +15,23 @@ mod tests {
         let stdout = String::from_utf8(output.stdout)?;
         assert!(stdout.contains("Usage:"));
         assert!(stdout.contains("css-check"));
+        assert!(stdout.contains("doctor"));
         assert!(stdout.contains("preset"));
+        Ok(())
+    }
+
+    #[test]
+    fn binary_doctor_help_lists_output_and_manager_controls() -> TestResult {
+        let output = Command::new(env!("CARGO_BIN_EXE_noticenterctl"))
+            .args(["doctor", "--help"])
+            .output()?;
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("--json"));
+        assert!(stdout.contains("--verbose"));
+        assert!(stdout.contains("--service-manager"));
+        assert!(stdout.contains("manual"));
         Ok(())
     }
 

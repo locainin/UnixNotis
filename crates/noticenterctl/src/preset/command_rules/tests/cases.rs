@@ -1,31 +1,11 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use unixnotis_core::Config;
 
-use super::{
+use super::super::{
     collect_command_references_from_config, collect_host_specific_command_paths,
     collect_outside_command_paths, rewrite_host_specific_command_paths,
     validate_command_paths_in_config_bytes,
 };
-
-#[path = "env_paths.rs"]
-mod env_paths;
-
-static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-fn temp_root(name: &str) -> PathBuf {
-    // Unique paths keep lexical path checks stable under parallel test runs
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock moved backwards")
-        .as_nanos();
-    let serial = TEST_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "unixnotis-preset-command-rules-{name}-{stamp}-{serial}"
-    ))
-}
+use super::support::temp_root;
 
 #[test]
 fn collects_widget_command_references() {
@@ -74,7 +54,23 @@ fn validation_rejects_relative_command_path_that_leaves_root() {
 
     assert!(error
         .to_string()
-        .contains("points outside the UnixNotis config directory"));
+        .contains("resolves outside the UnixNotis config directory"));
+}
+
+#[test]
+fn validation_error_does_not_echo_rejected_command_text() {
+    let config_dir = temp_root("redacted-command");
+    let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.toggles]]\nlabel = \"Probe\"\nicon = \"applications-system-symbolic\"\nwatch_cmd = \"../outside-watch --token private-value\"\n";
+
+    let error =
+        validate_command_paths_in_config_bytes(&config_dir, config, "preset import blocked")
+            .expect_err("reject escaped command without exposing its arguments");
+    let message = error.to_string();
+
+    assert!(message.contains("widgets.toggles[0].watch_cmd"));
+    assert!(message.contains("resolves outside the UnixNotis config directory"));
+    assert!(!message.contains("outside-watch"));
+    assert!(!message.contains("private-value"));
 }
 
 #[test]
@@ -88,7 +84,7 @@ fn validation_rejects_absolute_command_path_with_equals_that_leaves_root() {
 
     assert!(error
         .to_string()
-        .contains("points outside the UnixNotis config directory"));
+        .contains("resolves outside the UnixNotis config directory"));
 }
 
 #[test]
@@ -152,6 +148,25 @@ fn rewrite_host_specific_command_inside_env_wrapper_preserves_assignments() {
     assert_eq!(
         parsed.widgets.stats[0].cmd.as_deref(),
         Some("env 'MODE=two words' 'scripts/probe tool' --json")
+    );
+}
+
+#[test]
+fn rewrite_host_specific_command_inside_env_wrapper_preserves_options() {
+    let config_dir = temp_root("rewrite-env-options");
+    let script_path = config_dir.join("scripts/probe");
+    let config = format!(
+        "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {:?}\n",
+        format!("env -u HOME MODE=safe {} --json", script_path.display())
+    );
+    let mut parsed: Config = toml::from_str(&config).expect("parse config");
+
+    let rewritten = rewrite_host_specific_command_paths(&config_dir, &mut parsed);
+
+    assert_eq!(rewritten.len(), 1);
+    assert_eq!(
+        parsed.widgets.stats[0].cmd.as_deref(),
+        Some("env -u HOME 'MODE=safe' scripts/probe --json")
     );
 }
 

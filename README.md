@@ -29,6 +29,7 @@ git clone https://github.com/locainin/UnixNotis.wiki.git
 - MPRIS media integration with playback controls.
 - Hot-reloaded config and CSS for fast iteration.
 - CLI control via `noticenterctl`.
+- Structured health diagnostics through `noticenterctl doctor`.
 - Installer-managed startup through `systemd --user`, `dinit --user`, user runit, or user s6-rc.
 - Preset export/import tooling for sharing config, theme, scripts, and assets.
 
@@ -81,10 +82,25 @@ When launched from a downloaded release, the installer verifies the bundled bina
 them into `$HOME/.local/bin` instead of building from source. The TUI shows the installed version and
 reports when a newer GitHub release is available.
 
+For a shareable configuration, theme, D-Bus, and service report, run:
+
+```sh
+noticenterctl doctor
+noticenterctl doctor --verbose
+noticenterctl doctor --json
+noticenterctl doctor --config "$HOME/path/to/config.toml"
+noticenterctl css-check --config "$HOME/path/to/config.toml"
+```
+
+Verbose systemd reports include a sanitized, bounded window of up to 30 user-journal lines.
+Review verbose output before posting it because application metadata can still be present.
+Dinit, runit, s6-rc, manual, and unknown launches report service status without pretending that
+the installed artifacts provide persistent logs.
+
 Maintainers can build a local release archive manually:
 
 ```sh
-scripts/package-release.sh v1.1.4
+scripts/package-release.sh v1.2.0
 ```
 
 ## Development

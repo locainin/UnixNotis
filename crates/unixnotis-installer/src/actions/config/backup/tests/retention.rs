@@ -1,4 +1,6 @@
-use super::super::{create_backup_dir, list_backup_dirs, prune_old_backups, BackupConfig};
+use super::super::create_backup_dir;
+use super::super::retention::{list_backup_dirs, prune_old_backups_except};
+use super::super::settings::BackupConfig;
 use crate::app::events::UiMessage;
 use crate::detect::Detection;
 use crate::model::ActionMode;
@@ -7,6 +9,15 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
+
+fn prune_old_backups(
+    ctx: &mut crate::actions::ActionContext,
+    config_dir: &std::path::Path,
+    keep: usize,
+) -> anyhow::Result<()> {
+    // Direct retention tests do not need to protect a newly created backup
+    prune_old_backups_except(ctx, config_dir, keep, None)
+}
 
 #[test]
 fn prune_old_backups_keeps_newest() {

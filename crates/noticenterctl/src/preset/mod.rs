@@ -35,7 +35,14 @@ pub fn run_preset(command: PresetCommand) -> Result<()> {
             except,
             dry_run,
             allow_exec,
-        } => import::run_import(Path::new(&input), &except, dry_run, allow_exec),
+            allow_external_css,
+        } => import::run_import(
+            Path::new(&input),
+            &except,
+            dry_run,
+            allow_exec,
+            allow_external_css,
+        ),
         PresetCommand::Inspect { input } => inspect::run_inspect(Path::new(&input)),
     }
 }

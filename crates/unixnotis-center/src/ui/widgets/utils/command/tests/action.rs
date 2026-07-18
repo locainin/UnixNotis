@@ -1,5 +1,6 @@
 use std::io::ErrorKind;
 
+use super::super::test_support::configure_command_test_root;
 use super::run_command_capture_action_async;
 
 #[test]
@@ -14,6 +15,7 @@ fn empty_action_command_returns_invalid_input_without_enqueueing() {
 
 #[test]
 fn action_command_runs_in_the_action_lane_and_reports_output() {
+    configure_command_test_root();
     let output = run_command_capture_action_async("true")
         .recv_blocking()
         .expect("action response should remain available")

@@ -1,13 +1,16 @@
 use std::fs;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
     discover_installed_binaries, extract_bins_from_metadata, legacy_binaries,
-    parse_install_binaries_metadata, parse_release_manifest_binaries,
-    resolve_install_binaries_best_effort, CargoMetadata,
+    parse_install_binaries_metadata, parse_release_manifest_binaries, resolve_install_binaries,
+    resolve_install_binaries_best_effort, resolve_target_directory, CargoMetadata,
 };
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
+use crate::test_support::env::EnvGuard;
+use crate::test_support::fs::write_executable;
 
 #[test]
 fn parse_install_binaries_metadata_reads_entries() {
@@ -35,14 +38,16 @@ members = ["crates/unixnotis-daemon"]
 }
 
 #[test]
-fn parse_install_binaries_metadata_handles_empty_entries() {
-    // Blank entries are ignored rather than becoming invalid binary names
+fn parse_install_binaries_metadata_rejects_blank_entries() {
+    // An explicit list is checked as one complete managed-file policy
     let input = r#"
 [workspace.metadata.unixnotis.installer]
 binaries = ["unixnotis-daemon", "  ", ""]
 "#;
-    let binaries = parse_install_binaries_metadata(input).expect("valid metadata");
-    assert_eq!(binaries, vec!["unixnotis-daemon".to_string()]);
+    let error = parse_install_binaries_metadata(input)
+        .expect_err("blank managed binary names must be rejected");
+
+    assert!(error.to_string().contains("invalid path"));
 }
 
 #[test]
@@ -63,11 +68,23 @@ binaries = ["unixnotis-popups", "unixnotis-daemon", "unixnotis-popups"]
 }
 
 #[test]
+fn parse_install_binaries_metadata_rejects_paths_and_unknown_names() {
+    for name in ["../../.bashrc", "/tmp/victim", "unixnotis-unknown"] {
+        let input = format!("[workspace.metadata.unixnotis.installer]\nbinaries = [\"{name}\"]\n");
+
+        let error = parse_install_binaries_metadata(&input)
+            .expect_err("unmanaged workspace entry must be rejected");
+
+        assert!(error.to_string().contains("managed binary"), "{name:?}");
+    }
+}
+
+#[test]
 fn parse_release_manifest_binaries_uses_release_archive_order() {
     let input = r#"
 {
   "version": "1.0.0",
-  "binaries": ["unixnotis-daemon", "noticenterctl", "unixnotis-daemon", "  "]
+  "binaries": ["unixnotis-daemon", "noticenterctl", "unixnotis-daemon"]
 }
 "#;
 
@@ -78,6 +95,142 @@ fn parse_release_manifest_binaries_uses_release_archive_order() {
         binaries,
         vec!["unixnotis-daemon".to_string(), "noticenterctl".to_string()]
     );
+}
+
+#[test]
+fn parse_release_manifest_binaries_rejects_unknown_and_path_shaped_names() {
+    for name in [
+        "unixnotis-extra",
+        "../unixnotis-daemon",
+        "/tmp/noticenterctl",
+    ] {
+        let input = format!(r#"{{"version":"1.0.0","binaries":["{name}"]}}"#);
+        let error = parse_release_manifest_binaries(&input)
+            .expect_err("unsupported release binary must fail");
+
+        assert!(error.to_string().contains("binary"), "{name}");
+    }
+}
+
+#[test]
+fn release_resolution_does_not_compare_archive_names_with_cargo_metadata() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("release-resolution");
+    let paths = test_paths(&root);
+    write_release_manifest(&paths, &["noticenterctl"]);
+    let fake_bin = write_fake_cargo(
+        &root,
+        r#"{"target_directory":"target","packages":[{"targets":[{"name":"unixnotis-daemon","kind":["bin"]}]}]}"#,
+    );
+    let _path = EnvGuard::set("PATH", &fake_bin);
+
+    let binaries =
+        resolve_install_binaries(&paths).expect("release manifest should be authoritative");
+
+    assert_eq!(binaries, vec!["noticenterctl".to_string()]);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn workspace_resolution_rejects_declared_names_when_cargo_has_no_binary_targets() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("workspace-empty-cargo-targets");
+    let paths = test_paths(&root);
+    write_workspace_manifest(&paths, Some(&["noticenterctl"]));
+    let fake_bin = write_fake_cargo(&root, r#"{"target_directory":"target","packages":[]}"#);
+    let _path = EnvGuard::set("PATH", &fake_bin);
+
+    let error = resolve_install_binaries(&paths)
+        .expect_err("an empty Cargo inventory must not widen declared names");
+
+    assert!(error.to_string().contains("managed binary list"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn workspace_resolution_accepts_declared_names_present_in_cargo_metadata() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("workspace-matching-cargo-targets");
+    let paths = test_paths(&root);
+    write_workspace_manifest(&paths, Some(&["noticenterctl"]));
+    let fake_bin = write_fake_cargo(
+        &root,
+        r#"{"target_directory":"target","packages":[{"targets":[{"name":"noticenterctl","kind":["bin"]}]}]}"#,
+    );
+    let _path = EnvGuard::set("PATH", &fake_bin);
+
+    let binaries = resolve_install_binaries(&paths).expect("matching target should be accepted");
+
+    assert_eq!(binaries, vec!["noticenterctl".to_string()]);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn workspace_resolution_rejects_declared_names_missing_from_cargo_metadata() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("workspace-missing-cargo-target");
+    let paths = test_paths(&root);
+    write_workspace_manifest(&paths, Some(&["noticenterctl"]));
+    let fake_bin = write_fake_cargo(
+        &root,
+        r#"{"target_directory":"target","packages":[{"targets":[{"name":"unixnotis-daemon","kind":["bin"]}]}]}"#,
+    );
+    let _path = EnvGuard::set("PATH", &fake_bin);
+
+    let error = resolve_install_binaries(&paths).expect_err("missing target should be rejected");
+
+    assert!(error.to_string().contains("noticenterctl"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn workspace_resolution_rejects_an_empty_declared_and_discovered_set() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("workspace-no-binaries");
+    let paths = test_paths(&root);
+    write_workspace_manifest(&paths, None);
+    let fake_bin = write_fake_cargo(&root, r#"{"target_directory":"target","packages":[]}"#);
+    let _path = EnvGuard::set("PATH", &fake_bin);
+
+    let error = resolve_install_binaries(&paths).expect_err("empty discovery must fail closed");
+
+    assert!(error.to_string().contains("no installable binaries"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn workspace_resolution_uses_cargo_targets_when_the_declared_list_is_missing() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("workspace-cargo-fallback");
+    let paths = test_paths(&root);
+    write_workspace_manifest(&paths, None);
+    let fake_bin = write_fake_cargo(
+        &root,
+        r#"{"target_directory":"build-output","packages":[{"targets":[{"name":"noticenterctl","kind":["bin"]}]}]}"#,
+    );
+    let _path = EnvGuard::set("PATH", &fake_bin);
+
+    let binaries = resolve_install_binaries(&paths).expect("cargo targets should provide fallback");
+
+    assert_eq!(binaries, vec!["noticenterctl".to_string()]);
+    assert_eq!(
+        resolve_target_directory(&paths).expect("cargo target directory"),
+        PathBuf::from("build-output")
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn release_target_directory_is_the_archive_root() {
+    let root = test_root("release-target-directory");
+    let paths = test_paths(&root);
+    write_release_manifest(&paths, &["noticenterctl"]);
+
+    assert_eq!(
+        resolve_target_directory(&paths).expect("release target directory"),
+        paths.repo_root
+    );
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]
@@ -106,7 +259,7 @@ fn extract_bins_from_cargo_metadata_skips_installer_binary() {
 }
 "#;
     let metadata: CargoMetadata = serde_json::from_str(input).expect("metadata");
-    let binaries = extract_bins_from_metadata(&metadata);
+    let binaries = extract_bins_from_metadata(&metadata).expect("managed Cargo targets");
     assert_eq!(binaries, vec!["unixnotis-daemon".to_string()]);
 }
 
@@ -129,7 +282,7 @@ fn extract_bins_from_cargo_metadata_sorts_bins_and_keeps_non_installer_targets()
 "#;
     let metadata: CargoMetadata = serde_json::from_str(input).expect("metadata");
 
-    let binaries = extract_bins_from_metadata(&metadata);
+    let binaries = extract_bins_from_metadata(&metadata).expect("managed Cargo targets");
 
     // Cargo metadata order can vary by package layout, so install planning sorts names
     assert_eq!(
@@ -140,6 +293,28 @@ fn extract_bins_from_cargo_metadata_sorts_bins_and_keeps_non_installer_targets()
             "unixnotis-popups".to_string()
         ]
     );
+}
+
+#[test]
+fn extract_bins_from_cargo_metadata_rejects_unknown_targets() {
+    let input = r#"
+{
+  "target_directory": "target",
+  "packages": [
+    {
+      "targets": [
+        { "name": "unixnotis-unknown", "kind": ["bin"] }
+      ]
+    }
+  ]
+}
+"#;
+    let metadata: CargoMetadata = serde_json::from_str(input).expect("metadata");
+
+    let error = extract_bins_from_metadata(&metadata)
+        .expect_err("unknown Cargo targets must not become managed files");
+
+    assert!(error.to_string().contains("unsupported name"));
 }
 
 #[test]
@@ -225,6 +400,7 @@ fn legacy_binaries_keep_full_installed_surface() {
             "unixnotis-daemon".to_string(),
             "unixnotis-popups".to_string(),
             "unixnotis-center".to_string(),
+            "unixnotis-css-validate".to_string(),
             "noticenterctl".to_string()
         ]
     );
@@ -244,4 +420,45 @@ fn test_root(name: &str) -> std::path::PathBuf {
         .expect("system clock")
         .as_nanos();
     std::env::temp_dir().join(format!("unixnotis-{name}-{unique}"))
+}
+
+fn write_workspace_manifest(paths: &InstallPaths, binaries: Option<&[&str]>) {
+    fs::create_dir_all(&paths.repo_root).expect("workspace root");
+    let metadata = binaries.map_or_else(String::new, |names| {
+        let names = names
+            .iter()
+            .map(|name| format!("\"{name}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("\n[workspace.metadata.unixnotis.installer]\nbinaries = [{names}]\n")
+    });
+    fs::write(
+        paths.repo_root.join("Cargo.toml"),
+        format!("[workspace]\nmembers = []\n{metadata}"),
+    )
+    .expect("workspace manifest");
+}
+
+fn write_release_manifest(paths: &InstallPaths, binaries: &[&str]) {
+    fs::create_dir_all(paths.release_binary_dir()).expect("release bin directory");
+    let binaries = binaries
+        .iter()
+        .map(|name| format!("\"{name}\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    fs::write(
+        paths.release_manifest_path(),
+        format!(r#"{{"binaries":[{binaries}]}}"#),
+    )
+    .expect("release manifest");
+}
+
+fn write_fake_cargo(root: &std::path::Path, metadata: &str) -> PathBuf {
+    let fake_bin = root.join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake cargo directory");
+    write_executable(
+        &fake_bin.join("cargo"),
+        &format!("#!/bin/sh\nprintf '%s\\n' '{metadata}'\n"),
+    );
+    fake_bin
 }

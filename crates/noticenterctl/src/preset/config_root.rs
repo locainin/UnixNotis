@@ -7,12 +7,13 @@ use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
+use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 
 use super::archive::{
     MAX_PRESET_FILE_BYTES, MAX_PRESET_PAYLOAD_FILES, MAX_PRESET_TOTAL_PAYLOAD_BYTES,
 };
-use super::filesystem::{open_secure_dir_all, read_relative_file_secure_bounded};
+use super::filesystem::read_relative_file_secure_bounded;
 use super::pathing::{normalize_relative_path, relative_path_matches_exclusion};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,32 +49,15 @@ pub(super) struct CollectedConfigFiles {
     pub(super) skipped_non_regular: Vec<PathBuf>,
 }
 
-#[cfg(test)]
-pub(super) fn collect_selected_config_files(
-    config_dir: &Path,
-    relative_paths: &[PathBuf],
-    output_path: Option<&Path>,
-    exclusions: &[PathBuf],
-) -> Result<CollectedConfigFiles> {
-    collect_selected_config_files_with_captures(
-        config_dir,
-        relative_paths,
-        output_path,
-        exclusions,
-        &BTreeMap::new(),
-    )
-}
-
-pub(super) fn collect_selected_config_files_with_captures(
+pub(super) fn collect_selected_config_files_from_root(
+    root_fd: &OwnedFd,
     config_dir: &Path,
     relative_paths: &[PathBuf],
     output_path: Option<&Path>,
     exclusions: &[PathBuf],
     captures: &BTreeMap<PathBuf, SecureFileCapture>,
 ) -> Result<CollectedConfigFiles> {
-    // Export follows an explicit dependency list so unrelated private files never enter a bundle
-    let root_fd = open_secure_dir_all(config_dir)
-        .with_context(|| format!("open config directory {}", config_dir.display()))?;
+    // Callers with an existing snapshot keep every read pinned to one verified directory
     let output_path = output_path.map(resolve_working_path).transpose()?;
     let mut collected = CollectedConfigFiles::default();
     let mut total_bytes = 0u64;
@@ -108,7 +92,7 @@ pub(super) fn collect_selected_config_files_with_captures(
             }
 
             // Secure descriptor-relative reading closes the validation-to-read race
-            read_relative_file_secure_bounded(&root_fd, &relative, MAX_PRESET_FILE_BYTES)?
+            read_relative_file_secure_bounded(root_fd, &relative, MAX_PRESET_FILE_BYTES)?
         };
         total_bytes = checked_export_total(
             total_bytes,

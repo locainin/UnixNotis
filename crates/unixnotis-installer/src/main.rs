@@ -21,6 +21,7 @@ mod app;
 mod checks;
 mod cli;
 mod detect;
+mod managed_binaries;
 mod model;
 mod paths;
 mod release;
@@ -29,6 +30,7 @@ mod service_manager;
 mod system_tools;
 mod terminal;
 #[cfg(test)]
+#[path = "tests/support/mod.rs"]
 mod test_support;
 mod trial;
 mod ui;

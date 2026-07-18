@@ -51,7 +51,7 @@ impl GeometryModel {
         stock_config.panel.width + (pressure - stock_pressure)
     }
 
-    fn media_minimum_pressure_px(&self, config: &Config) -> i32 {
+    pub(super) fn media_minimum_pressure_px(&self, config: &Config) -> i32 {
         // The shell snapshot keeps the width math deterministic across helper calls
         let shell = ModeledMediaShell::from_config(&config.media);
         // The runtime title lane grows with the panel, but minimum-width lint must stay
@@ -186,51 +186,4 @@ impl GeometryModel {
         }
         self.media_control_strip.outer_width_px(content_width_px)
     }
-}
-
-#[cfg(test)]
-pub(super) fn media_text_reserve_px(shell: ModeledMediaShell) -> i32 {
-    // Reserve math mirrors the runtime shell so marquee width stays in sync with widget layout
-    let mut reserve_px = 0;
-
-    // Start art spends width beside the text lane while top art only affects height
-    if shell.art_position == ModeledMediaArtPosition::Start {
-        reserve_px += shell.art_frame_size_px() + shell.content_spacing_px;
-    }
-
-    let controls_width_px = (MEDIA_BUTTON_FALLBACK_WIDTH_PX * 3) + (shell.control_spacing_px * 2);
-    let nav_inline_width_px = (MEDIA_NAV_FALLBACK_WIDTH_PX * 2) + shell.navigation_spacing_px;
-
-    match shell.controls_position {
-        ModeledMediaControlsPosition::Inline => {
-            // Inline shells spend one outer gap plus one inner nav gap when both groups are shown
-            let include_inline_controls = true;
-            let include_inline_nav =
-                shell.navigation_position == ModeledMediaNavigationPosition::Inline;
-            let mut inline_cluster_width_px = controls_width_px;
-            if include_inline_nav {
-                inline_cluster_width_px +=
-                    nav_cluster_spacing_px(include_inline_controls, include_inline_nav, shell);
-                inline_cluster_width_px += nav_inline_width_px;
-            }
-            reserve_px += inline_cluster_width_px + shell.content_spacing_px;
-        }
-        ModeledMediaControlsPosition::Side => {
-            // Side rails only need the widest vertical child, not the sum of both groups
-            reserve_px += match shell.navigation_position {
-                ModeledMediaNavigationPosition::Side => {
-                    controls_width_px.max(nav_inline_width_px) + shell.content_spacing_px
-                }
-                _ => controls_width_px + shell.content_spacing_px,
-            };
-        }
-        ModeledMediaControlsPosition::Bottom | ModeledMediaControlsPosition::Hidden => {}
-    }
-
-    if shell.navigation_position == ModeledMediaNavigationPosition::External {
-        // External nav still consumes panel width even though it sits outside the card
-        reserve_px += (MEDIA_NAV_FALLBACK_WIDTH_PX * 2) + (shell.navigation_spacing_px * 2);
-    }
-
-    reserve_px
 }

@@ -11,7 +11,7 @@ use super::header::draw_header;
 use super::widgets::{render_logs, render_steps, summarize_error};
 
 pub(super) fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
-    // Progress screen emphasizes current state and separates steps/logs.
+    // Progress screen emphasizes current state and separates steps from logs
     let (status_label, status_color) = match app.progress_state {
         ProgressState::Running => ("In progress", Color::Yellow),
         ProgressState::Completed => ("Completed", Color::Green),
@@ -31,7 +31,7 @@ pub(super) fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) 
 
     draw_header(frame, layout[0]);
 
-    // Build the status block first so error summaries stay close to the header.
+    // Build the status block first so error summaries stay close to the header
     let action_label = match mode {
         ActionMode::Reset => match &app.reset_action {
             ResetAction::ResetDefaults => "Reset config",
@@ -56,14 +56,14 @@ pub(super) fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) 
         }
     }
 
-    // Status block remains centered to keep user focus on action state.
+    // Status block remains centered to keep user focus on action state
     let status = Paragraph::new(Text::from(status_lines))
         .alignment(Alignment::Center)
         .block(Block::default().title("Progress").borders(Borders::ALL))
         .wrap(Wrap { trim: true });
     frame.render_widget(status, layout[1]);
 
-    // Body splits step list and logs to keep both visible during execution.
+    // Body splits step list and logs to keep both visible during execution
     let body = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
@@ -73,17 +73,15 @@ pub(super) fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) 
     let steps_block = Block::default().title("Steps").borders(Borders::ALL);
     frame.render_widget(steps.block(steps_block), body[0]);
 
-    let logs = render_logs(&app.logs);
+    // Reserve border rows and keep the latest failure output visible without manual scrolling
+    let visible_log_lines = body[1].height.saturating_sub(2) as usize;
+    let visible_log_width = body[1].width.saturating_sub(2) as usize;
+    let logs = render_logs(&app.logs, visible_log_lines, visible_log_width);
     let logs_block = Block::default().title("Logs").borders(Borders::ALL);
-    // Let Ratatui handle wrapping to avoid per-frame manual layout work.
-    frame.render_widget(
-        Paragraph::new(logs)
-            .block(logs_block)
-            .wrap(Wrap { trim: true }),
-        body[1],
-    );
+    // Rows are prewrapped from the tail so the last failure stays visible
+    frame.render_widget(Paragraph::new(logs).block(logs_block), body[1]);
 
-    // Footer text varies by state to make next action explicit.
+    // Footer text varies by state to make next action explicit
     let footer_text = match app.progress_state {
         ProgressState::Running => "Running...",
         ProgressState::Completed | ProgressState::Failed => {

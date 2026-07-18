@@ -22,27 +22,17 @@ impl BuiltinStatWorker {
     }
 
     fn new() -> Self {
-        Self::new_with_capacity(Self::QUEUE_CAPACITY, true)
-    }
-
-    fn new_with_capacity(capacity: usize, spawn_workers: bool) -> Self {
-        let (tx, rx) = crossbeam_channel::bounded::<BuiltinStatJob>(capacity);
-        #[cfg(test)]
-        let receiver_guard = rx.clone();
-        let inline_fallback = if spawn_workers {
-            // One worker thread is enough because builtin reads are short and serialized
-            let spawn = thread::Builder::new()
-                .name("unixnotis-builtin-stats".to_string())
-                .spawn(move || {
-                    for mut job in &rx {
-                        let value = job.stat.read().unwrap_or_else(|| "n/a".to_string());
-                        let _ = job.respond.send_blocking((job.stat, value));
-                    }
-                });
-            spawn.is_err()
-        } else {
-            true
-        };
+        let (tx, rx) = crossbeam_channel::bounded::<BuiltinStatJob>(Self::QUEUE_CAPACITY);
+        // One worker thread is enough because builtin reads are short and serialized
+        let spawn = thread::Builder::new()
+            .name("unixnotis-builtin-stats".to_string())
+            .spawn(move || {
+                for mut job in &rx {
+                    let value = job.stat.read().unwrap_or_else(|| "n/a".to_string());
+                    let _ = job.respond.send_blocking((job.stat, value));
+                }
+            });
+        let inline_fallback = spawn.is_err();
         if inline_fallback {
             warn!("builtin stats worker unavailable; using inline reads");
         }
@@ -50,8 +40,6 @@ impl BuiltinStatWorker {
         Self {
             tx,
             inline_fallback,
-            #[cfg(test)]
-            receiver_guard,
         }
     }
 
@@ -65,18 +53,6 @@ impl BuiltinStatWorker {
             Err(TrySendError::Full(_job)) => BuiltinSubmitOutcome::QueueFull,
             // Disconnected queue means the worker path is no longer usable
             Err(TrySendError::Disconnected(_job)) => BuiltinSubmitOutcome::WorkerUnavailable,
-        }
-    }
-}
-
-#[cfg(test)]
-impl BuiltinStatWorker {
-    pub(super) fn new_for_tests(capacity: usize) -> Self {
-        let (tx, rx) = crossbeam_channel::bounded::<BuiltinStatJob>(capacity);
-        Self {
-            tx,
-            inline_fallback: false,
-            receiver_guard: rx,
         }
     }
 }

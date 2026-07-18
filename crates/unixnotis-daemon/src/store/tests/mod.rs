@@ -1,12 +1,21 @@
 //! Store regression coverage and persistence validation
 
+use super::rules::contains_ci;
 use super::state::{PersistedDndState, DND_STATE_FILE, DND_STATE_VERSION};
-use super::{contains_ci, NotificationStore};
+use super::NotificationStore;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
 use unixnotis_core::{CloseReason, Config, InhibitMode, Notification, NotificationImage, Urgency};
 use zbus::zvariant::OwnedValue;
+
+impl NotificationStore {
+    pub(crate) fn new_with_state_dir(config: Config, state_dir: std::path::PathBuf) -> Self {
+        // Isolated persistence roots keep tests away from the live XDG state directory
+        let state_store = Some(super::DndStateStore::from_state_dir(state_dir));
+        Self::new_with_state_store(config, state_store)
+    }
+}
 
 mod dnd;
 mod inhibit;

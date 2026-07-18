@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::config::commands;
+use crate::config::command::defaults as commands;
 
 /// Icon and label orientation for toggle cards
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]

@@ -8,50 +8,79 @@ use tar::Archive;
 
 use super::super::manifest::PRESET_FORMAT_VERSION;
 use super::super::pathing::{
-    archive_payload_relative, format_relative_path, MANIFEST_ARCHIVE_PATH,
+    archive_payload_relative, format_relative_path, normalize_relative_path, MANIFEST_ARCHIVE_PATH,
+};
+use super::budget::{
+    DecompressedBudget, MAX_PRESET_COMPRESSED_BYTES, MAX_PRESET_DECOMPRESSED_BYTES,
 };
 use super::modes::sanitize_payload_mode;
+use super::preflight::preflight_archive;
 use super::{BundleArchive, BundleFile};
 
-pub(super) const MAX_PRESET_ARCHIVE_ENTRIES: usize = 2_048;
 pub(in crate::preset) const MAX_PRESET_PAYLOAD_FILES: usize = 512;
 pub(super) const MAX_PRESET_MANIFEST_BYTES: u64 = 1_048_576;
 pub(in crate::preset) const MAX_PRESET_FILE_BYTES: u64 = 16_777_216;
 pub(in crate::preset) const MAX_PRESET_TOTAL_PAYLOAD_BYTES: u64 = 67_108_864;
 
 pub fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
+    read_bundle_with_limits(
+        bundle_path,
+        MAX_PRESET_COMPRESSED_BYTES,
+        MAX_PRESET_DECOMPRESSED_BYTES,
+    )
+}
+
+pub(super) fn read_bundle_with_limits(
+    bundle_path: &Path,
+    compressed_limit: u64,
+    decompressed_limit: u64,
+) -> Result<BundleArchive> {
     // Import and inspect use the same reader so validation stays consistent
-    let input = File::open(bundle_path)
+    let mut input = File::open(bundle_path)
         .with_context(|| format!("open preset bundle {}", bundle_path.display()))?;
+    let metadata = input
+        .metadata()
+        .with_context(|| format!("inspect preset bundle {}", bundle_path.display()))?;
+    if !metadata.is_file() {
+        return Err(anyhow!("preset bundle input must be a regular file"));
+    }
+    if metadata.len() > compressed_limit {
+        return Err(anyhow!(
+            "preset bundle is too large: {} compressed bytes, max {compressed_limit} bytes",
+            metadata.len()
+        ));
+    }
+
+    // Raw preflight exposes extension records that tar normally consumes internally
+    preflight_archive(&mut input, decompressed_limit)?;
+
+    // The decoder budget also covers extension records that tar consumes before yielding entries
     let decoder = GzDecoder::new(input);
-    let mut archive = Archive::new(decoder);
+    let bounded = DecompressedBudget::new(decoder, decompressed_limit);
+    let mut archive = Archive::new(bounded);
 
     let mut manifest_contents = None::<String>;
     let mut files = BTreeMap::<PathBuf, BundleFile>::new();
 
-    let mut entry_count = 0usize;
     let mut payload_count = 0usize;
     let mut total_payload_bytes = 0u64;
 
     for entry in archive.entries().context("read preset bundle entries")? {
-        entry_count += 1;
-        if entry_count > MAX_PRESET_ARCHIVE_ENTRIES {
-            return Err(anyhow!(
-                "preset bundle contains too many archive entries: max {MAX_PRESET_ARCHIVE_ENTRIES}"
-            ));
-        }
-
         let mut entry = entry.context("read preset bundle entry")?;
+        let archive_path = entry.path().context("read bundle entry path")?.into_owned();
+        // Entry::size includes PAX size overrides while Header::size only reads the raw header
+        let declared_size = entry.size();
         if entry.header().entry_type().is_dir() {
-            // Tar archives can carry directory records, but preset logic only cares about files
+            if declared_size != 0 {
+                // Skipping a sized directory would still decompress its body while seeking ahead
+                return Err(anyhow!(
+                    "preset bundle directory entry has a nonzero size: {}",
+                    archive_path.display()
+                ));
+            }
+            // Ordinary zero-sized directory records do not contribute preset payloads
             continue;
         }
-
-        let archive_path = entry.path().context("read bundle entry path")?.into_owned();
-        let declared_size = entry
-            .header()
-            .size()
-            .with_context(|| format!("read bundle entry size {}", archive_path.display()))?;
 
         if archive_path == Path::new(MANIFEST_ARCHIVE_PATH) {
             if manifest_contents.is_some() {
@@ -132,11 +161,7 @@ pub fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
     }
     validate_manifest_budget(&manifest)?;
 
-    let expected_paths = manifest
-        .files
-        .iter()
-        .map(|file| (PathBuf::from(&file.path), file.size))
-        .collect::<BTreeMap<_, _>>();
+    let expected_paths = validated_manifest_paths(&manifest)?;
     let actual_paths = files
         .iter()
         .map(|(path, file)| (path.clone(), file.contents.len() as u64))
@@ -162,7 +187,39 @@ pub fn read_bundle(bundle_path: &Path) -> Result<BundleArchive> {
     })
 }
 
-fn validate_entry_size(kind: &str, path: &Path, declared_size: u64, max: u64) -> Result<()> {
+fn validated_manifest_paths(
+    manifest: &super::super::manifest::PresetManifest,
+) -> Result<BTreeMap<PathBuf, u64>> {
+    let mut expected = BTreeMap::new();
+    for file in &manifest.files {
+        // Manifest paths follow the same relative-path contract as archive payload entries
+        let path = normalize_relative_path(Path::new(&file.path))?;
+        if expected.insert(path, file.size).is_some() {
+            return Err(anyhow!(
+                "preset manifest contains a duplicate file path: {}",
+                file.path
+            ));
+        }
+    }
+
+    // Inspect summaries must describe the payload instead of trusting attacker-provided flags
+    let has_assets = expected.keys().any(|path| path.starts_with("assets"));
+    let has_scripts = expected.keys().any(|path| path.starts_with("scripts"));
+    if manifest.has_assets != has_assets || manifest.has_scripts != has_scripts {
+        return Err(anyhow!(
+            "preset manifest asset or script summary does not match its file list"
+        ));
+    }
+
+    Ok(expected)
+}
+
+pub(super) fn validate_entry_size(
+    kind: &str,
+    path: &Path,
+    declared_size: u64,
+    max: u64,
+) -> Result<()> {
     if declared_size <= max {
         return Ok(());
     }

@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use unixnotis_core::{ControlState, PopupGateState};
 
-use super::super::signals::cached_state_would_emit;
+use super::super::cache::should_emit_cached;
 
 #[test]
 fn cached_state_emits_first_value_then_suppresses_duplicates() {
@@ -15,9 +15,9 @@ fn cached_state_emits_first_value_then_suppresses_duplicates() {
     };
 
     // First value must be emitted because clients have no previous state
-    assert!(cached_state_would_emit(&cache, &state));
+    assert!(should_emit_cached(&cache, &state));
     // Identical values should not wake D-Bus subscribers again
-    assert!(!cached_state_would_emit(&cache, &state));
+    assert!(!should_emit_cached(&cache, &state));
 }
 
 #[test]
@@ -32,10 +32,10 @@ fn cached_state_emits_when_any_gate_field_changes() {
         inhibited: false,
     };
 
-    assert!(cached_state_would_emit(&cache, &open));
+    assert!(should_emit_cached(&cache, &open));
     // A changed popup gate affects visibility policy, so it must emit
-    assert!(cached_state_would_emit(&cache, &dnd));
-    assert!(!cached_state_would_emit(&cache, &dnd));
+    assert!(should_emit_cached(&cache, &dnd));
+    assert!(!should_emit_cached(&cache, &dnd));
 }
 
 #[test]
@@ -52,9 +52,9 @@ fn cached_state_emits_after_counter_change() {
         ..first
     };
 
-    assert!(cached_state_would_emit(&cache, &first));
-    assert!(cached_state_would_emit(&cache, &changed));
-    assert!(!cached_state_would_emit(&cache, &changed));
+    assert!(should_emit_cached(&cache, &first));
+    assert!(should_emit_cached(&cache, &changed));
+    assert!(!should_emit_cached(&cache, &changed));
 }
 
 #[test]
@@ -70,6 +70,6 @@ fn cached_state_recovers_from_poisoned_mutex() {
         inhibited: true,
     };
 
-    assert!(cached_state_would_emit(&cache, &state));
-    assert!(!cached_state_would_emit(&cache, &state));
+    assert!(should_emit_cached(&cache, &state));
+    assert!(!should_emit_cached(&cache, &state));
 }

@@ -39,4 +39,5 @@ pub enum RestoreStrategy {
 }
 
 #[cfg(test)]
+#[path = "tests/cli.rs"]
 mod tests;

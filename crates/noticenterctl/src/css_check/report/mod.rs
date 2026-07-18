@@ -7,7 +7,7 @@ mod render;
 // ANSI styling rules live here so the renderer can stay mostly text-focused
 mod style;
 
-pub(super) use model::{CssCheckActiveFile, CssCheckCategory, CssCheckDiagnostic, CssCheckReport};
+pub use model::{CssCheckActiveFile, CssCheckCategory, CssCheckDiagnostic, CssCheckReport};
 pub(super) use render::render_css_check_report_for_stdout;
 
 #[cfg(test)]

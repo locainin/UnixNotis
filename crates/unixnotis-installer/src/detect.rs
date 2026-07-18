@@ -193,14 +193,14 @@ fn read_busctl_owner() -> Option<OwnerInfo> {
         "--user",
         "--json=short",
         "status",
-        "org.freedesktop.Notifications",
+        unixnotis_core::NOTIFICATIONS_BUS_NAME,
     ]) {
         if let Some(owner) = parse_busctl_json(&status) {
             return Some(owner);
         }
     }
 
-    let status = run_busctl(&["--user", "status", "org.freedesktop.Notifications"])?;
+    let status = run_busctl(&["--user", "status", unixnotis_core::NOTIFICATIONS_BUS_NAME])?;
     parse_busctl_status(&status)
 }
 
@@ -325,5 +325,5 @@ pub fn read_cmdline_program(pid: u32) -> Option<String> {
 }
 
 #[cfg(test)]
-#[path = "detect/tests.rs"]
+#[path = "tests/detect.rs"]
 mod tests;

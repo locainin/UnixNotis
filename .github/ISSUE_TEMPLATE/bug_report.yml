@@ -87,25 +87,23 @@ body:
       placeholder: Paste logs here
 
   - type: textarea
-    id: service_status
+    id: doctor_output
     attributes:
-      label: Service or process status
+      label: UnixNotis doctor output
       description: |
-        If the bug involves startup, shutdown, missing UI processes, trial mode, or installer-managed services,
-        paste the matching service status or process information here.
+        Run `noticenterctl doctor` in the affected graphical session and paste the text report.
+        Use `--json` when machine-readable output is easier to attach. Add `--verbose` only when
+        journal context is needed, and review that output for application metadata before posting it.
       placeholder: |
-        systemctl --user status unixnotis-daemon.service
-        dinitctl --user status unixnotis-daemon
-        sv status "$HOME/.config/service/unixnotis-daemon"
-        s6-rc -l "$UNIXNOTIS_S6RC_LIVE_DIR" -a list
+        noticenterctl doctor
 
   - type: textarea
     id: css_check_output
     attributes:
       label: CSS check output
       description: |
-        If the bug involves styling, layout, themes, padding, colors, or anything
-        related to a custom config, please paste the output of `noticenterctl css-check`.
+        Doctor includes the active CSS summary. For styling, layout, theme, padding, or color bugs,
+        also paste the detailed output of `noticenterctl css-check`.
       placeholder: |
         noticenterctl css-check
 
@@ -120,5 +118,5 @@ body:
           required: true
         - label: I tested this on the current `master` branch or the latest release available to me, or explained why I could not
           required: true
-        - label: I included service-manager or CSS diagnostics when those areas are involved
+        - label: I included `noticenterctl doctor` output, or explained why the command could not run
           required: true

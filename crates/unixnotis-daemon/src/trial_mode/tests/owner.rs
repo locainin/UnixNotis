@@ -2,7 +2,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::system_tools::use_fake_tool_bin;
+use crate::system_tools::routing::use_fake_tool_bin;
 
 use super::{is_unit_active, pgrep_exact, read_args, read_comm};
 

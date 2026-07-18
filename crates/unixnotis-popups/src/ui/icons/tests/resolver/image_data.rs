@@ -1,7 +1,7 @@
 use unixnotis_core::NotificationImage;
 
 use super::super::{expand_rgb_to_rgba, image_data_texture};
-use super::support::{image_data, texture_test_lock};
+use super::support::image_data;
 
 #[test]
 fn expand_rgb_to_rgba_appends_alpha() {
@@ -40,9 +40,8 @@ fn expand_rgb_to_rgba_rejects_empty_dimensions_short_rows_and_short_buffers() {
     assert!(expand_rgb_to_rgba(&image_data(2, 2, 0, 3, vec![1, 2, 3, 4, 5, 6])).is_none());
 }
 
-#[test]
+#[gtk::test]
 fn image_data_texture_accepts_valid_rgba_and_rgb_payloads() {
-    let _guard = texture_test_lock();
     let rgba = NotificationImage {
         has_image_data: true,
         image_data: image_data(1, 1, 0, 4, vec![1, 2, 3, 4]),
@@ -58,9 +57,8 @@ fn image_data_texture_accepts_valid_rgba_and_rgb_payloads() {
     assert!(image_data_texture(&rgb).is_some());
 }
 
-#[test]
+#[gtk::test]
 fn image_data_texture_rejects_missing_flag_bad_bits_dimensions_and_channels() {
-    let _guard = texture_test_lock();
     let mut image = NotificationImage {
         has_image_data: false,
         image_data: image_data(1, 1, 0, 4, vec![1, 2, 3, 4]),
@@ -85,9 +83,8 @@ fn image_data_texture_rejects_missing_flag_bad_bits_dimensions_and_channels() {
     assert!(image_data_texture(&image).is_none());
 }
 
-#[test]
+#[gtk::test]
 fn image_data_texture_rejects_bad_stride_and_short_buffers() {
-    let _guard = texture_test_lock();
     let mut image = NotificationImage {
         has_image_data: true,
         image_data: image_data(2, 1, 7, 4, vec![0; 8]),

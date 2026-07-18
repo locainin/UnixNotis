@@ -1,10 +1,14 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use unixnotis_core::util;
+use url::Url;
 
 use super::parse::collect_url_spans;
-use super::{has_css_extension, local_file_url_path, read_css_text, HostSpecificCssAssetRef};
+use super::{
+    classify_file_url, has_css_extension, read_css_text, FileUrlClassification,
+    HostSpecificCssAssetRef,
+};
 use crate::preset::config_root::PresetFileSource;
 use crate::preset::pathing::normalize_lexical_path;
 
@@ -22,7 +26,7 @@ pub(in crate::preset) fn rewrite_host_specific_css_asset_refs_in_sources(
         // Export rewrites the effective stylesheet text, not only the on-disk source bytes
         let css_text = read_css_text(file)?;
         let (rewritten_text, file_rewrites) =
-            rewrite_host_specific_refs_in_text(config_dir, &file.source_path, &css_text);
+            rewrite_host_specific_refs_in_text(config_dir, &file.source_path, &css_text)?;
         if file_rewrites.is_empty() {
             continue;
         }
@@ -40,16 +44,18 @@ fn rewrite_host_specific_refs_in_text(
     config_dir: &Path,
     css_path: &Path,
     css_text: &str,
-) -> (String, Vec<HostSpecificCssAssetRef>) {
+) -> Result<(String, Vec<HostSpecificCssAssetRef>)> {
     let mut rewritten = String::with_capacity(css_text.len());
     let mut rewrites = Vec::new();
     let mut last_index = 0usize;
 
-    for span in collect_url_spans(css_text) {
+    for span in collect_url_spans(css_text)? {
         // Everything before the current url(...) payload is copied through unchanged
         rewritten.push_str(&css_text[last_index..span.value_start]);
 
-        if let Some(rewritten_ref) =
+        if span.ambiguous {
+            rewritten.push_str(&span.value);
+        } else if let Some(rewritten_ref) =
             rewrite_host_specific_asset_ref(config_dir, css_path, &span.value)
         {
             rewritten.push_str(&rewritten_ref);
@@ -66,7 +72,7 @@ fn rewrite_host_specific_refs_in_text(
     }
 
     rewritten.push_str(&css_text[last_index..]);
-    (rewritten, rewrites)
+    Ok((rewritten, rewrites))
 }
 
 fn rewrite_host_specific_asset_ref(
@@ -79,16 +85,17 @@ fn rewrite_host_specific_asset_ref(
         return None;
     }
 
-    let asset_path = if let Some(path) = local_file_url_path(trimmed) {
-        // file:/// refs already point at one concrete path, so they can be checked directly
-        path
-    } else {
-        let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
-        if !expanded.is_absolute() {
-            // Only host-local absolute paths are rewritten here
-            return None;
+    let asset_path = match classify_file_url(trimmed) {
+        FileUrlClassification::Local(path) => path,
+        FileUrlClassification::NonLocalAuthority | FileUrlClassification::Malformed => return None,
+        FileUrlClassification::NotFileUrl => {
+            let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
+            if !expanded.is_absolute() {
+                // Only host-local absolute paths are rewritten here
+                return None;
+            }
+            expanded
         }
-        expanded
     };
 
     let normalized_root = normalize_lexical_path(config_dir);
@@ -98,59 +105,44 @@ fn rewrite_host_specific_asset_ref(
     // Rewritten asset paths stay relative to the stylesheet so imports work on any machine
     let css_base_dir = css_path.parent().unwrap_or(config_dir);
     let normalized_css_base = normalize_lexical_path(css_base_dir);
-    Some(relative_css_path(
-        &normalized_css_base,
-        &normalized_root.join(relative_asset),
-    ))
+    relative_css_url(&normalized_css_base, &normalized_root.join(relative_asset))
 }
 
-fn relative_css_path(base_dir: &Path, target_path: &Path) -> String {
-    let base_parts = base_dir
-        .components()
-        .filter_map(normal_component)
-        .collect::<Vec<_>>();
-    let target_parts = target_path
-        .components()
-        .filter_map(normal_component)
-        .collect::<Vec<_>>();
-
-    let mut shared = 0usize;
-    while shared < base_parts.len()
-        && shared < target_parts.len()
-        && base_parts[shared] == target_parts[shared]
-    {
-        // Shared leading path segments are dropped before building the relative path
-        shared += 1;
-    }
-
-    let mut relative = PathBuf::new();
-    for _ in shared..base_parts.len() {
-        // Every extra base segment needs one `..` to walk back out of that folder
-        relative.push("..");
-    }
-    for part in &target_parts[shared..] {
-        // The remaining target path is then appended in order
-        relative.push(part);
-    }
-
-    format_css_relative_path(&relative)
+fn relative_css_url(base_dir: &Path, target_path: &Path) -> Option<String> {
+    // Directory URL conversion keeps the trailing slash needed for correct relative resolution
+    let base_url = Url::from_directory_path(base_dir).ok()?;
+    // File URL conversion serializes spaces and CSS-significant bytes as percent escapes
+    let target_url = Url::from_file_path(target_path).ok()?;
+    base_url
+        .make_relative(&target_url)
+        .map(|reference| encode_css_url_token_delimiters(&reference))
 }
 
-fn normal_component(component: Component<'_>) -> Option<String> {
-    match component {
-        Component::Normal(part) => Some(part.to_string_lossy().to_string()),
-        _ => None,
-    }
-}
-
-fn format_css_relative_path(path: &Path) -> String {
-    // CSS URLs need a slash-joined relative string, not an OS-dependent display path
-    path.components()
-        .filter_map(|component| match component {
-            Component::ParentDir => Some("..".to_string()),
-            Component::Normal(part) => Some(part.to_string_lossy().to_string()),
+fn encode_css_url_token_delimiters(reference: &str) -> String {
+    let mut encoded = String::with_capacity(reference.len());
+    for character in reference.chars() {
+        let escape = match character {
+            // These bytes can quote, terminate, escape, or invalidate an unquoted CSS URL token
+            '"' => Some("%22"),
+            '\'' => Some("%27"),
+            '(' => Some("%28"),
+            ')' => Some("%29"),
+            '\\' => Some("%5C"),
+            '\t' => Some("%09"),
+            '\n' => Some("%0A"),
+            '\r' => Some("%0D"),
+            '\u{000C}' => Some("%0C"),
             _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/")
+        };
+        if let Some(escape) = escape {
+            encoded.push_str(escape);
+        } else {
+            encoded.push(character);
+        }
+    }
+    encoded
 }
+
+#[cfg(test)]
+#[path = "tests/rewrite.rs"]
+mod tests;

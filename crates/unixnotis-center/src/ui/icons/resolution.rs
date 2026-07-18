@@ -9,11 +9,10 @@ use super::cache::{
     icon_key_for_image, icon_key_for_name, icon_key_for_path, set_image_key, CachedPaintable,
     IconKey,
 };
-use super::decode::IconDecodeMode;
 use super::resolver::IconResolverInner;
 use super::theme::{
-    collect_icon_candidates, file_path_from_hint, image_data_texture, is_svg_path,
-    resolve_icon_source, IconSource,
+    collect_icon_candidates, file_path_from_hint, image_data_texture, resolve_icon_source,
+    IconSource,
 };
 use super::types::{IconDecodeRequest, IconResolution};
 
@@ -69,18 +68,12 @@ impl IconResolverInner {
                 if let Some(paintable) = self.cache.borrow_mut().get(&key) {
                     return Some(IconResolution::Ready { key, paintable });
                 }
-                let mode = if is_svg_path(&path) {
-                    IconDecodeMode::Bytes
-                } else {
-                    IconDecodeMode::Raster
-                };
                 return Some(IconResolution::Async {
                     request: IconDecodeRequest {
                         key,
                         path,
                         size,
                         scale,
-                        mode,
                     },
                 });
             }
@@ -149,7 +142,6 @@ impl IconResolverInner {
                         path,
                         size,
                         scale,
-                        mode: IconDecodeMode::Raster,
                     },
                 })
             }

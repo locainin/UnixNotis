@@ -82,7 +82,8 @@ fn existing_mode_or_default(path: &Path, default_mode: u32) -> io::Result<u32> {
     match openat2(
         &parent_fd,
         file_name.as_str(),
-        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+        // O_PATH inspects metadata without opening FIFO or device contents
+        OFlags::PATH.union(OFlags::CLOEXEC).union(OFlags::NOFOLLOW),
         Mode::empty(),
         secure_resolve_flags(),
     ) {
@@ -118,7 +119,7 @@ fn create_atomic_temp_at(
     mode: u32,
 ) -> io::Result<(String, fs::File)> {
     for attempt in 0..16 {
-        let temp_name = atomic_temp_name(file_name, attempt);
+        let temp_name = atomic_temp_name(file_name, attempt)?;
         match openat2(
             parent_fd,
             temp_name.as_str(),
@@ -141,17 +142,25 @@ fn create_atomic_temp_at(
     ))
 }
 
-fn atomic_temp_name(file_name: &str, attempt: u8) -> String {
-    let stamp = SystemTime::now()
+fn atomic_temp_name(file_name: &str, attempt: u8) -> io::Result<String> {
+    atomic_temp_name_at(file_name, attempt, SystemTime::now())
+}
+
+fn atomic_temp_name_at(file_name: &str, attempt: u8, now: SystemTime) -> io::Result<String> {
+    let stamp = now
         .duration_since(UNIX_EPOCH)
-        .expect("clock moved backwards")
+        .map_err(|error| {
+            io::Error::other(format!(
+                "system clock is earlier than the Unix epoch: {error}"
+            ))
+        })?
         .as_nanos();
-    format!(
+    Ok(format!(
         ".{file_name}.{}.{}.{}.tmp",
         std::process::id(),
         stamp,
         attempt
-    )
+    ))
 }
 
 fn open_secure_parent(path: &Path) -> io::Result<(OwnedFd, String)> {
@@ -228,9 +237,7 @@ fn validate_target_at(parent_fd: &OwnedFd, file_name: &str) -> io::Result<()> {
     match openat2(
         parent_fd,
         file_name,
-        OFlags::RDONLY
-            .union(OFlags::CLOEXEC)
-            .union(OFlags::NOFOLLOW),
+        OFlags::PATH.union(OFlags::CLOEXEC).union(OFlags::NOFOLLOW),
         Mode::empty(),
         secure_resolve_flags(),
     ) {
@@ -257,5 +264,5 @@ const fn secure_resolve_flags() -> ResolveFlags {
 }
 
 #[cfg(test)]
-#[path = "safe_write/tests.rs"]
+#[path = "tests/safe_write.rs"]
 mod tests;

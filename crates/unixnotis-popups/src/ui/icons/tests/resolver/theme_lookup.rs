@@ -4,11 +4,9 @@ use gtk::gdk;
 use gtk::prelude::FileExt;
 
 use super::super::{is_missing_icon, resolve_icon_image, resolve_icon_paintable};
-use super::support::texture_test_lock;
 
 fn available_theme_icon() -> Option<&'static str> {
-    // Theme lookup needs GTK initialized before a default display is available
-    gtk::init().ok()?;
+    // The GTK test runtime initializes the display on its dedicated thread
     let display = gdk::Display::default()?;
     let theme = gtk::IconTheme::for_display(&display);
 
@@ -36,9 +34,8 @@ fn resolve_icon_helpers_reject_empty_icon_names() {
     assert!(resolve_icon_image("", 24).is_none());
 }
 
-#[test]
+#[gtk::test]
 fn resolve_icon_image_uses_theme_icon_and_sets_requested_size() {
-    let _guard = texture_test_lock();
     let Some(icon_name) = available_theme_icon() else {
         // Headless test runs do not have a GTK display or icon theme to query
         return;

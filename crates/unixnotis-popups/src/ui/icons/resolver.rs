@@ -199,5 +199,5 @@ fn expand_rgb_to_rgba(data: &unixnotis_core::ImageData) -> Option<(Vec<u8>, usiz
 }
 
 #[cfg(test)]
-#[path = "tests/resolver.rs"]
+#[path = "tests/resolver/mod.rs"]
 mod tests;

@@ -14,11 +14,17 @@ fn truncate_to_width_handles_zero_small_and_ellipsis_widths() {
 }
 
 #[test]
-fn truncate_to_width_counts_unicode_chars_not_bytes() {
+fn truncate_to_width_counts_unicode_display_cells_not_bytes() {
     let truncated = super::widgets::truncate_to_width("abéfg", 4);
 
     // Multibyte text must stay valid UTF-8 after truncation
     assert_eq!(truncated, "a...");
+}
+
+#[test]
+fn truncate_to_width_handles_wide_cjk_and_emoji_cells() {
+    assert_eq!(super::widgets::truncate_to_width("界界abc", 5), "界...");
+    assert_eq!(super::widgets::truncate_to_width("🙂ab", 3), "🙂a");
 }
 
 #[test]
@@ -59,11 +65,40 @@ fn summarize_error_covers_known_installer_failures() {
 fn render_logs_preserves_each_log_line() {
     let logs = VecDeque::from(["first".to_string(), "second".to_string()]);
 
-    let rendered = format!("{:?}", super::widgets::render_logs(&logs));
+    let rendered = format!("{:?}", super::widgets::render_logs(&logs, 2, 40));
 
     // Logs are rendered line-for-line so command diagnostics stay readable
     assert!(rendered.contains("first"));
     assert!(rendered.contains("second"));
+}
+
+#[test]
+fn render_logs_keeps_the_newest_lines_visible() {
+    let logs = VecDeque::from([
+        "old setup detail".to_string(),
+        "compiler diagnostic".to_string(),
+        "final failure".to_string(),
+    ]);
+
+    let rendered = format!("{:?}", super::widgets::render_logs(&logs, 2, 40));
+
+    assert!(!rendered.contains("old setup detail"));
+    assert!(rendered.contains("compiler diagnostic"));
+    assert!(rendered.contains("final failure"));
+}
+
+#[test]
+fn render_logs_keeps_final_row_after_an_earlier_line_wraps() {
+    let logs = VecDeque::from([
+        "compiler diagnostic that wraps".to_string(),
+        "actual final failure".to_string(),
+    ]);
+
+    let rendered = format!("{:?}", super::widgets::render_logs(&logs, 2, 12));
+
+    assert!(rendered.contains("actual final"));
+    assert!(rendered.contains("failure"));
+    assert!(!rendered.contains("compiler"));
 }
 
 #[test]

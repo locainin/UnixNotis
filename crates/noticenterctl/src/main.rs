@@ -12,20 +12,32 @@
     clippy::unnecessary_wraps,
     clippy::unused_peekable,
     clippy::unused_self,
-    clippy::useless_let_if_seq,
     reason = "reviewed CLI parsing, report assembly, and async D-Bus boundaries retain explicit forms for stable diagnostics and command behavior"
 )]
 
 mod app;
 mod cli;
+mod config_path;
 mod css_check;
 mod dbus;
 mod debug_logs;
+mod doctor;
 mod output;
 mod preset;
 mod system_tools;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    app::run().await
+use std::process::ExitCode;
+
+#[cfg(test)]
+#[path = "tests/support.rs"]
+mod test_support;
+
+fn main() -> ExitCode {
+    match app::run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            let _ = output::write_stderr(&output::format_cli_error(&error));
+            ExitCode::FAILURE
+        }
+    }
 }

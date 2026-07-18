@@ -67,7 +67,7 @@ impl NotificationImage {
     }
 }
 
-pub(super) fn expand_rgb_row_scalar(src: &[u8], dst: &mut [u8]) {
+pub(in crate::model) fn expand_rgb_row_scalar(src: &[u8], dst: &mut [u8]) {
     for (x, chunk) in src.chunks_exact(3).enumerate() {
         let dst_index = x * 4;
         // Pack RGBA bytes to reduce bounds checks and stores
@@ -82,7 +82,7 @@ pub(super) fn expand_rgb_row_scalar(src: &[u8], dst: &mut [u8]) {
     clippy::cast_ptr_alignment,
     reason = "the SSSE3 loadu and storeu intrinsics explicitly support unaligned byte buffers"
 )]
-pub(super) unsafe fn expand_rgb_row_ssse3(src: &[u8], dst: &mut [u8]) {
+pub(in crate::model) unsafe fn expand_rgb_row_ssse3(src: &[u8], dst: &mut [u8]) {
     // SSSE3 shuffles 12-byte RGB quads into 16-byte RGBA blocks with a fixed alpha mask
     use std::arch::x86_64::{
         __m128i, _mm_loadu_si128, _mm_or_si128, _mm_setr_epi8, _mm_shuffle_epi8, _mm_storeu_si128,

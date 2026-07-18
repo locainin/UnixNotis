@@ -24,14 +24,6 @@ impl TrialState {
         // take moves out the action so restore runs at most once
         self.restore_action.take()
     }
-
-    #[cfg(test)]
-    pub(crate) const fn with_restore_action_for_test(action: RestoreAction) -> Self {
-        // Tests construct an armed guard without stopping a real desktop daemon
-        Self {
-            restore_action: Some(action),
-        }
-    }
 }
 
 #[derive(Debug)]

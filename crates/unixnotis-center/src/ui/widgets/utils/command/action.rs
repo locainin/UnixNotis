@@ -7,9 +7,9 @@ use gtk::glib;
 use tracing::warn;
 use unixnotis_core::{util, PanelDebugLevel};
 
-use crate::debug;
+use crate::diagnostics::panel_debug as debug;
 
-use super::command_queue::enqueue_command;
+use super::queue::enqueue_command;
 use super::{resolve_command_plan, CommandKind};
 
 pub(in crate::ui::widgets) fn run_command_capture_action_async(

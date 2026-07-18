@@ -5,9 +5,10 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::super::{
+use super::super::remove_shell_path_entry;
+use super::super::shell_path::{
     ensure_path_entry_in_file, format_path_for_shell_line, remove_path_entry_from_file,
-    remove_shell_path_entry, shell_path_entry_exists, shell_startup_files,
+    shell_path_entry_exists, shell_startup_files,
 };
 use crate::actions::ActionContext;
 use crate::app::events::{UiMessage, WorkerEvent};

@@ -32,11 +32,14 @@ use clap::Parser;
 use tracing::info;
 use unixnotis_core::Config;
 
-mod dbus;
-mod debug;
+mod control;
+mod diagnostics;
 mod media;
 mod runtime;
 mod startup;
+#[cfg(test)]
+#[path = "tests/support/mod.rs"]
+mod test_support;
 mod ui;
 
 fn main() -> Result<()> {

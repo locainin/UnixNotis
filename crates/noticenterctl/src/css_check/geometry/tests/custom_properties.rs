@@ -1,7 +1,7 @@
-use super::super::parse::{
-    collect_geometry_from_contents, collect_geometry_from_contents_with_properties,
-};
-use super::super::{collect_custom_property_scopes, GeometryModel};
+use super::super::collect_custom_property_scopes;
+use super::super::model::GeometryModel;
+use super::super::parse::collect_geometry_from_contents_with_properties;
+use super::super::test_support::collect_geometry_from_contents;
 use unixnotis_core::{build_modern_theme_custom_properties, gtk_css_features_for_version, Config};
 
 #[test]

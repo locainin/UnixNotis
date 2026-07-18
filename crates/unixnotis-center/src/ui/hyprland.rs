@@ -12,7 +12,7 @@ use serde_json::Value;
 use tracing::{debug, warn};
 use unixnotis_core::{util, Margins};
 
-use crate::dbus::UiEvent;
+use crate::control::UiEvent;
 
 /// Start a Hyprland active-window watcher for click-away panel closing
 pub fn start_active_window_watcher(

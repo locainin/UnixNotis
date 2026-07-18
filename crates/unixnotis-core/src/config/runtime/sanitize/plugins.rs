@@ -12,6 +12,9 @@ pub(super) const MIN_PLUGIN_OUTPUT_BYTES: usize = 128;
 pub(super) const MAX_PLUGIN_OUTPUT_BYTES: usize = 128 * 1024;
 const MAX_SLIDER_SEGMENTS: usize = 64;
 const MAX_SLIDER_SUBLABEL_CHARS: usize = 32;
+const SAFE_SLIDER_MIN: f64 = 0.0;
+const SAFE_SLIDER_MAX: f64 = 100.0;
+const SAFE_SLIDER_STEP: f64 = 1.0;
 const MAX_CARD_CAROUSEL_DOTS: usize = 12;
 // These limits keep one compact config from allocating an excessive GTK tree
 // The total cap also prevents a preset from exhausting every per-type allowance at once
@@ -65,6 +68,19 @@ fn truncate_widgets<T>(widgets: &mut Vec<T>, limit: usize, widget_type: &str) {
 fn sanitize_slider_widget(slider: &mut SliderWidgetConfig) {
     // Segment widgets are decorative, so cap them tightly to avoid large GTK trees
     slider.segments = slider.segments.min(MAX_SLIDER_SEGMENTS);
+
+    // GTK ranges and f64 clamping both require finite ordered bounds
+    if !slider.min.is_finite() || !slider.max.is_finite() || slider.min >= slider.max {
+        slider.min = SAFE_SLIDER_MIN;
+        slider.max = SAFE_SLIDER_MAX;
+    }
+
+    let range = slider.max - slider.min;
+    if !slider.step.is_finite() || slider.step <= 0.0 || slider.step > range {
+        // Narrow custom ranges receive the largest valid fallback no greater than one
+        slider.step = SAFE_SLIDER_STEP.min(range);
+    }
+
     trim_slider_label(&mut slider.sublabel_min);
     trim_slider_label(&mut slider.sublabel_max);
 }

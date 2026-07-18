@@ -7,7 +7,11 @@ use super::{
 
 #[test]
 fn builtin_worker_queue_full_falls_back() {
-    let worker = BuiltinStatWorker::new_for_tests(1);
+    let (tx, _worker_rx) = crossbeam_channel::bounded(1);
+    let worker = BuiltinStatWorker {
+        tx,
+        inline_fallback: false,
+    };
     let stat_a = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
     let stat_b = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
     let (tx_a, _rx_a) = async_channel::bounded(1);

@@ -1,5 +1,3 @@
-use std::sync::MutexGuard;
-
 use unixnotis_core::{ImageData, NotificationImage, NotificationView};
 
 pub(super) fn image_data(
@@ -34,9 +32,4 @@ pub(super) fn notification(app_name: &str, icon_name: &str) -> NotificationView 
             ..NotificationImage::default()
         },
     }
-}
-
-pub(super) fn texture_test_lock() -> MutexGuard<'static, ()> {
-    // GTK texture setup shares the same global type tables as widget tests
-    crate::test_support::gtk_test_lock()
 }

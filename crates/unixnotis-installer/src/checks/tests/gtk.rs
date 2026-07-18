@@ -43,7 +43,7 @@ fn gtk_css_features_check_warns_for_old_gtk_and_okays_modern_gtk() {
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin");
     write_fake_pkg_config(&fake_bin, "4.14.9", None);
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
     let pkg = CheckItem::ok("pkg-config", "available");
 
     let old = gtk4_css_features_check(&pkg);
@@ -67,7 +67,7 @@ fn gtk_checks_distinguish_pkg_config_missing_from_package_missing() {
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin");
     write_failing_pkg_config(&fake_bin);
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
     let pkg_missing = CheckItem::fail("pkg-config", "not installed");
 
     let css = gtk4_css_features_check(&pkg_missing);
@@ -88,7 +88,7 @@ fn gtk_layer_shell_check_reports_found_version() {
     let fake_bin = root.join("bin");
     fs::create_dir_all(&fake_bin).expect("fake bin");
     write_fake_pkg_config(&fake_bin, "4.22.4", Some("1.3.0"));
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
     let pkg = CheckItem::ok("pkg-config", "available");
 
     let layer = gtk4_layer_shell_check(&pkg);

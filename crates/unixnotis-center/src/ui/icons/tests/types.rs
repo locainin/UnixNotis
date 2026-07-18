@@ -2,12 +2,11 @@ use std::path::PathBuf;
 
 use super::{IconDecodeRequest, IconResolution};
 use crate::ui::icons::cache::IconKey;
-use crate::ui::icons::decode::IconDecodeMode;
 
 #[test]
 fn asynchronous_resolution_preserves_decode_geometry_and_path() {
     let key = IconKey::Path {
-        path: "icon.png".to_string(),
+        path: PathBuf::from("icon.png"),
         size: 20,
         scale: 2,
     };
@@ -17,7 +16,6 @@ fn asynchronous_resolution_preserves_decode_geometry_and_path() {
             path: PathBuf::from("icon.png"),
             size: 20,
             scale: 2,
-            mode: IconDecodeMode::Raster,
         },
     };
 

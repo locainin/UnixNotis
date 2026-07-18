@@ -1,4 +1,4 @@
-use super::super::{is_restore_target_allowed, restore_config};
+use super::super::restore::{is_restore_target_allowed, restore_config};
 use crate::app::events::UiMessage;
 use crate::detect::Detection;
 use crate::model::ActionMode;

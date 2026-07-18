@@ -5,7 +5,7 @@
 //! can work with validated config-root-relative paths
 
 use anyhow::{anyhow, Context, Result};
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal};
 use std::path::{Component, Path, PathBuf};
 
 pub(super) const PRESET_EXTENSION: &str = "unixnotis";
@@ -43,8 +43,20 @@ pub(super) fn resolve_cli_bundle_path(path: &Path) -> Result<PathBuf> {
 }
 
 pub(super) fn confirm_continue_or_abort(prompt: &str, noninteractive_message: &str) -> Result<()> {
+    confirm_continue_or_abort_with_terminal_state(
+        prompt,
+        noninteractive_message,
+        terminal_interaction_available(),
+    )
+}
+
+pub(super) fn confirm_continue_or_abort_with_terminal_state(
+    prompt: &str,
+    noninteractive_message: &str,
+    terminal_interactive: bool,
+) -> Result<()> {
     // Real shells get a yes/no prompt, while scripts fail with a clear message instead of hanging
-    if io::stdin().is_terminal() && io::stdout().is_terminal() {
+    if terminal_interactive {
         if prompt_yes_no(prompt)? {
             return Ok(());
         }
@@ -52,6 +64,10 @@ pub(super) fn confirm_continue_or_abort(prompt: &str, noninteractive_message: &s
     }
 
     Err(anyhow!(noninteractive_message.to_string()))
+}
+
+pub(super) fn terminal_interaction_available() -> bool {
+    io::stdin().is_terminal() && io::stdout().is_terminal()
 }
 
 pub(super) fn parse_except_paths(values: &[String]) -> Result<Vec<PathBuf>> {
@@ -179,6 +195,23 @@ pub(super) fn format_relative_path(path: &Path) -> String {
         .join("/")
 }
 
+pub(super) fn format_portable_relative_path(path: &Path) -> Result<String> {
+    let mut parts = Vec::new();
+    for component in path.components() {
+        let Component::Normal(part) = component else {
+            continue;
+        };
+        let Some(part) = part.to_str() else {
+            return Err(anyhow!(
+                "preset export payload path contains non-UTF-8 bytes and cannot be represented portably: {}",
+                path.display()
+            ));
+        };
+        parts.push(part);
+    }
+    Ok(parts.join("/"))
+}
+
 pub(super) fn resolve_cli_bundle_path_with_prompt<F>(path: &Path, mut prompt: F) -> Result<PathBuf>
 where
     F: FnMut(&Path, &Path) -> Result<bool>,
@@ -222,8 +255,7 @@ fn prompt_to_append_extension(original: &Path, suggested: &Path) -> Result<bool>
 
 pub(super) fn prompt_yes_no(prompt: &str) -> Result<bool> {
     // Shared yes/no prompt keeps import and export warnings consistent
-    print!("{prompt} [y/N] ");
-    io::stdout().flush().context("flush preset prompt")?;
+    crate::output::write_stdout(&format!("{prompt} [y/N] "))?;
 
     let mut reply = String::new();
     io::stdin()

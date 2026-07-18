@@ -19,13 +19,11 @@ pub fn run_build(ctx: &mut ActionContext) -> Result<()> {
         return Err(anyhow!("no installable binaries discovered for build"));
     }
 
-    // Build only the packages that installer metadata marked as installable
+    // Installer metadata stores executable names because the same list drives copy and removal
+    // Cargo needs those values as binary targets since a binary can differ from its package name
     let mut build = std::process::Command::new("cargo");
     build.args(["build", "--release"]);
-    for binary in &binaries {
-        // Pass each managed package explicitly so unrelated workspace crates stay out of the build
-        build.args(["-p", binary]);
-    }
+    add_binary_targets(&mut build, &binaries);
 
     run_command(
         ctx,
@@ -34,6 +32,13 @@ pub fn run_build(ctx: &mut ActionContext) -> Result<()> {
         Some(&ctx.paths.repo_root),
     )?;
     Ok(())
+}
+
+fn add_binary_targets(command: &mut std::process::Command, binaries: &[String]) {
+    for binary in binaries {
+        // Exact targets keep helper libraries and the installer itself out of the release build
+        command.args(["--bin", binary]);
+    }
 }
 
 fn verify_release_binaries(ctx: &mut ActionContext) -> Result<()> {

@@ -9,10 +9,9 @@ use crate::app::events::{UiMessage, WorkerEvent};
 use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
-use crate::service_manager::{
-    use_fake_command_bin, ServiceManager, MANAGED_DIRECTORY_MARKER,
-    MANAGED_DIRECTORY_MARKER_CONTENTS,
-};
+use crate::service_manager::contract::command_routing::use_fake_command_bin;
+use crate::service_manager::contract::MANAGED_DIRECTORY_MARKER;
+use crate::service_manager::{ServiceManager, MANAGED_DIRECTORY_MARKER_CONTENTS};
 use crate::test_support::fs::write_executable;
 
 use super::{check_install_state, check_install_state_step, ActionContext};

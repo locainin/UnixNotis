@@ -7,7 +7,7 @@ use super::super::pathing::normalize_lexical_path;
 use super::collect::collect_command_references_from_config;
 use super::tokens::{
     collect_outside_env_path_tokens, first_command_token, is_host_specific_path_token,
-    resolve_command_path_token,
+    resolve_command_path_token, validate_env_command_layout, validate_env_path_semantics,
 };
 use super::{HostSpecificCommandPath, OutsideCommandPath};
 
@@ -15,6 +15,7 @@ pub fn collect_outside_command_paths(
     config_dir: &Path,
     config: &Config,
 ) -> Vec<OutsideCommandPath> {
+    // Lexical comparison avoids requiring referenced files to exist during review
     let normalized_root = normalize_lexical_path(config_dir);
 
     collect_command_references_from_config(config)
@@ -34,6 +35,7 @@ pub fn collect_outside_command_paths(
                 }
             }
 
+            // Loader-sensitive environment paths receive the same containment check
             outside.extend(
                 collect_outside_env_path_tokens(config_dir, &reference.command)
                     .into_iter()
@@ -52,6 +54,7 @@ pub fn collect_host_specific_command_paths(
     config_dir: &Path,
     config: &Config,
 ) -> Vec<HostSpecificCommandPath> {
+    // Host-specific paths inside the bundle remain portable warnings rather than escapes
     let normalized_root = normalize_lexical_path(config_dir);
 
     collect_command_references_from_config(config)
@@ -81,15 +84,29 @@ pub fn validate_config_command_paths_stay_in_root(
     config: &Config,
     mode_label: &str,
 ) -> Result<()> {
+    // Wrapper validation runs before path collection so ambiguous env forms fail closed
     for reference in collect_command_references_from_config(config) {
-        parse_command(&reference.command).with_context(|| {
+        let parsed = parse_command(&reference.command).with_context(|| {
             format!(
                 "{mode_label} because {} contains an invalid command",
                 reference.slot
             )
         })?;
+        validate_env_command_layout(&parsed).map_err(|reason| {
+            anyhow!(
+                "{mode_label} because {} contains an unsafe env wrapper: {reason}",
+                reference.slot
+            )
+        })?;
+        validate_env_path_semantics(&parsed).map_err(|reason| {
+            anyhow!(
+                "{mode_label} because {} contains unsafe environment path semantics: {reason}",
+                reference.slot
+            )
+        })?;
     }
 
+    // A single stable error avoids exposing every configured command in normal output
     let outside_paths = collect_outside_command_paths(config_dir, config);
     if outside_paths.is_empty() {
         return Ok(());
@@ -97,10 +114,9 @@ pub fn validate_config_command_paths_stay_in_root(
 
     let first = &outside_paths[0];
     Err(anyhow!(
-        "{} because {} points outside the UnixNotis config directory: {}",
+        "{} because {} resolves outside the UnixNotis config directory",
         mode_label,
-        first.slot,
-        first.command
+        first.slot
     ))
 }
 
@@ -109,6 +125,7 @@ pub fn validate_command_paths_in_config_bytes(
     config_bytes: &[u8],
     mode_label: &str,
 ) -> Result<()> {
+    // Byte validation is used before imported configuration reaches the live directory
     let config_text =
         std::str::from_utf8(config_bytes).context("preset config.toml is not valid UTF-8")?;
     let config: Config =

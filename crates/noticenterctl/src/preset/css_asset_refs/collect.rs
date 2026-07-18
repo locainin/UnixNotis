@@ -1,20 +1,25 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use unixnotis_core::util;
+use unixnotis_core::{has_valid_percent_encoding, util};
+use url::Url;
 
-use super::parse::{collect_url_values, strip_css_comments};
+use super::parse::{collect_import_values, collect_url_values, CssImportReference};
 use super::{
-    asset_path_reason, has_css_extension, local_file_url_path, read_css_text, ExternalCssAssetRef,
+    asset_path_reason, classify_file_url, has_css_extension, read_css_path_text_bounded,
+    read_css_text, ExternalCssAssetRef, FileUrlClassification,
 };
 use crate::preset::archive::BundleFile;
 use crate::preset::config_root::PresetFileSource;
+use crate::preset::config_root::SecureFileCapture;
 use crate::preset::pathing::normalize_lexical_path;
+
+const MAX_COLLECTED_CSS_REFERENCES: usize = 4_096;
 
 pub(in crate::preset) fn collect_external_css_asset_refs_from_bundle(
     config_dir: &Path,
     files: &[BundleFile],
-) -> Vec<ExternalCssAssetRef> {
+) -> Result<Vec<ExternalCssAssetRef>> {
     let mut refs = Vec::new();
 
     // Bundle files are already in memory, so import can warn before any write happens
@@ -25,14 +30,13 @@ pub(in crate::preset) fn collect_external_css_asset_refs_from_bundle(
         // Bundle CSS paths are rebuilt under the target config root so the warning matches import
         let css_path = config_dir.join(&file.relative_path);
         let css_text = String::from_utf8_lossy(&file.contents);
-        refs.extend(collect_external_refs_from_text(
-            config_dir,
-            &css_path,
-            css_text.as_ref(),
-        ));
+        extend_external_refs(
+            &mut refs,
+            collect_external_refs_from_text(config_dir, &css_path, css_text.as_ref())?,
+        )?;
     }
 
-    refs
+    Ok(refs)
 }
 
 pub(in crate::preset) fn collect_external_css_asset_refs_from_collected(
@@ -49,11 +53,10 @@ pub(in crate::preset) fn collect_external_css_asset_refs_from_collected(
 
         // Overrides matter here because export may already have rewritten the bundled stylesheet
         let css_text = read_css_text(file)?;
-        refs.extend(collect_external_refs_from_text(
-            config_dir,
-            &file.source_path,
-            &css_text,
-        ));
+        extend_external_refs(
+            &mut refs,
+            collect_external_refs_from_text(config_dir, &file.source_path, &css_text)?,
+        )?;
     }
 
     Ok(refs)
@@ -67,54 +70,44 @@ pub fn collect_external_css_asset_refs_from_paths(
 
     for css_path in css_paths {
         // css-check reads the on-disk stylesheet directly because no bundle exists in that flow
-        let css_text = std::fs::read_to_string(css_path)
-            .with_context(|| format!("read css file {}", css_path.display()))?;
-        refs.extend(collect_external_refs_from_text(
-            config_dir, css_path, &css_text,
-        ));
+        let css_text = read_css_path_text_bounded(css_path)?;
+        extend_external_refs(
+            &mut refs,
+            collect_external_refs_from_text(config_dir, css_path, &css_text)?,
+        )?;
     }
 
     Ok(refs)
 }
 
-pub(in crate::preset) fn collect_local_css_asset_paths_from_paths(
+pub(in crate::preset) fn collect_local_css_asset_paths_from_captures(
     config_dir: &Path,
     css_paths: &[PathBuf],
+    captures: &std::collections::BTreeMap<PathBuf, SecureFileCapture>,
 ) -> Result<Vec<PathBuf>> {
     let normalized_root = normalize_lexical_path(config_dir);
     let mut paths = Vec::new();
 
     for css_path in css_paths {
-        let css_text = std::fs::read_to_string(css_path)
-            .with_context(|| format!("read css file {}", css_path.display()))?;
-        let stripped = strip_css_comments(&css_text);
-        for asset_ref in collect_url_values(&stripped) {
-            let trimmed = asset_ref.trim();
-            let lowered = trimmed.to_ascii_lowercase();
-            if trimmed.is_empty()
-                || lowered.starts_with("data:")
-                || lowered.starts_with("http://")
-                || lowered.starts_with("https://")
-            {
-                continue;
-            }
-
-            let candidate = if let Some(path) = local_file_url_path(trimmed) {
-                path
-            } else {
-                let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
-                if expanded.is_absolute() {
-                    expanded
-                } else {
-                    css_path.parent().unwrap_or(config_dir).join(expanded)
-                }
-            };
-            let normalized = normalize_lexical_path(&candidate);
-            if let Ok(relative) = normalized.strip_prefix(&normalized_root) {
-                // The selected-file collector performs the final filesystem safety checks
-                paths.push(relative.to_path_buf());
-            }
-        }
+        let relative = css_path
+            .strip_prefix(config_dir)
+            .with_context(|| format!("make stylesheet relative: {}", css_path.display()))?;
+        let capture = captures.get(relative).ok_or_else(|| {
+            anyhow::anyhow!(
+                "active stylesheet was not securely captured: {}",
+                css_path.display()
+            )
+        })?;
+        // Export scans the descriptor-captured bytes instead of reopening a mutable live path
+        let css_text = std::str::from_utf8(&capture.contents)
+            .with_context(|| format!("stylesheet is not valid UTF-8: {}", css_path.display()))?;
+        collect_local_paths_from_text(
+            config_dir,
+            css_path,
+            css_text,
+            &normalized_root,
+            &mut paths,
+        )?;
     }
 
     paths.sort();
@@ -122,26 +115,136 @@ pub(in crate::preset) fn collect_local_css_asset_paths_from_paths(
     Ok(paths)
 }
 
+fn collect_local_paths_from_text(
+    config_dir: &Path,
+    css_path: &Path,
+    css_text: &str,
+    normalized_root: &Path,
+    paths: &mut Vec<PathBuf>,
+) -> Result<()> {
+    // The tokenizer skips real comments while preserving comment markers inside quoted paths
+    for reference in collect_url_values(css_text)? {
+        if reference.ambiguous {
+            continue;
+        }
+        collect_local_path(
+            config_dir,
+            css_path,
+            &reference.value,
+            normalized_root,
+            paths,
+        )?;
+    }
+    for import_ref in collect_import_values(css_text)? {
+        // Quoted imports are local file dependencies just like url(...) references
+        let CssImportReference::Target(asset_ref) = import_ref else {
+            continue;
+        };
+        collect_local_path(config_dir, css_path, &asset_ref, normalized_root, paths)?;
+    }
+    Ok(())
+}
+
+fn collect_local_path(
+    config_dir: &Path,
+    css_path: &Path,
+    asset_ref: &str,
+    normalized_root: &Path,
+    paths: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let trimmed = asset_ref.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+
+    let candidate = match classify_file_url(trimmed) {
+        FileUrlClassification::Local(path) => path,
+        FileUrlClassification::NonLocalAuthority | FileUrlClassification::Malformed => {
+            return Ok(())
+        }
+        FileUrlClassification::NotFileUrl => {
+            if Url::parse(trimmed).is_ok() {
+                // Absolute non-file URIs are external dependencies, never local bundle paths
+                return Ok(());
+            }
+            match resolve_relative_asset_path(css_path.parent().unwrap_or(config_dir), trimmed) {
+                RelativeAssetPath::Resolved(path) => path,
+                RelativeAssetPath::InvalidUrl => return Ok(()),
+            }
+        }
+    };
+    let normalized = normalize_lexical_path(&candidate);
+    if let Ok(relative) = normalized.strip_prefix(normalized_root) {
+        if paths.len() >= MAX_COLLECTED_CSS_REFERENCES {
+            // Total limits prevent many small stylesheets from bypassing the per-file parser cap
+            anyhow::bail!(
+                "CSS files contain more than {MAX_COLLECTED_CSS_REFERENCES} local references"
+            );
+        }
+        // The selected-file collector performs the final filesystem safety checks
+        paths.push(relative.to_path_buf());
+    }
+    Ok(())
+}
+
+fn extend_external_refs(
+    refs: &mut Vec<ExternalCssAssetRef>,
+    additional: Vec<ExternalCssAssetRef>,
+) -> Result<()> {
+    // One bundle-wide bound stops many small files from multiplying prompt memory
+    if refs.len().saturating_add(additional.len()) > MAX_COLLECTED_CSS_REFERENCES {
+        anyhow::bail!(
+            "CSS files contain more than {MAX_COLLECTED_CSS_REFERENCES} external references"
+        );
+    }
+    refs.extend(additional);
+    Ok(())
+}
+
 fn collect_external_refs_from_text(
     config_dir: &Path,
     css_path: &Path,
     css_text: &str,
-) -> Vec<ExternalCssAssetRef> {
+) -> Result<Vec<ExternalCssAssetRef>> {
     let mut refs = Vec::new();
-    let stripped = strip_css_comments(css_text);
-
-    // URL extraction happens after comments are stripped so dead example paths do not warn
-    for asset_ref in collect_url_values(&stripped) {
-        if let Some(reason) = classify_external_asset_ref(config_dir, css_path, &asset_ref) {
+    // Scanner state ignores real comments without corrupting quoted `/*` and `*/` bytes
+    for reference in collect_url_values(css_text)? {
+        let reason = if reference.ambiguous {
+            Some("unrecognized CSS url syntax".to_string())
+        } else {
+            classify_external_asset_ref(config_dir, css_path, &reference.value)
+        };
+        if let Some(reason) = reason {
             refs.push(ExternalCssAssetRef {
                 css_file: css_path.to_path_buf(),
-                asset_ref,
+                asset_ref: reference.value,
                 reason,
             });
         }
     }
+    for import_ref in collect_import_values(css_text)? {
+        // Ambiguous imports remain visible instead of being guessed as safe relative paths
+        let (asset_ref, reason) = match import_ref {
+            CssImportReference::Target(asset_ref) => {
+                let Some(reason) = classify_external_asset_ref(config_dir, css_path, &asset_ref)
+                else {
+                    continue;
+                };
+                (asset_ref, reason)
+            }
+            CssImportReference::Ambiguous => (
+                "@import".to_string(),
+                "unrecognized CSS import syntax".to_string(),
+            ),
+        };
+        refs.push(ExternalCssAssetRef {
+            css_file: css_path.to_path_buf(),
+            asset_ref,
+            reason,
+        });
+    }
 
-    refs
+    Ok(refs)
 }
 
 fn classify_external_asset_ref(
@@ -154,18 +257,27 @@ fn classify_external_asset_ref(
         return None;
     }
 
-    let lowered = trimmed.to_ascii_lowercase();
-    if lowered.starts_with("data:") {
-        // Embedded data stays self-contained inside the stylesheet
-        return None;
+    match classify_file_url(trimmed) {
+        FileUrlClassification::Local(path) => {
+            // Local file URLs are decoded before the same containment check as plain paths
+            return asset_path_reason(config_dir, &path);
+        }
+        FileUrlClassification::NonLocalAuthority => {
+            return Some("non-local file URL".to_string());
+        }
+        FileUrlClassification::Malformed => return Some("malformed file URL".to_string()),
+        FileUrlClassification::NotFileUrl => {}
     }
-    if lowered.starts_with("http://") || lowered.starts_with("https://") {
-        // Remote assets are not portable bundle content and should stay visible in warnings
-        return Some("remote url".to_string());
-    }
-    if let Some(path) = local_file_url_path(trimmed) {
-        // file:/// paths are already absolute, so they can be checked against the config root directly
-        return asset_path_reason(config_dir, &path);
+
+    if let Ok(url) = Url::parse(trimmed) {
+        return match url.scheme() {
+            // Embedded data stays self-contained inside the stylesheet
+            "data" => None,
+            // Keep the established reason for the common network schemes
+            "http" | "https" => Some("remote url".to_string()),
+            // Every other absolute URI remains external instead of becoming a fake relative path
+            _ => Some("external URI".to_string()),
+        };
     }
 
     let expanded = PathBuf::from(util::expand_tilde(trimmed).into_owned());
@@ -176,7 +288,10 @@ fn classify_external_asset_ref(
 
     // Relative refs are anchored to the stylesheet location, not the config root itself
     let base_dir = css_path.parent().unwrap_or(config_dir);
-    let resolved = normalize_lexical_path(&base_dir.join(expanded));
+    let resolved = match resolve_relative_asset_path(base_dir, trimmed) {
+        RelativeAssetPath::Resolved(path) => normalize_lexical_path(&path),
+        RelativeAssetPath::InvalidUrl => return Some("unrecognized relative URL path".to_string()),
+    };
     let normalized_root = normalize_lexical_path(config_dir);
     if !resolved.starts_with(&normalized_root) {
         return Some("relative path leaves the config root".to_string());
@@ -184,3 +299,33 @@ fn classify_external_asset_ref(
 
     None
 }
+
+enum RelativeAssetPath {
+    Resolved(PathBuf),
+    InvalidUrl,
+}
+
+fn resolve_relative_asset_path(base_dir: &Path, value: &str) -> RelativeAssetPath {
+    if value.as_bytes().contains(&b'%') && has_valid_percent_encoding(value.as_bytes()) {
+        let normalized_base = normalize_lexical_path(base_dir);
+        let Ok(base_url) = Url::from_directory_path(normalized_base) else {
+            return RelativeAssetPath::InvalidUrl;
+        };
+        let Ok(resolved_url) = base_url.join(value) else {
+            return RelativeAssetPath::InvalidUrl;
+        };
+        if resolved_url.query().is_none() && resolved_url.fragment().is_none() {
+            return resolved_url
+                .to_file_path()
+                .map_or(RelativeAssetPath::InvalidUrl, RelativeAssetPath::Resolved);
+        }
+    }
+
+    // Raw delimiters and invalid percent escapes retain the legacy filesystem-path behavior
+    let expanded = PathBuf::from(util::expand_tilde(value).into_owned());
+    RelativeAssetPath::Resolved(normalize_lexical_path(&base_dir.join(expanded)))
+}
+
+#[cfg(test)]
+#[path = "tests/collect.rs"]
+mod tests;

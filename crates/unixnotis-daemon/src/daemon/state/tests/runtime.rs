@@ -1,4 +1,14 @@
 use crate::test_support::daemon_state_for_test;
+use std::sync::atomic::Ordering;
+
+use super::super::DaemonState;
+
+impl DaemonState {
+    pub(crate) fn popups_running(&self) -> bool {
+        // Test assertions observe the same sequentially consistent flag used by supervision
+        self.popups_running.load(Ordering::SeqCst)
+    }
+}
 
 #[tokio::test]
 async fn daemon_state_boolean_flags_reflect_runtime_updates() {

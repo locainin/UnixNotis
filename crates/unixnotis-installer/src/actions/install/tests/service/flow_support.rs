@@ -6,7 +6,8 @@ use std::sync::MutexGuard;
 use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
-use crate::service_manager::{use_fake_command_bin, ServiceManager};
+use crate::service_manager::contract::command_routing::use_fake_command_bin;
+use crate::service_manager::ServiceManager;
 use crate::test_support::fs::write_executable;
 
 use super::super::super::service::{enable_service, install_service, uninstall_service};

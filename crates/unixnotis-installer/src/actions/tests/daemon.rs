@@ -56,7 +56,7 @@ fn stop_active_daemon_uses_owner_command_match_before_pid_fallback() {
         ),
     );
     write_executable(&root.join("ps"), "#!/bin/sh\nprintf 'mako\\n'\n");
-    let _tools = crate::system_tools::use_fake_tool_bin(&root);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&root);
     let detection = known_daemon_detection("mako", false, Vec::new());
     let paths = test_install_paths();
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
@@ -76,7 +76,7 @@ fn stop_active_daemon_skips_process_inspection_when_pid_is_already_gone() {
         &root.join("ps"),
         &format!("#!/bin/sh\nprintf hit > {}\nexit 0\n", ps_marker.display()),
     );
-    let _tools = crate::system_tools::use_fake_tool_bin(&root);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&root);
     let detection = known_daemon_detection("mako", false, Vec::new());
     let paths = test_install_paths();
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
@@ -107,7 +107,7 @@ fn stop_active_daemon_accepts_natural_exit_after_command_mismatch() {
             ps_marker.display()
         ),
     );
-    let _tools = crate::system_tools::use_fake_tool_bin(&root);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&root);
     let detection = known_daemon_detection("mako", false, Vec::new());
     let paths = test_install_paths();
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
@@ -127,8 +127,8 @@ fn stop_active_daemon_stops_unixnotis_without_disabling_its_unit() {
         &root.join("systemctl"),
         &format!("#!/bin/sh\nprintf '%s\\n' \"$*\" >> {}\n", calls.display()),
     );
-    let _commands = crate::service_manager::use_fake_command_bin(&root);
-    let _tools = crate::system_tools::use_fake_tool_bin(&root);
+    let _commands = crate::service_manager::contract::command_routing::use_fake_command_bin(&root);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&root);
     let detection = known_daemon_detection("unixnotis-daemon", true, Vec::new());
     let paths = test_install_paths();
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
@@ -196,7 +196,7 @@ fn is_systemd_unit_inactive_reads_trusted_systemctl_state() {
         &fake_bin.join("systemctl"),
         "#!/bin/sh\ncase \"$3\" in inactive.service) echo inactive; exit 3 ;; active.service) echo active; exit 0 ;; *) exit 1 ;; esac\n",
     );
-    let _fake_tools = crate::system_tools::use_fake_tool_bin(&fake_bin);
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
 
     assert!(is_systemd_unit_inactive("inactive.service").expect("inactive state"));
     assert!(!is_systemd_unit_inactive("active.service").expect("active state"));
@@ -229,7 +229,7 @@ fn pid_alive_reports_impossible_pid_as_not_alive() {
 fn pid_alive_probes_largest_valid_process_id() {
     let root = fake_daemon_tool_root("max-pid");
     write_executable(&root.join("kill"), "#!/bin/sh\nexit 0\n");
-    let _tools = crate::system_tools::use_fake_tool_bin(&root);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&root);
 
     assert!(pid_alive(i32::MAX as u32).expect("largest valid pid probe"));
 
@@ -260,7 +260,7 @@ fn pid_alive_ignores_kill_from_inherited_path() {
     );
     write_executable(&trusted_bin.join("kill"), "#!/bin/sh\nexit 0\n");
     let _path = EnvGuard::set("PATH", &path_bin);
-    let _tools = crate::system_tools::use_fake_tool_bin(&trusted_bin);
+    let _tools = crate::system_tools::routing::use_fake_tool_bin(&trusted_bin);
 
     assert!(pid_alive(std::process::id()).expect("trusted pid probe"));
     assert!(!marker.exists());

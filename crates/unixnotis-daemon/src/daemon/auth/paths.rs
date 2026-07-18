@@ -2,9 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-#[cfg(test)]
-use std::collections::HashMap;
-
 use super::filesystem::canonicalize_best_effort;
 use super::fingerprint::file_fingerprint;
 use super::metadata::trusted_control_file_metadata_is_safe;
@@ -33,26 +30,6 @@ pub(in crate::daemon) fn is_trusted_control_executable_path(path: &Path, relaxed
         return false;
     };
     trusted_snapshot_matches_observed(&snapshot, &observed)
-}
-
-#[cfg(test)]
-pub(in crate::daemon) fn is_trusted_control_executable_path_in_dir(
-    path: &Path,
-    _trusted_dir: &Path,
-    snapshots: &HashMap<String, TrustedExecutableSnapshot>,
-) -> bool {
-    let observed = canonicalize_best_effort(path);
-    let Some(observed_name) = observed.file_name().and_then(|name| name.to_str()) else {
-        return false;
-    };
-    if !TRUSTED_CONTROL_EXECUTABLES.contains(&observed_name) {
-        return false;
-    }
-
-    let Some(snapshot) = snapshots.get(observed_name) else {
-        return false;
-    };
-    trusted_snapshot_matches_observed(snapshot, &observed)
 }
 
 pub(in crate::daemon) fn is_trusted_control_executable_path_relaxed_in_dir(
@@ -132,7 +109,7 @@ fn trusted_control_directory() -> Option<PathBuf> {
     current_exe.parent().map(Path::to_path_buf)
 }
 
-fn trusted_snapshot_matches_observed(
+pub(in crate::daemon::auth) fn trusted_snapshot_matches_observed(
     snapshot: &TrustedExecutableSnapshot,
     observed: &Path,
 ) -> bool {

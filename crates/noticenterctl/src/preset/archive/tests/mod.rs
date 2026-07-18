@@ -1,3 +1,4 @@
+mod budget;
 mod limits;
 mod modes;
 mod roundtrip;

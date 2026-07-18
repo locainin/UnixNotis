@@ -82,14 +82,14 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
             // Install builds release binaries and copies them into the user bin dir
             lines.push(Line::from(Span::styled(
                 format!(
-                    "Install builds UnixNotis and copies unixnotis-daemon, unixnotis-popups, unixnotis-center, and noticenterctl into {bin_dir}; startup files are updated so new terminals include this path"
+                    "Install builds UnixNotis and copies every managed binary into {bin_dir}; startup files are updated so new terminals include this path"
                 ),
                 Style::default().fg(Color::Yellow),
             )));
         } else {
             lines.push(Line::from(Span::styled(
                 format!(
-                    "Uninstall stops UnixNotis, removes managed startup entries, and removes unixnotis-daemon, unixnotis-popups, unixnotis-center, and noticenterctl from {bin_dir}; config files are kept"
+                    "Uninstall stops UnixNotis, removes managed startup entries, and removes every managed binary from {bin_dir}; config files are kept"
                 ),
                 Style::default().fg(Color::Yellow),
             )));

@@ -14,3 +14,12 @@ pub const DEFAULT_WIDGETS_CSS: &str =
 
 pub const DEFAULT_MEDIA_CSS: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/media.css"));
+
+pub const INTERNAL_STRUCTURE_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/internal-structure.css"
+));
+
+#[cfg(test)]
+#[path = "tests/css.rs"]
+mod tests;

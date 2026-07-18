@@ -1,12 +1,26 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::export_preset_from;
+use super::super::flow::export_preset_from;
+use super::support::TempDirGuard;
 use crate::preset::archive::read_bundle;
-use crate::preset::config_root::collect_selected_config_files_with_captures;
+use crate::preset::config_root::collect_selected_config_files_from_root;
+use crate::preset::filesystem::open_secure_dir_all;
 
-use super::script_dependencies::{collect_script_dependency_closure, MAX_SCANNED_SCRIPT_BYTES};
-use super::tests::TempDirGuard;
+use super::super::script_dependencies::{
+    collect_script_dependency_closure_from_root, normalize_relative_path, resolve_source_operand,
+    ScriptDependencyClosure, SourceOperand, MAX_SCANNED_SCRIPT_BYTES,
+};
+use proptest::prelude::*;
+use proptest::test_runner::RngSeed;
+
+fn collect_script_dependency_closure(
+    config_dir: &Path,
+    entry_scripts: &[PathBuf],
+) -> anyhow::Result<ScriptDependencyClosure> {
+    let root_fd = open_secure_dir_all(config_dir)?;
+    collect_script_dependency_closure_from_root(&root_fd, entry_scripts)
+}
 
 #[test]
 fn export_includes_recursive_script_dir_source_dependencies() {
@@ -42,6 +56,55 @@ fn export_includes_recursive_script_dir_source_dependencies() {
     assert!(paths.contains(&Path::new("scripts/probe-lib")));
     assert!(paths.contains(&Path::new("scripts/probe-values")));
     assert!(!paths.contains(&Path::new("scripts/unrelated")));
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 256,
+        rng_seed: RngSeed::Fixed(0x5348_454c_4c50_4154),
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn lexical_normalization_accepts_only_relative_contained_paths(
+        depth in 1_usize..=12,
+        backtracks in 0_usize..=12,
+    ) {
+        let mut candidate = PathBuf::new();
+        for index in 0..depth {
+            candidate.push(format!("part{index}"));
+        }
+        for _ in 0..backtracks {
+            candidate.push("..");
+        }
+        candidate.push("helper.sh");
+
+        let normalized = normalize_relative_path(&candidate);
+        if backtracks <= depth {
+            let normalized = normalized.expect("contained path should normalize");
+            prop_assert!(!normalized.is_absolute());
+            prop_assert!(normalized.components().all(|part| matches!(part, std::path::Component::Normal(_))));
+        } else {
+            prop_assert!(normalized.is_none());
+        }
+    }
+
+    #[test]
+    fn unsupported_source_operands_never_become_portable_paths(
+        suffix in "[a-zA-Z0-9_./-]{0,256}",
+    ) {
+        let script = Path::new("scripts/status");
+        for operand in [
+            format!("${{dynamic}}/{suffix}"),
+            format!("/etc/{suffix}"),
+            format!("./{suffix}"),
+        ] {
+            prop_assert!(!matches!(
+                resolve_source_operand(script, &operand),
+                SourceOperand::Portable(_)
+            ));
+        }
+    }
 }
 
 #[test]
@@ -325,7 +388,9 @@ fn dependency_collection_reuses_the_bytes_scanned_securely() {
         .expect("capture script");
 
     root.write("scripts/probe", "replacement=1\n");
-    let collected = collect_selected_config_files_with_captures(
+    let root_fd = open_secure_dir_all(&root.path).expect("open captured config root");
+    let collected = collect_selected_config_files_from_root(
+        &root_fd,
         &root.path,
         &closure.paths,
         None,

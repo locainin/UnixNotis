@@ -4,12 +4,13 @@
 //! Broad shell evaluation would execute user content and could recapture unrelated files
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::os::fd::OwnedFd;
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 
 use super::super::config_root::SecureFileCapture;
-use super::super::filesystem::{open_secure_dir_all, read_relative_file_secure_bounded};
+use super::super::filesystem::read_relative_file_secure_bounded;
 
 // Source scanning is only dependency metadata work, so a small cap prevents an oversized command
 // file from consuming memory before the normal preset file limits are applied
@@ -28,7 +29,7 @@ enum ScriptScanKind {
     Sourced,
 }
 
-enum SourceOperand {
+pub(super) enum SourceOperand {
     // Dependency path is proven to stay under the config root
     Portable(PathBuf),
     // Shell expansion decides the path only when the command runs
@@ -41,12 +42,10 @@ enum SourceOperand {
     AmbiguousRelative,
 }
 
-pub(super) fn collect_script_dependency_closure(
-    config_dir: &Path,
+pub(super) fn collect_script_dependency_closure_from_root(
+    root_fd: &OwnedFd,
     entry_scripts: &[PathBuf],
 ) -> Result<ScriptDependencyClosure> {
-    let root_fd = open_secure_dir_all(config_dir)
-        .with_context(|| format!("open config directory {}", config_dir.display()))?;
     let mut discovered = BTreeSet::new();
     let mut pending = VecDeque::new();
     let mut captures = BTreeMap::new();
@@ -59,7 +58,7 @@ pub(super) fn collect_script_dependency_closure(
         };
         if discovered.insert(entry.clone()) {
             let (contents, mode) =
-                read_relative_file_secure_bounded(&root_fd, &entry, MAX_SCANNED_SCRIPT_BYTES)
+                read_relative_file_secure_bounded(root_fd, &entry, MAX_SCANNED_SCRIPT_BYTES)
                     .with_context(|| {
                         format!(
                             "preset export cannot verify dependencies for script {}",
@@ -115,7 +114,7 @@ pub(super) fn collect_script_dependency_closure(
             };
             if discovered.insert(dependency.clone()) {
                 let (contents, mode) = read_relative_file_secure_bounded(
-                    &root_fd,
+                    root_fd,
                     &dependency,
                     MAX_SCANNED_SCRIPT_BYTES,
                 )
@@ -153,7 +152,7 @@ fn source_operands(contents: &str) -> impl Iterator<Item = String> + '_ {
     })
 }
 
-fn resolve_source_operand(script_relative: &Path, operand: &str) -> SourceOperand {
+pub(super) fn resolve_source_operand(script_relative: &Path, operand: &str) -> SourceOperand {
     let script_parent = script_relative.parent().unwrap_or_else(|| Path::new(""));
     let relative = if let Some(value) = operand.strip_prefix("$script_dir/") {
         script_parent.join(value)
@@ -232,7 +231,7 @@ fn is_shell_name(name: &str) -> bool {
     )
 }
 
-fn normalize_relative_path(path: &Path) -> Option<PathBuf> {
+pub(super) fn normalize_relative_path(path: &Path) -> Option<PathBuf> {
     let mut parts = Vec::new();
     for component in path.components() {
         match component {

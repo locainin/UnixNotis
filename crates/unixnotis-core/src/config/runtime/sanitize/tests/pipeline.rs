@@ -2,8 +2,11 @@ use super::super::super::super::widgets::{CardWidgetConfig, StatWidgetConfig};
 use super::*;
 use crate::{
     Config, PanelActionConfig, PanelActionId, PanelConfig, PanelSection, PanelWidgetSection,
-    PopupConfig, ToggleLayout,
+    PopupConfig, ToggleLayout, WidgetPluginConfig, CURRENT_CONFIG_VERSION, MAX_CARD_WIDGETS,
+    MAX_STAT_WIDGETS, MAX_TOGGLE_WIDGETS, MAX_TOTAL_WIDGETS,
 };
+use proptest::prelude::*;
+use proptest::test_runner::RngSeed;
 
 #[test]
 fn sanitize_clamps_refresh_intervals_and_preserves_ordering() {
@@ -56,6 +59,117 @@ fn sanitize_clamps_refresh_intervals_and_preserves_ordering() {
     sanitize_config(&mut config);
     assert_eq!(config.widgets.refresh_interval_ms, MIN_REFRESH_MS);
     assert_eq!(config.widgets.refresh_interval_slow_ms, MIN_REFRESH_MS);
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 256,
+        rng_seed: RngSeed::Fixed(0x554e_4958_4e4f_5449),
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn parsed_config_reports_are_deterministic_bounded_and_current(
+        fast in 0_u64..200_000,
+        slow in 0_u64..250_000,
+        max_active in 0_usize..10_000,
+        max_entries in 0_usize..20_000,
+        width in -10_000_i32..10_000,
+        label in "[a-zA-Z0-9 _-]{0,256}",
+    ) {
+        // Backend detection reads PATH, so paired parses must exclude env-mutating tests
+        let _environment = crate::test_support::test_env_lock();
+        let input = format!(
+            "config_version = {CURRENT_CONFIG_VERSION}\n[panel]\nwidth = {width}\n[history]\nmax_active = {max_active}\nmax_entries = {max_entries}\n[widgets]\nrefresh_interval_ms = {fast}\nrefresh_interval_slow_ms = {slow}\nquick_actions_label = {label:?}\n"
+        );
+        let first = Config::parse_with_report(&input).expect("generated config should parse");
+        let second = Config::parse_with_report(&input).expect("same generated config should parse");
+
+        prop_assert_eq!(first.config.config_version, CURRENT_CONFIG_VERSION);
+        prop_assert!(first.config.widgets.refresh_interval_ms <= MAX_REFRESH_MS);
+        prop_assert!(first.config.widgets.refresh_interval_slow_ms <= MAX_REFRESH_SLOW_MS);
+        prop_assert!(first.config.history.max_active <= MAX_HISTORY_ACTIVE);
+        prop_assert!(first.config.history.max_entries <= MAX_HISTORY_ENTRIES);
+        // Table ordering can differ because user aliases are stored in hash maps
+        let first_value = toml::Value::try_from(&first.config).expect("serialize first config");
+        let second_value = toml::Value::try_from(&second.config).expect("serialize second config");
+        prop_assert_eq!(first_value, second_value);
+        prop_assert_eq!(first.diagnostics, second.diagnostics);
+    }
+
+    #[test]
+    fn arbitrary_config_text_never_panics_and_accepted_results_stay_bounded(
+        characters in prop::collection::vec(any::<char>(), 0..=2_048),
+    ) {
+        let _environment = crate::test_support::test_env_lock();
+        let input = characters.into_iter().collect::<String>();
+        let outcome = std::panic::catch_unwind(|| Config::parse_with_report(&input));
+
+        prop_assert!(outcome.is_ok());
+        if let Ok(report) = outcome.expect("panic outcome checked above") {
+            prop_assert_eq!(report.config.config_version, CURRENT_CONFIG_VERSION);
+            prop_assert!(report.config.widgets.toggles.len() <= MAX_TOGGLE_WIDGETS);
+            prop_assert!(report.config.widgets.stats.len() <= MAX_STAT_WIDGETS);
+            prop_assert!(report.config.widgets.cards.len() <= MAX_CARD_WIDGETS);
+            prop_assert!(
+                report.config.widgets.toggles.len()
+                    + report.config.widgets.stats.len()
+                    + report.config.widgets.cards.len()
+                    <= MAX_TOTAL_WIDGETS
+            );
+            prop_assert!(report.config.history.max_active <= MAX_HISTORY_ACTIVE);
+            prop_assert!(report.config.history.max_entries <= MAX_HISTORY_ENTRIES);
+            prop_assert!(report
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.message.chars().count() <= 256));
+        }
+    }
+
+    #[test]
+    fn unsupported_plugin_versions_never_survive_sanitization(
+        api_version in any::<u32>().prop_filter(
+            "generated version must be unsupported",
+            |version| *version != WidgetPluginConfig::API_VERSION_V1,
+        ),
+        command in "[a-zA-Z0-9_ ./-]{1,256}",
+    ) {
+        let mut config = Config::default();
+        config.widgets.stats[0].plugin = Some(WidgetPluginConfig {
+            api_version,
+            command,
+            ..WidgetPluginConfig::default()
+        });
+
+        sanitize_config(&mut config);
+
+        prop_assert!(config.widgets.stats[0].plugin.is_none());
+    }
+
+    #[test]
+    fn generated_widget_counts_always_fit_per_kind_and_total_limits(
+        toggle_count in 0_usize..100,
+        stat_count in 0_usize..100,
+        card_count in 0_usize..100,
+    ) {
+        let defaults = Config::default();
+        let mut config = defaults.clone();
+        config.widgets.toggles = vec![defaults.widgets.toggles[0].clone(); toggle_count];
+        config.widgets.stats = vec![defaults.widgets.stats[0].clone(); stat_count];
+        config.widgets.cards = vec![defaults.widgets.cards[0].clone(); card_count];
+
+        sanitize_config(&mut config);
+
+        prop_assert!(config.widgets.toggles.len() <= MAX_TOGGLE_WIDGETS);
+        prop_assert!(config.widgets.stats.len() <= MAX_STAT_WIDGETS);
+        prop_assert!(config.widgets.cards.len() <= MAX_CARD_WIDGETS);
+        prop_assert!(
+            config.widgets.toggles.len()
+                + config.widgets.stats.len()
+                + config.widgets.cards.len()
+                <= MAX_TOTAL_WIDGETS
+        );
+    }
 }
 
 #[test]
