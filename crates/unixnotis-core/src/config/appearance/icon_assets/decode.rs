@@ -23,6 +23,27 @@ pub(super) fn decode_icon_asset(
     decode_raster_icon(path, bytes, policy, render_size)
 }
 
+/// Decode image bytes under an explicit allocation and geometry policy
+///
+/// # Errors
+///
+/// Returns an error when the extension, encoded size, signature, dimensions, or payload is invalid
+pub fn decode_image_asset_contents(
+    path: &Path,
+    bytes: &[u8],
+    policy: AssetPolicy,
+) -> Result<ResolvedIconAsset, IconAssetError> {
+    validate_icon_asset_extension(path, policy)?;
+    if bytes.len() as u64 > policy.max_bytes {
+        return Err(IconAssetError::TooLarge {
+            path: path.to_path_buf(),
+            size: bytes.len() as u64,
+            max: policy.max_bytes,
+        });
+    }
+    decode_icon_asset(path, bytes, policy, None)
+}
+
 pub(super) fn validate_dimensions(
     path: &Path,
     width: u32,
@@ -64,15 +85,7 @@ pub(super) fn decode_error(path: &Path, error: impl std::fmt::Display) -> IconAs
 pub fn validate_icon_asset_contents(asset: &str, bytes: &[u8]) -> Result<(), IconAssetError> {
     let relative = normalize_icon_asset_relative_path(asset)?;
     let policy = AssetPolicy::default();
-    validate_icon_asset_extension(&relative, policy)?;
-    if bytes.len() as u64 > policy.max_bytes {
-        return Err(IconAssetError::TooLarge {
-            path: relative,
-            size: bytes.len() as u64,
-            max: policy.max_bytes,
-        });
-    }
-    decode_icon_asset(&relative, bytes, policy, None).map(|_| ())
+    decode_image_asset_contents(&relative, bytes, policy).map(|_| ())
 }
 
 #[cfg(test)]

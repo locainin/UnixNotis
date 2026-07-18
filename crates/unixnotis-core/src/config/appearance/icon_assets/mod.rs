@@ -2,14 +2,16 @@
 
 mod decode;
 mod error;
+mod materialize;
 mod model;
 mod path;
 mod raster;
 mod resolver;
 mod svg;
 
-pub use decode::validate_icon_asset_contents;
+pub use decode::{decode_image_asset_contents, validate_icon_asset_contents};
 pub use error::IconAssetError;
+pub use materialize::materialize_bounded_image_as_png;
 pub use model::{
     AssetPolicy, ResolvedIconAsset, DEFAULT_ICON_ASSET_EXTENSIONS, DEFAULT_ICON_ASSET_MAX_BYTES,
     DEFAULT_ICON_ASSET_MAX_HEIGHT, DEFAULT_ICON_ASSET_MAX_PIXELS, DEFAULT_ICON_ASSET_MAX_WIDTH,

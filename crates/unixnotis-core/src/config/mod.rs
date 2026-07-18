@@ -19,7 +19,8 @@ pub use diagnostics::{
     log_config_diagnostics, ConfigDiagnostic, ConfigDiagnosticKind, ConfigLoadReport,
 };
 pub use icon_assets::{
-    resolve_icon_asset_path, resolve_icon_asset_path_with_policy, validate_icon_asset_contents,
+    decode_image_asset_contents, materialize_bounded_image_as_png, resolve_icon_asset_path,
+    resolve_icon_asset_path_with_policy, validate_icon_asset_contents,
     validate_icon_asset_reference, AssetPolicy, IconAssetError, IconAssetResolver,
     ResolvedIconAsset, DEFAULT_ICON_ASSET_EXTENSIONS, DEFAULT_ICON_ASSET_MAX_BYTES,
     DEFAULT_ICON_ASSET_MAX_HEIGHT, DEFAULT_ICON_ASSET_MAX_PIXELS, DEFAULT_ICON_ASSET_MAX_WIDTH,
