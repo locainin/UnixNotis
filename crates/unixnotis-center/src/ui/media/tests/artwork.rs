@@ -1,4 +1,14 @@
-use super::{art_dimensions_allowed, MediaArtCompletion, MediaArtState};
+use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use super::{
+    art_dimensions_allowed, load_art_bytes, MediaArtCompletion, MediaArtState, MAX_LOCAL_ART_BYTES,
+    MAX_MEDIA_ART_DECODE_ALLOC_BYTES,
+};
+
+use crate::media::MediaArtSource;
+use image::codecs::png::PngEncoder;
+use image::{ExtendedColorType, ImageEncoder};
 
 #[test]
 fn art_dimensions_allowed_rejects_non_images() {
@@ -8,6 +18,45 @@ fn art_dimensions_allowed_rejects_non_images() {
 #[test]
 fn art_dimensions_allowed_rejects_oversized_images() {
     assert!(!art_dimensions_allowed(4096, 1024));
+}
+
+#[test]
+fn art_decoder_accepts_a_bounded_raster_with_decoder_limits() {
+    let mut bytes = Vec::new();
+    PngEncoder::new(&mut bytes)
+        .write_image(&[1, 2, 3, 255], 1, 1, ExtendedColorType::Rgba8)
+        .expect("encode artwork PNG");
+
+    let decoded = super::decode_art_raster(bytes).expect("decode bounded artwork");
+
+    assert_eq!((decoded.width, decoded.height, decoded.stride), (1, 1, 4));
+    assert_eq!(decoded.bytes, vec![1, 2, 3, 255]);
+}
+
+#[test]
+fn artwork_byte_and_decode_budgets_keep_the_documented_limits() {
+    assert_eq!(MAX_LOCAL_ART_BYTES, 8 * 1_024 * 1_024);
+    assert_eq!(MAX_MEDIA_ART_DECODE_ALLOC_BYTES, 32 * 1_024 * 1_024);
+}
+
+#[test]
+fn local_art_loader_returns_the_complete_nonempty_file() {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "unixnotis-center-art-loader-{}-{stamp}.png",
+        std::process::id()
+    ));
+    let expected = b"complete local art bytes";
+    fs::write(&path, expected).expect("write local art fixture");
+    let source = MediaArtSource::LocalFile(path.clone());
+
+    let loaded = glib::MainContext::new().block_on(load_art_bytes(&source));
+
+    assert_eq!(loaded.as_deref(), Some(expected.as_slice()));
+    fs::remove_file(path).expect("remove local art fixture");
 }
 
 #[test]
