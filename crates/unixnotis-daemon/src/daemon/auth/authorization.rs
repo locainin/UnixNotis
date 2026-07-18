@@ -5,14 +5,16 @@ use std::sync::Arc;
 
 use rustix::process::geteuid;
 use tracing::warn;
-use zbus::fdo::DBusProxy;
 use zbus::message::Header;
 
-use crate::daemon::{to_fdo_error, DaemonState};
+use crate::daemon::DaemonState;
 
+use super::credentials::connection_credentials;
 use super::paths::is_trusted_control_executable_path;
 use super::policy::{TRUSTED_CONTROL_EXECUTABLES, TRUSTED_PANEL_READINESS_EXECUTABLES};
 use super::process::read_process_executable_path;
+#[cfg(target_os = "linux")]
+use super::process::read_process_executable_path_from_pidfd;
 
 pub(in crate::daemon) async fn authorize_control_call(
     state: &Arc<DaemonState>,
@@ -49,15 +51,15 @@ async fn authorize_control_call_for_executables(
         .ok_or_else(|| zbus::fdo::Error::AccessDenied("missing sender".to_string()))?;
     let sender_name = sender.as_str().to_string();
 
-    // Bus metadata gives the real uid and pid for the unique sender name
-    let proxy = DBusProxy::new(state.connection())
-        .await
-        .map_err(to_fdo_error)?;
     let bus_name = zbus::names::BusName::try_from(sender_name.as_str())
         .map_err(|_error| zbus::fdo::Error::AccessDenied("invalid sender".to_string()))?;
+    // One bus reply keeps all identity fields tied to the same sender snapshot
+    let credentials = connection_credentials(state.connection(), bus_name).await?;
 
     // Same desktop uid is required before any executable trust checks are considered
-    let caller_uid = proxy.get_connection_unix_user(bus_name.clone()).await?;
+    let caller_uid = credentials
+        .unix_user_id()
+        .ok_or_else(|| zbus::fdo::Error::AccessDenied("caller uid is unavailable".to_string()))?;
     let expected_uid = geteuid().as_raw();
     if let Some(err) = control_owner_uid_error(caller_uid, expected_uid) {
         warn!(
@@ -71,7 +73,16 @@ async fn authorize_control_call_for_executables(
     }
 
     // Same user is not enough; the executable must be one trusted UnixNotis binary
-    let pid = proxy.get_connection_unix_process_id(bus_name).await?;
+    let pid = credentials.process_id().ok_or_else(|| {
+        zbus::fdo::Error::AccessDenied("caller process id is unavailable".to_string())
+    })?;
+    #[cfg(target_os = "linux")]
+    let exe_path = match credentials.process_fd() {
+        Some(pidfd) => read_process_executable_path_from_pidfd(pidfd, pid),
+        // Older message buses may not provide ProcessFD
+        None => read_process_executable_path(pid).await,
+    };
+    #[cfg(not(target_os = "linux"))]
     let exe_path = read_process_executable_path(pid).await;
     if let Some(err) =
         control_executable_error(exe_path.as_deref(), allowed_executables, state.trial_mode())

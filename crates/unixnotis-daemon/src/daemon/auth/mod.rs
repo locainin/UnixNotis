@@ -6,6 +6,7 @@
 //! checks, and startup-time fingerprint pinning
 
 mod authorization;
+mod credentials;
 mod filesystem;
 mod fingerprint;
 mod metadata;
