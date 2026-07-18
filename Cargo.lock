@@ -1987,6 +1987,7 @@ dependencies = [
  "blake3",
  "chrono",
  "clap",
+ "data-url",
  "flate2",
  "proptest",
  "rustix",

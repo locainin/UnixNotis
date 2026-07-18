@@ -53,6 +53,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 ratatui = "0.30.0"
 proptest = "1.11.0"
 crossterm = "0.29"
+data-url = "0.3"
 unicode-width = "0.2.2"
 rustix = { version = "1.1", features = ["event", "fs", "process"] }
 resvg = { version = "0.47.0", default-features = false }
