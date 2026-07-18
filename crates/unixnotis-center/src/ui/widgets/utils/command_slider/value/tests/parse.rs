@@ -120,6 +120,43 @@ fn parse_numeric_rejects_output_without_a_number() {
 }
 
 #[test]
+fn parse_numeric_rejects_reversed_and_non_finite_bounds_without_panicking() {
+    for (min, max) in [
+        (100.0, 0.0),
+        (f64::NAN, 100.0),
+        (0.0, f64::NAN),
+        (f64::NEG_INFINITY, 100.0),
+        (0.0, f64::INFINITY),
+    ] {
+        assert_eq!(
+            parse_numeric("50", min, max, NumericParseMode::Percent),
+            None,
+            "min={min}, max={max}"
+        );
+    }
+}
+
+#[test]
+fn parse_numeric_accepts_equal_finite_bounds_as_one_fixed_value() {
+    assert_eq!(
+        parse_numeric("75", 5.0, 5.0, NumericParseMode::Percent),
+        Some(5.0)
+    );
+}
+
+#[test]
+fn parse_numeric_rejects_values_that_parse_or_scale_to_infinity() {
+    assert_eq!(
+        parse_numeric("1e999", 0.0, 100.0, NumericParseMode::Percent),
+        None
+    );
+    assert_eq!(
+        parse_numeric("1e308", 0.0, 100.0, NumericParseMode::Ratio),
+        None
+    );
+}
+
+#[test]
 fn parse_muted_matches_supported_markers_without_case_sensitivity() {
     assert!(parse_muted("Audio MUTED"));
     assert!(parse_muted("Mute: YES"));

@@ -8,6 +8,11 @@ pub(in super::super) fn parse_numeric(
     max: f64,
     mode: NumericParseMode,
 ) -> Option<f64> {
+    // Invalid bounds are rejected here even when a caller bypasses config sanitization
+    if !min.is_finite() || !max.is_finite() || min > max {
+        return None;
+    }
+
     // Parse the last numeric token and prefer explicit percent tokens
     let mut last_any: Option<(f64, bool, bool)> = None;
     let mut last_percent: Option<(f64, bool)> = None;
@@ -52,6 +57,11 @@ pub(in super::super) fn parse_numeric(
                 value *= 100.0;
             }
         }
+    }
+
+    // Parsing or ratio scaling can overflow even when the source token looked numeric
+    if !value.is_finite() {
+        return None;
     }
 
     Some(value.clamp(min, max))
