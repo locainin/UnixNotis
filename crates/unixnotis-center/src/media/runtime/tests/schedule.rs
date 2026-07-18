@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::media::MediaInfo;
 
-use super::{
+use super::super::schedule::{
     needs_metadata_fallback, schedule_metadata_fallback, schedule_metadata_fallbacks,
     DelayedRefreshTasks,
 };

@@ -8,7 +8,3 @@ pub const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
 pub const MPRIS_PLAYER: &str = "org.mpris.MediaPlayer2.Player";
 // Application identity and supported URI schemes use the root interface
 pub const MPRIS_APP: &str = "org.mpris.MediaPlayer2";
-
-#[cfg(test)]
-#[path = "../tests/identifiers.rs"]
-mod tests;

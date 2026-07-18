@@ -76,7 +76,7 @@ fn metadata_artist(map: &HashMap<String, OwnedValue>) -> Option<String> {
     None
 }
 
-fn metadata_pid(map: &HashMap<String, OwnedValue>) -> Option<u32> {
+pub(super) fn metadata_pid(map: &HashMap<String, OwnedValue>) -> Option<u32> {
     let value = map.get("kde:pid")?;
     // KDE currently sends this as an integer PID, but bindings may expose signed values
     let owned = value.try_clone().ok()?;
@@ -90,7 +90,3 @@ fn metadata_pid(map: &HashMap<String, OwnedValue>) -> Option<u32> {
     }
     None
 }
-
-#[cfg(test)]
-#[path = "../tests/metadata.rs"]
-mod tests;

@@ -72,7 +72,3 @@ pub fn start_media_task(
     // Runtime ownership remains outside GTK so shutdown can retire the task cleanly
     super::super::runtime::start_media_task(runtime, config, sender)
 }
-
-#[cfg(test)]
-#[path = "../tests/handle.rs"]
-mod tests;

@@ -27,7 +27,3 @@ pub enum MediaCommand {
     Next { bus_name: String },
     Previous { bus_name: String },
 }
-
-#[cfg(test)]
-#[path = "../tests/model.rs"]
-mod tests;

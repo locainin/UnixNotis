@@ -24,11 +24,8 @@ pub(in crate::media) async fn refresh_players(
     let mut allowed = HashSet::new();
     for name in names {
         let name = name.to_string();
-        if !name.starts_with(MPRIS_PREFIX) {
-            continue;
-        }
         // Apply allow, deny, and browser policy before creating proxies or listener tasks
-        if !is_allowed_player(&name, config) {
+        if !is_discoverable_player(&name, config) {
             continue;
         }
         allowed.insert(name);
@@ -81,4 +78,8 @@ pub(in crate::media) async fn refresh_players(
     }
 
     Ok(())
+}
+
+pub(super) fn is_discoverable_player(name: &str, config: &MediaConfig) -> bool {
+    name.starts_with(MPRIS_PREFIX) && is_allowed_player(name, config)
 }

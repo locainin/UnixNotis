@@ -2,7 +2,7 @@
 
 use unixnotis_core::{MediaConfig, MediaRemoteArtPolicy};
 
-pub(in crate::media) fn detect_browser_family(
+pub(super) fn detect_browser_family(
     identity: &str,
     bus_name: &str,
     browser_tokens: &[String],
@@ -25,7 +25,7 @@ pub(in crate::media) fn detect_browser_family(
     })
 }
 
-pub(in crate::media) fn remote_art_allowed(
+pub(super) fn remote_art_allowed(
     browser_family: Option<&str>,
     owner_executable: Option<&str>,
     policy: MediaRemoteArtPolicy,

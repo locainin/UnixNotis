@@ -1,4 +1,4 @@
-use super::*;
+use super::super::cache::*;
 use crate::media::MediaInfo;
 
 fn make_info(

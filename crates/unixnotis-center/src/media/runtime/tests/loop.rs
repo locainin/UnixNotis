@@ -1,6 +1,6 @@
-use super::{
-    owner_change_needs_retry, send_owner_rebuild_retry_after, OwnerChangeOutcome,
-    OWNER_REBUILD_RETRY_MS,
+use super::super::owner::OwnerChangeOutcome;
+use super::super::r#loop::{
+    owner_change_needs_retry, send_owner_rebuild_retry_after, OWNER_REBUILD_RETRY_MS,
 };
 
 #[test]

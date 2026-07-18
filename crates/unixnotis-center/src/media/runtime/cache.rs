@@ -53,7 +53,7 @@ pub(super) async fn refresh_player_cache(
     }
 }
 
-fn merge_media_info(
+pub(super) fn merge_media_info(
     existing: Option<&MediaInfo>,
     fetched: Option<MediaInfo>,
     merge_mode: MediaCacheMergeMode,
@@ -103,7 +103,3 @@ fn metadata_has_content(info: &MediaInfo) -> bool {
 fn is_live_player(info: &MediaInfo) -> bool {
     matches!(info.playback_status.as_str(), "Playing" | "Paused")
 }
-
-#[cfg(test)]
-#[path = "../tests/cache.rs"]
-mod tests;

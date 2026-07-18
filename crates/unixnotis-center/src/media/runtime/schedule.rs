@@ -114,7 +114,7 @@ fn schedule_refresh_sequence(
     tasks.insert(key, task);
 }
 
-fn needs_metadata_fallback(cache: &HashMap<String, MediaInfo>, bus_name: &str) -> bool {
+pub(super) fn needs_metadata_fallback(cache: &HashMap<String, MediaInfo>, bus_name: &str) -> bool {
     let Some(info) = cache.get(bus_name) else {
         return false;
     };
@@ -122,7 +122,3 @@ fn needs_metadata_fallback(cache: &HashMap<String, MediaInfo>, bus_name: &str) -
     // Keep one retry plan active while playback is live so late art updates are not missed
     info.playback_status == "Playing"
 }
-
-#[cfg(test)]
-#[path = "../tests/schedule.rs"]
-mod tests;

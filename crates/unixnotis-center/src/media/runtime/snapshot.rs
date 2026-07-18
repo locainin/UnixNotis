@@ -30,7 +30,7 @@ pub(super) async fn send_snapshot_if_changed(
     }
 }
 
-fn build_snapshot(cache: &HashMap<String, MediaInfo>) -> Vec<MediaInfo> {
+pub(super) fn build_snapshot(cache: &HashMap<String, MediaInfo>) -> Vec<MediaInfo> {
     // Snapshot building is the last step before UI fanout
     // Keep filtering, sort order, and dedupe rules together so one pass defines
     // exactly what the panel sees
@@ -140,7 +140,7 @@ fn media_score(info: &MediaInfo) -> (u8, u8) {
     (status, art_rank)
 }
 
-fn normalize_token(value: &str) -> String {
+pub(super) fn normalize_token(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut last_space = false;
     for ch in value.chars() {
@@ -159,7 +159,3 @@ fn normalize_token(value: &str) -> String {
     }
     out.trim().to_string()
 }
-
-#[cfg(test)]
-#[path = "../tests/snapshot.rs"]
-mod tests;

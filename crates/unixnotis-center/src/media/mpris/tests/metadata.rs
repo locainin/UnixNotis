@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use zbus::zvariant::OwnedValue;
 
-use super::metadata_pid;
+use super::super::metadata::metadata_pid;
 
 #[test]
 fn metadata_pid_reads_unsigned_kde_pid() {

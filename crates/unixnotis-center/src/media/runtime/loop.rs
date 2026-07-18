@@ -17,7 +17,7 @@ use super::state::MediaRuntimeState;
 use super::{MediaSignal, MEDIA_SIGNAL_CAPACITY};
 use crate::media::MediaCommand;
 
-const OWNER_REBUILD_RETRY_MS: u64 = 200;
+pub(super) const OWNER_REBUILD_RETRY_MS: u64 = 200;
 
 pub(super) async fn run_event_loop(
     config: MediaConfig,
@@ -172,11 +172,14 @@ async fn run_connection_once(
     }
 }
 
-const fn owner_change_needs_retry(outcome: OwnerChangeOutcome) -> bool {
+pub(super) const fn owner_change_needs_retry(outcome: OwnerChangeOutcome) -> bool {
     matches!(outcome, OwnerChangeOutcome::RetryNeeded)
 }
 
-async fn send_owner_rebuild_retry_after(delay: std::time::Duration, sender: mpsc::Sender<()>) {
+pub(super) async fn send_owner_rebuild_retry_after(
+    delay: std::time::Duration,
+    sender: mpsc::Sender<()>,
+) {
     tokio::time::sleep(delay).await;
     // A closed receiver means the bus generation already ended and no retry remains useful
     let _ = sender.send(()).await;
@@ -187,7 +190,3 @@ pub(super) fn drain_stale_media_commands(command_rx: &mut mpsc::Receiver<MediaCo
         // Startup refreshes all players, so queued commands from the dead bus are obsolete
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/event_loop.rs"]
-mod tests;
