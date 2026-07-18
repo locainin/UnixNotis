@@ -1,8 +1,9 @@
-use super::super::render::{render_exec_content_review_with_style, ReviewStyle};
-use crate::preset::import::review::checks::{
-    ImportedExecCommand, ImportedExecContent, ImportedExecFile,
+//! Complete and per-item review rendering coverage
+
+use super::{
+    render_exec_content_review_with_style, ImportedExecCommand, ImportedExecContent,
+    ImportedExecFile, PathBuf, ReviewStyle,
 };
-use std::path::PathBuf;
 
 #[test]
 fn exec_review_renders_complete_commands_files_and_metadata() {
@@ -31,23 +32,6 @@ fn exec_review_renders_complete_commands_files_and_metadata() {
     assert!(rendered.contains("Bundled files available to commands"));
     assert!(rendered.contains("== scripts/check.sh (mode 755, 18 bytes, BLAKE3 "));
     assert!(rendered.contains("#!/bin/sh"));
-}
-
-#[test]
-fn exec_review_style_can_add_color() {
-    let title = ReviewStyle { color: true }.title("review");
-    assert!(title.contains("\u{1b}[1;36m"));
-    assert!(title.ends_with("\u{1b}[0m"));
-}
-
-#[test]
-fn exec_review_style_honors_every_color_precondition() {
-    assert!(ReviewStyle::for_terminal_state(true, false, None, None).color);
-    assert!(!ReviewStyle::for_terminal_state(false, false, None, None).color);
-    assert!(!ReviewStyle::for_terminal_state(true, true, None, None).color);
-    assert!(!ReviewStyle::for_terminal_state(true, false, Some("0"), None).color);
-    assert!(!ReviewStyle::for_terminal_state(true, false, None, Some("dumb")).color);
-    assert!(ReviewStyle::for_terminal_state(true, false, Some("1"), Some("xterm")).color);
 }
 
 #[test]
