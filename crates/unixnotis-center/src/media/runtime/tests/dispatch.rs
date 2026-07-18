@@ -5,6 +5,7 @@ use super::super::dispatch::{
 };
 use super::super::state::MediaRuntimeState;
 use super::super::{MediaRefreshOrigin, MediaSignal};
+use super::support::receive_ui_event;
 use crate::control::UiEvent;
 use crate::media::mpris::build_player_state;
 use crate::media::mpris::tests::support::{MprisFixture, TEST_PLAYER_NAME};
@@ -124,7 +125,7 @@ async fn runtime_signal_refreshes_cache_publishes_and_schedules_fallback() {
 
     assert!(state.cache.contains_key(TEST_PLAYER_NAME));
     assert!(state.delayed_refreshes.contains_key(TEST_PLAYER_NAME));
-    let event = event_rx.recv().await.expect("published media snapshot");
+    let event = receive_ui_event(&event_rx).await;
     assert!(matches!(
         event,
         UiEvent::MediaUpdated(infos)

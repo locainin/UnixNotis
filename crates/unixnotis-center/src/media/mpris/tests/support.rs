@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -10,6 +9,7 @@ use zbus::zvariant::OwnedValue;
 use zbus::{Connection, ConnectionBuilder};
 
 use super::super::constants::MPRIS_PATH;
+use crate::test_support::broker::read_broker_address;
 
 pub(in crate::media) const TEST_PLAYER_NAME: &str = "org.mpris.MediaPlayer2.unixnotis_test";
 pub(in crate::media) const TEST_PLAYER_IDENTITY: &str = "UnixNotis Test Player";
@@ -45,12 +45,8 @@ impl PrivateBroker {
             .expect("start private D-Bus broker");
         // The first output line is the exact address accepted by the broker
         let stdout = child.stdout.take().expect("capture broker address");
-        let mut address = String::new();
-        BufReader::new(stdout)
-            .read_line(&mut address)
-            .expect("read broker address");
-        let address = address.trim().to_string();
-        assert!(address.starts_with(&listen_address));
+        let address = read_broker_address(&mut child, stdout, &listen_address)
+            .expect("read private broker address promptly");
 
         Self {
             child,

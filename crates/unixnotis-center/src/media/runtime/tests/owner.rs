@@ -3,6 +3,7 @@ use super::super::owner::{
     replacement_removal_needs_snapshot, OwnerChangeOutcome,
 };
 use super::super::state::MediaRuntimeState;
+use super::support::receive_ui_event;
 use crate::control::UiEvent;
 use crate::media::mpris::tests::support::{MprisFixture, TEST_PLAYER_NAME};
 use crate::media::mpris::{build_player_state, fetch_media_info};
@@ -98,7 +99,10 @@ async fn denied_player_owner_change_removes_existing_state_and_snapshot() {
     assert_eq!(outcome, OwnerChangeOutcome::Removed);
     assert!(state.players.is_empty());
     assert!(state.cache.is_empty());
-    assert!(matches!(event_rx.recv().await, Ok(UiEvent::MediaCleared)));
+    assert!(matches!(
+        receive_ui_event(&event_rx).await,
+        UiEvent::MediaCleared
+    ));
 }
 
 #[tokio::test]
@@ -124,7 +128,10 @@ async fn empty_owner_change_removes_existing_player() {
     assert_eq!(outcome, OwnerChangeOutcome::Removed);
     assert!(state.players.is_empty());
     assert!(state.cache.is_empty());
-    assert!(matches!(event_rx.recv().await, Ok(UiEvent::MediaCleared)));
+    assert!(matches!(
+        receive_ui_event(&event_rx).await,
+        UiEvent::MediaCleared
+    ));
 }
 
 #[tokio::test]

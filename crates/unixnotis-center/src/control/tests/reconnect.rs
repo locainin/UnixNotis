@@ -1,4 +1,3 @@
-use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -7,6 +6,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use futures_util::StreamExt;
 use zbus::fdo::DBusProxy;
 use zbus::ConnectionBuilder;
+
+use crate::test_support::broker::read_broker_address;
 
 static NEXT_BROKER: AtomicUsize = AtomicUsize::new(0);
 
@@ -36,12 +37,8 @@ impl PrivateBroker {
             .spawn()
             .expect("start private dbus-daemon");
         let stdout = child.stdout.take().expect("capture broker address");
-        let mut line = String::new();
-        BufReader::new(stdout)
-            .read_line(&mut line)
-            .expect("read broker address");
-        let address = line.trim().to_string();
-        assert!(address.starts_with(&listen_address));
+        let address = read_broker_address(&mut child, stdout, &listen_address)
+            .expect("read private broker address promptly");
         Self {
             child,
             socket,

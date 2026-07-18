@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use tokio::runtime::Builder;
 
 use super::super::snapshot::{build_snapshot, normalize_token, send_snapshot_if_changed};
+use super::support::receive_ui_event;
 use crate::control::UiEvent;
 use crate::media::{MediaArtSource, MediaInfo};
 
@@ -194,7 +195,7 @@ fn unchanged_snapshot_is_not_resent() {
         );
 
         send_snapshot_if_changed(&tx, &cache, &mut last_snapshot).await;
-        match rx.recv().await.expect("first snapshot event") {
+        match receive_ui_event(&rx).await {
             UiEvent::MediaUpdated(snapshot) => assert_eq!(snapshot.len(), 1),
             other => panic!("unexpected first event: {other:?}"),
         }
@@ -223,10 +224,7 @@ fn clearing_snapshot_only_emits_once_for_same_empty_state() {
         )];
 
         send_snapshot_if_changed(&tx, &cache, &mut last_snapshot).await;
-        assert!(matches!(
-            rx.recv().await.expect("clear event"),
-            UiEvent::MediaCleared
-        ));
+        assert!(matches!(receive_ui_event(&rx).await, UiEvent::MediaCleared));
 
         send_snapshot_if_changed(&tx, &cache, &mut last_snapshot).await;
         assert!(rx.is_empty());

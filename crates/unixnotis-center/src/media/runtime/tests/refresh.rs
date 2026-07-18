@@ -4,6 +4,7 @@ use std::time::Duration;
 use super::super::refresh::prune_player_refreshes;
 use super::super::refresh::refresh_all_players;
 use super::super::state::MediaRuntimeState;
+use super::support::receive_ui_event;
 use crate::control::UiEvent;
 use crate::media::mpris::tests::support::{MprisFixture, TEST_PLAYER_NAME};
 use unixnotis_core::MediaConfig;
@@ -51,8 +52,8 @@ async fn full_refresh_discovers_caches_and_publishes_live_players() {
     assert!(state.cache.contains_key(TEST_PLAYER_NAME));
     assert_eq!(state.last_snapshot.len(), 1);
     assert!(matches!(
-        event_rx.recv().await,
-        Ok(UiEvent::MediaUpdated(infos)) if infos[0].bus_name == TEST_PLAYER_NAME
+        receive_ui_event(&event_rx).await,
+        UiEvent::MediaUpdated(infos) if infos[0].bus_name == TEST_PLAYER_NAME
     ));
     let _ = state.players[TEST_PLAYER_NAME].listener_cancel.send(true);
     for (_, task) in state.delayed_refreshes {
