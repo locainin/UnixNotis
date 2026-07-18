@@ -44,3 +44,7 @@ pub(super) fn schedule_command(
     });
     *pending.borrow_mut() = Some(id);
 }
+
+#[cfg(test)]
+#[path = "tests/schedule.rs"]
+mod tests;

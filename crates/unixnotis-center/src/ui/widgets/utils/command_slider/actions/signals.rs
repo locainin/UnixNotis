@@ -138,3 +138,7 @@ pub(in super::super) fn attach_scale_action(
         );
     });
 }
+
+#[cfg(test)]
+#[path = "tests/signals.rs"]
+mod tests;
