@@ -104,3 +104,7 @@ fn apply_slider_icon(refresh: &SliderRefreshState, muted: bool) -> bool {
     refresh.icon_image.set_icon_name(Some(icon));
     true
 }
+
+#[cfg(test)]
+#[path = "tests/apply.rs"]
+mod tests;

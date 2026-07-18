@@ -33,3 +33,7 @@ impl SliderRefreshRequest {
         &self.cmd
     }
 }
+
+#[cfg(test)]
+#[path = "tests/request.rs"]
+mod tests;

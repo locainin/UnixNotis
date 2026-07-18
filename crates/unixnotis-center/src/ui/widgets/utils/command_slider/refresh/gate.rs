@@ -41,3 +41,7 @@ impl SliderRefreshGate {
         self.in_flight.get()
     }
 }
+
+#[cfg(test)]
+#[path = "tests/gate.rs"]
+mod tests;

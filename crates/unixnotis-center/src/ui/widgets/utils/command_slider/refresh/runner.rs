@@ -117,3 +117,7 @@ fn next_refresh_generation(refresh_gen: &Rc<Cell<u64>>) -> u64 {
     refresh_gen.set(next);
     next
 }
+
+#[cfg(test)]
+#[path = "tests/runner.rs"]
+mod tests;

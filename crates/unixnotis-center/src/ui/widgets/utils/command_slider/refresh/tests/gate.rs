@@ -1,4 +1,4 @@
-use super::gate::SliderRefreshGate;
+use super::SliderRefreshGate;
 
 #[test]
 fn refresh_gate_queues_one_trailing_refresh() {

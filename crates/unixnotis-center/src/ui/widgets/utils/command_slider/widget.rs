@@ -135,3 +135,7 @@ impl CommandSlider {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/widget.rs"]
+mod tests;

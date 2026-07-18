@@ -35,3 +35,7 @@ fn start_watch(slider: &CommandSlider) -> Option<CommandWatch> {
         );
     })
 }
+
+#[cfg(test)]
+#[path = "tests/watch.rs"]
+mod tests;

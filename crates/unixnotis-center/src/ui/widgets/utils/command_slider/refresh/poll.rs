@@ -41,3 +41,7 @@ pub(in super::super) fn next_poll_in(
         Duration::ZERO.max(base_interval.min(Duration::from_millis(1))),
     ))
 }
+
+#[cfg(test)]
+#[path = "tests/poll.rs"]
+mod tests;

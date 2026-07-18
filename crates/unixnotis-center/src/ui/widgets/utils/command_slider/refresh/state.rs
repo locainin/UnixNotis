@@ -66,3 +66,7 @@ pub(in super::super) fn build_refresh_state_from_weak(
         backoff: refresh_meta.backoff.clone(),
     })
 }
+
+#[cfg(test)]
+#[path = "tests/state.rs"]
+mod tests;
