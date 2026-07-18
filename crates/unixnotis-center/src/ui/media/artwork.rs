@@ -6,8 +6,9 @@ use std::time::Duration;
 
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
-use image::ImageReader;
+use image::{ImageReader, Limits};
 use tracing::debug;
+use unixnotis_core::util::trusted_system_program_path;
 
 use crate::media::MediaArtSource;
 
@@ -15,9 +16,9 @@ use crate::media::MediaArtSource;
 const MEDIA_ART_TIMEOUT: Duration = Duration::from_secs(3);
 const MEDIA_ART_CHUNK_BYTES: usize = 64 * 1024;
 const MAX_LOCAL_ART_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_REMOTE_ART_BYTES: usize = 2 * 1024 * 1024;
 const MAX_MEDIA_ART_DIMENSION: u32 = 2048;
 const MAX_MEDIA_ART_PIXELS: u32 = 4_194_304;
+const MAX_MEDIA_ART_DECODE_ALLOC_BYTES: u64 = 32 * 1_024 * 1_024;
 
 #[derive(Debug, Default)]
 pub(super) struct MediaArtState {
@@ -142,9 +143,9 @@ async fn load_art_bytes(source: &MediaArtSource) -> Option<Vec<u8>> {
             read_file_bytes_limited(&file, MAX_LOCAL_ART_BYTES as usize).await
         }
         MediaArtSource::RemoteHttps(url) => {
-            // Remote art still goes through the same byte cap as local art
-            let file = gio::File::for_uri(url.as_str());
-            read_file_bytes_limited(&file, MAX_REMOTE_ART_BYTES).await
+            // Remote reads validate and pin DNS before the transfer starts
+            let curl = trusted_system_program_path("curl")?;
+            super::remote_art::read_remote_art(url, &curl).await
         }
     }
 }
@@ -183,7 +184,15 @@ fn decode_art_raster(bytes: Vec<u8>) -> Option<DecodedArt> {
         return None;
     }
 
-    let rgba = image::load_from_memory(&bytes).ok()?.to_rgba8();
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(MAX_MEDIA_ART_DIMENSION);
+    limits.max_image_height = Some(MAX_MEDIA_ART_DIMENSION);
+    limits.max_alloc = Some(MAX_MEDIA_ART_DECODE_ALLOC_BYTES);
+    let mut reader = ImageReader::new(Cursor::new(&bytes))
+        .with_guessed_format()
+        .ok()?;
+    reader.limits(limits);
+    let rgba = reader.decode().ok()?.to_rgba8();
     let width = rgba.width();
     let height = rgba.height();
     let width = i32::try_from(width).ok()?;
