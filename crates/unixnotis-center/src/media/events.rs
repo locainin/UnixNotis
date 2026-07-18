@@ -8,7 +8,7 @@ use zbus::Connection;
 
 use crate::control::UiEvent;
 
-use super::bus::{
+use super::mpris::{
     build_player_state, handle_command, is_allowed_player, refresh_players,
     spawn_properties_listener, PlayerState,
 };
@@ -20,7 +20,7 @@ use super::runtime::schedule::{
 };
 use super::runtime::snapshot::send_snapshot_if_changed;
 use super::runtime::{MediaRefreshOrigin, MediaSignal};
-use super::{identifiers::MPRIS_PREFIX, MediaCommand};
+use super::{mpris::MPRIS_PREFIX, MediaCommand};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum OwnerChangeOutcome {

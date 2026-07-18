@@ -10,5 +10,5 @@ pub const MPRIS_PLAYER: &str = "org.mpris.MediaPlayer2.Player";
 pub const MPRIS_APP: &str = "org.mpris.MediaPlayer2";
 
 #[cfg(test)]
-#[path = "tests/identifiers.rs"]
+#[path = "../tests/identifiers.rs"]
 mod tests;

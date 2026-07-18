@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
-use super::super::bus::PlayerState;
-use super::super::metadata::fetch_media_info;
+use super::super::mpris::{fetch_media_info, PlayerState};
 use super::super::MediaInfo;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

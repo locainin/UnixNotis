@@ -10,13 +10,13 @@ use zbus::Connection;
 
 use crate::control::UiEvent;
 
-use super::super::bus::PlayerState;
 use super::super::events::{
     apply_owner_change, handle_runtime_command, handle_runtime_signal, refresh_all_players,
     OwnerChangeOutcome,
 };
 use super::schedule::DelayedRefreshTasks;
 use super::{MediaSignal, MEDIA_SIGNAL_CAPACITY};
+use crate::media::mpris::PlayerState;
 use crate::media::{MediaCommand, MediaInfo};
 
 const OWNER_REBUILD_RETRY_MS: u64 = 200;

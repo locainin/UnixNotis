@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use zbus::zvariant::OwnedValue;
 
-use super::bus::PlayerState;
-use super::policy::normalize_art_source;
-use super::MediaInfo;
+use super::PlayerState;
+use crate::media::policy::normalize_art_source;
+use crate::media::MediaInfo;
 
-pub(super) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {
+pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {
     // Missing metadata should not drop the card; fall back to identity-only.
     let metadata: HashMap<String, OwnedValue> = state
         .player
@@ -92,5 +92,5 @@ fn metadata_pid(map: &HashMap<String, OwnedValue>) -> Option<u32> {
 }
 
 #[cfg(test)]
-#[path = "tests/metadata.rs"]
+#[path = "../tests/metadata.rs"]
 mod tests;

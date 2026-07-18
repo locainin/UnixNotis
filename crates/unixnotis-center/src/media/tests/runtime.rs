@@ -2,8 +2,8 @@ use unixnotis_core::{MediaConfig, MediaRemoteArtPolicy};
 
 use crate::media::MediaCommand;
 
-use super::r#loop::drain_stale_media_commands;
 use super::normalize_media_config;
+use super::r#loop::drain_stale_media_commands;
 
 #[test]
 fn normalize_media_config_lowercases_all_matching_lists() {
