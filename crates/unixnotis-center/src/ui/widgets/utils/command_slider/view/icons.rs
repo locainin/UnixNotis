@@ -90,3 +90,7 @@ fn resolve_symbolic_alias(requested: &str, theme: &gtk::IconTheme) -> Option<Str
     }
     None
 }
+
+#[cfg(test)]
+#[path = "tests/icons.rs"]
+mod tests;

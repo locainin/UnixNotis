@@ -77,3 +77,7 @@ pub(in super::super) fn build_slider_widgets(
         icon_muted,
     }
 }
+
+#[cfg(test)]
+#[path = "tests/build.rs"]
+mod tests;

@@ -91,3 +91,7 @@ fn contains_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {
             .all(|(lhs, rhs)| lhs.to_ascii_lowercase() == *rhs)
     })
 }
+
+#[cfg(test)]
+#[path = "tests/parse.rs"]
+mod tests;

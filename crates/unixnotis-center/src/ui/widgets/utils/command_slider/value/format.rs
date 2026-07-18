@@ -41,3 +41,7 @@ fn trim_decimal_suffix(mut text: String) -> String {
     }
     text
 }
+
+#[cfg(test)]
+#[path = "tests/format.rs"]
+mod tests;

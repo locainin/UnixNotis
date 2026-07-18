@@ -82,3 +82,7 @@ pub(super) fn slider_sublabel(configured: &str, fallback: f64) -> String {
     }
     configured.chars().take(MAX_SUBLABEL_CHARS).collect()
 }
+
+#[cfg(test)]
+#[path = "tests/layout.rs"]
+mod tests;

@@ -12,3 +12,7 @@ pub(super) fn slider_value_tolerance(step: f64) -> f64 {
     }
     (step * 0.5).max(1e-6)
 }
+
+#[cfg(test)]
+#[path = "tests/change.rs"]
+mod tests;
