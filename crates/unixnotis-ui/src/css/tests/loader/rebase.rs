@@ -15,6 +15,17 @@ fn rebase_relative_css_asset_urls_rewrites_quoted_relative_path() {
 }
 
 #[test]
+fn rebase_relative_css_asset_urls_decodes_escaped_function_names() {
+    let css = r#".card { background-image: u\72l("../assets/example-image.png"); }"#;
+    let css_path = Path::new("/tmp/unixnotis/themes/widgets.css");
+
+    let rebased = rebase_relative_css_asset_urls(css, css_path);
+
+    assert!(rebased.contains("file:///tmp/unixnotis/assets/example-image.png"));
+    assert!(rebased.contains(r#"u\72l("file:///tmp/unixnotis/assets/example-image.png")"#));
+}
+
+#[test]
 fn rebase_relative_css_asset_urls_rewrites_single_quoted_and_unquoted_paths() {
     let css = ".a { background: url('../a one.png'); }\n.b { mask-image: URL(icons/b.svg); }";
     let css_path = Path::new("/tmp/unixnotis/themes/widgets.css");

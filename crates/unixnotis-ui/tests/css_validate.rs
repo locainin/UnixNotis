@@ -72,6 +72,41 @@ mod tests {
     }
 
     #[test]
+    fn path_protocol_accepts_css_escaped_url_and_import_token_names() -> TestResult {
+        let root = temp_root("escaped-reference-tokens");
+        let assets = root.join("assets");
+        std::fs::create_dir_all(&assets)?;
+        std::fs::write(
+            assets.join("icon.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\"/>",
+        )?;
+        std::fs::write(root.join("colors.css"), ".imported { color: red; }")?;
+        let stylesheet = root.join("base.css");
+        std::fs::write(
+            &stylesheet,
+            concat!(
+                "@im\\70ort \"colors.css\";\n",
+                ".short { background-image: u\\72l(\"assets/icon.svg\"); }\n",
+                ".six { background-image: U\\000052L(assets/icon.svg); }\n",
+            ),
+        )?;
+
+        let output = Command::new(env!("CARGO_BIN_EXE_unixnotis-css-validate"))
+            .arg("--json-path")
+            .arg(&stylesheet)
+            .stdin(Stdio::null())
+            .output()?;
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+
+        assert!(output.status.success());
+        if report["available"] == true {
+            assert_eq!(report["diagnostics"], serde_json::json!([]), "{report}");
+        }
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
     fn css_validate_rejects_invalid_css_with_diagnostic() -> TestResult {
         let output = run_validator(".panel { color: ;")?;
         let stderr = String::from_utf8_lossy(&output.stderr);
