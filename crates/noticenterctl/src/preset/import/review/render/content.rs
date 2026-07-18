@@ -215,9 +215,9 @@ fn write_file_body(
                 "<text not displayed because it exceeds {MAX_COMPLETE_REVIEW_TEXT_BYTES} bytes>"
             )
         }),
-        // Binary content is represented by its exact size and digest in the header
+        // Metadata identifies opaque content but cannot make its hidden bytes reviewable
         Err(_) => write_styled(output, style, ReviewTone::Note, |output| {
-            output.write_str("<binary content represented by metadata above>")
+            output.write_str("<binary body cannot be displayed; ordinary approval is disabled>")
         }),
     }
 }

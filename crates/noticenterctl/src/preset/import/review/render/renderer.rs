@@ -55,9 +55,9 @@ fn item_review_is_complete(exec_content: &ImportedExecContent) -> bool {
         .iter()
         .all(|command| command.command.len() <= MAX_COMPLETE_REVIEW_COMMAND_BYTES);
     let text_files_fit = exec_content.files.iter().all(|file| {
-        std::str::from_utf8(&file.contents).map_or(true, |_| {
-            file.contents.len() <= MAX_COMPLETE_REVIEW_TEXT_BYTES
-        })
+        // Ordinary approval requires a complete human-readable body for every bundled file
+        std::str::from_utf8(&file.contents)
+            .is_ok_and(|_| file.contents.len() <= MAX_COMPLETE_REVIEW_TEXT_BYTES)
     });
     commands_fit && text_files_fit
 }
