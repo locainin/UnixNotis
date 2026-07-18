@@ -29,7 +29,8 @@ use crate::preset::css_asset_refs::{
 };
 use crate::preset::manifest::{PresetManifest, PresetManifestFile};
 use crate::preset::pathing::{
-    bundle_name_from_path, format_relative_path, parse_except_paths, validate_preset_bundle_path,
+    bundle_name_from_path, format_portable_relative_path, parse_except_paths,
+    validate_preset_bundle_path,
 };
 
 pub(in crate::preset) fn export_preset_from(
@@ -235,12 +236,14 @@ pub(in crate::preset) fn export_preset_from_with_confirm(
     let manifest_files = collected
         .files
         .iter()
-        .map(|file| PresetManifestFile {
+        .map(|file| -> Result<PresetManifestFile> {
             // Manifest stores slash-separated relative paths for stable cross-platform output
-            path: format_relative_path(&file.relative_path),
-            size: file.size,
+            Ok(PresetManifestFile {
+                path: format_portable_relative_path(&file.relative_path)?,
+                size: file.size,
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>>>()?;
     // Manifest metadata is lightweight and lets inspect work without unpacking to disk
     let manifest = PresetManifest::new(
         bundle_name_from_path(output_path)?,

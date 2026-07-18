@@ -92,6 +92,32 @@ fn export_builds_bundle_from_config_root() {
     assert!(bundle_path.exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn export_rejects_distinct_non_utf8_payload_paths_before_writing_bundle() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let root = TempDirGuard::new("non-utf8-payload");
+    root.write("config.toml", "[theme]\nbase_css = \"base.css\"\n");
+    root.write(
+        "base.css",
+        ".a { background: url(assets/%80.png); }\n.b { background: url(assets/%81.png); }",
+    );
+    let assets = root.path.join("assets");
+    fs::create_dir_all(&assets).expect("create asset directory");
+    for name in [b"\x80.png".to_vec(), b"\x81.png".to_vec()] {
+        fs::write(assets.join(OsString::from_vec(name)), "image").expect("write non-UTF-8 asset");
+    }
+    let bundle_path = root.path.join("demo.unixnotis");
+
+    let error = export_preset_from(&root.path, &bundle_path, &[], false)
+        .expect_err("reject non-UTF-8 payload paths");
+
+    assert!(error.to_string().contains("non-UTF-8 bytes"));
+    assert!(!bundle_path.exists());
+}
+
 #[test]
 fn export_includes_only_active_files_and_referenced_dependencies() {
     let root = TempDirGuard::new("dependency-closure");

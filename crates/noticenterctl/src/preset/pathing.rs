@@ -195,6 +195,23 @@ pub(super) fn format_relative_path(path: &Path) -> String {
         .join("/")
 }
 
+pub(super) fn format_portable_relative_path(path: &Path) -> Result<String> {
+    let mut parts = Vec::new();
+    for component in path.components() {
+        let Component::Normal(part) = component else {
+            continue;
+        };
+        let Some(part) = part.to_str() else {
+            return Err(anyhow!(
+                "preset export payload path contains non-UTF-8 bytes and cannot be represented portably: {}",
+                path.display()
+            ));
+        };
+        parts.push(part);
+    }
+    Ok(parts.join("/"))
+}
+
 pub(super) fn resolve_cli_bundle_path_with_prompt<F>(path: &Path, mut prompt: F) -> Result<PathBuf>
 where
     F: FnMut(&Path, &Path) -> Result<bool>,
