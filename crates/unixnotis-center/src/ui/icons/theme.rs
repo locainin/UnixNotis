@@ -7,14 +7,9 @@ use std::path::{Path, PathBuf};
 
 use gio::prelude::FileExt;
 use gtk::gdk;
-use gtk::gdk::prelude::*;
+use gtk::prelude::*;
 use gtk::{IconLookupFlags, IconPaintable, TextDirection};
 use unixnotis_core::{NotificationImage, NotificationView};
-
-use super::cache::CachedPaintable;
-
-// Guard against blocking loads of unusually large icons on the GTK thread
-const MAX_SYNC_ICON_BYTES: u64 = 4 * 1024 * 1024;
 
 pub(super) enum IconSource {
     Paintable(IconPaintable),
@@ -31,8 +26,8 @@ pub(super) fn resolve_icon_source(name: &str, size: i32, scale: i32) -> Option<I
     // filesystem path and it's not SVG, treat it as a raster path source
     if let Some(file) = paintable.file() {
         if let Some(path) = file.path() {
-            // SVG decoding/rendering often stays on the GTK side; only fast-path raster files here
-            if !is_svg_path(&path) {
+            // Only formats handled by the bounded worker leave GTK's theme paintable path
+            if theme_path_uses_worker(&path) {
                 return Some(IconSource::RasterPath(path));
             }
         }
@@ -59,36 +54,20 @@ pub(super) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
     None
 }
 
-pub(super) fn resolve_path_texture(path: &Path) -> Option<CachedPaintable> {
-    // Avoid synchronous SVG loads on the GTK thread; SVGs are routed through async paths
-    if is_svg_path(path) {
-        return None;
-    }
-    // Only load real files from disk; avoids weird behavior for directories/symlinks/invalid paths
-    if !path.is_file() {
-        return None;
-    }
-
-    // Avoid synchronous decoding for unusually large icon files to reduce UI stalls
-    if let Ok(metadata) = std::fs::metadata(path) {
-        if metadata.len() > MAX_SYNC_ICON_BYTES {
-            return None;
-        }
-    }
-
-    // Let GDK load the texture directly. This is a synchronous path and is typically fine for small icons;
-    // heavy/large loads should prefer the async raster decode pipeline when possible
-    let file = gio::File::for_path(path);
-    let texture = gdk::Texture::from_file(&file).ok()?;
-    Some(CachedPaintable::from_texture(texture))
+fn worker_decodes_theme_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "gif" | "bmp" | "tif" | "tiff" | "webp" | "ico"
+            )
+        })
 }
 
-pub(super) fn is_svg_path(path: &Path) -> bool {
-    // SVG/SVGZ should stay on GTK's paintable path (scaling/vector rendering rules differ from raster)
-    // Case-insensitive check on extension
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| matches!(ext.to_ascii_lowercase().as_str(), "svg" | "svgz"))
+fn theme_path_uses_worker(path: &Path) -> bool {
+    // Theme links stay with GTK while regular raster files use the bounded worker
+    worker_decodes_theme_path(path) && !path.is_symlink()
 }
 
 fn resolve_icon_paintable(name: &str, size: i32, scale: i32) -> Option<IconPaintable> {

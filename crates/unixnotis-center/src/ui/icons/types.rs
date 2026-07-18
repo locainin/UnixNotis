@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use super::cache::{CachedPaintable, IconKey};
-use super::decode::IconDecodeMode;
 
 pub(super) enum IconResolution {
     Ready {
@@ -21,7 +20,6 @@ pub(super) struct IconDecodeRequest {
     pub(super) path: PathBuf,
     pub(super) size: i32,
     pub(super) scale: i32,
-    pub(super) mode: IconDecodeMode,
 }
 
 #[cfg(test)]
