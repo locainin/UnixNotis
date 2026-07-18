@@ -9,38 +9,26 @@ pub(in super::super) fn parse_numeric(
     mode: NumericParseMode,
 ) -> Option<f64> {
     // Parse the last numeric token and prefer explicit percent tokens
-    let mut current_start = None;
-    let mut current_has_dot = false;
     let mut last_any: Option<(f64, bool, bool)> = None;
     let mut last_percent: Option<(f64, bool)> = None;
 
-    for (index, ch) in text.char_indices() {
-        if ch.is_ascii_digit() || ch == '.' {
-            if current_start.is_none() {
-                current_start = Some(index);
-            }
-            if ch == '.' {
-                current_has_dot = true;
-            }
+    let bytes = text.as_bytes();
+    let mut cursor = 0;
+    while bytes.get(cursor).is_some() {
+        let Some(token) = numeric_token_at(bytes, cursor) else {
+            cursor += 1;
             continue;
-        }
-        if let Some(start) = current_start.take() {
-            // Token boundary reached, parse collected numeric segment
-            if let Ok(value) = text[start..index].parse::<f64>() {
-                let percent = ch == '%';
-                last_any = Some((value, percent, current_has_dot));
-                if percent {
-                    last_percent = Some((value, current_has_dot));
-                }
-            }
-            current_has_dot = false;
-        }
-    }
+        };
 
-    if let Some(start) = current_start.take() {
-        if let Ok(value) = text[start..].parse::<f64>() {
-            last_any = Some((value, false, current_has_dot));
+        // Token bounds always end on ASCII bytes, which are valid UTF-8 boundaries
+        if let Ok(value) = text[token.start..token.end].parse::<f64>() {
+            let percent = bytes.get(token.end) == Some(&b'%');
+            last_any = Some((value, percent, token.has_dot));
+            if percent {
+                last_percent = Some((value, token.has_dot));
+            }
         }
+        cursor = token.end;
     }
 
     let (mut value, percent, has_dot) = if let Some((value, has_dot)) = last_percent {
@@ -53,7 +41,8 @@ pub(in super::super) fn parse_numeric(
     match mode {
         NumericParseMode::Auto => {
             // Decimal values in small ranges are usually normalized ratios
-            if !percent && has_dot && value <= 5.0 {
+            // Negative decimals remain ordinary values unless Ratio mode is explicit
+            if !percent && has_dot && value.is_sign_positive() && value <= 5.0 {
                 value *= 100.0;
             }
         }
@@ -66,6 +55,76 @@ pub(in super::super) fn parse_numeric(
     }
 
     Some(value.clamp(min, max))
+}
+
+#[derive(Clone, Copy)]
+struct NumericToken {
+    start: usize,
+    end: usize,
+    has_dot: bool,
+}
+
+fn numeric_token_at(bytes: &[u8], start: usize) -> Option<NumericToken> {
+    let mut cursor = start;
+    if matches!(bytes.get(cursor), Some(b'+' | b'-')) {
+        // A sign is unary only at a token boundary, not inside text such as `1-2`
+        if !sign_can_start_token(bytes, cursor) {
+            return None;
+        }
+        cursor += 1;
+    }
+
+    let integer_start = cursor;
+    while bytes.get(cursor).is_some_and(u8::is_ascii_digit) {
+        cursor += 1;
+    }
+    let mut has_digit = cursor > integer_start;
+    let mut has_dot = false;
+
+    if bytes.get(cursor) == Some(&b'.') {
+        has_dot = true;
+        cursor += 1;
+        let fraction_start = cursor;
+        while bytes.get(cursor).is_some_and(u8::is_ascii_digit) {
+            cursor += 1;
+        }
+        if cursor != fraction_start {
+            has_digit = true;
+        }
+    }
+
+    if !has_digit {
+        return None;
+    }
+
+    // Keep an exponent only when it contains at least one digit
+    if matches!(bytes.get(cursor), Some(b'e' | b'E')) {
+        let exponent_mark = cursor;
+        cursor += 1;
+        if matches!(bytes.get(cursor), Some(b'+' | b'-')) {
+            cursor += 1;
+        }
+        let exponent_start = cursor;
+        while bytes.get(cursor).is_some_and(u8::is_ascii_digit) {
+            cursor += 1;
+        }
+        if cursor == exponent_start {
+            cursor = exponent_mark;
+        }
+    }
+
+    Some(NumericToken {
+        start,
+        end: cursor,
+        has_dot,
+    })
+}
+
+fn sign_can_start_token(bytes: &[u8], start: usize) -> bool {
+    let Some(previous) = start.checked_sub(1).and_then(|index| bytes.get(index)) else {
+        return true;
+    };
+    !previous.is_ascii_alphanumeric() && !matches!(previous, b'.' | b'_' | b'+' | b'-')
 }
 
 pub(in super::super) fn parse_muted(text: &str) -> bool {
