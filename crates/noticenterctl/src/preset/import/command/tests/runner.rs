@@ -7,7 +7,7 @@ fn import_runner_reports_a_missing_bundle() {
     let missing = std::env::temp_dir().join("unixnotis-missing-runner-bundle.unixnotis");
     let _ = fs::remove_file(&missing);
 
-    let error = crate::preset::import::run_import(&missing, &[], true, false)
+    let error = crate::preset::import::run_import(&missing, &[], true, false, false)
         .expect_err("missing bundle should fail");
 
     assert!(

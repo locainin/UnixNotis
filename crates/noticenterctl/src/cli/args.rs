@@ -97,6 +97,8 @@ pub enum PresetCommand {
         dry_run: bool,
         #[arg(long)]
         allow_exec: bool,
+        #[arg(long)]
+        allow_external_css: bool,
     },
     // Print bundle metadata and included files without writing anything
     Inspect {

@@ -14,6 +14,7 @@ use super::super::super::filesystem::{
 use super::super::super::pathing::{
     parse_except_paths, relative_path_matches_exclusion, validate_preset_bundle_path,
 };
+use super::super::css_assets::harden_imported_css_assets;
 use super::super::review::checks::{
     collect_imported_exec_content, validate_imported_command_paths_stay_in_root,
     validate_imported_icon_assets, validate_imported_theme_paths_stay_in_root, ImportedExecContent,
@@ -25,11 +26,17 @@ pub(in crate::preset) struct PreparedImport {
     pub(in crate::preset) plan: ImportPlan,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(in crate::preset) struct ImportTrustPolicy {
+    pub(in crate::preset) allow_exec: bool,
+    pub(in crate::preset) allow_external_css: bool,
+}
+
 pub(in crate::preset) fn prepare_import(
     config_dir: &Path,
     input_path: &Path,
     except: &[String],
-    allow_exec: bool,
+    trust_policy: ImportTrustPolicy,
     confirm_external_css_refs: impl FnOnce(&[ExternalCssAssetRef]) -> Result<()>,
     confirm_exec_content: impl FnOnce(&ImportedExecContent, bool) -> Result<()>,
 ) -> Result<PreparedImport> {
@@ -42,7 +49,7 @@ pub(in crate::preset) fn prepare_import(
     let imports_config_toml =
         !relative_path_matches_exclusion(Path::new("config.toml"), &exclusions);
     // Read and validate the full bundle before touching the local config tree
-    let bundle = read_bundle(input_path).context("read preset bundle for import")?;
+    let mut bundle = read_bundle(input_path).context("read preset bundle for import")?;
 
     if !bundle
         .files
@@ -97,10 +104,29 @@ pub(in crate::preset) fn prepare_import(
     let exec_content =
         collect_imported_exec_content(&effective_config_bytes, &included_bundle_files)?;
     // The exec review prompt must run before the CSS prompt so trust comes first
-    confirm_exec_content(&exec_content, allow_exec)?;
-    // CSS asset refs are warning-only, but the prompt still needs to happen before any write starts
+    confirm_exec_content(&exec_content, trust_policy.allow_exec)?;
+    // Release the first validation snapshot before image decoding allocates bounded pixel buffers
+    drop(exec_content);
+    drop(included_bundle_files);
+    // Local and embedded images become bounded PNG files before GTK can inspect their source bytes
+    harden_imported_css_assets(config_dir, &mut bundle.files, &exclusions)?;
+    let included_bundle_files = bundle
+        .files
+        .iter()
+        .filter(|file| !relative_path_matches_exclusion(&file.relative_path, &exclusions))
+        .cloned()
+        .collect::<Vec<_>>();
+    // External references need a deliberate expert flag in addition to any terminal confirmation
     let external_css_refs =
         collect_external_css_asset_refs_from_bundle(config_dir, &included_bundle_files)?;
+    if !external_css_refs.is_empty() && !trust_policy.allow_external_css {
+        let details =
+            super::super::review::prompts::format_external_css_ref_lines(&external_css_refs);
+        return Err(anyhow!(
+            "preset import found CSS asset references that leave the UnixNotis config directory or use remote URLs; rerun with --allow-external-css only if those references are trusted\n{}",
+            details.join("\n")
+        ));
+    }
     confirm_external_css_refs(&external_css_refs)?;
     // The write plan is built last so prompts cannot leave behind partial staging state
     let plan = build_import_plan(config_dir, bundle.files, &exclusions)?;

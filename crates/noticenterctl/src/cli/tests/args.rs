@@ -137,15 +137,39 @@ fn parses_preset_import_dry_run() {
                     except,
                     dry_run,
                     allow_exec,
+                    allow_external_css,
                 },
         } => {
             assert_eq!(input, "bundle.unixnotis");
             assert!(except.is_empty());
             assert!(dry_run);
             assert!(!allow_exec);
+            assert!(!allow_external_css);
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parses_preset_import_external_css_expert_override() {
+    let args = Args::try_parse_from([
+        "noticenterctl",
+        "preset",
+        "import",
+        "bundle.unixnotis",
+        "--allow-external-css",
+    ])
+    .expect("parse external CSS override");
+
+    assert!(matches!(
+        args.command,
+        Command::Preset {
+            command: PresetCommand::Import {
+                allow_external_css: true,
+                ..
+            }
+        }
+    ));
 }
 
 #[test]

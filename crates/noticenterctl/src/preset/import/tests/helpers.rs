@@ -19,6 +19,7 @@ use super::super::command::summary::{build_summary, ImportSummary};
 use super::super::review::checks::ImportedExecContent;
 use super::super::transaction::apply::{apply_import_plan, finalize_import_transaction};
 use super::super::transaction::prepare::prepare_import;
+use super::super::transaction::prepare::ImportTrustPolicy;
 
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -127,12 +128,39 @@ where
     F: FnOnce(&[ExternalCssAssetRef]) -> Result<()>,
     G: FnOnce(&ImportedExecContent, bool) -> Result<()>,
 {
+    import_preset_into_with_policy_and_confirm(
+        config_dir,
+        input_path,
+        except,
+        dry_run,
+        ImportTrustPolicy {
+            allow_exec,
+            allow_external_css: false,
+        },
+        confirm_external_css_refs,
+        confirm_exec_content,
+    )
+}
+
+pub(in crate::preset::import) fn import_preset_into_with_policy_and_confirm<F, G>(
+    config_dir: &Path,
+    input_path: &Path,
+    except: &[String],
+    dry_run: bool,
+    trust_policy: ImportTrustPolicy,
+    confirm_external_css_refs: F,
+    confirm_exec_content: G,
+) -> Result<ImportSummary>
+where
+    F: FnOnce(&[ExternalCssAssetRef]) -> Result<()>,
+    G: FnOnce(&ImportedExecContent, bool) -> Result<()>,
+{
     // Tests inject a fixed answer here so the import plan can be checked without terminal prompts
     let prepared = prepare_import(
         config_dir,
         input_path,
         except,
-        allow_exec,
+        trust_policy,
         confirm_external_css_refs,
         confirm_exec_content,
     )?;

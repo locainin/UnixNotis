@@ -19,6 +19,7 @@ pub(in crate::preset) fn run_import(
     except: &[String],
     dry_run: bool,
     allow_exec: bool,
+    allow_external_css: bool,
 ) -> Result<()> {
     // Resolve the live config root once for the CLI path
     let config_dir = Config::default_config_dir().context("resolve config directory")?;
@@ -28,7 +29,10 @@ pub(in crate::preset) fn run_import(
         &config_dir,
         &input_path,
         except,
-        allow_exec,
+        super::super::transaction::prepare::ImportTrustPolicy {
+            allow_exec,
+            allow_external_css,
+        },
         confirm_import_external_css_refs,
         confirm_import_exec_content,
     )?;
