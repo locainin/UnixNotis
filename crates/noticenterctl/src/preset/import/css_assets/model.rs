@@ -2,6 +2,10 @@
 
 use std::path::PathBuf;
 
+use crate::preset::archive::BundleFile;
+
+pub(super) type IncludedBundleFiles<'a> = std::collections::BTreeMap<PathBuf, &'a BundleFile>;
+
 #[derive(Debug)]
 pub(super) enum ImportedCssReference {
     // Relative paths resolve to an included regular bundle file
@@ -13,4 +17,10 @@ pub(super) enum ImportedCssReference {
     },
     // Expert-approved host-local or remote references remain byte-for-byte intact
     External,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum CssAssetSourceKey {
+    Bundled(PathBuf),
+    Data([u8; 32]),
 }
