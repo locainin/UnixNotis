@@ -173,3 +173,7 @@ fn stop_child(child: &mut std::process::Child) {
     let _ = child.kill();
     let _ = child.wait();
 }
+
+#[cfg(test)]
+#[path = "tests/remote_art.rs"]
+mod tests;
