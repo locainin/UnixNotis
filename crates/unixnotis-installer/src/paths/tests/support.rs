@@ -1,7 +1,7 @@
 pub(super) use super::super::{
     discovery::{
-        is_unixnotis_release_archive, is_unixnotis_repo, service_manager_choice_from_environment,
-        RELEASE_BIN_DIR, RELEASE_MANIFEST_FILE,
+        is_unixnotis_release_archive, is_unixnotis_repo, release_root_from_executable,
+        service_manager_choice_from_environment, RELEASE_BIN_DIR, RELEASE_MANIFEST_FILE,
     },
     format_with_home, InstallPaths, ServiceManagerChoice,
 };

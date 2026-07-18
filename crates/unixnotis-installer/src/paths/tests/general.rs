@@ -71,6 +71,26 @@ version = "0.1.0"
 }
 
 #[test]
+fn repo_detection_requires_each_workspace_marker() {
+    let root = env::temp_dir().join(format!(
+        "unixnotis-workspace-marker-check-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("test root");
+    let cargo_path = root.join("Cargo.toml");
+    for contents in [
+        "[workspace]\nmembers = [\"crates/unixnotis-daemon\"]\n",
+        "[workspace]\nmembers = [\"crates/unixnotis-core\"]\n",
+        "[package]\nname = \"crates/unixnotis-daemon crates/unixnotis-core\"\n",
+    ] {
+        fs::write(&cargo_path, contents).expect("incomplete workspace manifest");
+        assert!(!is_unixnotis_repo(&cargo_path), "{contents:?}");
+    }
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn release_archive_detection_requires_manifest_and_bundled_binaries() {
     let root = env::temp_dir().join(format!(
         "unixnotis-release-archive-detect-{}",
@@ -165,6 +185,72 @@ fn release_root_discovery_prefers_explicit_archive_override() {
 }
 
 #[test]
+fn release_root_from_executable_requires_a_complete_sibling_archive() {
+    let root = env::temp_dir().join(format!(
+        "unixnotis-release-executable-root-{}",
+        std::process::id()
+    ));
+    let executable = root.join("unixnotis-installer");
+    fs::create_dir_all(&root).expect("release root");
+
+    assert_eq!(release_root_from_executable(&executable), None);
+
+    write_release_archive(&root);
+    assert_eq!(
+        release_root_from_executable(&executable),
+        Some(root.clone())
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn repo_root_override_rejects_an_unrelated_cargo_manifest() {
+    let _guard = env_lock();
+    let root = env::temp_dir().join(format!(
+        "unixnotis-invalid-repo-override-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("override root");
+    fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+        .expect("unrelated Cargo.toml");
+    let previous_release = set_env("UNIXNOTIS_RELEASE_ROOT", None);
+    let previous_repo = set_env("UNIXNOTIS_REPO_ROOT", Some(root.to_string_lossy().as_ref()));
+
+    let discovered = InstallPaths::discover_repo_root();
+
+    assert_ne!(discovered.ok().as_deref(), Some(root.as_path()));
+    restore_env("UNIXNOTIS_REPO_ROOT", previous_repo);
+    restore_env("UNIXNOTIS_RELEASE_ROOT", previous_release);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn repo_root_walk_skips_an_unrelated_nested_cargo_manifest() {
+    let _guard = env_lock();
+    let root = env::temp_dir().join(format!("unixnotis-nested-repo-walk-{}", std::process::id()));
+    let nested = root.join("nested");
+    fs::create_dir_all(&nested).expect("nested directory");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/unixnotis-daemon\", \"crates/unixnotis-core\"]\n",
+    )
+    .expect("workspace Cargo.toml");
+    fs::write(nested.join("Cargo.toml"), "[workspace]\nmembers = []\n").expect("nested Cargo.toml");
+    let previous_release = set_env("UNIXNOTIS_RELEASE_ROOT", None);
+    let previous_repo = set_env("UNIXNOTIS_REPO_ROOT", None);
+    let current_dir = CurrentDirGuard::set(&nested);
+
+    let discovered = InstallPaths::discover_repo_root().expect("parent workspace root");
+
+    assert_eq!(discovered, root);
+    restore_env("UNIXNOTIS_REPO_ROOT", previous_repo);
+    restore_env("UNIXNOTIS_RELEASE_ROOT", previous_release);
+    drop(current_dir);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn service_manager_choice_accepts_cli_names() {
     assert_eq!(
         ServiceManagerChoice::parse("systemd").expect("systemd"),
@@ -242,4 +328,20 @@ fn trial_repo_root_discovery_ignores_service_manager_environment() {
     restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
     restore_env("UNIXNOTIS_REPO_ROOT", previous_repo);
     let _ = fs::remove_dir_all(root);
+}
+
+struct CurrentDirGuard(PathBuf);
+
+impl CurrentDirGuard {
+    fn set(path: &std::path::Path) -> Self {
+        let previous = env::current_dir().expect("current directory");
+        env::set_current_dir(path).expect("set current directory");
+        Self(previous)
+    }
+}
+
+impl Drop for CurrentDirGuard {
+    fn drop(&mut self) {
+        env::set_current_dir(&self.0).expect("restore current directory");
+    }
 }
