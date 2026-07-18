@@ -7,16 +7,16 @@ use std::time::Duration;
 use gtk::prelude::*;
 use unixnotis_core::{PanelDebugLevel, SliderWidgetConfig};
 
+use super::super::refresh::{
+    build_refresh_state_from_weak, request_refresh, SliderRefreshMeta, SliderRefreshRequest,
+};
 use super::super::run_action_command_with_completion;
-use super::super::slider_parse::format_value;
-use super::layout::build_icon_shell;
-use super::refresh::request_refresh;
-use super::request::SliderRefreshRequest;
+use super::super::value::format_display_value;
+use super::super::view::build_icon_shell;
 use super::schedule::schedule_command;
-use super::state::{build_refresh_state_from_weak, SliderRefreshMeta};
 use crate::diagnostics::panel_debug as debug;
 
-pub(super) fn attach_icon_action(
+pub(in super::super) fn attach_icon_action(
     root: &gtk::Box,
     icon_image: &gtk::Image,
     scale: &gtk::Scale,
@@ -54,7 +54,7 @@ pub(super) fn attach_icon_action(
                 debug::log(PanelDebugLevel::Warn, || {
                     format!(
                         "slider toggle action failed; forcing refresh cmd=\"{}\"",
-                        request.cmd
+                        request.command()
                     )
                 });
             }
@@ -70,7 +70,7 @@ pub(super) fn attach_icon_action(
     });
 }
 
-pub(super) fn attach_scale_action(
+pub(in super::super) fn attach_scale_action(
     scale: &gtk::Scale,
     value_label: &gtk::Label,
     icon_image: &gtk::Image,
@@ -100,7 +100,7 @@ pub(super) fn attach_scale_action(
 
         let value = scale.value();
         // Local label echo keeps dragging responsive before the debounced command finishes
-        label_clone.set_text(&format_value(value));
+        label_clone.set_text(&format_display_value(value));
         schedule_command(
             pending_guard.clone(),
             pending_value_guard.clone(),
@@ -114,27 +114,25 @@ pub(super) fn attach_scale_action(
                 let request = request.clone();
                 let refresh_meta = refresh_meta_for_set.clone();
                 move |failed| {
-                    if !failed {
-                        return;
+                    if failed {
+                        // Failed set actions should reconcile quickly instead of waiting for polling
+                        debug::log(PanelDebugLevel::Warn, || {
+                            format!(
+                                "slider set action failed; forcing refresh cmd=\"{}\"",
+                                request.command()
+                            )
+                        });
+                        // Corrective refresh uses the same parser and backoff path as polling
+                        let Some(refresh) = build_refresh_state_from_weak(
+                            &scale_weak,
+                            &label_weak,
+                            &icon_weak,
+                            &refresh_meta,
+                        ) else {
+                            return;
+                        };
+                        request_refresh(request.clone(), refresh, Duration::from_secs(1), true);
                     }
-
-                    // Failed set actions should reconcile quickly instead of waiting for polling
-                    debug::log(PanelDebugLevel::Warn, || {
-                        format!(
-                            "slider set action failed; forcing refresh cmd=\"{}\"",
-                            request.cmd
-                        )
-                    });
-                    // Corrective refresh uses the same parser and backoff path as polling
-                    let Some(refresh) = build_refresh_state_from_weak(
-                        &scale_weak,
-                        &label_weak,
-                        &icon_weak,
-                        &refresh_meta,
-                    ) else {
-                        return;
-                    };
-                    request_refresh(request.clone(), refresh, Duration::from_secs(1), true);
                 }
             }),
         );

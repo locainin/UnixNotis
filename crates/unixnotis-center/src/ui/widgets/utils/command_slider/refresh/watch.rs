@@ -2,12 +2,10 @@
 
 use std::time::Duration;
 
-use super::super::{start_command_watch, CommandWatch};
-use super::refresh::request_refresh;
-use super::request::SliderRefreshRequest;
-use super::CommandSlider;
+use super::super::{start_command_watch, CommandSlider, CommandWatch};
+use super::{request_refresh, SliderRefreshRequest};
 
-pub(super) fn set_watch_active(slider: &CommandSlider, active: bool) {
+pub(in super::super) fn set_watch_active(slider: &CommandSlider, active: bool) {
     // Widgets without a watch command rely on polling only
     if slider.config.watch_cmd.is_none() {
         return;

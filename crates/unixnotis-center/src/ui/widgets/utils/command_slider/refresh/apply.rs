@@ -5,10 +5,9 @@ use std::time::{Duration, Instant};
 use gtk::prelude::*;
 use unixnotis_core::{util, PanelDebugLevel};
 
-use super::super::slider_parse::{format_value, parse_muted, parse_numeric};
+use super::super::value::{format_display_value, parse_muted, parse_numeric, slider_value_changed};
 use super::request::SliderRefreshRequest;
 use super::state::SliderRefreshState;
-use super::value::slider_value_changed;
 use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
 pub(super) fn apply_successful_output(
@@ -61,7 +60,7 @@ fn apply_slider_value(
     refresh: &SliderRefreshState,
     value: f64,
 ) -> bool {
-    let formatted = format_value(value);
+    let formatted = format_display_value(value);
     // Skip widget writes when the visible state is already current
     let value_changed = slider_value_changed(refresh.scale.value(), value, request.step);
     let label_changed = refresh.label.text().as_str() != formatted;

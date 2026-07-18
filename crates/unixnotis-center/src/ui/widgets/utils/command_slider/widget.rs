@@ -6,11 +6,10 @@ use std::time::{Duration, Instant};
 
 use unixnotis_core::SliderWidgetConfig;
 
-use super::build::build_slider_widgets;
-use super::gate::SliderRefreshGate;
-use super::refresh::request_refresh;
-use super::request::SliderRefreshRequest;
-use super::state::{SliderRefreshMeta, SliderRefreshState};
+use super::refresh::{
+    request_refresh, SliderRefreshGate, SliderRefreshMeta, SliderRefreshRequest, SliderRefreshState,
+};
+use super::view::build_slider_widgets;
 use super::{CommandWatch, RefreshBackoff};
 
 pub struct CommandSlider {
@@ -107,7 +106,7 @@ impl CommandSlider {
 
     pub fn next_poll_in(&self, now: Instant, base_interval: Duration) -> Option<Duration> {
         // Scheduler asks each slider for its own deadline instead of using one fast global tick
-        super::poll::next_poll_in(
+        super::refresh::next_poll_in(
             &self.watch_handle,
             &self.refresh_gate,
             &self.refresh_backoff,
@@ -118,7 +117,7 @@ impl CommandSlider {
 
     pub fn set_watch_active(&self, active: bool) {
         // Panel visibility owns watch lifecycle so hidden panels do not keep monitor commands alive
-        super::watching::set_watch_active(self, active);
+        super::refresh::set_watch_active(self, active);
     }
 
     pub(super) fn refresh_state(&self) -> SliderRefreshState {
@@ -136,7 +135,3 @@ impl CommandSlider {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "tests/widget.rs"]
-mod tests;

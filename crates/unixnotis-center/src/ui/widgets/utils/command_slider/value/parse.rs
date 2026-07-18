@@ -2,7 +2,12 @@
 
 use unixnotis_core::NumericParseMode;
 
-pub(super) fn parse_numeric(text: &str, min: f64, max: f64, mode: NumericParseMode) -> Option<f64> {
+pub(in super::super) fn parse_numeric(
+    text: &str,
+    min: f64,
+    max: f64,
+    mode: NumericParseMode,
+) -> Option<f64> {
     // Parse the last numeric token and prefer explicit percent tokens
     let mut current_start = None;
     let mut current_has_dot = false;
@@ -63,14 +68,10 @@ pub(super) fn parse_numeric(text: &str, min: f64, max: f64, mode: NumericParseMo
     Some(value.clamp(min, max))
 }
 
-pub(super) fn parse_muted(text: &str) -> bool {
+pub(in super::super) fn parse_muted(text: &str) -> bool {
     // Keep checks allocation-free since this runs on every refresh cycle
     contains_ascii_case_insensitive(text, "muted")
         || contains_ascii_case_insensitive(text, "mute: yes")
-}
-
-pub(super) fn format_value(value: f64) -> String {
-    format!("{value:.0}%")
 }
 
 fn contains_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {

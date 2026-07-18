@@ -1,4 +1,4 @@
-//! Slider async refresh execution
+//! Slider asynchronous refresh execution
 
 use std::cell::Cell;
 use std::io;
@@ -11,11 +11,10 @@ use unixnotis_core::{util, PanelDebugLevel};
 
 use super::super::run_command_capture_status_async;
 use super::apply::{apply_successful_output, note_slider_error};
-use super::request::SliderRefreshRequest;
-use super::state::SliderRefreshState;
+use super::{SliderRefreshRequest, SliderRefreshState};
 use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
-pub(super) fn request_refresh(
+pub(in super::super) fn request_refresh(
     request: SliderRefreshRequest,
     refresh: SliderRefreshState,
     base_interval: Duration,

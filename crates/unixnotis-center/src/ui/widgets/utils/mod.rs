@@ -6,10 +6,6 @@ mod command;
 mod command_slider;
 // Shared refresh backoff policy used by cards and stats
 mod refresh_backoff;
-// Slider icon fallback and theme compatibility helpers
-mod slider_icons;
-// Slider value parsing and muted-state helpers
-mod slider_parse;
 // Shared watch cleanup worker keeps teardown off the GTK thread
 mod watch_reaper;
 // Long-running command watch lifecycle helpers

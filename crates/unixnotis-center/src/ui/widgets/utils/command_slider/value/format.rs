@@ -1,19 +1,11 @@
-//! Slider value formatting and refresh comparison helpers
+//! Slider value formatting helpers
 
-pub(super) fn slider_value_changed(current: f64, next: f64, step: f64) -> bool {
-    // Treat values inside half a step as unchanged for UI refresh decisions
-    (current - next).abs() > slider_value_tolerance(step)
+pub(in super::super) fn format_display_value(value: f64) -> String {
+    // Display values remain compact and consistent across labels and sublabels
+    format!("{value:.0}%")
 }
 
-pub(super) fn slider_value_tolerance(step: f64) -> f64 {
-    // Broken or missing step values fall back to a tiny fixed tolerance
-    if !step.is_finite() || step <= 0.0 {
-        return 1e-6;
-    }
-    (step * 0.5).max(1e-6)
-}
-
-pub(super) fn format_command_value(value: f64, step: f64) -> String {
+pub(in super::super) fn format_command_value(value: f64, step: f64) -> String {
     // Match command precision to slider granularity so fractional sliders stay correct
     let precision = slider_step_precision(step);
     let formatted = format!("{value:.precision$}");

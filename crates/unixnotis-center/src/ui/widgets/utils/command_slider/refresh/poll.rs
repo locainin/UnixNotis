@@ -1,4 +1,4 @@
-//! Command slider polling decisions
+//! Command slider polling and deadline decisions
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -21,7 +21,7 @@ pub(super) fn needs_polling(watch_handle: &RefCell<Option<CommandWatch>>) -> boo
     true
 }
 
-pub(super) fn next_poll_in(
+pub(in super::super) fn next_poll_in(
     watch_handle: &RefCell<Option<CommandWatch>>,
     refresh_gate: &SliderRefreshGate,
     refresh_backoff: &Rc<RefCell<RefreshBackoff>>,

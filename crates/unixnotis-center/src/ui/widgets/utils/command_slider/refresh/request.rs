@@ -1,9 +1,9 @@
-//! Slider refresh request data
+//! Slider refresh request snapshots
 
 use unixnotis_core::{NumericParseMode, SliderWidgetConfig};
 
 #[derive(Clone)]
-pub(super) struct SliderRefreshRequest {
+pub(in super::super) struct SliderRefreshRequest {
     // Command used to read the current slider value
     pub(super) cmd: String,
     // Lower bound used for parser clamping
@@ -17,7 +17,7 @@ pub(super) struct SliderRefreshRequest {
 }
 
 impl SliderRefreshRequest {
-    pub(super) fn from_config(config: &SliderWidgetConfig) -> Self {
+    pub(in super::super) fn from_config(config: &SliderWidgetConfig) -> Self {
         // Snapshot config values once so async callbacks do not borrow widget config
         Self {
             cmd: config.get_cmd.clone(),
@@ -26,5 +26,10 @@ impl SliderRefreshRequest {
             step: config.step,
             parse_mode: config.parse_mode,
         }
+    }
+
+    pub(in super::super) fn command(&self) -> &str {
+        // Action diagnostics need the command identity without exposing mutable request fields
+        &self.cmd
     }
 }

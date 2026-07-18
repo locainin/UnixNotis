@@ -7,7 +7,10 @@ use unixnotis_core::{css::hooks, SliderWidgetConfig};
 const MAX_RENDERED_SEGMENTS: usize = 64;
 const MAX_SUBLABEL_CHARS: usize = 32;
 
-pub(super) fn build_icon_shell(icon_image: &gtk::Image, interactive: bool) -> gtk::Button {
+pub(in super::super) fn build_icon_shell(
+    icon_image: &gtk::Image,
+    interactive: bool,
+) -> gtk::Button {
     let button = gtk::Button::new();
     button.set_child(Some(icon_image));
     button.add_css_class(hooks::slider::ICON);
@@ -75,7 +78,7 @@ fn build_sublabel_row(config: &SliderWidgetConfig) -> gtk::Box {
 pub(super) fn slider_sublabel(configured: &str, fallback: f64) -> String {
     let configured = configured.trim();
     if configured.is_empty() {
-        return super::super::slider_parse::format_value(fallback);
+        return super::super::value::format_display_value(fallback);
     }
     configured.chars().take(MAX_SUBLABEL_CHARS).collect()
 }

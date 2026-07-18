@@ -1,4 +1,4 @@
-//! Slider refresh widget state
+//! Slider refresh state shared across asynchronous work
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -7,44 +7,44 @@ use super::super::RefreshBackoff;
 use super::gate::SliderRefreshGate;
 
 #[derive(Clone)]
-pub(super) struct SliderRefreshState {
+pub(in super::super) struct SliderRefreshState {
     // Slider updated from command output
-    pub(super) scale: gtk::Scale,
+    pub(in super::super) scale: gtk::Scale,
     // Label kept in sync with the slider
-    pub(super) label: gtk::Label,
+    pub(in super::super) label: gtk::Label,
     // Icon image updated after refresh
-    pub(super) icon_image: gtk::Image,
+    pub(in super::super) icon_image: gtk::Image,
     // Guard stops refresh writes from triggering another set command
-    pub(super) updating: Rc<Cell<bool>>,
+    pub(in super::super) updating: Rc<Cell<bool>>,
     // Generation drops stale async refresh results
-    pub(super) refresh_gen: Rc<Cell<u64>>,
+    pub(in super::super) refresh_gen: Rc<Cell<u64>>,
     // Normal icon shown when not muted
-    pub(super) icon_name: String,
+    pub(in super::super) icon_name: String,
     // Optional icon used when muted
-    pub(super) icon_muted: Option<String>,
+    pub(in super::super) icon_muted: Option<String>,
     // Local gate keeps refresh bursts bounded to one running and one pending
-    pub(super) gate: SliderRefreshGate,
+    pub(in super::super) gate: SliderRefreshGate,
     // Polling backoff is shared with the owning slider
-    pub(super) backoff: Rc<RefCell<RefreshBackoff>>,
+    pub(in super::super) backoff: Rc<RefCell<RefreshBackoff>>,
 }
 
 #[derive(Clone)]
-pub(super) struct SliderRefreshMeta {
+pub(in super::super) struct SliderRefreshMeta {
     // Non-widget refresh state that is safe to hold across signal closures
-    pub(super) updating: Rc<Cell<bool>>,
+    pub(in super::super) updating: Rc<Cell<bool>>,
     // Generation drops stale async refresh results
-    pub(super) refresh_gen: Rc<Cell<u64>>,
+    pub(in super::super) refresh_gen: Rc<Cell<u64>>,
     // Normal icon shown when not muted
-    pub(super) icon_name: String,
+    pub(in super::super) icon_name: String,
     // Optional icon used when muted
-    pub(super) icon_muted: Option<String>,
+    pub(in super::super) icon_muted: Option<String>,
     // Local gate keeps refresh bursts bounded to one running and one pending
-    pub(super) gate: SliderRefreshGate,
+    pub(in super::super) gate: SliderRefreshGate,
     // Polling backoff is shared with short-lived refresh state
-    pub(super) backoff: Rc<RefCell<RefreshBackoff>>,
+    pub(in super::super) backoff: Rc<RefCell<RefreshBackoff>>,
 }
 
-pub(super) fn build_refresh_state_from_weak(
+pub(in super::super) fn build_refresh_state_from_weak(
     scale: &glib::WeakRef<gtk::Scale>,
     label: &glib::WeakRef<gtk::Label>,
     icon_image: &glib::WeakRef<gtk::Image>,

@@ -3,8 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use super::super::run_action_command_with_completion;
-use super::value::format_command_value;
+use super::super::{run_action_command_with_completion, value::format_command_value};
 use unixnotis_core::PanelDebugLevel;
 
 use crate::diagnostics::panel_debug as debug;

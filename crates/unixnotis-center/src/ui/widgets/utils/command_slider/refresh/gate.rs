@@ -4,7 +4,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub(super) struct SliderRefreshGate {
+pub(in super::super) struct SliderRefreshGate {
     // True while one refresh command is already running
     in_flight: Rc<Cell<bool>>,
     // Remembers one trailing refresh request during bursts
@@ -12,14 +12,14 @@ pub(super) struct SliderRefreshGate {
 }
 
 impl SliderRefreshGate {
-    pub(super) fn new() -> Self {
+    pub(in super::super) fn new() -> Self {
         Self {
             in_flight: Rc::new(Cell::new(false)),
             pending: Rc::new(Cell::new(false)),
         }
     }
 
-    pub(super) fn begin_or_queue(&self) -> bool {
+    pub(in super::super) fn begin_or_queue(&self) -> bool {
         if self.in_flight.get() {
             // One trailing refresh is enough to cover a burst of incoming requests
             self.pending.set(true);
@@ -30,13 +30,13 @@ impl SliderRefreshGate {
         true
     }
 
-    pub(super) fn finish(&self) -> bool {
+    pub(in super::super) fn finish(&self) -> bool {
         // Return value tells the caller whether one queued refresh should run next
         self.in_flight.set(false);
         self.pending.replace(false)
     }
 
-    pub(super) fn is_in_flight(&self) -> bool {
+    pub(in super::super) fn is_in_flight(&self) -> bool {
         // The scheduler uses this to avoid tight polling while a command is still running
         self.in_flight.get()
     }

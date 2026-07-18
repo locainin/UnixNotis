@@ -24,15 +24,7 @@ pub(super) fn resolve_slider_icon_name(label: &str, requested: &str) -> String {
         return alias;
     }
 
-    // Label and icon text are both used as hints for widget intent
-    let label = label.to_ascii_lowercase();
-    let requested_lower = requested.to_ascii_lowercase();
-    let brightness_hint = label.contains("brightness")
-        || requested_lower.contains("brightness")
-        || requested_lower.contains("display");
-    let volume_hint = label.contains("volume")
-        || requested_lower.contains("volume")
-        || requested_lower.contains("audio");
+    let (brightness_hint, volume_hint) = slider_icon_hints(label, requested);
 
     if brightness_hint {
         // Candidate ordering prefers symbolic brightness glyphs for consistent tinting
@@ -68,6 +60,18 @@ pub(super) fn resolve_slider_icon_name(label: &str, requested: &str) -> String {
 
     // Final fallback returns configured name to preserve explicit user intent
     requested.to_string()
+}
+
+fn slider_icon_hints(label: &str, requested: &str) -> (bool, bool) {
+    // Label and icon text are both used as hints for widget intent
+    let label = label.to_ascii_lowercase();
+    let requested = requested.to_ascii_lowercase();
+    let brightness = label.contains("brightness")
+        || requested.contains("brightness")
+        || requested.contains("display");
+    let volume =
+        label.contains("volume") || requested.contains("volume") || requested.contains("audio");
+    (brightness, volume)
 }
 
 fn resolve_symbolic_alias(requested: &str, theme: &gtk::IconTheme) -> Option<String> {

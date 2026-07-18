@@ -4,25 +4,25 @@ use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{css::hooks, SliderWidgetConfig};
 
-use super::super::slider_icons::resolve_slider_icon_name;
+use super::icons::resolve_slider_icon_name;
 use super::layout::build_slider_stack;
 
-pub(super) struct SliderWidgets {
+pub(in super::super) struct SliderWidgets {
     // Root row used by volume, brightness, and custom slider wrappers
-    pub(super) root: gtk::Box,
+    pub(in super::super) root: gtk::Box,
     // Range control exposed back to refresh and action wiring
-    pub(super) scale: gtk::Scale,
+    pub(in super::super) scale: gtk::Scale,
     // Optional numeric value shown beside the slider
-    pub(super) value_label: gtk::Label,
+    pub(in super::super) value_label: gtk::Label,
     // Icon image is shared by clickable and non-clickable icon shells
-    pub(super) icon_image: gtk::Image,
+    pub(in super::super) icon_image: gtk::Image,
     // Resolved normal icon name after theme fallback handling
-    pub(super) icon_name: String,
+    pub(in super::super) icon_name: String,
     // Resolved muted icon name when the config provides one
-    pub(super) icon_muted: Option<String>,
+    pub(in super::super) icon_muted: Option<String>,
 }
 
-pub(super) fn build_slider_widgets(
+pub(in super::super) fn build_slider_widgets(
     config: &SliderWidgetConfig,
     extra_class: &str,
 ) -> SliderWidgets {
