@@ -3,7 +3,6 @@
 //! Encapsulates cache storage and keying logic used by the icon resolver
 
 use std::collections::{HashMap, VecDeque};
-use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -18,7 +17,7 @@ const DEFAULT_MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(super) enum IconKey {
     ImageData {
-        hash: u64,
+        hash: [u8; 32],
         len: usize,
         width: i32,
         height: i32,
@@ -101,31 +100,9 @@ pub(super) fn icon_key_for_name(name: &str, size: i32, scale: i32) -> Option<Ico
     })
 }
 
-fn hash_image_data(data: &[u8]) -> u64 {
-    // Hash helper for raw image blobs used as cache keys/dedup identifiers
-    // We avoid hashing the entire buffer (which could be large) by hashing:
-    // - total length
-    // - a small prefix sample
-    // - a small suffix sample (if the buffer is longer than the sample)
-    //
-    // This is a performance tradeoff: fast and usually unique enough for caching,
-    // but it is not a cryptographic hash and collisions are still theoretically possible
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-
-    // Length is important: many different images share common headers/prefixes
-    data.len().hash(&mut hasher);
-
-    // Prefix sample: captures headers and early bytes that often differ between images
-    let sample = 64.min(data.len());
-    data[..sample].hash(&mut hasher);
-
-    // Suffix sample: captures tail differences (helps reduce collisions for similar headers)
-    if data.len() > sample {
-        data[data.len() - sample..].hash(&mut hasher);
-    }
-
-    // Final 64-bit fingerprint used in the cache key
-    hasher.finish()
+fn hash_image_data(data: &[u8]) -> [u8; 32] {
+    // Notification image payloads are already bounded, so hashing every byte keeps cache identity exact
+    *blake3::hash(data).as_bytes()
 }
 
 pub(super) fn set_image_key(image: &gtk::Image, key: IconKey) {
