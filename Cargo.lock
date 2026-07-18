@@ -1981,7 +1981,7 @@ dependencies = [
 
 [[package]]
 name = "noticenterctl"
-version = "1.1.4"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -3514,7 +3514,7 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "unixnotis-center"
-version = "1.1.4"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -3547,7 +3547,7 @@ dependencies = [
 
 [[package]]
 name = "unixnotis-core"
-version = "1.1.4"
+version = "1.2.0"
 dependencies = [
  "chrono",
  "image",
@@ -3567,7 +3567,7 @@ dependencies = [
 
 [[package]]
 name = "unixnotis-daemon"
-version = "1.1.4"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3587,7 +3587,7 @@ dependencies = [
 
 [[package]]
 name = "unixnotis-installer"
-version = "1.1.4"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3604,7 +3604,7 @@ dependencies = [
 
 [[package]]
 name = "unixnotis-popups"
-version = "1.1.4"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -3627,7 +3627,7 @@ dependencies = [
 
 [[package]]
 name = "unixnotis-ui"
-version = "1.1.4"
+version = "1.2.0"
 dependencies = [
  "gtk4",
  "notify",

@@ -100,7 +100,7 @@ the installed artifacts provide persistent logs.
 Maintainers can build a local release archive manually:
 
 ```sh
-scripts/package-release.sh v1.1.4
+scripts/package-release.sh v1.2.0
 ```
 
 ## Development
