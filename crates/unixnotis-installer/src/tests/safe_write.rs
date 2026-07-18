@@ -4,12 +4,13 @@ use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
 use rustix::fs::{mkfifoat, open, Mode, OFlags, CWD};
 
 use super::{
-    existing_mode_or_default, validate_target_at, write_text_preserving_mode, write_text_with_mode,
+    atomic_temp_name_at, existing_mode_or_default, validate_target_at, write_text_preserving_mode,
+    write_text_with_mode,
 };
 
 fn test_root(label: &str) -> std::path::PathBuf {
@@ -21,6 +22,19 @@ fn test_root(label: &str) -> std::path::PathBuf {
     ));
     fs::create_dir_all(&root).expect("create test root");
     root
+}
+
+#[test]
+fn atomic_temp_name_returns_an_error_when_clock_precedes_unix_epoch() {
+    let before_epoch = UNIX_EPOCH
+        .checked_sub(Duration::from_secs(1))
+        .expect("construct pre-epoch timestamp");
+
+    let error = atomic_temp_name_at("config.toml", 0, before_epoch)
+        .expect_err("pre-epoch clock should return an error");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::Other);
+    assert!(error.to_string().contains("earlier than the Unix epoch"));
 }
 
 #[test]

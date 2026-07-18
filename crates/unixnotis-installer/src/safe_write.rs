@@ -119,7 +119,7 @@ fn create_atomic_temp_at(
     mode: u32,
 ) -> io::Result<(String, fs::File)> {
     for attempt in 0..16 {
-        let temp_name = atomic_temp_name(file_name, attempt);
+        let temp_name = atomic_temp_name(file_name, attempt)?;
         match openat2(
             parent_fd,
             temp_name.as_str(),
@@ -142,17 +142,25 @@ fn create_atomic_temp_at(
     ))
 }
 
-fn atomic_temp_name(file_name: &str, attempt: u8) -> String {
-    let stamp = SystemTime::now()
+fn atomic_temp_name(file_name: &str, attempt: u8) -> io::Result<String> {
+    atomic_temp_name_at(file_name, attempt, SystemTime::now())
+}
+
+fn atomic_temp_name_at(file_name: &str, attempt: u8, now: SystemTime) -> io::Result<String> {
+    let stamp = now
         .duration_since(UNIX_EPOCH)
-        .expect("clock moved backwards")
+        .map_err(|error| {
+            io::Error::other(format!(
+                "system clock is earlier than the Unix epoch: {error}"
+            ))
+        })?
         .as_nanos();
-    format!(
+    Ok(format!(
         ".{file_name}.{}.{}.{}.tmp",
         std::process::id(),
         stamp,
         attempt
-    )
+    ))
 }
 
 fn open_secure_parent(path: &Path) -> io::Result<(OwnedFd, String)> {
