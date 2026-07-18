@@ -82,7 +82,8 @@ fn existing_mode_or_default(path: &Path, default_mode: u32) -> io::Result<u32> {
     match openat2(
         &parent_fd,
         file_name.as_str(),
-        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+        // O_PATH inspects metadata without opening FIFO or device contents
+        OFlags::PATH.union(OFlags::CLOEXEC).union(OFlags::NOFOLLOW),
         Mode::empty(),
         secure_resolve_flags(),
     ) {
@@ -228,9 +229,7 @@ fn validate_target_at(parent_fd: &OwnedFd, file_name: &str) -> io::Result<()> {
     match openat2(
         parent_fd,
         file_name,
-        OFlags::RDONLY
-            .union(OFlags::CLOEXEC)
-            .union(OFlags::NOFOLLOW),
+        OFlags::PATH.union(OFlags::CLOEXEC).union(OFlags::NOFOLLOW),
         Mode::empty(),
         secure_resolve_flags(),
     ) {
