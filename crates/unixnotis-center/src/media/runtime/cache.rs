@@ -4,14 +4,14 @@ use super::super::mpris::{fetch_media_info, PlayerState};
 use super::super::MediaInfo;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::media) enum MediaCacheMergeMode {
+pub(super) enum MediaCacheMergeMode {
     // Startup, fallback, and full refresh paths should show the real current snapshot
     Stable,
     // Command and bus bursts can publish partial metadata for a moment during track swaps
     Transitioning,
 }
 
-pub(in crate::media) async fn refresh_cache(
+pub(super) async fn refresh_cache(
     players: &HashMap<String, PlayerState>,
     cache: &mut HashMap<String, MediaInfo>,
 ) {
@@ -33,7 +33,7 @@ pub(in crate::media) async fn refresh_cache(
     *cache = next;
 }
 
-pub(in crate::media) async fn refresh_player_cache(
+pub(super) async fn refresh_player_cache(
     players: &HashMap<String, PlayerState>,
     cache: &mut HashMap<String, MediaInfo>,
     bus_name: &str,

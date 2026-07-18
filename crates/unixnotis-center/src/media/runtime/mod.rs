@@ -1,9 +1,13 @@
 //! Media task startup and runtime orchestration
 
-pub(super) mod cache;
-pub(super) mod r#loop;
-pub(super) mod schedule;
-pub(super) mod snapshot;
+mod cache;
+mod dispatch;
+mod r#loop;
+mod owner;
+mod refresh;
+mod schedule;
+mod snapshot;
+mod state;
 
 use tokio::sync::mpsc;
 use unixnotis_core::MediaConfig;
@@ -80,3 +84,20 @@ mod tests;
 #[cfg(test)]
 #[path = "../tests/signals.rs"]
 mod signal_tests;
+
+#[cfg(test)]
+use cache::MediaCacheMergeMode;
+#[cfg(test)]
+use dispatch::{
+    merge_mode_for_signal, should_publish_immediate_command_snapshot,
+    should_schedule_metadata_fallback,
+};
+#[cfg(test)]
+use owner::{
+    owner_is_unchanged, owner_rebuild_outcome, replacement_removal_needs_snapshot,
+    OwnerChangeOutcome,
+};
+
+#[cfg(test)]
+#[path = "../tests/events.rs"]
+mod event_tests;

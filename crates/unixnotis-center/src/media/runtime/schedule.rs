@@ -7,7 +7,7 @@ use tokio::task::JoinHandle;
 use super::{MediaRefreshOrigin, MediaSignal};
 use crate::media::MediaInfo;
 
-pub(in crate::media) type DelayedRefreshTasks = HashMap<String, JoinHandle<()>>;
+pub(super) type DelayedRefreshTasks = HashMap<String, JoinHandle<()>>;
 
 // Short retries catch button-triggered state changes quickly
 const COMMAND_REFRESH_DELAYS_MS: [u64; 2] = [150, 650];
@@ -16,19 +16,19 @@ const METADATA_REFRESH_DELAYS_MS: [u64; 4] = [250, 900, 1800, 3200];
 // Command path keeps the quick button retries and then falls into the same late-art sweep
 const COMMAND_METADATA_REFRESH_DELAYS_MS: [u64; 6] = [150, 450, 900, 1800, 3200, 4800];
 
-pub(in crate::media) fn cancel_delayed_refresh(tasks: &mut DelayedRefreshTasks, bus_name: &str) {
+pub(super) fn cancel_delayed_refresh(tasks: &mut DelayedRefreshTasks, bus_name: &str) {
     // Player-specific cancellation keeps delayed refresh growth bounded.
     if let Some(task) = tasks.remove(bus_name) {
         task.abort();
     }
 }
 
-pub(in crate::media) fn prune_delayed_refreshes(tasks: &mut DelayedRefreshTasks) {
+pub(super) fn prune_delayed_refreshes(tasks: &mut DelayedRefreshTasks) {
     // Drop completed handles so the task map tracks only active delayed work.
     tasks.retain(|_, task| !task.is_finished());
 }
 
-pub(in crate::media) fn schedule_command_refresh(
+pub(super) fn schedule_command_refresh(
     tasks: &mut DelayedRefreshTasks,
     cache: &HashMap<String, MediaInfo>,
     signal_tx: Sender<MediaSignal>,
@@ -47,7 +47,7 @@ pub(in crate::media) fn schedule_command_refresh(
     schedule_refresh_sequence(tasks, signal_tx, bus_name, &COMMAND_REFRESH_DELAYS_MS);
 }
 
-pub(in crate::media) fn schedule_metadata_fallback(
+pub(super) fn schedule_metadata_fallback(
     tasks: &mut DelayedRefreshTasks,
     cache: &HashMap<String, MediaInfo>,
     signal_tx: Sender<MediaSignal>,
@@ -65,7 +65,7 @@ pub(in crate::media) fn schedule_metadata_fallback(
     schedule_refresh_sequence(tasks, signal_tx, bus_name, &METADATA_REFRESH_DELAYS_MS);
 }
 
-pub(in crate::media) fn schedule_metadata_fallbacks(
+pub(super) fn schedule_metadata_fallbacks(
     tasks: &mut DelayedRefreshTasks,
     cache: &HashMap<String, MediaInfo>,
     signal_tx: Sender<MediaSignal>,

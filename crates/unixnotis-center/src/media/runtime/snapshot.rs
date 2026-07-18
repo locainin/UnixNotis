@@ -7,7 +7,7 @@ use crate::control::UiEvent;
 
 use crate::media::MediaInfo;
 
-pub(in crate::media) async fn send_snapshot_if_changed(
+pub(super) async fn send_snapshot_if_changed(
     sender: &Sender<UiEvent>,
     cache: &HashMap<String, MediaInfo>,
     last_snapshot: &mut Vec<MediaInfo>,

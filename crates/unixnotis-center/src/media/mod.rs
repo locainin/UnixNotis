@@ -1,7 +1,6 @@
 //! MPRIS discovery, state tracking, and control
 
 mod api;
-mod events;
 mod mpris;
 mod policy;
 mod runtime;

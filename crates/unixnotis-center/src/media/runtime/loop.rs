@@ -10,39 +10,14 @@ use zbus::Connection;
 
 use crate::control::UiEvent;
 
-use super::super::events::{
-    apply_owner_change, handle_runtime_command, handle_runtime_signal, refresh_all_players,
-    OwnerChangeOutcome,
-};
-use super::schedule::DelayedRefreshTasks;
+use super::dispatch::{handle_runtime_command, handle_runtime_signal};
+use super::owner::{apply_owner_change, OwnerChangeOutcome};
+use super::refresh::refresh_all_players;
+use super::state::MediaRuntimeState;
 use super::{MediaSignal, MEDIA_SIGNAL_CAPACITY};
-use crate::media::mpris::PlayerState;
-use crate::media::{MediaCommand, MediaInfo};
+use crate::media::MediaCommand;
 
 const OWNER_REBUILD_RETRY_MS: u64 = 200;
-
-pub(in crate::media) struct MediaRuntimeState {
-    // Live player proxies keyed by bus name
-    pub(in crate::media) players: std::collections::HashMap<String, PlayerState>,
-    // Last known media snapshot per player
-    pub(in crate::media) cache: std::collections::HashMap<String, MediaInfo>,
-    // Last emitted snapshot lets the loop drop duplicate UI updates cheaply
-    pub(in crate::media) last_snapshot: Vec<MediaInfo>,
-    // One delayed retry plan per player
-    pub(in crate::media) delayed_refreshes: DelayedRefreshTasks,
-}
-
-impl MediaRuntimeState {
-    fn new() -> Self {
-        // A fresh loop starts empty and fills from the first refresh pass
-        Self {
-            players: std::collections::HashMap::new(),
-            cache: std::collections::HashMap::new(),
-            last_snapshot: Vec::new(),
-            delayed_refreshes: std::collections::HashMap::new(),
-        }
-    }
-}
 
 pub(super) async fn run_event_loop(
     config: MediaConfig,
