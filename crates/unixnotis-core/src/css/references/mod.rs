@@ -8,3 +8,6 @@ mod url;
 
 pub use model::{CssReference, CssReferenceError, CssUrlSpan};
 pub use url::{collect_css_url_spans, collect_css_url_values};
+
+#[cfg(test)]
+mod tests;
