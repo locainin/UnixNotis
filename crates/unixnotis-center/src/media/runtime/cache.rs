@@ -1,18 +1,18 @@
 use std::collections::HashMap;
 
-use super::bus::PlayerState;
-use super::metadata::fetch_media_info;
-use super::MediaInfo;
+use super::super::bus::PlayerState;
+use super::super::metadata::fetch_media_info;
+use super::super::MediaInfo;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum MediaCacheMergeMode {
+pub(in crate::media) enum MediaCacheMergeMode {
     // Startup, fallback, and full refresh paths should show the real current snapshot
     Stable,
     // Command and bus bursts can publish partial metadata for a moment during track swaps
     Transitioning,
 }
 
-pub(super) async fn refresh_cache(
+pub(in crate::media) async fn refresh_cache(
     players: &HashMap<String, PlayerState>,
     cache: &mut HashMap<String, MediaInfo>,
 ) {
@@ -34,7 +34,7 @@ pub(super) async fn refresh_cache(
     *cache = next;
 }
 
-pub(super) async fn refresh_player_cache(
+pub(in crate::media) async fn refresh_player_cache(
     players: &HashMap<String, PlayerState>,
     cache: &mut HashMap<String, MediaInfo>,
     bus_name: &str,
@@ -106,5 +106,5 @@ fn is_live_player(info: &MediaInfo) -> bool {
 }
 
 #[cfg(test)]
-#[path = "tests/cache.rs"]
+#[path = "../tests/cache.rs"]
 mod tests;

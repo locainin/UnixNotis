@@ -5,9 +5,9 @@ use tracing::debug;
 
 use crate::control::UiEvent;
 
-use super::MediaInfo;
+use crate::media::MediaInfo;
 
-pub(super) async fn send_snapshot_if_changed(
+pub(in crate::media) async fn send_snapshot_if_changed(
     sender: &Sender<UiEvent>,
     cache: &HashMap<String, MediaInfo>,
     last_snapshot: &mut Vec<MediaInfo>,
@@ -161,5 +161,5 @@ fn normalize_token(value: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "tests/snapshot.rs"]
+#[path = "../tests/snapshot.rs"]
 mod tests;

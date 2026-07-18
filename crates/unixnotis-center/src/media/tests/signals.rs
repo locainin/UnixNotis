@@ -1,4 +1,4 @@
-use super::super::{MediaRefreshOrigin, MediaSignal};
+use super::{MediaRefreshOrigin, MediaSignal};
 
 #[test]
 fn property_signal_preserves_player_and_refresh_origin() {

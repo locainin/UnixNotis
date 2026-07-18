@@ -3,7 +3,8 @@ use super::{
     replacement_removal_needs_snapshot, should_publish_immediate_command_snapshot,
     should_schedule_metadata_fallback, MediaCacheMergeMode, OwnerChangeOutcome,
 };
-use crate::media::{MediaCommand, MediaRefreshOrigin};
+use crate::media::runtime::MediaRefreshOrigin;
+use crate::media::MediaCommand;
 
 #[test]
 fn owner_replacement_rebuilds_state_but_duplicate_signal_does_not() {

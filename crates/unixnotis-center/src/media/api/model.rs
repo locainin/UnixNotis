@@ -54,5 +54,5 @@ pub enum MediaCommand {
 }
 
 #[cfg(test)]
-#[path = "tests/model.rs"]
+#[path = "../tests/model.rs"]
 mod tests;

@@ -70,9 +70,9 @@ pub fn start_media_task(
     sender: async_channel::Sender<UiEvent>,
 ) -> Option<MediaHandle> {
     // Runtime ownership remains outside GTK so shutdown can retire the task cleanly
-    super::runtime::start_media_task(runtime, config, sender)
+    super::super::runtime::start_media_task(runtime, config, sender)
 }
 
 #[cfg(test)]
-#[path = "tests/handle.rs"]
+#[path = "../tests/handle.rs"]
 mod tests;

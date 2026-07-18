@@ -1,4 +1,4 @@
-use super::super::{MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PREFIX};
+use super::{MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PREFIX};
 
 #[test]
 fn identifiers_match_the_mpris_interface_contract() {

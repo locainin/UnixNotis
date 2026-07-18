@@ -10,26 +10,26 @@ use zbus::Connection;
 
 use crate::control::UiEvent;
 
-use super::bus::PlayerState;
-use super::events::{
+use super::super::bus::PlayerState;
+use super::super::events::{
     apply_owner_change, handle_runtime_command, handle_runtime_signal, refresh_all_players,
     OwnerChangeOutcome,
 };
-use super::runtime::MEDIA_SIGNAL_CAPACITY;
 use super::schedule::DelayedRefreshTasks;
-use super::{MediaCommand, MediaInfo, MediaSignal};
+use super::{MediaSignal, MEDIA_SIGNAL_CAPACITY};
+use crate::media::{MediaCommand, MediaInfo};
 
 const OWNER_REBUILD_RETRY_MS: u64 = 200;
 
-pub(super) struct MediaRuntimeState {
+pub(in crate::media) struct MediaRuntimeState {
     // Live player proxies keyed by bus name
-    pub(super) players: std::collections::HashMap<String, PlayerState>,
+    pub(in crate::media) players: std::collections::HashMap<String, PlayerState>,
     // Last known media snapshot per player
-    pub(super) cache: std::collections::HashMap<String, MediaInfo>,
+    pub(in crate::media) cache: std::collections::HashMap<String, MediaInfo>,
     // Last emitted snapshot lets the loop drop duplicate UI updates cheaply
-    pub(super) last_snapshot: Vec<MediaInfo>,
+    pub(in crate::media) last_snapshot: Vec<MediaInfo>,
     // One delayed retry plan per player
-    pub(super) delayed_refreshes: DelayedRefreshTasks,
+    pub(in crate::media) delayed_refreshes: DelayedRefreshTasks,
 }
 
 impl MediaRuntimeState {
@@ -214,5 +214,5 @@ pub(super) fn drain_stale_media_commands(command_rx: &mut mpsc::Receiver<MediaCo
 }
 
 #[cfg(test)]
-#[path = "tests/event_loop.rs"]
+#[path = "../tests/event_loop.rs"]
 mod tests;

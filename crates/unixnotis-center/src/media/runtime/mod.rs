@@ -1,10 +1,16 @@
+//! Media task startup and runtime orchestration
+
+pub(super) mod cache;
+pub(super) mod r#loop;
+pub(super) mod schedule;
+pub(super) mod snapshot;
+
 use tokio::sync::mpsc;
 use unixnotis_core::MediaConfig;
 
 use crate::control::UiEvent;
 
-use super::event_loop::run_event_loop;
-use super::MediaHandle;
+use super::api::MediaHandle;
 
 pub(super) const MEDIA_COMMAND_CAPACITY: usize = 32;
 pub(super) const MEDIA_SIGNAL_CAPACITY: usize = 256;
@@ -24,7 +30,7 @@ pub(super) fn start_media_task(
     // The command channel stays small because button presses arrive in short bursts
     let (command_tx, command_rx) = mpsc::channel(MEDIA_COMMAND_CAPACITY);
     // The runtime task owns player state and feeds snapshots back to the UI
-    runtime.spawn(run_event_loop(config, sender, command_rx));
+    runtime.spawn(r#loop::run_event_loop(config, sender, command_rx));
 
     Some(MediaHandle::connected(command_tx, runtime.clone()))
 }
@@ -51,6 +57,26 @@ fn normalize_media_config(mut config: MediaConfig) -> MediaConfig {
     config
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MediaRefreshOrigin {
+    // Native bus traffic can justify one bounded fallback sweep
+    Bus,
+    // Synthetic retries never re-arm themselves because that would become polling
+    Fallback,
+}
+
+#[derive(Debug)]
+pub(super) enum MediaSignal {
+    PropertiesChanged {
+        bus_name: String,
+        origin: MediaRefreshOrigin,
+    },
+}
+
 #[cfg(test)]
-#[path = "tests/runtime.rs"]
+#[path = "../tests/runtime.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/signals.rs"]
+mod signal_tests;

@@ -1,7 +1,8 @@
 use unixnotis_core::{MediaConfig, MediaRemoteArtPolicy};
 
-use super::super::event_loop::drain_stale_media_commands;
-use super::super::MediaCommand;
+use crate::media::MediaCommand;
+
+use super::r#loop::drain_stale_media_commands;
 use super::normalize_media_config;
 
 #[test]

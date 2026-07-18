@@ -8,10 +8,8 @@ use zbus::fdo::{DBusProxy, PropertiesProxy};
 use zbus::{Connection, Proxy, ProxyBuilder};
 
 use super::policy::{detect_browser_family, remote_art_allowed};
-use super::{
-    MediaCommand, MediaRefreshOrigin, MediaSignal, MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER,
-    MPRIS_PREFIX,
-};
+use super::runtime::{MediaRefreshOrigin, MediaSignal};
+use super::{identifiers::*, MediaCommand};
 use crate::diagnostics::panel_debug as debug;
 
 #[derive(Clone)]
