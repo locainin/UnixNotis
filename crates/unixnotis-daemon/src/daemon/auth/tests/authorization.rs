@@ -1,9 +1,13 @@
 use zbus::Message;
 
+#[cfg(target_os = "linux")]
+use super::authorization::required_linux_process_fd;
 use super::authorization::{
     authorize_control_call, authorize_panel_readiness_call, control_executable_error,
     control_owner_uid_error,
 };
+#[cfg(target_os = "linux")]
+use super::credentials::CallerCredentials;
 use super::filesystem::canonicalize_best_effort;
 use super::support::write_executable;
 use crate::test_support::{daemon_state_for_test, env_lock, EnvVarGuard, TempRoot};
@@ -67,4 +71,15 @@ fn control_executable_error_requires_present_allowed_trusted_binary() {
     assert!(control_executable_error(None, &["noticenterctl"], true).is_some());
     assert!(control_executable_error(Some(&trusted), &["unixnotis-center"], true).is_some());
     assert!(control_executable_error(Some(&untrusted_name), &["unknown"], true).is_some());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_authorization_rejects_credentials_without_a_stable_process_handle() {
+    let credentials = CallerCredentials::default();
+
+    let error = required_linux_process_fd(&credentials)
+        .expect_err("Linux authorization must fail without ProcessFD");
+
+    assert!(error.to_string().contains("stable process handle"));
 }

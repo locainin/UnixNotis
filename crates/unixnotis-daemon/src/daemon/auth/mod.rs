@@ -4,6 +4,13 @@
 //! state. The implementation is split by responsibility because each layer has
 //! a different security job: caller identity, executable path trust, metadata
 //! checks, and startup-time fingerprint pinning
+//!
+//! This is defense in depth for the desktop session, not isolation from hostile
+//! code already running as the same uid
+//! Same-user code may inherit or deliberately share a bus connection, then exec
+//! another program while retaining control of that connection
+//! A hard same-user boundary requires kernel-enforced separation such as distinct
+//! users, a constrained broker, or an LSM policy
 
 mod authorization;
 mod credentials;

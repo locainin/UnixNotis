@@ -9,9 +9,10 @@ use zbus::message::Header;
 
 use crate::daemon::DaemonState;
 
-use super::credentials::connection_credentials;
+use super::credentials::{connection_credentials, CallerCredentials};
 use super::paths::is_trusted_control_executable_path;
 use super::policy::{TRUSTED_CONTROL_EXECUTABLES, TRUSTED_PANEL_READINESS_EXECUTABLES};
+#[cfg(not(target_os = "linux"))]
 use super::process::read_process_executable_path;
 #[cfg(target_os = "linux")]
 use super::process::read_process_executable_path_from_pidfd;
@@ -77,10 +78,10 @@ async fn authorize_control_call_for_executables(
         zbus::fdo::Error::AccessDenied("caller process id is unavailable".to_string())
     })?;
     #[cfg(target_os = "linux")]
-    let exe_path = match credentials.process_fd() {
-        Some(pidfd) => read_process_executable_path_from_pidfd(pidfd, pid),
-        // Older message buses may not provide ProcessFD
-        None => read_process_executable_path(pid).await,
+    let exe_path = {
+        // Linux must use the stable process handle from the same credential snapshot
+        let pidfd = required_linux_process_fd(&credentials)?;
+        read_process_executable_path_from_pidfd(pidfd, pid)
     };
     #[cfg(not(target_os = "linux"))]
     let exe_path = read_process_executable_path(pid).await;
@@ -99,6 +100,17 @@ async fn authorize_control_call_for_executables(
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn required_linux_process_fd(
+    credentials: &CallerCredentials,
+) -> zbus::fdo::Result<&zbus::zvariant::OwnedFd> {
+    credentials.process_fd().ok_or_else(|| {
+        zbus::fdo::Error::AccessDenied(
+            "caller stable process handle is unavailable on Linux".to_string(),
+        )
+    })
 }
 
 pub(in crate::daemon) const fn control_owner_uid_is_allowed(

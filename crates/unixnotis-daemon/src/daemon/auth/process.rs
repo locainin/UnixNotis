@@ -10,6 +10,7 @@ use std::os::fd::{AsFd, AsRawFd};
 #[cfg(target_os = "linux")]
 const MAX_PIDFD_INFO_BYTES: u64 = 4_096;
 
+#[cfg(any(not(target_os = "linux"), test))]
 pub(in crate::daemon) async fn read_process_executable_path(pid: u32) -> Option<PathBuf> {
     // Linux exposes the real executable path via /proc
     let path = format!("/proc/{pid}/exe");

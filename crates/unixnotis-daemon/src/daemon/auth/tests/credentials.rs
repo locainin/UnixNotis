@@ -23,11 +23,16 @@ async fn connection_credentials_match_the_current_bus_process() {
     assert_eq!(credentials.unix_user_id(), Some(geteuid().as_raw()));
     assert_eq!(credentials.process_id(), Some(std::process::id()));
 
-    // Newer Linux buses also provide a stable handle for this exact process
+    // Linux authorization requires this stable handle from the same credential snapshot
     #[cfg(target_os = "linux")]
-    if let Some(pidfd) = credentials.process_fd() {
-        assert_eq!(read_pidfd_process_id(pidfd), Some(std::process::id()));
-    }
+    assert_eq!(
+        read_pidfd_process_id(
+            credentials
+                .process_fd()
+                .expect("Linux session bus must provide ProcessFD")
+        ),
+        Some(std::process::id())
+    );
 }
 
 #[cfg(target_os = "linux")]
