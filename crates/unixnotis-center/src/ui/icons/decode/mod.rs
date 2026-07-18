@@ -11,3 +11,6 @@ mod worker;
 pub(super) use model::{IconResult, IconUpdate};
 pub(super) use texture::texture_from_raster;
 pub(super) use worker::IconWorker;
+
+#[cfg(test)]
+mod tests;
