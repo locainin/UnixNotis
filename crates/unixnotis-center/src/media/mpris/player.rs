@@ -72,7 +72,7 @@ pub(in crate::media) async fn build_player_state(
     }))
 }
 
-async fn fetch_identity(connection: &Connection, name: &str) -> Option<String> {
+pub(super) async fn fetch_identity(connection: &Connection, name: &str) -> Option<String> {
     let proxy: Proxy<'static> = ProxyBuilder::new(connection)
         .destination(name.to_string())
         .ok()?
@@ -86,7 +86,7 @@ async fn fetch_identity(connection: &Connection, name: &str) -> Option<String> {
     proxy.get_property("Identity").await.ok()
 }
 
-async fn resolve_player_owner(
+pub(super) async fn resolve_player_owner(
     connection: &Connection,
     name: &str,
 ) -> Option<(String, Option<u32>, Option<String>)> {
@@ -104,12 +104,15 @@ async fn resolve_player_owner(
         .get_connection_unix_process_id((&unique_owner).into())
         .await
         .ok();
+    #[cfg(target_os = "linux")]
     let executable = match pid {
         Some(pid) => read_process_executable_path(pid)
             .await
             .map(|path| path.display().to_string()),
         None => None,
     };
+    #[cfg(not(target_os = "linux"))]
+    let executable = None;
     let observed_owner = proxy.get_name_owner(bus_name).await.ok()?;
     if !owner_probe_is_stable(unique_owner.as_str(), observed_owner.as_str()) {
         return None;
@@ -125,10 +128,4 @@ pub(super) fn owner_probe_is_stable(initial_owner: &str, observed_owner: &str) -
 async fn read_process_executable_path(pid: u32) -> Option<std::path::PathBuf> {
     // Reading procfs keeps the trust hint tied to the real bus owner process
     tokio::fs::read_link(format!("/proc/{pid}/exe")).await.ok()
-}
-
-#[cfg(not(target_os = "linux"))]
-async fn read_process_executable_path(_pid: u32) -> Option<std::path::PathBuf> {
-    // Non-Linux builds degrade to local-file-only artwork
-    None
 }

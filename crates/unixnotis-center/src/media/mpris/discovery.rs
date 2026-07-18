@@ -1,6 +1,7 @@
 //! Discovery and removal of admitted MPRIS players
 
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 
 use tokio::sync::mpsc::Sender;
 use tracing::warn;
@@ -44,9 +45,9 @@ pub(in crate::media) async fn refresh_players(
             let _ = state.listener_cancel.send(true);
         }
     }
-    if !removed_names.is_empty() {
+    if let Some(removed_count) = NonZeroUsize::new(removed_names.len()) {
         debug::log(PanelDebugLevel::Info, || {
-            format!("media players removed: {}", removed_names.len())
+            format!("media players removed: {removed_count}")
         });
     }
 

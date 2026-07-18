@@ -75,6 +75,20 @@ fn browser_family_matches_segments_in_bus_names_or_identities() {
 }
 
 #[test]
+fn browser_identity_uses_the_mpris_suffix_when_no_token_matches() {
+    let tokens = vec!["firefox".to_string()];
+
+    assert_eq!(
+        detect_browser_family(
+            "Generic Browser",
+            "org.mpris.MediaPlayer2.chromium.instance42",
+            &tokens,
+        ),
+        Some("chromium".to_string())
+    );
+}
+
+#[test]
 fn remote_art_admission_keeps_browsers_opt_in_and_requires_an_owner() {
     assert!(!remote_art_allowed(
         Some("firefox"),

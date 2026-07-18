@@ -4,3 +4,4 @@ mod discovery;
 mod listener;
 mod metadata;
 mod player;
+pub(in crate::media) mod support;

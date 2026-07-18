@@ -17,4 +17,4 @@ pub(in crate::media) use metadata::fetch_media_info;
 pub(in crate::media) use player::{build_player_state, PlayerState};
 
 #[cfg(test)]
-mod tests;
+pub(in crate::media) mod tests;
