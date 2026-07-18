@@ -3,6 +3,7 @@
 mod materialize;
 mod model;
 mod reference;
+mod rewrite;
 
 #[cfg(test)]
 mod tests;
