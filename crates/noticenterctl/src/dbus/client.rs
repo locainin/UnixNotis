@@ -44,6 +44,9 @@ pub trait ControlClient {
     // Turn do-not-disturb on or off directly
     fn set_dnd(&self, enabled: bool) -> ControlFuture<'_, ()>;
 
+    // Enable do-not-disturb until one absolute deadline
+    fn set_dnd_until(&self, expires_at: i64) -> ControlFuture<'_, ()>;
+
     // Flip do-not-disturb to the opposite of what it is now
     fn toggle_dnd(&self) -> ControlFuture<'_, ()>;
 
@@ -114,6 +117,13 @@ impl ControlClient for ControlProxy<'_> {
     fn set_dnd(&self, enabled: bool) -> ControlFuture<'_, ()> {
         // Send the exact do-not-disturb value the caller wants
         Box::pin(run_control_call(ControlProxy::set_dnd(self, enabled)))
+    }
+
+    fn set_dnd_until(&self, expires_at: i64) -> ControlFuture<'_, ()> {
+        // Absolute timestamps keep CLI and panel deadlines consistent across daemon restarts
+        Box::pin(run_control_call(ControlProxy::set_dnd_until(
+            self, expires_at,
+        )))
     }
 
     fn toggle_dnd(&self) -> ControlFuture<'_, ()> {

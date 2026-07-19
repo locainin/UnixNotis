@@ -17,6 +17,7 @@ pub(super) enum RecordedCall {
     ListActive,
     ListHistory,
     SetDnd(bool),
+    SetDndUntil(i64),
     ToggleDnd,
     Inhibit { reason: String, scope: u32 },
     Uninhibit(u64),
@@ -104,6 +105,10 @@ impl ControlClient for RecordingControlClient {
 
     fn set_dnd(&self, enabled: bool) -> ControlFuture<'_, ()> {
         self.record(RecordedCall::SetDnd(enabled), ())
+    }
+
+    fn set_dnd_until(&self, expires_at: i64) -> ControlFuture<'_, ()> {
+        self.record(RecordedCall::SetDndUntil(expires_at), ())
     }
 
     fn toggle_dnd(&self) -> ControlFuture<'_, ()> {

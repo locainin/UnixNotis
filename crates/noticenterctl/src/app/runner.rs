@@ -13,6 +13,8 @@ pub fn run() -> Result<()> {
     // Parse CLI arguments before any daemon work starts
     let args = Args::parse();
     let command = args.command;
+    // Semantic checks happen before runtime and D-Bus setup
+    command.validate()?;
 
     if command.is_synchronous() {
         // Preset and CSS work should not pay for an unused asynchronous runtime

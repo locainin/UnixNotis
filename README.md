@@ -22,7 +22,8 @@ git clone https://github.com/locainin/UnixNotis.wiki.git
 ## Features
 
 - Freedesktop.org notification daemon with history, rules, sound, and DND.
-- Persistent DND state across daemon restarts.
+- Persistent and timed DND state across daemon restarts.
+- KDE-compatible inline replies in the control-center panel for live notifications that advertise reply support.
 - Control-center panel with widgets, notification list, and media controls.
 - Toast popup UI with configurable timeouts and styling.
 - D-Bus inhibit API for programmatic popup suppression.
@@ -90,6 +91,13 @@ noticenterctl doctor --verbose
 noticenterctl doctor --json
 noticenterctl doctor --config "$HOME/path/to/config.toml"
 noticenterctl css-check --config "$HOME/path/to/config.toml"
+```
+
+Timed DND can use a relative duration or the next occurrence of a local clock time:
+
+```sh
+noticenterctl dnd on --for 30m
+noticenterctl dnd on --until 08:00
 ```
 
 Verbose systemd reports include a sanitized, bounded window of up to 30 user-journal lines.

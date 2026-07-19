@@ -19,6 +19,8 @@ pub(super) async fn handle_command_with_debug_logs(
     command: Command,
     mut follow_logs: impl FnMut() -> Result<()>,
 ) -> Result<()> {
+    // Keep library-level dispatch safe even when a caller bypasses the CLI runner
+    command.validate()?;
     // CLI forwards work to the daemon
     match command {
         Command::TogglePanel => {
@@ -74,10 +76,27 @@ pub(super) async fn handle_command_with_debug_logs(
             let notifications = client.list_history().await?;
             print_notifications("history", &notifications, allow_full)?;
         }
-        Command::Dnd { state } => match state {
+        Command::Dnd {
+            state,
+            for_duration,
+            until,
+        } => match state {
             DndState::On => {
-                // Explicit enable avoids ambiguous scripts
-                client.set_dnd(true).await?;
+                let expires_at = match (for_duration, until) {
+                    (Some(duration), None) => Some(duration.deadline()?),
+                    (None, Some(clock)) => Some(clock.deadline()?),
+                    (None, None) => None,
+                    // Clap rejects this pair, but keep dispatch defensive for direct tests
+                    (Some(_), Some(_)) => {
+                        return Err(anyhow::anyhow!("--for and --until cannot be used together"));
+                    }
+                };
+                if let Some(expires_at) = expires_at {
+                    client.set_dnd_until(expires_at).await?;
+                } else {
+                    // Explicit enable without timing means indefinite DND
+                    client.set_dnd(true).await?;
+                }
             }
             DndState::Off => {
                 // Explicit disable avoids ambiguous scripts

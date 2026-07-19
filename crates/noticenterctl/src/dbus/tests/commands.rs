@@ -101,18 +101,24 @@ async fn dnd_commands_dispatch_to_matching_control_calls() {
         (
             Command::Dnd {
                 state: DndState::On,
+                for_duration: None,
+                until: None,
             },
             RecordedCall::SetDnd(true),
         ),
         (
             Command::Dnd {
                 state: DndState::Off,
+                for_duration: None,
+                until: None,
             },
             RecordedCall::SetDnd(false),
         ),
         (
             Command::Dnd {
                 state: DndState::Toggle,
+                for_duration: None,
+                until: None,
             },
             RecordedCall::ToggleDnd,
         ),
@@ -125,6 +131,51 @@ async fn dnd_commands_dispatch_to_matching_control_calls() {
             .expect("dispatch command");
         assert_eq!(client.take_calls(), vec![expected]);
     }
+}
+
+#[tokio::test]
+async fn timed_dnd_dispatches_one_future_absolute_deadline() {
+    use std::str::FromStr;
+
+    let client = RecordingControlClient::default();
+    let before = chrono::Utc::now().timestamp();
+    handle_command(
+        &client,
+        Command::Dnd {
+            state: DndState::On,
+            for_duration: Some(crate::cli::DndDuration::from_str("30m").expect("valid duration")),
+            until: None,
+        },
+    )
+    .await
+    .expect("dispatch timed DND");
+    let after = chrono::Utc::now().timestamp();
+
+    let calls = client.take_calls();
+    let [RecordedCall::SetDndUntil(expires_at)] = calls.as_slice() else {
+        panic!("expected one timed DND call, got {calls:?}");
+    };
+    assert!(*expires_at >= before + 30 * 60);
+    assert!(*expires_at <= after + 30 * 60);
+}
+
+#[tokio::test]
+async fn timed_dnd_dispatch_rejects_non_on_state_without_calling_control() {
+    use std::str::FromStr;
+
+    let client = RecordingControlClient::default();
+    let result = handle_command(
+        &client,
+        Command::Dnd {
+            state: DndState::Off,
+            for_duration: Some(crate::cli::DndDuration::from_str("30m").expect("valid duration")),
+            until: None,
+        },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert!(client.take_calls().is_empty());
 }
 
 #[tokio::test]

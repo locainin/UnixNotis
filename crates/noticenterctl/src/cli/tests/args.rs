@@ -36,11 +36,61 @@ fn parses_dnd_toggle() {
     // Confirms the value enum accepts the toggle state for DND commands
     let args = Args::try_parse_from(["noticenterctl", "dnd", "toggle"]).expect("parse args");
     match args.command {
-        Command::Dnd { state } => {
+        Command::Dnd {
+            state,
+            for_duration,
+            until,
+        } => {
             assert!(matches!(state, DndState::Toggle));
+            assert!(for_duration.is_none());
+            assert!(until.is_none());
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parses_timed_dnd_duration_and_clock_deadline() {
+    let duration =
+        Args::try_parse_from(["noticenterctl", "dnd", "on", "--for", "30m"]).expect("duration");
+    assert!(matches!(
+        duration.command,
+        Command::Dnd {
+            state: DndState::On,
+            for_duration: Some(_),
+            until: None,
+        }
+    ));
+
+    let until =
+        Args::try_parse_from(["noticenterctl", "dnd", "on", "--until", "08:00"]).expect("clock");
+    assert!(matches!(
+        until.command,
+        Command::Dnd {
+            state: DndState::On,
+            for_duration: None,
+            until: Some(_),
+        }
+    ));
+}
+
+#[test]
+fn timed_dnd_options_conflict_and_require_on_state_semantically() {
+    assert!(Args::try_parse_from([
+        "noticenterctl",
+        "dnd",
+        "on",
+        "--for",
+        "30m",
+        "--until",
+        "08:00"
+    ])
+    .is_err());
+
+    let command = Args::try_parse_from(["noticenterctl", "dnd", "off", "--for", "30m"])
+        .expect("syntax should parse")
+        .command;
+    assert!(command.validate().is_err());
 }
 
 #[test]
