@@ -110,6 +110,28 @@ impl NotificationStore {
         true
     }
 
+    pub fn dismiss_replied_generation(
+        &mut self,
+        id: u32,
+        expected: &Arc<Notification>,
+    ) -> DismissOutcome {
+        let removed_active = self.dismiss_active_if_current(id, expected);
+        let removed_history = if removed_active {
+            // Active cleanup already removed the exact generation
+            false
+        } else if self.active.contains_key(&id) {
+            // Any remaining active entry is a replacement with the same numeric id
+            false
+        } else {
+            // A close may archive the replied generation before reply cleanup resumes
+            self.history.remove_if_source(id, expected).is_some()
+        };
+        DismissOutcome {
+            removed_active,
+            removed_history,
+        }
+    }
+
     pub fn drain_active_ids(&mut self) -> Vec<u32> {
         // Drain in one pass so callers do not need repeated lookups
         let ids = self.active.keys().rev().copied().collect();
@@ -181,9 +203,13 @@ impl NotificationStore {
         ) {
             return;
         }
+        // Keep only weak source identity alongside the compact history payload
+        let source = Arc::downgrade(&notification);
         // to_history strips non-history-only fields and keeps stored payload compact
         let stored = Arc::new(notification.to_history());
+        let id = stored.id;
         self.history.insert(stored);
+        self.history.set_source(id, source);
         self.history.evict_to_limit(self.config.history.max_entries);
     }
 
