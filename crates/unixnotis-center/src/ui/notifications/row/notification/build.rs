@@ -14,6 +14,7 @@ use unixnotis_core::css::hooks;
 use crate::control::UiCommand;
 use crate::ui::try_send_command;
 
+use super::reply::build_inline_reply;
 use super::state::NotificationRowWidgets;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -153,6 +154,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let actions_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     // Action buttons are added on demand during row updates
     actions_box.add_css_class("unixnotis-notification-actions");
+    let inline_reply = build_inline_reply(command_tx.clone());
 
     // Keep the card tree fully built up front
     // Row refreshes then only replace content instead of rebuilding containers
@@ -161,6 +163,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
     card.append(&body_row);
     card.append(&footer);
     card.append(&actions_box);
+    card.append(&inline_reply.revealer);
 
     let stack_ghost_1 = build_stack_ghost(1);
     let stack_ghost_2 = build_stack_ghost(2);
@@ -209,8 +212,11 @@ pub(in crate::ui::notifications) fn build_notification_row(
             footer_left,
             footer_right,
             actions_box,
+            inline_reply,
             notify_id,
+            action_cache_id: Cell::new(0),
             action_cache: RefCell::new(Vec::new()),
+            reply_cache: RefCell::new((unixnotis_core::InlineReply::default(), false)),
             icon_sig: RefCell::new(None),
         },
     )

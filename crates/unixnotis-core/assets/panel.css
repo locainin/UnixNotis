@@ -522,6 +522,24 @@ entry selection {
   border-color: alpha(@unixnotis-accent, 0.5);
 }
 
+.unixnotis-inline-reply {
+  margin-top: 4px;
+}
+
+.unixnotis-inline-reply-entry {
+  color: @unixnotis-text;
+  background-color: alpha(@unixnotis-surface-strong, 0.9);
+  border: 1px solid alpha(@unixnotis-accent, 0.25);
+  border-radius: 10px;
+  padding: 5px 9px;
+  min-height: 28px;
+}
+
+.unixnotis-inline-reply-entry:focus {
+  border-color: alpha(@unixnotis-accent, 0.7);
+  box-shadow: 0 0 16px -12px @unixnotis-glow-cyan;
+}
+
 /* Restrained default composition
  *
  * Navy remains the visual identity while flat surfaces and spacing carry hierarchy

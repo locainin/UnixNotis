@@ -57,6 +57,7 @@ pub(super) fn notification(id: u32, app_name: &str) -> NotificationView {
         summary: format!("summary {id}"),
         body: format!("body {id}"),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
         urgency: 1,
         is_transient: false,
         image: NotificationImage::default(),

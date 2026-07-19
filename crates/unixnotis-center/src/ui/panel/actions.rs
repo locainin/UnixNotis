@@ -34,14 +34,27 @@ pub(in crate::ui) fn connect_dnd_toggle(
     dnd_guard: Rc<Cell<bool>>,
     command_tx: tokio::sync::mpsc::Sender<UiCommand>,
 ) {
-    panel.dnd_toggle.connect_toggled(move |button| {
+    connect_dnd_button(&panel.dnd_toggle, dnd_guard, command_tx);
+}
+
+fn connect_dnd_button(
+    button: &gtk::ToggleButton,
+    dnd_guard: Rc<Cell<bool>>,
+    command_tx: tokio::sync::mpsc::Sender<UiCommand>,
+) {
+    button.connect_toggled(move |button| {
         if dnd_guard.get() {
             // Daemon-driven state sync should not echo another DND command
             return;
         }
 
-        debug!(enabled = button.is_active(), "dnd toggled");
-        try_send_command(&command_tx, UiCommand::SetDnd(button.is_active()));
+        let requested = button.is_active();
+        // Keep the durable daemon state visible until the command commits successfully
+        dnd_guard.set(true);
+        button.set_active(!requested);
+        dnd_guard.set(false);
+        debug!(enabled = requested, "dnd toggled");
+        try_send_command(&command_tx, UiCommand::SetDnd(requested));
     });
 }
 

@@ -39,8 +39,8 @@ fn enqueue_offline_command_drops_duplicate_one_shot_commands() {
     assert!(!enqueue_offline_command(&mut offline, UiCommand::ClearAll));
 
     assert_eq!(offline.len(), 2);
-    assert_eq!(offline[0], UiCommand::ClosePanel);
-    assert_eq!(offline[1], UiCommand::ClearAll);
+    assert!(matches!(offline[0], UiCommand::ClosePanel));
+    assert!(matches!(offline[1], UiCommand::ClearAll));
 }
 
 #[test]
@@ -53,9 +53,30 @@ fn enqueue_offline_command_keeps_latest_dnd_state_only() {
     ));
     assert!(enqueue_offline_command(
         &mut offline,
-        UiCommand::SetDnd(false)
+        UiCommand::SetDndUntil(500)
     ));
 
     assert_eq!(offline.len(), 1);
-    assert_eq!(offline[0], UiCommand::SetDnd(false));
+    assert!(matches!(offline[0], UiCommand::SetDndUntil(500)));
+}
+
+#[test]
+fn enqueue_offline_command_rejects_live_reply_text_and_reports_failure() {
+    let mut offline = VecDeque::new();
+    let (outcome, mut result) = tokio::sync::oneshot::channel();
+
+    assert!(!enqueue_offline_command(
+        &mut offline,
+        UiCommand::Reply {
+            id: 7,
+            text: "Still there?".to_string(),
+            outcome,
+        }
+    ));
+
+    assert!(offline.is_empty());
+    assert!(matches!(
+        result.try_recv(),
+        Ok(Err(message)) if message.contains("unavailable")
+    ));
 }

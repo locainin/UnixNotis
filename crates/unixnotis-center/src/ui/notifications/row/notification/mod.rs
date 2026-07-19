@@ -13,6 +13,10 @@ mod labels_tests;
 #[cfg(test)]
 #[path = "tests/metadata.rs"]
 mod metadata_tests;
+mod reply;
+#[cfg(test)]
+#[path = "tests/reply.rs"]
+mod reply_tests;
 #[cfg(test)]
 #[path = "tests/stack.rs"]
 mod stack_tests;

@@ -9,6 +9,7 @@ fn notification(id: u32) -> NotificationView {
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
         urgency: 1,
         is_transient: false,
         image: NotificationImage::default(),

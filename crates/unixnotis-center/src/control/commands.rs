@@ -22,11 +22,21 @@ pub async fn handle_command(
         // Per-row actions still map straight to the daemon methods
         UiCommand::Dismiss(id) => proxy.dismiss(id).await,
         UiCommand::InvokeAction { id, action_key } => proxy.invoke_action(id, &action_key).await,
+        UiCommand::Reply { id, text, outcome } => {
+            let result = proxy.reply_notification(id, &text).await;
+            let reply_result = match &result {
+                Ok(()) => Ok(()),
+                Err(err) => Err(err.to_string()),
+            };
+            let _ = outcome.send(reply_result);
+            result
+        }
         // Daemon invalidation now drives refresh for every client, not just the caller
         // Keeping the caller path thin avoids reintroducing one-client-only fixes later
         UiCommand::ClearAll => proxy.clear_all().await,
         // State and visibility commands remain safe to replay after reconnect
         UiCommand::SetDnd(enabled) => proxy.set_dnd(enabled).await,
+        UiCommand::SetDndUntil(expires_at) => proxy.set_dnd_until(expires_at).await,
         UiCommand::ClosePanel => proxy.close_panel().await,
     }
 }
@@ -52,20 +62,38 @@ pub fn stash_offline_commands(
 }
 
 fn enqueue_offline_command(offline: &mut VecDeque<UiCommand>, command: UiCommand) -> bool {
+    let command = match command {
+        UiCommand::Reply { outcome, .. } => {
+            // Reply text is live-only and must never survive a D-Bus generation change
+            let _ = outcome.send(Err("notification service is unavailable".to_string()));
+            return false;
+        }
+        command => command,
+    };
     match &command {
         // Close and clear are one-shot intents, so one buffered copy is enough
         UiCommand::ClearAll | UiCommand::ClosePanel => {
-            if offline.iter().any(|queued| queued == &command) {
+            let duplicate = offline.iter().any(|queued| {
+                matches!(
+                    (queued, &command),
+                    (UiCommand::ClearAll, UiCommand::ClearAll)
+                        | (UiCommand::ClosePanel, UiCommand::ClosePanel)
+                )
+            });
+            if duplicate {
                 // Duplicate one-shot replay adds no user value after reconnect
                 return false;
             }
         }
         // DND should replay only the newest requested state after reconnect
-        UiCommand::SetDnd(_) => {
+        UiCommand::SetDnd(_) | UiCommand::SetDndUntil(_) => {
             // Older states are stale once a newer DND request exists
-            offline.retain(|queued| !matches!(queued, UiCommand::SetDnd(_)));
+            offline.retain(|queued| {
+                !matches!(queued, UiCommand::SetDnd(_) | UiCommand::SetDndUntil(_))
+            });
         }
         UiCommand::Dismiss(_) | UiCommand::InvokeAction { .. } => {}
+        UiCommand::Reply { .. } => unreachable!("reply commands return before queueing"),
     }
 
     if offline.len() >= MAX_OFFLINE_COMMANDS {
@@ -104,7 +132,10 @@ pub fn drop_stale_offline_commands(offline: &mut VecDeque<UiCommand>) {
     offline.retain(|command| {
         matches!(
             command,
-            UiCommand::ClearAll | UiCommand::SetDnd(_) | UiCommand::ClosePanel
+            UiCommand::ClearAll
+                | UiCommand::SetDnd(_)
+                | UiCommand::SetDndUntil(_)
+                | UiCommand::ClosePanel
         )
     });
     let dropped = before.saturating_sub(offline.len());

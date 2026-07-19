@@ -114,3 +114,54 @@ fn update_notification_row_action_button_sends_command_once_per_click_window() {
     button.emit_clicked();
     assert!(command_rx.try_recv().is_err());
 }
+
+#[gtk::test]
+fn recycled_action_button_targets_the_new_notification_id() {
+    let (_root, row) = notification_row();
+    let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(4);
+    let mut first = sample_notification();
+    first.actions = vec![Action {
+        key: "open".to_string(),
+        label: "Open".to_string(),
+    }];
+    let mut second = first.clone();
+    second.id = 2;
+
+    update_notification_row(
+        &row,
+        &row_data(
+            Rc::new(first),
+            RowFlags {
+                is_active: true,
+                ..Default::default()
+            },
+        ),
+        &IconResolver::new(),
+        &command_tx,
+    );
+    update_notification_row(
+        &row,
+        &row_data(
+            Rc::new(second),
+            RowFlags {
+                is_active: true,
+                ..Default::default()
+            },
+        ),
+        &IconResolver::new(),
+        &command_tx,
+    );
+
+    let button = row
+        .actions_box
+        .first_child()
+        .expect("recycled action button")
+        .downcast::<gtk::Button>()
+        .expect("child should be action button");
+    button.emit_clicked();
+
+    assert!(matches!(
+        command_rx.try_recv(),
+        Ok(UiCommand::InvokeAction { id: 2, action_key }) if action_key == "open"
+    ));
+}

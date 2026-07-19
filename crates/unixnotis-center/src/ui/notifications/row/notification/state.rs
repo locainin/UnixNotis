@@ -8,6 +8,8 @@ use std::rc::Rc;
 
 use unixnotis_core::NotificationView;
 
+use super::reply::InlineReplyWidgets;
+
 pub(in crate::ui::notifications) struct NotificationRowWidgets {
     // Styled notification card inside the ListView row wrapper
     pub(super) card: gtk::Box,
@@ -36,10 +38,16 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) footer_right: gtk::Label,
     // Container for optional action buttons
     pub(super) actions_box: gtk::Box,
+    // Live-only reply form is kept outside the action button cache
+    pub(super) inline_reply: InlineReplyWidgets,
     // Current notification id bound to this reused row widget
     pub(super) notify_id: Rc<Cell<u32>>,
+    // Recycled rows must rebuild action closures when the notification id changes
+    pub(super) action_cache_id: Cell<u32>,
     // Last rendered action signature for cheap no-op detection
     pub(super) action_cache: RefCell<Vec<(String, String)>>,
+    // Reply metadata and live state are cached separately from ordinary actions
+    pub(super) reply_cache: RefCell<(unixnotis_core::InlineReply, bool)>,
     // Last rendered icon signature so decode work only happens on a real change
     pub(super) icon_sig: RefCell<Option<IconSignature>>,
 }

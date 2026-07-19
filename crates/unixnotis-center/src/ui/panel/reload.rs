@@ -9,8 +9,11 @@ pub fn apply_reloaded_panel_chrome(panel: &PanelWidgets, config: &PanelConfig) {
         &panel.header_top,
         &super::action_widgets::PanelActionWidgets {
             group: panel.header_action_group.clone(),
+            dnd_group: panel.dnd_action_group.clone(),
             focus_toggle: panel.focus_toggle.clone(),
             dnd_toggle: panel.dnd_toggle.clone(),
+            dnd_status: panel.dnd_status.clone(),
+            dnd_menu: panel.dnd_menu.clone(),
             clear_button: panel.clear_action_button.clone(),
             search_toggle: panel.search_toggle.clone(),
             close_button: panel.close_button.clone(),
