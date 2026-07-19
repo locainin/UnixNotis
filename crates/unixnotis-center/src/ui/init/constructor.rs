@@ -36,6 +36,7 @@ impl UiState {
         list.set_empty_layout(has_visible_widget_section(&panel));
 
         panel::connect_dnd_toggle(&panel, dnd_guard.clone(), init.command_tx.clone());
+        panel::connect_dnd_menu(&panel, init.command_tx.clone());
         panel::connect_clear_button(&panel.clear_action_button, init.command_tx.clone());
         panel::connect_clear_button(&panel.clear_header_button, init.command_tx.clone());
         panel::connect_close_button(&panel, init.command_tx.clone());
@@ -63,6 +64,7 @@ impl UiState {
             icon_resolver,
             widget_icon_resolver,
             dnd_guard,
+            dnd_expiration_source: None,
             search_toggle_guard,
             panel_visible: false,
             panel_visible_flag,

@@ -25,6 +25,7 @@ pub(super) fn notification(app_name: &str, icon_name: &str) -> NotificationView 
         summary: String::new(),
         body: String::new(),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
         urgency: 1,
         is_transient: false,
         image: NotificationImage {

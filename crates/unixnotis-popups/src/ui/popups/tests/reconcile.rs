@@ -13,6 +13,7 @@ fn make_view(id: u32, urgency: Urgency, summary: &str) -> NotificationView {
             key: "default".to_string(),
             label: "Open".to_string(),
         }],
+        inline_reply: unixnotis_core::InlineReply::default(),
         urgency: urgency as u8,
         is_transient: false,
         image: NotificationImage::default(),

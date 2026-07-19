@@ -7,8 +7,11 @@ use unixnotis_core::{
 
 pub(super) struct PanelActionWidgets {
     pub(super) group: gtk::Box,
+    pub(super) dnd_group: gtk::Box,
     pub(super) focus_toggle: gtk::ToggleButton,
     pub(super) dnd_toggle: gtk::ToggleButton,
+    pub(super) dnd_status: gtk::Label,
+    pub(super) dnd_menu: gtk::MenuButton,
     pub(super) clear_button: gtk::Button,
     pub(super) search_toggle: gtk::ToggleButton,
     pub(super) close_button: gtk::Button,
@@ -30,6 +33,20 @@ pub(super) fn build_panel_actions(config: &PanelConfig) -> PanelActionArea {
     let focus_toggle = build_toggle_action(hooks::panel_action::FOCUS, &config.focus_action);
 
     let dnd_toggle = build_toggle_action(hooks::panel_action::PRIMARY, &config.dnd_action);
+    let dnd_status = gtk::Label::new(None);
+    dnd_status.add_css_class(hooks::panel_action::LABEL);
+    dnd_status.set_visible(false);
+
+    let dnd_menu = gtk::MenuButton::new();
+    configure_action_button(&dnd_menu, hooks::panel_action::PRIMARY, true);
+    dnd_menu.set_icon_name("pan-down-symbolic");
+    dnd_menu.set_tooltip_text(Some("Choose a Do Not Disturb duration"));
+
+    let dnd_group = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+    // One ordered child keeps the toggle, countdown, and duration arrow together
+    dnd_group.append(&dnd_toggle);
+    dnd_group.append(&dnd_status);
+    dnd_group.append(&dnd_menu);
 
     let clear_button =
         build_button_action(hooks::panel_action::MUTED, &resolved_clear_action(config));
@@ -46,7 +63,7 @@ pub(super) fn build_panel_actions(config: &PanelConfig) -> PanelActionArea {
     append_ordered_actions(
         &action_primary,
         &focus_toggle,
-        &dnd_toggle,
+        &dnd_group,
         &clear_button,
         &search_toggle,
         &close_button,
@@ -58,8 +75,11 @@ pub(super) fn build_panel_actions(config: &PanelConfig) -> PanelActionArea {
         row: actions,
         widgets: PanelActionWidgets {
             group: action_primary,
+            dnd_group,
             focus_toggle,
             dnd_toggle,
+            dnd_status,
+            dnd_menu,
             clear_button,
             search_toggle,
             close_button,
@@ -108,7 +128,7 @@ pub(in crate::ui::panel) fn apply_panel_action_config(
     append_ordered_actions(
         &widgets.group,
         &widgets.focus_toggle,
-        &widgets.dnd_toggle,
+        &widgets.dnd_group,
         &widgets.clear_button,
         &widgets.search_toggle,
         &widgets.close_button,
@@ -214,7 +234,7 @@ fn configure_action_button(button: &impl IsA<gtk::Widget>, role_class: &str, ico
 fn append_ordered_actions(
     group: &gtk::Box,
     focus_toggle: &gtk::ToggleButton,
-    dnd_toggle: &gtk::ToggleButton,
+    dnd_group: &gtk::Box,
     clear_button: &gtk::Button,
     search_toggle: &gtk::ToggleButton,
     close_button: &gtk::Button,
@@ -224,7 +244,7 @@ fn append_ordered_actions(
     for action in order {
         let child: gtk::Widget = match action {
             PanelActionId::Widgets => focus_toggle.clone().upcast(),
-            PanelActionId::Dnd => dnd_toggle.clone().upcast(),
+            PanelActionId::Dnd => dnd_group.clone().upcast(),
             PanelActionId::Clear => clear_button.clone().upcast(),
             PanelActionId::Search => search_toggle.clone().upcast(),
             PanelActionId::Close => close_button.clone().upcast(),

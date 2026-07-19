@@ -6,6 +6,7 @@ use super::super::events::apply_popup_gate;
 fn popup_gate_update_changes_policy_without_replacing_runtime_counts() {
     let mut state = ControlState {
         dnd_enabled: false,
+        dnd_expires_at: 0,
         inhibited: false,
         history_count: 42,
         inhibitor_count: 3,

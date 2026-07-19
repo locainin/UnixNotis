@@ -19,6 +19,7 @@ pub(super) fn sample_notification() -> NotificationView {
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
         urgency: Urgency::Normal as u8,
         is_transient: false,
         image: NotificationImage::default(),

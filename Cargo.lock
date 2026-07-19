@@ -3519,6 +3519,7 @@ dependencies = [
  "anyhow",
  "async-channel",
  "blake3",
+ "chrono",
  "clap",
  "crossbeam-channel",
  "fast_image_resize",

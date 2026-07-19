@@ -3,7 +3,7 @@
 use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use gtk::Align;
-use unixnotis_core::{hooks, NotificationView, Urgency};
+use unixnotis_core::{hooks, Action, NotificationView, Urgency};
 
 use super::super::window::refresh_popup_input_region;
 use super::super::UiState;
@@ -76,6 +76,7 @@ impl UiState {
             // Critical rows keep the shared urgency class at the root
             root.add_css_class(hooks::shared_state::CRITICAL);
         }
+        let has_popup_actions = notification.actions.iter().any(popup_action_is_visible);
         // State classes make popup theming less dependent on child selector tricks
         set_class_state(
             &root,
@@ -87,11 +88,7 @@ impl UiState {
             hooks::popup_card::HAS_BODY,
             has_visible_text(&notification.body),
         );
-        set_class_state(
-            &root,
-            hooks::popup_card::HAS_ACTIONS,
-            !notification.actions.is_empty(),
-        );
+        set_class_state(&root, hooks::popup_card::HAS_ACTIONS, has_popup_actions);
 
         // Header keeps icon, app name, and close in one stable row
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -153,10 +150,15 @@ impl UiState {
         root.append(&body);
 
         // Action buttons are only built when the payload exposes actions
-        if !notification.actions.is_empty() {
+        if has_popup_actions {
             let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
             actions.add_css_class("unixnotis-popup-actions");
-            for action in notification.actions.iter().take(MAX_POPUP_ACTIONS) {
+            for action in notification
+                .actions
+                .iter()
+                .filter(|action| popup_action_is_visible(action))
+                .take(MAX_POPUP_ACTIONS)
+            {
                 // Button labels are clamped before GTK measures them
                 let button = gtk::Button::with_label(
                     clamp_label_text(&action.label, POPUP_ACTION_LABEL_MAX_CHARS).as_ref(),
@@ -271,6 +273,11 @@ fn picked_widget_blocks_default_action(mut widget: Option<gtk::Widget>) -> bool 
 fn widget_type_blocks_default_action(widget_type: gtk::glib::Type) -> bool {
     // Button clicks should always stay owned by the button widget subtree
     widget_type.is_a(gtk::Button::static_type())
+}
+
+fn popup_action_is_visible(action: &Action) -> bool {
+    // Inline reply needs a text field, so it is available in the panel instead of popup buttons
+    action.key != "inline-reply"
 }
 
 fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {

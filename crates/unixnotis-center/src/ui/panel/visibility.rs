@@ -42,10 +42,25 @@ impl UiState {
     }
 
     pub(in crate::ui) fn update_state(&mut self, state: unixnotis_core::ControlState) {
+        if let Some(source) = self.dnd_expiration_source.take() {
+            source.remove();
+        }
         // Avoid re-entrant DND toggles while applying daemon state
         self.dnd_guard.set(true);
         self.panel.dnd_toggle.set_active(state.dnd_enabled);
         self.dnd_guard.set(false);
+        let expires_at = state
+            .dnd_enabled
+            .then_some(state.dnd_expires_at)
+            .filter(|expires_at| *expires_at > 0)
+            .unwrap_or(0);
+        super::dnd::update_dnd_status(&self.panel.dnd_status, expires_at);
+        if expires_at > 0 {
+            self.dnd_expiration_source = Some(super::dnd::start_dnd_countdown(
+                &self.panel.dnd_status,
+                expires_at,
+            ));
+        }
     }
 
     pub(in crate::ui) fn refresh_counts(&mut self) {
