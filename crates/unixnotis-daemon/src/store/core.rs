@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 use tracing::{debug, warn};
-use unixnotis_core::{Config, NotificationView};
+use unixnotis_core::{Config, Notification, NotificationView};
 
 use super::{DndStateStore, HistoryStore, NotificationStore, DND_STATE_VERSION};
 
@@ -107,15 +108,14 @@ impl NotificationStore {
             .map(|notification| notification.to_view())
     }
 
-    pub fn active_inline_reply_target(&self, id: u32) -> Option<bool> {
+    pub fn active_inline_reply_target(&self, id: u32) -> Option<Arc<Notification>> {
         let notification = self.active.get(&id)?;
         // Both fields must agree so malformed internal data cannot widen reply access
         let has_reply_action = notification
             .actions
             .iter()
             .any(|action| action.key == "inline-reply");
-        (notification.inline_reply.available && has_reply_action)
-            .then_some(notification.is_resident)
+        (notification.inline_reply.available && has_reply_action).then(|| Arc::clone(notification))
     }
 
     pub fn history_len(&self) -> usize {

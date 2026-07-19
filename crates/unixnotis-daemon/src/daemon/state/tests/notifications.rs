@@ -114,6 +114,36 @@ async fn dismiss_from_panel_missing_id_is_noop() {
 }
 
 #[tokio::test]
+async fn generation_safe_dismiss_keeps_replacement_and_its_timer() {
+    let state = daemon_state_for_test(false).await;
+    let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();
+    state.set_scheduler(scheduler);
+    let (id, original) = {
+        let mut store = state.store.lock().await;
+        let original = store.insert(notification("original"), 0).notification;
+        let id = original.id;
+        let replacement = store.insert(notification("replacement"), id);
+        assert!(replacement.replaced);
+        (id, original)
+    };
+
+    let removed = state
+        .dismiss_active_if_current(id, &original)
+        .await
+        .expect("stale generation dismiss should remain a no-op");
+
+    assert!(!removed);
+    assert!(receiver.try_recv().is_err());
+    let active = state
+        .store
+        .lock()
+        .await
+        .active_notification_view(id)
+        .expect("replacement should remain active");
+    assert_eq!(active.summary, "replacement");
+}
+
+#[tokio::test]
 async fn close_notification_removes_active_notification_and_cancels_timer() {
     let state = daemon_state_for_test(false).await;
     let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();

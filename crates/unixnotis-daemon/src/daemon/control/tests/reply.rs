@@ -8,33 +8,63 @@ use zbus::message::Type;
 use zbus::zvariant::OwnedValue;
 use zbus::{Connection, MatchRule, MessageStream};
 
-use super::super::reply::{sanitize_reply_text, MAX_REPLY_TEXT_BYTES};
 use super::super::ControlServer;
+use super::{validate_reply_text, MAX_REPLY_TEXT_BYTES};
 use crate::daemon::NOTIFICATIONS_OBJECT_PATH;
 use crate::test_support::daemon_state_for_test;
 
 #[test]
-fn sanitize_reply_text_keeps_normal_text_and_trims_outer_spacing() {
+fn validate_reply_text_keeps_message_content_and_trims_outer_spacing() {
     assert_eq!(
-        sanitize_reply_text("  See you soon  ").expect("valid reply"),
+        validate_reply_text("  See you soon  ").expect("valid reply"),
         "See you soon"
     );
 }
 
 #[test]
-fn sanitize_reply_text_rejects_empty_control_only_and_oversized_values() {
-    assert!(sanitize_reply_text(" \n\t ").is_err());
-    assert!(sanitize_reply_text("\u{202e}").is_err());
-    assert!(sanitize_reply_text(&"x".repeat(MAX_REPLY_TEXT_BYTES + 1)).is_err());
+fn validate_reply_text_preserves_unicode_and_bidirectional_content_exactly() {
+    let messages = [
+        "مرحبًا، سأصل قريبًا",
+        "שלום, אגיע בקרוב",
+        "Reply 👩🏽‍💻 cafe\u{301}",
+        "English \u{2067}مرحبا שלום\u{2069} English",
+    ];
+
+    for message in messages {
+        assert_eq!(
+            validate_reply_text(message).expect("valid Unicode"),
+            message
+        );
+    }
+}
+
+#[test]
+fn validate_reply_text_accepts_exact_byte_limit() {
+    let reply = "🙂".repeat(MAX_REPLY_TEXT_BYTES / "🙂".len());
+
+    assert_eq!(reply.len(), MAX_REPLY_TEXT_BYTES);
+    assert_eq!(validate_reply_text(&reply).expect("exact limit"), reply);
+}
+
+#[test]
+fn validate_reply_text_rejects_empty_oversized_nul_and_multiline_values() {
+    assert!(validate_reply_text(" \n\t ").is_err());
+    assert!(validate_reply_text(&"x".repeat(MAX_REPLY_TEXT_BYTES + 1)).is_err());
+    assert!(validate_reply_text("before\0after").is_err());
+    assert!(validate_reply_text("line one\nline two").is_err());
 }
 
 #[tokio::test]
 async fn submit_inline_reply_emits_text_and_removes_nonresident_notification() {
     let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
     let mut stream = reply_signal_stream(&state).await;
     let id = {
         let mut store = state.store.lock().await;
-        store.insert(reply_notification(false), 0).notification.id
+        store
+            .insert(reply_notification(false, &sender), 0)
+            .notification
+            .id
     };
 
     ControlServer::new(state.clone())
@@ -52,10 +82,14 @@ async fn submit_inline_reply_emits_text_and_removes_nonresident_notification() {
 #[tokio::test]
 async fn submit_inline_reply_keeps_resident_notification_live() {
     let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
     let mut stream = reply_signal_stream(&state).await;
     let id = {
         let mut store = state.store.lock().await;
-        store.insert(reply_notification(true), 0).notification.id
+        store
+            .insert(reply_notification(true, &sender), 0)
+            .notification
+            .id
     };
 
     ControlServer::new(state.clone())
@@ -69,7 +103,106 @@ async fn submit_inline_reply_keeps_resident_notification_live() {
     assert_eq!(state.store.lock().await.list_active().len(), 1);
 }
 
-fn reply_notification(is_resident: bool) -> Notification {
+#[tokio::test]
+async fn submit_inline_reply_round_trips_unicode_and_exact_byte_limit() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let mut stream = reply_signal_stream(&state).await;
+    let messages = [
+        "مرحبًا، سأصل قريبًا".to_string(),
+        "שלום, אגיע בקרוב".to_string(),
+        "Reply 👩🏽‍💻 cafe\u{301}".to_string(),
+        "English \u{2067}مرحبا שלום\u{2069} English".to_string(),
+        "🙂".repeat(MAX_REPLY_TEXT_BYTES / "🙂".len()),
+    ];
+
+    for message in messages {
+        let id = {
+            let mut store = state.store.lock().await;
+            store
+                .insert(reply_notification(true, &sender), 0)
+                .notification
+                .id
+        };
+
+        ControlServer::new(state.clone())
+            .submit_inline_reply(id, &message)
+            .await
+            .expect("submit exact reply text");
+
+        let (signal_id, signal_text) = next_reply_signal(&mut stream).await;
+        assert_eq!(signal_id, id);
+        assert_eq!(signal_text, message);
+    }
+}
+
+#[tokio::test]
+async fn reply_listener_replacement_survives_generation_safe_dismissal() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let mut stream = reply_signal_stream(&state).await;
+    let id = {
+        let mut store = state.store.lock().await;
+        store
+            .insert(reply_notification(false, &sender), 0)
+            .notification
+            .id
+    };
+    let replacement_state = state.clone();
+    let replacement_sender = sender.clone();
+
+    ControlServer::new(state.clone())
+        .submit_inline_reply_with_post_emit(id, "yes", move || async move {
+            // This models the sender updating the same row while handling the reply signal
+            let (signal_id, text) = next_reply_signal(&mut stream).await;
+            assert_eq!((signal_id, text.as_str()), (id, "yes"));
+            let mut replacement = reply_notification(false, &replacement_sender);
+            replacement.summary = "Reply received".to_string();
+            let outcome = replacement_state.store.lock().await.insert(replacement, id);
+            assert!(outcome.replaced);
+        })
+        .await
+        .expect("reply with replacement");
+
+    let active = state
+        .store
+        .lock()
+        .await
+        .active_notification_view(id)
+        .expect("same-ID replacement should remain active");
+    assert_eq!(active.summary, "Reply received");
+}
+
+#[tokio::test]
+async fn submit_inline_reply_rejects_sender_that_no_longer_owns_bus_name() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let id = {
+        let mut store = state.store.lock().await;
+        store
+            .insert(reply_notification(false, &sender), 0)
+            .notification
+            .id
+    };
+    sender.close().await.expect("close sender connection");
+
+    let error = ControlServer::new(state.clone())
+        .submit_inline_reply(id, "Anyone there?")
+        .await
+        .expect_err("closed sender must reject replies");
+
+    assert!(error
+        .to_string()
+        .contains("The application is no longer available"));
+    assert!(state
+        .store
+        .lock()
+        .await
+        .active_notification_view(id)
+        .is_some());
+}
+
+fn reply_notification(is_resident: bool, sender: &Connection) -> Notification {
     Notification {
         id: 0,
         app_name: "Messages".to_string(),
@@ -95,7 +228,12 @@ fn reply_notification(is_resident: bool) -> Notification {
         image: NotificationImage::default(),
         expire_timeout: 0,
         received_at: Utc::now(),
-        sender_name: Some(":1.test".to_string()),
+        sender_name: Some(
+            sender
+                .unique_name()
+                .expect("sender connection unique name")
+                .to_string(),
+        ),
         sender_pid: Some(1234),
         sender_start_time: Some(555),
         sender_executable: Some("/usr/bin/test-app".to_string()),

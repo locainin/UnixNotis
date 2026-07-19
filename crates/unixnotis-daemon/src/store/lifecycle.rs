@@ -94,6 +94,22 @@ impl NotificationStore {
         }
     }
 
+    pub fn dismiss_active_if_current(&mut self, id: u32, expected: &Arc<Notification>) -> bool {
+        // A replacement can reuse the numeric ID but never the same Arc allocation
+        let is_current = self
+            .active
+            .get(&id)
+            .is_some_and(|active| Arc::ptr_eq(active, expected));
+        if !is_current {
+            // Keep a replacement that arrived while an earlier action was in flight
+            return false;
+        }
+
+        self.active.shift_remove(&id);
+        self.expirations.remove(&id);
+        true
+    }
+
     pub fn drain_active_ids(&mut self) -> Vec<u32> {
         // Drain in one pass so callers do not need repeated lookups
         let ids = self.active.keys().rev().copied().collect();

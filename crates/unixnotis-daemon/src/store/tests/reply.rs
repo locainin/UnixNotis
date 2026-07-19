@@ -21,8 +21,12 @@ fn active_inline_reply_target_requires_a_live_explicit_reply_action() {
     });
     let reply_id = store.insert(reply, 0).notification.id;
 
-    assert_eq!(store.active_inline_reply_target(ordinary_id), None);
-    assert_eq!(store.active_inline_reply_target(reply_id), Some(false));
+    assert!(store.active_inline_reply_target(ordinary_id).is_none());
+    let target = store
+        .active_inline_reply_target(reply_id)
+        .expect("reply target");
+    assert_eq!(target.id, reply_id);
+    assert!(!target.is_resident);
 }
 
 #[test]
@@ -37,11 +41,16 @@ fn inline_reply_target_reports_resident_state_and_rejects_history_entries() {
     reply.is_resident = true;
     let id = store.insert(reply, 0).notification.id;
 
-    assert_eq!(store.active_inline_reply_target(id), Some(true));
+    assert!(
+        store
+            .active_inline_reply_target(id)
+            .expect("resident reply target")
+            .is_resident
+    );
 
     store.close(id, CloseReason::Expired);
 
-    assert_eq!(store.active_inline_reply_target(id), None);
+    assert!(store.active_inline_reply_target(id).is_none());
     assert!(store.list_history().iter().any(|view| view.id == id));
 }
 
@@ -52,5 +61,32 @@ fn inline_reply_metadata_without_the_protocol_action_is_rejected() {
     malformed.inline_reply.available = true;
     let id = store.insert(malformed, 0).notification.id;
 
-    assert_eq!(store.active_inline_reply_target(id), None);
+    assert!(store.active_inline_reply_target(id).is_none());
+}
+
+#[test]
+fn generation_safe_reply_dismissal_keeps_same_id_replacement() {
+    let mut store = make_store_with_limits(12, 20);
+    let mut original = make_notification("original");
+    original.inline_reply.available = true;
+    original.actions.push(Action {
+        key: "inline-reply".to_string(),
+        label: "Reply".to_string(),
+    });
+    let original = store.insert(original, 0).notification;
+    let id = original.id;
+
+    let replacement = store.insert(make_notification("replacement"), id);
+    assert!(replacement.replaced);
+
+    assert!(!store.dismiss_active_if_current(id, &original));
+    assert_eq!(
+        store
+            .active_notification_view(id)
+            .expect("replacement should remain active")
+            .summary,
+        "replacement"
+    );
+    assert!(store.dismiss_active_if_current(id, &replacement.notification));
+    assert!(store.active_notification_view(id).is_none());
 }
