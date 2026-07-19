@@ -10,7 +10,7 @@ use unixnotis_core::{css::hooks, PanelConfig};
 
 use crate::control::UiEvent;
 use crate::ui::panel::behavior::input::{ClickCooldown, LatestBoolEventGate};
-use crate::ui::panel::{PanelWidgets, WIDGET_REVEAL_TRANSITION_MS};
+use crate::ui::panel::WIDGET_REVEAL_TRANSITION_MS;
 
 pub const SEARCH_REVEAL_TRANSITION_MS: u64 = 180;
 const WIDGETS_TOGGLE_COALESCE_MS: u64 = 16;
@@ -58,7 +58,7 @@ pub(super) fn build_panel_search(config: &PanelConfig) -> PanelSearchWidgets {
 }
 
 pub(in crate::ui) fn connect_widget_collapse_toggle(
-    panel: &PanelWidgets,
+    focus_toggle: &gtk::ToggleButton,
     event_tx: async_channel::Sender<UiEvent>,
 ) {
     let collapse_gate = LatestBoolEventGate::new(Duration::from_millis(WIDGETS_TOGGLE_COALESCE_MS));
@@ -68,53 +68,45 @@ pub(in crate::ui) fn connect_widget_collapse_toggle(
     // Restore guard prevents a rejected click rollback from re-entering this handler
     let collapse_restore = Rc::new(Cell::new(false));
 
-    panel
-        .header
-        .actions
-        .focus_toggle
-        .connect_toggled(move |button| {
-            if collapse_restore.replace(false) {
-                return;
-            }
+    focus_toggle.connect_toggled(move |button| {
+        if collapse_restore.replace(false) {
+            return;
+        }
 
-            let collapsed = button.is_active();
-            // Ignore clicks while the previous reveal animation is still changing layout
-            if !collapse_click_gate.try_start() {
-                let accepted = accepted_collapsed.get();
-                if collapsed != accepted {
-                    // Roll back only the rejected edge so the UI mirrors the running transition
-                    collapse_restore.set(true);
-                    button.set_active(accepted);
-                }
-                return;
+        let collapsed = button.is_active();
+        // Ignore clicks while the previous reveal animation is still changing layout
+        if !collapse_click_gate.try_start() {
+            let accepted = accepted_collapsed.get();
+            if collapsed != accepted {
+                // Roll back only the rejected edge so the UI mirrors the running transition
+                collapse_restore.set(true);
+                button.set_active(accepted);
             }
+            return;
+        }
 
-            accepted_collapsed.set(collapsed);
-            // Disable the control until GTK finishes the matching reveal transition
-            button.set_sensitive(false);
-            let button_enable = button.clone();
-            gtk::glib::timeout_add_local_once(
-                Duration::from_millis(WIDGET_REVEAL_TRANSITION_MS),
-                move || {
-                    button_enable.set_sensitive(true);
-                },
-            );
-            collapse_gate.request_widgets_collapsed(&event_tx, collapsed);
-        });
+        accepted_collapsed.set(collapsed);
+        // Disable the control until GTK finishes the matching reveal transition
+        button.set_sensitive(false);
+        let button_enable = button.clone();
+        gtk::glib::timeout_add_local_once(
+            Duration::from_millis(WIDGET_REVEAL_TRANSITION_MS),
+            move || {
+                button_enable.set_sensitive(true);
+            },
+        );
+        collapse_gate.request_widgets_collapsed(&event_tx, collapsed);
+    });
 }
 
 pub(in crate::ui) fn connect_filter_entry(
-    panel: &PanelWidgets,
+    search_entry: &gtk::SearchEntry,
     event_tx: async_channel::Sender<UiEvent>,
 ) {
     // SearchChanged covers typing, clear actions, and programmatic text resets
-    panel
-        .header
-        .search
-        .entry
-        .connect_search_changed(move |entry| {
-            send_filter_event(&event_tx, entry.text().to_string());
-        });
+    search_entry.connect_search_changed(move |entry| {
+        send_filter_event(&event_tx, entry.text().to_string());
+    });
 }
 
 pub(super) fn send_filter_event(event_tx: &async_channel::Sender<UiEvent>, filter: String) {
@@ -133,56 +125,65 @@ pub(super) fn send_filter_event(event_tx: &async_channel::Sender<UiEvent>, filte
 }
 
 pub(in crate::ui) fn connect_search_toggle(
-    panel: &PanelWidgets,
+    search_toggle: &gtk::ToggleButton,
+    search_revealer: &gtk::Revealer,
+    search_entry: &gtk::SearchEntry,
     search_toggle_guard: Rc<Cell<bool>>,
 ) {
-    let search_revealer = panel.header.search.revealer.clone();
-    let search_entry = panel.header.search.entry.clone();
     let search_click_gate = ClickCooldown::new(Duration::from_millis(SEARCH_REVEAL_TRANSITION_MS));
-    let accepted_search_reveal = Rc::new(Cell::new(false));
+    let accepted_search_reveal = Rc::new(Cell::new(search_revealer.reveals_child()));
     // Programmatic rollback must not be mistaken for a fresh user click
     let search_restore = Rc::new(Cell::new(false));
+    let toggled_revealer = search_revealer.clone();
+    let toggled_entry = search_entry.clone();
 
-    panel
-        .header
-        .actions
-        .search_toggle
-        .connect_toggled(move |button| {
-            if search_toggle_guard.get() || search_restore.replace(false) {
-                return;
-            }
+    // A weak reference avoids a signal cycle between the entry and toggle
+    let stop_toggle = search_toggle.downgrade();
+    let stop_click_gate = search_click_gate.clone();
+    search_entry.connect_stop_search(move |_| {
+        // Escape is a semantic close and should not wait for the reveal click cooldown
+        stop_click_gate.release();
+        if let Some(toggle) = stop_toggle.upgrade() {
+            toggle.set_active(false);
+        }
+    });
 
-            let reveal = button.is_active();
-            if !search_click_gate.try_start() {
-                let accepted = accepted_search_reveal.get();
-                if reveal != accepted {
-                    // Keep the visual toggle synced with the accepted revealer state
-                    search_restore.set(true);
-                    button.set_active(accepted);
-                }
-                return;
-            }
+    search_toggle.connect_toggled(move |button| {
+        if search_toggle_guard.get() || search_restore.replace(false) {
+            return;
+        }
 
-            accepted_search_reveal.set(reveal);
-            // Freeze the toggle while its revealer animates to the accepted state
-            button.set_sensitive(false);
-            let button_enable = button.clone();
-            gtk::glib::timeout_add_local_once(
-                Duration::from_millis(SEARCH_REVEAL_TRANSITION_MS),
-                move || {
-                    button_enable.set_sensitive(true);
-                },
-            );
-            search_revealer.set_reveal_child(reveal);
-            if reveal {
-                // Selecting existing text makes the next query replace it immediately
-                search_entry.grab_focus();
-                search_entry.select_region(0, -1);
-            } else if !search_entry.text().is_empty() {
-                // Closing search restores the full notification list
-                search_entry.set_text("");
+        let reveal = button.is_active();
+        if !search_click_gate.try_start() {
+            let accepted = accepted_search_reveal.get();
+            if reveal != accepted {
+                // Keep the visual toggle synced with the accepted revealer state
+                search_restore.set(true);
+                button.set_active(accepted);
             }
-        });
+            return;
+        }
+
+        accepted_search_reveal.set(reveal);
+        // Freeze the toggle while its revealer animates to the accepted state
+        button.set_sensitive(false);
+        let button_enable = button.clone();
+        gtk::glib::timeout_add_local_once(
+            Duration::from_millis(SEARCH_REVEAL_TRANSITION_MS),
+            move || {
+                button_enable.set_sensitive(true);
+            },
+        );
+        toggled_revealer.set_reveal_child(reveal);
+        if reveal {
+            // Selecting existing text makes the next query replace it immediately
+            toggled_entry.grab_focus();
+            toggled_entry.select_region(0, i32::MAX);
+        } else if !toggled_entry.text().is_empty() {
+            // Closing search restores the full notification list
+            toggled_entry.set_text("");
+        }
+    });
 }
 
 #[cfg(test)]

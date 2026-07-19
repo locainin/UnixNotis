@@ -40,9 +40,17 @@ impl UiState {
         panel::connect_clear_button(&panel.header.actions.clear_button, init.command_tx.clone());
         panel::connect_clear_button(&panel.sections.clear_header_button, init.command_tx.clone());
         panel::connect_close_button(&panel, init.command_tx.clone());
-        panel::connect_widget_collapse_toggle(&panel, init.event_tx.clone());
-        panel::connect_filter_entry(&panel, init.event_tx.clone());
-        panel::connect_search_toggle(&panel, search_toggle_guard.clone());
+        panel::connect_widget_collapse_toggle(
+            &panel.header.actions.focus_toggle,
+            init.event_tx.clone(),
+        );
+        panel::connect_filter_entry(&panel.header.search.entry, init.event_tx.clone());
+        panel::connect_search_toggle(
+            &panel.header.actions.search_toggle,
+            &panel.header.search.revealer,
+            &panel.header.search.entry,
+            search_toggle_guard.clone(),
+        );
         panel::connect_auto_close(&panel, &init, panel_visible_flag.clone());
         panel::connect_keyboard_shortcuts(&panel, init.command_tx.clone());
 
