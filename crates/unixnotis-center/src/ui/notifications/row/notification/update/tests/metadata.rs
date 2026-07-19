@@ -2,8 +2,8 @@
 
 use unixnotis_core::Urgency;
 
-use super::test_support::{current_millis, sample_notification};
-use super::update::{notification_meta_label, relative_time_badge};
+use super::super::super::test_support::{current_millis, sample_notification};
+use super::{notification_meta_label, relative_time_badge};
 
 #[test]
 fn notification_metadata_falls_back_to_urgency_label() {

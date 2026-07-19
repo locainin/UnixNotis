@@ -7,8 +7,10 @@ use unixnotis_core::{hooks, Action, Urgency};
 
 use crate::ui::icons::IconResolver;
 
-use super::test_support::{notification_row, row_data, sample_notification, RowFlags};
-use super::update::update_notification_row;
+use super::super::super::test_support::{
+    notification_row, row_data, sample_notification, RowFlags,
+};
+use super::update_notification_row;
 
 #[gtk::test]
 fn update_notification_row_applies_state_classes_and_text() {
@@ -72,4 +74,16 @@ fn update_notification_row_shows_metadata_lanes_and_footer_state() {
     assert_eq!(row.footer_left.text().as_str(), "TRANSIENT");
     assert!(row.footer_right.get_visible());
     assert_eq!(row.footer_right.text().as_str(), "1 ACTIONS");
+}
+
+#[gtk::test]
+fn update_notification_row_marks_an_empty_action_set_as_unavailable() {
+    let (_root, row) = notification_row();
+    let data = row_data(Rc::new(sample_notification()), RowFlags::default());
+    let (command_tx, _rx) = tokio::sync::mpsc::channel(1);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+
+    assert!(!row.card.has_css_class(hooks::panel_card::HAS_ACTIONS));
+    assert!(row.card.has_css_class(hooks::panel_card::NO_ACTIONS));
 }

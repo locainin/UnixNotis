@@ -7,8 +7,10 @@ use unixnotis_core::hooks;
 
 use crate::ui::icons::IconResolver;
 
-use super::test_support::{notification_row, row_data, sample_notification, RowFlags};
-use super::update::{notification_has_thumbnail, update_notification_row};
+use super::super::super::test_support::{
+    notification_row, row_data, sample_notification, RowFlags,
+};
+use super::{notification_has_thumbnail, update_notification_row};
 
 #[test]
 fn notification_thumbnail_only_uses_real_image_sources() {

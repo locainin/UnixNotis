@@ -1,7 +1,7 @@
 //! Text label rules for notification rows
 
-use super::state::MAX_SUMMARY_LABEL_CHARS;
-use super::update::{clamp_action_label_text, optional_label_state};
+use super::super::super::state::MAX_SUMMARY_LABEL_CHARS;
+use super::{clamp_action_label_text, optional_label_state};
 
 #[test]
 fn panel_summary_row_hides_when_text_is_empty() {
