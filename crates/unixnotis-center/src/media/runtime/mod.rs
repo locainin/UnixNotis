@@ -12,8 +12,6 @@ mod startup;
 mod state;
 
 pub(super) use signal::{MediaRefreshOrigin, MediaSignal};
-#[cfg(test)]
-use startup::normalize_media_config;
 pub(super) use startup::start_media_task;
 
 pub(super) const MEDIA_SIGNAL_CAPACITY: usize = 256;

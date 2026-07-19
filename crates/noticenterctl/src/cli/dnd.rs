@@ -43,7 +43,7 @@ impl FromStr for DndDuration {
         let digits = &value[..value.len() - 1];
         let amount = digits
             .parse::<u64>()
-            .map_err(|_| "duration must start with a positive integer".to_string())?;
+            .map_err(|_error| "duration must start with a positive integer".to_string())?;
         // Checked multiplication rejects large values before the policy bound is applied
         let seconds = amount
             .checked_mul(multiplier)
@@ -92,7 +92,7 @@ impl FromStr for DndClockTime {
             return Err("time must use 24-hour HH:MM format".to_string());
         }
         let time = NaiveTime::parse_from_str(value, "%H:%M")
-            .map_err(|_| "time must use 24-hour HH:MM format".to_string())?;
+            .map_err(|_error| "time must use 24-hour HH:MM format".to_string())?;
         Ok(Self { time })
     }
 }
