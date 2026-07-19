@@ -53,3 +53,19 @@ fn visible_search_configuration_activates_toggle_and_revealer_together() {
     assert!(header.actions.search_toggle.is_active());
     assert!(header.search.revealer.reveals_child());
 }
+
+#[gtk::test]
+fn subtitle_visibility_matches_whether_configured_copy_is_present() {
+    let visible_config = PanelConfig {
+        subtitle: "Live state".to_string(),
+        ..PanelConfig::default()
+    };
+    let visible_header = build_panel_header(&visible_config);
+    assert!(visible_header.subtitle.is_visible());
+
+    let hidden_header = build_panel_header(&PanelConfig {
+        subtitle: String::new(),
+        ..PanelConfig::default()
+    });
+    assert!(!hidden_header.subtitle.is_visible());
+}
