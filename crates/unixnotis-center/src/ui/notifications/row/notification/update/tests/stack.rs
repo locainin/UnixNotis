@@ -1,7 +1,7 @@
 //! Collapsed notification-stack composition tests
 
-use super::build::{StackLayer, STACK_LAYER_ORDER};
-use super::update::{stack_ghost_visibility, StackGhostVisibility};
+use super::super::super::build::{StackLayer, STACK_LAYER_ORDER};
+use super::{stack_ghost_visibility, StackGhostVisibility};
 
 #[test]
 fn notification_stack_places_readable_card_above_rear_layers() {

@@ -3,13 +3,15 @@
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use unixnotis_core::{hooks, Action};
+use unixnotis_core::{hooks, Action, InlineReply};
 
 use crate::control::UiCommand;
 use crate::ui::icons::IconResolver;
 
-use super::test_support::{child_count, notification_row, row_data, sample_notification, RowFlags};
-use super::update::update_notification_row;
+use super::super::super::test_support::{
+    child_count, notification_row, row_data, sample_notification, RowFlags,
+};
+use super::{update_notification_row, visible_action_count};
 
 #[gtk::test]
 fn update_notification_row_rebuilds_actions_only_when_signature_changes() {
@@ -40,6 +42,10 @@ fn update_notification_row_rebuilds_actions_only_when_signature_changes() {
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
     assert_eq!(child_count(&row.actions_box), 1);
+    let original_button = row
+        .actions_box
+        .first_child()
+        .expect("original action button");
 
     notification.actions[0].label = "Open notification details now".to_string();
     let data = row_data(
@@ -74,6 +80,15 @@ fn update_notification_row_rebuilds_actions_only_when_signature_changes() {
 
     assert_eq!(child_count(&row.actions_box), 1);
     assert_eq!(row.action_cache.borrow()[0].0, "reply");
+
+    // Repeating the unchanged update keeps the existing GTK action child
+    let stable_button = row.actions_box.first_child().expect("stable action button");
+    assert_ne!(stable_button, original_button);
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+    assert_eq!(
+        row.actions_box.first_child().expect("reused action button"),
+        stable_button
+    );
 }
 
 #[gtk::test]
@@ -164,4 +179,110 @@ fn recycled_action_button_targets_the_new_notification_id() {
         command_rx.try_recv(),
         Ok(UiCommand::InvokeAction { id: 2, action_key }) if action_key == "open"
     ));
+}
+
+#[gtk::test]
+fn inactive_reply_action_stays_hidden_beside_a_regular_action() {
+    let (_root, row) = notification_row();
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(4);
+    let mut notification = sample_notification();
+    notification.actions = vec![
+        Action {
+            key: "open".to_string(),
+            label: "Open".to_string(),
+        },
+        Action {
+            key: "inline-reply".to_string(),
+            label: "Reply".to_string(),
+        },
+    ];
+    notification.inline_reply.available = true;
+
+    update_notification_row(
+        &row,
+        &row_data(Rc::new(notification), RowFlags::default()),
+        &IconResolver::new(),
+        &command_tx,
+    );
+
+    assert_eq!(child_count(&row.actions_box), 1);
+    let button = row
+        .actions_box
+        .first_child()
+        .expect("regular action")
+        .downcast::<gtk::Button>()
+        .expect("action child should be a button");
+    assert_eq!(button.label().as_deref(), Some("Open"));
+}
+
+#[gtk::test]
+fn reply_action_label_prefers_hint_then_action_then_default() {
+    let labels = [
+        ("Hint reply", "Action reply", "Hint reply"),
+        ("", "Action reply", "Action reply"),
+        ("", "", "Reply"),
+    ];
+
+    for (hint, action, expected) in labels {
+        let (_root, row) = notification_row();
+        let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+        let mut notification = sample_notification();
+        notification.actions = vec![Action {
+            key: "inline-reply".to_string(),
+            label: action.to_string(),
+        }];
+        notification.inline_reply = InlineReply {
+            available: true,
+            label: hint.to_string(),
+            ..InlineReply::default()
+        };
+
+        update_notification_row(
+            &row,
+            &row_data(
+                Rc::new(notification),
+                RowFlags {
+                    is_active: true,
+                    ..Default::default()
+                },
+            ),
+            &IconResolver::new(),
+            &command_tx,
+        );
+
+        let button = row
+            .actions_box
+            .first_child()
+            .expect("reply action")
+            .downcast::<gtk::Button>()
+            .expect("reply child should be a button");
+        assert_eq!(button.label().as_deref(), Some(expected));
+    }
+}
+
+#[test]
+fn visible_action_count_requires_a_live_available_explicit_reply() {
+    let mut notification = sample_notification();
+    assert_eq!(visible_action_count(&notification, true), 0);
+
+    notification.actions = vec![
+        Action {
+            key: "open".to_string(),
+            label: "Open".to_string(),
+        },
+        Action {
+            key: "dismiss".to_string(),
+            label: "Dismiss".to_string(),
+        },
+    ];
+    assert_eq!(visible_action_count(&notification, false), 2);
+
+    notification.actions.push(Action {
+        key: "inline-reply".to_string(),
+        label: "Reply".to_string(),
+    });
+    assert_eq!(visible_action_count(&notification, true), 2);
+    notification.inline_reply.available = true;
+    assert_eq!(visible_action_count(&notification, false), 2);
+    assert_eq!(visible_action_count(&notification, true), 3);
 }
