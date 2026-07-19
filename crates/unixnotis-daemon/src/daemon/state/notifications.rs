@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use tracing::warn;
-use unixnotis_core::CloseReason;
+use unixnotis_core::{CloseReason, Notification};
 
 use super::DaemonState;
 
@@ -47,5 +49,30 @@ impl DaemonState {
             );
         }
         Ok(())
+    }
+
+    pub async fn dismiss_active_if_current(
+        &self,
+        id: u32,
+        expected: &Arc<Notification>,
+    ) -> zbus::Result<bool> {
+        let removed = {
+            // Object identity prevents an older action from deleting a same-ID replacement
+            let mut store = self.store.lock().await;
+            store.dismiss_active_if_current(id, expected)
+        };
+        if !removed {
+            return Ok(false);
+        }
+
+        // Only the matching active generation owns this expiration timer
+        self.cancel_expiration(id);
+        if let Err(err) = self.emit_dismiss_fanout(id, true).await {
+            warn!(
+                ?err,
+                id, "generation-safe dismiss committed but one or more D-Bus signals failed"
+            );
+        }
+        Ok(true)
     }
 }
