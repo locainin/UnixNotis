@@ -87,6 +87,29 @@ fn dnd_state_persists_on_change() {
     cleanup_temp_dir(&state_dir);
 }
 
+#[test]
+fn timed_dnd_persists_the_absolute_deadline() {
+    let state_dir = make_temp_state_dir("dnd-timed-write");
+    let mut store = NotificationStore::new_with_state_dir(Config::default(), state_dir.clone());
+    let expires_at = chrono::Utc::now().timestamp() + 3_600;
+    let write = store.set_dnd_until(expires_at);
+    write
+        .persist
+        .as_ref()
+        .expect("timed DND state store")
+        .persist(write.current, write.current_expires_at)
+        .expect("persist timed DND");
+
+    let path = state_dir.join("unixnotis").join(DND_STATE_FILE);
+    let persisted: PersistedDndState =
+        serde_json::from_slice(&std::fs::read(path).expect("read timed DND state"))
+            .expect("parse timed DND state");
+
+    assert!(persisted.dnd_enabled);
+    assert_eq!(persisted.expires_at, Some(expires_at));
+    cleanup_temp_dir(&state_dir);
+}
+
 #[cfg(unix)]
 #[test]
 fn dnd_state_persistence_rejects_symlink_without_touching_outside_file() {
@@ -101,7 +124,7 @@ fn dnd_state_persistence_rejects_symlink_without_touching_outside_file() {
     let state_store = super::super::state::DndStateStore::from_state_dir(state_dir.clone());
 
     let error = state_store
-        .persist(true)
+        .persist(true, None)
         .expect_err("state symlink should be rejected");
 
     assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
@@ -109,6 +132,103 @@ fn dnd_state_persistence_rejects_symlink_without_touching_outside_file() {
         std::fs::read_to_string(outside).expect("read outside state"),
         "keep"
     );
+    cleanup_temp_dir(&state_dir);
+}
+
+#[test]
+fn future_timed_dnd_is_loaded_with_its_deadline() {
+    let state_dir = make_temp_state_dir("dnd-future-deadline");
+    let expires_at = chrono::Utc::now().timestamp() + 3_600;
+    let state = PersistedDndState {
+        version: DND_STATE_VERSION,
+        dnd_enabled: true,
+        expires_at: Some(expires_at),
+        updated_at: None,
+    };
+    let path = state_dir.join("unixnotis").join(DND_STATE_FILE);
+    std::fs::create_dir_all(path.parent().expect("state parent")).expect("create state directory");
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&state).expect("serialize timed state"),
+    )
+    .expect("write timed state");
+
+    let store = NotificationStore::new_with_state_dir(Config::default(), state_dir.clone());
+
+    assert!(store.dnd_enabled());
+    assert_eq!(store.dnd_expires_at(), Some(expires_at));
+    cleanup_temp_dir(&state_dir);
+}
+
+#[test]
+fn expired_timed_dnd_is_disabled_during_startup_and_cleared_on_disk() {
+    let state_dir = make_temp_state_dir("dnd-expired-deadline");
+    let state = PersistedDndState {
+        version: DND_STATE_VERSION,
+        dnd_enabled: true,
+        expires_at: Some(chrono::Utc::now().timestamp() - 1),
+        updated_at: None,
+    };
+    let path = state_dir.join("unixnotis").join(DND_STATE_FILE);
+    std::fs::create_dir_all(path.parent().expect("state parent")).expect("create state directory");
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&state).expect("serialize expired state"),
+    )
+    .expect("write expired state");
+
+    let store = NotificationStore::new_with_state_dir(Config::default(), state_dir.clone());
+    let persisted: PersistedDndState =
+        serde_json::from_slice(&std::fs::read(&path).expect("read corrected persisted state"))
+            .expect("parse corrected state");
+
+    assert!(!store.dnd_enabled());
+    assert_eq!(store.dnd_expires_at(), None);
+    assert!(!persisted.dnd_enabled);
+    assert_eq!(persisted.expires_at, None);
+    cleanup_temp_dir(&state_dir);
+}
+
+#[test]
+fn plain_dnd_enable_replaces_a_timed_deadline_with_indefinite_state() {
+    let state_dir = make_temp_state_dir("dnd-timed-to-indefinite");
+    let mut store = NotificationStore::new_with_state_dir(Config::default(), state_dir.clone());
+    let expires_at = chrono::Utc::now().timestamp() + 600;
+
+    let timed = store.set_dnd_until(expires_at);
+    assert!(timed.changed);
+    assert_eq!(store.dnd_expires_at(), Some(expires_at));
+
+    let indefinite = store.set_dnd(true);
+    assert!(indefinite.changed);
+    assert!(store.dnd_enabled());
+    assert_eq!(store.dnd_expires_at(), None);
+    cleanup_temp_dir(&state_dir);
+}
+
+#[test]
+fn expiration_mutation_requires_the_current_due_deadline() {
+    let state_dir = make_temp_state_dir("dnd-current-expiration");
+    let mut store = NotificationStore::new_with_state_dir(Config::default(), state_dir.clone());
+    let expires_at = 500;
+    store.set_dnd_until(expires_at);
+
+    assert!(
+        !store
+            .expire_dnd_if_current(expires_at + 1, expires_at)
+            .changed
+    );
+    assert!(
+        !store
+            .expire_dnd_if_current(expires_at, expires_at - 1)
+            .changed
+    );
+    assert!(store.dnd_enabled());
+
+    let expired = store.expire_dnd_if_current(expires_at, expires_at);
+    assert!(expired.changed);
+    assert!(!store.dnd_enabled());
+    assert_eq!(store.dnd_expires_at(), None);
     cleanup_temp_dir(&state_dir);
 }
 
@@ -189,5 +309,21 @@ fn dnd_rollback_restores_state_when_write_is_still_current() {
     assert!(rolled_back);
     assert!(!store.dnd_enabled());
 
+    cleanup_temp_dir(&state_dir);
+}
+
+#[test]
+fn failed_timed_write_rollback_restores_the_previous_deadline() {
+    let state_dir = make_temp_state_dir("dnd-timed-rollback");
+    let mut store = NotificationStore::new_with_state_dir(Config::default(), state_dir.clone());
+    let original = chrono::Utc::now().timestamp() + 600;
+    let replacement = original + 600;
+    store.set_dnd_until(original);
+
+    let write = store.set_dnd_until(replacement);
+    assert!(store.rollback_dnd_write_if_current(&write));
+
+    assert!(store.dnd_enabled());
+    assert_eq!(store.dnd_expires_at(), Some(original));
     cleanup_temp_dir(&state_dir);
 }

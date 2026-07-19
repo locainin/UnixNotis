@@ -9,7 +9,7 @@ use zbus::fdo::DBusProxy;
 use zbus::message::Header;
 use zbus::Connection;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(super) struct SenderMetadata {
     // Unique bus sender name (:1.x) used for ownership checks
     pub(super) sender_name: Option<String>,

@@ -171,7 +171,7 @@ impl NotificationStore {
         self.history.evict_to_limit(self.config.history.max_entries);
     }
 
-    const fn should_show_popup(&self, notification: &Notification) -> bool {
+    fn should_show_popup(&self, notification: &Notification) -> bool {
         // Rule-level popup suppression is highest priority
         if notification.suppress_popup {
             return false;
@@ -181,6 +181,7 @@ impl NotificationStore {
             notification.urgency as u8,
             &ControlState {
                 dnd_enabled: self.dnd_enabled,
+                dnd_expires_at: self.dnd_expires_at.unwrap_or(0),
                 history_count: 0,
                 inhibited: self.inhibited,
                 inhibitor_count: self.inhibitor_count,

@@ -99,4 +99,12 @@ impl NotificationServer {
         id: u32,
         action_key: &str,
     ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    // KDE-compatible senders receive the entered text through this extension signal
+    pub(crate) async fn notification_replied(
+        ctx: &SignalContext<'_>,
+        id: u32,
+        reply_text: &str,
+    ) -> zbus::Result<()>;
 }

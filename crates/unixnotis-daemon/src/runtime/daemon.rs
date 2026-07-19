@@ -16,6 +16,7 @@ use crate::daemon::{
     ControlServer, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH,
 };
 use crate::dbus_owner::log_current_owner;
+use crate::dnd_expiration::DndExpirationScheduler;
 use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
 use unixnotis_core::{Config, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH};
@@ -32,6 +33,10 @@ pub(super) async fn run_daemon(
     let state = DaemonState::new(connection.clone(), config, sound_settings, args.trial);
     let scheduler = ExpirationScheduler::start(state.clone());
     state.set_scheduler(scheduler.clone());
+    let dnd_scheduler = DndExpirationScheduler::start(state.clone());
+    state.set_dnd_scheduler(dnd_scheduler);
+    let dnd_expires_at = state.store.lock().await.dnd_expires_at();
+    state.schedule_dnd_expiration(dnd_expires_at);
 
     connection
         .object_server()

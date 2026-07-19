@@ -7,6 +7,8 @@ use zbus::zvariant::Type;
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq, Eq)]
 pub struct ControlState {
     pub dnd_enabled: bool,
+    /// Unix timestamp in seconds, or zero for an indefinite/disabled state
+    pub dnd_expires_at: i64,
     pub history_count: u32,
     /// True when at least one active inhibitor suppresses popups
     pub inhibited: bool,

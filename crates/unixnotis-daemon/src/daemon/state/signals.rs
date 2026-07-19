@@ -166,6 +166,7 @@ pub(in crate::daemon::state) fn control_state_from_store(
     // Panel consumers still need history and inhibitor counters in one snapshot
     ControlState {
         dnd_enabled: store.dnd_enabled(),
+        dnd_expires_at: store.dnd_expires_at().unwrap_or(0),
         history_count: store.history_len() as u32,
         inhibited: store.inhibited(),
         inhibitor_count: store.inhibitor_count(),

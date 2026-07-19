@@ -135,6 +135,15 @@ impl ControlServer {
         self.apply_dnd_state(enabled).await
     }
 
+    pub(super) async fn set_dnd_until(
+        &self,
+        expires_at: i64,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "SetDndUntil").await?;
+        self.apply_dnd_until(expires_at).await
+    }
+
     async fn toggle_dnd(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ToggleDnd").await?;
         self.apply_toggle_dnd().await
@@ -186,6 +195,17 @@ impl ControlServer {
         NotificationServer::action_invoked(&ctx, id, action_key)
             .await
             .map_err(to_fdo_error)
+    }
+
+    pub(super) async fn reply_notification(
+        &self,
+        id: u32,
+        reply_text: &str,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "ReplyNotification")
+            .await?;
+        self.submit_inline_reply(id, reply_text).await
     }
 
     pub(super) async fn clear_all(

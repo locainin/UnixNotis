@@ -80,6 +80,7 @@ async fn assert_no_signal(stream: &mut MessageStream) {
 fn popup_gate_from_state_ignores_history_and_inhibitor_counts() {
     let state = ControlState {
         dnd_enabled: true,
+        dnd_expires_at: 0,
         history_count: 99,
         inhibited: false,
         inhibitor_count: 12,
@@ -95,12 +96,13 @@ fn popup_gate_from_state_ignores_history_and_inhibitor_counts() {
 fn control_state_from_store_reads_dnd_history_and_inhibitors() {
     let mut store = NotificationStore::new(Config::default());
 
-    store.set_dnd(true);
+    store.set_dnd_until(500);
     store.add_inhibitor(":1.test".to_string(), "focus".to_string(), 0);
 
     let state = control_state_from_store(&store);
 
     assert!(state.dnd_enabled);
+    assert_eq!(state.dnd_expires_at, 500);
     assert!(state.inhibited);
     assert_eq!(state.inhibitor_count, 1);
     assert_eq!(state.history_count, 0);

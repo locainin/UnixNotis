@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use unicode_width::UnicodeWidthChar;
-use unixnotis_core::{util, Action, Config, Notification, NotificationImage, Urgency};
+use unixnotis_core::{util, Action, Config, InlineReply, Notification, NotificationImage, Urgency};
 use zbus::zvariant::{OwnedValue, Value};
 
 use super::limits::{
@@ -64,6 +64,8 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
         .and_then(|value| bool::try_from(value).ok())
         .unwrap_or(false);
     let image = NotificationImage::from_hints(&app_name, &app_icon, &hints);
+    let actions = parse_actions(actions);
+    let inline_reply = parse_inline_reply(&actions, &hints);
     // Clean text before storing it
     let app_name = util::sanitize_inline_display_text(&app_name);
     let summary = util::sanitize_display_text(&summary);
@@ -90,7 +92,8 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
             &truncate_utf8_bytes(&body, MAX_BODY_BYTES),
             MAX_CONTIGUOUS_TOKEN_CHARS,
         ),
-        actions: parse_actions(actions),
+        actions,
+        inline_reply,
         // Keep only needed hints
         hints: sanitize_hints_for_storage(hints),
         urgency,
@@ -132,6 +135,30 @@ pub(super) fn resolve_expiration(config: &Config, notification: &Notification) -
     }
 
     Some(Instant::now() + Duration::from_millis(timeout_ms))
+}
+
+fn parse_inline_reply(actions: &[Action], hints: &HashMap<String, OwnedValue>) -> InlineReply {
+    let Some(action) = actions.iter().find(|action| action.key == "inline-reply") else {
+        // Reply hints without the protocol action cannot create a text control
+        return InlineReply::default();
+    };
+
+    InlineReply {
+        available: true,
+        label: action.label.clone(),
+        placeholder: reply_hint_text(hints, "x-kde-reply-placeholder-text"),
+        submit_label: reply_hint_text(hints, "x-kde-reply-submit-button-text"),
+        submit_icon: reply_hint_text(hints, "x-kde-reply-submit-button-icon-name"),
+    }
+}
+
+fn reply_hint_text(hints: &HashMap<String, OwnedValue>, key: &str) -> String {
+    let Some(value) = hints.get(key).and_then(owned_to_string) else {
+        return String::new();
+    };
+    // Reply controls are single-line GTK widgets, so layout controls are removed here
+    let clean = util::sanitize_inline_display_text(&value);
+    truncate_utf8_bytes(&clean, MAX_HINT_STRING_BYTES)
 }
 
 fn parse_actions(raw: Vec<String>) -> Vec<Action> {
