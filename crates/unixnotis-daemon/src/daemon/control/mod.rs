@@ -5,6 +5,7 @@ mod dnd;
 mod inhibit;
 mod panel;
 mod query;
+mod reply;
 mod sanitize;
 mod server;
 mod watch;

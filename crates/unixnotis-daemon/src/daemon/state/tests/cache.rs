@@ -9,6 +9,7 @@ fn cached_state_emits_first_value_then_suppresses_duplicates() {
     let cache = Mutex::new(None);
     let state = ControlState {
         dnd_enabled: false,
+        dnd_expires_at: 0,
         history_count: 1,
         inhibited: false,
         inhibitor_count: 0,
@@ -43,6 +44,7 @@ fn cached_state_emits_after_counter_change() {
     let cache = Mutex::new(None);
     let first = ControlState {
         dnd_enabled: false,
+        dnd_expires_at: 0,
         history_count: 0,
         inhibited: false,
         inhibitor_count: 0,
@@ -55,6 +57,27 @@ fn cached_state_emits_after_counter_change() {
     assert!(should_emit_cached(&cache, &first));
     assert!(should_emit_cached(&cache, &changed));
     assert!(!should_emit_cached(&cache, &changed));
+}
+
+#[test]
+fn cached_state_emits_when_only_the_dnd_deadline_changes() {
+    let cache = Mutex::new(None);
+    let indefinite = ControlState {
+        dnd_enabled: true,
+        dnd_expires_at: 0,
+        history_count: 0,
+        inhibited: false,
+        inhibitor_count: 0,
+    };
+    assert!(should_emit_cached(&cache, &indefinite));
+
+    let timed = ControlState {
+        dnd_expires_at: 500,
+        ..indefinite
+    };
+
+    assert!(should_emit_cached(&cache, &timed));
+    assert!(!should_emit_cached(&cache, &timed));
 }
 
 #[test]

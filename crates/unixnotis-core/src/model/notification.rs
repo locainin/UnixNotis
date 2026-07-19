@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use zbus::zvariant::{OwnedValue, Type};
 
 use super::image::NotificationImage;
+use super::reply::InlineReply;
 use super::types::{Action, Urgency};
 
 /// Full notification record stored by the daemon
@@ -22,6 +23,8 @@ pub struct Notification {
     pub body: String,
     // Optional actions supplied by the app
     pub actions: Vec<Action>,
+    // Reply metadata exists only for an explicit KDE-compatible action
+    pub inline_reply: InlineReply,
     // Raw hints preserved for storage and downstream consumers
     pub hints: HashMap<String, OwnedValue>,
     // Derived urgency used for styling and escalation
@@ -55,6 +58,7 @@ impl Notification {
             summary: notification_plain_text(&self.summary),
             body: notification_plain_text(&self.body),
             actions: self.actions.clone(),
+            inline_reply: self.inline_reply.clone(),
             urgency: self.urgency.as_u8(),
             // Center and popup policy both need the transient bit to stay in sync
             is_transient: self.is_transient,
@@ -73,6 +77,7 @@ impl Notification {
             summary: notification_plain_text(&self.summary),
             body: notification_plain_text(&self.body),
             actions: self.actions.clone(),
+            inline_reply: self.inline_reply.clone(),
             urgency: self.urgency.as_u8(),
             // History policy still depends on the transient bit in panel rows
             is_transient: self.is_transient,
@@ -96,6 +101,7 @@ impl Notification {
             summary: self.summary.clone(),
             body: self.body.clone(),
             actions: self.actions.clone(),
+            inline_reply: self.inline_reply.clone(),
             // Keep history entries lightweight by dropping raw hint payloads
             hints: HashMap::new(),
             urgency: self.urgency,
@@ -258,6 +264,7 @@ pub struct NotificationView {
     pub summary: String,
     pub body: String,
     pub actions: Vec<Action>,
+    pub inline_reply: InlineReply,
     pub urgency: u8,
     // Close handling needs this flag so history policy stays shared
     pub is_transient: bool,

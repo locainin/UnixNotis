@@ -18,6 +18,8 @@ pub(super) const DND_STATE_FILE: &str = "state.json";
 pub(super) struct PersistedDndState {
     pub(super) version: u32,
     pub(super) dnd_enabled: bool,
+    #[serde(default)]
+    pub(super) expires_at: Option<i64>,
     pub(super) updated_at: Option<String>,
 }
 
@@ -48,10 +50,12 @@ impl DndStateStore {
         Ok(Some(parsed))
     }
 
-    pub(crate) fn persist(&self, enabled: bool) -> io::Result<()> {
+    pub(crate) fn persist(&self, enabled: bool, expires_at: Option<i64>) -> io::Result<()> {
         let payload = PersistedDndState {
             version: DND_STATE_VERSION,
             dnd_enabled: enabled,
+            // Disabled state never keeps a stale deadline on disk
+            expires_at: enabled.then_some(expires_at).flatten(),
             updated_at: Some(Utc::now().to_rfc3339()),
         };
         let body = serde_json::to_vec(&payload)?;

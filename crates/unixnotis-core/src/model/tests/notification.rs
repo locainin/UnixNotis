@@ -4,7 +4,7 @@ use chrono::Utc;
 use zbus::zvariant::Value;
 
 use super::{Notification, NotificationImage};
-use crate::{Action, ImageData, Urgency};
+use crate::{Action, ImageData, InlineReply, Urgency};
 
 fn notification_with_image(image: NotificationImage) -> Notification {
     let mut hints = HashMap::new();
@@ -23,6 +23,7 @@ fn notification_with_image(image: NotificationImage) -> Notification {
             key: "default".to_string(),
             label: "Open".to_string(),
         }],
+        inline_reply: InlineReply::default(),
         hints,
         urgency: Urgency::Critical,
         category: Some("email".to_string()),

@@ -21,6 +21,8 @@ pub struct NotificationStore {
     pub(super) expirations: HashMap<u32, Instant>,
     // Effective DND switch after loading persisted state
     pub(super) dnd_enabled: bool,
+    // Wall-clock deadline survives daemon restarts; None means indefinite
+    pub(super) dnd_expires_at: Option<i64>,
     // Monotonic in-memory revision for DND writes
     pub(super) dnd_revision: u64,
     // Optional persistence layer for DND; absent store keeps behavior in-memory
@@ -54,8 +56,12 @@ pub struct DndWrite {
     pub(crate) changed: bool,
     // Value seen before this write
     pub(crate) previous: bool,
+    // Deadline paired with the previous switch value
+    pub(crate) previous_expires_at: Option<i64>,
     // Value written by this operation
     pub(crate) current: bool,
+    // Deadline paired with the current switch value
+    pub(crate) current_expires_at: Option<i64>,
     // Monotonic revision captured for guarded rollback
     pub(crate) revision: u64,
     // Persistence backend used outside the store lock

@@ -19,12 +19,26 @@ impl NotificationStore {
     ) -> Self {
         // Config default is used unless a valid persisted value overrides it
         let mut dnd_enabled = config.general.dnd_default;
+        let mut dnd_expires_at = None;
         if let Some(store) = dnd_state_store.as_ref() {
             match store.load() {
                 Ok(Some(state)) if state.version == DND_STATE_VERSION => {
                     // Versioned state prevents accidental decode of incompatible formats
                     dnd_enabled = state.dnd_enabled;
-                    debug!(dnd_enabled, "loaded persisted do-not-disturb state");
+                    dnd_expires_at = state.dnd_enabled.then_some(state.expires_at).flatten();
+                    // A deadline that passed while the daemon was stopped must not revive DND
+                    if dnd_expires_at.is_some_and(|expires_at| expires_at <= unix_now_seconds()) {
+                        dnd_enabled = false;
+                        dnd_expires_at = None;
+                        if let Err(err) = store.persist(false, None) {
+                            warn!(?err, "failed to clear expired do-not-disturb state");
+                        }
+                    }
+                    debug!(
+                        dnd_enabled,
+                        ?dnd_expires_at,
+                        "loaded persisted do-not-disturb state"
+                    );
                 }
                 Ok(Some(state)) => {
                     // Unknown version is ignored but logged for troubleshooting
@@ -45,6 +59,7 @@ impl NotificationStore {
             // IDs start at 1 to preserve protocol expectations
             next_id: 1,
             dnd_enabled,
+            dnd_expires_at,
             dnd_revision: 0,
             config,
             active: IndexMap::new(),
@@ -92,6 +107,17 @@ impl NotificationStore {
             .map(|notification| notification.to_view())
     }
 
+    pub fn active_inline_reply_target(&self, id: u32) -> Option<bool> {
+        let notification = self.active.get(&id)?;
+        // Both fields must agree so malformed internal data cannot widen reply access
+        let has_reply_action = notification
+            .actions
+            .iter()
+            .any(|action| action.key == "inline-reply");
+        (notification.inline_reply.available && has_reply_action)
+            .then_some(notification.is_resident)
+    }
+
     pub fn history_len(&self) -> usize {
         // Exposed for diagnostics and test assertions
         self.history.len()
@@ -101,4 +127,9 @@ impl NotificationStore {
         // Explicit history wipe used by CLI and control commands
         self.history.clear();
     }
+}
+
+fn unix_now_seconds() -> i64 {
+    // Chrono handles pre-epoch clocks without panicking
+    chrono::Utc::now().timestamp()
 }

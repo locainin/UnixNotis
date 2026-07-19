@@ -2,6 +2,7 @@ pub(super) fn notification_capabilities(supports_sound: bool) -> Vec<String> {
     // Capabilities are static except for optional sound support
     let mut caps = vec![
         "actions".to_string(),
+        "inline-reply".to_string(),
         "body".to_string(),
         "body-markup".to_string(),
         "icon-static".to_string(),

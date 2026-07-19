@@ -75,6 +75,63 @@ fn build_notification_strips_display_spoofing_controls() {
 }
 
 #[test]
+fn build_notification_collects_inline_reply_action_and_kde_labels() {
+    let mut hints = HashMap::<String, OwnedValue>::new();
+    hints.insert(
+        "x-kde-reply-placeholder-text".to_string(),
+        string_to_owned_value("Write a reply").expect("placeholder value"),
+    );
+    hints.insert(
+        "x-kde-reply-submit-button-text".to_string(),
+        string_to_owned_value("Send now").expect("submit label value"),
+    );
+    hints.insert(
+        "x-kde-reply-submit-button-icon-name".to_string(),
+        string_to_owned_value("mail-send-symbolic").expect("submit icon value"),
+    );
+
+    let notification = build_notification(NotificationInput {
+        app_name: "Messages".to_string(),
+        app_icon: String::new(),
+        summary: "New message".to_string(),
+        body: "Are you coming?".to_string(),
+        actions: vec!["inline-reply".to_string(), "Reply".to_string()],
+        hints,
+        sender: SenderMetadata::default(),
+        expire_timeout: 0,
+    });
+
+    assert!(notification.inline_reply.available);
+    assert_eq!(notification.inline_reply.label, "Reply");
+    assert_eq!(notification.inline_reply.placeholder, "Write a reply");
+    assert_eq!(notification.inline_reply.submit_label, "Send now");
+    assert_eq!(notification.inline_reply.submit_icon, "mail-send-symbolic");
+}
+
+#[test]
+fn build_notification_ignores_reply_hints_without_explicit_action() {
+    let mut hints = HashMap::<String, OwnedValue>::new();
+    hints.insert(
+        "x-kde-reply-placeholder-text".to_string(),
+        string_to_owned_value("Decoy reply").expect("placeholder value"),
+    );
+
+    let notification = build_notification(NotificationInput {
+        app_name: "Messages".to_string(),
+        app_icon: String::new(),
+        summary: "New message".to_string(),
+        body: String::new(),
+        actions: vec!["default".to_string(), "Open".to_string()],
+        hints,
+        sender: SenderMetadata::default(),
+        expire_timeout: 0,
+    });
+
+    assert!(!notification.inline_reply.available);
+    assert!(notification.inline_reply.placeholder.is_empty());
+}
+
+#[test]
 fn parse_actions_caps_pairs() {
     let mut raw = Vec::new();
     for idx in 0..(MAX_ACTIONS + 10) {
@@ -166,6 +223,7 @@ fn resolve_expiration_respects_protocol_and_config_rules() {
         summary: "summary".to_string(),
         body: String::new(),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
         hints: HashMap::new(),
         urgency: Urgency::Normal,
         category: None,
@@ -217,6 +275,7 @@ fn resolve_expiration_treats_positive_timeout_as_caller_owned_even_when_default_
         summary: "summary".to_string(),
         body: String::new(),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
         hints: HashMap::new(),
         urgency: Urgency::Normal,
         category: None,

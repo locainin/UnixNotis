@@ -16,6 +16,7 @@ impl ControlServer {
         // Cheap state snapshot
         Ok(ControlState {
             dnd_enabled: store.dnd_enabled(),
+            dnd_expires_at: store.dnd_expires_at().unwrap_or(0),
             history_count: store.history_len() as u32,
             inhibited: store.inhibited(),
             inhibitor_count: store.inhibitor_count(),

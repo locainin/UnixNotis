@@ -32,6 +32,8 @@ trait Control {
     fn toggle_panel(&self) -> zbus::Result<()>;
     /// Update the Do Not Disturb state
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
+    /// Enable Do Not Disturb until one future Unix timestamp
+    fn set_dnd_until(&self, expires_at: i64) -> zbus::Result<()>;
     /// Toggle the Do Not Disturb state atomically in the daemon
     fn toggle_dnd(&self) -> zbus::Result<()>;
     /// Register an inhibitor and return its token
@@ -44,6 +46,8 @@ trait Control {
     fn dismiss(&self, id: u32) -> zbus::Result<()>;
     /// Invoke an action key for a notification
     fn invoke_action(&self, id: u32, action_key: &str) -> zbus::Result<()>;
+    /// Submit text for an explicitly advertised inline-reply action
+    fn reply_notification(&self, id: u32, reply_text: &str) -> zbus::Result<()>;
     /// Clear active notifications and saved history
     fn clear_all(&self) -> zbus::Result<()>;
     /// Clear active notifications without deleting saved history

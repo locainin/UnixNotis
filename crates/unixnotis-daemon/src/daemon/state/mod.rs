@@ -1,6 +1,7 @@
 //! Shared daemon state and signal fanout coordination
 
 mod cache;
+mod dnd;
 mod model;
 mod notifications;
 mod runtime;

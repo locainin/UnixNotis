@@ -144,6 +144,7 @@ fn make_notification(summary: &str) -> Notification {
         summary: summary.to_string(),
         body: String::new(),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
         hints: HashMap::<String, OwnedValue>::new(),
         urgency: Urgency::Normal,
         category: None,

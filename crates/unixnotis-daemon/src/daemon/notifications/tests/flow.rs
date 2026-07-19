@@ -26,6 +26,7 @@ fn notification_with_id(id: u32) -> Arc<Notification> {
         summary: "summary".to_string(),
         body: String::new(),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
         hints: HashMap::new(),
         urgency: Urgency::Normal,
         category: None,

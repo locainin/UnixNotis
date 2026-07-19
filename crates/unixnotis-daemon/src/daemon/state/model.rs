@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 use unixnotis_core::{Config, ControlState, PopupGateState};
 use zbus::Connection;
 
+use crate::dnd_expiration::DndExpirationScheduler;
 use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
 use crate::store::NotificationStore;
@@ -25,6 +26,11 @@ pub struct DaemonState {
     pub(in crate::daemon::state) scheduler: OnceLock<ExpirationScheduler>,
     // Warn once if scheduler-backed operations happen before install
     pub(in crate::daemon::state) scheduler_missing_warned: AtomicBool,
+    // Timed DND has one coalesced wall-clock deadline
+    pub(in crate::daemon::state) dnd_scheduler: OnceLock<DndExpirationScheduler>,
+    pub(in crate::daemon::state) dnd_scheduler_missing_warned: AtomicBool,
+    // DND persistence and timer replacement must commit in mutation order
+    pub(in crate::daemon::state) dnd_write_lock: Mutex<()>,
     // Cache the last control-state snapshot so no-op signals can be skipped
     pub(in crate::daemon) last_emitted_state: StdMutex<Option<ControlState>>,
     // Popup UIs only care about the gate, not panel history counters
@@ -63,6 +69,9 @@ impl DaemonState {
             popups_running: AtomicBool::new(false),
             scheduler: OnceLock::new(),
             scheduler_missing_warned: AtomicBool::new(false),
+            dnd_scheduler: OnceLock::new(),
+            dnd_scheduler_missing_warned: AtomicBool::new(false),
+            dnd_write_lock: Mutex::new(()),
             last_emitted_state: StdMutex::new(None),
             last_emitted_popup_gate: StdMutex::new(None),
             notification_signal_bursts: StdMutex::new(std::collections::HashMap::new()),
