@@ -81,6 +81,7 @@ impl TestControl {
 
         Ok(ControlState {
             dnd_enabled: true,
+            dnd_expires_at: 0,
             history_count: 4,
             inhibited: false,
             inhibitor_count: 2,

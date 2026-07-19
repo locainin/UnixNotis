@@ -4,6 +4,7 @@ use clap::Subcommand;
 
 use super::args::{DndState, DoctorServiceManagerArg, PresetCommand};
 use super::{DebugLevelArg, InhibitScopeArg};
+use super::{DndClockTime, DndDuration};
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
@@ -20,6 +21,10 @@ pub enum Command {
     Dnd {
         #[arg(value_enum)]
         state: DndState,
+        #[arg(long = "for", value_name = "DURATION", conflicts_with = "until")]
+        for_duration: Option<DndDuration>,
+        #[arg(long, value_name = "HH:MM", conflicts_with = "for_duration")]
+        until: Option<DndClockTime>,
     },
     // Clear active notifications and saved history
     Clear,
@@ -79,6 +84,23 @@ pub enum Command {
 }
 
 impl Command {
+    pub(crate) fn validate(&self) -> anyhow::Result<()> {
+        if let Self::Dnd {
+            state,
+            for_duration,
+            until,
+        } = self
+        {
+            let has_deadline = for_duration.is_some() || until.is_some();
+            if has_deadline && !matches!(state, DndState::On) {
+                return Err(anyhow::anyhow!(
+                    "--for and --until are valid only with `dnd on`"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) const fn is_local_only(&self) -> bool {
         // Local-only commands should not fail just because D-Bus is unavailable
         matches!(

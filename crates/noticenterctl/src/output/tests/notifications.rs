@@ -14,6 +14,7 @@ fn sample_notification() -> NotificationView {
             key: "open".to_string(),
             label: "Open".to_string(),
         }],
+        inline_reply: unixnotis_core::InlineReply::default(),
         urgency: 1,
         is_transient: false,
         // CLI formatting only needs the lightweight transport fields
