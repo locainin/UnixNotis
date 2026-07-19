@@ -1,4 +1,4 @@
-//! Panel widget stack and scroller construction
+//! Panel body, widget stack, and notification list construction
 
 use gtk::prelude::*;
 use gtk::Align;
@@ -7,27 +7,27 @@ use unixnotis_core::{
     WidgetDensity,
 };
 
-use super::action_widgets::build_clear_button;
+use super::header::actions::build_clear_button;
 
 pub const WIDGET_REVEAL_TRANSITION_MS: u64 = 180;
 
-pub(super) struct PanelSectionWidgets {
-    pub(super) body_stack: gtk::Box,
-    pub(super) widget_revealer: gtk::Revealer,
-    pub(super) widget_stack: gtk::Box,
-    pub(super) quick_controls: gtk::Box,
-    pub(super) toggle_container: gtk::Box,
-    pub(super) stat_container: gtk::Box,
-    pub(super) card_container: gtk::Box,
-    pub(super) scroller: gtk::ScrolledWindow,
-    pub(super) notification_container: gtk::Box,
-    pub(super) notification_header_row: gtk::Box,
-    pub(super) notification_header: gtk::Label,
-    pub(super) clear_header_button: gtk::Button,
-    pub(super) toggle_section_header: gtk::Label,
-    pub(super) stat_section_header: gtk::Label,
-    pub(super) footer: gtk::Label,
-    pub(super) media_container: gtk::Box,
+pub(in crate::ui) struct PanelSectionWidgets {
+    pub(in crate::ui) body_stack: gtk::Box,
+    pub(in crate::ui) widget_revealer: gtk::Revealer,
+    pub(in crate::ui) widget_stack: gtk::Box,
+    pub(in crate::ui) quick_controls: gtk::Box,
+    pub(in crate::ui) toggle_container: gtk::Box,
+    pub(in crate::ui) stat_container: gtk::Box,
+    pub(in crate::ui) card_container: gtk::Box,
+    pub(in crate::ui) scroller: gtk::ScrolledWindow,
+    pub(in crate::ui) notification_container: gtk::Box,
+    pub(in crate::ui) notification_header_row: gtk::Box,
+    pub(in crate::ui) notification_header: gtk::Label,
+    pub(in crate::ui) clear_header_button: gtk::Button,
+    pub(in crate::ui) toggle_section_header: gtk::Label,
+    pub(in crate::ui) stat_section_header: gtk::Label,
+    pub(in crate::ui) footer: gtk::Label,
+    pub(in crate::ui) media_container: gtk::Box,
 }
 
 pub(super) fn build_panel_sections(
@@ -239,5 +239,5 @@ pub const fn notification_header_row_visible(config: &PanelConfig) -> bool {
 }
 
 #[cfg(test)]
-#[path = "tests/sections.rs"]
+#[path = "tests/body.rs"]
 mod tests;

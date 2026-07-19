@@ -1,21 +1,25 @@
-//! Panel header construction
+//! Panel header construction and component grouping
+
+pub(in crate::ui) mod actions;
+pub(in crate::ui) mod dnd;
+pub(in crate::ui) mod search;
 
 use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{css::hooks, PanelConfig};
 
-use super::action_widgets::{action_order_contains_close, build_panel_actions, PanelActionWidgets};
-use super::search_widgets::{build_panel_search, PanelSearchWidgets};
+use self::actions::{action_order_contains_close, build_panel_actions, PanelActionWidgets};
+use self::search::{build_panel_search, PanelSearchWidgets};
 
-pub(super) struct PanelHeaderWidgets {
-    pub(super) root: gtk::Box,
-    pub(super) top: gtk::Box,
-    pub(super) action_row: gtk::Box,
-    pub(super) title: gtk::Label,
-    pub(super) subtitle: gtk::Label,
-    pub(super) count: gtk::Label,
-    pub(super) search: PanelSearchWidgets,
-    pub(super) actions: PanelActionWidgets,
+pub(in crate::ui) struct PanelHeaderWidgets {
+    pub(in crate::ui) root: gtk::Box,
+    pub(in crate::ui) top: gtk::Box,
+    pub(in crate::ui) action_row: gtk::Box,
+    pub(in crate::ui) title: gtk::Label,
+    pub(in crate::ui) subtitle: gtk::Label,
+    pub(in crate::ui) count: gtk::Label,
+    pub(in crate::ui) search: PanelSearchWidgets,
+    pub(in crate::ui) actions: PanelActionWidgets,
 }
 
 #[cfg(test)]

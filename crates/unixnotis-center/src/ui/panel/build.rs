@@ -6,10 +6,10 @@ use gtk::prelude::*;
 use gtk4_layer_shell::{Layer, LayerShell};
 use unixnotis_core::{css::hooks, Config};
 
+use super::body::build_panel_sections;
 use super::header::build_panel_header;
 use super::notice::build_reload_notice;
-use super::sections::build_panel_sections;
-use super::types::PanelWidgets;
+use super::widgets::PanelWidgets;
 
 pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidgets {
     let window = gtk::ApplicationWindow::new(app);
@@ -26,23 +26,24 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     window.init_layer_shell();
     window.set_namespace(Some("unixnotis-panel"));
     window.set_layer(Layer::Overlay);
-    super::layout::apply_anchor(&window, config.panel.anchor, config.panel.margin);
+    super::geometry::apply_anchor(&window, config.panel.anchor, config.panel.margin);
     window.set_exclusive_zone(0);
-    window.set_keyboard_mode(super::layout::map_keyboard_mode(
+    window.set_keyboard_mode(super::geometry::map_keyboard_mode(
         config.panel.keyboard_interactivity,
     ));
 
     let monitor = if let Some(output) = config.panel.output.as_ref() {
         // Named outputs fall back to the compositor default when the monitor disappears
-        super::monitor::find_monitor(output).or_else(super::monitor::default_monitor)
+        super::geometry::monitor::find_monitor(output)
+            .or_else(super::geometry::monitor::default_monitor)
     } else {
-        super::monitor::default_monitor()
+        super::geometry::monitor::default_monitor()
     };
     if let Some(monitor) = monitor.as_ref() {
         window.set_monitor(Some(monitor));
     }
 
-    let (width, height) = super::layout::resolve_panel_size(config, monitor.as_ref(), None);
+    let (width, height) = super::geometry::resolve_panel_size(config, monitor.as_ref(), None);
     // Default size guides the compositor while size request constrains GTK children
     window.set_default_size(width, height);
     if height > 0 {
@@ -89,41 +90,9 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
         window,
         surface: overlay,
         root,
-        body_stack: sections.body_stack,
-        widget_revealer: sections.widget_revealer,
-        widget_stack: sections.widget_stack,
-        quick_controls: sections.quick_controls,
-        toggle_container: sections.toggle_container,
-        stat_container: sections.stat_container,
-        card_container: sections.card_container,
-        scroller: sections.scroller,
-        media_container: sections.media_container,
-        search_revealer: header.search.revealer,
-        search_entry: header.search.entry,
-        search_toggle: header.actions.search_toggle,
-        header_title: header.title,
-        header_subtitle: header.subtitle,
-        header_count: header.count,
-        header_top: header.top,
-        header_action_row: header.action_row,
-        header_action_group: header.actions.group,
-        dnd_action_group: header.actions.dnd_group,
-        notification_container: sections.notification_container,
-        notification_header_row: sections.notification_header_row,
-        notification_header: sections.notification_header,
-        toggle_section_header: sections.toggle_section_header,
-        stat_section_header: sections.stat_section_header,
-        footer_label: sections.footer,
-        focus_toggle: header.actions.focus_toggle,
-        dnd_toggle: header.actions.dnd_toggle,
-        dnd_status: header.actions.dnd_status,
-        dnd_menu: header.actions.dnd_menu,
-        clear_action_button: header.actions.clear_button,
-        clear_header_button: sections.clear_header_button,
-        close_button: header.actions.close_button,
-        reload_notice_revealer: reload_notice.revealer,
-        reload_notice_shell: reload_notice.shell,
-        reload_notice_label: reload_notice.label,
+        header,
+        sections,
+        reload_notice,
     }
 }
 

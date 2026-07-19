@@ -1,20 +1,32 @@
-//! Panel action row construction
+//! Panel action construction and signal wiring
+
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::Duration;
 
 use gtk::prelude::*;
+use tracing::debug;
 use unixnotis_core::{
     css::hooks, PanelActionConfig, PanelActionId, PanelClearButtonPlacement, PanelConfig,
 };
 
-pub(super) struct PanelActionWidgets {
-    pub(super) group: gtk::Box,
-    pub(super) dnd_group: gtk::Box,
-    pub(super) focus_toggle: gtk::ToggleButton,
-    pub(super) dnd_toggle: gtk::ToggleButton,
-    pub(super) dnd_status: gtk::Label,
-    pub(super) dnd_menu: gtk::MenuButton,
-    pub(super) clear_button: gtk::Button,
-    pub(super) search_toggle: gtk::ToggleButton,
-    pub(super) close_button: gtk::Button,
+use crate::control::UiCommand;
+use crate::ui::panel::behavior::input::ClickCooldown;
+use crate::ui::panel::PanelWidgets;
+use crate::ui::try_send_command;
+
+const CONTROL_CLICK_GUARD_MS: u64 = 180;
+
+pub(in crate::ui) struct PanelActionWidgets {
+    pub(in crate::ui) group: gtk::Box,
+    pub(in crate::ui) dnd_group: gtk::Box,
+    pub(in crate::ui) focus_toggle: gtk::ToggleButton,
+    pub(in crate::ui) dnd_toggle: gtk::ToggleButton,
+    pub(in crate::ui) dnd_status: gtk::Label,
+    pub(in crate::ui) dnd_menu: gtk::MenuButton,
+    pub(in crate::ui) clear_button: gtk::Button,
+    pub(in crate::ui) search_toggle: gtk::ToggleButton,
+    pub(in crate::ui) close_button: gtk::Button,
 }
 
 pub(super) struct PanelActionArea {
@@ -87,7 +99,7 @@ pub(super) fn build_panel_actions(config: &PanelConfig) -> PanelActionArea {
     }
 }
 
-pub(super) fn build_clear_button(config: &PanelConfig) -> gtk::Button {
+pub(in crate::ui::panel) fn build_clear_button(config: &PanelConfig) -> gtk::Button {
     build_button_action(hooks::panel_action::MUTED, &resolved_clear_action(config))
 }
 
@@ -279,6 +291,70 @@ fn resolved_clear_action(config: &PanelConfig) -> PanelActionConfig {
     action
 }
 
+pub(in crate::ui) fn connect_clear_button(
+    button: &gtk::Button,
+    command_tx: tokio::sync::mpsc::Sender<UiCommand>,
+) {
+    let clear_gate = ClickCooldown::new(Duration::from_millis(CONTROL_CLICK_GUARD_MS));
+    button.connect_clicked(move |_| {
+        if !clear_gate.try_start() {
+            return;
+        }
+
+        debug!("clear all clicked");
+        // Non-blocking send avoids UI stalls on D-Bus backpressure
+        try_send_command(&command_tx, UiCommand::ClearAll);
+    });
+}
+
+pub(in crate::ui) fn connect_dnd_toggle(
+    panel: &PanelWidgets,
+    dnd_guard: Rc<Cell<bool>>,
+    command_tx: tokio::sync::mpsc::Sender<UiCommand>,
+) {
+    connect_dnd_button(&panel.header.actions.dnd_toggle, dnd_guard, command_tx);
+}
+
+fn connect_dnd_button(
+    button: &gtk::ToggleButton,
+    dnd_guard: Rc<Cell<bool>>,
+    command_tx: tokio::sync::mpsc::Sender<UiCommand>,
+) {
+    button.connect_toggled(move |button| {
+        if dnd_guard.get() {
+            // Daemon-driven state sync should not echo another DND command
+            return;
+        }
+
+        let requested = button.is_active();
+        // Keep the durable daemon state visible until the command commits successfully
+        dnd_guard.set(true);
+        button.set_active(!requested);
+        dnd_guard.set(false);
+        debug!(enabled = requested, "dnd toggled");
+        try_send_command(&command_tx, UiCommand::SetDnd(requested));
+    });
+}
+
+pub(in crate::ui) fn connect_close_button(
+    panel: &PanelWidgets,
+    command_tx: tokio::sync::mpsc::Sender<UiCommand>,
+) {
+    let close_gate = ClickCooldown::new(Duration::from_millis(CONTROL_CLICK_GUARD_MS));
+    panel.header.actions.close_button.connect_clicked(move |_| {
+        if !close_gate.try_start() {
+            return;
+        }
+
+        debug!("close panel clicked");
+        try_send_command(&command_tx, UiCommand::ClosePanel);
+    });
+}
+
 #[cfg(test)]
-#[path = "tests/action_widgets.rs"]
-mod tests;
+#[path = "tests/actions.rs"]
+mod construction_tests;
+
+#[cfg(test)]
+#[path = "tests/action_signals.rs"]
+mod signal_tests;

@@ -26,8 +26,8 @@ pub struct UiState {
     // Widget assets are resolved relative to the active config file root
     pub(super) widget_icon_resolver: IconAssetResolver,
     pub(super) dnd_guard: Rc<Cell<bool>>,
-    // One countdown source updates the compact DND deadline label
-    pub(super) dnd_expiration_source: Option<gtk::glib::SourceId>,
+    // One countdown owns its deadline so completed GLib sources are never removed twice
+    pub(super) dnd_expiration_source: Option<panel::DndCountdown>,
     pub(super) search_toggle_guard: Rc<Cell<bool>>,
     pub(super) panel_visible: bool,
     pub(super) panel_visible_flag: Arc<AtomicBool>,

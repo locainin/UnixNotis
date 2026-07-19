@@ -3,10 +3,10 @@
 use gtk::prelude::*;
 use unixnotis_core::css::hooks;
 
-pub(super) struct ReloadNoticeWidgets {
-    pub(super) revealer: gtk::Revealer,
-    pub(super) shell: gtk::Box,
-    pub(super) label: gtk::Label,
+pub(in crate::ui) struct ReloadNoticeWidgets {
+    pub(in crate::ui) revealer: gtk::Revealer,
+    pub(in crate::ui) shell: gtk::Box,
+    pub(in crate::ui) label: gtk::Label,
 }
 
 pub(super) fn build_reload_notice() -> ReloadNoticeWidgets {

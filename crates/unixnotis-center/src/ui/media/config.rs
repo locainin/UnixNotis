@@ -17,7 +17,7 @@ impl UiState {
             return;
         }
 
-        self.panel.media_container.set_visible(true);
+        self.panel.sections.media_container.set_visible(true);
         // The resolved request stays stable even when a child reports a wider natural allocation
         let panel_width = super::super::panel::requested_panel_width(&self.panel.root);
         if self.media_layout_changed(config) {
@@ -29,7 +29,7 @@ impl UiState {
     }
 
     fn disable_media_widget(&mut self) {
-        self.panel.media_container.set_visible(false);
+        self.panel.sections.media_container.set_visible(false);
         self.clear_media_container();
         self.media = None;
         debug!("media disabled");
@@ -61,7 +61,7 @@ impl UiState {
 
         debug!("media widget rebuilt for layout change");
         let mut media = widget::MediaWidget::new(
-            &self.panel.media_container,
+            &self.panel.sections.media_container,
             handle.clone(),
             panel_width,
             &config.media,
@@ -83,7 +83,7 @@ impl UiState {
             (None, Some(handle)) => {
                 debug!("media widget created");
                 let media = widget::MediaWidget::new(
-                    &self.panel.media_container,
+                    &self.panel.sections.media_container,
                     handle.clone(),
                     panel_width,
                     &config.media,
@@ -99,8 +99,8 @@ impl UiState {
 
     fn clear_media_container(&self) {
         // Rebuilds remove old children one by one so GTK releases the shell cleanly
-        while let Some(child) = self.panel.media_container.first_child() {
-            self.panel.media_container.remove(&child);
+        while let Some(child) = self.panel.sections.media_container.first_child() {
+            self.panel.sections.media_container.remove(&child);
         }
     }
 }

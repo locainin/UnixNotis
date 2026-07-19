@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use tokio::sync::mpsc;
-use unixnotis_core::InlineReply;
+use unixnotis_core::{util, InlineReply};
 
 use crate::control::UiCommand;
 use crate::ui::try_send_command;
@@ -17,12 +17,15 @@ const MAX_SUBMIT_LABEL_CHARS: usize = 20;
 // GTK limits characters while the protocol boundary limits encoded bytes
 const MAX_REPLY_CHARS: i32 = 4 * 1024;
 const MAX_REPLY_BYTES: usize = 4 * 1024;
+const MAX_REPLY_ERROR_CHARS: usize = 180;
+const APPLICATION_UNAVAILABLE: &str = "The application is no longer available";
 
 pub(super) struct InlineReplyWidgets {
     // The form is retained with the recycled row and revealed only on explicit action
     pub(super) revealer: gtk::Revealer,
     pub(super) entry: gtk::Entry,
     pub(super) send_button: gtk::Button,
+    pub(super) error_label: gtk::Label,
     // Notification identity prevents a recycled row from leaking a prior draft
     bound_id: Rc<Cell<u32>>,
     // One shared gate covers button and Enter submissions
@@ -35,8 +38,9 @@ pub(super) fn build_inline_reply(command_tx: mpsc::Sender<UiCommand>) -> InlineR
     revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
     revealer.set_reveal_child(false);
 
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    row.add_css_class("unixnotis-inline-reply");
+    let form = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    form.add_css_class("unixnotis-inline-reply");
+    let input_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
 
     let entry = gtk::Entry::new();
     entry.set_hexpand(true);
@@ -49,16 +53,28 @@ pub(super) fn build_inline_reply(command_tx: mpsc::Sender<UiCommand>) -> InlineR
     send_button.add_css_class("unixnotis-notification-action");
     send_button.add_css_class("unixnotis-inline-reply-send");
 
-    row.append(&entry);
-    row.append(&send_button);
-    revealer.set_child(Some(&row));
+    let error_label = gtk::Label::new(None);
+    error_label.set_xalign(0.0);
+    error_label.set_wrap(true);
+    error_label.set_visible(false);
+    error_label.add_css_class("error");
+    error_label.add_css_class("unixnotis-inline-reply-error");
+
+    input_row.append(&entry);
+    input_row.append(&send_button);
+    form.append(&input_row);
+    form.append(&error_label);
+    revealer.set_child(Some(&form));
 
     let bound_id = Rc::new(Cell::new(0));
     let submitted = Rc::new(Cell::new(false));
 
     let changed_button = send_button.clone();
     let changed_submitted = submitted.clone();
+    let changed_error = error_label.clone();
     entry.connect_changed(move |entry| {
+        // Editing starts a fresh attempt, so an older transport error no longer applies
+        clear_reply_error(&changed_error);
         // Sensitivity mirrors the daemon byte limit before any command is queued
         let text = entry.text();
         let text = text.trim();
@@ -71,6 +87,7 @@ pub(super) fn build_inline_reply(command_tx: mpsc::Sender<UiCommand>) -> InlineR
     let submit_entry = entry.clone();
     let submit_revealer = revealer.clone();
     let submit_button = send_button.clone();
+    let submit_error = error_label.clone();
     let submit_id = bound_id.clone();
     let submit_gate = submitted.clone();
     let submit_tx = command_tx.clone();
@@ -80,6 +97,7 @@ pub(super) fn build_inline_reply(command_tx: mpsc::Sender<UiCommand>) -> InlineR
             &submit_entry,
             &submit_revealer,
             &submit_button,
+            &submit_error,
             &submit_id,
             &submit_gate,
             &submit_tx,
@@ -88,6 +106,7 @@ pub(super) fn build_inline_reply(command_tx: mpsc::Sender<UiCommand>) -> InlineR
 
     let activate_revealer = revealer.clone();
     let activate_button = send_button.clone();
+    let activate_error = error_label.clone();
     let activate_id = bound_id.clone();
     let activate_gate = submitted.clone();
     // GtkEntry emits activate for Enter without needing a separate key handler
@@ -96,6 +115,7 @@ pub(super) fn build_inline_reply(command_tx: mpsc::Sender<UiCommand>) -> InlineR
             entry,
             &activate_revealer,
             &activate_button,
+            &activate_error,
             &activate_id,
             &activate_gate,
             &command_tx,
@@ -104,6 +124,7 @@ pub(super) fn build_inline_reply(command_tx: mpsc::Sender<UiCommand>) -> InlineR
 
     let key_revealer = revealer.clone();
     let key_entry = entry.clone();
+    let key_error = error_label.clone();
     let key_submitted = submitted.clone();
     let key_controller = gtk::EventControllerKey::new();
     // Escape owns draft cancellation while other keys continue through GTK
@@ -111,7 +132,7 @@ pub(super) fn build_inline_reply(command_tx: mpsc::Sender<UiCommand>) -> InlineR
         if key != gtk::gdk::Key::Escape {
             return gtk::glib::Propagation::Proceed;
         }
-        cancel_inline_reply(&key_entry, &key_revealer, &key_submitted)
+        cancel_inline_reply(&key_entry, &key_revealer, &key_error, &key_submitted)
     });
     entry.add_controller(key_controller);
 
@@ -119,6 +140,7 @@ pub(super) fn build_inline_reply(command_tx: mpsc::Sender<UiCommand>) -> InlineR
         revealer,
         entry,
         send_button,
+        error_label,
         bound_id,
         submitted,
     }
@@ -134,14 +156,18 @@ pub(super) fn configure_inline_reply(
     let available = is_active && reply.available;
     if widgets.bound_id.get() != id {
         // Recycled rows never carry typed drafts to another notification
-        widgets.entry.set_text("");
-        widgets.revealer.set_reveal_child(false);
         widgets.submitted.set(false);
+        widgets.entry.set_sensitive(true);
+        widgets.entry.set_text("");
+        widgets.send_button.set_sensitive(false);
+        clear_reply_error(&widgets.error_label);
+        widgets.revealer.set_reveal_child(false);
         widgets.bound_id.set(id);
     }
     if !available {
         // History and ordinary actions never expose a stale reply field
         widgets.entry.set_text("");
+        clear_reply_error(&widgets.error_label);
         widgets.revealer.set_reveal_child(false);
         widgets.entry.set_sensitive(true);
         widgets.send_button.set_sensitive(false);
@@ -182,6 +208,7 @@ fn submit_reply(
     entry: &gtk::Entry,
     revealer: &gtk::Revealer,
     button: &gtk::Button,
+    error_label: &gtk::Label,
     bound_id: &Rc<Cell<u32>>,
     submitted: &Rc<Cell<bool>>,
     command_tx: &mpsc::Sender<UiCommand>,
@@ -196,6 +223,7 @@ fn submit_reply(
 
     entry.set_sensitive(false);
     button.set_sensitive(false);
+    clear_reply_error(error_label);
     // A one-shot response lets the GTK task restore the draft after transport failure
     let (outcome_tx, outcome_rx) = tokio::sync::oneshot::channel();
     try_send_command(
@@ -210,26 +238,34 @@ fn submit_reply(
     let result_entry = entry.clone();
     let result_revealer = revealer.clone();
     let result_button = button.clone();
+    let result_error = error_label.clone();
     let result_id = bound_id.clone();
     let result_submitted = submitted.clone();
     // The local main-context task is allowed to touch GTK widgets directly
     gtk::glib::MainContext::default().spawn_local(async move {
-        let succeeded = matches!(outcome_rx.await, Ok(Ok(())));
+        let result = outcome_rx
+            .await
+            .unwrap_or_else(|_| Err("notification service did not return a result".to_string()));
         if result_id.get() != id || !result_submitted.get() {
             // A recycled row already owns different notification state
             return;
         }
         result_submitted.set(false);
         result_entry.set_sensitive(true);
-        if succeeded {
-            // Successful replies leave no draft behind in the reusable row
-            result_entry.set_text("");
-            result_revealer.set_reveal_child(false);
-            result_button.set_sensitive(false);
-        } else {
-            // Keep the draft available for correction or retry
-            result_button.set_sensitive(!result_entry.text().trim().is_empty());
-            result_entry.grab_focus();
+        match result {
+            Ok(()) => {
+                // Successful replies leave no draft behind in the reusable row
+                result_entry.set_text("");
+                clear_reply_error(&result_error);
+                result_revealer.set_reveal_child(false);
+                result_button.set_sensitive(false);
+            }
+            Err(error) => {
+                // Keep the draft available for correction or retry
+                result_button.set_sensitive(!result_entry.text().trim().is_empty());
+                show_reply_error(&result_error, &error);
+                result_entry.grab_focus();
+            }
         }
     });
 }
@@ -237,6 +273,7 @@ fn submit_reply(
 pub(super) fn cancel_inline_reply(
     entry: &gtk::Entry,
     revealer: &gtk::Revealer,
+    error_label: &gtk::Label,
     submitted: &Cell<bool>,
 ) -> gtk::glib::Propagation {
     if submitted.get() {
@@ -245,8 +282,37 @@ pub(super) fn cancel_inline_reply(
     }
     // Canceling an idle draft restores the original action row
     entry.set_text("");
+    clear_reply_error(error_label);
     revealer.set_reveal_child(false);
     gtk::glib::Propagation::Stop
+}
+
+fn clear_reply_error(label: &gtk::Label) {
+    label.set_text("");
+    label.set_visible(false);
+}
+
+fn show_reply_error(label: &gtk::Label, error: &str) {
+    // Known liveness failures use a short stable message instead of a D-Bus error prefix
+    let message = if error.contains(APPLICATION_UNAVAILABLE) {
+        APPLICATION_UNAVAILABLE.to_string()
+    } else {
+        util::sanitize_inline_display_text(error)
+    };
+    let message = clamp_error_message(&message);
+    label.set_text(&format!("Could not send: {message}"));
+    label.set_visible(true);
+}
+
+fn clamp_error_message(message: &str) -> std::borrow::Cow<'_, str> {
+    // Remote error text is display-only and must not create an unbounded row
+    let Some((cut, _)) = message.char_indices().nth(MAX_REPLY_ERROR_CHARS) else {
+        return std::borrow::Cow::Borrowed(message);
+    };
+    let mut bounded = String::with_capacity(cut + 3);
+    bounded.push_str(&message[..cut]);
+    bounded.push('…');
+    std::borrow::Cow::Owned(bounded)
 }
 
 fn update_submit_content(button: &gtk::Button, label: &str, icon_name: &str) {

@@ -37,8 +37,8 @@ impl UiState {
 
         panel::connect_dnd_toggle(&panel, dnd_guard.clone(), init.command_tx.clone());
         panel::connect_dnd_menu(&panel, init.command_tx.clone());
-        panel::connect_clear_button(&panel.clear_action_button, init.command_tx.clone());
-        panel::connect_clear_button(&panel.clear_header_button, init.command_tx.clone());
+        panel::connect_clear_button(&panel.header.actions.clear_button, init.command_tx.clone());
+        panel::connect_clear_button(&panel.sections.clear_header_button, init.command_tx.clone());
         panel::connect_close_button(&panel, init.command_tx.clone());
         panel::connect_widget_collapse_toggle(&panel, init.event_tx.clone());
         panel::connect_filter_entry(&panel, init.event_tx.clone());

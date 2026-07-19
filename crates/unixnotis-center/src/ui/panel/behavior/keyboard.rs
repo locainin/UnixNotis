@@ -3,9 +3,9 @@
 use gtk::gdk;
 use gtk::prelude::*;
 
-use super::super::try_send_command;
-use super::PanelWidgets;
 use crate::control::UiCommand;
+use crate::ui::panel::PanelWidgets;
+use crate::ui::try_send_command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum KeyboardPanelAction {
@@ -31,8 +31,13 @@ pub(super) fn keyboard_action_for(
     key: gdk::Key,
     state: gdk::ModifierType,
     search_open: bool,
-    search_has_focus: bool,
+    editable_has_focus: bool,
 ) -> KeyboardPanelAction {
+    if editable_has_focus {
+        // Editable widgets own typing and Escape while a draft or query has focus
+        return KeyboardPanelAction::Continue;
+    }
+
     if key == gdk::Key::Escape {
         return if search_open {
             KeyboardPanelAction::CloseSearch
@@ -55,11 +60,11 @@ pub(super) fn keyboard_action_for(
         return KeyboardPanelAction::ToggleWidgets;
     }
 
-    if !search_has_focus && key == gdk::Key::j {
+    if key == gdk::Key::j {
         return KeyboardPanelAction::ScrollDown;
     }
 
-    if !search_has_focus && key == gdk::Key::k {
+    if key == gdk::Key::k {
         return KeyboardPanelAction::ScrollUp;
     }
 
@@ -70,11 +75,12 @@ pub(in crate::ui) fn connect_keyboard_shortcuts(
     panel: &PanelWidgets,
     command_tx: tokio::sync::mpsc::Sender<UiCommand>,
 ) {
-    let focus_toggle = panel.focus_toggle.clone();
-    let search_toggle = panel.search_toggle.clone();
-    let search_revealer = panel.search_revealer.clone();
-    let search_entry = panel.search_entry.clone();
-    let scroller = panel.scroller.clone();
+    let focus_toggle = panel.header.actions.focus_toggle.clone();
+    let search_toggle = panel.header.actions.search_toggle.clone();
+    let search_revealer = panel.header.search.revealer.clone();
+    let search_entry = panel.header.search.entry.clone();
+    let scroller = panel.sections.scroller.clone();
+    let window = panel.window.clone();
     let key_controller = gtk::EventControllerKey::new();
 
     key_controller.connect_key_pressed(move |_, key, _, state| {
@@ -82,7 +88,7 @@ pub(in crate::ui) fn connect_keyboard_shortcuts(
             key,
             state,
             search_revealer.reveals_child(),
-            search_entry.has_focus(),
+            editable_has_focus(&window),
         );
         match action {
             KeyboardPanelAction::CloseSearch => {
@@ -123,6 +129,10 @@ pub(in crate::ui) fn connect_keyboard_shortcuts(
 #[cfg(test)]
 #[path = "tests/keyboard.rs"]
 mod tests;
+
+pub(in crate::ui) fn editable_has_focus(window: &impl IsA<gtk::Window>) -> bool {
+    gtk::prelude::RootExt::focus(window.as_ref()).is_some_and(|widget| widget.is::<gtk::Editable>())
+}
 
 fn reveal_and_focus_search(
     search_toggle: &gtk::ToggleButton,
