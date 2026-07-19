@@ -14,8 +14,10 @@ use crate::control::UiEvent;
 
 #[derive(Clone)]
 pub(in crate::ui) struct ClickCooldown {
-    // One bit is enough because callers only care whether a new click may start
+    // Block state answers whether a new click may start
     blocked: Rc<Cell<bool>>,
+    // Generation keeps retired timeout callbacks from changing a newer window
+    generation: Rc<Cell<u64>>,
     duration: Duration,
 }
 
@@ -23,6 +25,7 @@ impl ClickCooldown {
     pub(in crate::ui) fn new(duration: Duration) -> Self {
         Self {
             blocked: Rc::new(Cell::new(false)),
+            generation: Rc::new(Cell::new(0)),
             duration,
         }
     }
@@ -31,13 +34,30 @@ impl ClickCooldown {
         if self.blocked.replace(true) {
             return false;
         }
+        let ticket = self.generation.get().wrapping_add(1);
+        self.generation.set(ticket);
 
         // GTK-side timeout keeps the guard tied to the main-thread widget lifecycle
         let blocked = self.blocked.clone();
+        let generation = self.generation.clone();
         glib::timeout_add_local_once(self.duration, move || {
-            blocked.set(false);
+            release_cooldown_if_current(&blocked, &generation, ticket);
         });
         true
+    }
+
+    pub(in crate::ui) fn release(&self) {
+        // Semantic actions such as Escape may end a transition immediately
+        // Advancing the generation also retires the earlier timeout callback
+        self.generation.set(self.generation.get().wrapping_add(1));
+        self.blocked.set(false);
+    }
+}
+
+fn release_cooldown_if_current(blocked: &Cell<bool>, generation: &Cell<u64>, ticket: u64) {
+    // An older timeout must not release a newer cooldown window
+    if generation.get() == ticket {
+        blocked.set(false);
     }
 }
 
