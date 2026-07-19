@@ -174,24 +174,27 @@ impl UiState {
 
     fn render_reload_notice(&self) {
         let Some(notice) = self.reload_notices.visible() else {
-            self.panel.reload_notice_revealer.set_reveal_child(false);
+            self.panel.reload_notice.revealer.set_reveal_child(false);
             return;
         };
-        self.panel.reload_notice_label.set_label(&notice.message);
+        self.panel.reload_notice.label.set_label(&notice.message);
         self.panel
-            .reload_notice_shell
+            .reload_notice
+            .shell
             .remove_css_class(hooks::panel_shell::RELOAD_NOTICE_ERROR);
         self.panel
-            .reload_notice_shell
+            .reload_notice
+            .shell
             .remove_css_class(hooks::panel_shell::RELOAD_NOTICE_WARNING);
         self.panel
-            .reload_notice_shell
+            .reload_notice
+            .shell
             .add_css_class(if notice.error {
                 hooks::panel_shell::RELOAD_NOTICE_ERROR
             } else {
                 hooks::panel_shell::RELOAD_NOTICE_WARNING
             });
-        self.panel.reload_notice_revealer.set_reveal_child(true);
+        self.panel.reload_notice.revealer.set_reveal_child(true);
     }
 
     fn clear_reload_notice(&mut self, kind: ReloadNoticeKind) {
@@ -201,7 +204,7 @@ impl UiState {
 
     fn capture_notice_dismissal(&mut self) {
         // The close button hides GTK immediately, then the next event records that dismissal
-        if !self.panel.reload_notice_revealer.reveals_child()
+        if !self.panel.reload_notice.revealer.reveals_child()
             && self.reload_notices.visible().is_some()
         {
             self.reload_notices.dismiss_visible();
@@ -211,67 +214,79 @@ impl UiState {
     pub(in crate::ui) fn apply_reloaded_panel(&mut self, config: &Config) {
         // Geometry goes first so later sections can size themselves from the final panel width
         panel::apply_panel_config(&self.panel, config, self.work_area);
-        self.panel.header_title.set_label(&config.panel.title);
-        self.panel.header_subtitle.set_label(&config.panel.subtitle);
+        self.panel.header.title.set_label(&config.panel.title);
+        self.panel.header.subtitle.set_label(&config.panel.subtitle);
         self.panel
-            .header_subtitle
+            .header
+            .subtitle
             .set_visible(!config.panel.subtitle.is_empty());
         self.panel
-            .search_entry
+            .header
+            .search
+            .entry
             .set_placeholder_text(Some(&config.panel.search_placeholder));
+        self.panel.header.search.revealer.set_reveal_child(
+            config.panel.search_visible || self.panel.header.actions.search_toggle.is_active(),
+        );
         self.panel
-            .search_revealer
-            .set_reveal_child(config.panel.search_visible || self.panel.search_toggle.is_active());
-        self.panel
-            .header_action_row
+            .header
+            .action_row
             .set_visible(config.panel.action_row_visible);
         panel::apply_reloaded_panel_chrome(&self.panel, &config.panel);
         self.panel
+            .sections
             .notification_header
             .set_label(&config.panel.recent_notifications_label);
-        self.panel.notification_header.set_visible(
+        self.panel.sections.notification_header.set_visible(
             config.panel.notification_section_visible
                 && !config.panel.recent_notifications_label.is_empty(),
         );
         self.panel
+            .sections
             .notification_header_row
             .set_visible(notification_header_row_visible(&config.panel));
         self.update_section_header(
-            &self.panel.toggle_section_header,
+            &self.panel.sections.toggle_section_header,
             &config.panel.quick_actions_label,
         );
         self.update_section_header(
-            &self.panel.stat_section_header,
+            &self.panel.sections.stat_section_header,
             &config.panel.system_status_label,
         );
         if config.panel.notification_section_visible {
             self.panel
+                .sections
                 .notification_container
                 .add_css_class(hooks::panel_shell::RECENT_SECTION);
         } else {
             self.panel
+                .sections
                 .notification_container
                 .remove_css_class(hooks::panel_shell::RECENT_SECTION);
         }
         self.panel
+            .sections
             .scroller
             .set_vexpand(config.panel.notification_list_expand);
         self.panel
+            .sections
             .notification_container
             .set_vexpand(config.panel.notification_list_expand);
         panel::apply_reloaded_body_order(&self.panel, &config.panel.section_order);
         self.apply_widget_order(&config.panel.widget_order);
         panel::apply_widget_density(
-            &self.panel.widget_stack,
-            &self.panel.quick_controls,
-            &self.panel.media_container,
+            &self.panel.sections.widget_stack,
+            &self.panel.sections.quick_controls,
+            &self.panel.sections.media_container,
             config.widgets.density,
         );
         self.panel
-            .footer_label
+            .sections
+            .footer
             .set_label(&config.panel.footer_label);
         self.panel
-            .footer_label
+            .sections
+            .footer
             .set_visible(!config.panel.footer_label.is_empty());
         self.log_debug(PanelDebugLevel::Info, || {
             "panel config applied after reload".to_string()
@@ -289,13 +304,16 @@ impl UiState {
         for section in order {
             // Config enum values map to the long-lived container built at startup
             let child: gtk::Widget = match section {
-                PanelWidgetSection::Media => self.panel.media_container.clone().upcast(),
-                PanelWidgetSection::Toggles => self.panel.toggle_container.clone().upcast(),
-                PanelWidgetSection::Sliders => self.panel.quick_controls.clone().upcast(),
-                PanelWidgetSection::Stats => self.panel.stat_container.clone().upcast(),
-                PanelWidgetSection::Cards => self.panel.card_container.clone().upcast(),
+                PanelWidgetSection::Media => self.panel.sections.media_container.clone().upcast(),
+                PanelWidgetSection::Toggles => {
+                    self.panel.sections.toggle_container.clone().upcast()
+                }
+                PanelWidgetSection::Sliders => self.panel.sections.quick_controls.clone().upcast(),
+                PanelWidgetSection::Stats => self.panel.sections.stat_container.clone().upcast(),
+                PanelWidgetSection::Cards => self.panel.sections.card_container.clone().upcast(),
             };
             self.panel
+                .sections
                 .widget_stack
                 .reorder_child_after(&child, previous.as_ref());
             // The next child is inserted after the child placed in this iteration
@@ -345,13 +363,13 @@ impl UiState {
 
     fn apply_widget_config(&mut self, config: &Config) {
         // Old children are cleared first so the rebuild can treat each section as fresh state
-        clear_container(&self.panel.quick_controls);
+        clear_container(&self.panel.sections.quick_controls);
         let (volume, brightness) = build_quick_controls(&self.panel, config);
         self.volume = volume;
         self.brightness = brightness;
-        clear_container(&self.panel.toggle_container);
-        clear_container(&self.panel.stat_container);
-        clear_container(&self.panel.card_container);
+        clear_container(&self.panel.sections.toggle_container);
+        clear_container(&self.panel.sections.stat_container);
+        clear_container(&self.panel.sections.card_container);
         let (toggles, stats, cards) =
             build_extra_widgets(&self.panel, config, &self.widget_icon_resolver);
         // Replace all handles together after the containers hold the new children

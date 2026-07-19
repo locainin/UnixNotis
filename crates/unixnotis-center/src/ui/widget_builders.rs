@@ -20,7 +20,7 @@ pub(super) fn build_quick_controls(
     let mut has_widgets = false;
     let volume = if config.widgets.volume.enabled {
         let widget = widgets::volume::VolumeWidget::new(config.widgets.volume.clone());
-        panel.quick_controls.append(widget.root());
+        panel.sections.quick_controls.append(widget.root());
         has_widgets = true;
         Some(widget)
     } else {
@@ -29,14 +29,14 @@ pub(super) fn build_quick_controls(
 
     let brightness = if config.widgets.brightness.enabled {
         let widget = widgets::brightness::BrightnessWidget::new(config.widgets.brightness.clone());
-        panel.quick_controls.append(widget.root());
+        panel.sections.quick_controls.append(widget.root());
         has_widgets = true;
         Some(widget)
     } else {
         None
     };
 
-    panel.quick_controls.set_visible(has_widgets);
+    panel.sections.quick_controls.set_visible(has_widgets);
     (volume, brightness)
 }
 
@@ -58,10 +58,10 @@ pub(super) fn build_extra_widgets(
         icon_resolver,
     );
     if let Some(grid) = toggles.as_ref() {
-        panel.toggle_container.set_visible(true);
-        panel.toggle_container.append(grid.root());
+        panel.sections.toggle_container.set_visible(true);
+        panel.sections.toggle_container.append(grid.root());
     } else {
-        panel.toggle_container.set_visible(false);
+        panel.sections.toggle_container.set_visible(false);
     }
 
     // Stats widgets expose periodic metrics like CPU and memory usage.
@@ -71,10 +71,10 @@ pub(super) fn build_extra_widgets(
         icon_resolver,
     );
     if let Some(grid) = stats.as_ref() {
-        panel.stat_container.set_visible(true);
-        panel.stat_container.append(grid.root());
+        panel.sections.stat_container.set_visible(true);
+        panel.sections.stat_container.append(grid.root());
     } else {
-        panel.stat_container.set_visible(false);
+        panel.sections.stat_container.set_visible(false);
     }
 
     // Card widgets are larger, multi-line information tiles.
@@ -84,10 +84,10 @@ pub(super) fn build_extra_widgets(
         icon_resolver,
     );
     if let Some(grid) = cards.as_ref() {
-        panel.card_container.set_visible(true);
-        panel.card_container.append(grid.root());
+        panel.sections.card_container.set_visible(true);
+        panel.sections.card_container.append(grid.root());
     } else {
-        panel.card_container.set_visible(false);
+        panel.sections.card_container.set_visible(false);
     }
 
     (toggles, stats, cards)

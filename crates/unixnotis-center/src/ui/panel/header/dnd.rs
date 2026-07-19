@@ -1,16 +1,40 @@
 //! Timed Do Not Disturb menu and compact countdown formatting
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 use chrono::{Days, Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use gtk::prelude::*;
 
 use crate::control::UiCommand;
+use crate::ui::panel::PanelWidgets;
 use crate::ui::try_send_command;
 
-use super::PanelWidgets;
-
 const MORNING_HOUR: u32 = 8;
+
+pub(in crate::ui) struct DndCountdown {
+    source: Option<gtk::glib::SourceId>,
+    active: Rc<Cell<bool>>,
+}
+
+impl DndCountdown {
+    fn remove_active_source(&mut self) {
+        if self.active.replace(false) {
+            // GLib removal is valid only while the callback still owns a live source
+            if let Some(source) = self.source.take() {
+                source.remove();
+            }
+        }
+    }
+}
+
+impl Drop for DndCountdown {
+    fn drop(&mut self) {
+        // Dropping panel state must not leave a callback retaining the countdown label
+        self.remove_active_source();
+    }
+}
 
 pub(in crate::ui) fn connect_dnd_menu(
     panel: &PanelWidgets,
@@ -62,7 +86,7 @@ pub(in crate::ui) fn connect_dnd_menu(
     choices.append(&indefinite);
 
     popover.set_child(Some(&choices));
-    panel.dnd_menu.set_popover(Some(&popover));
+    panel.header.actions.dnd_menu.set_popover(Some(&popover));
 }
 
 pub(in crate::ui) fn update_dnd_status(label: &gtk::Label, expires_at: i64) {
@@ -72,17 +96,32 @@ pub(in crate::ui) fn update_dnd_status(label: &gtk::Label, expires_at: i64) {
     label.set_text(&text);
 }
 
-pub(in crate::ui) fn start_dnd_countdown(
-    label: &gtk::Label,
-    expires_at: i64,
-) -> gtk::glib::SourceId {
+pub(in crate::ui) fn start_dnd_countdown(label: &gtk::Label, expires_at: i64) -> DndCountdown {
     // GTK owns the callback on its main context while UiState owns the source id
     let label = label.clone();
-    gtk::glib::timeout_add_local(Duration::from_secs(30), move || {
+    let active = Rc::new(Cell::new(true));
+    let callback_active = active.clone();
+    let source = gtk::glib::timeout_add_local(Duration::from_secs(30), move || {
         update_dnd_status(&label, expires_at);
-        // The next daemon state update owns source removal, even after the label reaches zero
+        let flow = countdown_control_flow(expires_at, Utc::now().timestamp());
+        if flow == gtk::glib::ControlFlow::Break {
+            // Mark the ID inactive before GLib destroys it after this callback
+            callback_active.set(false);
+        }
+        flow
+    });
+    DndCountdown {
+        source: Some(source),
+        active,
+    }
+}
+
+const fn countdown_control_flow(expires_at: i64, now: i64) -> gtk::glib::ControlFlow {
+    if expires_at <= now {
+        gtk::glib::ControlFlow::Break
+    } else {
         gtk::glib::ControlFlow::Continue
-    })
+    }
 }
 
 fn format_dnd_remaining(expires_at: i64, now: i64) -> String {

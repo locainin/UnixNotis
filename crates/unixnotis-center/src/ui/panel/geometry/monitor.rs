@@ -5,7 +5,7 @@
 use gtk::gdk;
 use gtk::gdk::prelude::*;
 
-pub(super) fn default_monitor() -> Option<gdk::Monitor> {
+pub(in crate::ui::panel) fn default_monitor() -> Option<gdk::Monitor> {
     let display = gdk::Display::default()?;
     let monitors = display.monitors();
     let mut best: Option<gdk::Monitor> = None;
@@ -36,7 +36,7 @@ pub(super) fn default_monitor() -> Option<gdk::Monitor> {
     item.downcast::<gdk::Monitor>().ok()
 }
 
-pub(super) fn find_monitor(output: &str) -> Option<gdk::Monitor> {
+pub(in crate::ui::panel) fn find_monitor(output: &str) -> Option<gdk::Monitor> {
     let display = gdk::Display::default()?;
     let monitors = display.monitors();
     for index in 0..monitors.n_items() {

@@ -132,10 +132,10 @@ fn reloaded_panel_applies_copy_and_widget_density() {
 
     state.apply_reloaded_panel(&config);
 
-    assert_eq!(state.panel.header_title.text(), "Operations");
-    assert_eq!(state.panel.header_subtitle.text(), "Live state");
-    assert!(state.panel.header_subtitle.get_visible());
-    assert_eq!(state.panel.widget_stack.spacing(), 6);
+    assert_eq!(state.panel.header.title.text(), "Operations");
+    assert_eq!(state.panel.header.subtitle.text(), "Live state");
+    assert!(state.panel.header.subtitle.get_visible());
+    assert_eq!(state.panel.sections.widget_stack.spacing(), 6);
 }
 
 #[gtk::test]
@@ -176,38 +176,40 @@ fn reloaded_panel_applies_visibility_placement_and_widget_order_edges() {
         unixnotis_core::PanelWidgetSection::Media,
         unixnotis_core::PanelWidgetSection::Sliders,
     ];
-    state.panel.search_toggle.set_active(true);
+    state.panel.header.actions.search_toggle.set_active(true);
 
     state.apply_reloaded_panel(&config);
 
-    assert!(!state.panel.header_subtitle.get_visible());
-    assert!(state.panel.search_revealer.reveals_child());
-    assert!(!state.panel.header_action_row.get_visible());
-    assert!(!state.panel.notification_header.get_visible());
-    assert!(!state.panel.toggle_section_header.get_visible());
-    assert_eq!(state.panel.stat_section_header.text(), "Resources");
-    assert!(state.panel.stat_section_header.get_visible());
+    assert!(!state.panel.header.subtitle.get_visible());
+    assert!(state.panel.header.search.revealer.reveals_child());
+    assert!(!state.panel.header.action_row.get_visible());
+    assert!(!state.panel.sections.notification_header.get_visible());
+    assert!(!state.panel.sections.toggle_section_header.get_visible());
+    assert_eq!(state.panel.sections.stat_section_header.text(), "Resources");
+    assert!(state.panel.sections.stat_section_header.get_visible());
     assert!(state
         .panel
+        .sections
         .notification_container
         .has_css_class(unixnotis_core::hooks::panel_shell::RECENT_SECTION));
-    assert!(!state.panel.scroller.vexpands());
-    assert!(!state.panel.notification_container.vexpands());
-    assert!(!state.panel.clear_action_button.get_visible());
-    assert!(state.panel.clear_header_button.get_visible());
-    assert!(!state.panel.footer_label.get_visible());
+    assert!(!state.panel.sections.scroller.vexpands());
+    assert!(!state.panel.sections.notification_container.vexpands());
+    assert!(!state.panel.header.actions.clear_button.get_visible());
+    assert!(state.panel.sections.clear_header_button.get_visible());
+    assert!(!state.panel.sections.footer.get_visible());
 
     let first = state
         .panel
+        .sections
         .widget_stack
         .first_child()
         .expect("widget stack should keep configured sections");
-    assert!(same_widget(&first, &state.panel.card_container));
+    assert!(same_widget(&first, &state.panel.sections.card_container));
 
     let mut hidden_state = new_state();
     hidden_state.apply_reloaded_panel(&config);
-    assert!(!hidden_state.panel.search_toggle.is_active());
-    assert!(!hidden_state.panel.search_revealer.reveals_child());
+    assert!(!hidden_state.panel.header.actions.search_toggle.is_active());
+    assert!(!hidden_state.panel.header.search.revealer.reveals_child());
 }
 
 #[gtk::test]
@@ -238,11 +240,16 @@ fn reload_config_applies_valid_file_and_rejects_malformed_replacement() {
     assert!(matches!(outcome, ConfigReloadOutcome::Applied { .. }));
 
     assert_eq!(state.config.panel.title, "Reloaded from disk");
-    assert_eq!(state.panel.header_title.text(), "Reloaded from disk");
-    assert_eq!(state.panel.footer_label.text(), "Ready");
-    assert!(state.panel.footer_label.get_visible());
+    assert_eq!(state.panel.header.title.text(), "Reloaded from disk");
+    assert_eq!(state.panel.sections.footer.text(), "Ready");
+    assert!(state.panel.sections.footer.get_visible());
     assert!(state.toggles.is_some());
-    assert!(state.panel.toggle_container.first_child().is_some());
+    assert!(state
+        .panel
+        .sections
+        .toggle_container
+        .first_child()
+        .is_some());
     assert_eq!(state.list.empty_overlay.valign(), gtk::Align::Start);
     assert_eq!(state.list.empty_overlay.margin_top(), 44);
     assert!(state.work_area.is_none());
@@ -265,16 +272,18 @@ fn reload_config_applies_valid_file_and_rejects_malformed_replacement() {
     let outcome = state.reload_config();
     assert!(matches!(outcome, ConfigReloadOutcome::Rejected { .. }));
     assert_eq!(state.config.panel.title, "Reloaded from disk");
-    assert_eq!(state.panel.header_title.text(), "Reloaded from disk");
-    assert!(state.panel.reload_notice_revealer.reveals_child());
+    assert_eq!(state.panel.header.title.text(), "Reloaded from disk");
+    assert!(state.panel.reload_notice.revealer.reveals_child());
     assert!(state
         .panel
-        .reload_notice_label
+        .reload_notice
+        .label
         .text()
         .contains("previous configuration is still active"));
     assert!(!state
         .panel
-        .reload_notice_label
+        .reload_notice
+        .label
         .text()
         .contains("title = broken"));
 }
@@ -284,7 +293,7 @@ fn accepted_reload_clears_rejected_config_notice() {
     let mut state = state();
     fs::write(&state.config_path, "[panel\ntitle = broken").expect("broken config");
     let _outcome = state.reload_config();
-    assert!(state.panel.reload_notice_revealer.reveals_child());
+    assert!(state.panel.reload_notice.revealer.reveals_child());
 
     let valid = state.config.clone();
     write_config(&state.config_path, &valid);
@@ -303,7 +312,7 @@ fn accepted_reload_clears_rejected_config_notice() {
     let outcome = state.reload_config();
 
     assert!(matches!(outcome, ConfigReloadOutcome::Applied { .. }));
-    assert!(!state.panel.reload_notice_revealer.reveals_child());
+    assert!(!state.panel.reload_notice.revealer.reveals_child());
 }
 
 #[gtk::test]
@@ -311,24 +320,25 @@ fn dismissed_reload_notice_stays_hidden_until_failure_fingerprint_changes() {
     let mut state = state();
     fs::write(&state.config_path, "[panel\ntitle = first").expect("first broken config");
     let _outcome = state.reload_config();
-    assert!(state.panel.reload_notice_revealer.reveals_child());
+    assert!(state.panel.reload_notice.revealer.reveals_child());
 
     let close = state
         .panel
-        .reload_notice_shell
+        .reload_notice
+        .shell
         .last_child()
         .expect("reload notice close button")
         .downcast::<gtk::Button>()
         .expect("reload notice close widget");
     close.emit_clicked();
-    assert!(!state.panel.reload_notice_revealer.reveals_child());
+    assert!(!state.panel.reload_notice.revealer.reveals_child());
 
     let _same_outcome = state.reload_config();
-    assert!(!state.panel.reload_notice_revealer.reveals_child());
+    assert!(!state.panel.reload_notice.revealer.reveals_child());
 
     fs::write(&state.config_path, "config_version = 999").expect("distinct broken config");
     let _distinct_outcome = state.reload_config();
-    assert!(state.panel.reload_notice_revealer.reveals_child());
+    assert!(state.panel.reload_notice.revealer.reveals_child());
 }
 
 #[gtk::test]
@@ -348,13 +358,13 @@ fn successful_css_only_reload_does_not_clear_config_rejection_notice() {
     }
     fs::write(&state.config_path, "[panel\ntitle = broken").expect("broken config");
     let _outcome = state.reload_config();
-    let rejection = state.panel.reload_notice_label.text();
+    let rejection = state.panel.reload_notice.label.text();
 
     let report = state.reload_css();
 
     assert_eq!(report.read_failures().count(), 0);
-    assert!(state.panel.reload_notice_revealer.reveals_child());
-    assert_eq!(state.panel.reload_notice_label.text(), rejection);
+    assert!(state.panel.reload_notice.revealer.reveals_child());
+    assert_eq!(state.panel.reload_notice.label.text(), rejection);
 }
 
 #[gtk::test]
@@ -362,16 +372,17 @@ fn css_failure_cannot_replace_an_active_config_rejection() {
     let mut state = state();
     fs::write(&state.config_path, "[panel\ntitle = broken").expect("broken config");
     let _outcome = state.reload_config();
-    let rejection = state.panel.reload_notice_label.text();
+    let rejection = state.panel.reload_notice.label.text();
 
     let report = state.reload_css();
 
     assert!(report.read_failures().count() > 0);
-    assert!(state.panel.reload_notice_revealer.reveals_child());
-    assert_eq!(state.panel.reload_notice_label.text(), rejection);
+    assert!(state.panel.reload_notice.revealer.reveals_child());
+    assert_eq!(state.panel.reload_notice.label.text(), rejection);
     assert!(state
         .panel
-        .reload_notice_shell
+        .reload_notice
+        .shell
         .has_css_class(unixnotis_core::css::hooks::panel_shell::RELOAD_NOTICE_ERROR));
 }
 
@@ -381,14 +392,16 @@ fn css_reload_notice_summarizes_multiple_unreadable_layers() {
     let report = state.reload_css();
 
     assert!(report.read_failures().count() > 1);
-    assert!(state.panel.reload_notice_revealer.reveals_child());
+    assert!(state.panel.reload_notice.revealer.reveals_child());
     assert!(state
         .panel
-        .reload_notice_label
+        .reload_notice
+        .label
         .text()
         .contains("other layer"));
     assert!(state
         .panel
-        .reload_notice_shell
+        .reload_notice
+        .shell
         .has_css_class(unixnotis_core::css::hooks::panel_shell::RELOAD_NOTICE_WARNING));
 }

@@ -9,7 +9,8 @@ use unixnotis_core::{
     Anchor, Config, Margins, PanelKeyboardInteractivity, PANEL_RUNTIME_WIDTH_MIN,
 };
 
-use super::types::PanelWidgets;
+use super::super::widgets::PanelWidgets;
+use super::monitor;
 
 // Keep panel width reasonable on narrow displays to avoid dominating screen real estate
 const PANEL_WIDTH_MONITOR_RATIO_CAP: f32 = 0.32;
@@ -26,7 +27,7 @@ fn normalize_panel_width_request(width_request: i32) -> i32 {
     width_request.max(1)
 }
 
-pub(super) fn resolve_panel_size(
+pub(in crate::ui::panel) fn resolve_panel_size(
     config: &Config,
     monitor: Option<&gdk::Monitor>,
     reserved: Option<Margins>,
@@ -37,7 +38,11 @@ pub(super) fn resolve_panel_size(
     (width, height)
 }
 
-pub(super) fn apply_anchor(window: &impl IsA<gtk::Window>, anchor: Anchor, margin: Margins) {
+pub(in crate::ui::panel) fn apply_anchor(
+    window: &impl IsA<gtk::Window>,
+    anchor: Anchor,
+    margin: Margins,
+) {
     for edge in [Edge::Top, Edge::Right, Edge::Bottom, Edge::Left] {
         window.set_anchor(edge, false);
     }
@@ -88,9 +93,9 @@ pub(super) fn apply_anchor(window: &impl IsA<gtk::Window>, anchor: Anchor, margi
 
 pub fn apply_panel_config(panel: &PanelWidgets, config: &Config, reserved: Option<Margins>) {
     let monitor = if let Some(output) = config.panel.output.as_ref() {
-        super::monitor::find_monitor(output).or_else(super::monitor::default_monitor)
+        monitor::find_monitor(output).or_else(monitor::default_monitor)
     } else {
-        super::monitor::default_monitor()
+        monitor::default_monitor()
     };
     if let Some(monitor) = monitor.as_ref() {
         panel.window.set_monitor(Some(monitor));
@@ -117,7 +122,9 @@ pub fn apply_panel_config(panel: &PanelWidgets, config: &Config, reserved: Optio
     // margins, so only the outer shell receives an exact width request
 }
 
-pub(super) const fn map_keyboard_mode(mode: PanelKeyboardInteractivity) -> KeyboardMode {
+pub(in crate::ui::panel) const fn map_keyboard_mode(
+    mode: PanelKeyboardInteractivity,
+) -> KeyboardMode {
     match mode {
         PanelKeyboardInteractivity::None => KeyboardMode::None,
         PanelKeyboardInteractivity::OnDemand => KeyboardMode::OnDemand,

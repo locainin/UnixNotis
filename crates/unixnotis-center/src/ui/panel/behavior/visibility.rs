@@ -12,72 +12,9 @@ use unixnotis_core::{PanelAction, PanelDebugLevel, PanelRequest};
 use crate::control::UiCommand;
 use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
-use super::super::{try_send_command, UiState};
+use crate::ui::{try_send_command, UiState};
 
 impl UiState {
-    pub const fn panel_is_visible(&self) -> bool {
-        self.panel_visible
-    }
-
-    pub(in crate::ui) const fn has_any_widgets(&self) -> bool {
-        self.volume.is_some()
-            || self.brightness.is_some()
-            || self.toggles.is_some()
-            || self.stats.is_some()
-            || self.cards.is_some()
-            || (self.media.is_some() && self.config.media.enabled)
-    }
-
-    pub(in crate::ui) fn set_widgets_collapsed(&mut self, collapsed: bool) {
-        self.widgets_collapsed = collapsed;
-        if self.panel.focus_toggle.is_active() != collapsed {
-            // Mirror external collapse requests into the header toggle state
-            self.panel.focus_toggle.set_active(collapsed);
-        }
-        if self.panel.widget_revealer.reveals_child() == collapsed {
-            self.panel.widget_revealer.set_reveal_child(!collapsed);
-        }
-        self.list
-            .set_empty_layout(!collapsed && self.has_any_widgets());
-    }
-
-    pub(in crate::ui) fn update_state(&mut self, state: unixnotis_core::ControlState) {
-        if let Some(source) = self.dnd_expiration_source.take() {
-            source.remove();
-        }
-        // Avoid re-entrant DND toggles while applying daemon state
-        self.dnd_guard.set(true);
-        self.panel.dnd_toggle.set_active(state.dnd_enabled);
-        self.dnd_guard.set(false);
-        let expires_at = state
-            .dnd_enabled
-            .then_some(state.dnd_expires_at)
-            .filter(|expires_at| *expires_at > 0)
-            .unwrap_or(0);
-        super::dnd::update_dnd_status(&self.panel.dnd_status, expires_at);
-        if expires_at > 0 {
-            self.dnd_expiration_source = Some(super::dnd::start_dnd_countdown(
-                &self.panel.dnd_status,
-                expires_at,
-            ));
-        }
-    }
-
-    pub(in crate::ui) fn refresh_counts(&mut self) {
-        if !self.panel_visible {
-            // Skip label updates while hidden to avoid unnecessary UI work
-            // Counts are refreshed on the next open to keep the header accurate
-            return;
-        }
-        // Header count always reflects total active + history entries
-        let total = self.list.total_count();
-        if self.last_count == Some(total) {
-            return;
-        }
-        self.last_count = Some(total);
-        self.panel.header_count.set_text(&format!("{total}"));
-    }
-
     pub(in crate::ui) fn apply_panel_request(&mut self, request: PanelRequest) {
         let requested_visibility = panel_visibility_for_action(self.panel_visible, request.action);
         // Request-driven changes always flow through set_visible for consistent side effects
@@ -154,10 +91,10 @@ impl UiState {
             // Only hit the compositor once per open when the cache is empty
             // Keeps open latency stable while avoiding repeated IPC work
             if self.config.panel.respect_work_area && self.work_area.is_none() {
-                self.work_area = super::super::hyprland::reserved_work_area_sync(
+                self.work_area = crate::ui::hyprland::reserved_work_area_sync(
                     self.config.panel.output.as_deref(),
                 );
-                super::apply_panel_config(&self.panel, &self.config, self.work_area);
+                crate::ui::panel::apply_panel_config(&self.panel, &self.config, self.work_area);
             }
             // Only show the window after geometry is correct to avoid visible jitter
             self.panel.window.set_visible(true);
@@ -177,15 +114,15 @@ impl UiState {
             // Hide first so any teardown work does not trigger visible reflow
             self.panel.window.set_visible(false);
             // Reset transient search UI so each open starts from the full notification list
-            if self.panel.search_toggle.is_active() {
+            if self.panel.header.actions.search_toggle.is_active() {
                 // Programmatic close should not be treated as a user click
                 self.search_toggle_guard.set(true);
-                self.panel.search_toggle.set_active(false);
+                self.panel.header.actions.search_toggle.set_active(false);
                 self.search_toggle_guard.set(false);
             }
-            if !self.panel.search_entry.text().is_empty() {
+            if !self.panel.header.search.entry.text().is_empty() {
                 // Clearing text also removes any active list filter
-                self.panel.search_entry.set_text("");
+                self.panel.header.search.entry.set_text("");
             }
             // Disable watch-based polling when hidden to reduce background load
             if let Some(volume) = self.volume.as_ref() {

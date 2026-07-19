@@ -25,7 +25,7 @@ pub(super) fn build_notification_list(
     // Notification list owns row virtualization and icon resolution
     // Startup only passes the resolved policy and shared channels
     notifications::NotificationList::new(
-        panel.scroller.clone(),
+        panel.sections.scroller.clone(),
         init.command_tx.clone(),
         init.event_tx.clone(),
         icon_resolver,
@@ -40,7 +40,7 @@ pub(super) fn build_media_widget(
     let panel_width = panel::requested_panel_width(&panel.root);
     let media = init.media_handle.as_ref().map(|handle| {
         media::MediaWidget::new(
-            &panel.media_container,
+            &panel.sections.media_container,
             handle.clone(),
             panel_width,
             &init.config.media,
@@ -49,7 +49,7 @@ pub(super) fn build_media_widget(
 
     if media.is_none() {
         // Hidden container keeps layout stable without reserving blank media space
-        panel.media_container.set_visible(false);
+        panel.sections.media_container.set_visible(false);
     }
     media
 }
@@ -101,9 +101,9 @@ pub(super) fn icon_resolver_for_widgets(
 
 pub(super) fn has_visible_widget_section(panel: &panel::PanelWidgets) -> bool {
     // Empty-state spacing depends on whether any upper panel section is visible
-    panel.quick_controls.get_visible()
-        || panel.media_container.get_visible()
-        || panel.toggle_container.get_visible()
-        || panel.stat_container.get_visible()
-        || panel.card_container.get_visible()
+    panel.sections.quick_controls.get_visible()
+        || panel.sections.media_container.get_visible()
+        || panel.sections.toggle_container.get_visible()
+        || panel.sections.stat_container.get_visible()
+        || panel.sections.card_container.get_visible()
 }

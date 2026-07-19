@@ -55,7 +55,7 @@ fn constructor_builds_disabled_optional_sections_without_reserving_space() {
     });
 
     assert!(state.media.is_none());
-    assert!(!state.panel.media_container.get_visible());
+    assert!(!state.panel.sections.media_container.get_visible());
     assert!(state.volume.is_none());
     assert!(state.brightness.is_none());
     assert!(state.toggles.is_none());
