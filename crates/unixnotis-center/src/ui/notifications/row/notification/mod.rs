@@ -1,7 +1,7 @@
 //! Notification row widget module
 //!
 //! `mod.rs` only wires the notification row pieces together
-//! Build, state, update, and tests stay in their own files
+//! Reply logic and tests stay inside their focused module
 
 #[cfg(test)]
 #[path = "tests/actions.rs"]
@@ -14,9 +14,6 @@ mod labels_tests;
 #[path = "tests/metadata.rs"]
 mod metadata_tests;
 mod reply;
-#[cfg(test)]
-#[path = "tests/reply.rs"]
-mod reply_tests;
 #[cfg(test)]
 #[path = "tests/stack.rs"]
 mod stack_tests;
