@@ -225,8 +225,14 @@ impl UiState {
             .search
             .entry
             .set_placeholder_text(Some(&config.panel.search_placeholder));
-        self.panel.header.search.revealer.set_reveal_child(
-            config.panel.search_visible || self.panel.header.actions.search_toggle.is_active(),
+        let search_open =
+            config.panel.search_visible || self.panel.header.actions.search_toggle.is_active();
+        panel::set_search_open(
+            &self.panel.header.actions.search_toggle,
+            &self.panel.header.search.revealer,
+            &self.panel.header.search.entry,
+            self.search_toggle_guard.as_ref(),
+            search_open,
         );
         self.panel
             .header

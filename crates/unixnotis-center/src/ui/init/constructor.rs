@@ -36,7 +36,8 @@ impl UiState {
         list.set_empty_layout(has_visible_widget_section(&panel));
 
         panel::connect_dnd_toggle(&panel, dnd_guard.clone(), init.command_tx.clone());
-        panel::connect_dnd_menu(&panel, init.command_tx.clone());
+        let dnd_duration_menu =
+            panel::connect_dnd_menu(&panel.header.actions.dnd_toggle, init.command_tx.clone());
         panel::connect_clear_button(&panel.header.actions.clear_button, init.command_tx.clone());
         panel::connect_clear_button(&panel.sections.clear_header_button, init.command_tx.clone());
         panel::connect_close_button(&panel, init.command_tx.clone());
@@ -67,6 +68,7 @@ impl UiState {
             config: init.config,
             config_path: init.config_path,
             css: init.css,
+            _dnd_duration_menu: dnd_duration_menu,
             panel,
             list,
             icon_resolver,

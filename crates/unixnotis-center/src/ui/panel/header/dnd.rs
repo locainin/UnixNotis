@@ -8,14 +8,36 @@ use chrono::{Days, Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use gtk::prelude::*;
 
 use crate::control::UiCommand;
-use crate::ui::panel::PanelWidgets;
 use crate::ui::try_send_command;
 
 const MORNING_HOUR: u32 = 8;
+const DND_DURATION_CHOICES: [(&str, i64); 3] =
+    [("30 minutes", 1_800), ("1 hour", 3_600), ("2 hours", 7_200)];
+
+// Context-menu keys use one small decision type so GTK behavior stays explicit
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DndMenuKeyAction {
+    Open,
+    Ignore,
+}
 
 pub(in crate::ui) struct DndCountdown {
     source: Option<gtk::glib::SourceId>,
     active: Rc<Cell<bool>>,
+}
+
+pub(in crate::ui) struct DndDurationMenu {
+    // A manually parented popover needs an explicit owner to detach it before panel teardown
+    popover: gtk::Popover,
+}
+
+impl Drop for DndDurationMenu {
+    fn drop(&mut self) {
+        // GTK does not automatically detach popovers added with set_parent
+        if self.popover.parent().is_some() {
+            self.popover.unparent();
+        }
+    }
 }
 
 impl DndCountdown {
@@ -37,27 +59,26 @@ impl Drop for DndCountdown {
 }
 
 pub(in crate::ui) fn connect_dnd_menu(
-    panel: &PanelWidgets,
+    dnd_toggle: &gtk::ToggleButton,
     command_tx: tokio::sync::mpsc::Sender<UiCommand>,
-) {
-    // The menu button owns this popover after setup
+) -> DndDurationMenu {
+    // The DND toggle owns this popover without adding a separate arrow button
     let popover = gtk::Popover::new();
+    popover.set_autohide(true);
     let choices = gtk::Box::new(gtk::Orientation::Vertical, 2);
 
     // Common relative choices share one absolute-deadline command path
-    for (label, seconds) in [
-        ("30 minutes", 30 * 60),
-        ("1 hour", 60 * 60),
-        ("2 hours", 2 * 60 * 60),
-    ] {
+    for (label, seconds) in DND_DURATION_CHOICES {
         let button = gtk::Button::with_label(label);
         let tx = command_tx.clone();
-        let menu = popover.clone();
+        let menu = popover.downgrade();
         button.connect_clicked(move |_| {
             // Saturation keeps an abnormal system clock from wrapping the deadline
             let expires_at = Utc::now().timestamp().saturating_add(seconds);
             try_send_command(&tx, UiCommand::SetDndUntil(expires_at));
-            menu.popdown();
+            if let Some(menu) = menu.upgrade() {
+                menu.popdown();
+            }
         });
         choices.append(&button);
     }
@@ -65,28 +86,84 @@ pub(in crate::ui) fn connect_dnd_menu(
     // Morning follows the next calendar day rather than a fixed 24-hour duration
     let morning = gtk::Button::with_label("Until tomorrow morning");
     let morning_tx = command_tx.clone();
-    let morning_menu = popover.clone();
+    let morning_menu = popover.downgrade();
     morning.connect_clicked(move |_| {
         if let Some(expires_at) = next_morning_deadline() {
             try_send_command(&morning_tx, UiCommand::SetDndUntil(expires_at));
         } else {
             tracing::warn!("could not resolve the next local 08:00 DND deadline");
         }
-        morning_menu.popdown();
+        if let Some(menu) = morning_menu.upgrade() {
+            menu.popdown();
+        }
     });
     choices.append(&morning);
 
     // Indefinite enablement deliberately replaces any existing timed deadline
     let indefinite = gtk::Button::with_label("Indefinitely");
-    let indefinite_menu = popover.clone();
+    let indefinite_menu = popover.downgrade();
     indefinite.connect_clicked(move |_| {
         try_send_command(&command_tx, UiCommand::SetDnd(true));
-        indefinite_menu.popdown();
+        if let Some(menu) = indefinite_menu.upgrade() {
+            menu.popdown();
+        }
     });
     choices.append(&indefinite);
 
     popover.set_child(Some(&choices));
-    panel.header.actions.dnd_menu.set_popover(Some(&popover));
+    popover.set_parent(dnd_toggle);
+    connect_dnd_menu_inputs(dnd_toggle, &popover);
+    DndDurationMenu { popover }
+}
+
+fn connect_dnd_menu_inputs(dnd_toggle: &gtk::ToggleButton, popover: &gtk::Popover) {
+    let secondary_click = gtk::GestureClick::new();
+    // Secondary click keeps the primary click dedicated to immediate toggling
+    secondary_click.set_button(3);
+    let click_menu = popover.downgrade();
+    secondary_click.connect_pressed(move |gesture, _, _, _| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        if let Some(menu) = click_menu.upgrade() {
+            menu.popup();
+        }
+    });
+    dnd_toggle.add_controller(secondary_click);
+
+    let long_press = gtk::GestureLongPress::new();
+    let press_menu = popover.downgrade();
+    long_press.connect_pressed(move |gesture, _, _| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        if let Some(menu) = press_menu.upgrade() {
+            menu.popup();
+        }
+    });
+    dnd_toggle.add_controller(long_press);
+
+    let key_controller = gtk::EventControllerKey::new();
+    let key_menu = popover.downgrade();
+    key_controller.connect_key_pressed(move |_, key, _, modifiers| {
+        let Some(menu) = key_menu.upgrade() else {
+            return gtk::glib::Propagation::Proceed;
+        };
+        match dnd_menu_key_action(key, modifiers) {
+            DndMenuKeyAction::Open => {
+                menu.popup();
+                gtk::glib::Propagation::Stop
+            }
+            DndMenuKeyAction::Ignore => gtk::glib::Propagation::Proceed,
+        }
+    });
+    dnd_toggle.add_controller(key_controller);
+}
+
+fn dnd_menu_key_action(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> DndMenuKeyAction {
+    if key == gtk::gdk::Key::Menu
+        || (key == gtk::gdk::Key::F10 && modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK))
+    {
+        DndMenuKeyAction::Open
+    } else {
+        DndMenuKeyAction::Ignore
+    }
 }
 
 pub(in crate::ui) fn update_dnd_status(label: &gtk::Label, expires_at: i64) {

@@ -5,7 +5,8 @@ use std::{fs, path::Path};
 
 use gtk::prelude::*;
 use unixnotis_core::{
-    Config, ConfigError, EmptyStateAlignment, Margins, ToggleWidgetConfig, WidgetDensity,
+    Config, ConfigError, EmptyStateAlignment, Margins, PanelRequest, ToggleWidgetConfig,
+    WidgetDensity,
 };
 use unixnotis_ui::css::CssManager;
 
@@ -210,6 +211,39 @@ fn reloaded_panel_applies_visibility_placement_and_widget_order_edges() {
     hidden_state.apply_reloaded_panel(&config);
     assert!(!hidden_state.panel.header.actions.search_toggle.is_active());
     assert!(!hidden_state.panel.header.search.revealer.reveals_child());
+}
+
+#[gtk::test]
+fn reload_enables_configured_search_in_toggle_and_revealer() {
+    let mut state = state();
+    let mut config = state.config.clone();
+    assert!(!state.panel.header.actions.search_toggle.is_active());
+    assert!(!state.panel.header.search.revealer.reveals_child());
+
+    config.panel.search_visible = true;
+    state.apply_reloaded_panel(&config);
+
+    assert!(state.panel.header.actions.search_toggle.is_active());
+    assert!(state.panel.header.search.revealer.reveals_child());
+}
+
+#[gtk::test]
+fn panel_close_and_reopen_keep_transient_search_closed() {
+    let mut state = state();
+    state.apply_panel_request(PanelRequest::open());
+    state.panel.header.actions.search_toggle.set_active(true);
+    state.panel.header.search.entry.set_text("urgent");
+    assert!(state.panel.header.search.revealer.reveals_child());
+
+    state.apply_panel_request(PanelRequest::close());
+    assert!(!state.panel.header.actions.search_toggle.is_active());
+    assert!(!state.panel.header.search.revealer.reveals_child());
+    assert!(state.panel.header.search.entry.text().is_empty());
+
+    state.apply_panel_request(PanelRequest::open());
+    assert!(!state.panel.header.actions.search_toggle.is_active());
+    assert!(!state.panel.header.search.revealer.reveals_child());
+    state.apply_panel_request(PanelRequest::close());
 }
 
 #[gtk::test]

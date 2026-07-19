@@ -114,16 +114,13 @@ impl UiState {
             // Hide first so any teardown work does not trigger visible reflow
             self.panel.window.set_visible(false);
             // Reset transient search UI so each open starts from the full notification list
-            if self.panel.header.actions.search_toggle.is_active() {
-                // Programmatic close should not be treated as a user click
-                self.search_toggle_guard.set(true);
-                self.panel.header.actions.search_toggle.set_active(false);
-                self.search_toggle_guard.set(false);
-            }
-            if !self.panel.header.search.entry.text().is_empty() {
-                // Clearing text also removes any active list filter
-                self.panel.header.search.entry.set_text("");
-            }
+            crate::ui::panel::set_search_open(
+                &self.panel.header.actions.search_toggle,
+                &self.panel.header.search.revealer,
+                &self.panel.header.search.entry,
+                self.search_toggle_guard.as_ref(),
+                false,
+            );
             // Disable watch-based polling when hidden to reduce background load
             if let Some(volume) = self.volume.as_ref() {
                 volume.set_watch_active(false);

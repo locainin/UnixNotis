@@ -40,3 +40,16 @@ fn build_panel_header_places_explicit_close_inside_action_group() {
     assert!(child_with_class(&header.top, hooks::panel_action::CLOSE).is_none());
     assert!(child_with_class(&header.actions.group, hooks::panel_action::CLOSE).is_some());
 }
+
+#[gtk::test]
+fn visible_search_configuration_activates_toggle_and_revealer_together() {
+    let config = PanelConfig {
+        search_visible: true,
+        ..PanelConfig::default()
+    };
+
+    let header = build_panel_header(&config);
+
+    assert!(header.actions.search_toggle.is_active());
+    assert!(header.search.revealer.reveals_child());
+}
