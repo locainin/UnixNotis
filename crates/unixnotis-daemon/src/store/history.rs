@@ -4,12 +4,18 @@
 //! and cross-cutting policy decisions
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use unixnotis_core::{Notification, NotificationView};
 
+struct HistoryEntry {
+    notification: Arc<Notification>,
+    // Weak source identity supports race-safe cleanup without retaining live payloads
+    source: Weak<Notification>,
+}
+
 pub(super) struct HistoryStore {
-    entries: HashMap<u32, Arc<Notification>>,
+    entries: HashMap<u32, HistoryEntry>,
     order: VecDeque<u32>,
 }
 
@@ -30,7 +36,7 @@ impl HistoryStore {
     }
 
     pub(super) fn get(&self, id: &u32) -> Option<&Arc<Notification>> {
-        self.entries.get(id)
+        self.entries.get(id).map(|entry| &entry.notification)
     }
 
     pub(super) fn clear(&mut self) {
@@ -41,15 +47,15 @@ impl HistoryStore {
     pub(super) fn list_views(&self) -> Vec<NotificationView> {
         let mut views = Vec::with_capacity(self.entries.len());
         for id in self.order.iter().rev() {
-            if let Some(notification) = self.entries.get(id) {
-                views.push(notification.to_list_view());
+            if let Some(entry) = self.entries.get(id) {
+                views.push(entry.notification.to_list_view());
             }
         }
         views
     }
 
     pub(super) fn remove(&mut self, id: &u32) -> Option<Arc<Notification>> {
-        let removed = self.entries.remove(id);
+        let removed = self.entries.remove(id).map(|entry| entry.notification);
         if removed.is_some() {
             // Removal is infrequent compared to insertion; pay the cost here to keep order clean
             self.order.retain(|entry| entry != id);
@@ -63,8 +69,36 @@ impl HistoryStore {
             // Avoid duplicate IDs in order when a notification is replaced
             self.order.retain(|entry| *entry != id);
         }
-        self.entries.insert(id, notification);
+        self.entries.insert(
+            id,
+            HistoryEntry {
+                notification,
+                source: Weak::new(),
+            },
+        );
         self.order.push_back(id);
+    }
+
+    pub(super) fn set_source(&mut self, id: u32, source: Weak<Notification>) {
+        if let Some(entry) = self.entries.get_mut(&id) {
+            entry.source = source;
+        }
+    }
+
+    pub(super) fn remove_if_source(
+        &mut self,
+        id: u32,
+        expected: &Arc<Notification>,
+    ) -> Option<Arc<Notification>> {
+        let source_matches = self
+            .entries
+            .get(&id)
+            .and_then(|entry| entry.source.upgrade())
+            .is_some_and(|source| Arc::ptr_eq(&source, expected));
+        if !source_matches {
+            return None;
+        }
+        self.remove(&id)
     }
 
     pub(super) fn evict_to_limit(&mut self, max_entries: usize) {

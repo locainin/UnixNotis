@@ -128,7 +128,7 @@ async fn generation_safe_dismiss_keeps_replacement_and_its_timer() {
     };
 
     let removed = state
-        .dismiss_active_if_current(id, &original)
+        .dismiss_replied_if_current(id, &original)
         .await
         .expect("stale generation dismiss should remain a no-op");
 

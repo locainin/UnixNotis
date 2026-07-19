@@ -56,9 +56,9 @@ impl ControlServer {
         post_emit().await;
 
         if !target.is_resident {
-            // Cleanup applies only if the exact replied generation is still active
+            // Cleanup applies only if the exact replied generation is still stored
             self.state
-                .dismiss_active_if_current(id, &target)
+                .dismiss_replied_if_current(id, &target)
                 .await
                 .map_err(to_fdo_error)?;
         }

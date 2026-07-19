@@ -90,3 +90,35 @@ fn generation_safe_reply_dismissal_keeps_same_id_replacement() {
     assert!(store.dismiss_active_if_current(id, &replacement.notification));
     assert!(store.active_notification_view(id).is_none());
 }
+
+#[test]
+fn replied_generation_is_removed_after_sender_archives_it() {
+    let mut store = make_store_with_limits(12, 20);
+    let original = store.insert(make_notification("original"), 0).notification;
+    let id = original.id;
+    store.close(id, CloseReason::ClosedByCall);
+    assert_eq!(store.list_history().len(), 1);
+
+    let outcome = store.dismiss_replied_generation(id, &original);
+
+    assert!(!outcome.removed_active);
+    assert!(outcome.removed_history);
+    assert!(store.list_history().is_empty());
+}
+
+#[test]
+fn replied_generation_cleanup_keeps_archived_same_id_replacement() {
+    let mut store = make_store_with_limits(12, 20);
+    let original = store.insert(make_notification("original"), 0).notification;
+    let id = original.id;
+    let replacement = store.insert(make_notification("replacement"), id);
+    assert!(replacement.replaced);
+    store.close(id, CloseReason::ClosedByCall);
+
+    let outcome = store.dismiss_replied_generation(id, &original);
+
+    assert!(!outcome.removed_any());
+    let history = store.list_history();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].summary, "replacement");
+}

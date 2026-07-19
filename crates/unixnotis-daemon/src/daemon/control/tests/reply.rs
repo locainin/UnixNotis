@@ -174,6 +174,37 @@ async fn reply_listener_replacement_survives_generation_safe_dismissal() {
 }
 
 #[tokio::test]
+async fn reply_listener_close_removes_replied_notification_without_history() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let mut stream = reply_signal_stream(&state).await;
+    let id = {
+        let mut store = state.store.lock().await;
+        store
+            .insert(reply_notification(false, &sender), 0)
+            .notification
+            .id
+    };
+    let closing_state = state.clone();
+
+    ControlServer::new(state.clone())
+        .submit_inline_reply_with_post_emit(id, "yes", move || async move {
+            let (signal_id, text) = next_reply_signal(&mut stream).await;
+            assert_eq!((signal_id, text.as_str()), (id, "yes"));
+            closing_state
+                .close_notification(id, unixnotis_core::CloseReason::ClosedByCall)
+                .await
+                .expect("sender close should succeed");
+        })
+        .await
+        .expect("reply with sender close");
+
+    let store = state.store.lock().await;
+    assert!(store.list_active().is_empty());
+    assert!(store.list_history().is_empty());
+}
+
+#[tokio::test]
 async fn submit_inline_reply_rejects_sender_that_no_longer_owns_bus_name() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
