@@ -23,7 +23,7 @@ pub(in crate::ui) use behavior::{connect_auto_close, connect_keyboard_shortcuts}
 pub(in crate::ui) use header::actions::{
     connect_clear_button, connect_close_button, connect_dnd_toggle,
 };
-pub(in crate::ui) use header::dnd::{connect_dnd_menu, DndCountdown};
+pub(in crate::ui) use header::dnd::{connect_dnd_menu, DndCountdown, DndDurationMenu};
 pub(in crate::ui) use header::search::{
-    connect_filter_entry, connect_search_toggle, connect_widget_collapse_toggle,
+    connect_filter_entry, connect_search_toggle, connect_widget_collapse_toggle, set_search_open,
 };

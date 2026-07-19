@@ -78,6 +78,11 @@ pub(super) fn build_panel_header(config: &PanelConfig) -> PanelHeaderWidgets {
     header.append(&action_area.row);
 
     let search = build_panel_search(config);
+    // Initial configuration must keep the toggle aligned with the visible search row
+    action_area
+        .widgets
+        .search_toggle
+        .set_active(search.revealer.reveals_child());
     header.append(&search.revealer);
 
     PanelHeaderWidgets {

@@ -124,6 +124,23 @@ pub(super) fn send_filter_event(event_tx: &async_channel::Sender<UiEvent>, filte
     }
 }
 
+pub(in crate::ui) fn set_search_open(
+    search_toggle: &gtk::ToggleButton,
+    search_revealer: &gtk::Revealer,
+    search_entry: &gtk::SearchEntry,
+    search_toggle_guard: &Cell<bool>,
+    open: bool,
+) {
+    // Guarded changes still pass through the signal handler when the toggle changes
+    let previous_guard = search_toggle_guard.replace(true);
+    search_toggle.set_active(open);
+    // Nested callers retain the guard state owned by the outer operation
+    search_toggle_guard.set(previous_guard);
+
+    // Apply directly as well because GTK emits no signal when the toggle already matches
+    apply_search_open_state(search_revealer, search_entry, open);
+}
+
 pub(in crate::ui) fn connect_search_toggle(
     search_toggle: &gtk::ToggleButton,
     search_revealer: &gtk::Revealer,
@@ -131,7 +148,6 @@ pub(in crate::ui) fn connect_search_toggle(
     search_toggle_guard: Rc<Cell<bool>>,
 ) {
     let search_click_gate = ClickCooldown::new(Duration::from_millis(SEARCH_REVEAL_TRANSITION_MS));
-    let accepted_search_reveal = Rc::new(Cell::new(search_revealer.reveals_child()));
     // Programmatic rollback must not be mistaken for a fresh user click
     let search_restore = Rc::new(Cell::new(false));
     let toggled_revealer = search_revealer.clone();
@@ -139,23 +155,43 @@ pub(in crate::ui) fn connect_search_toggle(
 
     // A weak reference avoids a signal cycle between the entry and toggle
     let stop_toggle = search_toggle.downgrade();
+    let stop_revealer = search_revealer.clone();
+    let stop_entry = search_entry.clone();
     let stop_click_gate = search_click_gate.clone();
+    let stop_guard = search_toggle_guard.clone();
     search_entry.connect_stop_search(move |_| {
         // Escape is a semantic close and should not wait for the reveal click cooldown
         stop_click_gate.release();
         if let Some(toggle) = stop_toggle.upgrade() {
-            toggle.set_active(false);
+            set_search_open(
+                &toggle,
+                &stop_revealer,
+                &stop_entry,
+                stop_guard.as_ref(),
+                false,
+            );
+        } else {
+            // The entry may briefly outlive its toggle during GTK teardown
+            apply_search_open_state(&stop_revealer, &stop_entry, false);
         }
     });
 
     search_toggle.connect_toggled(move |button| {
-        if search_toggle_guard.get() || search_restore.replace(false) {
+        if search_restore.replace(false) {
             return;
         }
 
         let reveal = button.is_active();
+        if search_toggle_guard.get() {
+            // Programmatic changes must keep every search widget on the same state
+            search_click_gate.release();
+            apply_search_open_state(&toggled_revealer, &toggled_entry, reveal);
+            return;
+        }
+
         if !search_click_gate.try_start() {
-            let accepted = accepted_search_reveal.get();
+            // The revealer records the last accepted transition target
+            let accepted = toggled_revealer.reveals_child();
             if reveal != accepted {
                 // Keep the visual toggle synced with the accepted revealer state
                 search_restore.set(true);
@@ -164,7 +200,6 @@ pub(in crate::ui) fn connect_search_toggle(
             return;
         }
 
-        accepted_search_reveal.set(reveal);
         // Freeze the toggle while its revealer animates to the accepted state
         button.set_sensitive(false);
         let button_enable = button.clone();
@@ -174,16 +209,25 @@ pub(in crate::ui) fn connect_search_toggle(
                 button_enable.set_sensitive(true);
             },
         );
-        toggled_revealer.set_reveal_child(reveal);
+        apply_search_open_state(&toggled_revealer, &toggled_entry, reveal);
         if reveal {
             // Selecting existing text makes the next query replace it immediately
             toggled_entry.grab_focus();
             toggled_entry.select_region(0, i32::MAX);
-        } else if !toggled_entry.text().is_empty() {
-            // Closing search restores the full notification list
-            toggled_entry.set_text("");
         }
     });
+}
+
+fn apply_search_open_state(
+    search_revealer: &gtk::Revealer,
+    search_entry: &gtk::SearchEntry,
+    open: bool,
+) {
+    search_revealer.set_reveal_child(open);
+    if !open && !search_entry.text().is_empty() {
+        // Closing search restores the full notification list
+        search_entry.set_text("");
+    }
 }
 
 #[cfg(test)]

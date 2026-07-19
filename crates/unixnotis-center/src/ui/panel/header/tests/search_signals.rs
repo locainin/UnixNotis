@@ -6,6 +6,7 @@ use gtk::prelude::*;
 
 use super::{
     connect_filter_entry, connect_search_toggle, connect_widget_collapse_toggle, send_filter_event,
+    set_search_open,
 };
 use crate::control::UiEvent;
 
@@ -50,7 +51,7 @@ fn stop_search_closes_revealer_and_clears_filter_immediately() {
 }
 
 #[gtk::test]
-fn guarded_search_toggle_does_not_change_revealer_state() {
+fn guarded_search_toggle_synchronizes_revealer_state() {
     let toggle = gtk::ToggleButton::new();
     let revealer = gtk::Revealer::new();
     let entry = gtk::SearchEntry::new();
@@ -60,7 +61,14 @@ fn guarded_search_toggle_does_not_change_revealer_state() {
     toggle.set_active(true);
 
     assert!(toggle.is_active());
+    assert!(revealer.reveals_child());
+
+    entry.set_text("urgent");
+    toggle.set_active(false);
+
+    assert!(!toggle.is_active());
     assert!(!revealer.reveals_child());
+    assert!(entry.text().is_empty());
 }
 
 #[gtk::test]
@@ -78,6 +86,54 @@ fn rapid_search_toggle_restores_the_last_accepted_state() {
     assert!(toggle.is_active());
     assert!(revealer.reveals_child());
     assert_eq!(entry.text(), "urgent");
+}
+
+#[gtk::test]
+fn programmatic_panel_close_keeps_search_closed_for_the_next_open() {
+    let toggle = gtk::ToggleButton::new();
+    let revealer = gtk::Revealer::new();
+    let entry = gtk::SearchEntry::new();
+    let guard = Rc::new(Cell::new(false));
+    connect_search_toggle(&toggle, &revealer, &entry, guard.clone());
+
+    toggle.set_active(true);
+    entry.set_text("urgent");
+    set_search_open(&toggle, &revealer, &entry, guard.as_ref(), false);
+
+    // Reopening the panel does not mutate search state
+    assert!(!toggle.is_active());
+    assert!(!revealer.reveals_child());
+    assert!(entry.text().is_empty());
+}
+
+#[gtk::test]
+fn programmatic_search_sync_preserves_an_outer_guard_scope() {
+    let toggle = gtk::ToggleButton::new();
+    let revealer = gtk::Revealer::new();
+    let entry = gtk::SearchEntry::new();
+    let guard = Cell::new(true);
+
+    set_search_open(&toggle, &revealer, &entry, &guard, true);
+
+    assert!(guard.get());
+    assert!(toggle.is_active());
+    assert!(revealer.reveals_child());
+}
+
+#[gtk::test]
+fn stop_search_closes_a_preexisting_toggle_revealer_mismatch() {
+    let toggle = gtk::ToggleButton::new();
+    let revealer = gtk::Revealer::new();
+    let entry = gtk::SearchEntry::new();
+    revealer.set_reveal_child(true);
+    entry.set_text("urgent");
+    connect_search_toggle(&toggle, &revealer, &entry, Rc::new(Cell::new(false)));
+
+    entry.emit_stop_search();
+
+    assert!(!toggle.is_active());
+    assert!(!revealer.reveals_child());
+    assert!(entry.text().is_empty());
 }
 
 #[gtk::test]

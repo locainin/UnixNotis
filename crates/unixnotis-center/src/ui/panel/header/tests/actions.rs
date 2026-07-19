@@ -91,3 +91,25 @@ fn apply_panel_action_config_moves_close_between_header_and_action_group() {
     assert!(child_with_class(&actions.widgets.group, hooks::panel_action::CLOSE).is_none());
     assert!(child_with_class(&header_top, hooks::panel_action::CLOSE).is_some());
 }
+
+#[gtk::test]
+fn dnd_duration_menu_does_not_add_a_standalone_arrow_button() {
+    let actions = build_panel_actions(&PanelConfig::default());
+    let toggle = actions
+        .widgets
+        .dnd_group
+        .first_child()
+        .expect("DND group should contain its toggle");
+    let status = toggle
+        .next_sibling()
+        .expect("DND group should contain its countdown label");
+
+    assert_eq!(toggle, actions.widgets.dnd_toggle);
+    assert_eq!(status, actions.widgets.dnd_status);
+    assert!(status.next_sibling().is_none());
+    assert!(actions
+        .widgets
+        .dnd_toggle
+        .tooltip_text()
+        .is_some_and(|text| text.contains("Right-click")));
+}

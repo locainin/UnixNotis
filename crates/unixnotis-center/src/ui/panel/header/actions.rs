@@ -23,7 +23,6 @@ pub(in crate::ui) struct PanelActionWidgets {
     pub(in crate::ui) focus_toggle: gtk::ToggleButton,
     pub(in crate::ui) dnd_toggle: gtk::ToggleButton,
     pub(in crate::ui) dnd_status: gtk::Label,
-    pub(in crate::ui) dnd_menu: gtk::MenuButton,
     pub(in crate::ui) clear_button: gtk::Button,
     pub(in crate::ui) search_toggle: gtk::ToggleButton,
     pub(in crate::ui) close_button: gtk::Button,
@@ -45,20 +44,15 @@ pub(super) fn build_panel_actions(config: &PanelConfig) -> PanelActionArea {
     let focus_toggle = build_toggle_action(hooks::panel_action::FOCUS, &config.focus_action);
 
     let dnd_toggle = build_toggle_action(hooks::panel_action::PRIMARY, &config.dnd_action);
+    set_dnd_duration_tooltip(&dnd_toggle, &config.dnd_action.tooltip);
     let dnd_status = gtk::Label::new(None);
     dnd_status.add_css_class(hooks::panel_action::LABEL);
     dnd_status.set_visible(false);
 
-    let dnd_menu = gtk::MenuButton::new();
-    configure_action_button(&dnd_menu, hooks::panel_action::PRIMARY, true);
-    dnd_menu.set_icon_name("pan-down-symbolic");
-    dnd_menu.set_tooltip_text(Some("Choose a Do Not Disturb duration"));
-
     let dnd_group = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-    // One ordered child keeps the toggle, countdown, and duration arrow together
+    // The duration menu opens from the DND control without adding another button
     dnd_group.append(&dnd_toggle);
     dnd_group.append(&dnd_status);
-    dnd_group.append(&dnd_menu);
 
     let clear_button =
         build_button_action(hooks::panel_action::MUTED, &resolved_clear_action(config));
@@ -91,7 +85,6 @@ pub(super) fn build_panel_actions(config: &PanelConfig) -> PanelActionArea {
             focus_toggle,
             dnd_toggle,
             dnd_status,
-            dnd_menu,
             clear_button,
             search_toggle,
             close_button,
@@ -118,6 +111,7 @@ pub(in crate::ui::panel) fn apply_panel_action_config(
         hooks::panel_action::PRIMARY,
         &config.dnd_action,
     );
+    set_dnd_duration_tooltip(&widgets.dnd_toggle, &config.dnd_action.tooltip);
     update_action_button(
         &widgets.clear_button,
         hooks::panel_action::MUTED,
@@ -172,6 +166,17 @@ fn build_toggle_action(role_class: &str, config: &PanelActionConfig) -> gtk::Tog
     let content = build_action_content(config);
     button.set_child(Some(&content));
     button
+}
+
+fn set_dnd_duration_tooltip(button: &gtk::ToggleButton, base: &str) {
+    // Keep custom copy while making the hidden context interaction discoverable
+    let duration_hint = "Right-click, long-press, or press Shift+F10 for a duration";
+    let tooltip = if base.is_empty() {
+        duration_hint.to_string()
+    } else {
+        format!("{base}\n{duration_hint}")
+    };
+    button.set_tooltip_text(Some(&tooltip));
 }
 
 fn build_button_action(role_class: &str, config: &PanelActionConfig) -> gtk::Button {
