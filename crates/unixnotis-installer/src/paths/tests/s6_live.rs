@@ -247,7 +247,7 @@ fn install_paths_allow_explicit_symlinked_s6_live_root() {
             .start_command()
             .expect("s6 start command")
             .args()[1],
-        linked_live.to_string_lossy()
+        linked_live.as_os_str()
     );
 
     restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);
