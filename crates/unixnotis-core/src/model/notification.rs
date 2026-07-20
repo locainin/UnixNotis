@@ -159,14 +159,18 @@ fn notification_plain_text(input: &str) -> String {
 }
 
 fn push_tag_spacing(output: &mut String, tag: &str) {
+    const BLOCK_TAGS: [&str; 5] = ["br", "p", "div", "li", "tr"];
+
     // Trim "/" first so opening and closing tags use the same spacing rule
     let tag_name = tag
         .trim_start_matches('/')
         .split(|ch: char| ch.is_whitespace() || ch == '/')
         .next()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if matches!(tag_name.as_str(), "br" | "p" | "div" | "li" | "tr") {
+        .unwrap_or_default();
+    if BLOCK_TAGS
+        .iter()
+        .any(|expected| tag_name.eq_ignore_ascii_case(expected))
+    {
         // These tags normally separate chunks of text
         output.push('\n');
     }
@@ -250,7 +254,17 @@ fn collapse_notification_whitespace(input: &str) -> String {
         }
     }
 
-    output.trim().to_string()
+    if saw_newline {
+        // A newline can follow an already-normalized space at the tail
+        output.pop();
+        if output.ends_with(' ') {
+            output.pop();
+        }
+    } else if saw_space {
+        output.pop();
+    }
+
+    output
 }
 
 /// Serializable view of a notification for D-Bus signals
