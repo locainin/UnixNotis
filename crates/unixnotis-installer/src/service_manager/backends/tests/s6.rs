@@ -194,21 +194,12 @@ fn s6_backend_hyprland_startup_lines_update_envdir_and_start_service() {
 
     let commands = manager.hyprland_startup_commands(&vars);
 
-    // Hyprland receives one shell line because it does not manage multi-step service hooks
     assert_eq!(commands.len(), 1);
-    assert!(commands[0].starts_with("sh -lc "));
-    assert!(commands[0].contains("[ ! -L \"$envdir\" ] || exit 1"));
-    assert!(commands[0].contains("mkdir -p \"$envdir\" || exit 1"));
-    assert!(commands[0].contains("mktemp \"$envdir/.WAYLAND_DISPLAY.XXXXXX\""));
-    assert!(!commands[0].contains(".PATH.XXXXXX"));
-    assert!(!commands[0].contains("s6-db-reload"));
-    assert!(!commands[0].contains("s6-rc-compile"));
-    assert!(commands[0].contains("s6-rc -l "));
-    assert!(commands[0].contains("/run/user/s6 rc"));
-    assert!(commands[0].contains("-u change"));
-    assert!(commands[0].contains("unixnotis-daemon"));
-    assert!(commands[0].contains("s6-svc -r "));
-    assert!(commands[0].contains("/run/user/s6 rc/servicedirs/unixnotis-daemon"));
+    assert_eq!(
+        commands[0],
+        "noticenterctl sync-session-environment --service-manager s6"
+    );
+    assert!(!commands[0].contains("sh -lc"));
 }
 
 #[test]
