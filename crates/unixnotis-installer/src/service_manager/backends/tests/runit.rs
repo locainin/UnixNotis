@@ -243,22 +243,11 @@ fn runit_backend_hyprland_startup_lines_update_envdir_and_restart() {
     let commands = manager.hyprland_startup_commands(&vars);
 
     assert_eq!(commands.len(), 1);
-    assert!(commands[0].starts_with("sh -lc "));
-    assert!(!commands[0].contains('\n'));
-    assert!(commands[0].contains("umask 077"));
-    assert!(commands[0].contains("[ ! -L \"$envdir\" ] || exit 1"));
-    assert!(commands[0].contains("mkdir -p \"$envdir\" || exit 1"));
-    assert!(commands[0].contains("[ -d \"$envdir\" ] && [ ! -L \"$envdir\" ] || exit 1"));
-    assert!(commands[0].contains("/tmp/service root/unixnotis-daemon/env"));
-    assert!(commands[0].contains("mktemp \"$envdir/.WAYLAND_DISPLAY.XXXXXX\""));
-    assert!(commands[0].contains("printenv WAYLAND_DISPLAY > \"$tmp\" || : > \"$tmp\""));
-    assert!(commands[0].contains("chmod 600 \"$tmp\""));
-    assert!(commands[0].contains("mv -f \"$tmp\" \"$envdir/WAYLAND_DISPLAY\""));
-    assert!(commands[0].contains("\"$envdir/WAYLAND_DISPLAY\""));
-    assert!(!commands[0].contains(".PATH.XXXXXX"));
-    assert!(!commands[0].contains("$envdir/PATH"));
-    assert!(commands[0].contains("sv restart"));
-    assert!(commands[0].contains("|| sv start"));
+    assert_eq!(
+        commands[0],
+        "noticenterctl sync-session-environment --service-manager runit"
+    );
+    assert!(!commands[0].contains("sh -lc"));
 }
 
 #[test]

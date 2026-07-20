@@ -4,9 +4,8 @@ use std::path::{Path, PathBuf};
 use crate::system_tools;
 
 use super::super::contract::{
-    envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
-    shell_quote, shell_quote_path, CommandSpec, ReadinessIssue, ServiceArtifact,
-    ServiceArtifactKind, ServiceProbe, MANAGED_DIRECTORY_MARKER,
+    envdir_file_contents, is_safe_env_name, shell_quote, shell_quote_path, CommandSpec,
+    ReadinessIssue, ServiceArtifact, ServiceArtifactKind, ServiceProbe, MANAGED_DIRECTORY_MARKER,
 };
 
 // Runit service directories use the service name directly under the supervision root
@@ -120,28 +119,8 @@ pub fn stop_for_reinstall_command(artifact_root: &Path) -> Option<CommandSpec> {
     Some(sv_command("stop", artifact_root))
 }
 
-pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> Vec<String> {
-    let service = service_dir(artifact_root);
-    let env_dir = service.join(ENV_DIR);
-    // Hyprland needs one line, so join shell steps with semicolons instead of newlines
-    // The envdir checks mirror Rust-side symlink refusal before shell redirection runs
-    let mut steps = envdir_sync_prelude(&env_dir);
-    for var in import_vars
-        .iter()
-        .copied()
-        .filter(|name| is_runit_envdir_name(name))
-    {
-        // mktemp writes a fresh file, and mv replaces the env file path without appending
-        steps.push(render_envdir_shell_update(var));
-    }
-    steps.push(format!(
-        "sv restart {} || sv start {}",
-        shell_quote_path(&service),
-        shell_quote_path(&service)
-    ));
-    // Values are read from the live session at runtime, never embedded in config text
-    let script = steps.join("; ");
-    vec![format!("sh -lc {}", shell_quote(&script))]
+pub fn hyprland_startup_commands(_artifact_root: &Path, _import_vars: &[&str]) -> Vec<String> {
+    vec!["noticenterctl sync-session-environment --service-manager runit".to_string()]
 }
 
 pub const fn environment_sync_commands() -> Vec<CommandSpec> {
