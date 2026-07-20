@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
 use super::{CommandReference, HostSpecificCommandPath, OutsideCommandPath};
+use unixnotis_core::CommandSpec;
 
 #[test]
 fn command_path_findings_preserve_slot_command_and_resolved_target() {
     let reference = CommandReference {
         slot: "widgets.volume.get_cmd".to_string(),
-        command: "scripts/volume".to_string(),
+        command: CommandSpec::direct("scripts/volume", [] as [&str; 0]),
     };
     let outside = OutsideCommandPath {
         slot: reference.slot.clone(),
