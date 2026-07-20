@@ -341,7 +341,7 @@ fn sanitize_dnd_menu_deduplicates_triggers_and_bounds_choices() {
     ];
     config.panel.dnd_menu_choices = vec![
         DndMenuChoice::Duration {
-            label: "".to_string(),
+            label: String::new(),
             minutes: 0,
         },
         DndMenuChoice::Duration {

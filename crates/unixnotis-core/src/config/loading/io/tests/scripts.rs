@@ -1,3 +1,5 @@
+//! Tests for provisioning built-in helper scripts
+
 use std::fs;
 
 use crate::Config;

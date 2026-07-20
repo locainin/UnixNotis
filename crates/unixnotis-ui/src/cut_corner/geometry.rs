@@ -43,17 +43,20 @@ pub(super) fn build_path(width: f32, height: f32, corners: CutCorners) -> gsk::P
     path.to_path()
 }
 
-pub(super) fn contains_point(width: f32, height: f32, corners: CutCorners, x: f64, y: f64) -> bool {
-    let x = x as f32;
-    let y = y as f32;
+pub(super) fn contains_point(width: f64, height: f64, corners: CutCorners, x: f64, y: f64) -> bool {
     if x < 0.0 || y < 0.0 || x >= width || y >= height {
         // GTK hit testing excludes the far allocation edge
         return false;
     }
 
-    let corners = NormalizedCorners::new(width, height, corners);
-    x + y >= corners.top_left
-        && (width - x) + y >= corners.top_right
-        && (width - x) + (height - y) >= corners.bottom_right
-        && x + (height - y) >= corners.bottom_left
+    // Pointer coordinates stay in GTK's native f64 space to avoid lossy input conversion
+    let limit = (width.max(0.0) / 2.0).min(height.max(0.0) / 2.0);
+    let top_left = f64::from(corners.top_left).min(limit);
+    let top_right = f64::from(corners.top_right).min(limit);
+    let bottom_right = f64::from(corners.bottom_right).min(limit);
+    let bottom_left = f64::from(corners.bottom_left).min(limit);
+    x + y >= top_left
+        && (width - x) + y >= top_right
+        && (width - x) + (height - y) >= bottom_right
+        && x + (height - y) >= bottom_left
 }

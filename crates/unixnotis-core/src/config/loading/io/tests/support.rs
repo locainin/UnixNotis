@@ -1,3 +1,5 @@
+//! Shared filesystem and environment support for configuration I/O tests
+
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;

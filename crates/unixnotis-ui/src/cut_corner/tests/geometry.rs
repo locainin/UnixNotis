@@ -85,14 +85,20 @@ fn rendered_path_and_pointer_shape_match_across_the_plate() {
     let path = build_path(width, height, corners);
 
     // A dense grid catches drift between the visible polygon and pointer hit testing
-    for y in 0..29 {
-        for x in 0..37 {
+    for y in 0_u16..29 {
+        for x in 0_u16..37 {
             // Unequal fractions avoid sampling directly on a diagonal boundary
-            let x = x as f32 + 0.33;
-            let y = y as f32 + 0.21;
+            let x = f32::from(x) + 0.33;
+            let y = f32::from(y) + 0.21;
             assert_eq!(
                 path.in_fill(&graphene::Point::new(x, y), gsk::FillRule::Winding),
-                contains_point(width, height, corners, f64::from(x), f64::from(y)),
+                contains_point(
+                    f64::from(width),
+                    f64::from(height),
+                    corners,
+                    f64::from(x),
+                    f64::from(y)
+                ),
                 "path and hit test differ at ({x}, {y})"
             );
         }

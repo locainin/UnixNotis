@@ -19,6 +19,7 @@ pub struct NotificationList {
     pub(in crate::ui::notifications) empty_offset_top: i32,
     pub(in crate::ui::notifications) empty_alignment: EmptyStateAlignment,
     pub(in crate::ui) empty_text: String,
+    pub(in crate::ui) no_matching_text: String,
     pub(in crate::ui::notifications) entries: HashMap<u32, NotificationEntry>,
     // Active notifications render first to match the in-flight stack
     pub(in crate::ui::notifications) active_order: VecDeque<u32>,
@@ -65,8 +66,17 @@ pub struct NotificationListConfig {
     pub notification_corners: CutCorners,
     pub show_notification_thumbnails: bool,
     pub empty_text: String,
+    pub no_matching_text: String,
     pub empty_offset_top: i32,
     pub empty_alignment: EmptyStateAlignment,
+}
+
+/// Counts used by the panel header for normal and filtered list states
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::ui) struct NotificationCounts {
+    pub(in crate::ui) matching: usize,
+    pub(in crate::ui) total: usize,
+    pub(in crate::ui) filter_active: bool,
 }
 
 pub(in crate::ui::notifications) struct NotificationEntry {

@@ -1,3 +1,5 @@
+//! Tests for safe configuration file writes
+
 use std::fs;
 
 use super::support::test_root;
@@ -11,7 +13,7 @@ fn write_if_missing_preserves_existing_contents() {
     let path = root.join("file.txt");
     fs::write(&path, "keep").expect("existing file");
 
-    super::super::write_if_missing(&path, "replace").expect("write should succeed");
+    super::super::write::write_if_missing(&path, "replace").expect("write should succeed");
 
     assert_eq!(fs::read_to_string(&path).expect("file contents"), "keep");
 
@@ -26,7 +28,7 @@ fn write_if_missing_creates_new_file() {
     fs::create_dir_all(&root).expect("root");
     let path = root.join("file.txt");
 
-    super::super::write_if_missing(&path, "created").expect("write should succeed");
+    super::super::write::write_if_missing(&path, "created").expect("write should succeed");
 
     assert_eq!(fs::read_to_string(&path).expect("file contents"), "created");
 

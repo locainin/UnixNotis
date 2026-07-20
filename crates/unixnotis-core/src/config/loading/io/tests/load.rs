@@ -1,8 +1,14 @@
+//! Tests for bounded configuration loading and parsing
+
 use std::fs;
+use std::io::Cursor;
 
-use crate::{Config, ConfigError};
+use crate::{Config, ConfigError, MAX_CONFIG_BYTES};
 
+use super::super::load::read_config_contents;
 use super::support::{env_lock, test_root, EnvGuard};
+
+const EXPECTED_MAX_CONFIG_BYTES: usize = 1_048_576;
 
 #[test]
 fn load_from_path_reads_toml_and_applies_runtime_defaults() {
@@ -48,6 +54,83 @@ fn load_from_path_returns_parse_error_for_invalid_toml() {
 
     assert!(matches!(err, ConfigError::ParseFailed(_)));
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn parse_returns_the_config_produced_by_the_report_pipeline() {
+    let config = Config::parse(
+        r#"
+        [panel]
+        title = "Parsed Title"
+        "#,
+    )
+    .expect("valid config text should parse");
+
+    assert_eq!(config.panel.title, "Parsed Title");
+}
+
+#[test]
+fn load_from_path_rejects_oversized_config_before_parsing() {
+    assert_eq!(MAX_CONFIG_BYTES, EXPECTED_MAX_CONFIG_BYTES as u64);
+    let root = test_root("load-oversized");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).expect("config dir");
+    let path = root.join("config.toml");
+    let file = fs::File::create(&path).expect("oversized config file");
+    // A sparse file exercises the metadata guard without allocating the payload in the test
+    file.set_len(EXPECTED_MAX_CONFIG_BYTES as u64 + 1)
+        .expect("oversized config length");
+
+    let error = Config::load_from_path(&path).expect_err("oversized config should fail");
+
+    assert!(matches!(
+        error,
+        ConfigError::TooLarge {
+            size,
+            max,
+        } if size == EXPECTED_MAX_CONFIG_BYTES as u64 + 1
+            && max == EXPECTED_MAX_CONFIG_BYTES as u64
+    ));
+    assert_eq!(
+        error.shareable_summary(),
+        "Configuration file exceeds the maximum supported size"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn bounded_reader_accepts_exact_limit_and_rejects_a_growing_stream() {
+    assert_eq!(MAX_CONFIG_BYTES, EXPECTED_MAX_CONFIG_BYTES as u64);
+    let declared_oversized = read_config_contents(
+        Cursor::new(Vec::<u8>::new()),
+        EXPECTED_MAX_CONFIG_BYTES as u64 + 1,
+    )
+    .expect_err("declared oversized input should fail before reading");
+
+    assert!(matches!(
+        declared_oversized,
+        ConfigError::TooLarge { size, max }
+            if size == EXPECTED_MAX_CONFIG_BYTES as u64 + 1
+                && max == EXPECTED_MAX_CONFIG_BYTES as u64
+    ));
+
+    let exact = vec![b' '; EXPECTED_MAX_CONFIG_BYTES];
+
+    let contents = read_config_contents(Cursor::new(exact), EXPECTED_MAX_CONFIG_BYTES as u64)
+        .expect("a config at the exact size limit should be accepted");
+
+    assert_eq!(contents.len(), EXPECTED_MAX_CONFIG_BYTES);
+
+    let grew_after_metadata = vec![b' '; EXPECTED_MAX_CONFIG_BYTES + 1];
+    let error = read_config_contents(Cursor::new(grew_after_metadata), 0)
+        .expect_err("a stream that grows beyond the limit should be rejected");
+
+    assert!(matches!(
+        error,
+        ConfigError::TooLarge { size, max }
+            if size == EXPECTED_MAX_CONFIG_BYTES as u64 + 1
+                && max == EXPECTED_MAX_CONFIG_BYTES as u64
+    ));
 }
 
 #[test]

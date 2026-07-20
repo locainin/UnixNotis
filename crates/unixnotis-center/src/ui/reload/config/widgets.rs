@@ -34,6 +34,7 @@ impl UiState {
             notification_corners: config.theme.notification_corners,
             show_notification_thumbnails: config.panel.notification_thumbnails_visible,
             empty_text: config.panel.empty_text.clone(),
+            no_matching_text: config.panel.no_matching_text.clone(),
             empty_offset_top: config.panel.empty_offset_top,
             empty_alignment: config.panel.empty_alignment,
         };

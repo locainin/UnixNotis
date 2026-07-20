@@ -15,6 +15,7 @@ use tracing::debug;
 use super::blocks;
 use super::types::{GroupRange, NotificationList, RowKey};
 use super::RowItem;
+use crate::ui::notifications::row::empty::update_empty_row;
 
 impl NotificationList {
     pub fn flush_rebuild(&mut self) {
@@ -279,8 +280,16 @@ impl NotificationList {
         self.visible_ids_for_group(ids).is_empty().not()
     }
 
-    fn update_empty_overlay(&self) {
+    pub(in crate::ui::notifications) fn update_empty_overlay(&self) {
         let is_empty = self.store.n_items() == 0;
+        let counts = self.notification_counts();
+        let text = if counts.filter_active && counts.total > 0 && counts.matching == 0 {
+            &self.no_matching_text
+        } else {
+            &self.empty_text
+        };
+        // Search with existing notifications needs different feedback from a truly empty list
+        update_empty_row(&self.empty_overlay, text);
         // Compare against the widget's own visible flag
         // Effective visibility can flip with parent state and leave the overlay logically stale
         if self.empty_overlay.get_visible() != is_empty {

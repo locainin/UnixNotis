@@ -20,6 +20,7 @@ const fn config_error_kind(error: &ConfigError) -> &'static str {
     match error {
         ConfigError::ReadFailed(_) => "read",
         ConfigError::ParseFailed(_) => "parse",
+        ConfigError::TooLarge { .. } => "too-large",
         ConfigError::MissingHome => "missing-home",
     }
 }

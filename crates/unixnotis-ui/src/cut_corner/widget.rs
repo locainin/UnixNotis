@@ -10,7 +10,9 @@ use unixnotis_core::{css::hooks, CutCorners};
 use super::geometry::{build_path, contains_point};
 
 mod imp {
-    use super::*;
+    use super::{build_path, contains_point, glib, render_dimension, Cell, CutCorners, RefCell};
+    use gtk::prelude::*;
+    use gtk::subclass::prelude::*;
 
     #[derive(Default)]
     pub struct CutCorner {
@@ -44,8 +46,8 @@ mod imp {
         fn contains(&self, x: f64, y: f64) -> bool {
             let widget = self.obj();
             contains_point(
-                widget.width() as f32,
-                widget.height() as f32,
+                f64::from(widget.width()),
+                f64::from(widget.height()),
                 self.corners.get(),
                 x,
                 y,
@@ -68,8 +70,8 @@ mod imp {
             }
 
             let path = build_path(
-                self.obj().width() as f32,
-                self.obj().height() as f32,
+                render_dimension(self.obj().width()),
+                render_dimension(self.obj().height()),
                 corners,
             );
             // GTK records the child until pop and discards pixels outside this polygon
@@ -78,6 +80,14 @@ mod imp {
             snapshot.pop();
         }
     }
+}
+
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "GTK logical dimensions are bounded far below f32's exact integer range"
+)]
+const fn render_dimension(value: i32) -> f32 {
+    value as f32
 }
 
 glib::wrapper! {

@@ -1,3 +1,5 @@
+//! Tests for provisioning configured theme files
+
 use std::fs;
 
 use crate::Config;

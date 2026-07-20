@@ -20,6 +20,7 @@ pub(super) fn build_notification_list(
         notification_corners: init.config.theme.notification_corners,
         show_notification_thumbnails: init.config.panel.notification_thumbnails_visible,
         empty_text: init.config.panel.empty_text.clone(),
+        no_matching_text: init.config.panel.no_matching_text.clone(),
         empty_offset_top: init.config.panel.empty_offset_top,
         empty_alignment: init.config.panel.empty_alignment,
     };

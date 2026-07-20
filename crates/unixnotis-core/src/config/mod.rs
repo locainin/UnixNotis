@@ -26,7 +26,7 @@ pub use icon_assets::{
     ResolvedIconAsset, DEFAULT_ICON_ASSET_EXTENSIONS, DEFAULT_ICON_ASSET_MAX_BYTES,
     DEFAULT_ICON_ASSET_MAX_HEIGHT, DEFAULT_ICON_ASSET_MAX_PIXELS, DEFAULT_ICON_ASSET_MAX_WIDTH,
 };
-pub use io::{ConfigError, ThemePaths};
+pub use io::{ConfigError, ThemePaths, MAX_CONFIG_BYTES};
 pub use layout::*;
 pub(in crate::config) use loading::{diagnostics, io};
 pub use media::*;

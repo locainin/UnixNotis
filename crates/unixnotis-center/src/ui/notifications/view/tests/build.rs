@@ -20,6 +20,7 @@ fn new_list_attaches_overlay_to_scroller() {
 
     assert!(scroller.child().is_some());
     assert_eq!(list.empty_text, "No notifications");
+    assert_eq!(list.no_matching_text, "No matching notifications");
     assert_eq!(list.empty_offset_top, 24);
     assert!(list.empty_overlay.get_visible());
 }
@@ -29,12 +30,14 @@ fn apply_config_updates_empty_copy_and_offset() {
     let mut list = support::make_list();
     let mut config = support::list_config();
     config.empty_text = "All clear".to_string();
+    config.no_matching_text = "Nothing found".to_string();
     config.empty_offset_top = 48;
 
     list.apply_config(&config);
     list.set_empty_layout(true);
 
     assert_eq!(list.empty_text, "All clear");
+    assert_eq!(list.no_matching_text, "Nothing found");
     assert_eq!(list.empty_offset_top, 48);
     assert_eq!(list.empty_overlay.margin_top(), 48);
 }
