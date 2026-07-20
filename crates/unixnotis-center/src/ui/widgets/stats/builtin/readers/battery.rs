@@ -10,7 +10,7 @@ pub(in crate::ui::widgets::stats::builtin) fn read_battery() -> Option<String> {
     read_battery_from(Path::new("/sys/class/power_supply"))
 }
 
-pub(in crate::ui::widgets::stats::builtin) fn read_battery_from(root: &Path) -> Option<String> {
+pub(in crate::ui::widgets::stats) fn read_battery_from(root: &Path) -> Option<String> {
     let entries = fs::read_dir(root).ok()?;
     let mut energy_now_total = 0u64;
     let mut energy_full_total = 0u64;

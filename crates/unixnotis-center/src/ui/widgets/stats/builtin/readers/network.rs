@@ -86,14 +86,14 @@ fn pick_default_iface() -> Option<String> {
 }
 
 #[derive(Debug, Clone)]
-pub(in crate::ui::widgets::stats::builtin) struct IfaceCandidate {
+pub(in crate::ui::widgets::stats) struct IfaceCandidate {
     // Interface name as reported by sysfs
-    pub(in crate::ui::widgets::stats::builtin) name: String,
+    pub(in crate::ui::widgets::stats) name: String,
     // Raw operstate contents ("up", "down", etc), kept for ranking
-    pub(in crate::ui::widgets::stats::builtin) operstate: String,
+    pub(in crate::ui::widgets::stats) operstate: String,
 }
 
-pub(in crate::ui::widgets::stats::builtin) fn pick_default_iface_from(
+pub(in crate::ui::widgets::stats) fn pick_default_iface_from(
     candidates: &[IfaceCandidate],
 ) -> Option<String> {
     // Filter invalid entries early to keep ranking logic simple

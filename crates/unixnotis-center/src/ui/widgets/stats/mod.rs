@@ -1,19 +1,11 @@
-//! Statistic widget module wiring
+//! Statistic cards and grid orchestration
 
-mod build;
 mod builtin;
 mod card;
-mod group;
-mod state;
+mod grid;
 mod style;
-#[cfg(test)]
-#[path = "tests/grid.rs"]
-mod tests;
-mod worker;
 
-use self::builtin::{BuiltinStat, BuiltinStatKey};
-use self::group::{collect_builtin_groups, BuiltinRefreshGroup};
-pub use self::state::StatGrid;
-use self::state::StatItem;
-use self::state::{apply_cached_value, BuiltinStatJob, BuiltinStatWorker, BuiltinSubmitOutcome};
-use super::utils::RefreshBackoff;
+pub use grid::StatGrid;
+
+#[cfg(test)]
+mod tests;
