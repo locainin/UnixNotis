@@ -5,10 +5,15 @@ use super::{
     dispatch_ready_job, should_warn_queue_full_from, CommandJob, CommandKind, CommandPlan,
     CommandWorker,
 };
+use unixnotis_core::CommandSpec;
 
 fn job(cmd: &str, kind: CommandKind) -> CommandJob {
     CommandJob {
-        cmd: cmd.to_string(),
+        cmd: if cmd == "sleep 1" {
+            CommandSpec::direct("sleep", ["1"])
+        } else {
+            CommandSpec::direct(cmd, [] as [&str; 0])
+        },
         plan: CommandPlan {
             kind,
             timeout_override: None,

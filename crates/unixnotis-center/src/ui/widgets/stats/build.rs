@@ -142,7 +142,9 @@ impl StatItem {
             config
                 .cmd
                 .as_ref()
-                .and_then(|cmd| BuiltinStat::from_command(cmd))
+                .and_then(|cmd| cmd.program())
+                .and_then(|program| program.to_str())
+                .and_then(BuiltinStat::from_command)
         };
 
         Self {

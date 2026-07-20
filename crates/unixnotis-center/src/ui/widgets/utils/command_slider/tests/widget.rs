@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
-use unixnotis_core::{css::hooks, SliderWidgetConfig};
+use unixnotis_core::{css::hooks, CommandSpec, SliderWidgetConfig};
 
 use super::CommandSlider;
 
@@ -33,7 +33,7 @@ fn inactive_watch_slider_remains_eligible_for_polling() {
 #[gtk::test]
 fn public_refresh_starts_and_completes_slider_update() {
     let config = SliderWidgetConfig {
-        get_cmd: "printf 37".to_string(),
+        get_cmd: CommandSpec::direct("printf", ["37"]),
         ..SliderWidgetConfig::default()
     };
     let slider = CommandSlider::new(config, "volume-slider");
@@ -70,7 +70,7 @@ fn public_refresh_honors_recorded_backoff() {
 #[gtk::test]
 fn public_watch_lifecycle_controls_the_owned_handle() {
     let config = SliderWidgetConfig {
-        watch_cmd: Some("sleep 2".to_string()),
+        watch_cmd: Some(CommandSpec::direct("sleep", ["2"])),
         ..SliderWidgetConfig::default()
     };
     let slider = CommandSlider::new(config, "volume-slider");

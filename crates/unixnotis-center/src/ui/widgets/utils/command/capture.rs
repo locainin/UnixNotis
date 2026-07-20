@@ -4,7 +4,7 @@ use std::io;
 use std::process::Output;
 use std::time::Duration;
 
-use unixnotis_core::{util, PanelDebugLevel};
+use unixnotis_core::{util, CommandSpec, PanelDebugLevel};
 
 use super::exec::set_command_config_dir;
 use super::plan::{resolve_command_plan, CommandKind};
@@ -16,32 +16,31 @@ pub fn configure_command_config_dir(config_dir: std::path::PathBuf) {
 }
 
 pub(in crate::ui::widgets) fn run_command_capture_async(
-    cmd: &str,
+    cmd: &CommandSpec,
 ) -> async_channel::Receiver<Result<Output, io::Error>> {
     enqueue_capture(cmd, CommandKind::Slow, None, "slow")
 }
 
 pub(in crate::ui::widgets) fn run_command_capture_with_timeout_async(
-    cmd: &str,
+    cmd: &CommandSpec,
     timeout: Duration,
 ) -> async_channel::Receiver<Result<Output, io::Error>> {
     enqueue_capture(cmd, CommandKind::Slow, Some(timeout), "custom-timeout")
 }
 
 pub(in crate::ui::widgets) fn run_command_capture_status_async(
-    cmd: &str,
+    cmd: &CommandSpec,
 ) -> async_channel::Receiver<Result<Output, io::Error>> {
     enqueue_capture(cmd, CommandKind::Fast, None, "fast")
 }
 
 fn enqueue_capture(
-    cmd: &str,
+    cmd: &CommandSpec,
     kind: CommandKind,
     timeout: Option<Duration>,
     label: &str,
 ) -> async_channel::Receiver<Result<Output, io::Error>> {
     let (tx, rx) = async_channel::bounded(1);
-    let cmd = cmd.trim();
     if cmd.is_empty() {
         let _ = tx.send_blocking(Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -55,10 +54,10 @@ fn enqueue_capture(
         plan = plan.with_timeout(timeout);
     }
     debug::log(PanelDebugLevel::Verbose, || {
-        let snippet = util::log_snippet(cmd);
+        let snippet = util::log_snippet(&cmd.display_lossy());
         format!("enqueue {label} command: {snippet}")
     });
-    enqueue_command(cmd.to_string(), plan, Some(tx));
+    enqueue_command(cmd.clone(), plan, Some(tx));
     rx
 }
 

@@ -9,9 +9,10 @@ use std::time::Duration;
 use gtk::glib;
 use gtk::prelude::*;
 use tracing::warn;
-use unixnotis_core::{css::hooks, util, PanelDebugLevel};
+use unixnotis_core::{css::hooks, util, CommandSpec, PanelDebugLevel, ToggleBackend};
 
 use super::super::utils::run_command_capture_status_async;
+use super::rfkill::parse_rfkill_state;
 use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
 // Staggered retry delays keep UI responsive without long-lived polling loops
@@ -49,7 +50,8 @@ impl ToggleRefreshGate {
 }
 
 pub(super) fn refresh_toggle_state(
-    cmd: &str,
+    cmd: &CommandSpec,
+    backend: Option<ToggleBackend>,
     button: &gtk::ToggleButton,
     guard: &Rc<Cell<bool>>,
     refresh_gen: &Rc<Cell<u64>>,
@@ -58,7 +60,7 @@ pub(super) fn refresh_toggle_state(
     // Bursty watch events only need one running probe and one trailing probe
     if !refresh_gate.begin_or_queue() {
         perf_probe::toggle_refresh_queued();
-        let cmd_snip = util::log_snippet(cmd);
+        let cmd_snip = util::log_snippet(&cmd.display_lossy());
         debug::log(PanelDebugLevel::Verbose, || {
             format!("toggle refresh queued while in flight cmd=\"{cmd_snip}\"")
         });
@@ -67,7 +69,7 @@ pub(super) fn refresh_toggle_state(
     perf_probe::toggle_refresh_start();
 
     // Periodic refresh path keeps UI aligned with external command state
-    let cmd = cmd.to_string();
+    let cmd = cmd.clone();
 
     // Each refresh claims a generation so stale tasks cannot overwrite newer state
     let gen = next_refresh_generation(refresh_gen);
@@ -76,21 +78,35 @@ pub(super) fn refresh_toggle_state(
     let refresh_gen = refresh_gen.clone();
     let refresh_gate = refresh_gate.clone();
     let refresh_cmd = cmd.clone();
-    let cmd_snip = util::log_snippet(&cmd);
+    let cmd_snip = util::log_snippet(&cmd.display_lossy());
     debug::log(PanelDebugLevel::Verbose, || {
         format!("toggle refresh start cmd=\"{cmd_snip}\"")
     });
 
     glib::MainContext::default().spawn_local(async move {
         // Single probe path is used for periodic refresh and watch-trigger refresh
-        let Some(active) = fetch_toggle_state(&cmd, true).await else {
-            finish_toggle_refresh(refresh_cmd, button, guard, refresh_gen, refresh_gate);
+        let Some(active) = fetch_toggle_state(&cmd, backend, true).await else {
+            finish_toggle_refresh(
+                refresh_cmd,
+                backend,
+                button,
+                guard,
+                refresh_gen,
+                refresh_gate,
+            );
             return;
         };
 
         // Drop stale result when a newer refresh has already started
         if refresh_gen.get() != gen {
-            finish_toggle_refresh(refresh_cmd, button, guard, refresh_gen, refresh_gate);
+            finish_toggle_refresh(
+                refresh_cmd,
+                backend,
+                button,
+                guard,
+                refresh_gen,
+                refresh_gate,
+            );
             return;
         }
 
@@ -103,12 +119,20 @@ pub(super) fn refresh_toggle_state(
         }
         apply_active_class(&button, active);
 
-        finish_toggle_refresh(refresh_cmd, button, guard, refresh_gen, refresh_gate);
+        finish_toggle_refresh(
+            refresh_cmd,
+            backend,
+            button,
+            guard,
+            refresh_gen,
+            refresh_gate,
+        );
     });
 }
 
 pub(super) fn schedule_toggle_refresh_with_retry(
-    state_cmd: String,
+    state_cmd: CommandSpec,
+    backend: Option<ToggleBackend>,
     expected: bool,
     button: gtk::ToggleButton,
     guard: Rc<Cell<bool>>,
@@ -141,7 +165,7 @@ pub(super) fn schedule_toggle_refresh_with_retry(
 
             // Keep warnings bounded to the first failed probe per action
             let log_failures = attempt == 0;
-            let Some(active) = fetch_toggle_state(&state_cmd, log_failures).await else {
+            let Some(active) = fetch_toggle_state(&state_cmd, backend, log_failures).await else {
                 // Probe failed, continue to next retry window
                 continue;
             };
@@ -184,7 +208,11 @@ fn apply_active_class(button: &gtk::ToggleButton, active: bool) {
     }
 }
 
-async fn fetch_toggle_state(cmd: &str, log_failures: bool) -> Option<bool> {
+async fn fetch_toggle_state(
+    cmd: &CommandSpec,
+    backend: Option<ToggleBackend>,
+    log_failures: bool,
+) -> Option<bool> {
     // Shared fetch routine is used by both periodic refresh and retry path
     // Command helper returns receiver so execution stays off the GTK thread
     let rx = run_command_capture_status_async(cmd);
@@ -206,6 +234,24 @@ async fn fetch_toggle_state(cmd: &str, log_failures: bool) -> Option<bool> {
         }
     };
 
+    if backend == Some(ToggleBackend::Rfkill) {
+        if !output.status.success() {
+            if log_failures {
+                warn!(status = ?output.status, "rfkill state command failed");
+            }
+            return None;
+        }
+        return match parse_rfkill_state(&output.stdout) {
+            Ok(state) => Some(state.is_airplane_mode_active()),
+            Err(err) => {
+                if log_failures {
+                    warn!(?err, "failed to parse rfkill JSON state");
+                }
+                None
+            }
+        };
+    }
+
     let success = output.status.success();
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -220,7 +266,8 @@ async fn fetch_toggle_state(cmd: &str, log_failures: bool) -> Option<bool> {
 }
 
 fn finish_toggle_refresh(
-    cmd: String,
+    cmd: CommandSpec,
+    backend: Option<ToggleBackend>,
     button: gtk::ToggleButton,
     guard: Rc<Cell<bool>>,
     refresh_gen: Rc<Cell<u64>>,
@@ -228,11 +275,11 @@ fn finish_toggle_refresh(
 ) {
     // One queued refresh is enough to bring the toggle back to the newest state
     if refresh_gate.finish() {
-        let cmd_snip = util::log_snippet(&cmd);
+        let cmd_snip = util::log_snippet(&cmd.display_lossy());
         debug::log(PanelDebugLevel::Verbose, || {
             format!("toggle refresh consumed pending request cmd=\"{cmd_snip}\"")
         });
-        refresh_toggle_state(&cmd, &button, &guard, &refresh_gen, &refresh_gate);
+        refresh_toggle_state(&cmd, backend, &button, &guard, &refresh_gen, &refresh_gate);
     }
 }
 

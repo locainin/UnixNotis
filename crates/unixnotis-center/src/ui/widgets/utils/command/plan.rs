@@ -3,6 +3,7 @@
 use std::io;
 use std::process::Child;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use unixnotis_core::CommandSpec;
 
 use super::command_parse::is_probably_slow;
 use super::exec::build_command;
@@ -54,7 +55,10 @@ impl CommandPlan {
         Duration::from_millis(jitter_ms)
     }
 
-    pub(in crate::ui::widgets) fn spawn_watch_command(&self, cmd: &str) -> io::Result<Child> {
+    pub(in crate::ui::widgets) fn spawn_watch_command(
+        &self,
+        cmd: &CommandSpec,
+    ) -> io::Result<Child> {
         // Watch commands keep stdout open while stderr stays detached from refresh wakeups
         let mut command = build_command(cmd);
         command
@@ -72,7 +76,7 @@ impl CommandPlan {
 }
 
 pub(in crate::ui::widgets) fn resolve_command_plan(
-    cmd: &str,
+    cmd: &CommandSpec,
     default_kind: CommandKind,
 ) -> CommandPlan {
     let mut kind = default_kind;

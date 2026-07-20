@@ -7,7 +7,7 @@ use gtk::prelude::*;
 use gtk::Align;
 use tracing::warn;
 use unixnotis_core::{
-    css::hooks, IconAssetResolver, PanelDebugLevel, ToggleLayout, ToggleWidgetConfig,
+    css::hooks, CommandSpec, IconAssetResolver, PanelDebugLevel, ToggleLayout, ToggleWidgetConfig,
 };
 
 use super::super::icon_image::image_from_icon_config;
@@ -119,17 +119,17 @@ fn flowbox_columns(columns: usize) -> u32 {
 }
 
 pub(super) fn toggle_action_command<'a>(
-    toggle_cmd: Option<&'a String>,
-    on_cmd: Option<&'a String>,
-    off_cmd: Option<&'a String>,
+    toggle_cmd: Option<&'a CommandSpec>,
+    on_cmd: Option<&'a CommandSpec>,
+    off_cmd: Option<&'a CommandSpec>,
     active: bool,
-) -> Option<&'a String> {
+) -> Option<&'a CommandSpec> {
     toggle_cmd.or(if active { on_cmd } else { off_cmd })
 }
 
 pub(super) const fn should_reset_after_action(
-    toggle_cmd: Option<&String>,
-    state_cmd: Option<&String>,
+    toggle_cmd: Option<&CommandSpec>,
+    state_cmd: Option<&CommandSpec>,
 ) -> bool {
     // Without a state command, the card cannot know whether the action changed system state
     toggle_cmd.is_some() && state_cmd.is_none()
@@ -233,6 +233,7 @@ impl ToggleItem {
         // Clone command fields once so toggle callback stays allocation-light
         let guard_clone = guard.clone();
         let state_cmd = config.state_cmd.clone();
+        let backend = config.backend;
         let toggle_cmd = config.toggle_cmd.clone();
         let on_cmd = config.on_cmd.clone();
         let off_cmd = config.off_cmd.clone();
@@ -281,6 +282,7 @@ impl ToggleItem {
                     if let Some(state_cmd) = state_cmd_for_retry.clone() {
                         schedule_toggle_refresh_with_retry(
                             state_cmd,
+                            backend,
                             expected,
                             button.clone(),
                             guard.clone(),
@@ -293,7 +295,14 @@ impl ToggleItem {
                 });
             } else if let Some(state_cmd) = state_cmd.clone() {
                 // Command-free toggles still use the same reconcile path
-                schedule_toggle_refresh_with_retry(state_cmd, expected, button, guard, refresh_gen);
+                schedule_toggle_refresh_with_retry(
+                    state_cmd,
+                    backend,
+                    expected,
+                    button,
+                    guard,
+                    refresh_gen,
+                );
             } else {
                 // No command and no state is inert, so undo the visual edge immediately
                 reset_toggle_visual_state(&button, &guard);
@@ -318,6 +327,7 @@ impl ToggleItem {
         if let Some(state_cmd) = self.config.state_cmd.as_ref() {
             refresh_toggle_state(
                 state_cmd,
+                self.config.backend,
                 &self.button,
                 &self.guard,
                 &self.refresh_gen,
@@ -372,10 +382,18 @@ impl ToggleItem {
         let guard = self.guard.clone();
         let refresh_gen = self.refresh_gen.clone();
         let refresh_gate = self.refresh_gate.clone();
+        let backend = self.config.backend;
 
         // Watch callbacks trigger the same refresh path as polling so semantics stay identical
         start_command_watch(watch_cmd, move || {
-            refresh_toggle_state(&state_cmd, &button, &guard, &refresh_gen, &refresh_gate);
+            refresh_toggle_state(
+                &state_cmd,
+                backend,
+                &button,
+                &guard,
+                &refresh_gen,
+                &refresh_gate,
+            );
         })
     }
 }

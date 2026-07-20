@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crossbeam_channel as channel;
 use tracing::warn;
+use unixnotis_core::CommandSpec;
 
 use super::worker::CommandJob;
 use crate::ui::widgets::utils::command::CommandKind;
@@ -16,7 +17,7 @@ const COALESCED_RETRY_DELAY_MS: u64 = 25;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(super) struct RefreshCommandKey {
-    cmd: String,
+    cmd: CommandSpec,
     kind: CommandKind,
     timeout_ms: Option<u64>,
 }

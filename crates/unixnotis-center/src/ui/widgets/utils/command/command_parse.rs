@@ -1,30 +1,22 @@
-//! Command parsing and heuristics for widget command planning.
+//! Typed command heuristics for widget execution planning
 //!
 //! Keeps shell parsing and "slow command" classification localized so the
-//! enqueue/worker pipeline can stay focused on execution and backpressure.
+//! enqueue/worker pipeline can stay focused on execution and backpressure
 
-pub(super) use unixnotis_core::ParsedCommand;
-use unixnotis_core::{parse_command, ExecutionMode};
+use std::ffi::OsStr;
 
-pub(super) fn parse_simple_command(cmd: &str) -> Option<ParsedCommand> {
-    // Runtime consumes the same parsed representation used by preset security checks
-    let parsed = parse_command(cmd).ok()?;
-    (parsed.execution_mode == ExecutionMode::Direct).then_some(parsed)
-}
+use unixnotis_core::CommandSpec;
 
-pub(super) fn is_probably_slow(cmd: &str) -> bool {
-    // Complex commands (shell meta, unsupported env forms, etc.) are treated as slow to
-    // avoid under-budgeting timeouts for shells and pipelines
-    let Some(parsed) = parse_simple_command(cmd) else {
+pub(super) fn is_probably_slow(cmd: &CommandSpec) -> bool {
+    let CommandSpec::Direct { program, args, .. } = cmd else {
         return true;
     };
 
     // Compare only executable basename so absolute paths and wrappers still match
-    let program_name = parsed
-        .program
-        .rsplit('/')
-        .next()
-        .unwrap_or(parsed.program.as_str())
+    let program_name = program
+        .file_name()
+        .unwrap_or(program.as_os_str())
+        .to_string_lossy()
         .to_ascii_lowercase();
 
     if program_name == "sleep" {
@@ -49,7 +41,7 @@ pub(super) fn is_probably_slow(cmd: &str) -> bool {
 
     if matches!(program_name.as_str(), "sh" | "bash" | "zsh" | "fish") {
         // Shell scripts are treated as slow if the first token is "sleep"
-        if let Some(script) = shell_script_arg(&parsed.args) {
+        if let Some(script) = shell_script_arg(args) {
             if script.split_whitespace().next() == Some("sleep") {
                 return true;
             }
@@ -59,11 +51,11 @@ pub(super) fn is_probably_slow(cmd: &str) -> bool {
     false
 }
 
-fn shell_script_arg(args: &[String]) -> Option<&str> {
+fn shell_script_arg(args: &[std::ffi::OsString]) -> Option<&str> {
     let mut iter = args.iter().peekable();
     while let Some(arg) = iter.next() {
-        if arg == "-c" {
-            return iter.peek().map(|value| value.as_str());
+        if arg == OsStr::new("-c") {
+            return iter.peek().and_then(|value| value.to_str());
         }
     }
     None

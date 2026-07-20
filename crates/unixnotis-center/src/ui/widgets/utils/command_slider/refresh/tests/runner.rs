@@ -168,7 +168,7 @@ fn refresh_gate_runs_one_queued_follow_up() {
 
 fn request(cmd: &str) -> SliderRefreshRequest {
     SliderRefreshRequest {
-        cmd: cmd.to_string(),
+        cmd: unixnotis_core::parse_legacy_command(cmd).expect("valid test command"),
         min: 0.0,
         max: 100.0,
         step: 1.0,

@@ -1,4 +1,4 @@
-use unixnotis_core::SliderWidgetConfig;
+use unixnotis_core::{CommandSpec, SliderWidgetConfig};
 
 use super::set_watch_active;
 use crate::ui::widgets::utils::command_slider::CommandSlider;
@@ -6,7 +6,7 @@ use crate::ui::widgets::utils::command_slider::CommandSlider;
 #[gtk::test]
 fn watch_lifecycle_starts_once_and_stops_cleanly() {
     let config = SliderWidgetConfig {
-        watch_cmd: Some("sleep 2".to_string()),
+        watch_cmd: Some(CommandSpec::direct("sleep", ["2"])),
         ..SliderWidgetConfig::default()
     };
     let slider = CommandSlider::new(config, "test-slider");

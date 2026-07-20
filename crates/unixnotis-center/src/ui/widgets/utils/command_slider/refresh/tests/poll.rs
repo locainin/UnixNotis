@@ -7,6 +7,7 @@ use crate::ui::widgets::utils::command_slider::refresh::SliderRefreshGate;
 use crate::ui::widgets::utils::{
     start_command_watch, CommandWatch, RefreshBackoff, INFLIGHT_REFRESH_RECHECK,
 };
+use unixnotis_core::CommandSpec;
 
 #[test]
 fn polling_without_a_watch_starts_at_the_minimum_deadline() {
@@ -63,7 +64,8 @@ fn polling_uses_the_recorded_backoff_deadline() {
 
 #[gtk::test]
 fn active_watch_suppresses_polling_until_it_exits() {
-    let watch = start_command_watch("sleep 2", || {}).expect("watch should start");
+    let watch = start_command_watch(&CommandSpec::direct("sleep", ["2"]), || {})
+        .expect("watch should start");
     let watch = RefCell::new(Some(watch));
     let gate = SliderRefreshGate::new();
     let backoff = Rc::new(RefCell::new(RefreshBackoff::default()));
@@ -83,7 +85,8 @@ fn active_watch_suppresses_polling_until_it_exits() {
 
 #[gtk::test]
 fn exited_watch_is_removed_before_polling_resumes() {
-    let watch = start_command_watch("true", || {}).expect("watch should start");
+    let watch = start_command_watch(&CommandSpec::direct("true", [] as [&str; 0]), || {})
+        .expect("watch should start");
     let watch = RefCell::new(Some(watch));
     let deadline = Instant::now() + Duration::from_secs(2);
     while watch.borrow().as_ref().is_some_and(CommandWatch::is_active) && Instant::now() < deadline

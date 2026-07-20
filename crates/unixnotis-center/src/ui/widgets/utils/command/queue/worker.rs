@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel as channel;
 use tracing::warn;
-use unixnotis_core::{util, PanelDebugLevel};
+use unixnotis_core::{util, CommandSpec, PanelDebugLevel};
 
 use crate::diagnostics::panel_debug as debug;
 
@@ -25,7 +25,7 @@ const COMMAND_QUEUE_WARN_INTERVAL_SECS: u64 = 5;
 
 pub(super) struct CommandJob {
     // Command text for this run
-    pub(super) cmd: String,
+    pub(super) cmd: CommandSpec,
     pub(super) plan: CommandPlan,
     pub(super) respond: Option<async_channel::Sender<Result<std::process::Output, std::io::Error>>>,
     // Used to split wait time from run time
@@ -88,7 +88,7 @@ impl CommandWorker {
 }
 
 pub(in crate::ui::widgets::utils::command) fn enqueue_command(
-    cmd: String,
+    cmd: CommandSpec,
     plan: CommandPlan,
     respond: Option<async_channel::Sender<Result<std::process::Output, std::io::Error>>>,
 ) {
@@ -274,7 +274,7 @@ fn run_worker(rx: channel::Receiver<CommandJob>) {
 }
 
 fn handle_job(job: CommandJob, runtime: Option<&tokio::runtime::Runtime>) {
-    let cmd_snip = util::log_snippet(&job.cmd);
+    let cmd_snip = util::log_snippet(&job.cmd.display_lossy());
     // Wait time includes queue time and slow-job jitter
     let queue_wait_ms = job.queued_at.elapsed().as_millis();
     debug::log(PanelDebugLevel::Verbose, || {

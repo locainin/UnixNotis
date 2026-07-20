@@ -4,14 +4,14 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use super::super::{run_action_command_with_completion, value::format_command_value};
-use unixnotis_core::PanelDebugLevel;
+use unixnotis_core::{CommandSpec, PanelDebugLevel};
 
 use crate::diagnostics::panel_debug as debug;
 
 pub(super) fn schedule_command(
     pending: Rc<RefCell<Option<glib::SourceId>>>,
     pending_value: Rc<Cell<Option<f64>>>,
-    cmd_template: String,
+    cmd_template: CommandSpec,
     value: f64,
     step: f64,
     on_complete: Rc<dyn Fn(bool)>,

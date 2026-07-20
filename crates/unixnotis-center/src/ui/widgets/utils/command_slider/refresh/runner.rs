@@ -31,7 +31,7 @@ pub(in super::super) fn request_refresh(
     // Collapse bursty requests into one running refresh and one trailing refresh
     if !refresh.gate.begin_or_queue() {
         perf_probe::slider_refresh_queued();
-        let cmd_snip = util::log_snippet(&request.cmd);
+        let cmd_snip = util::log_snippet(&request.cmd.display_lossy());
         debug::log(PanelDebugLevel::Verbose, || {
             format!("slider refresh queued while in flight cmd=\"{cmd_snip}\"")
         });
@@ -39,7 +39,7 @@ pub(in super::super) fn request_refresh(
     }
 
     perf_probe::slider_refresh_start();
-    let cmd_snip = util::log_snippet(&request.cmd);
+    let cmd_snip = util::log_snippet(&request.cmd.display_lossy());
     debug::log(PanelDebugLevel::Verbose, || {
         format!("slider refresh start cmd=\"{cmd_snip}\"")
     });
@@ -103,7 +103,7 @@ fn finish_refresh(
 ) {
     // One queued refresh is allowed to run after the current one finishes
     if refresh.gate.finish() {
-        let cmd_snip = util::log_snippet(&request.cmd);
+        let cmd_snip = util::log_snippet(&request.cmd.display_lossy());
         debug::log(PanelDebugLevel::Verbose, || {
             format!("slider refresh consumed pending request cmd=\"{cmd_snip}\"")
         });
