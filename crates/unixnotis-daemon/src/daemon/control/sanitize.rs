@@ -48,6 +48,9 @@ fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
         }
         end -= 1;
     }
-    debug_assert!(value.is_char_boundary(end));
+    debug_assert!(
+        value.is_char_boundary(end),
+        "bounded backup must reach the current UTF-8 character boundary"
+    );
     value[..end].to_string()
 }

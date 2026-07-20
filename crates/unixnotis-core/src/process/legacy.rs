@@ -156,6 +156,9 @@ fn contains_shell_syntax(command: &str) -> bool {
     }
 
     // shell_words validates these states before this classifier runs
-    debug_assert!(quote.is_none() && !escaped);
+    debug_assert!(
+        quote.is_none() && !escaped,
+        "validated legacy command must finish outside quoted or escaped input"
+    );
     false
 }
