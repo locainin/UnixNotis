@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::CommandSpec;
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct SliderWidgetConfig {
@@ -9,10 +11,10 @@ pub struct SliderWidgetConfig {
     pub label: String,
     pub icon: String,
     pub icon_muted: Option<String>,
-    pub get_cmd: String,
-    pub set_cmd: String,
-    pub toggle_cmd: Option<String>,
-    pub watch_cmd: Option<String>,
+    pub get_cmd: CommandSpec,
+    pub set_cmd: CommandSpec,
+    pub toggle_cmd: Option<CommandSpec>,
+    pub watch_cmd: Option<CommandSpec>,
     pub min: f64,
     pub max: f64,
     pub step: f64,
@@ -32,22 +34,37 @@ pub struct SliderWidgetConfig {
 
 impl SliderWidgetConfig {
     // wpctl is the stock PipeWire path and stays shell-free for the common case
-    pub(in crate::config) const WPCTL_GET: &'static str = "wpctl get-volume @DEFAULT_AUDIO_SINK@";
-    pub(in crate::config) const WPCTL_SET: &'static str =
-        "wpctl set-volume @DEFAULT_AUDIO_SINK@ {value}%";
-    pub(in crate::config) const WPCTL_TOGGLE: &'static str =
-        "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle";
+    pub(in crate::config) fn wpctl_get() -> CommandSpec {
+        CommandSpec::direct("wpctl", ["get-volume", "@DEFAULT_AUDIO_SINK@"])
+    }
+
+    pub(in crate::config) fn wpctl_set() -> CommandSpec {
+        CommandSpec::direct("wpctl", ["set-volume", "@DEFAULT_AUDIO_SINK@", "{value}%"])
+    }
+
+    pub(in crate::config) fn wpctl_toggle() -> CommandSpec {
+        CommandSpec::direct("wpctl", ["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+    }
 
     // pactl supports both PulseAudio and pipewire-pulse setups
-    pub(in crate::config) const PACTL_GET: &'static str =
-        "pactl get-sink-volume @DEFAULT_SINK@; pactl get-sink-mute @DEFAULT_SINK@";
-    pub(in crate::config) const PACTL_SET: &'static str =
-        "pactl set-sink-volume @DEFAULT_SINK@ {value}%";
-    pub(in crate::config) const PACTL_TOGGLE: &'static str =
-        "pactl set-sink-mute @DEFAULT_SINK@ toggle";
+    pub(in crate::config) fn pactl_get() -> CommandSpec {
+        CommandSpec::shell(
+            "pactl get-sink-volume @DEFAULT_SINK@; pactl get-sink-mute @DEFAULT_SINK@",
+        )
+    }
+
+    pub(in crate::config) fn pactl_set() -> CommandSpec {
+        CommandSpec::direct("pactl", ["set-sink-volume", "@DEFAULT_SINK@", "{value}%"])
+    }
+
+    pub(in crate::config) fn pactl_toggle() -> CommandSpec {
+        CommandSpec::direct("pactl", ["set-sink-mute", "@DEFAULT_SINK@", "toggle"])
+    }
 
     // Long-running watcher used only when runtime detection confirms pactl exists
-    pub(in crate::config) const PACTL_WATCH: &'static str = "pactl subscribe";
+    pub(in crate::config) fn pactl_watch() -> CommandSpec {
+        CommandSpec::direct("pactl", ["subscribe"])
+    }
 
     pub(super) fn default_volume() -> Self {
         Self {
@@ -56,9 +73,9 @@ impl SliderWidgetConfig {
             icon: "audio-volume-high-symbolic".to_string(),
             icon_muted: Some("audio-volume-muted-symbolic".to_string()),
             // Runtime migration may switch these to pactl only for untouched stock config
-            get_cmd: Self::WPCTL_GET.to_string(),
-            set_cmd: Self::WPCTL_SET.to_string(),
-            toggle_cmd: Some(Self::WPCTL_TOGGLE.to_string()),
+            get_cmd: Self::wpctl_get(),
+            set_cmd: Self::wpctl_set(),
+            toggle_cmd: Some(Self::wpctl_toggle()),
             // None avoids writing a watcher that may not exist on the target host
             watch_cmd: None,
             min: 0.0,
@@ -81,8 +98,8 @@ impl SliderWidgetConfig {
             icon: "display-brightness-symbolic".to_string(),
             icon_muted: None,
             // -m keeps brightnessctl output stable enough for the shared parser
-            get_cmd: "brightnessctl -m".to_string(),
-            set_cmd: "brightnessctl s {value}%".to_string(),
+            get_cmd: CommandSpec::direct("brightnessctl", ["-m"]),
+            set_cmd: CommandSpec::direct("brightnessctl", ["s", "{value}%"]),
             toggle_cmd: None,
             // brightnessctl has no reliable stock watch mode, so polling remains explicit
             watch_cmd: None,

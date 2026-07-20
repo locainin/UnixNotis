@@ -1,8 +1,8 @@
 use super::*;
-use crate::{PanelSection, PanelWidgetSection, WidgetDensity};
+use crate::{CommandSpec, PanelSection, PanelWidgetSection, WidgetDensity};
 
 const LEGACY_FIXTURE: &str = include_str!("fixtures/config-v0.toml");
-const CURRENT_PARTIAL_FIXTURE: &str = include_str!("fixtures/config-v2-partial.toml");
+const V2_PARTIAL_FIXTURE: &str = include_str!("fixtures/config-v2-partial.toml");
 
 fn deserialize_config(contents: &str) -> Result<(Config, Vec<String>), String> {
     let (config, ignored_keys, _migrated_paths) = deserialize_config_with_migrations(contents)?;
@@ -39,9 +39,9 @@ fn unversioned_fixture_migrates_to_the_legacy_layout() {
 }
 
 #[test]
-fn current_partial_fixture_uses_current_defaults() {
+fn version_two_partial_fixture_migrates_and_uses_current_defaults() {
     let (config, ignored) =
-        deserialize_config(CURRENT_PARTIAL_FIXTURE).expect("parse current config");
+        deserialize_config(V2_PARTIAL_FIXTURE).expect("parse version two config");
 
     assert!(ignored.is_empty());
     assert_eq!(config.panel.quick_actions_label, "Quick settings");
@@ -49,6 +49,62 @@ fn current_partial_fixture_uses_current_defaults() {
     assert_eq!(config.widgets.toggle_columns, 2);
     assert_eq!(config.widgets.volume.segments, 10);
     assert_eq!(config.media.art_size_px, 48);
+}
+
+#[test]
+fn version_two_commands_migrate_quoted_punctuation_to_direct_and_operators_to_shell() {
+    let input = r#"
+        config_version = 2
+
+        [widgets.volume]
+        get_cmd = "printf '%s\\n' 'battery|charging'"
+        set_cmd = "producer | parser"
+    "#;
+
+    let (config, ignored) = deserialize_config(input).expect("migrate version two commands");
+
+    assert!(ignored.is_empty());
+    assert_eq!(
+        config.widgets.volume.get_cmd,
+        CommandSpec::direct("printf", ["%s\\n", "battery|charging"])
+    );
+    assert_eq!(
+        config.widgets.volume.set_cmd,
+        CommandSpec::shell("producer | parser")
+    );
+}
+
+#[test]
+fn version_three_requires_explicit_command_mode() {
+    let legacy = r#"
+        config_version = 3
+
+        [widgets.volume]
+        get_cmd = "printf ready"
+    "#;
+    let error = deserialize_config(legacy).expect_err("reject a string command in version three");
+
+    assert!(error.contains("expected internally tagged enum CommandSpec"));
+}
+
+#[test]
+fn version_three_accepts_structured_direct_commands_without_inference() {
+    let input = r#"
+        config_version = 3
+
+        [widgets.volume.get_cmd]
+        mode = "direct"
+        program = "printf"
+        args = ["battery|charging"]
+    "#;
+
+    let (config, ignored) = deserialize_config(input).expect("parse version three command");
+
+    assert!(ignored.is_empty());
+    assert_eq!(
+        config.widgets.volume.get_cmd,
+        CommandSpec::direct("printf", ["battery|charging"])
+    );
 }
 
 #[test]

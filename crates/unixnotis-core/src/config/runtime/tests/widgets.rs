@@ -54,8 +54,8 @@ fn custom_volume_without_watch_stays_config_owned() {
         label: "Volume".to_string(),
         icon: "audio-volume-high-symbolic".to_string(),
         icon_muted: None,
-        get_cmd: "custom-volume-get".to_string(),
-        set_cmd: "custom-volume-set {value}".to_string(),
+        get_cmd: CommandSpec::direct("custom-volume-get", [] as [&str; 0]),
+        set_cmd: CommandSpec::direct("custom-volume-set", ["{value}"]),
         toggle_cmd: None,
         watch_cmd: None,
         min: 0.0,
@@ -84,15 +84,15 @@ fn partial_stock_volume_commands_do_not_migrate_to_pactl() {
 
     let cases = [
         SliderWidgetConfig {
-            get_cmd: "custom get".to_string(),
+            get_cmd: CommandSpec::direct("custom", ["get"]),
             ..SliderWidgetConfig::default()
         },
         SliderWidgetConfig {
-            set_cmd: "custom set {value}".to_string(),
+            set_cmd: CommandSpec::direct("custom", ["set", "{value}"]),
             ..SliderWidgetConfig::default()
         },
         SliderWidgetConfig {
-            toggle_cmd: Some("custom toggle".to_string()),
+            toggle_cmd: Some(CommandSpec::direct("custom", ["toggle"])),
             ..SliderWidgetConfig::default()
         },
     ];
@@ -126,16 +126,10 @@ fn stock_volume_uses_pactl_when_wpctl_is_missing() {
     apply_volume_backend(&mut volume);
 
     assert!(volume.enabled);
-    assert_eq!(volume.get_cmd, SliderWidgetConfig::PACTL_GET);
-    assert_eq!(volume.set_cmd, SliderWidgetConfig::PACTL_SET);
-    assert_eq!(
-        volume.toggle_cmd.as_deref(),
-        Some(SliderWidgetConfig::PACTL_TOGGLE)
-    );
-    assert_eq!(
-        volume.watch_cmd.as_deref(),
-        Some(SliderWidgetConfig::PACTL_WATCH)
-    );
+    assert_eq!(volume.get_cmd, SliderWidgetConfig::pactl_get());
+    assert_eq!(volume.set_cmd, SliderWidgetConfig::pactl_set());
+    assert_eq!(volume.toggle_cmd, Some(SliderWidgetConfig::pactl_toggle()));
+    assert_eq!(volume.watch_cmd, Some(SliderWidgetConfig::pactl_watch()));
 
     restore_path(previous);
     let _ = fs::remove_dir_all(root);
@@ -154,12 +148,9 @@ fn stock_volume_keeps_wpctl_when_available() {
     apply_volume_backend(&mut volume);
 
     assert!(volume.enabled);
-    assert_eq!(volume.get_cmd, SliderWidgetConfig::WPCTL_GET);
-    assert_eq!(volume.set_cmd, SliderWidgetConfig::WPCTL_SET);
-    assert_eq!(
-        volume.watch_cmd.as_deref(),
-        Some(SliderWidgetConfig::PACTL_WATCH)
-    );
+    assert_eq!(volume.get_cmd, SliderWidgetConfig::wpctl_get());
+    assert_eq!(volume.set_cmd, SliderWidgetConfig::wpctl_set());
+    assert_eq!(volume.watch_cmd, Some(SliderWidgetConfig::pactl_watch()));
 
     restore_path(previous);
     let _ = fs::remove_dir_all(root);
@@ -190,7 +181,7 @@ fn legacy_wpctl_watch_is_removed_when_pactl_is_missing() {
     let previous = set_path(&root);
 
     let mut volume = SliderWidgetConfig {
-        watch_cmd: Some("wpctl subscribe".to_string()),
+        watch_cmd: Some(CommandSpec::direct("wpctl", ["subscribe"])),
         ..SliderWidgetConfig::default()
     };
     apply_volume_backend(&mut volume);
@@ -208,10 +199,10 @@ fn legacy_brightness_watch_is_removed() {
         label: "Brightness".to_string(),
         icon: "display-brightness-symbolic".to_string(),
         icon_muted: None,
-        get_cmd: "brightnessctl -m".to_string(),
-        set_cmd: "brightnessctl s {value}%".to_string(),
+        get_cmd: CommandSpec::direct("brightnessctl", ["-m"]),
+        set_cmd: CommandSpec::direct("brightnessctl", ["s", "{value}%"]),
         toggle_cmd: None,
-        watch_cmd: Some("brightnessctl -w".to_string()),
+        watch_cmd: Some(CommandSpec::direct("brightnessctl", ["-w"])),
         min: 1.0,
         max: 100.0,
         step: 1.0,

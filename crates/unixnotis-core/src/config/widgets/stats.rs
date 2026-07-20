@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::WidgetPluginConfig;
+use crate::CommandSpec;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
@@ -10,7 +11,7 @@ pub struct StatWidgetConfig {
     pub icon: Option<String>,
     pub icon_asset: Option<String>,
     pub kind: Option<String>,
-    pub cmd: Option<String>,
+    pub cmd: Option<CommandSpec>,
     /// External plugin source for this stat (preferred over cmd when set)
     pub plugin: Option<WidgetPluginConfig>,
     pub min_height: i32,
@@ -25,7 +26,10 @@ impl StatWidgetConfig {
             icon_asset: None,
             kind: Some("cpu".to_string()),
             // Builtins avoid shelling out for common fast-refresh stats
-            cmd: Some("builtin:cpu".to_string()),
+            cmd: Some(CommandSpec::direct(
+                "builtin:cpu",
+                std::iter::empty::<&str>(),
+            )),
             plugin: None,
             min_height: 72,
         }
@@ -39,7 +43,10 @@ impl StatWidgetConfig {
             icon_asset: None,
             kind: Some("ram".to_string()),
             // Memory comes from the same builtin path so defaults stay cheap to poll
-            cmd: Some("builtin:memory".to_string()),
+            cmd: Some(CommandSpec::direct(
+                "builtin:memory",
+                std::iter::empty::<&str>(),
+            )),
             plugin: None,
             min_height: 72,
         }
@@ -53,7 +60,10 @@ impl StatWidgetConfig {
             icon_asset: None,
             kind: Some("battery".to_string()),
             // Battery remains optional at runtime; systems without a battery render fallback text
-            cmd: Some("builtin:battery".to_string()),
+            cmd: Some(CommandSpec::direct(
+                "builtin:battery",
+                std::iter::empty::<&str>(),
+            )),
             plugin: None,
             min_height: 72,
         }

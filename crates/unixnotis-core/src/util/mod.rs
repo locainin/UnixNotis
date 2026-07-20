@@ -1,12 +1,10 @@
 //! Shared helper utilities used across `UnixNotis` components
 
-mod commands;
 mod diagnostics;
 mod display;
 mod paths;
 mod programs;
 
-pub use commands::{is_simple_command, SHELL_META_CHARS};
 pub use diagnostics::{
     default_log_limit, diagnostic_log_limit, diagnostic_mode, log_limit, log_snippet,
 };
