@@ -76,6 +76,11 @@ pub enum Command {
         #[arg(long, value_name = "PATH")]
         config: Option<PathBuf>,
     },
+    // Import the compositor session environment and restart the installed user service
+    SyncSessionEnvironment {
+        #[arg(long, value_enum, default_value = "auto")]
+        service_manager: DoctorServiceManagerArg,
+    },
     // Export, inspect, or import a shareable preset bundle
     Preset {
         #[command(subcommand)]
@@ -105,12 +110,18 @@ impl Command {
         // Local-only commands should not fail just because D-Bus is unavailable
         matches!(
             self,
-            Self::CssCheck { .. } | Self::Doctor { .. } | Self::Preset { .. }
+            Self::CssCheck { .. }
+                | Self::Doctor { .. }
+                | Self::Preset { .. }
+                | Self::SyncSessionEnvironment { .. }
         )
     }
 
     pub(crate) const fn is_synchronous(&self) -> bool {
         // Doctor uses local inputs but still needs asynchronous D-Bus and process timeouts
-        matches!(self, Self::CssCheck { .. } | Self::Preset { .. })
+        matches!(
+            self,
+            Self::CssCheck { .. } | Self::Preset { .. } | Self::SyncSessionEnvironment { .. }
+        )
     }
 }

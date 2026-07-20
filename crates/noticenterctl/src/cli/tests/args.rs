@@ -260,6 +260,24 @@ fn parses_doctor_output_and_service_manager_options() {
 }
 
 #[test]
+fn parses_session_environment_service_manager_without_shell_payloads() {
+    let args = Args::try_parse_from([
+        "noticenterctl",
+        "sync-session-environment",
+        "--service-manager",
+        "runit",
+    ])
+    .expect("parse session environment command");
+
+    assert!(matches!(
+        args.command,
+        Command::SyncSessionEnvironment {
+            service_manager: DoctorServiceManagerArg::Runit,
+        }
+    ));
+}
+
+#[test]
 fn doctor_and_css_check_accept_explicit_config_paths() {
     let doctor = Args::try_parse_from([
         "noticenterctl",
