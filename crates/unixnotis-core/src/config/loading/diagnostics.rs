@@ -161,20 +161,23 @@ fn adjustment(path: &str, original: Option<String>, effective: Option<String>) -
 
 fn adjustment_code(path: &str) -> &'static str {
     // Specific codes remain stable even when the user-facing wording improves
-    if path.starts_with("widgets.volume.")
-        && [
-            "enabled",
-            "get_cmd",
-            "set_cmd",
-            "toggle_cmd",
-            "watch_cmd",
-            "parse_mode",
-        ]
-        .iter()
-        .any(|field| path.ends_with(field))
-    {
+    if [
+        "widgets.volume.enabled",
+        "widgets.volume.get_cmd",
+        "widgets.volume.set_cmd",
+        "widgets.volume.toggle_cmd",
+        "widgets.volume.watch_cmd",
+        "widgets.volume.parse_mode",
+    ]
+    .iter()
+    .any(|field| {
+        path.strip_prefix(field)
+            .is_some_and(|suffix| suffix.is_empty() || suffix.starts_with('.'))
+    }) {
         "config.widgets.volume-backend-selected"
-    } else if path == "widgets.brightness.watch_cmd" {
+    } else if path == "widgets.brightness.watch_cmd"
+        || path.starts_with("widgets.brightness.watch_cmd.")
+    {
         "config.widgets.brightness-backend-corrected"
     } else if path == "widgets.refresh_interval_ms" || path == "widgets.refresh_interval_slow_ms" {
         "config.widgets.refresh-clamped"
