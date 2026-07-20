@@ -10,4 +10,3 @@ backend=$(selected_backend)
 stop_conflicting_backends "$backend"
 stop_backend "$backend"
 start_backend "$backend"
-remember_backend "$backend"

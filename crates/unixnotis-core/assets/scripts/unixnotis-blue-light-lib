@@ -4,9 +4,6 @@ set -eu
 : "${UNIXNOTIS_BLUE_LIGHT_TEMP:=4500}"
 : "${UNIXNOTIS_BLUE_LIGHT_GAMMA:=90}"
 
-STATE_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/unixnotis"
-STATE_FILE="$STATE_DIR/blue-light-backend"
-
 has_backend() {
     command -v "$1" >/dev/null 2>&1
 }
@@ -41,28 +38,6 @@ installed_backend() {
 
 selected_backend() {
     active_backend || installed_backend
-}
-
-remember_backend() {
-    # Runtime state keeps off clicks paired with the backend started by on
-    mkdir -p "$STATE_DIR"
-    printf '%s\n' "$1" > "$STATE_FILE"
-}
-
-remembered_backend() {
-    if [ -r "$STATE_FILE" ]; then
-        read -r backend < "$STATE_FILE"
-        if [ "$backend" != "" ]; then
-            printf '%s\n' "$backend"
-            return 0
-        fi
-    fi
-
-    return 1
-}
-
-forget_backend() {
-    rm -f "$STATE_FILE"
 }
 
 stop_backend() {
@@ -100,7 +75,7 @@ stop_conflicting_backends() {
 }
 
 stop_active_backends() {
-    # Off should clean stale state and any active supported backend
+    # Off stops every supported backend that is currently active
     for candidate in hyprsunset gammastep wlsunset sunsetr; do
         if backend_running "$candidate"; then
             stop_backend "$candidate"
