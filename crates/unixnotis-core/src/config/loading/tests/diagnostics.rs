@@ -2,6 +2,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
 use super::*;
+use crate::CommandSpec;
 use crate::{Config, ConfigDiagnosticKind, CURRENT_CONFIG_VERSION};
 
 struct CapturedWriter(Arc<Mutex<Vec<u8>>>);
@@ -44,10 +45,11 @@ fn current_schema_produces_no_migration_diagnostic() {
 fn adjustment_diagnostics_report_safe_scalar_changes_and_hide_commands() {
     let mut before = Config::default();
     before.widgets.refresh_interval_ms = 1;
-    before.widgets.volume.get_cmd = "private-volume-command-sentinel".to_string();
+    before.widgets.volume.get_cmd =
+        CommandSpec::direct("private-volume-command-sentinel", [] as [&str; 0]);
     let mut after = before.clone();
     after.widgets.refresh_interval_ms = 100;
-    after.widgets.volume.get_cmd = "pactl get-sink-volume".to_string();
+    after.widgets.volume.get_cmd = CommandSpec::direct("pactl", ["get-sink-volume"]);
 
     let diagnostics = adjustment_diagnostics(&before, &after);
 
@@ -57,7 +59,9 @@ fn adjustment_diagnostics_report_safe_scalar_changes_and_hide_commands() {
             && item.effective.as_deref() == Some("100")
     }));
     assert!(diagnostics.iter().any(|item| {
-        item.path.as_deref() == Some("widgets.volume.get_cmd")
+        item.path
+            .as_deref()
+            .is_some_and(|path| path.starts_with("widgets.volume.get_cmd"))
             && item.code == "config.widgets.volume-backend-selected"
     }));
     let rendered = format!("{diagnostics:?}");
