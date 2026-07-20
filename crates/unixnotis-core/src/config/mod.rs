@@ -13,8 +13,9 @@ mod types;
 mod validation;
 mod widgets;
 
-pub(in crate::config) use appearance::{icon_assets, theme};
+pub(in crate::config) use appearance::{corners, icon_assets, theme};
 pub use command::{parse_command, CommandParseError, ExecutionMode, ParsedCommand};
+pub use corners::CutCorners;
 pub use diagnostics::{
     log_config_diagnostics, ConfigDiagnostic, ConfigDiagnosticKind, ConfigLoadReport,
 };

@@ -16,3 +16,8 @@
   min-height: 28px;
   padding: 0;
 }
+
+/* GtkSearchEntry has no public icon child, so the native glyphs yield to owned controls */
+.unixnotis-panel-search-owned-icons {
+  -gtk-icon-source: none;
+}

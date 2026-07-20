@@ -62,6 +62,25 @@ fn apply_config_requests_rebuild_when_metadata_or_thumbnail_flags_change() {
 }
 
 #[gtk::test]
+fn apply_config_requests_rebuild_when_metadata_text_or_corner_geometry_changes() {
+    let mut list = support::make_list();
+    let mut config = support::list_config();
+    config.notification_metadata.live_label = "CURRENT".to_string();
+
+    list.apply_config(&config);
+
+    assert_eq!(list.notification_metadata.live_label, "CURRENT");
+    assert!(list.needs_rebuild());
+
+    list.needs_rebuild = false;
+    config.notification_corners.top_right = 16;
+    list.apply_config(&config);
+
+    assert_eq!(list.notification_corners.top_right, 16);
+    assert!(list.needs_rebuild());
+}
+
+#[gtk::test]
 fn set_empty_layout_switches_between_widget_offset_and_centered_empty_state() {
     let list = support::make_list();
 

@@ -93,6 +93,38 @@ fn reload_enables_configured_search_in_toggle_and_revealer() {
 }
 
 #[gtk::test]
+fn panel_reload_updates_search_icons_and_clear_visibility_from_live_text() {
+    let mut state = state();
+    let mut config = state.config.clone();
+    config.panel.search_visible = true;
+    config.panel.search_placeholder = "Filter alerts".to_string();
+    config.panel.search_magnifier_icon = "system-search-symbolic".to_string();
+    state.panel.header.search.entry.set_text("disk");
+
+    state.apply_reloaded_panel(&config);
+
+    assert_eq!(
+        state
+            .panel
+            .header
+            .search
+            .entry
+            .placeholder_text()
+            .as_deref(),
+        Some("Filter alerts")
+    );
+    assert_eq!(
+        state.panel.header.search.magnifier.icon_name().as_deref(),
+        Some("system-search-symbolic")
+    );
+    assert!(state.panel.header.search.clear_button.get_visible());
+
+    state.panel.header.search.entry.set_text("");
+    state.apply_reloaded_panel(&config);
+    assert!(!state.panel.header.search.clear_button.get_visible());
+}
+
+#[gtk::test]
 fn panel_close_and_reopen_keep_transient_search_closed() {
     let mut state = state();
     state.apply_panel_request(PanelRequest::open());

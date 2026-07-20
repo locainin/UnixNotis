@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::corners::CutCorners;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ThemeConfig {
@@ -16,6 +18,8 @@ pub struct ThemeConfig {
     pub border_width: u8,
     /// Corner radius for notification cards (pixels).
     pub card_radius: u8,
+    /// True diagonal cuts applied to panel and popup notification cards
+    pub notification_corners: CutCorners,
     /// Base alpha for panel surfaces (0.0 - 1.0).
     pub surface_alpha: f32,
     /// Stronger alpha for panel surfaces (0.0 - 1.0).
@@ -43,6 +47,8 @@ impl Default for ThemeConfig {
             border_width: 1,
             // Matches the default card radius used by the bundled theme.
             card_radius: 22,
+            // Square clipping preserves the existing rounded CSS presentation
+            notification_corners: CutCorners::default(),
             surface_alpha: 0.88,
             surface_strong_alpha: 0.96,
             card_alpha: 0.94,

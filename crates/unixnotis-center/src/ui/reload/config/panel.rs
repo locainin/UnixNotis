@@ -21,6 +21,16 @@ impl UiState {
             .search
             .entry
             .set_placeholder_text(Some(&config.panel.search_placeholder));
+        self.panel
+            .header
+            .search
+            .magnifier
+            .set_icon_name(Some(&config.panel.search_magnifier_icon));
+        self.panel
+            .header
+            .search
+            .clear_button
+            .set_visible(!self.panel.header.search.entry.text().is_empty());
         let search_open =
             config.panel.search_visible || self.panel.header.actions.search_toggle.is_active();
         panel::set_search_open(

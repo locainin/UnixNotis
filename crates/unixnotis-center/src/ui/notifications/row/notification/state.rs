@@ -13,6 +13,8 @@ use super::reply::InlineReplyWidgets;
 pub(in crate::ui::notifications) struct NotificationRowWidgets {
     // Styled notification card inside the ListView row wrapper
     pub(super) card: gtk::Box,
+    // Polygon wrapper clips both visual output and pointer hit testing
+    pub(super) card_plate: unixnotis_ui::CutCorner,
     // Internal stack depth cards keep collapsed stacks in the same row update
     pub(super) stack_ghost_1: gtk::Box,
     pub(super) stack_ghost_2: gtk::Box,

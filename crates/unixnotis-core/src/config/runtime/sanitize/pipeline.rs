@@ -20,6 +20,7 @@ pub(in super::super) const MAX_HISTORY_ENTRIES: usize = 5_000;
 pub(in super::super) const MAX_HISTORY_ACTIVE: usize = 12;
 pub(in super::super) const MAX_BORDER_WIDTH: u8 = 16;
 pub(in super::super) const MAX_CARD_RADIUS: u8 = 64;
+pub(in super::super) const MAX_CORNER_CUT: u16 = 512;
 pub(in super::super) const MIN_WIDGET_COLUMNS: usize = 1;
 pub(in super::super) const MAX_WIDGET_COLUMNS: usize = 8;
 
@@ -84,6 +85,8 @@ fn sanitize_panel_geometry(config: &mut Config) {
     panel::sanitize_panel_section_order(&mut config.panel.section_order);
     panel::sanitize_panel_widget_order(&mut config.panel.widget_order);
     panel::sanitize_panel_action_order(&mut config.panel.action_order);
+    panel::sanitize_dnd_menu(&mut config.panel);
+    panel::sanitize_notification_metadata(&mut config.panel.notification_metadata);
     panel::sanitize_widget_columns(config);
 
     config.panel.margin.top = config.panel.margin.top.clamp(0, MAX_MARGIN);

@@ -18,6 +18,8 @@ const WIDGETS_TOGGLE_COALESCE_MS: u64 = 16;
 pub(in crate::ui) struct PanelSearchWidgets {
     pub(in crate::ui) revealer: gtk::Revealer,
     pub(in crate::ui) entry: gtk::SearchEntry,
+    pub(in crate::ui) magnifier: gtk::Image,
+    pub(in crate::ui) clear_button: gtk::Button,
 }
 
 pub(super) fn build_panel_search(config: &PanelConfig) -> PanelSearchWidgets {
@@ -32,14 +34,35 @@ pub(super) fn build_panel_search(config: &PanelConfig) -> PanelSearchWidgets {
     let star_accent = gtk::Label::new(Some("*"));
     star_accent.add_css_class(hooks::panel_shell::SEARCH_STAR);
 
+    let magnifier = gtk::Image::from_icon_name(&config.search_magnifier_icon);
+    magnifier.add_css_class(hooks::panel_shell::SEARCH_MAGNIFIER);
+    magnifier.set_accessible_role(gtk::AccessibleRole::Presentation);
+
     let search_entry = gtk::SearchEntry::new();
     search_entry.add_css_class(hooks::panel_shell::SEARCH);
+    // Native icons have no public child or dedicated CSS node, so owned siblings replace them
+    search_entry.add_css_class(hooks::panel_shell::SEARCH_OWNED_ICONS);
     // Placeholder text keeps the intent obvious before the first query
     search_entry.set_placeholder_text(Some(&config.search_placeholder));
     search_entry.set_hexpand(true);
     search_entry.set_tooltip_text(Some("Type to filter notifications"));
+
+    let clear_button = gtk::Button::from_icon_name("edit-clear-symbolic");
+    clear_button.add_css_class(hooks::panel_shell::SEARCH_CLEAR);
+    clear_button.set_tooltip_text(Some("Clear search"));
+    clear_button.set_visible(false);
+    let clear_entry = search_entry.clone();
+    clear_button.connect_clicked(move |_| clear_entry.set_text(""));
+    let visible_clear = clear_button.clone();
+    search_entry.connect_changed(move |entry| {
+        // The clear action exists only while a query can be removed
+        visible_clear.set_visible(!entry.text().is_empty());
+    });
+
     search_shell.append(&leading_accent);
+    search_shell.append(&magnifier);
     search_shell.append(&search_entry);
+    search_shell.append(&clear_button);
     search_shell.append(&star_accent);
 
     let search_revealer = gtk::Revealer::new();
@@ -54,6 +77,8 @@ pub(super) fn build_panel_search(config: &PanelConfig) -> PanelSearchWidgets {
     PanelSearchWidgets {
         revealer: search_revealer,
         entry: search_entry,
+        magnifier,
+        clear_button,
     }
 }
 

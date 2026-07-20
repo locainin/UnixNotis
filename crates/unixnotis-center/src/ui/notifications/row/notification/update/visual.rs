@@ -29,6 +29,8 @@ pub(super) fn apply_visual_state(
     has_thumbnail: bool,
 ) {
     let card = &row.card;
+    // Theme changes update recycled rows without rebuilding the GTK child tree
+    row.card_plate.set_corners(data.presentation.card_corners);
     // Explicit state updates prevent recycled rows from retaining stale classes
     set_class_state(
         card,

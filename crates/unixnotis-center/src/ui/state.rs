@@ -20,7 +20,7 @@ pub struct UiState {
     pub(super) config_path: std::path::PathBuf,
     pub(super) css: CssManager,
     // This owner must drop before the panel so its manually parented popover can detach
-    pub(super) _dnd_duration_menu: panel::DndDurationMenu,
+    pub(super) dnd_duration_menu: panel::DndDurationMenu,
     pub(super) panel: panel::PanelWidgets,
     pub(super) list: notifications::NotificationList,
     // Shared resolver keeps icon cache and inflight decode tracking centralized

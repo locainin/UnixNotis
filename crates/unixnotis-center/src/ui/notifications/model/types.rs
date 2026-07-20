@@ -6,8 +6,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 use gtk::glib;
-use unixnotis_core::EmptyStateAlignment;
-use unixnotis_core::NotificationView;
+use unixnotis_core::{
+    CutCorners, EmptyStateAlignment, NotificationMetadataConfig, NotificationView,
+};
 
 use super::item::RowItem;
 
@@ -47,6 +48,8 @@ pub struct NotificationList {
     pub(in crate::ui::notifications) transient_to_history: bool,
     // Optional metadata lanes stay config-owned so the stock row remains compact
     pub(in crate::ui::notifications) show_notification_metadata: bool,
+    pub(in crate::ui::notifications) notification_metadata: Rc<NotificationMetadataConfig>,
+    pub(in crate::ui::notifications) notification_corners: CutCorners,
     pub(in crate::ui::notifications) show_notification_thumbnails: bool,
     pub(in crate::ui::notifications) max_active: usize,
     pub(in crate::ui::notifications) max_entries: usize,
@@ -58,6 +61,8 @@ pub struct NotificationListConfig {
     pub max_entries: usize,
     pub transient_to_history: bool,
     pub show_notification_metadata: bool,
+    pub notification_metadata: NotificationMetadataConfig,
+    pub notification_corners: CutCorners,
     pub show_notification_thumbnails: bool,
     pub empty_text: String,
     pub empty_offset_top: i32,

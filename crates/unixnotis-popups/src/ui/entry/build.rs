@@ -4,6 +4,7 @@ use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{hooks, Action, NotificationView, Urgency};
+use unixnotis_ui::CutCorner;
 
 use super::super::window::refresh_popup_input_region;
 use super::super::UiState;
@@ -230,7 +231,9 @@ impl UiState {
         revealer.add_css_class("unixnotis-popup-revealer");
         revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
         revealer.set_transition_duration(200);
-        revealer.set_child(Some(root));
+        // The shared primitive clips the full styled popup instead of approximating the corners
+        let plate = CutCorner::new(root, self.config.theme.notification_corners);
+        revealer.set_child(Some(&plate));
         // Visibility is driven centrally so only rows inside max_visible animate in
         revealer.set_reveal_child(false);
 
