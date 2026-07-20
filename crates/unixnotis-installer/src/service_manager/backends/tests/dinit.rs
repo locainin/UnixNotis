@@ -206,8 +206,15 @@ fn dinit_backend_environment_sync_uses_setenv() {
         ]
     );
     assert_eq!(
-        commands[0].envs(),
-        &[
+        commands[0]
+            .envs()
+            .iter()
+            .map(|(name, value)| (
+                name.to_string_lossy().into_owned(),
+                value.to_string_lossy().into_owned(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![
             (
                 "DBUS_SESSION_BUS_ADDRESS".to_string(),
                 "unix:path=/tmp/unixnotis-bus".to_string(),

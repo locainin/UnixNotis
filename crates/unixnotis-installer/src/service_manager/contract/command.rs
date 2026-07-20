@@ -61,37 +61,22 @@ impl CommandSpec {
             .expect("installer service commands always use UTF-8 direct programs")
     }
 
-    #[cfg(test)]
-    pub fn args(&self) -> Vec<String> {
-        self.command
-            .args()
-            .unwrap_or_default()
-            .iter()
-            .map(|argument| argument.to_string_lossy().into_owned())
-            .collect()
+    pub fn args(&self) -> &[std::ffi::OsString] {
+        self.command.args().unwrap_or_default()
     }
 
-    #[cfg(test)]
-    pub fn envs(&self) -> Vec<(String, String)> {
+    pub fn envs(&self) -> &std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> {
         self.command
             .env()
             .expect("installer service commands are always direct")
-            .iter()
-            .map(|(name, value)| {
-                (
-                    name.to_string_lossy().into_owned(),
-                    value.to_string_lossy().into_owned(),
-                )
-            })
-            .collect()
     }
 
     pub fn to_command(&self) -> std::io::Result<Command> {
         let program = self.program();
         let mut command = Command::new(super::command_routing::command_program(program)?);
         // CommandSpec never goes through a shell, which keeps service-manager commands predictable
-        command.args(self.command.args().unwrap_or_default());
-        command.envs(self.command.env().into_iter().flatten());
+        command.args(self.args());
+        command.envs(self.envs());
         if self.suppress_stdout {
             command.stdout(Stdio::null());
         }
