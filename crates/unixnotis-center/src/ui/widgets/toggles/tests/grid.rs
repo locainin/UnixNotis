@@ -1,10 +1,11 @@
 use super::grid::{should_reset_after_action, toggle_action_command};
+use unixnotis_core::CommandSpec;
 
 #[test]
 fn toggle_action_command_prefers_custom_toggle_command() {
-    let toggle_cmd = "scripts/do-anything".to_string();
-    let on_cmd = "turn-on".to_string();
-    let off_cmd = "turn-off".to_string();
+    let toggle_cmd = CommandSpec::direct("scripts/do-anything", [] as [&str; 0]);
+    let on_cmd = CommandSpec::direct("turn-on", [] as [&str; 0]);
+    let off_cmd = CommandSpec::direct("turn-off", [] as [&str; 0]);
 
     assert_eq!(
         toggle_action_command(Some(&toggle_cmd), Some(&on_cmd), Some(&off_cmd), true),
@@ -18,8 +19,8 @@ fn toggle_action_command_prefers_custom_toggle_command() {
 
 #[test]
 fn toggle_action_command_uses_on_off_when_custom_command_is_absent() {
-    let on_cmd = "turn-on".to_string();
-    let off_cmd = "turn-off".to_string();
+    let on_cmd = CommandSpec::direct("turn-on", [] as [&str; 0]);
+    let off_cmd = CommandSpec::direct("turn-off", [] as [&str; 0]);
 
     assert_eq!(
         toggle_action_command(None, Some(&on_cmd), Some(&off_cmd), true),
@@ -39,8 +40,8 @@ fn toggle_action_command_allows_state_only_custom_buttons() {
 
 #[test]
 fn stateless_toggle_command_resets_after_action() {
-    let toggle_cmd = "scripts/do-anything".to_string();
-    let state_cmd = "scripts/state".to_string();
+    let toggle_cmd = CommandSpec::direct("scripts/do-anything", [] as [&str; 0]);
+    let state_cmd = CommandSpec::direct("scripts/state", [] as [&str; 0]);
 
     assert!(should_reset_after_action(Some(&toggle_cmd), None));
     assert!(!should_reset_after_action(
