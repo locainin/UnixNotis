@@ -3,7 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use unixnotis_core::StatWidgetConfig;
+use unixnotis_core::{CommandSpec, StatWidgetConfig, WidgetPluginConfig};
 
 use super::super::builtin::BuiltinStat;
 use crate::ui::widgets::utils::RefreshBackoff;
@@ -24,4 +24,11 @@ pub(in crate::ui::widgets::stats) struct StatItem {
     pub(super) last_value: Rc<RefCell<Option<String>>>,
     // Backoff slows sources whose output remains stable
     pub(super) refresh_backoff: Rc<RefCell<RefreshBackoff>>,
+}
+
+pub(super) enum StatSourceRef<'a> {
+    Plugin(&'a WidgetPluginConfig),
+    Builtin(BuiltinStat),
+    Command(&'a CommandSpec),
+    Missing,
 }

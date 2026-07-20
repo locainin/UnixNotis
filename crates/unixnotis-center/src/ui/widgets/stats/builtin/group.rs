@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use gtk::glib;
 
-use super::worker::{BuiltinJob, BuiltinWorker, SubmitOutcome};
+use super::worker::{BuiltinJob, BuiltinSample, BuiltinWorker, SubmitOutcome};
 use super::{BuiltinStat, BuiltinStatKey};
 use crate::ui::widgets::stats::card::StatItem;
 
@@ -49,7 +49,7 @@ pub(in crate::ui::widgets::stats) fn collect_builtin_groups(
 impl RefreshGroup {
     pub(in crate::ui::widgets::stats) fn refresh(self, base_interval: Duration) {
         let (tx, rx) = async_channel::bounded(1);
-        let mut fallback = self.stat.clone();
+        let fallback = self.stat.clone();
         let worker = BuiltinWorker::global();
 
         match worker.submit(BuiltinJob {
@@ -66,9 +66,9 @@ impl RefreshGroup {
             }
             SubmitOutcome::WorkerUnavailable => {
                 // Inline fallback samples once before fan-out
-                let value = fallback.read().unwrap_or_else(|| "n/a".to_string());
+                let sample = BuiltinSample::read(fallback);
                 for item in self.items {
-                    item.restore_builtin_value(fallback.clone(), &value, base_interval);
+                    item.restore_builtin_sample(sample.clone(), base_interval);
                 }
                 return;
             }
@@ -76,7 +76,7 @@ impl RefreshGroup {
 
         glib::MainContext::default().spawn_local(async move {
             let result = rx.recv().await;
-            let Ok((builtin, value)) = result else {
+            let Ok(sample) = result else {
                 for item in self.items {
                     item.restore_builtin_error(fallback.clone(), base_interval);
                 }
@@ -85,7 +85,7 @@ impl RefreshGroup {
 
             // Every grouped card receives the same value and reader state
             for item in self.items {
-                item.restore_builtin_value(builtin.clone(), &value, base_interval);
+                item.restore_builtin_sample(sample.clone(), base_interval);
             }
         });
     }

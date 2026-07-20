@@ -6,3 +6,4 @@ mod refresh;
 mod render;
 
 pub(super) use model::StatItem;
+use model::StatSourceRef;

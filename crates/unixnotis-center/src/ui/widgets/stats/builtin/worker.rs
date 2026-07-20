@@ -10,8 +10,16 @@ use super::BuiltinStat;
 pub(in crate::ui::widgets::stats) struct BuiltinJob {
     // Reader state moves to the worker for one sample
     pub(in crate::ui::widgets::stats) stat: BuiltinStat,
-    // One-shot response returns the updated reader and display value
-    pub(in crate::ui::widgets::stats) respond: async_channel::Sender<(BuiltinStat, String)>,
+    // One-shot response keeps read failure separate from display policy
+    pub(in crate::ui::widgets::stats) respond: async_channel::Sender<BuiltinSample>,
+}
+
+#[derive(Clone, Debug)]
+pub(in crate::ui::widgets::stats) struct BuiltinSample {
+    // Updated state must return to the card for the next delta sample
+    pub(in crate::ui::widgets::stats) stat: BuiltinStat,
+    // Missing values represent reader failure rather than display text
+    pub(in crate::ui::widgets::stats) value: Option<String>,
 }
 
 pub(in crate::ui::widgets::stats) struct BuiltinWorker {
@@ -42,9 +50,8 @@ impl BuiltinWorker {
         let spawn = thread::Builder::new()
             .name("unixnotis-builtin-stats".to_string())
             .spawn(move || {
-                for mut job in &rx {
-                    let value = job.stat.read().unwrap_or_else(|| "n/a".to_string());
-                    let _ = job.respond.send_blocking((job.stat, value));
+                for job in &rx {
+                    let _ = job.respond.send_blocking(BuiltinSample::read(job.stat));
                 }
             });
         let inline_fallback = spawn.is_err();
@@ -68,5 +75,12 @@ impl BuiltinWorker {
             Err(TrySendError::Full(_job)) => SubmitOutcome::QueueFull,
             Err(TrySendError::Disconnected(_job)) => SubmitOutcome::WorkerUnavailable,
         }
+    }
+}
+
+impl BuiltinSample {
+    pub(in crate::ui::widgets::stats) fn read(mut stat: BuiltinStat) -> Self {
+        let value = stat.read();
+        Self { stat, value }
     }
 }

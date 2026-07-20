@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use gtk::prelude::*;
 use unixnotis_core::PanelDebugLevel;
 
-use super::StatItem;
+use super::{StatItem, StatSourceRef};
 use crate::diagnostics::panel_debug as debug;
 use crate::ui::widgets::stats::builtin::{BuiltinStat, BuiltinStatKey};
 use crate::ui::widgets::utils::INFLIGHT_REFRESH_RECHECK;
@@ -68,20 +68,29 @@ impl StatItem {
         if self.inflight.get() {
             return;
         }
+        match self.source() {
+            StatSourceRef::Plugin(plugin) => self.refresh_plugin(plugin, base_interval),
+            StatSourceRef::Builtin(builtin) => self.refresh_builtin(builtin, base_interval),
+            StatSourceRef::Command(command) => self.refresh_command(command, base_interval),
+            StatSourceRef::Missing => self.refresh_missing(base_interval),
+        }
+    }
+
+    fn source(&self) -> StatSourceRef<'_> {
         if let Some(plugin) = self.config.plugin.as_ref() {
-            // Plugins take precedence over command and built-in sources
-            self.refresh_plugin(plugin, base_interval);
-            return;
+            // Plugin configuration always has source precedence
+            return StatSourceRef::Plugin(plugin);
         }
         if let Some(builtin) = self.builtin.borrow_mut().take() {
-            self.refresh_builtin(builtin, base_interval);
-            return;
+            return StatSourceRef::Builtin(builtin);
         }
-        if let Some(command) = self.config.cmd.as_ref() {
-            self.refresh_command(command, base_interval);
-            return;
-        }
+        self.config
+            .cmd
+            .as_ref()
+            .map_or(StatSourceRef::Missing, StatSourceRef::Command)
+    }
 
+    fn refresh_missing(&self, base_interval: Duration) {
         // Missing sources settle on the placeholder without spinning
         let changed = self.apply_value("n/a");
         self.refresh_backoff

@@ -2,7 +2,7 @@
 
 use super::super::builtin::readers::battery::read_battery_from;
 use super::super::builtin::readers::network::{pick_default_iface_from, IfaceCandidate};
-use super::super::builtin::worker::{BuiltinJob, BuiltinWorker, SubmitOutcome};
+use super::super::builtin::worker::{BuiltinJob, BuiltinSample, BuiltinWorker, SubmitOutcome};
 use super::super::builtin::BuiltinStat;
 use super::support::{write_device, TempDir};
 
@@ -166,4 +166,14 @@ fn builtin_worker_reports_a_full_queue_without_blocking() {
         }),
         SubmitOutcome::QueueFull
     );
+}
+
+#[test]
+fn builtin_sample_preserves_reader_failure_as_missing_data() {
+    let stat =
+        BuiltinStat::from_command("builtin:net:unixnotis-missing-interface").expect("builtin stat");
+
+    let sample = BuiltinSample::read(stat);
+
+    assert!(sample.value.is_none());
 }
