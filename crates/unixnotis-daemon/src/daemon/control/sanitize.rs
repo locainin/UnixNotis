@@ -40,12 +40,10 @@ fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
         return value.to_string();
     }
 
-    // Keep the largest character boundary at or before the byte limit
-    let end = value
-        .char_indices()
-        .map(|(index, _)| index)
-        .take_while(|index| *index <= max_bytes)
-        .last()
-        .unwrap_or(0);
+    // Back up only across the code point that crosses the byte limit
+    let mut end = max_bytes;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
     value[..end].to_string()
 }

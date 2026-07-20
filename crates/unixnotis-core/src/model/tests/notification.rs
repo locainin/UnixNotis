@@ -123,6 +123,16 @@ fn notification_view_treats_self_closing_break_as_newline() {
 }
 
 #[test]
+fn notification_view_matches_block_tags_without_allocating_lowercase_names() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.body = "Line one<BR>Line two</P>Line three".to_string();
+
+    let view = notification.to_view();
+
+    assert_eq!(view.body, "Line one\nLine two\nLine three");
+}
+
+#[test]
 fn notification_view_preserves_inline_markup_adjacency() {
     let mut notification = notification_with_image(image_with_raw_bytes());
     notification.body = "foo<b>bar</b> and <i>baz</i>".to_string();
@@ -150,6 +160,16 @@ fn notification_view_collapses_repeated_block_tag_newlines() {
     let view = notification.to_view();
 
     assert_eq!(view.body, "Line one\nLine two");
+}
+
+#[test]
+fn notification_view_removes_trailing_whitespace_in_place() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.body = "  Alpha  \n  ".to_string();
+
+    let view = notification.to_view();
+
+    assert_eq!(view.body, "Alpha");
 }
 
 #[test]

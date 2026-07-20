@@ -179,17 +179,14 @@ fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
         return value.to_string();
     }
 
-    // Find the last valid UTF-8 character boundary that does not exceed max_bytes,
-    // so slicing never cuts through the middle of a multi-byte character
-    let end = value
-        .char_indices()
-        .map(|(index, _)| index)
-        .take_while(|index| *index <= max_bytes)
-        .last()
-        .unwrap_or(0);
+    // Back up only across the code point that crosses the byte limit
+    let mut end = max_bytes;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
 
     // Return only the byte-safe prefix
-    value.get(..end).unwrap_or_default().to_string()
+    value[..end].to_string()
 }
 
 pub(in crate::model) fn owned_to_string(value: &OwnedValue) -> Option<String> {
