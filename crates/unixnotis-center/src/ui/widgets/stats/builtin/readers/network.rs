@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use super::super::BuiltinState;
+use super::super::model::BuiltinState;
 
 pub(in crate::ui::widgets::stats::builtin) fn read_network(
     state: &mut BuiltinState,
