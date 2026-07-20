@@ -4,7 +4,7 @@
 
 use std::fs;
 
-pub(super) fn read_memory() -> Option<String> {
+pub(in crate::ui::widgets::stats::builtin) fn read_memory() -> Option<String> {
     let contents = fs::read_to_string("/proc/meminfo").ok()?;
     let mut total_kb = None;
     let mut avail_kb = None;

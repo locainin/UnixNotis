@@ -6,9 +6,12 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use super::BuiltinState;
+use super::super::model::BuiltinState;
 
-pub(super) fn read_network(state: &mut BuiltinState, iface: &mut Option<String>) -> Option<String> {
+pub(in crate::ui::widgets::stats::builtin) fn read_network(
+    state: &mut BuiltinState,
+    iface: &mut Option<String>,
+) -> Option<String> {
     if iface.is_none() {
         // Choose a stable default interface once to avoid flicker between refreshes
         *iface = pick_default_iface();
@@ -83,14 +86,16 @@ fn pick_default_iface() -> Option<String> {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct IfaceCandidate {
+pub(in crate::ui::widgets::stats::builtin) struct IfaceCandidate {
     // Interface name as reported by sysfs
-    pub(super) name: String,
+    pub(in crate::ui::widgets::stats::builtin) name: String,
     // Raw operstate contents ("up", "down", etc), kept for ranking
-    pub(super) operstate: String,
+    pub(in crate::ui::widgets::stats::builtin) operstate: String,
 }
 
-pub(super) fn pick_default_iface_from(candidates: &[IfaceCandidate]) -> Option<String> {
+pub(in crate::ui::widgets::stats::builtin) fn pick_default_iface_from(
+    candidates: &[IfaceCandidate],
+) -> Option<String> {
     // Filter invalid entries early to keep ranking logic simple
     let mut ranked: Vec<&IfaceCandidate> = candidates
         .iter()
@@ -166,7 +171,7 @@ fn format_rate(rate: f64) -> String {
     }
 }
 
-pub(super) fn extract_iface(cmd: &str) -> Option<String> {
+pub(in crate::ui::widgets::stats::builtin) fn extract_iface(cmd: &str) -> Option<String> {
     let marker = "/sys/class/net/";
     let start = cmd.find(marker)? + marker.len();
     let rest = &cmd[start..];

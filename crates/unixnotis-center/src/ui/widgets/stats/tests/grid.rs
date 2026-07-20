@@ -1,8 +1,7 @@
 //! Stat worker tests
 
 use super::{
-    stats_builtin::BuiltinStatKey, BuiltinStat, BuiltinStatJob, BuiltinStatWorker,
-    BuiltinSubmitOutcome,
+    builtin::BuiltinStatKey, BuiltinStat, BuiltinStatJob, BuiltinStatWorker, BuiltinSubmitOutcome,
 };
 
 #[test]

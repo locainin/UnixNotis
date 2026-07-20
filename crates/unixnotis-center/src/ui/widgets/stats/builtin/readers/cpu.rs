@@ -4,7 +4,7 @@
 
 use std::fs;
 
-pub(super) fn read_cpu_sample() -> Option<(u64, u64)> {
+pub(in crate::ui::widgets::stats::builtin) fn read_cpu_sample() -> Option<(u64, u64)> {
     let contents = fs::read_to_string("/proc/stat").ok()?;
     let line = contents.lines().find(|line| line.starts_with("cpu "))?;
     let mut parts = line.split_whitespace();
