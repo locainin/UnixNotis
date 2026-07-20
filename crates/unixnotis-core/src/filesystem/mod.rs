@@ -1,5 +1,7 @@
 //! Shared filesystem operations with stable directory anchors
 
 mod atomic;
+mod path;
 
 pub use atomic::{make_file_executable, write_file_atomic, write_file_if_missing};
+pub use path::{ContainedPath, LexicalPathError, LexicallyNormalizedPath};
