@@ -32,9 +32,9 @@ fn default_config_template_uses_shipped_night_scripts() {
 
     // The default config stays functional while backend logic lives in editable scripts
     assert!(night_block.contains("enabled = true"));
-    assert!(night_block.contains("state_cmd = \"scripts/unixnotis-blue-light-state\""));
-    assert!(night_block.contains("on_cmd = \"scripts/unixnotis-blue-light-on\""));
-    assert!(night_block.contains("off_cmd = \"scripts/unixnotis-blue-light-off\""));
+    assert!(night_block.contains("program = \"scripts/unixnotis-blue-light-state\""));
+    assert!(night_block.contains("program = \"scripts/unixnotis-blue-light-on\""));
+    assert!(night_block.contains("program = \"scripts/unixnotis-blue-light-off\""));
     assert!(!night_block.contains("gammastep"));
     assert!(!night_block.contains("hyprsunset"));
     assert!(!night_block.contains("wlsunset"));
