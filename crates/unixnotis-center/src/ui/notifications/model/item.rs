@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use glib::subclass::prelude::*;
 use gtk::glib;
 use gtk::glib::object::ObjectExt;
-use unixnotis_core::NotificationView;
+use unixnotis_core::{CutCorners, NotificationMetadataConfig, NotificationView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowKind {
@@ -15,14 +15,42 @@ pub enum RowKind {
     Notification,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct RowPresentation {
     // Local receipt timestamp supports relative badges without changing D-Bus payloads
     pub received_at_ms: i64,
     // Optional lanes are disabled by default to preserve the compact stock card
     pub show_metadata: bool,
     pub show_thumbnail: bool,
+    // Shared config avoids cloning every metadata string into every row snapshot
+    pub metadata: Rc<NotificationMetadataConfig>,
+    // Card clipping follows theme reloads through the same row refresh path
+    pub card_corners: CutCorners,
 }
+
+impl Default for RowPresentation {
+    fn default() -> Self {
+        Self {
+            received_at_ms: 0,
+            show_metadata: false,
+            show_thumbnail: false,
+            metadata: Rc::new(NotificationMetadataConfig::default()),
+            card_corners: CutCorners::default(),
+        }
+    }
+}
+
+impl PartialEq for RowPresentation {
+    fn eq(&self, other: &Self) -> bool {
+        self.received_at_ms == other.received_at_ms
+            && self.show_metadata == other.show_metadata
+            && self.show_thumbnail == other.show_thumbnail
+            && Rc::ptr_eq(&self.metadata, &other.metadata)
+            && self.card_corners == other.card_corners
+    }
+}
+
+impl Eq for RowPresentation {}
 
 #[derive(Debug, Clone)]
 pub struct RowData {

@@ -53,7 +53,10 @@ impl NotificationList {
 
         let command_tx_clone = command_tx.clone();
         let event_tx_clone = event_tx.clone();
-        factory.connect_setup(move |_, gtk_item| {
+        factory.connect_setup(move |_, item| {
+            let Some(gtk_item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
             let widgets = RowWidgets::new(
                 RowKind::Notification,
                 command_tx_clone.clone(),
@@ -65,7 +68,10 @@ impl NotificationList {
         let command_tx_clone = command_tx;
         let event_tx_clone = event_tx;
         let icon_resolver_clone = icon_resolver;
-        factory.connect_bind(move |_, gtk_item| {
+        factory.connect_bind(move |_, item| {
+            let Some(gtk_item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
             let Some(row_item) = gtk_item.item().and_downcast::<super::item::RowItem>() else {
                 return;
             };
@@ -80,7 +86,10 @@ impl NotificationList {
             bind_row(widgets, &row_item, &data, icon_resolver_clone.clone());
         });
 
-        factory.connect_unbind(move |_, gtk_item| {
+        factory.connect_unbind(move |_, item| {
+            let Some(gtk_item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
             if let Some(widgets) = get_row_widgets(gtk_item) {
                 widgets.unbind();
             }
@@ -116,6 +125,8 @@ impl NotificationList {
             filter_query: None,
             transient_to_history: config.transient_to_history,
             show_notification_metadata: config.show_notification_metadata,
+            notification_metadata: Rc::new(config.notification_metadata),
+            notification_corners: config.notification_corners,
             show_notification_thumbnails: config.show_notification_thumbnails,
             max_active: config.max_active,
             max_entries: config.max_entries,
@@ -127,8 +138,14 @@ impl NotificationList {
         self.transient_to_history = config.transient_to_history;
         let presentation_changed = self.show_notification_metadata
             != config.show_notification_metadata
+            || self.notification_metadata.as_ref() != &config.notification_metadata
+            || self.notification_corners != config.notification_corners
             || self.show_notification_thumbnails != config.show_notification_thumbnails;
         self.show_notification_metadata = config.show_notification_metadata;
+        if self.notification_metadata.as_ref() != &config.notification_metadata {
+            self.notification_metadata = Rc::new(config.notification_metadata.clone());
+        }
+        self.notification_corners = config.notification_corners;
         self.show_notification_thumbnails = config.show_notification_thumbnails;
         if self.empty_text != config.empty_text {
             update_empty_row(&self.empty_overlay, &config.empty_text);

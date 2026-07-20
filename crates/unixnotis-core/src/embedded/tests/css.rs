@@ -18,7 +18,23 @@ fn every_embedded_css_layer_contains_real_stylesheet_content() {
 }
 
 #[test]
-fn internal_structure_css_only_targets_reload_notice_structure() {
+fn internal_structure_css_contains_only_required_fallback_structure() {
     assert!(INTERNAL_STRUCTURE_CSS.contains(".unixnotis-reload-notice"));
+    assert!(INTERNAL_STRUCTURE_CSS.contains(".unixnotis-panel-search-owned-icons"));
     assert!(!INTERNAL_STRUCTURE_CSS.contains("@define-color"));
+}
+
+#[test]
+fn panel_css_keeps_the_dnd_menu_visual_hooks() {
+    for selector in [
+        ".unixnotis-dnd-menu > contents",
+        ".unixnotis-dnd-menu-title",
+        ".unixnotis-dnd-menu-choice",
+        ".unixnotis-dnd-menu-choice-indefinite",
+    ] {
+        assert!(
+            DEFAULT_PANEL_CSS.contains(selector),
+            "panel CSS should retain {selector}"
+        );
+    }
 }

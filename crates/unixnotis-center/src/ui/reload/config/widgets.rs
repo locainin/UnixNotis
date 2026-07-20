@@ -22,12 +22,16 @@ impl UiState {
     }
 
     pub(in crate::ui) fn apply_list_config_after_reload(&mut self, config: &Config) {
+        // Menu inputs and typed deadlines are live configuration like the surrounding actions
+        self.dnd_duration_menu.apply_config(&config.panel);
         // A compact value object prevents the list from reading half-applied UI state
         let list_config = notifications::NotificationListConfig {
             max_active: config.history.max_active,
             max_entries: config.history.max_entries,
             transient_to_history: config.history.transient_to_history,
             show_notification_metadata: config.panel.notification_metadata_visible,
+            notification_metadata: config.panel.notification_metadata.clone(),
+            notification_corners: config.theme.notification_corners,
             show_notification_thumbnails: config.panel.notification_thumbnails_visible,
             empty_text: config.panel.empty_text.clone(),
             empty_offset_top: config.panel.empty_offset_top,

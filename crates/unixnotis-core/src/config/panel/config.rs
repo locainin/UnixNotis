@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use super::super::{Anchor, Margins, PanelKeyboardInteractivity, PANEL_HEIGHT_PERCENT_DEFAULT};
 use super::{
-    default_panel_action_order, default_panel_section_order, default_panel_widget_order,
-    EmptyStateAlignment, PanelActionConfig, PanelActionId, PanelClearButtonPlacement, PanelSection,
-    PanelWidgetSection,
+    default_dnd_menu_choices, default_dnd_menu_triggers, default_panel_action_order,
+    default_panel_section_order, default_panel_widget_order, DndMenuChoice, DndMenuTrigger,
+    EmptyStateAlignment, NotificationMetadataConfig, PanelActionConfig, PanelActionId,
+    PanelClearButtonPlacement, PanelSection, PanelWidgetSection,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -32,6 +33,8 @@ pub struct PanelConfig {
     pub subtitle: String,
     /// Placeholder text shown in the panel search entry
     pub search_placeholder: String,
+    /// GTK icon-theme name used by the UnixNotis-owned search magnifier
+    pub search_magnifier_icon: String,
     /// Show the search entry without requiring the search toggle first
     pub search_visible: bool,
     /// Show the compact utility action row below the header
@@ -42,6 +45,8 @@ pub struct PanelConfig {
     pub notification_list_expand: bool,
     /// Show optional notification metadata lanes
     pub notification_metadata_visible: bool,
+    /// Text and compact templates rendered inside notification metadata lanes
+    pub notification_metadata: NotificationMetadataConfig,
     /// Show optional notification image thumbnails in panel rows
     pub notification_thumbnails_visible: bool,
     /// Where the "clear all" action is rendered
@@ -66,6 +71,10 @@ pub struct PanelConfig {
     pub focus_action: PanelActionConfig,
     /// Do-not-disturb action customization
     pub dnd_action: PanelActionConfig,
+    /// Input gestures that open the timed DND menu
+    pub dnd_menu_triggers: Vec<DndMenuTrigger>,
+    /// Typed deadlines shown in the timed DND menu
+    pub dnd_menu_choices: Vec<DndMenuChoice>,
     /// Clear-notifications action customization
     pub clear_action: PanelActionConfig,
     /// Search action customization
@@ -105,11 +114,13 @@ impl Default for PanelConfig {
             title: "Notifications".to_string(),
             subtitle: String::new(),
             search_placeholder: "Search app, title, or message".to_string(),
+            search_magnifier_icon: "system-search-symbolic".to_string(),
             search_visible: false,
             action_row_visible: true,
             notification_section_visible: false,
             notification_list_expand: true,
             notification_metadata_visible: false,
+            notification_metadata: NotificationMetadataConfig::default(),
             notification_thumbnails_visible: false,
             clear_button_placement: PanelClearButtonPlacement::ActionRow,
             quick_actions_label: "Quick settings".to_string(),
@@ -122,6 +133,8 @@ impl Default for PanelConfig {
             action_order: default_panel_action_order(),
             focus_action: PanelActionConfig::widgets(),
             dnd_action: PanelActionConfig::dnd(),
+            dnd_menu_triggers: default_dnd_menu_triggers(),
+            dnd_menu_choices: default_dnd_menu_choices(),
             clear_action: PanelActionConfig::clear(),
             search_action: PanelActionConfig::search(),
             close_action: PanelActionConfig::close(),

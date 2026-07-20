@@ -104,7 +104,7 @@ fn run_stdin_protocol() -> ExitCode {
             error
         );
     });
-    provider.load_from_data(&css);
+    provider.load_from_string(&css);
 
     // Success remains silent for easy use from build scripts
     if parse_errors.get() == 0 {

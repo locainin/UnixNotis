@@ -56,6 +56,8 @@ impl NotificationList {
                 received_at_ms: entry.received_at_ms,
                 show_metadata: self.show_notification_metadata,
                 show_thumbnail: self.show_notification_thumbnails,
+                metadata: self.notification_metadata.clone(),
+                card_corners: self.notification_corners,
             };
             entry.item.update(RowData::notification(
                 entry.app_key.clone(),

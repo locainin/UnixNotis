@@ -3,6 +3,7 @@
 use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::NotificationView;
+use unixnotis_ui::CutCorner;
 
 use super::super::entry::PopupEntry;
 use super::super::window::refresh_popup_input_region;
@@ -148,7 +149,15 @@ impl UiState {
         if old_root.has_css_class("unixnotis-popup-visible") {
             new_root.add_css_class("unixnotis-popup-visible");
         }
-        revealer.set_child(Some(&new_root));
+        if let Some(plate) = revealer.child().and_downcast::<CutCorner>() {
+            // Preserve the reveal animation while swapping only the clipped card contents
+            plate.set_child(Some(&new_root));
+            plate.set_corners(self.config.theme.notification_corners);
+        } else {
+            // Older in-memory rows cannot normally reach this branch, but rebuilding stays safe
+            let plate = CutCorner::new(&new_root, self.config.theme.notification_corners);
+            revealer.set_child(Some(&plate));
+        }
 
         if let Some(entry) = self.popups.get_mut(&id) {
             entry.root = Some(new_root);

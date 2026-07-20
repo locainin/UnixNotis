@@ -9,6 +9,11 @@ pub mod shared_state {
     pub const STACKED: &str = "stacked";
 }
 
+pub mod cut_corner {
+    // The wrapper hook lets themes adjust the primitive without using its custom CSS node name
+    pub const ROOT: &str = "unixnotis-cut-corner";
+}
+
 pub mod panel_action {
     // Panel action hooks expose both shared structure and per-button role
     pub const ROW: &str = "unixnotis-panel-actions";
@@ -39,6 +44,9 @@ pub mod panel_shell {
     pub const SUBTITLE: &str = "unixnotis-panel-subtitle";
     pub const COUNT: &str = "unixnotis-panel-count";
     pub const SEARCH: &str = "unixnotis-panel-search";
+    pub const SEARCH_MAGNIFIER: &str = "unixnotis-panel-search-magnifier";
+    pub const SEARCH_CLEAR: &str = "unixnotis-panel-search-clear";
+    pub const SEARCH_OWNED_ICONS: &str = "unixnotis-panel-search-owned-icons";
     pub const SEARCH_SHELL: &str = "unixnotis-panel-search-shell";
     pub const SEARCH_ACCENT: &str = "unixnotis-panel-search-accent";
     pub const SEARCH_STAR: &str = "unixnotis-panel-search-star";

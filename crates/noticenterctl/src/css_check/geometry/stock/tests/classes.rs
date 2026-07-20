@@ -35,7 +35,11 @@ fn decorative_theme_hooks_are_treated_as_known_public_classes() {
 
     assert!(classes.contains(".unixnotis-panel-edge-top"));
     assert!(classes.contains(".unixnotis-panel-rail-left"));
+    assert!(classes.contains(".unixnotis-cut-corner"));
     assert!(classes.contains(".unixnotis-panel-search-shell"));
+    assert!(classes.contains(".unixnotis-panel-search-magnifier"));
+    assert!(classes.contains(".unixnotis-panel-search-clear"));
+    assert!(classes.contains(".unixnotis-panel-search-owned-icons"));
     assert!(classes.contains(".unixnotis-quick-slider-segments"));
     assert!(classes.contains(".unixnotis-info-media"));
     assert!(classes.contains(".unixnotis-info-card-banner"));

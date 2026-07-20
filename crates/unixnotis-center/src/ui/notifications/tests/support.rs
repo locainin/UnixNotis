@@ -23,6 +23,8 @@ pub(super) fn list_config() -> NotificationListConfig {
         max_entries: 10,
         transient_to_history: true,
         show_notification_metadata: false,
+        notification_metadata: unixnotis_core::NotificationMetadataConfig::default(),
+        notification_corners: unixnotis_core::CutCorners::default(),
         show_notification_thumbnails: false,
         empty_text: "No notifications".to_string(),
         empty_offset_top: 24,

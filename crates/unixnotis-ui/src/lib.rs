@@ -9,4 +9,7 @@
 //! ```
 
 pub mod css;
+mod cut_corner;
 pub mod icons;
+
+pub use cut_corner::CutCorner;

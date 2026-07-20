@@ -6,9 +6,10 @@ use gtk::prelude::*;
 
 use super::{
     connect_dnd_menu, countdown_control_flow, dnd_menu_key_action, format_dnd_remaining,
-    tomorrow_date, update_dnd_status, DndCountdown, DndMenuKeyAction, DND_DURATION_CHOICES,
+    next_day_deadline, tomorrow_date, update_dnd_status, DndCountdown, DndMenuKeyAction,
 };
 use crate::control::UiCommand;
+use unixnotis_core::{DndMenuChoice, DndMenuTrigger, PanelConfig};
 
 #[test]
 fn remaining_time_is_hidden_after_expiry_and_rounded_up_before_it() {
@@ -28,10 +29,12 @@ fn remaining_time_keeps_hours_compact_without_losing_partial_hour() {
 }
 
 #[test]
-fn morning_choice_uses_the_next_local_eight_oclock() {
+fn next_day_choice_uses_the_next_local_calendar_date() {
     let today = NaiveDate::from_ymd_opt(2026, 7, 18).expect("valid date");
 
     assert_eq!(tomorrow_date(today), NaiveDate::from_ymd_opt(2026, 7, 19));
+    assert!(next_day_deadline(24, 0).is_none());
+    assert!(next_day_deadline(8, 60).is_none());
 }
 
 #[test]
@@ -71,14 +74,19 @@ fn duration_menu_accepts_standard_keyboard_context_actions_only() {
 }
 
 #[gtk::test]
-fn connected_duration_menu_installs_every_input_path_and_choice() {
+fn default_duration_menu_enables_only_right_click_and_keeps_stock_choices() {
     let toggle = gtk::ToggleButton::new();
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(8);
+    let config = PanelConfig::default();
 
-    let _menu_owner = connect_dnd_menu(&toggle, command_tx);
+    let menu_owner = connect_dnd_menu(&toggle, &config, command_tx);
 
     let popover = attached_popover(&toggle);
     assert!(popover.is_autohide());
+    assert!(popover.has_css_class("unixnotis-dnd-menu"));
+    assert!(popover
+        .child()
+        .is_some_and(|child| child.has_css_class("unixnotis-dnd-menu-content")));
     assert_eq!(
         menu_buttons(&popover)
             .iter()
@@ -92,31 +100,69 @@ fn connected_duration_menu_installs_every_input_path_and_choice() {
             "Indefinitely",
         ]
     );
+    assert!(menu_buttons(&popover)
+        .iter()
+        .all(|button| button.has_css_class("unixnotis-dnd-menu-choice")));
+    assert!(!menu_buttons(&popover)[3].has_css_class("unixnotis-dnd-menu-choice-indefinite"));
+    assert!(menu_buttons(&popover)[4].has_css_class("unixnotis-dnd-menu-choice-indefinite"));
 
-    let controllers = toggle.observe_controllers();
-    let mut has_secondary_click = false;
-    let mut has_long_press = false;
-    let mut has_key_controller = false;
-    for index in 0..controllers.n_items() {
-        let controller = controllers
-            .item(index)
-            .expect("observed controller should remain available");
-        if let Ok(click) = controller.clone().downcast::<gtk::GestureClick>() {
-            has_secondary_click |= click.button() == 3;
-        }
-        has_long_press |= controller.is::<gtk::GestureLongPress>();
-        has_key_controller |= controller.is::<gtk::EventControllerKey>();
-    }
-    assert!(has_secondary_click);
-    assert!(has_long_press);
-    assert!(has_key_controller);
+    assert_eq!(menu_owner.secondary_click.button(), 3);
+    assert_eq!(
+        menu_owner.secondary_click.propagation_phase(),
+        gtk::PropagationPhase::Bubble
+    );
+    assert_eq!(
+        menu_owner.long_press.propagation_phase(),
+        gtk::PropagationPhase::None
+    );
+    assert_eq!(
+        menu_owner.key_controller.propagation_phase(),
+        gtk::PropagationPhase::None
+    );
+}
+
+#[gtk::test]
+fn duration_menu_applies_custom_inputs_and_choices_without_reconnecting() {
+    let toggle = gtk::ToggleButton::new();
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(8);
+    let menu_owner = connect_dnd_menu(&toggle, &PanelConfig::default(), command_tx);
+    let config = PanelConfig {
+        dnd_menu_triggers: vec![DndMenuTrigger::LongPress, DndMenuTrigger::Keyboard],
+        dnd_menu_choices: vec![DndMenuChoice::Duration {
+            label: "Focus block".to_string(),
+            minutes: 45,
+        }],
+        ..PanelConfig::default()
+    };
+
+    menu_owner.apply_config(&config);
+
+    assert_eq!(
+        menu_buttons(&menu_owner.popover)
+            .iter()
+            .filter_map(gtk::Button::label)
+            .collect::<Vec<_>>(),
+        vec!["Focus block"]
+    );
+    assert_eq!(
+        menu_owner.secondary_click.propagation_phase(),
+        gtk::PropagationPhase::None
+    );
+    assert_eq!(
+        menu_owner.long_press.propagation_phase(),
+        gtk::PropagationPhase::Bubble
+    );
+    assert_eq!(
+        menu_owner.key_controller.propagation_phase(),
+        gtk::PropagationPhase::Bubble
+    );
 }
 
 #[gtk::test]
 fn dropping_duration_menu_owner_detaches_the_manually_parented_popover() {
     let toggle = gtk::ToggleButton::new();
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
-    let menu_owner = connect_dnd_menu(&toggle, command_tx);
+    let menu_owner = connect_dnd_menu(&toggle, &PanelConfig::default(), command_tx);
     let popover = menu_owner.popover.clone();
 
     assert_eq!(
@@ -132,10 +178,11 @@ fn dropping_duration_menu_owner_detaches_the_manually_parented_popover() {
 fn duration_menu_buttons_send_their_exact_deadlines_and_indefinite_state() {
     let toggle = gtk::ToggleButton::new();
     let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(8);
-    let _menu_owner = connect_dnd_menu(&toggle, command_tx);
+    let _menu_owner = connect_dnd_menu(&toggle, &PanelConfig::default(), command_tx);
     let buttons = menu_buttons(&attached_popover(&toggle));
 
-    for ((_, seconds), button) in DND_DURATION_CHOICES.iter().zip(&buttons[..3]) {
+    for (minutes, button) in [30_i64, 60, 120].iter().zip(&buttons[..3]) {
+        let seconds = minutes.saturating_mul(60);
         let before = Utc::now().timestamp();
         button.emit_clicked();
         let after = Utc::now().timestamp();
@@ -145,8 +192,8 @@ fn duration_menu_buttons_send_their_exact_deadlines_and_indefinite_state() {
         else {
             panic!("expected timed DND command");
         };
-        assert!(expires_at >= before.saturating_add(*seconds));
-        assert!(expires_at <= after.saturating_add(*seconds));
+        assert!(expires_at >= before.saturating_add(seconds));
+        assert!(expires_at <= after.saturating_add(seconds));
     }
 
     let before_morning = Local::now();

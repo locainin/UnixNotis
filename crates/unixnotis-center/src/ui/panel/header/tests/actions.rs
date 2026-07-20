@@ -111,5 +111,9 @@ fn dnd_duration_menu_does_not_add_a_standalone_arrow_button() {
         .widgets
         .dnd_toggle
         .tooltip_text()
-        .is_some_and(|text| text.contains("Right-click")));
+        .is_some_and(|text| {
+            text.contains("right-click")
+                && !text.contains("long-press")
+                && !text.contains("Shift+F10")
+        }));
 }

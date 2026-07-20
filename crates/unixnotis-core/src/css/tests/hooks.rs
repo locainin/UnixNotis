@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use super::{
-    empty_row, ghost_row, group_row, info_card, media_card, media_shell, panel_action, panel_card,
-    panel_shell, popup_card, shared_state, slider, stat_card, toggle_card,
+    cut_corner, empty_row, ghost_row, group_row, info_card, media_card, media_shell, panel_action,
+    panel_card, panel_shell, popup_card, shared_state, slider, stat_card, toggle_card,
 };
 
 #[test]
@@ -13,6 +13,7 @@ use super::{
 fn hook_names_stay_unique() {
     // One flat set makes accidental selector reuse obvious during refactors
     let names = [
+        cut_corner::ROOT,
         shared_state::ACTIVE,
         shared_state::CRITICAL,
         shared_state::EMPTY,
@@ -42,6 +43,9 @@ fn hook_names_stay_unique() {
         panel_shell::SUBTITLE,
         panel_shell::COUNT,
         panel_shell::SEARCH,
+        panel_shell::SEARCH_MAGNIFIER,
+        panel_shell::SEARCH_CLEAR,
+        panel_shell::SEARCH_OWNED_ICONS,
         panel_shell::SEARCH_SHELL,
         panel_shell::SEARCH_ACCENT,
         panel_shell::SEARCH_STAR,

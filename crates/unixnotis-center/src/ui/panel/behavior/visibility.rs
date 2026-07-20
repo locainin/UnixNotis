@@ -104,8 +104,8 @@ impl UiState {
             // This avoids leaving plugin-backed stats on the n/a placeholder until a later tick
             self.refresh_widgets(true);
             self.start_refresh_timer();
-            let width = self.panel.window.allocated_width();
-            let height = self.panel.window.allocated_height();
+            let width = self.panel.window.width();
+            let height = self.panel.window.height();
             let message = format!("panel allocated size: {width}x{height}");
             self.log_debug(PanelDebugLevel::Verbose, move || message);
         } else {

@@ -39,6 +39,8 @@ pub(super) struct RowFlags {
     pub(super) stack_depth: u8,
     pub(super) show_metadata: bool,
     pub(super) show_thumbnail: bool,
+    pub(super) metadata: Option<unixnotis_core::NotificationMetadataConfig>,
+    pub(super) card_corners: unixnotis_core::CutCorners,
 }
 
 pub(super) fn row_data(notification: Rc<NotificationView>, flags: RowFlags) -> RowData {
@@ -53,6 +55,8 @@ pub(super) fn row_data(notification: Rc<NotificationView>, flags: RowFlags) -> R
             received_at_ms: current_millis(),
             show_metadata: flags.show_metadata,
             show_thumbnail: flags.show_thumbnail,
+            metadata: Rc::new(flags.metadata.unwrap_or_default()),
+            card_corners: flags.card_corners,
         },
     )
 }

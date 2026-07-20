@@ -41,6 +41,7 @@ fn row_data_notification_sets_expected_fields() {
         received_at_ms: 123,
         show_metadata: true,
         show_thumbnail: true,
+        ..RowPresentation::default()
     };
 
     let data = RowData::notification(
@@ -50,7 +51,7 @@ fn row_data_notification_sets_expected_fields() {
         2,
         false,
         true,
-        presentation,
+        presentation.clone(),
     );
 
     assert_eq!(data.kind, RowKind::Notification);
@@ -111,6 +112,7 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
             received_at_ms: 12,
             show_metadata: true,
             show_thumbnail: false,
+            ..RowPresentation::default()
         },
     );
 
@@ -165,6 +167,7 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
             received_at_ms: 12,
             show_metadata: true,
             show_thumbnail: false,
+            ..RowPresentation::default()
         },
     )
     .is_equivalent(&changed));

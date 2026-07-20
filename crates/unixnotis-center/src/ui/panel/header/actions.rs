@@ -7,7 +7,8 @@ use std::time::Duration;
 use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::{
-    css::hooks, PanelActionConfig, PanelActionId, PanelClearButtonPlacement, PanelConfig,
+    css::hooks, DndMenuTrigger, PanelActionConfig, PanelActionId, PanelClearButtonPlacement,
+    PanelConfig,
 };
 
 use crate::control::UiCommand;
@@ -44,7 +45,7 @@ pub(super) fn build_panel_actions(config: &PanelConfig) -> PanelActionArea {
     let focus_toggle = build_toggle_action(hooks::panel_action::FOCUS, &config.focus_action);
 
     let dnd_toggle = build_toggle_action(hooks::panel_action::PRIMARY, &config.dnd_action);
-    set_dnd_duration_tooltip(&dnd_toggle, &config.dnd_action.tooltip);
+    set_dnd_duration_tooltip(&dnd_toggle, config);
     let dnd_status = gtk::Label::new(None);
     dnd_status.add_css_class(hooks::panel_action::LABEL);
     dnd_status.set_visible(false);
@@ -111,7 +112,7 @@ pub(in crate::ui::panel) fn apply_panel_action_config(
         hooks::panel_action::PRIMARY,
         &config.dnd_action,
     );
-    set_dnd_duration_tooltip(&widgets.dnd_toggle, &config.dnd_action.tooltip);
+    set_dnd_duration_tooltip(&widgets.dnd_toggle, config);
     update_action_button(
         &widgets.clear_button,
         hooks::panel_action::MUTED,
@@ -168,11 +169,36 @@ fn build_toggle_action(role_class: &str, config: &PanelActionConfig) -> gtk::Tog
     button
 }
 
-fn set_dnd_duration_tooltip(button: &gtk::ToggleButton, base: &str) {
-    // Keep custom copy while making the hidden context interaction discoverable
-    let duration_hint = "Right-click, long-press, or press Shift+F10 for a duration";
+fn set_dnd_duration_tooltip(button: &gtk::ToggleButton, config: &PanelConfig) {
+    // Keep custom copy while documenting only the input paths that are actually active
+    let mut hints = Vec::new();
+    if !config.dnd_menu_choices.is_empty() {
+        if config
+            .dnd_menu_triggers
+            .contains(&DndMenuTrigger::RightClick)
+        {
+            hints.push("right-click");
+        }
+        if config
+            .dnd_menu_triggers
+            .contains(&DndMenuTrigger::LongPress)
+        {
+            hints.push("long-press");
+        }
+        if config.dnd_menu_triggers.contains(&DndMenuTrigger::Keyboard) {
+            hints.push("Shift+F10");
+        }
+    }
+    let duration_hint = if hints.is_empty() {
+        String::new()
+    } else {
+        format!("{} for a duration", hints.join(", "))
+    };
+    let base = &config.dnd_action.tooltip;
     let tooltip = if base.is_empty() {
-        duration_hint.to_string()
+        duration_hint
+    } else if duration_hint.is_empty() {
+        base.clone()
     } else {
         format!("{base}\n{duration_hint}")
     };

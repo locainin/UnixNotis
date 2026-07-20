@@ -21,6 +21,7 @@ fn sanitize_clamps_alpha_and_theme_limits() {
     config.theme.shadow_strong_alpha = -0.5;
     config.theme.border_width = MAX_BORDER_WIDTH + 2;
     config.theme.card_radius = MAX_CARD_RADIUS + 3;
+    config.theme.notification_corners.top_left = u16::MAX;
     sanitize_config(&mut config);
 
     assert_eq!(config.theme.surface_alpha, 0.0);
@@ -36,6 +37,7 @@ fn sanitize_clamps_alpha_and_theme_limits() {
     assert_eq!(config.theme.shadow_strong_alpha, 0.0);
     assert_eq!(config.theme.border_width, MAX_BORDER_WIDTH);
     assert_eq!(config.theme.card_radius, MAX_CARD_RADIUS);
+    assert_eq!(config.theme.notification_corners.top_left, MAX_CORNER_CUT);
 }
 
 #[test]
