@@ -22,7 +22,8 @@ git clone https://github.com/locainin/UnixNotis.wiki.git
 ## Features
 
 - Freedesktop.org notification daemon with history, rules, sound, and DND.
-- Persistent DND state across daemon restarts.
+- Persistent and timed DND state across daemon restarts.
+- KDE-compatible inline replies in the control-center panel for live notifications that advertise reply support.
 - Control-center panel with widgets, notification list, and media controls.
 - Toast popup UI with configurable timeouts and styling.
 - D-Bus inhibit API for programmatic popup suppression.
@@ -81,21 +82,6 @@ user service.
 When launched from a downloaded release, the installer verifies the bundled binaries and then copies
 them into `$HOME/.local/bin` instead of building from source. The TUI shows the installed version and
 reports when a newer GitHub release is available.
-
-For a shareable configuration, theme, D-Bus, and service report, run:
-
-```sh
-noticenterctl doctor
-noticenterctl doctor --verbose
-noticenterctl doctor --json
-noticenterctl doctor --config "$HOME/path/to/config.toml"
-noticenterctl css-check --config "$HOME/path/to/config.toml"
-```
-
-Verbose systemd reports include a sanitized, bounded window of up to 30 user-journal lines.
-Review verbose output before posting it because application metadata can still be present.
-Dinit, runit, s6-rc, manual, and unknown launches report service status without pretending that
-the installed artifacts provide persistent logs.
 
 Maintainers can build a local release archive manually:
 
