@@ -162,11 +162,12 @@ fn parse_actions_reserves_capacity_for_complete_pairs_only() {
     let actions = parse_actions(vec![
         "default".to_string(),
         "Open".to_string(),
-        "orphan-key".to_string(),
+        "dismiss".to_string(),
+        "Dismiss".to_string(),
     ]);
 
-    assert_eq!(actions.len(), 1);
-    assert_eq!(actions.capacity(), 1);
+    assert_eq!(actions.len(), 2);
+    assert_eq!(actions.capacity(), 2);
 }
 
 #[test]

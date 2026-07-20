@@ -37,7 +37,7 @@ impl LexicallyNormalizedPath {
                 Component::ParentDir => match normalized.components().next_back() {
                     Some(Component::Normal(_)) => {
                         let removed = normalized.pop();
-                        debug_assert!(removed);
+                        debug_assert!(removed, "normal path component must be removable");
                     }
                     _ => return Err(LexicalPathError::ParentEscape),
                 },
@@ -88,7 +88,7 @@ impl ContainedPath {
         let relative = normalized
             .as_path()
             .strip_prefix(root.as_path())
-            .map_err(|_| LexicalPathError::OutsideRoot)?
+            .map_err(|_outside_root| LexicalPathError::OutsideRoot)?
             .to_path_buf();
         Ok(Self { root, relative })
     }

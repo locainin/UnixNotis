@@ -8,8 +8,10 @@ fn sound_command_preserves_non_utf8_argument_bytes() {
     let path = OsString::from_vec(b"/tmp/sound-\xff.ogg".to_vec());
     let command = build_sound_command("true", std::slice::from_ref(&path));
     let args = command.as_std().get_args().collect::<Vec<_>>();
+    let display = sound_command_display("true", std::slice::from_ref(&path));
 
     assert_eq!(args, vec![path.as_os_str()]);
+    assert_eq!(display, "true /tmp/sound-�.ogg");
 }
 
 #[cfg(target_os = "linux")]

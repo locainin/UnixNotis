@@ -163,10 +163,11 @@ fn environment_assignment_names_follow_portable_identifier_rules() {
         "=value /bin/true",
     ] {
         let parsed = parse_legacy_command(command).expect("parse non-assignment token");
-        assert_eq!(
-            parsed.program(),
-            Some(Path::new(command.split_whitespace().next().unwrap()))
-        );
+        let first_token = command
+            .split_whitespace()
+            .next()
+            .expect("test command must contain a program token");
+        assert_eq!(parsed.program(), Some(Path::new(first_token)));
         assert!(parsed.env().expect("direct environment").is_empty());
     }
 }

@@ -11,19 +11,19 @@ use crate::ui::widgets::utils::RefreshBackoff;
 #[derive(Clone)]
 pub(in crate::ui::widgets::stats) struct StatItem {
     // Raw config supplies source selection and display metadata
-    pub(super) config: StatWidgetConfig,
+    pub(in crate::ui::widgets::stats) config: StatWidgetConfig,
     // Root card inserted into the grid
-    pub(super) root: gtk::Box,
+    pub(in crate::ui::widgets::stats) root: gtk::Box,
     // Label receives the latest rendered sample
-    pub(super) value_label: gtk::Label,
+    pub(in crate::ui::widgets::stats) value_label: gtk::Label,
     // Built-in reader state is retained across samples
-    pub(super) builtin: Rc<RefCell<Option<BuiltinStat>>>,
+    pub(in crate::ui::widgets::stats) builtin: Rc<RefCell<Option<BuiltinStat>>>,
     // In-flight state prevents overlapping refreshes
-    pub(super) inflight: Rc<Cell<bool>>,
+    pub(in crate::ui::widgets::stats) inflight: Rc<Cell<bool>>,
     // Last good value avoids unnecessary relayout
-    pub(super) last_value: Rc<RefCell<Option<String>>>,
+    pub(in crate::ui::widgets::stats) last_value: Rc<RefCell<Option<String>>>,
     // Backoff slows sources whose output remains stable
-    pub(super) refresh_backoff: Rc<RefCell<RefreshBackoff>>,
+    pub(in crate::ui::widgets::stats) refresh_backoff: Rc<RefCell<RefreshBackoff>>,
 }
 
 pub(super) enum StatSourceRef<'a> {

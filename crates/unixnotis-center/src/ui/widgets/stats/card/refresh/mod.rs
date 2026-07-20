@@ -90,7 +90,7 @@ impl StatItem {
             .map_or(StatSourceRef::Missing, StatSourceRef::Command)
     }
 
-    fn refresh_missing(&self, base_interval: Duration) {
+    pub(in crate::ui::widgets::stats) fn refresh_missing(&self, base_interval: Duration) {
         // Missing sources settle on the placeholder without spinning
         let changed = self.apply_value("n/a");
         self.refresh_backoff
