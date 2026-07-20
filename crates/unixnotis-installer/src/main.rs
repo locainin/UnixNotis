@@ -10,7 +10,6 @@
     clippy::option_if_let_else,
     clippy::redundant_else,
     clippy::ref_option,
-    clippy::similar_names,
     clippy::too_many_lines,
     clippy::unnecessary_wraps,
     reason = "reviewed installer state-machine, backend, and TUI boundaries keep explicit control flow for auditable lifecycle behavior"

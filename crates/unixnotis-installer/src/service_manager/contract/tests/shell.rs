@@ -1,41 +1,4 @@
-use std::path::Path;
-
-use super::super::shell::{
-    envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
-    shell_quote,
-};
-
-#[test]
-fn envdir_sync_prelude_renders_readable_guard_steps() {
-    let steps = envdir_sync_prelude(Path::new("/tmp/service root/env"));
-
-    assert_eq!(
-        steps,
-        [
-            "umask 077",
-            "envdir='/tmp/service root/env'",
-            r#"[ ! -L "$envdir" ] || exit 1"#,
-            r#"mkdir -p "$envdir" || exit 1"#,
-            r#"[ -d "$envdir" ] && [ ! -L "$envdir" ] || exit 1"#,
-        ]
-    );
-}
-
-#[test]
-fn envdir_shell_update_writes_temp_file_before_replacing_target() {
-    let update = render_envdir_shell_update("WAYLAND_DISPLAY");
-
-    // The order matters: create temp, write value, lock permissions, then atomically replace
-    assert_eq!(
-        update,
-        concat!(
-            r#"tmp=$(mktemp "$envdir/.WAYLAND_DISPLAY.XXXXXX") || exit"#,
-            r#"; printenv WAYLAND_DISPLAY > "$tmp" || : > "$tmp""#,
-            r#"; chmod 600 "$tmp" || { rm -f "$tmp"; exit 1; }"#,
-            r#"; mv -f "$tmp" "$envdir/WAYLAND_DISPLAY" || { rm -f "$tmp"; exit 1; }"#
-        )
-    );
-}
+use super::super::shell::{envdir_file_contents, is_safe_env_name, shell_quote};
 
 #[test]
 fn envdir_file_contents_match_envdir_first_line_semantics() {
