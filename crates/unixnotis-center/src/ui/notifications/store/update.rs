@@ -3,7 +3,6 @@
 //! Keeps list-store mutation logic separate from data mutation methods
 
 use std::collections::{HashMap, HashSet};
-use std::ops::Not;
 use std::rc::Rc;
 
 use gio::prelude::ListModelExt;
@@ -277,7 +276,7 @@ impl NotificationList {
     }
 
     fn group_ids_are_visible(&self, ids: &[u32]) -> bool {
-        self.visible_ids_for_group(ids).is_empty().not()
+        !self.visible_ids_for_group(ids).is_empty()
     }
 
     pub(in crate::ui::notifications) fn update_empty_overlay(&self) {
@@ -307,7 +306,7 @@ const fn has_pending_items(count: usize) -> bool {
 }
 
 const fn range_count_mismatch(actual: usize, expected: usize) -> bool {
-    actual.abs_diff(expected) > 0
+    actual != expected
 }
 
 fn intern_key_is_live(key: &Rc<str>) -> bool {

@@ -94,7 +94,7 @@ pub fn jitter_duration(max_ms: u64) -> Duration {
     if max_ms == 0 {
         return Duration::ZERO;
     }
-    let jitter_ms = next_jitter_seed().wrapping_rem(max_ms);
+    let jitter_ms = next_jitter_seed() % max_ms;
     Duration::from_millis(jitter_ms)
 }
 
