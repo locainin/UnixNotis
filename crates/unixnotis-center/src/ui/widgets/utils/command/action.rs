@@ -5,7 +5,7 @@ use std::process::Output;
 
 use gtk::glib;
 use tracing::warn;
-use unixnotis_core::{util, PanelDebugLevel};
+use unixnotis_core::{util, CommandSpec, PanelDebugLevel};
 
 use crate::diagnostics::panel_debug as debug;
 
@@ -13,11 +13,10 @@ use super::queue::enqueue_command;
 use super::{resolve_command_plan, CommandKind};
 
 pub(in crate::ui::widgets) fn run_command_capture_action_async(
-    cmd: &str,
+    cmd: &CommandSpec,
 ) -> async_channel::Receiver<Result<Output, io::Error>> {
     // Action capture keeps action priority while still reporting completion
     let (tx, rx) = async_channel::bounded(1);
-    let cmd = cmd.trim();
     if cmd.is_empty() {
         // Keep the receiver behavior consistent with the non-empty path
         let _ = tx.send_blocking(Err(io::Error::new(
@@ -28,15 +27,15 @@ pub(in crate::ui::widgets) fn run_command_capture_action_async(
     }
     let plan = resolve_command_plan(cmd, CommandKind::Action);
     debug::log(PanelDebugLevel::Verbose, || {
-        let snippet = util::log_snippet(cmd);
+        let snippet = util::log_snippet(&cmd.display_lossy());
         format!("enqueue action-capture command: {snippet}")
     });
-    enqueue_command(cmd.to_string(), plan, Some(tx));
+    enqueue_command(cmd.clone(), plan, Some(tx));
     rx
 }
 
 pub(in crate::ui::widgets) fn run_action_command_with_completion<F>(
-    cmd: String,
+    cmd: CommandSpec,
     context: &'static str,
     on_complete: F,
 ) where
@@ -44,7 +43,7 @@ pub(in crate::ui::widgets) fn run_action_command_with_completion<F>(
 {
     // One helper keeps action completion and failure handling the same across widgets
     let rx = run_command_capture_action_async(&cmd);
-    let cmd_snip = util::log_snippet(&cmd);
+    let cmd_snip = util::log_snippet(&cmd.display_lossy());
     glib::MainContext::default().spawn_local(async move {
         let failed = match rx.recv().await {
             Ok(Ok(output)) => !output.status.success(),

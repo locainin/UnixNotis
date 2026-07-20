@@ -1,11 +1,11 @@
 //! Slider refresh request snapshots
 
-use unixnotis_core::{NumericParseMode, SliderWidgetConfig};
+use unixnotis_core::{CommandSpec, NumericParseMode, SliderWidgetConfig};
 
 #[derive(Clone)]
 pub(in super::super) struct SliderRefreshRequest {
     // Command used to read the current slider value
-    pub(super) cmd: String,
+    pub(super) cmd: CommandSpec,
     // Lower bound used for parser clamping
     pub(super) min: f64,
     // Upper bound used for parser clamping
@@ -28,9 +28,9 @@ impl SliderRefreshRequest {
         }
     }
 
-    pub(in super::super) fn command(&self) -> &str {
+    pub(in super::super) fn command(&self) -> String {
         // Action diagnostics need the command identity without exposing mutable request fields
-        &self.cmd
+        self.cmd.display_lossy()
     }
 }
 

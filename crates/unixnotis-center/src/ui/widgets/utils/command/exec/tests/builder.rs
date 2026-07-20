@@ -2,17 +2,18 @@ use std::path::Path;
 
 use super::super::super::test_support::configure_command_test_root;
 use super::{
-    build_command, build_tokio_command, command_config_dir, command_path_escapes_root,
-    log_shell_fallback_once, resolve_simple_program_from_root, set_command_config_dir,
-    shell_fallback_cache, shell_fallback_hash, SHELL_FALLBACK_CACHE_LIMIT,
+    build_command, build_tokio_command, command_config_dir, log_shell_fallback_once,
+    resolve_direct_program_from_root, set_command_config_dir, shell_fallback_cache,
+    shell_fallback_hash, SHELL_FALLBACK_CACHE_LIMIT,
 };
+use unixnotis_core::CommandSpec;
 
 #[test]
 fn resolve_simple_program_roots_relative_script_paths_in_config_dir() {
     let config_dir = Path::new("/tmp/demo/unixnotis");
 
     assert_eq!(
-        resolve_simple_program_from_root(Some(config_dir), "scripts/demo-widget"),
+        resolve_direct_program_from_root(Some(config_dir), Path::new("scripts/demo-widget")),
         config_dir.join("scripts/demo-widget")
     );
 }
@@ -22,7 +23,10 @@ fn resolve_simple_program_uses_supplied_config_dir_for_relative_scripts() {
     let config_dir = Path::new("/tmp/unixnotis-custom-config-root");
 
     assert_eq!(
-        resolve_simple_program_from_root(Some(config_dir), "scripts/unixnotis-blue-light-state"),
+        resolve_direct_program_from_root(
+            Some(config_dir),
+            Path::new("scripts/unixnotis-blue-light-state")
+        ),
         config_dir.join("scripts/unixnotis-blue-light-state")
     );
 }
@@ -32,12 +36,12 @@ fn resolve_simple_program_roots_dot_and_explicit_relative_paths() {
     let config_dir = Path::new("/tmp/demo/unixnotis");
 
     assert_eq!(
-        resolve_simple_program_from_root(Some(config_dir), "."),
+        resolve_direct_program_from_root(Some(config_dir), Path::new(".")),
         config_dir
     );
     assert_eq!(
-        resolve_simple_program_from_root(Some(config_dir), "./scripts/probe"),
-        config_dir.join("./scripts/probe")
+        resolve_direct_program_from_root(Some(config_dir), Path::new("./scripts/probe")),
+        config_dir.join("scripts/probe")
     );
 }
 
@@ -46,17 +50,21 @@ fn resolve_simple_program_blocks_parent_traversal_paths() {
     let config_dir = Path::new("/tmp/demo/unixnotis");
 
     assert_eq!(
-        resolve_simple_program_from_root(Some(config_dir), "../outside-script"),
+        resolve_direct_program_from_root(Some(config_dir), Path::new("../outside-script")),
         config_dir.join(".unixnotis-blocked-command-path")
     );
 }
 
 #[test]
-fn nested_parent_traversal_is_detected_after_normal_components() {
+fn nested_parent_traversal_is_blocked_after_normal_components() {
     let config_dir = Path::new("/tmp/demo/unixnotis");
-    let candidate = config_dir.join("scripts/../../outside-script");
-
-    assert!(command_path_escapes_root(config_dir, &candidate));
+    assert_eq!(
+        resolve_direct_program_from_root(
+            Some(config_dir),
+            Path::new("scripts/../../outside-script")
+        ),
+        config_dir.join(".unixnotis-blocked-command-path")
+    );
 }
 
 #[test]
@@ -104,7 +112,7 @@ fn shell_fallback_hash_distinguishes_command_text() {
 fn direct_commands_use_the_config_directory_as_their_working_directory() {
     configure_command_test_root();
     let config_dir = command_config_dir().expect("resolve command config directory");
-    let command = build_command("true");
+    let command = build_command(&CommandSpec::direct("true", [] as [&str; 0]));
 
     assert_eq!(command.get_current_dir(), Some(config_dir.as_path()));
 }
@@ -113,7 +121,7 @@ fn direct_commands_use_the_config_directory_as_their_working_directory() {
 fn shell_fallback_commands_use_the_config_directory_as_their_working_directory() {
     configure_command_test_root();
     let config_dir = command_config_dir().expect("resolve command config directory");
-    let command = build_command(". ./lib/common.sh");
+    let command = build_command(&CommandSpec::shell(". ./lib/common.sh"));
 
     assert_eq!(command.get_current_dir(), Some(config_dir.as_path()));
 }
@@ -122,7 +130,7 @@ fn shell_fallback_commands_use_the_config_directory_as_their_working_directory()
 fn tokio_commands_use_the_config_directory_as_their_working_directory() {
     configure_command_test_root();
     let config_dir = command_config_dir().expect("resolve command config directory");
-    let command = build_tokio_command("true");
+    let command = build_tokio_command(&CommandSpec::direct("true", [] as [&str; 0]));
 
     assert_eq!(
         command.as_std().get_current_dir(),
@@ -134,7 +142,10 @@ fn tokio_commands_use_the_config_directory_as_their_working_directory() {
 fn loader_environment_and_command_cwd_share_the_same_config_root() {
     configure_command_test_root();
     let config_dir = command_config_dir().expect("resolve command config directory");
-    let command = build_command("LD_PRELOAD=./assets/libprobe.so scripts/probe");
+    let command = build_command(
+        &CommandSpec::direct("scripts/probe", [] as [&str; 0])
+            .with_env("LD_PRELOAD", "./assets/libprobe.so"),
+    );
     let preload = command
         .get_envs()
         .find(|(name, _)| *name == "LD_PRELOAD")
@@ -149,7 +160,10 @@ fn loader_environment_and_command_cwd_share_the_same_config_root() {
 fn tokio_loader_environment_and_command_cwd_share_the_same_config_root() {
     configure_command_test_root();
     let config_dir = command_config_dir().expect("resolve command config directory");
-    let command = build_tokio_command("LD_PRELOAD=./assets/libprobe.so scripts/probe");
+    let command = build_tokio_command(
+        &CommandSpec::direct("scripts/probe", [] as [&str; 0])
+            .with_env("LD_PRELOAD", "./assets/libprobe.so"),
+    );
     let command = command.as_std();
     let preload = command
         .get_envs()

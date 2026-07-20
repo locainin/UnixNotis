@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use super::schedule_command;
+use unixnotis_core::CommandSpec;
 
 #[gtk::test]
 fn scheduled_command_coalesces_values_and_clears_pending_state() {
@@ -23,7 +24,7 @@ fn scheduled_command_coalesces_values_and_clears_pending_state() {
     schedule_command(
         pending.clone(),
         pending_value.clone(),
-        "test {value} = 17".to_string(),
+        CommandSpec::direct("test", ["{value}", "=", "17"]),
         4.0,
         1.0,
         on_complete.clone(),
@@ -31,7 +32,7 @@ fn scheduled_command_coalesces_values_and_clears_pending_state() {
     schedule_command(
         pending.clone(),
         pending_value.clone(),
-        "test {value} = 17".to_string(),
+        CommandSpec::direct("test", ["{value}", "=", "17"]),
         17.0,
         1.0,
         on_complete,

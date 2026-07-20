@@ -8,10 +8,11 @@ use super::{
     DelayedState,
 };
 use crate::ui::widgets::utils::command::{CommandKind, CommandPlan};
+use unixnotis_core::CommandSpec;
 
 fn job(cmd: &str) -> CommandJob {
     CommandJob {
-        cmd: cmd.to_string(),
+        cmd: CommandSpec::direct("echo", [cmd]),
         plan: CommandPlan {
             kind: CommandKind::Slow,
             timeout_override: None,
@@ -71,6 +72,9 @@ fn due_job_selection_prefers_deadline_then_sequence() {
 
     let index = next_ready_delayed_job_index(&state.pending, now).expect("expected due job");
 
-    assert_eq!(state.pending[index].job.cmd, "echo first");
+    assert_eq!(
+        state.pending[index].job.cmd,
+        CommandSpec::direct("echo", ["echo first"])
+    );
     assert_eq!(next_delayed_wake(&state.pending, now), Some(Duration::ZERO));
 }

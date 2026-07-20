@@ -3,6 +3,7 @@
 use std::io;
 use std::process::Output;
 use std::time::Duration;
+use unixnotis_core::CommandSpec;
 
 use tokio::runtime::Runtime;
 use tracing::warn;
@@ -31,7 +32,7 @@ pub(in crate::ui::widgets::utils::command) fn build_command_runtime() -> Option<
 }
 
 pub(in crate::ui::widgets::utils::command) fn run_command_with_timeout(
-    cmd: &str,
+    cmd: &CommandSpec,
     timeout: Duration,
     runtime: Option<&Runtime>,
 ) -> Result<Output, io::Error> {
@@ -43,14 +44,17 @@ pub(in crate::ui::widgets::utils::command) fn run_command_with_timeout(
 }
 
 fn run_command_with_timeout_async(
-    cmd: &str,
+    cmd: &CommandSpec,
     timeout: Duration,
     runtime: &Runtime,
 ) -> Result<Output, io::Error> {
     runtime.block_on(async { run_command_with_timeout_inner(cmd, timeout).await })
 }
 
-async fn run_command_with_timeout_inner(cmd: &str, timeout: Duration) -> io::Result<Output> {
+async fn run_command_with_timeout_inner(
+    cmd: &CommandSpec,
+    timeout: Duration,
+) -> io::Result<Output> {
     let mut child = spawn_capture_command_async(cmd)?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -98,7 +102,7 @@ async fn run_command_with_timeout_inner(cmd: &str, timeout: Duration) -> io::Res
     })
 }
 
-fn run_command_with_timeout_blocking(cmd: &str, timeout: Duration) -> io::Result<Output> {
+fn run_command_with_timeout_blocking(cmd: &CommandSpec, timeout: Duration) -> io::Result<Output> {
     let mut child = spawn_capture_command(cmd)?;
     let stdout_handle = match child.stdout.take() {
         Some(stdout) => spawn_reader(stdout),
@@ -132,3 +136,7 @@ fn run_command_with_timeout_blocking(cmd: &str, timeout: Duration) -> io::Result
         stderr,
     })
 }
+
+#[cfg(test)]
+#[path = "tests/runner.rs"]
+mod tests;

@@ -10,7 +10,7 @@ use std::time::Duration;
 use async_channel::{TryRecvError, TrySendError};
 use gtk::glib;
 use tracing::warn;
-use unixnotis_core::{util, PanelDebugLevel};
+use unixnotis_core::{util, CommandSpec, PanelDebugLevel};
 
 use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
@@ -50,27 +50,26 @@ impl Drop for CommandWatch {
 }
 
 pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
-    cmd: &str,
+    cmd: &CommandSpec,
     on_event: F,
 ) -> Option<CommandWatch> {
-    let cmd = cmd.trim();
     if cmd.is_empty() {
         warn!("watch command was empty");
         return None;
     }
     debug::log(PanelDebugLevel::Info, || {
-        let snippet = util::log_snippet(cmd);
+        let snippet = util::log_snippet(&cmd.display_lossy());
         format!("watch start: {snippet}")
     });
 
     let plan = resolve_command_plan(cmd, CommandKind::Slow);
-    let cmd_string = cmd.to_string();
+    let cmd_string = cmd.display_lossy();
     let cmd_for_thread = cmd_string.clone();
     // Spawn watch command with stdout piped so events can be consumed
     let mut child = match plan.spawn_watch_command(cmd) {
         Ok(child) => child,
         Err(err) => {
-            let snippet = util::log_snippet(cmd);
+            let snippet = util::log_snippet(&cmd.display_lossy());
             warn!(command = %snippet, ?err, "watch command failed to start");
             return None;
         }
@@ -79,7 +78,7 @@ pub(in crate::ui::widgets) fn start_command_watch<F: Fn() + 'static>(
     let stdout = if let Some(stdout) = child.stdout.take() {
         stdout
     } else {
-        let snippet = util::log_snippet(cmd);
+        let snippet = util::log_snippet(&cmd.display_lossy());
         warn!(command = %snippet, "watch command missing stdout");
         let _ = child.kill();
         let _ = child.wait();

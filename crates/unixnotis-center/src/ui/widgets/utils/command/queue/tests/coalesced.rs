@@ -4,10 +4,11 @@ use std::time::Instant;
 use super::super::worker::CommandJob;
 use super::{insert_coalesced_job, CoalescedRefreshState};
 use crate::ui::widgets::utils::command::{CommandKind, CommandPlan};
+use unixnotis_core::CommandSpec;
 
-fn job(cmd: &str, kind: CommandKind) -> CommandJob {
+fn job(cmd: CommandSpec, kind: CommandKind) -> CommandJob {
     CommandJob {
-        cmd: cmd.to_string(),
+        cmd,
         plan: CommandPlan {
             kind,
             timeout_override: None,
@@ -24,8 +25,14 @@ fn same_refresh_key_replaces_existing_job() {
         order: VecDeque::new(),
     };
 
-    insert_coalesced_job(&mut state, job("echo a", CommandKind::Fast));
-    let outcome = insert_coalesced_job(&mut state, job("echo a", CommandKind::Fast));
+    insert_coalesced_job(
+        &mut state,
+        job(CommandSpec::direct("echo", ["a"]), CommandKind::Fast),
+    );
+    let outcome = insert_coalesced_job(
+        &mut state,
+        job(CommandSpec::direct("echo", ["a"]), CommandKind::Fast),
+    );
 
     assert_eq!(state.pending.len(), 1);
     assert_eq!(state.order.len(), 1);
@@ -40,8 +47,14 @@ fn distinct_refresh_kinds_keep_separate_jobs() {
         order: VecDeque::new(),
     };
 
-    insert_coalesced_job(&mut state, job("echo a", CommandKind::Fast));
-    insert_coalesced_job(&mut state, job("echo a", CommandKind::Slow));
+    insert_coalesced_job(
+        &mut state,
+        job(CommandSpec::direct("echo", ["a"]), CommandKind::Fast),
+    );
+    insert_coalesced_job(
+        &mut state,
+        job(CommandSpec::direct("echo", ["a"]), CommandKind::Slow),
+    );
 
     assert_eq!(state.pending.len(), 2);
     assert_eq!(state.order.len(), 2);
@@ -54,13 +67,28 @@ fn full_refresh_queue_evicts_oldest_key() {
         order: VecDeque::new(),
     };
     for index in 0..256 {
-        insert_coalesced_job(&mut state, job(&format!("echo {index}"), CommandKind::Fast));
+        insert_coalesced_job(
+            &mut state,
+            job(
+                CommandSpec::direct("echo", [index.to_string()]),
+                CommandKind::Fast,
+            ),
+        );
     }
 
-    let outcome = insert_coalesced_job(&mut state, job("echo newest", CommandKind::Fast));
+    let outcome = insert_coalesced_job(
+        &mut state,
+        job(CommandSpec::direct("echo", ["newest"]), CommandKind::Fast),
+    );
 
     assert_eq!(state.pending.len(), 256);
     assert!(outcome.evicted_oldest);
-    assert!(!state.pending.values().any(|item| item.cmd == "echo 0"));
-    assert!(state.pending.values().any(|item| item.cmd == "echo newest"));
+    assert!(!state
+        .pending
+        .values()
+        .any(|item| item.cmd == CommandSpec::direct("echo", ["0"])));
+    assert!(state
+        .pending
+        .values()
+        .any(|item| item.cmd == CommandSpec::direct("echo", ["newest"])));
 }

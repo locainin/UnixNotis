@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
-use unixnotis_core::NumericParseMode;
+use unixnotis_core::{CommandSpec, NumericParseMode};
 
 use super::{apply_slider_icon, apply_slider_value, apply_successful_output, note_slider_error};
 use crate::ui::widgets::utils::command_slider::refresh::{
@@ -113,7 +113,7 @@ fn slider_error_records_a_retry_deadline() {
 
 fn request() -> SliderRefreshRequest {
     SliderRefreshRequest {
-        cmd: "read-slider".to_string(),
+        cmd: CommandSpec::direct("read-slider", [] as [&str; 0]),
         min: 0.0,
         max: 100.0,
         step: 1.0,

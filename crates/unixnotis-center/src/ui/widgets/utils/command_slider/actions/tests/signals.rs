@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
-use unixnotis_core::SliderWidgetConfig;
+use unixnotis_core::{CommandSpec, SliderWidgetConfig};
 
 use super::{attach_icon_action, attach_scale_action};
 use crate::ui::widgets::utils::command_slider::refresh::{SliderRefreshGate, SliderRefreshMeta};
@@ -41,7 +41,7 @@ fn icon_action_adds_a_static_shell_when_toggle_command_is_absent() {
 #[gtk::test]
 fn scale_action_echoes_the_changed_value_immediately() {
     let config = SliderWidgetConfig {
-        set_cmd: ":".to_string(),
+        set_cmd: CommandSpec::direct("true", [] as [&str; 0]),
         toggle_cmd: None,
         ..SliderWidgetConfig::default()
     };
@@ -63,8 +63,8 @@ fn scale_action_echoes_the_changed_value_immediately() {
 #[gtk::test]
 fn successful_scale_action_keeps_the_local_value_without_corrective_refresh() {
     let config = SliderWidgetConfig {
-        get_cmd: "printf 22".to_string(),
-        set_cmd: "true".to_string(),
+        get_cmd: CommandSpec::direct("printf", ["22"]),
+        set_cmd: CommandSpec::direct("true", [] as [&str; 0]),
         toggle_cmd: None,
         ..SliderWidgetConfig::default()
     };
@@ -88,8 +88,8 @@ fn successful_scale_action_keeps_the_local_value_without_corrective_refresh() {
 #[gtk::test]
 fn failed_scale_action_runs_corrective_refresh() {
     let config = SliderWidgetConfig {
-        get_cmd: "printf 22".to_string(),
-        set_cmd: "false".to_string(),
+        get_cmd: CommandSpec::direct("printf", ["22"]),
+        set_cmd: CommandSpec::direct("false", [] as [&str; 0]),
         toggle_cmd: None,
         ..SliderWidgetConfig::default()
     };
