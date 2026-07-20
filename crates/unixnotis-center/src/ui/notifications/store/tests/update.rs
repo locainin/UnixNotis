@@ -1,4 +1,5 @@
 use gio::prelude::ListModelExt;
+use gtk::prelude::Cast;
 use gtk::prelude::WidgetExt;
 use std::rc::Rc;
 
@@ -10,6 +11,16 @@ use super::{
     has_pending_items, intern_key_is_live, merge_adjacent_ranges, range_count_mismatch,
     should_keep_group, should_rebuild_from_scratch,
 };
+
+fn empty_overlay_text(list: &crate::ui::notifications::NotificationList) -> String {
+    list.empty_overlay
+        .first_child()
+        .expect("empty overlay should contain a label")
+        .downcast::<gtk::Label>()
+        .expect("empty overlay child should be a label")
+        .text()
+        .to_string()
+}
 
 #[gtk::test]
 fn request_rebuild_marks_list_dirty() {
@@ -159,6 +170,36 @@ fn flush_rebuild_filters_existing_list_with_minimal_middle_splice() {
     );
     assert_eq!(list.group_ranges[&browser].start, 0);
     assert_eq!(list.group_ranges[&browser].len, 2);
+}
+
+#[gtk::test]
+fn empty_overlay_distinguishes_no_matches_from_an_empty_notification_store() {
+    let mut list = support::make_list();
+    list.seed(vec![support::notification(1, "Terminal")], Vec::new());
+    list.flush_rebuild();
+
+    assert!(list.set_filter_query("missing"));
+    list.flush_rebuild();
+
+    assert!(list.empty_overlay.get_visible());
+    assert_eq!(empty_overlay_text(&list), "No matching notifications");
+
+    assert!(list.set_filter_query(""));
+    list.flush_rebuild();
+
+    assert!(!list.empty_overlay.get_visible());
+    assert_eq!(empty_overlay_text(&list), "No notifications");
+}
+
+#[gtk::test]
+fn empty_overlay_keeps_normal_copy_when_searching_an_empty_store() {
+    let mut list = support::make_list();
+
+    assert!(list.set_filter_query("missing"));
+    list.flush_rebuild();
+
+    assert!(list.empty_overlay.get_visible());
+    assert_eq!(empty_overlay_text(&list), "No notifications");
 }
 
 #[gtk::test]

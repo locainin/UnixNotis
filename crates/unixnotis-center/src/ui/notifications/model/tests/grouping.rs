@@ -105,6 +105,34 @@ fn group_visibility_and_entry_filter_cover_app_summary_and_body() {
     assert!(!list.group_has_visible_entries(&terminal_ids));
 }
 
+#[gtk::test]
+fn notification_counts_report_matches_and_total_for_active_search() {
+    let mut list = support::make_list();
+    let mut terminal = support::notification(1, "Terminal");
+    terminal.body = "Build complete".to_string();
+    list.seed(
+        vec![terminal, support::notification(2, "Browser")],
+        vec![support::notification(3, "Terminal history")],
+    );
+
+    let counts = list.notification_counts();
+    assert_eq!(counts.matching, 3);
+    assert_eq!(counts.total, 3);
+    assert!(!counts.filter_active);
+
+    assert!(list.set_filter_query("terminal"));
+    let counts = list.notification_counts();
+    assert_eq!(counts.matching, 2);
+    assert_eq!(counts.total, 3);
+    assert!(counts.filter_active);
+
+    assert!(list.set_filter_query("missing"));
+    let counts = list.notification_counts();
+    assert_eq!(counts.matching, 0);
+    assert_eq!(counts.total, 3);
+    assert!(counts.filter_active);
+}
+
 #[test]
 fn ignorable_group_chars_cover_controls_and_zero_width_marks() {
     assert!(is_ignorable_group_char('\n'));

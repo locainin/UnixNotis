@@ -66,12 +66,22 @@ impl UiState {
             // Counts are refreshed on the next open to keep the header accurate
             return;
         }
-        // Header count always reflects total active + history entries
-        let total = self.list.total_count();
-        if self.last_count == Some(total) {
+        let counts = self.list.notification_counts();
+        if self.last_count == Some(counts) {
             return;
         }
-        self.last_count = Some(total);
-        self.panel.header.count.set_text(&format!("{total}"));
+        self.last_count = Some(counts);
+        self.panel.header.count.set_text(&format_counts(counts));
     }
 }
+
+fn format_counts(counts: crate::ui::notifications::NotificationCounts) -> String {
+    if counts.filter_active {
+        return format!("{} / {}", counts.matching, counts.total);
+    }
+    counts.total.to_string()
+}
+
+#[cfg(test)]
+#[path = "tests/state.rs"]
+mod tests;

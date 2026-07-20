@@ -62,7 +62,7 @@ pub(super) fn update_metadata_labels(
     set_label_text_if_changed(&row.footer_right, footer_right.as_ref());
 }
 
-pub(super) fn notification_meta_label<'a>(
+pub(super) const fn notification_meta_label<'a>(
     notification: &NotificationView,
     metadata: &'a NotificationMetadataConfig,
 ) -> &'a str {

@@ -27,6 +27,7 @@ pub(super) fn list_config() -> NotificationListConfig {
         notification_corners: unixnotis_core::CutCorners::default(),
         show_notification_thumbnails: false,
         empty_text: "No notifications".to_string(),
+        no_matching_text: "No matching notifications".to_string(),
         empty_offset_top: 24,
         empty_alignment: unixnotis_core::EmptyStateAlignment::Auto,
     }

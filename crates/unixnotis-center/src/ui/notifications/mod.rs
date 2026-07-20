@@ -10,6 +10,7 @@ mod store;
 pub(super) mod test_support;
 mod view;
 
+pub(in crate::ui) use model::types::NotificationCounts;
 pub use model::types::{NotificationList, NotificationListConfig};
 
 pub(in crate::ui::notifications) use model::item;

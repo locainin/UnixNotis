@@ -167,6 +167,8 @@ impl UiState {
                     self.log_debug(PanelDebugLevel::Verbose, || {
                         format!("notification filter updated: '{query}'")
                     });
+                    // Counts derive from list data and stay accurate before the GTK rebuild lands
+                    self.refresh_counts();
                 }
             }
             UiEvent::WidgetsCollapsed(collapsed) => {

@@ -1,3 +1,5 @@
+//! Tests for configuration path discovery and resolution
+
 use std::env;
 use std::path::PathBuf;
 

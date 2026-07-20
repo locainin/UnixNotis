@@ -27,6 +27,8 @@ pub struct PanelConfig {
     pub output: Option<String>,
     /// Text shown when the notification list is empty
     pub empty_text: String,
+    /// Text shown when an active search has no matching notifications
+    pub no_matching_text: String,
     /// Main heading shown in the panel header
     pub title: String,
     /// Secondary text shown below the main heading
@@ -111,6 +113,7 @@ impl Default for PanelConfig {
             keyboard_interactivity: PanelKeyboardInteractivity::OnDemand,
             output: None,
             empty_text: "NO NOTIFICATIONS".to_string(),
+            no_matching_text: "NO MATCHING NOTIFICATIONS".to_string(),
             title: "Notifications".to_string(),
             subtitle: String::new(),
             search_placeholder: "Search app, title, or message".to_string(),

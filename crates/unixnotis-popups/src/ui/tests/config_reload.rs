@@ -39,6 +39,16 @@ fn rejected_config_logs_never_include_private_parser_text() {
 }
 
 #[test]
+fn oversized_config_uses_a_stable_rejection_kind() {
+    let error = ConfigError::TooLarge {
+        size: 2_000_000,
+        max: 1_048_576,
+    };
+
+    assert_eq!(config_error_kind(&error), "too-large");
+}
+
+#[test]
 fn theme_resolution_failure_logs_only_the_stable_stage() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let writer_output = Arc::clone(&output);

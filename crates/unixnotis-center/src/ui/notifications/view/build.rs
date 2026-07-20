@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use crate::control::{UiCommand, UiEvent};
 
 use super::item::RowKind;
-use super::row::empty::{build_empty_row, update_empty_row};
+use super::row::empty::build_empty_row;
 use super::types::{NotificationList, NotificationListConfig};
 use super::widgets::{bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets};
 use crate::ui::icons::IconResolver;
@@ -104,6 +104,7 @@ impl NotificationList {
             empty_offset_top: config.empty_offset_top,
             empty_alignment: config.empty_alignment,
             empty_text: config.empty_text,
+            no_matching_text: config.no_matching_text,
             entries: std::collections::HashMap::new(),
             active_order: std::collections::VecDeque::new(),
             history_order: std::collections::VecDeque::new(),
@@ -148,9 +149,13 @@ impl NotificationList {
         self.notification_corners = config.notification_corners;
         self.show_notification_thumbnails = config.show_notification_thumbnails;
         if self.empty_text != config.empty_text {
-            update_empty_row(&self.empty_overlay, &config.empty_text);
             self.empty_text = config.empty_text.clone();
         }
+        if self.no_matching_text != config.no_matching_text {
+            self.no_matching_text = config.no_matching_text.clone();
+        }
+        // The visible copy depends on both configuration and current search state
+        self.update_empty_overlay();
         if self.empty_offset_top != config.empty_offset_top {
             self.empty_offset_top = config.empty_offset_top;
         }

@@ -35,7 +35,7 @@ impl DndMenuChoice {
     }
 
     /// Return mutable access to the user-facing menu label
-    pub(in crate::config) fn label_mut(&mut self) -> &mut String {
+    pub(in crate::config) const fn label_mut(&mut self) -> &mut String {
         match self {
             Self::Duration { label, .. }
             | Self::Tomorrow { label, .. }

@@ -1,4 +1,4 @@
-//! Config I/O test declarations
+//! Configuration I/O test declarations
 
 mod load;
 mod paths;
