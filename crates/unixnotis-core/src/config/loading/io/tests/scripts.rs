@@ -125,19 +125,22 @@ fn enabled_default_script_commands_have_shipped_files() {
         .filter(|toggle| toggle.enabled)
     {
         for command in [
-            toggle.state_cmd.as_deref(),
-            toggle.toggle_cmd.as_deref(),
-            toggle.on_cmd.as_deref(),
-            toggle.off_cmd.as_deref(),
-            toggle.watch_cmd.as_deref(),
+            toggle.state_cmd.as_ref(),
+            toggle.toggle_cmd.as_ref(),
+            toggle.on_cmd.as_ref(),
+            toggle.off_cmd.as_ref(),
+            toggle.watch_cmd.as_ref(),
         ]
         .into_iter()
         .flatten()
         {
-            if command.starts_with("scripts/") {
+            let Some(program) = command.program().and_then(std::path::Path::to_str) else {
+                continue;
+            };
+            if program.starts_with("scripts/") {
                 assert!(
-                    shipped.contains(&command),
-                    "default command must be shipped: {command}"
+                    shipped.contains(&program),
+                    "default command must be shipped: {program}"
                 );
             }
         }
