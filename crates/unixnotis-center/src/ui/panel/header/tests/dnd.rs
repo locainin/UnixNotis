@@ -83,6 +83,7 @@ fn default_duration_menu_enables_only_right_click_and_keeps_stock_choices() {
 
     let popover = attached_popover(&toggle);
     assert!(popover.is_autohide());
+    assert!(!popover.has_arrow());
     assert!(popover.has_css_class("unixnotis-dnd-menu"));
     assert!(popover
         .child()

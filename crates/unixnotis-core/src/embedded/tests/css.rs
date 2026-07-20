@@ -39,3 +39,14 @@ fn panel_css_keeps_the_dnd_menu_visual_hooks() {
         );
     }
 }
+
+#[test]
+fn dnd_menu_hover_and_keyboard_focus_share_one_visual_rule() {
+    let shared_selector = ".unixnotis-dnd-menu .unixnotis-dnd-menu-choice:hover,\n\
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice:focus-visible";
+
+    // PrintScreen can switch GTK into keyboard modality while the pointer remains over a row
+    // One selector keeps that modality change from altering the captured menu appearance
+    assert!(DEFAULT_PANEL_CSS.contains(shared_selector));
+    assert!(!DEFAULT_PANEL_CSS.contains("box-shadow: inset 2px 0"));
+}

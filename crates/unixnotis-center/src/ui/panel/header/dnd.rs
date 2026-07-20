@@ -67,6 +67,8 @@ pub(in crate::ui) fn connect_dnd_menu(
     // The DND toggle owns this popover without adding a separate arrow button
     let popover = gtk::Popover::new();
     popover.add_css_class(hooks::dnd_menu::ROOT);
+    // A flat edge aligns with the action row without GTK's detached-looking arrow notch
+    popover.set_has_arrow(false);
     popover.set_autohide(true);
     popover.set_parent(dnd_toggle);
     let (secondary_click, long_press, key_controller) =
