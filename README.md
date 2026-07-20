@@ -83,13 +83,6 @@ When launched from a downloaded release, the installer verifies the bundled bina
 them into `$HOME/.local/bin` instead of building from source. The TUI shows the installed version and
 reports when a newer GitHub release is available.
 
-Timed DND can use a relative duration or the next occurrence of a local clock time:
-
-```sh
-noticenterctl dnd on --for 30m
-noticenterctl dnd on --until 08:00
-```
-
 Maintainers can build a local release archive manually:
 
 ```sh
