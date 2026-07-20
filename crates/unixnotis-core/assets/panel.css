@@ -205,62 +205,78 @@
 .unixnotis-dnd-menu > contents {
   padding: 8px;
   border-radius: 16px;
-  border: 1px solid alpha(@unixnotis-accent, 0.22);
-  background-image: linear-gradient(160deg, alpha(@unixnotis-surface-strong, 0.98), alpha(@unixnotis-surface, 0.98));
+  border: 1px solid alpha(@unixnotis-accent, 0.30);
+  background-color: @unixnotis-panel-grad-1;
+  background-image: linear-gradient(155deg, @unixnotis-panel-grad-1 0%, @unixnotis-panel-grad-2 72%, @unixnotis-panel-grad-3 145%);
   box-shadow:
-    0 18px 36px -20px @unixnotis-shadow-soft,
-    0 0 24px -20px @unixnotis-glow-cyan,
-    inset 0 0 0 1px alpha(#ffffff, 0.035);
+    0 20px 44px -22px @unixnotis-shadow-strong,
+    0 0 28px -20px @unixnotis-glow-cyan,
+    0 0 24px -22px @unixnotis-glow-pink,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
 .unixnotis-dnd-menu > arrow {
-  background: @unixnotis-surface-strong;
-  border-color: alpha(@unixnotis-accent, 0.22);
+  background-color: @unixnotis-panel-grad-1;
+  background-image: none;
+  border-color: alpha(@unixnotis-accent, 0.30);
 }
 
 .unixnotis-dnd-menu-content {
   min-width: 216px;
+  border-spacing: 2px;
 }
 
 .unixnotis-dnd-menu-title {
-  margin: 4px 8px 7px;
+  margin: 4px 9px 8px;
   color: @unixnotis-muted;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
 }
 
-.unixnotis-dnd-menu-choice {
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice {
   min-height: 34px;
   padding: 0 10px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 9px;
   color: @unixnotis-text;
-  background: transparent;
+  background-color: transparent;
+  background-image: none;
   box-shadow: none;
-  transition: background-color 0.12s ease-out, color 0.12s ease-out;
+  text-shadow: none;
+  transition: background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out;
 }
 
-.unixnotis-dnd-menu-choice label {
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice label {
   font-size: 12px;
   font-weight: 500;
 }
 
-.unixnotis-dnd-menu-choice:hover,
-.unixnotis-dnd-menu-choice:focus {
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice:hover,
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice:focus {
   color: @unixnotis-text;
-  background: alpha(@unixnotis-accent, 0.13);
-  box-shadow: inset 2px 0 alpha(@unixnotis-accent, 0.78);
+  border-color: alpha(@unixnotis-accent, 0.26);
+  background-color: alpha(@unixnotis-accent, 0.12);
+  background-image: linear-gradient(90deg, alpha(@unixnotis-accent, 0.16), alpha(@unixnotis-accent-2, 0.07));
+  box-shadow:
+    inset 2px 0 alpha(@unixnotis-accent, 0.82),
+    0 0 18px -16px @unixnotis-glow-cyan;
 }
 
-.unixnotis-dnd-menu-choice:active {
-  background: alpha(@unixnotis-accent, 0.22);
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice:active {
+  border-color: alpha(@unixnotis-accent, 0.38);
+  background-color: alpha(@unixnotis-accent, 0.22);
+  background-image: none;
 }
 
 .unixnotis-dnd-menu-choice-indefinite {
-  margin-top: 5px;
-  border-top: 1px solid alpha(@unixnotis-outline, 0.7);
-  border-radius: 0 0 9px 9px;
+  color: alpha(@unixnotis-text, 0.86);
+}
+
+.unixnotis-dnd-menu-separator {
+  margin: 4px 8px 3px;
+  min-height: 1px;
+  background-color: alpha(@unixnotis-outline, 0.72);
 }
 
 .unixnotis-panel-search-revealer {

@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 
 use super::{
-    cut_corner, empty_row, ghost_row, group_row, info_card, media_card, media_shell, panel_action,
-    panel_card, panel_shell, popup_card, shared_state, slider, stat_card, toggle_card,
+    cut_corner, dnd_menu, empty_row, ghost_row, group_row, info_card, media_card, media_shell,
+    panel_action, panel_card, panel_shell, popup_card, shared_state, slider, stat_card,
+    toggle_card,
 };
 
 #[test]
@@ -14,6 +15,12 @@ fn hook_names_stay_unique() {
     // One flat set makes accidental selector reuse obvious during refactors
     let names = [
         cut_corner::ROOT,
+        dnd_menu::ROOT,
+        dnd_menu::CONTENT,
+        dnd_menu::TITLE,
+        dnd_menu::CHOICE,
+        dnd_menu::INDEFINITE,
+        dnd_menu::SEPARATOR,
         shared_state::ACTIVE,
         shared_state::CRITICAL,
         shared_state::EMPTY,

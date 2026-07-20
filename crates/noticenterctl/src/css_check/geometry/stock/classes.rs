@@ -69,6 +69,12 @@ const fn hook_unixnotis_classes() -> &'static [&'static str] {
     // Hook-only classes can be real live selectors before the stock theme gives them rules
     &[
         hooks::cut_corner::ROOT,
+        hooks::dnd_menu::ROOT,
+        hooks::dnd_menu::CONTENT,
+        hooks::dnd_menu::TITLE,
+        hooks::dnd_menu::CHOICE,
+        hooks::dnd_menu::INDEFINITE,
+        hooks::dnd_menu::SEPARATOR,
         hooks::panel_action::ROW,
         hooks::panel_action::GROUP,
         hooks::panel_action::ROOT,

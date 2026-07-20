@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use chrono::{Days, Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use gtk::prelude::*;
-use unixnotis_core::{DndMenuChoice, DndMenuTrigger, PanelConfig};
+use unixnotis_core::{css::hooks, DndMenuChoice, DndMenuTrigger, PanelConfig};
 
 use crate::control::UiCommand;
 use crate::ui::try_send_command;
@@ -66,7 +66,7 @@ pub(in crate::ui) fn connect_dnd_menu(
 ) -> DndDurationMenu {
     // The DND toggle owns this popover without adding a separate arrow button
     let popover = gtk::Popover::new();
-    popover.add_css_class("unixnotis-dnd-menu");
+    popover.add_css_class(hooks::dnd_menu::ROOT);
     popover.set_autohide(true);
     popover.set_parent(dnd_toggle);
     let (secondary_click, long_press, key_controller) =
@@ -120,25 +120,31 @@ fn build_choice_box(
     popover: &gtk::Popover,
 ) -> gtk::Box {
     let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    container.add_css_class("unixnotis-dnd-menu-content");
+    container.add_css_class(hooks::dnd_menu::CONTENT);
 
     // A small heading explains the time choices without repeating DND state
     let title = gtk::Label::new(Some("Pause notifications"));
     title.set_xalign(0.0);
-    title.add_css_class("unixnotis-dnd-menu-title");
+    title.add_css_class(hooks::dnd_menu::TITLE);
     container.append(&title);
 
     for choice in choices {
+        if matches!(choice, DndMenuChoice::Indefinite { .. }) {
+            // A real separator stays crisp without borrowing a button border
+            let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+            separator.add_css_class(hooks::dnd_menu::SEPARATOR);
+            container.append(&separator);
+        }
         // Left-aligned rows scan faster than a stack of centered default buttons
         let button = gtk::Button::with_label(choice.label());
         if let Some(label) = button.child().and_downcast::<gtk::Label>() {
             label.set_xalign(0.0);
             label.set_hexpand(true);
         }
-        button.add_css_class("unixnotis-dnd-menu-choice");
+        button.add_css_class(hooks::dnd_menu::CHOICE);
         if matches!(choice, DndMenuChoice::Indefinite { .. }) {
             // Indefinite mode is separated because it has no automatic resume time
-            button.add_css_class("unixnotis-dnd-menu-choice-indefinite");
+            button.add_css_class(hooks::dnd_menu::INDEFINITE);
         }
         connect_choice_button(&button, choice, command_tx, popover);
         container.append(&button);

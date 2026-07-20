@@ -105,6 +105,7 @@ fn default_duration_menu_enables_only_right_click_and_keeps_stock_choices() {
         .all(|button| button.has_css_class("unixnotis-dnd-menu-choice")));
     assert!(!menu_buttons(&popover)[3].has_css_class("unixnotis-dnd-menu-choice-indefinite"));
     assert!(menu_buttons(&popover)[4].has_css_class("unixnotis-dnd-menu-choice-indefinite"));
+    assert!(menu_separator(&popover).has_css_class("unixnotis-dnd-menu-separator"));
 
     assert_eq!(menu_owner.secondary_click.button(), 3);
     assert_eq!(
@@ -284,4 +285,19 @@ fn menu_buttons(popover: &gtk::Popover) -> Vec<gtk::Button> {
         child = widget.next_sibling();
     }
     buttons
+}
+
+fn menu_separator(popover: &gtk::Popover) -> gtk::Separator {
+    let choices = popover
+        .child()
+        .and_then(|child| child.downcast::<gtk::Box>().ok())
+        .expect("DND popover should contain its choice box");
+    let mut child = choices.first_child();
+    while let Some(widget) = child {
+        if let Ok(separator) = widget.clone().downcast::<gtk::Separator>() {
+            return separator;
+        }
+        child = widget.next_sibling();
+    }
+    panic!("DND popover should separate the indefinite choice");
 }

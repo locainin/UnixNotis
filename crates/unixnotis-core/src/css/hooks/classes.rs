@@ -14,6 +14,16 @@ pub mod cut_corner {
     pub const ROOT: &str = "unixnotis-cut-corner";
 }
 
+pub mod dnd_menu {
+    // Timed DND hooks expose the popover layers without relying on GTK node names
+    pub const ROOT: &str = "unixnotis-dnd-menu";
+    pub const CONTENT: &str = "unixnotis-dnd-menu-content";
+    pub const TITLE: &str = "unixnotis-dnd-menu-title";
+    pub const CHOICE: &str = "unixnotis-dnd-menu-choice";
+    pub const INDEFINITE: &str = "unixnotis-dnd-menu-choice-indefinite";
+    pub const SEPARATOR: &str = "unixnotis-dnd-menu-separator";
+}
+
 pub mod panel_action {
     // Panel action hooks expose both shared structure and per-button role
     pub const ROW: &str = "unixnotis-panel-actions";

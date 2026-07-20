@@ -31,6 +31,7 @@ fn panel_css_keeps_the_dnd_menu_visual_hooks() {
         ".unixnotis-dnd-menu-title",
         ".unixnotis-dnd-menu-choice",
         ".unixnotis-dnd-menu-choice-indefinite",
+        ".unixnotis-dnd-menu-separator",
     ] {
         assert!(
             DEFAULT_PANEL_CSS.contains(selector),
