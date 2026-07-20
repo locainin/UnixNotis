@@ -1,10 +1,10 @@
 //! Procfs and sysfs readers for built-in statistic cards
 
-pub(super) mod battery;
+pub(in crate::ui::widgets::stats) mod battery;
 mod cpu;
 mod load;
 mod memory;
-pub(super) mod network;
+pub(in crate::ui::widgets::stats) mod network;
 
 pub(super) use battery::read_battery;
 pub(super) use cpu::read_cpu_sample;

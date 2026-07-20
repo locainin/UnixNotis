@@ -1,7 +1,9 @@
-use super::stat_kind_css_class;
+//! Statistic card presentation tests
+
+use super::super::style::stat_kind_css_class;
 
 #[test]
-fn stat_kind_css_class_sanitizes_to_stable_token() {
+fn card_kind_class_normalizes_theme_tokens() {
     assert_eq!(
         stat_kind_css_class("RAM"),
         Some("unixnotis-stat-kind-ram".to_string())

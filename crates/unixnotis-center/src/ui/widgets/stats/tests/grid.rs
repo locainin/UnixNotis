@@ -1,51 +1,15 @@
-//! Stat worker tests
+//! Statistic grid construction tests
 
-use super::{
-    builtin::BuiltinStatKey, BuiltinStat, BuiltinStatJob, BuiltinStatWorker, BuiltinSubmitOutcome,
-};
+use super::super::grid::build::flowbox_columns;
 
 #[test]
-fn builtin_worker_queue_full_falls_back() {
-    let (tx, _worker_rx) = crossbeam_channel::bounded(1);
-    let worker = BuiltinStatWorker {
-        tx,
-        inline_fallback: false,
-    };
-    let stat_a = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
-    let stat_b = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
-    let (tx_a, _rx_a) = async_channel::bounded(1);
-    let (tx_b, _rx_b) = async_channel::bounded(1);
-
-    // First job fits in the bounded queue
-    assert_eq!(
-        worker.submit(BuiltinStatJob {
-            stat: stat_a,
-            respond: tx_a,
-        }),
-        BuiltinSubmitOutcome::Submitted
-    );
-    // Second job proves the submit path reports saturation instead of blocking
-    assert_eq!(
-        worker.submit(BuiltinStatJob {
-            stat: stat_b,
-            respond: tx_b,
-        }),
-        BuiltinSubmitOutcome::QueueFull
-    );
+fn grid_columns_normalize_zero_and_preserve_positive_values() {
+    assert_eq!(flowbox_columns(0), 1);
+    assert_eq!(flowbox_columns(1), 1);
+    assert_eq!(flowbox_columns(4), 4);
 }
 
 #[test]
-fn builtin_stat_keys_dedupe_matching_sources() {
-    let cpu_a = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
-    let cpu_b = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
-    let net = BuiltinStat::from_command("builtin:net:wlan0").expect("builtin stat");
-
-    assert_eq!(cpu_a.key(), BuiltinStatKey::Cpu);
-    assert_eq!(cpu_a.key(), cpu_b.key());
-    assert_eq!(
-        net.key(),
-        BuiltinStatKey::Network {
-            iface: Some("wlan0".to_string()),
-        }
-    );
+fn grid_columns_saturate_when_usize_exceeds_u32() {
+    assert_eq!(flowbox_columns(usize::MAX), u32::MAX);
 }

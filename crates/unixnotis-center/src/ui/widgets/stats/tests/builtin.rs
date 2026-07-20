@@ -1,47 +1,13 @@
-use super::readers::battery::read_battery_from;
-use super::readers::network::{pick_default_iface_from, IfaceCandidate};
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+//! Built-in reader and worker tests
 
-struct TempDir {
-    path: PathBuf,
-}
-
-impl TempDir {
-    fn new(prefix: &str) -> Self {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("{}-{}-{}", prefix, std::process::id(), stamp));
-        fs::create_dir_all(&path).expect("temp dir creation failed");
-        Self { path }
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        // Best-effort cleanup to avoid leaving test artifacts on disk.
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
-
-fn write_device(root: &Path, name: &str, entries: &[(&str, &str)]) {
-    let device_path = root.join(name);
-    fs::create_dir_all(&device_path).expect("device directory creation failed");
-    for (file, contents) in entries {
-        fs::write(device_path.join(file), contents).expect("device file write failed");
-    }
-}
+use super::super::builtin::readers::battery::read_battery_from;
+use super::super::builtin::readers::network::{pick_default_iface_from, IfaceCandidate};
+use super::super::builtin::worker::{BuiltinJob, BuiltinSample, BuiltinWorker, SubmitOutcome};
+use super::super::builtin::BuiltinStat;
+use super::support::{write_device, TempDir};
 
 #[test]
-fn battery_energy_aggregates_weighted() {
+fn battery_energy_values_are_weighted_by_full_capacity() {
     let temp = TempDir::new("unixnotis-battery-energy");
     write_device(
         temp.path(),
@@ -63,12 +29,14 @@ fn battery_energy_aggregates_weighted() {
             ("energy_full", "40"),
         ],
     );
+
     let percent = read_battery_from(temp.path()).expect("battery percent missing");
+
     assert_eq!(percent, "40");
 }
 
 #[test]
-fn battery_mixed_units_falls_back_to_capacity() {
+fn battery_mixed_units_fall_back_to_reported_capacity() {
     let temp = TempDir::new("unixnotis-battery-mixed");
     write_device(
         temp.path(),
@@ -92,12 +60,14 @@ fn battery_mixed_units_falls_back_to_capacity() {
             ("capacity", "25"),
         ],
     );
+
     let percent = read_battery_from(temp.path()).expect("battery percent missing");
+
     assert_eq!(percent, "43");
 }
 
 #[test]
-fn battery_skips_not_present_devices() {
+fn battery_reader_skips_devices_reported_as_absent() {
     let temp = TempDir::new("unixnotis-battery-absent");
     write_device(
         temp.path(),
@@ -109,11 +79,12 @@ fn battery_skips_not_present_devices() {
             ("energy_full", "60"),
         ],
     );
+
     assert!(read_battery_from(temp.path()).is_none());
 }
 
 #[test]
-fn default_iface_prefers_up_physical_over_virtual() {
+fn default_interface_prefers_an_active_physical_device() {
     let candidates = vec![
         IfaceCandidate {
             name: "veth0".to_string(),
@@ -124,6 +95,7 @@ fn default_iface_prefers_up_physical_over_virtual() {
             operstate: "up".to_string(),
         },
     ];
+
     assert_eq!(
         pick_default_iface_from(&candidates),
         Some("wlan0".to_string())
@@ -131,7 +103,7 @@ fn default_iface_prefers_up_physical_over_virtual() {
 }
 
 #[test]
-fn default_iface_falls_back_to_physical_when_none_up() {
+fn default_interface_prefers_physical_devices_when_all_are_down() {
     let candidates = vec![
         IfaceCandidate {
             name: "eth0".to_string(),
@@ -142,6 +114,7 @@ fn default_iface_falls_back_to_physical_when_none_up() {
             operstate: "up".to_string(),
         },
     ];
+
     assert_eq!(
         pick_default_iface_from(&candidates),
         Some("eth0".to_string())
@@ -149,7 +122,7 @@ fn default_iface_falls_back_to_physical_when_none_up() {
 }
 
 #[test]
-fn default_iface_uses_deterministic_name_tiebreaker() {
+fn default_interface_uses_name_as_a_deterministic_tiebreaker() {
     let candidates = vec![
         IfaceCandidate {
             name: "eth1".to_string(),
@@ -160,8 +133,47 @@ fn default_iface_uses_deterministic_name_tiebreaker() {
             operstate: "down".to_string(),
         },
     ];
+
     assert_eq!(
         pick_default_iface_from(&candidates),
         Some("eth0".to_string())
     );
+}
+
+#[test]
+fn builtin_worker_reports_a_full_queue_without_blocking() {
+    let (tx, _worker_rx) = crossbeam_channel::bounded(1);
+    let worker = BuiltinWorker {
+        tx,
+        inline_fallback: false,
+    };
+    let first = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
+    let second = BuiltinStat::from_command("builtin:cpu").expect("builtin stat");
+    let (first_tx, _first_rx) = async_channel::bounded(1);
+    let (second_tx, _second_rx) = async_channel::bounded(1);
+
+    assert_eq!(
+        worker.submit(BuiltinJob {
+            stat: first,
+            respond: first_tx,
+        }),
+        SubmitOutcome::Submitted
+    );
+    assert_eq!(
+        worker.submit(BuiltinJob {
+            stat: second,
+            respond: second_tx,
+        }),
+        SubmitOutcome::QueueFull
+    );
+}
+
+#[test]
+fn builtin_sample_preserves_reader_failure_as_missing_data() {
+    let stat =
+        BuiltinStat::from_command("builtin:net:unixnotis-missing-interface").expect("builtin stat");
+
+    let sample = BuiltinSample::read(stat);
+
+    assert!(sample.value.is_none());
 }
