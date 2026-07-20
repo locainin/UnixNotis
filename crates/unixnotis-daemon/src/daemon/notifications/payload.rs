@@ -163,7 +163,8 @@ fn reply_hint_text(hints: &HashMap<String, OwnedValue>, key: &str) -> String {
 
 fn parse_actions(raw: Vec<String>) -> Vec<Action> {
     // Actions come in key and label pairs
-    let mut actions = Vec::with_capacity(raw.len().min(MAX_ACTIONS));
+    let action_capacity = (raw.len() / 2).min(MAX_ACTIONS);
+    let mut actions = Vec::with_capacity(action_capacity);
     let mut iter = raw.into_iter();
 
     // The protocol sends actions as [key, label, key, label, ...]
@@ -254,14 +255,11 @@ fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
         return value.to_string();
     }
 
-    // Walk character ends instead of decrementing a byte index; a mutated loop
-    // counter must not be able to hang while handling untrusted notification text
-    let end = value
-        .char_indices()
-        .map(|(index, ch)| index + ch.len_utf8())
-        .take_while(|end| *end <= max_bytes)
-        .last()
-        .unwrap_or(0);
+    // At most three continuation bytes can sit between the limit and a boundary
+    let mut end = max_bytes;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
     value[..end].to_string()
 }
 
