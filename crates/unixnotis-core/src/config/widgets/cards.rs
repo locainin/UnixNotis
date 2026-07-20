@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::WidgetPluginConfig;
+use crate::CommandSpec;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
@@ -12,7 +13,7 @@ pub struct CardWidgetConfig {
     pub subtitle: Option<String>,
     pub icon: Option<String>,
     pub icon_asset: Option<String>,
-    pub cmd: Option<String>,
+    pub cmd: Option<CommandSpec>,
     /// External plugin source for this card (preferred over cmd when set)
     pub plugin: Option<WidgetPluginConfig>,
     pub min_height: i32,

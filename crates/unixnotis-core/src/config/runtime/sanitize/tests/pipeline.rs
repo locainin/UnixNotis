@@ -1,5 +1,6 @@
 use super::super::super::super::widgets::{CardWidgetConfig, StatWidgetConfig};
 use super::*;
+use crate::CommandSpec;
 use crate::{
     Config, DndMenuChoice, DndMenuTrigger, PanelActionConfig, PanelActionId, PanelConfig,
     PanelSection, PanelWidgetSection, PopupConfig, ToggleLayout, WidgetPluginConfig,
@@ -138,7 +139,7 @@ proptest! {
         let mut config = Config::default();
         config.widgets.stats[0].plugin = Some(WidgetPluginConfig {
             api_version,
-            command,
+            command: CommandSpec::direct(command, [] as [&str; 0]),
             ..WidgetPluginConfig::default()
         });
 
@@ -523,7 +524,7 @@ fn widget_toggle_tooltips_parse_cleanly() {
         enabled = true
         label = "Custom Action"
         icon = "applications-system-symbolic"
-        toggle_cmd = "scripts/custom-action"
+        toggle_cmd = { mode = "direct", program = "scripts/custom-action" }
         "#,
     )
     .expect("config should parse");
@@ -535,7 +536,10 @@ fn widget_toggle_tooltips_parse_cleanly() {
     assert_eq!(config.widgets.stat_columns, 4);
     assert_eq!(config.widgets.card_columns, 1);
     assert_eq!(
-        config.widgets.toggles[0].toggle_cmd.as_deref(),
-        Some("scripts/custom-action")
+        config.widgets.toggles[0].toggle_cmd,
+        Some(CommandSpec::direct(
+            "scripts/custom-action",
+            [] as [&str; 0]
+        ))
     );
 }

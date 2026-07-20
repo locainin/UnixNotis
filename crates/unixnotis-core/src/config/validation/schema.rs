@@ -3,6 +3,7 @@
 use serde::de::IntoDeserializer;
 
 use super::super::{Config, CURRENT_CONFIG_VERSION};
+use crate::{parse_legacy_command, CommandSpec};
 
 pub(in crate::config) fn deserialize_config_with_migrations(
     contents: &str,
@@ -110,7 +111,15 @@ fn migrate_document(document: &mut toml::Value) -> Result<MigrationResult, Strin
 
     let result = match version {
         // Schema one used the same legacy layout compatibility values as unversioned files
-        0 | 1 => migrate_legacy_layout(root),
+        0 | 1 => {
+            let result = migrate_legacy_layout(root);
+            migrate_legacy_commands(root)?;
+            result
+        }
+        2 => {
+            migrate_legacy_commands(root)?;
+            MigrationResult::default()
+        }
         CURRENT_CONFIG_VERSION => MigrationResult::default(),
         _ => return Err(format!("unsupported config version {version}")),
     };
@@ -119,6 +128,103 @@ fn migrate_document(document: &mut toml::Value) -> Result<MigrationResult, Strin
         toml::Value::Integer(i64::from(CURRENT_CONFIG_VERSION)),
     );
     Ok(result)
+}
+
+fn migrate_legacy_commands(root: &mut toml::Table) -> Result<(), String> {
+    let Some(widgets) = root.get_mut("widgets").and_then(toml::Value::as_table_mut) else {
+        return Ok(());
+    };
+
+    for slider_name in ["volume", "brightness"] {
+        let Some(slider) = widgets
+            .get_mut(slider_name)
+            .and_then(toml::Value::as_table_mut)
+        else {
+            continue;
+        };
+        for field in ["get_cmd", "set_cmd", "toggle_cmd", "watch_cmd"] {
+            migrate_command_field(slider, field, &format!("widgets.{slider_name}.{field}"))?;
+        }
+    }
+
+    migrate_command_array(
+        widgets,
+        "toggles",
+        &["state_cmd", "toggle_cmd", "on_cmd", "off_cmd", "watch_cmd"],
+    )?;
+    for collection in ["stats", "cards"] {
+        migrate_command_array(widgets, collection, &["cmd"])?;
+        migrate_plugin_commands(widgets, collection)?;
+    }
+    Ok(())
+}
+
+fn migrate_command_array(
+    widgets: &mut toml::Table,
+    collection: &str,
+    fields: &[&str],
+) -> Result<(), String> {
+    let Some(entries) = widgets
+        .get_mut(collection)
+        .and_then(toml::Value::as_array_mut)
+    else {
+        return Ok(());
+    };
+    for (index, entry) in entries.iter_mut().enumerate() {
+        let Some(table) = entry.as_table_mut() else {
+            continue;
+        };
+        for field in fields {
+            migrate_command_field(
+                table,
+                field,
+                &format!("widgets.{collection}[{index}].{field}"),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn migrate_plugin_commands(widgets: &mut toml::Table, collection: &str) -> Result<(), String> {
+    let Some(entries) = widgets
+        .get_mut(collection)
+        .and_then(toml::Value::as_array_mut)
+    else {
+        return Ok(());
+    };
+    for (index, entry) in entries.iter_mut().enumerate() {
+        let Some(plugin) = entry
+            .as_table_mut()
+            .and_then(|table| table.get_mut("plugin"))
+            .and_then(toml::Value::as_table_mut)
+        else {
+            continue;
+        };
+        migrate_command_field(
+            plugin,
+            "command",
+            &format!("widgets.{collection}[{index}].plugin.command"),
+        )?;
+    }
+    Ok(())
+}
+
+fn migrate_command_field(table: &mut toml::Table, field: &str, path: &str) -> Result<(), String> {
+    let Some(value) = table.get_mut(field) else {
+        return Ok(());
+    };
+    let Some(command) = value.as_str() else {
+        return Ok(());
+    };
+    let spec = if command.trim().is_empty() {
+        CommandSpec::direct("", std::iter::empty::<&str>())
+    } else {
+        parse_legacy_command(command)
+            .map_err(|error| format!("failed to migrate {path}: {error}"))?
+    };
+    *value = toml::Value::try_from(spec)
+        .map_err(|error| format!("failed to migrate {path}: {error}"))?;
+    Ok(())
 }
 
 fn migrate_legacy_layout(root: &mut toml::Table) -> MigrationResult {

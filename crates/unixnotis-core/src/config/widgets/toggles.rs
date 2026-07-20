@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::config::command::defaults as commands;
+use crate::CommandSpec;
 
 /// Icon and label orientation for toggle cards
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
@@ -9,6 +10,13 @@ pub enum ToggleLayout {
     #[default]
     Horizontal,
     Vertical,
+}
+
+/// Built-in state parser used after a direct toggle command completes
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ToggleBackend {
+    Rfkill,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -22,14 +30,15 @@ pub struct ToggleWidgetConfig {
     pub label: String,
     pub icon: String,
     pub icon_asset: Option<String>,
-    pub state_cmd: Option<String>,
+    pub backend: Option<ToggleBackend>,
+    pub state_cmd: Option<CommandSpec>,
     /// Optional command run for every user click before state is refreshed
     ///
     /// Useful for custom buttons that do not map cleanly to separate on/off commands
-    pub toggle_cmd: Option<String>,
-    pub on_cmd: Option<String>,
-    pub off_cmd: Option<String>,
-    pub watch_cmd: Option<String>,
+    pub toggle_cmd: Option<CommandSpec>,
+    pub on_cmd: Option<CommandSpec>,
+    pub off_cmd: Option<CommandSpec>,
+    pub watch_cmd: Option<CommandSpec>,
 }
 
 impl ToggleWidgetConfig {
@@ -40,11 +49,12 @@ impl ToggleWidgetConfig {
             label: "Wi-Fi".to_string(),
             icon: "network-wireless-signal-excellent-symbolic".to_string(),
             icon_asset: None,
-            state_cmd: Some(commands::WIFI_STATE_NMCLI.to_string()),
+            backend: None,
+            state_cmd: Some(commands::wifi_state()),
             toggle_cmd: None,
-            on_cmd: Some(commands::WIFI_ON_NMCLI.to_string()),
-            off_cmd: Some(commands::WIFI_OFF_NMCLI.to_string()),
-            watch_cmd: Some(commands::WIFI_WATCH_NMCLI.to_string()),
+            on_cmd: Some(commands::wifi_on()),
+            off_cmd: Some(commands::wifi_off()),
+            watch_cmd: Some(commands::wifi_watch()),
         }
     }
 
@@ -55,12 +65,13 @@ impl ToggleWidgetConfig {
             label: "Bluetooth".to_string(),
             icon: "bluetooth-active-symbolic".to_string(),
             icon_asset: None,
-            state_cmd: Some(commands::BLUETOOTH_STATE_BLUETOOTHCTL.to_string()),
+            backend: None,
+            state_cmd: Some(commands::bluetooth_state()),
             toggle_cmd: None,
-            on_cmd: Some(commands::BLUETOOTH_ON_BLUETOOTHCTL.to_string()),
-            off_cmd: Some(commands::BLUETOOTH_OFF_BLUETOOTHCTL.to_string()),
+            on_cmd: Some(commands::bluetooth_on()),
+            off_cmd: Some(commands::bluetooth_off()),
             // D-Bus monitoring avoids TTY requirements and follows BlueZ state changes
-            watch_cmd: Some(commands::BLUETOOTH_WATCH_DBUS.to_string()),
+            watch_cmd: Some(commands::bluetooth_watch()),
         }
     }
 
@@ -71,12 +82,13 @@ impl ToggleWidgetConfig {
             label: "Airplane".to_string(),
             icon: "airplane-mode-symbolic".to_string(),
             icon_asset: None,
-            // Airplane reads active only when every rfkill device is soft-blocked
-            state_cmd: Some(commands::AIRPLANE_STATE_CMD.to_string()),
+            backend: Some(ToggleBackend::Rfkill),
+            // Airplane state is parsed from rfkill's machine-readable JSON output
+            state_cmd: Some(commands::airplane_state()),
             toggle_cmd: None,
-            on_cmd: Some(commands::AIRPLANE_ON_CMD.to_string()),
-            off_cmd: Some(commands::AIRPLANE_OFF_CMD.to_string()),
-            watch_cmd: Some(commands::AIRPLANE_WATCH_CMD.to_string()),
+            on_cmd: Some(commands::airplane_on()),
+            off_cmd: Some(commands::airplane_off()),
+            watch_cmd: Some(commands::airplane_watch()),
         }
     }
 
@@ -87,11 +99,21 @@ impl ToggleWidgetConfig {
             label: "Night".to_string(),
             icon: "weather-clear-night-symbolic".to_string(),
             icon_asset: None,
+            backend: None,
             // Shipped scripts keep backend fallback logic in editable files
-            state_cmd: Some("scripts/unixnotis-blue-light-state".to_string()),
+            state_cmd: Some(CommandSpec::direct(
+                "scripts/unixnotis-blue-light-state",
+                std::iter::empty::<&str>(),
+            )),
             toggle_cmd: None,
-            on_cmd: Some("scripts/unixnotis-blue-light-on".to_string()),
-            off_cmd: Some("scripts/unixnotis-blue-light-off".to_string()),
+            on_cmd: Some(CommandSpec::direct(
+                "scripts/unixnotis-blue-light-on",
+                std::iter::empty::<&str>(),
+            )),
+            off_cmd: Some(CommandSpec::direct(
+                "scripts/unixnotis-blue-light-off",
+                std::iter::empty::<&str>(),
+            )),
             watch_cmd: None,
         }
     }
@@ -105,6 +127,7 @@ impl Default for ToggleWidgetConfig {
             label: "Toggle".to_string(),
             icon: "applications-system-symbolic".to_string(),
             icon_asset: None,
+            backend: None,
             state_cmd: None,
             toggle_cmd: None,
             on_cmd: None,

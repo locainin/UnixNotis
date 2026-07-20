@@ -1,4 +1,4 @@
-use crate::{StatWidgetConfig, WidgetPluginConfig, WidgetsConfig};
+use crate::{CommandSpec, StatWidgetConfig, WidgetPluginConfig, WidgetsConfig};
 
 #[test]
 fn default_stat_widgets_keep_builtin_commands() {
@@ -25,7 +25,10 @@ fn default_stat_widgets_keep_builtin_commands() {
         assert_eq!(stat.icon.as_deref(), Some(icon));
         assert_eq!(stat.icon_asset, None);
         assert_eq!(stat.kind.as_deref(), Some(kind));
-        assert_eq!(stat.cmd.as_deref(), Some(command));
+        assert_eq!(
+            stat.cmd,
+            Some(CommandSpec::direct(command, [] as [&str; 0]))
+        );
         assert_eq!(stat.min_height, 72);
     }
 }
@@ -53,12 +56,12 @@ fn custom_stat_plugin_config_parses_with_command_fallback() {
         icon = "video-display-symbolic"
         icon_asset = "assets/gpu.svg"
         kind = "gpu"
-        cmd = "scripts/gpu-fallback"
+        cmd = { mode = "direct", program = "scripts/gpu-fallback" }
         min_height = 96
 
         [plugin]
         api_version = 1
-        command = "scripts/gpu-plugin"
+        command = { mode = "direct", program = "scripts/gpu-plugin" }
         timeout_ms = 1500
         max_output_bytes = 2048
         "#,
@@ -70,13 +73,16 @@ fn custom_stat_plugin_config_parses_with_command_fallback() {
     assert_eq!(stat.icon.as_deref(), Some("video-display-symbolic"));
     assert_eq!(stat.icon_asset.as_deref(), Some("assets/gpu.svg"));
     assert_eq!(stat.kind.as_deref(), Some("gpu"));
-    assert_eq!(stat.cmd.as_deref(), Some("scripts/gpu-fallback"));
+    assert_eq!(
+        stat.cmd,
+        Some(CommandSpec::direct("scripts/gpu-fallback", [] as [&str; 0]))
+    );
     assert_eq!(stat.min_height, 96);
     assert_eq!(
         stat.plugin,
         Some(WidgetPluginConfig {
             api_version: 1,
-            command: "scripts/gpu-plugin".to_string(),
+            command: CommandSpec::direct("scripts/gpu-plugin", [] as [&str; 0]),
             timeout_ms: 1500,
             max_output_bytes: 2048,
         })
