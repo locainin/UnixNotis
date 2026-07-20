@@ -29,13 +29,16 @@ fn same_refresh_key_replaces_existing_job() {
         &mut state,
         job(CommandSpec::direct("echo", ["a"]), CommandKind::Fast),
     );
-    let outcome = insert_coalesced_job(
-        &mut state,
-        job(CommandSpec::direct("echo", ["a"]), CommandKind::Fast),
-    );
+    let replacement = job(CommandSpec::direct("echo", ["a"]), CommandKind::Fast);
+    let replacement_queued_at = replacement.queued_at;
+    let outcome = insert_coalesced_job(&mut state, replacement);
 
     assert_eq!(state.pending.len(), 1);
     assert_eq!(state.order.len(), 1);
+    assert_eq!(
+        state.pending.values().next().map(|item| item.queued_at),
+        Some(replacement_queued_at)
+    );
     assert!(outcome.replaced_existing);
     assert!(!outcome.evicted_oldest);
 }

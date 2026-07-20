@@ -120,14 +120,13 @@ impl CoalescedRefreshQueue {
                 Err(channel::TrySendError::Full(job)) => {
                     // Worker queue is still full, so put it back
                     let mut state = self.state.lock().expect("coalesced refresh lock poisoned");
-                    if !state.pending.contains_key(&key)
-                        && state.pending.len() >= COALESCED_REFRESH_CAPACITY
-                    {
+                    let already_pending = state.pending.contains_key(&key);
+                    if !already_pending && state.pending.len() >= COALESCED_REFRESH_CAPACITY {
                         if let Some(oldest) = state.order.pop_front() {
                             state.pending.remove(&oldest);
                         }
                     }
-                    if !state.pending.contains_key(&key) {
+                    if !already_pending {
                         state.order.push_front(key.clone());
                     }
                     state.pending.insert(key, job);
@@ -146,23 +145,28 @@ pub(super) fn insert_coalesced_job(
     job: CommandJob,
 ) -> CoalescedInsertOutcome {
     let key = RefreshCommandKey::from_job(&job);
-    let replaced_existing = state.pending.contains_key(&key);
-    let mut evicted_oldest = false;
-    if !replaced_existing {
-        if state.pending.len() >= COALESCED_REFRESH_CAPACITY {
-            if let Some(oldest) = state.order.pop_front() {
-                // Drop the oldest job when full
-                state.pending.remove(&oldest);
-                evicted_oldest = true;
-            }
-        }
-        // First seen key goes to the back
-        state.order.push_back(key.clone());
+    if let Some(existing) = state.pending.get_mut(&key) {
+        // Replacing in place avoids a second hash lookup and keeps queue order stable
+        *existing = job;
+        return CoalescedInsertOutcome {
+            replaced_existing: true,
+            evicted_oldest: false,
+        };
     }
-    // Replacing the old job drops stale refresh work
+
+    let mut evicted_oldest = false;
+    if state.pending.len() >= COALESCED_REFRESH_CAPACITY {
+        if let Some(oldest) = state.order.pop_front() {
+            // Drop the oldest job when full
+            state.pending.remove(&oldest);
+            evicted_oldest = true;
+        }
+    }
+    // First-seen keys enter at the back of the drain order
+    state.order.push_back(key.clone());
     state.pending.insert(key, job);
     CoalescedInsertOutcome {
-        replaced_existing,
+        replaced_existing: false,
         evicted_oldest,
     }
 }
