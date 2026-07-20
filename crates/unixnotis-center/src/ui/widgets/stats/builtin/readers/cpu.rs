@@ -1,6 +1,6 @@
-//! CPU reader helpers for builtin stats.
+//! CPU reader helpers for built-in stats
 //!
-//! Reads /proc/stat and returns total/idle counters for usage calculation.
+//! Reads /proc/stat and returns total and idle counters for usage calculation
 
 use std::fs;
 
