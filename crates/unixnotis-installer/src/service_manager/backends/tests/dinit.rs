@@ -206,14 +206,21 @@ fn dinit_backend_environment_sync_uses_setenv() {
         ]
     );
     assert_eq!(
-        commands[0].envs(),
-        &[
-            ("WAYLAND_DISPLAY".to_string(), "wayland-1".to_string()),
-            ("XDG_RUNTIME_DIR".to_string(), "/run/user/1000".to_string()),
+        commands[0]
+            .envs()
+            .iter()
+            .map(|(name, value)| (
+                name.to_string_lossy().into_owned(),
+                value.to_string_lossy().into_owned(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![
             (
                 "DBUS_SESSION_BUS_ADDRESS".to_string(),
                 "unix:path=/tmp/unixnotis-bus".to_string(),
             ),
+            ("WAYLAND_DISPLAY".to_string(), "wayland-1".to_string()),
+            ("XDG_RUNTIME_DIR".to_string(), "/run/user/1000".to_string()),
         ]
     );
 }

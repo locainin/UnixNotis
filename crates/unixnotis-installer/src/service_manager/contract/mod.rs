@@ -25,10 +25,7 @@ pub use command::CommandSpec;
 pub use probe::ServiceProbe;
 pub use readiness::ReadinessIssue;
 pub use refresh::{S6DatabaseRefresh, ServiceArtifactRefresh};
-pub(super) use shell::{
-    envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
-    shell_quote, shell_quote_path,
-};
+pub(super) use shell::{envdir_file_contents, is_safe_env_name, shell_quote, shell_quote_path};
 
 #[cfg(test)]
 mod tests;

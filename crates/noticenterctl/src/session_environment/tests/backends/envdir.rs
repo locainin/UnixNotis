@@ -1,4 +1,4 @@
-use super::super::super::backends::write_envdir;
+use super::super::super::backends::envdir::write_envdir;
 use super::super::support::TempToolDir;
 
 #[test]

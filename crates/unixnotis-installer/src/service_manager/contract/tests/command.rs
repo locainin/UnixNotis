@@ -5,16 +5,6 @@ use super::super::command_routing::use_fake_command_bin;
 use crate::service_manager::CommandSpec;
 use crate::test_support::fs::write_executable;
 
-impl CommandSpec {
-    pub(crate) fn args(&self) -> &[String] {
-        &self.args
-    }
-
-    pub(crate) fn envs(&self) -> &[(String, String)] {
-        &self.envs
-    }
-}
-
 struct TempDirGuard {
     path: std::path::PathBuf,
 }

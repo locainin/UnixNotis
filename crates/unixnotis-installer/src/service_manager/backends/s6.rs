@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 use crate::system_tools;
 
 use super::super::contract::{
-    envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
-    shell_quote, shell_quote_path, CommandSpec, ReadinessIssue, S6DatabaseRefresh, ServiceArtifact,
-    ServiceArtifactKind, ServiceArtifactRefresh, ServiceProbe, MANAGED_DIRECTORY_MARKER,
+    envdir_file_contents, is_safe_env_name, shell_quote, shell_quote_path, CommandSpec,
+    ReadinessIssue, S6DatabaseRefresh, ServiceArtifact, ServiceArtifactKind,
+    ServiceArtifactRefresh, ServiceProbe, MANAGED_DIRECTORY_MARKER,
 };
 
 pub const SERVICE_NAME: &str = "unixnotis-daemon";
@@ -130,33 +130,11 @@ pub fn stop_for_reinstall_command(live_dir: &Path) -> Option<CommandSpec> {
 }
 
 pub fn hyprland_startup_commands(
-    artifact_root: &Path,
-    live_dir: &Path,
-    import_vars: &[&str],
+    _artifact_root: &Path,
+    _live_dir: &Path,
+    _import_vars: &[&str],
 ) -> Vec<String> {
-    let env_dir = service_dir(artifact_root).join(ENV_DIR);
-    let live_service = live_service_dir(live_dir);
-    // Hyprland uses one exec-once line, so every shell step must be fail-closed
-    let mut steps = envdir_sync_prelude(&env_dir);
-    for var in import_vars
-        .iter()
-        .copied()
-        .filter(|name| is_s6_envdir_name(name))
-    {
-        // Missing session vars intentionally become empty envdir files
-        steps.push(render_envdir_shell_update(var));
-    }
-    steps.push(format!(
-        "s6-rc -l {} -u change {} || exit 1",
-        shell_quote_path(live_dir),
-        shell_quote(SERVICE_NAME)
-    ));
-    steps.push(format!(
-        "s6-svc -r {} || :",
-        shell_quote_path(&live_service)
-    ));
-    let script = steps.join("; ");
-    vec![format!("sh -lc {}", shell_quote(&script))]
+    vec!["noticenterctl sync-session-environment --service-manager s6".to_string()]
 }
 
 pub const fn environment_sync_commands() -> Vec<CommandSpec> {
