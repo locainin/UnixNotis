@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::process::Stdio;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
@@ -19,12 +20,12 @@ pub(super) fn play_with_canberra(source: SoundSource) {
     let mut args = Vec::new();
     match source {
         SoundSource::Name(name) => {
-            args.push("-i".to_string());
-            args.push(name);
+            args.push(OsString::from("-i"));
+            args.push(OsString::from(name));
         }
         SoundSource::File(path) => {
-            args.push("-f".to_string());
-            args.push(path.to_string_lossy().to_string());
+            args.push(OsString::from("-f"));
+            args.push(path.into_os_string());
         }
     }
     spawn_sound_command("canberra", "canberra-gtk-play", &args);
@@ -36,7 +37,7 @@ pub(super) fn play_with_pw_play(source: SoundSource) {
         warn!("pw-play backend does not support sound-name hints");
         return;
     };
-    let args = vec![path.to_string_lossy().to_string()];
+    let args = vec![path.into_os_string()];
     spawn_sound_command("pw-play", "pw-play", &args);
 }
 
@@ -46,7 +47,7 @@ pub(super) fn play_with_paplay(source: SoundSource) {
         warn!("paplay backend does not support sound-name hints");
         return;
     };
-    let args = vec![path.to_string_lossy().to_string()];
+    let args = vec![path.into_os_string()];
     spawn_sound_command("paplay", "paplay", &args);
 }
 
@@ -56,7 +57,7 @@ fn sound_semaphore() -> &'static Arc<Semaphore> {
     SEMAPHORE.get_or_init(|| Arc::new(Semaphore::new(SOUND_MAX_CONCURRENT)))
 }
 
-fn spawn_sound_command(backend: &'static str, program: &str, args: &[String]) {
+fn spawn_sound_command(backend: &'static str, program: &str, args: &[OsString]) {
     let limiter = sound_semaphore().clone();
     // try_acquire keeps this call non-blocking on hot paths
     let permit = if let Ok(permit) = limiter.try_acquire_owned() {
@@ -65,21 +66,9 @@ fn spawn_sound_command(backend: &'static str, program: &str, args: &[String]) {
         debug!(backend, "sound command skipped (concurrency limit reached)");
         return;
     };
-    let command_str = if args.is_empty() {
-        program.to_string()
-    } else {
-        format!("{program} {}", args.join(" "))
-    };
+    let command_str = sound_command_display(program, args);
     let command_snip = util::log_snippet(&command_str);
-    let mut command = Command::new(program);
-    command
-        .args(args)
-        // Child process has no need for inherited stdio streams
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        // Ensure child exits if task is dropped early
-        .kill_on_drop(true);
+    let mut command = build_sound_command(program, args);
     match command.spawn() {
         Ok(child) => {
             let pid = child.id();
@@ -104,6 +93,29 @@ fn spawn_sound_command(backend: &'static str, program: &str, args: &[String]) {
             );
         }
     }
+}
+
+fn build_sound_command(program: &str, args: &[OsString]) -> Command {
+    let mut command = Command::new(program);
+    command
+        // OsString keeps every valid Unix path byte intact
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        // Dropped tasks must not leave playback children behind
+        .kill_on_drop(true);
+    command
+}
+
+fn sound_command_display(program: &str, args: &[OsString]) -> String {
+    let mut display = program.to_string();
+    for argument in args {
+        // Lossy text is restricted to bounded diagnostics, never execution
+        display.push(' ');
+        display.push_str(&argument.to_string_lossy());
+    }
+    display
 }
 
 async fn reap_sound_child(
