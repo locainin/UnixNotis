@@ -26,7 +26,7 @@ pub(super) fn resolve_compare_function(
     }
 
     let inner = trimmed.strip_prefix("clamp(")?.strip_suffix(')')?.trim();
-    let args = split_top_level_list(inner, ',');
+    let args = split_top_level_list(inner, ',').ok()?;
     if args.len() != 3 {
         return None;
     }
@@ -51,6 +51,7 @@ fn resolve_min_or_max(
     mode: CompareMode,
 ) -> Option<ResolvedCssValue> {
     let mut values = split_top_level_list(inner, ',')
+        .ok()?
         .into_iter()
         .map(|value| parse_length_expression(value, custom_properties, depth + 1))
         .collect::<Option<Vec<_>>>()?
