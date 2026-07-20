@@ -26,7 +26,7 @@ pub(super) fn collect_existing_icon_assets(
             paths.push(relative);
         }
     }
-    paths.sort();
+    paths.sort_unstable();
     paths.dedup();
     Ok(paths)
 }

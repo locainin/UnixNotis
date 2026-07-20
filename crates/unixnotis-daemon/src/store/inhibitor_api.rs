@@ -67,8 +67,8 @@ impl NotificationStore {
                 inhibitor.owner.clone(),
             ));
         }
-        // Stable order keeps CLI output and tests deterministic
-        inhibitors.sort_by_key(|(id, _, _, _)| *id);
+        // Unique monotonic IDs provide deterministic output without stable sorting
+        inhibitors.sort_unstable_by_key(|(id, _, _, _)| *id);
         inhibitors
     }
 
