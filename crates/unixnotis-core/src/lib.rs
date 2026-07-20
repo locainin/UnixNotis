@@ -22,6 +22,7 @@ pub mod css;
 pub mod embedded;
 pub mod filesystem;
 pub mod model;
+pub mod process;
 pub mod reconnect;
 pub mod service_manager;
 #[cfg(test)]
@@ -34,6 +35,7 @@ pub use control::*;
 pub use css::*;
 pub use embedded::*;
 pub use model::*;
+pub use process::*;
 pub use util::program_in_path;
 
 /// Compatibility path for script resources published before the embedded module was introduced
