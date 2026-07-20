@@ -5,7 +5,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::os::fd::OwnedFd;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
+use unixnotis_core::filesystem::ContainedPath;
 
 use anyhow::{anyhow, Context, Result};
 
@@ -232,18 +233,9 @@ fn is_shell_name(name: &str) -> bool {
 }
 
 pub(super) fn normalize_relative_path(path: &Path) -> Option<PathBuf> {
-    let mut parts = Vec::new();
-    for component in path.components() {
-        match component {
-            Component::Normal(value) => parts.push(value.to_os_string()),
-            Component::CurDir => {}
-            // Parent traversal is safe only while a prior config-relative segment remains to pop
-            Component::ParentDir => {
-                parts.pop()?;
-            }
-            Component::RootDir | Component::Prefix(_) => return None,
-        }
-    }
-    let normalized = parts.into_iter().collect::<PathBuf>();
+    let normalized = ContainedPath::resolve_relative("", path)
+        .ok()?
+        .relative()
+        .to_path_buf();
     (!normalized.as_os_str().is_empty()).then_some(normalized)
 }

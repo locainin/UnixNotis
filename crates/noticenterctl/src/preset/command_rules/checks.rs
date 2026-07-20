@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
-use unixnotis_core::{parse_command, Config};
+use unixnotis_core::Config;
 
 use super::super::pathing::normalize_lexical_path;
 use super::collect::collect_command_references_from_config;
@@ -86,19 +86,13 @@ pub fn validate_config_command_paths_stay_in_root(
 ) -> Result<()> {
     // Wrapper validation runs before path collection so ambiguous env forms fail closed
     for reference in collect_command_references_from_config(config) {
-        let parsed = parse_command(&reference.command).with_context(|| {
-            format!(
-                "{mode_label} because {} contains an invalid command",
-                reference.slot
-            )
-        })?;
-        validate_env_command_layout(&parsed).map_err(|reason| {
+        validate_env_command_layout(&reference.command).map_err(|reason| {
             anyhow!(
                 "{mode_label} because {} contains an unsafe env wrapper: {reason}",
                 reference.slot
             )
         })?;
-        validate_env_path_semantics(&parsed).map_err(|reason| {
+        validate_env_path_semantics(&reference.command).map_err(|reason| {
             anyhow!(
                 "{mode_label} because {} contains unsafe environment path semantics: {reason}",
                 reference.slot
@@ -128,7 +122,7 @@ pub fn validate_command_paths_in_config_bytes(
     // Byte validation is used before imported configuration reaches the live directory
     let config_text =
         std::str::from_utf8(config_bytes).context("preset config.toml is not valid UTF-8")?;
-    let config: Config =
-        toml::from_str(config_text).context("parse bundled config.toml for command path checks")?;
+    let config =
+        Config::parse(config_text).context("parse bundled config.toml for command path checks")?;
     validate_config_command_paths_stay_in_root(config_dir, &config, mode_label)
 }

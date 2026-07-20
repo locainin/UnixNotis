@@ -19,10 +19,10 @@ fn normalize_relative_path_strips_dot_segments() {
 }
 
 #[test]
-fn normalize_relative_path_rejects_parent_segments() {
-    let error =
-        normalize_relative_path(Path::new("./assets/../bg.png")).expect_err("reject parent");
-    assert!(error.to_string().contains("parent traversal"));
+fn normalize_relative_path_collapses_contained_parent_segments() {
+    let normalized =
+        normalize_relative_path(Path::new("./assets/../bg.png")).expect("normalize parent");
+    assert_eq!(normalized, Path::new("bg.png"));
 }
 
 #[test]

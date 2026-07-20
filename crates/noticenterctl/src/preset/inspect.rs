@@ -72,10 +72,11 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
                         out.push_str("  none\n");
                     } else {
                         for command in commands {
+                            let command_text = command.command.display_lossy();
                             out.push_str(&format!(
                                 "  - {} = {}\n",
                                 safe_report_value(&command.slot),
-                                safe_report_value(&command.command)
+                                safe_report_value(&command_text)
                             ));
                         }
                     }
@@ -90,10 +91,11 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
                         out.push_str("  none\n");
                     } else {
                         for warning in outside_paths {
+                            let command_text = warning.command.display_lossy();
                             out.push_str(&format!(
                                 "  - {} points outside the config root: {}\n",
                                 safe_report_value(&warning.slot),
-                                safe_report_value(&warning.command)
+                                safe_report_value(&command_text)
                             ));
                         }
                     }
@@ -110,10 +112,11 @@ pub(super) fn inspect_preset_at(input_path: &Path) -> Result<String> {
                         out.push_str("  none\n");
                     } else {
                         for leak in leaked_paths {
+                            let command_text = leak.command.display_lossy();
                             out.push_str(&format!(
                                 "  - {} uses a host-local config path: {}\n",
                                 safe_report_value(&leak.slot),
-                                safe_report_value(&leak.command)
+                                safe_report_value(&command_text)
                             ));
                         }
                     }

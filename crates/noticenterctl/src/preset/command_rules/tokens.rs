@@ -1,151 +1,142 @@
+use std::ffi::{OsStr, OsString};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use unixnotis_core::{parse_command, util, ExecutionMode, ParsedCommand};
+use unixnotis_core::CommandSpec;
 
 use super::super::pathing::{format_relative_path, normalize_lexical_path};
 
-pub fn resolve_command_path_token(config_dir: &Path, command: &str) -> Option<PathBuf> {
-    let trimmed = command.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let parsed = parse_command(trimmed).ok()?;
-    let first = effective_program(&parsed)?;
+pub fn resolve_command_path_token(config_dir: &Path, command: &CommandSpec) -> Option<PathBuf> {
+    let first = effective_program(command)?;
+    let first = first.to_str()?;
     if !looks_like_path_token(first) {
         return None;
     }
-
-    let expanded = PathBuf::from(util::expand_tilde(first).into_owned());
-    if expanded.is_absolute() {
-        return Some(expanded);
+    let path = PathBuf::from(first);
+    if path.is_absolute() {
+        return Some(path);
     }
-    Some(config_dir.join(expanded))
+    Some(config_dir.join(path))
 }
 
-pub fn collect_outside_env_path_tokens(config_dir: &Path, command: &str) -> Vec<(String, PathBuf)> {
-    let trimmed = command.trim();
-    if trimmed.is_empty() {
-        return Vec::new();
-    }
-
+pub fn collect_outside_env_path_tokens(
+    config_dir: &Path,
+    command: &CommandSpec,
+) -> Vec<(String, PathBuf)> {
     let normalized_root = normalize_lexical_path(config_dir);
-    let Ok(parsed) = parse_command(trimmed) else {
-        return Vec::new();
-    };
-    command_env_assignments(&parsed)
+    command_env_assignments(command)
+        .unwrap_or_default()
         .into_iter()
         .filter_map(|(name, value)| {
-            let components = env_path_components(name, value).ok().flatten()?;
+            let components = env_path_components(&name, &value).ok().flatten()?;
             let outside_path = components
                 .into_iter()
                 .map(|part| resolve_env_path_value(config_dir, part))
                 .find(|path| !normalize_lexical_path(path).starts_with(&normalized_root))?;
-            Some((name.to_string(), outside_path))
+            Some((name, outside_path))
         })
         .collect()
 }
 
-pub fn rewrite_command_to_config_relative(config_dir: &Path, command: &str) -> Option<String> {
-    let trimmed = command.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let parsed = parse_command(trimmed).ok()?;
-    if parsed.execution_mode != ExecutionMode::Direct {
-        // Rewriting shell syntax token-by-token could change operators or expansion behavior
-        return None;
-    }
-    let first = effective_program(&parsed)?;
+pub fn rewrite_command_to_config_relative(config_dir: &Path, command: &mut CommandSpec) -> bool {
+    let Some(first) = effective_program(command).and_then(OsStr::to_str) else {
+        return false;
+    };
     if !is_host_specific_path_token(first) {
-        return None;
+        return false;
     }
-
-    let resolved_path = resolve_command_path_token(config_dir, trimmed)?;
+    let Some(resolved_path) = resolve_command_path_token(config_dir, command) else {
+        return false;
+    };
     let normalized_root = normalize_lexical_path(config_dir);
     let normalized_path = normalize_lexical_path(&resolved_path);
-    // Only paths that really live under the config root can be rewritten safely
-    let relative_path = normalized_path.strip_prefix(&normalized_root).ok()?;
-    let rewritten_first = format_relative_path(relative_path);
-    if rewritten_first.is_empty() {
-        return None;
+    let Ok(relative_path) = normalized_path.strip_prefix(&normalized_root) else {
+        return false;
+    };
+    let rewritten = format_relative_path(relative_path);
+    if rewritten.is_empty() {
+        return false;
     }
 
-    // Re-quote parsed tokens so spaces survive without preserving ambiguous source quoting
-    let mut words = parsed
-        .env
-        .iter()
-        .map(|(name, value)| format!("{name}={value}"))
-        .collect::<Vec<_>>();
-    if parsed.program == "env" {
-        let program_index = effective_program_index(&parsed)?;
-        words.push(parsed.program);
-        words.extend(parsed.args.into_iter().enumerate().map(|(index, token)| {
-            if index == program_index {
-                rewritten_first.clone()
-            } else {
-                token
-            }
-        }));
+    let CommandSpec::Direct { program, args, .. } = command else {
+        return false;
+    };
+    if program == Path::new("env") {
+        let Ok(layout) = env_command_layout(args) else {
+            return false;
+        };
+        let Some(index) = layout.program_index else {
+            return false;
+        };
+        args[index] = OsString::from(rewritten);
     } else {
-        words.push(rewritten_first);
-        words.extend(parsed.args);
+        *program = PathBuf::from(rewritten);
     }
-    Some(shell_words::join(words))
+    true
 }
 
-pub fn first_command_token(command: &str) -> Option<String> {
-    // Returning the parsed program prevents quote characters from becoming path data
-    let parsed = parse_command(command).ok()?;
-    effective_program(&parsed).map(str::to_string)
+pub fn first_command_token(command: &CommandSpec) -> Option<String> {
+    effective_program(command)?.to_str().map(str::to_string)
 }
 
-fn command_env_assignments(parsed: &ParsedCommand) -> Vec<(&str, &str)> {
-    let mut assignments = parsed
-        .env
+fn command_env_assignments(command: &CommandSpec) -> Result<Vec<(String, String)>, &'static str> {
+    let CommandSpec::Direct { program, args, env } = command else {
+        return Ok(Vec::new());
+    };
+    let mut assignments = env
         .iter()
-        .map(|(name, value)| (name.as_str(), value.as_str()))
-        .collect::<Vec<_>>();
+        .map(|(name, value)| {
+            Ok((
+                name.to_str()
+                    .ok_or("environment name is not UTF-8")?
+                    .to_string(),
+                value
+                    .to_str()
+                    .ok_or("environment value is not UTF-8")?
+                    .to_string(),
+            ))
+        })
+        .collect::<Result<Vec<_>, &'static str>>()?;
 
-    // `env NAME=value program` applies assignments to the eventual child too
-    // Shell-mode parsing is conservative because unsafe assignments must fail closed
-    if parsed.program == "env" {
-        if let Ok(layout) = env_command_layout(parsed) {
-            assignments.extend(
-                parsed.args[layout.assignment_range]
-                    .iter()
-                    .filter_map(|token| split_env_assignment(token)),
-            );
-        }
+    if program == Path::new("env") {
+        let layout = env_command_layout(args)?;
+        assignments.extend(
+            args[layout.assignment_range]
+                .iter()
+                .map(|token| token.to_str().ok_or("env argument is not UTF-8"))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .filter_map(split_env_assignment)
+                .map(|(name, value)| (name.to_string(), value.to_string())),
+        );
     }
-    assignments
+    Ok(assignments)
 }
 
-fn effective_program(parsed: &ParsedCommand) -> Option<&str> {
-    if parsed.program != "env" {
-        return Some(parsed.program.as_str());
+fn effective_program(command: &CommandSpec) -> Option<&OsStr> {
+    let CommandSpec::Direct { program, args, .. } = command else {
+        return None;
+    };
+    if program != Path::new("env") {
+        return Some(program.as_os_str());
     }
-
-    // The env utility consumes leading assignments before spawning its real program
-    effective_program_index(parsed).map(|index| parsed.args[index].as_str())
+    let index = env_command_layout(args).ok()?.program_index?;
+    Some(args[index].as_os_str())
 }
 
-fn effective_program_index(parsed: &ParsedCommand) -> Option<usize> {
-    env_command_layout(parsed).ok()?.program_index
-}
-
-pub(super) fn validate_env_command_layout(parsed: &ParsedCommand) -> Result<(), &'static str> {
-    if parsed.program != "env" || parsed.execution_mode != ExecutionMode::Direct {
+pub(super) fn validate_env_command_layout(command: &CommandSpec) -> Result<(), &'static str> {
+    let CommandSpec::Direct { program, args, .. } = command else {
+        return Ok(());
+    };
+    if program != Path::new("env") {
         return Ok(());
     }
-
-    env_command_layout(parsed).map(|_| ())
+    env_command_layout(args).map(|_| ())
 }
 
-pub(super) fn validate_env_path_semantics(parsed: &ParsedCommand) -> Result<(), &'static str> {
-    for (name, value) in command_env_assignments(parsed) {
-        let _ = env_path_components(name, value)?;
+pub(super) fn validate_env_path_semantics(command: &CommandSpec) -> Result<(), &'static str> {
+    for (name, value) in command_env_assignments(command)? {
+        let _ = env_path_components(&name, &value)?;
     }
     Ok(())
 }
@@ -161,9 +152,9 @@ enum EnvOptionStep {
     Stop,
 }
 
-fn env_command_layout(parsed: &ParsedCommand) -> Result<EnvCommandLayout, &'static str> {
+fn env_command_layout(args: &[OsString]) -> Result<EnvCommandLayout, &'static str> {
     let mut option_count = 0usize;
-    let mut remaining = parsed.args.as_slice();
+    let mut remaining = args;
     loop {
         match env_option_step(remaining)? {
             EnvOptionStep::Continue(width) => {
@@ -183,25 +174,26 @@ fn env_command_layout(parsed: &ParsedCommand) -> Result<EnvCommandLayout, &'stat
         }
     }
 
-    // Counting a slice cannot get stuck when a malformed option shifts the child position
     let assignment_count = remaining
         .iter()
+        .map(|token| token.to_str().ok_or("env argument is not UTF-8"))
+        .map_while(Result::ok)
         .take_while(|token| split_env_assignment(token).is_some())
         .count();
     let program_index = option_count
         .checked_add(assignment_count)
         .ok_or("env argument count overflowed")?;
-
     Ok(EnvCommandLayout {
         assignment_range: option_count..program_index,
-        program_index: (program_index < parsed.args.len()).then_some(program_index),
+        program_index: (program_index < args.len()).then_some(program_index),
     })
 }
 
-fn env_option_step(arguments: &[String]) -> Result<EnvOptionStep, &'static str> {
-    let Some(token) = arguments.first().map(String::as_str) else {
+fn env_option_step(arguments: &[OsString]) -> Result<EnvOptionStep, &'static str> {
+    let Some(token) = arguments.first() else {
         return Ok(EnvOptionStep::Stop);
     };
+    let token = token.to_str().ok_or("env argument is not UTF-8")?;
     if token == "--" {
         return Ok(EnvOptionStep::Finish(1));
     }
@@ -213,7 +205,6 @@ fn env_option_step(arguments: &[String]) -> Result<EnvOptionStep, &'static str> 
         return Ok(EnvOptionStep::Continue(1));
     }
     if is_separate_value_option(token) {
-        // The following operand belongs to env rather than the eventual child process
         return (arguments.len() >= 2)
             .then_some(EnvOptionStep::Continue(2))
             .ok_or("env option is missing its required value");
@@ -314,27 +305,19 @@ fn env_path_components<'a>(
             .chars()
             .any(|character| matches!(character, '$' | '`' | '~'))
     {
-        // Shells expand these startup-file values before opening them
         return Err("shell startup environment paths cannot contain expansions");
     }
 
     let components = match name {
-        // glibc accepts ASCII whitespace or colons with no escaping for preload objects
         "LD_PRELOAD" => value
             .split(|character: char| character == ':' || character.is_ascii_whitespace())
             .filter(|component| !component.is_empty())
             .collect::<Vec<_>>(),
-        // glibc accepts both directory separators and treats empty fields as the child cwd
         "LD_LIBRARY_PATH" => value.split([':', ';']).collect::<Vec<_>>(),
-        // These are colon-separated lists on Unix and empty fields resolve from the child cwd
         "PATH" | "LD_AUDIT" | "PYTHONPATH" | "PERL5LIB" | "RUBYLIB" | "NODE_PATH"
         | "GCONV_PATH" => value.split(':').collect::<Vec<_>>(),
-        // Python accepts separate installation and platform-specific roots
         "PYTHONHOME" => python_home_components(value)?,
-        // These consumers interpret the complete value as one path
-        "HOME" | "LD_CONFIG_FILE" | "BASH_ENV" | "ENV" | "ZDOTDIR" => {
-            vec![value]
-        }
+        "HOME" | "LD_CONFIG_FILE" | "BASH_ENV" | "ENV" | "ZDOTDIR" => vec![value],
         _ => return Ok(None),
     };
 
@@ -343,10 +326,8 @@ fn env_path_components<'a>(
             .iter()
             .any(|component| !component.is_empty() && !component.contains('/'))
     {
-        // Bare object names use the system loader search order rather than the config directory
         return Err("loader object names must use an explicit config-relative path");
     }
-
     Ok(Some(components))
 }
 
@@ -354,12 +335,9 @@ fn python_home_components(value: &str) -> Result<Vec<&str>, &'static str> {
     let mut parts = value.splitn(3, ':');
     let prefix = parts.next().unwrap_or_default();
     let exec_prefix = parts.next();
-
-    // More than two roots cannot match Python's documented environment format
     if parts.next().is_some() {
         return Err("PYTHONHOME contains more than one prefix separator");
     }
-
     match exec_prefix {
         Some(exec_prefix) if !prefix.is_empty() && !exec_prefix.is_empty() => {
             Ok(vec![prefix, exec_prefix])
@@ -388,7 +366,6 @@ fn contains_dynamic_loader_token(value: &str) -> bool {
 
 fn resolve_env_path_value(config_dir: &Path, value: &str) -> PathBuf {
     if value.is_empty() {
-        // Empty list components mean cwd for loaders and path-search consumers
         return config_dir.to_path_buf();
     }
     let path = PathBuf::from(value);
@@ -399,10 +376,9 @@ fn resolve_env_path_value(config_dir: &Path, value: &str) -> PathBuf {
 }
 
 pub fn looks_like_path_token(token: &str) -> bool {
-    // Every supported relative prefix already contains a path separator
-    token == "~" || token.contains('/')
+    token.contains('/')
 }
 
 pub fn is_host_specific_path_token(token: &str) -> bool {
-    token.starts_with('/') || token == "~" || token.starts_with("~/")
+    token.starts_with('/')
 }

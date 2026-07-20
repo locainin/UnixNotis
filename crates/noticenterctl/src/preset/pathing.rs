@@ -91,28 +91,10 @@ pub(super) fn normalize_relative_path(path: &Path) -> Result<PathBuf> {
         ));
     }
 
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            // `.` adds no meaning, so it is stripped out during normalization
-            Component::CurDir => {}
-            // `..` would let a bundle or flag escape the config root
-            Component::ParentDir => {
-                return Err(anyhow!(
-                    "parent traversal is not allowed in preset paths: {}",
-                    path.display()
-                ));
-            }
-            // Absolute and prefix components are already rejected above
-            Component::RootDir | Component::Prefix(_) => {
-                return Err(anyhow!(
-                    "absolute paths are not allowed in preset paths: {}",
-                    path.display()
-                ));
-            }
-            Component::Normal(part) => normalized.push(part),
-        }
-    }
+    let normalized = unixnotis_core::filesystem::ContainedPath::resolve_relative("", path)
+        .map_err(|error| anyhow!("unsafe preset path {}: {error}", path.display()))?
+        .relative()
+        .to_path_buf();
 
     if normalized.as_os_str().is_empty() {
         return Err(anyhow!("path resolved to an empty relative path"));
@@ -121,31 +103,11 @@ pub(super) fn normalize_relative_path(path: &Path) -> Result<PathBuf> {
 }
 
 pub(super) fn normalize_lexical_path(path: &Path) -> PathBuf {
-    // This stays purely lexical so callers can validate paths before the target exists on disk
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            // Keep any platform prefix intact before later segments are folded in
-            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-            // Root anchors the normalized path before normal segments are added
-            Component::RootDir => normalized.push(Path::new("/")),
-            // `.` adds no meaning to the final path
-            Component::CurDir => {}
-            // Normal path segments are preserved in order
-            Component::Normal(part) => normalized.push(part),
-            Component::ParentDir => match normalized.components().next_back() {
-                // One `..` can fold away one earlier normal segment
-                Some(Component::Normal(_)) => {
-                    normalized.pop();
-                }
-                // Parent segments at the filesystem root stay pinned there
-                Some(Component::RootDir | Component::Prefix(_)) => {}
-                // Relative paths may still carry leading `..` segments at this stage
-                _ => normalized.push(".."),
-            },
-        }
-    }
-    normalized
+    // Invalid traversal stays visibly unnormalized so containment checks fail closed
+    unixnotis_core::filesystem::LexicallyNormalizedPath::new(path).map_or_else(
+        |_| path.to_path_buf(),
+        unixnotis_core::filesystem::LexicallyNormalizedPath::into_path_buf,
+    )
 }
 
 pub(super) fn relative_path_matches_exclusion(

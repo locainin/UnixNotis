@@ -107,7 +107,10 @@ fn inspect_sanitizes_preset_control_sequences_before_terminal_output() {
     assert!(!report.contains('\u{1b}'));
     assert!(!report.contains('\u{7}'));
     assert!(report.contains("preset: demo ]0;owned"));
-    assert!(report.contains("printf ' ]52;c;AAAA '"));
+    assert!(
+        report.contains("printf  ]52;c;AAAA"),
+        "sanitized command missing from report: {report:?}"
+    );
 }
 
 #[test]

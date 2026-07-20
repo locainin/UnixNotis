@@ -153,9 +153,10 @@ fn format_host_specific_command_path_lines(
         .iter()
         .map(|leak| {
             // Show exact slot and command for quick review
+            let command = leak.command.display_lossy();
             format!(
                 "  - {} = {} (absolute path under the config root; let noticenterctl rewrite it to a config-root-relative command)",
-                safe_prompt_value(&leak.slot), safe_prompt_value(&leak.command)
+                safe_prompt_value(&leak.slot), safe_prompt_value(&command)
             )
         })
         .collect()
