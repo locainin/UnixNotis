@@ -2,7 +2,8 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::super::{command, routing::use_fake_tool_bin};
+use super::super::{command, command_from_spec, routing::use_fake_tool_bin};
+use unixnotis_core::CommandSpec;
 
 struct TempDirGuard {
     path: std::path::PathBuf,
@@ -62,4 +63,35 @@ fn trusted_command_rejects_program_names_with_path_separators() {
     let error = command("./tool").expect_err("path-like program should be rejected");
 
     assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+}
+
+#[test]
+fn typed_command_preserves_literal_arguments_and_environment() {
+    let root = TempDirGuard::new("typed");
+    root.write_executable("printf", "#!/bin/sh\nexit 0\n");
+    let _tools = use_fake_tool_bin(&root.path);
+    let spec = CommandSpec::direct("printf", ["battery|charging"])
+        .with_env("WIDGET_MODE", "literal value");
+
+    let command = command_from_spec(&spec).expect("typed trusted command");
+
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        vec![std::ffi::OsStr::new("battery|charging")]
+    );
+    assert_eq!(
+        command
+            .get_envs()
+            .find(|(name, _)| *name == "WIDGET_MODE")
+            .and_then(|(_, value)| value),
+        Some(std::ffi::OsStr::new("literal value"))
+    );
+}
+
+#[test]
+fn typed_trusted_command_rejects_shell_mode() {
+    let error = command_from_spec(&CommandSpec::shell("printf unsafe"))
+        .expect_err("trusted tools must not invoke a shell");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
 }

@@ -93,14 +93,18 @@ fn other_status_parsers_require_their_documented_active_shape() {
 
 #[test]
 fn systemd_status_places_options_before_the_protected_unit_operand() {
-    let (_, args) = status_command_for_unit(
+    let command = status_command_for_unit(
         ServiceManagerKind::Systemd,
         &paths(ServiceManagerKind::Systemd),
         "custom.service",
     );
+    let args = command.args().expect("direct systemd status command");
 
     assert_eq!(args[args.len() - 2], "--");
-    assert_eq!(args.last().map(String::as_str), Some("custom.service"));
+    assert_eq!(
+        args.last().and_then(|argument| argument.to_str()),
+        Some("custom.service")
+    );
     assert!(args[..args.len() - 2]
         .iter()
         .all(|argument| argument != "custom.service"));

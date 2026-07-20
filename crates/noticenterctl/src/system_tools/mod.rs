@@ -14,7 +14,7 @@ mod routing;
 #[path = "tests/routing.rs"]
 pub mod routing;
 
-pub use command::{command, trusted_program_path};
+pub use command::{command, command_from_spec, tokio_command_from_spec, trusted_program_path};
 
 #[cfg(test)]
 mod tests;

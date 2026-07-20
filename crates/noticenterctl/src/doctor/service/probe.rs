@@ -4,8 +4,8 @@ use std::env;
 use std::path::Path;
 use std::time::Duration;
 
-use tokio::process::Command;
 use unixnotis_core::service_manager::{ServiceManagerKind, ServiceManagerPaths};
+use unixnotis_core::CommandSpec;
 
 use crate::debug_logs::journal::daemon_unit_from_env;
 use crate::system_tools;
@@ -56,11 +56,11 @@ pub(super) async fn active_candidate(
     paths: &ServiceManagerPaths,
 ) -> (bool, Option<String>) {
     // Candidate probes and final status checks share one command definition
-    let (program, args) = match status_command(kind, paths) {
+    let command = match status_command(kind, paths) {
         Ok(command) => command,
         Err(error) => return (false, Some(error)),
     };
-    match run_bounded_status(program, &args).await {
+    match run_bounded_status(&command).await {
         Ok(output) => {
             let stdout = sanitize_output(&output.stdout);
             (
@@ -76,7 +76,7 @@ pub(super) async fn status_check(
     kind: ServiceManagerKind,
     paths: &ServiceManagerPaths,
 ) -> DoctorCheck {
-    let (program, args) = match status_command(kind, paths) {
+    let command = match status_command(kind, paths) {
         Ok(command) => command,
         Err(error) => {
             return DoctorCheck::new(
@@ -90,7 +90,7 @@ pub(super) async fn status_check(
         }
     };
     // Probe failures remain warnings so the rest of doctor can explain the install
-    let output = match run_bounded_status(program, &args).await {
+    let output = match run_bounded_status(&command).await {
         Ok(output) => output,
         Err(error) => {
             return DoctorCheck::new(
@@ -149,7 +149,7 @@ pub(super) async fn status_check(
 pub(super) fn status_command(
     kind: ServiceManagerKind,
     paths: &ServiceManagerPaths,
-) -> Result<(&'static str, Vec<String>), String> {
+) -> Result<CommandSpec, String> {
     status_command_with_env(kind, paths, |key| env::var(key))
 }
 
@@ -157,7 +157,7 @@ pub(super) fn status_command_with_env(
     kind: ServiceManagerKind,
     paths: &ServiceManagerPaths,
     get_var: impl FnOnce(&str) -> Result<String, env::VarError>,
-) -> Result<(&'static str, Vec<String>), String> {
+) -> Result<CommandSpec, String> {
     // Only systemd consumes the configurable unit name
     //
     // Keeping this validation inside the systemd branch prevents an invalid
@@ -174,12 +174,12 @@ pub(super) fn status_command_for_unit(
     kind: ServiceManagerKind,
     paths: &ServiceManagerPaths,
     systemd_unit: &str,
-) -> (&'static str, Vec<String>) {
+) -> CommandSpec {
     // Every backend uses its documented read-only status command
     match kind {
-        ServiceManagerKind::Systemd => (
+        ServiceManagerKind::Systemd => CommandSpec::direct(
             "systemctl",
-            vec![
+            [
                 "--user".to_string(),
                 "show".to_string(),
                 "--property=LoadState".to_string(),
@@ -193,25 +193,25 @@ pub(super) fn status_command_for_unit(
                 systemd_unit.to_string(),
             ],
         ),
-        ServiceManagerKind::Dinit => (
+        ServiceManagerKind::Dinit => CommandSpec::direct(
             "dinitctl",
-            vec![
+            [
                 "--user".to_string(),
                 "--quiet".to_string(),
                 "is-started".to_string(),
                 SERVICE_NAME.to_string(),
             ],
         ),
-        ServiceManagerKind::Runit => (
+        ServiceManagerKind::Runit => CommandSpec::direct(
             "sv",
-            vec![
+            [
                 "status".to_string(),
                 paths.artifact_root.join(SERVICE_NAME).display().to_string(),
             ],
         ),
-        ServiceManagerKind::S6 => (
+        ServiceManagerKind::S6 => CommandSpec::direct(
             "s6-svstat",
-            vec![
+            [
                 "-o".to_string(),
                 "up".to_string(),
                 paths
@@ -227,15 +227,15 @@ pub(super) fn status_command_for_unit(
     }
 }
 
-async fn run_bounded_status(
-    program: &str,
-    args: &[String],
-) -> Result<std::process::Output, String> {
-    // Trusted fixed directories prevent PATH replacement from changing doctor behavior
-    let path = system_tools::trusted_program_path(program)
-        .ok_or_else(|| format!("{program} was not found in trusted system directories"))?;
-    let command = Command::new(path).args(args).output();
-    tokio::time::timeout(SERVICE_STATUS_TIMEOUT, command)
+async fn run_bounded_status(command: &CommandSpec) -> Result<std::process::Output, String> {
+    let program = command
+        .program()
+        .and_then(Path::to_str)
+        .unwrap_or("service manager");
+    let process = system_tools::tokio_command_from_spec(command)
+        .map_err(|error| safe_doctor_text(&error.to_string()))?
+        .output();
+    tokio::time::timeout(SERVICE_STATUS_TIMEOUT, process)
         .await
         .map_err(|_elapsed| format!("{program} status probe timed out"))?
         .map_err(|error| safe_doctor_text(&format!("{program} status probe failed: {error}")))
