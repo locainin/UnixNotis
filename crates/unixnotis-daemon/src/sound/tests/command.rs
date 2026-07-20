@@ -1,5 +1,17 @@
 use super::*;
 
+#[cfg(unix)]
+#[test]
+fn sound_command_preserves_non_utf8_argument_bytes() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let path = OsString::from_vec(b"/tmp/sound-\xff.ogg".to_vec());
+    let command = build_sound_command("true", std::slice::from_ref(&path));
+    let args = command.as_std().get_args().collect::<Vec<_>>();
+
+    assert_eq!(args, vec![path.as_os_str()]);
+}
+
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn reaps_short_lived_command() {
