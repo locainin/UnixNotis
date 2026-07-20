@@ -119,7 +119,10 @@ pub(super) async fn handle_command_with_debug_logs(
             let inhibitors = client.list_inhibitors().await?;
             print_inhibitors(&inhibitors)?;
         }
-        Command::CssCheck { .. } | Command::Doctor { .. } | Command::Preset { .. } => {}
+        Command::CssCheck { .. }
+        | Command::Doctor { .. }
+        | Command::Preset { .. }
+        | Command::SyncSessionEnvironment { .. } => {}
     }
 
     Ok(())

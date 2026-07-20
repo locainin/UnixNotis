@@ -1,0 +1,13 @@
+use super::super::super::backends::write_envdir;
+use super::super::support::TempToolDir;
+
+#[test]
+fn envdir_writer_rejects_a_non_directory_service_anchor() {
+    let root = TempToolDir::new("envdir-anchor");
+    let service = root.write_file("unixnotis-daemon", "not a directory");
+
+    let error = write_envdir(&service, &root.path().join("env"))
+        .expect_err("non-directory service must be rejected");
+
+    assert!(error.to_string().contains("regular service directory"));
+}

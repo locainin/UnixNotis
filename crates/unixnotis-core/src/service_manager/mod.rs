@@ -1,5 +1,6 @@
 //! Shared service-manager identity and user-path resolution
 
+mod envdir;
 mod kind;
 mod paths;
 
@@ -11,3 +12,4 @@ pub use paths::{
 
 #[cfg(test)]
 mod tests;
+pub use envdir::envdir_file_contents;

@@ -18,7 +18,12 @@ pub fn run() -> Result<()> {
 
     if command.is_synchronous() {
         // Preset and CSS work should not pay for an unused asynchronous runtime
-        handle_local_command(command, crate::css_check::run, crate::preset::run_preset)?;
+        handle_local_command(
+            command,
+            crate::css_check::run,
+            crate::preset::run_preset,
+            crate::session_environment::sync,
+        )?;
         return Ok(());
     }
 
