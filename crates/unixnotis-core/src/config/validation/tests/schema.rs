@@ -131,6 +131,17 @@ fn explicit_legacy_values_remain_authoritative_during_migration() {
 }
 
 #[test]
+fn root_scalar_changes_do_not_report_an_empty_migration_path() {
+    let before = toml::Value::Integer(1);
+    let after = toml::Value::Integer(2);
+    let mut paths = Vec::new();
+
+    collect_changed_paths("", Some(&before), Some(&after), &mut paths);
+
+    assert!(paths.is_empty());
+}
+
+#[test]
 fn empty_unversioned_config_receives_complete_legacy_defaults() {
     let (config, ignored) = deserialize_config("").expect("migrate empty legacy config");
 

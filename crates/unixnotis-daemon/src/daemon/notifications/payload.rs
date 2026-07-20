@@ -257,9 +257,13 @@ fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
 
     // At most three continuation bytes can sit between the limit and a boundary
     let mut end = max_bytes;
-    while !value.is_char_boundary(end) {
+    for _ in 0..3 {
+        if value.is_char_boundary(end) {
+            break;
+        }
         end -= 1;
     }
+    debug_assert!(value.is_char_boundary(end));
     value[..end].to_string()
 }
 
