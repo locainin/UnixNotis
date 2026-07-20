@@ -18,7 +18,7 @@ pub(super) async fn send_snapshot_if_changed(
         // Identical snapshots do not need another UI event or list rebuild path
         return;
     }
-    *last_snapshot = snapshot.clone();
+    last_snapshot.clone_from(&snapshot);
     if snapshot.is_empty() {
         if let Err(err) = sender.send(UiEvent::MediaCleared).await {
             // Closed UI channels are normal during teardown, but the drop should stay visible

@@ -26,7 +26,7 @@ pub(in crate::config) fn deserialize_config_with_migrations(
         // Card restoration happens after deserialization, so record it outside the TOML diff
         migrated_paths.push("widgets.cards".to_string());
     }
-    migrated_paths.sort();
+    migrated_paths.sort_unstable();
     migrated_paths.dedup();
     let mut ignored_keys = Vec::new();
     let deserializer = document.into_deserializer();
@@ -60,7 +60,7 @@ fn collect_changed_paths(
         (Some(toml::Value::Table(before)), Some(toml::Value::Table(after))) => {
             // Union traversal catches inserted, removed, and changed child keys
             let mut keys = before.keys().chain(after.keys()).collect::<Vec<_>>();
-            keys.sort();
+            keys.sort_unstable();
             keys.dedup();
             for key in keys {
                 let child = if path.is_empty() {
