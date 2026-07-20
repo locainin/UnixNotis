@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use unixnotis_core::{parse_legacy_command, CommandSpec};
+
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub(super) fn temp_root(name: &str) -> PathBuf {
@@ -14,4 +16,8 @@ pub(super) fn temp_root(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
         "unixnotis-preset-command-rules-{name}-{stamp}-{serial}"
     ))
+}
+
+pub(super) fn parsed_command(command: &str) -> CommandSpec {
+    parse_legacy_command(command).expect("valid legacy test command")
 }
