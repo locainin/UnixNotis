@@ -2,24 +2,13 @@
 //!
 //! Reads system data from procfs/sysfs to avoid spawning shell commands
 
-#[path = "stats_builtin_battery.rs"]
-mod stats_builtin_battery;
-#[path = "stats_builtin_cpu.rs"]
-mod stats_builtin_cpu;
-#[path = "stats_builtin_load.rs"]
-mod stats_builtin_load;
-#[path = "stats_builtin_memory.rs"]
-mod stats_builtin_memory;
-#[path = "stats_builtin_network.rs"]
-mod stats_builtin_network;
+mod readers;
 
 use std::time::Instant;
 
-use stats_builtin_battery::read_battery;
-use stats_builtin_cpu::read_cpu_sample;
-use stats_builtin_load::read_loadavg;
-use stats_builtin_memory::read_memory;
-use stats_builtin_network::{extract_iface, read_network};
+use readers::{
+    extract_iface, read_battery, read_cpu_sample, read_loadavg, read_memory, read_network,
+};
 
 #[derive(Clone, Debug)]
 pub(super) struct BuiltinStat {
@@ -173,5 +162,5 @@ impl BuiltinStat {
 }
 
 #[cfg(test)]
-#[path = "tests/builtin.rs"]
+#[path = "../tests/builtin.rs"]
 mod tests;

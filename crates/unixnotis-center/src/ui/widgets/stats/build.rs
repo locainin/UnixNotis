@@ -5,8 +5,8 @@ use gtk::Align;
 use unixnotis_core::{css::hooks, IconAssetResolver, StatWidgetConfig};
 
 use super::super::icon_image::image_from_icon_config;
-use super::css::stat_kind_css_class;
-use super::{collect_builtin_groups, stats_builtin::BuiltinStat, StatGrid, StatItem};
+use super::style::stat_kind_css_class;
+use super::{builtin::BuiltinStat, collect_builtin_groups, StatGrid, StatItem};
 
 impl StatGrid {
     pub fn new(

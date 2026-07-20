@@ -1,5 +1,5 @@
-use super::stats_builtin_battery::read_battery_from;
-use super::stats_builtin_network::{pick_default_iface_from, IfaceCandidate};
+use super::readers::battery::read_battery_from;
+use super::readers::network::{pick_default_iface_from, IfaceCandidate};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};

@@ -4,7 +4,7 @@
 
 use std::fs;
 
-pub(super) fn read_loadavg() -> Option<String> {
+pub(in crate::ui::widgets::stats::builtin) fn read_loadavg() -> Option<String> {
     let contents = fs::read_to_string("/proc/loadavg").ok()?;
     let mut parts = contents.split_whitespace();
     let one = parts.next()?;
