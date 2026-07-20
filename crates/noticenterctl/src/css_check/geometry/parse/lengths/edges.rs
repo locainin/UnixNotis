@@ -85,6 +85,7 @@ pub(in crate::css_check::geometry) fn parse_single_length(
 
     // Fall back to the first token so old shorthand behavior stays intact
     split_css_value_tokens(trimmed)
+        .ok()?
         .into_iter()
         .find_map(|token| parse_length_expression(token, custom_properties, 0))
         .and_then(ResolvedCssValue::into_length)
@@ -93,6 +94,7 @@ pub(in crate::css_check::geometry) fn parse_single_length(
 fn parse_length_tokens(value: &str, custom_properties: &CssCustomProperties) -> Vec<f32> {
     // Four tokens are enough for the full CSS box shorthand
     split_css_value_tokens(value)
+        .unwrap_or_default()
         .into_iter()
         .filter_map(|token| parse_length_expression(token, custom_properties, 0))
         .filter_map(ResolvedCssValue::into_length)

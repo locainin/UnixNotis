@@ -15,5 +15,5 @@ pub(in super::super) use edges::{parse_box_edges, parse_box_vertical_edges, pars
 pub(super) use expression::{parse_length_expression, ResolvedCssValue};
 
 #[cfg(test)]
-#[path = "tests/cases.rs"]
+#[path = "tests/mod.rs"]
 mod tests;

@@ -15,7 +15,7 @@ pub(super) fn resolve_custom_property_value(
         .strip_prefix("var(")?
         .strip_suffix(')')?
         .trim();
-    let (name, fallback) = split_top_level_once(inner, ',');
+    let (name, fallback) = split_top_level_once(inner, ',').ok()?;
     let name = name.trim();
     if let Some(value) = custom_properties.get(name) {
         // Resolved properties recurse through the same parser so nested calc stays supported
