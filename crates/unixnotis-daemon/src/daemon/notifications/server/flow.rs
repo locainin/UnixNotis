@@ -274,5 +274,5 @@ fn sender_app_name_mismatch(app_name: &str, sender_executable: Option<&str>) -> 
 }
 
 #[cfg(test)]
-#[path = "../tests/flow.rs"]
+#[path = "tests/flow.rs"]
 mod tests;
