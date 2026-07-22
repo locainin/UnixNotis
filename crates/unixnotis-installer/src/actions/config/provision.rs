@@ -215,11 +215,34 @@ height = {}\n\
 # height_override = 1487\n",
         config.panel.height
     );
+    let reduced_motion_line = format!("reduced_motion = {}\n", config.panel.reduced_motion);
+    let reduced_motion_block = format!(
+        "# Disable panel transforms and transitions without requiring GTK 4.20\n\
+reduced_motion = {}\n",
+        config.panel.reduced_motion
+    );
+    let cpu_stat_header = "[[widgets.stats]]\nenabled = true\nlabel = \"CPU\"\n";
+    let documented_cpu_stat_header = concat!(
+        "# builtin:cpu reports total system utilization from aggregate /proc/stat counters\n",
+        "[[widgets.stats]]\n",
+        "enabled = true\n",
+        "label = \"CPU\"\n",
+    );
 
     if !config_toml.contains(&panel_height_line) {
         return Err(anyhow!("default config template missing panel height line"));
     }
+    if !config_toml.contains(&reduced_motion_line) {
+        return Err(anyhow!(
+            "default config template missing reduced motion line"
+        ));
+    }
+    if !config_toml.contains(cpu_stat_header) {
+        return Err(anyhow!("default config template missing CPU stat block"));
+    }
 
     config_toml = config_toml.replacen(&panel_height_line, &panel_height_block, 1);
+    config_toml = config_toml.replacen(&reduced_motion_line, &reduced_motion_block, 1);
+    config_toml = config_toml.replacen(cpu_stat_header, documented_cpu_stat_header, 1);
     Ok(config_toml)
 }
