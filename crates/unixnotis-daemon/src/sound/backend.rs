@@ -1,4 +1,4 @@
-use unixnotis_core::program_in_path;
+use crate::system_tools;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(super) enum SoundBackend {
@@ -14,13 +14,13 @@ pub(super) enum SoundBackend {
 
 pub(super) fn detect_backend() -> SoundBackend {
     // Prefer canberra first because it supports both sound names and files
-    if program_in_path("canberra-gtk-play") {
+    if system_tools::program_path("canberra-gtk-play").is_ok() {
         return SoundBackend::Canberra;
     }
-    if program_in_path("pw-play") {
+    if system_tools::program_path("pw-play").is_ok() {
         return SoundBackend::PwPlay;
     }
-    if program_in_path("paplay") {
+    if system_tools::program_path("paplay").is_ok() {
         return SoundBackend::PaPlay;
     }
     SoundBackend::None
