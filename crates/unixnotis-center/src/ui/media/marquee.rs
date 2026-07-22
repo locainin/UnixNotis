@@ -96,7 +96,7 @@ impl MarqueeLabel {
             move |_| {
                 let mut state = mapped_state.borrow_mut();
                 state.is_mapped = true;
-                let should_start = state.overflows && !state.reduced_motion && !state.is_ticking;
+                let should_start = marquee_can_start(&state);
                 drop(state);
                 if should_start {
                     start_ticking_inner(mapped_state.clone(), mapped_label.clone());
@@ -223,7 +223,6 @@ impl MarqueeLabel {
             return;
         }
 
-        let should_start = state.overflows && state.is_mapped;
         if state.overflows {
             let padded = format!("{}   ", state.full_text);
             state.buffer = padded.chars().collect();
@@ -234,9 +233,7 @@ impl MarqueeLabel {
         }
         drop(state);
 
-        if should_start {
-            self.start_ticking();
-        }
+        self.start_ticking();
     }
 
     fn start_ticking(&self) {
@@ -271,15 +268,22 @@ fn marquee_should_tick(
     char_limit > 0 && (char_count > char_limit || text_width > max_width.max(0))
 }
 
+const fn marquee_can_start(state: &MarqueeState) -> bool {
+    !state.is_ticking
+        && state.tick_source.is_none()
+        && !state.reduced_motion
+        && state.overflows
+        && state.is_mapped
+}
+
+const fn marquee_should_stop(state: &MarqueeState) -> bool {
+    !state.overflows || state.reduced_motion || !state.is_mapped
+}
+
 fn start_ticking_inner(state: Rc<RefCell<MarqueeState>>, label: gtk::Label) {
     {
         let mut state = state.borrow_mut();
-        if state.is_ticking
-            || state.tick_source.is_some()
-            || state.reduced_motion
-            || !state.overflows
-            || !state.is_mapped
-        {
+        if !marquee_can_start(&state) {
             return;
         }
         state.is_ticking = true;
@@ -292,7 +296,7 @@ fn start_ticking_inner(state: Rc<RefCell<MarqueeState>>, label: gtk::Label) {
         perf_probe::marquee_tick();
         let mut state = state_tick.borrow_mut();
 
-        if !state.overflows || state.reduced_motion || !state.is_mapped {
+        if marquee_should_stop(&state) {
             state.is_ticking = false;
             state.tick_source = None;
             state.last_tick = None;

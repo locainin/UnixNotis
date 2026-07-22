@@ -1,4 +1,52 @@
-use super::{marquee_should_tick, MarqueeLabel};
+use super::{
+    marquee_can_start, marquee_should_stop, marquee_should_tick, MarqueeLabel, MarqueeState,
+};
+
+fn ready_marquee_state() -> MarqueeState {
+    MarqueeState {
+        overflows: true,
+        is_mapped: true,
+        ..MarqueeState::default()
+    }
+}
+
+#[test]
+fn marquee_start_policy_requires_one_idle_visible_overflow() {
+    let mut state = ready_marquee_state();
+    assert!(marquee_can_start(&state));
+
+    state.is_ticking = true;
+    assert!(!marquee_can_start(&state));
+    state.is_ticking = false;
+
+    state.reduced_motion = true;
+    assert!(!marquee_can_start(&state));
+    state.reduced_motion = false;
+
+    state.overflows = false;
+    assert!(!marquee_can_start(&state));
+    state.overflows = true;
+
+    state.is_mapped = false;
+    assert!(!marquee_can_start(&state));
+}
+
+#[test]
+fn marquee_stop_policy_covers_every_inactive_state() {
+    let mut state = ready_marquee_state();
+    assert!(!marquee_should_stop(&state));
+
+    state.overflows = false;
+    assert!(marquee_should_stop(&state));
+    state.overflows = true;
+
+    state.reduced_motion = true;
+    assert!(marquee_should_stop(&state));
+    state.reduced_motion = false;
+
+    state.is_mapped = false;
+    assert!(marquee_should_stop(&state));
+}
 
 #[test]
 fn marquee_starts_when_short_title_exceeds_pixel_budget() {
@@ -50,7 +98,7 @@ fn runtime_reduced_motion_cancels_and_restores_one_marquee_source() {
         let state = marquee.state.borrow();
         assert!(!state.is_ticking);
         assert!(state.tick_source.is_none());
-        assert_eq!(state.offset, 0.0);
+        assert!(state.offset.abs() <= f64::EPSILON);
     }
     assert_eq!(marquee.label.text(), "Long title");
 
@@ -91,4 +139,20 @@ fn disabling_reduced_motion_does_not_start_a_timer_when_text_fits() {
     assert!(!state.overflows);
     assert!(!state.is_ticking);
     assert!(state.tick_source.is_none());
+}
+
+#[gtk::test]
+fn replacing_overflow_with_short_text_cancels_the_active_source() {
+    let marquee = MarqueeLabel::new("test-marquee", 40, 4);
+    marquee.state.borrow_mut().is_mapped = true;
+    marquee.set_text("Long title");
+    assert!(marquee.state.borrow().tick_source.is_some());
+
+    marquee.set_text("Fit");
+
+    let state = marquee.state.borrow();
+    assert!(!state.overflows);
+    assert!(!state.is_ticking);
+    assert!(state.tick_source.is_none());
+    assert_eq!(marquee.label.text(), "Fit");
 }
