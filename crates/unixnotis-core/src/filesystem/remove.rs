@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 
 use rustix::fs::{readlinkat, unlinkat, AtFlags};
 
-use super::atomic::{open_parent_existing, sync_directory, validate_existing_target};
+use super::atomic::validate_existing_target;
+use super::directory::{open_parent_existing, sync_directory};
 
 /// Result of removing a symbolic link with an expected target
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,7 +38,7 @@ pub fn remove_regular_file(path: &Path) -> io::Result<bool> {
     }
 
     unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
-    sync_directory(parent_fd)?;
+    sync_directory(&parent_fd)?;
     Ok(true)
 }
 
@@ -75,7 +76,7 @@ pub fn remove_symlink(path: &Path) -> io::Result<bool> {
     }
 
     unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
-    sync_directory(parent_fd)?;
+    sync_directory(&parent_fd)?;
     Ok(true)
 }
 
@@ -104,7 +105,7 @@ pub fn remove_symlink_if_target(
     }
 
     unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
-    sync_directory(parent_fd)?;
+    sync_directory(&parent_fd)?;
     Ok(RemoveSymlinkOutcome::Removed)
 }
 
