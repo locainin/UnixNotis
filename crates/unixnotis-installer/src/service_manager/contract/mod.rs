@@ -18,8 +18,8 @@ mod refresh;
 mod shell;
 
 pub use artifact::{
-    managed_directory_marker, managed_directory_marker_is_valid, ServiceArtifact,
-    ServiceArtifactKind, MANAGED_DIRECTORY_MARKER, MANAGED_DIRECTORY_MARKER_CONTENTS,
+    ServiceArtifact, ServiceArtifactKind, MANAGED_DIRECTORY_MARKER,
+    MANAGED_DIRECTORY_MARKER_CONTENTS,
 };
 pub use command::CommandSpec;
 pub use probe::ServiceProbe;
