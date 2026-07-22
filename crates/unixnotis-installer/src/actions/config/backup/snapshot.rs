@@ -1,9 +1,9 @@
 //! Backup snapshot helpers for config and theme files
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use unixnotis_core::filesystem::copy_file_atomic;
 use unixnotis_core::Config;
 
 use crate::paths::format_with_home;
@@ -28,8 +28,8 @@ pub(in crate::actions::config) fn backup_existing_file(
     let file_name = path.file_name().unwrap_or_default().to_string_lossy();
     let backup_path = backup_dir.join(file_name.as_ref());
 
-    // Copy first so the live file stays intact until replacement succeeds
-    fs::copy(path, &backup_path).with_context(|| format!("failed to backup {label}"))?;
+    // Open the live file once and publish its snapshot without following either path through links
+    copy_file_atomic(path, &backup_path).with_context(|| format!("failed to backup {label}"))?;
     log_line(
         ctx,
         format!("Backed up {} to {}", label, format_with_home(&backup_path)),
