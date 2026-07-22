@@ -11,14 +11,27 @@ pub(super) fn apply_revealer_preference(
         standard_duration_ms
     });
 
-    if !reduced_motion || revealer.is_child_revealed() == revealer.reveals_child() {
-        return;
+    if let Some([edge, target]) = immediate_reveal_edges(
+        reduced_motion,
+        revealer.is_child_revealed(),
+        revealer.reveals_child(),
+    ) {
+        // Reapplying the target through an immediate edge finishes an animation already in flight
+        revealer.set_reveal_child(edge);
+        revealer.set_reveal_child(target);
     }
+}
 
-    // Reapplying the target through an immediate edge finishes an animation already in flight
-    let target = revealer.reveals_child();
-    revealer.set_reveal_child(!target);
-    revealer.set_reveal_child(target);
+const fn immediate_reveal_edges(
+    reduced_motion: bool,
+    child_revealed: bool,
+    target: bool,
+) -> Option<[bool; 2]> {
+    if reduced_motion && child_revealed != target {
+        Some([!target, target])
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
