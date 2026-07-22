@@ -1,9 +1,9 @@
 //! Config and theme file creation or reset logic
 
-use std::fs;
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
+use unixnotis_core::filesystem::write_file_atomic;
 use unixnotis_core::Config;
 
 use crate::paths::format_with_home;
@@ -11,7 +11,6 @@ use crate::paths::format_with_home;
 use super::super::{log_line, ActionContext};
 use super::backup::{
     backup_existing_file, create_backup_dir, ensure_installer_config, load_installer_config,
-    write_atomic,
 };
 
 pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
@@ -23,9 +22,6 @@ pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
         format!("Config directory: {}", format_with_home(&config_dir)),
     );
 
-    // Create the config root first so later file writes do not race missing parents
-    fs::create_dir_all(&config_dir).with_context(|| "failed to create config directory")?;
-
     if config_path.exists() {
         log_line(
             ctx,
@@ -34,7 +30,8 @@ pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
     } else {
         // Write a default config so there is always a working base to edit
         let config_toml = render_default_config_toml(&config)?;
-        write_atomic(&config_path, &config_toml).with_context(|| "failed to write config.toml")?;
+        write_file_atomic(&config_path, config_toml.as_bytes(), 0o644)
+            .with_context(|| "failed to write config.toml")?;
         log_line(
             ctx,
             format!("Config file created: {}", format_with_home(&config_path)),
@@ -85,7 +82,6 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
     let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;
 
-    fs::create_dir_all(&config_dir).with_context(|| "failed to create config directory")?;
     ensure_installer_config(ctx, &config_dir)?;
 
     let installer_config = load_installer_config(&config_dir, ctx);
@@ -95,7 +91,8 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     backup_existing_file(ctx, &config_path, "config.toml", backup_dir.as_deref())?;
 
     let config_toml = render_default_config_toml(&config)?;
-    write_atomic(&config_path, &config_toml).with_context(|| "failed to write config.toml")?;
+    write_file_atomic(&config_path, config_toml.as_bytes(), 0o644)
+        .with_context(|| "failed to write config.toml")?;
     log_line(
         ctx,
         format!(
@@ -141,19 +138,36 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
     )?;
     backup_default_scripts(ctx, &config_dir, backup_dir.as_deref())?;
 
-    write_atomic(&theme_paths.base_css, unixnotis_core::DEFAULT_BASE_CSS)
-        .with_context(|| "failed to write base.css")?;
-    write_atomic(&theme_paths.panel_css, unixnotis_core::DEFAULT_PANEL_CSS)
-        .with_context(|| "failed to write panel.css")?;
-    write_atomic(&theme_paths.popup_css, unixnotis_core::DEFAULT_POPUP_CSS)
-        .with_context(|| "failed to write popup.css")?;
-    write_atomic(
+    write_file_atomic(
+        &theme_paths.base_css,
+        unixnotis_core::DEFAULT_BASE_CSS.as_bytes(),
+        0o644,
+    )
+    .with_context(|| "failed to write base.css")?;
+    write_file_atomic(
+        &theme_paths.panel_css,
+        unixnotis_core::DEFAULT_PANEL_CSS.as_bytes(),
+        0o644,
+    )
+    .with_context(|| "failed to write panel.css")?;
+    write_file_atomic(
+        &theme_paths.popup_css,
+        unixnotis_core::DEFAULT_POPUP_CSS.as_bytes(),
+        0o644,
+    )
+    .with_context(|| "failed to write popup.css")?;
+    write_file_atomic(
         &theme_paths.widgets_css,
-        unixnotis_core::DEFAULT_WIDGETS_CSS,
+        unixnotis_core::DEFAULT_WIDGETS_CSS.as_bytes(),
+        0o644,
     )
     .with_context(|| "failed to write widgets.css")?;
-    write_atomic(&theme_paths.media_css, unixnotis_core::DEFAULT_MEDIA_CSS)
-        .with_context(|| "failed to write media.css")?;
+    write_file_atomic(
+        &theme_paths.media_css,
+        unixnotis_core::DEFAULT_MEDIA_CSS.as_bytes(),
+        0o644,
+    )
+    .with_context(|| "failed to write media.css")?;
     write_default_scripts(&config_dir)?;
 
     log_line(

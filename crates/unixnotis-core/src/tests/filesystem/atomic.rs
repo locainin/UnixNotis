@@ -1,7 +1,7 @@
 use super::{
     anchor_resolve_flags, contained_resolve_flags, file_mode, make_file_executable, open_parent,
-    reserve_temp, sync_directory, write_file_atomic, write_file_atomic_preserving_mode,
-    write_file_if_missing,
+    reserve_temp, set_file_mode, sync_directory, write_file_atomic,
+    write_file_atomic_preserving_mode, write_file_if_missing,
 };
 use std::ffi::OsString;
 use std::fs;
@@ -140,6 +140,50 @@ fn executable_update_rejects_symlink_without_touching_its_target() {
     make_file_executable(&link).expect_err("script link should fail");
 
     assert_eq!(fs::read_to_string(&outside).expect("read outside"), "safe");
+    assert_eq!(
+        fs::metadata(&outside)
+            .expect("outside metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn mode_update_applies_exact_permissions_to_a_regular_file() {
+    let root = unique_temp_path("atomic-mode-update");
+    fs::create_dir_all(&root).expect("create test root");
+    let target = root.join("run");
+    fs::write(&target, "service").expect("write service file");
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).expect("set original mode");
+
+    set_file_mode(&target, 0o755).expect("set service mode");
+
+    assert_eq!(
+        fs::metadata(&target)
+            .expect("service metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o755
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn mode_update_rejects_a_symlink_without_touching_its_target() {
+    let root = unique_temp_path("atomic-mode-symlink");
+    fs::create_dir_all(&root).expect("create test root");
+    let outside = root.join("outside");
+    let link = root.join("run");
+    fs::write(&outside, "service").expect("write outside file");
+    fs::set_permissions(&outside, fs::Permissions::from_mode(0o600)).expect("set outside mode");
+    symlink(&outside, &link).expect("create service link");
+
+    set_file_mode(&link, 0o755).expect_err("service link should fail");
+
     assert_eq!(
         fs::metadata(&outside)
             .expect("outside metadata")

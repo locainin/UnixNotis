@@ -116,6 +116,23 @@ pub fn write_file_if_missing(path: &Path, contents: &[u8], mode: u32) -> io::Res
 /// Returns an error when the path escapes through a link, is not a regular file, or cannot be
 /// opened and updated through its stable descriptor
 pub fn make_file_executable(path: &Path) -> io::Result<()> {
+    let file = open_regular_file(path)?;
+    let mode = file.metadata()?.permissions().mode() | 0o111;
+    file.set_permissions(fs::Permissions::from_mode(mode))
+}
+
+/// Set permission bits on an existing regular file without following links
+///
+/// # Errors
+///
+/// Returns an error when the path escapes through a link, is not a regular file, or cannot be
+/// opened and updated through its stable descriptor
+pub fn set_file_mode(path: &Path, mode: u32) -> io::Result<()> {
+    let file = open_regular_file(path)?;
+    file.set_permissions(fs::Permissions::from_mode(mode & 0o777))
+}
+
+fn open_regular_file(path: &Path) -> io::Result<fs::File> {
     let (parent_fd, file_name) = open_parent(path)?;
     let fd = openat2(
         &parent_fd,
@@ -128,14 +145,10 @@ pub fn make_file_executable(path: &Path) -> io::Result<()> {
         contained_resolve_flags(),
     )?;
     let file = fs::File::from(fd);
-    let metadata = file.metadata()?;
-    if !metadata.is_file() {
+    if !file.metadata()?.is_file() {
         return Err(unsafe_target_error());
     }
-
-    // Descriptor-based chmod prevents a path swap from redirecting the permission update
-    let mode = metadata.permissions().mode() | 0o111;
-    file.set_permissions(fs::Permissions::from_mode(mode))
+    Ok(file)
 }
 
 fn open_parent(path: &Path) -> io::Result<(OwnedFd, OsString)> {

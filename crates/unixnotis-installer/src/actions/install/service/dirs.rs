@@ -5,13 +5,13 @@ use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
+use unixnotis_core::filesystem::write_file_atomic;
 
 use crate::paths::format_with_home;
 use crate::service_manager::{
     managed_directory_marker, managed_directory_marker_is_valid, MANAGED_DIRECTORY_MARKER_CONTENTS,
 };
 
-use super::super::super::config::backup::write_atomic;
 use super::files::ensure_regular_artifact_file_path;
 
 pub(in crate::actions::install::service) fn write_directory_artifact(path: &Path) -> Result<bool> {
@@ -45,7 +45,7 @@ pub(in crate::actions::install::service) fn write_managed_directory(path: &Path)
         Ok(existing) if existing == MANAGED_DIRECTORY_MARKER_CONTENTS => false,
         Ok(_) | Err(_) => {
             // The marker itself is written atomically so partial writes do not grant ownership
-            write_atomic(&marker, MANAGED_DIRECTORY_MARKER_CONTENTS)
+            write_file_atomic(&marker, MANAGED_DIRECTORY_MARKER_CONTENTS.as_bytes(), 0o644)
                 .with_context(|| format!("failed to write {}", format_with_home(&marker)))?;
             true
         }

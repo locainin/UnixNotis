@@ -4,7 +4,6 @@ mod restore;
 mod retention;
 mod settings;
 mod snapshot;
-mod write;
 
 // Keep config reads separate from dated backup directory churn
 pub(in crate::actions::config) use settings::{ensure_installer_config, load_installer_config};
@@ -14,7 +13,6 @@ pub(in crate::actions::config) use snapshot::backup_existing_file;
 
 pub use restore::restore_config;
 pub use snapshot::list_backup_dirs_for_ui;
-pub use write::write_atomic;
 
 #[cfg(test)]
 mod tests;

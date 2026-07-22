@@ -121,6 +121,44 @@ fn write_service_artifact_reports_executable_mode_changes() {
 }
 
 #[test]
+fn write_service_artifact_preserves_mode_when_no_mode_is_requested() {
+    let root = test_root("install-service-preserve-file-mode");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let artifact = ServiceArtifact {
+        path: root.join("service.conf"),
+        kind: ServiceArtifactKind::File,
+        contents: Some("new contents\n".to_string()),
+        mode: None,
+    };
+    fs::create_dir_all(&root).expect("make service root");
+    fs::write(&artifact.path, "old contents\n").expect("seed service file");
+    fs::set_permissions(&artifact.path, fs::Permissions::from_mode(0o640))
+        .expect("seed service file mode");
+
+    let changed = write_service_artifact(&ctx, &artifact).expect("service file should update");
+
+    assert!(changed);
+    assert_eq!(
+        fs::read_to_string(&artifact.path).expect("read updated service file"),
+        "new contents\n"
+    );
+    assert_eq!(
+        fs::metadata(&artifact.path)
+            .expect("service file metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o640
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn write_managed_directory_artifact_creates_ownership_marker() {
     let root = test_root("install-service-managed-directory");
     let paths = test_paths(&root);

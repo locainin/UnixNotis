@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use unixnotis_core::filesystem::write_file_atomic;
 
 use crate::paths::format_with_home;
 
 use super::super::super::{log_line, ActionContext};
-use super::write::write_atomic;
 
 const INSTALLER_CONFIG_FILE: &str = "installer.toml";
 const INSTALLER_CONFIG_TEMPLATE: &str = r"# UnixNotis installer settings
@@ -53,7 +53,7 @@ pub(in crate::actions::config) fn ensure_installer_config(
         return Ok(config_path);
     }
 
-    write_atomic(&config_path, INSTALLER_CONFIG_TEMPLATE)
+    write_file_atomic(&config_path, INSTALLER_CONFIG_TEMPLATE.as_bytes(), 0o644)
         .with_context(|| "failed to write installer.toml")?;
     log_line(
         ctx,
