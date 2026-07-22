@@ -3,15 +3,12 @@ use std::fs;
 use crate::detect::Detection;
 use crate::model::ActionMode;
 
-use super::super::binaries::{
-    binary_temp_path, binary_temp_path_attempt, remove_resolved_binaries,
-    stage_binary_copy_with_retry,
-};
+use super::super::binaries::remove_resolved_binaries;
 use super::super::{install_binaries, remove_binaries};
 use super::support::{test_context, test_paths, test_root, write_fake_workspace};
 
 #[cfg(unix)]
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{symlink, PermissionsExt};
 
 #[test]
 fn install_binaries_copies_all_managed_binaries_and_runtime_helpers() {
@@ -40,6 +37,8 @@ fn install_binaries_copies_all_managed_binaries_and_runtime_helpers() {
         let source = paths.repo_root.join("target").join("release").join(binary);
         fs::create_dir_all(source.parent().expect("release dir")).expect("make release dir");
         fs::write(&source, format!("binary:{binary}")).expect("write fake binary");
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o755))
+            .expect("set fake binary mode");
     }
 
     let detection = Detection {
@@ -62,6 +61,14 @@ fn install_binaries_copies_all_managed_binaries_and_runtime_helpers() {
         assert_eq!(
             fs::read_to_string(&installed).expect("read installed binary"),
             format!("binary:{binary}")
+        );
+        assert_eq!(
+            fs::metadata(&installed)
+                .expect("installed binary metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
         );
     }
 
@@ -102,7 +109,7 @@ fn install_binaries_copies_from_release_archive_bin_dir() {
 
 #[cfg(unix)]
 #[test]
-fn install_binaries_bypasses_preexisting_temp_symlink_without_touching_it() {
+fn install_binaries_rejects_destination_symlink_without_touching_its_target() {
     let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("install-binaries-temp-symlink");
     write_fake_workspace(
@@ -129,64 +136,26 @@ fn install_binaries_bypasses_preexisting_temp_symlink_without_touching_it() {
     }
     fs::create_dir_all(&paths.bin_dir).expect("bin dir");
     let destination = paths.bin_dir.join("unixnotis-daemon");
-    let temp_path = binary_temp_path(&destination);
     let protected = root.join("protected");
     fs::write(&protected, "protected").expect("protected");
-    symlink(&protected, &temp_path).expect("temp symlink");
+    symlink(&protected, &destination).expect("destination symlink");
     let detection = Detection {
         owner: None,
         daemons: Vec::new(),
     };
     let mut ctx = test_context(&detection, &paths, ActionMode::Install);
 
-    install_binaries(&mut ctx).expect("alternate temp path should bypass stale symlink");
+    let error = install_binaries(&mut ctx).expect_err("destination symlink should fail");
 
+    assert!(error.to_string().contains("failed to install"));
     assert_eq!(
         fs::read_to_string(&protected).expect("protected remains"),
         "protected"
     );
-    assert!(fs::symlink_metadata(&temp_path)
-        .expect("temp symlink remains")
+    assert!(fs::symlink_metadata(&destination)
+        .expect("destination symlink remains")
         .file_type()
         .is_symlink());
-    assert!(destination.exists());
-    let _ = fs::remove_dir_all(&root);
-}
-
-#[test]
-fn binary_temp_path_attempt_uses_stable_first_path_and_unique_retry_path() {
-    let destination = std::env::temp_dir().join("unixnotis-daemon");
-
-    let first = binary_temp_path_attempt(&destination, 0);
-    let retry = binary_temp_path_attempt(&destination, 1);
-
-    // The stable first path makes stale-file handling deterministic and testable
-    assert_eq!(first, binary_temp_path(&destination));
-    // Retry paths carry the attempt so a collision cannot repeat the first candidate
-    assert_ne!(retry, first);
-    assert!(retry
-        .file_name()
-        .expect("retry file name")
-        .to_string_lossy()
-        .ends_with("-1"));
-}
-
-#[test]
-fn stage_binary_copy_propagates_errors_other_than_path_collisions() {
-    let root = std::env::temp_dir().join(format!(
-        "unixnotis-installer-binary-stage-error-{}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&root);
-    let source_dir = root.join("source-directory");
-    let destination = root.join("unixnotis-daemon");
-    fs::create_dir_all(&source_dir).expect("make invalid directory source");
-
-    let error = stage_binary_copy_with_retry(&source_dir, &destination)
-        .expect_err("a source read error must not be treated as a temp collision");
-
-    assert_ne!(error.kind(), std::io::ErrorKind::AlreadyExists);
-    assert!(!destination.exists());
     let _ = fs::remove_dir_all(&root);
 }
 
