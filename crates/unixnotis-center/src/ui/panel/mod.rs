@@ -8,6 +8,7 @@ pub(in crate::ui) mod body;
 pub(in crate::ui) mod build;
 pub(in crate::ui) mod geometry;
 pub(in crate::ui) mod header;
+pub(in crate::ui) mod motion;
 mod notice;
 mod state;
 pub(in crate::ui) mod widgets;

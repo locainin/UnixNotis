@@ -87,6 +87,7 @@ fn panel_manager(
         panel: Some(RecordingProvider::new("panel", Rc::clone(&loaded))),
         widgets: Some(RecordingProvider::new("widgets", Rc::clone(&loaded))),
         media: Some(RecordingProvider::new("media", Rc::clone(&loaded))),
+        motion_policy: Some(RecordingProvider::new("motion", Rc::clone(&loaded))),
         popup: None,
     }
 }
@@ -118,16 +119,20 @@ fn panel_reload_loads_base_panel_widgets_and_media_layers() {
     let labels = loaded.iter().map(|(label, _)| *label).collect::<Vec<_>>();
     assert_eq!(
         labels,
-        vec!["internal", "base", "panel", "widgets", "media"]
+        vec!["internal", "base", "panel", "widgets", "media", "motion"]
     );
     assert!(loaded
         .iter()
-        .filter(|(label, _)| *label != "internal")
+        .filter(|(label, _)| matches!(*label, "base" | "panel" | "widgets" | "media"))
         .all(|(_, css)| css.contains("green")));
     assert!(loaded
         .iter()
         .find(|(label, _)| *label == "internal")
         .is_some_and(|(_, css)| css.contains(".unixnotis-reload-notice")));
+    assert!(loaded
+        .iter()
+        .find(|(label, _)| *label == "motion")
+        .is_some_and(|(_, css)| css.contains(".unixnotis-reduced-motion")));
 
     fs::remove_dir_all(root).expect("remove css manager test root");
 }
@@ -150,11 +155,11 @@ fn update_theme_changes_the_paths_used_by_the_next_reload() {
     let loaded = loaded.borrow();
     assert!(loaded
         .iter()
-        .filter(|(label, _)| *label != "internal")
+        .filter(|(label, _)| matches!(*label, "base" | "panel" | "widgets" | "media"))
         .all(|(_, css)| css.contains("blue")));
     assert!(loaded
         .iter()
-        .filter(|(label, _)| *label != "internal")
+        .filter(|(label, _)| matches!(*label, "base" | "panel" | "widgets" | "media"))
         .all(|(_, css)| !css.contains("red")));
 
     fs::remove_dir_all(old_root).expect("remove old css manager test root");

@@ -49,6 +49,7 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 12);
     root.add_css_class(hooks::panel_shell::ROOT);
+    super::motion::apply_reduced_motion(&root, config.panel.reduced_motion);
     root.set_focusable(true);
     root.set_hexpand(true);
     root.set_vexpand(true);

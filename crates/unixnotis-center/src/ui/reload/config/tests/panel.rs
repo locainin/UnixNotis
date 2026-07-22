@@ -9,6 +9,7 @@ fn reloaded_panel_applies_copy_and_widget_density() {
     let mut config = state.config.clone();
     config.panel.title = "Operations".to_string();
     config.panel.subtitle = "Live state".to_string();
+    config.panel.reduced_motion = true;
     config.widgets.density = WidgetDensity::Compact;
 
     state.apply_reloaded_panel(&config);
@@ -16,6 +17,10 @@ fn reloaded_panel_applies_copy_and_widget_density() {
     assert_eq!(state.panel.header.title.text(), "Operations");
     assert_eq!(state.panel.header.subtitle.text(), "Live state");
     assert!(state.panel.header.subtitle.get_visible());
+    assert!(state
+        .panel
+        .root
+        .has_css_class(unixnotis_core::hooks::panel_shell::REDUCED_MOTION));
     assert_eq!(state.panel.sections.widget_stack.spacing(), 6);
 }
 

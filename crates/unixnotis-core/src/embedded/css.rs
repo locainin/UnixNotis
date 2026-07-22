@@ -20,6 +20,11 @@ pub const INTERNAL_STRUCTURE_CSS: &str = include_str!(concat!(
     "/assets/internal-structure.css"
 ));
 
+pub const MOTION_POLICY_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/motion-policy.css"
+));
+
 #[cfg(test)]
 #[path = "tests/css.rs"]
 mod tests;

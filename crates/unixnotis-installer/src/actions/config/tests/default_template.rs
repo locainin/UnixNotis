@@ -16,6 +16,14 @@ fn default_config_template_documents_panel_height_modes() {
 }
 
 #[test]
+fn default_config_template_documents_reduced_motion() {
+    let config_toml = render_default_config_toml(&Config::default()).expect("render config");
+
+    assert!(config_toml.contains("# Disable panel transforms and transitions"));
+    assert!(config_toml.contains("reduced_motion = false"));
+}
+
+#[test]
 fn default_config_template_omits_removed_theme_override_layer() {
     let config_toml = render_default_config_toml(&Config::default()).expect("render config");
 

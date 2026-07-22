@@ -215,11 +215,21 @@ height = {}\n\
 # height_override = 1487\n",
         config.panel.height
     );
-
+    let reduced_motion_line = format!("reduced_motion = {}\n", config.panel.reduced_motion);
+    let reduced_motion_block = format!(
+        "# Disable panel transforms and transitions without requiring GTK 4.20\n\
+reduced_motion = {}\n",
+        config.panel.reduced_motion
+    );
     if !config_toml.contains(&panel_height_line) {
         return Err(anyhow!("default config template missing panel height line"));
     }
-
+    if !config_toml.contains(&reduced_motion_line) {
+        return Err(anyhow!(
+            "default config template missing reduced motion line"
+        ));
+    }
     config_toml = config_toml.replacen(&panel_height_line, &panel_height_block, 1);
+    config_toml = config_toml.replacen(&reduced_motion_line, &reduced_motion_block, 1);
     Ok(config_toml)
 }

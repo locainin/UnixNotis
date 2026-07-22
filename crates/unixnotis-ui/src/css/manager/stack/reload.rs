@@ -2,7 +2,7 @@
 
 use unixnotis_core::{
     ThemeConfig, ThemePaths, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS,
-    DEFAULT_WIDGETS_CSS, INTERNAL_STRUCTURE_CSS,
+    DEFAULT_WIDGETS_CSS, INTERNAL_STRUCTURE_CSS, MOTION_POLICY_CSS,
 };
 
 use super::super::super::loader::{
@@ -120,6 +120,11 @@ where
                 self.theme_paths.popup_css.clone(),
                 result,
             ));
+        }
+
+        if let Some(motion_policy) = self.motion_policy.as_ref() {
+            // This fixed policy is intentionally loaded after every editable panel layer
+            motion_policy.load_css_data(MOTION_POLICY_CSS);
         }
 
         // Callers receive every layer outcome instead of a lossy success count

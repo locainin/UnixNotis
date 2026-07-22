@@ -85,7 +85,7 @@ impl CommandSpec {
     }
 
     /// Compatibility alias for the former inline shell command detector
-    #[deprecated(since = "1.2.0", note = "use uses_shell_command_string")]
+    #[deprecated(note = "use uses_shell_command_string")]
     #[must_use]
     pub fn invokes_shell(&self) -> bool {
         self.uses_shell_command_string()
