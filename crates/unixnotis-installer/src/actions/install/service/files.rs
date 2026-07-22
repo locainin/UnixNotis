@@ -7,11 +7,12 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
+use unixnotis_core::filesystem::{
+    set_file_mode, write_file_atomic, write_file_atomic_preserving_mode,
+};
 
 use crate::paths::format_with_home;
 use crate::service_manager::MANAGED_DIRECTORY_MARKER_CONTENTS;
-
-use super::super::super::config::backup::write_atomic;
 
 pub(in crate::actions::install::service) fn write_regular_service_file(
     path: &Path,
@@ -38,30 +39,29 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
         }
         None => false,
     };
-    let changed = match fs::read_to_string(path) {
+    let contents_changed = match fs::read_to_string(path) {
         // Stable contents keep reinstall quiet and avoid unnecessary manager reloads
         Ok(existing) if existing == contents => false,
-        Ok(_) | Err(_) => {
-            // Atomic writes avoid half-written service definitions on interruption
-            write_atomic(path, contents)
-                .with_context(|| format!("failed to write {artifact_label}"))?;
-            true
-        }
+        Ok(_) | Err(_) => true,
     };
 
-    if let Some(mode) = mode {
-        // Only artifacts that requested a mode receive chmod
+    if contents_changed {
+        // Explicit modes keep service scripts independent of process umask
+        match mode {
+            Some(mode) => write_file_atomic(path, contents.as_bytes(), mode),
+            None => write_file_atomic_preserving_mode(path, contents.as_bytes(), 0o644),
+        }
+        .with_context(|| format!("failed to write {artifact_label}"))?;
+    } else if mode_changed {
         #[cfg(unix)]
-        {
-            if changed || mode_changed {
-                // Mode is explicit because service scripts must not depend on process umask
-                fs::set_permissions(path, fs::Permissions::from_mode(mode))
-                    .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
-            }
+        if let Some(mode) = mode {
+            // Descriptor-based chmod keeps a swapped pathname from redirecting the update
+            set_file_mode(path, mode)
+                .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
         }
     }
 
-    Ok(changed || mode_changed)
+    Ok(contents_changed || mode_changed)
 }
 
 pub(in crate::actions::install::service) fn write_shared_service_file(
@@ -87,8 +87,8 @@ pub(in crate::actions::install::service) fn write_shared_service_file(
     }
 
     // Missing shared files can be seeded because no user contents are being replaced
-    write_atomic(path, contents).with_context(|| format!("failed to write {artifact_label}"))?;
-    apply_artifact_mode_if_needed(path, mode)?;
+    write_file_atomic(path, contents.as_bytes(), mode.unwrap_or(0o644))
+        .with_context(|| format!("failed to write {artifact_label}"))?;
     if let Some(marker) = created_marker {
         write_shared_creation_marker(marker)?;
     }
@@ -134,7 +134,7 @@ fn apply_artifact_mode_if_needed(path: &Path, mode: Option<u32>) -> Result<()> {
     {
         if current_mode(path)? != Some(mode) {
             // Shared support files still need explicit modes when the backend requests one
-            fs::set_permissions(path, fs::Permissions::from_mode(mode))
+            set_file_mode(path, mode)
                 .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
         }
         Ok(())
@@ -151,7 +151,7 @@ fn apply_artifact_mode_if_needed(path: &Path, mode: Option<u32>) -> Result<()> {
 
 fn write_shared_creation_marker(path: &Path) -> Result<()> {
     ensure_regular_artifact_file_path(path)?;
-    write_atomic(path, MANAGED_DIRECTORY_MARKER_CONTENTS)
+    write_file_atomic(path, MANAGED_DIRECTORY_MARKER_CONTENTS.as_bytes(), 0o644)
         .with_context(|| format!("failed to write {}", format_with_home(path)))
 }
 
