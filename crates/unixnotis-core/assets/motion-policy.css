@@ -1,0 +1,7 @@
+/* Runtime motion policy stays above editable theme layers for accessibility */
+.unixnotis-panel.unixnotis-reduced-motion,
+.unixnotis-panel.unixnotis-reduced-motion * {
+  transition: none;
+  animation: none;
+  transform: none;
+}

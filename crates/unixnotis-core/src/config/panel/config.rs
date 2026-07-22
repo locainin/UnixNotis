@@ -41,6 +41,8 @@ pub struct PanelConfig {
     pub search_visible: bool,
     /// Show the compact utility action row below the header
     pub action_row_visible: bool,
+    /// Disable panel motion effects without requiring GTK 4.20 media queries
+    pub reduced_motion: bool,
     /// Wrap the notification list in a titled section
     pub notification_section_visible: bool,
     /// Let the notification list consume remaining vertical panel space
@@ -120,6 +122,7 @@ impl Default for PanelConfig {
             search_magnifier_icon: "system-search-symbolic".to_string(),
             search_visible: false,
             action_row_visible: true,
+            reduced_motion: false,
             notification_section_visible: false,
             notification_list_expand: true,
             notification_metadata_visible: false,

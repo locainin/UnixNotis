@@ -53,6 +53,7 @@ fn panel_manager_registers_base_panel_widgets_and_media_priorities() {
         panel: Some(RecordingProvider::new("panel", Rc::clone(&calls))),
         widgets: Some(RecordingProvider::new("widgets", Rc::clone(&calls))),
         media: Some(RecordingProvider::new("media", Rc::clone(&calls))),
+        motion_policy: Some(RecordingProvider::new("motion", Rc::clone(&calls))),
         popup: None,
     };
 
@@ -82,6 +83,10 @@ fn panel_manager_registers_base_panel_widgets_and_media_priorities() {
                 layer: CssProviderLayer::Media,
                 priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 3,
             },
+            CssProviderRegistration {
+                layer: CssProviderLayer::MotionPolicy,
+                priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 4,
+            },
         ]
     );
 }
@@ -97,6 +102,7 @@ fn popup_manager_registers_base_and_popup_at_popup_priority() {
         panel: None,
         widgets: None,
         media: None,
+        motion_policy: None,
         popup: Some(RecordingProvider::new("popup", Rc::clone(&calls))),
     };
 
@@ -128,7 +134,7 @@ fn public_panel_manager_reports_every_registered_provider() {
         ThemeConfig::default(),
     );
 
-    assert_eq!(manager.apply_to_display(), 5);
+    assert_eq!(manager.apply_to_display(), 6);
 }
 
 #[test]
@@ -142,6 +148,7 @@ fn provider_lookup_returns_only_layers_owned_by_the_manager() {
         panel: Some(RecordingProvider::new("panel", Rc::clone(&calls))),
         widgets: None,
         media: None,
+        motion_policy: Some(RecordingProvider::new("motion", Rc::clone(&calls))),
         popup: None,
     };
 
@@ -166,4 +173,10 @@ fn provider_lookup_returns_only_layers_owned_by_the_manager() {
     assert!(manager
         .provider_for_layer(CssProviderLayer::Popup)
         .is_none());
+    assert_eq!(
+        manager
+            .provider_for_layer(CssProviderLayer::MotionPolicy)
+            .map(|provider| provider.label),
+        Some("motion")
+    );
 }

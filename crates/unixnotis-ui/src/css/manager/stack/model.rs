@@ -57,6 +57,8 @@ where
     pub(super) panel: Option<P>,
     pub(super) widgets: Option<P>,
     pub(super) media: Option<P>,
+    // Runtime accessibility policy must override every editable panel theme layer
+    pub(super) motion_policy: Option<P>,
     pub(super) popup: Option<P>,
 }
 
@@ -71,6 +73,7 @@ impl CssManagerInner<CssProvider> {
             panel: Some(CssProvider::new()),
             widgets: Some(CssProvider::new()),
             media: Some(CssProvider::new()),
+            motion_policy: Some(CssProvider::new()),
             popup: None,
         }
     }
@@ -85,6 +88,7 @@ impl CssManagerInner<CssProvider> {
             panel: None,
             widgets: None,
             media: None,
+            motion_policy: None,
             popup: Some(CssProvider::new()),
         }
     }

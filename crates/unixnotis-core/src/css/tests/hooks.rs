@@ -42,6 +42,7 @@ fn hook_names_stay_unique() {
         panel_action::LABEL_HIDDEN,
         panel_shell::WINDOW,
         panel_shell::ROOT,
+        panel_shell::REDUCED_MOTION,
         panel_shell::HEADER,
         panel_shell::HEADER_TOP,
         panel_shell::TITLE_STACK,

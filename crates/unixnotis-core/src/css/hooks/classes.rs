@@ -46,6 +46,7 @@ pub mod panel_shell {
     // Panel shell hooks keep split panel files on one stable class contract
     pub const WINDOW: &str = "unixnotis-panel-window";
     pub const ROOT: &str = "unixnotis-panel";
+    pub const REDUCED_MOTION: &str = "unixnotis-reduced-motion";
     pub const HEADER: &str = "unixnotis-panel-header";
     pub const HEADER_TOP: &str = "unixnotis-panel-header-top";
     pub const TITLE_STACK: &str = "unixnotis-panel-title-stack";

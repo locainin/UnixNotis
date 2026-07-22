@@ -70,6 +70,13 @@ where
                 priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 3,
             });
         }
+        if self.motion_policy.is_some() {
+            // Reduced motion is an accessibility contract rather than a theme suggestion
+            registrations.push(CssProviderRegistration {
+                layer: CssProviderLayer::MotionPolicy,
+                priority: gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 4,
+            });
+        }
         registrations
     }
 
@@ -81,6 +88,7 @@ where
             CssProviderLayer::Popup => self.popup.as_ref(),
             CssProviderLayer::Widgets => self.widgets.as_ref(),
             CssProviderLayer::Media => self.media.as_ref(),
+            CssProviderLayer::MotionPolicy => self.motion_policy.as_ref(),
         }
     }
 }

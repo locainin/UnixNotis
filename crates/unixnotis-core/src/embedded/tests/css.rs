@@ -1,6 +1,6 @@
 use super::{
     DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
-    INTERNAL_STRUCTURE_CSS,
+    INTERNAL_STRUCTURE_CSS, MOTION_POLICY_CSS,
 };
 
 #[test]
@@ -12,9 +12,18 @@ fn every_embedded_css_layer_contains_real_stylesheet_content() {
         ("widgets", DEFAULT_WIDGETS_CSS),
         ("media", DEFAULT_MEDIA_CSS),
         ("internal structure", INTERNAL_STRUCTURE_CSS),
+        ("motion policy", MOTION_POLICY_CSS),
     ] {
         assert!(!css.trim().is_empty(), "{name} CSS should not be empty");
     }
+}
+
+#[test]
+fn motion_policy_disables_theme_motion_under_the_runtime_class() {
+    assert!(MOTION_POLICY_CSS.contains(".unixnotis-panel.unixnotis-reduced-motion"));
+    assert!(MOTION_POLICY_CSS.contains("transition: none"));
+    assert!(MOTION_POLICY_CSS.contains("animation: none"));
+    assert!(MOTION_POLICY_CSS.contains("transform: none"));
 }
 
 #[test]
