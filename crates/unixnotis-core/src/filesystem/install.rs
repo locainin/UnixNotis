@@ -4,7 +4,8 @@ use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use super::atomic::{open_regular_file, publish_file_atomic};
+use super::atomic::publish_file_atomic;
+use super::regular::open_regular_file;
 
 /// Copy one regular file into an atomically published destination
 ///

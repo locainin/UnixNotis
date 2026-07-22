@@ -10,7 +10,7 @@ use super::{
     remove_regular_file_pair_if_contents, remove_symlink, remove_symlink_if_target,
     revalidate_file_identity, RemoveExactFileOutcome, RemoveSymlinkOutcome,
 };
-use crate::filesystem::atomic::open_regular_file_at;
+use crate::filesystem::regular::open_regular_file_at;
 use crate::filesystem::symlink::read_symlink;
 use crate::test_support::unique_temp_path;
 

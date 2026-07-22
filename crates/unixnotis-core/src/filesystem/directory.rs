@@ -11,7 +11,8 @@ use rustix::fs::{
     ResolveFlags, CWD,
 };
 
-use super::atomic::{ensure_exact_file_at, file_contents_equal, open_regular_file_at};
+use super::exact::{ensure_exact_file_at, EnsureExactFileOutcome};
+use super::regular::{file_contents_equal, open_regular_file_at};
 
 /// Outcome for the final component of recursive directory creation
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,10 +61,7 @@ pub fn ensure_marked_directory(
         CreateDirectoryOutcome::TargetCreated => {
             let marker_outcome =
                 ensure_exact_file_at(&directory_fd, &marker_name, marker_contents, marker_mode)?;
-            if matches!(
-                marker_outcome,
-                super::atomic::EnsureExactFileOutcome::ContentsMismatch
-            ) {
+            if matches!(marker_outcome, EnsureExactFileOutcome::ContentsMismatch) {
                 return Err(invalid_marker_error());
             }
         }
