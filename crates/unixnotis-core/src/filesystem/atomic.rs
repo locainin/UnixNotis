@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::directory::{contained_resolve_flags, open_parent, sync_directory};
+use super::descriptor::{contained_resolve_flags, open_parent, sync_directory};
 use super::exact::exclusive_create_collided;
 use super::regular::{existing_target_mode, validate_existing_target};
 

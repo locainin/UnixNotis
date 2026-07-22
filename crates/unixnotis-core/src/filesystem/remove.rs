@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use rustix::fs::{fstat, statat, unlinkat, AtFlags};
 
-use super::directory::{open_parent_existing, sync_directory};
+use super::descriptor::{open_parent_existing, sync_directory};
 use super::regular::{file_contents_equal, open_regular_file_at, validate_existing_target};
 use super::symlink::read_symlink_at;
 

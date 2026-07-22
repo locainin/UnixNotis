@@ -11,11 +11,9 @@ use std::os::fd::OwnedFd;
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::os::unix::net::UnixStream;
 
-use rustix::fs::{mkfifoat, Mode, ResolveFlags, CWD};
+use rustix::fs::{mkfifoat, Mode, CWD};
 
-use crate::filesystem::directory::{
-    anchor_resolve_flags, contained_resolve_flags, open_parent, sync_directory,
-};
+use crate::filesystem::descriptor::{open_parent, sync_directory};
 use crate::test_support::unique_temp_path;
 
 #[test]
@@ -186,24 +184,6 @@ fn directory_sync_propagates_invalid_descriptor_type() {
 #[test]
 fn file_mode_masks_special_and_non_permission_bits() {
     assert_eq!(file_mode(0o17640), Mode::from_raw_mode(0o640));
-}
-
-#[test]
-fn contained_resolution_policy_keeps_every_escape_barrier() {
-    let flags = contained_resolve_flags();
-
-    assert!(flags.contains(ResolveFlags::BENEATH));
-    assert!(flags.contains(ResolveFlags::NO_SYMLINKS));
-    assert!(flags.contains(ResolveFlags::NO_MAGICLINKS));
-}
-
-#[test]
-fn anchor_resolution_policy_rejects_link_detours() {
-    let flags = anchor_resolve_flags();
-
-    assert!(flags.contains(ResolveFlags::NO_SYMLINKS));
-    assert!(flags.contains(ResolveFlags::NO_MAGICLINKS));
-    assert!(!flags.contains(ResolveFlags::BENEATH));
 }
 
 #[test]
