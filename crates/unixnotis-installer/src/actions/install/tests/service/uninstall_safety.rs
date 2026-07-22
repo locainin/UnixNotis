@@ -96,6 +96,35 @@ fn uninstall_rejects_symlink_file_artifact() {
 }
 
 #[test]
+fn uninstall_rejects_symlinked_parent_for_file_artifact() {
+    let root = test_root("install-service-keep-linked-file-parent");
+    let outside = root.join("outside");
+    let linked_parent = root.join("linked-parent");
+    let outside_file = outside.join("service-file");
+    fs::create_dir_all(&outside).expect("make outside directory");
+    fs::write(&outside_file, "service").expect("write outside service file");
+    symlink(&outside, &linked_parent).expect("link service parent");
+    let artifact = ServiceArtifact {
+        path: linked_parent.join("service-file"),
+        kind: ServiceArtifactKind::File,
+        contents: Some("service".to_string()),
+        mode: None,
+    };
+
+    remove_service_artifact(&artifact).expect_err("linked parent should be rejected");
+
+    assert_eq!(
+        fs::read_to_string(outside_file).expect("outside service file remains"),
+        "service"
+    );
+    assert!(fs::symlink_metadata(linked_parent)
+        .expect("parent link remains")
+        .file_type()
+        .is_symlink());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn uninstall_rejects_unmarked_managed_directory() {
     let root = test_root("install-service-unmarked-remove");
     let service_dir = root.join("service-dir");
