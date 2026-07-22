@@ -50,7 +50,7 @@ fn runtime_reduced_motion_cancels_and_restores_one_marquee_source() {
         let state = marquee.state.borrow();
         assert!(!state.is_ticking);
         assert!(state.tick_source.is_none());
-        assert_eq!(state.offset, 0.0);
+        assert!(state.offset.abs() <= f64::EPSILON);
     }
     assert_eq!(marquee.label.text(), "Long title");
 
