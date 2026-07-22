@@ -49,14 +49,22 @@ pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage,
         return Err("SVG icons must not contain secondary images".to_string());
     }
 
-    let source_width = tree.size().width().ceil() as u32;
-    let source_height = tree.size().height().ceil() as u32;
+    let source_width_float = tree.size().width();
+    let source_height_float = tree.size().height();
+    if !source_width_float.is_finite()
+        || !source_height_float.is_finite()
+        || source_width_float <= 0.0
+        || source_height_float <= 0.0
+    {
+        return Err("SVG dimensions must be finite and positive".to_string());
+    }
+    let source_width = source_width_float.ceil() as u32;
+    let source_height = source_height_float.ceil() as u32;
     validate_svg_dimensions(source_width, source_height)?;
 
     // Fit the source inside the requested square while retaining its aspect ratio
-    let scale = (target as f32 / tree.size().width()).min(target as f32 / tree.size().height());
-    let width = (tree.size().width() * scale).round().max(1.0) as u32;
-    let height = (tree.size().height() * scale).round().max(1.0) as u32;
+    let (width, height, scale) =
+        fitted_svg_dimensions(source_width_float, source_height_float, target)?;
     // Output allocation follows the fitted dimensions rather than the source canvas
     let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
         .ok_or_else(|| "could not allocate bounded SVG surface".to_string())?;
@@ -78,6 +86,36 @@ pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage,
         stride,
         premultiplied_alpha: true,
     })
+}
+
+pub(super) fn fitted_svg_dimensions(
+    source_width: f32,
+    source_height: f32,
+    target: u32,
+) -> Result<(u32, u32, f32), String> {
+    if !source_width.is_finite()
+        || !source_height.is_finite()
+        || source_width <= 0.0
+        || source_height <= 0.0
+        || target == 0
+        || target > MAX_ICON_DIMENSION
+    {
+        return Err("SVG scaling inputs must be finite and bounded".to_string());
+    }
+
+    let target = target as f32;
+    let scale = (target / source_width).min(target / source_height);
+    let scaled_width = (source_width * scale).round().max(1.0);
+    let scaled_height = (source_height * scale).round().max(1.0);
+    if !scale.is_finite() || scale <= 0.0 || !scaled_width.is_finite() || !scaled_height.is_finite()
+    {
+        return Err("SVG scaling result must be finite and positive".to_string());
+    }
+
+    let width = scaled_width as u32;
+    let height = scaled_height as u32;
+    validate_svg_dimensions(width, height)?;
+    Ok((width, height, scale))
 }
 
 pub(super) fn decompress_svgz_with_limit(bytes: &[u8], max_bytes: u64) -> Result<Vec<u8>, String> {
