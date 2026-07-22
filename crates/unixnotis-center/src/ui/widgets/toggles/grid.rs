@@ -10,8 +10,9 @@ use unixnotis_core::{
     css::hooks, CommandSpec, IconAssetResolver, PanelDebugLevel, ToggleLayout, ToggleWidgetConfig,
 };
 
+use super::super::command_runtime::command::run_action_command_with_completion;
+use super::super::command_runtime::watch::{start_command_watch, CommandWatch};
 use super::super::icon_image::image_from_icon_config;
-use super::super::utils::{run_action_command_with_completion, start_command_watch, CommandWatch};
 use crate::diagnostics::panel_debug as debug;
 
 use super::css::toggle_kind_css_class;

@@ -10,10 +10,11 @@ use unixnotis_core::{PanelDebugLevel, WidgetPluginConfig};
 use super::common::apply_cached_value;
 use super::CardItem;
 use crate::diagnostics::panel_debug as debug;
-use crate::ui::widgets::plugin::{parse_card_plugin_payload, PluginOutputLimits};
-use crate::ui::widgets::utils::{
-    run_command_capture_async, run_command_capture_with_timeout_async, INFLIGHT_REFRESH_RECHECK,
+use crate::ui::widgets::command_runtime::backoff::INFLIGHT_REFRESH_RECHECK;
+use crate::ui::widgets::command_runtime::command::{
+    run_command_capture_async, run_command_capture_with_timeout_async,
 };
+use crate::ui::widgets::plugin::{parse_card_plugin_payload, PluginOutputLimits};
 
 impl CardItem {
     pub(super) fn refresh(&self, base_interval: Duration, force: bool) {

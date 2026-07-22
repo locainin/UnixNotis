@@ -1,8 +1,8 @@
 //! Shared GTK card fixtures
 
+use crate::ui::widgets::command_runtime::backoff::RefreshBackoff;
 use crate::ui::widgets::stats::builtin::BuiltinStat;
 use crate::ui::widgets::stats::card::StatItem;
-use crate::ui::widgets::utils::RefreshBackoff;
 use unixnotis_core::StatWidgetConfig;
 
 static GTK_INIT: std::sync::Once = std::sync::Once::new();

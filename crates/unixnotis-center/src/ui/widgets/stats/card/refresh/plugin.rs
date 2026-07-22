@@ -7,8 +7,8 @@ use tracing::warn;
 use unixnotis_core::WidgetPluginConfig;
 
 use super::super::{render::apply_cached_value, StatItem};
+use crate::ui::widgets::command_runtime::command::run_command_capture_with_timeout_async;
 use crate::ui::widgets::plugin::{parse_stat_plugin_payload, PluginOutputLimits};
-use crate::ui::widgets::utils::run_command_capture_with_timeout_async;
 
 impl StatItem {
     pub(super) fn refresh_plugin(&self, plugin: &WidgetPluginConfig, base_interval: Duration) {
