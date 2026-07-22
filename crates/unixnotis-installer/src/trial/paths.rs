@@ -4,6 +4,8 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use unixnotis_core::filesystem::{remove_regular_file, write_file_if_missing};
+
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
@@ -68,17 +70,12 @@ pub(super) fn path_dir_is_writable(dir: &Path) -> bool {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |duration| duration.as_nanos())
     ));
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&probe)
-    {
-        Ok(_) => {
-            // Probe file is trial-only and should not outlive the writability check
-            let _ = fs::remove_file(probe);
-            true
+    match write_file_if_missing(&probe, b"", 0o600) {
+        Ok(true) => {
+            // Probe success includes contained cleanup so linked directories cannot be accepted
+            remove_regular_file(&probe).is_ok_and(|removed| removed)
         }
-        Err(_) => false,
+        Ok(false) | Err(_) => false,
     }
 }
 
