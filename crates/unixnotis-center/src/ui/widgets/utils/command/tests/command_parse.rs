@@ -23,13 +23,20 @@ fn explicit_shell_commands_use_the_slow_lane() {
 }
 
 #[test]
-fn directly_invoked_shells_only_inspect_the_script_argument() {
+fn direct_shell_wrappers_share_the_slow_lane_classification() {
+    for shell in ["sh", "ash", "bash", "dash", "fish", "ksh", "zsh"] {
+        assert!(
+            is_probably_slow(&CommandSpec::direct(shell, ["-c", "sleep 1"])),
+            "{shell} -c must receive the slow command budget"
+        );
+    }
+
     assert!(is_probably_slow(&CommandSpec::direct(
-        "bash",
-        ["-c", "sleep 1"]
+        "/bin/dash",
+        ["-c", "printf ready"]
     )));
     assert!(!is_probably_slow(&CommandSpec::direct(
-        "bash",
-        ["-c", "echo sleep"]
+        "dash",
+        ["-x", "script"]
     )));
 }
