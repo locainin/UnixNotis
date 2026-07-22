@@ -1,6 +1,7 @@
 //! D-Bus server for org.freedesktop.Notifications
 
 mod limits;
+mod metrics;
 mod payload;
 mod quota;
 mod sender;

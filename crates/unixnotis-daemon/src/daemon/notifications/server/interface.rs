@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::Semaphore;
+use tracing::debug;
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 use zbus::{interface, SignalContext};
@@ -12,6 +13,7 @@ use zbus::{interface, SignalContext};
 use crate::expire::ExpirationScheduler;
 
 use super::capabilities::notification_capabilities;
+use crate::daemon::notifications::metrics::{IngressMetrics, RejectedRequest};
 use crate::daemon::notifications::quota::NotificationQuota;
 use crate::daemon::DaemonState;
 
@@ -24,9 +26,13 @@ pub struct NotificationServer {
     // Scheduler handles expiration deadlines without blocking D-Bus handlers
     pub(super) scheduler: ExpirationScheduler,
     // Shared token buckets reject sustained sender and process-wide floods
-    quota: NotificationQuota,
+    notify_quota: NotificationQuota,
+    // Close requests are cheaper but still trigger sender identity and store work
+    close_quota: NotificationQuota,
     // Expensive sender and payload work has a fixed concurrency ceiling
     notify_slots: Semaphore,
+    // Counters expose pressure without retaining attacker-controlled labels
+    ingress_metrics: IngressMetrics,
 }
 
 impl NotificationServer {
@@ -35,8 +41,10 @@ impl NotificationServer {
         Self {
             state,
             scheduler,
-            quota: NotificationQuota::new(),
+            notify_quota: NotificationQuota::new_notify(),
+            close_quota: NotificationQuota::new_close(),
             notify_slots: Semaphore::const_new(MAX_CONCURRENT_NOTIFY_HANDLERS),
+            ingress_metrics: IngressMetrics::new(),
         }
     }
 }
@@ -65,16 +73,28 @@ impl NotificationServer {
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
         let sender = header.sender().map(zbus::names::UniqueName::as_str);
-        if !self.quota.admit(sender, Instant::now()) {
+        if !self.notify_quota.admit(sender, Instant::now()) {
+            let rejected = self
+                .ingress_metrics
+                .record_rejection(RejectedRequest::NotifyQuota);
+            debug!(rejected, "notification request rejected by ingress quota");
             return Err(zbus::fdo::Error::LimitsExceeded(
                 "notification ingress quota exceeded".to_string(),
             ));
         }
         let _slot = self.notify_slots.try_acquire().map_err(|_error| {
+            let rejected = self
+                .ingress_metrics
+                .record_rejection(RejectedRequest::NotifyConcurrency);
+            debug!(
+                rejected,
+                "notification request rejected by concurrency limit"
+            );
             zbus::fdo::Error::LimitsExceeded(
                 "too many concurrent notification requests".to_string(),
             )
         })?;
+        let _activity = self.ingress_metrics.enter_handler();
         // The interface adapter forwards the authenticated header with the exact wire payload
         self.ingest_notify(
             app_name,
@@ -95,6 +115,17 @@ impl NotificationServer {
         id: u32,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
+        let sender = header.sender().map(zbus::names::UniqueName::as_str);
+        if !self.close_quota.admit(sender, Instant::now()) {
+            let rejected = self
+                .ingress_metrics
+                .record_rejection(RejectedRequest::CloseQuota);
+            debug!(rejected, "close request rejected by ingress quota");
+            return Err(zbus::fdo::Error::LimitsExceeded(
+                "notification close quota exceeded".to_string(),
+            ));
+        }
+        let _activity = self.ingress_metrics.enter_handler();
         // Ownership checks remain in the shared close path used by all D-Bus callers
         self.close_notification_if_owned(id, &header).await
     }

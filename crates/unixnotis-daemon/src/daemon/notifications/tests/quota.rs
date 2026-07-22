@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 use std::collections::HashMap;
 
 use super::{
-    NotificationQuota, QuotaState, SenderBucket, TokenBucket, GLOBAL_BURST, MAX_TRACKED_SENDERS,
-    SENDER_BURST, SENDER_IDLE_TTL_SECONDS,
+    NotificationQuota, QuotaState, SenderBucket, TokenBucket, CLOSE_SENDER_BURST, GLOBAL_BURST,
+    MAX_TRACKED_SENDERS, SENDER_BURST, SENDER_IDLE_TTL_SECONDS,
 };
 
 fn sender_bucket(now: Instant) -> SenderBucket {
@@ -43,6 +43,23 @@ fn global_bucket_limits_many_independent_senders() {
     }
     assert!(!quota.admit(Some(":1.blocked"), now));
     assert!(quota.admit(Some(":1.allowed"), now + Duration::from_millis(17)));
+}
+
+#[test]
+fn close_requests_use_a_separate_higher_budget() {
+    let now = Instant::now();
+    let notify = NotificationQuota::new_at(now);
+    let close = NotificationQuota::new_close_at(now);
+
+    for _ in 0..SENDER_BURST as usize {
+        assert!(notify.admit(Some(":1.10"), now));
+        assert!(close.admit(Some(":1.10"), now));
+    }
+    assert!(!notify.admit(Some(":1.10"), now));
+    for _ in SENDER_BURST as usize..CLOSE_SENDER_BURST as usize {
+        assert!(close.admit(Some(":1.10"), now));
+    }
+    assert!(!close.admit(Some(":1.10"), now));
 }
 
 #[test]
