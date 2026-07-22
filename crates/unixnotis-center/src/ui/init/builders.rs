@@ -19,6 +19,7 @@ pub(super) fn build_notification_list(
         notification_metadata: init.config.panel.notification_metadata.clone(),
         notification_corners: init.config.theme.notification_corners,
         show_notification_thumbnails: init.config.panel.notification_thumbnails_visible,
+        reduced_motion: init.config.panel.reduced_motion,
         empty_text: init.config.panel.empty_text.clone(),
         no_matching_text: init.config.panel.no_matching_text.clone(),
         empty_offset_top: init.config.panel.empty_offset_top,
@@ -42,12 +43,14 @@ pub(super) fn build_media_widget(
 ) -> Option<media::MediaWidget> {
     let panel_width = panel::geometry::requested_panel_width(&panel.root);
     let media = init.media_handle.as_ref().map(|handle| {
-        media::MediaWidget::new(
+        let media = media::MediaWidget::new(
             &panel.sections.media_container,
             handle.clone(),
             panel_width,
             &init.config.media,
-        )
+        );
+        media.set_reduced_motion(init.config.panel.reduced_motion);
+        media
     });
 
     if media.is_none() {

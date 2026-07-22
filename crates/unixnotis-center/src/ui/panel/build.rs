@@ -49,7 +49,6 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 12);
     root.add_css_class(hooks::panel_shell::ROOT);
-    super::motion::apply_reduced_motion(&root, config.panel.reduced_motion);
     root.set_focusable(true);
     root.set_hexpand(true);
     root.set_vexpand(true);
@@ -82,14 +81,17 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     window.set_child(Some(&overlay));
     window.set_visible(false);
 
-    PanelWidgets {
+    let panel = PanelWidgets {
         window,
         surface: overlay,
         root,
         header,
         sections,
         reload_notice,
-    }
+    };
+    // Apply motion after construction so every long-lived revealer receives the same policy
+    super::motion::apply_reduced_motion(&panel, config.panel.reduced_motion);
+    panel
 }
 
 fn build_panel_body_chrome(body_stack: &gtk::Box) -> gtk::Box {

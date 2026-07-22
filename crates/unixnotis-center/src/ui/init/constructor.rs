@@ -56,6 +56,7 @@ impl UiState {
         panel::header::actions::connect_close_button(&panel, init.command_tx.clone());
         panel::header::search::connect_widget_collapse_toggle(
             &panel.header.actions.focus_toggle,
+            &panel.sections.widget_revealer,
             init.event_tx.clone(),
         );
         panel::header::search::connect_filter_entry(

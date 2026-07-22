@@ -84,6 +84,7 @@ pub(super) fn build_panel_search(config: &PanelConfig) -> PanelSearchWidgets {
 
 pub(in crate::ui) fn connect_widget_collapse_toggle(
     focus_toggle: &gtk::ToggleButton,
+    widget_revealer: &gtk::Revealer,
     event_tx: async_channel::Sender<UiEvent>,
 ) {
     let collapse_gate = LatestBoolEventGate::new(Duration::from_millis(WIDGETS_TOGGLE_COALESCE_MS));
@@ -92,6 +93,7 @@ pub(in crate::ui) fn connect_widget_collapse_toggle(
     let accepted_collapsed = Rc::new(Cell::new(false));
     // Restore guard prevents a rejected click rollback from re-entering this handler
     let collapse_restore = Rc::new(Cell::new(false));
+    let collapse_revealer = widget_revealer.clone();
 
     focus_toggle.connect_toggled(move |button| {
         if collapse_restore.replace(false) {
@@ -100,7 +102,7 @@ pub(in crate::ui) fn connect_widget_collapse_toggle(
 
         let collapsed = button.is_active();
         // Ignore clicks while the previous reveal animation is still changing layout
-        if !collapse_click_gate.try_start() {
+        if !try_start_reveal_transition(&collapse_click_gate, &collapse_revealer) {
             let accepted = accepted_collapsed.get();
             if collapsed != accepted {
                 // Roll back only the rejected edge so the UI mirrors the running transition
@@ -111,15 +113,7 @@ pub(in crate::ui) fn connect_widget_collapse_toggle(
         }
 
         accepted_collapsed.set(collapsed);
-        // Disable the control until GTK finishes the matching reveal transition
-        button.set_sensitive(false);
-        let button_enable = button.clone();
-        gtk::glib::timeout_add_local_once(
-            Duration::from_millis(WIDGET_REVEAL_TRANSITION_MS),
-            move || {
-                button_enable.set_sensitive(true);
-            },
-        );
+        hold_button_for_reveal_transition(button, &collapse_revealer);
         collapse_gate.request_widgets_collapsed(&event_tx, collapsed);
     });
 }
@@ -214,7 +208,7 @@ pub(in crate::ui) fn connect_search_toggle(
             return;
         }
 
-        if !search_click_gate.try_start() {
+        if !try_start_reveal_transition(&search_click_gate, &toggled_revealer) {
             // The revealer records the last accepted transition target
             let accepted = toggled_revealer.reveals_child();
             if reveal != accepted {
@@ -225,21 +219,37 @@ pub(in crate::ui) fn connect_search_toggle(
             return;
         }
 
-        // Freeze the toggle while its revealer animates to the accepted state
-        button.set_sensitive(false);
-        let button_enable = button.clone();
-        gtk::glib::timeout_add_local_once(
-            Duration::from_millis(SEARCH_REVEAL_TRANSITION_MS),
-            move || {
-                button_enable.set_sensitive(true);
-            },
-        );
+        hold_button_for_reveal_transition(button, &toggled_revealer);
         apply_search_open_state(&toggled_revealer, &toggled_entry, reveal);
         if reveal {
             // Selecting existing text makes the next query replace it immediately
             toggled_entry.grab_focus();
             toggled_entry.select_region(0, i32::MAX);
         }
+    });
+}
+
+fn try_start_reveal_transition(gate: &ClickCooldown, revealer: &gtk::Revealer) -> bool {
+    if revealer.transition_duration() == 0 {
+        // Immediate transitions have no in-flight layout window to guard
+        gate.release();
+        return true;
+    }
+
+    gate.try_start()
+}
+
+fn hold_button_for_reveal_transition(button: &gtk::ToggleButton, revealer: &gtk::Revealer) {
+    let duration_ms = revealer.transition_duration();
+    if duration_ms == 0 {
+        return;
+    }
+
+    // The control is held only for the transition duration currently applied to its revealer
+    button.set_sensitive(false);
+    let button_enable = button.clone();
+    gtk::glib::timeout_add_local_once(Duration::from_millis(u64::from(duration_ms)), move || {
+        button_enable.set_sensitive(true);
     });
 }
 

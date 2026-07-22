@@ -129,6 +129,7 @@ impl NotificationList {
             notification_metadata: Rc::new(config.notification_metadata),
             notification_corners: config.notification_corners,
             show_notification_thumbnails: config.show_notification_thumbnails,
+            reduced_motion: config.reduced_motion,
             max_active: config.max_active,
             max_entries: config.max_entries,
         }
@@ -141,13 +142,15 @@ impl NotificationList {
             != config.show_notification_metadata
             || self.notification_metadata.as_ref() != &config.notification_metadata
             || self.notification_corners != config.notification_corners
-            || self.show_notification_thumbnails != config.show_notification_thumbnails;
+            || self.show_notification_thumbnails != config.show_notification_thumbnails
+            || self.reduced_motion != config.reduced_motion;
         self.show_notification_metadata = config.show_notification_metadata;
         if self.notification_metadata.as_ref() != &config.notification_metadata {
             self.notification_metadata = Rc::new(config.notification_metadata.clone());
         }
         self.notification_corners = config.notification_corners;
         self.show_notification_thumbnails = config.show_notification_thumbnails;
+        self.reduced_motion = config.reduced_motion;
         if self.empty_text != config.empty_text {
             self.empty_text = config.empty_text.clone();
         }
@@ -163,6 +166,7 @@ impl NotificationList {
         self.apply_limits(config.max_active, config.max_entries);
         if presentation_changed {
             // Existing rows need fresh RowData so optional lanes hide or show immediately
+            self.dirty_groups.extend(self.grouped_cache.keys().cloned());
             self.request_rebuild();
         }
     }

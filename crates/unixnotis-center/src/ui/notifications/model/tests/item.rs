@@ -154,6 +154,10 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
     changed.presentation.show_thumbnail = true;
     assert!(!base.is_equivalent(&changed));
 
+    let mut changed = base.clone();
+    changed.presentation.reduced_motion = true;
+    assert!(!base.is_equivalent(&changed));
+
     let mut changed = base;
     changed.notification = Some(notification(1));
     assert!(!RowData::notification(

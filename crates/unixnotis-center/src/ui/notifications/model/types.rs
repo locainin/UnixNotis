@@ -52,6 +52,7 @@ pub struct NotificationList {
     pub(in crate::ui::notifications) notification_metadata: Rc<NotificationMetadataConfig>,
     pub(in crate::ui::notifications) notification_corners: CutCorners,
     pub(in crate::ui::notifications) show_notification_thumbnails: bool,
+    pub(in crate::ui::notifications) reduced_motion: bool,
     pub(in crate::ui::notifications) max_active: usize,
     pub(in crate::ui::notifications) max_entries: usize,
 }
@@ -65,6 +66,7 @@ pub struct NotificationListConfig {
     pub notification_metadata: NotificationMetadataConfig,
     pub notification_corners: CutCorners,
     pub show_notification_thumbnails: bool,
+    pub reduced_motion: bool,
     pub empty_text: String,
     pub no_matching_text: String,
     pub empty_offset_top: i32,

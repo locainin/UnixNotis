@@ -84,6 +84,21 @@ fn apply_config_requests_rebuild_when_metadata_text_or_corner_geometry_changes()
 }
 
 #[gtk::test]
+fn apply_config_refreshes_existing_rows_when_reduced_motion_changes() {
+    let mut list = support::make_list();
+    list.seed(vec![support::notification(1, "Terminal")], Vec::new());
+    list.flush_rebuild();
+    let mut config = support::list_config();
+    config.reduced_motion = true;
+
+    list.apply_config(&config);
+    list.flush_rebuild();
+
+    let row = list.entries.get(&1).expect("notification should remain");
+    assert!(row.item.data().presentation.reduced_motion);
+}
+
+#[gtk::test]
 fn set_empty_layout_switches_between_widget_offset_and_centered_empty_state() {
     let list = support::make_list();
 

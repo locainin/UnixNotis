@@ -66,6 +66,7 @@ impl UiState {
             panel_width,
             &config.media,
         );
+        media.set_reduced_motion(config.panel.reduced_motion);
         if !snapshot.is_empty() {
             // The visible player is restored so reload does not blank the current card
             media.restore_snapshot(&snapshot);
@@ -79,6 +80,7 @@ impl UiState {
                 // Reuse the existing shell when only width or metadata flags changed
                 debug!("media layout updated");
                 media.apply_layout(panel_width, &config.media);
+                media.set_reduced_motion(config.panel.reduced_motion);
             }
             (None, Some(handle)) => {
                 debug!("media widget created");
@@ -88,6 +90,7 @@ impl UiState {
                     panel_width,
                     &config.media,
                 );
+                media.set_reduced_motion(config.panel.reduced_motion);
                 self.media = Some(media);
             }
             (None, None) => {

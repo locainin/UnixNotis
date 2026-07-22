@@ -5,6 +5,10 @@ use std::rc::{Rc, Weak};
 
 use unixnotis_core::NotificationView;
 
+use crate::ui::motion::apply_revealer_preference;
+
+pub(super) const INLINE_REPLY_TRANSITION_MS: u32 = 250;
+
 #[derive(Clone)]
 pub(super) struct ReplyState {
     // Numeric identity is retained for the command sent to the daemon
@@ -53,5 +57,9 @@ impl InlineReplyWidgets {
             bound_snapshot: RefCell::new(Weak::new()),
             state,
         }
+    }
+
+    pub(in super::super) fn set_reduced_motion(&self, reduced_motion: bool) {
+        apply_revealer_preference(&self.revealer, INLINE_REPLY_TRANSITION_MS, reduced_motion);
     }
 }

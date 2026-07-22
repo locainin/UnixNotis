@@ -7,7 +7,7 @@ use crate::control::UiCommand;
 
 use super::lifecycle::{cancel_inline_reply, submit_reply, MAX_REPLY_BYTES};
 use super::presentation::{clear_reply_error, DEFAULT_PLACEHOLDER, DEFAULT_SUBMIT_LABEL};
-use super::state::{InlineReplyWidgets, ReplyState};
+use super::state::{InlineReplyWidgets, ReplyState, INLINE_REPLY_TRANSITION_MS};
 
 // GTK limits characters while the protocol boundary limits encoded bytes
 const MAX_REPLY_CHARS: i32 = 4 * 1024;
@@ -18,6 +18,7 @@ pub(in super::super) fn build_inline_reply(
     // Build the hidden form once so row updates only change state and metadata
     let revealer = gtk::Revealer::new();
     revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+    revealer.set_transition_duration(INLINE_REPLY_TRANSITION_MS);
     revealer.set_reveal_child(false);
 
     let form = gtk::Box::new(gtk::Orientation::Vertical, 4);

@@ -217,7 +217,7 @@ height = {}\n\
     );
     let reduced_motion_line = format!("reduced_motion = {}\n", config.panel.reduced_motion);
     let reduced_motion_block = format!(
-        "# Disable panel transforms and transitions without requiring GTK 4.20\n\
+        "# Disable panel animation and moving text without requiring GTK 4.20\n\
 reduced_motion = {}\n",
         config.panel.reduced_motion
     );
