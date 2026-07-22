@@ -170,30 +170,7 @@ fn sanitize_metadata_string(value: &str, max_bytes: usize) -> String {
     // Remove inline display control/problematic characters before trimming and
     // applying the final UTF-8-safe byte limit
     let cleaned = util::sanitize_inline_display_text(value);
-    truncate_utf8_bytes(cleaned.trim(), max_bytes)
-}
-
-fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
-    // Fast path: avoid allocation/truncation work when the value already fits
-    if value.len() <= max_bytes {
-        return value.to_string();
-    }
-
-    // Back up only across the code point that crosses the byte limit
-    let mut end = max_bytes;
-    for _ in 0..3 {
-        if value.is_char_boundary(end) {
-            break;
-        }
-        end -= 1;
-    }
-    debug_assert!(
-        value.is_char_boundary(end),
-        "bounded backup must reach the current UTF-8 character boundary"
-    );
-
-    // Return only the byte-safe prefix
-    value[..end].to_string()
+    util::truncate_utf8_bytes(cleaned.trim(), max_bytes)
 }
 
 pub(in crate::model) fn owned_to_string(value: &OwnedValue) -> Option<String> {

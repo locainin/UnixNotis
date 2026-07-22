@@ -46,7 +46,7 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
         .and_then(owned_to_string)
         .map(|value| {
             // Category stays on one line
-            truncate_utf8_bytes(
+            util::truncate_utf8_bytes(
                 &util::sanitize_inline_display_text(&value),
                 MAX_CATEGORY_BYTES,
             )
@@ -73,19 +73,19 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
             // Keep explicit fallback text for empty callers
             "Unknown".to_string()
         } else {
-            truncate_utf8_bytes(&app_name, MAX_APP_NAME_BYTES)
+            util::truncate_utf8_bytes(&app_name, MAX_APP_NAME_BYTES)
         },
-        app_icon: truncate_utf8_bytes(&app_icon, MAX_APP_ICON_BYTES),
+        app_icon: util::truncate_utf8_bytes(&app_icon, MAX_APP_ICON_BYTES),
         // Truncate bytes first, then fold long contiguous runs to keep UTF-8 boundaries valid
         // Fold very long unbroken runs so renderer width remains bounded
         summary: util::fold_text_for_layout(
-            &truncate_utf8_bytes(&summary, MAX_SUMMARY_BYTES),
+            &util::truncate_utf8_bytes(&summary, MAX_SUMMARY_BYTES),
             util::MAX_DISPLAY_TOKEN_WIDTH,
         ),
         // Apply the same order for body so renderer sees consistent text constraints
         // Body can be much larger, so apply the same run-folding protection here
         body: util::fold_text_for_layout(
-            &truncate_utf8_bytes(&body, MAX_BODY_BYTES),
+            &util::truncate_utf8_bytes(&body, MAX_BODY_BYTES),
             util::MAX_DISPLAY_TOKEN_WIDTH,
         ),
         actions,
@@ -154,7 +154,7 @@ fn reply_hint_text(hints: &HashMap<String, OwnedValue>, key: &str) -> String {
     };
     // Reply controls are single-line GTK widgets, so layout controls are removed here
     let clean = util::sanitize_inline_display_text(&value);
-    truncate_utf8_bytes(&clean, MAX_HINT_STRING_BYTES)
+    util::truncate_utf8_bytes(&clean, MAX_HINT_STRING_BYTES)
 }
 
 fn parse_actions(raw: Vec<String>) -> Vec<Action> {
@@ -172,9 +172,9 @@ fn parse_actions(raw: Vec<String>) -> Vec<Action> {
             }
             actions.push(Action {
                 // Key is protocol data
-                key: truncate_utf8_bytes(&key, MAX_ACTION_KEY_BYTES),
+                key: util::truncate_utf8_bytes(&key, MAX_ACTION_KEY_BYTES),
                 // Label is shown to the user
-                label: truncate_utf8_bytes(
+                label: util::truncate_utf8_bytes(
                     &util::sanitize_inline_display_text(&label),
                     MAX_ACTION_LABEL_BYTES,
                 ),
@@ -193,7 +193,7 @@ fn sanitize_hints_for_storage(hints: HashMap<String, OwnedValue>) -> HashMap<Str
             break;
         }
 
-        let key = truncate_utf8_bytes(key.trim(), MAX_HINT_KEY_BYTES);
+        let key = util::truncate_utf8_bytes(key.trim(), MAX_HINT_KEY_BYTES);
         if key.is_empty() {
             continue;
         }
@@ -202,7 +202,7 @@ fn sanitize_hints_for_storage(hints: HashMap<String, OwnedValue>) -> HashMap<Str
             // Keep only hints that matter for daemon behavior and rendering
             "sound-name" | "sound-file" | "category" => owned_to_string(&value).and_then(|text| {
                 // Keep hint text small
-                let bounded = truncate_utf8_bytes(&text, MAX_HINT_STRING_BYTES);
+                let bounded = util::truncate_utf8_bytes(&text, MAX_HINT_STRING_BYTES);
                 string_to_owned_value(&bounded)
             }),
             "transient" | "resident" | "suppress-sound" => {
@@ -240,30 +240,6 @@ fn owned_to_string(value: &OwnedValue) -> Option<String> {
         .try_clone()
         .ok()
         .and_then(|owned| String::try_from(owned).ok())
-}
-
-fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
-    if max_bytes == 0 {
-        return String::new();
-    }
-    if value.len() <= max_bytes {
-        // Fast path for common short payloads
-        return value.to_string();
-    }
-
-    // At most three continuation bytes can sit between the limit and a boundary
-    let mut end = max_bytes;
-    for _ in 0..3 {
-        if value.is_char_boundary(end) {
-            break;
-        }
-        end -= 1;
-    }
-    debug_assert!(
-        value.is_char_boundary(end),
-        "bounded backup must reach the current UTF-8 character boundary"
-    );
-    value[..end].to_string()
 }
 
 #[cfg(test)]

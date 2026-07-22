@@ -5,24 +5,10 @@ use zbus::zvariant::OwnedValue;
 
 use super::{
     build_notification, owned_to_string, parse_actions, parse_urgency_hint, resolve_expiration,
-    sanitize_hints_for_storage, string_to_owned_value, truncate_utf8_bytes, NotificationInput,
-    SenderMetadata, MAX_ACTIONS, MAX_BODY_BYTES, MAX_SUMMARY_BYTES,
+    sanitize_hints_for_storage, string_to_owned_value, NotificationInput, SenderMetadata,
+    MAX_ACTIONS, MAX_BODY_BYTES, MAX_SUMMARY_BYTES,
 };
 use unixnotis_core::{Config, NotificationImage, Urgency};
-
-#[test]
-fn truncate_utf8_bytes_preserves_character_boundaries() {
-    let value = "abc🙂def";
-    let truncated = truncate_utf8_bytes(value, 5);
-    assert_eq!(truncated, "abc");
-}
-
-#[test]
-fn truncate_utf8_bytes_keeps_exact_boundary_and_handles_zero_limit() {
-    assert_eq!(truncate_utf8_bytes("abc", 3), "abc");
-    assert_eq!(truncate_utf8_bytes("abc", 0), "");
-    assert_eq!(truncate_utf8_bytes("éé", 3), "é");
-}
 
 #[test]
 fn build_notification_clamps_summary_and_body_sizes() {
