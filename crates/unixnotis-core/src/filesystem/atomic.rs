@@ -22,6 +22,34 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub fn write_file_atomic(path: &Path, contents: &[u8], mode: u32) -> io::Result<()> {
     let (parent_fd, file_name) = open_parent(path)?;
     validate_target(&parent_fd, &file_name)?;
+    write_file_atomic_at(parent_fd, &file_name, contents, mode)
+}
+
+/// Replace a regular file while retaining its current permission bits
+///
+/// A missing destination receives `default_mode`. Existing special files and links are rejected
+/// through the same descriptor-relative checks as [`write_file_atomic`]
+///
+/// # Errors
+///
+/// Returns an error when containment checks fail or the temporary write, synchronization, target
+/// validation, rename, or parent-directory synchronization cannot complete
+pub fn write_file_atomic_preserving_mode(
+    path: &Path,
+    contents: &[u8],
+    default_mode: u32,
+) -> io::Result<()> {
+    let (parent_fd, file_name) = open_parent(path)?;
+    let mode = existing_target_mode(&parent_fd, &file_name)?.unwrap_or(default_mode);
+    write_file_atomic_at(parent_fd, &file_name, contents, mode)
+}
+
+fn write_file_atomic_at(
+    parent_fd: OwnedFd,
+    file_name: &OsString,
+    contents: &[u8],
+    mode: u32,
+) -> io::Result<()> {
     let candidates = temp_candidates(&file_name);
     let (temp_name, mut temp_file) = reserve_temp(&parent_fd, candidates, mode)?;
 
@@ -33,11 +61,11 @@ pub fn write_file_atomic(path: &Path, contents: &[u8], mode: u32) -> io::Result<
     drop(temp_file);
 
     // A second check catches target swaps made while the payload was written
-    if let Err(error) = validate_target(&parent_fd, &file_name) {
+    if let Err(error) = validate_target(&parent_fd, file_name) {
         let _ = unlinkat(&parent_fd, &temp_name, AtFlags::empty());
         return Err(error);
     }
-    if let Err(error) = renameat(&parent_fd, &temp_name, &parent_fd, &file_name) {
+    if let Err(error) = renameat(&parent_fd, &temp_name, &parent_fd, file_name) {
         let _ = unlinkat(&parent_fd, &temp_name, AtFlags::empty());
         return Err(error.into());
     }
@@ -178,6 +206,10 @@ fn open_or_create_dir(parent_fd: &OwnedFd, name: &std::ffi::OsStr) -> io::Result
 }
 
 fn validate_target(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<()> {
+    existing_target_mode(parent_fd, file_name).map(|_mode| ())
+}
+
+fn existing_target_mode(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<Option<u32>> {
     match openat2(
         parent_fd,
         file_name,
@@ -186,13 +218,14 @@ fn validate_target(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<()> 
         contained_resolve_flags(),
     ) {
         Ok(fd) => {
-            if fs::File::from(fd).metadata()?.is_file() {
-                Ok(())
+            let metadata = fs::File::from(fd).metadata()?;
+            if metadata.is_file() {
+                Ok(Some(metadata.permissions().mode() & 0o777))
             } else {
                 Err(unsafe_target_error())
             }
         }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
 }

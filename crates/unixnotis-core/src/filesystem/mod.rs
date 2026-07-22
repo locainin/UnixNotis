@@ -3,5 +3,8 @@
 mod atomic;
 mod path;
 
-pub use atomic::{make_file_executable, write_file_atomic, write_file_if_missing};
+pub use atomic::{
+    make_file_executable, write_file_atomic, write_file_atomic_preserving_mode,
+    write_file_if_missing,
+};
 pub use path::{ContainedPath, LexicalPathError, LexicallyNormalizedPath};

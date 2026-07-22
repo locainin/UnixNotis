@@ -1,6 +1,7 @@
 use super::{
     anchor_resolve_flags, contained_resolve_flags, file_mode, make_file_executable, open_parent,
-    reserve_temp, sync_directory, write_file_atomic, write_file_if_missing,
+    reserve_temp, sync_directory, write_file_atomic, write_file_atomic_preserving_mode,
+    write_file_if_missing,
 };
 use std::ffi::OsString;
 use std::fs;
@@ -227,5 +228,42 @@ fn atomic_write_replaces_regular_file_and_applies_requested_mode() {
         .mode()
         & 0o777;
     assert_eq!(mode, 0o600);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn preserving_atomic_write_keeps_existing_mode_and_replaces_contents() {
+    let root = unique_temp_path("atomic-preserve-mode");
+    fs::create_dir_all(&root).expect("create test root");
+    let target = root.join("config.toml");
+    fs::write(&target, "old").expect("write old file");
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).expect("set old mode");
+
+    write_file_atomic_preserving_mode(&target, b"new", 0o644).expect("replace file");
+
+    assert_eq!(fs::read_to_string(&target).expect("read file"), "new");
+    let mode = fs::metadata(&target)
+        .expect("file metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn preserving_atomic_write_uses_default_mode_for_a_missing_file() {
+    let root = unique_temp_path("atomic-preserve-default");
+    fs::create_dir_all(&root).expect("create test root");
+    let target = root.join("config.toml");
+
+    write_file_atomic_preserving_mode(&target, b"new", 0o640).expect("create file");
+
+    let mode = fs::metadata(&target)
+        .expect("file metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o640);
     let _ = fs::remove_dir_all(root);
 }
