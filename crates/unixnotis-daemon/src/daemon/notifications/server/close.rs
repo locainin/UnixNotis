@@ -16,7 +16,12 @@ impl NotificationServer {
         debug!(id, "close notification requested");
 
         // Close requests are ownership checked and become no-op when unauthorized
-        let sender = resolve_sender_metadata(self.state.connection(), header).await;
+        let sender = resolve_sender_metadata(
+            &self.state.sender_metadata_cache,
+            self.state.connection(),
+            header,
+        )
+        .await;
         let Some(sender_name) = sender.sender_name.as_deref() else {
             return Ok(());
         };

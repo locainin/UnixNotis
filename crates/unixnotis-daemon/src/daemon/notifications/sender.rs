@@ -9,6 +9,8 @@ use zbus::fdo::DBusProxy;
 use zbus::message::Header;
 use zbus::Connection;
 
+use super::sender_cache::SenderMetadataCache;
+
 #[derive(Debug, Clone, Default)]
 pub(super) struct SenderMetadata {
     // Unique bus sender name (:1.x) used for ownership checks
@@ -22,6 +24,7 @@ pub(super) struct SenderMetadata {
 }
 
 pub(super) async fn resolve_sender_metadata(
+    cache: &SenderMetadataCache,
     connection: &Connection,
     header: &Header<'_>,
 ) -> SenderMetadata {
@@ -35,6 +38,12 @@ pub(super) async fn resolve_sender_metadata(
             sender_executable: None,
         };
     };
+
+    // Unique names are stable for one bus connection and safe cache identities
+    if let Some(metadata) = cache.get(sender_name_str) {
+        return metadata;
+    }
+    let cache_key = sender_name_str.to_string();
 
     let Ok(bus_name) = zbus::names::BusName::try_from(sender_name_str) else {
         return SenderMetadata {
@@ -64,12 +73,17 @@ pub(super) async fn resolve_sender_metadata(
         None => None,
     };
 
-    SenderMetadata {
+    let metadata = SenderMetadata {
         sender_name,
         sender_pid,
         sender_start_time,
         sender_executable,
+    };
+    // Failed lookups remain retryable instead of becoming persistent unknown identities
+    if metadata.sender_pid.is_some() {
+        cache.insert(cache_key, metadata.clone());
     }
+    metadata
 }
 
 pub(super) fn app_name_matches_sender(app_name: &str, sender_executable: &str) -> bool {
