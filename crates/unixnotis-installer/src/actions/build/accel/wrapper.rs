@@ -1,6 +1,6 @@
 //! Wrapper script generation for optional build acceleration
 
-use std::{fs, path::Path};
+use std::path::Path;
 
 use unixnotis_core::filesystem::write_file_atomic;
 
@@ -22,10 +22,6 @@ pub(in crate::actions::build::accel) fn format_build_accel_config() -> String {
 pub(in crate::actions::build::accel) fn write_wrapper_script(
     wrapper_path: &Path,
 ) -> Result<(), String> {
-    if let Some(parent) = wrapper_path.parent() {
-        // Create the wrapper parent first so the later config write has a valid target
-        fs::create_dir_all(parent).map_err(|err| err.to_string())?;
-    }
     write_file_atomic(wrapper_path, wrapper_script().as_bytes(), 0o755)
         .map_err(|err| err.to_string())
 }
