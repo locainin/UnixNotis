@@ -4,13 +4,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
+use unixnotis_core::filesystem::write_file_atomic;
 use unixnotis_core::Config;
 
 use crate::paths::format_with_home;
 
 use super::super::super::{log_line, ActionContext};
 use super::retention::BACKUP_PREFIX;
-use super::write::write_atomic;
 
 pub fn restore_config(ctx: &mut ActionContext) -> Result<()> {
     let Some(backup_dir) = ctx.restore_backup.clone() else {
@@ -32,7 +32,6 @@ pub fn restore_config(ctx: &mut ActionContext) -> Result<()> {
         return Err(anyhow!("backup directory name is not recognized"));
     }
 
-    fs::create_dir_all(&config_dir).with_context(|| "failed to create config directory")?;
     log_line(
         ctx,
         format!("Restoring config from {}", format_with_home(&backup_dir)),
@@ -43,7 +42,8 @@ pub fn restore_config(ctx: &mut ActionContext) -> Result<()> {
     if config_backup.exists() {
         let contents = fs::read_to_string(&config_backup)
             .with_context(|| "failed to read backup config.toml")?;
-        write_atomic(&config_path, &contents).with_context(|| "failed to restore config.toml")?;
+        write_file_atomic(&config_path, contents.as_bytes(), 0o644)
+            .with_context(|| "failed to restore config.toml")?;
         log_line(
             ctx,
             format!("Restored config.toml -> {}", format_with_home(&config_path)),
@@ -103,14 +103,10 @@ pub fn restore_config(ctx: &mut ActionContext) -> Result<()> {
             );
             continue;
         }
-        if let Some(parent) = target.parent() {
-            // Create parents for custom theme paths before writing restored content
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create parent dir for {name}"))?;
-        }
         let contents =
             fs::read_to_string(&source).with_context(|| format!("failed to read backup {name}"))?;
-        write_atomic(&target, &contents).with_context(|| format!("failed to restore {name}"))?;
+        write_file_atomic(&target, contents.as_bytes(), 0o644)
+            .with_context(|| format!("failed to restore {name}"))?;
         log_line(
             ctx,
             format!("Restored {} -> {}", name, format_with_home(&target)),
