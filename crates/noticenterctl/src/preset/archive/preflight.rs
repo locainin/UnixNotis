@@ -43,6 +43,12 @@ fn scan_headers(input: &mut impl Read) -> Result<()> {
 
         let entry_type = header.entry_type();
         let recognized = header.as_gnu().is_some() || header.as_ustar().is_some();
+        if entry_type.is_pax_global_extensions() {
+            // Global records change later entries and would give both parsers different state
+            return Err(anyhow!(
+                "preset bundle contains unsupported global PAX metadata"
+            ));
+        }
         let is_hidden_extension = recognized
             && (entry_type.is_gnu_longname()
                 || entry_type.is_gnu_longlink()
@@ -145,6 +151,13 @@ fn validate_visible_header(header: &Header, effective_size: u64) -> Result<()> {
             ));
         }
         return Ok(());
+    }
+    if !header.entry_type().is_file() {
+        // Preset archives model only regular files, directories, and handled local extensions
+        return Err(anyhow!(
+            "preset bundle contains an unsupported archive entry type: {}",
+            archive_path.display()
+        ));
     }
     if archive_path == Path::new(MANIFEST_ARCHIVE_PATH) {
         return validate_entry_size(
