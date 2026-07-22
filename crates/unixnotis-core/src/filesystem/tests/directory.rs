@@ -6,8 +6,9 @@ use std::os::unix::fs::{symlink, PermissionsExt};
 use rustix::fs::{mkfifoat, Mode, CWD};
 
 use super::{
-    classify_directory_creation, create_directory_all, remove_directory_tree,
-    remove_empty_directory,
+    classify_directory_creation, create_directory_all, ensure_marked_directory,
+    remove_directory_tree, remove_empty_directory, remove_marked_directory_tree,
+    CreateDirectoryOutcome,
 };
 use crate::test_support::unique_temp_path;
 
@@ -16,8 +17,14 @@ fn directory_creation_builds_missing_components_with_requested_mode() {
     let root = unique_temp_path("create-directory-tree");
     let target = root.join("parent").join("child");
 
-    assert!(create_directory_all(&target, 0o750).expect("create directory tree"));
-    assert!(!create_directory_all(&target, 0o700).expect("existing directory stays unchanged"));
+    assert_eq!(
+        create_directory_all(&target, 0o750).expect("create directory tree"),
+        CreateDirectoryOutcome::TargetCreated
+    );
+    assert_eq!(
+        create_directory_all(&target, 0o700).expect("existing directory stays unchanged"),
+        CreateDirectoryOutcome::TargetAlreadyExisted
+    );
 
     for directory in [&root, &root.join("parent"), &target] {
         assert_eq!(
@@ -57,6 +64,46 @@ fn directory_creation_result_distinguishes_creation_collision_and_failure() {
     let error = classify_directory_creation(Err(std::io::ErrorKind::PermissionDenied.into()))
         .expect_err("unrelated mkdir failure should propagate");
     assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+}
+
+#[test]
+fn marked_directory_refuses_to_adopt_an_unmarked_existing_target() {
+    let root = unique_temp_path("marked-directory-adoption");
+    let target = root.join("service");
+    fs::create_dir_all(&target).expect("create foreign directory");
+    fs::write(target.join("foreign"), "keep").expect("write foreign child");
+
+    ensure_marked_directory(&target, 0o755, ".owner".as_ref(), b"owned\n", 0o644)
+        .expect_err("unmarked directory should not be adopted");
+
+    assert!(!target.join(".owner").exists());
+    assert_eq!(
+        fs::read_to_string(target.join("foreign")).expect("read foreign child"),
+        "keep"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn marked_directory_creation_and_reopen_share_one_ownership_contract() {
+    let root = unique_temp_path("marked-directory-create");
+    let target = root.join("service");
+
+    assert_eq!(
+        ensure_marked_directory(&target, 0o750, ".owner".as_ref(), b"owned\n", 0o640)
+            .expect("create marked directory"),
+        CreateDirectoryOutcome::TargetCreated
+    );
+    assert_eq!(
+        ensure_marked_directory(&target, 0o700, ".owner".as_ref(), b"owned\n", 0o600)
+            .expect("validate marked directory"),
+        CreateDirectoryOutcome::TargetAlreadyExisted
+    );
+    assert_eq!(
+        fs::read_to_string(target.join(".owner")).expect("read marker"),
+        "owned\n"
+    );
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]
@@ -136,6 +183,47 @@ fn recursive_directory_removal_rejects_a_special_child() {
 
     assert!(fs::symlink_metadata(fifo).is_ok());
     assert!(target.exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn marked_tree_preflight_preserves_regular_siblings_when_a_child_is_unsafe() {
+    let root = unique_temp_path("marked-tree-preflight");
+    let target = root.join("managed");
+    fs::create_dir_all(&target).expect("create managed directory");
+    fs::write(target.join(".owner"), "owned\n").expect("write ownership marker");
+    fs::write(target.join("regular"), "keep until full preflight").expect("write regular child");
+    symlink("regular", target.join("unsafe-link")).expect("create unsafe link");
+
+    remove_marked_directory_tree(&target, ".owner".as_ref(), b"owned\n")
+        .expect_err("unsafe child should reject the whole tree");
+
+    assert_eq!(
+        fs::read_to_string(target.join("regular")).expect("regular sibling remains"),
+        "keep until full preflight"
+    );
+    assert!(target.join(".owner").exists());
+    assert!(fs::symlink_metadata(target.join("unsafe-link"))
+        .expect("unsafe link remains")
+        .file_type()
+        .is_symlink());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn marked_tree_removal_validates_marker_and_deletes_a_preflighted_tree() {
+    let root = unique_temp_path("marked-tree-remove");
+    let target = root.join("managed");
+    fs::create_dir_all(target.join("nested")).expect("create nested tree");
+    fs::write(target.join(".owner"), "owned\n").expect("write ownership marker");
+    fs::write(target.join("nested").join("file"), "owned").expect("write nested file");
+
+    assert!(
+        remove_marked_directory_tree(&target, ".owner".as_ref(), b"owned\n")
+            .expect("remove marked tree")
+    );
+    assert!(!target.exists());
+
     let _ = fs::remove_dir_all(root);
 }
 

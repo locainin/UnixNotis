@@ -3,7 +3,10 @@
 use std::fs;
 use std::os::unix::fs::symlink;
 
-use super::{remove_regular_file, remove_symlink, remove_symlink_if_target, RemoveSymlinkOutcome};
+use super::{
+    remove_regular_file, remove_regular_file_pair_if_contents, remove_symlink,
+    remove_symlink_if_target, RemoveExactFileOutcome, RemoveSymlinkOutcome,
+};
 use crate::filesystem::symlink::read_symlink;
 use crate::test_support::unique_temp_path;
 
@@ -57,6 +60,34 @@ fn regular_file_removal_rejects_a_symlinked_parent() {
         fs::read_to_string(outside.join("state.json")).expect("read outside state"),
         "state"
     );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn exact_pair_removal_requires_both_payloads_before_unlinking_either_file() {
+    let root = unique_temp_path("remove-exact-pair");
+    let target = root.join("type");
+    let marker = root.join(".owner");
+    fs::create_dir_all(&root).expect("create test root");
+    fs::write(&target, "bundle\n").expect("write shared file");
+    fs::write(&marker, "foreign\n").expect("write foreign marker");
+
+    assert_eq!(
+        remove_regular_file_pair_if_contents(&target, b"bundle\n", &marker, b"owned\n")
+            .expect("inspect exact pair"),
+        RemoveExactFileOutcome::ContentsMismatch
+    );
+    assert!(target.exists());
+    assert!(marker.exists());
+
+    fs::write(&marker, "owned\n").expect("repair marker");
+    assert_eq!(
+        remove_regular_file_pair_if_contents(&target, b"bundle\n", &marker, b"owned\n")
+            .expect("remove exact pair"),
+        RemoveExactFileOutcome::Removed
+    );
+    assert!(!target.exists());
+    assert!(!marker.exists());
     let _ = fs::remove_dir_all(root);
 }
 

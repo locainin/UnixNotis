@@ -8,8 +8,9 @@ use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 use unixnotis_core::filesystem::{
-    remove_empty_directory, remove_regular_file, set_file_mode, write_file_atomic,
-    write_file_atomic_preserving_mode,
+    ensure_exact_file, remove_empty_directory, remove_regular_file,
+    remove_regular_file_pair_if_contents, set_file_mode, write_file_atomic,
+    write_file_atomic_preserving_mode, EnsureExactFileOutcome, RemoveExactFileOutcome,
 };
 
 use crate::paths::format_with_home;
@@ -72,24 +73,19 @@ pub(in crate::actions::install::service) fn write_shared_service_file(
     artifact_label: &str,
     created_marker: Option<&Path>,
 ) -> Result<bool> {
-    // Shared files are setup anchors, not UnixNotis-owned replacement targets
-    let existed_before = ensure_regular_artifact_file_path(path)?;
-    if existed_before {
-        let existing = fs::read_to_string(path)
-            .with_context(|| format!("failed to read {}", format_with_home(path)))?;
-        if existing != contents {
+    let outcome = ensure_exact_file(path, contents.as_bytes(), mode.unwrap_or(0o644))
+        .with_context(|| format!("failed to write {artifact_label}"))?;
+    match outcome {
+        EnsureExactFileOutcome::ContentsMismatch => {
             return Err(anyhow!(
                 "refusing to overwrite shared service artifact at {}",
                 format_with_home(path)
             ));
         }
-        apply_artifact_mode_if_needed(path, mode)?;
-        return Ok(false);
+        EnsureExactFileOutcome::AlreadyExact => return Ok(false),
+        EnsureExactFileOutcome::Created => {}
     }
 
-    // Missing shared files can be seeded because no user contents are being replaced
-    write_file_atomic(path, contents.as_bytes(), mode.unwrap_or(0o644))
-        .with_context(|| format!("failed to write {artifact_label}"))?;
     if let Some(marker) = created_marker {
         write_shared_creation_marker(marker)?;
     }
@@ -101,18 +97,20 @@ pub(in crate::actions::install::service) fn remove_shared_service_file(
     created_marker: &Path,
     expected_contents: &str,
 ) -> Result<bool> {
-    if !shared_creation_marker_is_valid(created_marker) {
-        // No marker means the shared file predated UnixNotis or has unknown ownership
-        return Ok(false);
+    let outcome = remove_regular_file_pair_if_contents(
+        path,
+        expected_contents.as_bytes(),
+        created_marker,
+        MANAGED_DIRECTORY_MARKER_CONTENTS.as_bytes(),
+    )
+    .with_context(|| format!("failed to remove {}", format_with_home(path)))?;
+    match outcome {
+        RemoveExactFileOutcome::Missing | RemoveExactFileOutcome::ContentsMismatch => Ok(false),
+        RemoveExactFileOutcome::Removed => {
+            remove_empty_shared_layout_dirs(path)?;
+            Ok(true)
+        }
     }
-    if !shared_file_contents_match(path, expected_contents)? {
-        // User edits after install turn the file back into shared user state
-        return Ok(false);
-    }
-    remove_regular_service_file(path)?;
-    remove_regular_service_file(created_marker)?;
-    remove_empty_shared_layout_dirs(path)?;
-    Ok(true)
 }
 
 #[cfg(unix)]
@@ -126,65 +124,16 @@ pub(in crate::actions::install) fn current_mode(path: &Path) -> Result<Option<u3
     }
 }
 
-fn apply_artifact_mode_if_needed(path: &Path, mode: Option<u32>) -> Result<()> {
-    let Some(mode) = mode else {
-        return Ok(());
-    };
-
-    #[cfg(unix)]
-    {
-        if current_mode(path)? != Some(mode) {
-            // Shared support files still need explicit modes when the backend requests one
-            set_file_mode(path, mode)
-                .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
-        }
-        Ok(())
-    }
-
-    #[cfg(not(unix))]
-    {
-        Err(anyhow!(
-            "cannot apply executable mode {} on non-Unix platforms",
-            mode
-        ))
-    }
-}
-
 fn write_shared_creation_marker(path: &Path) -> Result<()> {
-    ensure_regular_artifact_file_path(path)?;
-    write_file_atomic(path, MANAGED_DIRECTORY_MARKER_CONTENTS.as_bytes(), 0o644)
-        .with_context(|| format!("failed to write {}", format_with_home(path)))
-}
-
-fn shared_creation_marker_is_valid(path: &Path) -> bool {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return false;
-    };
-    if !metadata.file_type().is_file() {
-        return false;
-    }
-    fs::read_to_string(path).is_ok_and(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
-}
-
-fn shared_file_contents_match(path: &Path, expected_contents: &str) -> Result<bool> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
-        Err(err) => {
-            return Err(err)
-                .with_context(|| format!("failed to inspect {}", format_with_home(path)));
-        }
-    };
-    if !metadata.file_type().is_file() {
-        // A marker does not make a replaced symlink, socket, or directory removable
-        return Err(anyhow!(
-            "refusing to remove non-regular shared service artifact at {}",
+    match ensure_exact_file(path, MANAGED_DIRECTORY_MARKER_CONTENTS.as_bytes(), 0o644)
+        .with_context(|| format!("failed to write {}", format_with_home(path)))?
+    {
+        EnsureExactFileOutcome::Created | EnsureExactFileOutcome::AlreadyExact => Ok(()),
+        EnsureExactFileOutcome::ContentsMismatch => Err(anyhow!(
+            "refusing to replace ownership marker at {}",
             format_with_home(path)
-        ));
+        )),
     }
-    fs::read_to_string(path)
-        .map(|contents| contents == expected_contents)
-        .with_context(|| format!("failed to read {}", format_with_home(path)))
 }
 
 fn remove_empty_shared_layout_dirs(path: &Path) -> Result<()> {

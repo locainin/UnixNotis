@@ -7,21 +7,76 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path};
 
 use rustix::fs::{
-    fchmod, fsync, mkdirat, openat2, statat, unlinkat, AtFlags, Dir, FileType, Mode, OFlags,
+    fchmod, fstat, fsync, mkdirat, openat2, statat, unlinkat, AtFlags, Dir, FileType, Mode, OFlags,
     ResolveFlags, CWD,
 };
 
+use super::atomic::{ensure_exact_file_at, file_contents_equal, open_regular_file_at};
+
+/// Outcome for the final component of recursive directory creation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreateDirectoryOutcome {
+    /// The requested directory itself was created by this operation
+    TargetCreated,
+    /// The requested directory already existed when its retained descriptor was opened
+    TargetAlreadyExisted,
+}
+
 /// Create a directory and every missing parent without following links
 ///
-/// Returns `true` when at least the requested directory had to be created
+/// Reports whether the final directory was created without conflating parent creation
 ///
 /// # Errors
 ///
 /// Returns an error when the path traverses upward or through a link, an existing component is not
 /// a directory, or creation, permission repair, or synchronization fails
-pub fn create_directory_all(path: &Path, mode: u32) -> io::Result<bool> {
-    let (_directory_fd, created) = open_directory_path(path, MissingDirectory::Create(mode))?;
-    Ok(created)
+pub fn create_directory_all(path: &Path, mode: u32) -> io::Result<CreateDirectoryOutcome> {
+    let (_directory_fd, outcome) = open_directory_path(path, MissingDirectory::Create(mode))?;
+    Ok(outcome)
+}
+
+/// Create a directory with an ownership marker or validate the retained existing directory
+///
+/// Existing directories are never mutated until their marker bytes are proven through the same
+/// directory descriptor used for the decision
+///
+/// # Errors
+///
+/// Returns an error for unsafe paths, invalid marker names, missing or mismatched ownership
+/// markers, and directory or marker creation failures
+pub fn ensure_marked_directory(
+    path: &Path,
+    directory_mode: u32,
+    marker_name: &OsStr,
+    marker_contents: &[u8],
+    marker_mode: u32,
+) -> io::Result<CreateDirectoryOutcome> {
+    validate_child_name(marker_name)?;
+    let (directory_fd, outcome) =
+        open_directory_path(path, MissingDirectory::Create(directory_mode))?;
+    let marker_name = marker_name.to_os_string();
+
+    match outcome {
+        CreateDirectoryOutcome::TargetCreated => {
+            let marker_outcome =
+                ensure_exact_file_at(&directory_fd, &marker_name, marker_contents, marker_mode)?;
+            if matches!(
+                marker_outcome,
+                super::atomic::EnsureExactFileOutcome::ContentsMismatch
+            ) {
+                return Err(invalid_marker_error());
+            }
+        }
+        CreateDirectoryOutcome::TargetAlreadyExisted => {
+            let mut marker = open_regular_file_at(&directory_fd, &marker_name)
+                .map_err(|_error| invalid_marker_error())?;
+            if !file_contents_equal(&mut marker, marker_contents)? {
+                return Err(invalid_marker_error());
+            }
+        }
+    }
+
+    Ok(outcome)
 }
 
 /// Remove an empty directory without following links
@@ -53,6 +108,41 @@ pub fn remove_directory_tree(path: &Path) -> io::Result<bool> {
         return Ok(false);
     };
     remove_directory_contents(&directory_fd)?;
+    drop(directory_fd);
+    unlinkat(&parent_fd, &file_name, AtFlags::REMOVEDIR)?;
+    sync_directory(&parent_fd)?;
+    Ok(true)
+}
+
+/// Remove a marked regular-only directory tree through one retained root descriptor
+///
+/// The entire tree is checked before any entry is deleted. The ownership marker is read relative
+/// to that same descriptor, and the visible root name must still identify it before final removal
+///
+/// # Errors
+///
+/// Returns an error when the path or marker is unsafe, marker bytes differ, the tree contains a
+/// link or special file, an entry changes shape, or durable removal fails
+pub fn remove_marked_directory_tree(
+    path: &Path,
+    marker_name: &OsStr,
+    marker_contents: &[u8],
+) -> io::Result<bool> {
+    validate_child_name(marker_name)?;
+    let Some((parent_fd, file_name, directory_fd)) = open_target_directory(path)? else {
+        return Ok(false);
+    };
+    let marker_name = marker_name.to_os_string();
+    let mut marker = open_regular_file_at(&directory_fd, &marker_name)
+        .map_err(|_error| invalid_marker_error())?;
+    if !file_contents_equal(&mut marker, marker_contents)? {
+        return Err(invalid_marker_error());
+    }
+
+    // Preflight is intentionally read-only so one rejected child cannot cause partial deletion
+    preflight_directory_contents(&directory_fd)?;
+    remove_directory_contents(&directory_fd)?;
+    revalidate_directory_identity(&parent_fd, &file_name, &directory_fd)?;
     drop(directory_fd);
     unlinkat(&parent_fd, &file_name, AtFlags::REMOVEDIR)?;
     sync_directory(&parent_fd)?;
@@ -108,10 +198,10 @@ fn open_parent_with(
 fn open_directory_path(
     path: &Path,
     missing_directory: MissingDirectory,
-) -> io::Result<(OwnedFd, bool)> {
+) -> io::Result<(OwnedFd, CreateDirectoryOutcome)> {
     // Absolute and relative paths begin from different trusted anchors
     let mut directory_fd = open_anchor(path)?;
-    let mut created = false;
+    let mut target_outcome = CreateDirectoryOutcome::TargetAlreadyExisted;
 
     for component in path.components() {
         match component {
@@ -128,12 +218,16 @@ fn open_directory_path(
                 let (next_fd, component_created) =
                     open_directory_component(&directory_fd, name, missing_directory)?;
                 directory_fd = next_fd;
-                created |= component_created;
+                target_outcome = if component_created {
+                    CreateDirectoryOutcome::TargetCreated
+                } else {
+                    CreateDirectoryOutcome::TargetAlreadyExisted
+                };
             }
         }
     }
 
-    Ok((directory_fd, created))
+    Ok((directory_fd, target_outcome))
 }
 
 fn open_anchor(path: &Path) -> io::Result<OwnedFd> {
@@ -257,6 +351,72 @@ fn remove_directory_contents(directory_fd: &OwnedFd) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+fn preflight_directory_contents(directory_fd: &OwnedFd) -> io::Result<()> {
+    let mut entries = Dir::read_from(directory_fd)?;
+    while let Some(entry) = entries.read() {
+        let entry = entry?;
+        let name = entry.file_name();
+        if matches!(name.to_bytes(), b"." | b"..") {
+            continue;
+        }
+        let stat = statat(directory_fd, name, AtFlags::SYMLINK_NOFOLLOW)?;
+        let file_type = FileType::from_raw_mode(stat.st_mode);
+        if file_type.is_file() {
+            continue;
+        }
+        if file_type.is_dir() {
+            let child_fd = open_directory_at(directory_fd, OsStr::from_bytes(name.to_bytes()))?;
+            preflight_directory_contents(&child_fd)?;
+            continue;
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "refusing unsafe entry inside directory tree: {}",
+                name.to_string_lossy()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn revalidate_directory_identity(
+    parent_fd: &OwnedFd,
+    file_name: &OsStr,
+    directory_fd: &OwnedFd,
+) -> io::Result<()> {
+    let retained = fstat(directory_fd)?;
+    let visible = statat(parent_fd, file_name, AtFlags::SYMLINK_NOFOLLOW)?;
+    if retained.st_dev == visible.st_dev
+        && retained.st_ino == visible.st_ino
+        && FileType::from_raw_mode(visible.st_mode).is_dir()
+    {
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "directory changed while guarded removal was in progress",
+    ))
+}
+
+fn validate_child_name(name: &OsStr) -> io::Result<()> {
+    let mut components = Path::new(name).components();
+    if matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none() {
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "ownership marker must be one relative file name",
+    ))
+}
+
+fn invalid_marker_error() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        "directory ownership marker is missing or does not match",
+    )
 }
 
 const fn file_mode(mode: u32) -> Mode {

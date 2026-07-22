@@ -451,7 +451,7 @@ fn remove_shared_service_file_handles_missing_and_invalid_paths_safely() {
     let error = remove_service_artifact(&invalid)
         .expect_err("filesystem errors must not look like missing shared files");
 
-    assert!(format!("{error:#}").contains("failed to inspect"));
+    assert!(format!("{error:#}").contains("failed to remove"));
     assert!(marker.exists());
 
     let directory_artifact = ServiceArtifact {
@@ -467,9 +467,10 @@ fn remove_shared_service_file_handles_missing_and_invalid_paths_safely() {
     let error = remove_service_artifact(&directory_artifact)
         .expect_err("a directory must never be removed as a shared file");
 
-    assert!(error
-        .to_string()
-        .contains("non-regular shared service artifact"));
+    assert!(
+        format!("{error:#}").contains("non-regular file target"),
+        "unexpected shared directory error: {error:#}"
+    );
     assert!(directory_artifact.path.is_dir());
     let _ = fs::remove_dir_all(&root);
 }

@@ -102,7 +102,8 @@ fn every_backend_wrong_primary_artifact_shape_fails_without_mutation() {
         assert!(
             err.to_string().contains("symlink")
                 || err.to_string().contains("unsafe")
-                || err.to_string().contains("not managed"),
+                || err.to_string().contains("not managed")
+                || err.to_string().contains("unmarked"),
             "{name} error should explain the unsafe shape: {err}"
         );
         assert_eq!(

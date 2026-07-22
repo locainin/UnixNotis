@@ -28,7 +28,11 @@ fn runit_envdir_sync_failure_keeps_down_gate() {
     let err = run_enable_only(&paths).expect_err("envdir sync should fail");
 
     // The down gate must remain because env sync failed before the service was allowed to start
-    assert!(format!("{err:#}").contains("cannot replace symlink service directory"));
+    assert!(
+        format!("{err:#}").contains("failed to create")
+            && format!("{err:#}").contains("Not a directory"),
+        "unexpected envdir safety error: {err:#}"
+    );
     assert!(service_dir.join("down").is_file());
     let calls = if log_path.exists() {
         read_calls(&log_path)

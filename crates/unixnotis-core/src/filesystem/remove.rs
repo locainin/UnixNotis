@@ -2,11 +2,12 @@
 
 use std::ffi::OsString;
 use std::io;
+use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 
-use rustix::fs::{unlinkat, AtFlags};
+use rustix::fs::{fstat, statat, unlinkat, AtFlags};
 
-use super::atomic::validate_existing_target;
+use super::atomic::{file_contents_equal, open_regular_file_at, validate_existing_target};
 use super::directory::{open_parent_existing, sync_directory};
 use super::symlink::read_symlink_at;
 
@@ -19,6 +20,17 @@ pub enum RemoveSymlinkOutcome {
     Removed,
     /// The link remained because its stored target no longer matched
     TargetMismatch(PathBuf),
+}
+
+/// Result of conditionally removing one exact regular file
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoveExactFileOutcome {
+    /// The requested file or its required marker was absent
+    Missing,
+    /// One retained file did not contain the authorized bytes
+    ContentsMismatch,
+    /// Every retained file matched and the requested entries were removed
+    Removed,
 }
 
 /// Remove a regular file without following links in its path
@@ -43,6 +55,65 @@ pub fn remove_regular_file(path: &Path) -> io::Result<bool> {
     unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
     sync_directory(&parent_fd)?;
     Ok(true)
+}
+
+/// Remove two same-directory regular files only when both retained payloads match
+///
+/// This is intended for a shared artifact and its ownership marker. Both files are opened and
+/// preflighted through one parent descriptor before either name is unlinked
+///
+/// # Errors
+///
+/// Returns an error when paths have different parents, path traversal is unsafe, either target is
+/// not a regular file, retained identities change, or durable unlinking fails
+pub fn remove_regular_file_pair_if_contents(
+    path: &Path,
+    expected_contents: &[u8],
+    marker_path: &Path,
+    expected_marker_contents: &[u8],
+) -> io::Result<RemoveExactFileOutcome> {
+    if path.parent() != marker_path.parent() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "guarded files must share one parent directory",
+        ));
+    }
+    let Some((parent_fd, file_name)) = existing_parent(path)? else {
+        return Ok(RemoveExactFileOutcome::Missing);
+    };
+    let marker_name = marker_path
+        .file_name()
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "marker has no file name"))?
+        .to_os_string();
+
+    let mut file = match open_regular_file_at(&parent_fd, &file_name) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(RemoveExactFileOutcome::Missing)
+        }
+        Err(error) => return Err(error),
+    };
+    let mut marker = match open_regular_file_at(&parent_fd, &marker_name) {
+        Ok(marker) => marker,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(RemoveExactFileOutcome::Missing)
+        }
+        Err(error) => return Err(error),
+    };
+    if !file_contents_equal(&mut file, expected_contents)?
+        || !file_contents_equal(&mut marker, expected_marker_contents)?
+    {
+        return Ok(RemoveExactFileOutcome::ContentsMismatch);
+    }
+
+    // The marker is removed first so a target-name race fails closed with the shared file intact
+    revalidate_file_identity(&parent_fd, &marker_name, &marker)?;
+    unlinkat(&parent_fd, &marker_name, AtFlags::empty())?;
+    revalidate_file_identity(&parent_fd, &file_name, &file)?;
+    unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
+    sync_directory(&parent_fd)?;
+    Ok(RemoveExactFileOutcome::Removed)
 }
 
 /// Remove a symbolic link without requiring a specific target
@@ -106,6 +177,22 @@ fn existing_parent(path: &Path) -> io::Result<Option<(std::os::fd::OwnedFd, OsSt
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error),
     }
+}
+
+fn revalidate_file_identity(
+    parent_fd: &OwnedFd,
+    file_name: &OsString,
+    file: &std::fs::File,
+) -> io::Result<()> {
+    let retained = fstat(file)?;
+    let visible = statat(parent_fd, file_name, AtFlags::SYMLINK_NOFOLLOW)?;
+    if retained.st_dev == visible.st_dev && retained.st_ino == visible.st_ino {
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "regular file changed during guarded removal",
+    ))
 }
 
 #[cfg(test)]
