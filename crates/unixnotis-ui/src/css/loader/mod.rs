@@ -10,5 +10,5 @@ pub(super) use model::{CssFileLoadResult, CssFileLoadSource};
 pub(super) use provider::load_provider_with_overrides;
 
 #[cfg(test)]
-#[path = "../tests/loader/provider.rs"]
+#[path = "tests/provider.rs"]
 mod provider_tests;

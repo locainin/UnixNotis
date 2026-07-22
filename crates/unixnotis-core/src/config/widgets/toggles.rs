@@ -136,3 +136,7 @@ impl Default for ToggleWidgetConfig {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/toggles.rs"]
+mod tests;

@@ -42,5 +42,5 @@ impl CssFileLoadResult {
 }
 
 #[cfg(test)]
-#[path = "../tests/loader/model.rs"]
+#[path = "tests/model.rs"]
 mod tests;

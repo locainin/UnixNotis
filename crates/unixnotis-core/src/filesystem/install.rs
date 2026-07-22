@@ -27,5 +27,5 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> io::Result<()> {
 }
 
 #[cfg(test)]
-#[path = "../tests/filesystem/install.rs"]
+#[path = "tests/install.rs"]
 mod tests;

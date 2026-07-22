@@ -1,3 +1,5 @@
+//! Lexical and contained path tests
+
 use std::path::{Path, PathBuf};
 
 use proptest::prelude::*;

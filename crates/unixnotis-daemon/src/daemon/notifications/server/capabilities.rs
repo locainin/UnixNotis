@@ -14,5 +14,5 @@ pub(super) fn notification_capabilities(supports_sound: bool) -> Vec<String> {
 }
 
 #[cfg(test)]
-#[path = "../tests/capabilities.rs"]
+#[path = "tests/capabilities.rs"]
 mod tests;

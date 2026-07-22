@@ -20,8 +20,9 @@ pub fn read_regular_file_bounded(path: &Path, max_bytes: u64) -> io::Result<Vec<
     }
 
     // Reserve only the size already observed and keep the extra-byte growth check bounded
-    let capacity = usize::try_from(initial_size)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "file size does not fit memory"))?;
+    let capacity = usize::try_from(initial_size).map_err(|_size_error| {
+        io::Error::new(io::ErrorKind::InvalidData, "file size does not fit memory")
+    })?;
     let mut contents = Vec::with_capacity(capacity);
     file.by_ref()
         .take(max_bytes.saturating_add(1))
@@ -40,5 +41,5 @@ fn limit_error(max_bytes: u64) -> io::Error {
 }
 
 #[cfg(test)]
-#[path = "../tests/filesystem/read.rs"]
+#[path = "tests/read.rs"]
 mod tests;

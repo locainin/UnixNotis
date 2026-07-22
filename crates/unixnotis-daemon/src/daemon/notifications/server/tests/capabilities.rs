@@ -1,3 +1,5 @@
+//! Notification server capability tests
+
 use super::notification_capabilities;
 
 #[test]

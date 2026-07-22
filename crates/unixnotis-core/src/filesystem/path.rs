@@ -125,5 +125,5 @@ impl ContainedPath {
 }
 
 #[cfg(test)]
-#[path = "../tests/filesystem/path.rs"]
+#[path = "tests/path.rs"]
 mod tests;

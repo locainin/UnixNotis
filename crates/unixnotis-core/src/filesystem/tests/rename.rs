@@ -1,7 +1,9 @@
+//! No-replace regular-file rename tests
+
 use std::fs;
 use std::os::unix::fs::symlink;
 
-use super::{rename_regular_file_no_replace, RenameRegularFileOutcome};
+use super::{classify_rename_attempt, rename_regular_file_no_replace, RenameRegularFileOutcome};
 use crate::test_support::unique_temp_path;
 
 #[test]
@@ -21,6 +23,28 @@ fn regular_file_rename_moves_source_to_an_unused_destination() {
         "legacy theme"
     );
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn rename_attempt_result_distinguishes_every_kernel_outcome() {
+    assert_eq!(
+        classify_rename_attempt(Ok(())).expect("successful rename"),
+        RenameRegularFileOutcome::Renamed
+    );
+    assert_eq!(
+        classify_rename_attempt(Err(std::io::ErrorKind::AlreadyExists.into()))
+            .expect("destination collision"),
+        RenameRegularFileOutcome::DestinationExists
+    );
+    assert_eq!(
+        classify_rename_attempt(Err(std::io::ErrorKind::NotFound.into()))
+            .expect("source disappeared"),
+        RenameRegularFileOutcome::SourceMissing
+    );
+
+    let error = classify_rename_attempt(Err(std::io::ErrorKind::PermissionDenied.into()))
+        .expect_err("unrelated rename failure should propagate");
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
 }
 
 #[test]

@@ -1,3 +1,5 @@
+//! CSS URL rebasing tests
+
 use std::path::Path;
 
 use super::*;

@@ -1,3 +1,5 @@
+//! CSS loader path tests
+
 use std::path::Path;
 
 use super::*;

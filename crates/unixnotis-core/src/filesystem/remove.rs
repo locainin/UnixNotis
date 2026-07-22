@@ -109,5 +109,5 @@ fn existing_parent(path: &Path) -> io::Result<Option<(std::os::fd::OwnedFd, OsSt
 }
 
 #[cfg(test)]
-#[path = "../tests/filesystem/remove.rs"]
+#[path = "tests/remove.rs"]
 mod tests;

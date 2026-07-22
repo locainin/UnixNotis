@@ -22,6 +22,12 @@ pub enum CreateSymlinkOutcome {
     TargetMismatch(PathBuf),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SymlinkCreateAttempt {
+    Created,
+    Collision,
+}
+
 /// Create a symbolic link while preserving every existing path
 ///
 /// # Errors
@@ -40,18 +46,26 @@ pub fn create_symlink_if_missing(path: &Path, target: &Path) -> io::Result<Creat
         },
     }
 
-    match symlinkat(target, &parent_fd, &file_name) {
-        Ok(()) => {
+    let create_result = symlinkat(target, &parent_fd, &file_name).map_err(Into::into);
+    match classify_symlink_creation(create_result)? {
+        SymlinkCreateAttempt::Created => {
             sync_directory(&parent_fd)?;
             Ok(CreateSymlinkOutcome::Created)
         }
+        SymlinkCreateAttempt::Collision => {
+            // A concurrent creator is accepted only when it published the requested link
+            let existing = read_symlink_at(&parent_fd, &file_name)?;
+            Ok(existing_link_outcome(existing, target))
+        }
+    }
+}
+
+fn classify_symlink_creation(result: io::Result<()>) -> io::Result<SymlinkCreateAttempt> {
+    match result {
+        Ok(()) => Ok(SymlinkCreateAttempt::Created),
         Err(error) => match error.kind() {
-            io::ErrorKind::AlreadyExists => {
-                // A concurrent creator is accepted only when it published the requested link
-                let existing = read_symlink_at(&parent_fd, &file_name)?;
-                Ok(existing_link_outcome(existing, target))
-            }
-            _ => Err(error.into()),
+            io::ErrorKind::AlreadyExists => Ok(SymlinkCreateAttempt::Collision),
+            _ => Err(error),
         },
     }
 }
@@ -164,5 +178,5 @@ fn existing_link_outcome(existing: PathBuf, target: &Path) -> CreateSymlinkOutco
 }
 
 #[cfg(test)]
-#[path = "../tests/filesystem/symlink.rs"]
+#[path = "tests/symlink.rs"]
 mod tests;

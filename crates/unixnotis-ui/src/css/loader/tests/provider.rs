@@ -1,3 +1,5 @@
+//! CSS provider loading tests
+
 use std::cell::RefCell;
 use std::fs;
 use std::path::PathBuf;

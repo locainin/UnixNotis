@@ -94,8 +94,8 @@ fn normalize_lexical_path(path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
-#[path = "../tests/loader/paths.rs"]
+#[path = "tests/paths.rs"]
 mod path_tests;
 #[cfg(test)]
-#[path = "../tests/loader/rebase.rs"]
+#[path = "tests/rebase.rs"]
 mod rebase_tests;

@@ -173,14 +173,8 @@ fn create_directory_component(
     name: &OsStr,
     mode: u32,
 ) -> io::Result<(OwnedFd, bool)> {
-    let created = match mkdirat(parent_fd, name, file_mode(mode)) {
-        Ok(()) => true,
-        // A concurrent creator still has to pass the same no-follow directory open below
-        Err(error) => match error.kind() {
-            io::ErrorKind::AlreadyExists => false,
-            _ => return Err(error.into()),
-        },
-    };
+    let create_result = mkdirat(parent_fd, name, file_mode(mode)).map_err(Into::into);
+    let created = classify_directory_creation(create_result)?;
     let directory_fd = open_directory_at(parent_fd, name)?;
     if created {
         // Apply the exact requested mode because mkdir remains subject to the process umask
@@ -189,6 +183,17 @@ fn create_directory_component(
         fsync(parent_fd)?;
     }
     Ok((directory_fd, created))
+}
+
+fn classify_directory_creation(result: io::Result<()>) -> io::Result<bool> {
+    match result {
+        Ok(()) => Ok(true),
+        // A concurrent creator still has to pass the same no-follow directory open below
+        Err(error) => match error.kind() {
+            io::ErrorKind::AlreadyExists => Ok(false),
+            _ => Err(error),
+        },
+    }
 }
 
 fn open_directory_at(parent_fd: &OwnedFd, name: &OsStr) -> io::Result<OwnedFd> {
@@ -259,5 +264,5 @@ const fn file_mode(mode: u32) -> Mode {
 }
 
 #[cfg(test)]
-#[path = "../tests/filesystem/directory.rs"]
+#[path = "tests/directory.rs"]
 mod tests;

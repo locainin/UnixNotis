@@ -94,3 +94,7 @@ pub enum CardLayout {
     Banner,
     ImageRow,
 }
+
+#[cfg(test)]
+#[path = "tests/cards.rs"]
+mod tests;

@@ -1,11 +1,13 @@
+//! Symbolic-link operation tests
+
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 
 use super::{
-    create_symlink_if_missing, existing_link_outcome, open_parent, read_symlink,
-    replace_symlink_atomic, reserve_temp_symlink, validate_symlink_or_missing,
-    CreateSymlinkOutcome,
+    classify_symlink_creation, create_symlink_if_missing, existing_link_outcome, open_parent,
+    read_symlink, replace_symlink_atomic, reserve_temp_symlink, validate_symlink_or_missing,
+    CreateSymlinkOutcome, SymlinkCreateAttempt,
 };
 use crate::test_support::unique_temp_path;
 use std::ffi::OsString;
@@ -49,6 +51,23 @@ fn create_symlink_preserves_a_different_target() {
         Some("actual".into())
     );
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn symlink_creation_result_distinguishes_creation_collision_and_failure() {
+    assert_eq!(
+        classify_symlink_creation(Ok(())).expect("successful symlink creation"),
+        SymlinkCreateAttempt::Created
+    );
+    assert_eq!(
+        classify_symlink_creation(Err(std::io::ErrorKind::AlreadyExists.into()))
+            .expect("symlink collision"),
+        SymlinkCreateAttempt::Collision
+    );
+
+    let error = classify_symlink_creation(Err(std::io::ErrorKind::PermissionDenied.into()))
+        .expect_err("unrelated symlink failure should propagate");
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
 }
 
 #[test]

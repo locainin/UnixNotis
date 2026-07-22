@@ -1,3 +1,5 @@
+//! CSS loader result-model tests
+
 use super::*;
 
 #[test]

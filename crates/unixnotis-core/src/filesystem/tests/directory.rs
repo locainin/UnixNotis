@@ -1,9 +1,14 @@
+//! Descriptor-relative directory operation tests
+
 use std::fs;
 use std::os::unix::fs::{symlink, PermissionsExt};
 
 use rustix::fs::{mkfifoat, Mode, CWD};
 
-use super::{create_directory_all, remove_directory_tree, remove_empty_directory};
+use super::{
+    classify_directory_creation, create_directory_all, remove_directory_tree,
+    remove_empty_directory,
+};
 use crate::test_support::unique_temp_path;
 
 #[test]
@@ -39,6 +44,19 @@ fn directory_creation_rejects_a_linked_parent() {
 
     assert!(!outside.join("child").exists());
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn directory_creation_result_distinguishes_creation_collision_and_failure() {
+    assert!(classify_directory_creation(Ok(())).expect("successful mkdir should be new"));
+    assert!(
+        !classify_directory_creation(Err(std::io::ErrorKind::AlreadyExists.into()))
+            .expect("mkdir collision should be retried as existing")
+    );
+
+    let error = classify_directory_creation(Err(std::io::ErrorKind::PermissionDenied.into()))
+        .expect_err("unrelated mkdir failure should propagate");
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
 }
 
 #[test]

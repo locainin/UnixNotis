@@ -276,5 +276,5 @@ const fn file_mode(mode: u32) -> Mode {
 }
 
 #[cfg(test)]
-#[path = "../tests/filesystem/atomic.rs"]
+#[path = "tests/atomic.rs"]
 mod tests;

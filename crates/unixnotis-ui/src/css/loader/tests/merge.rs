@@ -1,3 +1,5 @@
+//! CSS source merge tests
+
 use super::*;
 
 #[test]

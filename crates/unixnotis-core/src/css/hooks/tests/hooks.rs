@@ -1,3 +1,5 @@
+//! Public CSS hook consistency tests
+
 use std::collections::HashSet;
 
 use super::{
