@@ -46,19 +46,9 @@ impl IngressMetrics {
             .active_handlers
             .fetch_add(1, Ordering::Relaxed)
             .saturating_add(1);
-        // A compare loop works on every supported Rust release and never lowers the peak
-        let mut peak = self.peak_active_handlers.load(Ordering::Relaxed);
-        while active > peak {
-            match self.peak_active_handlers.compare_exchange_weak(
-                peak,
-                active,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => break,
-                Err(observed) => peak = observed,
-            }
-        }
+        // Atomic maximum records concurrency peaks without locks or retry-loop bookkeeping
+        self.peak_active_handlers
+            .fetch_max(active, Ordering::Relaxed);
         ActiveHandler { metrics: self }
     }
 }
