@@ -50,6 +50,13 @@ fn rewrite_host_specific_refs_in_text(
     let mut last_index = 0usize;
 
     for span in collect_url_spans(css_text)? {
+        if span.value_start > span.value_end
+            || span.value_start < last_index
+            || !css_text.is_char_boundary(span.value_start)
+            || !css_text.is_char_boundary(span.value_end)
+        {
+            anyhow::bail!("CSS scanner returned an invalid UTF-8 rewrite range");
+        }
         // Everything before the current url(...) payload is copied through unchanged
         rewritten.push_str(&css_text[last_index..span.value_start]);
 

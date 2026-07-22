@@ -54,3 +54,30 @@ fn rewrite_percent_encodes_decoded_file_url_characters_in_quoted_and_unquoted_fo
         }
     }
 }
+
+#[test]
+fn rewrite_preserves_unicode_whitespace_without_invalid_utf8_ranges() {
+    let whitespace = [
+        '\u{0085}', '\u{00A0}', '\u{1680}', '\u{2000}', '\u{2001}', '\u{2002}', '\u{2003}',
+        '\u{2004}', '\u{2005}', '\u{2006}', '\u{2007}', '\u{2008}', '\u{2009}', '\u{200A}',
+        '\u{2028}', '\u{2029}', '\u{202F}', '\u{205F}', '\u{3000}',
+    ];
+
+    for character in whitespace {
+        for css in [
+            format!(".a {{ background: url({character}asset.png); }}"),
+            format!(".a {{ background: url(asset.png{character}); }}"),
+            format!(".a {{ background: url(\"{character}asset.png{character}\"); }}"),
+        ] {
+            let (rewritten, findings) = rewrite_host_specific_refs_in_text(
+                Path::new("/config/unixnotis"),
+                Path::new("/config/unixnotis/base.css"),
+                &css,
+            )
+            .expect("rewrite Unicode CSS URL safely");
+
+            assert_eq!(rewritten, css);
+            assert!(findings.is_empty());
+        }
+    }
+}
