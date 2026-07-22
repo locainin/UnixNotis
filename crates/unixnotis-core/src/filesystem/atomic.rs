@@ -220,7 +220,7 @@ fn unsafe_target_error() -> io::Error {
     )
 }
 
-fn temp_candidates(file_name: &OsString) -> impl Iterator<Item = OsString> + '_ {
+pub(super) fn temp_candidates(file_name: &OsString) -> impl Iterator<Item = OsString> + '_ {
     (0..TEMP_ATTEMPTS).map(move |attempt| {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)

@@ -1,14 +1,14 @@
 //! Descriptor-relative removal for regular files and symbolic links
 
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::io;
-use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 
-use rustix::fs::{readlinkat, unlinkat, AtFlags};
+use rustix::fs::{unlinkat, AtFlags};
 
 use super::atomic::validate_existing_target;
 use super::directory::{open_parent_existing, sync_directory};
+use super::symlink::read_symlink_at;
 
 /// Result of removing a symbolic link with an expected target
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,23 +40,6 @@ pub fn remove_regular_file(path: &Path) -> io::Result<bool> {
     unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
     sync_directory(&parent_fd)?;
     Ok(true)
-}
-
-/// Read a symbolic link target without following links in its parent path
-///
-/// # Errors
-///
-/// Returns an error when a path component is unsafe, the target is not a symbolic link, or the
-/// link cannot be read
-pub fn read_symlink(path: &Path) -> io::Result<Option<PathBuf>> {
-    let Some((parent_fd, file_name)) = existing_parent(path)? else {
-        return Ok(None);
-    };
-    match read_symlink_at(&parent_fd, &file_name) {
-        Ok(target) => Ok(Some(target)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error),
-    }
 }
 
 /// Remove a symbolic link without requiring a specific target
@@ -115,11 +98,6 @@ fn existing_parent(path: &Path) -> io::Result<Option<(std::os::fd::OwnedFd, OsSt
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error),
     }
-}
-
-fn read_symlink_at(parent_fd: &std::os::fd::OwnedFd, file_name: &OsStr) -> io::Result<PathBuf> {
-    let target = readlinkat(parent_fd, file_name, Vec::new())?;
-    Ok(PathBuf::from(OsString::from_vec(target.into_bytes())))
 }
 
 #[cfg(test)]
