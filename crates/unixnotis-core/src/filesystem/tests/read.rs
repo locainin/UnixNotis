@@ -1,9 +1,10 @@
 //! Bounded regular-file read tests
 
 use std::fs;
+use std::io::Read;
 use std::os::unix::fs::symlink;
 
-use super::read_regular_file_bounded;
+use super::{open_regular_file, read_regular_file_bounded};
 use crate::test_support::unique_temp_path;
 
 #[test]
@@ -78,5 +79,28 @@ fn bounded_regular_file_read_rejects_a_directory() {
     read_regular_file_bounded(&path, 1024).expect_err("directory should fail");
 
     assert!(path.is_dir());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn open_regular_file_retains_the_validated_object_after_path_replacement() {
+    let root = unique_temp_path("open-regular-pinned");
+    let path = root.join("sound.ogg");
+    let moved = root.join("original.ogg");
+    fs::create_dir_all(&root).expect("create root");
+    fs::write(&path, b"original").expect("write original file");
+    let mut file = open_regular_file(&path).expect("open validated file");
+
+    fs::rename(&path, &moved).expect("move original file");
+    fs::write(&path, b"replacement").expect("write replacement file");
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
+        .expect("read retained descriptor");
+
+    assert_eq!(contents, "original");
+    assert_eq!(
+        fs::read_to_string(path).expect("read replacement"),
+        "replacement"
+    );
     let _ = fs::remove_dir_all(root);
 }

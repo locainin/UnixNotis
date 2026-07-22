@@ -179,7 +179,13 @@ pub fn set_file_mode(path: &Path, mode: u32) -> io::Result<()> {
     file.set_permissions(fs::Permissions::from_mode(mode & 0o777))
 }
 
-pub(super) fn open_regular_file(path: &Path) -> io::Result<fs::File> {
+/// Open one regular file through a no-follow descriptor path
+///
+/// # Errors
+///
+/// Returns an error when any path component is a link, the target is not a regular file, or the
+/// descriptor-relative open fails
+pub fn open_regular_file(path: &Path) -> io::Result<fs::File> {
     let (parent_fd, file_name) = open_parent_existing(path)?;
     open_regular_file_at(&parent_fd, &file_name)
 }
