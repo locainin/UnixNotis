@@ -33,6 +33,7 @@ impl UiState {
             notification_metadata: config.panel.notification_metadata.clone(),
             notification_corners: config.theme.notification_corners,
             show_notification_thumbnails: config.panel.notification_thumbnails_visible,
+            reduced_motion: config.panel.reduced_motion,
             empty_text: config.panel.empty_text.clone(),
             no_matching_text: config.panel.no_matching_text.clone(),
             empty_offset_top: config.panel.empty_offset_top,

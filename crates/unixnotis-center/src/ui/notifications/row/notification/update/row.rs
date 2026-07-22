@@ -20,6 +20,8 @@ pub(in crate::ui::notifications) fn update_notification_row(
     icon_resolver: &IconResolver,
     command_tx: &mpsc::Sender<UiCommand>,
 ) {
+    row.inline_reply
+        .set_reduced_motion(data.presentation.reduced_motion);
     // Model changes may briefly update a recycled row without notification data
     let Some(notification_snapshot) = data.notification.as_ref() else {
         return;

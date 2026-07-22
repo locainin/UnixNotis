@@ -139,8 +139,10 @@ fn stop_search_closes_a_preexisting_toggle_revealer_mismatch() {
 #[gtk::test]
 fn widget_collapse_toggle_sends_the_accepted_state_and_rejects_a_burst() {
     let toggle = gtk::ToggleButton::new();
+    let revealer = gtk::Revealer::new();
+    revealer.set_transition_duration(180);
     let (event_tx, event_rx) = async_channel::bounded(2);
-    connect_widget_collapse_toggle(&toggle, event_tx);
+    connect_widget_collapse_toggle(&toggle, &revealer, event_tx);
 
     toggle.set_active(true);
     assert!(!toggle.is_sensitive());
@@ -149,6 +151,38 @@ fn widget_collapse_toggle_sends_the_accepted_state_and_rejects_a_burst() {
     // The rejected edge rolls back immediately to the accepted visual state
     assert!(toggle.is_active());
     assert!(next_widgets_collapsed(&event_rx));
+}
+
+#[gtk::test]
+fn reduced_motion_search_toggle_accepts_an_immediate_reversal() {
+    let toggle = gtk::ToggleButton::new();
+    let revealer = gtk::Revealer::new();
+    revealer.set_transition_duration(0);
+    let entry = gtk::SearchEntry::new();
+    connect_search_toggle(&toggle, &revealer, &entry, Rc::new(Cell::new(false)));
+
+    toggle.set_active(true);
+    toggle.set_active(false);
+
+    assert!(!toggle.is_active());
+    assert!(!revealer.reveals_child());
+    assert!(toggle.is_sensitive());
+}
+
+#[gtk::test]
+fn reduced_motion_widget_toggle_accepts_the_latest_state_without_a_cooldown() {
+    let toggle = gtk::ToggleButton::new();
+    let revealer = gtk::Revealer::new();
+    revealer.set_transition_duration(0);
+    let (event_tx, event_rx) = async_channel::bounded(2);
+    connect_widget_collapse_toggle(&toggle, &revealer, event_tx);
+
+    toggle.set_active(true);
+    toggle.set_active(false);
+
+    assert!(!toggle.is_active());
+    assert!(toggle.is_sensitive());
+    assert!(!next_widgets_collapsed(&event_rx));
 }
 
 fn next_filter(event_rx: &async_channel::Receiver<UiEvent>) -> String {

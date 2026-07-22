@@ -3,6 +3,8 @@
 use gtk::prelude::*;
 use unixnotis_core::css::hooks;
 
+pub(super) const RELOAD_NOTICE_TRANSITION_MS: u32 = 160;
+
 pub(in crate::ui) struct ReloadNoticeWidgets {
     pub(in crate::ui) revealer: gtk::Revealer,
     pub(in crate::ui) shell: gtk::Box,
@@ -35,7 +37,7 @@ pub(super) fn build_reload_notice() -> ReloadNoticeWidgets {
     // A short vertical transition keeps the header position stable
     let revealer = gtk::Revealer::new();
     revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    revealer.set_transition_duration(160);
+    revealer.set_transition_duration(RELOAD_NOTICE_TRANSITION_MS);
     revealer.set_reveal_child(false);
     revealer.set_child(Some(&shell));
 

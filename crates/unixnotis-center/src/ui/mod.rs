@@ -10,6 +10,7 @@ mod reload;
 mod init;
 
 mod media;
+mod motion;
 mod notifications;
 mod panel;
 mod state;

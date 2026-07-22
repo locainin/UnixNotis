@@ -9,7 +9,7 @@ impl UiState {
     pub(in crate::ui) fn apply_reloaded_panel(&mut self, config: &Config) {
         // Geometry goes first so later sections can size themselves from the final panel width
         panel::geometry::apply_panel_config(&self.panel, config, self.work_area);
-        panel::motion::apply_reduced_motion(&self.panel.root, config.panel.reduced_motion);
+        panel::motion::apply_reduced_motion(&self.panel, config.panel.reduced_motion);
         self.panel.header.title.set_label(&config.panel.title);
         self.panel.header.subtitle.set_label(&config.panel.subtitle);
         self.panel

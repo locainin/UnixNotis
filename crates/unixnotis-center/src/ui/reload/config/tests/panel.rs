@@ -21,6 +21,12 @@ fn reloaded_panel_applies_copy_and_widget_density() {
         .panel
         .root
         .has_css_class(unixnotis_core::hooks::panel_shell::REDUCED_MOTION));
+    assert_eq!(
+        state.panel.sections.widget_revealer.transition_duration(),
+        0
+    );
+    assert_eq!(state.panel.header.search.revealer.transition_duration(), 0);
+    assert_eq!(state.panel.reload_notice.revealer.transition_duration(), 0);
     assert_eq!(state.panel.sections.widget_stack.spacing(), 6);
 }
 

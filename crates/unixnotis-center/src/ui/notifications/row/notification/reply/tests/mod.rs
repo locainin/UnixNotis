@@ -3,6 +3,7 @@
 mod availability;
 mod generation;
 mod keyboard;
+mod motion;
 mod presentation;
 mod recovery;
 mod submission;
