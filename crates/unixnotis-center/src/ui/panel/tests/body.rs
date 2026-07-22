@@ -34,6 +34,17 @@ fn compact_widget_density_updates_spacing_and_state_class() {
         .has_css_class(hooks::panel_shell::WIDGET_DENSITY_COMFORTABLE));
 }
 
+#[gtk::test]
+fn notification_scroller_keeps_scrollbar_space_without_global_settings() {
+    let sections = build_panel_sections(&PanelConfig::default(), WidgetDensity::Comfortable);
+
+    assert!(!sections.scroller.is_overlay_scrolling());
+    assert_eq!(
+        sections.scroller.vscrollbar_policy(),
+        gtk::PolicyType::Always
+    );
+}
+
 #[test]
 fn notification_header_row_uses_section_label_when_section_is_visible() {
     let config = PanelConfig {
