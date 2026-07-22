@@ -31,18 +31,18 @@ pub fn rename_regular_file_no_replace(
 ) -> io::Result<RenameRegularFileOutcome> {
     let (source_parent, source_name) = match open_parent_existing(source) {
         Ok(parent) => parent,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(RenameRegularFileOutcome::SourceMissing);
-        }
-        Err(error) => return Err(error),
+        Err(error) => match error.kind() {
+            io::ErrorKind::NotFound => return Ok(RenameRegularFileOutcome::SourceMissing),
+            _ => return Err(error),
+        },
     };
     // Final-component validation rejects source links, directories, and special files
     match validate_existing_target(&source_parent, &source_name) {
         Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(RenameRegularFileOutcome::SourceMissing);
-        }
-        Err(error) => return Err(error),
+        Err(error) => match error.kind() {
+            io::ErrorKind::NotFound => return Ok(RenameRegularFileOutcome::SourceMissing),
+            _ => return Err(error),
+        },
     }
 
     let (destination_parent, destination_name) = open_parent_existing(destination)?;
@@ -55,13 +55,13 @@ pub fn rename_regular_file_no_replace(
         RenameFlags::NOREPLACE,
     ) {
         Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-            return Ok(RenameRegularFileOutcome::DestinationExists);
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(RenameRegularFileOutcome::SourceMissing);
-        }
-        Err(error) => return Err(error.into()),
+        Err(error) => match error.kind() {
+            io::ErrorKind::AlreadyExists => {
+                return Ok(RenameRegularFileOutcome::DestinationExists);
+            }
+            io::ErrorKind::NotFound => return Ok(RenameRegularFileOutcome::SourceMissing),
+            _ => return Err(error.into()),
+        },
     }
 
     // Both directory entries must reach durable storage even when parents differ

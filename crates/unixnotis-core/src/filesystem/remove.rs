@@ -83,10 +83,10 @@ pub fn remove_symlink_if_target(
     // Capture the exact stored bytes before comparing ownership expectations
     let actual_target = match read_symlink_at(&parent_fd, &file_name) {
         Ok(target) => target,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(RemoveSymlinkOutcome::Missing);
-        }
-        Err(error) => return Err(error),
+        Err(error) => match error.kind() {
+            io::ErrorKind::NotFound => return Ok(RemoveSymlinkOutcome::Missing),
+            _ => return Err(error),
+        },
     };
     if actual_target != expected_target {
         // Mismatched links are user state and remain untouched

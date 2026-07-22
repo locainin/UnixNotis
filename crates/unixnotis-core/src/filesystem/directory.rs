@@ -176,8 +176,10 @@ fn create_directory_component(
     let created = match mkdirat(parent_fd, name, file_mode(mode)) {
         Ok(()) => true,
         // A concurrent creator still has to pass the same no-follow directory open below
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => false,
-        Err(error) => return Err(error.into()),
+        Err(error) => match error.kind() {
+            io::ErrorKind::AlreadyExists => false,
+            _ => return Err(error.into()),
+        },
     };
     let directory_fd = open_directory_at(parent_fd, name)?;
     if created {

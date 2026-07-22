@@ -190,8 +190,10 @@ fn existing_target_mode(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result
                 Err(unsafe_target_error())
             }
         }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error.into()),
+        Err(error) => match error.kind() {
+            io::ErrorKind::NotFound => Ok(None),
+            _ => Err(error.into()),
+        },
     }
 }
 

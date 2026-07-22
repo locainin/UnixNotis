@@ -111,6 +111,18 @@ fn target_checked_symlink_removal_removes_only_an_exact_match() {
 }
 
 #[test]
+fn target_checked_symlink_removal_reports_a_missing_final_entry() {
+    let root = unique_temp_path("remove-symlink-missing-final");
+    fs::create_dir_all(&root).expect("create root");
+
+    let outcome = remove_symlink_if_target(&root.join("missing"), std::path::Path::new("service"))
+        .expect("missing final link should be idempotent");
+
+    assert_eq!(outcome, RemoveSymlinkOutcome::Missing);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn symlink_operations_reject_regular_files() {
     let root = unique_temp_path("remove-symlink-regular");
     let target = root.join("enabled");
