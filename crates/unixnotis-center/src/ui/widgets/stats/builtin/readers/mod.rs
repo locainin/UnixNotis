@@ -12,3 +12,6 @@ pub(super) use cpu::read_cpu_sample;
 pub(super) use load::read_loadavg;
 pub(super) use memory::read_memory;
 pub(super) use network::{extract_iface, read_network};
+
+#[cfg(test)]
+mod tests;

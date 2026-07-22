@@ -182,3 +182,7 @@ pub(in crate::ui::widgets::stats::builtin) fn extract_iface(cmd: &str) -> Option
         Some(iface.to_string())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/network.rs"]
+mod tests;

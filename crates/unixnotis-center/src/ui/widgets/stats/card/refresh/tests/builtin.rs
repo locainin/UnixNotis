@@ -1,34 +1,10 @@
-//! Statistic card presentation tests
+//! Built-in statistic card refresh tests
 
 use std::time::Duration;
 
-use super::super::builtin::worker::BuiltinSample;
-use super::super::builtin::BuiltinStat;
-use super::super::style::stat_kind_css_class;
 use super::support::stat_item;
-
-#[test]
-fn card_kind_class_normalizes_theme_tokens() {
-    assert_eq!(
-        stat_kind_css_class("RAM"),
-        Some("unixnotis-stat-kind-ram".to_string())
-    );
-    assert_eq!(
-        stat_kind_css_class("RAM %#$ Thing"),
-        Some("unixnotis-stat-kind-ram-thing".to_string())
-    );
-    assert_eq!(stat_kind_css_class("  !!!  "), None);
-}
-
-#[gtk::test]
-fn missing_card_source_renders_the_placeholder() {
-    let item = stat_item(None, None);
-
-    item.refresh_missing(Duration::from_secs(1));
-
-    assert_eq!(item.value_label.text(), "n/a");
-    assert_eq!(item.last_value.borrow().as_deref(), Some("n/a"));
-}
+use crate::ui::widgets::stats::builtin::worker::BuiltinSample;
+use crate::ui::widgets::stats::builtin::BuiltinStat;
 
 #[gtk::test]
 fn failed_builtin_sample_preserves_the_last_good_value() {

@@ -100,3 +100,7 @@ fn read_power_supply_value(path: &Path) -> Option<u64> {
     let contents = fs::read_to_string(path).ok()?;
     contents.trim().parse::<u64>().ok()
 }
+
+#[cfg(test)]
+#[path = "tests/battery.rs"]
+mod tests;

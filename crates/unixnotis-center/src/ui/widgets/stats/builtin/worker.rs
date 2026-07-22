@@ -84,3 +84,7 @@ impl BuiltinSample {
         Self { stat, value }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/worker.rs"]
+mod tests;

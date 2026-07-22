@@ -53,3 +53,7 @@ impl StatGrid {
 pub(in crate::ui::widgets::stats) fn flowbox_columns(columns: usize) -> u32 {
     u32::try_from(columns.max(1)).unwrap_or(u32::MAX)
 }
+
+#[cfg(test)]
+#[path = "tests/build.rs"]
+mod tests;

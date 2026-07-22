@@ -20,3 +20,7 @@ impl StatGrid {
 pub(in crate::ui::widgets::stats) fn is_due_delay(delay: Option<Duration>) -> bool {
     delay.is_some_and(|value| value.is_zero())
 }
+
+#[cfg(test)]
+#[path = "tests/schedule.rs"]
+mod tests;

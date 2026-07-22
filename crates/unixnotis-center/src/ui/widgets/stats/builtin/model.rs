@@ -74,3 +74,7 @@ impl BuiltinStat {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/model.rs"]
+mod tests;

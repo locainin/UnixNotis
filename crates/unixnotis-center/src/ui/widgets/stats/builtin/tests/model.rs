@@ -1,6 +1,6 @@
-//! Built-in refresh grouping tests
+//! Built-in statistic identity tests
 
-use super::super::builtin::{BuiltinStat, BuiltinStatKey};
+use super::super::{BuiltinStat, BuiltinStatKey};
 
 #[test]
 fn matching_builtin_sources_produce_the_same_group_key() {

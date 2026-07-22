@@ -6,6 +6,3 @@ mod grid;
 mod style;
 
 pub use grid::StatGrid;
-
-#[cfg(test)]
-mod tests;

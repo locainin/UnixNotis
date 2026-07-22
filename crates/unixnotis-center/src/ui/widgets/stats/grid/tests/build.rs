@@ -1,6 +1,6 @@
 //! Statistic grid construction tests
 
-use super::super::grid::build::flowbox_columns;
+use super::flowbox_columns;
 
 #[test]
 fn grid_columns_normalize_zero_and_preserve_positive_values() {
