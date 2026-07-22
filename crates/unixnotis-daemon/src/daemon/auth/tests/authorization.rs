@@ -8,7 +8,7 @@ use super::authorization::{
 };
 #[cfg(target_os = "linux")]
 use super::credentials::CallerCredentials;
-use super::executable_trust::canonicalize_best_effort;
+use super::executable_trust::paths::canonicalize_best_effort;
 use super::support::write_executable;
 use crate::test_support::{daemon_state_for_test, env_lock, EnvVarGuard, TempRoot};
 

@@ -61,35 +61,12 @@ impl IngressMetrics {
         }
         ActiveHandler { metrics: self }
     }
-
-    #[cfg(test)]
-    pub(super) fn snapshot(&self) -> IngressMetricsSnapshot {
-        IngressMetricsSnapshot {
-            notify_quota_rejections: self.notify_quota_rejections.load(Ordering::Relaxed),
-            notify_concurrency_rejections: self
-                .notify_concurrency_rejections
-                .load(Ordering::Relaxed),
-            close_quota_rejections: self.close_quota_rejections.load(Ordering::Relaxed),
-            active_handlers: self.active_handlers.load(Ordering::Relaxed),
-            peak_active_handlers: self.peak_active_handlers.load(Ordering::Relaxed),
-        }
-    }
 }
 
 impl Drop for ActiveHandler<'_> {
     fn drop(&mut self) {
         self.metrics.active_handlers.fetch_sub(1, Ordering::Relaxed);
     }
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct IngressMetricsSnapshot {
-    pub(super) notify_quota_rejections: u64,
-    pub(super) notify_concurrency_rejections: u64,
-    pub(super) close_quota_rejections: u64,
-    pub(super) active_handlers: usize,
-    pub(super) peak_active_handlers: usize,
 }
 
 #[cfg(test)]
