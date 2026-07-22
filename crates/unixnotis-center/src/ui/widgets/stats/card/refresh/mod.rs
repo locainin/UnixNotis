@@ -4,3 +4,6 @@ mod builtin;
 mod command;
 mod dispatch;
 mod plugin;
+
+#[cfg(test)]
+mod tests;
