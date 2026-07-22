@@ -71,7 +71,7 @@ fn command_requires_shell_opt(value: &Option<CommandSpec>) -> bool {
 }
 
 fn command_requires_shell(command: &CommandSpec) -> bool {
-    command.invokes_shell()
+    command.uses_shell_command_string()
 }
 
 #[cfg(test)]

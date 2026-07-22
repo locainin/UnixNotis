@@ -65,32 +65,30 @@ impl CommandSpec {
     }
 
     #[must_use]
-    /// Reports whether command text crosses an explicit shell boundary
-    pub fn invokes_shell(&self) -> bool {
+    /// Reports whether the command evaluates an inline shell command string
+    pub fn uses_shell_command_string(&self) -> bool {
         match self {
             Self::Shell { .. } => true,
             Self::Direct { program, args, .. } => {
                 // Basenames keep absolute interpreter paths and PATH lookups equivalent
-                let shell = program
+                let Some(shell) = program
                     .file_name()
                     .and_then(OsStr::to_str)
-                    .is_some_and(|name| {
-                        matches!(
-                            name,
-                            "sh" | "ash" | "bash" | "dash" | "fish" | "ksh" | "zsh"
-                        )
-                    });
-                shell
-                    && args.iter().any(|argument| {
-                        // Combined flags such as `-lc` still enable script evaluation
-                        argument.to_str().is_some_and(|argument| {
-                            argument
-                                .strip_prefix('-')
-                                .is_some_and(|flags| flags.contains('c'))
-                        })
-                    })
+                    .filter(|name| is_shell_program(name))
+                else {
+                    return false;
+                };
+
+                shell_args_use_command_string(shell, args)
             }
         }
+    }
+
+    /// Compatibility alias for the former inline shell command detector
+    #[deprecated(since = "1.2.0", note = "use uses_shell_command_string")]
+    #[must_use]
+    pub fn invokes_shell(&self) -> bool {
+        self.uses_shell_command_string()
     }
 
     #[must_use]
@@ -169,6 +167,83 @@ impl CommandSpec {
             }
             Self::Shell { script } => script.clone(),
         }
+    }
+}
+
+fn is_shell_program(name: &str) -> bool {
+    matches!(
+        name,
+        "sh" | "ash" | "bash" | "dash" | "fish" | "ksh" | "zsh"
+    )
+}
+
+fn shell_args_use_command_string(shell: &str, args: &[OsString]) -> bool {
+    let mut option_value_pending = false;
+    for argument in args {
+        let Some(argument) = argument.to_str() else {
+            // TOML arguments are UTF-8, while an opaque programmatic operand ends option parsing
+            return false;
+        };
+        if option_value_pending {
+            option_value_pending = false;
+            continue;
+        }
+        if matches!(argument, "-" | "--") {
+            // Both portable terminators make every following `-c` literal script data
+            return false;
+        }
+        if is_command_string_flag(argument)
+            || (shell == "fish" && is_fish_command_string_option(argument))
+        {
+            return true;
+        }
+        if !argument.starts_with(['-', '+']) {
+            // The first positional operand is the script path for direct shell execution
+            return false;
+        }
+        option_value_pending = shell_option_takes_next_value(shell, argument);
+    }
+    false
+}
+
+fn is_command_string_flag(argument: &str) -> bool {
+    argument.strip_prefix('-').is_some_and(|flags| {
+        // Long options such as `--norc` contain a letter c but do not evaluate command text
+        !flags.starts_with('-') && flags.contains('c')
+    })
+}
+
+fn is_fish_command_string_option(argument: &str) -> bool {
+    // Fish documents a long spelling in addition to the shared short `-c` form
+    argument == "--command" || argument.starts_with("--command=")
+}
+
+fn shell_option_takes_next_value(shell: &str, argument: &str) -> bool {
+    match shell {
+        // Bash accepts option names and startup files as separate operands before `-c`
+        "bash" => matches!(
+            argument,
+            "-o" | "+o" | "-O" | "+O" | "--init-file" | "--rcfile"
+        ),
+        // These POSIX-style shells accept a separate value for `-o`
+        "sh" | "ash" | "dash" => argument == "-o",
+        "ksh" => matches!(argument, "-o" | "+o" | "-R"),
+        "zsh" => matches!(argument, "-o" | "+o"),
+        // Fish accepts both short and long value-taking startup options
+        "fish" => matches!(
+            argument,
+            "-C" | "-d"
+                | "-o"
+                | "-p"
+                | "-f"
+                | "--init-command"
+                | "--debug"
+                | "--debug-output"
+                | "--profile"
+                | "--profile-startup"
+                | "--features"
+        ),
+        _ => false,
     }
 }
 

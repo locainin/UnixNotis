@@ -62,6 +62,27 @@ fn sanitize_widget_plugin_rejects_direct_shell_interpreters() {
 }
 
 #[test]
+fn sanitize_widget_plugin_keeps_direct_shell_scripts_with_long_options() {
+    for (shell, option, script) in [
+        ("bash", "--norc", "script.sh"),
+        ("fish", "--no-config", "script.fish"),
+    ] {
+        let mut config = Config::default();
+        config.widgets.cards[0].plugin = Some(WidgetPluginConfig {
+            command: CommandSpec::direct(shell, [option, script]),
+            ..WidgetPluginConfig::default()
+        });
+
+        sanitize_config(&mut config);
+
+        assert!(
+            config.widgets.cards[0].plugin.is_some(),
+            "{shell} script plugins must remain enabled"
+        );
+    }
+}
+
+#[test]
 fn sanitize_widget_options_caps_decorative_layout_counts() {
     let mut config = Config::default();
     config.widgets.volume.segments = 999;
