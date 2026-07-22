@@ -2,18 +2,15 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use tracing::debug;
-use unixnotis_core::{CloseReason, Notification, CONTROL_OBJECT_PATH};
+use unixnotis_core::Notification;
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
-use zbus::SignalContext;
 
 use crate::daemon::notifications::payload::{
     build_notification, resolve_expiration, NotificationInput,
 };
 use crate::daemon::notifications::sender::{app_name_matches_sender, resolve_sender_metadata};
-use crate::daemon::{
-    to_fdo_error, ControlServer, NotificationSignalMode, NOTIFICATIONS_OBJECT_PATH,
-};
+use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::InsertOutcome;
 
 use super::NotificationServer;
@@ -184,48 +181,25 @@ impl NotificationServer {
     }
 
     async fn emit_notification_change(&self, outcome: &InsertOutcome) -> zbus::fdo::Result<()> {
-        let control_ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
-        match self
+        let mode = self
             .state
-            .notification_signal_mode(outcome.notification.sender_name.as_deref())
-        {
-            NotificationSignalMode::Direct => {
-                if outcome.replaced {
-                    // Only the id crosses the broadcast signal
-                    // Trusted UIs fetch the live payload through the authorized control API
-                    ControlServer::notification_updated(
-                        &control_ctx,
-                        outcome.notification.id,
-                        outcome.show_popup,
-                    )
-                    .await
-                    .map_err(to_fdo_error)?;
-                } else {
-                    // New notification broadcasts only the id for the same confidentiality reason
-                    ControlServer::notification_added(
-                        &control_ctx,
-                        outcome.notification.id,
-                        outcome.show_popup,
-                    )
-                    .await
-                    .map_err(to_fdo_error)?;
-                }
-            }
-            NotificationSignalMode::SnapshotOnly => {
-                debug!(
-                    id = outcome.notification.id,
-                    sender = outcome.notification.sender_name.as_deref().unwrap_or("unknown"),
-                    "notification burst detected; using snapshot invalidation instead of per-row signal"
-                );
-                self.state
-                    .emit_snapshot_invalidated()
-                    .await
-                    .map_err(to_fdo_error)?;
-            }
-            NotificationSignalMode::Suppress => {}
+            .notification_signal_mode(outcome.notification.sender_name.as_deref());
+        if mode == NotificationSignalMode::SnapshotOnly {
+            debug!(
+                id = outcome.notification.id,
+                sender = outcome.notification.sender_name.as_deref().unwrap_or("unknown"),
+                "notification burst detected; using snapshot invalidation instead of per-row signal"
+            );
         }
-        Ok(())
+        self.state
+            .publish_notification_change(
+                mode,
+                outcome.notification.id,
+                outcome.replaced,
+                outcome.show_popup,
+            )
+            .await
+            .map_err(to_fdo_error)
     }
 
     async fn finish_notification_change(
@@ -242,7 +216,7 @@ impl NotificationServer {
         // Evicted items are announced so UIs can remove stale rows
         self.handle_evicted(outcome.evicted).await?;
         self.state
-            .emit_state_changed()
+            .publish_state_changed()
             .await
             .map_err(to_fdo_error)?;
 
@@ -256,21 +230,10 @@ impl NotificationServer {
         }
         self.state.cancel_expirations(&evicted);
 
-        let notif_ctx = SignalContext::new(self.state.connection(), NOTIFICATIONS_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
-        let control_ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
-
-        for id in evicted {
-            // Emit both freedesktop and control close signals for consistent subscribers
-            Self::notification_closed(&notif_ctx, id, CloseReason::Undefined as u32)
-                .await
-                .map_err(to_fdo_error)?;
-            ControlServer::notification_closed(&control_ctx, id, CloseReason::Undefined)
-                .await
-                .map_err(to_fdo_error)?;
-        }
-        Ok(())
+        self.state
+            .publish_evicted_notifications(&evicted)
+            .await
+            .map_err(to_fdo_error)
     }
 }
 

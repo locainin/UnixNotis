@@ -14,13 +14,9 @@
 
 mod authorization;
 mod credentials;
-mod filesystem;
-mod fingerprint;
-mod metadata;
-mod paths;
+mod executable_trust;
 mod policy;
-mod process;
-mod snapshots;
+mod process_identity;
 
 pub(super) use authorization::{authorize_control_call, authorize_panel_readiness_call};
 
@@ -28,26 +24,11 @@ pub(super) use authorization::{authorize_control_call, authorize_panel_readiness
 #[path = "tests/authorization.rs"]
 mod authorization_tests;
 #[cfg(test)]
-#[path = "tests/cache.rs"]
-mod cache_tests;
-#[cfg(test)]
 #[path = "tests/credentials.rs"]
 mod credentials_tests;
 #[cfg(test)]
-#[path = "tests/metadata.rs"]
-mod metadata_tests;
-#[cfg(test)]
-#[path = "tests/paths.rs"]
-mod paths_tests;
-#[cfg(test)]
-#[path = "tests/procfs.rs"]
-mod procfs_tests;
-#[cfg(test)]
-#[path = "tests/snapshot.rs"]
-mod snapshot_tests;
-#[cfg(test)]
-#[path = "tests/strict.rs"]
-mod strict_tests;
+#[path = "tests/process_identity.rs"]
+mod process_identity_tests;
 #[cfg(test)]
 #[path = "tests/support.rs"]
 mod support;

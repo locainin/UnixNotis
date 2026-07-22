@@ -1,12 +1,9 @@
 //! Shared daemon state and signal fanout coordination
 
-mod cache;
-mod dnd;
 mod model;
-mod notifications;
-mod runtime;
-mod scheduler;
-mod signals;
+mod notification_lifecycle;
+mod schedulers;
+mod status;
 
 pub use model::DaemonState;
 

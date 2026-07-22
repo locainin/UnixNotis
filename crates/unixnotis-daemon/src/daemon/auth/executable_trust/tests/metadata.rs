@@ -1,8 +1,8 @@
-use super::authorization::control_owner_uid_is_allowed;
-use super::metadata::{
+use super::super::metadata::{
     trusted_control_file_metadata_is_safe, trusted_control_owner_uid_is_allowed,
 };
-use super::support::write_executable;
+use crate::daemon::auth::authorization::control_owner_uid_is_allowed;
+use crate::daemon::auth::support::write_executable;
 use crate::test_support::TempRoot;
 
 #[cfg(unix)]

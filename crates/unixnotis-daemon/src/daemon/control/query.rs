@@ -13,14 +13,7 @@ impl ControlServer {
         self.authorize_control_call(header, "GetState").await?;
         // Single lock read keeps state snapshot internally consistent
         let store = self.state.store.lock().await;
-        // Cheap state snapshot
-        Ok(ControlState {
-            dnd_enabled: store.dnd_enabled(),
-            dnd_expires_at: store.dnd_expires_at().unwrap_or(0),
-            history_count: store.history_len() as u32,
-            inhibited: store.inhibited(),
-            inhibitor_count: store.inhibitor_count(),
-        })
+        Ok(store.control_state())
     }
 
     pub(super) async fn query_active(

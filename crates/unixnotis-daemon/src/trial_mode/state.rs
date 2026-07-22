@@ -9,7 +9,7 @@ use tracing::debug;
 use zbus::fdo::DBusProxy;
 
 use crate::cli::Args;
-use crate::dbus_owner::wait_for_owner_state;
+use crate::daemon::wait_for_owner_state;
 
 use super::{control, owner, prompt};
 

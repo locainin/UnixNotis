@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-use super::filesystem::canonicalize_best_effort;
-use super::fingerprint::file_fingerprint;
-use super::policy::{
+use super::super::policy::{
     TrustedExecutableSnapshot, TrustedSnapshotCacheEntry, TRUSTED_CONTROL_EXECUTABLES,
     TRUSTED_SNAPSHOT_CACHE_CAPACITY,
 };
+use super::fingerprint::file_fingerprint;
+use super::paths::canonicalize_best_effort;
 
 pub(in crate::daemon) fn trusted_control_snapshot(
     trusted_dir: &Path,

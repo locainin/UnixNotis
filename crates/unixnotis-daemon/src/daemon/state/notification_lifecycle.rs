@@ -17,7 +17,7 @@ impl DaemonState {
         // Timer cancel happens before signal fanout so stale wakeups stop right away
         self.cancel_expiration(id);
 
-        if let Err(err) = self.emit_close_fanout(id, reason).await {
+        if let Err(err) = self.publish_notification_closed(id, reason).await {
             warn!(
                 ?err,
                 id,
@@ -42,7 +42,10 @@ impl DaemonState {
             // Panel dismiss removes the active entry, so its timer must go too
             self.cancel_expiration(id);
         }
-        if let Err(err) = self.emit_dismiss_fanout(id, outcome.removed_active).await {
+        if let Err(err) = self
+            .publish_notification_dismissed(id, outcome.removed_active)
+            .await
+        {
             warn!(
                 ?err,
                 id, "panel dismiss committed but one or more D-Bus signals failed"
@@ -69,7 +72,10 @@ impl DaemonState {
             // Only the matching active generation owns this expiration timer
             self.cancel_expiration(id);
         }
-        if let Err(err) = self.emit_dismiss_fanout(id, outcome.removed_active).await {
+        if let Err(err) = self
+            .publish_notification_dismissed(id, outcome.removed_active)
+            .await
+        {
             warn!(
                 ?err,
                 id, "generation-safe dismiss committed but one or more D-Bus signals failed"

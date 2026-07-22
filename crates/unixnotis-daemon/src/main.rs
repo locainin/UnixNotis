@@ -27,7 +27,6 @@ use tracing::info;
 mod child_process;
 mod cli;
 mod daemon;
-mod dbus_owner;
 mod dnd_expiration;
 mod expire;
 mod runtime;

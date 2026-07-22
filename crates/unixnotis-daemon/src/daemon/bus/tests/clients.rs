@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use super::spawn_inhibitor_owner_watch;
+use super::super::ownership::spawn_client_owner_watch;
 use crate::test_support::daemon_state_for_test;
 
 #[tokio::test]
@@ -19,7 +19,7 @@ async fn owner_watch_removes_inhibitors_when_the_client_disconnects() {
         assert_eq!(store.inhibitor_count(), 1);
     }
 
-    spawn_inhibitor_owner_watch(state.clone())
+    spawn_client_owner_watch(state.clone())
         .await
         .expect("start inhibitor owner watch");
     client.close().await.expect("disconnect inhibitor owner");

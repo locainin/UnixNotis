@@ -2,7 +2,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 
 use tokio::sync::Mutex;
-use unixnotis_core::{Config, ControlState, PopupGateState};
+use unixnotis_core::Config;
 use zbus::Connection;
 
 use crate::dnd_expiration::DndExpirationScheduler;
@@ -10,8 +10,9 @@ use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
 use crate::store::NotificationStore;
 
+use crate::daemon::events::DaemonEventPublisher;
 use crate::daemon::notifications::sender_cache::SenderMetadataCache;
-use crate::daemon::signal_burst::NotificationBurstState;
+use crate::daemon::notifications::NotificationBurstState;
 
 /// Shared daemon state guarded behind an async mutex
 pub struct DaemonState {
@@ -32,10 +33,8 @@ pub struct DaemonState {
     pub(in crate::daemon::state) dnd_scheduler_missing_warned: AtomicBool,
     // DND persistence and timer replacement must commit in mutation order
     pub(in crate::daemon::state) dnd_write_lock: Mutex<()>,
-    // Cache the last control-state snapshot so no-op signals can be skipped
-    pub(in crate::daemon) last_emitted_state: StdMutex<Option<ControlState>>,
-    // Popup UIs only care about the gate, not panel history counters
-    pub(in crate::daemon) last_emitted_popup_gate: StdMutex<Option<PopupGateState>>,
+    // Connection-facing signal policy stays outside mutable domain state
+    pub(in crate::daemon) events: DaemonEventPublisher,
     // Burst tracking lets one noisy sender fall back to snapshot invalidation
     // instead of forcing a storm of full add/update fanout
     pub(in crate::daemon::state) notification_signal_bursts:
@@ -67,7 +66,7 @@ impl DaemonState {
         Arc::new(Self {
             store: Mutex::new(store),
             sound,
-            connection,
+            connection: connection.clone(),
             panel_ready: AtomicBool::new(false),
             popups_running: AtomicBool::new(false),
             scheduler: OnceLock::new(),
@@ -75,8 +74,7 @@ impl DaemonState {
             dnd_scheduler: OnceLock::new(),
             dnd_scheduler_missing_warned: AtomicBool::new(false),
             dnd_write_lock: Mutex::new(()),
-            last_emitted_state: StdMutex::new(None),
-            last_emitted_popup_gate: StdMutex::new(None),
+            events: DaemonEventPublisher::new(connection),
             notification_signal_bursts: StdMutex::new(std::collections::HashMap::new()),
             sender_metadata_cache: SenderMetadataCache::new(),
             trial_mode,

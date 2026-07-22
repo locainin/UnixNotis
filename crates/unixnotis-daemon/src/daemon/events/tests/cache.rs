@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use unixnotis_core::{ControlState, PopupGateState};
 
-use super::super::cache::should_emit_cached;
+use super::super::state::should_publish_cached;
 
 #[test]
 fn cached_state_emits_first_value_then_suppresses_duplicates() {
@@ -16,9 +16,9 @@ fn cached_state_emits_first_value_then_suppresses_duplicates() {
     };
 
     // First value must be emitted because clients have no previous state
-    assert!(should_emit_cached(&cache, &state));
+    assert!(should_publish_cached(&cache, &state));
     // Identical values should not wake D-Bus subscribers again
-    assert!(!should_emit_cached(&cache, &state));
+    assert!(!should_publish_cached(&cache, &state));
 }
 
 #[test]
@@ -33,10 +33,10 @@ fn cached_state_emits_when_any_gate_field_changes() {
         inhibited: false,
     };
 
-    assert!(should_emit_cached(&cache, &open));
+    assert!(should_publish_cached(&cache, &open));
     // A changed popup gate affects visibility policy, so it must emit
-    assert!(should_emit_cached(&cache, &dnd));
-    assert!(!should_emit_cached(&cache, &dnd));
+    assert!(should_publish_cached(&cache, &dnd));
+    assert!(!should_publish_cached(&cache, &dnd));
 }
 
 #[test]
@@ -54,9 +54,9 @@ fn cached_state_emits_after_counter_change() {
         ..first
     };
 
-    assert!(should_emit_cached(&cache, &first));
-    assert!(should_emit_cached(&cache, &changed));
-    assert!(!should_emit_cached(&cache, &changed));
+    assert!(should_publish_cached(&cache, &first));
+    assert!(should_publish_cached(&cache, &changed));
+    assert!(!should_publish_cached(&cache, &changed));
 }
 
 #[test]
@@ -69,15 +69,15 @@ fn cached_state_emits_when_only_the_dnd_deadline_changes() {
         inhibited: false,
         inhibitor_count: 0,
     };
-    assert!(should_emit_cached(&cache, &indefinite));
+    assert!(should_publish_cached(&cache, &indefinite));
 
     let timed = ControlState {
         dnd_expires_at: 500,
         ..indefinite
     };
 
-    assert!(should_emit_cached(&cache, &timed));
-    assert!(!should_emit_cached(&cache, &timed));
+    assert!(should_publish_cached(&cache, &timed));
+    assert!(!should_publish_cached(&cache, &timed));
 }
 
 #[test]
@@ -93,6 +93,6 @@ fn cached_state_recovers_from_poisoned_mutex() {
         inhibited: true,
     };
 
-    assert!(should_emit_cached(&cache, &state));
-    assert!(!should_emit_cached(&cache, &state));
+    assert!(should_publish_cached(&cache, &state));
+    assert!(!should_publish_cached(&cache, &state));
 }

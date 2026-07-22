@@ -15,7 +15,7 @@ pub enum NotificationSignalMode {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct NotificationBurstState {
+pub(in crate::daemon) struct NotificationBurstState {
     window_started: Instant,
     last_seen: Instant,
     count: u16,
@@ -28,7 +28,7 @@ const NOTIFICATION_DIRECT_SIGNAL_LIMIT: u16 = 8;
 // Cap tracked senders so hostile unique names cannot grow memory without bound
 const NOTIFICATION_SIGNAL_TRACK_LIMIT: usize = 128;
 
-pub(super) fn notification_signal_mode_for_sender(
+pub(in crate::daemon) fn notification_signal_mode_for_sender(
     cache: &StdMutex<HashMap<String, NotificationBurstState>>,
     sender: &str,
 ) -> NotificationSignalMode {
@@ -76,5 +76,5 @@ pub(super) fn notification_signal_mode_for_sender(
 }
 
 #[cfg(test)]
-#[path = "tests/signal_burst.rs"]
+#[path = "tests/flow_control.rs"]
 mod tests;

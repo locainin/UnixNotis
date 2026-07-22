@@ -12,10 +12,10 @@ use super::shutdown::shutdown_signal;
 use crate::child_process::{spawn_center_supervisor, spawn_popups_supervisor};
 use crate::cli::Args;
 use crate::daemon::{
-    log_name_reply, request_control_name, request_well_known_name, spawn_inhibitor_owner_watch,
-    ControlServer, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH,
+    log_current_owner, log_name_reply, request_control_name, request_well_known_name,
+    spawn_client_owner_watch, ControlServer, DaemonState, NotificationServer,
+    NOTIFICATIONS_OBJECT_PATH,
 };
-use crate::dbus_owner::log_current_owner;
 use crate::dnd_expiration::DndExpirationScheduler;
 use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
@@ -96,8 +96,8 @@ pub(super) async fn run_daemon(
         return Ok(());
     }
 
-    if let Err(err) = spawn_inhibitor_owner_watch(state.clone()).await {
-        warn!(?err, "failed to start inhibitor owner watcher");
+    if let Err(err) = spawn_client_owner_watch(state.clone()).await {
+        warn!(?err, "failed to start client owner watcher");
     }
 
     // Both UI processes share one shutdown flag and reap their current child before exit

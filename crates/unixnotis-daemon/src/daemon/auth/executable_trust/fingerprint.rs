@@ -3,10 +3,10 @@
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-use super::metadata::trusted_control_file_metadata_is_safe;
-use super::policy::{
+use super::super::policy::{
     FileFingerprint, FileFingerprintSignature, FingerprintCacheEntry, FINGERPRINT_CACHE_CAPACITY,
 };
+use super::metadata::trusted_control_file_metadata_is_safe;
 
 pub(in crate::daemon) fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
     let metadata = std::fs::metadata(path).ok()?;

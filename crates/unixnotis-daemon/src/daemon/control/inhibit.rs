@@ -2,11 +2,7 @@
 //!
 //! Keeps inhibit/uninhibit flow and best-effort post-commit fanout isolated
 
-use tracing::warn;
 use zbus::message::Header;
-use zbus::SignalContext;
-
-use unixnotis_core::CONTROL_OBJECT_PATH;
 
 use super::{sanitize, ControlServer, MAX_ACTIVE_INHIBITORS};
 
@@ -38,7 +34,9 @@ impl ControlServer {
             let count = store.inhibitor_count();
             (id, active, count)
         };
-        self.emit_inhibitor_updates(active, count, "added").await;
+        self.state
+            .publish_inhibitors_changed(active, count, "added")
+            .await;
         Ok(id)
     }
 
@@ -70,38 +68,9 @@ impl ControlServer {
             // Unknown IDs are treated as a no-op to keep clients resilient
             return Ok(());
         }
-        self.emit_inhibitor_updates(active, count, "removed").await;
+        self.state
+            .publish_inhibitors_changed(active, count, "removed")
+            .await;
         Ok(())
-    }
-
-    async fn emit_inhibitor_updates(&self, active: bool, count: u32, action: &'static str) {
-        match SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH) {
-            Ok(ctx) => {
-                // Broadcast inhibitor updates so UI clients can refresh badges
-                if let Err(err) = Self::inhibitors_changed(&ctx, active, count).await {
-                    warn!(
-                        ?err,
-                        inhibitor_count = count,
-                        action,
-                        "inhibitor state changed but inhibitors_changed signal fanout failed"
-                    );
-                }
-            }
-            Err(err) => {
-                warn!(
-                    ?err,
-                    action,
-                    "inhibitor state changed but failed to build signal context for inhibitors_changed"
-                );
-            }
-        }
-        // Mutation is already committed; signal fanout is best-effort
-        if let Err(err) = self.state.emit_state_changed().await {
-            warn!(
-                ?err,
-                action,
-                "inhibitor state changed but post-commit state_changed signal fanout failed"
-            );
-        }
     }
 }

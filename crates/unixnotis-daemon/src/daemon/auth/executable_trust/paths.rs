@@ -2,11 +2,15 @@
 
 use std::path::{Path, PathBuf};
 
-use super::filesystem::canonicalize_best_effort;
+use super::super::policy::{TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES};
 use super::fingerprint::file_fingerprint;
 use super::metadata::trusted_control_file_metadata_is_safe;
-use super::policy::{TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES};
 use super::snapshots::trusted_control_snapshot;
+
+pub(in crate::daemon) fn canonicalize_best_effort(path: &Path) -> PathBuf {
+    // Missing paths remain raw so later trust comparisons fail as ordinary mismatches
+    std::fs::canonicalize(path).unwrap_or_else(|_error| path.to_path_buf())
+}
 
 pub(in crate::daemon) fn is_trusted_control_executable_path(path: &Path, relaxed: bool) -> bool {
     // Trust only known sibling binaries from the daemon install/build directory

@@ -7,7 +7,7 @@ use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
 use crate::cli::Args;
-use crate::dbus_owner::wait_for_owner_state;
+use crate::daemon::wait_for_owner_state;
 use crate::trial_mode::{self, restore_previous, TrialState};
 use unixnotis_core::NOTIFICATIONS_BUS_NAME;
 

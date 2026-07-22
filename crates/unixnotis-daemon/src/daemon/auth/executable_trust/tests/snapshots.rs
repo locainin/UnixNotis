@@ -1,8 +1,7 @@
-use super::filesystem::canonicalize_best_effort;
-use super::paths::trusted_snapshot_matches_observed;
-use super::policy::{TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES};
-use super::snapshots::build_trusted_control_snapshots;
-use super::support::write_executable;
+use super::super::paths::{canonicalize_best_effort, trusted_snapshot_matches_observed};
+use super::super::snapshots::build_trusted_control_snapshots;
+use crate::daemon::auth::policy::{TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES};
+use crate::daemon::auth::support::write_executable;
 use crate::test_support::TempRoot;
 use std::collections::HashMap;
 use std::path::Path;

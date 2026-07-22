@@ -1,9 +1,9 @@
-use super::filesystem::canonicalize_best_effort;
-use super::paths::{
-    is_trusted_control_executable_path_relaxed_in_dir, trusted_local_bin_matches_executable,
-    trusted_path_matches_executable, trusted_profile_sibling_matches_executable,
+use super::super::paths::{
+    canonicalize_best_effort, is_trusted_control_executable_path_relaxed_in_dir,
+    trusted_local_bin_matches_executable, trusted_path_matches_executable,
+    trusted_profile_sibling_matches_executable,
 };
-use super::support::write_executable;
+use crate::daemon::auth::support::write_executable;
 use crate::test_support::{env_lock, EnvVarGuard, TempRoot};
 
 #[test]

@@ -11,8 +11,6 @@ use zbus::{interface, SignalContext};
 
 use crate::daemon::{auth, to_fdo_error, DaemonState};
 
-use super::clear;
-
 /// D-Bus server for com.unixnotis.Control
 pub struct ControlServer {
     // Shared daemon state used by all control methods
@@ -208,7 +206,7 @@ impl ControlServer {
         self.authorize_control_call(&header, "ClearAll").await?;
         let ids = self.drain_active_notifications().await;
         self.clear_saved_history().await;
-        clear::emit_clear_all_signals(&self.state, ids).await;
+        self.state.publish_notifications_cleared(ids).await;
         Ok(())
     }
 
@@ -218,7 +216,7 @@ impl ControlServer {
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ClearActive").await?;
         let ids = self.drain_active_notifications().await;
-        clear::emit_clear_all_signals(&self.state, ids).await;
+        self.state.publish_notifications_cleared(ids).await;
         Ok(())
     }
 
@@ -228,7 +226,7 @@ impl ControlServer {
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ClearHistory").await?;
         self.clear_saved_history().await;
-        clear::emit_clear_all_signals(&self.state, Vec::new()).await;
+        self.state.publish_notifications_cleared(Vec::new()).await;
         Ok(())
     }
 

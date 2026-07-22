@@ -87,7 +87,7 @@ impl ControlServer {
             // Scheduling follows durable commit so failed writes keep the previous timer
             self.state.schedule_dnd_expiration(write.current_expires_at);
             // Mutation is already committed; signal fanout is best-effort
-            if let Err(err) = self.state.emit_state_changed().await {
+            if let Err(err) = self.state.publish_state_changed().await {
                 warn!(
                     ?err,
                     "do-not-disturb state changed but post-commit signal fanout failed"
