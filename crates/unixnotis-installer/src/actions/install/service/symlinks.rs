@@ -1,11 +1,12 @@
 //! Service artifact symlink creation and safe removal
 
-use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
-use unixnotis_core::filesystem::{remove_symlink_if_target, RemoveSymlinkOutcome};
+use unixnotis_core::filesystem::{
+    create_symlink_if_missing, remove_symlink_if_target, CreateSymlinkOutcome, RemoveSymlinkOutcome,
+};
 
 use crate::paths::format_with_home;
 
@@ -13,26 +14,27 @@ pub(in crate::actions::install) fn write_service_symlink(
     path: &Path,
     target: &Path,
 ) -> Result<bool> {
-    if let Ok(existing) = fs::read_link(path) {
-        if existing == target {
-            // Relative links are compared as stored, matching how the backend declared them
-            return Ok(false);
-        }
-        // A different target means another owner may be using this enablement path
-        return Err(anyhow!(
+    // Relative targets are compared exactly as stored by the service backend
+    match create_symlink_if_missing(path, target) {
+        Ok(CreateSymlinkOutcome::Created) => Ok(true),
+        Ok(CreateSymlinkOutcome::Unchanged) => Ok(false),
+        Ok(CreateSymlinkOutcome::TargetMismatch(existing)) => Err(anyhow!(
             "cannot replace service symlink {} because it points to {} instead of {}",
             format_with_home(path),
             format_with_home(&existing),
             format_with_home(target)
-        ));
+        )),
+        Err(error) if error.kind() == ErrorKind::InvalidInput => Err(anyhow!(
+            "cannot replace non-symlink service artifact at {}",
+            format_with_home(path)
+        )),
+        Err(error) => Err(error).with_context(|| {
+            format!(
+                "failed to inspect or create symlink {}",
+                format_with_home(path)
+            )
+        }),
     }
-    // Existing non-links are left alone so enablement links cannot overwrite user files
-    reject_existing_non_symlink(path)?;
-
-    // Create the link exactly as the backend requested, often with a relative target
-    std::os::unix::fs::symlink(target, path)
-        .with_context(|| format!("failed to create symlink {}", format_with_home(path)))?;
-    Ok(true)
 }
 
 pub(in crate::actions::install) fn remove_service_symlink(
@@ -58,20 +60,5 @@ pub(in crate::actions::install) fn remove_service_symlink(
                 format_with_home(path)
             )
         }),
-    }
-}
-
-fn reject_existing_non_symlink(path: &Path) -> Result<()> {
-    match fs::symlink_metadata(path) {
-        // Any existing non-link at the enablement path belongs to the user or another manager
-        Ok(_) => Err(anyhow!(
-            "cannot replace non-symlink service artifact at {}",
-            format_with_home(path)
-        )),
-        // NotFound means write_service_symlink can safely create the link
-        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-        Err(err) => {
-            Err(err).with_context(|| format!("failed to inspect {}", format_with_home(path)))
-        }
     }
 }

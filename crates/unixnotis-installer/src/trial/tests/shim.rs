@@ -73,6 +73,23 @@ fn trial_shim_dir_rejects_local_bin_when_not_on_path() {
 
 #[test]
 #[cfg(unix)]
+fn trial_shim_dir_rejects_a_symlinked_local_bin() {
+    let root = temp_dir("linked-local-bin");
+    let outside = root.join("outside");
+    let local_bin = root.join("local").join("bin");
+    fs::create_dir_all(&outside).expect("outside directory");
+    fs::create_dir_all(local_bin.parent().expect("local parent")).expect("local parent");
+    std::os::unix::fs::symlink(&outside, &local_bin).expect("local bin link");
+
+    let selected = select_trial_shim_dir(&local_bin, std::slice::from_ref(&local_bin), None);
+
+    assert!(selected.is_none());
+    assert!(!outside.join("noticenterctl").exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+#[cfg(unix)]
 fn trial_control_command_accepts_debug_and_release_siblings() {
     let root = temp_dir("compatible-target-tree");
     let debug = root.join("target").join("debug").join("noticenterctl");
@@ -193,5 +210,29 @@ fn remove_trial_control_shim_reports_non_directory_parent() {
     assert!(error
         .to_string()
         .contains("failed to inspect trial noticenterctl shim"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+#[cfg(unix)]
+fn remove_trial_control_shim_rejects_a_symlinked_parent() {
+    let root = temp_dir("remove-linked-shim-parent");
+    let target = root.join("target").join("noticenterctl");
+    let outside = root.join("outside");
+    let outside_shim = outside.join("noticenterctl");
+    let linked_parent = root.join("linked-bin");
+    fs::create_dir_all(target.parent().expect("target parent")).expect("target parent");
+    fs::create_dir_all(&outside).expect("outside directory");
+    fs::write(&target, "#!/bin/sh\n").expect("target");
+    std::os::unix::fs::symlink(&target, &outside_shim).expect("outside trial shim");
+    std::os::unix::fs::symlink(&outside, &linked_parent).expect("linked shim parent");
+    let shim = linked_parent.join("noticenterctl");
+
+    remove_trial_control_shim(&shim, &target).expect_err("linked parent should fail");
+
+    assert_eq!(
+        fs::read_link(&outside_shim).expect("outside shim remains"),
+        target
+    );
     let _ = fs::remove_dir_all(root);
 }

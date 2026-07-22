@@ -1,10 +1,8 @@
 use std::fs;
 use std::os::unix::fs::symlink;
 
-use super::{
-    read_symlink, remove_regular_file, remove_symlink, remove_symlink_if_target,
-    RemoveSymlinkOutcome,
-};
+use super::{remove_regular_file, remove_symlink, remove_symlink_if_target, RemoveSymlinkOutcome};
+use crate::filesystem::symlink::read_symlink;
 use crate::test_support::unique_temp_path;
 
 #[test]

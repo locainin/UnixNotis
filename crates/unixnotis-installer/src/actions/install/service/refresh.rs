@@ -1,15 +1,12 @@
 //! Service-manager refresh execution after artifact changes
 
 use std::fs;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
-
-#[cfg(unix)]
-use std::os::unix::fs as unix_fs;
+use unixnotis_core::filesystem::replace_symlink_atomic;
 
 use crate::paths::format_with_home;
 use crate::service_manager::{CommandSpec, S6DatabaseRefresh, ServiceArtifactRefresh};
@@ -305,68 +302,14 @@ fn next_s6_compiled_database(plan: &S6DatabaseRefresh) -> Result<PathBuf> {
 
 fn switch_s6_compiled_link(plan: &S6DatabaseRefresh, compiled: &Path) -> Result<()> {
     let link = plan.compiled_link();
-    reject_unsafe_existing_compiled_link(&link)?;
-
-    let temp_link = plan
-        .rc_root()
-        .join(format!(".compiled-unixnotis-next-{}", std::process::id()));
-    // Only UnixNotis-created symlink temp files can be reused between failed attempts
-    remove_stale_temp_link(&temp_link)?;
-
-    #[cfg(unix)]
-    {
-        // s6-rc-init expects the boot database path to be a symlink to a compiled database
-        unix_fs::symlink(compiled, &temp_link)
-            .with_context(|| format!("failed to create {}", format_with_home(&temp_link)))?;
-        fs::rename(&temp_link, &link).with_context(|| {
-            format!(
-                "failed to atomically switch s6 compiled database symlink {}",
-                format_with_home(&link)
-            )
-        })?;
-    }
-
-    #[cfg(not(unix))]
-    {
-        let _ = compiled;
-        let _ = temp_link;
-        return Err(anyhow!(
-            "s6 database symlinks require Unix filesystem support"
-        ));
-    }
-
+    // s6-rc-init expects one stable boot link, so publish the new target in one rename
+    replace_symlink_atomic(&link, compiled).with_context(|| {
+        format!(
+            "failed to atomically switch s6 compiled database symlink {}",
+            format_with_home(&link)
+        )
+    })?;
     Ok(())
-}
-
-fn reject_unsafe_existing_compiled_link(link: &Path) -> Result<()> {
-    match fs::symlink_metadata(link) {
-        // Existing compiled links are expected; regular files or directories are user state
-        Ok(metadata) if metadata.file_type().is_symlink() => Ok(()),
-        Ok(_) => Err(anyhow!(
-            "refusing to replace non-symlink s6 compiled database path {}",
-            format_with_home(link)
-        )),
-        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-        Err(err) => {
-            Err(err).with_context(|| format!("failed to inspect {}", format_with_home(link)))
-        }
-    }
-}
-
-fn remove_stale_temp_link(temp_link: &Path) -> Result<()> {
-    match fs::symlink_metadata(temp_link) {
-        // Removing only a symlink keeps a hostile or accidental directory from being replaced
-        Ok(metadata) if metadata.file_type().is_symlink() => fs::remove_file(temp_link)
-            .with_context(|| format!("failed to remove {}", format_with_home(temp_link))),
-        Ok(_) => Err(anyhow!(
-            "refusing to replace non-symlink temp s6 database path {}",
-            format_with_home(temp_link)
-        )),
-        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-        Err(err) => {
-            Err(err).with_context(|| format!("failed to inspect {}", format_with_home(temp_link)))
-        }
-    }
 }
 
 fn path_is_live_directory(path: &Path) -> bool {

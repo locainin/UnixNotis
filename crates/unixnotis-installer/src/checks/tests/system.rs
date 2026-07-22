@@ -9,8 +9,9 @@ use crate::service_manager::{ReadinessIssue, ServiceManager};
 use crate::test_support::fs::write_executable;
 
 use super::{
-    command_success, dbus_update_env_check, install_paths_check, readiness_error_detail,
-    readiness_messages, readiness_warning_detail, service_manager_check_from,
+    command_success, dbus_update_env_check, install_paths_check, path_is_writable,
+    readiness_error_detail, readiness_messages, readiness_warning_detail,
+    service_manager_check_from,
 };
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -200,6 +201,35 @@ fn install_paths_check_fails_when_service_root_is_not_directory() {
 
     assert_eq!(item.state, CheckState::Fail);
     assert_eq!(item.detail, "not writable");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn path_is_writable_accepts_a_real_directory_and_removes_its_probe() {
+    let root = test_root("writable-path-check");
+    fs::create_dir_all(&root).expect("writable directory");
+
+    assert!(path_is_writable(&root));
+    assert_eq!(fs::read_dir(&root).expect("empty directory").count(), 0);
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+#[cfg(unix)]
+fn path_is_writable_rejects_a_symlinked_directory() {
+    let root = test_root("linked-writable-path-check");
+    let outside = root.join("outside");
+    let linked = root.join("linked");
+    fs::create_dir_all(&outside).expect("outside directory");
+    std::os::unix::fs::symlink(&outside, &linked).expect("linked directory");
+
+    assert!(!path_is_writable(&linked));
+    assert_eq!(
+        fs::read_dir(&outside).expect("untouched directory").count(),
+        0
+    );
+
     let _ = fs::remove_dir_all(root);
 }
 
