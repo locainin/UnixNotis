@@ -8,9 +8,9 @@ use async_channel::TrySendError;
 use gtk::prelude::*;
 use unixnotis_core::{css::hooks, PanelConfig};
 
+use super::super::body::WIDGET_REVEAL_TRANSITION_MS;
 use crate::control::UiEvent;
 use crate::ui::panel::behavior::input::{ClickCooldown, LatestBoolEventGate};
-use crate::ui::panel::WIDGET_REVEAL_TRANSITION_MS;
 
 pub const SEARCH_REVEAL_TRANSITION_MS: u64 = 180;
 const WIDGETS_TOGGLE_COALESCE_MS: u64 = 16;

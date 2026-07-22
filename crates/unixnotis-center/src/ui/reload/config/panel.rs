@@ -3,13 +3,12 @@
 use gtk::prelude::*;
 use unixnotis_core::{css::hooks, Config, PanelDebugLevel, PanelWidgetSection};
 
-use crate::ui::panel::notification_header_row_visible;
 use crate::ui::{panel, UiState};
 
 impl UiState {
     pub(in crate::ui) fn apply_reloaded_panel(&mut self, config: &Config) {
         // Geometry goes first so later sections can size themselves from the final panel width
-        panel::apply_panel_config(&self.panel, config, self.work_area);
+        panel::geometry::apply_panel_config(&self.panel, config, self.work_area);
         self.panel.header.title.set_label(&config.panel.title);
         self.panel.header.subtitle.set_label(&config.panel.subtitle);
         self.panel
@@ -33,7 +32,7 @@ impl UiState {
             .set_visible(!self.panel.header.search.entry.text().is_empty());
         let search_open =
             config.panel.search_visible || self.panel.header.actions.search_toggle.is_active();
-        panel::set_search_open(
+        panel::header::search::set_search_open(
             &self.panel.header.actions.search_toggle,
             &self.panel.header.search.revealer,
             &self.panel.header.search.entry,
@@ -44,7 +43,7 @@ impl UiState {
             .header
             .action_row
             .set_visible(config.panel.action_row_visible);
-        panel::apply_reloaded_panel_chrome(&self.panel, &config.panel);
+        panel::apply::apply_reloaded_panel_chrome(&self.panel, &config.panel);
         self.panel
             .sections
             .notification_header
@@ -56,7 +55,7 @@ impl UiState {
         self.panel
             .sections
             .notification_header_row
-            .set_visible(notification_header_row_visible(&config.panel));
+            .set_visible(panel::body::notification_header_row_visible(&config.panel));
         self.update_section_header(
             &self.panel.sections.toggle_section_header,
             &config.panel.quick_actions_label,
@@ -84,9 +83,9 @@ impl UiState {
             .sections
             .notification_container
             .set_vexpand(config.panel.notification_list_expand);
-        panel::apply_reloaded_body_order(&self.panel, &config.panel.section_order);
+        panel::apply::apply_reloaded_body_order(&self.panel, &config.panel.section_order);
         self.apply_widget_order(&config.panel.widget_order);
-        panel::apply_widget_density(
+        panel::body::apply_widget_density(
             &self.panel.sections.widget_stack,
             &self.panel.sections.quick_controls,
             &self.panel.sections.media_container,

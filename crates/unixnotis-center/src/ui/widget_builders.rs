@@ -10,7 +10,7 @@ use unixnotis_core::{css::hooks, Config, IconAssetResolver};
 use super::{panel, widgets};
 
 pub(super) fn build_quick_controls(
-    panel: &panel::PanelWidgets,
+    panel: &panel::widgets::PanelWidgets,
     config: &Config,
 ) -> (
     Option<widgets::volume::VolumeWidget>,
@@ -41,7 +41,7 @@ pub(super) fn build_quick_controls(
 }
 
 pub(super) fn build_extra_widgets(
-    panel: &panel::PanelWidgets,
+    panel: &panel::widgets::PanelWidgets,
     config: &Config,
     icon_resolver: &IconAssetResolver,
 ) -> (

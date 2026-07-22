@@ -6,7 +6,7 @@ use gtk::prelude::*;
 use gtk::{Align, Overflow, PolicyType};
 
 use crate::media::MediaHandle;
-use crate::ui::panel::input::ClickCooldown;
+use crate::ui::panel::behavior::input::ClickCooldown;
 
 use super::super::artwork::MediaArtState;
 use super::super::marquee::MarqueeLabel;

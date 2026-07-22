@@ -10,7 +10,7 @@ use tracing::debug;
 use unixnotis_core::NotificationView;
 
 use crate::control::UiCommand;
-use crate::ui::panel::input::ClickCooldown;
+use crate::ui::panel::behavior::input::ClickCooldown;
 use crate::ui::try_send_command;
 
 use super::super::reply::{configure_inline_reply, connect_inline_reply_button};
