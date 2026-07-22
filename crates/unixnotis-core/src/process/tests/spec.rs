@@ -51,8 +51,13 @@ fn placeholder_replacement_updates_explicit_shell_script_without_reclassificatio
 #[test]
 fn shell_detection_includes_direct_interpreter_invocations() {
     assert!(CommandSpec::shell("printf ready").invokes_shell());
-    assert!(CommandSpec::direct("/bin/sh", ["-c", "printf ready"]).invokes_shell());
-    assert!(CommandSpec::direct("bash", ["-lc", "printf ready"]).invokes_shell());
+    for shell in ["sh", "ash", "bash", "dash", "fish", "ksh", "zsh"] {
+        assert!(
+            CommandSpec::direct(shell, ["-c", "printf ready"]).invokes_shell(),
+            "{shell} -c must retain the explicit shell boundary"
+        );
+    }
+    assert!(CommandSpec::direct("/bin/bash", ["-lc", "printf ready"]).invokes_shell());
     assert!(!CommandSpec::direct("sh", ["-x", "script"]).invokes_shell());
     assert!(!CommandSpec::direct("printf", ["sh -c"]).invokes_shell());
 }

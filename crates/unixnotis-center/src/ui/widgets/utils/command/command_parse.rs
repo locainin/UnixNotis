@@ -3,12 +3,16 @@
 //! Keeps shell parsing and "slow command" classification localized so the
 //! enqueue/worker pipeline can stay focused on execution and backpressure
 
-use std::ffi::OsStr;
-
 use unixnotis_core::CommandSpec;
 
 pub(super) fn is_probably_slow(cmd: &CommandSpec) -> bool {
-    let CommandSpec::Direct { program, args, .. } = cmd else {
+    // Shared shell detection owns every direct interpreter spelling
+    // Shell startup and script execution belong on the wider timeout budget
+    if cmd.invokes_shell() {
+        return true;
+    }
+
+    let CommandSpec::Direct { program, .. } = cmd else {
         return true;
     };
 
@@ -39,26 +43,7 @@ pub(super) fn is_probably_slow(cmd: &CommandSpec) -> bool {
         return true;
     }
 
-    if matches!(program_name.as_str(), "sh" | "bash" | "zsh" | "fish") {
-        // Shell scripts are treated as slow if the first token is "sleep"
-        if let Some(script) = shell_script_arg(args) {
-            if script.split_whitespace().next() == Some("sleep") {
-                return true;
-            }
-        }
-    }
-
     false
-}
-
-fn shell_script_arg(args: &[std::ffi::OsString]) -> Option<&str> {
-    let mut iter = args.iter().peekable();
-    while let Some(arg) = iter.next() {
-        if arg == OsStr::new("-c") {
-            return iter.peek().and_then(|value| value.to_str());
-        }
-    }
-    None
 }
 
 #[cfg(test)]

@@ -12,6 +12,17 @@ fn slow_command_promotes_refresh_plan_to_slow_lane() {
 }
 
 #[test]
+fn direct_dash_wrapper_receives_the_slow_timeout_budget() {
+    let plan = resolve_command_plan(
+        &CommandSpec::direct("dash", ["-c", "sleep 1"]),
+        CommandKind::Fast,
+    );
+
+    assert_eq!(plan.kind, CommandKind::Slow);
+    assert_eq!(plan.timeout(), Duration::from_millis(800));
+}
+
+#[test]
 fn action_command_keeps_action_lane_even_when_command_is_slow() {
     let plan = resolve_command_plan(&CommandSpec::direct("sleep", ["1"]), CommandKind::Action);
 
