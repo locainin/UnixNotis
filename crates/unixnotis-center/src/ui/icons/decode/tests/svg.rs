@@ -5,7 +5,8 @@ use flate2::Compression;
 
 use super::super::pipeline::MAX_ICON_DIMENSION;
 use super::super::svg::{
-    decode_svg_bytes, decompress_svgz_with_limit, is_gzip_payload, validate_svg_dimensions,
+    decode_svg_bytes, decompress_svgz_with_limit, fitted_svg_dimensions, is_gzip_payload,
+    validate_svg_dimensions,
 };
 
 #[test]
@@ -92,4 +93,23 @@ fn svg_source_limits_cover_zero_exact_and_oversized_boundaries() {
     assert!(validate_svg_dimensions(MAX_ICON_DIMENSION, MAX_ICON_DIMENSION).is_ok());
     assert!(validate_svg_dimensions(MAX_ICON_DIMENSION + 1, 1).is_err());
     assert!(validate_svg_dimensions(1, MAX_ICON_DIMENSION + 1).is_err());
+}
+
+#[test]
+fn svg_scaling_rejects_non_finite_zero_and_oversized_inputs() {
+    assert!(fitted_svg_dimensions(f32::NAN, 10.0, 16).is_err());
+    assert!(fitted_svg_dimensions(10.0, f32::INFINITY, 16).is_err());
+    assert!(fitted_svg_dimensions(0.0, 10.0, 16).is_err());
+    assert!(fitted_svg_dimensions(10.0, 10.0, 0).is_err());
+    assert!(fitted_svg_dimensions(10.0, 10.0, MAX_ICON_DIMENSION + 1).is_err());
+}
+
+#[test]
+fn svg_scaling_returns_finite_bounded_geometry() {
+    let (width, height, scale) =
+        fitted_svg_dimensions(20.0, 10.0, 16).expect("fit finite geometry");
+
+    assert_eq!((width, height), (16, 8));
+    assert!(scale.is_finite());
+    assert!(scale > 0.0);
 }
