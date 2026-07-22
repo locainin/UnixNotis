@@ -168,7 +168,7 @@ fn open_parent(path: &Path) -> io::Result<(OwnedFd, OsString)> {
     open_parent_with(path, MissingParent::Create)
 }
 
-fn open_parent_existing(path: &Path) -> io::Result<(OwnedFd, OsString)> {
+pub(super) fn open_parent_existing(path: &Path) -> io::Result<(OwnedFd, OsString)> {
     open_parent_with(path, MissingParent::Reject)
 }
 
@@ -279,7 +279,10 @@ fn existing_target_mode(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result
     }
 }
 
-fn validate_existing_target(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<()> {
+pub(super) fn validate_existing_target(
+    parent_fd: &OwnedFd,
+    file_name: &OsString,
+) -> io::Result<()> {
     let fd = openat2(
         parent_fd,
         file_name,
@@ -350,7 +353,7 @@ fn set_mode_and_sync(file: &fs::File, mode: u32) -> io::Result<()> {
     file.sync_all()
 }
 
-fn sync_directory(parent_fd: OwnedFd) -> io::Result<()> {
+pub(super) fn sync_directory(parent_fd: OwnedFd) -> io::Result<()> {
     fs::File::from(parent_fd).sync_all()
 }
 

@@ -8,7 +8,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 use unixnotis_core::filesystem::{
-    set_file_mode, write_file_atomic, write_file_atomic_preserving_mode,
+    remove_regular_file, set_file_mode, write_file_atomic, write_file_atomic_preserving_mode,
 };
 
 use crate::paths::format_with_home;
@@ -259,5 +259,14 @@ pub(in crate::actions::install::service) fn remove_regular_service_file(path: &P
         ));
     }
 
-    fs::remove_file(path).with_context(|| format!("failed to remove {}", format_with_home(path)))
+    if remove_regular_file(path)
+        .with_context(|| format!("failed to remove {}", format_with_home(path)))?
+    {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "service file disappeared before removal at {}",
+            format_with_home(path)
+        ))
+    }
 }

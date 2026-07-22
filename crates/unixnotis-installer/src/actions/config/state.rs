@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use unixnotis_core::filesystem::remove_regular_file;
 use unixnotis_core::util;
 
 use crate::paths::format_with_home;
@@ -75,11 +76,7 @@ pub(in crate::actions::config) fn remove_state_file(
 ) -> std::io::Result<RemoveStateOutcome> {
     let state_file = state_root.join(DND_STATE_FILE);
     // Remove the persisted DND file first because that is the main cleanup target
-    let removed_file = match fs::remove_file(&state_file) {
-        Ok(()) => true,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
-        Err(err) => return Err(err),
-    };
+    let removed_file = remove_regular_file(&state_file)?;
 
     if !removed_file {
         // Nothing changed, so there is no follow-up directory cleanup to attempt

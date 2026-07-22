@@ -3,6 +3,7 @@ use super::super::state::{
     DirCleanupOutcome, DND_STATE_FILE,
 };
 use std::fs;
+use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
@@ -122,6 +123,29 @@ fn remove_state_file_propagates_non_missing_filesystem_errors() {
     assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
     assert!(root.is_file());
     let _ = fs::remove_file(&root);
+}
+
+#[test]
+fn remove_state_file_rejects_symlink_without_touching_its_target() {
+    let root = crate::test_support::fs::unique_temp_path("remove-state-symlink");
+    let state_root = root.join("unixnotis");
+    let state_file = state_root.join(DND_STATE_FILE);
+    let protected = root.join("protected");
+    fs::create_dir_all(&state_root).expect("create state directory");
+    fs::write(&protected, "protected").expect("write protected file");
+    symlink(&protected, &state_file).expect("create state link");
+
+    remove_state_file(&state_root).expect_err("state link should be rejected");
+
+    assert_eq!(
+        fs::read_to_string(&protected).expect("read protected file"),
+        "protected"
+    );
+    assert!(fs::symlink_metadata(&state_file)
+        .expect("state link remains")
+        .file_type()
+        .is_symlink());
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

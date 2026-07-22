@@ -1,10 +1,9 @@
 //! Binary install and uninstall helpers
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
-use unixnotis_core::filesystem::copy_file_atomic;
+use unixnotis_core::filesystem::{copy_file_atomic, remove_regular_file};
 
 use crate::managed_binaries::validate_managed_binary_names;
 use crate::paths::format_with_home;
@@ -72,8 +71,7 @@ pub(in crate::actions::install) fn remove_resolved_binaries(
         .with_context(|| "refusing to remove an unmanaged binary path")?;
     for binary in binaries {
         let path = ctx.paths.bin_dir.join(binary);
-        if path.exists() {
-            fs::remove_file(&path).with_context(|| "failed to remove binary")?;
+        if remove_regular_file(&path).with_context(|| "failed to remove binary")? {
             log_line(ctx, format!("Removed binary {}", format_with_home(&path)));
         } else {
             log_line(
