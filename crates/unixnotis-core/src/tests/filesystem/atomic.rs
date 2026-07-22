@@ -1,6 +1,5 @@
 use super::{
-    anchor_resolve_flags, contained_resolve_flags, file_mode, make_file_executable, open_parent,
-    reserve_temp, set_file_mode, sync_directory, write_file_atomic,
+    file_mode, make_file_executable, reserve_temp, set_file_mode, write_file_atomic,
     write_file_atomic_preserving_mode, write_file_if_missing,
 };
 use std::ffi::OsString;
@@ -12,6 +11,9 @@ use std::os::unix::net::UnixStream;
 
 use rustix::fs::{mkfifoat, Mode, ResolveFlags, CWD};
 
+use crate::filesystem::directory::{
+    anchor_resolve_flags, contained_resolve_flags, open_parent, sync_directory,
+};
 use crate::test_support::unique_temp_path;
 
 #[test]
@@ -228,7 +230,7 @@ fn directory_sync_propagates_invalid_descriptor_type() {
     let (stream, _peer) = UnixStream::pair().expect("create socket pair");
     let fd: OwnedFd = stream.into();
 
-    let error = sync_directory(fd).expect_err("socket cannot be synchronized as a directory");
+    let error = sync_directory(&fd).expect_err("socket cannot be synchronized as a directory");
 
     assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
 }

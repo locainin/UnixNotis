@@ -1,14 +1,18 @@
 //! Durable file replacement that does not follow target symlinks
 
-use rustix::fs::{mkdirat, openat2, renameat, unlinkat, AtFlags, Mode, OFlags, ResolveFlags, CWD};
+use rustix::fs::{openat2, renameat, unlinkat, AtFlags, Mode, OFlags};
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
 use std::os::fd::OwnedFd;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Component, Path};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use super::directory::{
+    contained_resolve_flags, open_parent, open_parent_existing, sync_directory,
+};
 
 const TEMP_ATTEMPTS: u8 = 16;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -39,7 +43,9 @@ pub fn write_file_atomic_preserving_mode(
 ) -> io::Result<()> {
     let (parent_fd, file_name) = open_parent(path)?;
     let mode = existing_target_mode(&parent_fd, &file_name)?.unwrap_or(default_mode);
-    write_file_atomic_at(parent_fd, &file_name, mode, |file| file.write_all(contents))
+    write_file_atomic_at(&parent_fd, &file_name, mode, |file| {
+        file.write_all(contents)
+    })
 }
 
 pub(super) fn publish_file_atomic(
@@ -49,34 +55,34 @@ pub(super) fn publish_file_atomic(
 ) -> io::Result<()> {
     let (parent_fd, file_name) = open_parent(path)?;
     validate_target(&parent_fd, &file_name)?;
-    write_file_atomic_at(parent_fd, &file_name, mode, write_payload)
+    write_file_atomic_at(&parent_fd, &file_name, mode, write_payload)
 }
 
 fn write_file_atomic_at(
-    parent_fd: OwnedFd,
+    parent_fd: &OwnedFd,
     file_name: &OsString,
     mode: u32,
     write_payload: impl FnOnce(&mut fs::File) -> io::Result<()>,
 ) -> io::Result<()> {
     let candidates = temp_candidates(file_name);
-    let (temp_name, mut temp_file) = reserve_temp(&parent_fd, candidates, mode)?;
+    let (temp_name, mut temp_file) = reserve_temp(parent_fd, candidates, mode)?;
 
     if let Err(error) =
         write_payload(&mut temp_file).and_then(|()| set_mode_and_sync(&temp_file, mode))
     {
         drop(temp_file);
-        let _ = unlinkat(&parent_fd, &temp_name, AtFlags::empty());
+        let _ = unlinkat(parent_fd, &temp_name, AtFlags::empty());
         return Err(error);
     }
     drop(temp_file);
 
     // A second check catches target swaps made while the payload was written
-    if let Err(error) = validate_target(&parent_fd, file_name) {
-        let _ = unlinkat(&parent_fd, &temp_name, AtFlags::empty());
+    if let Err(error) = validate_target(parent_fd, file_name) {
+        let _ = unlinkat(parent_fd, &temp_name, AtFlags::empty());
         return Err(error);
     }
-    if let Err(error) = renameat(&parent_fd, &temp_name, &parent_fd, file_name) {
-        let _ = unlinkat(&parent_fd, &temp_name, AtFlags::empty());
+    if let Err(error) = renameat(parent_fd, &temp_name, parent_fd, file_name) {
+        let _ = unlinkat(parent_fd, &temp_name, AtFlags::empty());
         return Err(error.into());
     }
     sync_directory(parent_fd)
@@ -118,7 +124,7 @@ pub fn write_file_if_missing(path: &Path, contents: &[u8], mode: u32) -> io::Res
         return Err(error);
     }
     drop(file);
-    sync_directory(parent_fd)?;
+    sync_directory(&parent_fd)?;
     Ok(true)
 }
 
@@ -162,96 +168,6 @@ pub(super) fn open_regular_file(path: &Path) -> io::Result<fs::File> {
         return Err(unsafe_target_error());
     }
     Ok(file)
-}
-
-fn open_parent(path: &Path) -> io::Result<(OwnedFd, OsString)> {
-    open_parent_with(path, MissingParent::Create)
-}
-
-pub(super) fn open_parent_existing(path: &Path) -> io::Result<(OwnedFd, OsString)> {
-    open_parent_with(path, MissingParent::Reject)
-}
-
-#[derive(Clone, Copy)]
-enum MissingParent {
-    Create,
-    Reject,
-}
-
-fn open_parent_with(path: &Path, missing_parent: MissingParent) -> io::Result<(OwnedFd, OsString)> {
-    let file_name = path
-        .file_name()
-        .filter(|name| !name.is_empty())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no file name"))?
-        .to_os_string();
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let mut parent_fd = if path.is_absolute() {
-        openat2(
-            CWD,
-            "/",
-            OFlags::DIRECTORY.union(OFlags::CLOEXEC),
-            Mode::empty(),
-            anchor_resolve_flags(),
-        )?
-    } else {
-        openat2(
-            CWD,
-            ".",
-            OFlags::DIRECTORY.union(OFlags::CLOEXEC),
-            Mode::empty(),
-            anchor_resolve_flags(),
-        )?
-    };
-
-    for component in parent.components() {
-        match component {
-            Component::Prefix(_) | Component::RootDir | Component::CurDir => {}
-            Component::ParentDir => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "atomic write path cannot contain parent traversal",
-                ));
-            }
-            Component::Normal(name) => {
-                parent_fd = open_directory_component(&parent_fd, name, missing_parent)?;
-            }
-        }
-    }
-    Ok((parent_fd, file_name))
-}
-
-fn open_directory_component(
-    parent_fd: &OwnedFd,
-    name: &std::ffi::OsStr,
-    missing_parent: MissingParent,
-) -> io::Result<OwnedFd> {
-    match openat2(
-        parent_fd,
-        name,
-        OFlags::DIRECTORY.union(OFlags::CLOEXEC),
-        Mode::empty(),
-        contained_resolve_flags(),
-    ) {
-        Ok(fd) => Ok(fd),
-        Err(error)
-            if error.kind() == io::ErrorKind::NotFound
-                && matches!(missing_parent, MissingParent::Create) =>
-        {
-            mkdirat(parent_fd, name, Mode::from_raw_mode(0o755))?;
-            openat2(
-                parent_fd,
-                name,
-                OFlags::DIRECTORY.union(OFlags::CLOEXEC),
-                Mode::empty(),
-                contained_resolve_flags(),
-            )
-            .map_err(Into::into)
-        }
-        Err(error) => Err(error.into()),
-    }
 }
 
 fn validate_target(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<()> {
@@ -353,22 +269,8 @@ fn set_mode_and_sync(file: &fs::File, mode: u32) -> io::Result<()> {
     file.sync_all()
 }
 
-pub(super) fn sync_directory(parent_fd: OwnedFd) -> io::Result<()> {
-    fs::File::from(parent_fd).sync_all()
-}
-
 const fn file_mode(mode: u32) -> Mode {
     Mode::from_raw_mode(mode & 0o777)
-}
-
-const fn contained_resolve_flags() -> ResolveFlags {
-    ResolveFlags::BENEATH
-        .union(ResolveFlags::NO_SYMLINKS)
-        .union(ResolveFlags::NO_MAGICLINKS)
-}
-
-const fn anchor_resolve_flags() -> ResolveFlags {
-    ResolveFlags::NO_SYMLINKS.union(ResolveFlags::NO_MAGICLINKS)
 }
 
 #[cfg(test)]

@@ -130,11 +130,6 @@ pub(in crate::actions::environment) fn ensure_path_entry_in_file(
         return Ok(false);
     }
 
-    if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| anyhow!("failed to create {}: {}", parent.display(), err))?;
-    }
-
     let export_line = format!(
         "export PATH=\"{}:$PATH\"",
         format_path_for_shell_line(home, bin_dir)
