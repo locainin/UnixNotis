@@ -5,7 +5,6 @@
     clippy::items_after_statements,
     clippy::match_same_arms,
     clippy::missing_const_for_fn,
-    clippy::needless_continue,
     clippy::needless_pass_by_value,
     clippy::option_if_let_else,
     clippy::redundant_else,

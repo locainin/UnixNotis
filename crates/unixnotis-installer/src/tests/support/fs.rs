@@ -3,7 +3,7 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::symlink;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub(super) static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -11,6 +11,15 @@ const FAKE_TOOL_DISPATCHER: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/src/tests/support/fixtures/fake-tool"
 );
+
+pub fn unique_temp_path(label: &str) -> PathBuf {
+    // A process-local sequence keeps parallel filesystem tests on separate paths
+    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "unixnotis-installer-{label}-{}-{sequence}",
+        std::process::id()
+    ))
+}
 
 pub fn write_executable(path: &Path, contents: &str) {
     let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
