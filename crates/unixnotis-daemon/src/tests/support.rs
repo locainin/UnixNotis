@@ -27,7 +27,7 @@ pub async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> {
         .await
         .expect("session bus should be available for daemon signal tests");
     let config = Config::default();
-    let sound = SoundSettings::from_config(&config);
+    let sound = SoundSettings::from_config(&config, None);
     let store = NotificationStore::new_with_state_store(config, None);
     DaemonState::new_with_store(connection, store, sound, trial_mode)
 }

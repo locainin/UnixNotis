@@ -29,7 +29,7 @@ pub(super) async fn run_daemon(
     notifications_name: zbus::names::BusName<'_>,
 ) -> Result<()> {
     // Resolve sound settings once to avoid repeated filesystem work
-    let sound_settings = SoundSettings::from_config(&config);
+    let sound_settings = SoundSettings::from_config(&config, args.config.as_deref());
     let state = DaemonState::new(connection.clone(), config, sound_settings, args.trial);
     let scheduler = ExpirationScheduler::start(state.clone());
     state.set_scheduler(scheduler.clone());

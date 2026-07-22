@@ -10,7 +10,7 @@ mod rename;
 mod symlink;
 
 pub use atomic::{
-    ensure_exact_file, make_file_executable, set_file_mode, write_file_atomic,
+    ensure_exact_file, make_file_executable, open_regular_file, set_file_mode, write_file_atomic,
     write_file_atomic_preserving_mode, write_file_if_missing, EnsureExactFileOutcome,
 };
 pub use directory::{

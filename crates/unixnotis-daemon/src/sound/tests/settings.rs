@@ -1,10 +1,14 @@
 use super::*;
+use crate::sound::SoundFile;
+use crate::test_support::TempRoot;
 use zbus::zvariant::{OwnedValue, Value};
 
 fn settings(enabled: bool, backend: SoundBackend) -> SoundSettings {
     SoundSettings {
         enabled,
         backend,
+        allow_file_hints: false,
+        allowed_file_hint_dirs: Vec::new(),
         default_name: Some("message-new-instant".to_string()),
         default_file: None,
         last_played: Mutex::new(None),
@@ -55,11 +59,15 @@ fn missing_backend_warning_policy_requires_enabled_sound_without_backend() {
 
 #[test]
 fn default_source_prefers_file_before_event_name() {
+    let root = TempRoot::new("sound-settings-default");
+    let path = root.join("default.ogg");
+    std::fs::write(&path, b"sound").expect("write default sound");
+    let file = std::fs::File::open(&path).expect("open default sound");
     let mut sound = settings(true, SoundBackend::Canberra);
-    sound.default_file = Some(PathBuf::from("/tmp/unixnotis-test.ogg"));
+    sound.default_file = Some(SoundFile::new(path.clone(), file));
 
     match sound.default_source().expect("default source") {
-        SoundSource::File(path) => assert_eq!(path, PathBuf::from("/tmp/unixnotis-test.ogg")),
+        SoundSource::File(file) => assert_eq!(file.path(), path),
         SoundSource::Name(name) => panic!("file fallback should win over event name: {name}"),
     }
 

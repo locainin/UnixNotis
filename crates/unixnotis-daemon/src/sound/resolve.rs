@@ -1,23 +1,34 @@
 use std::collections::HashMap;
 use std::fs;
+use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 
 use tracing::{debug, info};
+use unixnotis_core::filesystem::{open_regular_file, ContainedPath};
 use unixnotis_core::{util, Config};
 use zbus::zvariant::OwnedValue;
 
-use super::SoundSource;
+use super::{SoundFile, SoundSource};
 
 const MAX_SOUND_FILE_BYTES: u64 = 16 * 1024 * 1024;
+const SOUND_HEADER_PROBE_BYTES: usize = 4 * 1024;
 
-pub(super) fn resolve_hint_sound(hints: &HashMap<String, OwnedValue>) -> Option<SoundSource> {
-    // sound-file has priority because it is the most explicit payload
-    if let Some(file) = hint_string(hints, "sound-file") {
-        let path = resolve_sound_file(&file);
-        if validate_sound_file_path(&path) {
-            return Some(SoundSource::File(path));
+pub(super) fn resolve_hint_sound(
+    hints: &HashMap<String, OwnedValue>,
+    allow_file_hints: bool,
+    allowed_dirs: &[PathBuf],
+) -> Option<SoundSource> {
+    // File hints cross into host decoders and stay disabled unless explicitly allowed
+    if allow_file_hints {
+        if let Some(file) = hint_string(hints, "sound-file") {
+            let path = resolve_sound_file(&file);
+            if path_is_allowed(&path, allowed_dirs) {
+                if let Some(file) = open_sound_file(&path, true) {
+                    return Some(SoundSource::File(file));
+                }
+            }
+            debug!(path = %path.display(), "ignoring invalid sound-file hint");
         }
-        debug!(path = %path.display(), "ignoring invalid sound-file hint");
     }
     // Fall back to event name when file path is missing or invalid
     if let Some(name) = hint_string(hints, "sound-name") {
@@ -26,19 +37,42 @@ pub(super) fn resolve_hint_sound(hints: &HashMap<String, OwnedValue>) -> Option<
     None
 }
 
-pub(super) fn resolve_default_file(config: &Config) -> Option<PathBuf> {
+pub(super) fn resolve_default_file(
+    config: &Config,
+    config_dir: Option<&Path>,
+) -> Option<SoundFile> {
     // First choice is an explicit default file
     if let Some(path) = config.sound.default_file.as_ref() {
-        let resolved = resolve_config_path(path).or_else(|| Some(PathBuf::from(path)));
-        return resolved.filter(|path| validate_sound_file_path(path));
+        let resolved = resolve_config_path(path, config_dir);
+        return resolved.and_then(|path| open_sound_file(&path, false));
     }
     // Second choice is scanning a configured directory for the first valid audio file
     if let Some(dir) = config.sound.default_dir.as_ref() {
-        if let Some(path) = resolve_config_path(dir).or_else(|| Some(PathBuf::from(dir))) {
+        if let Some(path) = resolve_config_path(dir, config_dir) {
             return choose_first_sound_file(&path);
         }
     }
     None
+}
+
+pub(super) fn resolve_config_dir(config_path: Option<&Path>) -> Option<PathBuf> {
+    // An explicit daemon path owns relative assets even when the environment selects another file
+    let config_path = config_path
+        .map(Path::to_path_buf)
+        .or_else(|| Config::active_config_path().ok())?;
+    config_path.parent().map(Path::to_path_buf)
+}
+
+pub(super) fn resolve_allowed_file_hint_dirs(
+    config: &Config,
+    config_dir: Option<&Path>,
+) -> Vec<PathBuf> {
+    config
+        .sound
+        .allowed_file_hint_dirs
+        .iter()
+        .filter_map(|path| resolve_config_path(path, config_dir))
+        .collect()
 }
 
 pub(super) fn hint_bool(hints: &HashMap<String, OwnedValue>, key: &str) -> Option<bool> {
@@ -97,18 +131,18 @@ fn percent_decode_path(value: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-fn resolve_config_path(value: &str) -> Option<PathBuf> {
+fn resolve_config_path(value: &str, config_dir: Option<&Path>) -> Option<PathBuf> {
     // Expand "~" so config remains short and portable
     let path = util::expand_tilde(value);
     let path = PathBuf::from(path.as_ref());
     if path.is_absolute() {
         return Some(path);
     }
-    let base = Config::default_config_dir().ok()?;
+    let base = config_dir?;
     Some(base.join(path))
 }
 
-fn choose_first_sound_file(dir: &Path) -> Option<PathBuf> {
+fn choose_first_sound_file(dir: &Path) -> Option<SoundFile> {
     // Missing directory is treated as no default instead of an error path
     let entries = fs::read_dir(dir).ok()?;
     let mut candidates = Vec::new();
@@ -121,15 +155,18 @@ fn choose_first_sound_file(dir: &Path) -> Option<PathBuf> {
     }
     // Deterministic ordering keeps startup behavior stable between runs
     candidates.sort();
-    let selected = candidates.into_iter().next();
-    if let Some(path) = selected.as_ref() {
+    for path in candidates {
+        let Some(selected) = open_sound_file(&path, false) else {
+            continue;
+        };
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("sound file");
         info!(name, "using default notification sound file");
+        return Some(selected);
     }
-    selected
+    None
 }
 
 fn has_audio_extension(path: &Path) -> bool {
@@ -143,12 +180,58 @@ fn has_audio_extension(path: &Path) -> bool {
     )
 }
 
-fn validate_sound_file_path(path: &Path) -> bool {
-    let Ok(meta) = fs::metadata(path) else {
-        return false;
-    };
-    // Regular files with a bounded size avoid device and FIFO abuse
-    meta.is_file() && meta.len() <= MAX_SOUND_FILE_BYTES && has_audio_extension(path)
+fn open_sound_file(path: &Path, require_safe_hint_format: bool) -> Option<SoundFile> {
+    if !has_audio_extension(path) {
+        return None;
+    }
+    // One descriptor binds all checks and later playback to the same regular file
+    let file = open_regular_file(path).ok()?;
+    let metadata = file.metadata().ok()?;
+    if metadata.len() > MAX_SOUND_FILE_BYTES {
+        return None;
+    }
+    if require_safe_hint_format && !has_safe_hint_format(path, &file) {
+        return None;
+    }
+    Some(SoundFile::new(path.to_path_buf(), file))
+}
+
+fn path_is_allowed(path: &Path, allowed_dirs: &[PathBuf]) -> bool {
+    path.is_absolute()
+        && allowed_dirs
+            .iter()
+            .any(|root| ContainedPath::resolve(root, path).is_ok())
+}
+
+fn has_safe_hint_format(path: &Path, file: &fs::File) -> bool {
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default();
+    let mut header = [0u8; SOUND_HEADER_PROBE_BYTES];
+    let read = file.read_at(&mut header, 0).ok().unwrap_or(0);
+    let header = &header[..read];
+
+    if extension.eq_ignore_ascii_case("wav") {
+        return header.starts_with(b"RIFF")
+            && header.get(8..12) == Some(b"WAVE")
+            && wav_audio_format(header) == Some(1);
+    }
+    if extension.eq_ignore_ascii_case("ogg") || extension.eq_ignore_ascii_case("oga") {
+        return header.starts_with(b"OggS")
+            && header.windows(7).any(|window| window == b"\x01vorbis");
+    }
+    false
+}
+
+fn wav_audio_format(header: &[u8]) -> Option<u16> {
+    let format_offset = header.windows(4).position(|window| window == b"fmt ")?;
+    let value_start = format_offset.checked_add(8)?;
+    let bytes: [u8; 2] = header
+        .get(value_start..value_start.checked_add(2)?)?
+        .try_into()
+        .ok()?;
+    Some(u16::from_le_bytes(bytes))
 }
 
 fn hint_string(hints: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {

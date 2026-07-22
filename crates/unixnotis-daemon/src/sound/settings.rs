@@ -1,7 +1,7 @@
 //! Notification sound playback and backend selection
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -11,7 +11,11 @@ use zbus::zvariant::OwnedValue;
 
 use super::backend::{detect_backend, SoundBackend};
 use super::command::{play_with_canberra, play_with_paplay, play_with_pw_play};
-use super::resolve::{hint_bool, resolve_default_file, resolve_hint_sound};
+use super::resolve::{
+    hint_bool, resolve_allowed_file_hint_dirs, resolve_config_dir, resolve_default_file,
+    resolve_hint_sound,
+};
+use super::SoundSource;
 
 const SOUND_MIN_INTERVAL: Duration = Duration::from_millis(150);
 
@@ -21,24 +25,22 @@ pub struct SoundSettings {
     enabled: bool,
     // Detected backend that is safe to call on this machine
     backend: SoundBackend,
+    // File hints are an explicit compatibility opt-in
+    allow_file_hints: bool,
+    // Every accepted file hint must remain beneath one configured directory
+    allowed_file_hint_dirs: Vec<PathBuf>,
     // Fallback event name used by canberra-style backends
     default_name: Option<String>,
     // Fallback audio file path when hint does not supply one
-    default_file: Option<PathBuf>,
+    default_file: Option<super::SoundFile>,
     // Last successful play request used for burst throttling
     last_played: Mutex<Option<Instant>>,
 }
 
-#[derive(Debug, Clone)]
-pub enum SoundSource {
-    Name(String),
-    File(PathBuf),
-}
-
 impl SoundSettings {
     /// Build sound settings from configuration and resolve any custom paths
-    pub fn from_config(config: &Config) -> Self {
-        // Backend discovery is done once during startup to avoid repeated PATH scans
+    pub fn from_config(config: &Config, config_path: Option<&Path>) -> Self {
+        // Backend discovery is done once during startup to avoid repeated trusted-path scans
         let backend = detect_backend();
         debug!(?backend, "sound backend selected");
         if Self::should_warn_missing_backend(config.sound.enabled, backend) {
@@ -46,10 +48,14 @@ impl SoundSettings {
         }
 
         // Resolve config paths once so notification hot paths stay cheap
-        let default_file = resolve_default_file(config);
+        let config_dir = resolve_config_dir(config_path);
+        let default_file = resolve_default_file(config, config_dir.as_deref());
+        let allowed_file_hint_dirs = resolve_allowed_file_hint_dirs(config, config_dir.as_deref());
         Self {
             enabled: config.sound.enabled,
             backend,
+            allow_file_hints: config.sound.allow_file_hints,
+            allowed_file_hint_dirs,
             default_name: config.sound.default_name.clone(),
             default_file,
             last_played: Mutex::new(None),
@@ -77,7 +83,8 @@ impl SoundSettings {
         }
 
         // Hint source wins, then fallback source from config
-        let source = resolve_hint_sound(hints).or_else(|| self.default_source());
+        let source = resolve_hint_sound(hints, self.allow_file_hints, &self.allowed_file_hint_dirs)
+            .or_else(|| self.default_source());
         if let Some(source) = source {
             return self.play(source);
         }

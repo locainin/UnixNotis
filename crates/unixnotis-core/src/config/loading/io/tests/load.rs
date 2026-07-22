@@ -70,6 +70,27 @@ fn parse_returns_the_config_produced_by_the_report_pipeline() {
 }
 
 #[test]
+fn sound_file_hints_require_explicit_configuration() {
+    let defaults = Config::parse("").expect("default config should parse");
+    let enabled = Config::parse(
+        r#"
+        [sound]
+        allow_file_hints = true
+        allowed_file_hint_dirs = ["sounds", "/srv/notification-sounds"]
+        "#,
+    )
+    .expect("sound hint policy should parse");
+
+    assert!(!defaults.sound.allow_file_hints);
+    assert!(defaults.sound.allowed_file_hint_dirs.is_empty());
+    assert!(enabled.sound.allow_file_hints);
+    assert_eq!(
+        enabled.sound.allowed_file_hint_dirs,
+        ["sounds", "/srv/notification-sounds"]
+    );
+}
+
+#[test]
 fn load_from_path_rejects_oversized_config_before_parsing() {
     assert_eq!(MAX_CONFIG_BYTES, EXPECTED_MAX_CONFIG_BYTES as u64);
     let root = test_root("load-oversized");
