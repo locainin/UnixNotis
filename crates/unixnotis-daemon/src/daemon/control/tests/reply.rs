@@ -4,6 +4,7 @@ use std::time::Duration;
 use chrono::Utc;
 use futures_util::TryStreamExt;
 use unixnotis_core::{InlineReply, Notification, NotificationImage, Urgency};
+use zbus::fdo::DBusProxy;
 use zbus::message::Type;
 use zbus::zvariant::OwnedValue;
 use zbus::{Connection, MatchRule, MessageStream};
@@ -215,7 +216,25 @@ async fn submit_inline_reply_rejects_sender_that_no_longer_owns_bus_name() {
             .notification
             .id
     };
+    let sender_name = sender.unique_name().expect("sender unique name").clone();
     sender.close().await.expect("close sender connection");
+    let proxy = DBusProxy::new(state.connection())
+        .await
+        .expect("create bus proxy");
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            let has_owner = proxy
+                .name_has_owner(sender_name.clone().into())
+                .await
+                .expect("query sender ownership");
+            if !has_owner {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("bus should release the closed sender name");
 
     let error = ControlServer::new(state.clone())
         .submit_inline_reply(id, "Anyone there?")
