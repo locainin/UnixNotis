@@ -2,7 +2,7 @@
 //!
 //! These helpers are pure and easy to unit test in isolation
 
-use unixnotis_core::{INHIBIT_SCOPE_ALL, INHIBIT_SCOPE_POPUPS};
+use unixnotis_core::{util, INHIBIT_SCOPE_ALL, INHIBIT_SCOPE_POPUPS};
 
 const MAX_INHIBITOR_REASON_BYTES: usize = 256;
 
@@ -13,7 +13,7 @@ pub(super) fn sanitize_inhibit_reason(reason: &str) -> String {
         // Keep an explicit default for empty reasons to avoid blank UI rows
         return "manual".to_string();
     }
-    truncate_utf8_bytes(trimmed, MAX_INHIBITOR_REASON_BYTES)
+    util::truncate_utf8_bytes(trimmed, MAX_INHIBITOR_REASON_BYTES)
 }
 
 pub(super) fn normalize_inhibit_scope(scope: u32) -> zbus::fdo::Result<u32> {
@@ -30,27 +30,4 @@ pub(super) fn normalize_inhibit_scope(scope: u32) -> zbus::fdo::Result<u32> {
         ));
     }
     Ok(normalized)
-}
-
-fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
-    if max_bytes == 0 {
-        return String::new();
-    }
-    if value.len() <= max_bytes {
-        return value.to_string();
-    }
-
-    // Back up only across the code point that crosses the byte limit
-    let mut end = max_bytes;
-    for _ in 0..3 {
-        if value.is_char_boundary(end) {
-            break;
-        }
-        end -= 1;
-    }
-    debug_assert!(
-        value.is_char_boundary(end),
-        "bounded backup must reach the current UTF-8 character boundary"
-    );
-    value[..end].to_string()
 }
