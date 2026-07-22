@@ -4,8 +4,9 @@ use gtk::gdk;
 use gtk::prelude::*;
 
 use crate::control::UiCommand;
-use crate::ui::panel::PanelWidgets;
 use crate::ui::try_send_command;
+
+use super::super::widgets::PanelWidgets;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum KeyboardPanelAction {

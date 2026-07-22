@@ -20,8 +20,8 @@ pub struct UiState {
     pub(super) config_path: std::path::PathBuf,
     pub(super) css: CssManager,
     // This owner must drop before the panel so its manually parented popover can detach
-    pub(super) dnd_duration_menu: panel::DndDurationMenu,
-    pub(super) panel: panel::PanelWidgets,
+    pub(super) dnd_duration_menu: panel::header::dnd::DndDurationMenu,
+    pub(super) panel: panel::widgets::PanelWidgets,
     pub(super) list: notifications::NotificationList,
     // Shared resolver keeps icon cache and inflight decode tracking centralized
     pub(super) icon_resolver: Rc<icons::IconResolver>,
@@ -29,7 +29,7 @@ pub struct UiState {
     pub(super) widget_icon_resolver: IconAssetResolver,
     pub(super) dnd_guard: Rc<Cell<bool>>,
     // One countdown owns its deadline so completed GLib sources are never removed twice
-    pub(super) dnd_expiration_source: Option<panel::DndCountdown>,
+    pub(super) dnd_expiration_source: Option<panel::header::dnd::DndCountdown>,
     pub(super) search_toggle_guard: Rc<Cell<bool>>,
     pub(super) panel_visible: bool,
     pub(super) panel_visible_flag: Arc<AtomicBool>,

@@ -11,9 +11,9 @@ use unixnotis_core::{
     PanelConfig,
 };
 
+use super::super::widgets::PanelWidgets;
 use crate::control::UiCommand;
 use crate::ui::panel::behavior::input::ClickCooldown;
-use crate::ui::panel::PanelWidgets;
 use crate::ui::try_send_command;
 
 const CONTROL_CLICK_GUARD_MS: u64 = 180;

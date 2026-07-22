@@ -148,7 +148,7 @@ impl UiState {
                 self.work_area = reserved;
                 // Re-apply panel sizing only when the work area actually changes
                 // Avoids redundant calls that can cascade into GTK relayout passes
-                panel::apply_panel_config(&self.panel, &self.config, self.work_area);
+                panel::geometry::apply_panel_config(&self.panel, &self.config, self.work_area);
                 let message = format!("work area update: {:?}", self.work_area);
                 self.log_debug(PanelDebugLevel::Info, move || message);
             }

@@ -94,7 +94,11 @@ impl UiState {
                 self.work_area = crate::ui::hyprland::reserved_work_area_sync(
                     self.config.panel.output.as_deref(),
                 );
-                crate::ui::panel::apply_panel_config(&self.panel, &self.config, self.work_area);
+                crate::ui::panel::geometry::apply_panel_config(
+                    &self.panel,
+                    &self.config,
+                    self.work_area,
+                );
             }
             // Only show the window after geometry is correct to avoid visible jitter
             self.panel.window.set_visible(true);
@@ -114,7 +118,7 @@ impl UiState {
             // Hide first so any teardown work does not trigger visible reflow
             self.panel.window.set_visible(false);
             // Reset transient search UI so each open starts from the full notification list
-            crate::ui::panel::set_search_open(
+            crate::ui::panel::header::search::set_search_open(
                 &self.panel.header.actions.search_toggle,
                 &self.panel.header.search.revealer,
                 &self.panel.header.search.entry,

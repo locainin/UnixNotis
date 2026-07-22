@@ -19,7 +19,7 @@ impl UiState {
 
         self.panel.sections.media_container.set_visible(true);
         // The resolved request stays stable even when a child reports a wider natural allocation
-        let panel_width = super::super::panel::requested_panel_width(&self.panel.root);
+        let panel_width = super::super::panel::geometry::requested_panel_width(&self.panel.root);
         if self.media_layout_changed(config) {
             self.rebuild_media_widget(config, panel_width);
             return;

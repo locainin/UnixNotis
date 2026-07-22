@@ -6,8 +6,9 @@ use std::sync::Arc;
 use gtk::prelude::*;
 
 use crate::control::UiCommand;
-use crate::ui::panel::PanelWidgets;
 use crate::ui::{hyprland, try_send_command, UiStateInit};
+
+use super::super::widgets::PanelWidgets;
 
 fn connect_blur_close(
     command_tx: tokio::sync::mpsc::Sender<UiCommand>,

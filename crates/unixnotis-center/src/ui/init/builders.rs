@@ -7,7 +7,7 @@ use gtk::prelude::*;
 use super::super::{icons, media, notifications, panel, widgets, UiStateInit};
 
 pub(super) fn build_notification_list(
-    panel: &panel::PanelWidgets,
+    panel: &panel::widgets::PanelWidgets,
     init: &UiStateInit,
     icon_resolver: Rc<icons::IconResolver>,
 ) -> notifications::NotificationList {
@@ -37,10 +37,10 @@ pub(super) fn build_notification_list(
 }
 
 pub(super) fn build_media_widget(
-    panel: &panel::PanelWidgets,
+    panel: &panel::widgets::PanelWidgets,
     init: &UiStateInit,
 ) -> Option<media::MediaWidget> {
-    let panel_width = panel::requested_panel_width(&panel.root);
+    let panel_width = panel::geometry::requested_panel_width(&panel.root);
     let media = init.media_handle.as_ref().map(|handle| {
         media::MediaWidget::new(
             &panel.sections.media_container,
@@ -68,7 +68,7 @@ pub(super) struct ExtraWidgets {
 }
 
 pub(super) fn build_widget_sections(
-    panel: &panel::PanelWidgets,
+    panel: &panel::widgets::PanelWidgets,
     init: &UiStateInit,
     icon_resolver: &unixnotis_core::IconAssetResolver,
 ) -> ExtraWidgets {
@@ -102,7 +102,7 @@ pub(super) fn icon_resolver_for_widgets(
     }
 }
 
-pub(super) fn has_visible_widget_section(panel: &panel::PanelWidgets) -> bool {
+pub(super) fn has_visible_widget_section(panel: &panel::widgets::PanelWidgets) -> bool {
     // Empty-state spacing depends on whether any upper panel section is visible
     panel.sections.quick_controls.get_visible()
         || panel.sections.media_container.get_visible()
