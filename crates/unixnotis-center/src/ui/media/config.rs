@@ -107,3 +107,7 @@ impl UiState {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/config.rs"]
+mod tests;
