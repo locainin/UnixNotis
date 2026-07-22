@@ -28,15 +28,18 @@ pub enum RemoveSymlinkOutcome {
 /// Returns an error when a path component is unsafe, the target is not a regular file, or the
 /// unlink or parent-directory synchronization fails
 pub fn remove_regular_file(path: &Path) -> io::Result<bool> {
+    // Missing parents mean the requested file is already absent
     let Some((parent_fd, file_name)) = existing_parent(path)? else {
         return Ok(false);
     };
+    // Final validation distinguishes regular files from links and special objects
     match validate_existing_target(&parent_fd, &file_name) {
         Ok(()) => {}
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(error),
     }
 
+    // Unlink and directory sync use the same retained parent descriptor
     unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
     sync_directory(&parent_fd)?;
     Ok(true)
@@ -52,6 +55,7 @@ pub fn remove_symlink(path: &Path) -> io::Result<bool> {
     let Some((parent_fd, file_name)) = existing_parent(path)? else {
         return Ok(false);
     };
+    // Reading the stored target proves the final entry is a link without following it
     match read_symlink_at(&parent_fd, &file_name) {
         Ok(_target) => {}
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
@@ -76,6 +80,7 @@ pub fn remove_symlink_if_target(
     let Some((parent_fd, file_name)) = existing_parent(path)? else {
         return Ok(RemoveSymlinkOutcome::Missing);
     };
+    // Capture the exact stored bytes before comparing ownership expectations
     let actual_target = match read_symlink_at(&parent_fd, &file_name) {
         Ok(target) => target,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -84,15 +89,18 @@ pub fn remove_symlink_if_target(
         Err(error) => return Err(error),
     };
     if actual_target != expected_target {
+        // Mismatched links are user state and remain untouched
         return Ok(RemoveSymlinkOutcome::TargetMismatch(actual_target));
     }
 
+    // Only an exact target match reaches the unlink boundary
     unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
     sync_directory(&parent_fd)?;
     Ok(RemoveSymlinkOutcome::Removed)
 }
 
 fn existing_parent(path: &Path) -> io::Result<Option<(std::os::fd::OwnedFd, OsString)>> {
+    // The optional form keeps idempotent removal separate from unsafe-shape failures
     match open_parent_existing(path) {
         Ok(parent) => Ok(Some(parent)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),

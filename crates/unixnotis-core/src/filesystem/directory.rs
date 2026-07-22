@@ -91,6 +91,7 @@ fn open_parent_with(
     path: &Path,
     missing_directory: MissingDirectory,
 ) -> io::Result<(OwnedFd, OsString)> {
+    // Keeping the final name separate makes every later operation descriptor-relative
     let file_name = path
         .file_name()
         .filter(|name| !name.is_empty())
@@ -108,13 +109,16 @@ fn open_directory_path(
     path: &Path,
     missing_directory: MissingDirectory,
 ) -> io::Result<(OwnedFd, bool)> {
+    // Absolute and relative paths begin from different trusted anchors
     let mut directory_fd = open_anchor(path)?;
     let mut created = false;
 
     for component in path.components() {
         match component {
+            // Anchors already account for root and current-directory components
             Component::Prefix(_) | Component::RootDir | Component::CurDir => {}
             Component::ParentDir => {
+                // Upward traversal would break the beneath policy of the current descriptor
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "filesystem path cannot contain parent traversal",
@@ -154,6 +158,7 @@ fn open_directory_component(
             if error.kind() == io::ErrorKind::NotFound
                 && matches!(missing_directory, MissingDirectory::Create(_)) =>
         {
+            // Creation is attempted only after a no-follow open proves the component absent
             let MissingDirectory::Create(mode) = missing_directory else {
                 unreachable!("guard requires directory creation mode");
             };
@@ -170,6 +175,7 @@ fn create_directory_component(
 ) -> io::Result<(OwnedFd, bool)> {
     let created = match mkdirat(parent_fd, name, file_mode(mode)) {
         Ok(()) => true,
+        // A concurrent creator still has to pass the same no-follow directory open below
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => false,
         Err(error) => return Err(error.into()),
     };
@@ -184,6 +190,7 @@ fn create_directory_component(
 }
 
 fn open_directory_at(parent_fd: &OwnedFd, name: &OsStr) -> io::Result<OwnedFd> {
+    // NOFOLLOW covers the final component while resolve flags cover every nested lookup
     openat2(
         parent_fd,
         name,
@@ -197,6 +204,7 @@ fn open_directory_at(parent_fd: &OwnedFd, name: &OsStr) -> io::Result<OwnedFd> {
 }
 
 fn open_target_directory(path: &Path) -> io::Result<Option<(OwnedFd, OsString, OwnedFd)>> {
+    // Removal never creates missing parents as a side effect
     let (parent_fd, file_name) = match open_parent_existing(path) {
         Ok(parent) => parent,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -210,6 +218,7 @@ fn open_target_directory(path: &Path) -> io::Result<Option<(OwnedFd, OsString, O
 }
 
 fn remove_directory_contents(directory_fd: &OwnedFd) -> io::Result<()> {
+    // Dir reads from the retained descriptor even if the visible pathname changes later
     let mut entries = Dir::read_from(directory_fd)?;
     while let Some(entry) = entries.read() {
         let entry = entry?;
@@ -220,9 +229,11 @@ fn remove_directory_contents(directory_fd: &OwnedFd) -> io::Result<()> {
         let stat = statat(directory_fd, name, AtFlags::SYMLINK_NOFOLLOW)?;
         let file_type = FileType::from_raw_mode(stat.st_mode);
         if file_type.is_file() {
+            // Regular children can be unlinked without opening their contents
             unlinkat(directory_fd, name, AtFlags::empty())?;
             fsync(directory_fd)?;
         } else if file_type.is_dir() {
+            // Child recursion receives another no-follow descriptor before deleting anything
             let child_fd = open_directory_at(directory_fd, OsStr::from_bytes(name.to_bytes()))?;
             remove_directory_contents(&child_fd)?;
             drop(child_fd);

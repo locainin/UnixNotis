@@ -29,9 +29,12 @@ pub enum CreateSymlinkOutcome {
 /// Returns an error when a parent crosses a link, the destination is an existing non-link, or link
 /// creation and parent-directory synchronization fail
 pub fn create_symlink_if_missing(path: &Path, target: &Path) -> io::Result<CreateSymlinkOutcome> {
+    // Parent creation and lookup stay beneath one no-follow directory walk
     let (parent_fd, file_name) = open_parent(path)?;
     match read_symlink_at(&parent_fd, &file_name) {
+        // Exact links are idempotent and avoid a new directory entry
         Ok(existing) if existing == target => return Ok(CreateSymlinkOutcome::Unchanged),
+        // A different link is preserved for the caller to report
         Ok(existing) => return Ok(CreateSymlinkOutcome::TargetMismatch(existing)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
@@ -70,11 +73,14 @@ pub fn replace_symlink_atomic(path: &Path, target: &Path) -> io::Result<bool> {
         Err(error) => return Err(error),
     }
 
+    // The replacement is prepared under an exclusive sibling name
     let temp_name = reserve_temp_symlink(&parent_fd, &file_name, target)?;
+    // Revalidation prevents known non-link targets from being overwritten
     if let Err(error) = validate_symlink_or_missing(&parent_fd, &file_name) {
         let _ = unlinkat(&parent_fd, &temp_name, AtFlags::empty());
         return Err(error);
     }
+    // One rename publishes the complete link without an absent-target window
     if let Err(error) = renameat(&parent_fd, &temp_name, &parent_fd, &file_name) {
         let _ = unlinkat(&parent_fd, &temp_name, AtFlags::empty());
         return Err(error.into());
@@ -90,6 +96,7 @@ pub fn replace_symlink_atomic(path: &Path, target: &Path) -> io::Result<bool> {
 /// Returns an error when a parent crosses a link, the target is not a symbolic link, or the link
 /// cannot be read
 pub fn read_symlink(path: &Path) -> io::Result<Option<PathBuf>> {
+    // Inspection never creates a missing parent directory
     let (parent_fd, file_name) = match open_parent_existing(path) {
         Ok(parent) => parent,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -112,6 +119,7 @@ fn reserve_temp_symlink(
     file_name: &OsString,
     target: &Path,
 ) -> io::Result<OsString> {
+    // Exclusive candidates make planted temporary names harmless collisions
     for temp_name in temp_candidates(file_name) {
         match symlinkat(target, parent_fd, &temp_name) {
             Ok(()) => return Ok(temp_name),
@@ -126,6 +134,7 @@ fn reserve_temp_symlink(
 }
 
 fn validate_symlink_or_missing(parent_fd: &OwnedFd, file_name: &OsStr) -> io::Result<()> {
+    // Regular files, directories, and special objects fail through readlinkat
     match read_symlink_at(parent_fd, file_name) {
         Ok(_target) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),

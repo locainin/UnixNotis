@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use crate::Config;
+use crate::{Config, DEFAULT_BASE_CSS};
 
 use super::support::test_root;
 
@@ -90,6 +90,105 @@ fn ensure_theme_files_keeps_legacy_style_when_backup_already_exists() {
         fs::read_to_string(root.join("style.css.bak")).expect("backup css"),
         "/* keep backup */"
     );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+#[cfg(unix)]
+fn ensure_theme_files_ignores_a_legacy_symlink_and_keeps_its_target() {
+    let root = test_root("theme-legacy-link");
+    let protected = root.join("protected.css");
+    let legacy = root.join("style.css");
+    fs::create_dir_all(&root).expect("theme root");
+    fs::write(&protected, "/* protected */").expect("protected css");
+    std::os::unix::fs::symlink(&protected, &legacy).expect("legacy link");
+
+    let config = Config::default();
+    let paths = config
+        .resolve_theme_paths_from(&root)
+        .expect("theme paths should resolve");
+    config
+        .ensure_theme_files(&paths)
+        .expect("theme files should use defaults");
+
+    assert_eq!(
+        fs::read_to_string(&paths.base_css).expect("base css"),
+        DEFAULT_BASE_CSS
+    );
+    assert_eq!(
+        fs::read_to_string(&protected).expect("protected css"),
+        "/* protected */"
+    );
+    assert!(fs::symlink_metadata(&legacy)
+        .expect("legacy link remains")
+        .file_type()
+        .is_symlink());
+    assert!(!root.join("style.css.bak").exists());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+#[cfg(unix)]
+fn ensure_theme_files_preserves_a_dangling_backup_link_and_legacy_source() {
+    let root = test_root("theme-dangling-backup-link");
+    let legacy = root.join("style.css");
+    let backup = root.join("style.css.bak");
+    fs::create_dir_all(&root).expect("theme root");
+    fs::write(&legacy, "/* legacy */").expect("legacy css");
+    std::os::unix::fs::symlink("missing.css", &backup).expect("dangling backup link");
+
+    let config = Config::default();
+    let paths = config
+        .resolve_theme_paths_from(&root)
+        .expect("theme paths should resolve");
+    config
+        .ensure_theme_files(&paths)
+        .expect("theme files should be provisioned");
+
+    assert_eq!(
+        fs::read_to_string(&paths.base_css).expect("base css"),
+        "/* legacy */"
+    );
+    assert_eq!(
+        fs::read_to_string(&legacy).expect("legacy css"),
+        "/* legacy */"
+    );
+    assert_eq!(
+        fs::read_link(&backup).expect("backup link remains"),
+        std::path::Path::new("missing.css")
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn ensure_theme_files_ignores_an_oversized_legacy_theme() {
+    const OVERSIZED_LEGACY_BYTES: usize = 16 * 1024 * 1024 + 1;
+
+    let root = test_root("theme-oversized-legacy");
+    let legacy = root.join("style.css");
+    fs::create_dir_all(&root).expect("theme root");
+    fs::write(&legacy, vec![b'x'; OVERSIZED_LEGACY_BYTES]).expect("oversized legacy css");
+
+    let config = Config::default();
+    let paths = config
+        .resolve_theme_paths_from(&root)
+        .expect("theme paths should resolve");
+    config
+        .ensure_theme_files(&paths)
+        .expect("theme files should use defaults");
+
+    assert_eq!(
+        fs::read_to_string(&paths.base_css).expect("base css"),
+        DEFAULT_BASE_CSS
+    );
+    assert_eq!(
+        fs::metadata(&legacy).expect("legacy css remains").len(),
+        OVERSIZED_LEGACY_BYTES as u64
+    );
+    assert!(!root.join("style.css.bak").exists());
 
     let _ = fs::remove_dir_all(root);
 }
