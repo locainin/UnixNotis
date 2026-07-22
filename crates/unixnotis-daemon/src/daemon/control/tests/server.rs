@@ -2,14 +2,13 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use chrono::Utc;
-use unixnotis_core::{CloseReason, Config, Notification, NotificationImage, Urgency};
+use unixnotis_core::{CloseReason, Notification, NotificationImage, Urgency};
 use zbus::zvariant::OwnedValue;
 use zbus::Message;
 
 use super::super::ControlServer;
 use crate::expire::{ExpirationCommand, ExpirationScheduler};
-use crate::store::NotificationStore;
-use crate::test_support::{daemon_state_for_test, TempRoot};
+use crate::test_support::daemon_state_for_test;
 
 fn notification(summary: &str) -> Notification {
     Notification {
@@ -109,116 +108,6 @@ async fn clear_saved_history_removes_archived_notifications() {
         .list_history()
         .into_iter()
         .all(|view| view.id != id));
-}
-
-#[tokio::test]
-async fn apply_dnd_state_rolls_back_when_persistence_fails() {
-    let state = daemon_state_for_test(false).await;
-    let root = TempRoot::new("dnd-persist-failure");
-    let state_dir = root.join("state");
-    std::fs::create_dir_all(&state_dir).expect("create state dir");
-    std::fs::write(state_dir.join("unixnotis"), "not a directory").expect("block dnd parent");
-    {
-        let mut store = state.store.lock().await;
-        *store = NotificationStore::new_with_state_dir(Config::default(), state_dir);
-    }
-    let server = ControlServer::new(state.clone());
-
-    let error = server
-        .apply_dnd_state(true)
-        .await
-        .expect_err("persistence failure should be reported");
-
-    assert!(error.to_string().contains("failed to persist"));
-    assert!(!state.store.lock().await.dnd_enabled());
-}
-
-#[tokio::test]
-async fn apply_toggle_dnd_persists_successful_state_change() {
-    let state = daemon_state_for_test(false).await;
-    let root = TempRoot::new("dnd-toggle-success");
-    let state_dir = root.join("state");
-    {
-        let mut store = state.store.lock().await;
-        *store = NotificationStore::new_with_state_dir(Config::default(), state_dir.clone());
-    }
-    let server = ControlServer::new(state.clone());
-
-    server
-        .apply_toggle_dnd()
-        .await
-        .expect("toggle should persist");
-
-    assert!(state.store.lock().await.dnd_enabled());
-    let persisted = std::fs::read_to_string(state_dir.join("unixnotis").join("state.json"))
-        .expect("read persisted dnd state");
-    assert!(persisted.contains("\"dnd_enabled\":true"));
-}
-
-#[tokio::test]
-async fn apply_timed_dnd_validates_and_persists_a_future_deadline() {
-    let state = daemon_state_for_test(false).await;
-    let root = TempRoot::new("dnd-timed-success");
-    let state_dir = root.join("state");
-    {
-        let mut store = state.store.lock().await;
-        *store = NotificationStore::new_with_state_dir(Config::default(), state_dir.clone());
-    }
-    let server = ControlServer::new(state.clone());
-    let expires_at = Utc::now().timestamp() + 3_600;
-
-    server
-        .apply_dnd_until(expires_at)
-        .await
-        .expect("timed DND should persist");
-
-    let store = state.store.lock().await;
-    assert!(store.dnd_enabled());
-    assert_eq!(store.dnd_expires_at(), Some(expires_at));
-    drop(store);
-    let persisted = std::fs::read_to_string(state_dir.join("unixnotis").join("state.json"))
-        .expect("read persisted timed DND state");
-    assert!(persisted.contains(&format!("\"expires_at\":{expires_at}")));
-}
-
-#[tokio::test]
-async fn apply_timed_dnd_rejects_past_and_excessive_deadlines_without_mutation() {
-    let state = daemon_state_for_test(false).await;
-    let server = ControlServer::new(state.clone());
-    let now = Utc::now().timestamp();
-
-    assert!(server.apply_dnd_until(now - 1).await.is_err());
-    assert!(server
-        .apply_dnd_until(now + 367 * 24 * 60 * 60)
-        .await
-        .is_err());
-
-    let store = state.store.lock().await;
-    assert!(!store.dnd_enabled());
-    assert_eq!(store.dnd_expires_at(), None);
-}
-
-#[tokio::test]
-async fn dnd_updates_wait_for_the_prior_persistence_commit() {
-    let state = daemon_state_for_test(false).await;
-    let guard = state.lock_dnd_write().await;
-    let server = ControlServer::new(state.clone());
-    let mut update = Box::pin(server.apply_dnd_state(true));
-
-    assert!(
-        tokio::time::timeout(Duration::from_millis(25), &mut update)
-            .await
-            .is_err(),
-        "later DND update should wait for the current writer"
-    );
-    assert!(!state.store.lock().await.dnd_enabled());
-
-    drop(guard);
-    tokio::time::timeout(Duration::from_millis(500), update)
-        .await
-        .expect("DND update should resume after the prior commit")
-        .expect("DND update should succeed");
-    assert!(state.store.lock().await.dnd_enabled());
 }
 
 #[tokio::test]

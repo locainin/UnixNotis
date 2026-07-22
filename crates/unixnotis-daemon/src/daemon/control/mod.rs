@@ -1,7 +1,6 @@
 //! D-Bus server for com.unixnotis.Control
 
 mod action;
-mod dnd;
 mod inhibit;
 mod panel;
 mod query;
