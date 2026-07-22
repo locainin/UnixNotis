@@ -1,5 +1,6 @@
 use super::{
-    marquee_can_start, marquee_should_stop, marquee_should_tick, MarqueeLabel, MarqueeState,
+    marquee_can_start, marquee_should_stop, marquee_should_tick, marquee_text_needs_update,
+    MarqueeLabel, MarqueeState,
 };
 
 fn ready_marquee_state() -> MarqueeState {
@@ -63,6 +64,13 @@ fn marquee_stays_idle_when_text_fits_both_limits() {
     assert!(!marquee_should_tick(32, 17, 80, 81));
     assert!(!marquee_should_tick(17, 17, 80, 81));
     assert!(!marquee_should_tick(32, 17, 81, 81));
+}
+
+#[test]
+fn marquee_text_fast_path_skips_identical_updates_unless_forced() {
+    assert!(!marquee_text_needs_update("Track", "Track", false));
+    assert!(marquee_text_needs_update("Track", "Track", true));
+    assert!(marquee_text_needs_update("Track", "Next track", false));
 }
 
 #[test]
