@@ -2,10 +2,12 @@
 
 use std::fs;
 use std::io::ErrorKind;
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
-use unixnotis_core::filesystem::write_file_atomic;
+use unixnotis_core::filesystem::{
+    create_directory_all, remove_directory_tree, remove_empty_directory, write_file_atomic,
+};
 
 use crate::paths::format_with_home;
 use crate::service_manager::{
@@ -57,29 +59,16 @@ pub(in crate::actions::install::service) fn write_managed_directory(path: &Path)
 pub(in crate::actions::install::service) fn ensure_directory_without_symlink(
     path: &Path,
 ) -> Result<()> {
-    // Build the path one component at a time so an existing parent link cannot redirect writes
-    let mut current = PathBuf::new();
-    for component in path.components() {
-        match component {
-            // Windows prefixes are kept for correctness even though the installer is Unix-oriented
-            Component::Prefix(prefix) => current.push(prefix.as_os_str()),
-            Component::RootDir => current.push(component.as_os_str()),
-            // Current-directory components do not change the resolved location
-            Component::CurDir => {}
-            Component::ParentDir => {
-                // Parent traversal would make artifact ownership impossible to reason about
-                return Err(anyhow!(
-                    "refusing parent traversal in service artifact path {}",
-                    format_with_home(path)
-                ));
-            }
-            Component::Normal(part) => {
-                current.push(part);
-                inspect_or_create_directory_component(path, &current)?;
-            }
-        }
-    }
-    Ok(())
+    // Core keeps one descriptor per component so parent swaps cannot redirect creation
+    create_directory_all(path, 0o755)
+        .map(|_created| ())
+        .map_err(|error| {
+            anyhow!(
+                "refusing unsafe service directory path {}: {}",
+                format_with_home(path),
+                error
+            )
+        })
 }
 
 pub(in crate::actions::install::service) fn service_artifact_path_is_present(path: &Path) -> bool {
@@ -106,7 +95,16 @@ pub(in crate::actions::install::service) fn remove_empty_service_directory(
         ));
     }
 
-    fs::remove_dir(path).with_context(|| format!("failed to remove {}", format_with_home(path)))
+    if remove_empty_directory(path)
+        .with_context(|| format!("failed to remove {}", format_with_home(path)))?
+    {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "service directory disappeared before removal at {}",
+            format_with_home(path)
+        ))
+    }
 }
 
 pub(in crate::actions::install::service) fn remove_managed_directory(path: &Path) -> Result<()> {
@@ -129,31 +127,16 @@ pub(in crate::actions::install::service) fn remove_managed_directory(path: &Path
         ));
     }
 
-    remove_managed_directory_tree(path)
-        .with_context(|| format!("failed to remove {}", format_with_home(path)))
-}
-
-fn inspect_or_create_directory_component(full_path: &Path, current: &Path) -> Result<()> {
-    // Every component is checked with symlink_metadata so the link itself is inspected
-    match fs::symlink_metadata(current) {
-        // symlink_metadata checks the path itself, not the linked target
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(anyhow!(
-            "refusing symlink parent component {}",
-            format_with_home(current)
-        )),
-        Ok(metadata) if metadata.is_dir() => Ok(()),
-        Ok(_) => Err(anyhow!(
-            "refusing non-directory parent component {}",
-            format_with_home(current)
-        )),
-        // Missing components are created one at a time to avoid create_dir_all following links
-        Err(err) if err.kind() == ErrorKind::NotFound => fs::create_dir(current)
-            .with_context(|| format!("failed to create {}", format_with_home(current))),
-        Err(err) => {
-            Err(err).with_context(|| format!("failed to inspect {}", format_with_home(current)))
-        }
+    if remove_directory_tree(path)
+        .with_context(|| format!("failed to remove {}", format_with_home(path)))?
+    {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "managed service directory disappeared before removal at {}",
+            format_with_home(path)
+        ))
     }
-    .with_context(|| format!("while preparing {}", format_with_home(full_path)))
 }
 
 fn ensure_artifact_directory_path(path: &Path) -> Result<bool> {
@@ -173,54 +156,4 @@ fn ensure_artifact_directory_path(path: &Path) -> Result<bool> {
             Err(err).with_context(|| format!("failed to inspect {}", format_with_home(path)))
         }
     }
-}
-
-fn remove_managed_directory_tree(path: &Path) -> Result<()> {
-    // Each level is inspected before reading children so symlink swaps do not get followed
-    let metadata = fs::symlink_metadata(path)
-        .with_context(|| format!("failed to inspect {}", format_with_home(path)))?;
-    if metadata.file_type().is_symlink() {
-        return Err(anyhow!(
-            "refusing symlink inside managed service directory at {}",
-            format_with_home(path)
-        ));
-    }
-    if !metadata.file_type().is_dir() {
-        return Err(anyhow!(
-            "refusing non-directory inside managed service directory at {}",
-            format_with_home(path)
-        ));
-    }
-
-    for entry in
-        fs::read_dir(path).with_context(|| format!("failed to read {}", format_with_home(path)))?
-    {
-        let entry = entry.with_context(|| format!("failed to read {}", format_with_home(path)))?;
-        let child = entry.path();
-        let child_metadata = fs::symlink_metadata(&child)
-            .with_context(|| format!("failed to inspect {}", format_with_home(&child)))?;
-
-        if child_metadata.file_type().is_symlink() {
-            // Backend-owned service directories should not need symlink children
-            // Failing closed avoids deleting or traversing a path that changed under the installer
-            return Err(anyhow!(
-                "refusing symlink inside managed service directory at {}",
-                format_with_home(&child)
-            ));
-        }
-        if child_metadata.file_type().is_dir() {
-            remove_managed_directory_tree(&child)?;
-        } else if child_metadata.file_type().is_file() {
-            fs::remove_file(&child)
-                .with_context(|| format!("failed to remove {}", format_with_home(&child)))?;
-        } else {
-            // Sockets, fifos, and device nodes should not appear in installer-owned service trees
-            return Err(anyhow!(
-                "refusing special file inside managed service directory at {}",
-                format_with_home(&child)
-            ));
-        }
-    }
-
-    fs::remove_dir(path).with_context(|| format!("failed to remove {}", format_with_home(path)))
 }

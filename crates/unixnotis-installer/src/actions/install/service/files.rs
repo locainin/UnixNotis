@@ -8,7 +8,8 @@ use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 use unixnotis_core::filesystem::{
-    remove_regular_file, set_file_mode, write_file_atomic, write_file_atomic_preserving_mode,
+    remove_empty_directory, remove_regular_file, set_file_mode, write_file_atomic,
+    write_file_atomic_preserving_mode,
 };
 
 use crate::paths::format_with_home;
@@ -197,16 +198,9 @@ fn remove_empty_shared_layout_dirs(path: &Path) -> Result<()> {
 }
 
 fn remove_dir_if_empty(path: &Path) -> Result<()> {
-    match fs::remove_dir(path) {
-        Ok(()) => Ok(()),
-        Err(err)
-            if matches!(
-                err.kind(),
-                ErrorKind::NotFound | ErrorKind::DirectoryNotEmpty
-            ) =>
-        {
-            Ok(())
-        }
+    match remove_empty_directory(path) {
+        Ok(true | false) => Ok(()),
+        Err(err) if matches!(err.kind(), ErrorKind::DirectoryNotEmpty) => Ok(()),
         Err(err) => {
             Err(err).with_context(|| format!("failed to remove {}", format_with_home(path)))
         }

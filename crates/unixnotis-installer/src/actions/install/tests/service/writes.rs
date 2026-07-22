@@ -238,7 +238,7 @@ fn write_service_artifact_rejects_symlink_parent_component() {
     let err = write_service_artifact(&ctx, &artifact).expect_err("symlink parent is unsafe");
 
     // The target directory proves the writer did not follow the linked parent
-    assert!(format!("{err:#}").contains("refusing symlink parent"));
+    assert!(format!("{err:#}").contains("refusing unsafe service directory path"));
     assert!(!target.join("service-file").exists());
     let _ = fs::remove_dir_all(&root);
 }
