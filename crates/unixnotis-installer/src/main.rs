@@ -23,6 +23,7 @@ mod detect;
 mod managed_binaries;
 mod model;
 mod paths;
+mod privilege;
 mod release;
 mod safe_write;
 mod service_manager;
@@ -43,6 +44,9 @@ use crate::terminal::TerminalGuard;
 use crate::trial::run_trial;
 
 fn main() -> Result<()> {
+    // Root execution turns user-controlled paths into privileged mutation targets
+    privilege::reject_root_install(rustix::process::geteuid().as_raw())?;
+
     let cli = match cli::parse_env_args()? {
         CliAction::Run(args) => args,
         CliAction::Help => {
