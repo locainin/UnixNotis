@@ -25,7 +25,7 @@ impl StatWidgetConfig {
             icon: Some("utilities-system-monitor-symbolic".to_string()),
             icon_asset: None,
             kind: Some("cpu".to_string()),
-            // Aggregate `/proc/stat` counters report total system CPU rather than this process
+            // Builtins avoid shelling out for common fast-refresh stats
             cmd: Some(CommandSpec::direct(
                 "builtin:cpu",
                 std::iter::empty::<&str>(),
