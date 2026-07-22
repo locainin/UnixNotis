@@ -9,9 +9,7 @@ use unixnotis_core::{
 use zbus::message::Header;
 use zbus::{interface, SignalContext};
 
-use crate::daemon::{
-    auth, to_fdo_error, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH,
-};
+use crate::daemon::{auth, to_fdo_error, DaemonState};
 
 use super::clear;
 
@@ -189,12 +187,7 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "InvokeAction").await?;
-        // Reuse the freedesktop action signal path for compatibility with listeners
-        let ctx = SignalContext::new(self.state.connection(), NOTIFICATIONS_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
-        NotificationServer::action_invoked(&ctx, id, action_key)
-            .await
-            .map_err(to_fdo_error)
+        self.invoke_validated_action(id, action_key).await
     }
 
     pub(super) async fn reply_notification(

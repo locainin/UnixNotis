@@ -118,6 +118,23 @@ impl NotificationStore {
         (notification.inline_reply.available && has_reply_action).then(|| Arc::clone(notification))
     }
 
+    pub fn active_action_target(&self, id: u32, action_key: &str) -> Option<Arc<Notification>> {
+        let notification = self.active.get(&id)?;
+        // Exact matching prevents a trusted control caller from inventing application actions
+        notification
+            .actions
+            .iter()
+            .any(|action| action.key == action_key)
+            .then(|| Arc::clone(notification))
+    }
+
+    pub fn is_active_notification_generation(&self, id: u32, expected: &Arc<Notification>) -> bool {
+        // Arc identity distinguishes a same-ID replacement from the row that was clicked
+        self.active
+            .get(&id)
+            .is_some_and(|active| Arc::ptr_eq(active, expected))
+    }
+
     pub fn history_len(&self) -> usize {
         // Exposed for diagnostics and test assertions
         self.history.len()
