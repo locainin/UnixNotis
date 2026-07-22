@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tracing::warn;
 
-use crate::daemon::{ControlServer, DaemonState};
+use crate::daemon::DaemonState;
 
 const MAX_CLOCK_RECHECK: Duration = Duration::from_mins(1);
 const PERSIST_RETRY_DELAY: Duration = Duration::from_secs(5);
@@ -35,8 +35,7 @@ impl DndExpirationScheduler {
                 let delay = delay_until_recheck(chrono::Utc::now().timestamp(), expires_at);
                 if delay.is_zero() {
                     // The store verifies this is still the current deadline before mutating
-                    let server = ControlServer::new(state.clone());
-                    if let Err(err) = server.apply_dnd_expiration(expires_at).await {
+                    if let Err(err) = state.apply_dnd_expiration(expires_at).await {
                         warn!(
                             ?err,
                             expires_at, "failed to expire timed do-not-disturb state"

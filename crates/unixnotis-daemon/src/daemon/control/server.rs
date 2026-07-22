@@ -128,7 +128,7 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "SetDnd").await?;
-        self.apply_dnd_state(enabled).await
+        self.state.apply_dnd_state(enabled).await
     }
 
     pub(super) async fn set_dnd_until(
@@ -137,12 +137,12 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "SetDndUntil").await?;
-        self.apply_dnd_until(expires_at).await
+        self.state.apply_dnd_until(expires_at).await
     }
 
     async fn toggle_dnd(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ToggleDnd").await?;
-        self.apply_toggle_dnd().await
+        self.state.apply_toggle_dnd().await
     }
 
     async fn inhibit(
