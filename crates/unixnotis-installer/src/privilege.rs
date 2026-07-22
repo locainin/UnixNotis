@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Result};
 
-pub(crate) fn reject_root_install(euid: u32) -> Result<()> {
+pub fn reject_root_install(euid: u32) -> Result<()> {
     if euid == 0 {
         bail!("unixnotis-installer is user-level; do not run it as root or through sudo");
     }
