@@ -84,3 +84,7 @@ impl Default for StatWidgetConfig {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/stats.rs"]
+mod tests;

@@ -37,6 +37,40 @@ fn regular_file_rename_reports_a_missing_source_without_creating_parents() {
 }
 
 #[test]
+fn regular_file_rename_reports_a_missing_final_source() {
+    let root = unique_temp_path("rename-missing-final-source");
+    let source = root.join("style.css");
+    let destination = root.join("style.css.bak");
+    fs::create_dir_all(&root).expect("create root");
+
+    let outcome =
+        rename_regular_file_no_replace(&source, &destination).expect("missing source outcome");
+
+    assert_eq!(outcome, RenameRegularFileOutcome::SourceMissing);
+    assert!(!destination.exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn regular_file_rename_propagates_a_non_collision_destination_error() {
+    let root = unique_temp_path("rename-invalid-destination");
+    let source = root.join("style.css");
+    fs::create_dir_all(&root).expect("create root");
+    fs::write(&source, "legacy theme").expect("write source");
+    let destination = root.join("x".repeat(300));
+
+    let error = rename_regular_file_no_replace(&source, &destination)
+        .expect_err("overlong destination should fail");
+
+    assert_ne!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(
+        fs::read_to_string(&source).expect("read source"),
+        "legacy theme"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn regular_file_rename_preserves_an_existing_destination() {
     let root = unique_temp_path("rename-existing-destination");
     let source = root.join("style.css");

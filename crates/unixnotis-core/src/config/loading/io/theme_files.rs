@@ -59,11 +59,11 @@ fn read_legacy_theme(path: &std::path::Path) -> Option<String> {
         .filter(|contents| !contents.trim().is_empty())
 }
 
-fn warn_legacy_rename_once(
+pub(super) fn warn_legacy_rename_once(
     source: &std::path::Path,
     backup: &std::path::Path,
     err: &std::io::Error,
-) {
+) -> bool {
     if LEGACY_RENAME_WARNED
         .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
         .is_ok()
@@ -74,5 +74,8 @@ fn warn_legacy_rename_once(
             backup = %backup.display(),
             "failed to rename legacy style.css"
         );
+        true
+    } else {
+        false
     }
 }

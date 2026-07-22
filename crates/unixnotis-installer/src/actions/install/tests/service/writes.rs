@@ -613,6 +613,24 @@ fn service_symlink_helpers_distinguish_missing_paths_from_filesystem_errors() {
 }
 
 #[test]
+fn service_symlink_removal_rejects_a_regular_file_without_deleting_it() {
+    let root = test_root("install-service-remove-regular-link");
+    let artifact = root.join("service-link");
+    fs::create_dir_all(&root).expect("make service root");
+    fs::write(&artifact, "user data").expect("write regular artifact");
+
+    let error = remove_service_symlink(&artifact, std::path::Path::new("service"))
+        .expect_err("regular artifacts must not be removed as links");
+
+    assert!(format!("{error:#}").contains("refusing to remove non-symlink"));
+    assert_eq!(
+        fs::read_to_string(&artifact).expect("read preserved artifact"),
+        "user data"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn install_replaces_regular_owned_artifact_but_rejects_unsafe_existing_path() {
     let root = test_root("install-service-owned-replace");
     let paths = test_paths(&root);
