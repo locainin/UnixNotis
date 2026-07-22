@@ -178,7 +178,11 @@ pub(super) fn parse_url_value(input: &str, open_index: usize) -> Option<(CssUrlS
     None
 }
 
-pub(super) fn valid_url_value_range(input: &str, value_start: usize, value_end: usize) -> bool {
+pub(super) const fn valid_url_value_range(
+    input: &str,
+    value_start: usize,
+    value_end: usize,
+) -> bool {
     // Scanner offsets are accepted only when direct string slicing is safe
     value_start <= value_end
         && input.is_char_boundary(value_start)
