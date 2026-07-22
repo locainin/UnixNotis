@@ -41,6 +41,23 @@ struct ExactMember {
     created: bool,
 }
 
+#[derive(Clone, Copy)]
+struct ExactMode(u32);
+
+impl ExactMode {
+    const fn new(mode: u32) -> Self {
+        Self(mode & 0o777)
+    }
+
+    const fn rustix(self) -> Mode {
+        Mode::from_raw_mode(self.0)
+    }
+
+    const fn permissions(self) -> u32 {
+        self.0
+    }
+}
+
 enum ExactMemberResult {
     Exact(ExactMember),
     ContentsMismatch,
@@ -100,6 +117,8 @@ pub fn ensure_exact_file_pair(
         ));
     }
 
+    let mode = ExactMode::new(mode);
+    let marker_mode = ExactMode::new(marker_mode);
     let file = match create_or_validate_member(&parent_fd, &file_name, contents, mode)? {
         ExactMemberResult::Exact(member) => member,
         ExactMemberResult::ContentsMismatch => {
@@ -163,6 +182,7 @@ pub(super) fn ensure_exact_file_at(
     contents: &[u8],
     mode: u32,
 ) -> io::Result<EnsureExactFileOutcome> {
+    let mode = ExactMode::new(mode);
     let member = match create_or_validate_member(parent_fd, file_name, contents, mode)? {
         ExactMemberResult::Exact(member) => member,
         ExactMemberResult::ContentsMismatch => {
@@ -188,7 +208,7 @@ fn create_or_validate_member(
     parent_fd: &OwnedFd,
     file_name: &OsString,
     contents: &[u8],
-    mode: u32,
+    mode: ExactMode,
 ) -> io::Result<ExactMemberResult> {
     let fd = match openat2(
         parent_fd,
@@ -198,11 +218,11 @@ fn create_or_validate_member(
             .union(OFlags::CLOEXEC)
             .union(OFlags::CREATE)
             .union(OFlags::EXCL),
-        file_mode(mode),
+        mode.rustix(),
         contained_resolve_flags(),
     ) {
         Ok(fd) => fd,
-        Err(error) if exclusive_create_collided(error) => {
+        Err(rustix::io::Errno::EXIST) => {
             let mut file = open_regular_file_at(parent_fd, file_name)?;
             if !file_contents_equal(&mut file, contents)? {
                 return Ok(ExactMemberResult::ContentsMismatch);
@@ -230,11 +250,6 @@ fn create_or_validate_member(
         file,
         created: true,
     }))
-}
-
-pub(super) fn exclusive_create_collided(error: rustix::io::Errno) -> bool {
-    // Only an existing target may enter the create-or-compare collision path
-    error == rustix::io::Errno::EXIST
 }
 
 fn rollback_pair_after_error(
@@ -299,13 +314,9 @@ fn rollback_created_member(
     Ok(())
 }
 
-fn set_mode_and_sync(file: &fs::File, mode: u32) -> io::Result<()> {
-    file.set_permissions(fs::Permissions::from_mode(mode & 0o777))?;
+fn set_mode_and_sync(file: &fs::File, mode: ExactMode) -> io::Result<()> {
+    file.set_permissions(fs::Permissions::from_mode(mode.permissions()))?;
     file.sync_all()
-}
-
-const fn file_mode(mode: u32) -> Mode {
-    Mode::from_raw_mode(mode & 0o777)
 }
 
 #[cfg(test)]

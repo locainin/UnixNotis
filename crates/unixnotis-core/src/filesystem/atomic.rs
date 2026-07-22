@@ -11,7 +11,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::descriptor::{contained_resolve_flags, open_parent, sync_directory};
-use super::exact::exclusive_create_collided;
 use super::regular::{existing_target_mode, validate_existing_target};
 
 const TEMP_ATTEMPTS: u8 = 16;
@@ -107,7 +106,7 @@ pub fn write_file_if_missing(path: &Path, contents: &[u8], mode: u32) -> io::Res
         contained_resolve_flags(),
     ) {
         Ok(fd) => fd,
-        Err(error) if exclusive_create_collided(error) => {
+        Err(rustix::io::Errno::EXIST) => {
             // A collision is safe only when the existing destination is a regular file
             validate_existing_target(&parent_fd, &file_name)?;
             return Ok(false);

@@ -56,13 +56,13 @@ pub(super) fn is_safe_pcm_wav(file: &fs::File, file_len: u64) -> bool {
             None => return false,
         };
         let data_end = match data_start.checked_add(u64::from(chunk_size)) {
-            Some(offset) if offset <= file_len => offset,
-            _ => return false,
+            Some(offset) => offset,
+            None => return false,
         };
         // RIFF chunks use one padding byte after odd-sized payloads
         let padded_end = match data_end.checked_add(u64::from(chunk_size & 1)) {
-            Some(offset) if offset <= file_len => offset,
-            _ => return false,
+            Some(offset) => offset,
+            None => return false,
         };
 
         match &chunk_header[..4] {
@@ -93,7 +93,8 @@ pub(super) fn is_safe_pcm_wav(file: &fs::File, file_len: u64) -> bool {
         cursor = padded_end;
     }
 
-    cursor == file_len && pcm_format.is_some() && found_data
+    // Exact cursor equality rejects truncated chunks and bytes outside declared chunk framing
+    cursor == file_len && found_data
 }
 
 fn read_pcm_format(file: &fs::File, offset: u64, chunk_size: u32) -> Option<PcmFormat> {
