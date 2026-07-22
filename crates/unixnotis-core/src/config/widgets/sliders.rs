@@ -134,3 +134,7 @@ pub enum NumericParseMode {
     /// Interprets values as 0.0-1.0 ratios and scales to percent
     Ratio,
 }
+
+#[cfg(test)]
+#[path = "tests/sliders.rs"]
+mod tests;

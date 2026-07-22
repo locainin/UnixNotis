@@ -31,3 +31,7 @@ impl Default for WidgetPluginConfig {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/plugin.rs"]
+mod tests;

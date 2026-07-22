@@ -67,7 +67,9 @@ fn default_toggles_keep_commands_config_owned() {
         {
             // Stock commands should stay relative or PATH based so config files remain portable
             assert!(
-                command.program().is_none_or(|program| !program.is_absolute()),
+                command
+                    .program()
+                    .is_none_or(|program| !program.is_absolute()),
                 "absolute command leaked: {command}"
             );
         }
