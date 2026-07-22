@@ -110,7 +110,12 @@ impl NotificationServer {
         header: &Header<'_>,
     ) -> Notification {
         // Sender metadata helps with ownership checks and diagnostics
-        let sender = resolve_sender_metadata(self.state.connection(), header).await;
+        let sender = resolve_sender_metadata(
+            &self.state.sender_metadata_cache,
+            self.state.connection(),
+            header,
+        )
+        .await;
         if sender_app_name_mismatch(&input.app_name, sender.sender_executable.as_deref()) {
             debug!(
                 app_name = %input.app_name,

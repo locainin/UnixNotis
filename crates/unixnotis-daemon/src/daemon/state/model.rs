@@ -10,6 +10,7 @@ use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
 use crate::store::NotificationStore;
 
+use crate::daemon::notifications::sender_cache::SenderMetadataCache;
 use crate::daemon::signal_burst::NotificationBurstState;
 
 /// Shared daemon state guarded behind an async mutex
@@ -39,6 +40,8 @@ pub struct DaemonState {
     // instead of forcing a storm of full add/update fanout
     pub(in crate::daemon::state) notification_signal_bursts:
         StdMutex<std::collections::HashMap<String, NotificationBurstState>>,
+    // Unique sender identities avoid repeated bus and procfs lookups during bursts
+    pub(in crate::daemon) sender_metadata_cache: SenderMetadataCache,
     // Trial mode allows local rebuild loops without forcing daemon restarts for control auth
     pub(in crate::daemon::state) trial_mode: bool,
 }
@@ -75,6 +78,7 @@ impl DaemonState {
             last_emitted_state: StdMutex::new(None),
             last_emitted_popup_gate: StdMutex::new(None),
             notification_signal_bursts: StdMutex::new(std::collections::HashMap::new()),
+            sender_metadata_cache: SenderMetadataCache::new(),
             trial_mode,
         })
     }

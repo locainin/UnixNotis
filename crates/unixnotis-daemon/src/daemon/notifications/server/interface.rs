@@ -2,7 +2,9 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
+use tokio::sync::Semaphore;
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 use zbus::{interface, SignalContext};
@@ -10,7 +12,10 @@ use zbus::{interface, SignalContext};
 use crate::expire::ExpirationScheduler;
 
 use super::capabilities::notification_capabilities;
+use crate::daemon::notifications::quota::NotificationQuota;
 use crate::daemon::DaemonState;
+
+const MAX_CONCURRENT_NOTIFY_HANDLERS: usize = 8;
 
 /// D-Bus server for org.freedesktop.Notifications
 pub struct NotificationServer {
@@ -18,12 +23,21 @@ pub struct NotificationServer {
     pub(super) state: Arc<DaemonState>,
     // Scheduler handles expiration deadlines without blocking D-Bus handlers
     pub(super) scheduler: ExpirationScheduler,
+    // Shared token buckets reject sustained sender and process-wide floods
+    quota: NotificationQuota,
+    // Expensive sender and payload work has a fixed concurrency ceiling
+    notify_slots: Semaphore,
 }
 
 impl NotificationServer {
-    pub const fn new(state: Arc<DaemonState>, scheduler: ExpirationScheduler) -> Self {
+    pub fn new(state: Arc<DaemonState>, scheduler: ExpirationScheduler) -> Self {
         // Keep constructor minimal and explicit
-        Self { state, scheduler }
+        Self {
+            state,
+            scheduler,
+            quota: NotificationQuota::new(),
+            notify_slots: Semaphore::const_new(MAX_CONCURRENT_NOTIFY_HANDLERS),
+        }
     }
 }
 
@@ -50,6 +64,17 @@ impl NotificationServer {
         #[zbus(header)] header: Header<'_>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
+        let sender = header.sender().map(zbus::names::UniqueName::as_str);
+        if !self.quota.admit(sender, Instant::now()) {
+            return Err(zbus::fdo::Error::LimitsExceeded(
+                "notification ingress quota exceeded".to_string(),
+            ));
+        }
+        let _slot = self.notify_slots.try_acquire().map_err(|_error| {
+            zbus::fdo::Error::LimitsExceeded(
+                "too many concurrent notification requests".to_string(),
+            )
+        })?;
         // The interface adapter forwards the authenticated header with the exact wire payload
         self.ingest_notify(
             app_name,

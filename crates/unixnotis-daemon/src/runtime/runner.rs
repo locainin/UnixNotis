@@ -1,8 +1,8 @@
 //! Daemon runtime and trial cleanup coordination
 
 use anyhow::{Context, Result};
+use zbus::connection::Builder;
 use zbus::fdo::DBusProxy;
-use zbus::Connection;
 
 use crate::cli::Args;
 use crate::trial_mode::{prepare_trial, TrialState};
@@ -10,8 +10,13 @@ use unixnotis_core::{Config, NOTIFICATIONS_BUS_NAME};
 
 use super::{daemon, trial_cleanup};
 
+const DAEMON_DBUS_QUEUE_CAPACITY: usize = 16;
+
 pub async fn run(args: &Args, config: Config) -> Result<()> {
-    let connection = Connection::session()
+    let connection = Builder::session()
+        .context("create session bus connection")?
+        .max_queued(DAEMON_DBUS_QUEUE_CAPACITY)
+        .build()
         .await
         .context("connect to session bus")?;
     let dbus_proxy = DBusProxy::new(&connection).await?;

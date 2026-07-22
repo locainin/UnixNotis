@@ -32,6 +32,8 @@ pub async fn spawn_inhibitor_owner_watch(state: Arc<DaemonState>) -> zbus::Resul
                 continue;
             }
             let owner = args.name().to_string();
+            // Unique-name metadata can be dropped as soon as the bus reports owner loss
+            state.sender_metadata_cache.remove(&owner);
 
             // Remove inhibitors owned by the disconnected bus name
             let (changed, active, count) = {
