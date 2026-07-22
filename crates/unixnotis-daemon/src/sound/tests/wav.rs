@@ -56,6 +56,24 @@ fn validate(bytes: &[u8]) -> bool {
     is_safe_pcm_wav(&file, bytes.len() as u64)
 }
 
+fn canonical_wave() -> Vec<u8> {
+    wave(&[
+        chunk(b"fmt ", &pcm_format(1, 44_100, 16)),
+        chunk(b"data", &[0; 2]),
+    ])
+}
+
+#[test]
+fn riff_and_wave_identifiers_are_validated_independently() {
+    let mut wrong_riff = canonical_wave();
+    wrong_riff[..4].copy_from_slice(b"JUNK");
+    let mut wrong_wave = canonical_wave();
+    wrong_wave[8..12].copy_from_slice(b"AVI ");
+
+    assert!(!validate(&wrong_riff));
+    assert!(!validate(&wrong_wave));
+}
+
 #[test]
 fn canonical_pcm_wave_requires_format_then_nonempty_aligned_data() {
     let format = chunk(b"fmt ", &pcm_format(2, 48_000, 16));
@@ -94,6 +112,18 @@ fn odd_unknown_chunks_use_declared_padding_without_hiding_following_chunks() {
     let data = chunk(b"data", &[0; 2]);
 
     assert!(validate(&wave(&[junk, format, data])));
+}
+
+#[test]
+fn chunk_budget_accepts_the_limit_and_rejects_one_more_chunk() {
+    let mut chunks = vec![chunk(b"JUNK", &[]); MAX_WAV_CHUNKS - 2];
+    chunks.push(chunk(b"fmt ", &pcm_format(1, 44_100, 16)));
+    chunks.push(chunk(b"data", &[0; 2]));
+
+    assert!(validate(&wave(&chunks)));
+
+    chunks.insert(0, chunk(b"JUNK", &[]));
+    assert!(!validate(&wave(&chunks)));
 }
 
 #[test]
