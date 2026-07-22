@@ -1,12 +1,12 @@
 //! Session and tool availability checks
 
 use std::env;
-use std::fs::OpenOptions;
 use std::path::Path;
 
 use crate::paths::{InstallPaths, ServiceManagerChoice};
 use crate::service_manager::{CommandSpec, ReadinessIssue, ServiceManager};
 use crate::system_tools;
+use unixnotis_core::filesystem::{remove_regular_file, write_file_if_missing};
 use unixnotis_core::program_in_path;
 
 use super::CheckItem;
@@ -218,15 +218,13 @@ fn path_is_writable(path: &Path) -> bool {
     }
     let probe_name = format!(".unixnotis-installer-probe-{}", std::process::id());
     let probe_path = target_dir.join(probe_name);
-    let result = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&probe_path);
-    if result.is_err() {
-        return false;
+    match write_file_if_missing(&probe_path, b"", 0o600) {
+        Ok(true) => {
+            // Cleanup must succeed before the directory is reported as writable
+            remove_regular_file(&probe_path).is_ok_and(|removed| removed)
+        }
+        Ok(false) | Err(_) => false,
     }
-    let _ = std::fs::remove_file(&probe_path);
-    true
 }
 
 #[cfg(test)]
