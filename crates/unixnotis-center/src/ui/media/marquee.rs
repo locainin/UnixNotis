@@ -134,14 +134,13 @@ impl MarqueeLabel {
     }
 
     fn set_text_inner(&self, text: &str, force: bool) {
+        // Identical media snapshots avoid both allocation and Pango layout measurement
+        if !marquee_text_needs_update(&self.state.borrow().full_text, text, force) {
+            return;
+        }
         // Pango measures rendered pixels so short wide-glyph titles still activate scrolling
         let text_width = self.label.create_pango_layout(Some(text)).pixel_size().0;
         let mut state = self.state.borrow_mut();
-        // Avoid resetting the marquee when the full text is identical
-        // This prevents unnecessary redraws and keeps CPU usage stable
-        if !force && state.full_text == text {
-            return;
-        }
         let char_limit = state.char_limit;
         state.overflows = marquee_should_tick(
             char_limit,
@@ -266,6 +265,10 @@ fn marquee_should_tick(
     max_width: i32,
 ) -> bool {
     char_limit > 0 && (char_count > char_limit || text_width > max_width.max(0))
+}
+
+fn marquee_text_needs_update(current: &str, next: &str, force: bool) -> bool {
+    force || current != next
 }
 
 const fn marquee_can_start(state: &MarqueeState) -> bool {
