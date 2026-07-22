@@ -122,7 +122,7 @@ fn sanitize_widget_plugin(
         *plugin = None;
         return;
     }
-    if plugin_cfg.command.invokes_shell() {
+    if plugin_cfg.command.uses_shell_command_string() {
         // Shell syntax is not allowed in the plugin command field
         warn!(
             widget_type,

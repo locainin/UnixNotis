@@ -50,16 +50,64 @@ fn placeholder_replacement_updates_explicit_shell_script_without_reclassificatio
 
 #[test]
 fn shell_detection_includes_direct_interpreter_invocations() {
-    assert!(CommandSpec::shell("printf ready").invokes_shell());
+    assert!(CommandSpec::shell("printf ready").uses_shell_command_string());
     for shell in ["sh", "ash", "bash", "dash", "fish", "ksh", "zsh"] {
         assert!(
-            CommandSpec::direct(shell, ["-c", "printf ready"]).invokes_shell(),
+            CommandSpec::direct(shell, ["-c", "printf ready"]).uses_shell_command_string(),
             "{shell} -c must retain the explicit shell boundary"
         );
     }
-    assert!(CommandSpec::direct("/bin/bash", ["-lc", "printf ready"]).invokes_shell());
-    assert!(!CommandSpec::direct("sh", ["-x", "script"]).invokes_shell());
-    assert!(!CommandSpec::direct("printf", ["sh -c"]).invokes_shell());
+    assert!(CommandSpec::direct("/bin/bash", ["-lc", "printf ready"]).uses_shell_command_string());
+    assert!(!CommandSpec::direct("sh", ["-x", "script"]).uses_shell_command_string());
+    assert!(!CommandSpec::direct("printf", ["sh -c"]).uses_shell_command_string());
+}
+
+#[test]
+fn shell_detection_does_not_treat_long_options_as_short_flag_clusters() {
+    assert!(!CommandSpec::direct("bash", ["--norc", "script.sh"]).uses_shell_command_string());
+    assert!(
+        !CommandSpec::direct("fish", ["--no-config", "script.fish"]).uses_shell_command_string()
+    );
+}
+
+#[test]
+fn shell_detection_stops_at_option_and_script_boundaries() {
+    assert!(!CommandSpec::direct("bash", ["--", "-c", "printf data"]).uses_shell_command_string());
+    assert!(
+        !CommandSpec::direct("bash", ["script.sh", "-c", "literal argument"])
+            .uses_shell_command_string()
+    );
+}
+
+#[test]
+fn shell_detection_skips_option_values_before_command_flags() {
+    for (shell, option, value) in [
+        ("bash", "-O", "extglob"),
+        ("sh", "-o", "nounset"),
+        ("ash", "-o", "nounset"),
+        ("dash", "-o", "nounset"),
+        ("ksh", "-R", "restricted-root"),
+        ("zsh", "-o", "SH_WORD_SPLIT"),
+        ("fish", "--debug", "reader"),
+    ] {
+        assert!(
+            CommandSpec::direct(shell, [option, value, "-c", "printf ready"])
+                .uses_shell_command_string(),
+            "{shell} must resume option scanning after the {option} value"
+        );
+
+        assert!(
+            !CommandSpec::direct(shell, [option, "-c", "script.sh"]).uses_shell_command_string(),
+            "{shell} must not interpret the {option} value as a command flag"
+        );
+    }
+
+    assert!(CommandSpec::direct("bash", ["-x", "-c", "printf ready"]).uses_shell_command_string());
+}
+
+#[test]
+fn fish_long_command_option_retains_the_command_string_boundary() {
+    assert!(CommandSpec::direct("fish", ["--command=printf ready"]).uses_shell_command_string());
 }
 
 #[test]

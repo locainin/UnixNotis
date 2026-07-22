@@ -8,7 +8,7 @@ use unixnotis_core::CommandSpec;
 pub(super) fn is_probably_slow(cmd: &CommandSpec) -> bool {
     // Shared shell detection owns every direct interpreter spelling
     // Shell startup and script execution belong on the wider timeout budget
-    if cmd.invokes_shell() {
+    if cmd.uses_shell_command_string() {
         return true;
     }
 

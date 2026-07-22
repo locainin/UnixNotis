@@ -58,7 +58,7 @@ fn shell_wrappers_with_environment_or_extra_arguments_remain_direct() {
         let parsed = parse_legacy_command(command).expect("parse shell wrapper");
 
         assert!(!parsed.is_shell(), "{command}");
-        assert!(parsed.invokes_shell(), "{command}");
+        assert!(parsed.uses_shell_command_string(), "{command}");
     }
 }
 

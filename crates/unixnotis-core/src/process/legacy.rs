@@ -57,7 +57,7 @@ fn exact_shell_c_script(spec: &CommandSpec) -> Option<&str> {
         return None;
     };
     // Environment prefixes and extra operands change shell wrapper semantics
-    if !env.is_empty() || !spec.invokes_shell() {
+    if !env.is_empty() || !spec.uses_shell_command_string() {
         return None;
     }
     let [flag, script] = args.as_slice() else {
