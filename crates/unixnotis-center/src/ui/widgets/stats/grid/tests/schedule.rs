@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use super::super::grid::schedule::is_due_delay;
+use super::is_due_delay;
 
 #[test]
 fn zero_delay_is_due_immediately() {
