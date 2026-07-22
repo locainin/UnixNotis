@@ -8,12 +8,25 @@ const GLOBAL_BURST: f64 = 120.0;
 const GLOBAL_REFILL_PER_SECOND: f64 = 60.0;
 const SENDER_BURST: f64 = 40.0;
 const SENDER_REFILL_PER_SECOND: f64 = 20.0;
+const CLOSE_GLOBAL_BURST: f64 = 480.0;
+const CLOSE_GLOBAL_REFILL_PER_SECOND: f64 = 240.0;
+const CLOSE_SENDER_BURST: f64 = 160.0;
+const CLOSE_SENDER_REFILL_PER_SECOND: f64 = 80.0;
 const MAX_TRACKED_SENDERS: usize = 256;
 const SENDER_IDLE_TTL_SECONDS: u64 = 60;
 const UNKNOWN_SENDER: &str = "<unknown>";
 
 pub(super) struct NotificationQuota {
     state: Mutex<QuotaState>,
+    policy: QuotaPolicy,
+}
+
+#[derive(Clone, Copy)]
+struct QuotaPolicy {
+    global_burst: f64,
+    global_refill_per_second: f64,
+    sender_burst: f64,
+    sender_refill_per_second: f64,
 }
 
 struct QuotaState {
@@ -34,16 +47,45 @@ struct TokenBucket {
 }
 
 impl NotificationQuota {
-    pub(super) fn new() -> Self {
+    pub(super) fn new_notify() -> Self {
         Self::new_at(Instant::now())
     }
 
+    pub(super) fn new_close() -> Self {
+        Self::new_close_at(Instant::now())
+    }
+
     fn new_at(now: Instant) -> Self {
+        Self::with_policy(
+            now,
+            QuotaPolicy {
+                global_burst: GLOBAL_BURST,
+                global_refill_per_second: GLOBAL_REFILL_PER_SECOND,
+                sender_burst: SENDER_BURST,
+                sender_refill_per_second: SENDER_REFILL_PER_SECOND,
+            },
+        )
+    }
+
+    fn new_close_at(now: Instant) -> Self {
+        Self::with_policy(
+            now,
+            QuotaPolicy {
+                global_burst: CLOSE_GLOBAL_BURST,
+                global_refill_per_second: CLOSE_GLOBAL_REFILL_PER_SECOND,
+                sender_burst: CLOSE_SENDER_BURST,
+                sender_refill_per_second: CLOSE_SENDER_REFILL_PER_SECOND,
+            },
+        )
+    }
+
+    fn with_policy(now: Instant, policy: QuotaPolicy) -> Self {
         Self {
             state: Mutex::new(QuotaState {
-                global: TokenBucket::new(GLOBAL_BURST, GLOBAL_REFILL_PER_SECOND, now),
+                global: TokenBucket::new(policy.global_burst, policy.global_refill_per_second, now),
                 senders: HashMap::new(),
             }),
+            policy,
         }
     }
 
@@ -65,7 +107,11 @@ impl NotificationQuota {
                 .senders
                 .entry(sender.to_string())
                 .or_insert_with(|| SenderBucket {
-                    bucket: TokenBucket::new(SENDER_BURST, SENDER_REFILL_PER_SECOND, now),
+                    bucket: TokenBucket::new(
+                        self.policy.sender_burst,
+                        self.policy.sender_refill_per_second,
+                        now,
+                    ),
                     last_seen: now,
                 });
         sender_bucket.last_seen = now;
