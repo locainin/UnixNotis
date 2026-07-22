@@ -71,3 +71,7 @@ pub async fn spawn_inhibitor_owner_watch(state: Arc<DaemonState>) -> zbus::Resul
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/watch.rs"]
+mod tests;

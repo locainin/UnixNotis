@@ -273,34 +273,30 @@ fn create_if_missing_propagates_non_collision_open_error() {
 }
 
 #[test]
-fn create_if_missing_preserves_permission_denied_errors() {
-    let root = unique_temp_path("atomic-if-missing-permission");
+fn create_if_missing_preserves_non_directory_parent_errors() {
+    let root = unique_temp_path("atomic-if-missing-parent-file");
     fs::create_dir_all(&root).expect("create test root");
-    fs::set_permissions(&root, fs::Permissions::from_mode(0o500))
-        .expect("make test root read only");
+    let parent_file = root.join("parent-file");
+    fs::write(&parent_file, "not a directory").expect("write parent file");
 
-    let error = write_file_if_missing(&root.join("state"), b"data", 0o600)
-        .expect_err("read-only parent must reject creation");
+    let error = write_file_if_missing(&parent_file.join("state"), b"data", 0o600)
+        .expect_err("regular-file parent must reject creation");
 
-    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
-    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
-        .expect("restore test root permissions");
+    assert_eq!(error.kind(), std::io::ErrorKind::NotADirectory);
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn exact_file_creation_preserves_permission_denied_errors() {
-    let root = unique_temp_path("atomic-exact-permission");
+fn exact_file_creation_preserves_non_directory_parent_errors() {
+    let root = unique_temp_path("atomic-exact-parent-file");
     fs::create_dir_all(&root).expect("create test root");
-    fs::set_permissions(&root, fs::Permissions::from_mode(0o500))
-        .expect("make test root read only");
+    let parent_file = root.join("parent-file");
+    fs::write(&parent_file, "not a directory").expect("write parent file");
 
-    let error = ensure_exact_file(&root.join("state"), b"data", 0o600)
-        .expect_err("read-only parent must reject exact creation");
+    let error = ensure_exact_file(&parent_file.join("state"), b"data", 0o600)
+        .expect_err("regular-file parent must reject exact creation");
 
-    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
-    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
-        .expect("restore test root permissions");
+    assert_eq!(error.kind(), std::io::ErrorKind::NotADirectory);
     let _ = fs::remove_dir_all(root);
 }
 
