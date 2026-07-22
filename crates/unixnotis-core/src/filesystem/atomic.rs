@@ -20,9 +20,7 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// Returns an error when containment checks fail or the temporary write, synchronization, target
 /// validation, rename, or parent-directory synchronization cannot complete
 pub fn write_file_atomic(path: &Path, contents: &[u8], mode: u32) -> io::Result<()> {
-    let (parent_fd, file_name) = open_parent(path)?;
-    validate_target(&parent_fd, &file_name)?;
-    write_file_atomic_at(parent_fd, &file_name, contents, mode)
+    publish_file_atomic(path, mode, |file| file.write_all(contents))
 }
 
 /// Replace a regular file while retaining its current permission bits
@@ -41,19 +39,31 @@ pub fn write_file_atomic_preserving_mode(
 ) -> io::Result<()> {
     let (parent_fd, file_name) = open_parent(path)?;
     let mode = existing_target_mode(&parent_fd, &file_name)?.unwrap_or(default_mode);
-    write_file_atomic_at(parent_fd, &file_name, contents, mode)
+    write_file_atomic_at(parent_fd, &file_name, mode, |file| file.write_all(contents))
+}
+
+pub(super) fn publish_file_atomic(
+    path: &Path,
+    mode: u32,
+    write_payload: impl FnOnce(&mut fs::File) -> io::Result<()>,
+) -> io::Result<()> {
+    let (parent_fd, file_name) = open_parent(path)?;
+    validate_target(&parent_fd, &file_name)?;
+    write_file_atomic_at(parent_fd, &file_name, mode, write_payload)
 }
 
 fn write_file_atomic_at(
     parent_fd: OwnedFd,
     file_name: &OsString,
-    contents: &[u8],
     mode: u32,
+    write_payload: impl FnOnce(&mut fs::File) -> io::Result<()>,
 ) -> io::Result<()> {
-    let candidates = temp_candidates(&file_name);
+    let candidates = temp_candidates(file_name);
     let (temp_name, mut temp_file) = reserve_temp(&parent_fd, candidates, mode)?;
 
-    if let Err(error) = write_and_sync(&mut temp_file, contents, mode) {
+    if let Err(error) =
+        write_payload(&mut temp_file).and_then(|()| set_mode_and_sync(&temp_file, mode))
+    {
         drop(temp_file);
         let _ = unlinkat(&parent_fd, &temp_name, AtFlags::empty());
         return Err(error);
@@ -99,7 +109,10 @@ pub fn write_file_if_missing(path: &Path, contents: &[u8], mode: u32) -> io::Res
         Err(error) => return Err(error.into()),
     };
     let mut file = fs::File::from(fd);
-    if let Err(error) = write_and_sync(&mut file, contents, mode) {
+    if let Err(error) = file
+        .write_all(contents)
+        .and_then(|()| set_mode_and_sync(&file, mode))
+    {
         drop(file);
         let _ = unlinkat(&parent_fd, &file_name, AtFlags::empty());
         return Err(error);
@@ -132,8 +145,8 @@ pub fn set_file_mode(path: &Path, mode: u32) -> io::Result<()> {
     file.set_permissions(fs::Permissions::from_mode(mode & 0o777))
 }
 
-fn open_regular_file(path: &Path) -> io::Result<fs::File> {
-    let (parent_fd, file_name) = open_parent(path)?;
+pub(super) fn open_regular_file(path: &Path) -> io::Result<fs::File> {
+    let (parent_fd, file_name) = open_parent_existing(path)?;
     let fd = openat2(
         &parent_fd,
         &file_name,
@@ -152,6 +165,20 @@ fn open_regular_file(path: &Path) -> io::Result<fs::File> {
 }
 
 fn open_parent(path: &Path) -> io::Result<(OwnedFd, OsString)> {
+    open_parent_with(path, MissingParent::Create)
+}
+
+fn open_parent_existing(path: &Path) -> io::Result<(OwnedFd, OsString)> {
+    open_parent_with(path, MissingParent::Reject)
+}
+
+#[derive(Clone, Copy)]
+enum MissingParent {
+    Create,
+    Reject,
+}
+
+fn open_parent_with(path: &Path, missing_parent: MissingParent) -> io::Result<(OwnedFd, OsString)> {
     let file_name = path
         .file_name()
         .filter(|name| !name.is_empty())
@@ -188,13 +215,19 @@ fn open_parent(path: &Path) -> io::Result<(OwnedFd, OsString)> {
                     "atomic write path cannot contain parent traversal",
                 ));
             }
-            Component::Normal(name) => parent_fd = open_or_create_dir(&parent_fd, name)?,
+            Component::Normal(name) => {
+                parent_fd = open_directory_component(&parent_fd, name, missing_parent)?;
+            }
         }
     }
     Ok((parent_fd, file_name))
 }
 
-fn open_or_create_dir(parent_fd: &OwnedFd, name: &std::ffi::OsStr) -> io::Result<OwnedFd> {
+fn open_directory_component(
+    parent_fd: &OwnedFd,
+    name: &std::ffi::OsStr,
+    missing_parent: MissingParent,
+) -> io::Result<OwnedFd> {
     match openat2(
         parent_fd,
         name,
@@ -203,7 +236,10 @@ fn open_or_create_dir(parent_fd: &OwnedFd, name: &std::ffi::OsStr) -> io::Result
         contained_resolve_flags(),
     ) {
         Ok(fd) => Ok(fd),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+        Err(error)
+            if error.kind() == io::ErrorKind::NotFound
+                && matches!(missing_parent, MissingParent::Create) =>
+        {
             mkdirat(parent_fd, name, Mode::from_raw_mode(0o755))?;
             openat2(
                 parent_fd,
@@ -308,8 +344,7 @@ fn reserve_temp(
     ))
 }
 
-fn write_and_sync(file: &mut fs::File, contents: &[u8], mode: u32) -> io::Result<()> {
-    file.write_all(contents)?;
+fn set_mode_and_sync(file: &fs::File, mode: u32) -> io::Result<()> {
     // Mode is fixed before publication so readers never observe broad temporary permissions
     file.set_permissions(fs::Permissions::from_mode(mode & 0o777))?;
     file.sync_all()
