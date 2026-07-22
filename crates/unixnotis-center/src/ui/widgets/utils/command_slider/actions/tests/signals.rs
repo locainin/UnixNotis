@@ -61,7 +61,7 @@ fn scale_action_echoes_the_changed_value_immediately() {
 }
 
 #[gtk::test]
-fn successful_scale_action_keeps_the_local_value_without_corrective_refresh() {
+fn successful_scale_action_invalidates_stale_reads_and_reconciles_backend_value() {
     let config = SliderWidgetConfig {
         get_cmd: CommandSpec::direct("printf", ["22"]),
         set_cmd: CommandSpec::direct("true", [] as [&str; 0]),
@@ -81,8 +81,8 @@ fn successful_scale_action_keeps_the_local_value_without_corrective_refresh() {
     widgets.scale.set_value(37.0);
     iterate_main_context_for(Duration::from_millis(400));
 
-    assert_eq!(refresh_meta.refresh_gen.get(), 0);
-    assert_eq!(widgets.value_label.text(), "37%");
+    assert_eq!(refresh_meta.refresh_gen.get(), 2);
+    assert_eq!(widgets.value_label.text(), "22%");
 }
 
 #[gtk::test]
@@ -105,13 +105,13 @@ fn failed_scale_action_runs_corrective_refresh() {
 
     widgets.scale.set_value(37.0);
     let deadline = Instant::now() + Duration::from_secs(3);
-    while (refresh_meta.refresh_gen.get() == 0 || refresh_meta.gate.is_in_flight())
+    while (refresh_meta.refresh_gen.get() < 2 || refresh_meta.gate.is_in_flight())
         && Instant::now() < deadline
     {
         iterate_main_context_for(Duration::from_millis(1));
     }
 
-    assert_eq!(refresh_meta.refresh_gen.get(), 1);
+    assert_eq!(refresh_meta.refresh_gen.get(), 2);
     assert!(!refresh_meta.gate.is_in_flight());
     assert_eq!(widgets.value_label.text(), "22%");
 }

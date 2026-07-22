@@ -98,6 +98,11 @@ pub(in super::super) fn attach_scale_action(
             return;
         }
 
+        // A user change supersedes any read that started before this interaction
+        // Its completion may otherwise snap the slider back before the write finishes
+        refresh_meta_for_set
+            .refresh_gen
+            .set(refresh_meta_for_set.refresh_gen.get().wrapping_add(1));
         let value = scale.value();
         // Local label echo keeps dragging responsive before the debounced command finishes
         label_clone.set_text(&format_display_value(value));
@@ -115,24 +120,26 @@ pub(in super::super) fn attach_scale_action(
                 let refresh_meta = refresh_meta_for_set.clone();
                 move |failed| {
                     if failed {
-                        // Failed set actions should reconcile quickly instead of waiting for polling
+                        // Failed writes are called out before the shared reconciliation below
                         debug::log(PanelDebugLevel::Warn, || {
                             format!(
                                 "slider set action failed; forcing refresh cmd=\"{}\"",
                                 request.command()
                             )
                         });
-                        // Corrective refresh uses the same parser and backoff path as polling
-                        let Some(refresh) = build_refresh_state_from_weak(
-                            &scale_weak,
-                            &label_weak,
-                            &icon_weak,
-                            &refresh_meta,
-                        ) else {
-                            return;
-                        };
-                        request_refresh(request.clone(), refresh, Duration::from_secs(1), true);
                     }
+
+                    // Read back both successful and failed writes because hardware may clamp values
+                    // This also consumes any refresh queued behind the pre-action stale read
+                    let Some(refresh) = build_refresh_state_from_weak(
+                        &scale_weak,
+                        &label_weak,
+                        &icon_weak,
+                        &refresh_meta,
+                    ) else {
+                        return;
+                    };
+                    request_refresh(request.clone(), refresh, Duration::from_secs(1), true);
                 }
             }),
         );
