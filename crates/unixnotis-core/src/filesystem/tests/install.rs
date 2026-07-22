@@ -1,3 +1,5 @@
+//! Atomic file installation tests
+
 use std::fs;
 use std::os::unix::fs::{symlink, PermissionsExt};
 

@@ -1,3 +1,5 @@
+//! Atomic file operation tests
+
 use super::{
     file_mode, make_file_executable, reserve_temp, set_file_mode, write_file_atomic,
     write_file_atomic_preserving_mode, write_file_if_missing,

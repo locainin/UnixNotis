@@ -47,21 +47,17 @@ pub fn rename_regular_file_no_replace(
 
     let (destination_parent, destination_name) = open_parent_existing(destination)?;
     // Kernel no-replace semantics close the check-then-rename destination race
-    match renameat_with(
+    let rename_result = renameat_with(
         &source_parent,
         &source_name,
         &destination_parent,
         &destination_name,
         RenameFlags::NOREPLACE,
-    ) {
-        Ok(()) => {}
-        Err(error) => match error.kind() {
-            io::ErrorKind::AlreadyExists => {
-                return Ok(RenameRegularFileOutcome::DestinationExists);
-            }
-            io::ErrorKind::NotFound => return Ok(RenameRegularFileOutcome::SourceMissing),
-            _ => return Err(error.into()),
-        },
+    )
+    .map_err(Into::into);
+    match classify_rename_attempt(rename_result)? {
+        RenameRegularFileOutcome::Renamed => {}
+        outcome => return Ok(outcome),
     }
 
     // Both directory entries must reach durable storage even when parents differ
@@ -70,6 +66,17 @@ pub fn rename_regular_file_no_replace(
     Ok(RenameRegularFileOutcome::Renamed)
 }
 
+fn classify_rename_attempt(result: io::Result<()>) -> io::Result<RenameRegularFileOutcome> {
+    match result {
+        Ok(()) => Ok(RenameRegularFileOutcome::Renamed),
+        Err(error) => match error.kind() {
+            io::ErrorKind::AlreadyExists => Ok(RenameRegularFileOutcome::DestinationExists),
+            io::ErrorKind::NotFound => Ok(RenameRegularFileOutcome::SourceMissing),
+            _ => Err(error),
+        },
+    }
+}
+
 #[cfg(test)]
-#[path = "../tests/filesystem/rename.rs"]
+#[path = "tests/rename.rs"]
 mod tests;

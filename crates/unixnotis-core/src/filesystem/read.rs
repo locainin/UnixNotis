@@ -40,5 +40,5 @@ fn limit_error(max_bytes: u64) -> io::Error {
 }
 
 #[cfg(test)]
-#[path = "../tests/filesystem/read.rs"]
+#[path = "tests/read.rs"]
 mod tests;

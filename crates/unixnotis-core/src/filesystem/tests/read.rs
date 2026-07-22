@@ -1,3 +1,5 @@
+//! Bounded regular-file read tests
+
 use std::fs;
 use std::os::unix::fs::symlink;
 

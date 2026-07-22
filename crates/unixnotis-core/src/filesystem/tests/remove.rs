@@ -1,3 +1,5 @@
+//! Descriptor-relative removal tests
+
 use std::fs;
 use std::os::unix::fs::symlink;
 
