@@ -6,8 +6,8 @@ use unixnotis_core::{css::hooks, IconAssetResolver, StatWidgetConfig};
 use super::super::builtin::BuiltinStat;
 use super::super::style::stat_kind_css_class;
 use super::StatItem;
+use crate::ui::widgets::command_runtime::backoff::RefreshBackoff;
 use crate::ui::widgets::icon_image::image_from_icon_config;
-use crate::ui::widgets::utils::RefreshBackoff;
 
 impl StatItem {
     pub(in crate::ui::widgets::stats) fn new(

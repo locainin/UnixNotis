@@ -6,7 +6,7 @@ use std::rc::Rc;
 use unixnotis_core::{CommandSpec, StatWidgetConfig, WidgetPluginConfig};
 
 use super::super::builtin::BuiltinStat;
-use crate::ui::widgets::utils::RefreshBackoff;
+use crate::ui::widgets::command_runtime::backoff::RefreshBackoff;
 
 #[derive(Clone)]
 pub(in crate::ui::widgets::stats) struct StatItem {

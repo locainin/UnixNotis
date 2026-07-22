@@ -7,8 +7,8 @@ use unixnotis_core::PanelDebugLevel;
 
 use super::super::{StatItem, StatSourceRef};
 use crate::diagnostics::panel_debug as debug;
+use crate::ui::widgets::command_runtime::backoff::INFLIGHT_REFRESH_RECHECK;
 use crate::ui::widgets::stats::builtin::{BuiltinStat, BuiltinStatKey};
-use crate::ui::widgets::utils::INFLIGHT_REFRESH_RECHECK;
 
 impl StatItem {
     pub(in crate::ui::widgets::stats) fn has_builtin_source(&self) -> bool {

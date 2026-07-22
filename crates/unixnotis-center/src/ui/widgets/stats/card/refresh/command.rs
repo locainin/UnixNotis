@@ -7,7 +7,7 @@ use tracing::warn;
 use unixnotis_core::CommandSpec;
 
 use super::super::{render::apply_cached_value, StatItem};
-use crate::ui::widgets::utils::run_command_capture_async;
+use crate::ui::widgets::command_runtime::command::run_command_capture_async;
 
 impl StatItem {
     pub(super) fn refresh_command(&self, command: &CommandSpec, base_interval: Duration) {

@@ -11,7 +11,7 @@ use gtk::prelude::*;
 use tracing::warn;
 use unixnotis_core::{css::hooks, util, CommandSpec, PanelDebugLevel, ToggleBackend};
 
-use super::super::utils::run_command_capture_status_async;
+use super::super::command_runtime::command::run_command_capture_status_async;
 use super::rfkill::parse_rfkill_state;
 use crate::diagnostics::{panel_debug as debug, performance as perf_probe};
 
