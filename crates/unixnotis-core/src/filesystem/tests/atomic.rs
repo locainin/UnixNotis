@@ -1,8 +1,9 @@
 //! Atomic file operation tests
 
 use super::{
-    file_mode, make_file_executable, reserve_temp, set_file_mode, write_file_atomic,
-    write_file_atomic_preserving_mode, write_file_if_missing,
+    ensure_exact_file, file_mode, make_file_executable, reserve_temp, set_file_mode,
+    write_file_atomic, write_file_atomic_preserving_mode, write_file_if_missing,
+    EnsureExactFileOutcome,
 };
 use std::ffi::OsString;
 use std::fs;
@@ -101,6 +102,58 @@ fn create_if_missing_preserves_existing_file_and_mode() {
         .mode()
         & 0o777;
     assert_eq!(mode, 0o640);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn exact_file_creation_accepts_only_identical_existing_bytes() {
+    let root = unique_temp_path("atomic-exact-file");
+    fs::create_dir_all(&root).expect("create test root");
+    let target = root.join("type");
+
+    assert_eq!(
+        ensure_exact_file(&target, b"bundle\n", 0o644).expect("create exact file"),
+        EnsureExactFileOutcome::Created
+    );
+    assert_eq!(
+        ensure_exact_file(&target, b"bundle\n", 0o600).expect("accept exact file"),
+        EnsureExactFileOutcome::AlreadyExact
+    );
+    assert_eq!(
+        ensure_exact_file(&target, b"longrun\n", 0o644).expect("reject mismatched bytes"),
+        EnsureExactFileOutcome::ContentsMismatch
+    );
+
+    assert_eq!(
+        fs::read_to_string(&target).expect("read exact file"),
+        "bundle\n"
+    );
+    assert_eq!(
+        fs::metadata(&target)
+            .expect("exact file metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn exact_file_creation_never_follows_a_collision_symlink() {
+    let root = unique_temp_path("atomic-exact-file-link");
+    fs::create_dir_all(&root).expect("create test root");
+    let outside = root.join("outside");
+    let target = root.join("type");
+    fs::write(&outside, "foreign").expect("write outside file");
+    symlink(&outside, &target).expect("create exact-file link");
+
+    ensure_exact_file(&target, b"bundle\n", 0o644).expect_err("link collision should fail");
+
+    assert_eq!(
+        fs::read_to_string(outside).expect("read outside file"),
+        "foreign"
+    );
     let _ = fs::remove_dir_all(root);
 }
 
