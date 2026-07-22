@@ -6,7 +6,6 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use unicode_width::UnicodeWidthChar;
 use unixnotis_core::{util, Action, Config, InlineReply, Notification, NotificationImage, Urgency};
 use zbus::zvariant::{OwnedValue, Value};
 
@@ -16,9 +15,6 @@ use super::limits::{
     MAX_HINT_STRING_BYTES, MAX_SUMMARY_BYTES,
 };
 use super::sender::SenderMetadata;
-
-// Unbroken tokens longer than this are folded with an ellipsis to avoid UI overflow spikes
-const MAX_CONTIGUOUS_TOKEN_CHARS: usize = 96;
 
 pub(super) struct NotificationInput {
     pub(super) app_name: String,
@@ -82,15 +78,15 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
         app_icon: truncate_utf8_bytes(&app_icon, MAX_APP_ICON_BYTES),
         // Truncate bytes first, then fold long contiguous runs to keep UTF-8 boundaries valid
         // Fold very long unbroken runs so renderer width remains bounded
-        summary: normalize_text_for_layout(
+        summary: util::fold_text_for_layout(
             &truncate_utf8_bytes(&summary, MAX_SUMMARY_BYTES),
-            MAX_CONTIGUOUS_TOKEN_CHARS,
+            util::MAX_DISPLAY_TOKEN_WIDTH,
         ),
         // Apply the same order for body so renderer sees consistent text constraints
         // Body can be much larger, so apply the same run-folding protection here
-        body: normalize_text_for_layout(
+        body: util::fold_text_for_layout(
             &truncate_utf8_bytes(&body, MAX_BODY_BYTES),
-            MAX_CONTIGUOUS_TOKEN_CHARS,
+            util::MAX_DISPLAY_TOKEN_WIDTH,
         ),
         actions,
         inline_reply,
@@ -268,70 +264,6 @@ fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
         "bounded backup must reach the current UTF-8 character boundary"
     );
     value[..end].to_string()
-}
-
-fn normalize_text_for_layout(value: &str, max_contiguous: usize) -> String {
-    if value.is_empty() || max_contiguous == 0 {
-        return value.to_string();
-    }
-
-    // Reserve original length to keep this pass allocation-stable on long input
-    let mut out = String::with_capacity(value.len());
-    let mut run_width = 0usize;
-    let mut folded_run = false;
-
-    // Walk characters so non-ASCII content remains valid after normalization
-    // Width is tracked in display columns instead of char count to handle wide glyphs
-    for ch in value.chars() {
-        if ch.is_whitespace() {
-            // Whitespace resets contiguous-run accounting
-            run_width = 0;
-            folded_run = false;
-            out.push(ch);
-            continue;
-        }
-
-        let width = display_width(ch);
-        if run_width.saturating_add(width) <= max_contiguous {
-            // Short runs stay as they are
-            out.push(ch);
-            run_width = run_width.saturating_add(width);
-            continue;
-        }
-
-        // Add one ellipsis when a contiguous token crosses the safety threshold
-        if !folded_run {
-            let ellipsis_width = display_width('…');
-            // Keep final run width bounded by trimming the current run tail first
-            while run_width.saturating_add(ellipsis_width) > max_contiguous {
-                // Pop one char at a time
-                let Some(last) = out.pop() else {
-                    break;
-                };
-                run_width = run_width.saturating_sub(display_width(last));
-            }
-            if run_width.saturating_add(ellipsis_width) <= max_contiguous {
-                out.push('…');
-                run_width = run_width.saturating_add(ellipsis_width);
-            }
-            folded_run = true;
-        }
-        // Remaining chars in this run are dropped until whitespace appears again
-    }
-
-    out
-}
-
-fn display_width(ch: char) -> usize {
-    // Width estimators in downstream UI surfaces often treat joiners/selectors as visible slots
-    // Counting them here keeps folded output safely within those stricter layouts
-    if matches!(
-        ch,
-        '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FE0E}' | '\u{FE0F}'
-    ) {
-        return 1;
-    }
-    UnicodeWidthChar::width_cjk(ch).unwrap_or(0)
 }
 
 #[cfg(test)]

@@ -18,4 +18,3 @@ zbus.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
 indexmap.workspace = true
 rustix.workspace = true
-unicode-width.workspace = true

@@ -4,10 +4,9 @@ use std::time::{Duration, Instant};
 use zbus::zvariant::OwnedValue;
 
 use super::{
-    build_notification, display_width, normalize_text_for_layout, owned_to_string, parse_actions,
-    parse_urgency_hint, resolve_expiration, sanitize_hints_for_storage, string_to_owned_value,
-    truncate_utf8_bytes, NotificationInput, SenderMetadata, MAX_ACTIONS, MAX_BODY_BYTES,
-    MAX_SUMMARY_BYTES,
+    build_notification, owned_to_string, parse_actions, parse_urgency_hint, resolve_expiration,
+    sanitize_hints_for_storage, string_to_owned_value, truncate_utf8_bytes, NotificationInput,
+    SenderMetadata, MAX_ACTIONS, MAX_BODY_BYTES, MAX_SUMMARY_BYTES,
 };
 use unixnotis_core::{Config, NotificationImage, Urgency};
 
@@ -309,72 +308,4 @@ fn resolve_expiration_treats_positive_timeout_as_caller_owned_even_when_default_
 
     notification.expire_timeout = -1;
     assert!(resolve_expiration(&config, &notification).is_none());
-}
-
-#[test]
-fn normalize_text_for_layout_folds_long_unbroken_tokens() {
-    let input = "x".repeat(200);
-    let normalized = normalize_text_for_layout(&input, 96);
-    assert!(normalized.contains('…'));
-    let longest = normalized
-        .split_whitespace()
-        .map(|part| part.chars().filter(char::is_ascii_alphanumeric).count())
-        .max()
-        .unwrap_or(0);
-    assert!(longest <= 96);
-}
-
-#[test]
-fn normalize_text_for_layout_returns_input_when_limit_is_zero() {
-    assert_eq!(normalize_text_for_layout("unchanged", 0), "unchanged");
-}
-
-#[test]
-fn normalize_text_for_layout_keeps_exact_width_token_without_ellipsis() {
-    let input = "x".repeat(96);
-    let normalized = normalize_text_for_layout(&input, 96);
-    assert_eq!(normalized, input);
-}
-
-#[test]
-fn normalize_text_for_layout_resets_run_after_whitespace() {
-    let input = format!("{} {}", "x".repeat(96), "y".repeat(96));
-    let normalized = normalize_text_for_layout(&input, 96);
-    assert_eq!(normalized, input);
-}
-
-#[test]
-fn normalize_text_for_layout_keeps_char_count_bound_with_ellipsis() {
-    let input = "x".repeat(200);
-    let normalized = normalize_text_for_layout(&input, 96);
-    assert!(normalized.contains('…'));
-    // Ellipsis is width 2 in CJK width mode, so the text keeps 94 ASCII chars plus ellipsis
-    assert_eq!(normalized.chars().count(), 95);
-}
-
-#[test]
-fn normalize_text_for_layout_trims_only_as_much_as_needed_for_ellipsis() {
-    assert_eq!(normalize_text_for_layout("xxxx", 3), "x…");
-}
-
-#[test]
-fn normalize_text_for_layout_limits_wide_glyph_runs() {
-    let input = "界".repeat(120);
-    let normalized = normalize_text_for_layout(&input, 96);
-    let width: usize = normalized.chars().map(display_width).sum();
-    assert!(width <= 96);
-}
-
-#[test]
-fn normalize_text_for_layout_limits_emoji_joiner_runs() {
-    let input = "👨\u{200D}👩\u{200D}👧\u{200D}👦".repeat(80);
-    let normalized = normalize_text_for_layout(&input, 96);
-    let width: usize = normalized.chars().map(display_width).sum();
-    assert!(width <= 96);
-}
-
-#[test]
-fn display_width_counts_wide_and_joiner_characters_for_layout_safety() {
-    assert!(display_width('界') > 1);
-    assert_eq!(display_width('\u{200D}'), 1);
 }
