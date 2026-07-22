@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fs;
-use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 
 use tracing::{debug, info};
@@ -8,10 +7,9 @@ use unixnotis_core::filesystem::{open_regular_file, ContainedPath};
 use unixnotis_core::{util, Config};
 use zbus::zvariant::OwnedValue;
 
-use super::{SoundFile, SoundSource};
+use super::{wav::is_safe_pcm_wav, SoundFile, SoundSource};
 
 const MAX_SOUND_FILE_BYTES: u64 = 16 * 1024 * 1024;
-const SOUND_HEADER_PROBE_BYTES: usize = 4 * 1024;
 
 pub(super) fn resolve_hint_sound(
     hints: &HashMap<String, OwnedValue>,
@@ -190,7 +188,7 @@ fn open_sound_file(path: &Path, require_safe_hint_format: bool) -> Option<SoundF
     if metadata.len() > MAX_SOUND_FILE_BYTES {
         return None;
     }
-    if require_safe_hint_format && !has_safe_hint_format(path, &file) {
+    if require_safe_hint_format && !has_safe_hint_format(path, &file, metadata.len()) {
         return None;
     }
     Some(SoundFile::new(path.to_path_buf(), file))
@@ -203,35 +201,12 @@ fn path_is_allowed(path: &Path, allowed_dirs: &[PathBuf]) -> bool {
             .any(|root| ContainedPath::resolve(root, path).is_ok())
 }
 
-fn has_safe_hint_format(path: &Path, file: &fs::File) -> bool {
+fn has_safe_hint_format(path: &Path, file: &fs::File, file_len: u64) -> bool {
     let extension = path
         .extension()
         .and_then(|extension| extension.to_str())
         .unwrap_or_default();
-    let mut header = [0u8; SOUND_HEADER_PROBE_BYTES];
-    let read = file.read_at(&mut header, 0).ok().unwrap_or(0);
-    let header = &header[..read];
-
-    if extension.eq_ignore_ascii_case("wav") {
-        return header.starts_with(b"RIFF")
-            && header.get(8..12) == Some(b"WAVE")
-            && wav_audio_format(header) == Some(1);
-    }
-    if extension.eq_ignore_ascii_case("ogg") || extension.eq_ignore_ascii_case("oga") {
-        return header.starts_with(b"OggS")
-            && header.windows(7).any(|window| window == b"\x01vorbis");
-    }
-    false
-}
-
-fn wav_audio_format(header: &[u8]) -> Option<u16> {
-    let format_offset = header.windows(4).position(|window| window == b"fmt ")?;
-    let value_start = format_offset.checked_add(8)?;
-    let bytes: [u8; 2] = header
-        .get(value_start..value_start.checked_add(2)?)?
-        .try_into()
-        .ok()?;
-    Some(u16::from_le_bytes(bytes))
+    extension.eq_ignore_ascii_case("wav") && is_safe_pcm_wav(file, file_len)
 }
 
 fn hint_string(hints: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
