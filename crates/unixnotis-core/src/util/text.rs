@@ -8,11 +8,11 @@ pub fn truncate_utf8_bytes(value: &str, max_bytes: usize) -> String {
         return value.to_string();
     }
 
-    // A UTF-8 scalar uses at most four bytes, so only its continuation bytes need inspection
-    let mut end = max_bytes;
-    while !value.is_char_boundary(end) {
-        end -= 1;
-    }
+    // A UTF-8 scalar uses at most four bytes, so this range examines no more than four offsets
+    let end = (max_bytes.saturating_sub(3)..=max_bytes)
+        .rev()
+        .find(|offset| value.is_char_boundary(*offset))
+        .unwrap_or_default();
 
     value[..end].to_string()
 }

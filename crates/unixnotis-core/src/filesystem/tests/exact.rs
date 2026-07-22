@@ -1,20 +1,15 @@
 //! Exact regular-file transaction tests
 
+use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::{symlink, PermissionsExt};
 
 use super::{
-    ensure_exact_file, ensure_exact_file_pair, exclusive_create_collided, EnsureExactFileOutcome,
-    EnsureExactFilePairOutcome,
+    ensure_exact_file, ensure_exact_file_pair, rollback_created_member, EnsureExactFileOutcome,
+    EnsureExactFilePairOutcome, ExactMember,
 };
+use crate::filesystem::descriptor::open_parent_existing;
 use crate::test_support::unique_temp_path;
-
-#[test]
-fn exclusive_create_collision_classification_accepts_only_existing_targets() {
-    assert!(exclusive_create_collided(rustix::io::Errno::EXIST));
-    assert!(!exclusive_create_collided(rustix::io::Errno::ACCESS));
-    assert!(!exclusive_create_collided(rustix::io::Errno::INVAL));
-}
 
 #[test]
 fn exact_file_creation_accepts_only_identical_existing_bytes() {
@@ -42,6 +37,25 @@ fn exact_file_creation_accepts_only_identical_existing_bytes() {
     assert_eq!(
         fs::metadata(&target)
             .expect("exact file metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn exact_file_creation_masks_non_permission_mode_bits() {
+    let root = unique_temp_path("exact-file-mode-mask");
+    fs::create_dir_all(&root).expect("create test root");
+    let target = root.join("type");
+
+    ensure_exact_file(&target, b"bundle\n", 0o100_600).expect("create exact file");
+
+    assert_eq!(
+        fs::metadata(&target)
+            .expect("target metadata")
             .permissions()
             .mode()
             & 0o777,
@@ -217,5 +231,79 @@ fn exact_pair_rejects_different_parents_and_reused_names() {
         .expect_err("reused names should fail");
 
     assert!(!target.exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn rollback_accepts_a_created_member_that_is_already_missing() {
+    let root = unique_temp_path("exact-rollback-missing");
+    fs::create_dir_all(&root).expect("create test root");
+    let target = root.join("state");
+    fs::write(&target, b"owned").expect("write target");
+    let retained = fs::File::open(&target).expect("open retained target");
+    let (parent_fd, file_name) = open_parent_existing(&target).expect("open retained parent");
+    fs::remove_file(&target).expect("remove visible target");
+    let member = ExactMember {
+        file: retained,
+        created: true,
+    };
+
+    rollback_created_member(&parent_fd, &file_name, &member)
+        .expect("an already absent created member needs no rollback");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn rollback_propagates_non_missing_lookup_errors() {
+    let root = unique_temp_path("exact-rollback-lookup-error");
+    fs::create_dir_all(&root).expect("create test root");
+    let retained_path = root.join("retained");
+    fs::write(&retained_path, b"owned").expect("write retained file");
+    let member = ExactMember {
+        file: fs::File::open(&retained_path).expect("open retained file"),
+        created: true,
+    };
+    let (parent_fd, _file_name) =
+        open_parent_existing(&retained_path).expect("open retained parent");
+    let oversized_name = OsString::from("x".repeat(1_024));
+
+    rollback_created_member(&parent_fd, &oversized_name, &member)
+        .expect_err("invalid lookup errors must not be treated as a missing target");
+
+    assert_eq!(
+        fs::read_to_string(retained_path).expect("read retained file"),
+        "owned"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn rollback_preserves_a_same_device_replacement() {
+    let root = unique_temp_path("exact-rollback-replacement");
+    fs::create_dir_all(&root).expect("create test root");
+    let target = root.join("state");
+    let moved = root.join("original");
+    fs::write(&target, b"owned").expect("write original target");
+    let retained = fs::File::open(&target).expect("open retained target");
+    let (parent_fd, file_name) = open_parent_existing(&target).expect("open retained parent");
+    fs::rename(&target, &moved).expect("move original target");
+    fs::write(&target, b"replacement").expect("write replacement target");
+    let member = ExactMember {
+        file: retained,
+        created: true,
+    };
+
+    rollback_created_member(&parent_fd, &file_name, &member)
+        .expect_err("identity mismatch must stop rollback");
+
+    assert_eq!(
+        fs::read_to_string(target).expect("read replacement target"),
+        "replacement"
+    );
+    assert_eq!(
+        fs::read_to_string(moved).expect("read original target"),
+        "owned"
+    );
     let _ = fs::remove_dir_all(root);
 }

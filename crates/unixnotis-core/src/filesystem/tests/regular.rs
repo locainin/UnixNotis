@@ -22,6 +22,8 @@ fn bounded_comparison_accepts_exact_bytes_and_rejects_larger_files() {
     assert!(
         regular_file_contents_equal(&target, b"bundle\n", 7).expect("compare exact regular file")
     );
+    assert!(regular_file_contents_equal(&target, b"bundle\n", 8)
+        .expect("compare regular file below the maximum"));
     assert!(
         !regular_file_contents_equal(&target, b"bundle", 6).expect("reject oversized regular file")
     );
