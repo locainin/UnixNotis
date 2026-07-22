@@ -341,6 +341,68 @@ fn write_shared_service_file_refuses_to_overwrite_user_content() {
 }
 
 #[test]
+fn write_shared_service_file_preserves_an_exact_unowned_file() {
+    let root = test_root("install-service-shared-unowned-file");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let marker = root.join("default").join(".unixnotis-created-type");
+    let artifact = ServiceArtifact {
+        path: root.join("default").join("type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker.clone()),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+    fs::create_dir_all(artifact.path.parent().expect("shared file parent"))
+        .expect("create shared file parent");
+    fs::write(&artifact.path, "bundle\n").expect("seed exact unmarked shared file");
+
+    let unchanged = write_service_artifact(&ctx, &artifact).expect("accept exact unowned file");
+
+    assert!(!unchanged);
+    assert!(!marker.exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn write_shared_service_file_rolls_back_when_the_marker_conflicts() {
+    let root = test_root("install-service-shared-marker-conflict");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let marker = root.join("default").join(".unixnotis-created-type");
+    let artifact = ServiceArtifact {
+        path: root.join("default").join("type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker.clone()),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+    fs::create_dir_all(marker.parent().expect("marker parent")).expect("create shared file parent");
+    fs::write(&marker, "foreign\n").expect("seed foreign marker");
+
+    let error = write_service_artifact(&ctx, &artifact)
+        .expect_err("conflicting marker should reject the pair");
+
+    assert!(error.to_string().contains("refusing to overwrite"));
+    assert!(!artifact.path.exists());
+    assert_eq!(
+        fs::read_to_string(marker).expect("read foreign marker"),
+        "foreign\n"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn remove_shared_service_file_only_removes_marker_owned_file() {
     let root = test_root("install-service-shared-file-remove");
     let paths = test_paths(&root);
@@ -706,6 +768,40 @@ fn install_replaces_regular_owned_artifact_but_rejects_unsafe_existing_path() {
 }
 
 #[test]
+fn install_replaces_an_oversized_sparse_service_file_without_reading_it() {
+    let root = test_root("install-service-oversized-regular-file");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    fs::create_dir_all(&root).expect("create service root");
+    let path = root.join("service-file");
+    let oversized = fs::File::create(&path).expect("create sparse service file");
+    oversized
+        .set_len(1_073_741_824)
+        .expect("extend sparse service file");
+    drop(oversized);
+    let artifact = ServiceArtifact {
+        path: path.clone(),
+        kind: ServiceArtifactKind::File,
+        contents: Some("service\n".to_string()),
+        mode: None,
+    };
+
+    let changed =
+        write_service_artifact(&ctx, &artifact).expect("replace oversized regular service file");
+
+    assert!(changed);
+    assert_eq!(
+        fs::read_to_string(path).expect("read replaced service file"),
+        "service\n"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn write_service_artifact_rejects_socket_artifact_path() {
     let root = test_root("install-service-special-file-reject");
     let paths = test_paths(&root);
@@ -727,7 +823,7 @@ fn write_service_artifact_rejects_socket_artifact_path() {
 
     let err = write_service_artifact(&ctx, &artifact).expect_err("socket path is unsafe");
 
-    // The socket remains untouched and the writer fails before read_to_string can block on it
+    // The socket remains untouched and the writer fails before descriptor comparison can block
     assert!(err
         .to_string()
         .contains("cannot replace non-regular service artifact"));

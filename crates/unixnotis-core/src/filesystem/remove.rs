@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 
 use rustix::fs::{fstat, statat, unlinkat, AtFlags};
 
-use super::atomic::{file_contents_equal, open_regular_file_at, validate_existing_target};
 use super::directory::{open_parent_existing, sync_directory};
+use super::regular::{file_contents_equal, open_regular_file_at, validate_existing_target};
 use super::symlink::read_symlink_at;
 
 /// Result of removing a symbolic link with an expected target

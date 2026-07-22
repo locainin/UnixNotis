@@ -1,9 +1,8 @@
 //! Atomic file operation tests
 
 use super::{
-    ensure_exact_file, exclusive_create_collided, file_mode, make_file_executable, reserve_temp,
-    set_file_mode, write_file_atomic, write_file_atomic_preserving_mode, write_file_if_missing,
-    EnsureExactFileOutcome,
+    file_mode, reserve_temp, write_file_atomic, write_file_atomic_preserving_mode,
+    write_file_if_missing,
 };
 use std::ffi::OsString;
 use std::fs;
@@ -18,13 +17,6 @@ use crate::filesystem::directory::{
     anchor_resolve_flags, contained_resolve_flags, open_parent, sync_directory,
 };
 use crate::test_support::unique_temp_path;
-
-#[test]
-fn exclusive_create_collision_classification_accepts_only_existing_targets() {
-    assert!(exclusive_create_collided(rustix::io::Errno::EXIST));
-    assert!(!exclusive_create_collided(rustix::io::Errno::ACCESS));
-    assert!(!exclusive_create_collided(rustix::io::Errno::INVAL));
-}
 
 #[test]
 fn atomic_write_rejects_target_symlink_without_changing_outside_file() {
@@ -113,58 +105,6 @@ fn create_if_missing_preserves_existing_file_and_mode() {
 }
 
 #[test]
-fn exact_file_creation_accepts_only_identical_existing_bytes() {
-    let root = unique_temp_path("atomic-exact-file");
-    fs::create_dir_all(&root).expect("create test root");
-    let target = root.join("type");
-
-    assert_eq!(
-        ensure_exact_file(&target, b"bundle\n", 0o644).expect("create exact file"),
-        EnsureExactFileOutcome::Created
-    );
-    assert_eq!(
-        ensure_exact_file(&target, b"bundle\n", 0o600).expect("accept exact file"),
-        EnsureExactFileOutcome::AlreadyExact
-    );
-    assert_eq!(
-        ensure_exact_file(&target, b"longrun\n", 0o644).expect("reject mismatched bytes"),
-        EnsureExactFileOutcome::ContentsMismatch
-    );
-
-    assert_eq!(
-        fs::read_to_string(&target).expect("read exact file"),
-        "bundle\n"
-    );
-    assert_eq!(
-        fs::metadata(&target)
-            .expect("exact file metadata")
-            .permissions()
-            .mode()
-            & 0o777,
-        0o600
-    );
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn exact_file_creation_never_follows_a_collision_symlink() {
-    let root = unique_temp_path("atomic-exact-file-link");
-    fs::create_dir_all(&root).expect("create test root");
-    let outside = root.join("outside");
-    let target = root.join("type");
-    fs::write(&outside, "foreign").expect("write outside file");
-    symlink(&outside, &target).expect("create exact-file link");
-
-    ensure_exact_file(&target, b"bundle\n", 0o644).expect_err("link collision should fail");
-
-    assert_eq!(
-        fs::read_to_string(outside).expect("read outside file"),
-        "foreign"
-    );
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
 fn create_if_missing_rejects_every_unsafe_existing_target() {
     let root = unique_temp_path("atomic-if-missing-unsafe");
     fs::create_dir_all(&root).expect("create test root");
@@ -192,74 +132,6 @@ fn create_if_missing_rejects_every_unsafe_existing_target() {
 }
 
 #[test]
-fn executable_update_rejects_symlink_without_touching_its_target() {
-    let root = unique_temp_path("atomic-executable-symlink");
-    fs::create_dir_all(&root).expect("create test root");
-    let outside = root.join("outside.sh");
-    let link = root.join("script.sh");
-    fs::write(&outside, "safe").expect("write outside script");
-    fs::set_permissions(&outside, fs::Permissions::from_mode(0o600)).expect("set outside mode");
-    symlink(&outside, &link).expect("create script link");
-
-    make_file_executable(&link).expect_err("script link should fail");
-
-    assert_eq!(fs::read_to_string(&outside).expect("read outside"), "safe");
-    assert_eq!(
-        fs::metadata(&outside)
-            .expect("outside metadata")
-            .permissions()
-            .mode()
-            & 0o777,
-        0o600
-    );
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn mode_update_applies_exact_permissions_to_a_regular_file() {
-    let root = unique_temp_path("atomic-mode-update");
-    fs::create_dir_all(&root).expect("create test root");
-    let target = root.join("run");
-    fs::write(&target, "service").expect("write service file");
-    fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).expect("set original mode");
-
-    set_file_mode(&target, 0o755).expect("set service mode");
-
-    assert_eq!(
-        fs::metadata(&target)
-            .expect("service metadata")
-            .permissions()
-            .mode()
-            & 0o777,
-        0o755
-    );
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn mode_update_rejects_a_symlink_without_touching_its_target() {
-    let root = unique_temp_path("atomic-mode-symlink");
-    fs::create_dir_all(&root).expect("create test root");
-    let outside = root.join("outside");
-    let link = root.join("run");
-    fs::write(&outside, "service").expect("write outside file");
-    fs::set_permissions(&outside, fs::Permissions::from_mode(0o600)).expect("set outside mode");
-    symlink(&outside, &link).expect("create service link");
-
-    set_file_mode(&link, 0o755).expect_err("service link should fail");
-
-    assert_eq!(
-        fs::metadata(&outside)
-            .expect("outside metadata")
-            .permissions()
-            .mode()
-            & 0o777,
-        0o600
-    );
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
 fn create_if_missing_propagates_non_collision_open_error() {
     let root = unique_temp_path("atomic-if-missing-error");
     fs::create_dir_all(&root).expect("create test root");
@@ -281,20 +153,6 @@ fn create_if_missing_preserves_non_directory_parent_errors() {
 
     let error = write_file_if_missing(&parent_file.join("state"), b"data", 0o600)
         .expect_err("regular-file parent must reject creation");
-
-    assert_eq!(error.kind(), std::io::ErrorKind::NotADirectory);
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn exact_file_creation_preserves_non_directory_parent_errors() {
-    let root = unique_temp_path("atomic-exact-parent-file");
-    fs::create_dir_all(&root).expect("create test root");
-    let parent_file = root.join("parent-file");
-    fs::write(&parent_file, "not a directory").expect("write parent file");
-
-    let error = ensure_exact_file(&parent_file.join("state"), b"data", 0o600)
-        .expect_err("regular-file parent must reject exact creation");
 
     assert_eq!(error.kind(), std::io::ErrorKind::NotADirectory);
     let _ = fs::remove_dir_all(root);

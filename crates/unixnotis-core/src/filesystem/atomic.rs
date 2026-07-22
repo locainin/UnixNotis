@@ -3,30 +3,19 @@
 use rustix::fs::{openat2, renameat, unlinkat, AtFlags, Mode, OFlags};
 use std::ffi::OsString;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::os::fd::OwnedFd;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::directory::{
-    contained_resolve_flags, open_parent, open_parent_existing, sync_directory,
-};
+use super::directory::{contained_resolve_flags, open_parent, sync_directory};
+use super::exact::exclusive_create_collided;
+use super::regular::{existing_target_mode, validate_existing_target};
 
 const TEMP_ATTEMPTS: u8 = 16;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-/// Result of creating or validating a file whose bytes must match exactly
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EnsureExactFileOutcome {
-    /// The destination was absent and this operation created it
-    Created,
-    /// The existing regular file already contained the required bytes
-    AlreadyExact,
-    /// The existing regular file belongs to another owner or configuration
-    ContentsMismatch,
-}
 
 /// Replace a regular file through an exclusive sibling temporary file
 ///
@@ -139,187 +128,8 @@ pub fn write_file_if_missing(path: &Path, contents: &[u8], mode: u32) -> io::Res
     Ok(true)
 }
 
-/// Create a regular file when absent or validate an exact existing payload
-///
-/// A collision is opened once through the retained parent descriptor and is never replaced
-///
-/// # Errors
-///
-/// Returns an error when the parent path is unsafe, the destination is not a regular file, or
-/// creating, reading, applying the mode, or synchronizing the file fails
-pub fn ensure_exact_file(
-    path: &Path,
-    contents: &[u8],
-    mode: u32,
-) -> io::Result<EnsureExactFileOutcome> {
-    let (parent_fd, file_name) = open_parent(path)?;
-    ensure_exact_file_at(&parent_fd, &file_name, contents, mode)
-}
-
-/// Add executable bits to an existing regular file without following links
-///
-/// # Errors
-///
-/// Returns an error when the path escapes through a link, is not a regular file, or cannot be
-/// opened and updated through its stable descriptor
-pub fn make_file_executable(path: &Path) -> io::Result<()> {
-    let file = open_regular_file(path)?;
-    let mode = file.metadata()?.permissions().mode() | 0o111;
-    file.set_permissions(fs::Permissions::from_mode(mode))
-}
-
-/// Set permission bits on an existing regular file without following links
-///
-/// # Errors
-///
-/// Returns an error when the path escapes through a link, is not a regular file, or cannot be
-/// opened and updated through its stable descriptor
-pub fn set_file_mode(path: &Path, mode: u32) -> io::Result<()> {
-    let file = open_regular_file(path)?;
-    file.set_permissions(fs::Permissions::from_mode(mode & 0o777))
-}
-
-/// Open one regular file through a no-follow descriptor path
-///
-/// # Errors
-///
-/// Returns an error when any path component is a link, the target is not a regular file, or the
-/// descriptor-relative open fails
-pub fn open_regular_file(path: &Path) -> io::Result<fs::File> {
-    let (parent_fd, file_name) = open_parent_existing(path)?;
-    open_regular_file_at(&parent_fd, &file_name)
-}
-
-pub(super) fn open_regular_file_at(
-    parent_fd: &OwnedFd,
-    file_name: &OsString,
-) -> io::Result<fs::File> {
-    let fd = openat2(
-        parent_fd,
-        file_name,
-        OFlags::RDONLY
-            .union(OFlags::NONBLOCK)
-            .union(OFlags::CLOEXEC)
-            .union(OFlags::NOFOLLOW),
-        Mode::empty(),
-        contained_resolve_flags(),
-    )?;
-    let file = fs::File::from(fd);
-    if !file.metadata()?.is_file() {
-        return Err(unsafe_target_error());
-    }
-    Ok(file)
-}
-
-pub(super) fn ensure_exact_file_at(
-    parent_fd: &OwnedFd,
-    file_name: &OsString,
-    contents: &[u8],
-    mode: u32,
-) -> io::Result<EnsureExactFileOutcome> {
-    let fd = match openat2(
-        parent_fd,
-        file_name,
-        OFlags::RDWR
-            .union(OFlags::NONBLOCK)
-            .union(OFlags::CLOEXEC)
-            .union(OFlags::CREATE)
-            .union(OFlags::EXCL),
-        file_mode(mode),
-        contained_resolve_flags(),
-    ) {
-        Ok(fd) => fd,
-        Err(error) if exclusive_create_collided(error) => {
-            let mut file = open_regular_file_at(parent_fd, file_name)?;
-            if !file_contents_equal(&mut file, contents)? {
-                return Ok(EnsureExactFileOutcome::ContentsMismatch);
-            }
-            // Matching shared state may still need its declared service-manager mode restored
-            file.set_permissions(fs::Permissions::from_mode(mode & 0o777))?;
-            file.sync_all()?;
-            return Ok(EnsureExactFileOutcome::AlreadyExact);
-        }
-        Err(error) => return Err(error.into()),
-    };
-
-    let mut file = fs::File::from(fd);
-    if let Err(error) = file
-        .write_all(contents)
-        .and_then(|()| set_mode_and_sync(&file, mode))
-    {
-        drop(file);
-        let _ = unlinkat(parent_fd, file_name, AtFlags::empty());
-        return Err(error);
-    }
-    drop(file);
-    sync_directory(parent_fd)?;
-    Ok(EnsureExactFileOutcome::Created)
-}
-
-fn exclusive_create_collided(error: rustix::io::Errno) -> bool {
-    // Only an existing target may enter the create-or-compare collision path
-    error == rustix::io::Errno::EXIST
-}
-
-pub(super) fn file_contents_equal(file: &mut fs::File, expected: &[u8]) -> io::Result<bool> {
-    let read_limit = u64::try_from(expected.len())
-        .unwrap_or(u64::MAX)
-        .saturating_add(1);
-    let mut actual = Vec::with_capacity(expected.len().saturating_add(1));
-    file.take(read_limit).read_to_end(&mut actual)?;
-    Ok(actual == expected)
-}
-
 fn validate_target(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<()> {
     existing_target_mode(parent_fd, file_name).map(|_mode| ())
-}
-
-fn existing_target_mode(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<Option<u32>> {
-    match openat2(
-        parent_fd,
-        file_name,
-        OFlags::PATH.union(OFlags::CLOEXEC).union(OFlags::NOFOLLOW),
-        Mode::empty(),
-        contained_resolve_flags(),
-    ) {
-        Ok(fd) => {
-            let metadata = fs::File::from(fd).metadata()?;
-            if metadata.is_file() {
-                Ok(Some(metadata.permissions().mode() & 0o777))
-            } else {
-                Err(unsafe_target_error())
-            }
-        }
-        Err(error) => match error.kind() {
-            io::ErrorKind::NotFound => Ok(None),
-            _ => Err(error.into()),
-        },
-    }
-}
-
-pub(super) fn validate_existing_target(
-    parent_fd: &OwnedFd,
-    file_name: &OsString,
-) -> io::Result<()> {
-    let fd = openat2(
-        parent_fd,
-        file_name,
-        OFlags::PATH.union(OFlags::CLOEXEC).union(OFlags::NOFOLLOW),
-        Mode::empty(),
-        contained_resolve_flags(),
-    )?;
-    if fs::File::from(fd).metadata()?.is_file() {
-        Ok(())
-    } else {
-        Err(unsafe_target_error())
-    }
-}
-
-fn unsafe_target_error() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::InvalidInput,
-        "refusing to operate on a non-regular file target",
-    )
 }
 
 pub(super) fn temp_candidates(file_name: &OsString) -> impl Iterator<Item = OsString> + '_ {

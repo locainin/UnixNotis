@@ -3,7 +3,7 @@
 use std::io::{self, Read};
 use std::path::Path;
 
-use super::atomic::open_regular_file;
+use super::regular::open_regular_file;
 
 /// Read a regular file without following links and enforce a byte limit
 ///
