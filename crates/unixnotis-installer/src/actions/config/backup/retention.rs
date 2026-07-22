@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use chrono::Local;
+use unixnotis_core::filesystem::{create_directory_all, remove_directory_tree};
 
 use crate::paths::format_with_home;
 
@@ -34,7 +35,8 @@ pub(in crate::actions::config) fn create_backup_dir(
         suffix += 1;
     }
 
-    fs::create_dir_all(&candidate).with_context(|| "failed to create backup directory")?;
+    // Backups may contain private configuration, so their root is always user-only
+    create_directory_all(&candidate, 0o700).with_context(|| "failed to create backup directory")?;
     log_line(
         ctx,
         format!("Backup directory created: {}", format_with_home(&candidate)),
@@ -92,7 +94,7 @@ pub(in crate::actions::config::backup) fn prune_old_backups_except(
         if protected_backup.is_some_and(|protected| protected == path) {
             continue;
         }
-        if let Err(err) = fs::remove_dir_all(&path) {
+        if let Err(err) = remove_directory_tree(&path) {
             log_line(
                 ctx,
                 format!(

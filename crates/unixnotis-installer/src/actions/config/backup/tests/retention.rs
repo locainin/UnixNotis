@@ -6,6 +6,7 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use std::fs;
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
@@ -126,9 +127,49 @@ fn create_backup_dir_keeps_new_directory_when_retention_is_full() {
         backup_dir.exists(),
         "new backup directory must survive retention pruning"
     );
+    assert_eq!(
+        fs::metadata(&backup_dir)
+            .expect("backup directory metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
     assert_eq!(list_backup_dirs(&root).len(), 3);
 
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn prune_old_backups_rejects_symlink_children_without_touching_target() {
+    let root = crate::test_support::fs::unique_temp_path("backup-prune-child-link");
+    let oldest = root.join("Backup-2026-07-20");
+    let newest = root.join("Backup-2026-07-21");
+    let protected = root.join("protected");
+    fs::create_dir_all(&oldest).expect("create oldest backup");
+    fs::create_dir_all(&newest).expect("create newest backup");
+    fs::write(&protected, "protected").expect("write protected file");
+    symlink(&protected, oldest.join("linked-file")).expect("create backup child link");
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = super::support::test_paths(&root);
+    let mut context = super::support::test_context(&detection, &paths);
+
+    prune_old_backups(&mut context, &root, 1).expect("prune remains best effort");
+
+    assert!(oldest.exists());
+    assert!(newest.exists());
+    assert_eq!(
+        fs::read_to_string(protected).expect("read protected file"),
+        "protected"
+    );
+    assert!(fs::symlink_metadata(oldest.join("linked-file"))
+        .expect("backup child link remains")
+        .file_type()
+        .is_symlink());
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]
