@@ -3563,6 +3563,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
+ "unicode-width",
  "zbus",
 ]
 
@@ -3581,7 +3582,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "unicode-width",
  "unixnotis-core",
  "zbus",
 ]

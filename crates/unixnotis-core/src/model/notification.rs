@@ -9,6 +9,7 @@ use zbus::zvariant::{OwnedValue, Type};
 use super::image::NotificationImage;
 use super::reply::InlineReply;
 use super::types::{Action, Urgency};
+use crate::util::{fold_text_for_layout, MAX_DISPLAY_TOKEN_WIDTH};
 
 /// Full notification record stored by the daemon
 #[derive(Debug)]
@@ -55,8 +56,8 @@ impl Notification {
         NotificationView {
             id: self.id,
             app_name: self.app_name.clone(),
-            summary: notification_plain_text(&self.summary),
-            body: notification_plain_text(&self.body),
+            summary: notification_display_text(&self.summary),
+            body: notification_display_text(&self.body),
             actions: self.actions.clone(),
             inline_reply: self.inline_reply.clone(),
             urgency: self.urgency.as_u8(),
@@ -74,8 +75,8 @@ impl Notification {
         NotificationView {
             id: self.id,
             app_name: self.app_name.clone(),
-            summary: notification_plain_text(&self.summary),
-            body: notification_plain_text(&self.body),
+            summary: notification_display_text(&self.summary),
+            body: notification_display_text(&self.body),
             actions: self.actions.clone(),
             inline_reply: self.inline_reply.clone(),
             urgency: self.urgency.as_u8(),
@@ -156,6 +157,11 @@ fn notification_plain_text(input: &str) -> String {
 
     // Tag stripping can leave noisy gaps, so normalize once at the end
     collapse_notification_whitespace(&output)
+}
+
+fn notification_display_text(input: &str) -> String {
+    // Markup removal can join text that was separated by tags in the stored payload
+    fold_text_for_layout(&notification_plain_text(input), MAX_DISPLAY_TOKEN_WIDTH)
 }
 
 fn push_tag_spacing(output: &mut String, tag: &str) {

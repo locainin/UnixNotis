@@ -143,6 +143,26 @@ fn notification_view_preserves_inline_markup_adjacency() {
 }
 
 #[test]
+fn notification_view_refolds_tokens_joined_by_markup_removal() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.summary = format!(
+        "markup-{}",
+        "<a href='https://example.test/path'>link</a>".repeat(180)
+    );
+
+    let view = notification.to_view();
+    let longest = view
+        .summary
+        .split_whitespace()
+        .map(|token| token.chars().count())
+        .max()
+        .unwrap_or_default();
+
+    assert!(view.summary.contains('…'));
+    assert!(longest <= crate::util::MAX_DISPLAY_TOKEN_WIDTH);
+}
+
+#[test]
 fn notification_view_collapses_inline_spaces_without_leaking_after_blocks() {
     let mut notification = notification_with_image(image_with_raw_bytes());
     notification.body = "Alpha  <b>Beta</b><br> Gamma".to_string();
