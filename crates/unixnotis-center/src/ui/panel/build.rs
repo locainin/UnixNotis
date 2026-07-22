@@ -17,11 +17,6 @@ pub fn build_panel_widgets(app: &gtk::Application, config: &Config) -> PanelWidg
     window.set_resizable(false);
     window.set_title(Some("UnixNotis Center"));
     window.add_css_class(hooks::panel_shell::WINDOW);
-    if let Some(settings) = gtk::Settings::default() {
-        // GTK global setting that controls whether scrollbars overlay content
-        // Enabled here to keep scrollbar behavior consistent across widgets
-        settings.set_property("gtk-overlay-scrolling", true);
-    }
 
     window.init_layer_shell();
     window.set_namespace(Some("unixnotis-panel"));
