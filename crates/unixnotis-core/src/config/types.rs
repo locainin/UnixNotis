@@ -110,6 +110,10 @@ impl Default for HistoryConfig {
 pub struct SoundConfig {
     /// Enables sound playback when the daemon receives notifications
     pub enabled: bool,
+    /// Allows notification senders to request local audio files
+    pub allow_file_hints: bool,
+    /// Directories that may contain notification-requested audio files
+    pub allowed_file_hint_dirs: Vec<String>,
     /// Default named sound from the freedesktop sound theme
     pub default_name: Option<String>,
     /// Default sound file path, resolves relative to the `UnixNotis` config dir
@@ -122,6 +126,8 @@ impl Default for SoundConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            allow_file_hints: false,
+            allowed_file_hint_dirs: Vec::new(),
             default_name: Some("message-new-instant".to_string()),
             default_file: None,
             default_dir: None,
