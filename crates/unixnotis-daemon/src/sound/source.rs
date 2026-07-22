@@ -43,3 +43,7 @@ pub(super) enum SoundSource {
     Name(String),
     File(SoundFile),
 }
+
+#[cfg(test)]
+#[path = "tests/source.rs"]
+mod tests;

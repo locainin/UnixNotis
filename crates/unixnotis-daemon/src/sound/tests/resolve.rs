@@ -109,6 +109,32 @@ fn resolve_default_file_uses_relative_config_path_and_validates_file() {
 }
 
 #[test]
+fn config_directory_and_allowed_hint_paths_follow_the_active_config() {
+    let root = TempRoot::new("sound-config-paths");
+    let config_path = root.join("profile/config.toml");
+    let config_dir = config_path.parent().expect("config path has parent");
+    let absolute = root.join("shared-sounds");
+    let mut config = Config::default();
+    config.sound.allowed_file_hint_dirs = vec![
+        "relative-sounds".to_string(),
+        absolute.to_string_lossy().into_owned(),
+    ];
+
+    assert_eq!(
+        resolve_config_dir(Some(&config_path)).as_deref(),
+        Some(config_dir)
+    );
+    assert_eq!(
+        resolve_allowed_file_hint_dirs(&config, Some(config_dir)),
+        vec![config_dir.join("relative-sounds"), absolute.clone()]
+    );
+    assert_eq!(
+        resolve_allowed_file_hint_dirs(&config, None),
+        vec![absolute]
+    );
+}
+
+#[test]
 fn choose_first_sound_file_filters_extensions_and_sorts_deterministically() {
     let root = TempRoot::new("sound-default-dir");
     fs::create_dir_all(root.join("a-dir.ogg")).expect("create directory decoy");
@@ -138,6 +164,7 @@ fn hint_bool_reads_only_boolean_hints() {
 fn max_sound_file_size_stays_at_sixteen_mib() {
     // This cap keeps notification-provided audio files from becoming large IO spikes
     assert_eq!(MAX_SOUND_FILE_BYTES, 16 * 1024 * 1024);
+    assert_eq!(SOUND_HEADER_PROBE_BYTES, 4 * 1024);
 }
 
 #[test]
@@ -152,6 +179,7 @@ fn has_audio_extension_accepts_supported_audio_extensions_only() {
 fn sound_file_open_rejects_missing_oversized_and_non_audio_files() {
     let root = TempRoot::new("sound-validate");
     let valid = root.join("valid.ogg");
+    let exact_limit = root.join("exact-limit.ogg");
     let oversized = root.join("oversized.ogg");
     let wrong_ext = root.join("valid.txt");
     write_sound_file(&valid);
@@ -160,8 +188,13 @@ fn sound_file_open_rejects_missing_oversized_and_non_audio_files() {
         .expect("create oversized sound")
         .set_len(MAX_SOUND_FILE_BYTES + 1)
         .expect("resize oversized sound");
+    fs::File::create(&exact_limit)
+        .expect("create exact-limit sound")
+        .set_len(MAX_SOUND_FILE_BYTES)
+        .expect("resize exact-limit sound");
 
     assert!(open_sound_file(&valid, false).is_some());
+    assert!(open_sound_file(&exact_limit, false).is_some());
     assert!(open_sound_file(&oversized, false).is_none());
     assert!(open_sound_file(&wrong_ext, false).is_none());
     assert!(open_sound_file(&root.join("missing.ogg"), false).is_none());
@@ -180,6 +213,46 @@ fn hint_format_validation_rejects_spoofed_and_complex_audio_formats() {
     assert!(open_sound_file(&spoofed, true).is_none());
     assert!(open_sound_file(&mp3, true).is_none());
     assert!(open_sound_file(&pcm, true).is_some());
+}
+
+#[test]
+fn safe_hint_format_requires_every_wav_and_vorbis_signature_field() {
+    let root = TempRoot::new("sound-signatures");
+    let valid_wav = root.join("valid.wav");
+    let wrong_riff = root.join("wrong-riff.wav");
+    let wrong_wave = root.join("wrong-wave.wav");
+    let compressed_wav = root.join("compressed.wav");
+    let valid_ogg = root.join("valid.ogg");
+    let wrong_ogg_magic = root.join("wrong-magic.ogg");
+    let missing_vorbis = root.join("missing-vorbis.ogg");
+
+    let pcm = b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00";
+    fs::write(&valid_wav, pcm).expect("write PCM fixture");
+    let mut bytes = pcm.to_vec();
+    bytes[0..4].copy_from_slice(b"RIFX");
+    fs::write(&wrong_riff, &bytes).expect("write wrong RIFF fixture");
+    bytes = pcm.to_vec();
+    bytes[8..12].copy_from_slice(b"WAWE");
+    fs::write(&wrong_wave, &bytes).expect("write wrong WAVE fixture");
+    bytes = pcm.to_vec();
+    bytes[20..22].copy_from_slice(&3u16.to_le_bytes());
+    fs::write(&compressed_wav, &bytes).expect("write compressed WAV fixture");
+
+    fs::write(&valid_ogg, b"OggS\0\x01vorbis").expect("write Vorbis fixture");
+    fs::write(&wrong_ogg_magic, b"Bad!\0\x01vorbis").expect("write wrong Ogg fixture");
+    fs::write(&missing_vorbis, b"OggS\0\x01vorbix").expect("write non-Vorbis fixture");
+
+    assert!(open_sound_file(&valid_wav, true).is_some());
+    assert!(open_sound_file(&wrong_riff, true).is_none());
+    assert!(open_sound_file(&wrong_wave, true).is_none());
+    assert!(open_sound_file(&compressed_wav, true).is_none());
+    assert!(open_sound_file(&valid_ogg, true).is_some());
+    assert!(open_sound_file(&wrong_ogg_magic, true).is_none());
+    assert!(open_sound_file(&missing_vorbis, true).is_none());
+
+    assert_eq!(wav_audio_format(pcm), Some(1));
+    assert_eq!(wav_audio_format(b""), None);
+    assert_eq!(wav_audio_format(b"fmt \0\0"), None);
 }
 
 #[cfg(unix)]
