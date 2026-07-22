@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use rustix::fs::{readlinkat, renameat, symlinkat, unlinkat, AtFlags};
 
 use super::atomic::temp_candidates;
-use super::directory::{open_parent, open_parent_existing, sync_directory};
+use super::descriptor::{open_parent, open_parent_existing, sync_directory};
 
 /// Result of creating a symbolic link without replacing an existing path
 #[derive(Debug, Clone, PartialEq, Eq)]

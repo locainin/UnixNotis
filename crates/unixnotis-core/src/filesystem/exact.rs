@@ -9,7 +9,7 @@ use std::path::Path;
 
 use rustix::fs::{fstat, openat2, statat, unlinkat, AtFlags, Mode, OFlags};
 
-use super::directory::{contained_resolve_flags, open_parent, sync_directory};
+use super::descriptor::{contained_resolve_flags, open_parent, sync_directory};
 use super::regular::{file_contents_equal, open_regular_file_at};
 
 /// Result of creating or validating a file whose bytes must match exactly

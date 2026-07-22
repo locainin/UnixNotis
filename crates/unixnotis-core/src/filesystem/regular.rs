@@ -9,7 +9,7 @@ use std::path::Path;
 
 use rustix::fs::{openat2, Mode, OFlags};
 
-use super::directory::{contained_resolve_flags, open_parent_existing};
+use super::descriptor::{contained_resolve_flags, open_parent_existing};
 
 /// Open one regular file through a no-follow descriptor path
 ///
@@ -54,6 +54,33 @@ pub fn regular_file_contents_equal(
         return Ok(false);
     }
     file_contents_equal(&mut file, expected)
+}
+
+/// Read a regular file without following links and enforce a byte limit
+///
+/// # Errors
+///
+/// Returns an error when the path crosses a link, the target is not a regular file, the file is
+/// larger than `max_bytes`, or the bounded read cannot complete
+pub fn read_regular_file_bounded(path: &Path, max_bytes: u64) -> io::Result<Vec<u8>> {
+    // Opening once keeps the size check and payload read tied to one filesystem object
+    let mut file = open_regular_file(path)?;
+    let initial_size = file.metadata()?.len();
+    if initial_size > max_bytes {
+        return Err(limit_error(max_bytes));
+    }
+
+    let capacity = usize::try_from(initial_size).map_err(|_size_error| {
+        io::Error::new(io::ErrorKind::InvalidData, "file size does not fit memory")
+    })?;
+    let mut contents = Vec::with_capacity(capacity);
+    file.by_ref()
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut contents)?;
+    if u64::try_from(contents.len()).unwrap_or(u64::MAX) > max_bytes {
+        return Err(limit_error(max_bytes));
+    }
+    Ok(contents)
 }
 
 /// Add executable bits to an existing regular file without following links
@@ -157,6 +184,13 @@ pub(super) fn unsafe_target_error() -> io::Error {
     io::Error::new(
         io::ErrorKind::InvalidInput,
         "refusing to operate on a non-regular file target",
+    )
+}
+
+fn limit_error(max_bytes: u64) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("regular file exceeds the {max_bytes}-byte limit"),
     )
 }
 

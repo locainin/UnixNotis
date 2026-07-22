@@ -5,7 +5,7 @@ use std::path::Path;
 
 use rustix::fs::{renameat_with, RenameFlags};
 
-use super::directory::{open_parent_existing, sync_directory};
+use super::descriptor::{open_parent_existing, sync_directory};
 use super::regular::validate_existing_target;
 
 /// Result of moving a regular file without replacing another filesystem entry
