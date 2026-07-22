@@ -1,3 +1,5 @@
+//! CSS tokenization tests
+
 use std::path::Path;
 
 use super::*;
