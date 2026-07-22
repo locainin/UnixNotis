@@ -25,7 +25,6 @@ mod model;
 mod paths;
 mod privilege;
 mod release;
-mod safe_write;
 mod service_manager;
 mod system_tools;
 mod terminal;
@@ -34,6 +33,7 @@ mod terminal;
 mod test_support;
 mod trial;
 mod ui;
+mod write_target;
 
 use anyhow::Result;
 

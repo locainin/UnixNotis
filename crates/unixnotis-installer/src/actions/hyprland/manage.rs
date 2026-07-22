@@ -11,7 +11,8 @@ use super::detect::{
 use super::paths::{existing_hyprland_config_targets, hyprland_config_target};
 use super::write_target::resolve_hyprland_write_path;
 use crate::paths::format_with_home;
-use crate::safe_write::{reject_unsafe_write_target, write_text_preserving_mode};
+use crate::write_target::reject_unsafe_write_target;
+use unixnotis_core::filesystem::write_file_atomic_preserving_mode;
 
 pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     // Resolve the active top-level config before deciding which syntax to write
@@ -98,7 +99,9 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     if additions.is_empty() {
         // If the live file already has everything, drop stale managed blocks and stop
         if block_found {
-            if let Err(err) = write_text_preserving_mode(&write_path, &stripped, 0o644) {
+            if let Err(err) =
+                write_file_atomic_preserving_mode(&write_path, stripped.as_bytes(), 0o644)
+            {
                 log_line(
                     ctx,
                     format!("Warning: failed to update Hyprland config: {err}"),
@@ -126,7 +129,9 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
         &additions,
     ));
 
-    if let Err(err) = write_text_preserving_mode(&write_path, &updated_contents, 0o644) {
+    if let Err(err) =
+        write_file_atomic_preserving_mode(&write_path, updated_contents.as_bytes(), 0o644)
+    {
         log_line(
             ctx,
             format!("Warning: failed to update Hyprland config: {err}"),
@@ -206,7 +211,9 @@ pub(in crate::actions) fn remove_hyprland_autostart(ctx: &mut ActionContext) {
             continue;
         }
 
-        if let Err(err) = write_text_preserving_mode(&write_path, &strip_result.stripped, 0o644) {
+        if let Err(err) =
+            write_file_atomic_preserving_mode(&write_path, strip_result.stripped.as_bytes(), 0o644)
+        {
             log_line(
                 ctx,
                 format!("Warning: failed to update Hyprland config: {err}"),

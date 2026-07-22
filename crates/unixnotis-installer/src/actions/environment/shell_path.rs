@@ -5,9 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
+use unixnotis_core::filesystem::write_file_atomic_preserving_mode;
 
 use crate::paths::format_with_home;
-use crate::safe_write::{reject_unsafe_write_target, write_text_preserving_mode};
+use crate::write_target::reject_unsafe_write_target;
 
 use super::super::{log_line, ActionContext};
 
@@ -147,7 +148,7 @@ pub(in crate::actions::environment) fn ensure_path_entry_in_file(
     updated.push_str(&export_line);
     updated.push('\n');
 
-    write_text_preserving_mode(file, &updated, 0o644)
+    write_file_atomic_preserving_mode(file, updated.as_bytes(), 0o644)
         .map_err(|err| anyhow!("failed to write {}: {}", file.display(), err))?;
     Ok(true)
 }
@@ -212,7 +213,7 @@ pub(in crate::actions::environment) fn remove_path_entry_from_file(
     }
 
     // Write the cleaned startup file back to disk
-    write_text_preserving_mode(file, &updated, 0o644)
+    write_file_atomic_preserving_mode(file, updated.as_bytes(), 0o644)
         .map_err(|err| anyhow!("failed to write {}: {}", file.display(), err))?;
     Ok(true)
 }

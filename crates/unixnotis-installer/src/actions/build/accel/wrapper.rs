@@ -2,7 +2,7 @@
 
 use std::{fs, path::Path};
 
-use crate::safe_write::write_text_with_mode;
+use unixnotis_core::filesystem::write_file_atomic;
 
 pub(in crate::actions::build::accel) fn format_build_accel_config() -> String {
     // A wrapper script keeps builds working if accelerator tools disappear later
@@ -26,7 +26,8 @@ pub(in crate::actions::build::accel) fn write_wrapper_script(
         // Create the wrapper parent first so the later config write has a valid target
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
-    write_text_with_mode(wrapper_path, &wrapper_script(), 0o755).map_err(|err| err.to_string())
+    write_file_atomic(wrapper_path, wrapper_script().as_bytes(), 0o755)
+        .map_err(|err| err.to_string())
 }
 
 pub(in crate::actions::build::accel) fn wrapper_script() -> String {
