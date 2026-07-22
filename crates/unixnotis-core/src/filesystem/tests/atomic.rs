@@ -1,8 +1,8 @@
 //! Atomic file operation tests
 
 use super::{
-    ensure_exact_file, file_mode, make_file_executable, reserve_temp, set_file_mode,
-    write_file_atomic, write_file_atomic_preserving_mode, write_file_if_missing,
+    ensure_exact_file, exclusive_create_collided, file_mode, make_file_executable, reserve_temp,
+    set_file_mode, write_file_atomic, write_file_atomic_preserving_mode, write_file_if_missing,
     EnsureExactFileOutcome,
 };
 use std::ffi::OsString;
@@ -18,6 +18,13 @@ use crate::filesystem::directory::{
     anchor_resolve_flags, contained_resolve_flags, open_parent, sync_directory,
 };
 use crate::test_support::unique_temp_path;
+
+#[test]
+fn exclusive_create_collision_classification_accepts_only_existing_targets() {
+    assert!(exclusive_create_collided(rustix::io::Errno::EXIST));
+    assert!(!exclusive_create_collided(rustix::io::Errno::ACCESS));
+    assert!(!exclusive_create_collided(rustix::io::Errno::INVAL));
+}
 
 #[test]
 fn atomic_write_rejects_target_symlink_without_changing_outside_file() {
@@ -262,6 +269,38 @@ fn create_if_missing_propagates_non_collision_open_error() {
         .expect_err("overlong target name should fail");
 
     assert_ne!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn create_if_missing_preserves_permission_denied_errors() {
+    let root = unique_temp_path("atomic-if-missing-permission");
+    fs::create_dir_all(&root).expect("create test root");
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o500))
+        .expect("make test root read only");
+
+    let error = write_file_if_missing(&root.join("state"), b"data", 0o600)
+        .expect_err("read-only parent must reject creation");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+        .expect("restore test root permissions");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn exact_file_creation_preserves_permission_denied_errors() {
+    let root = unique_temp_path("atomic-exact-permission");
+    fs::create_dir_all(&root).expect("create test root");
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o500))
+        .expect("make test root read only");
+
+    let error = ensure_exact_file(&root.join("state"), b"data", 0o600)
+        .expect_err("read-only parent must reject exact creation");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+        .expect("restore test root permissions");
     let _ = fs::remove_dir_all(root);
 }
 
