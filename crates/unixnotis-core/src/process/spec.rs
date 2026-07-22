@@ -65,18 +65,24 @@ impl CommandSpec {
     }
 
     #[must_use]
+    /// Reports whether command text crosses an explicit shell boundary
     pub fn invokes_shell(&self) -> bool {
         match self {
             Self::Shell { .. } => true,
             Self::Direct { program, args, .. } => {
+                // Basenames keep absolute interpreter paths and PATH lookups equivalent
                 let shell = program
                     .file_name()
                     .and_then(OsStr::to_str)
                     .is_some_and(|name| {
-                        matches!(name, "sh" | "ash" | "bash" | "dash" | "ksh" | "zsh")
+                        matches!(
+                            name,
+                            "sh" | "ash" | "bash" | "dash" | "fish" | "ksh" | "zsh"
+                        )
                     });
                 shell
                     && args.iter().any(|argument| {
+                        // Combined flags such as `-lc` still enable script evaluation
                         argument.to_str().is_some_and(|argument| {
                             argument
                                 .strip_prefix('-')
