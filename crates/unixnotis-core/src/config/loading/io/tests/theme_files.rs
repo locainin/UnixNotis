@@ -4,6 +4,7 @@ use std::fs;
 
 use crate::{Config, DEFAULT_BASE_CSS};
 
+use super::super::theme_files::warn_legacy_rename_once;
 use super::support::test_root;
 
 #[test]
@@ -191,4 +192,52 @@ fn ensure_theme_files_ignores_an_oversized_legacy_theme() {
     assert!(!root.join("style.css.bak").exists());
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn ensure_theme_files_accepts_a_legacy_theme_at_the_exact_size_limit() {
+    const MAX_LEGACY_BYTES: usize = 16 * 1024 * 1024;
+
+    let root = test_root("theme-exact-limit-legacy");
+    let legacy = root.join("style.css");
+    fs::create_dir_all(&root).expect("theme root");
+    fs::write(&legacy, vec![b'x'; MAX_LEGACY_BYTES]).expect("limit-sized legacy css");
+
+    let config = Config::default();
+    let paths = config
+        .resolve_theme_paths_from(&root)
+        .expect("theme paths should resolve");
+    config
+        .ensure_theme_files(&paths)
+        .expect("limit-sized theme should migrate");
+
+    assert_eq!(
+        fs::metadata(&paths.base_css).expect("base css").len(),
+        MAX_LEGACY_BYTES as u64
+    );
+    assert_eq!(
+        fs::metadata(root.join("style.css.bak"))
+            .expect("legacy backup")
+            .len(),
+        MAX_LEGACY_BYTES as u64
+    );
+    assert!(!legacy.exists());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn legacy_rename_warning_is_emitted_only_once_per_process() {
+    let error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "test failure");
+
+    assert!(warn_legacy_rename_once(
+        std::path::Path::new("style.css"),
+        std::path::Path::new("style.css.bak"),
+        &error,
+    ));
+    assert!(!warn_legacy_rename_once(
+        std::path::Path::new("style.css"),
+        std::path::Path::new("style.css.bak"),
+        &error,
+    ));
 }
