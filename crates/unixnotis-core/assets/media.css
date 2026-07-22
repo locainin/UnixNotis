@@ -243,7 +243,7 @@
   border-radius: 16px;
   border-radius: var(--unixnotis-media-card-radius);
   box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 .unixnotis-media-card:hover {
@@ -277,7 +277,7 @@
   color: alpha(#ffffff, 0.85);
   border-radius: 999px;
   border-radius: var(--unixnotis-media-button-radius);
-  transition: background-color 0.12s ease-out, border-color 0.12s ease-out, transform 0.12s ease-out, color 0.12s ease-out, box-shadow 0.12s ease-out;
+  transition: background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out;
 }
 
 .unixnotis-media-button:hover,
@@ -289,7 +289,6 @@
   border-bottom-color: alpha(#ffffff, 0.03);
   box-shadow: 0 4px 10px -5px alpha(#000000, 0.4), inset 0 1px 0 alpha(#ffffff, 0.05);
   color: #ffffff;
-  transform: translateY(-1px);
 }
 
 .unixnotis-media-button.primary {
@@ -304,7 +303,6 @@
   border-color: alpha(#ffffff, 0.90);
   color: #020617;
   box-shadow: 0 6px 14px -2px alpha(#000000, 0.45);
-  transform: translateY(-1.5px) scale(1.04);
 }
 
 .unixnotis-media-button:focus,

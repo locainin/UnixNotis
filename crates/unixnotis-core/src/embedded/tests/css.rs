@@ -50,3 +50,21 @@ fn dnd_menu_hover_and_keyboard_focus_share_one_visual_rule() {
     assert!(DEFAULT_PANEL_CSS.contains(shared_selector));
     assert!(!DEFAULT_PANEL_CSS.contains("box-shadow: inset 2px 0"));
 }
+
+#[test]
+fn stock_panel_hover_styles_avoid_transform_and_geometry_animation() {
+    for (name, css) in [
+        ("panel", DEFAULT_PANEL_CSS),
+        ("widgets", DEFAULT_WIDGETS_CSS),
+        ("media", DEFAULT_MEDIA_CSS),
+    ] {
+        assert!(
+            !css.contains("\n  transform:"),
+            "{name} CSS should not move widgets during hover"
+        );
+    }
+
+    assert!(!DEFAULT_PANEL_CSS.contains("transition: background-image"));
+    assert!(!DEFAULT_WIDGETS_CSS.contains("transition: min-width"));
+    assert!(!DEFAULT_WIDGETS_CSS.contains("transition: min-height"));
+}

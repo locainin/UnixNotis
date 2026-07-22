@@ -821,7 +821,7 @@
   margin-top: -4px; /* Center 12px knob over 4px trough */
   margin-bottom: -4px;
   box-shadow: 0 1.5px 3.5px alpha(#000000, 0.40);
-  transition: min-width 0.15s ease-out, min-height 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+  transition: border-color 0.15s ease-out;
 }
 
 .unixnotis-quick-slider-volume .unixnotis-quick-slider-scale slider {
@@ -830,10 +830,6 @@
 
 .unixnotis-quick-slider-brightness .unixnotis-quick-slider-scale slider {
   border-color: alpha(#ff9f0a, 0.6);
-}
-
-.unixnotis-quick-slider-scale slider:hover {
-  transform: scale(1.10);
 }
 
 .unixnotis-quick-slider-volume:hover slider {
@@ -859,7 +855,7 @@
   min-width: 4px;
   border-radius: 999px 999px 0 0;
   margin: 0 1.5px;
-  transition: background-color 0.15s ease-out, box-shadow 0.15s ease-out, min-height 0.15s ease-out;
+  transition: background-color 0.15s ease-out;
 }
 
 .unixnotis-quick-slider-segment:nth-child(1) { min-height: 2px; }
@@ -923,7 +919,7 @@
   border-radius: 14px;
   box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
   color: alpha(#ffffff, 0.7);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
 
 .unixnotis-toggle:hover,
@@ -937,7 +933,6 @@
   border-right: 1px solid alpha(#ffffff, 0.06);
   border-bottom: 1px solid alpha(#ffffff, 0.04);
   color: #ffffff;
-  transform: translateY(-0.5px);
 }
 
 .unixnotis-toggle:checked,
@@ -957,7 +952,6 @@
 .unixnotis-toggle.unixnotis-toggle-kind-wifi:checked:hover {
   background-image: linear-gradient(135deg, #00c6ff, #0072ff);
   box-shadow: 0 8px 20px -6px alpha(#0072ff, 0.6), inset 0 1px 0 alpha(#ffffff, 0.18);
-  transform: translateY(-1px);
 }
 
 .unixnotis-toggle.unixnotis-toggle-kind-bluetooth:checked {
@@ -969,7 +963,6 @@
 .unixnotis-toggle.unixnotis-toggle-kind-bluetooth:checked:hover {
   background-image: linear-gradient(135deg, #60a5fa, #2563eb);
   box-shadow: 0 8px 20px -6px alpha(#2563eb, 0.6), inset 0 1px 0 alpha(#ffffff, 0.18);
-  transform: translateY(-1px);
 }
 
 .unixnotis-toggle.unixnotis-toggle-kind-airplane:checked {
@@ -981,7 +974,6 @@
 .unixnotis-toggle.unixnotis-toggle-kind-airplane:checked:hover {
   background-image: linear-gradient(135deg, #fbbf24, #b45309);
   box-shadow: 0 8px 20px -6px alpha(#b45309, 0.6), inset 0 1px 0 alpha(#ffffff, 0.20);
-  transform: translateY(-1px);
 }
 
 .unixnotis-toggle.unixnotis-toggle-kind-night:checked {
@@ -993,7 +985,6 @@
 .unixnotis-toggle.unixnotis-toggle-kind-night:checked:hover {
   background-image: linear-gradient(135deg, #a78bfa, #5b21b6);
   box-shadow: 0 8px 20px -6px alpha(#5b21b6, 0.6), inset 0 1px 0 alpha(#ffffff, 0.18);
-  transform: translateY(-1px);
 }
 
 .unixnotis-toggle-icon {
@@ -1017,7 +1008,7 @@
   border-bottom: 1px solid alpha(#ffffff, 0.02);
   border-radius: 14px;
   box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 .unixnotis-stat-card:hover {
@@ -1027,7 +1018,6 @@
   border-right: 1px solid alpha(#ffffff, 0.06);
   border-bottom: 1px solid alpha(#ffffff, 0.04);
   box-shadow: 0 8px 20px -12px alpha(#000000, 0.6);
-  transform: translateY(-1.5px);
 }
 
 .unixnotis-stat-icon {
@@ -1112,7 +1102,7 @@
   border-bottom: 1px solid alpha(#ffffff, 0.02);
   border-radius: 16px;
   box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 .unixnotis-info-card:hover {
@@ -1122,7 +1112,6 @@
   border-right: 1px solid alpha(#ffffff, 0.06);
   border-bottom: 1px solid alpha(#ffffff, 0.04);
   box-shadow: 0 6px 14px -6px alpha(#000000, 0.6);
-  transform: translateY(-0.5px);
 }
 
 .unixnotis-info-card:hover .unixnotis-info-icon {
