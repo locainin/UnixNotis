@@ -43,12 +43,14 @@ pub(super) fn build_media_widget(
 ) -> Option<media::MediaWidget> {
     let panel_width = panel::geometry::requested_panel_width(&panel.root);
     let media = init.media_handle.as_ref().map(|handle| {
-        media::MediaWidget::new(
+        let media = media::MediaWidget::new(
             &panel.sections.media_container,
             handle.clone(),
             panel_width,
             &init.config.media,
-        )
+        );
+        media.set_reduced_motion(init.config.panel.reduced_motion);
+        media
     });
 
     if media.is_none() {
