@@ -150,10 +150,7 @@ pub(super) fn parse_url_value(input: &str, open_index: usize) -> Option<(CssUrlS
         if byte == b')' {
             // CSS defines five ASCII whitespace bytes; Unicode whitespace remains URL data
             let (value_start, value_end) = trim_css_whitespace_range(bytes, raw_start, index);
-            if value_start > value_end
-                || !input.is_char_boundary(value_start)
-                || !input.is_char_boundary(value_end)
-            {
+            if !valid_url_value_range(input, value_start, value_end) {
                 return None;
             }
             return Some((
@@ -179,4 +176,11 @@ pub(super) fn parse_url_value(input: &str, open_index: usize) -> Option<(CssUrlS
         index = index.saturating_add(utf8_char_len(byte));
     }
     None
+}
+
+pub(super) fn valid_url_value_range(input: &str, value_start: usize, value_end: usize) -> bool {
+    // Scanner offsets are accepted only when direct string slicing is safe
+    value_start <= value_end
+        && input.is_char_boundary(value_start)
+        && input.is_char_boundary(value_end)
 }

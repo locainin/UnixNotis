@@ -1,6 +1,6 @@
 use super::super::lexer::{
     consume_escape, identifier_matches, skip_css_whitespace_and_comments, skip_quoted_value,
-    valid_escape, would_start_identifier,
+    trim_css_whitespace_range, valid_escape, would_start_identifier,
 };
 use super::super::{collect_css_import_values, collect_css_url_values, CssImportReference};
 
@@ -87,6 +87,15 @@ fn fixed_identifier_matching_decodes_escapes_without_allocating_names() {
     assert_eq!(identifier_matches("im\\70ort ", 0, "import"), (true, 8));
     assert_eq!(identifier_matches("url-extra(", 0, "url"), (false, 9));
     assert_eq!(identifier_matches("éurl(", 0, "url"), (false, 5));
+    assert_eq!(identifier_matches("xrl(", 0, "url"), (false, 3));
+    assert_eq!(identifier_matches("urx(", 0, "url"), (false, 3));
+}
+
+#[test]
+fn css_whitespace_range_trimming_handles_empty_and_nonempty_boundaries() {
+    assert_eq!(trim_css_whitespace_range(b" value ", 0, 7), (1, 6));
+    assert_eq!(trim_css_whitespace_range(b"  ", 0, 1), (1, 1));
+    assert_eq!(trim_css_whitespace_range(b" x", 1, 1), (1, 1));
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use super::super::url::parse_url_value;
+use super::super::url::{parse_url_value, valid_url_value_range};
 use super::super::{collect_css_url_spans, collect_css_url_values};
 
 #[test]
@@ -123,4 +123,15 @@ fn unquoted_url_trims_only_css_whitespace_bytes() {
     assert_eq!(spans[0].value, "asset.png");
     assert_eq!(spans[1].value, "\u{000b}asset.png\u{000b}");
     assert!(spans[1].ambiguous);
+}
+
+#[test]
+fn url_value_ranges_require_ordered_utf8_boundaries() {
+    let value = "aéz";
+
+    assert!(valid_url_value_range(value, 0, value.len()));
+    assert!(valid_url_value_range(value, 1, 3));
+    assert!(!valid_url_value_range(value, 3, 1));
+    assert!(!valid_url_value_range(value, 2, 3));
+    assert!(!valid_url_value_range(value, 1, 2));
 }

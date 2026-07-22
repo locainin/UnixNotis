@@ -89,16 +89,12 @@ pub fn remove_regular_file_pair_if_contents(
 
     let mut file = match open_regular_file_at(&parent_fd, &file_name) {
         Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(RemoveExactFileOutcome::Missing)
-        }
+        Err(error) if file_lookup_is_missing(&error) => return Ok(RemoveExactFileOutcome::Missing),
         Err(error) => return Err(error),
     };
     let mut marker = match open_regular_file_at(&parent_fd, &marker_name) {
         Ok(marker) => marker,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(RemoveExactFileOutcome::Missing)
-        }
+        Err(error) if file_lookup_is_missing(&error) => return Ok(RemoveExactFileOutcome::Missing),
         Err(error) => return Err(error),
     };
     if !file_contents_equal(&mut file, expected_contents)?
@@ -193,6 +189,11 @@ fn revalidate_file_identity(
         io::ErrorKind::InvalidInput,
         "regular file changed during guarded removal",
     ))
+}
+
+fn file_lookup_is_missing(error: &io::Error) -> bool {
+    // Missing exact-pair members are idempotent while every other error fails closed
+    error.kind() == io::ErrorKind::NotFound
 }
 
 #[cfg(test)]

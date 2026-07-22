@@ -51,20 +51,13 @@ pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage,
 
     let source_width_float = tree.size().width();
     let source_height_float = tree.size().height();
-    if !source_width_float.is_finite()
-        || !source_height_float.is_finite()
-        || source_width_float <= 0.0
-        || source_height_float <= 0.0
-    {
-        return Err("SVG dimensions must be finite and positive".to_string());
-    }
+    // Fit validation rejects invalid floating-point geometry before integer conversion
+    let (width, height, scale) =
+        fitted_svg_dimensions(source_width_float, source_height_float, target)?;
     let source_width = source_width_float.ceil() as u32;
     let source_height = source_height_float.ceil() as u32;
     validate_svg_dimensions(source_width, source_height)?;
 
-    // Fit the source inside the requested square while retaining its aspect ratio
-    let (width, height, scale) =
-        fitted_svg_dimensions(source_width_float, source_height_float, target)?;
     // Output allocation follows the fitted dimensions rather than the source canvas
     let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
         .ok_or_else(|| "could not allocate bounded SVG surface".to_string())?;
@@ -105,12 +98,12 @@ pub(super) fn fitted_svg_dimensions(
 
     let target = target as f32;
     let scale = (target / source_width).min(target / source_height);
-    let scaled_width = (source_width * scale).round().max(1.0);
-    let scaled_height = (source_height * scale).round().max(1.0);
-    if !scale.is_finite() || scale <= 0.0 || !scaled_width.is_finite() || !scaled_height.is_finite()
-    {
+    if !scale.is_finite() || scale <= 0.0 {
         return Err("SVG scaling result must be finite and positive".to_string());
     }
+    // A finite minimum ratio keeps both products no larger than the target
+    let scaled_width = (source_width * scale).round().max(1.0);
+    let scaled_height = (source_height * scale).round().max(1.0);
 
     let width = scaled_width as u32;
     let height = scaled_height as u32;

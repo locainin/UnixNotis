@@ -97,11 +97,33 @@ fn svg_source_limits_cover_zero_exact_and_oversized_boundaries() {
 
 #[test]
 fn svg_scaling_rejects_non_finite_zero_and_oversized_inputs() {
-    assert!(fitted_svg_dimensions(f32::NAN, 10.0, 16).is_err());
-    assert!(fitted_svg_dimensions(10.0, f32::INFINITY, 16).is_err());
-    assert!(fitted_svg_dimensions(0.0, 10.0, 16).is_err());
-    assert!(fitted_svg_dimensions(10.0, 10.0, 0).is_err());
-    assert!(fitted_svg_dimensions(10.0, 10.0, MAX_ICON_DIMENSION + 1).is_err());
+    let input_error = "SVG scaling inputs must be finite and bounded";
+    assert_eq!(
+        fitted_svg_dimensions(f32::NAN, 10.0, 16).expect_err("NaN width must fail"),
+        input_error
+    );
+    assert_eq!(
+        fitted_svg_dimensions(10.0, f32::INFINITY, 16).expect_err("infinite height must fail"),
+        input_error
+    );
+    assert_eq!(
+        fitted_svg_dimensions(0.0, 10.0, 16).expect_err("zero width must fail"),
+        input_error
+    );
+    assert_eq!(
+        fitted_svg_dimensions(10.0, 10.0, 0).expect_err("zero target must fail"),
+        input_error
+    );
+    assert_eq!(
+        fitted_svg_dimensions(10.0, 10.0, MAX_ICON_DIMENSION + 1)
+            .expect_err("oversized target must fail"),
+        input_error
+    );
+    assert_eq!(
+        fitted_svg_dimensions(f32::MIN_POSITIVE, f32::MIN_POSITIVE, 16)
+            .expect_err("infinite scale must fail"),
+        "SVG scaling result must be finite and positive"
+    );
 }
 
 #[test]
@@ -112,4 +134,8 @@ fn svg_scaling_returns_finite_bounded_geometry() {
     assert_eq!((width, height), (16, 8));
     assert!(scale.is_finite());
     assert!(scale > 0.0);
+
+    let (width, height, _scale) =
+        fitted_svg_dimensions(1.0, 1.0, MAX_ICON_DIMENSION).expect("fit exact target limit");
+    assert_eq!((width, height), (MAX_ICON_DIMENSION, MAX_ICON_DIMENSION));
 }

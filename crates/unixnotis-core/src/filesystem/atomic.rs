@@ -118,7 +118,7 @@ pub fn write_file_if_missing(path: &Path, contents: &[u8], mode: u32) -> io::Res
         contained_resolve_flags(),
     ) {
         Ok(fd) => fd,
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+        Err(error) if exclusive_create_collided(error) => {
             // A collision is safe only when the existing destination is a regular file
             validate_existing_target(&parent_fd, &file_name)?;
             return Ok(false);
@@ -229,7 +229,7 @@ pub(super) fn ensure_exact_file_at(
         contained_resolve_flags(),
     ) {
         Ok(fd) => fd,
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+        Err(error) if exclusive_create_collided(error) => {
             let mut file = open_regular_file_at(parent_fd, file_name)?;
             if !file_contents_equal(&mut file, contents)? {
                 return Ok(EnsureExactFileOutcome::ContentsMismatch);
@@ -254,6 +254,11 @@ pub(super) fn ensure_exact_file_at(
     drop(file);
     sync_directory(parent_fd)?;
     Ok(EnsureExactFileOutcome::Created)
+}
+
+fn exclusive_create_collided(error: rustix::io::Errno) -> bool {
+    // Only an existing target may enter the create-or-compare collision path
+    error == rustix::io::Errno::EXIST
 }
 
 pub(super) fn file_contents_equal(file: &mut fs::File, expected: &[u8]) -> io::Result<bool> {

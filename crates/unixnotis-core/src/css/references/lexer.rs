@@ -19,7 +19,7 @@ pub(super) fn identifier_matches(input: &str, start: usize, expected: &str) -> (
                 input[index..].chars().next().unwrap_or('\u{FFFD}')
             };
             (decoded, index.saturating_add(decoded.len_utf8()))
-        } else if byte == b'\\' && valid_escape(bytes, index) {
+        } else if valid_escape(bytes, index) {
             consume_escape(input, index)
         } else {
             break;

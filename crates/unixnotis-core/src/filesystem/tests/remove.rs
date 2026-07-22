@@ -3,12 +3,50 @@
 use std::fs;
 use std::os::unix::fs::symlink;
 
+use rustix::fs::{mkfifoat, Mode, CWD};
+
 use super::{
-    remove_regular_file, remove_regular_file_pair_if_contents, remove_symlink,
-    remove_symlink_if_target, RemoveExactFileOutcome, RemoveSymlinkOutcome,
+    existing_parent, file_lookup_is_missing, remove_regular_file,
+    remove_regular_file_pair_if_contents, remove_symlink, remove_symlink_if_target,
+    revalidate_file_identity, RemoveExactFileOutcome, RemoveSymlinkOutcome,
 };
+use crate::filesystem::atomic::open_regular_file_at;
 use crate::filesystem::symlink::read_symlink;
 use crate::test_support::unique_temp_path;
+
+#[test]
+fn optional_file_lookup_classifies_only_missing_errors() {
+    assert!(file_lookup_is_missing(&std::io::ErrorKind::NotFound.into()));
+    assert!(!file_lookup_is_missing(
+        &std::io::ErrorKind::PermissionDenied.into()
+    ));
+    assert!(!file_lookup_is_missing(
+        &std::io::ErrorKind::InvalidInput.into()
+    ));
+}
+
+#[test]
+fn retained_file_identity_rejects_a_same_directory_replacement() {
+    let root = unique_temp_path("remove-file-identity");
+    fs::create_dir_all(&root).expect("create root");
+    let target = root.join("shared");
+    let moved = root.join("original");
+    fs::write(&target, "original").expect("write original");
+    let (parent_fd, file_name) = existing_parent(&target)
+        .expect("open parent")
+        .expect("parent exists");
+    let retained = open_regular_file_at(&parent_fd, &file_name).expect("open retained file");
+
+    revalidate_file_identity(&parent_fd, &file_name, &retained)
+        .expect("unchanged file should pass");
+    fs::rename(&target, &moved).expect("move original");
+    fs::write(&target, "replacement").expect("write replacement");
+
+    revalidate_file_identity(&parent_fd, &file_name, &retained)
+        .expect_err("replacement identity must fail");
+
+    let _ = fs::remove_dir_all(root);
+}
 
 #[test]
 fn regular_file_removal_is_idempotent() {
@@ -88,6 +126,61 @@ fn exact_pair_removal_requires_both_payloads_before_unlinking_either_file() {
     );
     assert!(!target.exists());
     assert!(!marker.exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn exact_pair_removal_reports_each_missing_member() {
+    let root = unique_temp_path("remove-exact-missing-member");
+    let target = root.join("type");
+    let marker = root.join(".owner");
+    fs::create_dir_all(&root).expect("create test root");
+
+    assert_eq!(
+        remove_regular_file_pair_if_contents(&target, b"bundle\n", &marker, b"owned\n")
+            .expect("both missing is idempotent"),
+        RemoveExactFileOutcome::Missing
+    );
+    fs::write(&target, "bundle\n").expect("write shared file");
+    assert_eq!(
+        remove_regular_file_pair_if_contents(&target, b"bundle\n", &marker, b"owned\n")
+            .expect("missing marker is idempotent"),
+        RemoveExactFileOutcome::Missing
+    );
+    fs::remove_file(&target).expect("remove shared file");
+    fs::write(&marker, "owned\n").expect("write marker");
+    assert_eq!(
+        remove_regular_file_pair_if_contents(&target, b"bundle\n", &marker, b"owned\n")
+            .expect("missing shared file is idempotent"),
+        RemoveExactFileOutcome::Missing
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn exact_pair_removal_rejects_special_objects_for_each_member() {
+    let root = unique_temp_path("remove-exact-special-member");
+    let target = root.join("type");
+    let marker = root.join(".owner");
+    fs::create_dir_all(&root).expect("create test root");
+
+    fs::create_dir(&target).expect("create target directory");
+    fs::write(&marker, "owned\n").expect("write marker");
+    remove_regular_file_pair_if_contents(&target, b"bundle\n", &marker, b"owned\n")
+        .expect_err("target directory must be rejected");
+    fs::remove_dir(&target).expect("remove target directory");
+
+    fs::write(&target, "bundle\n").expect("write target");
+    fs::remove_file(&marker).expect("remove marker");
+    mkfifoat(CWD, &marker, Mode::from_raw_mode(0o600)).expect("create marker FIFO");
+    remove_regular_file_pair_if_contents(&target, b"bundle\n", &marker, b"owned\n")
+        .expect_err("marker FIFO must be rejected");
+
+    assert_eq!(
+        fs::read_to_string(&target).expect("shared file remains"),
+        "bundle\n"
+    );
     let _ = fs::remove_dir_all(root);
 }
 

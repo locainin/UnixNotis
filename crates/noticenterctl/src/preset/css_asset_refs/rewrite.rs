@@ -50,13 +50,7 @@ fn rewrite_host_specific_refs_in_text(
     let mut last_index = 0usize;
 
     for span in collect_url_spans(css_text)? {
-        if span.value_start > span.value_end
-            || span.value_start < last_index
-            || !css_text.is_char_boundary(span.value_start)
-            || !css_text.is_char_boundary(span.value_end)
-        {
-            anyhow::bail!("CSS scanner returned an invalid UTF-8 rewrite range");
-        }
+        validate_rewrite_range(css_text, last_index, span.value_start, span.value_end)?;
         // Everything before the current url(...) payload is copied through unchanged
         rewritten.push_str(&css_text[last_index..span.value_start]);
 
@@ -80,6 +74,23 @@ fn rewrite_host_specific_refs_in_text(
 
     rewritten.push_str(&css_text[last_index..]);
     Ok((rewritten, rewrites))
+}
+
+pub(super) fn validate_rewrite_range(
+    css_text: &str,
+    last_index: usize,
+    value_start: usize,
+    value_end: usize,
+) -> Result<()> {
+    // Every slice must move forward and land on complete UTF-8 characters
+    if value_start > value_end
+        || value_start < last_index
+        || !css_text.is_char_boundary(value_start)
+        || !css_text.is_char_boundary(value_end)
+    {
+        anyhow::bail!("CSS scanner returned an invalid UTF-8 rewrite range");
+    }
+    Ok(())
 }
 
 fn rewrite_host_specific_asset_ref(

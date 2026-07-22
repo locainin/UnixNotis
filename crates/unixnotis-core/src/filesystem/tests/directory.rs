@@ -7,8 +7,9 @@ use rustix::fs::{mkfifoat, Mode, CWD};
 
 use super::{
     classify_directory_creation, create_directory_all, ensure_marked_directory,
-    remove_directory_tree, remove_empty_directory, remove_marked_directory_tree,
-    CreateDirectoryOutcome,
+    open_target_directory, preflight_directory_contents, remove_directory_tree,
+    remove_empty_directory, remove_marked_directory_tree, revalidate_directory_identity,
+    validate_child_name, CreateDirectoryOutcome,
 };
 use crate::test_support::unique_temp_path;
 
@@ -37,6 +38,15 @@ fn directory_creation_builds_missing_components_with_requested_mode() {
         );
     }
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn ownership_marker_name_accepts_one_normal_component_only() {
+    validate_child_name(".owner".as_ref()).expect("plain marker name");
+
+    for invalid in ["", ".", "..", "nested/.owner", "/.owner"] {
+        validate_child_name(invalid.as_ref()).expect_err("invalid marker name must fail");
+    }
 }
 
 #[test]
@@ -207,6 +217,47 @@ fn marked_tree_preflight_preserves_regular_siblings_when_a_child_is_unsafe() {
         .expect("unsafe link remains")
         .file_type()
         .is_symlink());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn marked_tree_preflight_directly_rejects_unsafe_descendants() {
+    let root = unique_temp_path("marked-tree-direct-preflight");
+    let target = root.join("managed");
+    fs::create_dir_all(target.join("nested")).expect("create nested directory");
+    fs::write(target.join("nested").join("regular"), "keep").expect("write regular child");
+    symlink("regular", target.join("nested").join("unsafe-link")).expect("create unsafe link");
+    let (_parent_fd, _name, directory_fd) = open_target_directory(&target)
+        .expect("open target")
+        .expect("target exists");
+
+    preflight_directory_contents(&directory_fd).expect_err("unsafe descendant must fail preflight");
+
+    assert_eq!(
+        fs::read_to_string(target.join("nested").join("regular")).expect("regular child remains"),
+        "keep"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn directory_identity_revalidation_rejects_a_same_device_replacement() {
+    let root = unique_temp_path("directory-identity-replacement");
+    let target = root.join("managed");
+    let moved = root.join("original");
+    fs::create_dir_all(&target).expect("create original directory");
+    let (parent_fd, file_name, directory_fd) = open_target_directory(&target)
+        .expect("open target")
+        .expect("target exists");
+
+    revalidate_directory_identity(&parent_fd, &file_name, &directory_fd)
+        .expect("unchanged identity should pass");
+    fs::rename(&target, &moved).expect("move retained directory");
+    fs::create_dir(&target).expect("create same-device replacement");
+
+    revalidate_directory_identity(&parent_fd, &file_name, &directory_fd)
+        .expect_err("replacement identity must fail");
+
     let _ = fs::remove_dir_all(root);
 }
 

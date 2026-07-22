@@ -1,6 +1,25 @@
 use std::path::Path;
 
-use super::rewrite_host_specific_refs_in_text;
+use super::{rewrite_host_specific_refs_in_text, validate_rewrite_range};
+
+#[test]
+fn rewrite_range_validation_accepts_ordered_character_boundaries() {
+    let css = "éx";
+
+    validate_rewrite_range(css, 0, 0, 0).expect("empty range at current offset");
+    validate_rewrite_range(css, 0, 0, css.len()).expect("complete UTF-8 range");
+    validate_rewrite_range(css, 2, 2, css.len()).expect("range at prior end");
+}
+
+#[test]
+fn rewrite_range_validation_rejects_each_invalid_offset_shape() {
+    let css = "éx";
+
+    assert!(validate_rewrite_range(css, 0, 2, 0).is_err());
+    assert!(validate_rewrite_range(css, 2, 0, 2).is_err());
+    assert!(validate_rewrite_range(css, 0, 1, 2).is_err());
+    assert!(validate_rewrite_range(css, 0, 0, 1).is_err());
+}
 
 #[test]
 fn rewrite_keeps_ambiguous_escaped_url_unchanged() {
