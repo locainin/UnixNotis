@@ -211,6 +211,36 @@ fn remove_binaries_removes_all_managed_binaries_and_runtime_helpers() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[cfg(unix)]
+#[test]
+fn remove_binaries_rejects_symlink_without_touching_its_target() {
+    let root = test_root("remove-binaries-symlink");
+    write_fake_workspace(&root, &["unixnotis-daemon"]);
+    let paths = test_paths(&root);
+    let protected = root.join("protected");
+    let installed = paths.bin_dir.join("unixnotis-daemon");
+    fs::create_dir_all(&paths.bin_dir).expect("create bin directory");
+    fs::write(&protected, "protected").expect("write protected file");
+    symlink(&protected, &installed).expect("create installed binary link");
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, &paths, ActionMode::Uninstall);
+
+    remove_binaries(&mut ctx).expect_err("binary link should be rejected");
+
+    assert_eq!(
+        fs::read_to_string(&protected).expect("read protected file"),
+        "protected"
+    );
+    assert!(fs::symlink_metadata(&installed)
+        .expect("installed link remains")
+        .file_type()
+        .is_symlink());
+    let _ = fs::remove_dir_all(root);
+}
+
 #[test]
 fn remove_binaries_never_removes_a_file_outside_the_bin_directory() {
     let root = test_root("remove-binaries-contained");
