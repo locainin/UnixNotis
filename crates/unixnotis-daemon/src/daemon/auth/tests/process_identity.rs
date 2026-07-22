@@ -1,6 +1,6 @@
-use super::process::read_process_executable_path;
+use super::process_identity::read_process_executable_path;
 #[cfg(target_os = "linux")]
-use super::process::{
+use super::process_identity::{
     parse_pidfd_process_id, pidfd_is_live, pidfd_matches_live_process, read_pidfd_info_bytes,
     read_pidfd_process_id, read_process_executable_path_from_pidfd,
 };

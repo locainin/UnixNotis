@@ -2,6 +2,7 @@
 //!
 //! Provides reusable helpers for name ownership checks during startup and trial mode
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -9,6 +10,8 @@ use futures_util::StreamExt;
 use tracing::{info, warn};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
+
+use crate::daemon::DaemonState;
 
 pub async fn wait_for_owner_state(
     dbus_proxy: &DBusProxy<'_>,
@@ -78,17 +81,38 @@ pub async fn log_current_owner(
     Ok(is_self)
 }
 
-fn owner_state_matches(new_owner: Option<&str>, expect_owner: bool) -> bool {
+pub(super) fn owner_state_matches(new_owner: Option<&str>, expect_owner: bool) -> bool {
     // D-Bus signals encode release as an empty owner name, not as a missing signal
     let has_owner = new_owner.is_some_and(|name| !name.is_empty());
     has_owner == expect_owner
 }
 
-fn owner_name_is_self(unique_name: Option<&str>, owner: &str) -> bool {
+pub(super) fn owner_name_is_self(unique_name: Option<&str>, owner: &str) -> bool {
     // Unique names come from the live connection and must match the queried owner exactly
     unique_name == Some(owner)
 }
 
-#[cfg(test)]
-#[path = "tests/dbus_owner.rs"]
-mod tests;
+pub async fn spawn_client_owner_watch(state: Arc<DaemonState>) -> zbus::Result<()> {
+    // One owner-loss stream serves sender metadata and every client-owned domain resource
+    let proxy = DBusProxy::new(state.connection()).await?;
+    let mut stream = proxy.receive_name_owner_changed().await?;
+
+    tokio::spawn(async move {
+        while let Some(signal) = stream.next().await {
+            let args = match signal.args() {
+                Ok(args) => args,
+                Err(error) => {
+                    warn!(?error, "failed to decode NameOwnerChanged arguments");
+                    continue;
+                }
+            };
+            if args.new_owner().is_some() {
+                continue;
+            }
+
+            state.remove_disconnected_client(args.name().as_str()).await;
+        }
+    });
+
+    Ok(())
+}

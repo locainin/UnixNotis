@@ -9,13 +9,11 @@ use crate::daemon::NOTIFICATIONS_OBJECT_PATH;
 use crate::store::NotificationStore;
 use crate::test_support::daemon_state_for_test;
 
-use super::super::signals::{
-    control_state_from_store, popup_gate_from_state, record_signal_error,
-    should_emit_any_state_signal,
-};
+use super::super::publisher::record_first_error;
+use super::super::state::{popup_gate_from_state, should_publish_any_state_signal};
 
 async fn signal_stream(
-    state: &super::super::DaemonState,
+    state: &crate::daemon::DaemonState,
     path: &str,
     interface: &str,
     member: &str,
@@ -42,12 +40,12 @@ async fn signal_stream(
         .expect("signal stream")
 }
 
-async fn control_signal_stream(state: &super::super::DaemonState, member: &str) -> MessageStream {
+async fn control_signal_stream(state: &crate::daemon::DaemonState, member: &str) -> MessageStream {
     signal_stream(state, CONTROL_OBJECT_PATH, "com.unixnotis.Control", member).await
 }
 
 async fn notifications_signal_stream(
-    state: &super::super::DaemonState,
+    state: &crate::daemon::DaemonState,
     member: &str,
 ) -> MessageStream {
     signal_stream(
@@ -93,13 +91,13 @@ fn popup_gate_from_state_ignores_history_and_inhibitor_counts() {
 }
 
 #[test]
-fn control_state_from_store_reads_dnd_history_and_inhibitors() {
+fn notification_store_control_state_reads_dnd_history_and_inhibitors() {
     let mut store = NotificationStore::new(Config::default());
 
     store.set_dnd_until(500);
     store.add_inhibitor(":1.test".to_string(), "focus".to_string(), 0);
 
-    let state = control_state_from_store(&store);
+    let state = store.control_state();
 
     assert!(state.dnd_enabled);
     assert_eq!(state.dnd_expires_at, 500);
@@ -109,51 +107,51 @@ fn control_state_from_store_reads_dnd_history_and_inhibitors() {
 }
 
 #[test]
-fn should_emit_any_state_signal_is_false_when_both_cached_values_match() {
-    assert!(!should_emit_any_state_signal(false, false));
+fn should_publish_any_state_signal_is_false_when_both_cached_values_match() {
+    assert!(!should_publish_any_state_signal(false, false));
 }
 
 #[test]
-fn should_emit_any_state_signal_is_true_when_control_state_changed() {
-    assert!(should_emit_any_state_signal(true, false));
+fn should_publish_any_state_signal_is_true_when_control_state_changed() {
+    assert!(should_publish_any_state_signal(true, false));
 }
 
 #[test]
-fn should_emit_any_state_signal_is_true_when_popup_gate_changed() {
-    assert!(should_emit_any_state_signal(false, true));
+fn should_publish_any_state_signal_is_true_when_popup_gate_changed() {
+    assert!(should_publish_any_state_signal(false, true));
 }
 
 #[test]
-fn should_emit_any_state_signal_is_true_when_both_values_changed() {
-    assert!(should_emit_any_state_signal(true, true));
+fn should_publish_any_state_signal_is_true_when_both_values_changed() {
+    assert!(should_publish_any_state_signal(true, true));
 }
 
 #[test]
-fn record_signal_error_stores_first_error() {
+fn record_first_error_stores_first_error() {
     let mut first_error = None;
 
-    record_signal_error(&mut first_error, zbus::Error::Failure("first".to_string()));
+    record_first_error(&mut first_error, zbus::Error::Failure("first".to_string()));
 
     assert_eq!(first_error, Some(zbus::Error::Failure("first".to_string())));
 }
 
 #[test]
-fn record_signal_error_keeps_existing_error() {
+fn record_first_error_keeps_existing_error() {
     let mut first_error = Some(zbus::Error::Failure("first".to_string()));
 
-    record_signal_error(&mut first_error, zbus::Error::Failure("second".to_string()));
+    record_first_error(&mut first_error, zbus::Error::Failure("second".to_string()));
 
     assert_eq!(first_error, Some(zbus::Error::Failure("first".to_string())));
 }
 
 #[tokio::test]
-async fn emit_close_fanout_sends_freedesktop_and_control_close_signals() {
+async fn publish_notification_closed_sends_freedesktop_and_control_close_signals() {
     let state = daemon_state_for_test(false).await;
     let mut freedesktop_stream = notifications_signal_stream(&state, "NotificationClosed").await;
     let mut control_stream = control_signal_stream(&state, "NotificationClosed").await;
 
     state
-        .emit_close_fanout(7, CloseReason::ClosedByCall)
+        .publish_notification_closed(7, CloseReason::ClosedByCall)
         .await
         .expect("close fanout should emit");
 
@@ -175,12 +173,12 @@ async fn emit_close_fanout_sends_freedesktop_and_control_close_signals() {
 }
 
 #[tokio::test]
-async fn emit_dismiss_fanout_sends_control_close_signal() {
+async fn publish_notification_dismissed_sends_control_close_signal() {
     let state = daemon_state_for_test(false).await;
     let mut control_stream = control_signal_stream(&state, "NotificationClosed").await;
 
     state
-        .emit_dismiss_fanout(8, false)
+        .publish_notification_dismissed(8, false)
         .await
         .expect("dismiss fanout should emit");
 
@@ -194,13 +192,13 @@ async fn emit_dismiss_fanout_sends_control_close_signal() {
 }
 
 #[tokio::test]
-async fn emit_state_changed_sends_initial_state_and_suppresses_duplicate() {
+async fn publish_state_changed_sends_initial_state_and_suppresses_duplicate() {
     let state = daemon_state_for_test(false).await;
     let mut state_stream = control_signal_stream(&state, "StateChanged").await;
     let mut gate_stream = control_signal_stream(&state, "PopupGateChanged").await;
 
     state
-        .emit_state_changed()
+        .publish_state_changed()
         .await
         .expect("state changed should emit");
 
@@ -223,7 +221,7 @@ async fn emit_state_changed_sends_initial_state_and_suppresses_duplicate() {
     assert!(!emitted_gate.inhibited);
 
     state
-        .emit_state_changed()
+        .publish_state_changed()
         .await
         .expect("duplicate state should not fail");
     assert_no_signal(&mut state_stream).await;
@@ -231,12 +229,12 @@ async fn emit_state_changed_sends_initial_state_and_suppresses_duplicate() {
 }
 
 #[tokio::test]
-async fn emit_snapshot_invalidated_sends_snapshot_signal() {
+async fn publish_snapshot_invalidated_sends_snapshot_signal() {
     let state = daemon_state_for_test(false).await;
     let mut stream = control_signal_stream(&state, "SnapshotInvalidated").await;
 
     state
-        .emit_snapshot_invalidated()
+        .publish_snapshot_invalidated()
         .await
         .expect("snapshot invalidation should emit");
 

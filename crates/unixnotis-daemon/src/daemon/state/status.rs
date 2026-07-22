@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use crate::daemon::signal_burst::{notification_signal_mode_for_sender, NotificationSignalMode};
+use crate::daemon::notifications::{notification_signal_mode_for_sender, NotificationSignalMode};
 
 use super::DaemonState;
 

@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 
-use super::fingerprint::{fingerprint_cache, load_cached_fingerprint, store_cached_fingerprint};
-use super::policy::{
-    TrustedExecutableSnapshot, FINGERPRINT_CACHE_CAPACITY, TRUSTED_SNAPSHOT_CACHE_CAPACITY,
+use super::super::fingerprint::{
+    fingerprint_cache, load_cached_fingerprint, store_cached_fingerprint,
 };
-use super::snapshots::{
+use super::super::snapshots::{
     load_cached_trusted_snapshot, store_cached_trusted_snapshots, trusted_snapshot_cache,
 };
-use super::support::{test_fingerprint, test_signature};
+use crate::daemon::auth::policy::{
+    TrustedExecutableSnapshot, FINGERPRINT_CACHE_CAPACITY, TRUSTED_SNAPSHOT_CACHE_CAPACITY,
+};
+use crate::daemon::auth::support::{test_fingerprint, test_signature};
 use crate::test_support::{env_lock, TempRoot};
 
 #[test]

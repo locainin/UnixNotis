@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use tracing::{debug, warn};
-use unixnotis_core::{Config, Notification, NotificationView};
+use unixnotis_core::{Config, ControlState, Notification, NotificationView};
 
 use super::{DndStateStore, HistoryStore, NotificationStore, DND_STATE_VERSION};
 
@@ -84,6 +84,17 @@ impl NotificationStore {
 
     pub const fn inhibitor_count(&self) -> u32 {
         self.inhibitor_count
+    }
+
+    pub fn control_state(&self) -> ControlState {
+        // One canonical snapshot prevents query and event paths from drifting apart
+        ControlState {
+            dnd_enabled: self.dnd_enabled(),
+            dnd_expires_at: self.dnd_expires_at().unwrap_or(0),
+            history_count: self.history_len() as u32,
+            inhibited: self.inhibited(),
+            inhibitor_count: self.inhibitor_count(),
+        }
     }
 
     pub fn list_active(&self) -> Vec<NotificationView> {

@@ -4,7 +4,7 @@ use zbus::Connection;
 
 use super::credentials::{connection_credentials, CallerCredentials};
 #[cfg(target_os = "linux")]
-use super::process::read_pidfd_process_id;
+use super::process_identity::read_pidfd_process_id;
 
 #[tokio::test]
 async fn connection_credentials_match_the_current_bus_process() {

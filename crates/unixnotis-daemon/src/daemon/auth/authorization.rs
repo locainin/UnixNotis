@@ -10,12 +10,12 @@ use zbus::message::Header;
 use crate::daemon::DaemonState;
 
 use super::credentials::{connection_credentials, CallerCredentials};
-use super::paths::is_trusted_control_executable_path;
+use super::executable_trust::is_trusted_control_executable_path;
 use super::policy::{TRUSTED_CONTROL_EXECUTABLES, TRUSTED_PANEL_READINESS_EXECUTABLES};
 #[cfg(not(target_os = "linux"))]
-use super::process::read_process_executable_path;
+use super::process_identity::read_process_executable_path;
 #[cfg(target_os = "linux")]
-use super::process::read_process_executable_path_from_pidfd;
+use super::process_identity::read_process_executable_path_from_pidfd;
 
 pub(in crate::daemon) async fn authorize_control_call(
     state: &Arc<DaemonState>,

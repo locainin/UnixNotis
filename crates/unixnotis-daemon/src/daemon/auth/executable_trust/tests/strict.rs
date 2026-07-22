@@ -1,8 +1,8 @@
-use super::authorization::control_executable_is_allowed;
-use super::fingerprint::fingerprint_cache;
-use super::paths::is_trusted_control_executable_path;
-use super::snapshots::trusted_snapshot_cache;
-use super::support::write_executable;
+use super::super::fingerprint::fingerprint_cache;
+use super::super::paths::is_trusted_control_executable_path;
+use super::super::snapshots::trusted_snapshot_cache;
+use crate::daemon::auth::authorization::control_executable_is_allowed;
+use crate::daemon::auth::support::write_executable;
 use crate::test_support::{env_lock, TempRoot};
 
 #[test]

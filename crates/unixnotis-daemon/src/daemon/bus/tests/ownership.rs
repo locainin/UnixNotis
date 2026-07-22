@@ -1,4 +1,4 @@
-use super::{owner_name_is_self, owner_state_matches};
+use super::super::ownership::{owner_name_is_self, owner_state_matches, wait_for_owner_state};
 use std::time::Duration;
 use zbus::fdo::DBusProxy;
 
@@ -34,7 +34,7 @@ async fn wait_for_owner_state_returns_true_when_expected_owner_is_already_presen
         .to_string();
     let bus_name = zbus::names::BusName::try_from(unique_name.as_str()).expect("bus name");
 
-    let matched = super::wait_for_owner_state(&proxy, bus_name, true, Duration::from_millis(10))
+    let matched = wait_for_owner_state(&proxy, bus_name, true, Duration::from_millis(10))
         .await
         .expect("wait for owned name");
 
@@ -48,7 +48,7 @@ async fn wait_for_owner_state_returns_false_when_expected_owner_never_appears() 
     let missing_name = format!("com.unixnotis.TestMissing{}", std::process::id());
     let bus_name = zbus::names::BusName::try_from(missing_name.as_str()).expect("bus name");
 
-    let matched = super::wait_for_owner_state(&proxy, bus_name, true, Duration::from_millis(10))
+    let matched = wait_for_owner_state(&proxy, bus_name, true, Duration::from_millis(10))
         .await
         .expect("wait for missing name");
 
