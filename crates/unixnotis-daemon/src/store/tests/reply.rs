@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use unixnotis_core::{Action, CloseReason, InlineReply};
 
 use super::{make_notification, make_store_with_limits};
@@ -27,6 +29,30 @@ fn active_inline_reply_target_requires_a_live_explicit_reply_action() {
         .expect("reply target");
     assert_eq!(target.id, reply_id);
     assert!(!target.is_resident);
+}
+
+#[test]
+fn active_action_target_requires_an_exact_action_on_the_live_generation() {
+    let mut store = make_store_with_limits(12, 20);
+    let mut notification = make_notification("action");
+    notification.actions.push(Action {
+        key: "open".to_string(),
+        label: "Open".to_string(),
+    });
+    let original = store.insert(notification, 0).notification;
+    let id = original.id;
+
+    let target = store
+        .active_action_target(id, "open")
+        .expect("stored action should resolve");
+    assert!(Arc::ptr_eq(&target, &original));
+    assert!(store.active_action_target(id, "missing").is_none());
+    assert!(store.is_active_notification_generation(id, &original));
+
+    let replacement = store.insert(make_notification("replacement"), id);
+    assert!(replacement.replaced);
+    assert!(!store.is_active_notification_generation(id, &original));
+    assert!(store.active_action_target(id, "open").is_none());
 }
 
 #[test]
