@@ -90,6 +90,12 @@ pub(super) async fn run_daemon(
         ));
     }
 
+    // A zero-duration run verifies service registration without launching UI processes
+    if skip_ui_for_zero_duration(args.run_seconds) {
+        info!("zero-duration daemon startup completed");
+        return Ok(());
+    }
+
     if let Err(err) = spawn_inhibitor_owner_watch(state.clone()).await {
         warn!(?err, "failed to start inhibitor owner watcher");
     }
@@ -122,3 +128,11 @@ pub(super) async fn run_daemon(
     }
     Ok(())
 }
+
+const fn skip_ui_for_zero_duration(run_seconds: Option<u64>) -> bool {
+    matches!(run_seconds, Some(0))
+}
+
+#[cfg(test)]
+#[path = "tests/daemon.rs"]
+mod tests;
