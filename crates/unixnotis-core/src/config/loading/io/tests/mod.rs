@@ -3,6 +3,7 @@
 mod blue_light;
 mod load;
 mod paths;
+mod script_migrations;
 mod scripts;
 mod support;
 mod theme_files;

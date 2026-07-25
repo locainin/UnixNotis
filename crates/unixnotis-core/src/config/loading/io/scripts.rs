@@ -5,6 +5,7 @@ use std::path::Path;
 use crate::filesystem::{make_file_executable, write_file_atomic};
 use crate::{Config, DEFAULT_SCRIPTS};
 
+use super::script_migrations::is_legacy_stock_script;
 use super::ConfigError;
 
 impl Config {
@@ -16,8 +17,8 @@ impl Config {
     pub fn ensure_default_scripts_in(config_dir: &Path) -> Result<(), ConfigError> {
         for script in DEFAULT_SCRIPTS {
             let path = config_dir.join(script.relative_path);
-            // Existing files are preserved so user-edited helpers are not overwritten
-            if !path.exists() {
+            // Known stock versions can move forward while all edited helpers stay untouched
+            if !path.exists() || is_legacy_stock_script(&path, script.relative_path) {
                 write_default_script(&path, script.contents)?;
             }
             // Relative commands run the helper directly, so execute bits must be present
