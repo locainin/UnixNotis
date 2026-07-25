@@ -5,7 +5,7 @@ mod close;
 mod flow;
 mod ingress;
 mod interface;
-mod preflight;
+mod notify_body;
 
 pub use ingress::NotificationIngress;
 pub use interface::NotificationServer;

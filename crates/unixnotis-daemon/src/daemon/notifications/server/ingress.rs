@@ -8,7 +8,7 @@ use zbus::object_server::{DispatchResult, Interface, SignalContext};
 use zbus::zvariant::{OwnedValue, Value};
 use zbus::{Connection, Message, ObjectServer};
 
-use super::preflight::{preflight_notify, PreflightError};
+use super::notify_body::{preflight_notify, PreflightError};
 use super::NotificationServer;
 
 // This leaves room for one maximum image plus bounded text, actions, hints, and wire overhead
