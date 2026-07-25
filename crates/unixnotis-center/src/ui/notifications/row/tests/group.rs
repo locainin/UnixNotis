@@ -14,6 +14,10 @@ fn notification(app_name: &str) -> Rc<NotificationView> {
     Rc::new(NotificationView {
         id: 1,
         app_name: app_name.to_string(),
+        attribution: unixnotis_core::NotificationAttribution {
+            verified: true,
+            ..unixnotis_core::NotificationAttribution::default()
+        },
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: Vec::new(),
@@ -79,6 +83,27 @@ fn update_group_row_falls_back_to_group_key_without_sample() {
     assert_eq!(widgets.title.text().as_str(), "terminal");
     assert!(!widgets.icon.get_visible());
     assert!(root.has_css_class("unixnotis-group-row-no-icon"));
+}
+
+#[gtk::test]
+fn update_group_row_keeps_unverified_brand_claim_secondary() {
+    support::init_gtk();
+    let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let mut unverified = notification("sender-bin").as_ref().clone();
+    unverified.attribution = unixnotis_core::NotificationAttribution {
+        verified: false,
+        reported_name: "Trusted Brand".to_string(),
+        badge_icon: "sender-bin".to_string(),
+    };
+    let data = RowData::group_header(Rc::from("sender-bin"), 1, false, Rc::new(unverified));
+
+    update_group_row(&widgets, &root, &data, &IconResolver::new());
+
+    assert_eq!(
+        widgets.title.text().as_str(),
+        "sender-bin · unverified claim: Trusted Brand"
+    );
 }
 
 #[gtk::test]

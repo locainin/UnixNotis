@@ -6,6 +6,7 @@ fn notification(id: u32) -> NotificationView {
     NotificationView {
         id,
         app_name: "example".to_string(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: Vec::new(),

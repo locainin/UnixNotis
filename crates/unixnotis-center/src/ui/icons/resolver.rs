@@ -54,6 +54,17 @@ impl IconResolver {
         self.inner.apply_icon(image, notification, size, scale);
     }
 
+    pub fn apply_badge(
+        &self,
+        image: &gtk::Image,
+        notification: &NotificationView,
+        size: i32,
+        scale: i32,
+    ) {
+        // Header badges deliberately exclude caller-controlled content image data and paths
+        self.inner.apply_badge(image, notification, size, scale);
+    }
+
     pub fn clear_missing_cache(&self) {
         // Theme reloads must retry names that were previously unavailable
         self.inner.clear_missing_cache();

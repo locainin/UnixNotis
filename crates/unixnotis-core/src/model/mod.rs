@@ -1,12 +1,14 @@
 //! Notification data model and image hint parsing
 
 // Keep the public model surface small by splitting large helpers into files.
+mod attribution;
 mod image;
 mod notification;
 mod reply;
 mod types;
 
 // Re-export the public surface so callers continue to import from unixnotis_core::model.
+pub use attribution::NotificationAttribution;
 pub use image::{ImageData, NotificationImage};
 pub use notification::{Notification, NotificationView};
 pub use reply::InlineReply;

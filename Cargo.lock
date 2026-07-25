@@ -3634,6 +3634,7 @@ dependencies = [
  "notify",
  "serde",
  "serde_json",
+ "shell-words",
  "tracing",
  "unixnotis-core",
  "url",

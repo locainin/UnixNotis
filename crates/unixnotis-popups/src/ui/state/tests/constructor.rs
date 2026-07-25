@@ -46,6 +46,7 @@ fn popup_entry_uses_the_configured_cut_corner_primitive() {
     let notification = NotificationView {
         id: 1,
         app_name: "Demo".to_string(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "Summary".to_string(),
         body: "Body".to_string(),
         actions: Vec::new(),

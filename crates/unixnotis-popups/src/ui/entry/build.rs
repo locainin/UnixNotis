@@ -105,13 +105,14 @@ impl UiState {
             // Missing icons also get a root class so themes can rebalance spacing
             set_class_state(&root, hooks::popup_card::NO_ICON, true);
         }
-        // App name stays in the header instead of repeating the full desktop entry name
-        let app = gtk::Label::new(Some(&notification.app_name));
+        // Identity text includes an explicit marker whenever sender attribution is unresolved
+        let attribution_label = notification.attribution_label();
+        let app = gtk::Label::new(Some(&attribution_label));
         app.set_xalign(0.0);
         app.set_single_line_mode(true);
         app.set_ellipsize(EllipsizeMode::End);
         app.set_max_width_chars(POPUP_APP_MAX_CHARS as i32);
-        app.set_text(clamp_label_text(&notification.app_name, POPUP_APP_MAX_CHARS).as_ref());
+        app.set_text(clamp_label_text(&attribution_label, POPUP_APP_MAX_CHARS).as_ref());
         app.add_css_class("unixnotis-popup-header");
 
         let close = gtk::Button::from_icon_name("window-close-symbolic");

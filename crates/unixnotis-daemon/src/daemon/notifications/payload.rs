@@ -6,7 +6,10 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use unixnotis_core::{util, Action, Config, InlineReply, Notification, NotificationImage, Urgency};
+use unixnotis_core::{
+    util, Action, Config, InlineReply, Notification, NotificationAttribution, NotificationImage,
+    Urgency,
+};
 use zbus::zvariant::{OwnedValue, Value};
 
 use super::limits::{
@@ -61,7 +64,14 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
         .unwrap_or(false);
     let image = NotificationImage::from_hints(&app_name, &app_icon, &hints);
     let actions = parse_actions(actions);
-    let inline_reply = parse_inline_reply(&actions, &hints);
+    let (_, attribution) =
+        NotificationAttribution::resolve(&app_name, sender.sender_executable.as_deref());
+    let inline_reply = if attribution.verified {
+        parse_inline_reply(&actions, &hints)
+    } else {
+        // Unverified senders cannot place a credential-like text control in trusted UI
+        InlineReply::default()
+    };
     // Clean text before storing it
     let app_name = util::sanitize_inline_display_text(&app_name);
     let summary = util::sanitize_display_text(&summary);

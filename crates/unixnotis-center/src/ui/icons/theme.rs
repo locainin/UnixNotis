@@ -96,14 +96,17 @@ fn resolve_icon_paintable(name: &str, size: i32, scale: i32) -> Option<IconPaint
 
 pub(super) fn collect_icon_candidates(notification: &NotificationView) -> Vec<String> {
     let mut candidates = Vec::new();
-    if !notification.image.icon_name.is_empty() {
-        candidates.push(notification.image.icon_name.clone());
-        if let Some(stripped) = notification.image.icon_name.strip_suffix(".desktop") {
+    if !notification.attribution.badge_icon.is_empty() {
+        candidates.push(notification.attribution.badge_icon.clone());
+        if let Some(stripped) = notification.attribution.badge_icon.strip_suffix(".desktop") {
             candidates.push(stripped.to_string());
         }
-        candidates.push(notification.image.icon_name.to_lowercase());
+        candidates.push(notification.attribution.badge_icon.to_lowercase());
     }
-    if !notification.app_name.is_empty() {
+    let authenticated_primary =
+        notification.attribution.verified || !notification.attribution.reported_name.is_empty();
+    if authenticated_primary && !notification.app_name.is_empty() {
+        // Unresolved claims never become badge candidates when the warning icon is unavailable
         candidates.push(notification.app_name.clone());
         let lower = notification.app_name.to_lowercase();
         candidates.push(lower.clone());

@@ -1,35 +1,5 @@
 use super::*;
 
-#[test]
-fn app_name_matches_sender_accepts_empty_or_missing_executable_name() {
-    // Empty app names are common for simple clients and should not produce warnings
-    assert!(app_name_matches_sender("   ", "/usr/bin/notify-send"));
-    // A path without a final file name cannot prove spoofing, so it stays advisory-only
-    assert!(app_name_matches_sender("Calendar", "/"));
-}
-
-#[test]
-fn app_name_matches_sender_accepts_exact_hyphenated_and_contained_names() {
-    assert!(app_name_matches_sender("firefox", "/usr/bin/firefox"));
-    assert!(app_name_matches_sender(
-        "UnixNotis Center",
-        "/opt/unixnotis/bin/unixnotis-center"
-    ));
-    assert!(app_name_matches_sender(
-        "discord",
-        "/opt/discord/DiscordCanaryDiscord"
-    ));
-}
-
-#[test]
-fn app_name_matches_sender_rejects_unrelated_display_name() {
-    assert!(!app_name_matches_sender("Calendar", "/usr/bin/firefox"));
-    assert!(!app_name_matches_sender(
-        "noticenterctl",
-        "/usr/bin/unixnotis-center"
-    ));
-}
-
 #[cfg(target_os = "linux")]
 #[test]
 fn parse_process_start_time_handles_spaces_in_comm() {

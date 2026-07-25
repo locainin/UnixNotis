@@ -7,6 +7,7 @@ fn make_view(is_transient: bool) -> NotificationView {
     NotificationView {
         id: 7,
         app_name: "Test".to_string(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: vec![Action {
@@ -24,6 +25,7 @@ fn view(id: u32, app_name: &str, is_transient: bool) -> NotificationView {
     NotificationView {
         id,
         app_name: app_name.to_string(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: format!("summary {id}"),
         body: format!("body {id}"),
         actions: Vec::new(),

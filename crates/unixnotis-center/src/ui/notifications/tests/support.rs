@@ -58,6 +58,7 @@ pub(super) fn notification(id: u32, app_name: &str) -> NotificationView {
     NotificationView {
         id,
         app_name: app_name.to_string(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: format!("summary {id}"),
         body: format!("body {id}"),
         actions: Vec::new(),

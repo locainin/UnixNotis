@@ -7,6 +7,7 @@ fn make_view(id: u32, urgency: Urgency, summary: &str) -> NotificationView {
     NotificationView {
         id,
         app_name: "Test".to_string(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: summary.to_string(),
         body: "body".to_string(),
         actions: vec![Action {

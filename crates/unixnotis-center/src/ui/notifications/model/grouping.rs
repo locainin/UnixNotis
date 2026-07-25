@@ -152,6 +152,7 @@ impl NotificationList {
             return true;
         };
         contains_casefold(&view.app_name, query)
+            || contains_casefold(&view.attribution.reported_name, query)
             || contains_casefold(&view.summary, query)
             || contains_casefold(&view.body, query)
     }

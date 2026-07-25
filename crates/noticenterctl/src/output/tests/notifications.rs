@@ -8,6 +8,11 @@ fn sample_notification() -> NotificationView {
     NotificationView {
         id: 7,
         app_name: "mailer\n\x1b[31m".to_string(),
+        attribution: unixnotis_core::NotificationAttribution {
+            verified: true,
+            reported_name: String::new(),
+            badge_icon: "mailer".to_string(),
+        },
         summary: "subject\rline".to_string(),
         body: "body\ttext\nnext".to_string(),
         actions: vec![Action {

@@ -11,6 +11,7 @@ pub struct DesktopIconIndex {
     names: HashMap<String, Vec<String>>,
     wm_classes: HashMap<String, Vec<String>>,
     ids: HashMap<String, Vec<String>>,
+    executables: HashMap<String, Vec<String>>,
 }
 
 impl DesktopIconIndex {
@@ -26,6 +27,7 @@ impl DesktopIconIndex {
         self.names.clear();
         self.wm_classes.clear();
         self.ids.clear();
+        self.executables.clear();
         for app_info in gio::AppInfo::all() {
             let Ok(desktop) = app_info.downcast::<gio::DesktopAppInfo>() else {
                 continue;
@@ -48,6 +50,12 @@ impl DesktopIconIndex {
             if let Some(id) = desktop.id() {
                 self.add_id(id.as_str(), &icon_name);
             }
+            if let Some(executable) = desktop
+                .string("Exec")
+                .and_then(|exec| executable_basename(exec.as_str()))
+            {
+                self.add_executable(&executable, &icon_name);
+            }
         }
     }
 
@@ -65,6 +73,9 @@ impl DesktopIconIndex {
             out.extend(values.iter().cloned());
         }
         if let Some(values) = self.names.get(&normalized) {
+            out.extend(values.iter().cloned());
+        }
+        if let Some(values) = self.executables.get(&normalized) {
             out.extend(values.iter().cloned());
         }
         if out.is_empty() {
@@ -92,6 +103,22 @@ impl DesktopIconIndex {
             add_icon_to_map(&mut self.ids, stripped, icon);
         }
     }
+
+    fn add_executable(&mut self, key: &str, icon: &str) {
+        // Executable basenames come from authenticated daemon metadata
+        add_icon_to_map(&mut self.executables, key, icon);
+    }
+}
+
+fn executable_basename(exec: &str) -> Option<String> {
+    // Desktop Exec fields use shell-like quoting plus field-code arguments
+    let arguments = shell_words::split(exec).ok()?;
+    let program = arguments.first()?;
+    std::path::Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 fn add_icon_to_map(map: &mut HashMap<String, Vec<String>>, key: &str, icon: &str) {

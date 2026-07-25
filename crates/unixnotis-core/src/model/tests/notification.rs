@@ -67,12 +67,32 @@ fn notification_view_keeps_ui_fields_and_transient_policy_flag() {
     // Live popup views keep enough information for UI actions and close policy
     assert_eq!(view.id, 42);
     assert_eq!(view.app_name, "Mail");
+    assert!(view.attribution.verified);
+    assert_eq!(view.attribution.badge_icon, "mail");
     assert_eq!(view.summary, "Subject");
     assert_eq!(view.body, "Body");
     assert_eq!(view.actions.len(), 1);
     assert_eq!(view.urgency, Urgency::Critical.as_u8());
     assert!(view.is_transient);
     assert!(view.image.has_image_data);
+}
+
+#[test]
+fn notification_view_separates_mismatched_brand_from_authenticated_executable() {
+    let mut notification = notification_with_image(image_with_raw_bytes());
+    notification.app_name = "Password Manager".to_string();
+    notification.sender_executable = Some("/usr/bin/unknown-client".to_string());
+
+    let view = notification.to_view();
+
+    assert_eq!(view.app_name, "unknown-client");
+    assert!(!view.attribution.verified);
+    assert_eq!(view.attribution.reported_name, "Password Manager");
+    assert_eq!(view.attribution.badge_icon, "unknown-client");
+    assert_eq!(
+        view.attribution_label(),
+        "unknown-client · unverified claim: Password Manager"
+    );
 }
 
 #[test]

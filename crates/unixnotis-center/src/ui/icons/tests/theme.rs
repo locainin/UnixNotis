@@ -3,9 +3,74 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
-    expand_rgb_to_rgba, resolve_icon_source, theme_path_uses_worker, worker_decodes_theme_path,
+    collect_icon_candidates, expand_rgb_to_rgba, resolve_icon_source, theme_path_uses_worker,
+    worker_decodes_theme_path,
 };
-use unixnotis_core::ImageData;
+use unixnotis_core::{ImageData, NotificationImage, NotificationView};
+
+fn notification_view(
+    app_name: &str,
+    attribution: unixnotis_core::NotificationAttribution,
+    image: NotificationImage,
+) -> NotificationView {
+    NotificationView {
+        id: 1,
+        app_name: app_name.to_string(),
+        attribution,
+        summary: String::new(),
+        body: String::new(),
+        actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
+        urgency: 1,
+        is_transient: false,
+        image,
+    }
+}
+
+#[test]
+fn badge_candidates_exclude_caller_content_icon() {
+    let notification = notification_view(
+        "sender-bin",
+        unixnotis_core::NotificationAttribution {
+            verified: false,
+            reported_name: "Claimed Brand".to_string(),
+            badge_icon: "sender-bin".to_string(),
+        },
+        NotificationImage {
+            icon_name: "caller-content-icon".to_string(),
+            ..NotificationImage::default()
+        },
+    );
+
+    let candidates = collect_icon_candidates(&notification);
+
+    assert!(candidates.iter().any(|candidate| candidate == "sender-bin"));
+    assert!(!candidates
+        .iter()
+        .any(|candidate| candidate == "caller-content-icon"));
+}
+
+#[test]
+fn badge_candidates_exclude_unresolved_application_claim() {
+    let notification = notification_view(
+        "Trusted Brand",
+        unixnotis_core::NotificationAttribution {
+            verified: false,
+            reported_name: String::new(),
+            badge_icon: "dialog-warning-symbolic".to_string(),
+        },
+        NotificationImage::default(),
+    );
+
+    let candidates = collect_icon_candidates(&notification);
+
+    assert!(candidates
+        .iter()
+        .any(|candidate| candidate == "dialog-warning-symbolic"));
+    assert!(!candidates
+        .iter()
+        .any(|candidate| candidate == "Trusted Brand"));
+}
 
 #[test]
 fn expand_rgb_to_rgba_appends_alpha() {
