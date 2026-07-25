@@ -58,7 +58,7 @@ cargo() {
 build_release_binaries unixnotis-daemon unixnotis-css-validate
 unset -f cargo
 
-expected_args=$'build\n--release\n--bin\nunixnotis-installer\n--bin\nunixnotis-daemon\n--bin\nunixnotis-css-validate'
+expected_args=$'build\n--locked\n--release\n--bin\nunixnotis-installer\n--bin\nunixnotis-daemon\n--bin\nunixnotis-css-validate'
 actual_args="$(cat -- "$cargo_args")"
 if [[ "$actual_args" != "$expected_args" ]]; then
   printf 'release build did not select exact binary targets\n' >&2
