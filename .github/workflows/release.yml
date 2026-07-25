@@ -9,12 +9,8 @@ on:
         required: true
         type: string
 
-permissions:
-  # The token can read sources and publish signed provenance for the built files
-  contents: read
-  id-token: write
-  attestations: write
-  artifact-metadata: write
+# Jobs opt into only the token capabilities used by their own phase
+permissions: {}
 
 concurrency:
   # A release tag should produce one archive set, so do not cancel a run already packaging it
@@ -38,8 +34,24 @@ jobs:
     runs-on: ubuntu-24.04
     container: debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
     timeout-minutes: 45
+    permissions:
+      contents: read
 
     steps:
+      - name: Validate release tag input
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'release tag must look like v1.1.0: %s\n' "$RELEASE_TAG" >&2
+            exit 2
+          fi
+          if [[ "$GITHUB_REF" != "refs/tags/${RELEASE_TAG}" ]]; then
+            printf 'workflow ref %s must match release tag %s\n' "$GITHUB_REF" "$RELEASE_TAG" >&2
+            exit 2
+          fi
+
       - name: Install system dependencies
         run: |
           set -euo pipefail
@@ -79,6 +91,21 @@ jobs:
 
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify release source commit
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag_ref="refs/tags/${RELEASE_TAG}"
+          tag_commit="$(git rev-parse "${tag_ref}^{commit}")"
+          checked_out_commit="$(git rev-parse HEAD)"
+          if [[ "$tag_commit" != "$GITHUB_SHA" || "$checked_out_commit" != "$GITHUB_SHA" ]]; then
+            printf 'release tag, workflow commit, and checkout must resolve to one commit\n' >&2
+            exit 2
+          fi
 
       - name: Install Rust toolchain
         run: |
@@ -111,17 +138,41 @@ jobs:
           tests/package-release.sh
 
       - name: Build package archive
-        # The script checks that Cargo's version matches the requested release tag
         env:
           # Environment transport prevents workflow input from becoming Bash source text
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            printf 'release tag must look like v1.1.0: %s\n' "$RELEASE_TAG" >&2
-            exit 2
-          fi
+          # The packager also binds the requested tag to Cargo's workspace version
           scripts/package-release.sh "$RELEASE_TAG"
+
+      - name: Upload unsigned package archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unixnotis-${{ inputs.tag }}-unsigned
+          path: |
+            dist/*.tar.zst
+            dist/*.sha256
+          if-no-files-found: error
+
+  sign:
+    name: Sign and attest release tarball
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # Only this job can request the short-lived signing identity
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+
+    steps:
+      - name: Download unsigned package archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: unixnotis-${{ inputs.tag }}-unsigned
+          path: dist
 
       - name: Install artifact signer
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
@@ -146,7 +197,7 @@ jobs:
             dist/*.tar.zst
             dist/*.sha256
 
-      - name: Upload package archive
+      - name: Upload signed package archive
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: unixnotis-${{ inputs.tag }}-release
