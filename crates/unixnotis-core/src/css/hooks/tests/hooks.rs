@@ -157,6 +157,7 @@ fn hook_names_stay_unique() {
         popup_card::HAS_ACTIONS,
         popup_card::HAS_BODY,
         popup_card::HAS_ICON,
+        popup_card::HAS_IMAGE,
         popup_card::HAS_SUMMARY,
         popup_card::NO_ICON,
         group_row::ROOT,

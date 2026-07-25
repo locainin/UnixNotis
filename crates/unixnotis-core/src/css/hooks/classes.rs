@@ -177,6 +177,7 @@ pub mod popup_card {
     pub const HAS_ACTIONS: &str = "unixnotis-popup-card-has-actions";
     pub const HAS_BODY: &str = "unixnotis-popup-card-has-body";
     pub const HAS_ICON: &str = "unixnotis-popup-card-has-icon";
+    pub const HAS_IMAGE: &str = "unixnotis-popup-card-has-image";
     pub const HAS_SUMMARY: &str = "unixnotis-popup-card-has-summary";
     pub const NO_ICON: &str = "unixnotis-popup-card-no-icon";
 }
