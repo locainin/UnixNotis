@@ -48,7 +48,7 @@ impl ControlServer {
             .await
             .map_err(to_fdo_error)?;
         if !proxy
-            .name_has_owner(bus_name)
+            .name_has_owner(bus_name.clone())
             .await
             .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?
         {
@@ -69,9 +69,10 @@ impl ControlServer {
             ));
         }
 
-        // Reuse the freedesktop signal path only after identity and liveness checks pass
+        // Scope the signal to the stored owner so unrelated bus listeners cannot observe it
         let context = SignalContext::new(self.state.connection(), NOTIFICATIONS_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
+            .map_err(to_fdo_error)?
+            .set_destination(bus_name.to_owned());
         NotificationServer::action_invoked(&context, id, action_key)
             .await
             .map_err(to_fdo_error)
