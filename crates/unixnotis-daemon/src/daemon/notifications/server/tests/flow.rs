@@ -25,10 +25,12 @@ fn notification_with_id(id: u32) -> Arc<Notification> {
         id,
         app_name: "app".to_string(),
         app_icon: String::new(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "summary".to_string(),
         body: String::new(),
         actions: Vec::new(),
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         hints: HashMap::new(),
         urgency: Urgency::Normal,
         category: None,
@@ -55,27 +57,6 @@ fn insert_outcome(id: u32, dropped: bool) -> InsertOutcome {
         evicted: Vec::new(),
         dropped,
     }
-}
-
-#[test]
-fn sender_app_name_mismatch_is_false_without_executable_metadata() {
-    assert!(!super::sender_app_name_mismatch("Calendar", None));
-}
-
-#[test]
-fn sender_app_name_mismatch_is_false_when_app_matches_executable() {
-    assert!(!super::sender_app_name_mismatch(
-        "UnixNotis Center",
-        Some("/usr/bin/unixnotis-center"),
-    ));
-}
-
-#[test]
-fn sender_app_name_mismatch_is_true_when_app_does_not_match_executable() {
-    assert!(super::sender_app_name_mismatch(
-        "Calendar",
-        Some("/usr/bin/firefox"),
-    ));
 }
 
 fn notify_header_message() -> Message {

@@ -126,7 +126,10 @@ impl NotificationStore {
             .actions
             .iter()
             .any(|action| action.key == "inline-reply");
-        (notification.inline_reply.available && has_reply_action).then(|| Arc::clone(notification))
+        (notification.inline_reply.available
+            && notification.inline_reply_policy == unixnotis_core::InlineReplyPolicy::Allow
+            && has_reply_action)
+            .then(|| Arc::clone(notification))
     }
 
     pub fn active_action_target(&self, id: u32, action_key: &str) -> Option<Arc<Notification>> {

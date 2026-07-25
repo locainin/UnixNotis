@@ -11,6 +11,7 @@ use crate::sound::SoundSettings;
 use crate::store::NotificationStore;
 
 use crate::daemon::events::DaemonEventPublisher;
+use crate::daemon::notifications::identity::DesktopIdentityIndex;
 use crate::daemon::notifications::sender_cache::SenderMetadataCache;
 use crate::daemon::notifications::NotificationBurstState;
 
@@ -41,6 +42,8 @@ pub struct DaemonState {
         StdMutex<std::collections::HashMap<String, NotificationBurstState>>,
     // Unique sender identities avoid repeated bus and procfs lookups during bursts
     pub(in crate::daemon) sender_metadata_cache: SenderMetadataCache,
+    // Desktop records are indexed once so notification bursts never rescan application files
+    pub(in crate::daemon) desktop_identity_index: Arc<DesktopIdentityIndex>,
     // Trial mode allows local rebuild loops without forcing daemon restarts for control auth
     pub(in crate::daemon::state) trial_mode: bool,
 }
@@ -77,6 +80,7 @@ impl DaemonState {
             events: DaemonEventPublisher::new(connection),
             notification_signal_bursts: StdMutex::new(std::collections::HashMap::new()),
             sender_metadata_cache: SenderMetadataCache::new(),
+            desktop_identity_index: DesktopIdentityIndex::shared(),
             trial_mode,
         })
     }

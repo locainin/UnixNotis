@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use unixnotis_core::{
-    util, Action, Config, InlineReply, Notification, NotificationAttribution, NotificationImage,
-    Urgency,
+    util, Action, Config, InlineReply, InlineReplyPolicy, Notification, NotificationAttribution,
+    NotificationImage, Urgency,
 };
 use zbus::zvariant::{OwnedValue, Value};
 
@@ -27,6 +27,8 @@ pub(super) struct NotificationInput {
     pub(super) actions: Vec<String>,
     pub(super) hints: HashMap<String, OwnedValue>,
     pub(super) sender: SenderMetadata,
+    pub(super) attribution: NotificationAttribution,
+    pub(super) inline_reply_policy: InlineReplyPolicy,
     pub(super) expire_timeout: i32,
 }
 
@@ -39,6 +41,8 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
         actions,
         hints,
         sender,
+        attribution,
+        inline_reply_policy,
         expire_timeout,
     } = input;
 
@@ -64,14 +68,8 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
         .unwrap_or(false);
     let image = NotificationImage::from_hints(&app_name, &app_icon, &hints);
     let actions = parse_actions(actions);
-    let (_, attribution) =
-        NotificationAttribution::resolve(&app_name, sender.sender_executable.as_deref());
-    let inline_reply = if attribution.verified {
-        parse_inline_reply(&actions, &hints)
-    } else {
-        // Unverified senders cannot place a credential-like text control in trusted UI
-        InlineReply::default()
-    };
+    // Protocol metadata is parsed independently from the daemon's interaction decision
+    let inline_reply = parse_inline_reply(&actions, &hints);
     // Clean text before storing it
     let app_name = util::sanitize_inline_display_text(&app_name);
     let summary = util::sanitize_display_text(&summary);
@@ -86,6 +84,7 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
             util::truncate_utf8_bytes(&app_name, MAX_APP_NAME_BYTES)
         },
         app_icon: util::truncate_utf8_bytes(&app_icon, MAX_APP_ICON_BYTES),
+        attribution,
         // Truncate bytes first, then fold long contiguous runs to keep UTF-8 boundaries valid
         // Fold very long unbroken runs so renderer width remains bounded
         summary: util::fold_text_for_layout(
@@ -100,6 +99,7 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
         ),
         actions,
         inline_reply,
+        inline_reply_policy,
         // Keep only needed hints
         hints: sanitize_hints_for_storage(hints),
         urgency,
@@ -245,7 +245,7 @@ fn parse_urgency_hint(value: &OwnedValue) -> Option<u32> {
     None
 }
 
-fn owned_to_string(value: &OwnedValue) -> Option<String> {
+pub(super) fn owned_to_string(value: &OwnedValue) -> Option<String> {
     value
         .try_clone()
         .ok()

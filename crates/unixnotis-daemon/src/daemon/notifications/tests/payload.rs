@@ -27,7 +27,10 @@ fn build_notification_clamps_summary_and_body_sizes() {
             sender_pid: Some(42),
             sender_start_time: Some(77),
             sender_executable: Some("/usr/bin/test-app".to_string()),
+            sender_executable_identity: None,
         },
+        attribution: unixnotis_core::NotificationAttribution::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         expire_timeout: 0,
     });
 
@@ -49,7 +52,10 @@ fn build_notification_strips_display_spoofing_controls() {
             sender_pid: Some(42),
             sender_start_time: Some(77),
             sender_executable: Some("/usr/bin/test-app".to_string()),
+            sender_executable_identity: None,
         },
+        attribution: unixnotis_core::NotificationAttribution::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         expire_timeout: 0,
     });
 
@@ -86,6 +92,16 @@ fn build_notification_collects_inline_reply_action_and_kde_labels() {
             sender_executable: Some("/usr/bin/messages".to_string()),
             ..SenderMetadata::default()
         },
+        attribution: unixnotis_core::NotificationAttribution::associated(
+            "Messages",
+            "org.example.Messages",
+            "messages",
+            "/usr/bin/messages",
+            unixnotis_core::AttributionClass::SystemAssociated,
+            false,
+            "desktop:org.example.Messages".to_string(),
+        ),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         expire_timeout: 0,
     });
 
@@ -97,7 +113,7 @@ fn build_notification_collects_inline_reply_action_and_kde_labels() {
 }
 
 #[test]
-fn build_notification_disables_inline_reply_for_mismatched_sender_identity() {
+fn build_notification_keeps_protocol_reply_metadata_separate_from_denied_policy() {
     let notification = build_notification(NotificationInput {
         app_name: "Password Manager".to_string(),
         app_icon: "password-manager".to_string(),
@@ -110,18 +126,30 @@ fn build_notification_disables_inline_reply_for_mismatched_sender_identity() {
             sender_executable: Some("/usr/bin/unknown-client".to_string()),
             ..SenderMetadata::default()
         },
+        attribution: unixnotis_core::NotificationAttribution::conflict(
+            "Password Manager",
+            "source /usr/bin/unknown-client",
+            "executable:1:2".to_string(),
+        ),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         expire_timeout: 0,
     });
 
-    assert!(!notification.inline_reply.available);
+    assert!(notification.inline_reply.available);
+    assert_eq!(
+        notification.inline_reply_policy,
+        unixnotis_core::InlineReplyPolicy::Deny
+    );
     let view = notification.to_view();
-    assert_eq!(view.app_name, "unknown-client");
-    assert!(!view.attribution.verified);
-    assert_eq!(view.attribution.reported_name, "Password Manager");
+    assert_eq!(view.app_name, "Unknown application");
+    assert_eq!(
+        view.attribution.class,
+        unixnotis_core::AttributionClass::Conflict
+    );
 }
 
 #[test]
-fn build_notification_disables_inline_reply_when_sender_identity_is_unresolved() {
+fn build_notification_keeps_unknown_sender_reply_policy_denied() {
     let notification = build_notification(NotificationInput {
         app_name: "Messages".to_string(),
         app_icon: String::new(),
@@ -130,13 +158,26 @@ fn build_notification_disables_inline_reply_when_sender_identity_is_unresolved()
         actions: vec!["inline-reply".to_string(), "Reply".to_string()],
         hints: HashMap::new(),
         sender: SenderMetadata::default(),
+        attribution: unixnotis_core::NotificationAttribution::unknown(
+            "Messages",
+            "",
+            "unknown:messages".to_string(),
+        ),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         expire_timeout: 0,
     });
 
-    assert!(!notification.inline_reply.available);
+    assert!(notification.inline_reply.available);
+    assert_eq!(
+        notification.inline_reply_policy,
+        unixnotis_core::InlineReplyPolicy::Deny
+    );
     let view = notification.to_view();
     assert_eq!(view.app_name, "Messages");
-    assert!(!view.attribution.verified);
+    assert_eq!(
+        view.attribution.class,
+        unixnotis_core::AttributionClass::Unknown
+    );
 }
 
 #[test]
@@ -155,6 +196,8 @@ fn build_notification_ignores_reply_hints_without_explicit_action() {
         actions: vec!["default".to_string(), "Open".to_string()],
         hints,
         sender: SenderMetadata::default(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         expire_timeout: 0,
     });
 
@@ -264,10 +307,12 @@ fn resolve_expiration_respects_protocol_and_config_rules() {
         id: 1,
         app_name: "app".to_string(),
         app_icon: String::new(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "summary".to_string(),
         body: String::new(),
         actions: Vec::new(),
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         hints: HashMap::new(),
         urgency: Urgency::Normal,
         category: None,
@@ -316,10 +361,12 @@ fn resolve_expiration_treats_positive_timeout_as_caller_owned_even_when_default_
         id: 1,
         app_name: "app".to_string(),
         app_icon: String::new(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "summary".to_string(),
         body: String::new(),
         actions: Vec::new(),
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         hints: HashMap::new(),
         urgency: Urgency::Normal,
         category: None,
