@@ -46,7 +46,7 @@ assert_workspace_version() {
   local actual
 
   # cargo pkgid reads Cargo metadata and avoids hand-parsing Cargo.toml
-  pkgid="$(cargo pkgid -p unixnotis-installer)"
+  pkgid="$(cargo pkgid --locked -p unixnotis-installer)"
   actual="${pkgid##*#}"
 
   if [[ "$actual" != "$expected" ]]; then
@@ -57,7 +57,7 @@ assert_workspace_version() {
 
 build_release_binaries() {
   local binaries=("$@")
-  local args=(build --release --bin unixnotis-installer)
+  local args=(build --locked --release --bin unixnotis-installer)
 
   for binary in "${binaries[@]}"; do
     # Managed values are executable targets and do not have to match Cargo package names
@@ -154,7 +154,7 @@ write_manifest() {
 }
 
 managed_binaries() {
-  cargo metadata --no-deps --format-version 1 |
+  cargo metadata --locked --no-deps --format-version 1 |
     python3 -c '
 import json
 import sys
