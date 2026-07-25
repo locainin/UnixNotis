@@ -3,8 +3,6 @@
 //! Sender details are optional and best-effort, so failures here must not reject
 //! notification delivery
 
-use std::path::Path;
-
 use zbus::fdo::DBusProxy;
 use zbus::message::Header;
 use zbus::Connection;
@@ -84,24 +82,6 @@ pub(super) async fn resolve_sender_metadata(
         cache.insert(cache_key, metadata.clone());
     }
     metadata
-}
-
-pub(super) fn app_name_matches_sender(app_name: &str, sender_executable: &str) -> bool {
-    // This check is advisory only; many apps use display names that differ from binary names
-    let app = app_name.trim().to_ascii_lowercase();
-    if app.is_empty() {
-        return true;
-    }
-
-    let Some(exe_name) = Path::new(sender_executable)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .map(str::to_ascii_lowercase)
-    else {
-        return true;
-    };
-
-    app == exe_name || app.replace(' ', "-") == exe_name || exe_name.contains(&app)
 }
 
 #[cfg(target_os = "linux")]

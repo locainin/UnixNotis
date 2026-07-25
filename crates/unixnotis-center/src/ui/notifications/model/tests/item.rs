@@ -10,6 +10,7 @@ fn notification(id: u32) -> Rc<NotificationView> {
     Rc::new(NotificationView {
         id,
         app_name: "Terminal".to_string(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: Vec::new(),

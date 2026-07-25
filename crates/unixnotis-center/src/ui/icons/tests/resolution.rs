@@ -73,6 +73,7 @@ fn file_icon_resolution_enqueues_decodes_and_applies_the_worker_result() {
     let notification = NotificationView {
         id: 1,
         app_name: "Icon test".to_string(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: String::new(),
         body: String::new(),
         actions: Vec::new(),

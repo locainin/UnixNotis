@@ -82,7 +82,10 @@ fn build_notification_collects_inline_reply_action_and_kde_labels() {
         body: "Are you coming?".to_string(),
         actions: vec!["inline-reply".to_string(), "Reply".to_string()],
         hints,
-        sender: SenderMetadata::default(),
+        sender: SenderMetadata {
+            sender_executable: Some("/usr/bin/messages".to_string()),
+            ..SenderMetadata::default()
+        },
         expire_timeout: 0,
     });
 
@@ -91,6 +94,49 @@ fn build_notification_collects_inline_reply_action_and_kde_labels() {
     assert_eq!(notification.inline_reply.placeholder, "Write a reply");
     assert_eq!(notification.inline_reply.submit_label, "Send now");
     assert_eq!(notification.inline_reply.submit_icon, "mail-send-symbolic");
+}
+
+#[test]
+fn build_notification_disables_inline_reply_for_mismatched_sender_identity() {
+    let notification = build_notification(NotificationInput {
+        app_name: "Password Manager".to_string(),
+        app_icon: "password-manager".to_string(),
+        summary: "Sign in".to_string(),
+        body: "Enter the account password".to_string(),
+        actions: vec!["inline-reply".to_string(), "Password".to_string()],
+        hints: HashMap::new(),
+        sender: SenderMetadata {
+            sender_name: Some(":1.hostile".to_string()),
+            sender_executable: Some("/usr/bin/unknown-client".to_string()),
+            ..SenderMetadata::default()
+        },
+        expire_timeout: 0,
+    });
+
+    assert!(!notification.inline_reply.available);
+    let view = notification.to_view();
+    assert_eq!(view.app_name, "unknown-client");
+    assert!(!view.attribution.verified);
+    assert_eq!(view.attribution.reported_name, "Password Manager");
+}
+
+#[test]
+fn build_notification_disables_inline_reply_when_sender_identity_is_unresolved() {
+    let notification = build_notification(NotificationInput {
+        app_name: "Messages".to_string(),
+        app_icon: String::new(),
+        summary: "New message".to_string(),
+        body: String::new(),
+        actions: vec!["inline-reply".to_string(), "Reply".to_string()],
+        hints: HashMap::new(),
+        sender: SenderMetadata::default(),
+        expire_timeout: 0,
+    });
+
+    assert!(!notification.inline_reply.available);
+    let view = notification.to_view();
+    assert_eq!(view.app_name, "Messages");
+    assert!(!view.attribution.verified);
 }
 
 #[test]

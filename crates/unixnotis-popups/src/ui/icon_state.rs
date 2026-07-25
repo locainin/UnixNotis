@@ -12,8 +12,8 @@ use tracing::debug;
 use unixnotis_core::NotificationView;
 
 use super::icons::{
-    collect_icon_candidates, file_path_from_hint, image_data_texture, resolve_icon_image,
-    IconDecodePool, IconDecodeResult,
+    collect_icon_candidates, file_path_from_hint, resolve_icon_image, IconDecodePool,
+    IconDecodeResult,
 };
 use super::state::IconCacheEntry;
 use super::UiState;
@@ -32,19 +32,11 @@ impl UiState {
         notification: &NotificationView,
     ) -> Option<gtk::Image> {
         self.refresh_icon_sources_if_needed();
-        let image = &notification.image;
-        if let Some(texture) = image_data_texture(image) {
-            let widget = gtk::Image::from_paintable(Some(&texture));
-            set_popup_icon_size(&widget, POPUP_ICON_SIZE);
-            return Some(widget);
-        }
-
-        if !image.image_path.is_empty() {
-            let path = image.image_path.as_str();
-            return self.resolve_icon_widget(path, POPUP_ICON_SIZE);
-        }
-
-        let cache_key = format!("{}|{}", notification.app_name, notification.image.icon_name);
+        // Caller image hints are content, so the header resolves only authenticated badge inputs
+        let cache_key = format!(
+            "{}|{}",
+            notification.app_name, notification.attribution.badge_icon
+        );
         if let Some(cached) = self.icon_cache.get(&cache_key) {
             if let Some(icon_name) = &cached.resolved {
                 return self.resolve_icon_widget(icon_name, POPUP_ICON_SIZE);

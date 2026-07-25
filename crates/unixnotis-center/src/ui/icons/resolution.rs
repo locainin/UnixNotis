@@ -17,6 +17,20 @@ use super::theme::{
 use super::types::{IconDecodeRequest, IconResolution};
 
 impl IconResolverInner {
+    pub(super) fn apply_badge(
+        &self,
+        image: &gtk::Image,
+        notification: &NotificationView,
+        size: i32,
+        scale: i32,
+    ) {
+        if let Some(resolved) = self.resolve_badge(notification, size, scale) {
+            self.apply_resolution(image, resolved);
+            return;
+        }
+        image.set_visible(false);
+    }
+
     pub(super) fn apply_icon(
         &self,
         image: &gtk::Image,
@@ -25,18 +39,7 @@ impl IconResolverInner {
         scale: i32,
     ) {
         if let Some(resolved) = self.resolve_icon(notification, size, scale) {
-            match resolved {
-                IconResolution::Ready { key, paintable } => {
-                    set_image_key(image, key);
-                    image.set_paintable(Some(paintable.paintable()));
-                    image.set_visible(true);
-                }
-                IconResolution::Async { request } => {
-                    set_image_key(image, request.key.clone());
-                    self.enqueue(request, image);
-                    image.set_visible(false);
-                }
-            }
+            self.apply_resolution(image, resolved);
             return;
         }
 
@@ -99,6 +102,45 @@ impl IconResolverInner {
             }
         }
         None
+    }
+
+    fn resolve_badge(
+        &self,
+        notification: &NotificationView,
+        size: i32,
+        scale: i32,
+    ) -> Option<IconResolution> {
+        let candidates = collect_icon_candidates(notification);
+        for candidate in &candidates {
+            if let Some(icons) = self.desktop_index.icons_for(candidate) {
+                for icon_name in icons {
+                    if let Some(resolution) = self.resolve_icon_name(&icon_name, size, scale) {
+                        return Some(resolution);
+                    }
+                }
+            }
+        }
+        for candidate in candidates {
+            if let Some(resolution) = self.resolve_icon_name(&candidate, size, scale) {
+                return Some(resolution);
+            }
+        }
+        None
+    }
+
+    fn apply_resolution(&self, image: &gtk::Image, resolved: IconResolution) {
+        match resolved {
+            IconResolution::Ready { key, paintable } => {
+                set_image_key(image, key);
+                image.set_paintable(Some(paintable.paintable()));
+                image.set_visible(true);
+            }
+            IconResolution::Async { request } => {
+                set_image_key(image, request.key.clone());
+                self.enqueue(request, image);
+                image.set_visible(false);
+            }
+        }
     }
 
     fn resolve_icon_name(&self, name: &str, size: i32, scale: i32) -> Option<IconResolution> {

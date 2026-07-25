@@ -117,12 +117,12 @@ pub(in crate::ui::notifications) fn update_group_row(
     let display_name = data
         .notification
         .as_ref()
-        .map(|notification| notification.app_name.trim())
+        .map(|notification| notification.attribution_label())
         .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| data.group_key.as_ref());
-    // Display the original app label while the normalized key drives grouping behavior
+        .unwrap_or_else(|| data.group_key.to_string());
+    // Display verified attribution while the normalized key drives grouping behavior
     // Fall back to the group key if no sample notification is available
-    set_label_text_if_changed(&group.title, display_name);
+    set_label_text_if_changed(&group.title, &display_name);
     let next_count = data.count.to_string();
     set_label_text_if_changed(&group.count, &next_count);
     let chevron_name = if data.expanded {
@@ -138,7 +138,8 @@ pub(in crate::ui::notifications) fn update_group_row(
 
     if let Some(notification) = data.notification.as_ref() {
         let scale = root.scale_factor();
-        icon_resolver.apply_icon(&group.icon, notification.as_ref(), 18, scale);
+        // Group headers use the authenticated badge path instead of caller content images
+        icon_resolver.apply_badge(&group.icon, notification.as_ref(), 18, scale);
         set_class_state(root, hooks::group_row::HAS_ICON, true);
         set_class_state(root, hooks::group_row::NO_ICON, false);
     } else {

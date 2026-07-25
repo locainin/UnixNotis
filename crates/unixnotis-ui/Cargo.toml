@@ -10,6 +10,7 @@ notify.workspace = true
 tracing.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
 serde.workspace = true
+shell-words.workspace = true
 serde_json.workspace = true
 url.workspace = true
 

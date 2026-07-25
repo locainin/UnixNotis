@@ -7,9 +7,8 @@ use std::path::{Path, PathBuf};
 
 use gio::prelude::FileExt;
 use gtk::gdk;
-use gtk::gdk::prelude::*;
-use gtk::{gdk::Texture, IconLookupFlags, IconPaintable, TextDirection};
-use unixnotis_core::{NotificationImage, NotificationView};
+use gtk::{IconLookupFlags, IconPaintable, TextDirection};
+use unixnotis_core::NotificationView;
 
 pub(in crate::ui) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
     // Accept raw absolute paths and file:// URIs, decoding percent escapes when present.
@@ -63,14 +62,17 @@ pub(in crate::ui) fn resolve_icon_image(name: &str, size: i32) -> Option<gtk::Im
 
 pub(in crate::ui) fn collect_icon_candidates(notification: &NotificationView) -> Vec<String> {
     let mut candidates = Vec::new();
-    if !notification.image.icon_name.is_empty() {
-        candidates.push(notification.image.icon_name.clone());
-        if let Some(stripped) = notification.image.icon_name.strip_suffix(".desktop") {
+    if !notification.attribution.badge_icon.is_empty() {
+        candidates.push(notification.attribution.badge_icon.clone());
+        if let Some(stripped) = notification.attribution.badge_icon.strip_suffix(".desktop") {
             candidates.push(stripped.to_string());
         }
-        candidates.push(notification.image.icon_name.to_lowercase());
+        candidates.push(notification.attribution.badge_icon.to_lowercase());
     }
-    if !notification.app_name.is_empty() {
+    let authenticated_primary =
+        notification.attribution.verified || !notification.attribution.reported_name.is_empty();
+    if authenticated_primary && !notification.app_name.is_empty() {
+        // Unresolved claims never become badge candidates when the warning icon is unavailable
         candidates.push(notification.app_name.clone());
         let lower = notification.app_name.to_lowercase();
         let dashed = lower.replace(' ', "-");
@@ -91,111 +93,6 @@ fn is_missing_icon(path: &Path) -> bool {
         return false;
     };
     stem.starts_with("image-missing")
-}
-
-pub(in crate::ui) fn image_data_texture(image: &NotificationImage) -> Option<Texture> {
-    if !image.has_image_data {
-        return None;
-    }
-    let data = &image.image_data;
-    if data.bits_per_sample != 8 {
-        return None;
-    }
-    // Negative rowstride is invalid for pixel buffers.
-    if data.rowstride < 0 {
-        return None;
-    }
-
-    // Reject non-positive dimensions before creating the texture.
-    if data.width <= 0 || data.height <= 0 {
-        return None;
-    }
-    let width = data.width as usize;
-    let height = data.height as usize;
-    let width_i32 = i32::try_from(width).ok()?;
-    let height_i32 = i32::try_from(height).ok()?;
-
-    let (bytes, stride) = match data.channels {
-        4 => {
-            // Rowstride is bytes per row; hint payloads may include padding.
-            let min_stride = width.checked_mul(4)?;
-            let stride = if data.rowstride > 0 {
-                data.rowstride as usize
-            } else {
-                min_stride
-            };
-            // Validate rowstride and buffer length before building the texture.
-            if stride < min_stride {
-                return None;
-            }
-            let required = stride.checked_mul(height)?;
-            if data.data.len() < required {
-                return None;
-            }
-            (gtk::glib::Bytes::from(&data.data), stride)
-        }
-        3 => {
-            let (expanded, stride) = expand_rgb_to_rgba(data)?;
-            (gtk::glib::Bytes::from(&expanded), stride)
-        }
-        _ => return None,
-    };
-    Some(
-        gdk::MemoryTexture::new(
-            width_i32,
-            height_i32,
-            gdk::MemoryFormat::R8g8b8a8,
-            &bytes,
-            stride,
-        )
-        .upcast::<Texture>(),
-    )
-}
-
-fn expand_rgb_to_rgba(data: &unixnotis_core::ImageData) -> Option<(Vec<u8>, usize)> {
-    // Expand RGB to RGBA while honoring per-row padding in the source buffer.
-    let width = usize::try_from(data.width).ok()?;
-    let height = usize::try_from(data.height).ok()?;
-    if width == 0 || height == 0 {
-        return None;
-    }
-
-    // Source stride handles optional per-row padding for RGB input.
-    let min_src_stride = width.checked_mul(3)?;
-    let src_stride = if data.rowstride > 0 {
-        data.rowstride as usize
-    } else {
-        min_src_stride
-    };
-    if src_stride < min_src_stride {
-        return None;
-    }
-    let required = src_stride.checked_mul(height)?;
-    if data.data.len() < required {
-        return None;
-    }
-
-    // Destination uses tightly packed RGBA rows.
-    let dst_stride = width.checked_mul(4)?;
-    let mut rgba = vec![0u8; dst_stride.checked_mul(height)?];
-
-    // Copy RGB per pixel and append opaque alpha.
-    for y in 0..height {
-        let src_row_start = y * src_stride;
-        let dst_row_start = y * dst_stride;
-        let src_row = &data.data[src_row_start..src_row_start + min_src_stride];
-        let dst_row = &mut rgba[dst_row_start..dst_row_start + dst_stride];
-        for x in 0..width {
-            let src = x * 3;
-            let dst = x * 4;
-            dst_row[dst] = src_row[src];
-            dst_row[dst + 1] = src_row[src + 1];
-            dst_row[dst + 2] = src_row[src + 2];
-            dst_row[dst + 3] = 255;
-        }
-    }
-
-    Some((rgba, dst_stride))
 }
 
 #[cfg(test)]

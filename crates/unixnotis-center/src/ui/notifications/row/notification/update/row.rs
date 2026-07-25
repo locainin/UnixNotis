@@ -32,9 +32,10 @@ pub(in crate::ui::notifications) fn update_notification_row(
         data.presentation.show_thumbnail && notification_has_thumbnail(notification);
 
     apply_visual_state(row, data, notification, has_actions, has_thumbnail);
+    let attribution_label = notification.attribution_label();
     update_notification_text(
         row,
-        &notification.app_name,
+        &attribution_label,
         &notification.summary,
         &notification.body,
     );
@@ -47,7 +48,7 @@ pub(in crate::ui::notifications) fn update_notification_row(
     let mut sig_guard = row.icon_sig.borrow_mut();
     if sig_guard.as_ref() != Some(&next_sig) {
         let scale = row.card.scale_factor();
-        icon_resolver.apply_icon(&row.icon, notification, 22, scale);
+        icon_resolver.apply_badge(&row.icon, notification, 22, scale);
         *sig_guard = Some(next_sig);
     }
     if has_thumbnail {

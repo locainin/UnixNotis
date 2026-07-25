@@ -16,6 +16,11 @@ pub(super) fn sample_notification() -> NotificationView {
     NotificationView {
         id: 1,
         app_name: "demo".to_string(),
+        attribution: unixnotis_core::NotificationAttribution {
+            verified: true,
+            reported_name: String::new(),
+            badge_icon: "demo".to_string(),
+        },
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: Vec::new(),

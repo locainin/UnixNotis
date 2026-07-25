@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::{OwnedValue, Type};
 
+use super::attribution::NotificationAttribution;
 use super::image::NotificationImage;
 use super::reply::InlineReply;
 use super::types::{Action, Urgency};
@@ -53,9 +54,12 @@ impl Notification {
     /// Convert to a lightweight view for UI consumption
     #[must_use]
     pub fn to_view(&self) -> NotificationView {
+        let (app_name, attribution) =
+            NotificationAttribution::resolve(&self.app_name, self.sender_executable.as_deref());
         NotificationView {
             id: self.id,
-            app_name: self.app_name.clone(),
+            app_name,
+            attribution,
             summary: notification_display_text(&self.summary),
             body: notification_display_text(&self.body),
             actions: self.actions.clone(),
@@ -72,9 +76,12 @@ impl Notification {
     /// Convert to a view for list rows with heavy image data removed
     #[must_use]
     pub fn to_list_view(&self) -> NotificationView {
+        let (app_name, attribution) =
+            NotificationAttribution::resolve(&self.app_name, self.sender_executable.as_deref());
         NotificationView {
             id: self.id,
-            app_name: self.app_name.clone(),
+            app_name,
+            attribution,
             summary: notification_display_text(&self.summary),
             body: notification_display_text(&self.body),
             actions: self.actions.clone(),
@@ -281,6 +288,8 @@ pub struct NotificationView {
     // Lightweight fields used for UI display and filtering
     // Intentionally omits daemon-only protocol flags and timestamps
     pub app_name: String,
+    // Authenticated badge identity and any mismatched caller-supplied brand claim
+    pub attribution: NotificationAttribution,
     pub summary: String,
     pub body: String,
     pub actions: Vec<Action>,
@@ -290,6 +299,14 @@ pub struct NotificationView {
     pub is_transient: bool,
     // Image metadata intended for UI usage
     pub image: NotificationImage,
+}
+
+impl NotificationView {
+    /// Visible primary and secondary attribution for UI and diagnostic surfaces
+    #[must_use]
+    pub fn attribution_label(&self) -> String {
+        self.attribution.display_label(&self.app_name)
+    }
 }
 
 #[cfg(test)]

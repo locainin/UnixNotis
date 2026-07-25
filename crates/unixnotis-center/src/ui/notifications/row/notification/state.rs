@@ -69,15 +69,9 @@ pub(super) struct OptionalLabelState<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::ui::notifications) struct IconSignature {
-    // These fields match the icon resolution inputs
-    // If none of them change, the existing paintable is still valid
-    image_path: String,
-    icon_name: String,
+    // Header badges depend only on authenticated attribution inputs
+    badge_icon: String,
     app_name: String,
-    has_image_data: bool,
-    image_len: usize,
-    image_width: i32,
-    image_height: i32,
 }
 
 impl IconSignature {
@@ -85,13 +79,8 @@ impl IconSignature {
         // Signature includes all fields that can change icon resolution output
         // This keeps row refreshes cheap when only text or actions changed
         Self {
-            image_path: notification.image.image_path.clone(),
-            icon_name: notification.image.icon_name.clone(),
+            badge_icon: notification.attribution.badge_icon.clone(),
             app_name: notification.app_name.clone(),
-            has_image_data: notification.image.has_image_data,
-            image_len: notification.image.image_data.data.len(),
-            image_width: notification.image.image_data.width,
-            image_height: notification.image.image_data.height,
         }
     }
 }
