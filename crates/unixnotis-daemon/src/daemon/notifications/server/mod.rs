@@ -3,8 +3,10 @@
 mod capabilities;
 mod close;
 mod flow;
+mod ingress;
 mod interface;
 
+pub use ingress::NotificationIngress;
 pub use interface::NotificationServer;
 
 #[cfg(test)]

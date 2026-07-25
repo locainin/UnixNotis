@@ -12,4 +12,5 @@ mod server;
 pub(in crate::daemon) use flow_control::{
     notification_signal_mode_for_sender, NotificationBurstState, NotificationSignalMode,
 };
+pub use server::NotificationIngress;
 pub use server::NotificationServer;

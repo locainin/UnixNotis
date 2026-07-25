@@ -13,7 +13,7 @@ use crate::child_process::{spawn_center_supervisor, spawn_popups_supervisor};
 use crate::cli::Args;
 use crate::daemon::{
     log_current_owner, log_name_reply, request_control_name, request_well_known_name,
-    spawn_client_owner_watch, ControlServer, DaemonState, NotificationServer,
+    spawn_client_owner_watch, ControlServer, DaemonState, NotificationIngress, NotificationServer,
     NOTIFICATIONS_OBJECT_PATH,
 };
 use crate::dnd_expiration::DndExpirationScheduler;
@@ -42,7 +42,7 @@ pub(super) async fn run_daemon(
         .object_server()
         .at(
             NOTIFICATIONS_OBJECT_PATH,
-            NotificationServer::new(state.clone(), scheduler),
+            NotificationIngress::new(NotificationServer::new(state.clone(), scheduler)),
         )
         .await?;
     connection
