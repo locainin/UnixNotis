@@ -77,6 +77,34 @@ fn ensure_default_scripts_in_preserves_user_edited_script_contents() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[test]
+fn ensure_default_scripts_in_upgrades_exact_legacy_blue_light_helpers() {
+    let root = test_root("default-script-upgrade");
+    let _ = fs::remove_dir_all(&root);
+    let legacy_lib =
+        include_bytes!("../../../../../assets/scripts/legacy/unixnotis-blue-light-lib-v1");
+    let legacy_on =
+        include_bytes!("../../../../../assets/scripts/legacy/unixnotis-blue-light-on-v1");
+    let scripts = root.join("scripts");
+    fs::create_dir_all(&scripts).expect("script directory");
+    fs::write(scripts.join("unixnotis-blue-light-lib"), legacy_lib).expect("legacy library");
+    fs::write(scripts.join("unixnotis-blue-light-on"), legacy_on).expect("legacy on helper");
+
+    Config::ensure_default_scripts_in(&root).expect("upgrade stock scripts");
+
+    for name in ["unixnotis-blue-light-lib", "unixnotis-blue-light-on"] {
+        let expected = crate::DEFAULT_SCRIPTS
+            .iter()
+            .find(|script| script.relative_path.ends_with(name))
+            .expect("current stock helper");
+        assert_eq!(
+            fs::read(scripts.join(name)).expect("upgraded helper"),
+            expected.contents.as_bytes()
+        );
+    }
+    let _ = fs::remove_dir_all(root);
+}
+
 #[cfg(unix)]
 #[test]
 fn ensure_default_scripts_in_rejects_symlink_without_changing_external_permissions() {

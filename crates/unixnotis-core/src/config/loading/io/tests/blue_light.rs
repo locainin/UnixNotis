@@ -97,6 +97,40 @@ fn stopping_night_mode_visits_every_active_supported_backend() {
 }
 
 #[test]
+fn night_mode_falls_through_when_the_first_installed_backend_cannot_stay_running() {
+    let (root, log) = backend_fixture("blue-light-fallback");
+    let marker = root.join("gammastep.running");
+    write_executable(
+        &root.join("bin/gammastep"),
+        "#!/bin/sh\nprintf '%s %s\\n' \"${0##*/}\" \"$*\" >> \"$TEST_LOG\"\n: > \"$TEST_MARKER\"\n",
+    );
+    write_executable(
+        &root.join("bin/pgrep"),
+        "#!/bin/sh\n[ \"$2\" = gammastep ] && [ -f \"$TEST_MARKER\" ]\n",
+    );
+    write_executable(&root.join("bin/pkill"), "#!/bin/sh\nexit 0\n");
+    write_executable(&root.join("bin/sleep"), "#!/bin/sh\nexit 0\n");
+
+    let status = Command::new("/bin/sh")
+        .args(["-c", ". \"$1\"; start_available_backend", "blue-light-test"])
+        .arg(root.join("blue-light-lib"))
+        .env("PATH", root.join("bin"))
+        .env("TEST_LOG", &log)
+        .env("TEST_MARKER", &marker)
+        .env("UNIXNOTIS_BLUE_LIGHT_STARTUP_DELAY", "0")
+        .status()
+        .expect("start first healthy blue-light backend");
+
+    assert!(status.success());
+    let calls = fs::read_to_string(&log).expect("read backend calls");
+    assert!(calls.lines().any(|call| call.starts_with("hyprsunset ")));
+    assert!(calls
+        .lines()
+        .any(|call| call.starts_with("gammastep -m wayland")));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn blue_light_scripts_do_not_use_cross_user_temporary_state() {
     for script in crate::DEFAULT_SCRIPTS {
         if script.relative_path.contains("blue-light") {

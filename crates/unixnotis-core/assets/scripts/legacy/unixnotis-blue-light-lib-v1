@@ -3,7 +3,6 @@ set -eu
 
 : "${UNIXNOTIS_BLUE_LIGHT_TEMP:=4500}"
 : "${UNIXNOTIS_BLUE_LIGHT_GAMMA:=90}"
-: "${UNIXNOTIS_BLUE_LIGHT_STARTUP_DELAY:=0.2}"
 
 has_backend() {
     command -v "$1" >/dev/null 2>&1
@@ -102,38 +101,4 @@ start_backend() {
             return 127
             ;;
     esac
-}
-
-start_backend_if_healthy() {
-    candidate="$1"
-
-    # Clear a stale instance before asking one candidate to own the display
-    stop_backend "$candidate"
-    start_backend "$candidate"
-    sleep "$UNIXNOTIS_BLUE_LIGHT_STARTUP_DELAY"
-
-    # A tool that exits during startup is unavailable even when it exists on PATH
-    if backend_running "$candidate"; then
-        stop_conflicting_backends "$candidate"
-        return 0
-    fi
-
-    stop_backend "$candidate"
-    return 1
-}
-
-start_available_backend() {
-    # Preserve a working backend instead of changing tools on every click
-    if candidate=$(active_backend); then
-        start_backend_if_healthy "$candidate" && return 0
-    fi
-
-    # Broken packages and unsupported compositors fall through to the next tool
-    for candidate in hyprsunset gammastep wlsunset sunsetr; do
-        if has_backend "$candidate" && start_backend_if_healthy "$candidate"; then
-            return 0
-        fi
-    done
-
-    return 1
 }

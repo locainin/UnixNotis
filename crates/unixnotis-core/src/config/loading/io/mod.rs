@@ -3,6 +3,7 @@
 mod error;
 mod load;
 mod paths;
+mod script_migrations;
 mod scripts;
 mod theme_files;
 mod write;
