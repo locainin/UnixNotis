@@ -21,7 +21,7 @@ impl ControlServer {
         let normalized_scope = sanitize::normalize_inhibit_scope(scope)?;
         let sanitized_reason = sanitize::sanitize_inhibit_reason(reason);
         // Track inhibitors by unique bus name so cleanup on disconnect is reliable
-        let (id, active, count) = {
+        let id = {
             let mut store = self.state.store.lock().await;
             if store.inhibitor_count() >= MAX_ACTIVE_INHIBITORS {
                 // Hard cap blocks unbounded growth from accidental loops or hostile callers
@@ -29,14 +29,9 @@ impl ControlServer {
                     "inhibitor limit reached ({MAX_ACTIVE_INHIBITORS})"
                 )));
             }
-            let id = store.add_inhibitor(sender.to_string(), sanitized_reason, normalized_scope);
-            let active = store.inhibited();
-            let count = store.inhibitor_count();
-            (id, active, count)
+            store.add_inhibitor(sender.to_string(), sanitized_reason, normalized_scope)
         };
-        self.state
-            .publish_inhibitors_changed(active, count, "added")
-            .await;
+        self.state.publish_inhibitors_changed("added").await;
         Ok(id)
     }
 
@@ -51,14 +46,10 @@ impl ControlServer {
             .ok_or_else(|| zbus::fdo::Error::Failed("missing sender".to_string()))?;
         let owner = sender.to_string();
         // Only the owner can remove it
-        let (removed, active, count) = {
+        let removed = {
             let mut store = self.state.store.lock().await;
             match store.remove_inhibitor(id, &owner) {
-                Ok(removed) => {
-                    let active = store.inhibited();
-                    let count = store.inhibitor_count();
-                    (removed, active, count)
-                }
+                Ok(removed) => removed,
                 Err(err) => {
                     return Err(zbus::fdo::Error::AccessDenied(err.message()));
                 }
@@ -68,9 +59,7 @@ impl ControlServer {
             // Unknown IDs are treated as a no-op to keep clients resilient
             return Ok(());
         }
-        self.state
-            .publish_inhibitors_changed(active, count, "removed")
-            .await;
+        self.state.publish_inhibitors_changed("removed").await;
         Ok(())
     }
 }

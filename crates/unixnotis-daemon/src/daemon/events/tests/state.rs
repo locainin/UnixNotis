@@ -1,6 +1,8 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::TryStreamExt;
+use tokio::sync::Barrier;
 use unixnotis_core::{CloseReason, Config, ControlState, PopupGateState, CONTROL_OBJECT_PATH};
 use zbus::message::Type;
 use zbus::{Connection, MatchRule, Message, MessageStream};
@@ -226,6 +228,115 @@ async fn publish_state_changed_sends_initial_state_and_suppresses_duplicate() {
         .expect("duplicate state should not fail");
     assert_no_signal(&mut state_stream).await;
     assert_no_signal(&mut gate_stream).await;
+}
+
+#[tokio::test]
+async fn delayed_state_publisher_captures_latest_revision_before_suppressing_duplicate() {
+    let state = daemon_state_for_test(false).await;
+    let mut state_stream = control_signal_stream(&state, "StateChanged").await;
+    let mut gate_stream = control_signal_stream(&state, "PopupGateChanged").await;
+    let publication = state.events.ordered_publication().await;
+    let publisher_entered = Arc::new(Barrier::new(2));
+
+    let delayed_state = state.clone();
+    let delayed_entered = publisher_entered.clone();
+    let delayed = tokio::spawn(async move {
+        // The barrier makes the first caller queue behind the held publication guard
+        delayed_entered.wait().await;
+        delayed_state.publish_state_changed().await
+    });
+
+    publisher_entered.wait().await;
+    tokio::task::yield_now().await;
+    state.store.lock().await.set_dnd_until(500);
+
+    let waiting_state = state.clone();
+    let waiting = tokio::spawn(async move { waiting_state.publish_state_changed().await });
+    tokio::task::yield_now().await;
+    drop(publication);
+
+    delayed
+        .await
+        .expect("delayed publisher task")
+        .expect("delayed publication");
+    waiting
+        .await
+        .expect("waiting publisher task")
+        .expect("waiting publication");
+
+    let emitted_state = next_signal(&mut state_stream)
+        .await
+        .body()
+        .deserialize::<ControlState>()
+        .expect("state body");
+    assert!(emitted_state.dnd_enabled);
+    assert_eq!(emitted_state.dnd_expires_at, 500);
+
+    let emitted_gate = next_signal(&mut gate_stream)
+        .await
+        .body()
+        .deserialize::<PopupGateState>()
+        .expect("popup gate body");
+    assert!(emitted_gate.dnd_enabled);
+
+    assert_no_signal(&mut state_stream).await;
+    assert_no_signal(&mut gate_stream).await;
+}
+
+#[tokio::test]
+async fn delayed_inhibitor_publishers_never_emit_an_older_count_after_a_newer_mutation() {
+    let state = daemon_state_for_test(false).await;
+    let mut inhibitor_stream = control_signal_stream(&state, "InhibitorsChanged").await;
+    let mut state_stream = control_signal_stream(&state, "StateChanged").await;
+    let publication = state.events.ordered_publication().await;
+
+    state
+        .store
+        .lock()
+        .await
+        .add_inhibitor(":1.first".to_string(), "first mutation".to_string(), 0);
+    let first_state = state.clone();
+    let first = tokio::spawn(async move {
+        first_state
+            .publish_inhibitors_changed("first-test-mutation")
+            .await;
+    });
+    tokio::task::yield_now().await;
+
+    state.store.lock().await.add_inhibitor(
+        ":1.second".to_string(),
+        "second mutation".to_string(),
+        0,
+    );
+    let second_state = state.clone();
+    let second = tokio::spawn(async move {
+        second_state
+            .publish_inhibitors_changed("second-test-mutation")
+            .await;
+    });
+    drop(publication);
+
+    first.await.expect("first inhibitor publisher");
+    second.await.expect("second inhibitor publisher");
+
+    for _ in 0..2 {
+        let (active, count) = next_signal(&mut inhibitor_stream)
+            .await
+            .body()
+            .deserialize::<(bool, u32)>()
+            .expect("inhibitor body");
+        assert!(active);
+        assert_eq!(count, 2);
+    }
+
+    let emitted_state = next_signal(&mut state_stream)
+        .await
+        .body()
+        .deserialize::<ControlState>()
+        .expect("state body");
+    assert!(emitted_state.inhibited);
+    assert_eq!(emitted_state.inhibitor_count, 2);
+    assert_no_signal(&mut state_stream).await;
 }
 
 #[tokio::test]

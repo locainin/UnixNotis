@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use unixnotis_core::{ControlState, PopupGateState};
 
-use super::super::state::should_publish_cached;
+use super::super::state::{should_publish_cached, update_cached};
 
 #[test]
 fn cached_state_emits_first_value_then_suppresses_duplicates() {
@@ -17,6 +17,7 @@ fn cached_state_emits_first_value_then_suppresses_duplicates() {
 
     // First value must be emitted because clients have no previous state
     assert!(should_publish_cached(&cache, &state));
+    update_cached(&cache, state.clone());
     // Identical values should not wake D-Bus subscribers again
     assert!(!should_publish_cached(&cache, &state));
 }
@@ -34,8 +35,10 @@ fn cached_state_emits_when_any_gate_field_changes() {
     };
 
     assert!(should_publish_cached(&cache, &open));
+    update_cached(&cache, open);
     // A changed popup gate affects visibility policy, so it must emit
     assert!(should_publish_cached(&cache, &dnd));
+    update_cached(&cache, dnd.clone());
     assert!(!should_publish_cached(&cache, &dnd));
 }
 
@@ -55,7 +58,9 @@ fn cached_state_emits_after_counter_change() {
     };
 
     assert!(should_publish_cached(&cache, &first));
+    update_cached(&cache, first);
     assert!(should_publish_cached(&cache, &changed));
+    update_cached(&cache, changed.clone());
     assert!(!should_publish_cached(&cache, &changed));
 }
 
@@ -70,6 +75,7 @@ fn cached_state_emits_when_only_the_dnd_deadline_changes() {
         inhibitor_count: 0,
     };
     assert!(should_publish_cached(&cache, &indefinite));
+    update_cached(&cache, indefinite.clone());
 
     let timed = ControlState {
         dnd_expires_at: 500,
@@ -77,6 +83,7 @@ fn cached_state_emits_when_only_the_dnd_deadline_changes() {
     };
 
     assert!(should_publish_cached(&cache, &timed));
+    update_cached(&cache, timed.clone());
     assert!(!should_publish_cached(&cache, &timed));
 }
 
@@ -94,5 +101,21 @@ fn cached_state_recovers_from_poisoned_mutex() {
     };
 
     assert!(should_publish_cached(&cache, &state));
+    update_cached(&cache, state.clone());
+    assert!(!should_publish_cached(&cache, &state));
+}
+
+#[test]
+fn cached_state_is_not_advanced_until_success_is_recorded() {
+    let cache = Mutex::new(None);
+    let state = PopupGateState {
+        dnd_enabled: true,
+        inhibited: false,
+    };
+
+    assert!(should_publish_cached(&cache, &state));
+    assert!(should_publish_cached(&cache, &state));
+
+    update_cached(&cache, state.clone());
     assert!(!should_publish_cached(&cache, &state));
 }
