@@ -153,10 +153,18 @@ impl UiState {
         body.add_css_class("unixnotis-popup-body");
         update_optional_label(&body, &notification.body, POPUP_BODY_MAX_CHARS);
 
-        // The root order is stable so CSS can assume header, summary, body, actions
+        // The root order is stable so CSS can assume header, summary, body, image, actions
         root.append(&header);
         root.append(&summary);
         root.append(&body);
+
+        if let Some(image) = self.build_content_image_widget(notification) {
+            // Caller content stays in the body and never becomes the application badge
+            set_class_state(&root, hooks::popup_card::HAS_IMAGE, true);
+            image.set_halign(Align::Start);
+            image.add_css_class("unixnotis-popup-content-image");
+            root.append(&image);
+        }
 
         // Action buttons are only built when the payload exposes actions
         if has_popup_actions {

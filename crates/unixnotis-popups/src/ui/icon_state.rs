@@ -12,8 +12,8 @@ use tracing::debug;
 use unixnotis_core::NotificationView;
 
 use super::icons::{
-    collect_icon_candidates, file_path_from_hint, resolve_icon_image, IconDecodePool,
-    IconDecodeResult,
+    collect_icon_candidates, file_path_from_hint, image_data_texture, resolve_icon_image,
+    IconDecodePool, IconDecodeResult,
 };
 use super::state::IconCacheEntry;
 use super::UiState;
@@ -23,10 +23,28 @@ const ICON_CACHE_MAX_ENTRIES: usize = 256;
 const ICON_TEXTURE_CACHE_MAX_BYTES: usize = 1024 * 1024;
 // Popup icon size is fixed so rows stay visually consistent across icon sources
 const POPUP_ICON_SIZE: i32 = 20;
+// Content stays visibly separate from the daemon-associated application badge
+const POPUP_CONTENT_IMAGE_SIZE: i32 = 96;
 // Missing icons are retried soon so package and theme installs heal without a process restart
 const NEGATIVE_ICON_CACHE_TTL: Duration = Duration::from_secs(15);
 
 impl UiState {
+    pub(super) fn build_content_image_widget(
+        &self,
+        notification: &NotificationView,
+    ) -> Option<gtk::Image> {
+        if let Some(texture) = image_data_texture(&notification.image) {
+            let widget = gtk::Image::from_paintable(Some(&texture));
+            set_popup_icon_size(&widget, POPUP_CONTENT_IMAGE_SIZE);
+            return Some(widget);
+        }
+
+        if notification.image.image_path.trim().is_empty() {
+            return None;
+        }
+        self.resolve_icon_widget(&notification.image.image_path, POPUP_CONTENT_IMAGE_SIZE)
+    }
+
     pub(super) fn build_image_widget(
         &mut self,
         notification: &NotificationView,

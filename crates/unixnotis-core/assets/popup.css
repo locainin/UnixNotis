@@ -96,6 +96,13 @@
   margin-top: 2px;
 }
 
+.unixnotis-popup-content-image {
+  min-width: 96px;
+  min-height: 96px;
+  margin-top: 6px;
+  border-radius: 10px;
+}
+
 .unixnotis-popup-actions {
   margin-top: 8px;
   margin-top: var(--unixnotis-popup-actions-gap);
