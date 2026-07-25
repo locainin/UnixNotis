@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use tracing::debug;
-use unixnotis_core::Notification;
+use unixnotis_core::{Notification, NotificationAttribution};
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 
 use crate::daemon::notifications::payload::{
     build_notification, resolve_expiration, NotificationInput,
 };
-use crate::daemon::notifications::sender::{app_name_matches_sender, resolve_sender_metadata};
+use crate::daemon::notifications::sender::resolve_sender_metadata;
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::InsertOutcome;
 
@@ -238,7 +238,10 @@ impl NotificationServer {
 }
 
 fn sender_app_name_mismatch(app_name: &str, sender_executable: Option<&str>) -> bool {
-    sender_executable.is_some_and(|exe| !app_name_matches_sender(app_name, exe))
+    sender_executable.is_some_and(|_| {
+        let (_, attribution) = NotificationAttribution::resolve(app_name, sender_executable);
+        !attribution.verified
+    })
 }
 
 #[cfg(test)]
