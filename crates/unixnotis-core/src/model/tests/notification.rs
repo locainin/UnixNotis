@@ -4,7 +4,10 @@ use chrono::Utc;
 use zbus::zvariant::Value;
 
 use super::{Notification, NotificationImage};
-use crate::{Action, ImageData, InlineReply, Urgency};
+use crate::{
+    Action, AttributionClass, ImageData, InlineReply, InlineReplyPolicy, NotificationAttribution,
+    Urgency,
+};
 
 fn notification_with_image(image: NotificationImage) -> Notification {
     let mut hints = HashMap::new();
@@ -17,6 +20,15 @@ fn notification_with_image(image: NotificationImage) -> Notification {
         id: 42,
         app_name: "Mail".to_string(),
         app_icon: "mail".to_string(),
+        attribution: NotificationAttribution::associated(
+            "Mail",
+            "org.example.Mail",
+            "mail",
+            "/usr/bin/mail",
+            AttributionClass::SystemAssociated,
+            false,
+            "desktop:org.example.Mail".to_string(),
+        ),
         summary: "Subject".to_string(),
         body: "Body".to_string(),
         actions: vec![Action {
@@ -24,6 +36,7 @@ fn notification_with_image(image: NotificationImage) -> Notification {
             label: "Open".to_string(),
         }],
         inline_reply: InlineReply::default(),
+        inline_reply_policy: InlineReplyPolicy::Allow,
         hints,
         urgency: Urgency::Critical,
         category: Some("email".to_string()),
@@ -67,7 +80,7 @@ fn notification_view_keeps_ui_fields_and_transient_policy_flag() {
     // Live popup views keep enough information for UI actions and close policy
     assert_eq!(view.id, 42);
     assert_eq!(view.app_name, "Mail");
-    assert!(view.attribution.verified);
+    assert_eq!(view.attribution.class, AttributionClass::SystemAssociated);
     assert_eq!(view.attribution.badge_icon, "mail");
     assert_eq!(view.summary, "Subject");
     assert_eq!(view.body, "Body");
@@ -78,21 +91,22 @@ fn notification_view_keeps_ui_fields_and_transient_policy_flag() {
 }
 
 #[test]
-fn notification_view_separates_mismatched_brand_from_authenticated_executable() {
+fn notification_view_keeps_conflict_warning_separate_from_primary_name() {
     let mut notification = notification_with_image(image_with_raw_bytes());
     notification.app_name = "Password Manager".to_string();
     notification.sender_executable = Some("/usr/bin/unknown-client".to_string());
+    notification.attribution = NotificationAttribution::conflict(
+        "Password Manager",
+        "source /usr/bin/unknown-client",
+        "executable:1:2".to_string(),
+    );
 
     let view = notification.to_view();
 
-    assert_eq!(view.app_name, "unknown-client");
-    assert!(!view.attribution.verified);
-    assert_eq!(view.attribution.reported_name, "Password Manager");
-    assert_eq!(view.attribution.badge_icon, "unknown-client");
-    assert_eq!(
-        view.attribution_label(),
-        "unknown-client · unverified claim: Password Manager"
-    );
+    assert_eq!(view.app_name, "Unknown application");
+    assert_eq!(view.attribution.class, AttributionClass::Conflict);
+    assert!(view.attribution.source_label.contains("Password Manager"));
+    assert!(!view.app_name.contains("unverified claim"));
 }
 
 #[test]
