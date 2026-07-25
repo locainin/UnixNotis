@@ -1,72 +1,10 @@
 use std::collections::HashMap;
 
 use zbus::zvariant::{OwnedValue, Structure, Value};
-use zbus::Message;
 
-use super::{preflight_notify, PreflightError};
+use super::super::{preflight_notify, PreflightError};
+use super::notify_message;
 use crate::daemon::notifications::server::ingress::MAX_NOTIFY_WIRE_BODY_BYTES;
-
-fn notify_message(
-    app_name: &str,
-    app_icon: &str,
-    summary: &str,
-    body: &str,
-    actions: Vec<String>,
-    hints: HashMap<String, OwnedValue>,
-) -> Message {
-    Message::method("/org/freedesktop/Notifications", "Notify")
-        .expect("method builder")
-        .interface("org.freedesktop.Notifications")
-        .expect("notification interface")
-        .build(&(
-            app_name, 0_u32, app_icon, summary, body, actions, hints, 0_i32,
-        ))
-        .expect("Notify message")
-}
-
-#[test]
-fn ordinary_notify_body_passes_structural_preflight() {
-    let message = notify_message(
-        "Example",
-        "example",
-        "Summary",
-        "Body",
-        vec!["default".to_string(), "Open".to_string()],
-        HashMap::new(),
-    );
-
-    assert_eq!(preflight_notify(&message), Ok(()));
-}
-
-#[test]
-fn under_wire_limit_tiny_action_flood_is_rejected() {
-    let actions = (0..20_000).map(|_| "a".to_string()).collect();
-    let message = notify_message("app", "", "summary", "", actions, HashMap::new());
-
-    assert!(message.body().len() < MAX_NOTIFY_WIRE_BODY_BYTES);
-    assert_eq!(
-        preflight_notify(&message),
-        Err(PreflightError::LimitsExceeded(
-            "Notify action array has too many elements"
-        ))
-    );
-}
-
-#[test]
-fn action_array_accepts_eight_pairs_and_rejects_the_next_element() {
-    let exact = vec!["a".to_string(); 16];
-    let exact_message = notify_message("app", "", "", "", exact, HashMap::new());
-    assert_eq!(preflight_notify(&exact_message), Ok(()));
-
-    let over = vec!["a".to_string(); 17];
-    let over_message = notify_message("app", "", "", "", over, HashMap::new());
-    assert_eq!(
-        preflight_notify(&over_message),
-        Err(PreflightError::LimitsExceeded(
-            "Notify action array has too many elements"
-        ))
-    );
-}
 
 #[test]
 fn hint_entry_flood_is_rejected_before_map_allocation() {
@@ -79,19 +17,6 @@ fn hint_entry_flood_is_rejected_before_map_allocation() {
         preflight_notify(&message),
         Err(PreflightError::LimitsExceeded(
             "Notify hint dictionary has too many entries"
-        ))
-    );
-}
-
-#[test]
-fn field_string_limit_is_enforced_before_owned_string_creation() {
-    let summary = "s".repeat(crate::daemon::notifications::limits::MAX_SUMMARY_BYTES + 1);
-    let message = notify_message("app", "", &summary, "", Vec::new(), HashMap::new());
-
-    assert_eq!(
-        preflight_notify(&message),
-        Err(PreflightError::LimitsExceeded(
-            "Notify string exceeds its field limit"
         ))
     );
 }
@@ -145,6 +70,23 @@ fn image_array_above_its_allowance_is_rejected_below_the_wire_limit() {
 }
 
 #[test]
+fn non_image_byte_array_does_not_inherit_the_image_allowance() {
+    let mut hints = HashMap::new();
+    hints.insert(
+        "x-example-bytes".to_string(),
+        OwnedValue::try_from(Value::from(vec![0_u8; 16 * 1024 + 1])).expect("owned byte hint"),
+    );
+    let message = notify_message("app", "", "summary", "", Vec::new(), hints);
+
+    assert_eq!(
+        preflight_notify(&message),
+        Err(PreflightError::LimitsExceeded(
+            "Notify byte array exceeds its allowance"
+        ))
+    );
+}
+
+#[test]
 fn cumulative_nested_string_data_is_bounded() {
     let text = "h".repeat(crate::daemon::notifications::limits::MAX_HINT_STRING_BYTES);
     let hints = (0..16)
@@ -165,24 +107,6 @@ fn cumulative_nested_string_data_is_bounded() {
             "Notify contains too much non-image string data"
         ))
     );
-}
-
-#[test]
-fn cumulative_string_budget_accepts_its_exact_limit() {
-    let hints = (0..16)
-        .map(|index| {
-            // Hint keys consume 38 bytes, so one shorter value keeps the total at 64 KiB
-            let first_length = if index == 0 { 2_010 } else { 2_048 };
-            let values = Value::from(vec!["h".repeat(first_length), "h".repeat(2_048)]);
-            (
-                format!("h{index}"),
-                OwnedValue::try_from(values).expect("owned exact-budget strings"),
-            )
-        })
-        .collect();
-    let message = notify_message("", "", "", "", Vec::new(), hints);
-
-    assert_eq!(preflight_notify(&message), Ok(()));
 }
 
 #[test]
