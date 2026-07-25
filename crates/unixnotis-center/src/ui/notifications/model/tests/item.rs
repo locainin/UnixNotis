@@ -15,6 +15,7 @@ fn notification(id: u32) -> Rc<NotificationView> {
         body: "body".to_string(),
         actions: Vec::new(),
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
         is_transient: false,
         image: NotificationImage::default(),

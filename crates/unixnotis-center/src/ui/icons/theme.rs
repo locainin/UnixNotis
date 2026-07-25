@@ -103,14 +103,10 @@ pub(super) fn collect_icon_candidates(notification: &NotificationView) -> Vec<St
         }
         candidates.push(notification.attribution.badge_icon.to_lowercase());
     }
-    let authenticated_primary =
-        notification.attribution.verified || !notification.attribution.reported_name.is_empty();
-    if authenticated_primary && !notification.app_name.is_empty() {
-        // Unresolved claims never become badge candidates when the warning icon is unavailable
-        candidates.push(notification.app_name.clone());
-        let lower = notification.app_name.to_lowercase();
-        candidates.push(lower.clone());
-        candidates.push(lower.replace(' ', "-"));
+    if !notification.attribution.desktop_id.is_empty() {
+        // Desktop ids are daemon-associated metadata and safe badge lookup candidates
+        candidates.push(notification.attribution.desktop_id.clone());
+        candidates.push(notification.attribution.desktop_id.to_lowercase());
     }
 
     let mut seen = HashSet::new();

@@ -105,14 +105,21 @@ impl UiState {
             // Missing icons also get a root class so themes can rebalance spacing
             set_class_state(&root, hooks::popup_card::NO_ICON, true);
         }
-        // Identity text includes an explicit marker whenever sender attribution is unresolved
-        let attribution_label = notification.attribution_label();
-        let app = gtk::Label::new(Some(&attribution_label));
+        // Primary identity stays short while source evidence lives in a tooltip
+        let app = gtk::Label::new(Some(&notification.attribution.display_name));
         app.set_xalign(0.0);
         app.set_single_line_mode(true);
         app.set_ellipsize(EllipsizeMode::End);
         app.set_max_width_chars(POPUP_APP_MAX_CHARS as i32);
-        app.set_text(clamp_label_text(&attribution_label, POPUP_APP_MAX_CHARS).as_ref());
+        app.set_text(
+            clamp_label_text(&notification.attribution.display_name, POPUP_APP_MAX_CHARS).as_ref(),
+        );
+        if !notification.attribution.source_label.is_empty() {
+            app.set_tooltip_text(Some(&notification.attribution.source_label));
+        }
+        if notification.attribution.has_warning() {
+            app.add_css_class("unixnotis-attribution-warning");
+        }
         app.add_css_class("unixnotis-popup-header");
 
         let close = gtk::Button::from_icon_name("window-close-symbolic");

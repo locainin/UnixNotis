@@ -50,11 +50,11 @@ impl DesktopIconIndex {
             if let Some(id) = desktop.id() {
                 self.add_id(id.as_str(), &icon_name);
             }
-            if let Some(executable) = desktop
-                .string("Exec")
-                .and_then(|exec| executable_basename(exec.as_str()))
-            {
-                self.add_executable(&executable, &icon_name);
+            // D-Bus-activated desktop entries may validly omit Exec
+            if desktop.commandline().is_some() {
+                if let Some(executable) = executable_basename(&desktop.executable()) {
+                    self.add_executable(&executable, &icon_name);
+                }
             }
         }
     }
@@ -110,11 +110,9 @@ impl DesktopIconIndex {
     }
 }
 
-fn executable_basename(exec: &str) -> Option<String> {
-    // Desktop Exec fields use shell-like quoting plus field-code arguments
-    let arguments = shell_words::split(exec).ok()?;
-    let program = arguments.first()?;
-    std::path::Path::new(program)
+fn executable_basename(program: &std::path::Path) -> Option<String> {
+    // GIO follows desktop Exec syntax and exposes only the executable component
+    program
         .file_name()
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())

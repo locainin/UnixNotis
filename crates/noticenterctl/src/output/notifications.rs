@@ -30,7 +30,7 @@ fn format_notifications(label: &str, notifications: &[NotificationView], full: b
 
     for notification in notifications {
         // Both fields come from notification clients and must remain single-line
-        let app = util::sanitize_log_value(&notification.attribution_label(), limit);
+        let app = util::sanitize_log_value(&notification.attribution.display_name, limit);
         let summary = util::sanitize_log_value(&notification.summary, limit);
         let action_count = notification.actions.len();
         out.push_str(&format!(

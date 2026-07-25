@@ -151,8 +151,8 @@ impl NotificationList {
         let Some(query) = self.filter_query.as_ref() else {
             return true;
         };
-        contains_casefold(&view.app_name, query)
-            || contains_casefold(&view.attribution.reported_name, query)
+        contains_casefold(&view.attribution.display_name, query)
+            || contains_casefold(&view.attribution.source_label, query)
             || contains_casefold(&view.summary, query)
             || contains_casefold(&view.body, query)
     }

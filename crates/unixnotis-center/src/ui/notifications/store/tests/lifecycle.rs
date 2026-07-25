@@ -246,7 +246,7 @@ fn insert_entry_records_recent_local_timestamp() {
     let after = super::now_millis();
 
     let entry = list.entries.get(&9).expect("entry should be stored");
-    assert_eq!(key.as_ref(), "terminal");
+    assert_eq!(key.as_ref(), "test:terminal");
     assert!(entry.received_at_ms >= before);
     assert!(entry.received_at_ms <= after);
 }

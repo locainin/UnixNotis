@@ -32,13 +32,18 @@ pub(in crate::ui::notifications) fn update_notification_row(
         data.presentation.show_thumbnail && notification_has_thumbnail(notification);
 
     apply_visual_state(row, data, notification, has_actions, has_thumbnail);
-    let attribution_label = notification.attribution_label();
     update_notification_text(
         row,
-        &attribution_label,
+        &notification.attribution.display_name,
         &notification.summary,
         &notification.body,
     );
+    if notification.attribution.source_label.is_empty() {
+        row.app_label.set_tooltip_text(None);
+    } else {
+        row.app_label
+            .set_tooltip_text(Some(&notification.attribution.source_label));
+    }
     update_metadata_labels(row, data, notification);
     row.notify_id.set(notification.id);
     update_actions(row, command_tx, notification_snapshot, data.is_active);

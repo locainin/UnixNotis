@@ -7,7 +7,7 @@ use std::time::Duration;
 use gtk::prelude::*;
 use tokio::sync::mpsc;
 use tracing::debug;
-use unixnotis_core::NotificationView;
+use unixnotis_core::{InlineReplyPolicy, NotificationView};
 
 use crate::control::UiCommand;
 use crate::ui::panel::behavior::input::ClickCooldown;
@@ -72,7 +72,11 @@ pub(super) fn update_actions(
     let mut reply_button_added = false;
     for action in &notification.actions {
         if action.key == "inline-reply" {
-            if reply_button_added || !is_active || !notification.inline_reply.available {
+            if reply_button_added
+                || !is_active
+                || !notification.inline_reply.available
+                || notification.inline_reply_policy != InlineReplyPolicy::Allow
+            {
                 continue;
             }
             reply_button_added = true;
@@ -125,6 +129,7 @@ pub(super) fn visible_action_count(notification: &NotificationView, is_active: b
         .count();
     let reply = is_active
         && notification.inline_reply.available
+        && notification.inline_reply_policy == InlineReplyPolicy::Allow
         && notification
             .actions
             .iter()

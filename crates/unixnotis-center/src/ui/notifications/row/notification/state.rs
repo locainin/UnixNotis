@@ -69,9 +69,9 @@ pub(super) struct OptionalLabelState<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::ui::notifications) struct IconSignature {
-    // Header badges depend only on authenticated attribution inputs
+    // Header badges depend only on daemon-associated attribution inputs
     badge_icon: String,
-    app_name: String,
+    desktop_id: String,
 }
 
 impl IconSignature {
@@ -80,7 +80,7 @@ impl IconSignature {
         // This keeps row refreshes cheap when only text or actions changed
         Self {
             badge_icon: notification.attribution.badge_icon.clone(),
-            app_name: notification.app_name.clone(),
+            desktop_id: notification.attribution.desktop_id.clone(),
         }
     }
 }

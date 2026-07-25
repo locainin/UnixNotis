@@ -78,6 +78,7 @@ fn file_icon_resolution_enqueues_decodes_and_applies_the_worker_result() {
         body: String::new(),
         actions: Vec::new(),
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
         is_transient: false,
         image: NotificationImage {

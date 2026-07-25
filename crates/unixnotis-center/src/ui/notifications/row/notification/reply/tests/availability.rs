@@ -3,7 +3,7 @@
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use unixnotis_core::{Action, InlineReply};
+use unixnotis_core::{Action, InlineReply, InlineReplyPolicy};
 
 use crate::ui::icons::IconResolver;
 use crate::ui::notifications::test_support::init_gtk;
@@ -98,6 +98,27 @@ fn inline_reply_action_does_not_open_an_unbound_or_submitted_form() {
     let _pending = command_rx.try_recv().expect("pending reply command");
     action.emit_clicked();
 
+    assert!(!widgets.revealer.reveals_child());
+}
+
+#[gtk::test]
+fn denied_inline_reply_policy_never_binds_the_form() {
+    init_gtk();
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+    let widgets = build_inline_reply(command_tx);
+    let mut notification = reply_notification(
+        41,
+        InlineReply {
+            available: true,
+            ..InlineReply::default()
+        },
+    );
+    Rc::make_mut(&mut notification).inline_reply_policy = InlineReplyPolicy::Deny;
+
+    configure_inline_reply(&widgets, &notification, true);
+
+    assert_eq!(widgets.state.bound_id.get(), 0);
+    assert!(!widgets.send_button.is_sensitive());
     assert!(!widgets.revealer.reveals_child());
 }
 
