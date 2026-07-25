@@ -59,7 +59,7 @@ fn validate_reply_text_rejects_empty_oversized_nul_and_multiline_values() {
 async fn submit_inline_reply_emits_text_and_removes_nonresident_notification() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
-    let mut stream = reply_signal_stream(&state).await;
+    let mut stream = reply_signal_stream(&state, &sender).await;
     let id = {
         let mut store = state.store.lock().await;
         store
@@ -84,7 +84,7 @@ async fn submit_inline_reply_emits_text_and_removes_nonresident_notification() {
 async fn submit_inline_reply_keeps_resident_notification_live() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
-    let mut stream = reply_signal_stream(&state).await;
+    let mut stream = reply_signal_stream(&state, &sender).await;
     let id = {
         let mut store = state.store.lock().await;
         store
@@ -108,7 +108,7 @@ async fn submit_inline_reply_keeps_resident_notification_live() {
 async fn submit_inline_reply_round_trips_unicode_and_exact_byte_limit() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
-    let mut stream = reply_signal_stream(&state).await;
+    let mut stream = reply_signal_stream(&state, &sender).await;
     let messages = [
         "مرحبًا، سأصل قريبًا".to_string(),
         "שלום, אגיע בקרוב".to_string(),
@@ -141,7 +141,7 @@ async fn submit_inline_reply_round_trips_unicode_and_exact_byte_limit() {
 async fn reply_listener_replacement_survives_generation_safe_dismissal() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
-    let mut stream = reply_signal_stream(&state).await;
+    let mut stream = reply_signal_stream(&state, &sender).await;
     let id = {
         let mut store = state.store.lock().await;
         store
@@ -178,7 +178,7 @@ async fn reply_listener_replacement_survives_generation_safe_dismissal() {
 async fn reply_listener_close_removes_replied_notification_without_history() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
-    let mut stream = reply_signal_stream(&state).await;
+    let mut stream = reply_signal_stream(&state, &sender).await;
     let id = {
         let mut store = state.store.lock().await;
         store
@@ -252,6 +252,33 @@ async fn submit_inline_reply_rejects_sender_that_no_longer_owns_bus_name() {
         .is_some());
 }
 
+#[tokio::test]
+async fn inline_reply_signal_reaches_owner_but_not_unrelated_observer() {
+    let state = daemon_state_for_test(false).await;
+    let owner = Connection::session().await.expect("owner session bus");
+    let observer = Connection::session().await.expect("observer session bus");
+    let mut owner_stream = reply_signal_stream(&state, &owner).await;
+    let mut observer_stream = reply_signal_stream(&state, &observer).await;
+    let id = {
+        let mut store = state.store.lock().await;
+        store
+            .insert(reply_notification(true, &owner), 0)
+            .notification
+            .id
+    };
+
+    ControlServer::new(state)
+        .submit_inline_reply(id, "private reply")
+        .await
+        .expect("submit owner reply");
+
+    assert_eq!(
+        next_reply_signal(&mut owner_stream).await,
+        (id, "private reply".to_string())
+    );
+    assert_no_reply_signal(&mut observer_stream).await;
+}
+
 fn reply_notification(is_resident: bool, sender: &Connection) -> Notification {
     Notification {
         id: 0,
@@ -290,8 +317,10 @@ fn reply_notification(is_resident: bool, sender: &Connection) -> Notification {
     }
 }
 
-async fn reply_signal_stream(state: &crate::daemon::DaemonState) -> MessageStream {
-    let receiver = Connection::session().await.expect("receiver session bus");
+async fn reply_signal_stream(
+    state: &crate::daemon::DaemonState,
+    receiver: &Connection,
+) -> MessageStream {
     let sender = state
         .connection()
         .unique_name()
@@ -308,9 +337,18 @@ async fn reply_signal_stream(state: &crate::daemon::DaemonState) -> MessageStrea
         .member("NotificationReplied")
         .expect("reply member")
         .build();
-    MessageStream::for_match_rule(rule, &receiver, Some(4))
+    MessageStream::for_match_rule(rule, receiver, Some(4))
         .await
         .expect("reply signal stream")
+}
+
+async fn assert_no_reply_signal(stream: &mut MessageStream) {
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), stream.try_next())
+            .await
+            .is_err(),
+        "unrelated observer must not receive reply text"
+    );
 }
 
 async fn next_reply_signal(stream: &mut MessageStream) -> (u32, String) {

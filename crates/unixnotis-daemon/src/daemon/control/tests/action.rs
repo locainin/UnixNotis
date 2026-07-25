@@ -15,7 +15,7 @@ use crate::test_support::daemon_state_for_test;
 async fn validated_action_emits_only_an_advertised_live_action() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
-    let mut stream = action_signal_stream(&state).await;
+    let mut stream = action_signal_stream(&sender).await;
     let id = {
         let mut store = state.store.lock().await;
         store
@@ -32,6 +32,41 @@ async fn validated_action_emits_only_an_advertised_live_action() {
     assert_eq!(
         next_action_signal(&mut stream).await,
         (id, "open".to_string())
+    );
+}
+
+#[tokio::test]
+async fn action_signal_reaches_owner_but_not_unrelated_observer() {
+    let state = daemon_state_for_test(false).await;
+    let owner = Connection::session().await.expect("owner session bus");
+    let observer = Connection::session().await.expect("observer session bus");
+    let mut owner_stream = action_signal_stream(&owner).await;
+    let mut observer_stream = action_signal_stream(&observer).await;
+    let id = {
+        let mut store = state.store.lock().await;
+        store
+            .insert(action_notification(&owner, "open"), 0)
+            .notification
+            .id
+    };
+
+    ControlServer::new(state)
+        .invoke_validated_action(id, "open")
+        .await
+        .expect("invoke owner action");
+
+    assert_eq!(
+        next_action_signal(&mut owner_stream).await,
+        (id, "open".to_string())
+    );
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            observer_stream.try_next()
+        )
+        .await
+        .is_err(),
+        "unrelated observer must not receive action signal"
     );
 }
 
@@ -93,7 +128,7 @@ fn action_notification(sender: &Connection, key: &str) -> Notification {
     }
 }
 
-async fn action_signal_stream(state: &crate::daemon::DaemonState) -> MessageStream {
+async fn action_signal_stream(receiver: &Connection) -> MessageStream {
     let rule = MatchRule::builder()
         .msg_type(Type::Signal)
         .interface("org.freedesktop.Notifications")
@@ -103,7 +138,7 @@ async fn action_signal_stream(state: &crate::daemon::DaemonState) -> MessageStre
         .path(NOTIFICATIONS_OBJECT_PATH)
         .expect("notification path")
         .build();
-    MessageStream::for_match_rule(rule, state.connection(), Some(8))
+    MessageStream::for_match_rule(rule, receiver, Some(8))
         .await
         .expect("action signal stream")
 }

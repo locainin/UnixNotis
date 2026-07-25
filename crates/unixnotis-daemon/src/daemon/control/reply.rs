@@ -4,6 +4,7 @@ use std::future::Future;
 
 use unixnotis_core::Notification;
 use zbus::fdo::DBusProxy;
+use zbus::names::BusName;
 use zbus::SignalContext;
 
 use crate::daemon::{to_fdo_error, NotificationServer, NOTIFICATIONS_OBJECT_PATH};
@@ -44,11 +45,12 @@ impl ControlServer {
                 )
             })?
         };
-        self.ensure_reply_sender_is_live(&target).await?;
+        let destination = self.reply_destination(&target).await?;
 
-        // Emit only after all live-state and text checks have passed
+        // A destination header keeps sensitive reply text visible only to its owning connection
         let context = SignalContext::new(self.state.connection(), NOTIFICATIONS_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
+            .map_err(to_fdo_error)?
+            .set_destination(destination);
         NotificationServer::notification_replied(&context, id, reply_text)
             .await
             .map_err(to_fdo_error)?;
@@ -66,12 +68,15 @@ impl ControlServer {
         Ok(())
     }
 
-    async fn ensure_reply_sender_is_live(&self, target: &Notification) -> zbus::fdo::Result<()> {
+    async fn reply_destination(
+        &self,
+        target: &Notification,
+    ) -> zbus::fdo::Result<BusName<'static>> {
         let sender = target
             .sender_name
             .as_deref()
             .ok_or_else(application_unavailable_error)?;
-        let bus_name = zbus::names::BusName::try_from(sender).map_err(|error| {
+        let bus_name = BusName::try_from(sender).map_err(|error| {
             // Stored sender names should always be unique D-Bus names from message headers
             tracing::debug!(?error, "inline reply target has an invalid sender name");
             application_unavailable_error()
@@ -80,13 +85,13 @@ impl ControlServer {
             .await
             .map_err(to_fdo_error)?;
         let has_owner = proxy
-            .name_has_owner(bus_name)
+            .name_has_owner(bus_name.clone())
             .await
             .map_err(|err| zbus::fdo::Error::Failed(err.to_string()))?;
         if !has_owner {
             return Err(application_unavailable_error());
         }
-        Ok(())
+        Ok(bus_name.to_owned())
     }
 }
 
