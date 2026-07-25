@@ -1,6 +1,7 @@
 //! D-Bus server for org.freedesktop.Notifications
 
 mod flow_control;
+pub(in crate::daemon) mod identity;
 mod limits;
 mod metrics;
 mod payload;

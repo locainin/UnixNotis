@@ -7,18 +7,21 @@ use zbus::fdo::DBusProxy;
 use zbus::message::Header;
 use zbus::Connection;
 
+use super::identity::{executable_evidence_for_pid, FileIdentity};
 use super::sender_cache::SenderMetadataCache;
 
 #[derive(Debug, Clone, Default)]
-pub(super) struct SenderMetadata {
+pub(in crate::daemon) struct SenderMetadata {
     // Unique bus sender name (:1.x) used for ownership checks
     pub(super) sender_name: Option<String>,
     // Process id is paired with start time so reused pids do not inherit ownership
     pub(super) sender_pid: Option<u32>,
     // Linux start time identifies one concrete process lifetime
     pub(super) sender_start_time: Option<u64>,
-    // Executable path is used for diagnostics and app-name mismatch logging
+    // Executable path is presentation-only evidence for diagnostics and source labels
     pub(super) sender_executable: Option<String>,
+    // Device and inode bind policy to the open running executable rather than its basename
+    pub(super) sender_executable_identity: Option<FileIdentity>,
 }
 
 pub(super) async fn resolve_sender_metadata(
@@ -34,6 +37,7 @@ pub(super) async fn resolve_sender_metadata(
             sender_pid: None,
             sender_start_time: None,
             sender_executable: None,
+            sender_executable_identity: None,
         };
     };
 
@@ -49,6 +53,7 @@ pub(super) async fn resolve_sender_metadata(
             sender_pid: None,
             sender_start_time: None,
             sender_executable: None,
+            sender_executable_identity: None,
         };
     };
 
@@ -58,24 +63,25 @@ pub(super) async fn resolve_sender_metadata(
             sender_pid: None,
             sender_start_time: None,
             sender_executable: None,
+            sender_executable_identity: None,
         };
     };
 
     // PID and executable come from the bus owner, not caller-provided payload fields
     let sender_pid = proxy.get_connection_unix_process_id(bus_name).await.ok();
     let sender_start_time = sender_pid.and_then(read_process_start_time);
-    let sender_executable = match sender_pid {
-        Some(pid) => read_process_executable_path(pid)
-            .await
-            .map(|path| path.display().to_string()),
-        None => None,
-    };
+    let executable_evidence = sender_pid.and_then(executable_evidence_for_pid);
+    let sender_executable = executable_evidence
+        .as_ref()
+        .map(|evidence| evidence.canonical_path.display().to_string());
+    let sender_executable_identity = executable_evidence.map(|evidence| evidence.identity);
 
     let metadata = SenderMetadata {
         sender_name,
         sender_pid,
         sender_start_time,
         sender_executable,
+        sender_executable_identity,
     };
     // Failed lookups remain retryable instead of becoming persistent unknown identities
     if metadata.sender_pid.is_some() {
@@ -85,10 +91,9 @@ pub(super) async fn resolve_sender_metadata(
 }
 
 #[cfg(target_os = "linux")]
+#[cfg(test)]
 async fn read_process_executable_path(pid: u32) -> Option<std::path::PathBuf> {
-    // Linux path to the executable behind this process id
-    let path = format!("/proc/{pid}/exe");
-    tokio::fs::read_link(path).await.ok()
+    executable_evidence_for_pid(pid).map(|evidence| evidence.canonical_path)
 }
 
 #[cfg(target_os = "linux")]
@@ -100,6 +105,7 @@ fn read_process_start_time(pid: u32) -> Option<u64> {
 }
 
 #[cfg(not(target_os = "linux"))]
+#[cfg(test)]
 async fn read_process_executable_path(_pid: u32) -> Option<std::path::PathBuf> {
     // On other platforms this metadata is optional
     None
