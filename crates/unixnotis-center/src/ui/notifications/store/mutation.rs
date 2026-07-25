@@ -17,10 +17,11 @@ impl NotificationList {
         // Snapshot ordering state before any mutations; used to decide whether a full rebuild
         // is necessary because rebuilds are expensive for large histories
         let was_front = self.active_order.front().copied() == Some(id);
-        let needs_new_key =
-            existing_entry.is_some_and(|entry| entry.view.app_name != notification.app_name);
+        let needs_new_key = existing_entry.is_some_and(|entry| {
+            entry.view.attribution.group_key != notification.attribution.group_key
+        });
         let new_key = if needs_new_key {
-            Some(self.intern_key(&notification.app_name))
+            Some(self.intern_key(&notification.attribution.group_key))
         } else {
             None
         };

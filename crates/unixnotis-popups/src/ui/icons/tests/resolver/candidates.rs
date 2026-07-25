@@ -2,7 +2,7 @@ use super::super::collect_icon_candidates;
 use super::support::notification;
 
 #[test]
-fn collect_icon_candidates_prefers_icon_name_variants_then_app_name_variants() {
+fn collect_icon_candidates_uses_only_daemon_associated_badge_variants() {
     let candidates =
         collect_icon_candidates(&notification("UnixNotis Center", "org.demo.App.desktop"));
 
@@ -12,9 +12,6 @@ fn collect_icon_candidates_prefers_icon_name_variants_then_app_name_variants() {
             "org.demo.App.desktop",
             "org.demo.App",
             "org.demo.app.desktop",
-            "UnixNotis Center",
-            "unixnotis center",
-            "unixnotis-center",
         ]
     );
 }
@@ -23,7 +20,7 @@ fn collect_icon_candidates_prefers_icon_name_variants_then_app_name_variants() {
 fn collect_icon_candidates_dedupes_empty_and_repeated_values() {
     let candidates = collect_icon_candidates(&notification("App", "app"));
 
-    assert_eq!(candidates, vec!["app", "App"]);
+    assert_eq!(candidates, vec!["app"]);
 }
 
 #[test]
@@ -42,8 +39,8 @@ fn collect_icon_candidates_does_not_treat_content_icon_as_application_badge() {
 #[test]
 fn collect_icon_candidates_does_not_fallback_to_unresolved_brand_claim() {
     let mut notification = notification("Trusted Brand", "dialog-warning-symbolic");
-    notification.attribution.verified = false;
-    notification.attribution.reported_name.clear();
+    notification.attribution.class = unixnotis_core::AttributionClass::Unknown;
+    notification.attribution.desktop_id.clear();
 
     let candidates = collect_icon_candidates(&notification);
 

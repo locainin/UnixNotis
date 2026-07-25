@@ -117,10 +117,10 @@ pub(in crate::ui::notifications) fn update_group_row(
     let display_name = data
         .notification
         .as_ref()
-        .map(|notification| notification.attribution_label())
+        .map(|notification| notification.attribution.display_name.clone())
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| data.group_key.to_string());
-    // Display verified attribution while the normalized key drives grouping behavior
+    // Display application presentation while the daemon identity key drives grouping behavior
     // Fall back to the group key if no sample notification is available
     set_label_text_if_changed(&group.title, &display_name);
     let next_count = data.count.to_string();
@@ -137,8 +137,20 @@ pub(in crate::ui::notifications) fn update_group_row(
     *group.group_key.borrow_mut() = data.group_key.clone();
 
     if let Some(notification) = data.notification.as_ref() {
+        if notification.attribution.source_label.is_empty() {
+            group.title.set_tooltip_text(None);
+        } else {
+            group
+                .title
+                .set_tooltip_text(Some(&notification.attribution.source_label));
+        }
+        set_class_state(
+            root,
+            "unixnotis-attribution-warning",
+            notification.attribution.has_warning(),
+        );
         let scale = root.scale_factor();
-        // Group headers use the authenticated badge path instead of caller content images
+        // Group headers use the associated badge path instead of caller content images
         icon_resolver.apply_badge(&group.icon, notification.as_ref(), 18, scale);
         set_class_state(root, hooks::group_row::HAS_ICON, true);
         set_class_state(root, hooks::group_row::NO_ICON, false);

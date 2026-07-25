@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use tracing::debug;
-use unixnotis_core::{Notification, NotificationAttribution};
+use unixnotis_core::Notification;
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 
+use crate::daemon::notifications::identity::{resolve_attribution, AppClaim};
 use crate::daemon::notifications::payload::{
-    build_notification, resolve_expiration, NotificationInput,
+    build_notification, owned_to_string, resolve_expiration, NotificationInput,
 };
 use crate::daemon::notifications::sender::resolve_sender_metadata;
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
@@ -113,12 +114,24 @@ impl NotificationServer {
             header,
         )
         .await;
-        if sender_app_name_mismatch(&input.app_name, sender.sender_executable.as_deref()) {
+        let desktop_entry = input.hints.get("desktop-entry").and_then(owned_to_string);
+        let resolution = resolve_attribution(
+            AppClaim {
+                reported_name: &input.app_name,
+                desktop_entry: desktop_entry.as_deref(),
+            },
+            &sender,
+            &self.state.desktop_identity_index,
+            self.state.connection(),
+        )
+        .await;
+        if resolution.attribution.has_warning() {
             debug!(
                 app_name = %input.app_name,
                 sender = sender.sender_name.as_deref().unwrap_or("unknown"),
                 sender_executable = sender.sender_executable.as_deref().unwrap_or("unknown"),
-                "notification app_name does not match sender executable"
+                source = %resolution.attribution.source_label,
+                "notification application claim conflicts with sender evidence"
             );
         }
 
@@ -131,6 +144,8 @@ impl NotificationServer {
             actions: input.actions,
             hints: input.hints,
             sender,
+            attribution: resolution.attribution,
+            inline_reply_policy: resolution.inline_reply_policy,
             expire_timeout: input.expire_timeout,
         })
     }
@@ -235,13 +250,6 @@ impl NotificationServer {
             .await
             .map_err(to_fdo_error)
     }
-}
-
-fn sender_app_name_mismatch(app_name: &str, sender_executable: Option<&str>) -> bool {
-    sender_executable.is_some_and(|_| {
-        let (_, attribution) = NotificationAttribution::resolve(app_name, sender_executable);
-        !attribution.verified
-    })
 }
 
 #[cfg(test)]

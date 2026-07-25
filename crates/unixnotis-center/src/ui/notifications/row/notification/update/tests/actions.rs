@@ -285,4 +285,6 @@ fn visible_action_count_requires_a_live_available_explicit_reply() {
     notification.inline_reply.available = true;
     assert_eq!(visible_action_count(&notification, false), 2);
     assert_eq!(visible_action_count(&notification, true), 3);
+    notification.inline_reply_policy = unixnotis_core::InlineReplyPolicy::Deny;
+    assert_eq!(visible_action_count(&notification, true), 2);
 }

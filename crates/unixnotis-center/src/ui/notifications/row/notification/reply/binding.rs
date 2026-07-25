@@ -3,7 +3,7 @@
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use unixnotis_core::NotificationView;
+use unixnotis_core::{InlineReplyPolicy, NotificationView};
 
 use super::lifecycle::invalidate_reply_attempt;
 use super::presentation::{clear_reply_error, update_submit_content, DEFAULT_PLACEHOLDER};
@@ -17,7 +17,9 @@ pub(in super::super) fn configure_inline_reply(
     let id = notification.id;
     let reply = &notification.inline_reply;
     // History rows keep metadata for display but never expose a live reply control
-    let available = is_active && reply.available;
+    let available = is_active
+        && reply.available
+        && notification.inline_reply_policy == InlineReplyPolicy::Allow;
     let snapshot_changed = widgets
         .bound_snapshot
         .borrow()
@@ -29,9 +31,10 @@ pub(in super::super) fn configure_inline_reply(
         reset_reply_form(widgets);
     }
     if snapshot_changed {
-        widgets.state.bound_id.set(id);
         *widgets.bound_snapshot.borrow_mut() = Rc::downgrade(notification);
     }
+    // Unavailable policies also clear the command target used by click handlers
+    widgets.state.bound_id.set(if available { id } else { 0 });
     if !available {
         // History and ordinary actions never expose a stale reply field
         return;

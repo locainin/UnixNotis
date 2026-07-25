@@ -21,6 +21,7 @@ fn notification_view(
         body: String::new(),
         actions: Vec::new(),
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         urgency: 1,
         is_transient: false,
         image,
@@ -32,9 +33,12 @@ fn badge_candidates_exclude_caller_content_icon() {
     let notification = notification_view(
         "sender-bin",
         unixnotis_core::NotificationAttribution {
-            verified: false,
-            reported_name: "Claimed Brand".to_string(),
+            display_name: "Unknown application".to_string(),
             badge_icon: "sender-bin".to_string(),
+            source_label: "Claims to be Claimed Brand".to_string(),
+            class: unixnotis_core::AttributionClass::Conflict,
+            group_key: "executable:1:2".to_string(),
+            ..unixnotis_core::NotificationAttribution::default()
         },
         NotificationImage {
             icon_name: "caller-content-icon".to_string(),
@@ -55,9 +59,9 @@ fn badge_candidates_exclude_unresolved_application_claim() {
     let notification = notification_view(
         "Trusted Brand",
         unixnotis_core::NotificationAttribution {
-            verified: false,
-            reported_name: String::new(),
+            display_name: "Trusted Brand".to_string(),
             badge_icon: "dialog-warning-symbolic".to_string(),
+            ..unixnotis_core::NotificationAttribution::default()
         },
         NotificationImage::default(),
     );

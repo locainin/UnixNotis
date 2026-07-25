@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use unixnotis_core::{Action, CloseReason, InlineReply};
+use unixnotis_core::{Action, CloseReason, InlineReply, InlineReplyPolicy};
 
 use super::{make_notification, make_store_with_limits};
 
@@ -86,6 +86,21 @@ fn inline_reply_metadata_without_the_protocol_action_is_rejected() {
     let mut malformed = make_notification("metadata only");
     malformed.inline_reply.available = true;
     let id = store.insert(malformed, 0).notification.id;
+
+    assert!(store.active_inline_reply_target(id).is_none());
+}
+
+#[test]
+fn inline_reply_policy_denies_a_complete_reply_action() {
+    let mut store = make_store_with_limits(12, 20);
+    let mut notification = make_notification("unassociated reply");
+    notification.inline_reply.available = true;
+    notification.inline_reply_policy = InlineReplyPolicy::Deny;
+    notification.actions.push(Action {
+        key: "inline-reply".to_string(),
+        label: "Reply".to_string(),
+    });
+    let id = store.insert(notification, 0).notification.id;
 
     assert!(store.active_inline_reply_target(id).is_none());
 }

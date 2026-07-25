@@ -17,14 +17,16 @@ pub(super) fn sample_notification() -> NotificationView {
         id: 1,
         app_name: "demo".to_string(),
         attribution: unixnotis_core::NotificationAttribution {
-            verified: true,
-            reported_name: String::new(),
+            display_name: "demo".to_string(),
             badge_icon: "demo".to_string(),
+            group_key: "test:demo".to_string(),
+            ..unixnotis_core::NotificationAttribution::default()
         },
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: Vec::new(),
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: Urgency::Normal as u8,
         is_transient: false,
         image: NotificationImage::default(),

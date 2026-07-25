@@ -87,7 +87,7 @@ impl NotificationList {
         is_active: bool,
     ) -> Rc<str> {
         let id = notification.id;
-        let app_key = self.intern_key(&notification.app_name);
+        let app_key = self.intern_key(&notification.attribution.group_key);
         let view = Rc::new(notification);
         let received_at_ms = now_millis();
         let presentation = RowPresentation {

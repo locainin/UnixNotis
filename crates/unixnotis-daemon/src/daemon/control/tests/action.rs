@@ -104,6 +104,7 @@ fn action_notification(sender: &Connection, key: &str) -> Notification {
         id: 0,
         app_name: "ActionApp".to_string(),
         app_icon: String::new(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "Action".to_string(),
         body: String::new(),
         actions: vec![Action {
@@ -111,6 +112,7 @@ fn action_notification(sender: &Connection, key: &str) -> Notification {
             label: "Run".to_string(),
         }],
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         hints: HashMap::<String, OwnedValue>::new(),
         urgency: Urgency::Normal,
         category: None,

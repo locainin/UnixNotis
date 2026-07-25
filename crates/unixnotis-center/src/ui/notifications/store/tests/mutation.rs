@@ -7,7 +7,11 @@ fn make_view(is_transient: bool) -> NotificationView {
     NotificationView {
         id: 7,
         app_name: "Test".to_string(),
-        attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution: unixnotis_core::NotificationAttribution {
+            display_name: "Test".to_string(),
+            group_key: "test:Test".to_string(),
+            ..unixnotis_core::NotificationAttribution::default()
+        },
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: vec![Action {
@@ -15,6 +19,7 @@ fn make_view(is_transient: bool) -> NotificationView {
             label: "Open".to_string(),
         }],
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
         is_transient,
         image: NotificationImage::default(),
@@ -25,11 +30,16 @@ fn view(id: u32, app_name: &str, is_transient: bool) -> NotificationView {
     NotificationView {
         id,
         app_name: app_name.to_string(),
-        attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution: unixnotis_core::NotificationAttribution {
+            display_name: app_name.to_string(),
+            group_key: format!("test:{app_name}"),
+            ..unixnotis_core::NotificationAttribution::default()
+        },
         summary: format!("summary {id}"),
         body: format!("body {id}"),
         actions: Vec::new(),
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
         is_transient,
         image: NotificationImage::default(),

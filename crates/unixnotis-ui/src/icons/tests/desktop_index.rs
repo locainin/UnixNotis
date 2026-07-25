@@ -1,21 +1,20 @@
 use super::*;
 
 #[test]
-fn executable_basename_handles_paths_quotes_and_field_codes() {
+fn executable_basename_handles_paths_and_program_names() {
     assert_eq!(
-        executable_basename("'/opt/Demo App/bin/demo-app' --open %U"),
+        executable_basename(std::path::Path::new("/opt/Demo App/bin/demo-app")),
         Some("demo-app".to_string())
     );
     assert_eq!(
-        executable_basename("firefox %u"),
+        executable_basename(std::path::Path::new("firefox")),
         Some("firefox".to_string())
     );
-    assert_eq!(executable_basename(""), None);
-    assert_eq!(executable_basename("'unterminated"), None);
+    assert_eq!(executable_basename(std::path::Path::new("")), None);
 }
 
 #[test]
-fn desktop_index_resolves_authenticated_executable_to_application_icon() {
+fn desktop_index_resolves_associated_executable_to_application_icon() {
     let mut index = DesktopIconIndex::default();
 
     index.add_executable("demo-app", "org.example.Demo");

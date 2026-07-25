@@ -9,9 +9,9 @@ fn sample_notification() -> NotificationView {
         id: 7,
         app_name: "mailer\n\x1b[31m".to_string(),
         attribution: unixnotis_core::NotificationAttribution {
-            verified: true,
-            reported_name: String::new(),
+            display_name: "mailer\n\x1b[31m".to_string(),
             badge_icon: "mailer".to_string(),
+            ..unixnotis_core::NotificationAttribution::default()
         },
         summary: "subject\rline".to_string(),
         body: "body\ttext\nnext".to_string(),
@@ -20,6 +20,7 @@ fn sample_notification() -> NotificationView {
             label: "Open".to_string(),
         }],
         inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         urgency: 1,
         is_transient: false,
         // CLI formatting only needs the lightweight transport fields

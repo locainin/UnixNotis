@@ -284,6 +284,7 @@ fn reply_notification(is_resident: bool, sender: &Connection) -> Notification {
         id: 0,
         app_name: "Messages".to_string(),
         app_icon: String::new(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "New message".to_string(),
         body: "Are you coming?".to_string(),
         actions: vec![unixnotis_core::Action {
@@ -295,6 +296,7 @@ fn reply_notification(is_resident: bool, sender: &Connection) -> Notification {
             label: "Reply".to_string(),
             ..InlineReply::default()
         },
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         hints: HashMap::<String, OwnedValue>::new(),
         urgency: Urgency::Normal,
         category: None,
