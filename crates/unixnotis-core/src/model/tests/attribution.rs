@@ -1,49 +1,62 @@
-use super::NotificationAttribution;
+use super::{AttributionClass, NotificationAttribution};
 
 #[test]
-fn matching_sender_identity_keeps_reported_brand_and_marks_it_verified() {
-    let (display, attribution) =
-        NotificationAttribution::resolve("UnixNotis Center", Some("/usr/bin/unixnotis-center"));
-
-    assert_eq!(display, "UnixNotis Center");
-    assert!(attribution.verified);
-    assert!(attribution.reported_name.is_empty());
-    assert_eq!(attribution.badge_icon, "unixnotis-center");
-    assert_eq!(attribution.display_label(&display), "UnixNotis Center");
-}
-
-#[test]
-fn mismatched_sender_leads_with_executable_and_keeps_claim_secondary() {
-    let (display, attribution) =
-        NotificationAttribution::resolve("Password Manager", Some("/usr/bin/unknown-client"));
-
-    assert_eq!(display, "unknown-client");
-    assert!(!attribution.verified);
-    assert_eq!(attribution.reported_name, "Password Manager");
-    assert_eq!(attribution.badge_icon, "unknown-client");
-    assert_eq!(
-        attribution.display_label(&display),
-        "unknown-client · unverified claim: Password Manager"
+fn associated_identity_keeps_presentation_and_grouping_fields_separate() {
+    let attribution = NotificationAttribution::associated(
+        "Signal",
+        "org.signal.Signal",
+        "org.signal.Signal",
+        "/usr/bin/signal-desktop",
+        AttributionClass::SystemAssociated,
+        false,
+        "desktop:org.signal.Signal".to_string(),
     );
+
+    assert_eq!(attribution.display_name, "Signal");
+    assert_eq!(attribution.desktop_id, "org.signal.Signal");
+    assert_eq!(attribution.class, AttributionClass::SystemAssociated);
+    assert!(!attribution.has_warning());
 }
 
 #[test]
-fn unresolved_sender_keeps_claim_but_uses_warning_badge() {
-    let (display, attribution) = NotificationAttribution::resolve("Calendar", None);
+fn conflict_diagnostics_do_not_enter_the_primary_display_name() {
+    let attribution = NotificationAttribution::conflict(
+        "KeePassXC",
+        "source /tmp/keepassxc",
+        "executable:1:2".to_string(),
+    );
 
-    assert_eq!(display, "Calendar");
-    assert!(!attribution.verified);
-    assert!(attribution.reported_name.is_empty());
-    assert_eq!(attribution.badge_icon, "dialog-warning-symbolic");
-    assert_eq!(attribution.display_label(&display), "Calendar · unverified");
+    assert_eq!(attribution.display_name, "Unknown application");
+    assert!(attribution.source_label.contains("Claims to be KeePassXC"));
+    assert!(!attribution.display_name.contains("unverified claim"));
+    assert!(attribution.has_warning());
 }
 
 #[test]
-fn partial_executable_name_match_does_not_verify_a_brand_claim() {
-    let (display, attribution) =
-        NotificationAttribution::resolve("Discord", Some("/opt/discord/DiscordCanaryDiscord"));
+fn trusted_relay_keeps_the_callers_label_without_granting_association() {
+    let attribution = NotificationAttribution::trusted_relay(
+        "Screenshot",
+        "Sent via /usr/bin/notify-send",
+        false,
+        "relay:1:2:screenshot".to_string(),
+    );
 
-    assert_eq!(display, "DiscordCanaryDiscord");
-    assert!(!attribution.verified);
-    assert_eq!(attribution.reported_name, "Discord");
+    assert_eq!(attribution.display_name, "Screenshot");
+    assert_eq!(attribution.class, AttributionClass::TrustedRelay);
+    assert!(!attribution.has_warning());
+}
+
+#[test]
+fn unknown_sender_keeps_bounded_presentation_without_gaining_association() {
+    let attribution = NotificationAttribution::unknown(
+        "Local helper",
+        "Source: /opt/local-helper",
+        "executable:7:9:localhelper".to_string(),
+    );
+
+    assert_eq!(attribution.display_name, "Local helper");
+    assert_eq!(attribution.source_label, "Source: /opt/local-helper");
+    assert_eq!(attribution.class, AttributionClass::Unknown);
+    assert_eq!(attribution.group_key, "executable:7:9:localhelper");
+    assert!(!attribution.has_warning());
 }

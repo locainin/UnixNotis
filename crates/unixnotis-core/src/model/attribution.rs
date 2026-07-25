@@ -1,112 +1,150 @@
-//! Authenticated notification identity projected from daemon-owned sender metadata
-
-use std::path::Path;
+//! Notification application association and interaction policy
 
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::Type;
 
 use crate::util;
 
-const MAX_ATTRIBUTION_NAME_BYTES: usize = 256;
+const MAX_ATTRIBUTION_TEXT_BYTES: usize = 256;
 
-/// Identity details displayed separately from caller-controlled notification content
-#[derive(Debug, Clone, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
+/// Evidence class used to present an application without claiming universal authentication
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AttributionClass {
+    SystemAssociated = 0,
+    PortalAssociated = 1,
+    UserAssociated = 2,
+    TrustedRelay = 3,
+    #[default]
+    Unknown = 4,
+    Conflict = 5,
+}
+
+/// Independent policy for credential-like inline text controls
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[repr(u8)]
+pub enum InlineReplyPolicy {
+    Allow = 0,
+    Confirm = 1,
+    #[default]
+    Deny = 2,
+}
+
+/// Application presentation derived by the daemon from sender and desktop metadata
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 pub struct NotificationAttribution {
-    // False means the claimed app name could not be tied to the sender executable
-    pub verified: bool,
-    // A mismatched caller claim remains visible as secondary metadata
-    pub reported_name: String,
-    // The authenticated executable basename drives application badge lookup
+    // Primary titles stay short and never contain diagnostics
+    pub display_name: String,
+    // Empty values represent unavailable optional D-Bus fields
+    pub desktop_id: String,
     pub badge_icon: String,
+    // Secondary source or warning text belongs in a tooltip or separate status element
+    pub source_label: String,
+    pub class: AttributionClass,
+    // Risk presentation stays separate from association and interaction policy
+    pub warning: bool,
+    // Opaque daemon-built identity key prevents claimed names from merging trusted groups
+    pub group_key: String,
+}
+
+impl Default for NotificationAttribution {
+    fn default() -> Self {
+        Self {
+            display_name: "Unknown application".to_string(),
+            desktop_id: String::new(),
+            badge_icon: "dialog-warning-symbolic".to_string(),
+            source_label: String::new(),
+            class: AttributionClass::Unknown,
+            warning: false,
+            group_key: "unknown".to_string(),
+        }
+    }
 }
 
 impl NotificationAttribution {
-    /// Resolve the primary display name and attribution from authenticated process metadata
     #[must_use]
-    pub fn resolve(reported_name: &str, sender_executable: Option<&str>) -> (String, Self) {
-        let reported_name = bounded_name(reported_name);
-        let Some(executable_name) = sender_executable.and_then(executable_name) else {
-            // Unresolved senders keep their claim visible but never gain verified status
-            let display_name = fallback_display_name(&reported_name);
-            return (
-                display_name,
-                Self {
-                    verified: false,
-                    reported_name: String::new(),
-                    badge_icon: "dialog-warning-symbolic".to_string(),
-                },
-            );
-        };
-
-        let executable_name = bounded_name(executable_name);
-        let verified = identity_names_match(&reported_name, &executable_name);
-        if verified {
-            return (
-                fallback_display_name(&reported_name),
-                Self {
-                    verified: true,
-                    reported_name: String::new(),
-                    badge_icon: executable_name,
-                },
-            );
+    pub fn associated(
+        display_name: &str,
+        desktop_id: &str,
+        badge_icon: &str,
+        source_label: &str,
+        class: AttributionClass,
+        warning: bool,
+        group_key: String,
+    ) -> Self {
+        Self {
+            display_name: display_name_or_unknown(display_name),
+            desktop_id: bounded_text(desktop_id),
+            badge_icon: bounded_text(badge_icon),
+            source_label: bounded_text(source_label),
+            class,
+            warning,
+            group_key,
         }
+    }
 
-        // Mismatches lead with authenticated process identity and retain the claim second
-        (
-            fallback_display_name(&executable_name),
-            Self {
-                verified: false,
-                reported_name,
-                badge_icon: executable_name,
-            },
+    #[must_use]
+    pub fn unknown(display_name: &str, source_label: &str, group_key: String) -> Self {
+        Self::associated(
+            display_name,
+            "",
+            "dialog-question-symbolic",
+            source_label,
+            AttributionClass::Unknown,
+            false,
+            group_key,
         )
     }
 
-    /// Build a visible one-line identity label for popup and notification-center headers
     #[must_use]
-    pub fn display_label(&self, primary_name: &str) -> String {
-        if self.verified {
-            return primary_name.to_string();
-        }
-        if self.reported_name.is_empty() {
-            return format!("{primary_name} · unverified");
-        }
-        format!("{primary_name} · unverified claim: {}", self.reported_name)
+    pub fn conflict(claimed_name: &str, source_label: &str, group_key: String) -> Self {
+        let claim = display_name_or_unknown(claimed_name);
+        Self::associated(
+            "Unknown application",
+            "",
+            "dialog-warning-symbolic",
+            &format!("Claims to be {claim}; {source_label}"),
+            AttributionClass::Conflict,
+            true,
+            group_key,
+        )
+    }
+
+    #[must_use]
+    pub fn trusted_relay(
+        display_name: &str,
+        source_label: &str,
+        warning: bool,
+        group_key: String,
+    ) -> Self {
+        Self::associated(
+            display_name,
+            "",
+            "dialog-information-symbolic",
+            source_label,
+            AttributionClass::TrustedRelay,
+            warning,
+            group_key,
+        )
+    }
+
+    #[must_use]
+    pub const fn has_warning(&self) -> bool {
+        self.warning
     }
 }
 
-fn executable_name(path: &str) -> Option<&str> {
-    Path::new(path)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.trim().is_empty())
-}
-
-fn identity_names_match(reported_name: &str, executable_name: &str) -> bool {
-    let reported = normalized_identity(reported_name);
-    let executable = normalized_identity(executable_name);
-    !reported.is_empty() && reported == executable
-}
-
-fn normalized_identity(value: &str) -> String {
-    // Spaces and ordinary separators differ between desktop names and executable filenames
-    value
-        .chars()
-        .filter(|ch| ch.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
-}
-
-fn bounded_name(value: &str) -> String {
+fn bounded_text(value: &str) -> String {
     let clean = util::sanitize_inline_display_text(value);
-    util::truncate_utf8_bytes(clean.trim(), MAX_ATTRIBUTION_NAME_BYTES)
+    util::truncate_utf8_bytes(clean.trim(), MAX_ATTRIBUTION_TEXT_BYTES)
 }
 
-fn fallback_display_name(value: &str) -> String {
+fn display_name_or_unknown(value: &str) -> String {
+    let value = bounded_text(value);
     if value.is_empty() {
         "Unknown application".to_string()
     } else {
-        value.to_string()
+        value
     }
 }
 

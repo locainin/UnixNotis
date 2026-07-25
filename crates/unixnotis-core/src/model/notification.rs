@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::{OwnedValue, Type};
 
-use super::attribution::NotificationAttribution;
+use super::attribution::{InlineReplyPolicy, NotificationAttribution};
 use super::image::NotificationImage;
 use super::reply::InlineReply;
 use super::types::{Action, Urgency};
@@ -20,6 +20,8 @@ pub struct Notification {
     // Origin metadata for display and filtering
     pub app_name: String,
     pub app_icon: String,
+    // Daemon-resolved application association stays stable for the notification lifetime
+    pub attribution: NotificationAttribution,
     // User-facing content as provided by the sender
     pub summary: String,
     pub body: String,
@@ -27,6 +29,7 @@ pub struct Notification {
     pub actions: Vec<Action>,
     // Reply metadata exists only for an explicit KDE-compatible action
     pub inline_reply: InlineReply,
+    pub inline_reply_policy: InlineReplyPolicy,
     // Raw hints preserved for storage and downstream consumers
     pub hints: HashMap<String, OwnedValue>,
     // Derived urgency used for styling and escalation
@@ -54,16 +57,15 @@ impl Notification {
     /// Convert to a lightweight view for UI consumption
     #[must_use]
     pub fn to_view(&self) -> NotificationView {
-        let (app_name, attribution) =
-            NotificationAttribution::resolve(&self.app_name, self.sender_executable.as_deref());
         NotificationView {
             id: self.id,
-            app_name,
-            attribution,
+            app_name: self.attribution.display_name.clone(),
+            attribution: self.attribution.clone(),
             summary: notification_display_text(&self.summary),
             body: notification_display_text(&self.body),
             actions: self.actions.clone(),
             inline_reply: self.inline_reply.clone(),
+            inline_reply_policy: self.inline_reply_policy,
             urgency: self.urgency.as_u8(),
             // Center and popup policy both need the transient bit to stay in sync
             is_transient: self.is_transient,
@@ -76,16 +78,15 @@ impl Notification {
     /// Convert to a view for list rows with heavy image data removed
     #[must_use]
     pub fn to_list_view(&self) -> NotificationView {
-        let (app_name, attribution) =
-            NotificationAttribution::resolve(&self.app_name, self.sender_executable.as_deref());
         NotificationView {
             id: self.id,
-            app_name,
-            attribution,
+            app_name: self.attribution.display_name.clone(),
+            attribution: self.attribution.clone(),
             summary: notification_display_text(&self.summary),
             body: notification_display_text(&self.body),
             actions: self.actions.clone(),
             inline_reply: self.inline_reply.clone(),
+            inline_reply_policy: self.inline_reply_policy,
             urgency: self.urgency.as_u8(),
             // History policy still depends on the transient bit in panel rows
             is_transient: self.is_transient,
@@ -106,10 +107,12 @@ impl Notification {
             id: self.id,
             app_name: self.app_name.clone(),
             app_icon: self.app_icon.clone(),
+            attribution: self.attribution.clone(),
             summary: self.summary.clone(),
             body: self.body.clone(),
             actions: self.actions.clone(),
             inline_reply: self.inline_reply.clone(),
+            inline_reply_policy: self.inline_reply_policy,
             // Keep history entries lightweight by dropping raw hint payloads
             hints: HashMap::new(),
             urgency: self.urgency,
@@ -294,19 +297,12 @@ pub struct NotificationView {
     pub body: String,
     pub actions: Vec<Action>,
     pub inline_reply: InlineReply,
+    pub inline_reply_policy: InlineReplyPolicy,
     pub urgency: u8,
     // Close handling needs this flag so history policy stays shared
     pub is_transient: bool,
     // Image metadata intended for UI usage
     pub image: NotificationImage,
-}
-
-impl NotificationView {
-    /// Visible primary and secondary attribution for UI and diagnostic surfaces
-    #[must_use]
-    pub fn attribution_label(&self) -> String {
-        self.attribution.display_label(&self.app_name)
-    }
 }
 
 #[cfg(test)]
