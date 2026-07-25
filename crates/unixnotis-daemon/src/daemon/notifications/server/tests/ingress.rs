@@ -44,6 +44,30 @@ async fn oversized_action_array_is_rejected_before_notify_deserialization() {
 }
 
 #[tokio::test]
+async fn under_wire_limit_tiny_action_flood_never_reaches_typed_notify() {
+    let (state, client) = notification_ingress().await;
+    let actions = (0..20_000).map(|_| "a".to_string()).collect::<Vec<_>>();
+    let probe = zbus::Message::method(NOTIFICATIONS_OBJECT_PATH, "Notify")
+        .expect("method builder")
+        .interface(NOTIFICATIONS_INTERFACE)
+        .expect("notification interface")
+        .build(&(
+            "app",
+            0_u32,
+            "",
+            "summary",
+            "",
+            &actions,
+            HashMap::<String, OwnedValue>::new(),
+            0_i32,
+        ))
+        .expect("action flood probe");
+    assert!(probe.body().len() < MAX_NOTIFY_WIRE_BODY_BYTES);
+
+    assert_oversized_notify_rejected(&state, &client, actions, HashMap::new(), String::new()).await;
+}
+
+#[tokio::test]
 async fn oversized_hint_map_is_rejected_before_notify_deserialization() {
     let (state, client) = notification_ingress().await;
     let mut hints = HashMap::new();
@@ -67,6 +91,27 @@ async fn oversized_image_array_is_rejected_before_notify_deserialization() {
         8_i32,
         4_i32,
         vec![0_u8; MAX_NOTIFY_WIRE_BODY_BYTES + 1],
+    ));
+    let mut hints = HashMap::new();
+    hints.insert(
+        "image-data".to_string(),
+        OwnedValue::try_from(Value::from(image)).expect("owned image hint"),
+    );
+
+    assert_oversized_notify_rejected(&state, &client, Vec::new(), hints, String::new()).await;
+}
+
+#[tokio::test]
+async fn under_wire_limit_image_above_its_allowance_never_reaches_typed_notify() {
+    let (state, client) = notification_ingress().await;
+    let image = Structure::from((
+        256_i32,
+        256_i32,
+        1024_i32,
+        true,
+        8_i32,
+        4_i32,
+        vec![0_u8; 256 * 1024 + 1],
     ));
     let mut hints = HashMap::new();
     hints.insert(

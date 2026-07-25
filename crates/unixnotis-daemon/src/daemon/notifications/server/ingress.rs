@@ -8,6 +8,7 @@ use zbus::object_server::{DispatchResult, Interface, SignalContext};
 use zbus::zvariant::{OwnedValue, Value};
 use zbus::{Connection, Message, ObjectServer};
 
+use super::preflight::{preflight_notify, PreflightError};
 use super::NotificationServer;
 
 // This leaves room for one maximum image plus bounded text, actions, hints, and wire overhead
@@ -74,6 +75,21 @@ impl Interface for NotificationIngress {
                     "Notify body exceeds {MAX_NOTIFY_WIRE_BODY_BYTES} bytes"
                 )))
             });
+        }
+        if name.as_bytes() == b"Notify" {
+            if let Err(error) = preflight_notify(message) {
+                // Structural limits are checked from borrowed bytes before owned argument decoding
+                return DispatchResult::new_async(connection, message, async move {
+                    match error {
+                        PreflightError::LimitsExceeded(reason) => {
+                            Err::<(), _>(zbus::fdo::Error::LimitsExceeded(reason.to_string()))
+                        }
+                        PreflightError::Malformed(reason) => {
+                            Err::<(), _>(zbus::fdo::Error::InvalidArgs(reason.to_string()))
+                        }
+                    }
+                });
+            }
         }
         self.inner.call(server, connection, message, name)
     }
