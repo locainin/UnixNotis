@@ -12,6 +12,11 @@ const MAX_ENTRIES_VISITED: usize = 65_536;
 const MAX_DIRECTORY_DEPTH: usize = 16;
 const MAX_DESKTOP_FILE_BYTES: u64 = 256 * 1024;
 
+pub struct DesktopIndexSnapshot {
+    pub index: DesktopIdentityIndex,
+    pub watched_directories: Vec<PathBuf>,
+}
+
 #[derive(Debug, Copy, Clone)]
 pub(in crate::daemon::notifications::identity) struct ScanLimits {
     pub(super) records: usize,
@@ -24,9 +29,10 @@ pub(in crate::daemon::notifications::identity) struct ScanLimits {
 impl Default for ScanLimits {
     fn default() -> Self {
         Self {
-            records: MAX_DESKTOP_RECORDS,
-            directories: MAX_DIRECTORIES_VISITED,
-            entries: MAX_ENTRIES_VISITED,
+            // Each trust class gets half of every global budget
+            records: MAX_DESKTOP_RECORDS / 2,
+            directories: MAX_DIRECTORIES_VISITED / 2,
+            entries: MAX_ENTRIES_VISITED / 2,
             depth: MAX_DIRECTORY_DEPTH,
             file_bytes: MAX_DESKTOP_FILE_BYTES,
         }
@@ -35,10 +41,12 @@ impl Default for ScanLimits {
 
 #[derive(Debug, Default)]
 pub(in crate::daemon::notifications::identity) struct ScanBudget {
+    pub(super) records: usize,
     pub(super) directories: usize,
     pub(super) entries: usize,
     pub(super) skipped_files: usize,
     pub(super) stopped_by: Option<&'static str>,
+    pub(super) visited_directories: Vec<PathBuf>,
 }
 
 impl ScanBudget {
@@ -53,26 +61,42 @@ impl ScanBudget {
 
 impl DesktopIdentityIndex {
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub(crate) fn build_snapshot() -> DesktopIndexSnapshot {
+        Self::build_with_roots(desktop_roots(), &ScanLimits::default())
+    }
+
+    pub(super) fn build_with_roots(
+        roots: Vec<(PathBuf, bool)>,
+        limits: &ScanLimits,
+    ) -> DesktopIndexSnapshot {
         let mut index = Self::default();
-        let limits = ScanLimits::default();
-        let mut budget = ScanBudget::default();
-        // User entries are scanned first while origin remains part of the security identity
-        for (root, system_entry) in desktop_roots() {
-            index.scan_root(&root, system_entry, &limits, &mut budget);
-            if budget.exhausted() {
-                break;
+        // User-controlled trees and protected trees receive independent resource budgets
+        let mut user_budget = ScanBudget::default();
+        let mut system_budget = ScanBudget::default();
+        for (root, system_entry) in roots {
+            let budget = if system_entry {
+                &mut system_budget
+            } else {
+                &mut user_budget
+            };
+            // Exhausting one trust class must not prevent the other class from being indexed
+            if !budget.exhausted() {
+                index.scan_root(&root, system_entry, limits, budget);
             }
         }
-        if budget.exhausted() || budget.skipped_files != 0 {
-            // One summary avoids log floods from attacker-controlled application trees
-            debug!(
-                stopped_by = budget.stopped_by.unwrap_or("none"),
-                directories = budget.directories,
-                entries = budget.entries,
-                skipped_files = budget.skipped_files,
-                "desktop application scan reached a safety limit"
-            );
+        for (scope, budget) in [("user", &user_budget), ("system", &system_budget)] {
+            if budget.exhausted() || budget.skipped_files != 0 {
+                // One summary avoids log floods from attacker-controlled application trees
+                debug!(
+                    scope,
+                    stopped_by = budget.stopped_by.unwrap_or("none"),
+                    records = budget.records,
+                    directories = budget.directories,
+                    entries = budget.entries,
+                    skipped_files = budget.skipped_files,
+                    "desktop application scan reached a safety limit"
+                );
+            }
         }
         // Relay trust is tied to the installed file identity instead of its basename
         index.index_trusted_relay(Path::new("/usr/bin/notify-send"));
@@ -86,7 +110,15 @@ impl DesktopIdentityIndex {
         ] {
             index.index_trusted_portals_in(Path::new(directory));
         }
-        index
+        let watched_directories = user_budget
+            .visited_directories
+            .into_iter()
+            .chain(system_budget.visited_directories)
+            .collect();
+        DesktopIndexSnapshot {
+            index,
+            watched_directories,
+        }
     }
 
     pub(super) fn scan_root(
@@ -107,6 +139,8 @@ impl DesktopIdentityIndex {
             let Ok(entries) = std::fs::read_dir(&directory) else {
                 continue;
             };
+            // Only readable directories can contribute records or useful kernel watches
+            budget.visited_directories.push(directory);
             for entry in entries {
                 if budget.entries >= limits.entries {
                     budget.stop("entry budget");
@@ -138,11 +172,13 @@ impl DesktopIdentityIndex {
                     budget.skipped_files += 1;
                     continue;
                 }
-                if self.records.len() >= limits.records {
+                if budget.records >= limits.records {
                     budget.stop("record budget");
                     return;
                 }
+                let records_before = self.records.len();
                 self.add_desktop_file(&path, system_entry);
+                budget.records += self.records.len().saturating_sub(records_before);
             }
         }
     }

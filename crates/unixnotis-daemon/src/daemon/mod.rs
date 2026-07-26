@@ -14,6 +14,7 @@ pub use bus::{
 };
 pub use control::ControlServer;
 pub use errors::to_fdo_error;
+pub use notifications::DesktopIndexSnapshot;
 pub use notifications::NotificationIngress;
 pub use notifications::NotificationServer;
 pub(in crate::daemon) use notifications::NotificationSignalMode;
