@@ -719,6 +719,7 @@
   padding: 8px 10px;
 }
 
+/* unixnotis-css-check allow-duplicate-selectors:start */
 /* Restrained widget composition
  *
  * Repeated widget types share one surface treatment and reserve color for state
@@ -1159,3 +1160,4 @@
   box-shadow: inset 0 1px 0 alpha(#ffffff, 0.05);
   border-radius: 8px;
 }
+/* unixnotis-css-check allow-duplicate-selectors:end */

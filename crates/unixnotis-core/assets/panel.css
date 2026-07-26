@@ -621,6 +621,7 @@ entry selection {
   box-shadow: 0 0 16px -12px @unixnotis-glow-cyan;
 }
 
+/* unixnotis-css-check allow-duplicate-selectors:start */
 /* Restrained default composition
  *
  * Navy remains the visual identity while flat surfaces and spacing carry hierarchy
@@ -844,3 +845,4 @@ scrollbar slider:active {
   background: #52d9da;
   box-shadow: 0 0 12px alpha(#52d9da, 0.80);
 }
+/* unixnotis-css-check allow-duplicate-selectors:end */
