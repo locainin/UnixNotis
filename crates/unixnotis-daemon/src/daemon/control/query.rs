@@ -8,9 +8,8 @@ use zbus::message::Header;
 use super::ControlServer;
 
 impl ControlServer {
-    pub(super) async fn query_state(&self, header: &Header<'_>) -> zbus::fdo::Result<ControlState> {
-        // State metadata is now treated as privileged control telemetry
-        self.authorize_control_call(header, "GetState").await?;
+    pub(super) async fn query_state(&self) -> zbus::fdo::Result<ControlState> {
+        // Readiness clients receive only aggregate state without notification content
         // Single lock read keeps state snapshot internally consistent
         let store = self.state.store.lock().await;
         Ok(store.control_state())

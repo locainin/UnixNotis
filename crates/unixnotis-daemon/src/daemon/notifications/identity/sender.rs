@@ -3,12 +3,18 @@
 //! Sender details are optional and best-effort, so failures here must not reject
 //! notification delivery
 
+use std::fs::File;
+use std::io::Read;
+
 use zbus::fdo::DBusProxy;
 use zbus::message::Header;
 use zbus::Connection;
 
 use super::sender_cache::SenderMetadataCache;
 use super::{executable_evidence_for_pid, FileIdentity};
+
+const MAX_PROCESS_CMDLINE_BYTES: u64 = 128 * 1024;
+const MAX_PROCESS_ARGUMENTS: usize = 256;
 
 #[derive(Debug, Clone, Default)]
 pub(in crate::daemon) struct SenderMetadata {
@@ -22,6 +28,8 @@ pub(in crate::daemon) struct SenderMetadata {
     pub(in crate::daemon::notifications) sender_executable: Option<String>,
     // Device and inode bind policy to the open running executable rather than its basename
     pub(in crate::daemon::notifications) sender_executable_identity: Option<FileIdentity>,
+    // NUL-delimited process arguments prove fixed desktop Exec literals for shared runtimes
+    pub(in crate::daemon::notifications) sender_cmdline: Option<Vec<Vec<u8>>>,
 }
 
 pub(in crate::daemon) async fn resolve_sender_metadata(
@@ -38,6 +46,7 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
             sender_start_time: None,
             sender_executable: None,
             sender_executable_identity: None,
+            sender_cmdline: None,
         };
     };
 
@@ -54,6 +63,7 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
             sender_start_time: None,
             sender_executable: None,
             sender_executable_identity: None,
+            sender_cmdline: None,
         };
     };
 
@@ -64,17 +74,19 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
             sender_start_time: None,
             sender_executable: None,
             sender_executable_identity: None,
+            sender_cmdline: None,
         };
     };
 
     // PID and executable come from the bus owner, not caller-provided payload fields
     let sender_pid = proxy.get_connection_unix_process_id(bus_name).await.ok();
-    let (sender_start_time, executable_evidence) = sender_pid.map_or((None, None), |pid| {
+    let (sender_start_time, process_evidence) = sender_pid.map_or((None, None), |pid| {
         let start_before = read_process_start_time(pid);
-        let evidence = executable_evidence_for_pid(pid);
+        let evidence = (executable_evidence_for_pid(pid), read_process_cmdline(pid));
         let start_after = read_process_start_time(pid);
-        stable_process_evidence(start_before, evidence, start_after)
+        stable_process_evidence(start_before, Some(evidence), start_after)
     });
+    let (executable_evidence, sender_cmdline) = process_evidence.unwrap_or((None, None));
     let sender_executable = executable_evidence
         .as_ref()
         .map(|evidence| evidence.canonical_path.display().to_string());
@@ -86,18 +98,13 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
         sender_start_time,
         sender_executable,
         sender_executable_identity,
+        sender_cmdline,
     };
     // Failed lookups remain retryable instead of becoming persistent unknown identities
     if metadata.sender_start_time.is_some() && metadata.sender_executable_identity.is_some() {
         cache.insert(cache_key, metadata.clone());
     }
     metadata
-}
-
-#[cfg(target_os = "linux")]
-#[cfg(test)]
-async fn read_process_executable_path(pid: u32) -> Option<std::path::PathBuf> {
-    executable_evidence_for_pid(pid).map(|evidence| evidence.canonical_path)
 }
 
 #[cfg(target_os = "linux")]
@@ -108,16 +115,42 @@ fn read_process_start_time(pid: u32) -> Option<u64> {
     parse_process_start_time(&contents)
 }
 
-#[cfg(not(target_os = "linux"))]
-#[cfg(test)]
-async fn read_process_executable_path(_pid: u32) -> Option<std::path::PathBuf> {
-    // On other platforms this metadata is optional
-    None
+#[cfg(target_os = "linux")]
+fn read_process_cmdline(pid: u32) -> Option<Vec<Vec<u8>>> {
+    let path = format!("/proc/{pid}/cmdline");
+    let mut bytes = Vec::new();
+    File::open(path)
+        .ok()?
+        .take(MAX_PROCESS_CMDLINE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    parse_process_cmdline(bytes)
+}
+
+#[cfg(target_os = "linux")]
+fn parse_process_cmdline(mut bytes: Vec<u8>) -> Option<Vec<Vec<u8>>> {
+    if bytes.is_empty()
+        || bytes.len() as u64 > MAX_PROCESS_CMDLINE_BYTES
+        || bytes.last() != Some(&0)
+    {
+        return None;
+    }
+    bytes.pop();
+    let arguments = bytes
+        .split(|byte| *byte == 0)
+        .map(<[u8]>::to_vec)
+        .collect::<Vec<_>>();
+    (!arguments.is_empty() && arguments.len() <= MAX_PROCESS_ARGUMENTS).then_some(arguments)
 }
 
 #[cfg(not(target_os = "linux"))]
 fn read_process_start_time(_pid: u32) -> Option<u64> {
     // Non-Linux builds fall back to bus-name ownership only
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn read_process_cmdline(_pid: u32) -> Option<Vec<Vec<u8>>> {
     None
 }
 

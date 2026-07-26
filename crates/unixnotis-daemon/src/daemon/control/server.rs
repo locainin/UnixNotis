@@ -69,11 +69,8 @@ impl ControlServer {
 
 #[interface(name = "com.unixnotis.Control")]
 impl ControlServer {
-    async fn get_state(
-        &self,
-        #[zbus(header)] header: Header<'_>,
-    ) -> zbus::fdo::Result<ControlState> {
-        self.query_state(&header).await
+    async fn get_state(&self) -> zbus::fdo::Result<ControlState> {
+        self.query_state().await
     }
 
     async fn list_active(

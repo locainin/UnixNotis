@@ -16,6 +16,8 @@
     reason = "reviewed compatibility, wire-format, and bounded numeric conversions that cannot change without breaking public configuration behavior"
 )]
 
+pub mod bus_call;
+pub mod bus_identity;
 pub mod config;
 pub mod control;
 pub mod css;
@@ -23,6 +25,7 @@ pub mod embedded;
 pub mod filesystem;
 pub mod model;
 pub mod notification_daemons;
+pub mod notifications;
 pub mod process;
 pub mod reconnect;
 pub mod service_manager;
@@ -31,12 +34,15 @@ pub mod service_manager;
 mod test_support;
 pub mod util;
 
+pub use bus_call::*;
+pub use bus_identity::*;
 pub use config::*;
 pub use control::*;
 pub use css::*;
 pub use embedded::*;
 pub use model::*;
 pub use notification_daemons::*;
+pub use notifications::*;
 pub use process::*;
 pub use util::program_in_path;
 

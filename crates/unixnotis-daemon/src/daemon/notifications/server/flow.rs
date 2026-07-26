@@ -1,13 +1,16 @@
 use std::collections::HashMap;
+use std::time::Duration;
 use std::time::Instant;
 
-use tracing::debug;
+use tracing::{debug, warn};
 use unixnotis_core::Notification;
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 
 use crate::daemon::notifications::identity::resolve_sender_metadata;
-use crate::daemon::notifications::identity::{resolve_attribution, AppClaim};
+use crate::daemon::notifications::identity::{
+    resolve_attribution, unknown_reply_denied, AppClaim, SenderMetadata,
+};
 use crate::daemon::notifications::ingress::payload::{
     build_notification, owned_to_string, resolve_expiration, NotificationInput,
 };
@@ -30,6 +33,9 @@ struct WireNotification {
     hints: HashMap<String, OwnedValue>,
     expire_timeout: i32,
 }
+
+const SENDER_METADATA_TIMEOUT: Duration = Duration::from_millis(100);
+const ATTRIBUTION_TIMEOUT: Duration = Duration::from_millis(100);
 
 impl NotificationServer {
     #[expect(
@@ -108,23 +114,43 @@ impl NotificationServer {
         header: &Header<'_>,
     ) -> Notification {
         // Sender metadata helps with ownership checks and diagnostics
-        let sender = resolve_sender_metadata(
-            &self.state.sender_metadata_cache,
-            self.state.connection(),
-            header,
+        let sender = if let Ok(sender) = tokio::time::timeout(
+            SENDER_METADATA_TIMEOUT,
+            resolve_sender_metadata(
+                &self.state.sender_metadata_cache,
+                self.state.connection(),
+                header,
+            ),
         )
-        .await;
+        .await
+        {
+            sender
+        } else {
+            warn!("notification sender metadata timed out and failed closed");
+            SenderMetadata::default()
+        };
         let desktop_entry = input.hints.get("desktop-entry").and_then(owned_to_string);
-        let resolution = resolve_attribution(
-            AppClaim {
-                reported_name: &input.app_name,
-                desktop_entry: desktop_entry.as_deref(),
-            },
-            &sender,
-            &self.state.desktop_identity_index,
-            self.state.connection(),
+        let desktop_identity_index = self.state.desktop_identity_index.load_full();
+        let claim = AppClaim {
+            reported_name: &input.app_name,
+            desktop_entry: desktop_entry.as_deref(),
+        };
+        let resolution = if let Ok(resolution) = tokio::time::timeout(
+            ATTRIBUTION_TIMEOUT,
+            resolve_attribution(
+                claim,
+                &sender,
+                &desktop_identity_index,
+                self.state.connection(),
+            ),
         )
-        .await;
+        .await
+        {
+            resolution
+        } else {
+            warn!("notification attribution timed out and failed closed");
+            unknown_reply_denied(claim, &sender, "attribution timed out")
+        };
         if resolution.attribution.has_warning() {
             debug!(
                 app_name = %input.app_name,

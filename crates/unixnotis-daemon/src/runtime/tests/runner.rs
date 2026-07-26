@@ -5,6 +5,9 @@ use crate::cli::Args;
 use unixnotis_core::Config;
 use zbus::connection::Builder;
 
+#[path = "dbus_lifecycle.rs"]
+mod dbus_lifecycle;
+
 #[test]
 fn trial_preparation_is_enabled_only_by_the_trial_flag() {
     let normal = Args::try_parse_from(["unixnotis-daemon"]).expect("parse normal daemon command");

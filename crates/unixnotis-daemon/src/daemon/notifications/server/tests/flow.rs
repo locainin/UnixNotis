@@ -71,10 +71,20 @@ fn notify_header_message() -> Message {
 }
 
 async fn daemon_state_with_config(config: Config) -> Arc<DaemonState> {
+    use arc_swap::ArcSwap;
+
+    use crate::daemon::DesktopIdentityIndex;
+
     let connection = Connection::session().await.expect("session bus");
     let sound = SoundSettings::from_config(&config, None);
     let store = NotificationStore::new_with_state_store(config, None);
-    DaemonState::new_with_store(connection, store, sound, false)
+    DaemonState::new_with_store(
+        connection,
+        store,
+        sound,
+        false,
+        Arc::new(ArcSwap::from_pointee(DesktopIdentityIndex::default())),
+    )
 }
 
 async fn control_signal_stream(state: &DaemonState, member: &str) -> MessageStream {

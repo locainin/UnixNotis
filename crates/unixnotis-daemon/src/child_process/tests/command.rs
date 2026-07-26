@@ -45,7 +45,10 @@ fn child_config_env_path_resolves_relative_paths_against_current_directory() {
 #[test]
 fn build_command_sets_config_env_instead_of_forwarding_flag() {
     let args = Args::parse_from(["unixnotis-daemon", "--config", "fixtures/config.toml"]);
-    let command = UiProcessKind::Center.build_command(&args);
+    let command = UiProcessKind::build_command_for_path(
+        &args,
+        PathBuf::from("/tmp/unixnotis-test/bin/unixnotis-center"),
+    );
     let std_command = command.as_std();
     let args: Vec<_> = std_command.get_args().map(OsString::from).collect();
     let envs: Vec<_> = std_command
@@ -57,6 +60,7 @@ fn build_command_sets_config_env_instead_of_forwarding_flag() {
         !args.iter().any(|arg| arg == "--config"),
         "child argv should stay free of UnixNotis-only flags"
     );
+    assert!(Path::new(std_command.get_program()).is_absolute());
     assert!(
         envs.iter().any(|(key, value)| {
             key == CONFIG_PATH_ENV
@@ -69,7 +73,10 @@ fn build_command_sets_config_env_instead_of_forwarding_flag() {
 #[test]
 fn build_command_clears_inherited_config_override_without_custom_path() {
     let args = Args::parse_from(["unixnotis-daemon"]);
-    let command = UiProcessKind::Popups.build_command(&args);
+    let command = UiProcessKind::build_command_for_path(
+        &args,
+        PathBuf::from("/tmp/unixnotis-test/bin/unixnotis-popups"),
+    );
     let std_command = command.as_std();
 
     assert!(

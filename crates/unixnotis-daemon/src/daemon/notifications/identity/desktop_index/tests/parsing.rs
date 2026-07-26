@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::Path;
 
-use super::super::{desktop_executable, DesktopIdentityIndex};
+use super::super::program::desktop_executable;
+use super::super::DesktopIdentityIndex;
 use crate::test_support::TempRoot;
 
 #[test]

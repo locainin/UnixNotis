@@ -9,5 +9,6 @@ pub(in crate::daemon) use flow_control::{
     notification_signal_mode_for_sender, NotificationBurstState, NotificationSignalMode,
 };
 pub(in crate::daemon) use identity::SenderMetadataCache;
+pub use identity::{spawn_desktop_index_refresh, DesktopIdentityIndex};
 pub use server::NotificationIngress;
 pub use server::NotificationServer;

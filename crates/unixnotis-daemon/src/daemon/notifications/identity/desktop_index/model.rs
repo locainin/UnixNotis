@@ -7,6 +7,35 @@ use super::super::executable::FileIdentity;
 use super::names::normalize_name;
 
 #[derive(Debug, Clone)]
+pub(in crate::daemon::notifications::identity) struct LaunchSpec {
+    pub(in crate::daemon::notifications::identity) executable: FileIdentity,
+    pub(in crate::daemon::notifications::identity) arguments: Vec<LaunchArgument>,
+    pub(in crate::daemon::notifications::identity) protected_literal_files: usize,
+    pub(in crate::daemon::notifications::identity) literal_files_are_system_managed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::daemon::notifications::identity) enum LaunchArgument {
+    Literal(LiteralArgument),
+    FieldCode(FieldCode),
+    OptionalIcon { name: String },
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::daemon::notifications::identity) struct LiteralArgument {
+    pub(in crate::daemon::notifications::identity) value: Vec<u8>,
+    pub(in crate::daemon::notifications::identity) file: Option<(PathBuf, FileIdentity)>,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub(in crate::daemon::notifications::identity) enum FieldCode {
+    File,
+    Files,
+    Url,
+    Urls,
+}
+
+#[derive(Debug, Clone)]
 pub(in crate::daemon::notifications::identity) struct DesktopRecord {
     pub(in crate::daemon::notifications::identity) id: String,
     pub(in crate::daemon::notifications::identity) display_name: String,
@@ -18,7 +47,8 @@ pub(in crate::daemon::notifications::identity) struct DesktopRecord {
     pub(in crate::daemon::notifications::identity) system_association: bool,
     pub(in crate::daemon::notifications::identity) association_eligible: bool,
     pub(in crate::daemon::notifications::identity) dbus_activatable: bool,
-    pub(super) names: HashSet<String>,
+    pub(in crate::daemon::notifications::identity) launch_spec: Option<LaunchSpec>,
+    pub(in crate::daemon::notifications::identity) names: HashSet<String>,
 }
 
 impl DesktopRecord {
@@ -26,44 +56,20 @@ impl DesktopRecord {
         // Normalized aliases cover desktop names without trusting free-form display text
         self.names.contains(&normalize_name(claim))
     }
-
-    #[cfg(test)]
-    pub(in crate::daemon::notifications::identity) fn fixture(
-        id: &str,
-        display_name: &str,
-        executable_path: &str,
-        identity: FileIdentity,
-        system_entry: bool,
-        dbus_activatable: bool,
-    ) -> Self {
-        let names = HashSet::from([normalize_name(display_name)]);
-        Self {
-            id: id.to_string(),
-            display_name: display_name.to_string(),
-            badge_icon: id.to_string(),
-            executable_path: Some(PathBuf::from(executable_path)),
-            executable_identity: Some(identity),
-            desktop_identity: Some(identity),
-            system_origin: system_entry,
-            system_association: system_entry,
-            association_eligible: true,
-            dbus_activatable,
-            names,
-        }
-    }
 }
 
 #[derive(Debug, Default)]
-pub(in crate::daemon) struct DesktopIdentityIndex {
+pub struct DesktopIdentityIndex {
     pub(super) records: Vec<DesktopRecord>,
     pub(super) by_id: HashMap<String, Vec<usize>>,
     pub(super) by_identity: HashMap<(u64, u64), Vec<usize>>,
     pub(super) system_brand_names: HashSet<String>,
-    pub(super) trusted_relays: Vec<ExecutableIdentity>,
+    pub(in crate::daemon::notifications::identity) trusted_relays: Vec<ExecutableIdentity>,
+    pub(in crate::daemon::notifications::identity) trusted_portals: Vec<ExecutableIdentity>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ExecutableIdentity {
-    pub(super) path: PathBuf,
-    pub(super) identity: FileIdentity,
+pub(in crate::daemon::notifications::identity) struct ExecutableIdentity {
+    pub(in crate::daemon::notifications::identity) path: PathBuf,
+    pub(in crate::daemon::notifications::identity) identity: FileIdentity,
 }

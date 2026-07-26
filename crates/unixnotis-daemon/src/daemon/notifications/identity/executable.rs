@@ -32,6 +32,11 @@ impl FileIdentity {
         self.uid == 0 && self.mode & 0o022 == 0
     }
 
+    pub(super) const fn is_executable_regular(self) -> bool {
+        // Authority binaries must be regular files with at least one execute bit
+        self.mode & 0o170_000 == 0o100_000 && self.mode & 0o111 != 0
+    }
+
     pub(super) fn group_fragment(self) -> String {
         // Group keys expose no path while remaining stable for the running file
         format!("{}:{}", self.device, self.inode)

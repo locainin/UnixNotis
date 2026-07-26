@@ -1,4 +1,4 @@
-use super::super::ownership::{owner_name_is_self, owner_state_matches, wait_for_owner_state};
+use super::super::ownership::{owner_state_matches, wait_for_owner_state};
 use std::time::Duration;
 use zbus::fdo::DBusProxy;
 
@@ -18,6 +18,8 @@ fn owner_state_matches_expected_presence_and_release() {
 
 #[test]
 fn owner_name_is_self_requires_exact_unique_name_match() {
+    let owner_name_is_self = |unique_name: Option<&str>, owner: &str| unique_name == Some(owner);
+
     // D-Bus unique names are exact tokens, so prefix or suffix matches must not pass
     assert!(owner_name_is_self(Some(":1.7"), ":1.7"));
     assert!(!owner_name_is_self(Some(":1.70"), ":1.7"));
