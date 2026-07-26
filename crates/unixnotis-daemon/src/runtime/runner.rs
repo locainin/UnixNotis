@@ -13,8 +13,12 @@ use super::{daemon, trial_cleanup};
 const DAEMON_DBUS_QUEUE_CAPACITY: usize = 16;
 
 pub async fn run(args: &Args, config: Config) -> Result<()> {
-    let connection = Builder::session()
-        .context("create session bus connection")?
+    let builder = Builder::session().context("create session bus connection")?;
+    Box::pin(run_with_builder(args, config, builder)).await
+}
+
+async fn run_with_builder(args: &Args, config: Config, builder: Builder<'_>) -> Result<()> {
+    let connection = builder
         .max_queued(DAEMON_DBUS_QUEUE_CAPACITY)
         .build()
         .await

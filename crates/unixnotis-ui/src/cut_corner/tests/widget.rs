@@ -1,6 +1,7 @@
 use gtk::prelude::*;
 use unixnotis_core::CutCorners;
-use unixnotis_ui::CutCorner;
+
+use crate::CutCorner;
 
 #[gtk::test]
 fn cut_corner_wraps_one_child_and_retains_configured_geometry() {
