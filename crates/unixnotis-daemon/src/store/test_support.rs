@@ -1,11 +1,18 @@
 //! Shared notification and persistence fixtures for store tests
 
-use super::*;
+use std::collections::HashMap;
+
+use chrono::Utc;
+use unixnotis_core::{Config, Notification, NotificationImage, Urgency};
+use zbus::zvariant::OwnedValue;
+
+use super::dnd::{PersistedDndState, DND_STATE_FILE};
+use super::{DndStateStore, NotificationStore};
 
 impl NotificationStore {
     pub(crate) fn new_with_state_dir(config: Config, state_dir: std::path::PathBuf) -> Self {
         // Isolated persistence roots keep tests away from the live XDG state directory
-        let state_store = Some(super::super::DndStateStore::from_state_dir(state_dir));
+        let state_store = Some(DndStateStore::from_state_dir(state_dir));
         Self::new_with_state_store(config, state_store)
     }
 }

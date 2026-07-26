@@ -1,6 +1,6 @@
 use unixnotis_core::InhibitMode;
 
-use super::inhibit::{inhibits_popups, Inhibitor, InhibitorOwnerMismatch};
+use super::model::{inhibits_popups, Inhibitor, InhibitorOwnerMismatch};
 use super::NotificationStore;
 
 impl NotificationStore {
@@ -72,7 +72,7 @@ impl NotificationStore {
         inhibitors
     }
 
-    pub(super) const fn should_drop_inhibited(&self) -> bool {
+    pub(in crate::store) const fn should_drop_inhibited(&self) -> bool {
         // DropAll means suppression happens before insertion and history work
         self.inhibited && matches!(self.config.inhibit.mode, InhibitMode::DropAll)
     }
