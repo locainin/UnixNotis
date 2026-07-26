@@ -22,6 +22,13 @@ fn systemd_sync_runs_environment_import_and_restart_commands() {
     sync_systemd().expect("synchronize systemd environment");
 
     let calls = fs::read_to_string(log).expect("read systemd command log");
+    assert!(calls.contains("--user unset-environment DBUS_SESSION_BUS_ADDRESS"));
     assert!(calls.contains("--user import-environment"));
     assert!(calls.contains("--user --no-block restart unixnotis-daemon.service"));
+    let import = calls
+        .lines()
+        .find(|line| line.contains("import-environment"))
+        .expect("systemd import command");
+    assert!(!import.contains("DBUS_SESSION_BUS_ADDRESS"));
+    assert!(!import.contains(" PATH"));
 }

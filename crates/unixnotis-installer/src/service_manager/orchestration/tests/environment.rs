@@ -24,3 +24,18 @@ fn artifact_backends_do_not_emit_environment_commands() {
     assert!(runit.environment_sync_commands(&values, true).is_empty());
     assert!(s6.environment_sync_commands(&values, true).is_empty());
 }
+
+#[test]
+fn backend_environment_policy_keeps_transient_shell_state_out_of_systemd() {
+    let systemd = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd"));
+    let dinit = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit"));
+
+    assert!(!systemd
+        .import_variable_names()
+        .contains(&"DBUS_SESSION_BUS_ADDRESS"));
+    assert!(!systemd.import_variable_names().contains(&"PATH"));
+    assert!(dinit
+        .import_variable_names()
+        .contains(&"DBUS_SESSION_BUS_ADDRESS"));
+    assert!(!dinit.import_variable_names().contains(&"PATH"));
+}

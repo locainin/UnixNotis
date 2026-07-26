@@ -85,12 +85,13 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     // Add only the lines that are still missing from the live config
     let mut additions = Vec::new();
     // User-managed equivalents outside the installer block should not be duplicated
+    let import_variables = ctx.paths.service.import_variable_names();
     for command in ctx
         .paths
         .service
-        .hyprland_startup_commands(&super::super::HYPR_IMPORT_VARS)
+        .hyprland_startup_commands(import_variables)
     {
-        if hyprland_command_present(&stripped, &command) {
+        if hyprland_command_present(&stripped, &command, import_variables) {
             continue;
         }
         additions.push(hyprland_startup_line(target.syntax, &command));
@@ -147,12 +148,12 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
     }
 }
 
-fn hyprland_command_present(contents: &str, command: &str) -> bool {
+fn hyprland_command_present(contents: &str, command: &str, import_variables: &[&str]) -> bool {
     if command.starts_with("dbus-update-activation-environment") {
         return has_legacy_dbus_update(contents) || has_startup_command(contents, command);
     }
     if command.contains("import-environment") {
-        return has_import_command_with_vars(contents, &super::super::HYPR_IMPORT_VARS);
+        return has_import_command_with_vars(contents, import_variables);
     }
     has_startup_command(contents, command)
 }

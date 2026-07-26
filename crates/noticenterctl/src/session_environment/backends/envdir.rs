@@ -6,11 +6,15 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use unixnotis_core::filesystem::write_file_atomic;
-use unixnotis_core::service_manager::envdir_file_contents;
+use unixnotis_core::service_manager::{envdir_file_contents, ServiceManagerKind};
 
-use super::super::variables::IMPORT_VARS;
+use super::super::variables::import_variables;
 
-pub(in crate::session_environment) fn write_envdir(service: &Path, env_dir: &Path) -> Result<()> {
+pub(in crate::session_environment) fn write_envdir(
+    service: &Path,
+    env_dir: &Path,
+    kind: ServiceManagerKind,
+) -> Result<()> {
     let metadata = fs::symlink_metadata(service)
         .with_context(|| format!("inspect installed service directory {}", service.display()))?;
     // The service anchor must be a real directory before any child path is created
@@ -20,8 +24,8 @@ pub(in crate::session_environment) fn write_envdir(service: &Path, env_dir: &Pat
             service.display()
         );
     }
-    // PATH remains fixed by the installed run script instead of session input
-    for name in IMPORT_VARS.into_iter().filter(|name| *name != "PATH") {
+    // Every published key comes from the backend-specific allowlist
+    for name in import_variables(kind) {
         let value = env::var(name).ok();
         let contents = envdir_file_contents(value.as_deref());
         let target: PathBuf = env_dir.join(name);
