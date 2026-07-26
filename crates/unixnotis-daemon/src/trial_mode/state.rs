@@ -50,33 +50,8 @@ pub struct DetectedDaemon {
     pub(super) is_owner: bool,
 }
 
-pub struct KnownDaemon {
-    pub(super) name: &'static str,
-    pub(super) unit: &'static str,
-}
-
-pub const KNOWN_DAEMONS: &[KnownDaemon] = &[
-    KnownDaemon {
-        name: "mako",
-        unit: "mako.service",
-    },
-    KnownDaemon {
-        name: "dunst",
-        unit: "dunst.service",
-    },
-    KnownDaemon {
-        name: "swaync",
-        unit: "swaync.service",
-    },
-    KnownDaemon {
-        name: "notify-osd",
-        unit: "notify-osd.service",
-    },
-    KnownDaemon {
-        name: "quickshell",
-        unit: "quickshell.service",
-    },
-];
+pub const KNOWN_DAEMONS: &[unixnotis_core::KnownNotificationDaemon] =
+    unixnotis_core::KNOWN_NOTIFICATION_DAEMONS;
 
 pub const TRIAL_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 

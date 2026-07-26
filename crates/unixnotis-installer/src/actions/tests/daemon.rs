@@ -279,16 +279,14 @@ fn pid_matches_comm_rejects_wrong_process_name() {
 }
 
 #[test]
-fn pid_matches_comm_accepts_current_process_name_from_ps() {
+fn pid_matches_comm_accepts_current_process_argv_basename() {
     let pid = std::process::id();
-    let expected = std::fs::read_to_string(format!("/proc/{pid}/comm"))
-        .expect("proc should expose the current process name")
-        .trim()
-        .to_string();
+    let expected = crate::detect::read_cmdline_program(pid)
+        .expect("proc should expose the current process argv basename");
 
     let matches = pid_matches_comm(pid, &expected).expect("comm probe");
 
-    // A matching process name is the only case where stop logic may signal the PID
+    // A matching argv basename is the only case where stop logic may signal the PID
     assert!(matches);
 }
 

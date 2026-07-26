@@ -176,6 +176,10 @@ fn pid_alive(pid: u32) -> Result<bool> {
 }
 
 fn pid_matches_comm(pid: u32, expected: &str) -> Result<bool> {
+    // Argv preserves daemon basenames longer than Linux's 15-byte comm field
+    if let Some(program) = crate::detect::read_cmdline_program(pid) {
+        return Ok(program == expected);
+    }
     // Validate the process name with ps before sending signals to avoid PID reuse hazards
     let output = system_tools::command("ps")
         .context("failed to locate trusted ps")?

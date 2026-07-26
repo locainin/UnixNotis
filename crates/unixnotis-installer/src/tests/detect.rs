@@ -3,8 +3,8 @@ use std::fs;
 use std::io::{Error, ErrorKind};
 
 use crate::detect::{
-    parse_busctl_json, parse_busctl_status, read_cmdline_program, read_comm, systemctl_spawn_error,
-    KNOWN_DAEMONS,
+    parse_busctl_json, parse_busctl_status, parse_busctl_string_reply, read_cmdline_program,
+    read_comm, systemctl_spawn_error, KNOWN_DAEMONS,
 };
 
 #[test]
@@ -16,16 +16,13 @@ fn known_daemons_include_quickshell_owner() {
         .expect("quickshell should be known");
 
     // Unit metadata keeps status output and restore hints consistent
-    assert_eq!(quickshell.unit, "quickshell.service");
+    assert_eq!(quickshell.systemd_unit, None);
 }
 
 #[test]
 fn known_daemons_include_recent_wayland_notifiers() {
     // These daemons are common enough to deserve explicit regression coverage
-    let expected = [
-        ("hyprnotify", "hyprnotify.service"),
-        ("fnott", "fnott.service"),
-    ];
+    let expected = [("hyprnotify", None), ("fnott", Some("fnott.service"))];
 
     for (name, unit) in expected {
         let daemon = KNOWN_DAEMONS
@@ -33,7 +30,26 @@ fn known_daemons_include_recent_wayland_notifiers() {
             .find(|daemon| daemon.name == name)
             .expect("daemon should be known");
 
-        assert_eq!(daemon.unit, unit);
+        assert_eq!(daemon.systemd_unit, unit);
+    }
+}
+
+#[test]
+fn known_daemons_cover_standalone_desktop_and_wayland_owners() {
+    for name in [
+        "xfce4-notifyd",
+        "lxqt-notificationd",
+        "mate-notification-daemon",
+        "notification-daemon",
+        "wired",
+        "deadd-notification-center",
+        "tiramisu",
+        "runst",
+    ] {
+        assert!(
+            KNOWN_DAEMONS.iter().any(|daemon| daemon.name == name),
+            "{name} should be recognized"
+        );
     }
 }
 
@@ -155,6 +171,16 @@ fn parse_busctl_json_rejects_invalid_pid_string() {
     let owner = parse_busctl_json(output);
 
     assert!(owner.is_none());
+}
+
+#[test]
+fn parse_busctl_string_reply_reads_unique_owner_name() {
+    assert_eq!(
+        parse_busctl_string_reply("s \":1.77\"\n").as_deref(),
+        Some(":1.77")
+    );
+    assert!(parse_busctl_string_reply("s \"\"").is_none());
+    assert!(parse_busctl_string_reply("invalid").is_none());
 }
 
 #[test]
@@ -297,6 +323,45 @@ fn detect_falls_back_to_text_busctl_status_when_json_status_fails() {
         .daemons
         .iter()
         .any(|daemon| daemon.name == "mako" && daemon.is_owner));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn detect_resolves_unique_owner_when_well_known_status_has_no_process_fields() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("detect-unique-owner-fallback");
+    let fake_bin = root.join("bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    write_executable(
+        &fake_bin.join("busctl"),
+        "#!/bin/sh\n\
+         if [ \"$2\" = '--json=short' ] && [ \"$4\" = ':1.77' ]; then\n\
+         printf '{\"Status\":{\"Comm\":\"fnott\"}}\\n'\n\
+         exit 0\n\
+         fi\n\
+         if [ \"$2\" = '--json=short' ]; then printf '{}\\n'; exit 0; fi\n\
+         if [ \"$2\" = 'status' ]; then printf 'Name=org.freedesktop.Notifications\\n'; exit 0; fi\n\
+         if [ \"$2\" = 'call' ]; then printf 's \":1.77\"\\n'; exit 0; fi\n\
+         exit 1\n",
+    );
+    write_executable(&fake_bin.join("systemctl"), "#!/bin/sh\nexit 3\n");
+    write_executable(&fake_bin.join("pgrep"), "#!/bin/sh\nexit 1\n");
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
+
+    let detection = crate::detect::detect();
+
+    assert_eq!(
+        detection
+            .owner
+            .as_ref()
+            .and_then(|owner| owner.comm.as_deref()),
+        Some("fnott")
+    );
+    assert!(detection
+        .daemons
+        .iter()
+        .any(|daemon| daemon.name == "fnott" && daemon.is_owner));
 
     let _ = fs::remove_dir_all(root);
 }

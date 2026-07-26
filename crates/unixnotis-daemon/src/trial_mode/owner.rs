@@ -43,14 +43,18 @@ pub(super) async fn detect_owner(
     } else {
         None
     };
-    let comm = match pid {
-        Some(pid) => read_comm(pid).await,
-        None => None,
-    };
     let args = match pid {
         Some(pid) => read_args(pid).await,
         None => None,
     };
+    // Argv keeps long executable names intact while /proc comm truncates after 15 bytes
+    let comm = args
+        .as_deref()
+        .and_then(command_program_name)
+        .or(match pid {
+            Some(pid) => read_comm(pid).await,
+            None => None,
+        });
 
     Ok(Some(OwnerInfo { pid, comm, args }))
 }
@@ -61,7 +65,10 @@ pub(super) async fn detect_known_daemons(owner: &Option<OwnerInfo>) -> Vec<Detec
     let mut entries = Vec::new();
     for daemon in KNOWN_DAEMONS {
         let running_pids = pgrep_exact(daemon.name).await;
-        let systemd_active = is_unit_active(daemon.unit).await;
+        let systemd_active = match daemon.systemd_unit {
+            Some(unit) => is_unit_active(unit).await,
+            None => false,
+        };
         let is_owner = owner_name == Some(daemon.name);
         entries.push(DetectedDaemon {
             name: daemon.name.to_string(),
@@ -71,6 +78,15 @@ pub(super) async fn detect_known_daemons(owner: &Option<OwnerInfo>) -> Vec<Detec
         });
     }
     entries
+}
+
+fn command_program_name(args: &[String]) -> Option<String> {
+    let program = args.first()?;
+    std::path::Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 pub(super) fn print_detected_daemons(daemons: &[DetectedDaemon], owner: &Option<OwnerInfo>) {

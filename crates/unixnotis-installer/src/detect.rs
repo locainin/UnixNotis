@@ -31,45 +31,7 @@ pub struct Detection {
     pub daemons: Vec<DetectedDaemon>,
 }
 
-pub struct KnownDaemon {
-    pub(crate) name: &'static str,
-    pub(crate) unit: &'static str,
-}
-
-pub const KNOWN_DAEMONS: &[KnownDaemon] = &[
-    KnownDaemon {
-        name: "unixnotis-daemon",
-        unit: "unixnotis-daemon.service",
-    },
-    KnownDaemon {
-        name: "mako",
-        unit: "mako.service",
-    },
-    KnownDaemon {
-        name: "dunst",
-        unit: "dunst.service",
-    },
-    KnownDaemon {
-        name: "swaync",
-        unit: "swaync.service",
-    },
-    KnownDaemon {
-        name: "notify-osd",
-        unit: "notify-osd.service",
-    },
-    KnownDaemon {
-        name: "quickshell",
-        unit: "quickshell.service",
-    },
-    KnownDaemon {
-        name: "hyprnotify",
-        unit: "hyprnotify.service",
-    },
-    KnownDaemon {
-        name: "fnott",
-        unit: "fnott.service",
-    },
-];
+pub use unixnotis_core::KNOWN_NOTIFICATION_DAEMONS as KNOWN_DAEMONS;
 
 pub fn detect() -> Detection {
     let owner = detect_owner();
@@ -200,8 +162,39 @@ fn read_busctl_owner() -> Option<OwnerInfo> {
         }
     }
 
-    let status = run_busctl(&["--user", "status", unixnotis_core::NOTIFICATIONS_BUS_NAME])?;
+    if let Some(status) = run_busctl(&["--user", "status", unixnotis_core::NOTIFICATIONS_BUS_NAME])
+    {
+        if let Some(owner) = parse_busctl_status(&status) {
+            return Some(owner);
+        }
+    }
+
+    // Some busctl versions omit process fields for a well-known name
+    let reply = run_busctl(&[
+        "--user",
+        "call",
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "GetNameOwner",
+        "s",
+        unixnotis_core::NOTIFICATIONS_BUS_NAME,
+    ])?;
+    let unique_name = parse_busctl_string_reply(&reply)?;
+    if let Some(status) = run_busctl(&["--user", "--json=short", "status", &unique_name]) {
+        if let Some(owner) = parse_busctl_json(&status) {
+            return Some(owner);
+        }
+    }
+    let status = run_busctl(&["--user", "status", &unique_name])?;
     parse_busctl_status(&status)
+}
+
+fn parse_busctl_string_reply(reply: &str) -> Option<String> {
+    // Method-call string output is formatted as `s "value"`
+    let (_, quoted) = reply.trim().split_once('"')?;
+    let (value, _) = quoted.split_once('"')?;
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 fn run_busctl(args: &[&str]) -> Option<String> {
@@ -221,10 +214,11 @@ fn detect_known_daemons(owner: &Option<OwnerInfo>) -> Vec<DetectedDaemon> {
     KNOWN_DAEMONS
         .iter()
         .map(|daemon| {
-            let (systemd_active, systemd_error) = is_unit_active(daemon.unit);
+            let (systemd_active, systemd_error) =
+                daemon.systemd_unit.map_or((false, None), is_unit_active);
             DetectedDaemon {
                 name: daemon.name.to_string(),
-                unit: daemon.unit.to_string(),
+                unit: daemon.systemd_unit.unwrap_or_default().to_string(),
                 systemd_active,
                 systemd_error,
                 running_pids: pgrep_exact(daemon.name),
