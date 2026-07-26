@@ -221,7 +221,11 @@ pub(in crate::ui::notifications) fn build_notification_row(
             notify_id,
             action_cache_id: Cell::new(0),
             action_cache: RefCell::new(Vec::new()),
-            reply_cache: RefCell::new((unixnotis_core::InlineReply::default(), false)),
+            reply_cache: RefCell::new((
+                unixnotis_core::InlineReply::default(),
+                unixnotis_core::InlineReplyPolicy::Deny,
+                false,
+            )),
             icon_sig: RefCell::new(None),
         },
     )

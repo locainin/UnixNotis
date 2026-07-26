@@ -43,7 +43,8 @@ pub(super) fn update_actions(
                 .zip(notification.actions.iter())
                 .all(|((key, label), action)| key == &action.key && label == &action.label)
             && reply_cached.0 == notification.inline_reply
-            && reply_cached.1 == is_active
+            && reply_cached.1 == notification.inline_reply_policy
+            && reply_cached.2 == is_active
         {
             return;
         }
@@ -58,7 +59,11 @@ pub(super) fn update_actions(
             cached.push((action.key.clone(), action.label.clone()));
         }
         row.action_cache_id.set(notification.id);
-        *row.reply_cache.borrow_mut() = (notification.inline_reply.clone(), is_active);
+        *row.reply_cache.borrow_mut() = (
+            notification.inline_reply.clone(),
+            notification.inline_reply_policy,
+            is_active,
+        );
     }
 
     // Old buttons leave before rebuilding the current action set

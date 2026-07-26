@@ -92,6 +92,45 @@ fn update_notification_row_rebuilds_actions_only_when_signature_changes() {
 }
 
 #[gtk::test]
+fn reply_action_cache_tracks_allow_and_deny_policy_transitions() {
+    let (_root, row) = notification_row();
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+    let mut notification = sample_notification();
+    notification.actions = vec![Action {
+        key: "inline-reply".to_string(),
+        label: "Reply".to_string(),
+    }];
+    notification.inline_reply.available = true;
+    notification.inline_reply_policy = unixnotis_core::InlineReplyPolicy::Allow;
+
+    let render = |notification: &unixnotis_core::NotificationView| {
+        update_notification_row(
+            &row,
+            &row_data(
+                Rc::new(notification.clone()),
+                RowFlags {
+                    is_active: true,
+                    ..Default::default()
+                },
+            ),
+            &IconResolver::new(),
+            &command_tx,
+        );
+    };
+
+    render(&notification);
+    assert_eq!(child_count(&row.actions_box), 1);
+
+    notification.inline_reply_policy = unixnotis_core::InlineReplyPolicy::Deny;
+    render(&notification);
+    assert_eq!(child_count(&row.actions_box), 0);
+
+    notification.inline_reply_policy = unixnotis_core::InlineReplyPolicy::Allow;
+    render(&notification);
+    assert_eq!(child_count(&row.actions_box), 1);
+}
+
+#[gtk::test]
 fn update_notification_row_action_button_sends_command_once_per_click_window() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();

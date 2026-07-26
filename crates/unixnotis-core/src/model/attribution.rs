@@ -25,7 +25,7 @@ pub enum AttributionClass {
 #[repr(u8)]
 pub enum InlineReplyPolicy {
     Allow = 0,
-    Confirm = 1,
+    // Value 1 stays unused until confirmation is enforced by the daemon
     #[default]
     Deny = 2,
 }
