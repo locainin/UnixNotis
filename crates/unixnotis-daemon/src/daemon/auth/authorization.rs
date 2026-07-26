@@ -69,6 +69,12 @@ async fn authorize_control_call_for_executables(
         .ok_or_else(|| zbus::fdo::Error::AccessDenied("missing sender".to_string()))?;
     let sender_name = sender.as_str().to_string();
 
+    #[cfg(test)]
+    if state.is_trusted_test_control_sender(&sender_name) {
+        // The exact broker-assigned owner is injected only by private-bus integration tests
+        return Ok(());
+    }
+
     let bus_name = zbus::names::BusName::try_from(sender_name.as_str())
         .map_err(|_error| zbus::fdo::Error::AccessDenied("invalid sender".to_string()))?;
     // One bus reply keeps all identity fields tied to the same sender snapshot

@@ -52,6 +52,9 @@ pub struct DaemonState {
     pub(crate) desktop_identity_index: Arc<ArcSwap<DesktopIdentityIndex>>,
     // Trial mode allows local rebuild loops without forcing daemon restarts for control auth
     pub(in crate::daemon::state) trial_mode: bool,
+    #[cfg(test)]
+    // Integration tests can authorize one broker-assigned sender without weakening production
+    pub(in crate::daemon::state) trusted_test_control_sender: StdMutex<Option<String>>,
 }
 
 impl DaemonState {
@@ -94,6 +97,8 @@ impl DaemonState {
             sender_metadata_cache: SenderMetadataCache::new(),
             desktop_identity_index,
             trial_mode,
+            #[cfg(test)]
+            trusted_test_control_sender: StdMutex::new(None),
         })
     }
 
