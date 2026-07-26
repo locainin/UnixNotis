@@ -8,5 +8,3 @@ mod limits;
 mod signature;
 mod support;
 mod value;
-
-use support::notify_message;

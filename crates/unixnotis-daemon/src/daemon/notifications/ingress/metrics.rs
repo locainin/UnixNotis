@@ -3,13 +3,13 @@
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum RejectedRequest {
+pub(in crate::daemon::notifications) enum RejectedRequest {
     NotifyQuota,
     NotifyConcurrency,
     CloseQuota,
 }
 
-pub(super) struct IngressMetrics {
+pub(in crate::daemon::notifications) struct IngressMetrics {
     notify_quota_rejections: AtomicU64,
     notify_concurrency_rejections: AtomicU64,
     close_quota_rejections: AtomicU64,
@@ -17,12 +17,12 @@ pub(super) struct IngressMetrics {
     peak_active_handlers: AtomicUsize,
 }
 
-pub(super) struct ActiveHandler<'a> {
+pub(in crate::daemon::notifications) struct ActiveHandler<'a> {
     metrics: &'a IngressMetrics,
 }
 
 impl IngressMetrics {
-    pub(super) const fn new() -> Self {
+    pub(in crate::daemon::notifications) const fn new() -> Self {
         Self {
             notify_quota_rejections: AtomicU64::new(0),
             notify_concurrency_rejections: AtomicU64::new(0),
@@ -32,7 +32,10 @@ impl IngressMetrics {
         }
     }
 
-    pub(super) fn record_rejection(&self, rejected: RejectedRequest) -> u64 {
+    pub(in crate::daemon::notifications) fn record_rejection(
+        &self,
+        rejected: RejectedRequest,
+    ) -> u64 {
         let counter = match rejected {
             RejectedRequest::NotifyQuota => &self.notify_quota_rejections,
             RejectedRequest::NotifyConcurrency => &self.notify_concurrency_rejections,
@@ -41,7 +44,7 @@ impl IngressMetrics {
         counter.fetch_add(1, Ordering::Relaxed).saturating_add(1)
     }
 
-    pub(super) fn enter_handler(&self) -> ActiveHandler<'_> {
+    pub(in crate::daemon::notifications) fn enter_handler(&self) -> ActiveHandler<'_> {
         let active = self
             .active_handlers
             .fetch_add(1, Ordering::Relaxed)

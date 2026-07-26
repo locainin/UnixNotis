@@ -32,6 +32,7 @@ impl SenderMetadataCache {
     }
 
     pub(super) fn get(&self, sender: &str) -> Option<SenderMetadata> {
+        // A poisoned cache fails closed and forces fresh sender resolution
         let mut state = self.state.lock().ok()?;
         let sequence = state.next_sequence();
         let entry = state.entries.get_mut(sender)?;
@@ -44,6 +45,7 @@ impl SenderMetadataCache {
             return;
         };
         let sequence = state.next_sequence();
+        // The least recently used connection yields before the fixed bound is exceeded
         if !state.entries.contains_key(&sender) && state.entries.len() >= MAX_CACHED_SENDERS {
             state.evict_oldest();
         }
@@ -65,11 +67,13 @@ impl SenderMetadataCache {
 
 impl CacheState {
     const fn next_sequence(&mut self) -> u64 {
+        // Wrapping preserves ordering for realistic cache lifetimes without panicking
         self.sequence = self.sequence.wrapping_add(1);
         self.sequence
     }
 
     fn evict_oldest(&mut self) {
+        // A tiny bounded map keeps a linear selection cheaper than another index
         let oldest = self
             .entries
             .iter()

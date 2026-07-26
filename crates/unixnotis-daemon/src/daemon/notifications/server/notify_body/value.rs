@@ -1,6 +1,6 @@
 //! Recursive variant-value traversal without owned payload construction
 
-use crate::daemon::notifications::limits::MAX_HINT_STRING_BYTES;
+use crate::daemon::notifications::ingress::limits::MAX_HINT_STRING_BYTES;
 
 use super::cursor::Cursor;
 use super::limits::{

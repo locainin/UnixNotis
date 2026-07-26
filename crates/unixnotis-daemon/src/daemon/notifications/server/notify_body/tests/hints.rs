@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use zbus::zvariant::{OwnedValue, Structure, Value};
 
 use super::super::{preflight_notify, PreflightError};
-use super::notify_message;
+use super::support::notify_message;
 use crate::daemon::notifications::server::ingress::MAX_NOTIFY_WIRE_BODY_BYTES;
 
 #[test]
@@ -88,7 +88,7 @@ fn non_image_byte_array_does_not_inherit_the_image_allowance() {
 
 #[test]
 fn cumulative_nested_string_data_is_bounded() {
-    let text = "h".repeat(crate::daemon::notifications::limits::MAX_HINT_STRING_BYTES);
+    let text = "h".repeat(crate::daemon::notifications::ingress::limits::MAX_HINT_STRING_BYTES);
     let hints = (0..16)
         .map(|index| {
             let values = Value::from(vec![text.as_str(); 4]);

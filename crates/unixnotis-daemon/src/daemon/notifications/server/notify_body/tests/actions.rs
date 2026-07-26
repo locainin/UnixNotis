@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::super::{preflight_notify, PreflightError};
-use super::notify_message;
+use super::support::notify_message;
 use crate::daemon::notifications::server::ingress::MAX_NOTIFY_WIRE_BODY_BYTES;
 
 #[test]
@@ -36,7 +36,8 @@ fn action_array_accepts_eight_pairs_and_rejects_the_next_element() {
 
 #[test]
 fn action_key_and_label_keep_independent_field_limits() {
-    let oversized_key = "k".repeat(crate::daemon::notifications::limits::MAX_ACTION_KEY_BYTES + 1);
+    let oversized_key =
+        "k".repeat(crate::daemon::notifications::ingress::limits::MAX_ACTION_KEY_BYTES + 1);
     let key_message = notify_message(
         "app",
         "",
@@ -53,7 +54,7 @@ fn action_key_and_label_keep_independent_field_limits() {
     );
 
     let oversized_label =
-        "l".repeat(crate::daemon::notifications::limits::MAX_ACTION_LABEL_BYTES + 1);
+        "l".repeat(crate::daemon::notifications::ingress::limits::MAX_ACTION_LABEL_BYTES + 1);
     let label_message = notify_message(
         "app",
         "",

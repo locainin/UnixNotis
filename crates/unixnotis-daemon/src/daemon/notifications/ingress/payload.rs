@@ -12,27 +12,29 @@ use unixnotis_core::{
 };
 use zbus::zvariant::{OwnedValue, Value};
 
+use super::super::identity::SenderMetadata;
 use super::limits::{
     MAX_ACTIONS, MAX_ACTION_KEY_BYTES, MAX_ACTION_LABEL_BYTES, MAX_APP_ICON_BYTES,
     MAX_APP_NAME_BYTES, MAX_BODY_BYTES, MAX_CATEGORY_BYTES, MAX_HINT_ENTRIES, MAX_HINT_KEY_BYTES,
     MAX_HINT_STRING_BYTES, MAX_SUMMARY_BYTES,
 };
-use super::sender::SenderMetadata;
 
-pub(super) struct NotificationInput {
-    pub(super) app_name: String,
-    pub(super) app_icon: String,
-    pub(super) summary: String,
-    pub(super) body: String,
-    pub(super) actions: Vec<String>,
-    pub(super) hints: HashMap<String, OwnedValue>,
-    pub(super) sender: SenderMetadata,
-    pub(super) attribution: NotificationAttribution,
-    pub(super) inline_reply_policy: InlineReplyPolicy,
-    pub(super) expire_timeout: i32,
+pub(in crate::daemon::notifications) struct NotificationInput {
+    pub(in crate::daemon::notifications) app_name: String,
+    pub(in crate::daemon::notifications) app_icon: String,
+    pub(in crate::daemon::notifications) summary: String,
+    pub(in crate::daemon::notifications) body: String,
+    pub(in crate::daemon::notifications) actions: Vec<String>,
+    pub(in crate::daemon::notifications) hints: HashMap<String, OwnedValue>,
+    pub(in crate::daemon::notifications) sender: SenderMetadata,
+    pub(in crate::daemon::notifications) attribution: NotificationAttribution,
+    pub(in crate::daemon::notifications) inline_reply_policy: InlineReplyPolicy,
+    pub(in crate::daemon::notifications) expire_timeout: i32,
 }
 
-pub(super) fn build_notification(input: NotificationInput) -> Notification {
+pub(in crate::daemon::notifications) fn build_notification(
+    input: NotificationInput,
+) -> Notification {
     let NotificationInput {
         app_name,
         app_icon,
@@ -118,7 +120,10 @@ pub(super) fn build_notification(input: NotificationInput) -> Notification {
     }
 }
 
-pub(super) fn resolve_expiration(config: &Config, notification: &Notification) -> Option<Instant> {
+pub(in crate::daemon::notifications) fn resolve_expiration(
+    config: &Config,
+    notification: &Notification,
+) -> Option<Instant> {
     // Resident notifications never auto-expire
     if notification.is_resident {
         return None;
@@ -245,7 +250,7 @@ fn parse_urgency_hint(value: &OwnedValue) -> Option<u32> {
     None
 }
 
-pub(super) fn owned_to_string(value: &OwnedValue) -> Option<String> {
+pub(in crate::daemon::notifications) fn owned_to_string(value: &OwnedValue) -> Option<String> {
     value
         .try_clone()
         .ok()

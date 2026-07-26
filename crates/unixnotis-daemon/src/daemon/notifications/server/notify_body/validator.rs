@@ -5,7 +5,7 @@ use zbus::Message;
 use super::cursor::Cursor;
 use super::limits::{PreflightError, StringBudget};
 use super::signature::SignatureParser;
-use crate::daemon::notifications::limits::{
+use crate::daemon::notifications::ingress::limits::{
     MAX_ACTIONS, MAX_ACTION_KEY_BYTES, MAX_ACTION_LABEL_BYTES, MAX_APP_ICON_BYTES,
     MAX_APP_NAME_BYTES, MAX_BODY_BYTES, MAX_HINT_ENTRIES, MAX_HINT_KEY_BYTES, MAX_SUMMARY_BYTES,
 };

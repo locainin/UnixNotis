@@ -13,8 +13,8 @@ use zbus::{interface, SignalContext};
 use crate::expire::ExpirationScheduler;
 
 use super::capabilities::notification_capabilities;
-use crate::daemon::notifications::metrics::{IngressMetrics, RejectedRequest};
-use crate::daemon::notifications::quota::NotificationQuota;
+use crate::daemon::notifications::ingress::metrics::{IngressMetrics, RejectedRequest};
+use crate::daemon::notifications::ingress::quota::NotificationQuota;
 use crate::daemon::DaemonState;
 
 const MAX_CONCURRENT_NOTIFY_HANDLERS: usize = 8;

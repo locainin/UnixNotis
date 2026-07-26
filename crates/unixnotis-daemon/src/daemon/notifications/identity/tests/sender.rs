@@ -30,3 +30,23 @@ async fn process_metadata_helpers_read_current_process_on_linux() {
     let start_time = read_process_start_time(pid).expect("current process start time should exist");
     assert!(start_time > 1);
 }
+
+#[test]
+fn stable_process_evidence_keeps_matching_lifetime_observations() {
+    assert_eq!(
+        stable_process_evidence(Some(42), Some("evidence"), Some(42)),
+        (Some(42), Some("evidence"))
+    );
+}
+
+#[test]
+fn stable_process_evidence_discards_pid_reuse_or_missing_observations() {
+    assert_eq!(
+        stable_process_evidence(Some(42), Some("evidence"), Some(43)),
+        (None, None)
+    );
+    assert_eq!(
+        stable_process_evidence(None, Some("evidence"), None),
+        (None, None)
+    );
+}

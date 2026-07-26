@@ -1,5 +1,5 @@
 use super::{SenderMetadataCache, MAX_CACHED_SENDERS};
-use crate::daemon::notifications::sender::SenderMetadata;
+use crate::daemon::notifications::identity::sender::SenderMetadata;
 
 fn metadata(sender: &str, pid: u32) -> SenderMetadata {
     SenderMetadata {
