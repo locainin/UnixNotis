@@ -14,6 +14,9 @@ pub(in crate::daemon) const TRUSTED_CONTROL_EXECUTABLES: [&str; 4] = [
 // Only the center process may publish panel readiness state
 pub(in crate::daemon) const TRUSTED_PANEL_READINESS_EXECUTABLES: [&str; 1] = ["unixnotis-center"];
 
+// Only the popup renderer may publish its composite D-Bus and GTK readiness
+pub(in crate::daemon) const TRUSTED_POPUP_READINESS_EXECUTABLES: [&str; 1] = ["unixnotis-popups"];
+
 // Small bounded caches avoid unbounded growth from repeated forged callers
 pub(in crate::daemon) const FINGERPRINT_CACHE_CAPACITY: usize = 32;
 pub(in crate::daemon) const TRUSTED_SNAPSHOT_CACHE_CAPACITY: usize = 32;

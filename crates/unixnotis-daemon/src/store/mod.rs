@@ -6,7 +6,10 @@ mod model;
 mod notifications;
 mod runtime;
 
-pub use model::{DismissOutcome, DndWrite, InsertOutcome, NotificationStore};
+pub use model::{
+    DismissOutcome, DndWrite, InsertOutcome, NotificationStore, PopupAdmission,
+    PopupSuppressionReason,
+};
 
 #[cfg(test)]
 mod test_support;

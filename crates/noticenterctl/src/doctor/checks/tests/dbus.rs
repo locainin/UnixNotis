@@ -6,7 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::dbus::*;
 use crate::doctor::report::DoctorSeverity;
-use unixnotis_core::{ControlState, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH, NOTIFICATIONS_BUS_NAME};
+use unixnotis_core::{
+    ControlState, UiHealth, CONTROL_BUS_NAME, CONTROL_OBJECT_PATH, NOTIFICATIONS_BUS_NAME,
+};
 use zbus::ConnectionBuilder;
 
 static NEXT_BROKER: AtomicUsize = AtomicUsize::new(0);
@@ -85,6 +87,15 @@ impl TestControl {
             history_count: 4,
             inhibited: false,
             inhibitor_count: 2,
+        })
+    }
+
+    fn get_ui_health(&self) -> zbus::fdo::Result<UiHealth> {
+        Ok(UiHealth {
+            center_process_running: true,
+            center_ready: true,
+            popups_process_running: true,
+            popups_ready: true,
         })
     }
 }
@@ -225,6 +236,16 @@ fn owned_control_service_runs_proxy_and_state_checks() {
             .details
             .as_deref()
             .is_some_and(|details| details.contains("History entries: 4")));
+        let ui_health = result
+            .checks
+            .iter()
+            .find(|check| check.id == "dbus.ui-health")
+            .expect("UI health check");
+        assert_eq!(ui_health.severity, DoctorSeverity::Pass);
+        assert!(ui_health
+            .details
+            .as_deref()
+            .is_some_and(|details| details.contains("Popup GTK runtime: ready")));
     });
 }
 

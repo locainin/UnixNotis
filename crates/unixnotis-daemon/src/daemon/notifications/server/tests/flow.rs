@@ -17,7 +17,7 @@ use zbus::{Connection, MatchRule, Message, MessageStream};
 use crate::daemon::{DaemonState, NotificationServer};
 use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
-use crate::store::{InsertOutcome, NotificationStore};
+use crate::store::{InsertOutcome, NotificationStore, PopupAdmission, PopupSuppressionReason};
 use crate::test_support::daemon_state_for_test;
 
 fn notification_with_id(id: u32) -> Arc<Notification> {
@@ -52,7 +52,11 @@ fn insert_outcome(id: u32, dropped: bool) -> InsertOutcome {
     InsertOutcome {
         notification: notification_with_id(id),
         replaced: false,
-        show_popup: !dropped,
+        popup_admission: if dropped {
+            PopupAdmission::Suppressed(PopupSuppressionReason::DropAllInhibitor)
+        } else {
+            PopupAdmission::Show
+        },
         allow_sound: !dropped,
         evicted: Vec::new(),
         dropped,

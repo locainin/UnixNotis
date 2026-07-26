@@ -237,7 +237,7 @@ impl NotificationServer {
                 mode,
                 outcome.notification.id,
                 outcome.replaced,
-                outcome.show_popup,
+                outcome.popup_admission.should_show(),
             )
             .await
             .map_err(to_fdo_error)
@@ -253,15 +253,35 @@ impl NotificationServer {
         }
 
         self.schedule_and_play(&outcome, expiration);
-        self.emit_notification_change(&outcome).await?;
+        debug!(
+            id = outcome.notification.id,
+            decision = ?outcome.popup_admission,
+            "notification popup admission decided"
+        );
+        if outcome.popup_admission.should_show() && self.state.should_warn_popups_unready() {
+            warn!(
+                id = outcome.notification.id,
+                "popup admitted while popup renderer is not ready"
+            );
+        }
+        let id = outcome.notification.id;
+        if let Err(error) = self.emit_notification_change(&outcome).await {
+            warn!(?error, id, "notification committed but live fanout failed");
+            // Snapshot invalidation gives connected clients one best-effort recovery route
+            let _ = self.state.publish_snapshot_invalidated().await;
+        }
         // Evicted items are announced so UIs can remove stale rows
-        self.handle_evicted(outcome.evicted).await?;
-        self.state
-            .publish_state_changed()
-            .await
-            .map_err(to_fdo_error)?;
+        if let Err(error) = self.handle_evicted(outcome.evicted).await {
+            warn!(
+                ?error,
+                id, "notification committed but eviction fanout failed"
+            );
+        }
+        if let Err(error) = self.state.publish_state_changed().await {
+            warn!(?error, id, "notification committed but state fanout failed");
+        }
 
-        Ok(outcome.notification.id)
+        Ok(id)
     }
 
     async fn handle_evicted(&self, evicted: Vec<u32>) -> zbus::fdo::Result<()> {

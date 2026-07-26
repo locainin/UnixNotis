@@ -9,6 +9,7 @@ use crate::NotificationView;
 
 use super::{
     CloseReason, ControlState, InhibitorInfo, PanelDebugLevel, PanelRequest, PopupGateState,
+    UiHealth,
 };
 
 #[proxy(
@@ -19,8 +20,12 @@ use super::{
 trait Control {
     /// Current daemon state
     fn get_state(&self) -> zbus::Result<ControlState>;
+    /// Readiness of the daemon-managed center and popup clients
+    fn get_ui_health(&self) -> zbus::Result<UiHealth>;
     /// Active notifications intended for popups
     fn list_active(&self) -> zbus::Result<Vec<NotificationView>>;
+    /// Active notifications whose persistent rule policy permits popup rendering
+    fn list_popup_candidates(&self) -> zbus::Result<Vec<NotificationView>>;
     /// History notifications for the panel
     fn list_history(&self) -> zbus::Result<Vec<NotificationView>>;
     /// Fetch one currently active notification by identifier
@@ -62,6 +67,11 @@ trait Control {
     /// Clear panel readiness while the UI reconnects or shuts down
     #[zbus(no_autostart)]
     fn mark_panel_not_ready(&self) -> zbus::Result<()>;
+    /// Mark popup rendering ready after subscriptions, seed, and GTK initialization
+    fn mark_popups_ready(&self) -> zbus::Result<()>;
+    /// Clear popup readiness during orderly shutdown without activating the daemon
+    #[zbus(no_autostart)]
+    fn mark_popups_not_ready(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn notification_added(&self, id: u32, show_popup: bool) -> zbus::Result<()>;

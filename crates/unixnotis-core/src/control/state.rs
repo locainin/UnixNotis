@@ -23,5 +23,14 @@ pub struct PopupGateState {
     pub inhibited: bool,
 }
 
+/// Process and handshake state for both daemon-managed user interfaces
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq, Eq)]
+pub struct UiHealth {
+    pub center_process_running: bool,
+    pub center_ready: bool,
+    pub popups_process_running: bool,
+    pub popups_ready: bool,
+}
+
 /// Tuple layout for inhibitor listings: identifier, reason, scope, and owner
 pub type InhibitorInfo = (u64, String, u32, String);

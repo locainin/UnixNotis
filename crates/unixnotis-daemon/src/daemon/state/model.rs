@@ -25,7 +25,12 @@ pub struct DaemonState {
     // Panel control should only succeed once the center has subscribed
     // This avoids accepting requests that no live listener can receive
     pub(in crate::daemon::state) panel_ready: AtomicBool,
-    pub(in crate::daemon::state) popups_running: AtomicBool,
+    pub(in crate::daemon::state) center_process_running: AtomicBool,
+    pub(in crate::daemon::state) popups_process_running: AtomicBool,
+    pub(in crate::daemon::state) popups_ready: AtomicBool,
+    pub(in crate::daemon::state) popups_unready_warning_emitted: AtomicBool,
+    // The unique D-Bus owner prevents an older popup generation from clearing a newer one
+    pub(in crate::daemon::state) popups_ready_owner: StdMutex<Option<String>>,
     // Scheduler is installed after state startup so close paths can cancel timers
     pub(in crate::daemon::state) scheduler: OnceLock<ExpirationScheduler>,
     // Warn once if scheduler-backed operations happen before install
@@ -74,7 +79,11 @@ impl DaemonState {
             sound,
             connection: connection.clone(),
             panel_ready: AtomicBool::new(false),
-            popups_running: AtomicBool::new(false),
+            center_process_running: AtomicBool::new(false),
+            popups_process_running: AtomicBool::new(false),
+            popups_ready: AtomicBool::new(false),
+            popups_unready_warning_emitted: AtomicBool::new(false),
+            popups_ready_owner: StdMutex::new(None),
             scheduler: OnceLock::new(),
             scheduler_missing_warned: AtomicBool::new(false),
             dnd_scheduler: OnceLock::new(),

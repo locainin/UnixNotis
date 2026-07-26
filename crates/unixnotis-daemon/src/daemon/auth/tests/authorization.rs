@@ -3,8 +3,8 @@ use zbus::Message;
 #[cfg(target_os = "linux")]
 use super::authorization::required_linux_process_fd;
 use super::authorization::{
-    authorize_control_call, authorize_panel_readiness_call, control_executable_error,
-    control_owner_uid_error,
+    authorize_control_call, authorize_panel_readiness_call, authorize_popup_readiness_call,
+    control_executable_error, control_owner_uid_error,
 };
 #[cfg(target_os = "linux")]
 use super::credentials::CallerCredentials;
@@ -40,6 +40,19 @@ async fn panel_readiness_authorization_rejects_header_without_bus_sender() {
     let header = message.header();
 
     let err = authorize_panel_readiness_call(&state, &header, "PanelReady")
+        .await
+        .expect_err("missing sender must be rejected");
+
+    assert!(err.to_string().contains("missing sender"));
+}
+
+#[tokio::test]
+async fn popup_readiness_authorization_rejects_header_without_bus_sender() {
+    let state = daemon_state_for_test(false).await;
+    let message = message_without_bus_sender();
+    let header = message.header();
+
+    let err = authorize_popup_readiness_call(&state, &header, "PopupsReady")
         .await
         .expect_err("missing sender must be rejected");
 

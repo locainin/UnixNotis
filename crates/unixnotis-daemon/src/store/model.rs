@@ -43,14 +43,34 @@ pub struct InsertOutcome {
     pub notification: Arc<Notification>,
     // True when insertion replaced an existing id
     pub replaced: bool,
-    // Whether popup rendering is allowed for this payload
-    pub show_popup: bool,
+    // Structured popup policy keeps suppression causes available to diagnostics
+    pub popup_admission: PopupAdmission,
     // Whether sound playback is allowed for this payload
     pub allow_sound: bool,
     // Active ids evicted because max_active was exceeded
     pub evicted: Vec<u32>,
     // True when payload was intentionally dropped by inhibit mode
     pub dropped: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PopupAdmission {
+    Show,
+    Suppressed(PopupSuppressionReason),
+}
+
+impl PopupAdmission {
+    pub const fn should_show(self) -> bool {
+        matches!(self, Self::Show)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PopupSuppressionReason {
+    Rule,
+    Dnd,
+    Inhibitor,
+    DropAllInhibitor,
 }
 
 pub struct DndWrite {

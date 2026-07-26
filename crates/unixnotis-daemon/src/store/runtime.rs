@@ -113,6 +113,16 @@ impl NotificationStore {
         self.history.list_views()
     }
 
+    pub fn list_popup_candidates(&self) -> Vec<NotificationView> {
+        // Newest-first ordering matches ListActive while excluding persistent no-popup rules
+        self.active
+            .values()
+            .rev()
+            .filter(|notification| !notification.suppress_popup)
+            .map(|notification| notification.to_list_view())
+            .collect()
+    }
+
     pub fn active_notification_view(&self, id: u32) -> Option<NotificationView> {
         // Active rows use the richer popup-oriented view because add/update signals
         // are consumed by trusted UIs that may need current image payloads

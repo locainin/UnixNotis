@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use unixnotis_core::{
     CloseReason, ControlState, InhibitorInfo, NotificationView, PanelDebugLevel, PanelRequest,
-    PopupGateState,
+    PopupGateState, UiHealth,
 };
 use zbus::message::Header;
 use zbus::{interface, SignalContext};
@@ -73,11 +73,22 @@ impl ControlServer {
         self.query_state().await
     }
 
+    async fn get_ui_health(&self) -> zbus::fdo::Result<UiHealth> {
+        Ok(self.state.ui_health())
+    }
+
     async fn list_active(
         &self,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<Vec<NotificationView>> {
         self.query_active(&header).await
+    }
+
+    async fn list_popup_candidates(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<Vec<NotificationView>> {
+        self.query_popup_candidates(&header).await
     }
 
     async fn list_history(
@@ -237,6 +248,19 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
         self.set_panel_ready_state(&header, "MarkPanelNotReady", false)
+            .await
+    }
+
+    async fn mark_popups_ready(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
+        self.set_popups_ready_state(&header, "MarkPopupsReady", true)
+            .await
+    }
+
+    async fn mark_popups_not_ready(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.set_popups_ready_state(&header, "MarkPopupsNotReady", false)
             .await
     }
 

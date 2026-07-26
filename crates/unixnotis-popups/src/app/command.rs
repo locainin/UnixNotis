@@ -72,7 +72,24 @@ pub fn run(args: Args) -> Result<()> {
 
         // Bound the queue so a stalled UI cannot grow memory forever
         let (event_tx, event_rx) = async_channel::bounded(UI_EVENT_QUEUE_CAPACITY);
-        let command_tx = dbus::start_dbus_runtime(event_tx.clone());
+        let dbus_runtime = dbus::start_dbus_runtime(event_tx.clone());
+        let command_tx = dbus_runtime.command_sender();
+        let shutdown_tx = command_tx.clone();
+        app.connect_shutdown(move |_| {
+            let (acknowledgement_tx, acknowledgement_rx) = std::sync::mpsc::sync_channel(1);
+            if shutdown_tx
+                .blocking_send(dbus::UiCommand::Shutdown(acknowledgement_tx))
+                .is_err()
+            {
+                return;
+            }
+            if acknowledgement_rx
+                .recv_timeout(unixnotis_core::INTERNAL_DBUS_CALL_TIMEOUT)
+                .is_err()
+            {
+                warn!("popup readiness cleanup timed out during GTK shutdown");
+            }
+        });
         let reload_gate = Arc::new(ReloadGate::new());
         // Timer state keeps only one flush source alive at a time
         let reload_timer = Arc::new(Mutex::new(None::<glib::SourceId>));
@@ -89,6 +106,8 @@ pub fn run(args: Args) -> Result<()> {
             command_tx,
             css_manager,
         )));
+        // Composite readiness now means GTK state exists as well as D-Bus seeding succeeding
+        dbus_runtime.mark_gtk_ready();
 
         let ui_clone = ui;
         let reload_gate_loop = Arc::clone(&reload_gate);
