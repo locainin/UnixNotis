@@ -1,7 +1,7 @@
 use unixnotis_core::InhibitMode;
 
 use super::model::{inhibits_popups, Inhibitor, InhibitorOwnerMismatch};
-use super::NotificationStore;
+use crate::store::NotificationStore;
 
 impl NotificationStore {
     pub fn add_inhibitor(&mut self, owner: String, reason: String, scope: u32) -> u64 {

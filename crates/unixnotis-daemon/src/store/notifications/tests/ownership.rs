@@ -1,4 +1,4 @@
-use super::*;
+use super::support::*;
 
 #[test]
 fn replace_id_in_history_reuses_id_and_clears_entry() {
@@ -44,16 +44,6 @@ fn replace_id_rejected_for_different_sender() {
     assert!(!replaced.replaced);
     assert_ne!(replaced.notification.id, first.notification.id);
     assert_eq!(store.history_len(), 1);
-}
-
-#[test]
-fn inhibit_owner_mismatch_is_rejected() {
-    let mut store = make_store_with_limits(10, 10);
-    let id = store.add_inhibitor("owner-a".to_string(), "reason".to_string(), 0);
-    let err = store
-        .remove_inhibitor(id, "owner-b")
-        .expect_err("owner mismatch should error");
-    assert!(err.message().contains("owner-a"));
 }
 
 #[test]
@@ -160,4 +150,41 @@ fn replacement_allows_same_process_after_bus_reconnect() {
     // Same process lifetime can replace after the bus name changes
     assert!(replacement.replaced);
     assert_eq!(replacement.notification.id, first.notification.id);
+}
+
+#[test]
+fn next_id_skips_used_ids_within_used_window() {
+    let mut store = make_store_with_limits(5, 5);
+    store.next_id = 1;
+
+    let mut active = make_notification("active");
+    active.id = 1;
+    store.active.insert(1, Arc::new(active));
+
+    let mut history = make_notification("history");
+    history.id = 3;
+    store.history.insert(Arc::new(history));
+
+    assert_eq!(store.next_id(), 2);
+}
+
+#[test]
+fn next_id_skips_ids_that_exist_only_in_history() {
+    let mut store = make_store_with_limits(5, 5);
+    store.next_id = 7;
+
+    let mut history = make_notification("history-only");
+    history.id = 7;
+    store.history.insert(Arc::new(history));
+
+    assert_eq!(store.next_id(), 8);
+}
+
+#[test]
+fn next_id_wraps_internal_cursor_back_to_one_after_max_id() {
+    let mut store = make_store_with_limits(5, 5);
+    store.next_id = u32::MAX;
+
+    assert_eq!(store.next_id(), u32::MAX);
+    assert_eq!(store.next_id, 1);
 }

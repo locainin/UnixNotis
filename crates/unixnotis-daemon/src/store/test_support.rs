@@ -6,8 +6,9 @@ use chrono::Utc;
 use unixnotis_core::{Config, Notification, NotificationImage, Urgency};
 use zbus::zvariant::OwnedValue;
 
+use super::dnd::DndStateStore;
 use super::dnd::{PersistedDndState, DND_STATE_FILE};
-use super::{DndStateStore, NotificationStore};
+use super::model::NotificationStore;
 
 impl NotificationStore {
     pub(crate) fn new_with_state_dir(config: Config, state_dir: std::path::PathBuf) -> Self {

@@ -1,4 +1,4 @@
-use super::{DndWrite, NotificationStore};
+use crate::store::{DndWrite, NotificationStore};
 
 impl NotificationStore {
     pub const fn dnd_enabled(&self) -> bool {

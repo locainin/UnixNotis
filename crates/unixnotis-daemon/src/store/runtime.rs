@@ -5,7 +5,9 @@ use indexmap::IndexMap;
 use tracing::{debug, warn};
 use unixnotis_core::{Config, ControlState, Notification, NotificationView};
 
-use super::{DndStateStore, HistoryStore, NotificationStore, DND_STATE_VERSION};
+use super::dnd::{DndStateStore, DND_STATE_VERSION};
+use super::model::NotificationStore;
+use super::notifications::HistoryStore;
 
 impl NotificationStore {
     pub fn new(config: Config) -> Self {

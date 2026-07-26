@@ -1,4 +1,4 @@
-use super::*;
+use super::support::*;
 
 #[test]
 fn dnd_state_overrides_default() {

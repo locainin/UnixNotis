@@ -1,4 +1,4 @@
-use super::*;
+use super::support::*;
 
 #[test]
 fn plain_dnd_enable_replaces_a_timed_deadline_with_indefinite_state() {

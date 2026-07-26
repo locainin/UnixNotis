@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use unixnotis_core::{CloseReason, Notification};
 
-use super::{DismissOutcome, NotificationStore};
+use crate::store::{DismissOutcome, NotificationStore};
 
 impl NotificationStore {
     pub fn close(&mut self, id: u32, reason: CloseReason) -> Option<Arc<Notification>> {

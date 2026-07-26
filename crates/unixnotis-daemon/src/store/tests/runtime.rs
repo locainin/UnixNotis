@@ -1,8 +1,33 @@
 use std::sync::Arc;
 
-use unixnotis_core::{Action, CloseReason, InlineReply, InlineReplyPolicy};
+use unixnotis_core::{Action, CloseReason, Config, InlineReply, InlineReplyPolicy};
 
-use super::{make_notification, make_store_with_limits};
+use crate::store::test_support::{make_notification, make_store_with_limits};
+use crate::store::NotificationStore;
+
+#[test]
+fn config_accessor_returns_runtime_config_snapshot() {
+    let mut config = Config::default();
+    config.history.max_entries = 77;
+    config.history.max_active = 3;
+    let store = NotificationStore::new(config);
+
+    assert_eq!(store.config().history.max_entries, 77);
+    assert_eq!(store.config().history.max_active, 3);
+}
+
+#[test]
+fn active_notification_view_returns_current_active_payload() {
+    let mut store = make_store_with_limits(10, 10);
+    let outcome = store.insert(make_notification("visible"), 0);
+
+    let view = store
+        .active_notification_view(outcome.notification.id)
+        .expect("active notification should be visible");
+
+    assert_eq!(view.id, outcome.notification.id);
+    assert_eq!(view.summary, "visible");
+}
 
 #[test]
 fn active_inline_reply_target_requires_a_live_explicit_reply_action() {
@@ -103,63 +128,4 @@ fn inline_reply_policy_denies_a_complete_reply_action() {
     let id = store.insert(notification, 0).notification.id;
 
     assert!(store.active_inline_reply_target(id).is_none());
-}
-
-#[test]
-fn generation_safe_reply_dismissal_keeps_same_id_replacement() {
-    let mut store = make_store_with_limits(12, 20);
-    let mut original = make_notification("original");
-    original.inline_reply.available = true;
-    original.actions.push(Action {
-        key: "inline-reply".to_string(),
-        label: "Reply".to_string(),
-    });
-    let original = store.insert(original, 0).notification;
-    let id = original.id;
-
-    let replacement = store.insert(make_notification("replacement"), id);
-    assert!(replacement.replaced);
-
-    assert!(!store.dismiss_active_if_current(id, &original));
-    assert_eq!(
-        store
-            .active_notification_view(id)
-            .expect("replacement should remain active")
-            .summary,
-        "replacement"
-    );
-    assert!(store.dismiss_active_if_current(id, &replacement.notification));
-    assert!(store.active_notification_view(id).is_none());
-}
-
-#[test]
-fn replied_generation_is_removed_after_sender_archives_it() {
-    let mut store = make_store_with_limits(12, 20);
-    let original = store.insert(make_notification("original"), 0).notification;
-    let id = original.id;
-    store.close(id, CloseReason::ClosedByCall);
-    assert_eq!(store.list_history().len(), 1);
-
-    let outcome = store.dismiss_replied_generation(id, &original);
-
-    assert!(!outcome.removed_active);
-    assert!(outcome.removed_history);
-    assert!(store.list_history().is_empty());
-}
-
-#[test]
-fn replied_generation_cleanup_keeps_archived_same_id_replacement() {
-    let mut store = make_store_with_limits(12, 20);
-    let original = store.insert(make_notification("original"), 0).notification;
-    let id = original.id;
-    let replacement = store.insert(make_notification("replacement"), id);
-    assert!(replacement.replaced);
-    store.close(id, CloseReason::ClosedByCall);
-
-    let outcome = store.dismiss_replied_generation(id, &original);
-
-    assert!(!outcome.removed_any());
-    let history = store.list_history();
-    assert_eq!(history.len(), 1);
-    assert_eq!(history[0].summary, "replacement");
 }

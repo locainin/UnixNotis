@@ -5,7 +5,7 @@ use unixnotis_core::{
     Notification, Urgency,
 };
 
-use super::{InsertOutcome, NotificationStore};
+use crate::store::{InsertOutcome, NotificationStore};
 
 // Hard ceiling for concurrently active notifications to protect panel/popups stability
 const ACTIVE_HARD_CAP: usize = 12;

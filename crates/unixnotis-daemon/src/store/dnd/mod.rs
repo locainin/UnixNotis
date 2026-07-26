@@ -3,7 +3,6 @@
 mod persistence;
 mod state;
 
-use super::{DndWrite, NotificationStore};
 pub(in crate::store) use persistence::{DndStateStore, DND_STATE_VERSION};
 
 #[cfg(test)]

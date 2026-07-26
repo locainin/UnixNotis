@@ -1,7 +1,7 @@
 use tracing::warn;
 use unixnotis_core::Notification;
 
-use super::NotificationStore;
+use crate::store::NotificationStore;
 
 impl NotificationStore {
     pub fn is_notification_owned_by(

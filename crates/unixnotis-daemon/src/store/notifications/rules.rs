@@ -1,6 +1,6 @@
 use unixnotis_core::{Notification, RuleConfig, Urgency};
 
-use super::NotificationStore;
+use crate::store::NotificationStore;
 
 impl NotificationStore {
     pub(super) fn apply_rules(&self, notification: &mut Notification) {
