@@ -348,6 +348,138 @@ fn matching_fixed_system_application_argument_allows_association() {
 }
 
 #[test]
+fn no_hint_shared_runtimes_with_wrong_payloads_are_denied() {
+    for (serial, executable, expected, actual) in [
+        (
+            1_u64,
+            "/usr/bin/python3",
+            "/usr/share/password-manager/main.py",
+            "/tmp/fake.py",
+        ),
+        (
+            2,
+            "/usr/bin/pypy3",
+            "/usr/share/password-manager/main.py",
+            "/tmp/fake.py",
+        ),
+        (
+            3,
+            "/usr/bin/gjs",
+            "/usr/share/password-manager/main.js",
+            "/tmp/fake.js",
+        ),
+        (
+            4,
+            "/usr/bin/dotnet",
+            "/usr/share/password-manager/PasswordManager.dll",
+            "/tmp/Fake.dll",
+        ),
+        (
+            5,
+            "/usr/bin/java",
+            "/usr/share/password-manager/password-manager.jar",
+            "/tmp/fake.jar",
+        ),
+    ] {
+        let runtime_identity = identity(60, 600 + serial, 0);
+        let fixed_arguments = if executable == "/usr/bin/java" {
+            vec!["-jar", expected]
+        } else {
+            vec![expected]
+        };
+        let sender_arguments = if executable == "/usr/bin/java" {
+            vec!["-jar", actual]
+        } else {
+            vec![actual]
+        };
+        let record = system_record(
+            "org.example.PasswordManager",
+            "Example Password Manager",
+            executable,
+            runtime_identity,
+        )
+        .with_launch_literals(&fixed_arguments);
+        let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+        let resolution = resolve_with_evidence(
+            AppClaim {
+                reported_name: "Example Password Manager",
+                desktop_entry: None,
+            },
+            &sender_with_arguments(executable, runtime_identity, &sender_arguments),
+            &index,
+            &HashSet::new(),
+        );
+
+        assert_ne!(
+            resolution.attribution.class,
+            AttributionClass::SystemAssociated,
+            "{executable} accepted a different no-hint application payload"
+        );
+        assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    }
+}
+
+#[test]
+fn no_hint_shared_runtime_with_matching_protected_payload_is_allowed() {
+    let runtime_identity = identity(61, 610, 0);
+    let record = system_record(
+        "org.example.PasswordManager",
+        "Example Password Manager",
+        "/usr/bin/python3",
+        runtime_identity,
+    )
+    .with_launch_literals(&["/usr/share/password-manager/main.py"]);
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Example Password Manager",
+            desktop_entry: None,
+        },
+        &sender_with_arguments(
+            "/usr/bin/python3",
+            runtime_identity,
+            &["/usr/share/password-manager/main.py"],
+        ),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_eq!(
+        resolution.attribution.class,
+        AttributionClass::SystemAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+}
+
+#[test]
+fn no_hint_wrong_payload_with_unrelated_claim_remains_unknown() {
+    let runtime_identity = identity(62, 620, 0);
+    let record = system_record(
+        "org.example.PasswordManager",
+        "Example Password Manager",
+        "/usr/bin/python3",
+        runtime_identity,
+    )
+    .with_launch_literals(&["/usr/share/password-manager/main.py"]);
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Unrelated Local Script",
+            desktop_entry: None,
+        },
+        &sender_with_arguments("/usr/bin/python3", runtime_identity, &["/tmp/local.py"]),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_eq!(resolution.attribution.class, AttributionClass::Unknown);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
 fn unmediated_flatpak_process_cannot_become_portal_associated() {
     let flatpak_identity = identity(21, 210, 0);
     let mut record = system_record(
