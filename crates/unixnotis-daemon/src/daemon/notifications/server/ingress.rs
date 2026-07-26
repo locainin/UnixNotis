@@ -68,6 +68,14 @@ impl Interface for NotificationIngress {
         message: &'call Message,
         name: MemberName<'call>,
     ) -> DispatchResult<'call> {
+        if notify_has_unix_fds(name.as_str(), message.header().unix_fds()) {
+            // Notify has no descriptor-bearing fields, so attached descriptors are always invalid
+            return DispatchResult::new_async(connection, message, async {
+                Err::<(), _>(zbus::fdo::Error::InvalidArgs(
+                    "Notify does not accept Unix file descriptors".to_string(),
+                ))
+            });
+        }
         if notify_body_is_oversized(name.as_str(), message.body().len()) {
             // Construct the D-Bus error without asking the typed interface to decode the body
             return DispatchResult::new_async(connection, message, async {
@@ -112,6 +120,10 @@ impl Interface for NotificationIngress {
 
 fn notify_body_is_oversized(member: &str, body_len: usize) -> bool {
     member.as_bytes() == b"Notify" && body_len > MAX_NOTIFY_WIRE_BODY_BYTES
+}
+
+fn notify_has_unix_fds(member: &str, unix_fds: Option<u32>) -> bool {
+    member.as_bytes() == b"Notify" && unix_fds.is_some_and(|count| count != 0)
 }
 
 #[cfg(test)]

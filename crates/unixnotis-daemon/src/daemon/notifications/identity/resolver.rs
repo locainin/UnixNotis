@@ -6,11 +6,11 @@ use unixnotis_core::{AttributionClass, InlineReplyPolicy, NotificationAttributio
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
-use super::super::sender::SenderMetadata;
 use super::desktop_index::{
     normalize_desktop_id, normalize_name, DesktopIdentityIndex, DesktopRecord,
 };
 use super::policy::inline_reply_policy;
+use super::sender::SenderMetadata;
 
 const MAX_DESKTOP_ID_BYTES: usize = 256;
 
@@ -61,7 +61,7 @@ fn resolve_with_evidence(
                 .iter()
                 .find(|record| record_matches_sender(record, sender))
             {
-                return resolution_for_record(record, claim.reported_name, sender);
+                return resolution_for_record(record, claim.reported_name, sender, index);
             }
             if records
                 .iter()
@@ -85,9 +85,9 @@ fn resolve_with_evidence(
             .iter()
             .find(|record| record.claim_matches(claim.reported_name))
         {
-            return resolution_for_record(record, claim.reported_name, sender);
+            return resolution_for_record(record, claim.reported_name, sender, index);
         }
-        if records.iter().any(|record| record.system_entry) {
+        if records.iter().any(|record| record.system_association) {
             // A known executable with a conflicting name must fail closed
             return conflict_resolution(claim.reported_name, sender, "application claim mismatch");
         }
@@ -130,12 +130,13 @@ fn resolution_for_record(
     record: &DesktopRecord,
     reported_name: &str,
     sender: &SenderMetadata,
+    index: &DesktopIdentityIndex,
 ) -> AttributionResolution {
     // Display metadata is projected only after the record and sender identities agree
     if !record.claim_matches(reported_name) {
         return conflict_resolution(reported_name, sender, "application claim mismatch");
     }
-    let class = if record.system_entry {
+    let class = if record.system_association {
         AttributionClass::SystemAssociated
     } else {
         AttributionClass::UserAssociated
@@ -145,14 +146,36 @@ fn resolution_for_record(
         .as_deref()
         .map(|path| path.display().to_string())
         .unwrap_or_default();
+    let shadows_system_id = !record.system_origin && index.has_system_record_for_id(&record.id);
+    let source_label = if shadows_system_id {
+        format!("Shadows a system desktop entry; source {source_label}")
+    } else {
+        source_label
+    };
+    let group_prefix = if record.system_association {
+        "system-desktop"
+    } else if record.system_origin {
+        "system-unverified-desktop"
+    } else {
+        "user-desktop"
+    };
+    let origin = record.desktop_identity.map_or_else(
+        || "unknown".to_string(),
+        super::executable::FileIdentity::group_fragment,
+    );
+    let group_key = if record.system_association {
+        format!("{group_prefix}:{}", record.id)
+    } else {
+        format!("{group_prefix}:{origin}:{}", record.id)
+    };
     let attribution = NotificationAttribution::associated(
         &record.display_name,
         &record.id,
         &record.badge_icon,
         &source_label,
         class,
-        false,
-        format!("desktop:{}", record.id),
+        shadows_system_id,
+        group_key,
     );
     policy_resolution(attribution)
 }
@@ -182,6 +205,9 @@ const fn policy_resolution(attribution: NotificationAttribution) -> AttributionR
 }
 
 const fn record_matches_sender(record: &DesktopRecord, sender: &SenderMetadata) -> bool {
+    if !record.association_eligible {
+        return false;
+    }
     match (
         record.executable_identity,
         sender.sender_executable_identity,

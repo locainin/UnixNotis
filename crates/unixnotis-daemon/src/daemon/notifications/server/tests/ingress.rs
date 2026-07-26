@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+use std::os::fd::AsFd;
 
 use zbus::zvariant::{OwnedValue, Structure, Value};
 use zbus::Connection;
 
-use super::{notify_body_is_oversized, NotificationIngress, MAX_NOTIFY_WIRE_BODY_BYTES};
+use super::{
+    notify_body_is_oversized, notify_has_unix_fds, NotificationIngress, MAX_NOTIFY_WIRE_BODY_BYTES,
+};
 use crate::daemon::{NotificationServer, NOTIFICATIONS_OBJECT_PATH};
 use crate::expire::ExpirationScheduler;
 use crate::test_support::daemon_state_for_test;
@@ -25,6 +28,29 @@ fn notify_wire_limit_applies_only_to_oversized_notify_calls() {
         "CloseNotification",
         MAX_NOTIFY_WIRE_BODY_BYTES + 1
     ));
+}
+
+#[test]
+fn unix_file_descriptors_are_rejected_only_for_notify_calls() {
+    assert!(!notify_has_unix_fds("Notify", None));
+    assert!(!notify_has_unix_fds("Notify", Some(0)));
+    assert!(notify_has_unix_fds("Notify", Some(1)));
+    assert!(!notify_has_unix_fds("CloseNotification", Some(1)));
+}
+
+#[test]
+fn raw_message_header_exposes_attached_unix_file_descriptor_count() {
+    let file = std::fs::File::open("/dev/null").expect("open descriptor fixture");
+    let descriptor = zbus::zvariant::Fd::from(file.as_fd());
+    let message = zbus::Message::method(NOTIFICATIONS_OBJECT_PATH, "Notify")
+        .expect("method builder")
+        .interface(NOTIFICATIONS_INTERFACE)
+        .expect("notification interface")
+        .build(&(descriptor,))
+        .expect("descriptor-bearing message");
+
+    assert_eq!(message.header().unix_fds(), Some(1));
+    assert!(notify_has_unix_fds("Notify", message.header().unix_fds()));
 }
 
 #[tokio::test]

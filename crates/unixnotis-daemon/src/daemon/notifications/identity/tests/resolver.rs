@@ -57,12 +57,16 @@ fn system_desktop_identity_allows_legitimate_signal_reply() {
         AttributionClass::SystemAssociated
     );
     assert_eq!(resolution.attribution.display_name, "Signal");
+    assert_eq!(
+        resolution.attribution.group_key,
+        "system-desktop:org.signal.Signal"
+    );
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
     assert!(!resolution.attribution.source_label.contains("unverified"));
 }
 
 #[test]
-fn user_desktop_identity_requires_confirmation_instead_of_immediate_reply() {
+fn user_desktop_identity_denies_reply_until_backend_confirmation_exists() {
     let app_identity = identity(6, 60, 1000);
     let index = DesktopIdentityIndex::from_records(
         vec![DesktopRecord::fixture(
@@ -90,8 +94,144 @@ fn user_desktop_identity_requires_confirmation_instead_of_immediate_reply() {
         resolution.attribution.class,
         AttributionClass::UserAssociated
     );
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Confirm);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     assert!(!resolution.attribution.has_warning());
+}
+
+#[test]
+fn python_desktop_entry_cannot_trust_an_unrelated_python_process() {
+    let python_identity = identity(20, 200, 0);
+    let mut record = system_record(
+        "org.example.PasswordManager",
+        "Example Password Manager",
+        "/usr/bin/python3",
+        python_identity,
+    );
+    record.association_eligible = false;
+    record.system_association = false;
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Example Password Manager",
+            desktop_entry: Some("org.example.PasswordManager"),
+        },
+        &sender("/usr/bin/python3", python_identity),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_ne!(
+        resolution.attribution.class,
+        AttributionClass::SystemAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
+fn unmediated_flatpak_process_cannot_become_portal_associated() {
+    let flatpak_identity = identity(21, 210, 0);
+    let mut record = system_record(
+        "org.example.FlatpakApp",
+        "Flatpak App",
+        "/usr/bin/flatpak",
+        flatpak_identity,
+    );
+    record.association_eligible = false;
+    record.system_association = false;
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Flatpak App",
+            desktop_entry: Some("org.example.FlatpakApp"),
+        },
+        &sender("/usr/bin/flatpak", flatpak_identity),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_ne!(
+        resolution.attribution.class,
+        AttributionClass::PortalAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
+fn user_shadow_cannot_join_the_system_desktop_group() {
+    let system_identity = identity(30, 300, 0);
+    let user_identity = identity(31, 310, 1000);
+    let system = system_record(
+        "org.signal.Signal",
+        "Signal",
+        "/usr/bin/signal-desktop",
+        system_identity,
+    );
+    let mut user = DesktopRecord::fixture(
+        "org.signal.Signal",
+        "Signal",
+        "/home/user/bin/signal",
+        user_identity,
+        false,
+        false,
+    );
+    user.desktop_identity = Some(identity(32, 320, 1000));
+    let index = DesktopIdentityIndex::from_records(vec![user, system], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Signal",
+            desktop_entry: Some("org.signal.Signal"),
+        },
+        &sender("/home/user/bin/signal", user_identity),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_eq!(
+        resolution.attribution.class,
+        AttributionClass::UserAssociated
+    );
+    assert!(resolution.attribution.has_warning());
+    assert!(resolution
+        .attribution
+        .group_key
+        .starts_with("user-desktop:"));
+    assert_ne!(
+        resolution.attribution.group_key,
+        "system-desktop:org.signal.Signal"
+    );
+}
+
+#[test]
+fn visually_confusable_system_brand_is_a_conflict() {
+    let signal_identity = identity(40, 400, 0);
+    let hostile_identity = identity(41, 410, 1000);
+    let index = DesktopIdentityIndex::from_records(
+        vec![system_record(
+            "org.signal.Signal",
+            "Signal",
+            "/usr/bin/signal-desktop",
+            signal_identity,
+        )],
+        Vec::new(),
+    );
+
+    for claim in ["Sіgnal", "Signaⅼ"] {
+        let resolution = resolve_with_evidence(
+            AppClaim {
+                reported_name: claim,
+                desktop_entry: None,
+            },
+            &sender("/tmp/fake", hostile_identity),
+            &index,
+            &HashSet::new(),
+        );
+
+        assert_eq!(resolution.attribution.class, AttributionClass::Conflict);
+        assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    }
 }
 
 #[test]
