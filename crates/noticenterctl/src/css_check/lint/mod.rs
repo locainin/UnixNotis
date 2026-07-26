@@ -1,5 +1,6 @@
 //! CSS declaration, selector, and compatibility lint rules
 
+mod directives;
 mod runner;
 mod scan;
 mod values;

@@ -233,6 +233,7 @@
   border-color: alpha(@unixnotis-accent, 0.75);
 }
 
+/* unixnotis-css-check allow-duplicate-selectors:start */
 /* Restrained media transport */
 .unixnotis-media-card {
   background: alpha(#ffffff, 0.035);
@@ -323,3 +324,4 @@
 .unixnotis-media-nav-next {
   min-width: 18px;
 }
+/* unixnotis-css-check allow-duplicate-selectors:end */
