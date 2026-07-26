@@ -19,6 +19,7 @@ use super::artifacts::{
 use super::lifecycle::{
     remove_pre_start_artifacts, run_command_spec, run_service_start, warn_pre_start_artifacts_left,
 };
+use super::readiness::enforce_service_readiness;
 use super::refresh::refresh_service_artifacts;
 
 pub fn install_service(ctx: &mut ActionContext) -> Result<()> {
@@ -45,6 +46,16 @@ pub fn install_service(ctx: &mut ActionContext) -> Result<()> {
 }
 
 pub fn enable_service(ctx: &mut ActionContext) -> Result<()> {
+    enable_service_with_readiness(ctx, enforce_service_readiness)
+}
+
+pub(in crate::actions::install) fn enable_service_with_readiness<F>(
+    ctx: &mut ActionContext,
+    readiness: F,
+) -> Result<()>
+where
+    F: FnOnce(&mut ActionContext) -> Result<()>,
+{
     if ctx.service_reload_required.load(Ordering::Acquire) {
         // Refresh work can be a single reload command or a backend-owned database update
         refresh_service_artifacts(ctx)?;
@@ -66,6 +77,7 @@ pub fn enable_service(ctx: &mut ActionContext) -> Result<()> {
     }
     remove_pre_start_artifacts(ctx)?;
     run_service_start(ctx)?;
+    readiness(ctx)?;
 
     // Shell startup files are updated so new terminals can resolve the installed commands
     if let Err(err) = ensure_shell_path_entry(ctx) {

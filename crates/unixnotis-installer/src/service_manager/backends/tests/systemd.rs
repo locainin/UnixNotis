@@ -2,15 +2,14 @@ use std::path::PathBuf;
 
 use crate::service_manager::{ServiceArtifactKind, ServiceArtifactRefresh, ServiceManager};
 
-use super::super::systemd::SERVICE_NAME as UNIXNOTIS_DAEMON_SERVICE;
+use super::super::systemd::{CONTROL_ACTIVATION_SERVICE, SERVICE_NAME as UNIXNOTIS_DAEMON_SERVICE};
 
 #[test]
 fn systemd_backend_renders_exact_unit_artifact() {
     let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
     let artifacts = manager.artifacts(std::path::Path::new("/tmp/bin"));
 
-    // Systemd is the stable default, so this refactor must keep the unit byte-for-byte stable
-    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts.len(), 2);
     assert_eq!(
         artifacts[0].path,
         PathBuf::from("/tmp/systemd/user").join(UNIXNOTIS_DAEMON_SERVICE)
@@ -24,15 +23,38 @@ fn systemd_backend_renders_exact_unit_artifact() {
         "[Unit]\n\
          Description=UnixNotis Notification Daemon\n\
          After=graphical-session.target\n\
+         PartOf=graphical-session.target\n\
          \n\
          [Service]\n\
-         Type=simple\n\
+         Type=dbus\n\
+         BusName=com.unixnotis.Control\n\
          ExecStart=/tmp/bin/unixnotis-daemon\n\
          Restart=on-failure\n\
          RestartSec=1\n\
+         TimeoutStartSec=20\n\
+         TimeoutStopSec=10\n\
          \n\
          [Install]\n\
          WantedBy=default.target\n"
+    );
+    assert_eq!(
+        artifacts[1].path,
+        PathBuf::from("/tmp")
+            .join("share")
+            .join("dbus-1")
+            .join("services")
+            .join(CONTROL_ACTIVATION_SERVICE)
+    );
+    assert_eq!(artifacts[1].kind, ServiceArtifactKind::File);
+    assert_eq!(
+        artifacts[1]
+            .contents
+            .as_ref()
+            .expect("activation artifact should render contents"),
+        "[D-BUS Service]\n\
+         Name=com.unixnotis.Control\n\
+         Exec=/tmp/bin/unixnotis-daemon\n\
+         SystemdService=unixnotis-daemon.service\n"
     );
 }
 
@@ -117,6 +139,7 @@ fn hyprland_startup_lines_come_from_selected_backend() {
     assert_eq!(
         commands,
         vec![
+            "systemctl --user unset-environment DBUS_SESSION_BUS_ADDRESS".to_string(),
             "dbus-update-activation-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR".to_string(),
             "systemctl --user import-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR".to_string(),
             format!("systemctl --user --no-block restart {UNIXNOTIS_DAEMON_SERVICE}"),
@@ -136,43 +159,44 @@ fn environment_sync_commands_come_from_selected_backend() {
         ),
     ];
 
-    // D-Bus sync runs first because systemd activation and DBus activation are separate stores
+    // Legacy bus state is removed before either graphical environment store is updated
     let with_dbus = manager.environment_sync_commands(&vars, true);
-    assert_eq!(with_dbus.len(), 2);
-    assert_eq!(with_dbus[0].program(), "dbus-update-activation-environment");
+    assert_eq!(with_dbus.len(), 3);
+    assert_eq!(with_dbus[0].program(), "systemctl");
     assert_eq!(
         with_dbus[0].args(),
-        &[
-            "WAYLAND_DISPLAY",
-            "XDG_RUNTIME_DIR",
-            "DBUS_SESSION_BUS_ADDRESS",
-        ]
+        &["--user", "unset-environment", "DBUS_SESSION_BUS_ADDRESS"]
     );
-    assert_eq!(with_dbus[1].program(), "systemctl");
+    assert_eq!(with_dbus[1].program(), "dbus-update-activation-environment");
+    assert_eq!(with_dbus[1].args(), &["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"]);
+    assert_eq!(with_dbus[2].program(), "systemctl");
     assert_eq!(
-        with_dbus[1].args(),
+        with_dbus[2].args(),
         &[
             "--user",
             "--no-pager",
             "import-environment",
             "WAYLAND_DISPLAY",
             "XDG_RUNTIME_DIR",
-            "DBUS_SESSION_BUS_ADDRESS",
         ]
     );
 
     let without_dbus = manager.environment_sync_commands(&vars, false);
-    assert_eq!(without_dbus.len(), 1);
+    assert_eq!(without_dbus.len(), 2);
     assert_eq!(without_dbus[0].program(), "systemctl");
     assert_eq!(
         without_dbus[0].args(),
+        &["--user", "unset-environment", "DBUS_SESSION_BUS_ADDRESS"]
+    );
+    assert_eq!(without_dbus[1].program(), "systemctl");
+    assert_eq!(
+        without_dbus[1].args(),
         &[
             "--user",
             "--no-pager",
             "import-environment",
             "WAYLAND_DISPLAY",
             "XDG_RUNTIME_DIR",
-            "DBUS_SESSION_BUS_ADDRESS",
         ]
     );
 }

@@ -8,6 +8,7 @@ use crate::model::ActionMode;
 use crate::paths::format_with_home;
 use crate::service_manager::ReadinessIssue;
 
+use super::installation_channel::reject_conflicting_installation_channel;
 use super::{context::ActionContext, install_state::check_install_state, log_line};
 
 pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
@@ -96,6 +97,8 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
             ctx.paths.service.label()
         ));
     }
+    // The source installer must not shadow or combine with package-owned systemd artifacts
+    reject_conflicting_installation_channel(ctx)?;
     let mut readiness_errors = Vec::new();
     for issue in ctx.paths.service.readiness_issues() {
         match issue {
