@@ -14,37 +14,37 @@ struct HistoryEntry {
     source: Weak<Notification>,
 }
 
-pub(super) struct HistoryStore {
+pub(in crate::store) struct HistoryStore {
     entries: HashMap<u32, HistoryEntry>,
     order: VecDeque<u32>,
 }
 
 impl HistoryStore {
-    pub(super) fn new() -> Self {
+    pub(in crate::store) fn new() -> Self {
         Self {
             entries: HashMap::new(),
             order: VecDeque::new(),
         }
     }
 
-    pub(super) fn len(&self) -> usize {
+    pub(in crate::store) fn len(&self) -> usize {
         self.entries.len()
     }
 
-    pub(super) fn contains(&self, id: &u32) -> bool {
+    pub(in crate::store) fn contains(&self, id: &u32) -> bool {
         self.entries.contains_key(id)
     }
 
-    pub(super) fn get(&self, id: &u32) -> Option<&Arc<Notification>> {
+    pub(in crate::store) fn get(&self, id: &u32) -> Option<&Arc<Notification>> {
         self.entries.get(id).map(|entry| &entry.notification)
     }
 
-    pub(super) fn clear(&mut self) {
+    pub(in crate::store) fn clear(&mut self) {
         self.entries.clear();
         self.order.clear();
     }
 
-    pub(super) fn list_views(&self) -> Vec<NotificationView> {
+    pub(in crate::store) fn list_views(&self) -> Vec<NotificationView> {
         let mut views = Vec::with_capacity(self.entries.len());
         for id in self.order.iter().rev() {
             if let Some(entry) = self.entries.get(id) {
@@ -54,7 +54,7 @@ impl HistoryStore {
         views
     }
 
-    pub(super) fn remove(&mut self, id: &u32) -> Option<Arc<Notification>> {
+    pub(in crate::store) fn remove(&mut self, id: &u32) -> Option<Arc<Notification>> {
         let removed = self.entries.remove(id).map(|entry| entry.notification);
         if removed.is_some() {
             // Removal is infrequent compared to insertion; pay the cost here to keep order clean
@@ -63,7 +63,7 @@ impl HistoryStore {
         removed
     }
 
-    pub(super) fn insert(&mut self, notification: Arc<Notification>) {
+    pub(in crate::store) fn insert(&mut self, notification: Arc<Notification>) {
         let id = notification.id;
         if self.entries.contains_key(&id) {
             // Avoid duplicate IDs in order when a notification is replaced
@@ -79,13 +79,13 @@ impl HistoryStore {
         self.order.push_back(id);
     }
 
-    pub(super) fn set_source(&mut self, id: u32, source: Weak<Notification>) {
+    pub(in crate::store) fn set_source(&mut self, id: u32, source: Weak<Notification>) {
         if let Some(entry) = self.entries.get_mut(&id) {
             entry.source = source;
         }
     }
 
-    pub(super) fn remove_if_source(
+    pub(in crate::store) fn remove_if_source(
         &mut self,
         id: u32,
         expected: &Arc<Notification>,
@@ -101,7 +101,7 @@ impl HistoryStore {
         self.remove(&id)
     }
 
-    pub(super) fn evict_to_limit(&mut self, max_entries: usize) {
+    pub(in crate::store) fn evict_to_limit(&mut self, max_entries: usize) {
         if max_entries == 0 {
             self.clear();
             return;

@@ -10,7 +10,7 @@ impl NotificationStore {
     }
 }
 
-pub(super) fn make_notification(summary: &str) -> Notification {
+pub(in crate::store) fn make_notification(summary: &str) -> Notification {
     Notification {
         id: 0,
         app_name: "TestApp".to_string(),
@@ -38,7 +38,7 @@ pub(super) fn make_notification(summary: &str) -> Notification {
     }
 }
 
-pub(super) fn make_notification_with_sender(
+pub(in crate::store) fn make_notification_with_sender(
     summary: &str,
     sender: &str,
     pid: u32,
@@ -51,7 +51,10 @@ pub(super) fn make_notification_with_sender(
     notification
 }
 
-pub(super) fn make_store_with_limits(max_active: usize, max_entries: usize) -> NotificationStore {
+pub(in crate::store) fn make_store_with_limits(
+    max_active: usize,
+    max_entries: usize,
+) -> NotificationStore {
     let mut config = Config::default();
     // Test helper uses explicit limits so each case isolates one policy branch
     config.history.max_active = max_active;
@@ -59,7 +62,7 @@ pub(super) fn make_store_with_limits(max_active: usize, max_entries: usize) -> N
     NotificationStore::new(config)
 }
 
-pub(super) fn make_temp_state_dir(label: &str) -> std::path::PathBuf {
+pub(in crate::store) fn make_temp_state_dir(label: &str) -> std::path::PathBuf {
     let mut path = std::env::temp_dir();
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
@@ -70,7 +73,7 @@ pub(super) fn make_temp_state_dir(label: &str) -> std::path::PathBuf {
     path
 }
 
-pub(super) fn write_dnd_state(dir: &std::path::Path, enabled: bool, version: u32) {
+pub(in crate::store) fn write_dnd_state(dir: &std::path::Path, enabled: bool, version: u32) {
     let state = PersistedDndState {
         version,
         dnd_enabled: enabled,
@@ -83,11 +86,11 @@ pub(super) fn write_dnd_state(dir: &std::path::Path, enabled: bool, version: u32
     std::fs::write(&path, payload).expect("write state");
 }
 
-pub(super) fn cleanup_temp_dir(dir: &std::path::Path) {
+pub(in crate::store) fn cleanup_temp_dir(dir: &std::path::Path) {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-pub(super) fn apply_dnd_update(store: &mut NotificationStore, enabled: bool) -> bool {
+pub(in crate::store) fn apply_dnd_update(store: &mut NotificationStore, enabled: bool) -> bool {
     let write = store.set_dnd(enabled);
     if let Some(state_store) = write.persist.as_ref() {
         state_store
