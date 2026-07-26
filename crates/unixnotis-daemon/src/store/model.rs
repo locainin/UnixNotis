@@ -5,7 +5,9 @@ use std::time::Instant;
 use indexmap::IndexMap;
 use unixnotis_core::{Config, Notification};
 
-use super::{DndStateStore, HistoryStore, Inhibitor};
+use super::dnd::DndStateStore;
+use super::inhibitors::Inhibitor;
+use super::notifications::HistoryStore;
 
 /// Mutable notification state owned by the daemon
 pub struct NotificationStore {

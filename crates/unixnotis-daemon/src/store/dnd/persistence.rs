@@ -11,16 +11,16 @@ use serde::{Deserialize, Serialize};
 use unixnotis_core::filesystem::write_file_atomic;
 use unixnotis_core::util;
 
-pub(super) const DND_STATE_VERSION: u32 = 1;
-pub(super) const DND_STATE_FILE: &str = "state.json";
+pub(in crate::store) const DND_STATE_VERSION: u32 = 1;
+pub(in crate::store) const DND_STATE_FILE: &str = "state.json";
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct PersistedDndState {
-    pub(super) version: u32,
-    pub(super) dnd_enabled: bool,
+pub(in crate::store) struct PersistedDndState {
+    pub(in crate::store) version: u32,
+    pub(in crate::store) dnd_enabled: bool,
     #[serde(default)]
-    pub(super) expires_at: Option<i64>,
-    pub(super) updated_at: Option<String>,
+    pub(in crate::store) expires_at: Option<i64>,
+    pub(in crate::store) updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -29,17 +29,17 @@ pub struct DndStateStore {
 }
 
 impl DndStateStore {
-    pub(super) fn new() -> Option<Self> {
+    pub(in crate::store) fn new() -> Option<Self> {
         let state_dir = util::resolve_state_dir()?;
         Some(Self::from_state_dir(state_dir))
     }
 
-    pub(super) fn from_state_dir(state_dir: PathBuf) -> Self {
+    pub(in crate::store) fn from_state_dir(state_dir: PathBuf) -> Self {
         let path = state_dir.join("unixnotis").join(DND_STATE_FILE);
         Self { path }
     }
 
-    pub(super) fn load(&self) -> io::Result<Option<PersistedDndState>> {
+    pub(in crate::store) fn load(&self) -> io::Result<Option<PersistedDndState>> {
         let contents = match fs::read_to_string(&self.path) {
             Ok(contents) => contents,
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),

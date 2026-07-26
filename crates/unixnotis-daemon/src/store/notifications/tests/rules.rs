@@ -1,4 +1,4 @@
-use super::*;
+use super::support::*;
 
 #[test]
 fn contains_ci_matches_ascii() {

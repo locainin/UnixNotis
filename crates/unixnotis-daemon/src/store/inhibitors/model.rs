@@ -5,7 +5,7 @@
 use unixnotis_core::INHIBIT_SCOPE_POPUPS;
 
 #[derive(Debug, Clone)]
-pub(super) struct Inhibitor {
+pub(in crate::store) struct Inhibitor {
     pub(super) id: u64,
     pub(super) owner: String,
     pub(super) reason: String,
