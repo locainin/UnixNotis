@@ -9,7 +9,7 @@ use super::envdir::write_envdir;
 
 pub(in crate::session_environment) fn sync_runit(manager: &ServiceManagerPaths) -> Result<()> {
     let service = manager.artifact_root.join("unixnotis-daemon");
-    write_envdir(&service, &service.join("env"))?;
+    write_envdir(&service, &service.join("env"), manager.kind)?;
     let restart = CommandSpec::direct("sv", ["restart".into(), service.as_os_str().to_os_string()]);
     // A successful restart avoids a redundant start request
     if run(&restart)?.success() {

@@ -2,7 +2,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::super::super::HYPR_IMPORT_VARS;
 use super::super::block::render_hyprland_bootstrap_block;
 use super::super::detect::{
     has_import_command_with_vars, has_legacy_dbus_update, has_startup_command,
@@ -75,7 +74,8 @@ fn existing_hyprland_config_targets_include_both_migration_formats() {
 #[test]
 fn rendered_lua_bootstrap_is_detected_as_complete() {
     let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
-    let commands = manager.hyprland_startup_commands(&HYPR_IMPORT_VARS);
+    let import_variables = manager.import_variable_names();
+    let commands = manager.hyprland_startup_commands(import_variables);
     let lines = commands
         .iter()
         .map(|command| hyprland_startup_line(HyprlandConfigSyntax::Lua, command))
@@ -91,7 +91,14 @@ fn rendered_lua_bootstrap_is_detected_as_complete() {
     assert!(commands
         .iter()
         .all(|command| has_startup_command(&block, command)
-            || has_import_command_with_vars(&block, &HYPR_IMPORT_VARS)));
+            || has_import_command_with_vars(&block, import_variables)));
+    assert!(block.contains("systemctl --user unset-environment DBUS_SESSION_BUS_ADDRESS"));
+    let import_line = block
+        .lines()
+        .find(|line| line.contains("import-environment"))
+        .expect("rendered systemd import line");
+    assert!(!import_line.contains("DBUS_SESSION_BUS_ADDRESS"));
+    assert!(!import_line.contains(" PATH"));
 }
 
 #[test]
@@ -108,9 +115,13 @@ fn commented_lua_bootstrap_commands_are_ignored() {
 #[test]
 fn partial_import_environment_command_is_not_complete() {
     let contents = "exec-once = systemctl --user import-environment WAYLAND_DISPLAY\n";
+    let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
 
     // The installer needs every expected session variable before it can skip rebuilding the line
-    assert!(!has_import_command_with_vars(contents, &HYPR_IMPORT_VARS));
+    assert!(!has_import_command_with_vars(
+        contents,
+        manager.import_variable_names()
+    ));
 }
 
 #[test]

@@ -76,16 +76,18 @@ pub(super) async fn stop_active_owner(
         }
         RestoreStrategy::Systemd => {
             // Strict systemd mode errors if the matched unit is not active
-            if !is_unit_active(known.unit).await {
+            let unit = known.systemd_unit.ok_or_else(|| {
+                anyhow!("{} does not publish a known systemd user unit", known.name)
+            })?;
+            if !is_unit_active(unit).await {
                 return Err(anyhow!(
-                    "systemd restore requested but {} is not active",
-                    known.unit
+                    "systemd restore requested but {unit} is not active"
                 ));
             }
-            stop_via_systemd(known.unit).await?;
-            debug!(unit = known.unit, "trial mode: restore via systemd");
+            stop_via_systemd(unit).await?;
+            debug!(unit, "trial mode: restore via systemd");
             Ok(Some(RestoreAction::Systemd {
-                unit: known.unit.to_string(),
+                unit: unit.to_string(),
             }))
         }
         RestoreStrategy::Process => {
@@ -103,13 +105,16 @@ pub(super) async fn stop_active_owner(
         }
         RestoreStrategy::Auto => {
             // Auto prefers systemd when unit is active, otherwise process restore
-            if is_unit_active(known.unit).await {
-                stop_via_systemd(known.unit).await?;
-                debug!(unit = known.unit, "trial mode: restore via systemd (auto)");
-                Ok(Some(RestoreAction::Systemd {
-                    unit: known.unit.to_string(),
-                }))
-            } else {
+            if let Some(unit) = known.systemd_unit {
+                if is_unit_active(unit).await {
+                    stop_via_systemd(unit).await?;
+                    debug!(unit, "trial mode: restore via systemd (auto)");
+                    return Ok(Some(RestoreAction::Systemd {
+                        unit: unit.to_string(),
+                    }));
+                }
+            }
+            {
                 let (program, args) = build_restart_command(owner, comm)?;
                 // Auto mode follows the same prepare-before-stop transaction as strict mode
                 stop_via_process(pid).await?;

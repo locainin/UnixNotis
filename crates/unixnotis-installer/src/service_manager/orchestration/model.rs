@@ -72,6 +72,22 @@ impl ServiceManager {
         self.kind.label()
     }
 
+    pub const fn shared_kind(&self) -> unixnotis_core::service_manager::ServiceManagerKind {
+        // Environment policy lives in core so installers and repair commands cannot drift
+        match self.kind {
+            ServiceManagerKind::Systemd => {
+                unixnotis_core::service_manager::ServiceManagerKind::Systemd
+            }
+            ServiceManagerKind::Dinit => unixnotis_core::service_manager::ServiceManagerKind::Dinit,
+            ServiceManagerKind::Runit => unixnotis_core::service_manager::ServiceManagerKind::Runit,
+            ServiceManagerKind::S6 => unixnotis_core::service_manager::ServiceManagerKind::S6,
+        }
+    }
+
+    pub const fn is_systemd(&self) -> bool {
+        matches!(self.kind, ServiceManagerKind::Systemd)
+    }
+
     pub const fn service_name(&self) -> &'static str {
         // The backend owns its native service identifier
         match self.kind {

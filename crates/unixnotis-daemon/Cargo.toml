@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+arc-swap.workspace = true
 clap.workspace = true
 chrono.workspace = true
 futures-util.workspace = true
@@ -19,4 +20,7 @@ unicode-security.workspace = true
 zbus.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
 indexmap.workspace = true
+notify.workspace = true
 rustix.workspace = true
+shell-words.workspace = true
+url.workspace = true

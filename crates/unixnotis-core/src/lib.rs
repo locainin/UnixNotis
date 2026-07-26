@@ -22,6 +22,7 @@ pub mod css;
 pub mod embedded;
 pub mod filesystem;
 pub mod model;
+pub mod notification_daemons;
 pub mod process;
 pub mod reconnect;
 pub mod service_manager;
@@ -35,6 +36,7 @@ pub use control::*;
 pub use css::*;
 pub use embedded::*;
 pub use model::*;
+pub use notification_daemons::*;
 pub use process::*;
 pub use util::program_in_path;
 

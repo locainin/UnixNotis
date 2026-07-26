@@ -17,6 +17,7 @@ license = "MIT"
 
 [workspace.dependencies]
 anyhow = "1"
+arc-swap = "1.9"
 async-channel = "2"
 blake3 = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::system_tools::routing::use_fake_tool_bin;
 
-use super::{is_unit_active, pgrep_exact, read_args, read_comm};
+use super::{command_program_name, is_unit_active, pgrep_exact, read_args, read_comm};
 
 struct TempDirGuard {
     path: std::path::PathBuf,
@@ -88,4 +88,17 @@ async fn read_args_uses_trusted_ps_fallback_when_procfs_is_missing() {
     let args = read_args(u32::MAX).await.expect("fallback args");
 
     assert_eq!(args, ["/usr/bin/mako", "--config", "mako.conf"]);
+}
+
+#[test]
+fn command_program_name_preserves_long_notification_daemon_names() {
+    let args = vec![
+        "/usr/bin/mate-notification-daemon".to_string(),
+        "--replace".to_string(),
+    ];
+
+    assert_eq!(
+        command_program_name(&args).as_deref(),
+        Some("mate-notification-daemon")
+    );
 }

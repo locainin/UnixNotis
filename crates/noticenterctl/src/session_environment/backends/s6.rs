@@ -9,7 +9,7 @@ use super::envdir::write_envdir;
 
 pub(in crate::session_environment) fn sync_s6(manager: &ServiceManagerPaths) -> Result<()> {
     let service = manager.artifact_root.join("sv").join("unixnotis-daemon");
-    write_envdir(&service, &service.join("env"))?;
+    write_envdir(&service, &service.join("env"), manager.kind)?;
     let live = manager
         .live_root
         .as_deref()

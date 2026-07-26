@@ -3,17 +3,30 @@
 use std::ffi::OsString;
 
 use anyhow::{bail, Result};
+use unixnotis_core::service_manager::{
+    validate_session_bus_address, variables_for_backend, ServiceManagerKind,
+};
 
-pub(super) const IMPORT_VARS: [&str; 8] = [
-    "WAYLAND_DISPLAY",
-    "XDG_CURRENT_DESKTOP",
-    "XDG_SESSION_TYPE",
-    "XDG_SESSION_DESKTOP",
-    "DISPLAY",
-    "XDG_RUNTIME_DIR",
-    "DBUS_SESSION_BUS_ADDRESS",
-    "PATH",
-];
+pub(super) const fn import_variables(kind: ServiceManagerKind) -> &'static [&'static str] {
+    variables_for_backend(kind)
+}
+
+pub(super) fn validate_persisted_bus_address(
+    kind: ServiceManagerKind,
+    address: Option<OsString>,
+) -> Result<()> {
+    if !import_variables(kind).contains(&"DBUS_SESSION_BUS_ADDRESS") {
+        return Ok(());
+    }
+    let Some(address) = address else {
+        return Ok(());
+    };
+    let address = address
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("session bus address is not valid UTF-8"))?;
+    // Repair commands use the same stable-bus rule as fresh installations
+    validate_session_bus_address(address, rustix::process::getuid().as_raw()).map_err(Into::into)
+}
 
 pub(super) fn validate_session_environment(
     get_var: impl FnMut(&str) -> Option<OsString>,
