@@ -73,5 +73,5 @@ async fn main() -> Result<()> {
     ensure_wayland_session(Duration::from_secs(20))
         .await
         .context("wait for Wayland session")?;
-    runtime::run(&args, config).await
+    Box::pin(runtime::run(&args, config)).await
 }

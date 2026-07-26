@@ -7,24 +7,24 @@ use zbus::fdo::DBusProxy;
 use zbus::message::Header;
 use zbus::Connection;
 
-use super::identity::{executable_evidence_for_pid, FileIdentity};
 use super::sender_cache::SenderMetadataCache;
+use super::{executable_evidence_for_pid, FileIdentity};
 
 #[derive(Debug, Clone, Default)]
 pub(in crate::daemon) struct SenderMetadata {
     // Unique bus sender name (:1.x) used for ownership checks
-    pub(super) sender_name: Option<String>,
+    pub(in crate::daemon::notifications) sender_name: Option<String>,
     // Process id is paired with start time so reused pids do not inherit ownership
-    pub(super) sender_pid: Option<u32>,
+    pub(in crate::daemon::notifications) sender_pid: Option<u32>,
     // Linux start time identifies one concrete process lifetime
-    pub(super) sender_start_time: Option<u64>,
+    pub(in crate::daemon::notifications) sender_start_time: Option<u64>,
     // Executable path is presentation-only evidence for diagnostics and source labels
-    pub(super) sender_executable: Option<String>,
+    pub(in crate::daemon::notifications) sender_executable: Option<String>,
     // Device and inode bind policy to the open running executable rather than its basename
-    pub(super) sender_executable_identity: Option<FileIdentity>,
+    pub(in crate::daemon::notifications) sender_executable_identity: Option<FileIdentity>,
 }
 
-pub(super) async fn resolve_sender_metadata(
+pub(in crate::daemon) async fn resolve_sender_metadata(
     cache: &SenderMetadataCache,
     connection: &Connection,
     header: &Header<'_>,
@@ -69,8 +69,12 @@ pub(super) async fn resolve_sender_metadata(
 
     // PID and executable come from the bus owner, not caller-provided payload fields
     let sender_pid = proxy.get_connection_unix_process_id(bus_name).await.ok();
-    let sender_start_time = sender_pid.and_then(read_process_start_time);
-    let executable_evidence = sender_pid.and_then(executable_evidence_for_pid);
+    let (sender_start_time, executable_evidence) = sender_pid.map_or((None, None), |pid| {
+        let start_before = read_process_start_time(pid);
+        let evidence = executable_evidence_for_pid(pid);
+        let start_after = read_process_start_time(pid);
+        stable_process_evidence(start_before, evidence, start_after)
+    });
     let sender_executable = executable_evidence
         .as_ref()
         .map(|evidence| evidence.canonical_path.display().to_string());
@@ -84,7 +88,7 @@ pub(super) async fn resolve_sender_metadata(
         sender_executable_identity,
     };
     // Failed lookups remain retryable instead of becoming persistent unknown identities
-    if metadata.sender_pid.is_some() {
+    if metadata.sender_start_time.is_some() && metadata.sender_executable_identity.is_some() {
         cache.insert(cache_key, metadata.clone());
     }
     metadata
@@ -115,6 +119,19 @@ async fn read_process_executable_path(_pid: u32) -> Option<std::path::PathBuf> {
 fn read_process_start_time(_pid: u32) -> Option<u64> {
     // Non-Linux builds fall back to bus-name ownership only
     None
+}
+
+fn stable_process_evidence<T>(
+    start_before: Option<u64>,
+    evidence: Option<T>,
+    start_after: Option<u64>,
+) -> (Option<u64>, Option<T>) {
+    // Both lifetime reads must name the same process before executable evidence is trusted
+    if start_before.is_some() && start_before == start_after {
+        (start_before, evidence)
+    } else {
+        (None, None)
+    }
 }
 
 #[cfg(target_os = "linux")]

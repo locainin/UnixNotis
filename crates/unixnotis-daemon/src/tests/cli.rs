@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 
 use super::{Args, RestoreStrategy};
 
@@ -32,4 +32,13 @@ fn args_parse_trial_restore_process_and_run_seconds() {
     assert!(matches!(args.restore, RestoreStrategy::Process));
     assert_eq!(args.restore_wait_ms, 125);
     assert_eq!(args.run_seconds, Some(9));
+}
+
+#[test]
+fn daemon_help_lists_the_supported_entrypoint_flags() {
+    let help = Args::command().render_help().to_string();
+
+    assert!(help.contains("Usage:"));
+    assert!(help.contains("--check"));
+    assert!(help.contains("--trial"));
 }

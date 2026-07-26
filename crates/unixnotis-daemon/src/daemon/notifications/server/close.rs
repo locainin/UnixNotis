@@ -5,7 +5,7 @@ use zbus::message::Header;
 use crate::daemon::to_fdo_error;
 
 use super::NotificationServer;
-use crate::daemon::notifications::sender::resolve_sender_metadata;
+use crate::daemon::notifications::identity::resolve_sender_metadata;
 
 impl NotificationServer {
     pub(super) async fn close_notification_if_owned(

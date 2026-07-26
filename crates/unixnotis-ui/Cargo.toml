@@ -16,4 +16,3 @@ url.workspace = true
 [[bin]]
 name = "unixnotis-css-validate"
 path = "src/bin/css_validate.rs"
-test = false

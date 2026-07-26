@@ -4,7 +4,7 @@ use zbus::zvariant::{OwnedValue, Value};
 use zbus::Message;
 
 use super::super::{preflight_notify, PreflightError};
-use super::notify_message;
+use super::support::notify_message;
 
 #[test]
 fn ordinary_notify_body_passes_structural_preflight() {
@@ -37,7 +37,7 @@ fn notify_method_with_the_wrong_body_signature_is_rejected() {
 
 #[test]
 fn field_string_limit_is_enforced_before_owned_string_creation() {
-    let summary = "s".repeat(crate::daemon::notifications::limits::MAX_SUMMARY_BYTES + 1);
+    let summary = "s".repeat(crate::daemon::notifications::ingress::limits::MAX_SUMMARY_BYTES + 1);
     let message = notify_message("app", "", &summary, "", Vec::new(), HashMap::new());
 
     assert_eq!(

@@ -6,11 +6,11 @@ use unixnotis_core::Notification;
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 
+use crate::daemon::notifications::identity::resolve_sender_metadata;
 use crate::daemon::notifications::identity::{resolve_attribution, AppClaim};
-use crate::daemon::notifications::payload::{
+use crate::daemon::notifications::ingress::payload::{
     build_notification, owned_to_string, resolve_expiration, NotificationInput,
 };
-use crate::daemon::notifications::sender::resolve_sender_metadata;
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::InsertOutcome;
 

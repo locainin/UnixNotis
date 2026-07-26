@@ -69,3 +69,7 @@ pub(super) fn executable_evidence_for_path(path: &Path) -> Option<ExecutableEvid
         identity,
     })
 }
+
+#[cfg(test)]
+#[path = "tests/executable.rs"]
+mod tests;

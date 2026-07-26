@@ -47,7 +47,23 @@ fn main() -> ExitCode {
 
 fn run_path_protocol(path: &Path) -> ExitCode {
     // Initialization stays inside this helper so ordinary CLI commands do not load GTK
-    let report = match gtk::init() {
+    let report = path_report(path);
+
+    // One JSON document keeps the parent-side protocol simple and deterministic
+    match serde_json::to_string(&report) {
+        Ok(encoded) => {
+            println!("{encoded}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("failed to encode CSS validation report: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn path_report(path: &Path) -> ValidatorReport {
+    match gtk::init() {
         Ok(()) => {
             let (diagnostics, truncated) = parse_path(path);
             ValidatorReport {
@@ -63,18 +79,6 @@ fn run_path_protocol(path: &Path) -> ExitCode {
             truncated: false,
             diagnostics: Vec::new(),
         },
-    };
-
-    // One JSON document keeps the parent-side protocol simple and deterministic
-    match serde_json::to_string(&report) {
-        Ok(encoded) => {
-            println!("{encoded}");
-            ExitCode::SUCCESS
-        }
-        Err(error) => {
-            eprintln!("failed to encode CSS validation report: {error}");
-            ExitCode::from(2)
-        }
     }
 }
 
@@ -90,6 +94,17 @@ fn run_stdin_protocol() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    let parse_errors = parse_css_text(&css);
+
+    // Success remains silent for easy use from build scripts
+    if parse_errors == 0 {
+        return ExitCode::SUCCESS;
+    }
+    eprintln!("gtk css validation found {parse_errors} parse error(s)");
+    ExitCode::from(1)
+}
+
+fn parse_css_text(css: &str) -> usize {
     // Parse errors are counted without retaining unbounded GTK messages
     let provider = CssProvider::new();
     let parse_errors = Rc::new(Cell::new(0usize));
@@ -104,17 +119,8 @@ fn run_stdin_protocol() -> ExitCode {
             error
         );
     });
-    provider.load_from_string(&css);
-
-    // Success remains silent for easy use from build scripts
-    if parse_errors.get() == 0 {
-        return ExitCode::SUCCESS;
-    }
-    eprintln!(
-        "gtk css validation found {} parse error(s)",
-        parse_errors.get()
-    );
-    ExitCode::from(1)
+    provider.load_from_string(css);
+    parse_errors.get()
 }
 
 fn parse_path(path: &Path) -> (Vec<ValidatorDiagnostic>, bool) {
@@ -152,3 +158,7 @@ fn parse_path(path: &Path) -> (Vec<ValidatorDiagnostic>, bool) {
     let parsed = diagnostics.borrow().clone();
     (parsed, truncated.get())
 }
+
+#[cfg(test)]
+#[path = "tests/css_validate.rs"]
+mod tests;

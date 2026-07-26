@@ -16,7 +16,7 @@ const MAX_TRACKED_SENDERS: usize = 256;
 const SENDER_IDLE_TTL_SECONDS: u64 = 60;
 const UNKNOWN_SENDER: &str = "<unknown>";
 
-pub(super) struct NotificationQuota {
+pub(in crate::daemon::notifications) struct NotificationQuota {
     state: Mutex<QuotaState>,
     policy: QuotaPolicy,
 }
@@ -47,11 +47,11 @@ struct TokenBucket {
 }
 
 impl NotificationQuota {
-    pub(super) fn new_notify() -> Self {
+    pub(in crate::daemon::notifications) fn new_notify() -> Self {
         Self::new_at(Instant::now())
     }
 
-    pub(super) fn new_close() -> Self {
+    pub(in crate::daemon::notifications) fn new_close() -> Self {
         Self::new_close_at(Instant::now())
     }
 
@@ -89,7 +89,11 @@ impl NotificationQuota {
         }
     }
 
-    pub(super) fn admit(&self, sender: Option<&str>, now: Instant) -> bool {
+    pub(in crate::daemon::notifications) fn admit(
+        &self,
+        sender: Option<&str>,
+        now: Instant,
+    ) -> bool {
         let Ok(mut state) = self.state.lock() else {
             // A poisoned limiter fails closed instead of disabling ingress control
             return false;
