@@ -14,5 +14,7 @@ semver.workspace = true
 serde.workspace = true
 chrono.workspace = true
 rustix.workspace = true
+tokio.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
 unicode-width.workspace = true
+zbus.workspace = true
