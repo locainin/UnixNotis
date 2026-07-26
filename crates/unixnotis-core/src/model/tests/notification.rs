@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use zbus::zvariant::Value;
+use zbus::zvariant::{serialized::Context, to_bytes, Value, LE};
 
 use super::{Notification, NotificationImage};
 use crate::{
@@ -88,6 +88,33 @@ fn notification_view_keeps_ui_fields_and_transient_policy_flag() {
     assert_eq!(view.urgency, Urgency::Critical.as_u8());
     assert!(view.is_transient);
     assert!(view.image.has_image_data);
+}
+
+#[test]
+fn notification_view_round_trips_every_attribution_and_reply_policy_pair() {
+    let context = Context::new_dbus(LE, 0);
+    let cases = [
+        (AttributionClass::SystemAssociated, InlineReplyPolicy::Allow),
+        (AttributionClass::PortalAssociated, InlineReplyPolicy::Allow),
+        (AttributionClass::UserAssociated, InlineReplyPolicy::Deny),
+        (AttributionClass::TrustedRelay, InlineReplyPolicy::Deny),
+        (AttributionClass::Unknown, InlineReplyPolicy::Deny),
+        (AttributionClass::Conflict, InlineReplyPolicy::Deny),
+    ];
+
+    for (class, policy) in cases {
+        let mut view = notification_with_image(image_with_raw_bytes()).to_view();
+        view.attribution.class = class;
+        view.inline_reply_policy = policy;
+
+        // This nested payload matches GetActiveNotification and exercises both wire enums
+        let encoded = to_bytes(context, &view).expect("serialize notification view");
+        let decoded = encoded
+            .deserialize::<super::NotificationView>()
+            .expect("deserialize notification view")
+            .0;
+        assert_eq!(decoded, view);
+    }
 }
 
 #[test]
