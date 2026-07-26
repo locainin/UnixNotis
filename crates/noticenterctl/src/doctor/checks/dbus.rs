@@ -315,6 +315,69 @@ async fn inspect_control_proxy(connection: &Connection, checks: &mut Vec<DoctorC
             "GetState timed out",
         )),
     }
+    inspect_ui_health(&control, checks).await;
+}
+
+async fn inspect_ui_health(control: &ControlProxy<'_>, checks: &mut Vec<DoctorCheck>) {
+    match tokio::time::timeout(DBUS_CHECK_TIMEOUT, control.get_ui_health()).await {
+        Ok(Ok(health)) => {
+            let healthy = health.center_process_running
+                && health.center_ready
+                && health.popups_process_running
+                && health.popups_ready;
+            checks.push(
+                DoctorCheck::new(
+                    "dbus.ui-health",
+                    "UnixNotis UI readiness",
+                    if healthy {
+                        DoctorSeverity::Pass
+                    } else {
+                        DoctorSeverity::Error
+                    },
+                    if healthy {
+                        "Center and popup clients are ready"
+                    } else {
+                        "One or more UI clients are not ready"
+                    },
+                )
+                .details(format!(
+                    "Center process: {}\nCenter D-Bus client: {}\nPopup process: {}\nPopup D-Bus client: {}\nPopup GTK runtime: {}",
+                    readiness_label(health.center_process_running),
+                    readiness_label(health.center_ready),
+                    readiness_label(health.popups_process_running),
+                    readiness_label(health.popups_ready),
+                    readiness_label(health.popups_ready),
+                ))
+                .data("center_process_running", health.center_process_running)
+                .data("center_ready", health.center_ready)
+                .data("popups_process_running", health.popups_process_running)
+                .data("popups_ready", health.popups_ready),
+            );
+        }
+        Ok(Err(error)) => checks.push(
+            DoctorCheck::new(
+                "dbus.ui-health",
+                "UnixNotis UI readiness",
+                DoctorSeverity::Error,
+                "GetUiHealth failed",
+            )
+            .details(safe_doctor_text(&error.to_string())),
+        ),
+        Err(_) => checks.push(DoctorCheck::new(
+            "dbus.ui-health",
+            "UnixNotis UI readiness",
+            DoctorSeverity::Error,
+            "GetUiHealth timed out",
+        )),
+    }
+}
+
+const fn readiness_label(ready: bool) -> &'static str {
+    if ready {
+        "ready"
+    } else {
+        "not ready"
+    }
 }
 
 pub(super) fn control_state_failure_check(error: &zbus::Error) -> DoctorCheck {

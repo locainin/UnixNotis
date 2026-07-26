@@ -11,7 +11,10 @@ use crate::daemon::DaemonState;
 
 use super::credentials::{connection_credentials, CallerCredentials};
 use super::executable_trust::is_trusted_control_executable_path;
-use super::policy::{TRUSTED_CONTROL_EXECUTABLES, TRUSTED_PANEL_READINESS_EXECUTABLES};
+use super::policy::{
+    TRUSTED_CONTROL_EXECUTABLES, TRUSTED_PANEL_READINESS_EXECUTABLES,
+    TRUSTED_POPUP_READINESS_EXECUTABLES,
+};
 #[cfg(not(target_os = "linux"))]
 use super::process_identity::read_process_executable_path;
 #[cfg(target_os = "linux")]
@@ -40,6 +43,20 @@ pub(in crate::daemon) async fn authorize_panel_readiness_call(
     .await
 }
 
+pub(in crate::daemon) async fn authorize_popup_readiness_call(
+    state: &Arc<DaemonState>,
+    header: &Header<'_>,
+    method: &'static str,
+) -> zbus::fdo::Result<()> {
+    authorize_control_call_for_executables(
+        state,
+        header,
+        method,
+        &TRUSTED_POPUP_READINESS_EXECUTABLES,
+    )
+    .await
+}
+
 async fn authorize_control_call_for_executables(
     state: &Arc<DaemonState>,
     header: &Header<'_>,
@@ -51,6 +68,12 @@ async fn authorize_control_call_for_executables(
         .sender()
         .ok_or_else(|| zbus::fdo::Error::AccessDenied("missing sender".to_string()))?;
     let sender_name = sender.as_str().to_string();
+
+    #[cfg(test)]
+    if state.is_trusted_test_control_sender(&sender_name) {
+        // The exact broker-assigned owner is injected only by private-bus integration tests
+        return Ok(());
+    }
 
     let bus_name = zbus::names::BusName::try_from(sender_name.as_str())
         .map_err(|_error| zbus::fdo::Error::AccessDenied("invalid sender".to_string()))?;

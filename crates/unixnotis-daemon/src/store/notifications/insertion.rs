@@ -5,7 +5,7 @@ use unixnotis_core::{
     Notification, Urgency,
 };
 
-use crate::store::{InsertOutcome, NotificationStore};
+use crate::store::{InsertOutcome, NotificationStore, PopupAdmission, PopupSuppressionReason};
 
 // Hard ceiling for concurrently active notifications to protect panel/popups stability
 const ACTIVE_HARD_CAP: usize = 12;
@@ -20,7 +20,9 @@ impl NotificationStore {
             notification.id = assigned_id;
             let notification = Arc::new(notification);
             return InsertOutcome {
-                show_popup: false,
+                popup_admission: PopupAdmission::Suppressed(
+                    PopupSuppressionReason::DropAllInhibitor,
+                ),
                 allow_sound: false,
                 notification,
                 replaced: false,
@@ -58,7 +60,7 @@ impl NotificationStore {
         let evicted = self.enforce_active_limit();
 
         InsertOutcome {
-            show_popup: self.should_show_popup(&notification),
+            popup_admission: self.popup_admission(&notification),
             allow_sound: self.should_play_sound(&notification),
             notification,
             replaced,
@@ -124,13 +126,16 @@ impl NotificationStore {
         self.history.evict_to_limit(self.config.history.max_entries);
     }
 
-    fn should_show_popup(&self, notification: &Notification) -> bool {
+    fn popup_admission(&self, notification: &Notification) -> PopupAdmission {
         // Rule-level popup suppression is highest priority
         if notification.suppress_popup {
-            return false;
+            return PopupAdmission::Suppressed(PopupSuppressionReason::Rule);
+        }
+        if self.inhibited {
+            return PopupAdmission::Suppressed(PopupSuppressionReason::Inhibitor);
         }
         // Shared gate keeps daemon admission aligned with popup-side cleanup
-        popup_allowed_by_state(
+        if popup_allowed_by_state(
             notification.urgency as u8,
             &ControlState {
                 dnd_enabled: self.dnd_enabled,
@@ -139,7 +144,11 @@ impl NotificationStore {
                 inhibited: self.inhibited,
                 inhibitor_count: self.inhibitor_count,
             },
-        )
+        ) {
+            PopupAdmission::Show
+        } else {
+            PopupAdmission::Suppressed(PopupSuppressionReason::Dnd)
+        }
     }
 
     fn should_play_sound(&self, notification: &Notification) -> bool {

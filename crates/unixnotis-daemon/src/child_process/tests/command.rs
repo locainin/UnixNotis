@@ -19,7 +19,7 @@ async fn mark_running_updates_popup_health_and_resets_center_readiness() {
     let state = daemon_state_for_test(false).await;
 
     UiProcessKind::Popups.mark_running(&state, true);
-    assert!(state.popups_running());
+    assert!(state.popups_process_running());
 
     // Center process spawn is not readiness; readiness only flips after live subscriptions
     state.set_panel_ready(true);

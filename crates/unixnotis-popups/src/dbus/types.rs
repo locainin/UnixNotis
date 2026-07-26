@@ -26,6 +26,8 @@ pub enum UiEvent {
 pub enum UiCommand {
     Dismiss(u32),
     InvokeAction { id: u32, action_key: String },
+    // A synchronous acknowledgement lets GTK wait for MarkPopupsNotReady before process exit
+    Shutdown(std::sync::mpsc::SyncSender<()>),
 }
 
 #[cfg(test)]

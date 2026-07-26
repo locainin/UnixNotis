@@ -66,7 +66,7 @@ fn insert_outcome_reflects_popup_and_sound_policy() {
     config.general.dnd_default = false;
     let mut store = NotificationStore::new_with_state_dir(config, state_dir.clone());
     let allowed = store.insert(make_notification("normal"), 0);
-    assert!(allowed.show_popup);
+    assert!(allowed.popup_admission.should_show());
     assert!(allowed.allow_sound);
 
     let dnd_state_dir = make_temp_state_dir("insert-outcome-dnd");
@@ -74,13 +74,13 @@ fn insert_outcome_reflects_popup_and_sound_policy() {
     dnd_config.general.dnd_default = true;
     let mut dnd_store = NotificationStore::new_with_state_dir(dnd_config, dnd_state_dir.clone());
     let normal = dnd_store.insert(make_notification("normal dnd"), 0);
-    assert!(!normal.show_popup);
+    assert!(!normal.popup_admission.should_show());
     assert!(!normal.allow_sound);
 
     let mut critical = make_notification("critical dnd");
     critical.urgency = unixnotis_core::Urgency::Critical;
     let critical = dnd_store.insert(critical, 0);
-    assert!(critical.show_popup);
+    assert!(critical.popup_admission.should_show());
     assert!(critical.allow_sound);
 
     let mut silent = make_notification("silent");
@@ -90,4 +90,29 @@ fn insert_outcome_reflects_popup_and_sound_policy() {
 
     cleanup_temp_dir(&state_dir);
     cleanup_temp_dir(&dnd_state_dir);
+}
+
+#[test]
+fn popup_candidates_exclude_notifications_suppressed_by_rules() {
+    let mut store = make_store_with_limits(4, 4);
+    let mut notification = make_notification("rule-suppressed");
+    notification.suppress_popup = true;
+
+    let outcome = store.insert(notification, 0);
+
+    assert!(!outcome.popup_admission.should_show());
+    assert_eq!(store.list_active().len(), 1);
+    assert!(store.list_popup_candidates().is_empty());
+}
+
+#[test]
+fn popup_candidates_include_notifications_allowed_by_rules() {
+    let mut store = make_store_with_limits(4, 4);
+    let outcome = store.insert(make_notification("popup-allowed"), 0);
+
+    let candidates = store.list_popup_candidates();
+
+    assert!(outcome.popup_admission.should_show());
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].summary, "popup-allowed");
 }

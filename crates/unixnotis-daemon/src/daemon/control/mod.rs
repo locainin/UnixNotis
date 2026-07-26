@@ -3,6 +3,7 @@
 mod action;
 mod inhibit;
 mod panel;
+mod popup;
 mod query;
 mod reply;
 mod sanitize;

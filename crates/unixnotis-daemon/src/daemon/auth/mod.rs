@@ -18,7 +18,9 @@ mod executable_trust;
 mod policy;
 mod process_identity;
 
-pub(super) use authorization::{authorize_control_call, authorize_panel_readiness_call};
+pub(super) use authorization::{
+    authorize_control_call, authorize_panel_readiness_call, authorize_popup_readiness_call,
+};
 
 #[cfg(test)]
 #[path = "tests/authorization.rs"]

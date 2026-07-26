@@ -37,6 +37,17 @@ impl ControlServer {
         Ok(store.list_history())
     }
 
+    pub(super) async fn query_popup_candidates(
+        &self,
+        header: &Header<'_>,
+    ) -> zbus::fdo::Result<Vec<NotificationView>> {
+        // Rule-level suppression persists across reconnects and must be applied by the daemon
+        self.authorize_control_call(header, "ListPopupCandidates")
+            .await?;
+        let store = self.state.store.lock().await;
+        Ok(store.list_popup_candidates())
+    }
+
     pub(super) async fn query_active_notification(
         &self,
         id: u32,

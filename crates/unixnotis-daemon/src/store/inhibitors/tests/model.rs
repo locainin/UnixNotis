@@ -12,7 +12,7 @@ fn inhibit_no_popups_suppresses_show_popup() {
 
     let outcome = store.insert(make_notification("inhibited"), 0);
     assert!(!outcome.dropped);
-    assert!(!outcome.show_popup);
+    assert!(!outcome.popup_admission.should_show());
     assert!(!outcome.allow_sound);
     assert_eq!(store.list_active().len(), 1);
 }

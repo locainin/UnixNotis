@@ -4,7 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use futures_util::StreamExt;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::{info, warn};
 use unixnotis_core::{
     log_session_bus_identity, timed_dbus_call, ControlProxy, CONTROL_BUS_NAME,
@@ -25,6 +25,22 @@ use super::types::{UiCommand, UiEvent};
 // Bound UI commands to avoid unbounded memory growth under a stuck UI event loop
 const UI_COMMAND_QUEUE_CAPACITY: usize = 64;
 
+pub struct PopupRuntime {
+    command_tx: mpsc::Sender<UiCommand>,
+    gtk_ready_tx: watch::Sender<bool>,
+}
+
+impl PopupRuntime {
+    pub fn command_sender(&self) -> mpsc::Sender<UiCommand> {
+        self.command_tx.clone()
+    }
+
+    pub fn mark_gtk_ready(&self) {
+        // The D-Bus generation cannot publish readiness before UiState construction finishes
+        let _ = self.gtk_ready_tx.send(true);
+    }
+}
+
 struct ControlProxySeedSource<'proxy, 'conn> {
     proxy: &'proxy ControlProxy<'conn>,
 }
@@ -39,28 +55,33 @@ impl PopupSeedSource for ControlProxySeedSource<'_, '_> {
                 return SeedSnapshot::from_fetch_results(Err(error), Ok(Vec::new()));
             }
         };
-        let active = timed_dbus_call(self.proxy.list_active()).await;
+        let active = timed_dbus_call(self.proxy.list_popup_candidates()).await;
         let state = Ok(state);
         SeedSnapshot::from_fetch_results(state, active)
     }
 }
 
-pub fn start_dbus_runtime(sender: async_channel::Sender<UiEvent>) -> mpsc::Sender<UiCommand> {
+pub fn start_dbus_runtime(sender: async_channel::Sender<UiEvent>) -> PopupRuntime {
     let (command_tx, command_rx) = mpsc::channel(UI_COMMAND_QUEUE_CAPACITY);
-    spawn_runtime_thread(sender, command_rx);
-    command_tx
+    let (gtk_ready_tx, gtk_ready_rx) = watch::channel(false);
+    spawn_runtime_thread(sender, command_rx, gtk_ready_rx);
+    PopupRuntime {
+        command_tx,
+        gtk_ready_tx,
+    }
 }
 
 fn spawn_runtime_thread(
     sender: async_channel::Sender<UiEvent>,
     command_rx: mpsc::Receiver<UiCommand>,
+    gtk_ready_rx: watch::Receiver<bool>,
 ) {
     thread::spawn(move || {
         // Dedicated runtime keeps async D-Bus work off the GTK main thread
         let Some(runtime) = build_runtime() else {
             return;
         };
-        runtime.block_on(run_dbus_loop(sender, command_rx));
+        runtime.block_on(run_dbus_loop(sender, command_rx, gtk_ready_rx));
     });
 }
 
@@ -80,6 +101,7 @@ fn build_runtime() -> Option<tokio::runtime::Runtime> {
 async fn run_dbus_loop(
     sender: async_channel::Sender<UiEvent>,
     mut command_rx: mpsc::Receiver<UiCommand>,
+    mut gtk_ready_rx: watch::Receiver<bool>,
 ) {
     let mut connect_backoff = Backoff::new(BACKOFF_BASE_MS, BACKOFF_MAX_MS);
     let mut subscribe_backoff = Backoff::new(BACKOFF_BASE_MS, BACKOFF_MAX_MS);
@@ -94,6 +116,7 @@ async fn run_dbus_loop(
             &mut command_rx,
             &mut subscribe_backoff,
             &mut subscribe_log,
+            &mut gtk_ready_rx,
         )
         .await
         else {
@@ -134,12 +157,16 @@ async fn run_connection_once(
     command_rx: &mut mpsc::Receiver<UiCommand>,
     subscribe_backoff: &mut Backoff,
     subscribe_log: &mut RetryLog,
+    gtk_ready_rx: &mut watch::Receiver<bool>,
 ) -> Option<Duration> {
     let proxy = match ControlProxy::new(connection).await {
         Ok(proxy) => proxy,
         Err(err) => {
             subscribe_log.warn_or_debug(&err, "control interface unavailable, retrying");
-            drain_offline_commands(command_rx);
+            if let Some(acknowledgement) = drain_offline_commands(command_rx) {
+                let _ = acknowledgement.send(());
+                return None;
+            }
             return Some(subscribe_backoff.next_sleep());
         }
     };
@@ -168,11 +195,14 @@ async fn run_connection_once(
         match run_owner_generation(
             &proxy,
             &owner,
-            &mut owner_changes,
-            sender,
-            command_rx,
-            subscribe_backoff,
-            subscribe_log,
+            PopupGenerationContext::new(
+                &mut owner_changes,
+                sender,
+                command_rx,
+                subscribe_backoff,
+                subscribe_log,
+                gtk_ready_rx,
+            ),
         )
         .await
         {
@@ -199,6 +229,35 @@ enum GenerationExit {
     Retry,
 }
 
+struct PopupGenerationContext<'context, 'stream> {
+    owner_changes: &'context mut OwnerChangedStream<'stream>,
+    sender: &'context async_channel::Sender<UiEvent>,
+    command_rx: &'context mut mpsc::Receiver<UiCommand>,
+    subscribe_backoff: &'context mut Backoff,
+    subscribe_log: &'context mut RetryLog,
+    gtk_ready_rx: &'context mut watch::Receiver<bool>,
+}
+
+impl<'context, 'stream> PopupGenerationContext<'context, 'stream> {
+    const fn new(
+        owner_changes: &'context mut OwnerChangedStream<'stream>,
+        sender: &'context async_channel::Sender<UiEvent>,
+        command_rx: &'context mut mpsc::Receiver<UiCommand>,
+        subscribe_backoff: &'context mut Backoff,
+        subscribe_log: &'context mut RetryLog,
+        gtk_ready_rx: &'context mut watch::Receiver<bool>,
+    ) -> Self {
+        Self {
+            owner_changes,
+            sender,
+            command_rx,
+            subscribe_backoff,
+            subscribe_log,
+            gtk_ready_rx,
+        }
+    }
+}
+
 async fn wait_for_control_owner(
     dbus: &DBusProxy<'_>,
     owner_changes: &mut OwnerChangedStream<'_>,
@@ -218,14 +277,21 @@ async fn wait_for_control_owner(
 
     // No owner is a quiet disconnected state until the broker announces one
     let _ = sender.send(UiEvent::Disconnected).await;
-    drain_offline_commands(command_rx);
+    if let Some(acknowledgement) = drain_offline_commands(command_rx) {
+        let _ = acknowledgement.send(());
+        return OwnerWait::Shutdown;
+    }
     loop {
         tokio::select! {
             command = command_rx.recv() => {
-                if command.is_none() {
-                    return OwnerWait::Shutdown;
+                match command {
+                    Some(UiCommand::Shutdown(acknowledgement)) => {
+                        let _ = acknowledgement.send(());
+                        return OwnerWait::Shutdown;
+                    }
+                    Some(_) => warn!("dropping popup command while control service has no owner"),
+                    None => return OwnerWait::Shutdown,
                 }
-                warn!("dropping popup command while control service has no owner");
             }
             update = owner_changes.next() => {
                 match update {
@@ -241,12 +307,16 @@ async fn wait_for_control_owner(
 async fn run_owner_generation(
     proxy: &ControlProxy<'_>,
     owner: &str,
-    owner_changes: &mut OwnerChangedStream<'_>,
-    sender: &async_channel::Sender<UiEvent>,
-    command_rx: &mut mpsc::Receiver<UiCommand>,
-    subscribe_backoff: &mut Backoff,
-    subscribe_log: &mut RetryLog,
+    context: PopupGenerationContext<'_, '_>,
 ) -> GenerationExit {
+    let PopupGenerationContext {
+        owner_changes,
+        sender,
+        command_rx,
+        subscribe_backoff,
+        subscribe_log,
+        gtk_ready_rx,
+    } = context;
     // Popups stay on the shared notification stream, but the trimmed payload keeps
     // each message smaller now that unused flags were removed from NotificationView
     let mut added_stream = match proxy.receive_notification_added().await {
@@ -290,18 +360,35 @@ async fn run_owner_generation(
         subscribe_log.warn_or_debug(&error, "popup readiness handshake or seed failed");
         return GenerationExit::Retry;
     }
+    if !wait_for_gtk_runtime(gtk_ready_rx).await {
+        warn!("popup GTK runtime did not become ready");
+        return GenerationExit::Retry;
+    }
+    if let Err(error) = timed_dbus_call(proxy.mark_popups_ready()).await {
+        subscribe_log.warn_or_debug(&error, "failed to mark popup renderer ready");
+        return GenerationExit::Retry;
+    }
     subscribe_backoff.reset();
     subscribe_log.reset();
     info!(owner, "UnixNotis control service ready");
 
+    let mut shutdown_acknowledgement = None;
     let exit = loop {
         tokio::select! {
             command = command_rx.recv() => {
                 let Some(command) = command else {
                     break GenerationExit::Shutdown;
                 };
-                if let Err(err) = handle_command(proxy, command).await {
-                    warn!(?err, "control command failed");
+                match command {
+                    UiCommand::Shutdown(acknowledgement) => {
+                        shutdown_acknowledgement = Some(acknowledgement);
+                        break GenerationExit::Shutdown;
+                    }
+                    command => {
+                        if let Err(err) = handle_command(proxy, command).await {
+                            warn!(?err, "control command failed");
+                        }
+                    }
                 }
             }
             signal = added_stream.next() => {
@@ -393,7 +480,30 @@ async fn run_owner_generation(
         }
     };
 
+    // No-autostart prevents orderly cleanup from reviving a stopped daemon
+    let _ = timed_dbus_call(proxy.mark_popups_not_ready()).await;
+    if let Some(acknowledgement) = shutdown_acknowledgement {
+        let _ = acknowledgement.send(());
+    }
     exit
+}
+
+async fn wait_for_gtk_runtime(gtk_ready_rx: &mut watch::Receiver<bool>) -> bool {
+    if *gtk_ready_rx.borrow() {
+        return true;
+    }
+    tokio::time::timeout(INTERNAL_DBUS_CALL_TIMEOUT, async {
+        loop {
+            if gtk_ready_rx.changed().await.is_err() {
+                return *gtk_ready_rx.borrow();
+            }
+            if *gtk_ready_rx.borrow() {
+                return true;
+            }
+        }
+    })
+    .await
+    .unwrap_or(false)
 }
 
 async fn push_active_notification_event(

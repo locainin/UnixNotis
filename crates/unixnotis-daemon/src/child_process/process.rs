@@ -40,15 +40,8 @@ impl UiProcessKind {
 
     pub(super) fn mark_running(self, state: &DaemonState, running: bool) {
         match self {
-            Self::Popups => state.set_popups_running(running),
-            Self::Center => {
-                let _ = running;
-                // Center readiness is tied to live subscriptions
-                // A spawned process alone is not enough to mark it ready
-                // Spawned is not the same as subscribed and ready
-                // The center flips this to true once its control streams are active
-                state.set_panel_ready(false);
-            }
+            Self::Popups => state.set_popups_process_running(running),
+            Self::Center => state.set_center_process_running(running),
         }
     }
 
