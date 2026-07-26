@@ -6,6 +6,7 @@ use std::path::Path;
 use gio::prelude::AppInfoExt;
 
 use super::super::executable::{executable_evidence_for_path, FileIdentity};
+use super::launch::build_launch_spec;
 use super::model::{DesktopIdentityIndex, DesktopRecord};
 use super::names::{is_shared_launcher, normalize_desktop_id, normalize_name};
 use super::program::{desktop_executable, resolve_program};
@@ -27,21 +28,28 @@ impl DesktopIdentityIndex {
         }
         let display_name = desktop.display_name().to_string();
         let desktop_program = desktop_executable(&desktop);
-        // Shared runtimes identify the launcher, not the application behind it
-        let association_eligible = desktop_program
-            .as_deref()
-            .is_some_and(|program| !is_shared_launcher(program));
         let executable_path = desktop_program.as_deref().and_then(resolve_program);
         let executable_identity = executable_path
             .as_deref()
             .and_then(executable_evidence_for_path)
             .map(|evidence| evidence.identity);
         let desktop_identity = executable_evidence_for_path(path).map(|evidence| evidence.identity);
-        // System association requires protected metadata and an application-specific executable
+        let launch_spec =
+            executable_identity.and_then(|identity| build_launch_spec(&desktop, path, identity));
+        let shared_launcher = desktop_program.as_deref().is_none_or(is_shared_launcher);
+        // Shared runtimes need one immutable application payload in addition to exact argv matching
+        let association_eligible = launch_spec.as_ref().is_some_and(|spec| {
+            !shared_launcher
+                || (spec.protected_literal_files != 0 && spec.literal_files_are_system_managed)
+        });
+        // System association requires protected metadata and a reproducible launch specification
         let system_association = association_eligible
             && system_origin
             && desktop_identity.is_some_and(FileIdentity::is_system_managed)
-            && executable_identity.is_some_and(FileIdentity::is_system_managed);
+            && executable_identity.is_some_and(FileIdentity::is_system_managed)
+            && launch_spec
+                .as_ref()
+                .is_some_and(|spec| spec.literal_files_are_system_managed);
         let badge_icon = desktop
             .string("Icon")
             .map_or_else(|| id.clone(), |value| value.to_string());
@@ -58,6 +66,7 @@ impl DesktopIdentityIndex {
             system_association,
             association_eligible,
             dbus_activatable: desktop.boolean("DBusActivatable"),
+            launch_spec,
             names,
         });
     }

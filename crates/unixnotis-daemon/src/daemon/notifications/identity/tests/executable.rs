@@ -30,6 +30,27 @@ fn system_managed_identity_requires_root_ownership_without_shared_writes() {
 }
 
 #[test]
+fn executable_regular_identity_rejects_directories_and_missing_execute_bits() {
+    let executable = FileIdentity {
+        device: 1,
+        inode: 2,
+        uid: 0,
+        mode: 0o100_755,
+    };
+    assert!(executable.is_executable_regular());
+    assert!(!FileIdentity {
+        mode: 0o100_644,
+        ..executable
+    }
+    .is_executable_regular());
+    assert!(!FileIdentity {
+        mode: 0o040_755,
+        ..executable
+    }
+    .is_executable_regular());
+}
+
+#[test]
 fn same_file_uses_device_and_inode_instead_of_mutable_labels() {
     let first = FileIdentity {
         device: 5,

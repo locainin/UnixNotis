@@ -18,17 +18,33 @@ fn parse_process_start_time_rejects_missing_or_invalid_fields() {
 }
 
 #[cfg(target_os = "linux")]
+#[test]
+fn process_cmdline_parser_preserves_argument_boundaries_and_rejects_truncation() {
+    assert_eq!(
+        parse_process_cmdline(b"/usr/bin/python3\0/usr/share/app.py\0".to_vec()),
+        Some(vec![
+            b"/usr/bin/python3".to_vec(),
+            b"/usr/share/app.py".to_vec(),
+        ])
+    );
+    assert!(parse_process_cmdline(b"/usr/bin/python3\0truncated".to_vec()).is_none());
+    assert!(parse_process_cmdline(Vec::new()).is_none());
+}
+
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn process_metadata_helpers_read_current_process_on_linux() {
     let pid = std::process::id();
 
-    let exe = read_process_executable_path(pid)
-        .await
+    let exe = executable_evidence_for_pid(pid)
+        .map(|evidence| evidence.canonical_path)
         .expect("current process executable should be readable");
     assert!(exe.is_absolute());
 
     let start_time = read_process_start_time(pid).expect("current process start time should exist");
     assert!(start_time > 1);
+    let cmdline = read_process_cmdline(pid).expect("current process cmdline should exist");
+    assert!(!cmdline.is_empty());
 }
 
 #[test]

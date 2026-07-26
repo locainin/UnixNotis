@@ -1,7 +1,6 @@
 //! Bounded desktop-entry discovery and record construction
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
 
 use tracing::debug;
 
@@ -53,14 +52,8 @@ impl ScanBudget {
 }
 
 impl DesktopIdentityIndex {
-    pub(in crate::daemon) fn shared() -> Arc<Self> {
-        static INDEX: OnceLock<Arc<DesktopIdentityIndex>> = OnceLock::new();
-        // One immutable snapshot serves the daemon lifetime and every notification burst
-        INDEX.get_or_init(|| Arc::new(Self::new())).clone()
-    }
-
     #[must_use]
-    pub(in crate::daemon) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut index = Self::default();
         let limits = ScanLimits::default();
         let mut budget = ScanBudget::default();
@@ -84,6 +77,15 @@ impl DesktopIdentityIndex {
         // Relay trust is tied to the installed file identity instead of its basename
         index.index_trusted_relay(Path::new("/usr/bin/notify-send"));
         index.index_trusted_relay(Path::new("/usr/local/bin/notify-send"));
+        // Portal backends carry broker-verified application ids into desktop notifications
+        for directory in [
+            "/usr/lib",
+            "/usr/libexec",
+            "/usr/local/lib",
+            "/usr/local/libexec",
+        ] {
+            index.index_trusted_portals_in(Path::new(directory));
+        }
         index
     }
 
@@ -146,7 +148,7 @@ impl DesktopIdentityIndex {
     }
 }
 
-fn desktop_roots() -> Vec<(PathBuf, bool)> {
+pub(super) fn desktop_roots() -> Vec<(PathBuf, bool)> {
     let mut roots = Vec::new();
     // The user data root remains distinct because its entries are not system evidence
     if let Some(data_home) = std::env::var_os("XDG_DATA_HOME")

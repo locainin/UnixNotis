@@ -7,13 +7,15 @@ use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
 use super::desktop_index::{
-    normalize_desktop_id, normalize_name, DesktopIdentityIndex, DesktopRecord,
+    normalize_desktop_id, normalize_name, record_launch_matches, DesktopIdentityIndex,
+    DesktopRecord,
 };
 use super::policy::inline_reply_policy;
 use super::sender::SenderMetadata;
 
 const MAX_DESKTOP_ID_BYTES: usize = 256;
 
+#[derive(Clone, Copy)]
 pub(in crate::daemon) struct AppClaim<'a> {
     pub(in crate::daemon) reported_name: &'a str,
     pub(in crate::daemon) desktop_entry: Option<&'a str>,
@@ -22,6 +24,25 @@ pub(in crate::daemon) struct AppClaim<'a> {
 pub(in crate::daemon) struct AttributionResolution {
     pub(in crate::daemon) attribution: NotificationAttribution,
     pub(in crate::daemon) inline_reply_policy: InlineReplyPolicy,
+}
+
+pub(in crate::daemon) fn unknown_reply_denied(
+    claim: AppClaim<'_>,
+    sender: &SenderMetadata,
+    reason: &str,
+) -> AttributionResolution {
+    let source = sender.sender_executable.as_deref().map_or_else(
+        || reason.to_string(),
+        |path| format!("{reason}; source {path}"),
+    );
+    AttributionResolution {
+        attribution: NotificationAttribution::unknown(
+            claim.reported_name,
+            &source,
+            unknown_group_key(claim.reported_name, sender),
+        ),
+        inline_reply_policy: InlineReplyPolicy::Deny,
+    }
 }
 
 pub(in crate::daemon) async fn resolve_attribution(
@@ -57,6 +78,15 @@ fn resolve_with_evidence(
     if let Some(desktop_id) = desktop_entry.as_deref() {
         let records = index.records_for_id(desktop_id);
         if !records.is_empty() {
+            if claim.reported_name.trim().is_empty()
+                && sender
+                    .sender_executable_identity
+                    .and_then(|identity| index.trusted_portal_path(identity))
+                    .is_some()
+            {
+                // Portal backends forward a broker-verified app id as desktop-entry
+                return resolution_for_portal_record(records[0], sender, index);
+            }
             if let Some(record) = records
                 .iter()
                 .find(|record| record_matches_sender(record, sender))
@@ -124,6 +154,31 @@ fn resolve_with_evidence(
         &source,
         group_key,
     ))
+}
+
+fn resolution_for_portal_record(
+    record: &DesktopRecord,
+    sender: &SenderMetadata,
+    index: &DesktopIdentityIndex,
+) -> AttributionResolution {
+    let portal = sender
+        .sender_executable_identity
+        .and_then(|identity| index.trusted_portal_path(identity))
+        .map_or_else(
+            || "desktop portal".to_string(),
+            |path| path.display().to_string(),
+        );
+    let group_key = format!("portal-desktop:{}", record.id);
+    let attribution = NotificationAttribution::associated(
+        &record.display_name,
+        &record.id,
+        &record.badge_icon,
+        &format!("Mediated by {portal}"),
+        AttributionClass::PortalAssociated,
+        false,
+        group_key,
+    );
+    policy_resolution(attribution)
 }
 
 fn resolution_for_record(
@@ -204,7 +259,7 @@ const fn policy_resolution(attribution: NotificationAttribution) -> AttributionR
     }
 }
 
-const fn record_matches_sender(record: &DesktopRecord, sender: &SenderMetadata) -> bool {
+fn record_matches_sender(record: &DesktopRecord, sender: &SenderMetadata) -> bool {
     if !record.association_eligible {
         return false;
     }
@@ -214,6 +269,7 @@ const fn record_matches_sender(record: &DesktopRecord, sender: &SenderMetadata) 
     ) {
         (Some(record_identity), Some(sender_identity)) => {
             record_identity.same_file(sender_identity)
+                && record_launch_matches(record, sender_identity, sender.sender_cmdline.as_deref())
         }
         _ => false,
     }

@@ -6,8 +6,8 @@ use chrono::Utc;
 use unixnotis_core::{Config, Notification, NotificationImage, Urgency};
 use zbus::zvariant::OwnedValue;
 
+use super::dnd::persistence::{PersistedDndState, DND_STATE_FILE};
 use super::dnd::DndStateStore;
-use super::dnd::{PersistedDndState, DND_STATE_FILE};
 use super::model::NotificationStore;
 
 impl NotificationStore {

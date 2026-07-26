@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::super::is_shared_launcher;
+use super::super::names::is_shared_launcher;
 
 #[test]
 fn shared_launchers_are_never_application_specific_associations() {

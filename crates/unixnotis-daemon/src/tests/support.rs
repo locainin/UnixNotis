@@ -6,10 +6,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use unixnotis_core::Config;
 use zbus::Connection;
 
-use crate::daemon::DaemonState;
+use crate::daemon::{DaemonState, DesktopIdentityIndex};
 use crate::sound::SoundSettings;
 use crate::store::NotificationStore;
 
@@ -29,7 +30,13 @@ pub async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> {
     let config = Config::default();
     let sound = SoundSettings::from_config(&config, None);
     let store = NotificationStore::new_with_state_store(config, None);
-    DaemonState::new_with_store(connection, store, sound, trial_mode)
+    DaemonState::new_with_store(
+        connection,
+        store,
+        sound,
+        trial_mode,
+        Arc::new(ArcSwap::from_pointee(DesktopIdentityIndex::default())),
+    )
 }
 
 pub struct EnvVarGuard {

@@ -1,8 +1,6 @@
 //! Desktop record lookup tables and trusted relay matching
 
 use std::path::Path;
-#[cfg(test)]
-use std::path::PathBuf;
 
 use super::super::executable::{executable_evidence_for_path, FileIdentity};
 use super::model::{DesktopIdentityIndex, DesktopRecord, ExecutableIdentity};
@@ -63,6 +61,16 @@ impl DesktopIdentityIndex {
             .map(|relay| relay.path.as_path())
     }
 
+    pub(in crate::daemon::notifications::identity) fn trusted_portal_path(
+        &self,
+        identity: FileIdentity,
+    ) -> Option<&Path> {
+        self.trusted_portals
+            .iter()
+            .find(|portal| portal.identity.same_file(identity))
+            .map(|portal| portal.path.as_path())
+    }
+
     pub(super) fn index_trusted_relay(&mut self, path: &Path) {
         let Some(evidence) = executable_evidence_for_path(path) else {
             return;
@@ -76,23 +84,37 @@ impl DesktopIdentityIndex {
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::daemon::notifications::identity) fn from_records(
-        records: Vec<DesktopRecord>,
-        trusted_relays: Vec<(PathBuf, FileIdentity)>,
-    ) -> Self {
-        let mut index = Self::default();
-        for record in records {
-            index.index_record(record);
+    pub(super) fn index_trusted_portals_in(&mut self, directory: &Path) {
+        const MAX_PORTAL_CANDIDATES: usize = 256;
+
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return;
+        };
+        for entry in entries.take(MAX_PORTAL_CANDIDATES).flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if !name.starts_with("xdg-desktop-portal") {
+                continue;
+            }
+            let Some(evidence) = executable_evidence_for_path(&path) else {
+                continue;
+            };
+            // Portal authority is accepted only from protected system integration binaries
+            if evidence.identity.is_system_managed() && evidence.identity.is_executable_regular() {
+                self.trusted_portals.push(ExecutableIdentity {
+                    path: evidence.canonical_path,
+                    identity: evidence.identity,
+                });
+            }
         }
-        index.trusted_relays = trusted_relays
-            .into_iter()
-            .map(|(path, identity)| ExecutableIdentity { path, identity })
-            .collect();
-        index
     }
 
-    pub(super) fn index_record(&mut self, record: DesktopRecord) {
+    pub(in crate::daemon::notifications::identity) fn index_record(
+        &mut self,
+        record: DesktopRecord,
+    ) {
         let record_index = self.records.len();
         if record.system_origin {
             // Protected branding excludes generic names and launcher aliases

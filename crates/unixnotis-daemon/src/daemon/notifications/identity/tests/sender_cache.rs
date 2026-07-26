@@ -8,6 +8,7 @@ fn metadata(sender: &str, pid: u32) -> SenderMetadata {
         sender_start_time: Some(u64::from(pid)),
         sender_executable: Some(format!("/usr/bin/app-{pid}")),
         sender_executable_identity: None,
+        sender_cmdline: None,
     }
 }
 

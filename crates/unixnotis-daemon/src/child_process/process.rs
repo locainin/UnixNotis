@@ -52,23 +52,22 @@ impl UiProcessKind {
         }
     }
 
-    pub(super) fn build_command(self, args: &Args) -> Command {
-        let mut command = match self {
-            Self::Popups => {
-                if let Some(path) = resolve_popups_path() {
-                    Command::new(path)
-                } else {
-                    Command::new("unixnotis-popups")
-                }
-            }
-            Self::Center => {
-                if let Some(path) = resolve_center_path() {
-                    Command::new(path)
-                } else {
-                    Command::new("unixnotis-center")
-                }
-            }
+    pub(super) fn build_command(self, args: &Args) -> Result<Command> {
+        let path = match self {
+            Self::Popups => resolve_popups_path(),
+            Self::Center => resolve_center_path(),
         };
+        let path = path.ok_or_else(|| {
+            anyhow!(
+                "{} is missing beside the daemon executable; refusing a PATH-based child launch",
+                self.label()
+            )
+        })?;
+        Ok(Self::build_command_for_path(args, path))
+    }
+
+    fn build_command_for_path(args: &Args, path: PathBuf) -> Command {
+        let mut command = Command::new(path);
 
         // Journal should keep child logs tied to the daemon service
         // Inherited output makes crash lines easier to trace later
@@ -90,10 +89,10 @@ impl UiProcessKind {
     }
 
     pub(super) fn start(self, args: &Args) -> Result<Child> {
-        let mut command = self.build_command(args);
+        let mut command = self.build_command(args)?;
         let label = self.label();
         command.spawn().map_err(|err| {
-            anyhow!("failed to start {label} ({err}); build it or install it on PATH")
+            anyhow!("failed to start {label} ({err}); install it beside the daemon executable")
         })
     }
 }

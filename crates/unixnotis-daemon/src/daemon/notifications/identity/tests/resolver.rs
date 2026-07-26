@@ -4,8 +4,108 @@ use std::path::PathBuf;
 use unixnotis_core::{AttributionClass, InlineReplyPolicy};
 
 use super::*;
+use crate::daemon::notifications::identity::desktop_index::model::{
+    ExecutableIdentity, LaunchArgument, LaunchSpec, LiteralArgument,
+};
 use crate::daemon::notifications::identity::desktop_index::{DesktopIdentityIndex, DesktopRecord};
 use crate::daemon::notifications::identity::FileIdentity;
+
+trait DesktopRecordFixture {
+    fn fixture(
+        id: &str,
+        display_name: &str,
+        executable_path: &str,
+        identity: FileIdentity,
+        system_entry: bool,
+        dbus_activatable: bool,
+    ) -> Self;
+
+    fn with_launch_literals(self, arguments: &[&str]) -> Self;
+}
+
+impl DesktopRecordFixture for DesktopRecord {
+    fn fixture(
+        id: &str,
+        display_name: &str,
+        executable_path: &str,
+        identity: FileIdentity,
+        system_entry: bool,
+        dbus_activatable: bool,
+    ) -> Self {
+        Self {
+            id: id.to_string(),
+            display_name: display_name.to_string(),
+            badge_icon: id.to_string(),
+            executable_path: Some(PathBuf::from(executable_path)),
+            executable_identity: Some(identity),
+            desktop_identity: Some(identity),
+            system_origin: system_entry,
+            system_association: system_entry,
+            association_eligible: true,
+            dbus_activatable,
+            launch_spec: None,
+            names: HashSet::from([normalize_name(display_name)]),
+        }
+    }
+
+    fn with_launch_literals(mut self, arguments: &[&str]) -> Self {
+        let executable = self
+            .executable_identity
+            .expect("launch fixture needs executable identity");
+        self.launch_spec = Some(LaunchSpec {
+            executable,
+            arguments: arguments
+                .iter()
+                .map(|value| {
+                    LaunchArgument::Literal(LiteralArgument {
+                        value: value.as_bytes().to_vec(),
+                        file: None,
+                    })
+                })
+                .collect(),
+            protected_literal_files: 1,
+            literal_files_are_system_managed: true,
+        });
+        self
+    }
+}
+
+trait DesktopIdentityIndexFixture {
+    fn from_records(
+        records: Vec<DesktopRecord>,
+        trusted_relays: Vec<(PathBuf, FileIdentity)>,
+    ) -> Self;
+
+    fn with_trusted_portal(self, path: PathBuf, identity: FileIdentity) -> Self;
+}
+
+impl DesktopIdentityIndexFixture for DesktopIdentityIndex {
+    fn from_records(
+        records: Vec<DesktopRecord>,
+        trusted_relays: Vec<(PathBuf, FileIdentity)>,
+    ) -> Self {
+        let mut index = Self::default();
+        for record in records {
+            index.index_record(record);
+        }
+        index.trusted_relays = trusted_relays
+            .into_iter()
+            .map(|(path, identity)| ExecutableIdentity { path, identity })
+            .collect();
+        index
+    }
+
+    fn with_trusted_portal(mut self, path: PathBuf, identity: FileIdentity) -> Self {
+        index_trusted_portal(&mut self, path, identity);
+        self
+    }
+}
+
+fn index_trusted_portal(index: &mut DesktopIdentityIndex, path: PathBuf, identity: FileIdentity) {
+    index
+        .trusted_portals
+        .push(ExecutableIdentity { path, identity });
+}
 
 fn identity(device: u64, inode: u64, uid: u32) -> FileIdentity {
     FileIdentity {
@@ -23,6 +123,17 @@ fn sender(path: &str, identity: FileIdentity) -> SenderMetadata {
         sender_executable_identity: Some(identity),
         ..SenderMetadata::default()
     }
+}
+
+fn sender_with_arguments(path: &str, identity: FileIdentity, arguments: &[&str]) -> SenderMetadata {
+    let mut metadata = sender(path, identity);
+    metadata.sender_cmdline = Some(
+        std::iter::once(path)
+            .chain(arguments.iter().copied())
+            .map(|argument| argument.as_bytes().to_vec())
+            .collect(),
+    );
+    metadata
 }
 
 fn system_record(id: &str, name: &str, path: &str, identity: FileIdentity) -> DesktopRecord {
@@ -129,6 +240,114 @@ fn python_desktop_entry_cannot_trust_an_unrelated_python_process() {
 }
 
 #[test]
+fn unlisted_runtimes_cannot_associate_a_different_application_payload() {
+    for (serial, executable, expected, actual) in [
+        (
+            1_u64,
+            "/usr/bin/pypy3",
+            "/usr/share/app/main.py",
+            "/tmp/fake.py",
+        ),
+        (2, "/usr/bin/gjs", "/usr/share/app/main.js", "/tmp/fake.js"),
+        (
+            3,
+            "/usr/bin/dotnet",
+            "/usr/share/app/Example.dll",
+            "/tmp/Fake.dll",
+        ),
+    ] {
+        let runtime_identity = identity(50, 500 + serial, 0);
+        let record = system_record(
+            "org.example.RuntimeApp",
+            "Runtime App",
+            executable,
+            runtime_identity,
+        )
+        .with_launch_literals(&[expected]);
+        let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+        let resolution = resolve_with_evidence(
+            AppClaim {
+                reported_name: "Runtime App",
+                desktop_entry: Some("org.example.RuntimeApp"),
+            },
+            &sender_with_arguments(executable, runtime_identity, &[actual]),
+            &index,
+            &HashSet::new(),
+        );
+
+        assert_ne!(
+            resolution.attribution.class,
+            AttributionClass::SystemAssociated,
+            "{executable} accepted a different application payload"
+        );
+        assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    }
+}
+
+#[test]
+fn java_cannot_associate_a_different_jar() {
+    let java_identity = identity(51, 510, 0);
+    let record = system_record(
+        "org.example.JavaApp",
+        "Java App",
+        "/usr/bin/java",
+        java_identity,
+    )
+    .with_launch_literals(&["-jar", "/usr/share/java/example.jar"]);
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Java App",
+            desktop_entry: Some("org.example.JavaApp"),
+        },
+        &sender_with_arguments("/usr/bin/java", java_identity, &["-jar", "/tmp/fake.jar"]),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_ne!(
+        resolution.attribution.class,
+        AttributionClass::SystemAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
+fn matching_fixed_system_application_argument_allows_association() {
+    let runtime_identity = identity(52, 520, 0);
+    let record = system_record(
+        "org.example.ScriptApp",
+        "Script App",
+        "/usr/bin/pypy3",
+        runtime_identity,
+    )
+    .with_launch_literals(&["/usr/share/script-app/main.py"]);
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Script App",
+            desktop_entry: Some("org.example.ScriptApp"),
+        },
+        &sender_with_arguments(
+            "/usr/bin/pypy3",
+            runtime_identity,
+            &["/usr/share/script-app/main.py"],
+        ),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_eq!(
+        resolution.attribution.class,
+        AttributionClass::SystemAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+}
+
+#[test]
 fn unmediated_flatpak_process_cannot_become_portal_associated() {
     let flatpak_identity = identity(21, 210, 0);
     let mut record = system_record(
@@ -156,6 +375,73 @@ fn unmediated_flatpak_process_cannot_become_portal_associated() {
         AttributionClass::PortalAssociated
     );
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
+fn an_empty_app_name_does_not_turn_an_untrusted_relay_into_a_portal() {
+    let flatpak_identity = identity(24, 240, 0);
+    let relay_identity = identity(25, 250, 0);
+    let mut record = system_record(
+        "org.example.FlatpakApp",
+        "Flatpak App",
+        "/usr/bin/flatpak",
+        flatpak_identity,
+    );
+    record.association_eligible = false;
+    record.system_association = false;
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "",
+            desktop_entry: Some("org.example.FlatpakApp"),
+        },
+        &sender("/usr/lib/untrusted-relay", relay_identity),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_ne!(
+        resolution.attribution.class,
+        AttributionClass::PortalAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
+fn portal_mediated_flatpak_uses_broker_verified_desktop_identity() {
+    let flatpak_identity = identity(22, 220, 0);
+    let portal_identity = identity(23, 230, 0);
+    let mut record = system_record(
+        "org.example.FlatpakApp",
+        "Flatpak App",
+        "/usr/bin/flatpak",
+        flatpak_identity,
+    );
+    record.association_eligible = false;
+    record.system_association = false;
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new()).with_trusted_portal(
+        PathBuf::from("/usr/lib/xdg-desktop-portal-gtk"),
+        portal_identity,
+    );
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            // The GTK portal backend forwards an empty app name and verified desktop-entry hint
+            reported_name: "",
+            desktop_entry: Some("org.example.FlatpakApp"),
+        },
+        &sender("/usr/lib/xdg-desktop-portal-gtk", portal_identity),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_eq!(
+        resolution.attribution.class,
+        AttributionClass::PortalAssociated
+    );
+    assert_eq!(resolution.attribution.display_name, "Flatpak App");
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
 }
 
 #[test]

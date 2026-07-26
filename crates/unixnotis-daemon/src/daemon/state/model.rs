@@ -1,6 +1,7 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 
+use arc_swap::ArcSwap;
 use tokio::sync::Mutex;
 use unixnotis_core::Config;
 use zbus::Connection;
@@ -42,8 +43,8 @@ pub struct DaemonState {
         StdMutex<std::collections::HashMap<String, NotificationBurstState>>,
     // Unique sender identities avoid repeated bus and procfs lookups during bursts
     pub(in crate::daemon) sender_metadata_cache: SenderMetadataCache,
-    // Desktop records are indexed once so notification bursts never rescan application files
-    pub(in crate::daemon) desktop_identity_index: Arc<DesktopIdentityIndex>,
+    // Readers load one immutable snapshot while filesystem refresh swaps the complete index
+    pub(crate) desktop_identity_index: Arc<ArcSwap<DesktopIdentityIndex>>,
     // Trial mode allows local rebuild loops without forcing daemon restarts for control auth
     pub(in crate::daemon::state) trial_mode: bool,
 }
@@ -54,9 +55,10 @@ impl DaemonState {
         config: Config,
         sound: SoundSettings,
         trial_mode: bool,
+        desktop_identity_index: Arc<ArcSwap<DesktopIdentityIndex>>,
     ) -> Arc<Self> {
         let store = NotificationStore::new(config);
-        Self::new_with_store(connection, store, sound, trial_mode)
+        Self::new_with_store(connection, store, sound, trial_mode, desktop_identity_index)
     }
 
     pub(crate) fn new_with_store(
@@ -64,6 +66,7 @@ impl DaemonState {
         store: NotificationStore,
         sound: SoundSettings,
         trial_mode: bool,
+        desktop_identity_index: Arc<ArcSwap<DesktopIdentityIndex>>,
     ) -> Arc<Self> {
         // One construction path keeps scheduler, signal cache, and popup state in sync
         Arc::new(Self {
@@ -80,7 +83,7 @@ impl DaemonState {
             events: DaemonEventPublisher::new(connection),
             notification_signal_bursts: StdMutex::new(std::collections::HashMap::new()),
             sender_metadata_cache: SenderMetadataCache::new(),
-            desktop_identity_index: DesktopIdentityIndex::shared(),
+            desktop_identity_index,
             trial_mode,
         })
     }

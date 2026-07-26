@@ -1,5 +1,8 @@
 //! Generated D-Bus control proxy contract
 
+// The proxy macro creates signal collections consumed through generated streams
+#![allow(clippy::collection_is_never_read)]
+
 use zbus::proxy;
 
 use crate::NotificationView;
@@ -57,6 +60,7 @@ trait Control {
     /// Mark the panel UI ready after signal subscriptions are active
     fn mark_panel_ready(&self) -> zbus::Result<()>;
     /// Clear panel readiness while the UI reconnects or shuts down
+    #[zbus(no_autostart)]
     fn mark_panel_not_ready(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]

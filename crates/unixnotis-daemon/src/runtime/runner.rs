@@ -1,12 +1,16 @@
 //! Daemon runtime and trial cleanup coordination
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
+use arc_swap::ArcSwap;
 use zbus::connection::Builder;
 use zbus::fdo::DBusProxy;
 
 use crate::cli::Args;
+use crate::daemon::DesktopIdentityIndex;
 use crate::trial_mode::{prepare_trial, TrialState};
-use unixnotis_core::{Config, NOTIFICATIONS_BUS_NAME};
+use unixnotis_core::{log_session_bus_identity, Config, NOTIFICATIONS_BUS_NAME};
 
 use super::{daemon, trial_cleanup};
 
@@ -23,6 +27,14 @@ async fn run_with_builder(args: &Args, config: Config, builder: Builder<'_>) -> 
         .build()
         .await
         .context("connect to session bus")?;
+    log_session_bus_identity(&connection, "daemon")
+        .await
+        .context("read daemon session-bus identity")?;
+    // Finish the bounded filesystem scan before either well-known name can become visible
+    let desktop_identity_index = tokio::task::spawn_blocking(DesktopIdentityIndex::new)
+        .await
+        .context("desktop identity index task failed")?;
+    let desktop_identity_index = Arc::new(ArcSwap::from_pointee(desktop_identity_index));
     let dbus_proxy = DBusProxy::new(&connection).await?;
     let notifications_name = zbus::names::BusName::try_from(NOTIFICATIONS_BUS_NAME)?;
     let mut trial_state = if trial_requested(args) {
@@ -37,7 +49,7 @@ async fn run_with_builder(args: &Args, config: Config, builder: Builder<'_>) -> 
         config,
         &connection,
         &dbus_proxy,
-        notifications_name.clone(),
+        desktop_identity_index,
     )
     .await;
     let restore_result = trial_cleanup::finish_trial(

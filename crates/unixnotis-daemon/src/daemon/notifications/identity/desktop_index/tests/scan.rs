@@ -1,7 +1,8 @@
 use std::fs;
 use std::os::unix::fs::symlink;
 
-use super::super::*;
+use super::super::scan::{ScanBudget, ScanLimits};
+use super::super::DesktopIdentityIndex;
 use crate::test_support::TempRoot;
 
 #[test]

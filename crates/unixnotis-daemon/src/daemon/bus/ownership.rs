@@ -7,9 +7,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use futures_util::StreamExt;
-use tracing::{info, warn};
+use tracing::warn;
 use zbus::fdo::DBusProxy;
-use zbus::Connection;
 
 use crate::daemon::DaemonState;
 
@@ -57,39 +56,10 @@ pub async fn wait_for_owner_state(
     }
 }
 
-pub async fn log_current_owner(
-    dbus_proxy: &DBusProxy<'_>,
-    connection: &Connection,
-    name: zbus::names::BusName<'_>,
-) -> Result<bool> {
-    let unique_name = connection
-        .unique_name()
-        .map(std::string::ToString::to_string);
-    let owner = match dbus_proxy.get_name_owner(name).await {
-        Ok(owner) => owner.to_string(),
-        Err(err) => {
-            info!(?err, "org.freedesktop.Notifications has no owner");
-            return Ok(false);
-        }
-    };
-    let is_self = owner_name_is_self(unique_name.as_deref(), owner.as_str());
-    if is_self {
-        info!(owner, "org.freedesktop.Notifications owner (self)");
-    } else {
-        info!(owner, "org.freedesktop.Notifications owner");
-    }
-    Ok(is_self)
-}
-
 pub(super) fn owner_state_matches(new_owner: Option<&str>, expect_owner: bool) -> bool {
     // D-Bus signals encode release as an empty owner name, not as a missing signal
     let has_owner = new_owner.is_some_and(|name| !name.is_empty());
     has_owner == expect_owner
-}
-
-pub(super) fn owner_name_is_self(unique_name: Option<&str>, owner: &str) -> bool {
-    // Unique names come from the live connection and must match the queried owner exactly
-    unique_name == Some(owner)
 }
 
 pub async fn spawn_client_owner_watch(state: Arc<DaemonState>) -> zbus::Result<()> {
