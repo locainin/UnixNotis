@@ -13,6 +13,7 @@ pub use model::DesktopIdentityIndex;
 pub(super) use model::DesktopRecord;
 pub(super) use names::{normalize_desktop_id, normalize_name};
 pub use refresh::spawn_desktop_index_refresh;
+pub use scan::DesktopIndexSnapshot;
 
 pub(in crate::daemon::notifications::identity) fn record_launch_matches(
     record: &DesktopRecord,

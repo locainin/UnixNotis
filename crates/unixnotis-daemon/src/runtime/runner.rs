@@ -8,7 +8,7 @@ use zbus::connection::Builder;
 use zbus::fdo::DBusProxy;
 
 use crate::cli::Args;
-use crate::daemon::DesktopIdentityIndex;
+use crate::daemon::{DesktopIdentityIndex, DesktopIndexSnapshot};
 use crate::trial_mode::{prepare_trial, TrialState};
 use unixnotis_core::{log_session_bus_identity, Config, NOTIFICATIONS_BUS_NAME};
 
@@ -31,9 +31,13 @@ async fn run_with_builder(args: &Args, config: Config, builder: Builder<'_>) -> 
         .await
         .context("read daemon session-bus identity")?;
     // Finish the bounded filesystem scan before either well-known name can become visible
-    let desktop_identity_index = tokio::task::spawn_blocking(DesktopIdentityIndex::new)
+    let desktop_index_snapshot = tokio::task::spawn_blocking(DesktopIdentityIndex::build_snapshot)
         .await
         .context("desktop identity index task failed")?;
+    let DesktopIndexSnapshot {
+        index: desktop_identity_index,
+        watched_directories,
+    } = desktop_index_snapshot;
     let desktop_identity_index = Arc::new(ArcSwap::from_pointee(desktop_identity_index));
     let dbus_proxy = DBusProxy::new(&connection).await?;
     let notifications_name = zbus::names::BusName::try_from(NOTIFICATIONS_BUS_NAME)?;
@@ -50,6 +54,7 @@ async fn run_with_builder(args: &Args, config: Config, builder: Builder<'_>) -> 
         &connection,
         &dbus_proxy,
         desktop_identity_index,
+        watched_directories,
     )
     .await;
     let restore_result = trial_cleanup::finish_trial(

@@ -1,5 +1,6 @@
 //! Live notification service runtime
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -30,6 +31,7 @@ pub(super) async fn run_daemon(
     connection: &Connection,
     dbus_proxy: &DBusProxy<'_>,
     desktop_identity_index: Arc<ArcSwap<DesktopIdentityIndex>>,
+    watched_desktop_directories: Vec<PathBuf>,
 ) -> Result<()> {
     // Resolve sound settings once to avoid repeated filesystem work
     let sound_settings = SoundSettings::from_config(&config, args.config.as_deref());
@@ -40,7 +42,10 @@ pub(super) async fn run_daemon(
         args.trial,
         desktop_identity_index,
     );
-    if let Err(error) = spawn_desktop_index_refresh(state.desktop_identity_index.clone()) {
+    if let Err(error) = spawn_desktop_index_refresh(
+        state.desktop_identity_index.clone(),
+        watched_desktop_directories,
+    ) {
         warn!(?error, "desktop application refresh watcher is unavailable");
     }
     let scheduler = ExpirationScheduler::start(state.clone());

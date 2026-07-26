@@ -139,3 +139,40 @@ fn scan_stops_when_the_global_record_budget_is_exhausted() {
     assert_eq!(index.records.len(), 1);
     assert_eq!(budget.stopped_by, Some("record budget"));
 }
+
+#[test]
+fn exhausted_user_budget_does_not_block_system_desktop_records() {
+    let root = TempRoot::new("desktop-separate-budgets");
+    let user_root = root.join("user");
+    let system_root = root.join("system");
+    fs::create_dir_all(&user_root).expect("create user application directory");
+    fs::create_dir_all(&system_root).expect("create system application directory");
+    for name in ["one.desktop", "two.desktop"] {
+        fs::write(
+            user_root.join(name),
+            "[Desktop Entry]\nType=Application\nName=User App\nExec=/usr/bin/true\n",
+        )
+        .expect("user desktop fixture");
+    }
+    fs::write(
+        system_root.join("system.desktop"),
+        "[Desktop Entry]\nType=Application\nName=System App\nExec=/usr/bin/true\n",
+    )
+    .expect("system desktop fixture");
+    let limits = ScanLimits {
+        records: 1,
+        ..ScanLimits::default()
+    };
+
+    let snapshot = DesktopIdentityIndex::build_with_roots(
+        vec![(user_root, false), (system_root, true)],
+        &limits,
+    );
+
+    assert!(snapshot
+        .index
+        .records
+        .iter()
+        .any(|record| record.system_origin && record.display_name == "System App"));
+    assert_eq!(snapshot.watched_directories.len(), 2);
+}
