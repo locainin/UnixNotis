@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use tokio::sync::mpsc;
 use tracing::warn;
-use unixnotis_core::{ControlProxy, PanelDebugLevel};
+use unixnotis_core::{timed_dbus_call, ControlProxy, PanelDebugLevel};
 use zbus::Result as ZbusResult;
 
 use super::model::UiCommand;
@@ -20,10 +20,12 @@ pub async fn handle_command(
 ) -> ZbusResult<()> {
     match command {
         // Per-row actions still map straight to the daemon methods
-        UiCommand::Dismiss(id) => proxy.dismiss(id).await,
-        UiCommand::InvokeAction { id, action_key } => proxy.invoke_action(id, &action_key).await,
+        UiCommand::Dismiss(id) => timed_dbus_call(proxy.dismiss(id)).await,
+        UiCommand::InvokeAction { id, action_key } => {
+            timed_dbus_call(proxy.invoke_action(id, &action_key)).await
+        }
         UiCommand::Reply { id, text, outcome } => {
-            let result = proxy.reply_notification(id, &text).await;
+            let result = timed_dbus_call(proxy.reply_notification(id, &text)).await;
             let reply_result = match &result {
                 Ok(()) => Ok(()),
                 Err(err) => Err(err.to_string()),
@@ -33,11 +35,13 @@ pub async fn handle_command(
         }
         // Daemon invalidation now drives refresh for every client, not just the caller
         // Keeping the caller path thin avoids reintroducing one-client-only fixes later
-        UiCommand::ClearAll => proxy.clear_all().await,
+        UiCommand::ClearAll => timed_dbus_call(proxy.clear_all()).await,
         // State and visibility commands remain safe to replay after reconnect
-        UiCommand::SetDnd(enabled) => proxy.set_dnd(enabled).await,
-        UiCommand::SetDndUntil(expires_at) => proxy.set_dnd_until(expires_at).await,
-        UiCommand::ClosePanel => proxy.close_panel().await,
+        UiCommand::SetDnd(enabled) => timed_dbus_call(proxy.set_dnd(enabled)).await,
+        UiCommand::SetDndUntil(expires_at) => {
+            timed_dbus_call(proxy.set_dnd_until(expires_at)).await
+        }
+        UiCommand::ClosePanel => timed_dbus_call(proxy.close_panel()).await,
     }
 }
 
@@ -61,7 +65,10 @@ pub fn stash_offline_commands(
     }
 }
 
-fn enqueue_offline_command(offline: &mut VecDeque<UiCommand>, command: UiCommand) -> bool {
+pub(super) fn enqueue_offline_command(
+    offline: &mut VecDeque<UiCommand>,
+    command: UiCommand,
+) -> bool {
     let command = match command {
         UiCommand::Reply { outcome, .. } => {
             // Reply text is live-only and must never survive a D-Bus generation change

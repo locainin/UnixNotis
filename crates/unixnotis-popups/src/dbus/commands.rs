@@ -2,15 +2,17 @@
 
 use tokio::sync::mpsc;
 use tracing::warn;
-use unixnotis_core::ControlProxy;
+use unixnotis_core::{timed_dbus_call, ControlProxy};
 use zbus::Result as ZbusResult;
 
 use super::types::UiCommand;
 
 pub async fn handle_command(proxy: &ControlProxy<'_>, command: UiCommand) -> ZbusResult<()> {
     match command {
-        UiCommand::Dismiss(id) => proxy.dismiss(id).await,
-        UiCommand::InvokeAction { id, action_key } => proxy.invoke_action(id, &action_key).await,
+        UiCommand::Dismiss(id) => timed_dbus_call(proxy.dismiss(id)).await,
+        UiCommand::InvokeAction { id, action_key } => {
+            timed_dbus_call(proxy.invoke_action(id, &action_key)).await
+        }
     }
 }
 

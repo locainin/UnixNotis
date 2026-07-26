@@ -4,14 +4,15 @@ use std::collections::VecDeque;
 
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
-use tracing::warn;
-use unixnotis_core::ControlProxy;
+use tracing::{info, warn};
+use unixnotis_core::{timed_dbus_call, ControlProxy};
+use zbus::proxy::OwnerChangedStream;
 
 use super::backoff::{Backoff, RetryLog};
 use super::commands::{drop_stale_offline_commands, flush_offline_commands, handle_command};
 use super::events::push_active_notification_event;
 use super::model::{UiCommand, UiEvent};
-use super::seed::seed_state_with_retry;
+use super::seed::seed_state;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ControlGenerationExit {
@@ -19,28 +20,71 @@ pub(super) enum ControlGenerationExit {
     RetryDelayed,
     // A live stream ended and the reconnect owner must perform cleanup
     Disconnected,
+    // A well-known owner transition needs a new handshake without reconnect backoff
+    OwnerChanged,
     // The UI dropped every command sender and no longer needs a control task
     Shutdown,
 }
 
 impl ControlGenerationExit {
-    pub(super) const fn requires_reconnect_cleanup(self) -> bool {
+    pub(super) const fn requires_connection_backoff(self) -> bool {
         matches!(self, Self::Disconnected)
     }
 
     pub(super) const fn should_stop(self) -> bool {
         matches!(self, Self::Shutdown)
     }
+
+    pub(super) const fn should_clear_panel_readiness(self) -> bool {
+        // Owner loss already clears owner-scoped state and must never trigger activation
+        matches!(self, Self::Shutdown)
+    }
+}
+
+pub(super) struct ControlGenerationContext<'context, 'stream> {
+    owner_changes: &'context mut OwnerChangedStream<'stream>,
+    sender: &'context async_channel::Sender<UiEvent>,
+    command_rx: &'context mut mpsc::Receiver<UiCommand>,
+    offline_commands: &'context mut VecDeque<UiCommand>,
+    subscribe_backoff: &'context mut Backoff,
+    subscribe_log: &'context mut RetryLog,
+}
+
+impl<'context, 'stream> ControlGenerationContext<'context, 'stream> {
+    pub(super) const fn new(
+        owner_changes: &'context mut OwnerChangedStream<'stream>,
+        sender: &'context async_channel::Sender<UiEvent>,
+        command_rx: &'context mut mpsc::Receiver<UiCommand>,
+        offline_commands: &'context mut VecDeque<UiCommand>,
+        subscribe_backoff: &'context mut Backoff,
+        subscribe_log: &'context mut RetryLog,
+    ) -> Self {
+        Self {
+            owner_changes,
+            sender,
+            command_rx,
+            offline_commands,
+            subscribe_backoff,
+            subscribe_log,
+        }
+    }
 }
 
 pub(super) async fn run_control_generation(
     proxy: &ControlProxy<'_>,
-    sender: &async_channel::Sender<UiEvent>,
-    command_rx: &mut mpsc::Receiver<UiCommand>,
-    offline_commands: &mut VecDeque<UiCommand>,
-    subscribe_backoff: &mut Backoff,
-    subscribe_log: &mut RetryLog,
+    owner: &str,
+    context: ControlGenerationContext<'_, '_>,
 ) -> ControlGenerationExit {
+    // One context keeps every mutable part tied to this exact owner generation
+    let ControlGenerationContext {
+        owner_changes,
+        sender,
+        command_rx,
+        offline_commands,
+        subscribe_backoff,
+        subscribe_log,
+    } = context;
+
     // Every stream below belongs to the same verified proxy generation
     // Install every match rule before seeding so in-flight signals remain buffered
     let mut added_stream = match proxy.receive_notification_added().await {
@@ -96,11 +140,22 @@ pub(super) async fn run_control_generation(
     subscribe_log.reset();
 
     // Seed after subscription so events arriving during the fetch wait in their streams
-    seed_state_with_retry(proxy, sender).await;
+    if let Err(error) = seed_state(proxy, sender).await {
+        warn!(
+            state_error = ?error.state_error,
+            active_error = ?error.active_error,
+            history_error = ?error.history_error,
+            send_error = ?error.send_error,
+            "control readiness handshake or seed failed"
+        );
+        retry_subscription(subscribe_backoff).await;
+        return ControlGenerationExit::RetryDelayed;
+    }
+    info!(owner, "UnixNotis control service ready");
     drop_stale_offline_commands(offline_commands);
     flush_offline_commands(proxy, sender, offline_commands).await;
     // Readiness is published only after initial state and buffered commands settle
-    if let Err(err) = proxy.mark_panel_ready().await {
+    if let Err(err) = timed_dbus_call(proxy.mark_panel_ready()).await {
         subscribe_log.warn_or_debug(&err, "failed to mark panel ready");
         retry_subscription(subscribe_backoff).await;
         return ControlGenerationExit::RetryDelayed;
@@ -175,7 +230,16 @@ pub(super) async fn run_control_generation(
                     break ControlGenerationExit::Disconnected;
                 };
                 // A full seed is required because another client may have deleted any row
-                seed_state_with_retry(proxy, sender).await;
+                if let Err(error) = seed_state(proxy, sender).await {
+                    warn!(
+                        state_error = ?error.state_error,
+                        active_error = ?error.active_error,
+                        history_error = ?error.history_error,
+                        send_error = ?error.send_error,
+                        "control snapshot refresh failed"
+                    );
+                    break ControlGenerationExit::Disconnected;
+                }
             }
             signal = panel_stream.next() => {
                 let Some(signal) = signal else {
@@ -186,11 +250,32 @@ pub(super) async fn run_control_generation(
                     let _ = sender.send(UiEvent::PanelRequested(*args.request())).await;
                 }
             }
+            owner_update = owner_changes.next() => {
+                match owner_update {
+                    Some(Some(new_owner)) => {
+                        warn!(owner = new_owner.as_str(), "UnixNotis control owner changed");
+                        let _ = sender.send(UiEvent::Disconnected).await;
+                        break ControlGenerationExit::OwnerChanged;
+                    }
+                    Some(None) => {
+                        info!("UnixNotis control service disconnected");
+                        let _ = sender.send(UiEvent::Disconnected).await;
+                        break ControlGenerationExit::OwnerChanged;
+                    }
+                    None => {
+                        warn!("control owner stream ended");
+                        let _ = sender.send(UiEvent::Disconnected).await;
+                        break ControlGenerationExit::Disconnected;
+                    }
+                }
+            }
         }
     };
 
-    // Readiness is best effort because a closed transport cannot accept cleanup calls
-    let _ = proxy.mark_panel_not_ready().await;
+    if exit.should_clear_panel_readiness() {
+        // Explicit UI shutdown clears readiness while the current owner is still available
+        let _ = timed_dbus_call(proxy.mark_panel_not_ready()).await;
+    }
     exit
 }
 

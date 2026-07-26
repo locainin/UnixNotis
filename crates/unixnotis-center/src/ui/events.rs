@@ -13,6 +13,13 @@ use super::{panel, UiState};
 impl UiState {
     pub fn handle_event(&mut self, event: UiEvent) {
         match event {
+            UiEvent::Disconnected => {
+                debug!("UnixNotis control service disconnected");
+                // Old rows and state must not survive into a later daemon generation
+                self.list.seed(Vec::new(), Vec::new());
+                self.update_state(unixnotis_core::ControlState::default());
+                self.refresh_counts();
+            }
             UiEvent::Seed {
                 state,
                 active,

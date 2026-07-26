@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use unixnotis_core::ControlProxy;
+use unixnotis_core::{log_session_bus_identity, ControlProxy};
 use zbus::Connection;
 
 use crate::cli::{Args, Command};
@@ -57,6 +57,9 @@ async fn run_async(command: Command) -> Result<()> {
     let connection = Connection::session()
         .await
         .context("connect to session bus")?;
+    log_session_bus_identity(&connection, "noticenterctl")
+        .await
+        .context("read noticenterctl session-bus identity")?;
     let proxy = ControlProxy::new(&connection)
         .await
         .context("connect to unixnotis control interface")?;

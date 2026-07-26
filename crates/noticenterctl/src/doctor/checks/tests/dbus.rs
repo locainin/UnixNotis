@@ -229,6 +229,47 @@ fn owned_control_service_runs_proxy_and_state_checks() {
 }
 
 #[test]
+fn different_notification_and_control_owners_fail_the_shared_owner_check() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build D-Bus test runtime");
+    runtime.block_on(async {
+        let broker = PrivateBroker::start();
+        let _control = ConnectionBuilder::address(broker.address.as_str())
+            .expect("parse private broker address")
+            .name(CONTROL_BUS_NAME)
+            .expect("request control bus name")
+            .serve_at(CONTROL_OBJECT_PATH, TestControl { deny_state: false })
+            .expect("register test control interface")
+            .build()
+            .await
+            .expect("connect test control service");
+        let _notifications = ConnectionBuilder::address(broker.address.as_str())
+            .expect("parse private broker address")
+            .name(NOTIFICATIONS_BUS_NAME)
+            .expect("request notification bus name")
+            .build()
+            .await
+            .expect("connect separate notification service");
+        let client = connect(&broker.address).await;
+
+        let result = inspect_bus_connection(&client).await;
+        let ownership = result
+            .checks
+            .iter()
+            .find(|check| check.id == "dbus.shared-owner")
+            .expect("shared owner check");
+
+        assert_eq!(ownership.severity, DoctorSeverity::Error);
+        assert_eq!(
+            ownership.summary,
+            "Notification and control names have different owners"
+        );
+    });
+}
+
+#[test]
 fn method_error_access_denial_uses_the_specific_client_guidance() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

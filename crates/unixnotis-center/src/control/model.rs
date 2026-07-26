@@ -9,6 +9,8 @@ use crate::media::MediaInfo;
 /// Events delivered to the GTK main loop.
 #[derive(Debug, Clone)]
 pub enum UiEvent {
+    // Owner loss clears snapshots that belong to the previous daemon generation
+    Disconnected,
     Seed {
         state: ControlState,
         active: Vec<NotificationView>,
