@@ -49,7 +49,11 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     // Last rendered action signature for cheap no-op detection
     pub(super) action_cache: RefCell<Vec<(String, String)>>,
     // Reply metadata and live state are cached separately from ordinary actions
-    pub(super) reply_cache: RefCell<(unixnotis_core::InlineReply, bool)>,
+    pub(super) reply_cache: RefCell<(
+        unixnotis_core::InlineReply,
+        unixnotis_core::InlineReplyPolicy,
+        bool,
+    )>,
     // Last rendered icon signature so decode work only happens on a real change
     pub(super) icon_sig: RefCell<Option<IconSignature>>,
 }

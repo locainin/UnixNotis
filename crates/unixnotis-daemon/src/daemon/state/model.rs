@@ -12,8 +12,8 @@ use crate::store::NotificationStore;
 
 use crate::daemon::events::DaemonEventPublisher;
 use crate::daemon::notifications::identity::DesktopIdentityIndex;
-use crate::daemon::notifications::sender_cache::SenderMetadataCache;
 use crate::daemon::notifications::NotificationBurstState;
+use crate::daemon::notifications::SenderMetadataCache;
 
 /// Shared daemon state guarded behind an async mutex
 pub struct DaemonState {
