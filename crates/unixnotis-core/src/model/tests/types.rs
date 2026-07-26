@@ -1,5 +1,30 @@
 use super::Urgency;
-use zbus::zvariant::OwnedValue;
+use zbus::zvariant::{serialized::Context, to_bytes, OwnedValue, Type, LE};
+
+#[test]
+fn urgency_wire_values_use_their_declared_one_byte_signature() {
+    let context = Context::new_dbus(LE, 0);
+
+    for (urgency, discriminant) in [
+        (Urgency::Low, 0_u8),
+        (Urgency::Normal, 1),
+        (Urgency::Critical, 2),
+    ] {
+        let encoded = to_bytes(context, &urgency).expect("serialize urgency");
+        assert_eq!(Urgency::signature(), u8::signature());
+        assert_eq!(encoded.bytes(), &[discriminant]);
+        let decoded: Urgency = encoded.deserialize().expect("deserialize urgency").0;
+        assert_eq!(decoded, urgency);
+    }
+}
+
+#[test]
+fn urgency_wire_values_reject_unknown_discriminants() {
+    let context = Context::new_dbus(LE, 0);
+    let encoded = to_bytes(context, &u8::MAX).expect("serialize unknown urgency byte");
+
+    assert!(encoded.deserialize::<Urgency>().is_err());
+}
 
 #[test]
 fn urgency_hint_maps_known_values_to_protocol_urgency() {

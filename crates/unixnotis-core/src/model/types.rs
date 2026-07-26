@@ -1,10 +1,12 @@
 //! Core notification enum and action types shared across models
 
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use zbus::zvariant::{OwnedValue, Type};
 
 /// Notification urgency levels defined by the specification
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
+// The protocol exposes urgency as one byte, including inside notification views
+#[derive(Debug, Copy, Clone, Serialize_repr, Deserialize_repr, Type, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Urgency {
     Low = 0,

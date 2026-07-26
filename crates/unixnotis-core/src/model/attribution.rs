@@ -1,6 +1,7 @@
 //! Notification application association and interaction policy
 
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use zbus::zvariant::Type;
 
 use crate::util;
@@ -8,7 +9,8 @@ use crate::util;
 const MAX_ATTRIBUTION_TEXT_BYTES: usize = 256;
 
 /// Evidence class used to present an application without claiming universal authentication
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
+// Representation-aware Serde keeps the D-Bus body aligned with its one-byte signature
+#[derive(Debug, Copy, Clone, Default, Serialize_repr, Deserialize_repr, Type, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AttributionClass {
     SystemAssociated = 0,
@@ -21,7 +23,8 @@ pub enum AttributionClass {
 }
 
 /// Independent policy for credential-like inline text controls
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
+// Ordinary enum Serde writes a wider variant index that strict brokers reject
+#[derive(Debug, Copy, Clone, Default, Serialize_repr, Deserialize_repr, Type, PartialEq, Eq)]
 #[repr(u8)]
 pub enum InlineReplyPolicy {
     Allow = 0,

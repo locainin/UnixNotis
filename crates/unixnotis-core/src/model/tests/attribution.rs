@@ -1,4 +1,55 @@
-use super::{AttributionClass, NotificationAttribution};
+use super::{AttributionClass, InlineReplyPolicy, NotificationAttribution};
+use zbus::zvariant::{serialized::Context, to_bytes, Type, LE};
+
+#[test]
+fn attribution_wire_enums_use_their_declared_one_byte_signature() {
+    let context = Context::new_dbus(LE, 0);
+
+    for (class, discriminant) in [
+        (AttributionClass::SystemAssociated, 0_u8),
+        (AttributionClass::PortalAssociated, 1),
+        (AttributionClass::UserAssociated, 2),
+        (AttributionClass::TrustedRelay, 3),
+        (AttributionClass::Unknown, 4),
+        (AttributionClass::Conflict, 5),
+    ] {
+        let encoded = to_bytes(context, &class).expect("serialize attribution class");
+        assert_eq!(AttributionClass::signature(), u8::signature());
+        assert_eq!(encoded.bytes(), &[discriminant]);
+        let decoded: AttributionClass = encoded
+            .deserialize()
+            .expect("deserialize attribution class")
+            .0;
+        assert_eq!(decoded, class);
+    }
+
+    for (policy, discriminant) in [
+        (InlineReplyPolicy::Allow, 0_u8),
+        (InlineReplyPolicy::Deny, 2),
+    ] {
+        let encoded = to_bytes(context, &policy).expect("serialize inline reply policy");
+        assert_eq!(InlineReplyPolicy::signature(), u8::signature());
+        assert_eq!(encoded.bytes(), &[discriminant]);
+        let decoded: InlineReplyPolicy = encoded
+            .deserialize()
+            .expect("deserialize inline reply policy")
+            .0;
+        assert_eq!(decoded, policy);
+    }
+}
+
+#[test]
+fn attribution_wire_enums_reject_unknown_discriminants() {
+    let context = Context::new_dbus(LE, 0);
+
+    // Representation-aware deserialization must not invent policy for unknown wire values
+    let unknown_class = to_bytes(context, &u8::MAX).expect("serialize unknown class byte");
+    assert!(unknown_class.deserialize::<AttributionClass>().is_err());
+
+    // The intentionally unused policy value must remain invalid on D-Bus
+    let unknown_policy = to_bytes(context, &1_u8).expect("serialize unused policy byte");
+    assert!(unknown_policy.deserialize::<InlineReplyPolicy>().is_err());
+}
 
 #[test]
 fn associated_identity_keeps_presentation_and_grouping_fields_separate() {
