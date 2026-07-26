@@ -1,11 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use crate::paths::format_with_home;
-
 use super::super::contract::{CommandSpec, ServiceArtifact};
 
 // Keep the systemd unit name stable for existing installs and migration cleanup
 pub const SERVICE_NAME: &str = "unixnotis-daemon.service";
+pub const CONTROL_ACTIVATION_SERVICE: &str = "com.unixnotis.Control.service";
 
 pub const fn artifact_label() -> &'static str {
     "systemd unit"
@@ -21,10 +20,13 @@ pub fn primary_artifact_path(artifact_root: &Path) -> PathBuf {
 }
 
 pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
-    vec![ServiceArtifact::file(
-        primary_artifact_path(artifact_root),
-        render_unit(bin_dir),
-    )]
+    vec![
+        ServiceArtifact::file(primary_artifact_path(artifact_root), render_unit(bin_dir)),
+        ServiceArtifact::file(
+            control_activation_path(bin_dir),
+            render_control_activation(bin_dir),
+        ),
+    ]
 }
 
 pub fn availability_command() -> Option<CommandSpec> {
@@ -102,7 +104,16 @@ pub fn stop_for_reinstall_command() -> Option<CommandSpec> {
 }
 
 pub fn hyprland_startup_commands(import_vars: &[&str]) -> Vec<String> {
+    let allowed = unixnotis_core::service_manager::variables_for_backend(
+        unixnotis_core::service_manager::ServiceManagerKind::Systemd,
+    );
+    let import_vars = import_vars
+        .iter()
+        .copied()
+        .filter(|name| allowed.contains(name))
+        .collect::<Vec<_>>();
     vec![
+        "systemctl --user unset-environment DBUS_SESSION_BUS_ADDRESS".to_string(),
         format!(
             "dbus-update-activation-environment {}",
             import_vars.join(" ")
@@ -119,10 +130,19 @@ pub fn environment_sync_commands(
     import_vars: &[(&str, String)],
     dbus_update_available: bool,
 ) -> Vec<CommandSpec> {
-    let mut commands = Vec::new();
+    // Remove a value persisted by older installers before importing safe graphical variables
+    let mut commands = vec![CommandSpec::new(
+        "systemctl --user unset-environment DBUS_SESSION_BUS_ADDRESS",
+        "systemctl",
+        ["--user", "unset-environment", "DBUS_SESSION_BUS_ADDRESS"],
+    )];
+    let allowed = unixnotis_core::service_manager::variables_for_backend(
+        unixnotis_core::service_manager::ServiceManagerKind::Systemd,
+    );
     let names = import_vars
         .iter()
         .map(|(name, _value)| *name)
+        .filter(|name| allowed.contains(name))
         .collect::<Vec<_>>();
     if dbus_update_available {
         // D-Bus activation and systemd imports solve different environment paths
@@ -147,12 +167,18 @@ fn render_unit(bin_dir: &Path) -> String {
         "Description=UnixNotis Notification Daemon".to_string(),
         // Order after the graphical session without pulling that target into the unit graph
         "After=graphical-session.target".to_string(),
+        // Stop this user service when its graphical session is stopped
+        "PartOf=graphical-session.target".to_string(),
         String::new(),
         "[Service]".to_string(),
-        "Type=simple".to_string(),
+        // Control ownership is published only after notification readiness is verified
+        "Type=dbus".to_string(),
+        "BusName=com.unixnotis.Control".to_string(),
         format!("ExecStart={exec_start}"),
         "Restart=on-failure".to_string(),
         "RestartSec=1".to_string(),
+        "TimeoutStartSec=20".to_string(),
+        "TimeoutStopSec=10".to_string(),
         String::new(),
         "[Install]".to_string(),
         "WantedBy=default.target".to_string(),
@@ -163,11 +189,30 @@ fn render_unit(bin_dir: &Path) -> String {
 
 fn format_exec_start(bin_dir: &Path) -> String {
     let path = bin_dir.join("unixnotis-daemon");
-    let rendered = format_with_home(&path);
-    if let Some(tail) = rendered.strip_prefix("$HOME") {
-        // systemd expands %h itself, while $HOME is not shell-expanded in ExecStart
-        format!("%h{tail}")
-    } else {
-        path.display().to_string()
-    }
+    // The service manager receives one concrete executable with no shell or PATH lookup
+    path.display().to_string()
+}
+
+fn control_activation_path(bin_dir: &Path) -> PathBuf {
+    // Home-local binaries live beside the matching home-local data directory
+    let local_root = bin_dir
+        .parent()
+        .expect("installer binary directory must have a parent");
+    local_root
+        .join("share")
+        .join("dbus-1")
+        .join("services")
+        .join(CONTROL_ACTIVATION_SERVICE)
+}
+
+fn render_control_activation(bin_dir: &Path) -> String {
+    let executable = format_exec_start(bin_dir);
+    [
+        "[D-BUS Service]".to_string(),
+        "Name=com.unixnotis.Control".to_string(),
+        format!("Exec={executable}"),
+        format!("SystemdService={SERVICE_NAME}"),
+        String::new(),
+    ]
+    .join("\n")
 }

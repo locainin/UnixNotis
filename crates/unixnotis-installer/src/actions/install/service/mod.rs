@@ -3,8 +3,9 @@
 pub(in crate::actions::install) mod artifacts;
 mod dirs;
 pub(in crate::actions::install) mod files;
-mod flow;
+pub(in crate::actions::install) mod flow;
 pub(in crate::actions::install) mod lifecycle;
+mod readiness;
 pub(in crate::actions::install) mod refresh;
 pub(in crate::actions::install) mod symlinks;
 

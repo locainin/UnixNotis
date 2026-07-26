@@ -11,6 +11,7 @@ mod format;
 mod hyprland;
 mod install;
 mod install_state;
+mod installation_channel;
 mod plan;
 mod process;
 mod state;
@@ -30,9 +31,7 @@ pub use build::run_build;
 pub use config::backup::{list_backup_dirs_for_ui, restore_config};
 pub use config::{ensure_config, remove_state, reset_config};
 pub use daemon::stop_active_daemon;
-pub use environment::{
-    ensure_shell_path_entry, remove_shell_path_entry, sync_user_environment, HYPR_IMPORT_VARS,
-};
+pub use environment::{ensure_shell_path_entry, remove_shell_path_entry, sync_user_environment};
 pub use install::{
     enable_service, install_binaries, install_service, remove_binaries, uninstall_service,
 };

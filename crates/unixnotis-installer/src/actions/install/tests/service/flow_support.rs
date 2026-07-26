@@ -10,7 +10,8 @@ use crate::service_manager::contract::command_routing::use_fake_command_bin;
 use crate::service_manager::ServiceManager;
 use crate::test_support::fs::write_executable;
 
-use super::super::super::service::{enable_service, install_service, uninstall_service};
+use super::super::super::service::flow::enable_service_with_readiness;
+use super::super::super::service::{install_service, uninstall_service};
 use super::super::support::{test_context, test_root};
 
 pub(super) fn lock_env() -> MutexGuard<'static, ()> {
@@ -70,7 +71,7 @@ pub(super) fn run_install_and_enable(paths: &InstallPaths) -> anyhow::Result<()>
     let mut ctx = test_context(&detection, paths, ActionMode::Install);
     // Run the same two public install phases used by the TUI worker
     install_service(&mut ctx)?;
-    enable_service(&mut ctx)
+    enable_service_with_readiness(&mut ctx, |_| Ok(()))
 }
 
 pub(super) fn run_install_only(paths: &InstallPaths) -> anyhow::Result<()> {
@@ -88,7 +89,7 @@ pub(super) fn run_enable_only(paths: &InstallPaths) -> anyhow::Result<()> {
         daemons: Vec::new(),
     };
     let mut ctx = test_context(&detection, paths, ActionMode::Install);
-    enable_service(&mut ctx)
+    enable_service_with_readiness(&mut ctx, |_| Ok(()))
 }
 
 pub(super) fn run_uninstall_only(paths: &InstallPaths) -> anyhow::Result<()> {
@@ -121,8 +122,15 @@ pub(super) fn flow_env(root: &Path) -> Vec<EnvGuard> {
         EnvGuard::set("XDG_SESSION_TYPE", "wayland"),
         EnvGuard::set("XDG_SESSION_DESKTOP", "Hyprland"),
         EnvGuard::set("DISPLAY", ":99"),
-        EnvGuard::set("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/unixnotis-bus"),
+        EnvGuard::set("DBUS_SESSION_BUS_ADDRESS", standard_bus_address()),
     ]
+}
+
+pub(super) fn standard_bus_address() -> String {
+    format!(
+        "unix:path=/run/user/{}/bus",
+        rustix::process::getuid().as_raw()
+    )
 }
 
 pub(super) fn write_fake_tools(fake_bin: &Path, log_path: &Path, mode: FakeToolMode) -> impl Drop {
