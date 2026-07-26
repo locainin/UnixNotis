@@ -26,6 +26,9 @@ pub(in crate::daemon) struct AttributionResolution {
     pub(in crate::daemon) inline_reply_policy: InlineReplyPolicy,
 }
 
+#[derive(Clone, Copy)]
+struct VerifiedDesktopRecord<'record>(&'record DesktopRecord);
+
 pub(in crate::daemon) fn unknown_reply_denied(
     claim: AppClaim<'_>,
     sender: &SenderMetadata,
@@ -89,7 +92,7 @@ fn resolve_with_evidence(
             }
             if let Some(record) = records
                 .iter()
-                .find(|record| record_matches_sender(record, sender))
+                .find_map(|record| verify_record_sender(record, sender))
             {
                 return resolution_for_record(record, claim.reported_name, sender, index);
             }
@@ -111,13 +114,18 @@ fn resolve_with_evidence(
     if let Some(identity) = sender.sender_executable_identity {
         // Exact file association is stronger than every caller-controlled application name
         let records = index.records_for_executable(identity);
-        if let Some(record) = records
-            .iter()
-            .find(|record| record.claim_matches(claim.reported_name))
-        {
+        if let Some(record) = records.iter().find_map(|record| {
+            record
+                .claim_matches(claim.reported_name)
+                .then(|| verify_record_sender(record, sender))
+                .flatten()
+        }) {
             return resolution_for_record(record, claim.reported_name, sender, index);
         }
-        if records.iter().any(|record| record.system_association) {
+        if records
+            .iter()
+            .any(|record| record.system_association && record_matches_sender(record, sender))
+        {
             // A known executable with a conflicting name must fail closed
             return conflict_resolution(claim.reported_name, sender, "application claim mismatch");
         }
@@ -182,11 +190,12 @@ fn resolution_for_portal_record(
 }
 
 fn resolution_for_record(
-    record: &DesktopRecord,
+    verified: VerifiedDesktopRecord<'_>,
     reported_name: &str,
     sender: &SenderMetadata,
     index: &DesktopIdentityIndex,
 ) -> AttributionResolution {
+    let record = verified.0;
     // Display metadata is projected only after the record and sender identities agree
     if !record.claim_matches(reported_name) {
         return conflict_resolution(reported_name, sender, "application claim mismatch");
@@ -273,6 +282,14 @@ fn record_matches_sender(record: &DesktopRecord, sender: &SenderMetadata) -> boo
         }
         _ => false,
     }
+}
+
+fn verify_record_sender<'record>(
+    record: &'record DesktopRecord,
+    sender: &SenderMetadata,
+) -> Option<VerifiedDesktopRecord<'record>> {
+    // This wrapper makes sender launch verification mandatory at every association call site
+    record_matches_sender(record, sender).then_some(VerifiedDesktopRecord(record))
 }
 
 fn unknown_group_key(reported_name: &str, sender: &SenderMetadata) -> String {
