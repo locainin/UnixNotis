@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 
-const CONTROL_CALL_TIMEOUT: Duration = Duration::from_secs(5);
+const CONTROL_CALL_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub(super) async fn run_control_call<T>(call: impl Future<Output = zbus::Result<T>>) -> Result<T> {
     run_control_call_with_timeout(CONTROL_CALL_TIMEOUT, call).await

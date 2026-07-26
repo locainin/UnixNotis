@@ -1,12 +1,7 @@
 use async_channel::bounded;
-use std::time::{Duration, Instant};
 use unixnotis_core::ControlState;
 
-use super::{
-    log_seed_retry, seed_retry_deadline, seed_state, seed_state_with_retry,
-    seed_state_with_retry_until, send_seed_event, PopupSeedSource, SeedError, SeedSnapshot,
-};
-use crate::dbus::backoff::RetryLog;
+use super::{seed_state, send_seed_event, PopupSeedSource, SeedError, SeedSnapshot};
 use crate::dbus::UiEvent;
 
 struct FakeSeedSource {
@@ -111,58 +106,4 @@ async fn seed_state_reports_active_fetch_failure_without_sending() {
     assert!(err.state_error.is_none());
     assert!(err.active_error.is_some());
     assert!(rx.try_recv().is_err());
-}
-
-#[tokio::test]
-async fn seed_state_with_retry_returns_after_successful_seed() {
-    let source = FakeSeedSource::available();
-    let (tx, rx) = bounded(1);
-
-    seed_state_with_retry(&source, &tx).await;
-
-    let event = rx.try_recv().expect("seed event should be queued");
-    assert!(matches!(event, UiEvent::Seed { .. }));
-}
-
-#[tokio::test]
-async fn seed_state_with_retry_stops_immediately_after_expired_budget() {
-    let source = FakeSeedSource::missing_state();
-    let (tx, rx) = bounded(1);
-    let expired = Instant::now()
-        .checked_sub(Duration::from_millis(1))
-        .expect("test instant should support a one-millisecond offset");
-
-    tokio::time::timeout(
-        Duration::from_millis(50),
-        seed_state_with_retry_until(&source, &tx, expired),
-    )
-    .await
-    .expect("expired retry budget should not sleep");
-
-    assert!(rx.try_recv().is_err());
-}
-
-#[test]
-fn seed_retry_deadline_adds_fixed_retry_budget() {
-    let now = Instant::now();
-
-    let deadline = seed_retry_deadline(now);
-
-    assert_eq!(
-        deadline.checked_duration_since(now),
-        Some(Duration::from_secs(30))
-    );
-}
-
-#[test]
-fn log_seed_retry_reports_warning_then_debug_status() {
-    let mut log = RetryLog::new(Duration::from_mins(1));
-    let err = SeedError {
-        state_error: Some("state unavailable".to_string()),
-        active_error: None,
-        send_error: None,
-    };
-
-    assert!(log_seed_retry(&mut log, &err, "seed retry"));
-    assert!(!log_seed_retry(&mut log, &err, "seed retry"));
 }

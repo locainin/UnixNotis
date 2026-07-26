@@ -6,14 +6,20 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
-use unixnotis_core::ControlProxy;
+use unixnotis_core::{
+    log_session_bus_identity, timed_dbus_call, ControlProxy, CONTROL_BUS_NAME,
+    INTERNAL_DBUS_CALL_TIMEOUT,
+};
+use zbus::fdo::DBusProxy;
+use zbus::names::BusName;
+use zbus::proxy::OwnerChangedStream;
 use zbus::Connection;
 
 use super::backoff::{
     Backoff, RetryLog, BACKOFF_BASE_MS, BACKOFF_MAX_MS, RETRY_WARN_INTERVAL_SECS,
 };
 use super::commands::{drain_offline_commands, handle_command};
-use super::seed::{seed_state_with_retry, PopupSeedSource, SeedError, SeedSnapshot};
+use super::seed::{seed_state, PopupSeedSource, SeedError, SeedSnapshot};
 use super::types::{UiCommand, UiEvent};
 
 // Bound UI commands to avoid unbounded memory growth under a stuck UI event loop
@@ -25,9 +31,16 @@ struct ControlProxySeedSource<'proxy, 'conn> {
 
 impl PopupSeedSource for ControlProxySeedSource<'_, '_> {
     async fn seed_snapshot(&self) -> Result<SeedSnapshot, SeedError> {
-        // Both calls run together so startup seed data has the smallest possible skew
-        // A fully atomic seed would need one daemon method that returns both values
-        let (state, active) = tokio::join!(self.proxy.get_state(), self.proxy.list_active());
+        // GetState is the owner handshake and must finish before snapshot calls begin
+        let state = timed_dbus_call(self.proxy.get_state()).await;
+        let state = match state {
+            Ok(state) => state,
+            Err(error) => {
+                return SeedSnapshot::from_fetch_results(Err(error), Ok(Vec::new()));
+            }
+        };
+        let active = timed_dbus_call(self.proxy.list_active()).await;
+        let state = Ok(state);
         SeedSnapshot::from_fetch_results(state, active)
     }
 }
@@ -75,14 +88,17 @@ async fn run_dbus_loop(
 
     loop {
         let connection = connect_session_bus(&mut connect_backoff, &mut connect_log).await;
-        let retry_delay = run_connection_once(
+        let Some(retry_delay) = run_connection_once(
             &connection,
             &sender,
             &mut command_rx,
             &mut subscribe_backoff,
             &mut subscribe_log,
         )
-        .await;
+        .await
+        else {
+            return;
+        };
         tokio::time::sleep(retry_delay).await;
     }
 }
@@ -94,6 +110,12 @@ async fn connect_session_bus(
     loop {
         match Connection::session().await {
             Ok(connection) => {
+                if let Err(error) = log_session_bus_identity(&connection, "popups").await {
+                    connect_log
+                        .warn_or_debug(&error, "session bus identity probe failed; retrying");
+                    tokio::time::sleep(connect_backoff.next_sleep()).await;
+                    continue;
+                }
                 connect_backoff.reset();
                 connect_log.reset();
                 return connection;
@@ -112,78 +134,184 @@ async fn run_connection_once(
     command_rx: &mut mpsc::Receiver<UiCommand>,
     subscribe_backoff: &mut Backoff,
     subscribe_log: &mut RetryLog,
-) -> Duration {
+) -> Option<Duration> {
     let proxy = match ControlProxy::new(connection).await {
         Ok(proxy) => proxy,
         Err(err) => {
             subscribe_log.warn_or_debug(&err, "control interface unavailable, retrying");
             drain_offline_commands(command_rx);
-            return subscribe_backoff.next_sleep();
+            return Some(subscribe_backoff.next_sleep());
         }
     };
-    subscribe_backoff.reset();
-    subscribe_log.reset();
-    info!("connected to unixnotis control interface");
+    let mut owner_changes = match proxy.inner().receive_owner_changed().await {
+        Ok(stream) => stream,
+        Err(error) => {
+            subscribe_log.warn_or_debug(&error, "control owner watch unavailable, retrying");
+            return Some(subscribe_backoff.next_sleep());
+        }
+    };
+    let dbus = match DBusProxy::new(connection).await {
+        Ok(proxy) => proxy,
+        Err(error) => {
+            subscribe_log.warn_or_debug(&error, "session bus owner proxy unavailable, retrying");
+            return Some(subscribe_backoff.next_sleep());
+        }
+    };
 
+    loop {
+        let owner =
+            match wait_for_control_owner(&dbus, &mut owner_changes, sender, command_rx).await {
+                OwnerWait::Ready(owner) => owner,
+                OwnerWait::Disconnected => return Some(subscribe_backoff.next_sleep()),
+                OwnerWait::Shutdown => return None,
+            };
+        match run_owner_generation(
+            &proxy,
+            &owner,
+            &mut owner_changes,
+            sender,
+            command_rx,
+            subscribe_backoff,
+            subscribe_log,
+        )
+        .await
+        {
+            GenerationExit::OwnerChanged => {}
+            GenerationExit::ConnectionLost => return Some(subscribe_backoff.next_sleep()),
+            GenerationExit::Shutdown => return None,
+            GenerationExit::Retry => {
+                tokio::time::sleep(subscribe_backoff.next_sleep()).await;
+            }
+        }
+    }
+}
+
+enum OwnerWait {
+    Ready(String),
+    Disconnected,
+    Shutdown,
+}
+
+enum GenerationExit {
+    OwnerChanged,
+    ConnectionLost,
+    Shutdown,
+    Retry,
+}
+
+async fn wait_for_control_owner(
+    dbus: &DBusProxy<'_>,
+    owner_changes: &mut OwnerChangedStream<'_>,
+    sender: &async_channel::Sender<UiEvent>,
+    command_rx: &mut mpsc::Receiver<UiCommand>,
+) -> OwnerWait {
+    let control_name = BusName::try_from(CONTROL_BUS_NAME)
+        .expect("static UnixNotis control bus name must be valid");
+    if let Ok(Ok(owner)) = tokio::time::timeout(
+        INTERNAL_DBUS_CALL_TIMEOUT,
+        dbus.get_name_owner(control_name),
+    )
+    .await
+    {
+        return OwnerWait::Ready(owner.to_string());
+    }
+
+    // No owner is a quiet disconnected state until the broker announces one
+    let _ = sender.send(UiEvent::Disconnected).await;
+    drain_offline_commands(command_rx);
+    loop {
+        tokio::select! {
+            command = command_rx.recv() => {
+                if command.is_none() {
+                    return OwnerWait::Shutdown;
+                }
+                warn!("dropping popup command while control service has no owner");
+            }
+            update = owner_changes.next() => {
+                match update {
+                    Some(Some(owner)) => return OwnerWait::Ready(owner.to_string()),
+                    Some(None) => {}
+                    None => return OwnerWait::Disconnected,
+                }
+            }
+        }
+    }
+}
+
+async fn run_owner_generation(
+    proxy: &ControlProxy<'_>,
+    owner: &str,
+    owner_changes: &mut OwnerChangedStream<'_>,
+    sender: &async_channel::Sender<UiEvent>,
+    command_rx: &mut mpsc::Receiver<UiCommand>,
+    subscribe_backoff: &mut Backoff,
+    subscribe_log: &mut RetryLog,
+) -> GenerationExit {
     // Popups stay on the shared notification stream, but the trimmed payload keeps
     // each message smaller now that unused flags were removed from NotificationView
     let mut added_stream = match proxy.receive_notification_added().await {
         Ok(stream) => stream,
         Err(err) => {
             subscribe_log.warn_or_debug(&err, "failed to subscribe to notification_added");
-            return subscribe_backoff.next_sleep();
+            return GenerationExit::Retry;
         }
     };
     let mut updated_stream = match proxy.receive_notification_updated().await {
         Ok(stream) => stream,
         Err(err) => {
             subscribe_log.warn_or_debug(&err, "failed to subscribe to notification_updated");
-            return subscribe_backoff.next_sleep();
+            return GenerationExit::Retry;
         }
     };
     let mut closed_stream = match proxy.receive_notification_closed().await {
         Ok(stream) => stream,
         Err(err) => {
             subscribe_log.warn_or_debug(&err, "failed to subscribe to notification_closed");
-            return subscribe_backoff.next_sleep();
+            return GenerationExit::Retry;
         }
     };
     let mut popup_gate_stream = match proxy.receive_popup_gate_changed().await {
         Ok(stream) => stream,
         Err(err) => {
             subscribe_log.warn_or_debug(&err, "failed to subscribe to popup_gate_changed");
-            return subscribe_backoff.next_sleep();
+            return GenerationExit::Retry;
         }
     };
     let mut invalidated_stream = match proxy.receive_snapshot_invalidated().await {
         Ok(stream) => stream,
         Err(err) => {
             subscribe_log.warn_or_debug(&err, "failed to subscribe to snapshot_invalidated");
-            return subscribe_backoff.next_sleep();
+            return GenerationExit::Retry;
         }
     };
 
     // Seed only after subscriptions are active so startup does not miss in-flight changes
-    seed_state_with_retry(&ControlProxySeedSource { proxy: &proxy }, sender).await;
+    if let Err(error) = seed_state(&ControlProxySeedSource { proxy }, sender).await {
+        subscribe_log.warn_or_debug(&error, "popup readiness handshake or seed failed");
+        return GenerationExit::Retry;
+    }
+    subscribe_backoff.reset();
+    subscribe_log.reset();
+    info!(owner, "UnixNotis control service ready");
 
-    loop {
+    let exit = loop {
         tokio::select! {
             command = command_rx.recv() => {
                 let Some(command) = command else {
-                    break;
+                    break GenerationExit::Shutdown;
                 };
-                if let Err(err) = handle_command(&proxy, command).await {
+                if let Err(err) = handle_command(proxy, command).await {
                     warn!(?err, "control command failed");
                 }
             }
             signal = added_stream.next() => {
                 let Some(signal) = signal else {
                     warn!("notification_added stream ended");
-                    break;
+                    break GenerationExit::OwnerChanged;
                 };
                 if let Ok(args) = signal.args() {
                     push_active_notification_event(
-                        &proxy,
+                        proxy,
                         sender,
                         *args.id(),
                         *args.show_popup(),
@@ -194,11 +322,11 @@ async fn run_connection_once(
             signal = updated_stream.next() => {
                 let Some(signal) = signal else {
                     warn!("notification_updated stream ended");
-                    break;
+                    break GenerationExit::OwnerChanged;
                 };
                 if let Ok(args) = signal.args() {
                     push_active_notification_event(
-                        &proxy,
+                        proxy,
                         sender,
                         *args.id(),
                         *args.show_popup(),
@@ -209,7 +337,7 @@ async fn run_connection_once(
             signal = closed_stream.next() => {
                 let Some(signal) = signal else {
                     warn!("notification_closed stream ended");
-                    break;
+                    break GenerationExit::OwnerChanged;
                 };
                 if let Ok(args) = signal.args() {
                     let _ = sender
@@ -223,7 +351,7 @@ async fn run_connection_once(
             signal = popup_gate_stream.next() => {
                 let Some(signal) = signal else {
                     warn!("popup_gate_changed stream ended");
-                    break;
+                    break GenerationExit::OwnerChanged;
                 };
                 if let Ok(args) = signal.args() {
                     let _ = sender
@@ -234,16 +362,38 @@ async fn run_connection_once(
             signal = invalidated_stream.next() => {
                 let Some(_signal) = signal else {
                     warn!("snapshot_invalidated stream ended");
-                    break;
+                    break GenerationExit::OwnerChanged;
                 };
                 // A fresh seed clears stale popups after remote clears or daemon restart drift
                 // Seed reconcile also updates same-id payload changes without trusting missed signals
-                seed_state_with_retry(&ControlProxySeedSource { proxy: &proxy }, sender).await;
+                if let Err(error) = seed_state(&ControlProxySeedSource { proxy }, sender).await {
+                    subscribe_log.warn_or_debug(&error, "popup snapshot refresh failed");
+                    break GenerationExit::Retry;
+                }
+            }
+            owner_update = owner_changes.next() => {
+                match owner_update {
+                    Some(Some(new_owner)) => {
+                        warn!(owner = new_owner.as_str(), "UnixNotis control owner changed");
+                        let _ = sender.send(UiEvent::Disconnected).await;
+                        break GenerationExit::OwnerChanged;
+                    }
+                    Some(None) => {
+                        info!("UnixNotis control service disconnected");
+                        let _ = sender.send(UiEvent::Disconnected).await;
+                        break GenerationExit::OwnerChanged;
+                    }
+                    None => {
+                        warn!("control owner stream ended");
+                        let _ = sender.send(UiEvent::Disconnected).await;
+                        break GenerationExit::ConnectionLost;
+                    }
+                }
             }
         }
-    }
+    };
 
-    subscribe_backoff.next_sleep()
+    exit
 }
 
 async fn push_active_notification_event(
@@ -254,7 +404,7 @@ async fn push_active_notification_event(
     is_add: bool,
 ) {
     // Full popup payloads now stay on the authorized pull path instead of the shared signal
-    match proxy.get_active_notification(id).await {
+    match timed_dbus_call(proxy.get_active_notification(id)).await {
         Ok(mut notifications) => {
             // Close fanout can win the race, so a missing row is a normal no-op here
             let Some(notification) = notifications.pop() else {

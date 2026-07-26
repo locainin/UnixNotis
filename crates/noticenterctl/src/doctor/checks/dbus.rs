@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
-use unixnotis_core::{ControlProxy, CONTROL_BUS_NAME, NOTIFICATIONS_BUS_NAME};
+use unixnotis_core::{
+    log_session_bus_identity, ControlProxy, CONTROL_BUS_NAME, NOTIFICATIONS_BUS_NAME,
+};
 use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
 use zbus::Connection;
@@ -38,6 +40,32 @@ pub(super) async fn inspect_bus_connection(connection: &Connection) -> DoctorBus
         DoctorSeverity::Pass,
         "Session bus connection succeeded",
     )];
+    match log_session_bus_identity(connection, "noticenterctl doctor").await {
+        Ok(identity) => checks.push(
+            DoctorCheck::new(
+                "dbus.identity",
+                "Session bus identity",
+                DoctorSeverity::Pass,
+                "Session bus identity probe succeeded",
+            )
+            .details(format!(
+                "Bus ID: {}\nUnique name: {}\nRuntime directory: {}",
+                identity.bus_id, identity.unique_name, identity.runtime_dir
+            ))
+            .data("bus_id", identity.bus_id)
+            .data("unique_name", identity.unique_name)
+            .data("runtime_dir", identity.runtime_dir),
+        ),
+        Err(error) => checks.push(
+            DoctorCheck::new(
+                "dbus.identity",
+                "Session bus identity",
+                DoctorSeverity::Error,
+                "Session bus identity probe failed",
+            )
+            .details(safe_doctor_text(&error.to_string())),
+        ),
+    }
     // The daemon proxy is required for ownership checks but not for later service checks
     let proxy = match tokio::time::timeout(DBUS_CHECK_TIMEOUT, DBusProxy::new(connection)).await {
         Ok(Ok(proxy)) => proxy,
@@ -73,7 +101,7 @@ pub(super) async fn inspect_bus_connection(connection: &Connection) -> DoctorBus
     };
 
     // Notification and control names are separate readiness signals
-    let notifications_owned = check_owner(
+    let notifications_owner = check_owner(
         &proxy,
         NOTIFICATIONS_BUS_NAME,
         "dbus.notifications-owner",
@@ -81,7 +109,7 @@ pub(super) async fn inspect_bus_connection(connection: &Connection) -> DoctorBus
         &mut checks,
     )
     .await;
-    if !notifications_owned {
+    if notifications_owner.is_none() {
         // Missing the standard name means desktop applications have no notification target
         checks.push(
             DoctorCheck::new(
@@ -94,7 +122,7 @@ pub(super) async fn inspect_bus_connection(connection: &Connection) -> DoctorBus
         );
     }
 
-    let control_owned = check_owner(
+    let control_owner = check_owner(
         &proxy,
         CONTROL_BUS_NAME,
         "dbus.control-owner",
@@ -102,7 +130,30 @@ pub(super) async fn inspect_bus_connection(connection: &Connection) -> DoctorBus
         &mut checks,
     )
     .await;
-    if control_owned {
+    let has_control_owner = control_owner.is_some();
+    if let (Some(notifications_owner), Some(control_owner)) = (&notifications_owner, &control_owner)
+    {
+        let owners_match = notifications_owner == control_owner;
+        checks.push(
+            DoctorCheck::new(
+                "dbus.shared-owner",
+                "UnixNotis D-Bus ownership",
+                if owners_match {
+                    DoctorSeverity::Pass
+                } else {
+                    DoctorSeverity::Error
+                },
+                if owners_match {
+                    "Notification and control names share one owner"
+                } else {
+                    "Notification and control names have different owners"
+                },
+            )
+            .data("notifications_owner", notifications_owner.clone())
+            .data("control_owner", control_owner.clone()),
+        );
+    }
+    if has_control_owner {
         // Proxy and GetState checks run only after ownership is confirmed
         inspect_control_proxy(connection, &mut checks).await;
     } else {
@@ -119,7 +170,7 @@ pub(super) async fn inspect_bus_connection(connection: &Connection) -> DoctorBus
 
     DoctorBusResult {
         checks,
-        control_owned,
+        control_owned: has_control_owner,
         connected: true,
     }
 }
@@ -130,18 +181,47 @@ async fn check_owner(
     id: &'static str,
     label: &'static str,
     checks: &mut Vec<DoctorCheck>,
-) -> bool {
+) -> Option<String> {
     // Static names are validated here once before the bounded remote request
     let bus_name = BusName::try_from(name).expect("static D-Bus name must be valid");
-    match tokio::time::timeout(DBUS_CHECK_TIMEOUT, proxy.name_has_owner(bus_name)).await {
+    match tokio::time::timeout(DBUS_CHECK_TIMEOUT, proxy.name_has_owner(bus_name.clone())).await {
         Ok(Ok(true)) => {
-            checks.push(DoctorCheck::new(
-                id,
-                label,
-                DoctorSeverity::Pass,
-                format!("{name} has an owner"),
-            ));
-            true
+            match tokio::time::timeout(DBUS_CHECK_TIMEOUT, proxy.get_name_owner(bus_name)).await {
+                Ok(Ok(owner)) => {
+                    let owner = owner.to_string();
+                    checks.push(
+                        DoctorCheck::new(
+                            id,
+                            label,
+                            DoctorSeverity::Pass,
+                            format!("{name} has an owner"),
+                        )
+                        .data("owner", owner.clone()),
+                    );
+                    Some(owner)
+                }
+                Ok(Err(error)) => {
+                    checks.push(
+                        DoctorCheck::new(
+                            id,
+                            label,
+                            DoctorSeverity::Error,
+                            format!("Unable to read {name} owner"),
+                        )
+                        .details(safe_doctor_text(&error.to_string())),
+                    );
+                    None
+                }
+                Err(_) => {
+                    checks.push(DoctorCheck::new(
+                        id,
+                        label,
+                        DoctorSeverity::Error,
+                        format!("Owner query for {name} timed out"),
+                    ));
+                    None
+                }
+            }
         }
         Ok(Ok(false)) => {
             checks.push(DoctorCheck::new(
@@ -150,7 +230,7 @@ async fn check_owner(
                 DoctorSeverity::Warning,
                 format!("{name} has no owner"),
             ));
-            false
+            None
         }
         Ok(Err(error)) => {
             checks.push(
@@ -162,7 +242,7 @@ async fn check_owner(
                 )
                 .details(safe_doctor_text(&error.to_string())),
             );
-            false
+            None
         }
         Err(_) => {
             checks.push(DoctorCheck::new(
@@ -171,7 +251,7 @@ async fn check_owner(
                 DoctorSeverity::Error,
                 format!("Ownership query for {name} timed out"),
             ));
-            false
+            None
         }
     }
 }

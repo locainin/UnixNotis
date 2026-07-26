@@ -12,6 +12,11 @@ use super::model::UiState;
 impl UiState {
     pub fn handle_event(&mut self, event: UiEvent) {
         match event {
+            UiEvent::Disconnected => {
+                debug!("UnixNotis control service disconnected");
+                self.control_state = ControlState::default();
+                self.reconcile_seed(Vec::new());
+            }
             UiEvent::Seed { state, active } => {
                 // Seed is daemon truth, so filtering uses the newest gate state
                 self.control_state = state;

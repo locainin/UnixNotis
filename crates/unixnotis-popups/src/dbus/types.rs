@@ -5,6 +5,8 @@ use unixnotis_core::{CloseReason, ControlState, NotificationView, PopupGateState
 /// Events delivered to the GTK main loop
 #[derive(Debug, Clone)]
 pub enum UiEvent {
+    // Owner loss clears every popup from the previous daemon generation
+    Disconnected,
     Seed {
         state: ControlState,
         active: Vec<NotificationView>,
