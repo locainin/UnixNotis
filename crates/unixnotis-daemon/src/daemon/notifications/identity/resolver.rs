@@ -368,23 +368,6 @@ const fn policy_resolution(attribution: NotificationAttribution) -> AttributionR
     }
 }
 
-#[cfg(test)]
-fn verified_executable_record<'record>(
-    records: &[&'record DesktopRecord],
-    reported_name: &str,
-    sender: &SenderMetadata,
-    index: &DesktopIdentityIndex,
-) -> Option<VerifiedDesktopRecord<'record>> {
-    let results = records
-        .iter()
-        .map(|record| CandidateVerification {
-            record,
-            verification: verify_record_sender(record, sender, index),
-        })
-        .collect::<Vec<_>>();
-    strongest_verified_result(&results, reported_name)
-}
-
 fn verify_record_sender(
     record: &DesktopRecord,
     sender: &SenderMetadata,

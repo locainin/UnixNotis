@@ -1,13 +1,145 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
 use super::super::launch::{
-    build_launch_spec, field_value_matches, launch_spec_matches_sender,
-    MAX_EXEC_TEMPLATE_ARGUMENTS, MAX_EXEC_TEMPLATE_BYTES, MAX_PROCESS_ARGUMENTS,
+    build_launch_spec, MAX_EXEC_TEMPLATE_ARGUMENTS, MAX_EXEC_TEMPLATE_BYTES,
 };
-use super::super::model::{FieldCode, LaunchArgument, LaunchSpec};
-use crate::daemon::notifications::identity::executable::executable_evidence_for_path;
+use super::super::model::{FieldCode, LaunchArgument, LaunchSpec, LiteralArgument};
+use crate::daemon::notifications::identity::executable::{
+    executable_evidence_for_path, FileIdentity,
+};
 use crate::test_support::TempRoot;
+
+const MAX_PROCESS_ARGUMENTS: usize = 256;
+
+fn launch_spec_matches_sender(
+    spec: &LaunchSpec,
+    sender_identity: FileIdentity,
+    cmdline: &[Vec<u8>],
+) -> bool {
+    if !spec.executable.same_file(sender_identity)
+        || cmdline.is_empty()
+        || cmdline.len() > MAX_PROCESS_ARGUMENTS
+    {
+        return false;
+    }
+    if !literal_file_identities_are_current(spec) {
+        return false;
+    }
+    let mut visited = HashSet::new();
+    match_arguments(&spec.arguments, &cmdline[1..], 0, 0, &mut visited)
+}
+
+fn literal_file_identities_are_current(spec: &LaunchSpec) -> bool {
+    spec.arguments.iter().all(|argument| {
+        let LaunchArgument::Literal(LiteralArgument {
+            file: Some((path, expected)),
+            ..
+        }) = argument
+        else {
+            return true;
+        };
+        executable_evidence_for_path(path).is_some_and(|evidence| {
+            evidence.identity.same_file(*expected) && evidence.identity.is_system_managed()
+        })
+    })
+}
+
+fn match_arguments(
+    template: &[LaunchArgument],
+    actual: &[Vec<u8>],
+    template_index: usize,
+    actual_index: usize,
+    visited: &mut HashSet<(usize, usize)>,
+) -> bool {
+    if !visited.insert((template_index, actual_index)) {
+        return false;
+    }
+    let Some(argument) = template.get(template_index) else {
+        return actual_index == actual.len();
+    };
+    match argument {
+        LaunchArgument::Literal(literal) => {
+            actual.get(actual_index) == Some(&literal.value)
+                && match_arguments(
+                    template,
+                    actual,
+                    template_index + 1,
+                    actual_index + 1,
+                    visited,
+                )
+        }
+        LaunchArgument::OptionalIcon { name } => {
+            match_arguments(template, actual, template_index + 1, actual_index, visited)
+                || (actual
+                    .get(actual_index)
+                    .is_some_and(|value| value == b"--icon")
+                    && actual
+                        .get(actual_index + 1)
+                        .is_some_and(|value| value == name.as_bytes())
+                    && match_arguments(
+                        template,
+                        actual,
+                        template_index + 1,
+                        actual_index + 2,
+                        visited,
+                    ))
+        }
+        LaunchArgument::FieldCode(code) => match_field_code(
+            *code,
+            template,
+            actual,
+            template_index,
+            actual_index,
+            visited,
+        ),
+    }
+}
+
+fn match_field_code(
+    code: FieldCode,
+    template: &[LaunchArgument],
+    actual: &[Vec<u8>],
+    template_index: usize,
+    actual_index: usize,
+    visited: &mut HashSet<(usize, usize)>,
+) -> bool {
+    let maximum = match code {
+        FieldCode::File | FieldCode::Url => 1,
+        FieldCode::Files | FieldCode::Urls => actual.len().saturating_sub(actual_index),
+    };
+    for count in 0..=maximum {
+        let values = actual
+            .get(actual_index..actual_index + count)
+            .unwrap_or_default();
+        if !values.iter().all(|value| field_value_matches(code, value)) {
+            break;
+        }
+        if match_arguments(
+            template,
+            actual,
+            template_index + 1,
+            actual_index + count,
+            visited,
+        ) {
+            return true;
+        }
+    }
+    false
+}
+
+fn field_value_matches(code: FieldCode, value: &[u8]) -> bool {
+    if value.is_empty() || value.starts_with(b"-") {
+        return false;
+    }
+    match code {
+        FieldCode::File | FieldCode::Files => true,
+        FieldCode::Url | FieldCode::Urls => std::str::from_utf8(value)
+            .ok()
+            .is_some_and(|value| url::Url::parse(value).is_ok()),
+    }
+}
 
 #[test]
 fn fixed_immutable_application_argument_is_matched_exactly() {

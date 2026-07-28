@@ -12,8 +12,6 @@ use unixnotis_core::{
 };
 use zbus::zvariant::{OwnedValue, Value};
 
-#[cfg(test)]
-use super::super::identity::CommandLineEvidence;
 use super::super::identity::SenderMetadata;
 use super::limits::{
     MAX_ACTIONS, MAX_ACTION_KEY_BYTES, MAX_ACTION_LABEL_BYTES, MAX_APP_ICON_BYTES,
