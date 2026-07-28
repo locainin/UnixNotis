@@ -110,11 +110,6 @@ impl NotificationStore {
         }
     }
 
-    #[cfg(test)]
-    pub fn expiration_for(&self, id: u32) -> Option<ExpirationTicket> {
-        self.expirations.get(&id).copied()
-    }
-
     pub fn expire_if_current(&mut self, ticket: ExpirationTicket) -> Option<Arc<Notification>> {
         // Both identities must match inside this one store-lock critical section
         let current = self.active.get(&ticket.id)?;

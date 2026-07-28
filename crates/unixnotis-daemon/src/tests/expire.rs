@@ -220,7 +220,10 @@ async fn scheduler_closes_notification_at_scheduled_deadline() {
 
     assert!(expired.is_ok());
     let store = state.store.lock().await;
-    assert_eq!(store.expiration_for(key.id), None);
+    assert!(store.active_notification_view(key.id).is_none());
+    assert!(store.list_history().iter().any(|notification| {
+        notification.id == key.id && notification.generation == key.generation
+    }));
 }
 
 #[tokio::test]

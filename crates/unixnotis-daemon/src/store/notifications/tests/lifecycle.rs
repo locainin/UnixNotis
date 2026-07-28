@@ -1,4 +1,10 @@
 use super::support::*;
+use crate::store::ExpirationTicket;
+
+fn expiration_for(store: &NotificationStore, id: u32) -> Option<ExpirationTicket> {
+    // Test-only inspection stays beside lifecycle regressions instead of production methods
+    store.expirations.get(&id).copied()
+}
 
 #[test]
 fn drain_active_keys_returns_newest_first_and_clears_expirations() {
@@ -15,7 +21,7 @@ fn drain_active_keys_returns_newest_first_and_clears_expirations() {
         vec![second.notification.key(), first.notification.key()]
     );
     assert!(store.list_active().is_empty());
-    assert_eq!(store.expiration_for(first.notification.id), None);
+    assert_eq!(expiration_for(&store, first.notification.id), None);
 }
 
 #[test]
@@ -29,7 +35,7 @@ fn expiration_bookkeeping_sets_replaces_and_removes_deadlines() {
         .set_expiration(&outcome.notification, Some(first))
         .expect("positive deadline should create a ticket");
     assert_eq!(
-        store.expiration_for(outcome.notification.id),
+        expiration_for(&store, outcome.notification.id),
         Some(first_ticket)
     );
 
@@ -37,12 +43,12 @@ fn expiration_bookkeeping_sets_replaces_and_removes_deadlines() {
         .set_expiration(&outcome.notification, Some(second))
         .expect("replacement deadline should create a ticket");
     assert_eq!(
-        store.expiration_for(outcome.notification.id),
+        expiration_for(&store, outcome.notification.id),
         Some(second_ticket)
     );
 
     store.set_expiration(&outcome.notification, None);
-    assert_eq!(store.expiration_for(outcome.notification.id), None);
+    assert_eq!(expiration_for(&store, outcome.notification.id), None);
 }
 
 #[test]
