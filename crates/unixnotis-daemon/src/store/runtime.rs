@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use tracing::{debug, warn};
-use unixnotis_core::{Config, ControlState, Notification, NotificationView};
+use unixnotis_core::{Config, ControlState, Notification, NotificationView, PopupCandidate};
 
 use super::dnd::{DndStateStore, DND_STATE_VERSION};
 use super::model::NotificationStore;
@@ -131,6 +131,15 @@ impl NotificationStore {
         self.active
             .get(&id)
             .map(|notification| notification.to_view())
+    }
+
+    pub fn popup_candidate(&self, id: u32) -> Option<PopupCandidate> {
+        // Payload and live gate policy are read from one immutable lock snapshot
+        let notification = self.active.get(&id)?;
+        Some(PopupCandidate {
+            notification: notification.to_view(),
+            should_show: self.popup_admission(notification).should_show(),
+        })
     }
 
     pub fn active_inline_reply_target(&self, id: u32) -> Option<Arc<Notification>> {

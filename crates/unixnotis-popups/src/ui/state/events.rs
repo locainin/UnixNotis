@@ -40,9 +40,9 @@ impl UiState {
                 );
                 self.update_popup(notification, show_popup);
             }
-            UiEvent::NotificationClosed(id, _reason) => {
-                debug!(id, "popup closed");
-                self.remove_popup(id);
+            UiEvent::NotificationClosed(key, _reason) => {
+                debug!(id = key.id, generation = key.generation, "popup closed");
+                self.remove_popup_if_generation(key);
             }
             UiEvent::PopupGateChanged(gate) => {
                 // Gate updates change only policy fields and preserve unrelated daemon state

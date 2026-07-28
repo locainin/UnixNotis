@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use unixnotis_core::{
-    CloseReason, ControlState, InhibitorInfo, NotificationView, PanelDebugLevel, PanelRequest,
-    PopupGateState, UiHealth,
+    CloseReason, ControlState, InhibitorInfo, NotificationKey, NotificationView, PanelDebugLevel,
+    PanelRequest, PopupCandidate, PopupGateState, UiHealth,
 };
 use zbus::message::Header;
 use zbus::{interface, SignalContext};
@@ -52,7 +52,7 @@ impl ControlServer {
         ))
     }
 
-    pub(super) async fn drain_active_notifications(&self) -> Vec<u32> {
+    pub(super) async fn drain_active_notifications(&self) -> Vec<NotificationKey> {
         let keys = {
             let mut store = self.state.store.lock().await;
             let keys = store.drain_active_keys();
@@ -60,7 +60,7 @@ impl ControlServer {
             self.state.cancel_expirations(&keys);
             keys
         };
-        keys.into_iter().map(|key| key.id).collect()
+        keys
     }
 
     pub(super) async fn clear_saved_history(&self) {
@@ -106,6 +106,14 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<Vec<NotificationView>> {
         self.query_active_notification(id, &header).await
+    }
+
+    async fn get_popup_candidate(
+        &self,
+        id: u32,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<Vec<PopupCandidate>> {
+        self.query_popup_candidate(id, &header).await
     }
 
     async fn open_panel(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
@@ -270,20 +278,21 @@ impl ControlServer {
     pub(crate) async fn notification_added(
         ctx: &SignalContext<'_>,
         id: u32,
-        show_popup: bool,
+        generation: u64,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
     pub(crate) async fn notification_updated(
         ctx: &SignalContext<'_>,
         id: u32,
-        show_popup: bool,
+        generation: u64,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
     pub(crate) async fn notification_closed(
         ctx: &SignalContext<'_>,
         id: u32,
+        generation: u64,
         reason: CloseReason,
     ) -> zbus::Result<()>;
 

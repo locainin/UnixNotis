@@ -233,12 +233,7 @@ impl NotificationServer {
             );
         }
         self.state
-            .publish_notification_change(
-                mode,
-                outcome.notification.id,
-                outcome.replaced,
-                outcome.popup_admission.should_show(),
-            )
+            .publish_notification_change(mode, outcome.notification.key(), outcome.replaced)
             .await
             .map_err(to_fdo_error)
     }
@@ -285,9 +280,8 @@ impl NotificationServer {
             // Fast path avoids context allocation when no eviction happened
             return Ok(());
         }
-        let ids: Vec<u32> = evicted.iter().map(|key| key.id).collect();
         self.state
-            .publish_evicted_notifications(&ids)
+            .publish_evicted_notifications(&evicted)
             .await
             .map_err(to_fdo_error)
     }

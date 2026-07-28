@@ -9,13 +9,13 @@ pub(super) async fn push_active_notification_event(
     proxy: &ControlProxy<'_>,
     sender: &async_channel::Sender<UiEvent>,
     id: u32,
-    show_popup: bool,
+    generation: u64,
     is_add: bool,
 ) {
     // Trusted UIs fetch current payloads through the authorized control method
     match timed_dbus_call(proxy.get_active_notification(id)).await {
         Ok(notifications) => {
-            if let Some(event) = active_notification_event(notifications, show_popup, is_add) {
+            if let Some(event) = active_notification_event(notifications, generation, is_add) {
                 let _ = sender.send(event).await;
             }
         }
@@ -27,15 +27,19 @@ pub(super) async fn push_active_notification_event(
 
 fn active_notification_event(
     mut notifications: Vec<NotificationView>,
-    show_popup: bool,
+    generation: u64,
     is_add: bool,
 ) -> Option<UiEvent> {
     // A close may win the race before this follow-up payload fetch completes
     let notification = notifications.pop()?;
+    if notification.generation != generation {
+        // The fetched payload belongs to a newer commit than the delayed signal
+        return None;
+    }
     if is_add {
-        Some(UiEvent::NotificationAdded(notification, show_popup))
+        Some(UiEvent::NotificationAdded(notification))
     } else {
-        Some(UiEvent::NotificationUpdated(notification, show_popup))
+        Some(UiEvent::NotificationUpdated(notification))
     }
 }
 

@@ -48,6 +48,13 @@ fn view(id: u32, app_name: &str, is_transient: bool) -> NotificationView {
     }
 }
 
+fn notification_key(id: u32) -> NotificationKey {
+    NotificationKey {
+        id,
+        generation: u64::from(id),
+    }
+}
+
 #[test]
 fn active_move_policy_covers_history_new_and_non_front_rows() {
     assert!(should_move_active_to_front(true, false, false));
@@ -262,7 +269,7 @@ fn mark_closed_dismissed_row_removes_entry_and_marks_group_dirty() {
     list.flush_rebuild();
     let key = list.entries.get(&1).expect("entry").app_key.clone();
 
-    list.mark_closed(1, CloseReason::DismissedByUser);
+    list.mark_closed(notification_key(1), CloseReason::DismissedByUser);
 
     assert!(!list.entries.contains_key(&1));
     assert!(list.active_order.is_empty());
@@ -278,7 +285,7 @@ fn mark_closed_expired_row_archives_to_history_when_policy_allows_it() {
     list.flush_rebuild();
     let key = list.entries.get(&1).expect("entry").app_key.clone();
 
-    list.mark_closed(1, CloseReason::Expired);
+    list.mark_closed(notification_key(1), CloseReason::Expired);
 
     assert!(list.active_order.is_empty());
     assert_eq!(
@@ -303,12 +310,49 @@ fn mark_closed_archived_row_does_not_duplicate_existing_history_id() {
     list.seed(vec![view(1, "Terminal", false)], Vec::new());
     list.flush_rebuild();
 
-    list.mark_closed(1, CloseReason::Expired);
+    list.mark_closed(notification_key(1), CloseReason::Expired);
     list.needs_rebuild = false;
-    list.mark_closed(1, CloseReason::Expired);
+    list.mark_closed(notification_key(1), CloseReason::Expired);
 
     assert_eq!(
         list.history_order.iter().copied().collect::<Vec<_>>(),
         vec![1]
     );
+}
+
+#[gtk::test]
+fn reordered_update_cannot_replace_a_newer_row_generation() {
+    let mut list = support::make_list();
+    let mut newest = view(1, "Terminal", false);
+    newest.generation = 3;
+    list.seed(vec![newest], Vec::new());
+    let mut stale = view(1, "Terminal", false);
+    stale.generation = 2;
+    stale.summary = "stale payload".to_string();
+
+    list.add_or_update(stale, true);
+
+    let current = &list.entries.get(&1).expect("current row").view;
+    assert_eq!(current.generation, 3);
+    assert_ne!(current.summary, "stale payload");
+}
+
+#[gtk::test]
+fn reordered_close_cannot_remove_or_archive_a_newer_row_generation() {
+    let mut list = support::make_list();
+    let mut replacement = view(1, "Terminal", false);
+    replacement.generation = 3;
+    list.seed(vec![replacement], Vec::new());
+
+    list.mark_closed(
+        NotificationKey {
+            id: 1,
+            generation: 2,
+        },
+        CloseReason::Expired,
+    );
+
+    assert!(list.entries.get(&1).expect("replacement row").is_active);
+    assert_eq!(list.active_order.iter().copied().collect::<Vec<_>>(), [1]);
+    assert!(list.history_order.is_empty());
 }

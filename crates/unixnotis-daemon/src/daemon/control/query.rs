@@ -2,7 +2,7 @@
 //!
 //! Keeps read-only control methods grouped outside the main interface file
 
-use unixnotis_core::{ControlState, InhibitorInfo, NotificationView};
+use unixnotis_core::{ControlState, InhibitorInfo, NotificationView, PopupCandidate};
 use zbus::message::Header;
 
 use super::ControlServer;
@@ -58,6 +58,18 @@ impl ControlServer {
             .await?;
         let store = self.state.store.lock().await;
         Ok(store.active_notification_view(id).into_iter().collect())
+    }
+
+    pub(super) async fn query_popup_candidate(
+        &self,
+        id: u32,
+        header: &Header<'_>,
+    ) -> zbus::fdo::Result<Vec<PopupCandidate>> {
+        // Admission and content must describe the same committed generation
+        self.authorize_control_call(header, "GetPopupCandidate")
+            .await?;
+        let store = self.state.store.lock().await;
+        Ok(store.popup_candidate(id).into_iter().collect())
     }
 
     pub(super) async fn query_inhibitors(

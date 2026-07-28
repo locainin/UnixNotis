@@ -252,11 +252,12 @@ async fn old_timer_never_closes_or_signals_for_same_id_replacement() {
         .expect("replacement close signal should arrive")
         .expect("close signal stream should remain healthy")
         .expect("replacement close signal");
-    let (closed_id, reason) = signal
+    let (closed_id, closed_generation, reason) = signal
         .body()
-        .deserialize::<(u32, CloseReason)>()
+        .deserialize::<(u32, u64, CloseReason)>()
         .expect("notification close signal body");
     assert_eq!(closed_id, replacement.id);
+    assert_eq!(closed_generation, replacement.generation);
     assert_eq!(reason as u32, CloseReason::Expired as u32);
     assert!(state
         .store

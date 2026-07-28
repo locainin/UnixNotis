@@ -24,7 +24,10 @@ impl NotificationStore {
             self.expirations.remove(&id);
         }
 
-        let removed_history = self.history.remove(&id).is_some();
+        let removed_history = self
+            .history
+            .remove(&id)
+            .map(|notification| notification.key());
 
         DismissOutcome {
             removed_active: removed_active.map(|notification| notification.key()),
@@ -58,13 +61,15 @@ impl NotificationStore {
             .then(|| expected.key());
         let removed_history = if removed_active.is_some() {
             // Active cleanup already removed the exact generation
-            false
+            None
         } else if self.active.contains_key(&id) {
             // Any remaining active entry is a replacement with the same numeric id
-            false
+            None
         } else {
             // A close may archive the replied generation before reply cleanup resumes
-            self.history.remove_if_source(id, expected).is_some()
+            self.history
+                .remove_if_source(id, expected)
+                .map(|notification| notification.key())
         };
         DismissOutcome {
             removed_active,

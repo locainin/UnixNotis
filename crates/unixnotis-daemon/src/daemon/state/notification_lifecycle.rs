@@ -16,10 +16,13 @@ impl DaemonState {
             }
             removed
         };
-        if removed.is_none() {
+        let Some(removed) = removed else {
             return Ok(());
-        }
-        if let Err(err) = self.publish_notification_closed(id, reason).await {
+        };
+        if let Err(err) = self
+            .publish_notification_closed(removed.key(), reason)
+            .await
+        {
             warn!(
                 ?err,
                 id,
@@ -44,8 +47,13 @@ impl DaemonState {
             return Ok(());
         }
 
+        let removed_active = outcome.removed_active.is_some();
+        let key = outcome
+            .removed_active
+            .or(outcome.removed_history)
+            .expect("a removed notification must retain its generation");
         if let Err(err) = self
-            .publish_notification_dismissed(id, outcome.removed_active.is_some())
+            .publish_notification_dismissed(key, removed_active)
             .await
         {
             warn!(
@@ -74,8 +82,13 @@ impl DaemonState {
             return Ok(false);
         }
 
+        let removed_active = outcome.removed_active.is_some();
+        let key = outcome
+            .removed_active
+            .or(outcome.removed_history)
+            .expect("a removed reply target must retain its generation");
         if let Err(err) = self
-            .publish_notification_dismissed(id, outcome.removed_active.is_some())
+            .publish_notification_dismissed(key, removed_active)
             .await
         {
             warn!(

@@ -76,7 +76,10 @@ impl ExpirationScheduler {
                                 // Fanout happens only after the exact generation was removed
                                 if let Err(err) = state
                                     .publish_notification_closed(
-                                        item.ticket.id,
+                                        unixnotis_core::NotificationKey {
+                                            id: item.ticket.id,
+                                            generation: item.ticket.generation,
+                                        },
                                         CloseReason::Expired,
                                     )
                                     .await

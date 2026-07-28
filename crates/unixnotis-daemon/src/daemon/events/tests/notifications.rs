@@ -1,5 +1,10 @@
 use super::super::notifications::clear_all_signal_plan;
 use crate::test_support::daemon_state_for_test;
+use unixnotis_core::NotificationKey;
+
+const fn key(id: u32, generation: u64) -> NotificationKey {
+    NotificationKey { id, generation }
+}
 
 #[test]
 fn clear_all_with_no_active_rows_still_invalidates_snapshot() {
@@ -15,7 +20,7 @@ fn clear_all_with_no_active_rows_still_invalidates_snapshot() {
 
 #[test]
 fn clear_all_with_active_rows_keeps_close_fanout_and_refresh() {
-    let plan = clear_all_signal_plan(&[11, 12]);
+    let plan = clear_all_signal_plan(&[key(11, 1), key(12, 2)]);
 
     // Active rows still need the normal close signals
     assert!(plan.publish_close_signals);
@@ -26,7 +31,7 @@ fn clear_all_with_active_rows_keeps_close_fanout_and_refresh() {
 
 #[test]
 fn clear_all_signal_plan_treats_any_non_empty_id_set_as_close_fanout() {
-    let plan = clear_all_signal_plan(&[99]);
+    let plan = clear_all_signal_plan(&[key(99, 3)]);
 
     // A single active row still needs both freedesktop and control close fanout
     assert!(plan.publish_close_signals);

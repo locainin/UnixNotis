@@ -83,7 +83,7 @@ fn replied_generation_is_removed_after_sender_archives_it() {
     let outcome = store.dismiss_replied_generation(id, &original);
 
     assert!(outcome.removed_active.is_none());
-    assert!(outcome.removed_history);
+    assert_eq!(outcome.removed_history, Some(original.key()));
     assert!(store.list_history().is_empty());
 }
 

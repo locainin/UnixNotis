@@ -134,7 +134,7 @@ impl NotificationStore {
         self.history.evict_to_limit(self.config.history.max_entries);
     }
 
-    fn popup_admission(&self, notification: &Notification) -> PopupAdmission {
+    pub(crate) fn popup_admission(&self, notification: &Notification) -> PopupAdmission {
         // Rule-level popup suppression is highest priority
         if notification.suppress_popup {
             return PopupAdmission::Suppressed(PopupSuppressionReason::Rule);

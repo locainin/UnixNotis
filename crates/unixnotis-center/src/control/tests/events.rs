@@ -21,20 +21,25 @@ fn notification(id: u32) -> NotificationView {
 
 #[test]
 fn closed_notification_race_emits_no_stale_event() {
-    assert!(active_notification_event(Vec::new(), true, true).is_none());
+    assert!(active_notification_event(Vec::new(), 1, true).is_none());
 }
 
 #[test]
-fn fetched_payload_preserves_add_update_and_popup_semantics() {
-    let added = active_notification_event(vec![notification(7)], true, true);
-    let updated = active_notification_event(vec![notification(8)], false, false);
+fn fetched_payload_preserves_matching_add_and_update_generations() {
+    let added = active_notification_event(vec![notification(7)], 7, true);
+    let updated = active_notification_event(vec![notification(8)], 8, false);
 
     assert!(matches!(
         added,
-        Some(UiEvent::NotificationAdded(notification, true)) if notification.id == 7
+        Some(UiEvent::NotificationAdded(notification)) if notification.id == 7
     ));
     assert!(matches!(
         updated,
-        Some(UiEvent::NotificationUpdated(notification, false)) if notification.id == 8
+        Some(UiEvent::NotificationUpdated(notification)) if notification.id == 8
     ));
+}
+
+#[test]
+fn fetched_replacement_is_rejected_for_older_signal_generation() {
+    assert!(active_notification_event(vec![notification(8)], 7, false).is_none());
 }

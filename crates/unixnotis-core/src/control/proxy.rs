@@ -8,7 +8,7 @@
 
 use zbus::proxy;
 
-use crate::NotificationView;
+use crate::{NotificationView, PopupCandidate};
 
 use super::{
     CloseReason, ControlState, InhibitorInfo, PanelDebugLevel, PanelRequest, PopupGateState,
@@ -33,6 +33,8 @@ trait Control {
     fn list_history(&self) -> zbus::Result<Vec<NotificationView>>;
     /// Fetch one currently active notification by identifier
     fn get_active_notification(&self, id: u32) -> zbus::Result<Vec<NotificationView>>;
+    /// Fetch one current popup payload and admission decision atomically
+    fn get_popup_candidate(&self, id: u32) -> zbus::Result<Vec<PopupCandidate>>;
     /// Open the control center panel
     fn open_panel(&self) -> zbus::Result<()>;
     /// Open the control center panel with debug logging
@@ -77,11 +79,16 @@ trait Control {
     fn mark_popups_not_ready(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    fn notification_added(&self, id: u32, show_popup: bool) -> zbus::Result<()>;
+    fn notification_added(&self, id: u32, generation: u64) -> zbus::Result<()>;
     #[zbus(signal)]
-    fn notification_updated(&self, id: u32, show_popup: bool) -> zbus::Result<()>;
+    fn notification_updated(&self, id: u32, generation: u64) -> zbus::Result<()>;
     #[zbus(signal)]
-    fn notification_closed(&self, id: u32, reason: CloseReason) -> zbus::Result<()>;
+    fn notification_closed(
+        &self,
+        id: u32,
+        generation: u64,
+        reason: CloseReason,
+    ) -> zbus::Result<()>;
     #[zbus(signal)]
     fn state_changed(&self, state: ControlState) -> zbus::Result<()>;
     /// Emitted only when popup gating changes

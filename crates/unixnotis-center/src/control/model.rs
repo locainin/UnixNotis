@@ -2,7 +2,9 @@
 
 use std::fmt;
 
-use unixnotis_core::{CloseReason, ControlState, Margins, NotificationView, PanelRequest};
+use unixnotis_core::{
+    CloseReason, ControlState, Margins, NotificationKey, NotificationView, PanelRequest,
+};
 
 use crate::media::MediaInfo;
 
@@ -16,9 +18,9 @@ pub enum UiEvent {
         active: Vec<NotificationView>,
         history: Vec<NotificationView>,
     },
-    NotificationAdded(NotificationView, bool),
-    NotificationUpdated(NotificationView, bool),
-    NotificationClosed(u32, CloseReason),
+    NotificationAdded(NotificationView),
+    NotificationUpdated(NotificationView),
+    NotificationClosed(NotificationKey, CloseReason),
     StateChanged(ControlState),
     PanelRequested(PanelRequest),
     GroupToggled(String),

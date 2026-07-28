@@ -69,18 +69,18 @@ async fn drain_active_notifications_returns_ids_and_cancels_expirations() {
     let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();
     state.set_scheduler(scheduler);
     let server = ControlServer::new(state.clone());
-    let ids = {
+    let keys = {
         let mut store = state.store.lock().await;
-        let first = store.insert(notification("first"), 0).notification.id;
-        let second = store.insert(notification("second"), 0).notification.id;
+        let first = store.insert(notification("first"), 0).notification.key();
+        let second = store.insert(notification("second"), 0).notification.key();
         vec![second, first]
     };
 
     let drained = server.drain_active_notifications().await;
 
-    assert_eq!(drained, ids);
-    assert_eq!(next_cancel_id(&mut receiver).await, ids[0]);
-    assert_eq!(next_cancel_id(&mut receiver).await, ids[1]);
+    assert_eq!(drained, keys);
+    assert_eq!(next_cancel_id(&mut receiver).await, keys[0].id);
+    assert_eq!(next_cancel_id(&mut receiver).await, keys[1].id);
     assert!(state.store.lock().await.list_active().is_empty());
 }
 

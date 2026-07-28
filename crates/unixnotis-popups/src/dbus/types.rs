@@ -1,6 +1,8 @@
 //! D-Bus-facing popup event and command types
 
-use unixnotis_core::{CloseReason, ControlState, NotificationView, PopupGateState};
+use unixnotis_core::{
+    CloseReason, ControlState, NotificationKey, NotificationView, PopupGateState,
+};
 
 /// Events delivered to the GTK main loop
 #[derive(Debug, Clone)]
@@ -14,7 +16,7 @@ pub enum UiEvent {
     // Add and update reuse the shared lightweight NotificationView payload
     NotificationAdded(NotificationView, bool),
     NotificationUpdated(NotificationView, bool),
-    NotificationClosed(u32, CloseReason),
+    NotificationClosed(NotificationKey, CloseReason),
     // Popup gate is split out so panel-only state changes do not wake the popup UI
     PopupGateChanged(PopupGateState),
     CssReload,

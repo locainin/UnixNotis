@@ -103,13 +103,13 @@ pub struct DndWrite {
 pub struct DismissOutcome {
     // Exact active generation removed by the operation
     pub removed_active: Option<NotificationKey>,
-    // True when a history entry was removed
-    pub removed_history: bool,
+    // Exact history generation removed by the operation
+    pub removed_history: Option<NotificationKey>,
 }
 
 impl DismissOutcome {
     pub const fn removed_any(&self) -> bool {
         // Convenience helper for callers that only need yes/no
-        self.removed_active.is_some() || self.removed_history
+        self.removed_active.is_some() || self.removed_history.is_some()
     }
 }
