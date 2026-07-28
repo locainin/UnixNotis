@@ -21,6 +21,7 @@ pub(super) struct ProcessHandle {
     pid: Pid,
     start_time: u64,
     pidfd: Option<OwnedFd>,
+    exit_timeout: Duration,
 }
 
 impl ProcessHandle {
@@ -64,6 +65,7 @@ impl ProcessHandle {
             pid,
             start_time: start_before,
             pidfd,
+            exit_timeout: PROCESS_EXIT_TIMEOUT,
         }))
     }
 
@@ -82,22 +84,25 @@ impl ProcessHandle {
 
     pub(super) fn wait_for_exit(&self) -> Result<()> {
         if let Some(pidfd) = &self.pidfd {
-            return wait_for_pidfd(pidfd);
+            return wait_for_pidfd(pidfd, self.exit_timeout);
         }
 
         let started = Instant::now();
-        while started.elapsed() < PROCESS_EXIT_TIMEOUT {
+        while started.elapsed() < self.exit_timeout {
             match read_process_start_time(self.pid.as_raw_pid() as u32)? {
                 None => return Ok(()),
                 // A new lifetime means the original target exited and must not be inspected
                 Some(current) if current != self.start_time => return Ok(()),
-                Some(_) => thread::sleep(FALLBACK_POLL_INTERVAL),
+                Some(_) => thread::sleep(
+                    FALLBACK_POLL_INTERVAL.min(self.exit_timeout.saturating_sub(started.elapsed())),
+                ),
             }
         }
 
         Err(anyhow!(
-            "process {} did not exit after 5s",
-            self.pid.as_raw_pid()
+            "process {} did not exit after {:?}",
+            self.pid.as_raw_pid(),
+            self.exit_timeout
         ))
     }
 
@@ -113,18 +118,18 @@ impl ProcessHandle {
     }
 }
 
-fn wait_for_pidfd(pidfd: &OwnedFd) -> Result<()> {
+fn wait_for_pidfd(pidfd: &OwnedFd, timeout: Duration) -> Result<()> {
     let mut descriptors = [PollFd::new(pidfd, PollFlags::IN)];
     let timeout = Timespec {
-        tv_sec: PROCESS_EXIT_TIMEOUT.as_secs() as i64,
-        tv_nsec: 0,
+        tv_sec: timeout.as_secs() as i64,
+        tv_nsec: i64::from(timeout.subsec_nanos()),
     };
     poll(&mut descriptors, Some(&timeout))
         .context("failed while waiting for notification daemon pidfd")?;
     if descriptors[0].revents().contains(PollFlags::IN) {
         return Ok(());
     }
-    Err(anyhow!("process did not exit after 5s"))
+    Err(anyhow!("process did not exit after {timeout:?}"))
 }
 
 fn process_id(raw_pid: u32) -> Option<Pid> {
@@ -147,16 +152,21 @@ fn read_proc_comm(pid: u32) -> Option<String> {
 
 fn read_process_start_time(pid: u32) -> Result<Option<u64>> {
     let path = format!("/proc/{pid}/stat");
-    let contents = match fs::read_to_string(&path) {
+    read_process_start_time_from_path(std::path::Path::new(&path))
+}
+
+fn read_process_start_time_from_path(path: &std::path::Path) -> Result<Option<u64>> {
+    let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(error) if process_state_is_missing(&error) => return Ok(None),
         Err(error) => {
-            return Err(error).with_context(|| format!("failed to read process state from {path}"))
+            return Err(error)
+                .with_context(|| format!("failed to read process state from {}", path.display()))
         }
     };
     parse_process_start_time(&contents)
         .map(Some)
-        .ok_or_else(|| anyhow!("failed to parse process start time for pid {pid}"))
+        .ok_or_else(|| anyhow!("failed to parse process start time from {}", path.display()))
 }
 
 fn process_state_is_missing(error: &std::io::Error) -> bool {

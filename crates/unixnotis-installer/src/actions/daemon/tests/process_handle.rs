@@ -102,18 +102,56 @@ fn fallback_lifetime_check_accepts_current_and_rejects_stale_start_times() {
         pid,
         start_time,
         pidfd: None,
+        exit_timeout: Duration::from_millis(10),
     };
     let stale = ProcessHandle {
         pid,
         start_time: start_time.saturating_add(1),
         pidfd: None,
+        exit_timeout: Duration::from_millis(10),
     };
 
     current
         .require_current_lifetime()
         .expect("matching fallback lifetime");
+    assert!(current.wait_for_exit().is_err());
     assert!(stale.require_current_lifetime().is_err());
     stale
         .wait_for_exit()
         .expect("a different lifetime means the original process exited");
+}
+
+#[test]
+fn pidfd_wait_times_out_while_the_exact_process_is_still_running() {
+    let mut child = Command::new("sleep")
+        .arg("30")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn sleep child");
+    let mut handle = match ProcessHandle::open(child.id(), "sleep").expect("open sleep handle") {
+        ProcessState::Running(handle) => handle,
+        ProcessState::Gone => panic!("sleep child should still be running"),
+    };
+    handle.exit_timeout = Duration::from_millis(10);
+
+    assert!(handle.wait_for_exit().is_err());
+
+    child.kill().expect("stop sleep child");
+    child.wait().expect("reap sleep child");
+}
+
+#[test]
+fn non_process_io_errors_are_not_collapsed_into_a_missing_process() {
+    let root = std::env::temp_dir().join(format!(
+        "unixnotis-process-state-directory-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create process state directory");
+
+    let result = read_process_start_time_from_path(&root);
+
+    let _ = std::fs::remove_dir(&root);
+    assert!(result.is_err());
 }
