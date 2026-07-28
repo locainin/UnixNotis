@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use unixnotis_core::{Action, CloseReason, Config, InlineReply, InlineReplyPolicy};
+use unixnotis_core::{
+    Action, AttributionClass, CloseReason, Config, InlineReply, InlineReplyPolicy,
+    NotificationAttribution,
+};
 
 use crate::store::test_support::{make_notification, make_store_with_limits};
 use crate::store::NotificationStore;
@@ -95,6 +98,15 @@ fn active_inline_reply_target_requires_a_live_explicit_reply_action() {
 fn active_action_target_requires_an_exact_action_on_the_live_generation() {
     let mut store = make_store_with_limits(12, 20);
     let mut notification = make_notification("action");
+    notification.attribution = NotificationAttribution::associated(
+        "Action source",
+        "org.example.ActionSource",
+        "org.example.ActionSource",
+        "",
+        AttributionClass::SystemAssociated,
+        false,
+        "system-desktop:org.example.ActionSource".to_string(),
+    );
     notification.actions.push(Action {
         key: "open".to_string(),
         label: "Open".to_string(),
@@ -113,6 +125,36 @@ fn active_action_target_requires_an_exact_action_on_the_live_generation() {
     assert!(replacement.replaced);
     assert!(!store.is_active_notification_generation(id, &original));
     assert!(store.active_action_target(id, "open").is_none());
+}
+
+#[test]
+fn active_action_target_denies_unknown_and_conflicting_senders() {
+    for attribution in [
+        NotificationAttribution::unknown(
+            "Signal",
+            "source /tmp/fake",
+            "unknown:signal".to_string(),
+        ),
+        NotificationAttribution::conflict(
+            "Signal",
+            "source /tmp/fake",
+            "conflict:signal".to_string(),
+        ),
+    ] {
+        let mut store = make_store_with_limits(12, 20);
+        let mut notification = make_notification("untrusted action");
+        notification.attribution = attribution;
+        notification.actions.push(Action {
+            key: "default".to_string(),
+            label: "Open".to_string(),
+        });
+        let id = store.insert(notification, 0).notification.id;
+
+        assert!(
+            store.active_action_target(id, "default").is_none(),
+            "weak attribution should not expose application actions"
+        );
+    }
 }
 
 #[test]
