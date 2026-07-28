@@ -254,7 +254,7 @@ async fn probe_control_owner(
     }
 }
 
-fn owner_error_is_disconnected(error: &zbus::fdo::Error) -> bool {
+const fn owner_error_is_disconnected(error: &zbus::fdo::Error) -> bool {
     matches!(
         error,
         zbus::fdo::Error::IOError(_)

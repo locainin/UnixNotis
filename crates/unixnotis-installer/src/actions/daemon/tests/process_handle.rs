@@ -20,9 +20,8 @@ fn process_start_time_parser_rejects_missing_and_invalid_fields() {
 
 #[test]
 fn process_handle_rejects_a_mismatched_program_before_signaling() {
-    let error = match ProcessHandle::open(std::process::id(), "not-the-test-process") {
-        Ok(_) => panic!("mismatched program must fail closed"),
-        Err(error) => error,
+    let Err(error) = ProcessHandle::open(std::process::id(), "not-the-test-process") else {
+        panic!("mismatched program must fail closed");
     };
 
     assert!(error
@@ -32,7 +31,9 @@ fn process_handle_rejects_a_mismatched_program_before_signaling() {
 
 #[test]
 fn pidfd_signal_and_wait_stop_the_exact_child_process() {
-    let mut child = Command::new("sleep")
+    let sleep = unixnotis_core::util::trusted_system_program_path("sleep")
+        .expect("find sleep in a trusted system directory");
+    let mut child = Command::new(sleep)
         .arg("30")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -123,7 +124,9 @@ fn fallback_lifetime_check_accepts_current_and_rejects_stale_start_times() {
 
 #[test]
 fn pidfd_wait_times_out_while_the_exact_process_is_still_running() {
-    let mut child = Command::new("sleep")
+    let sleep = unixnotis_core::util::trusted_system_program_path("sleep")
+        .expect("find sleep in a trusted system directory");
+    let mut child = Command::new(sleep)
         .arg("30")
         .stdin(Stdio::null())
         .stdout(Stdio::null())

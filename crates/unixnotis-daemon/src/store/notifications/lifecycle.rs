@@ -96,26 +96,18 @@ impl NotificationStore {
         deadline: Option<Instant>,
     ) -> Option<ExpirationTicket> {
         // None removes a stale timer for resident or already-dismissed notifications
-        match deadline {
-            Some(deadline) => {
-                let ticket = ExpirationTicket {
-                    id: notification.id,
-                    generation: notification.generation,
-                    deadline,
-                };
-                self.expirations.insert(notification.id, ticket);
-                Some(ticket)
-            }
-            None => {
-                self.expirations.remove(&notification.id);
-                None
-            }
+        if let Some(deadline) = deadline {
+            let ticket = ExpirationTicket {
+                id: notification.id,
+                generation: notification.generation,
+                deadline,
+            };
+            self.expirations.insert(notification.id, ticket);
+            Some(ticket)
+        } else {
+            self.expirations.remove(&notification.id);
+            None
         }
-    }
-
-    #[cfg(test)]
-    pub fn expiration_for(&self, id: u32) -> Option<ExpirationTicket> {
-        self.expirations.get(&id).copied()
     }
 
     pub fn expire_if_current(&mut self, ticket: ExpirationTicket) -> Option<Arc<Notification>> {
