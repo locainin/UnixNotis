@@ -19,7 +19,7 @@ async fn daemon_state_boolean_flags_reflect_runtime_updates() {
 
     // These atomics gate user-visible command handling, so getters must reflect writes exactly
     state.set_center_process_running(true);
-    state.set_panel_ready(true);
+    state.set_panel_ready(":1.20", true);
     state.set_popups_process_running(true);
 
     assert!(state.panel_ready());
@@ -37,10 +37,10 @@ async fn daemon_state_boolean_flags_reflect_runtime_updates() {
 async fn daemon_state_boolean_flags_can_return_to_false() {
     let state = daemon_state_for_test(true).await;
 
-    state.set_panel_ready(true);
+    state.set_panel_ready(":1.20", true);
     state.set_center_process_running(true);
     state.set_popups_process_running(true);
-    state.set_panel_ready(false);
+    state.set_panel_ready(":1.20", false);
     state.set_center_process_running(false);
     state.set_popups_process_running(false);
 
@@ -59,6 +59,33 @@ async fn popup_readiness_can_only_be_cleared_by_its_owner_generation() {
 
     state.set_popups_ready(":1.10", false);
     assert!(!state.popups_ready());
+}
+
+#[tokio::test]
+async fn panel_owner_loss_clears_readiness_and_panel_availability() {
+    let state = daemon_state_for_test(true).await;
+    state.set_center_process_running(true);
+    state.set_panel_ready(":1.20", true);
+    assert!(state.panel_ready());
+
+    state.remove_disconnected_client(":1.20").await;
+
+    assert!(!state.panel_ready());
+}
+
+#[tokio::test]
+async fn delayed_old_panel_disconnect_keeps_new_owner_ready() {
+    let state = daemon_state_for_test(true).await;
+    state.set_center_process_running(true);
+    state.set_panel_ready(":1.20", true);
+    state.set_panel_ready(":1.21", true);
+
+    state.remove_disconnected_client(":1.20").await;
+
+    assert!(state.panel_ready());
+    assert!(state.ui_health().center_ready);
+    state.remove_disconnected_client(":1.21").await;
+    assert!(!state.panel_ready());
 }
 
 #[tokio::test]

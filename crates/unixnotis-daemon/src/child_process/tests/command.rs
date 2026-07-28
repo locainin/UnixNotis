@@ -22,7 +22,7 @@ async fn mark_running_updates_popup_health_and_resets_center_readiness() {
     assert!(state.popups_process_running());
 
     // Center process spawn is not readiness; readiness only flips after live subscriptions
-    state.set_panel_ready(true);
+    state.set_panel_ready(":1.20", true);
     UiProcessKind::Center.mark_running(&state, true);
     assert!(!state.panel_ready());
 }

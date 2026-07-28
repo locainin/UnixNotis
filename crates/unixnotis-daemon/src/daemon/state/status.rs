@@ -7,15 +7,35 @@ use crate::daemon::notifications::{notification_signal_mode_for_sender, Notifica
 use super::DaemonState;
 
 impl DaemonState {
-    pub(crate) fn set_panel_ready(&self, ready: bool) {
-        // SeqCst keeps state changes easy to follow during crash recovery
-        self.panel_ready.store(ready, Ordering::SeqCst);
+    pub(crate) fn set_panel_ready(&self, owner: &str, ready: bool) {
+        let mut current_owner = self
+            .panel_ready_owner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if ready {
+            // The latest successful handshake owns the active readiness lease
+            *current_owner = Some(owner.to_string());
+            self.panel_ready.store(true, Ordering::SeqCst);
+        } else if current_owner.as_deref() == Some(owner) {
+            // Only the matching center generation can clear its lease
+            *current_owner = None;
+            self.panel_ready.store(false, Ordering::SeqCst);
+        }
+    }
+
+    fn clear_panel_ready(&self) {
+        let mut current_owner = self
+            .panel_ready_owner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *current_owner = None;
+        self.panel_ready.store(false, Ordering::SeqCst);
     }
 
     pub(crate) fn set_center_process_running(&self, running: bool) {
         self.center_process_running.store(running, Ordering::SeqCst);
         // Every process generation must complete its own subscription handshake
-        self.set_panel_ready(false);
+        self.clear_panel_ready();
     }
 
     pub(crate) fn set_popups_process_running(&self, running: bool) {

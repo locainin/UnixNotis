@@ -114,6 +114,22 @@ async fn clear_saved_history_removes_archived_notifications() {
 }
 
 #[tokio::test]
+async fn panel_command_availability_fails_after_ready_owner_disconnects() {
+    let state = daemon_state_for_test(false).await;
+    state.set_center_process_running(true);
+    state.set_panel_ready(":1.20", true);
+    let server = ControlServer::new(state.clone());
+    assert!(server.ensure_panel_available().is_ok());
+
+    state.remove_disconnected_client(":1.20").await;
+
+    let error = server
+        .ensure_panel_available()
+        .expect_err("panel command should fail without a ready center owner");
+    assert!(error.to_string().contains("unavailable"));
+}
+
+#[tokio::test]
 async fn clear_all_rejects_unauthorized_sender_before_mutating_state() {
     let state = daemon_state_for_test(false).await;
     let server = ControlServer::new(state.clone());
