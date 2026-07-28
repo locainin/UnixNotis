@@ -25,6 +25,8 @@ pub struct DaemonState {
     // Panel control should only succeed once the center has subscribed
     // This avoids accepting requests that no live listener can receive
     pub(in crate::daemon::state) panel_ready: AtomicBool,
+    // Unique owner prevents a delayed disconnect from clearing a newer center lease
+    pub(in crate::daemon::state) panel_ready_owner: StdMutex<Option<String>>,
     pub(in crate::daemon::state) center_process_running: AtomicBool,
     pub(in crate::daemon::state) popups_process_running: AtomicBool,
     pub(in crate::daemon::state) popups_ready: AtomicBool,
@@ -90,6 +92,7 @@ impl DaemonState {
             sound,
             connection: connection.clone(),
             panel_ready: AtomicBool::new(false),
+            panel_ready_owner: StdMutex::new(None),
             center_process_running: AtomicBool::new(false),
             popups_process_running: AtomicBool::new(false),
             popups_ready: AtomicBool::new(false),

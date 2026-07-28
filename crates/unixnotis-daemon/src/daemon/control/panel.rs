@@ -34,8 +34,11 @@ impl ControlServer {
         ready: bool,
     ) -> zbus::fdo::Result<()> {
         self.authorize_panel_readiness_call(header, method).await?;
+        let owner = header
+            .sender()
+            .ok_or_else(|| zbus::fdo::Error::AccessDenied("missing sender".to_string()))?;
         // Center reports ready only after it is subscribed to panel_requested
-        self.state.set_panel_ready(ready);
+        self.state.set_panel_ready(owner.as_str(), ready);
         Ok(())
     }
 }
