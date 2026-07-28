@@ -10,6 +10,7 @@ fn visible_update_starts_without_stack_changes() {
 #[test]
 fn newer_popup_generation_rejects_reordered_older_update() {
     assert!(incoming_generation_is_stale(Some(8), 7));
+    assert!(!incoming_generation_is_stale(Some(8), 8));
     assert!(!incoming_generation_is_stale(Some(7), 8));
     assert!(!incoming_generation_is_stale(None, 8));
 }
