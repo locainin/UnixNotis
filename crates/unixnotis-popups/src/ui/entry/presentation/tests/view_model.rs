@@ -77,6 +77,28 @@ fn weak_attribution_hides_every_application_directed_action() {
 }
 
 #[test]
+fn user_associated_attribution_hides_application_directed_actions() {
+    let mut view = notification();
+    view.attribution = NotificationAttribution::associated(
+        "User application",
+        "org.example.UserApplication",
+        "org.example.UserApplication",
+        "",
+        AttributionClass::UserAssociated,
+        false,
+        "user-desktop:org.example.UserApplication".to_string(),
+    );
+    view.actions.push(Action {
+        key: "default".to_string(),
+        label: "Open".to_string(),
+    });
+
+    let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
+
+    assert!(model.actions.is_empty());
+}
+
+#[test]
 fn square_icon_data_is_hidden_unless_the_category_is_media() {
     let mut view = notification();
     view.image.has_image_data = true;

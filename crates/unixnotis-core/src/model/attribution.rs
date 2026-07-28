@@ -33,6 +33,14 @@ pub enum InlineReplyPolicy {
     Deny = 2,
 }
 
+/// Backend policy for application-owned action signals
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ApplicationActionPolicy {
+    Allow,
+    Confirm,
+    Deny,
+}
+
 /// Application presentation derived by the daemon from sender and desktop metadata
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 pub struct NotificationAttribution {
@@ -136,21 +144,24 @@ impl NotificationAttribution {
         self.warning
     }
 
-    /// Whether application-owned actions may be sent back to this notification source
+    /// Policy for application-owned actions derived from daemon attribution evidence
     #[must_use]
-    pub const fn allows_application_actions(&self) -> bool {
+    pub const fn application_action_policy(&self) -> ApplicationActionPolicy {
         // A warning means current evidence conflicts even when a weak association was found
         if self.warning {
-            return false;
+            return ApplicationActionPolicy::Deny;
         }
 
-        // Relay and unknown senders may display content but cannot receive trusted UI actions
-        matches!(
-            self.class,
-            AttributionClass::SystemAssociated
-                | AttributionClass::PortalAssociated
-                | AttributionClass::UserAssociated
-        )
+        match self.class {
+            AttributionClass::SystemAssociated | AttributionClass::PortalAssociated => {
+                ApplicationActionPolicy::Allow
+            }
+            // Confirmation has no daemon-owned remembered-decision store in the first release
+            AttributionClass::UserAssociated
+            | AttributionClass::TrustedRelay
+            | AttributionClass::Unknown
+            | AttributionClass::Conflict => ApplicationActionPolicy::Deny,
+        }
     }
 }
 

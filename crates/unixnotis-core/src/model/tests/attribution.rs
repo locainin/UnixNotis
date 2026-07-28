@@ -1,4 +1,6 @@
-use super::{AttributionClass, InlineReplyPolicy, NotificationAttribution};
+use super::{
+    ApplicationActionPolicy, AttributionClass, InlineReplyPolicy, NotificationAttribution,
+};
 use zbus::zvariant::{serialized::Context, to_bytes, Type, LE};
 
 #[test]
@@ -117,7 +119,6 @@ fn application_actions_require_a_non_conflicting_desktop_association() {
     for class in [
         AttributionClass::SystemAssociated,
         AttributionClass::PortalAssociated,
-        AttributionClass::UserAssociated,
     ] {
         let attribution = NotificationAttribution::associated(
             "Associated",
@@ -129,13 +130,15 @@ fn application_actions_require_a_non_conflicting_desktop_association() {
             "associated".to_string(),
         );
 
-        assert!(
-            attribution.allows_application_actions(),
-            "{class:?} should allow application actions"
+        assert_eq!(
+            attribution.application_action_policy(),
+            ApplicationActionPolicy::Allow,
+            "{class:?} should allow application actions",
         );
     }
 
     for class in [
+        AttributionClass::UserAssociated,
         AttributionClass::TrustedRelay,
         AttributionClass::Unknown,
         AttributionClass::Conflict,
@@ -150,9 +153,10 @@ fn application_actions_require_a_non_conflicting_desktop_association() {
             "weak".to_string(),
         );
 
-        assert!(
-            !attribution.allows_application_actions(),
-            "{class:?} should deny application actions"
+        assert_eq!(
+            attribution.application_action_policy(),
+            ApplicationActionPolicy::Deny,
+            "{class:?} should deny application actions",
         );
     }
 }
@@ -169,5 +173,8 @@ fn warning_state_denies_actions_even_for_an_associated_desktop_entry() {
         "shadowed".to_string(),
     );
 
-    assert!(!attribution.allows_application_actions());
+    assert_eq!(
+        attribution.application_action_policy(),
+        ApplicationActionPolicy::Deny
+    );
 }

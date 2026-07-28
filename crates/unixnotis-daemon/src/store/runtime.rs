@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use tracing::{debug, warn};
-use unixnotis_core::{Config, ControlState, Notification, NotificationView, PopupCandidate};
+use unixnotis_core::{
+    ApplicationActionPolicy, Config, ControlState, Notification, NotificationView, PopupCandidate,
+};
 
 use super::dnd::{DndStateStore, DND_STATE_VERSION};
 use super::model::NotificationStore;
@@ -158,7 +160,7 @@ impl NotificationStore {
     pub fn active_action_target(&self, id: u32, action_key: &str) -> Option<Arc<Notification>> {
         let notification = self.active.get(&id)?;
         // Weak or conflicting provenance must not gain an application-directed signal
-        if !notification.attribution.allows_application_actions() {
+        if notification.attribution.application_action_policy() != ApplicationActionPolicy::Allow {
             return None;
         }
         // Exact matching prevents a trusted control caller from inventing application actions

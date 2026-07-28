@@ -2,7 +2,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use unixnotis_core::{Action, NotificationView, Urgency};
+use unixnotis_core::{Action, ApplicationActionPolicy, NotificationView, Urgency};
 
 use super::{PopupKind, PopupTrustPresentation};
 use crate::ui::entry::labels::{
@@ -79,7 +79,7 @@ impl PopupEntryViewModel {
 
 fn visible_actions(notification: &NotificationView, kind: PopupKind) -> Vec<ActionViewModel> {
     // The daemon enforces the same boundary when a control client invokes an action
-    if !notification.attribution.allows_application_actions() {
+    if notification.attribution.application_action_policy() != ApplicationActionPolicy::Allow {
         return Vec::new();
     }
 
