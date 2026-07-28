@@ -1,5 +1,5 @@
 use super::{SenderMetadataCache, MAX_CACHED_SENDERS};
-use crate::daemon::notifications::identity::sender::SenderMetadata;
+use crate::daemon::notifications::identity::sender::{CommandLineEvidence, SenderMetadata};
 
 fn metadata(sender: &str, pid: u32) -> SenderMetadata {
     SenderMetadata {
@@ -8,7 +8,7 @@ fn metadata(sender: &str, pid: u32) -> SenderMetadata {
         sender_start_time: Some(u64::from(pid)),
         sender_executable: Some(format!("/usr/bin/app-{pid}")),
         sender_executable_identity: None,
-        sender_cmdline: None,
+        command_line: CommandLineEvidence::default(),
     }
 }
 

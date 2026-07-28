@@ -16,6 +16,21 @@ use super::{executable_evidence_for_pid, FileIdentity};
 const MAX_PROCESS_CMDLINE_BYTES: u64 = 128 * 1024;
 const MAX_PROCESS_ARGUMENTS: usize = 256;
 
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+pub(in crate::daemon::notifications) enum CommandLineQuality {
+    Structured,
+    RewrittenProcessTitle,
+    Truncated,
+    #[default]
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(in crate::daemon::notifications) struct CommandLineEvidence {
+    pub(in crate::daemon::notifications) argv: Vec<Vec<u8>>,
+    pub(in crate::daemon::notifications) quality: CommandLineQuality,
+}
+
 #[derive(Debug, Clone, Default)]
 pub(in crate::daemon) struct SenderMetadata {
     // Unique bus sender name (:1.x) used for ownership checks
@@ -28,8 +43,8 @@ pub(in crate::daemon) struct SenderMetadata {
     pub(in crate::daemon::notifications) sender_executable: Option<String>,
     // Device and inode bind policy to the open running executable rather than its basename
     pub(in crate::daemon::notifications) sender_executable_identity: Option<FileIdentity>,
-    // NUL-delimited process arguments prove fixed desktop Exec literals for shared runtimes
-    pub(in crate::daemon::notifications) sender_cmdline: Option<Vec<Vec<u8>>>,
+    // Quality is explicit because processes may rewrite the visible procfs argument memory
+    pub(in crate::daemon::notifications) command_line: CommandLineEvidence,
 }
 
 pub(in crate::daemon) async fn resolve_sender_metadata(
@@ -46,7 +61,7 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
             sender_start_time: None,
             sender_executable: None,
             sender_executable_identity: None,
-            sender_cmdline: None,
+            command_line: CommandLineEvidence::default(),
         };
     };
 
@@ -63,7 +78,7 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
             sender_start_time: None,
             sender_executable: None,
             sender_executable_identity: None,
-            sender_cmdline: None,
+            command_line: CommandLineEvidence::default(),
         };
     };
 
@@ -74,7 +89,7 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
             sender_start_time: None,
             sender_executable: None,
             sender_executable_identity: None,
-            sender_cmdline: None,
+            command_line: CommandLineEvidence::default(),
         };
     };
 
@@ -82,11 +97,14 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
     let sender_pid = proxy.get_connection_unix_process_id(bus_name).await.ok();
     let (sender_start_time, process_evidence) = sender_pid.map_or((None, None), |pid| {
         let start_before = read_process_start_time(pid);
-        let evidence = (executable_evidence_for_pid(pid), read_process_cmdline(pid));
+        let executable = executable_evidence_for_pid(pid);
+        let command_line = read_process_cmdline(pid, executable.as_ref());
+        let evidence = (executable, command_line);
         let start_after = read_process_start_time(pid);
         stable_process_evidence(start_before, Some(evidence), start_after)
     });
-    let (executable_evidence, sender_cmdline) = process_evidence.unwrap_or((None, None));
+    let (executable_evidence, command_line) =
+        process_evidence.unwrap_or_else(|| (None, CommandLineEvidence::default()));
     let sender_executable = executable_evidence
         .as_ref()
         .map(|evidence| evidence.canonical_path.display().to_string());
@@ -98,7 +116,7 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
         sender_start_time,
         sender_executable,
         sender_executable_identity,
-        sender_cmdline,
+        command_line,
     };
     // Failed lookups remain retryable instead of becoming persistent unknown identities
     if metadata.sender_start_time.is_some() && metadata.sender_executable_identity.is_some() {
@@ -117,14 +135,14 @@ pub(super) fn refresh_sender_security_evidence(metadata: &SenderMetadata) -> Sen
     // Refresh every process-derived field before a security-sensitive association decision
     let start_before = read_process_start_time(pid);
     let executable = executable_evidence_for_pid(pid);
-    let cmdline = read_process_cmdline(pid);
+    let command_line = read_process_cmdline(pid, executable.as_ref());
     let start_after = read_process_start_time(pid);
     if !process_lifetime_matches(start_before, expected_start, start_after) {
         // Stale cache entries retain bus context but lose all application identity authority
         refreshed.sender_start_time = None;
         refreshed.sender_executable = None;
         refreshed.sender_executable_identity = None;
-        refreshed.sender_cmdline = None;
+        refreshed.command_line = CommandLineEvidence::default();
         return refreshed;
     }
 
@@ -132,7 +150,7 @@ pub(super) fn refresh_sender_security_evidence(metadata: &SenderMetadata) -> Sen
         .as_ref()
         .map(|evidence| evidence.canonical_path.display().to_string());
     refreshed.sender_executable_identity = executable.map(|evidence| evidence.identity);
-    refreshed.sender_cmdline = cmdline;
+    refreshed.command_line = command_line;
     refreshed
 }
 
@@ -153,15 +171,32 @@ fn read_process_start_time(pid: u32) -> Option<u64> {
 }
 
 #[cfg(target_os = "linux")]
-fn read_process_cmdline(pid: u32) -> Option<Vec<Vec<u8>>> {
+fn read_process_cmdline(
+    pid: u32,
+    executable: Option<&super::executable::ExecutableEvidence>,
+) -> CommandLineEvidence {
     let path = format!("/proc/{pid}/cmdline");
     let mut bytes = Vec::new();
-    File::open(path)
-        .ok()?
+    let Some(file) = File::open(path).ok() else {
+        return CommandLineEvidence::default();
+    };
+    if file
         .take(MAX_PROCESS_CMDLINE_BYTES + 1)
         .read_to_end(&mut bytes)
-        .ok()?;
-    parse_process_cmdline(bytes)
+        .is_err()
+    {
+        return CommandLineEvidence::default();
+    }
+    if bytes.len() as u64 > MAX_PROCESS_CMDLINE_BYTES {
+        return CommandLineEvidence {
+            argv: Vec::new(),
+            quality: CommandLineQuality::Truncated,
+        };
+    }
+    let Some(argv) = parse_process_cmdline(bytes) else {
+        return CommandLineEvidence::default();
+    };
+    classify_command_line(argv, executable)
 }
 
 #[cfg(target_os = "linux")]
@@ -187,8 +222,31 @@ fn read_process_start_time(_pid: u32) -> Option<u64> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn read_process_cmdline(_pid: u32) -> Option<Vec<Vec<u8>>> {
-    None
+fn read_process_cmdline(
+    _pid: u32,
+    _executable: Option<&super::executable::ExecutableEvidence>,
+) -> CommandLineEvidence {
+    CommandLineEvidence::default()
+}
+
+fn classify_command_line(
+    argv: Vec<Vec<u8>>,
+    executable: Option<&super::executable::ExecutableEvidence>,
+) -> CommandLineEvidence {
+    let rewritten = executable.is_some_and(|executable| {
+        argv.as_slice().first().is_some_and(|value| {
+            let prefix = executable.canonical_path.as_os_str().as_encoded_bytes();
+            value.starts_with(prefix) && value.iter().any(u8::is_ascii_whitespace)
+        }) && argv.len() == 1
+    });
+    CommandLineEvidence {
+        argv,
+        quality: if rewritten {
+            CommandLineQuality::RewrittenProcessTitle
+        } else {
+            CommandLineQuality::Structured
+        },
+    }
 }
 
 fn stable_process_evidence<T>(

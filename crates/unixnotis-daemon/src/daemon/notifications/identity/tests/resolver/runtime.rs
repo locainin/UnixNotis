@@ -172,7 +172,7 @@ fn arbitrary_executable_name_still_requires_its_fixed_application_payload() {
 }
 
 #[test]
-fn unavailable_process_command_line_fails_closed() {
+fn dedicated_executable_remains_verified_when_command_line_is_unavailable() {
     let (launcher_path, launcher_identity) = installed_system_executable();
     let record = system_record(
         "org.example.CommandLine",
@@ -182,7 +182,7 @@ fn unavailable_process_command_line_fails_closed() {
     );
     let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
     let mut missing_command_line = sender(&launcher_path, launcher_identity);
-    missing_command_line.sender_cmdline = None;
+    missing_command_line.command_line = CommandLineEvidence::default();
 
     let resolution = resolve_with_evidence(
         AppClaim {
@@ -194,11 +194,11 @@ fn unavailable_process_command_line_fails_closed() {
         &HashSet::new(),
     );
 
-    assert_ne!(
+    assert_eq!(
         resolution.attribution.class,
         AttributionClass::SystemAssociated
     );
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
 }
 
 #[test]
@@ -325,6 +325,42 @@ fn no_hint_wrong_payload_with_unrelated_claim_remains_unknown() {
             desktop_entry: None,
         },
         &sender_with_arguments("/usr/bin/python3", runtime_identity, &["/tmp/local.py"]),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_eq!(resolution.attribution.class, AttributionClass::Unknown);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
+fn dynamic_only_contract_is_unverified_instead_of_suspicious() {
+    let runtime_identity = identity(70, 700, 0);
+    let mut first = system_record(
+        "org.example.Dynamic",
+        "Dynamic App",
+        "/usr/bin/runtime",
+        runtime_identity,
+    );
+    first
+        .launch_spec
+        .as_mut()
+        .expect("dynamic launch spec")
+        .arguments = vec![LaunchArgument::FieldCode(FieldCode::Files)];
+    let second = system_record(
+        "org.example.Other",
+        "Other App",
+        "/usr/bin/runtime",
+        runtime_identity,
+    );
+    let index = DesktopIdentityIndex::from_records(vec![first, second], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Dynamic App",
+            desktop_entry: Some("org.example.Dynamic"),
+        },
+        &sender_with_arguments("/usr/bin/runtime", runtime_identity, &["/tmp/payload"]),
         &index,
         &HashSet::new(),
     );

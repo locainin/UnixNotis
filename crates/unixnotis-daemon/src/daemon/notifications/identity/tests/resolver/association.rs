@@ -66,6 +66,61 @@ fn dedicated_system_binary_rejects_runtime_added_flags_outside_the_exec_contract
 }
 
 #[test]
+fn dedicated_executable_accepts_extra_non_identity_runtime_flags() {
+    let (app_path, app_identity) = installed_system_executable();
+    let record = system_record("org.example.App", "Example App", &app_path, app_identity)
+        .with_launch_literals(&["--fixed"]);
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Example App",
+            desktop_entry: Some("org.example.App"),
+        },
+        &sender_with_arguments(
+            &app_path,
+            app_identity,
+            &["--display-backend=x11", "--fixed", "--tray"],
+        ),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_eq!(
+        resolution.attribution.class,
+        AttributionClass::SystemAssociated
+    );
+}
+
+#[test]
+fn dedicated_executable_with_rewritten_argv_is_not_a_conflict() {
+    let (app_path, app_identity) = installed_system_executable();
+    let record = system_record("org.example.App", "Example App", &app_path, app_identity);
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+    let mut rewritten = sender(&app_path, app_identity);
+    rewritten.command_line = CommandLineEvidence {
+        argv: vec![format!("{app_path} --runtime-flag").into_bytes()],
+        quality: CommandLineQuality::RewrittenProcessTitle,
+    };
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Example App",
+            desktop_entry: Some("org.example.App"),
+        },
+        &rewritten,
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_eq!(
+        resolution.attribution.class,
+        AttributionClass::SystemAssociated
+    );
+    assert_ne!(resolution.attribution.class, AttributionClass::Conflict);
+}
+
+#[test]
 fn verified_executable_recovers_from_stale_desktop_hint() {
     let (signal_path, signal_identity) = installed_system_executable();
     let mut stale_user_entry = DesktopRecord::fixture(
@@ -145,8 +200,9 @@ fn duplicate_desktop_id_prefers_the_protected_record() {
     let index = DesktopIdentityIndex::from_records(vec![user_record, system_record], Vec::new());
     let records = index.records_for_executable(app_identity);
 
-    let verified = verified_executable_record(&records, "", &sender(&app_path, app_identity))
-        .expect("duplicate desktop id should keep one verified record");
+    let verified =
+        verified_executable_record(&records, "", &sender(&app_path, app_identity), &index)
+            .expect("duplicate desktop id should keep one verified record");
 
     assert!(verified.0.system_association);
     assert_eq!(verified.0.badge_icon, "protected-signal");
@@ -162,8 +218,9 @@ fn duplicate_protected_desktop_id_keeps_stable_index_order() {
     let index = DesktopIdentityIndex::from_records(vec![first, second], Vec::new());
     let records = index.records_for_executable(app_identity);
 
-    let verified = verified_executable_record(&records, "", &sender(&app_path, app_identity))
-        .expect("duplicate protected records should keep one verified record");
+    let verified =
+        verified_executable_record(&records, "", &sender(&app_path, app_identity), &index)
+            .expect("duplicate protected records should keep one verified record");
 
     assert_eq!(verified.0.badge_icon, "first-signal");
 }

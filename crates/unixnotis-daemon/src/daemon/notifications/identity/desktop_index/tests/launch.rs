@@ -24,7 +24,7 @@ fn fixed_immutable_application_argument_is_matched_exactly() {
     )
     .expect("write desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&path).expect("parse desktop entry");
-    let spec = build_launch_spec(&desktop, &path, shell.identity).expect("build launch spec");
+    let (_executable_path, spec) = build_launch_spec(&desktop, &path).expect("build launch spec");
 
     assert!(launch_spec_matches_sender(
         &spec,
@@ -48,7 +48,6 @@ fn fixed_immutable_application_argument_is_matched_exactly() {
 
 #[test]
 fn user_writable_literal_payload_cannot_support_a_system_association() {
-    let shell = executable_evidence_for_path(Path::new("/usr/bin/sh")).expect("system shell");
     let root = TempRoot::new("launch-spec-user-payload");
     let payload = root.join("application-script");
     fs::write(&payload, "exit 0\n").expect("write user payload");
@@ -63,8 +62,8 @@ fn user_writable_literal_payload_cannot_support_a_system_association() {
     .expect("write desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&desktop_path).expect("parse desktop entry");
 
-    let spec =
-        build_launch_spec(&desktop, &desktop_path, shell.identity).expect("build launch spec");
+    let (_executable_path, spec) =
+        build_launch_spec(&desktop, &desktop_path).expect("build launch spec");
 
     assert!(!spec.literal_files_are_system_managed);
 }
@@ -81,7 +80,7 @@ fn launch_spec_rejects_unmodeled_flags_and_invalid_url_fields() {
     )
     .expect("write desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&path).expect("parse desktop entry");
-    let spec = build_launch_spec(&desktop, &path, executable.identity).expect("build launch spec");
+    let (_executable_path, spec) = build_launch_spec(&desktop, &path).expect("build launch spec");
 
     assert!(launch_spec_matches_sender(
         &spec,
@@ -114,8 +113,6 @@ fn launch_spec_rejects_unmodeled_flags_and_invalid_url_fields() {
 
 #[test]
 fn launch_spec_enforces_template_size_and_argument_limits_at_the_boundary() {
-    let executable =
-        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system fixture");
     let root = TempRoot::new("launch-spec-limits");
     let executable_prefix = "/usr/bin/true ";
 
@@ -163,7 +160,7 @@ fn launch_spec_enforces_template_size_and_argument_limits_at_the_boundary() {
             .unwrap_or_else(|| panic!("parse {name} desktop entry"));
 
         assert_eq!(
-            build_launch_spec(&desktop, &path, executable.identity).is_some(),
+            build_launch_spec(&desktop, &path).is_some(),
             accepted,
             "{name}"
         );
@@ -172,8 +169,6 @@ fn launch_spec_enforces_template_size_and_argument_limits_at_the_boundary() {
 
 #[test]
 fn launch_spec_parses_every_supported_desktop_field_code() {
-    let executable =
-        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system fixture");
     let root = TempRoot::new("launch-spec-field-codes");
     let path = root.join("org.example.Fields.desktop");
     fs::write(
@@ -182,7 +177,7 @@ fn launch_spec_parses_every_supported_desktop_field_code() {
     )
     .expect("write field-code desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&path).expect("parse desktop entry");
-    let spec = build_launch_spec(&desktop, &path, executable.identity).expect("build launch spec");
+    let (_executable_path, spec) = build_launch_spec(&desktop, &path).expect("build launch spec");
 
     assert!(matches!(
         spec.arguments[0],
@@ -223,6 +218,8 @@ fn process_matcher_checks_identity_emptiness_and_argument_limits_independently()
     let spec = LaunchSpec {
         executable: executable.identity,
         arguments: vec![LaunchArgument::FieldCode(FieldCode::Files)],
+        environment: Vec::new(),
+        wrappers: Vec::new(),
         literal_files_are_system_managed: true,
     };
     let exact_limit =

@@ -5,8 +5,8 @@ use zbus::zvariant::OwnedValue;
 
 use super::{
     build_notification, owned_to_string, parse_actions, parse_urgency_hint, resolve_expiration,
-    sanitize_hints_for_storage, string_to_owned_value, NotificationInput, SenderMetadata,
-    MAX_ACTIONS, MAX_BODY_BYTES, MAX_SUMMARY_BYTES,
+    sanitize_hints_for_storage, string_to_owned_value, CommandLineEvidence, NotificationInput,
+    SenderMetadata, MAX_ACTIONS, MAX_BODY_BYTES, MAX_SUMMARY_BYTES,
 };
 use unixnotis_core::{Config, NotificationImage, Urgency};
 
@@ -28,7 +28,7 @@ fn build_notification_clamps_summary_and_body_sizes() {
             sender_start_time: Some(77),
             sender_executable: Some("/usr/bin/test-app".to_string()),
             sender_executable_identity: None,
-            sender_cmdline: None,
+            command_line: CommandLineEvidence::default(),
         },
         attribution: unixnotis_core::NotificationAttribution::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
@@ -54,7 +54,7 @@ fn build_notification_strips_display_spoofing_controls() {
             sender_start_time: Some(77),
             sender_executable: Some("/usr/bin/test-app".to_string()),
             sender_executable_identity: None,
-            sender_cmdline: None,
+            command_line: CommandLineEvidence::default(),
         },
         attribution: unixnotis_core::NotificationAttribution::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,

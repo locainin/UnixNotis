@@ -11,7 +11,6 @@
     clippy::ref_option,
     clippy::significant_drop_tightening,
     clippy::struct_excessive_bools,
-    clippy::struct_field_names,
     clippy::trivially_copy_pass_by_ref,
     clippy::unnecessary_wraps,
     clippy::unused_async,

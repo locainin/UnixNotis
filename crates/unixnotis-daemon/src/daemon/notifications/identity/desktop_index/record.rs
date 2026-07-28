@@ -9,7 +9,6 @@ use super::super::executable::{executable_evidence_for_path, FileIdentity};
 use super::launch::build_launch_spec;
 use super::model::{DesktopIdentityIndex, DesktopRecord};
 use super::names::{normalize_desktop_id, normalize_name};
-use super::program::{desktop_executable, resolve_program};
 
 impl DesktopIdentityIndex {
     pub(super) fn add_desktop_file(&mut self, path: &Path, system_origin: bool) {
@@ -27,15 +26,16 @@ impl DesktopIdentityIndex {
             return;
         }
         let display_name = desktop.display_name().to_string();
-        let desktop_program = desktop_executable(&desktop);
-        let executable_path = desktop_program.as_deref().and_then(resolve_program);
-        let executable_identity = executable_path
-            .as_deref()
-            .and_then(executable_evidence_for_path)
-            .map(|evidence| evidence.identity);
+        // Wrapper normalization finds the application executable instead of indexing env itself
+        let parsed_launch = build_launch_spec(&desktop, path);
+        let executable_path = parsed_launch
+            .as_ref()
+            .map(|(executable_path, _spec)| executable_path.clone());
+        let executable_identity = parsed_launch
+            .as_ref()
+            .map(|(_executable_path, spec)| spec.executable);
         let desktop_identity = executable_evidence_for_path(path).map(|evidence| evidence.identity);
-        let launch_spec =
-            executable_identity.and_then(|identity| build_launch_spec(&desktop, path, identity));
+        let launch_spec = parsed_launch.map(|(_executable_path, spec)| spec);
         // Every association needs a complete Exec contract instead of a runtime-name exception
         let association_eligible = launch_spec.is_some();
         // System association requires protected metadata and a reproducible launch specification

@@ -8,25 +8,23 @@ mod program;
 mod record;
 mod refresh;
 mod scan;
+mod verification;
+mod wrappers;
 
 pub use model::DesktopIdentityIndex;
 pub(super) use model::DesktopRecord;
+pub(super) use model::{LaunchFailure, LaunchVerification};
 pub(super) use names::{normalize_desktop_id, normalize_name};
 pub use refresh::spawn_desktop_index_refresh;
 pub use scan::DesktopIndexSnapshot;
 
-pub(in crate::daemon::notifications::identity) fn record_launch_matches(
+pub(in crate::daemon::notifications::identity) fn verify_record_launch(
     record: &DesktopRecord,
+    index: &DesktopIdentityIndex,
     sender_identity: super::FileIdentity,
-    cmdline: Option<&[Vec<u8>]>,
-) -> bool {
-    match &record.launch_spec {
-        // Missing or unparsable Exec metadata cannot bind a process to an application
-        None => false,
-        Some(spec) => cmdline.is_some_and(|cmdline| {
-            launch::launch_spec_matches_sender(spec, sender_identity, cmdline)
-        }),
-    }
+    cmdline: &super::sender::CommandLineEvidence,
+) -> LaunchVerification {
+    verification::verify_record_launch(record, index, sender_identity, cmdline)
 }
 
 #[cfg(test)]
