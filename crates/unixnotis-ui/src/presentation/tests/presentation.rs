@@ -64,6 +64,10 @@ fn shared_model_downgrades_conflicts_and_denies_application_interaction() {
         presentation.identity.badge,
         BadgePresentation::SuspiciousApplication
     );
+    assert_eq!(
+        presentation.identity.secondary_claim.as_deref(),
+        Some("Claims to be Known application")
+    );
     assert!(presentation.actions.primary.is_empty());
     assert!(presentation.actions.overflow.is_empty());
 }

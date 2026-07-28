@@ -109,6 +109,16 @@ pub(super) fn build_reply_note(view: &PopupEntryViewModel) -> Option<gtk::Label>
     Some(note)
 }
 
+pub(super) fn build_secondary_claim(view: &PopupEntryViewModel) -> Option<gtk::Label> {
+    let text = view.secondary_claim.as_deref()?;
+    let label = gtk::Label::new(Some(text));
+    label.set_xalign(0.0);
+    label.set_wrap(true);
+    label.set_wrap_mode(WrapMode::WordChar);
+    label.add_css_class("unixnotis-popup-secondary-claim");
+    Some(label)
+}
+
 pub(in crate::ui::entry) fn build_close_button() -> gtk::Button {
     let close = gtk::Button::from_icon_name("window-close-symbolic");
     close.add_css_class("unixnotis-popup-close");

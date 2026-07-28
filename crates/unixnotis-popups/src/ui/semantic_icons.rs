@@ -7,6 +7,7 @@ use super::entry::TrustLevel;
 const RESOURCE_ROOT: &str = "/com/unixnotis/Popups/icons";
 
 pub(super) fn build_semantic_badge(level: TrustLevel, size: i32) -> Option<gtk::Image> {
+    crate::app::resources::register().ok()?;
     let file = match level {
         // Verified applications always retain the authenticated desktop badge
         TrustLevel::Verified => return None,
