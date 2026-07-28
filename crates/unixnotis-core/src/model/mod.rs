@@ -8,7 +8,9 @@ mod reply;
 mod types;
 
 // Re-export the public surface so callers continue to import from unixnotis_core::model.
-pub use attribution::{AttributionClass, InlineReplyPolicy, NotificationAttribution};
+pub use attribution::{
+    ApplicationActionPolicy, AttributionClass, InlineReplyPolicy, NotificationAttribution,
+};
 pub use image::{ImageData, NotificationImage};
 pub use notification::{Notification, NotificationKey, NotificationView};
 pub use reply::InlineReply;

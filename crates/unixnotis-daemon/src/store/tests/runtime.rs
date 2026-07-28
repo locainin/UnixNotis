@@ -128,8 +128,17 @@ fn active_action_target_requires_an_exact_action_on_the_live_generation() {
 }
 
 #[test]
-fn active_action_target_denies_unknown_and_conflicting_senders() {
+fn active_action_target_denies_every_unverified_sender_class() {
     for attribution in [
+        NotificationAttribution::associated(
+            "User application",
+            "org.example.UserApplication",
+            "org.example.UserApplication",
+            "",
+            AttributionClass::UserAssociated,
+            false,
+            "user-desktop:org.example.UserApplication".to_string(),
+        ),
         NotificationAttribution::unknown(
             "Signal",
             "source /tmp/fake",
