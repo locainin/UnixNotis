@@ -173,7 +173,11 @@ impl NotificationStore {
         })
     }
 
-    pub fn active_inline_reply_target(&self, id: u32) -> Option<Arc<Notification>> {
+    pub fn active_inline_reply_target(
+        &self,
+        id: u32,
+        generation: u64,
+    ) -> Option<Arc<Notification>> {
         let notification = self.active.get(&id)?;
         // Both fields must agree so malformed internal data cannot widen reply access
         let has_reply_action = notification
@@ -181,6 +185,7 @@ impl NotificationStore {
             .iter()
             .any(|action| action.key == "inline-reply");
         (notification.inline_reply.available
+            && notification.generation == generation
             && notification.inline_reply_policy == unixnotis_core::InlineReplyPolicy::Allow
             && has_reply_action)
             .then(|| Arc::clone(notification))

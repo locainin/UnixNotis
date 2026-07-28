@@ -13,6 +13,8 @@ pub(super) const INLINE_REPLY_TRANSITION_MS: u32 = 250;
 pub(super) struct ReplyState {
     // Numeric identity is retained for the command sent to the daemon
     pub(super) bound_id: Rc<Cell<u32>>,
+    // Commit generation prevents a recycled identifier from receiving an older draft
+    pub(super) bound_generation: Rc<Cell<u64>>,
     // One shared gate covers button and Enter submissions
     pub(super) submitted: Rc<Cell<bool>>,
     // Attempt identity keeps delayed outcomes tied to one exact submission
@@ -23,6 +25,7 @@ impl ReplyState {
     pub(super) fn new() -> Self {
         Self {
             bound_id: Rc::new(Cell::new(0)),
+            bound_generation: Rc::new(Cell::new(0)),
             submitted: Rc::new(Cell::new(false)),
             attempt: Rc::new(Cell::new(0)),
         }

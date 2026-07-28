@@ -24,8 +24,14 @@ pub(super) fn submit_reply(
     // Trim once so UI validation and the transmitted payload use the same content
     let text = entry.text().trim().to_string();
     let id = state.bound_id.get();
+    let generation = state.bound_generation.get();
     // replace(true) closes the race between Enter and a near-simultaneous click
-    if id == 0 || text.is_empty() || text.len() > MAX_REPLY_BYTES || state.submitted.replace(true) {
+    if id == 0
+        || generation == 0
+        || text.is_empty()
+        || text.len() > MAX_REPLY_BYTES
+        || state.submitted.replace(true)
+    {
         return;
     }
     let current_attempt = state.attempt.get().wrapping_add(1);
@@ -40,6 +46,7 @@ pub(super) fn submit_reply(
         command_tx,
         UiCommand::Reply {
             id,
+            generation,
             text,
             outcome: outcome_tx,
         },
@@ -56,6 +63,7 @@ pub(super) fn submit_reply(
             .await
             .unwrap_or_else(|_| Err("notification service did not return a result".to_string()));
         if result_state.bound_id.get() != id
+            || result_state.bound_generation.get() != generation
             || result_state.attempt.get() != current_attempt
             || !result_state.submitted.get()
         {

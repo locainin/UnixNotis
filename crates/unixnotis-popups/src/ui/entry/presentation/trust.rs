@@ -11,6 +11,14 @@ pub(in crate::ui::entry) enum TrustLevel {
     System,
 }
 
+/// Inline reply state kept separate from application-owned actions
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ui::entry) enum ReplyPresentation {
+    Hidden,
+    Available,
+    Unavailable,
+}
+
 impl TrustLevel {
     pub(in crate::ui::entry) const fn css_class(self) -> &'static str {
         match self {
@@ -28,8 +36,7 @@ pub(in crate::ui::entry) struct PopupTrustPresentation {
     pub(in crate::ui::entry) level: TrustLevel,
     pub(in crate::ui::entry) short_label: Option<String>,
     pub(in crate::ui::entry) details_label: Option<String>,
-    pub(in crate::ui::entry) allow_reply: bool,
-    pub(in crate::ui::entry) show_reply_unavailable: bool,
+    pub(in crate::ui::entry) reply: ReplyPresentation,
 }
 
 impl PopupTrustPresentation {
@@ -45,14 +52,19 @@ impl PopupTrustPresentation {
         let allow_reply = has_reply
             && notification.inline_reply_policy == InlineReplyPolicy::Allow
             && level == TrustLevel::Verified;
+        let reply = if allow_reply {
+            ReplyPresentation::Available
+        } else if has_reply {
+            ReplyPresentation::Unavailable
+        } else {
+            ReplyPresentation::Hidden
+        };
 
         Self {
             level,
             short_label,
             details_label,
-            allow_reply,
-            // Explain a missing reply control only when the sender actually requested one
-            show_reply_unavailable: has_reply && !allow_reply,
+            reply,
         }
     }
 }

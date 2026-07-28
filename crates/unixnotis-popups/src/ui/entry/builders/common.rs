@@ -6,7 +6,7 @@ use gtk::Align;
 use unixnotis_core::{hooks, NotificationView};
 
 use super::super::commands::try_send_command;
-use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation};
+use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation, ReplyPresentation};
 use crate::dbus::UiCommand;
 use crate::ui::UiState;
 
@@ -96,7 +96,7 @@ pub(super) fn build_body_label(view: &PopupEntryViewModel, line_limit: i32) -> O
 }
 
 pub(super) fn build_reply_note(view: &PopupEntryViewModel) -> Option<gtk::Label> {
-    if !view.trust.show_reply_unavailable {
+    if view.trust.reply != ReplyPresentation::Unavailable {
         return None;
     }
 
@@ -119,30 +119,77 @@ pub(in crate::ui::entry) fn build_action_row(
     notification_id: u32,
     view: &PopupEntryViewModel,
 ) -> Option<gtk::Box> {
-    if view.actions.is_empty() {
+    if view.primary_actions.is_empty() && view.overflow_actions.is_empty() {
         return None;
     }
 
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     actions.add_css_class("unixnotis-popup-actions");
-    for action in &view.actions {
-        let button = gtk::Button::with_label(&action.label);
-        button.add_css_class("unixnotis-popup-action");
-        let action_key = action.key.clone();
-        let tx = command_tx.clone();
-        button.connect_clicked(move |_| {
-            // Click handlers only enqueue the exact action prepared by the presentation model
-            try_send_command(
-                &tx,
-                UiCommand::InvokeAction {
-                    id: notification_id,
-                    action_key: action_key.clone(),
-                },
-            );
-        });
-        actions.append(&button);
+    for action in &view.primary_actions {
+        actions.append(&build_action_button(
+            command_tx,
+            notification_id,
+            action,
+            None,
+        ));
+    }
+    if !view.overflow_actions.is_empty() {
+        actions.append(&build_overflow_menu(command_tx, notification_id, view));
     }
     Some(actions)
+}
+
+fn build_action_button(
+    command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
+    notification_id: u32,
+    action: &super::super::presentation::ActionViewModel,
+    popover: Option<&gtk::Popover>,
+) -> gtk::Button {
+    let button = gtk::Button::with_label(&action.label);
+    button.add_css_class("unixnotis-popup-action");
+    let action_key = action.key.clone();
+    let tx = command_tx.clone();
+    let popover = popover.cloned();
+    button.connect_clicked(move |_| {
+        // Menus close before the exact daemon-validated action is queued
+        if let Some(popover) = &popover {
+            popover.popdown();
+        }
+        try_send_command(
+            &tx,
+            UiCommand::InvokeAction {
+                id: notification_id,
+                action_key: action_key.clone(),
+            },
+        );
+    });
+    button
+}
+
+fn build_overflow_menu(
+    command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
+    notification_id: u32,
+    view: &PopupEntryViewModel,
+) -> gtk::MenuButton {
+    let menu = gtk::MenuButton::new();
+    menu.set_icon_name("view-more-symbolic");
+    menu.set_tooltip_text(Some("More actions"));
+    menu.add_css_class("unixnotis-popup-action-overflow");
+
+    let popover = gtk::Popover::new();
+    let list = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    list.add_css_class("unixnotis-popup-action-overflow-list");
+    for action in &view.overflow_actions {
+        list.append(&build_action_button(
+            command_tx,
+            notification_id,
+            action,
+            Some(&popover),
+        ));
+    }
+    popover.set_child(Some(&list));
+    menu.set_popover(Some(&popover));
+    menu
 }
 
 fn build_urgency_badge(is_critical: bool) -> gtk::Label {

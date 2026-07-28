@@ -225,7 +225,7 @@ async fn inline_reply_rejects_unauthorized_sender_before_live_state_lookup() {
     let message = control_header_message("ReplyNotification");
 
     server
-        .reply_notification(7, "private text", message.header())
+        .reply_notification(7, 1, "private text", message.header())
         .await
         .expect_err("unauthorized inline reply should fail");
 }

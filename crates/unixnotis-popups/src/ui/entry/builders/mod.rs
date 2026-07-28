@@ -2,6 +2,7 @@
 
 mod common;
 mod communication;
+mod reply;
 mod utility;
 mod warning;
 
@@ -12,6 +13,7 @@ use super::presentation::{PopupEntryViewModel, PopupKind};
 use crate::ui::UiState;
 
 pub(super) use common::{build_action_row, build_close_button};
+pub(in crate::ui::entry) use reply::build_inline_reply;
 
 /// Result of building one kind-specific card body
 pub(super) struct RenderedPopup {

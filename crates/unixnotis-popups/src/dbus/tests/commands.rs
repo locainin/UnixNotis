@@ -44,3 +44,22 @@ fn drain_offline_commands_returns_shutdown_acknowledgement() {
         .recv()
         .expect("receive shutdown acknowledgement");
 }
+
+#[test]
+fn drain_offline_commands_reports_reply_delivery_failure() {
+    let (tx, mut rx) = mpsc::channel(1);
+    let (outcome, result) = tokio::sync::oneshot::channel();
+    tx.try_send(UiCommand::Reply {
+        id: 10,
+        generation: 12,
+        text: "Keep this private".to_string(),
+        outcome,
+    })
+    .expect("reply command should queue");
+
+    assert!(drain_offline_commands(&mut rx).is_none());
+    assert_eq!(
+        result.blocking_recv().expect("reply result"),
+        Err("notification service is unavailable".to_string())
+    );
+}

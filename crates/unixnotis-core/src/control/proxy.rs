@@ -65,7 +65,7 @@ trait Control {
     /// Invoke an action key for a notification
     fn invoke_action(&self, id: u32, action_key: &str) -> zbus::Result<()>;
     /// Submit text for an explicitly advertised inline-reply action
-    fn reply_notification(&self, id: u32, reply_text: &str) -> zbus::Result<()>;
+    fn reply_notification(&self, id: u32, generation: u64, reply_text: &str) -> zbus::Result<()>;
     /// Clear active notifications and saved history
     fn clear_all(&self) -> zbus::Result<()>;
     /// Clear active notifications without deleting saved history

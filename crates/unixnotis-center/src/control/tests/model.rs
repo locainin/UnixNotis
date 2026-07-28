@@ -16,6 +16,7 @@ fn reply_command_debug_output_redacts_the_typed_message() {
     let (outcome, _result) = tokio::sync::oneshot::channel();
     let command = UiCommand::Reply {
         id: 9,
+        generation: 12,
         text: "private reply text".to_string(),
         outcome,
     };

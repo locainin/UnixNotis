@@ -38,7 +38,7 @@ fn view_model_formats_relative_time_without_losing_original_age() {
 }
 
 #[test]
-fn utility_layout_keeps_only_one_safe_action() {
+fn utility_layout_moves_extra_safe_actions_into_overflow() {
     let mut view = notification();
     view.actions = vec![
         Action {
@@ -54,8 +54,10 @@ fn utility_layout_keeps_only_one_safe_action() {
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
     assert_eq!(model.kind, PopupKind::Utility);
-    assert_eq!(model.actions.len(), 1);
-    assert_eq!(model.actions[0].key, "default");
+    assert_eq!(model.primary_actions.len(), 1);
+    assert_eq!(model.primary_actions[0].key, "default");
+    assert_eq!(model.overflow_actions.len(), 1);
+    assert_eq!(model.overflow_actions[0].key, "folder");
 }
 
 #[test]
@@ -73,7 +75,8 @@ fn weak_attribution_hides_every_application_directed_action() {
 
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
-    assert!(model.actions.is_empty());
+    assert!(model.primary_actions.is_empty());
+    assert!(model.overflow_actions.is_empty());
 }
 
 #[test]
@@ -95,12 +98,14 @@ fn user_associated_attribution_hides_application_directed_actions() {
 
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
-    assert!(model.actions.is_empty());
+    assert!(model.primary_actions.is_empty());
+    assert!(model.overflow_actions.is_empty());
 }
 
 #[test]
-fn square_icon_data_is_hidden_unless_the_category_is_media() {
+fn communication_avatar_is_not_suppressed_as_decoration() {
     let mut view = notification();
+    view.category = "im.received".to_string();
     view.image.has_image_data = true;
     view.image.image_data = ImageData {
         width: 64,
@@ -108,12 +113,10 @@ fn square_icon_data_is_hidden_unless_the_category_is_media() {
         ..ImageData::default()
     };
 
-    let utility = PopupEntryViewModel::for_notification_at(&view, 1_000);
-    assert_eq!(utility.thumbnail, ThumbnailKind::None);
-
-    view.category = "image.photo".to_string();
-    let media = PopupEntryViewModel::for_notification_at(&view, 1_000);
-    assert_eq!(media.thumbnail, ThumbnailKind::Content);
+    assert_eq!(
+        PopupEntryViewModel::for_notification_at(&view, 1_000).thumbnail,
+        ThumbnailKind::Content
+    );
 }
 
 #[test]
@@ -164,16 +167,11 @@ fn either_badge_source_match_suppresses_duplicate_decoration() {
 }
 
 #[test]
-fn decorative_square_detection_uses_every_dimension_guard_and_exact_boundary() {
+fn image_dimensions_alone_never_prove_badge_duplication() {
     let mut view = notification();
     view.image.has_image_data = true;
 
-    for (width, height, expected) in [
-        (0, 0, ThumbnailKind::Content),
-        (96, 72, ThumbnailKind::Content),
-        (128, 128, ThumbnailKind::None),
-        (129, 129, ThumbnailKind::Content),
-    ] {
+    for (width, height) in [(0, 0), (64, 64), (96, 72), (128, 128), (129, 129)] {
         view.image.image_data = ImageData {
             width,
             height,
@@ -181,8 +179,8 @@ fn decorative_square_detection_uses_every_dimension_guard_and_exact_boundary() {
         };
         assert_eq!(
             PopupEntryViewModel::for_notification_at(&view, 1_000).thumbnail,
-            expected,
-            "{width}x{height} should have the intended decoration classification"
+            ThumbnailKind::Content,
+            "{width}x{height} should remain real notification content"
         );
     }
 }
@@ -224,5 +222,6 @@ fn conflicting_claim_uses_warning_layout_and_drops_actions() {
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
     assert_eq!(model.kind, PopupKind::Warning);
-    assert!(model.actions.is_empty());
+    assert!(model.primary_actions.is_empty());
+    assert!(model.overflow_actions.is_empty());
 }

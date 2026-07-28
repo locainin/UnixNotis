@@ -9,7 +9,7 @@ use unixnotis_core::{
 };
 
 use crate::dbus::UiCommand;
-use crate::ui::entry::presentation::PopupEntryViewModel;
+use crate::ui::entry::presentation::{PopupEntryViewModel, ReplyPresentation};
 
 #[gtk::test]
 fn popup_critical_badge_uses_shared_hook_and_visibility() {
@@ -47,7 +47,7 @@ fn reply_note_exists_only_when_the_policy_explanation_is_needed() {
     let mut view = view_model();
     assert!(build_reply_note(&view).is_none());
 
-    view.trust.show_reply_unavailable = true;
+    view.trust.reply = ReplyPresentation::Unavailable;
     let note = build_reply_note(&view).expect("reply unavailable note");
 
     assert_eq!(note.text().as_str(), "Reply unavailable");
@@ -86,6 +86,31 @@ fn action_row_dispatches_the_prepared_action_identity() {
         }
         command => panic!("unexpected command: {command:?}"),
     }
+}
+
+#[gtk::test]
+fn extra_safe_action_builds_a_compact_overflow_menu() {
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let mut notification = notification();
+    notification.actions = vec![
+        Action {
+            key: "default".to_string(),
+            label: "Open".to_string(),
+        },
+        Action {
+            key: "folder".to_string(),
+            label: "Open folder".to_string(),
+        },
+    ];
+    let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
+    let row = build_action_row(&command_tx, 41, &view).expect("action row");
+    let menu = row
+        .last_child()
+        .and_downcast::<gtk::MenuButton>()
+        .expect("overflow menu");
+
+    assert_eq!(menu.icon_name().as_deref(), Some("view-more-symbolic"));
+    assert!(menu.popover().is_some());
 }
 
 #[gtk::test]
