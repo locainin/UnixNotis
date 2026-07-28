@@ -5,11 +5,14 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::StreamExt;
+use unixnotis_core::CONTROL_BUS_NAME;
 use zbus::fdo::DBusProxy;
+use zbus::names::BusName;
 use zbus::ConnectionBuilder;
 
 use super::{
-    owner_error_is_disconnected, wait_for_control_owner_with_probe, GetOwnerError, OwnerWait,
+    owner_error_is_disconnected, probe_control_owner, wait_for_control_owner_with_probe,
+    GetOwnerError, OwnerWait,
 };
 use crate::test_support::broker::read_broker_address;
 
@@ -212,6 +215,38 @@ fn transient_initial_owner_probe_retries_without_an_owner_change_signal() {
             Ok(super::UiEvent::Disconnected)
         ));
         assert!(event_rx.try_recv().is_err());
+    });
+}
+
+#[test]
+fn owner_probe_returns_the_live_control_service_unique_name() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build test runtime");
+    runtime.block_on(async {
+        let broker = PrivateBroker::start(broker_socket());
+        let service = connect(&broker.address).await.expect("connect service");
+        service
+            .request_name(CONTROL_BUS_NAME)
+            .await
+            .expect("claim control service name");
+        let observer = connect(&broker.address).await.expect("connect observer");
+        let dbus = DBusProxy::new(&observer).await.expect("create D-Bus proxy");
+        let control_name = BusName::try_from(CONTROL_BUS_NAME).expect("valid control bus name");
+
+        // The probe must return the unique owner instead of the requested well-known name
+        let owner = probe_control_owner(&dbus, control_name)
+            .await
+            .expect("probe live control owner");
+
+        assert_eq!(
+            owner,
+            service
+                .unique_name()
+                .expect("service connection has a unique name")
+                .to_string()
+        );
     });
 }
 
