@@ -22,9 +22,10 @@ const ICON_CACHE_MAX_ENTRIES: usize = 256;
 // Skip caching decoded textures above this size to avoid holding large buffers
 const ICON_TEXTURE_CACHE_MAX_BYTES: usize = 1024 * 1024;
 // Popup icon size is fixed so rows stay visually consistent across icon sources
-const POPUP_ICON_SIZE: i32 = 20;
+const POPUP_APP_BADGE_SIZE: i32 = 44;
 // Content stays visibly separate from the daemon-associated application badge
-const POPUP_CONTENT_IMAGE_SIZE: i32 = 96;
+const POPUP_CONTENT_THUMBNAIL_SIZE: i32 = 72;
+const DECORATIVE_SQUARE_IMAGE_MAX: i32 = 128;
 // Missing icons are retried soon so package and theme installs heal without a process restart
 const NEGATIVE_ICON_CACHE_TTL: Duration = Duration::from_secs(15);
 
@@ -33,16 +34,19 @@ impl UiState {
         &self,
         notification: &NotificationView,
     ) -> Option<gtk::Image> {
+        if content_image_is_decorative(notification) {
+            return None;
+        }
         if let Some(texture) = image_data_texture(&notification.image) {
             let widget = gtk::Image::from_paintable(Some(&texture));
-            set_popup_icon_size(&widget, POPUP_CONTENT_IMAGE_SIZE);
+            set_popup_icon_size(&widget, POPUP_CONTENT_THUMBNAIL_SIZE);
             return Some(widget);
         }
 
         if notification.image.image_path.trim().is_empty() {
             return None;
         }
-        self.resolve_icon_widget(&notification.image.image_path, POPUP_CONTENT_IMAGE_SIZE)
+        self.resolve_icon_widget(&notification.image.image_path, POPUP_CONTENT_THUMBNAIL_SIZE)
     }
 
     pub(super) fn build_image_widget(
@@ -57,7 +61,7 @@ impl UiState {
         );
         if let Some(cached) = self.icon_cache.get(&cache_key) {
             if let Some(icon_name) = &cached.resolved {
-                return self.resolve_icon_widget(icon_name, POPUP_ICON_SIZE);
+                return self.resolve_icon_widget(icon_name, POPUP_APP_BADGE_SIZE);
             }
             if negative_cache_is_fresh(cached.cached_at, Instant::now()) {
                 return None;
@@ -75,7 +79,7 @@ impl UiState {
             if let Some(icon_names) = self.desktop_icons.icons_for(candidate) {
                 for icon_name in icon_names {
                     if let Some(widget) =
-                        self.resolve_icon_widget(icon_name.as_str(), POPUP_ICON_SIZE)
+                        self.resolve_icon_widget(icon_name.as_str(), POPUP_APP_BADGE_SIZE)
                     {
                         resolved = Some((icon_name, widget));
                         break;
@@ -89,7 +93,7 @@ impl UiState {
 
         if resolved.is_none() {
             for candidate in candidates {
-                if let Some(widget) = self.resolve_icon_widget(&candidate, POPUP_ICON_SIZE) {
+                if let Some(widget) = self.resolve_icon_widget(&candidate, POPUP_APP_BADGE_SIZE) {
                     resolved = Some((candidate, widget));
                     break;
                 }
@@ -204,6 +208,26 @@ impl UiState {
 
         widget
     }
+}
+
+fn content_image_is_decorative(notification: &NotificationView) -> bool {
+    let category_is_media = notification.category.starts_with("image")
+        || notification.category.starts_with("media")
+        || notification.category.starts_with("photo");
+    if category_is_media {
+        return false;
+    }
+
+    let badge = notification.attribution.badge_icon.trim();
+    let source_matches_badge = !badge.is_empty()
+        && (notification.image.icon_name.trim() == badge
+            || notification.image.image_path.trim() == badge);
+    let data = &notification.image.image_data;
+    let looks_like_small_square_icon = notification.image.has_image_data
+        && data.width > 0
+        && data.width == data.height
+        && data.width <= DECORATIVE_SQUARE_IMAGE_MAX;
+    source_matches_badge || looks_like_small_square_icon
 }
 
 fn negative_cache_is_fresh(cached_at: Instant, now: Instant) -> bool {

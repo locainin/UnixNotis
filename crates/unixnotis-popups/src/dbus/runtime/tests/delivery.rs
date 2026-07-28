@@ -16,6 +16,7 @@ fn candidate(generation: u64, should_show: bool) -> PopupCandidate {
             inline_reply: unixnotis_core::InlineReply::default(),
             inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
             urgency: 1,
+            category: String::new(),
             is_transient: false,
             image: NotificationImage::default(),
         },

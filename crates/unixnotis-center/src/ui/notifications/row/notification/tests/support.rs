@@ -29,6 +29,7 @@ pub(super) fn sample_notification() -> NotificationView {
         inline_reply: unixnotis_core::InlineReply::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: Urgency::Normal as u8,
+        category: String::new(),
         is_transient: false,
         image: NotificationImage::default(),
     }

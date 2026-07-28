@@ -86,6 +86,7 @@ impl Notification {
             inline_reply: self.inline_reply.clone(),
             inline_reply_policy: self.inline_reply_policy,
             urgency: self.urgency.as_u8(),
+            category: self.category.clone().unwrap_or_default(),
             // Center and popup policy both need the transient bit to stay in sync
             is_transient: self.is_transient,
             // UIs only need the text, actions, and image payload used for rendering
@@ -108,6 +109,7 @@ impl Notification {
             inline_reply: self.inline_reply.clone(),
             inline_reply_policy: self.inline_reply_policy,
             urgency: self.urgency.as_u8(),
+            category: self.category.clone().unwrap_or_default(),
             // History policy still depends on the transient bit in panel rows
             is_transient: self.is_transient,
             // List rows should avoid carrying raw image buffers across D-Bus
@@ -322,6 +324,8 @@ pub struct NotificationView {
     pub inline_reply: InlineReply,
     pub inline_reply_policy: InlineReplyPolicy,
     pub urgency: u8,
+    // Category lets compact clients distinguish real media from decorative icon payloads
+    pub category: String,
     // Close handling needs this flag so history policy stays shared
     pub is_transient: bool,
     // Image metadata intended for UI usage
