@@ -4,11 +4,11 @@ use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{hooks, NotificationView};
+use unixnotis_ui::presentation::build_semantic_badge;
 
 use super::super::commands::try_send_command;
 use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation, ReplyPresentation};
 use crate::dbus::UiCommand;
-use crate::ui::semantic_icons::build_semantic_badge;
 use crate::ui::UiState;
 
 pub(super) struct IdentityHeader {
@@ -28,7 +28,7 @@ pub(super) fn build_identity_header(
 
     let mut has_icon = false;
     if let Some(size) = app_icon_size {
-        let icon = build_semantic_badge(view.trust.level, size)
+        let icon = build_semantic_badge(view.badge, size)
             .or_else(|| state.build_app_icon_widget(notification, size));
         if let Some(icon) = icon {
             // Only daemon-associated badge inputs reach the quiet identity header

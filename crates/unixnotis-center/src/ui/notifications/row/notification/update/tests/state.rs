@@ -7,10 +7,25 @@ use unixnotis_core::{hooks, Action, CutCorners, NotificationMetadataConfig, Urge
 
 use crate::ui::icons::IconResolver;
 
+use super::super::super::state::IconSignature;
 use super::super::super::test_support::{
     notification_row, row_data, sample_notification, RowFlags,
 };
 use super::update_notification_row;
+
+#[test]
+fn icon_signature_changes_when_trust_presentation_changes() {
+    let verified = sample_notification();
+    let mut suspicious = verified.clone();
+    // Keep resolver inputs unchanged to isolate the trust-state regression
+    suspicious.attribution.warning = true;
+
+    assert_ne!(
+        IconSignature::from(&verified),
+        IconSignature::from(&suspicious),
+        "trust changes must refresh a recycled row badge"
+    );
+}
 
 #[gtk::test]
 fn update_notification_row_applies_state_classes_and_text() {

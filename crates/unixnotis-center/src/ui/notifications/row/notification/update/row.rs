@@ -2,7 +2,7 @@
 
 use gtk::prelude::*;
 use tokio::sync::mpsc;
-use unixnotis_ui::presentation::NotificationPresentation;
+use unixnotis_ui::presentation::{build_semantic_badge, NotificationPresentation};
 
 use crate::control::UiCommand;
 use crate::ui::icons::IconResolver;
@@ -54,8 +54,14 @@ pub(in crate::ui::notifications) fn update_notification_row(
     let next_sig = IconSignature::from(notification);
     let mut sig_guard = row.icon_sig.borrow_mut();
     if show_identity && sig_guard.as_ref() != Some(&next_sig) {
-        let scale = row.card.scale_factor();
-        icon_resolver.apply_badge(&row.icon, notification, 22, scale);
+        if let Some(image) = build_semantic_badge(presentation.identity.badge, 22) {
+            row.icon.set_paintable(image.paintable().as_ref());
+            row.icon.set_visible(true);
+        } else {
+            let scale = row.card.scale_factor();
+            // Verified rows keep authenticated application art from the shared resolver
+            icon_resolver.apply_badge(&row.icon, notification, 22, scale);
+        }
         *sig_guard = Some(next_sig);
     } else if !show_identity {
         *sig_guard = None;

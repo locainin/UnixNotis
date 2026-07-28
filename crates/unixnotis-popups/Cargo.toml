@@ -22,8 +22,5 @@ zbus.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
 unixnotis-ui = { path = "../unixnotis-ui" }
 
-[build-dependencies]
-glib-build-tools.workspace = true
-
 [dev-dependencies]
 proptest.workspace = true

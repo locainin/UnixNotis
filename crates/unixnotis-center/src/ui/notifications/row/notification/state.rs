@@ -7,6 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use unixnotis_core::NotificationView;
+use unixnotis_ui::presentation::{BadgePresentation, NotificationPresentation};
 
 use super::reply::InlineReplyWidgets;
 
@@ -75,6 +76,7 @@ pub(in crate::ui::notifications) struct IconSignature {
     // Header badges depend only on daemon-associated attribution inputs
     badge_icon: String,
     desktop_id: String,
+    presentation: BadgePresentation,
 }
 
 impl IconSignature {
@@ -84,6 +86,9 @@ impl IconSignature {
         Self {
             badge_icon: notification.attribution.badge_icon.clone(),
             desktop_id: notification.attribution.desktop_id.clone(),
+            presentation: NotificationPresentation::from_view(notification)
+                .identity
+                .badge,
         }
     }
 }

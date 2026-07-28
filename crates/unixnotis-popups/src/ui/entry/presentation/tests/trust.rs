@@ -1,6 +1,7 @@
 use unixnotis_core::{Action, AttributionClass, InlineReplyPolicy, NotificationAttribution};
+use unixnotis_ui::presentation::TrustLevel;
 
-use super::super::{PopupTrustPresentation, ReplyPresentation, TrustLevel};
+use super::super::{PopupTrustPresentation, ReplyPresentation};
 use super::support::notification;
 
 #[test]
