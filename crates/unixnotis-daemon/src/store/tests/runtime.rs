@@ -30,6 +30,41 @@ fn active_notification_view_returns_current_active_payload() {
 }
 
 #[test]
+fn popup_candidate_pairs_rule_suppression_with_replacement_generation() {
+    let mut store = make_store_with_limits(10, 10);
+    let original = store.insert(make_notification("allowed"), 0).notification;
+    let mut suppressed = make_notification("rule suppressed");
+    suppressed.suppress_popup = true;
+    let replacement = store.insert(suppressed, original.id).notification;
+
+    let candidate = store
+        .popup_candidate(original.id)
+        .expect("replacement should remain an active popup candidate");
+
+    assert_eq!(candidate.notification.generation, replacement.generation);
+    assert_eq!(candidate.notification.summary, "rule suppressed");
+    assert!(!candidate.should_show);
+}
+
+#[test]
+fn popup_candidate_pairs_dnd_suppression_with_replacement_generation() {
+    let mut store = make_store_with_limits(10, 10);
+    let original = store.insert(make_notification("allowed"), 0).notification;
+    store.set_dnd(true);
+    let replacement = store
+        .insert(make_notification("dnd suppressed"), original.id)
+        .notification;
+
+    let candidate = store
+        .popup_candidate(original.id)
+        .expect("replacement should remain active during DND");
+
+    assert_eq!(candidate.notification.generation, replacement.generation);
+    assert_eq!(candidate.notification.summary, "dnd suppressed");
+    assert!(!candidate.should_show);
+}
+
+#[test]
 fn active_inline_reply_target_requires_a_live_explicit_reply_action() {
     let mut store = make_store_with_limits(12, 20);
     let ordinary_id = store

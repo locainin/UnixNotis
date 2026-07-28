@@ -1,16 +1,19 @@
 use super::support::*;
 
 #[test]
-fn drain_active_ids_returns_newest_first_and_clears_expirations() {
+fn drain_active_keys_returns_newest_first_and_clears_expirations() {
     let mut store = make_store_with_limits(10, 10);
     let first = store.insert(make_notification("first"), 0);
     let second = store.insert(make_notification("second"), 0);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    store.set_expiration(first.notification.id, Some(deadline));
+    store.set_expiration(&first.notification, Some(deadline));
 
-    let ids = store.drain_active_ids();
+    let keys = store.drain_active_keys();
 
-    assert_eq!(ids, vec![second.notification.id, first.notification.id]);
+    assert_eq!(
+        keys,
+        vec![second.notification.key(), first.notification.key()]
+    );
     assert!(store.list_active().is_empty());
     assert_eq!(store.expiration_for(first.notification.id), None);
 }
@@ -22,13 +25,23 @@ fn expiration_bookkeeping_sets_replaces_and_removes_deadlines() {
     let first = std::time::Instant::now() + std::time::Duration::from_secs(1);
     let second = std::time::Instant::now() + std::time::Duration::from_secs(2);
 
-    store.set_expiration(outcome.notification.id, Some(first));
-    assert_eq!(store.expiration_for(outcome.notification.id), Some(first));
+    let first_ticket = store
+        .set_expiration(&outcome.notification, Some(first))
+        .expect("positive deadline should create a ticket");
+    assert_eq!(
+        store.expiration_for(outcome.notification.id),
+        Some(first_ticket)
+    );
 
-    store.set_expiration(outcome.notification.id, Some(second));
-    assert_eq!(store.expiration_for(outcome.notification.id), Some(second));
+    let second_ticket = store
+        .set_expiration(&outcome.notification, Some(second))
+        .expect("replacement deadline should create a ticket");
+    assert_eq!(
+        store.expiration_for(outcome.notification.id),
+        Some(second_ticket)
+    );
 
-    store.set_expiration(outcome.notification.id, None);
+    store.set_expiration(&outcome.notification, None);
     assert_eq!(store.expiration_for(outcome.notification.id), None);
 }
 
@@ -69,8 +82,8 @@ fn replied_generation_is_removed_after_sender_archives_it() {
 
     let outcome = store.dismiss_replied_generation(id, &original);
 
-    assert!(!outcome.removed_active);
-    assert!(outcome.removed_history);
+    assert!(outcome.removed_active.is_none());
+    assert_eq!(outcome.removed_history, Some(original.key()));
     assert!(store.list_history().is_empty());
 }
 

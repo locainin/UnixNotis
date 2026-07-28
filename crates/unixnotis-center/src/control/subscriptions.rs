@@ -184,7 +184,7 @@ pub(super) async fn run_control_generation(
                         proxy,
                         sender,
                         *args.id(),
-                        *args.show_popup(),
+                        *args.generation(),
                         true,
                     ).await;
                 }
@@ -199,7 +199,7 @@ pub(super) async fn run_control_generation(
                         proxy,
                         sender,
                         *args.id(),
-                        *args.show_popup(),
+                        *args.generation(),
                         false,
                     ).await;
                 }
@@ -211,7 +211,13 @@ pub(super) async fn run_control_generation(
                 };
                 if let Ok(args) = signal.args() {
                     let _ = sender
-                        .send(UiEvent::NotificationClosed(*args.id(), *args.reason()))
+                        .send(UiEvent::NotificationClosed(
+                            unixnotis_core::NotificationKey {
+                                id: *args.id(),
+                                generation: *args.generation(),
+                            },
+                            *args.reason(),
+                        ))
                         .await;
                 }
             }

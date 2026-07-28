@@ -57,6 +57,7 @@ pub(super) fn channels() -> (mpsc::Sender<UiCommand>, Sender<UiEvent>) {
 pub(super) fn notification(id: u32, app_name: &str) -> NotificationView {
     NotificationView {
         id,
+        generation: u64::from(id),
         app_name: app_name.to_string(),
         attribution: unixnotis_core::NotificationAttribution {
             display_name: app_name.to_string(),

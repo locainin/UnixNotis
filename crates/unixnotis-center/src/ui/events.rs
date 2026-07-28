@@ -35,7 +35,7 @@ impl UiState {
                 self.update_state(state);
                 self.refresh_counts();
             }
-            UiEvent::NotificationAdded(notification, _show_popup) => {
+            UiEvent::NotificationAdded(notification) => {
                 debug!(
                     id = notification.id,
                     app = %notification.app_name,
@@ -51,7 +51,7 @@ impl UiState {
                 // Header count reflects the combined active + history totals
                 self.refresh_counts();
             }
-            UiEvent::NotificationUpdated(notification, _show_popup) => {
+            UiEvent::NotificationUpdated(notification) => {
                 debug!(
                     id = notification.id,
                     app = %notification.app_name,
@@ -67,12 +67,17 @@ impl UiState {
                 // Updates may shift groups; refresh count even when list is stable
                 self.refresh_counts();
             }
-            UiEvent::NotificationClosed(id, reason) => {
-                debug!(id, ?reason, "notification closed");
+            UiEvent::NotificationClosed(key, reason) => {
+                debug!(
+                    id = key.id,
+                    generation = key.generation,
+                    ?reason,
+                    "notification closed"
+                );
                 self.log_debug(PanelDebugLevel::Verbose, || {
-                    format!("notification closed: #{id} ({reason:?})")
+                    format!("notification closed: #{} ({reason:?})", key.id)
                 });
-                self.list.mark_closed(id, reason);
+                self.list.mark_closed(key, reason);
                 // Marking closed can move entries between active/history buckets
                 self.refresh_counts();
             }

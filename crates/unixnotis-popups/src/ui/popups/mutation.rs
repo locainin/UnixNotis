@@ -2,7 +2,7 @@
 
 use gtk::prelude::*;
 use tracing::debug;
-use unixnotis_core::NotificationView;
+use unixnotis_core::{NotificationKey, NotificationView};
 use unixnotis_ui::CutCorner;
 
 use super::super::entry::PopupEntry;
@@ -16,6 +16,14 @@ pub(super) struct ReconcilePlan {
     pub(super) updates: Vec<NotificationView>,
     // Final order copied from the daemon seed
     pub(super) desired_order: std::collections::VecDeque<u32>,
+}
+
+pub(super) fn incoming_generation_is_stale(existing: Option<u64>, incoming: u64) -> bool {
+    existing.is_some_and(|generation| generation > incoming)
+}
+
+pub(super) fn generation_matches(existing: Option<u64>, expected: u64) -> bool {
+    existing.is_some_and(|generation| generation == expected)
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -36,9 +44,13 @@ impl UiState {
         refresh_visibility: bool,
     ) {
         let id = notification.id;
-        // Duplicate ids point at an upstream state bug
-        if self.popups.contains_key(&id) {
-            debug!(id, "popup insert skipped because id already exists");
+        if let Some(existing) = self.popups.get(&id) {
+            // A later generation always dominates an old or duplicated add event
+            if existing.notification.generation >= notification.generation {
+                debug!(id, "stale popup insert skipped");
+                return;
+            }
+            self.update_popup_internal(notification, true, refresh_visibility);
             return;
         }
 
@@ -63,8 +75,21 @@ impl UiState {
         refresh_visibility: bool,
     ) -> bool {
         let id = notification.id;
+        let existing_generation = self
+            .popups
+            .get(&id)
+            .map(|entry| entry.notification.generation);
+        if incoming_generation_is_stale(existing_generation, notification.generation) {
+            // Reordered older updates cannot roll a popup back
+            debug!(
+                id,
+                generation = notification.generation,
+                "stale popup update skipped"
+            );
+            return false;
+        }
         if !show_popup {
-            // Hidden updates act like a close for this popup id
+            // A newer suppressed generation removes any older visible payload for this ID
             self.remove_popup_internal(id, refresh_visibility);
             return false;
         }
@@ -97,9 +122,14 @@ impl UiState {
         rebuilt_visible_row
     }
 
-    pub(in crate::ui) fn remove_popup(&mut self, id: u32) {
-        // Runtime close path keeps one place for remove semantics
-        self.remove_popup_internal(id, true);
+    pub(in crate::ui) fn remove_popup_if_generation(&mut self, key: NotificationKey) {
+        let existing_generation = self
+            .popups
+            .get(&key.id)
+            .map(|entry| entry.notification.generation);
+        if generation_matches(existing_generation, key.generation) {
+            self.remove_popup_internal(key.id, true);
+        }
     }
 
     pub(super) fn remove_popup_internal(&mut self, id: u32, refresh_visibility: bool) {

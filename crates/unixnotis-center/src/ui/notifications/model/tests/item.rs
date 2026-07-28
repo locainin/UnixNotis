@@ -9,6 +9,7 @@ use super::{RowData, RowItem, RowKind, RowPresentation};
 fn notification(id: u32) -> Rc<NotificationView> {
     Rc::new(NotificationView {
         id,
+        generation: u64::from(id),
         app_name: "Terminal".to_string(),
         attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "summary".to_string(),

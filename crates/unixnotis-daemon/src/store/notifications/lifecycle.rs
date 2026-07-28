@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use unixnotis_core::{CloseReason, Notification};
+use unixnotis_core::{CloseReason, Notification, NotificationKey};
 
-use crate::store::{DismissOutcome, NotificationStore};
+use crate::store::{DismissOutcome, ExpirationTicket, NotificationStore};
 
 impl NotificationStore {
     pub fn close(&mut self, id: u32, reason: CloseReason) -> Option<Arc<Notification>> {
@@ -19,15 +19,18 @@ impl NotificationStore {
 
     pub fn dismiss_from_panel(&mut self, id: u32) -> DismissOutcome {
         // Panel dismissal can target active, history, or both
-        let removed_active = self.active.shift_remove(&id).is_some();
-        if removed_active {
+        let removed_active = self.active.shift_remove(&id);
+        if removed_active.is_some() {
             self.expirations.remove(&id);
         }
 
-        let removed_history = self.history.remove(&id).is_some();
+        let removed_history = self
+            .history
+            .remove(&id)
+            .map(|notification| notification.key());
 
         DismissOutcome {
-            removed_active,
+            removed_active: removed_active.map(|notification| notification.key()),
             removed_history,
         }
     }
@@ -53,16 +56,20 @@ impl NotificationStore {
         id: u32,
         expected: &Arc<Notification>,
     ) -> DismissOutcome {
-        let removed_active = self.dismiss_active_if_current(id, expected);
-        let removed_history = if removed_active {
+        let removed_active = self
+            .dismiss_active_if_current(id, expected)
+            .then(|| expected.key());
+        let removed_history = if removed_active.is_some() {
             // Active cleanup already removed the exact generation
-            false
+            None
         } else if self.active.contains_key(&id) {
             // Any remaining active entry is a replacement with the same numeric id
-            false
+            None
         } else {
             // A close may archive the replied generation before reply cleanup resumes
-            self.history.remove_if_source(id, expected).is_some()
+            self.history
+                .remove_if_source(id, expected)
+                .map(|notification| notification.key())
         };
         DismissOutcome {
             removed_active,
@@ -70,27 +77,61 @@ impl NotificationStore {
         }
     }
 
-    pub fn drain_active_ids(&mut self) -> Vec<u32> {
+    pub fn drain_active_keys(&mut self) -> Vec<NotificationKey> {
         // Drain in one pass so callers do not need repeated lookups
-        let ids = self.active.keys().rev().copied().collect();
+        let keys = self
+            .active
+            .values()
+            .rev()
+            .map(|notification| notification.key())
+            .collect();
         self.active.clear();
         self.expirations.clear();
-        ids
+        keys
     }
 
-    pub fn set_expiration(&mut self, id: u32, deadline: Option<Instant>) {
+    pub fn set_expiration(
+        &mut self,
+        notification: &Arc<Notification>,
+        deadline: Option<Instant>,
+    ) -> Option<ExpirationTicket> {
         // None removes a stale timer for resident or already-dismissed notifications
         match deadline {
             Some(deadline) => {
-                self.expirations.insert(id, deadline);
+                let ticket = ExpirationTicket {
+                    id: notification.id,
+                    generation: notification.generation,
+                    deadline,
+                };
+                self.expirations.insert(notification.id, ticket);
+                Some(ticket)
             }
             None => {
-                self.expirations.remove(&id);
+                self.expirations.remove(&notification.id);
+                None
             }
         }
     }
 
-    pub fn expiration_for(&self, id: u32) -> Option<Instant> {
+    #[cfg(test)]
+    pub fn expiration_for(&self, id: u32) -> Option<ExpirationTicket> {
         self.expirations.get(&id).copied()
+    }
+
+    pub fn expire_if_current(&mut self, ticket: ExpirationTicket) -> Option<Arc<Notification>> {
+        // Both identities must match inside this one store-lock critical section
+        let current = self.active.get(&ticket.id)?;
+        if current.generation != ticket.generation {
+            return None;
+        }
+        if self.expirations.get(&ticket.id) != Some(&ticket) {
+            return None;
+        }
+
+        // Removal, timer cleanup, and history insertion commit atomically
+        let removed = self.active.shift_remove(&ticket.id)?;
+        self.expirations.remove(&ticket.id);
+        self.push_history(removed.clone(), CloseReason::Expired);
+        Some(removed)
     }
 }

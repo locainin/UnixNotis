@@ -307,6 +307,7 @@ fn resolve_expiration_respects_protocol_and_config_rules() {
 
     let mut notification = unixnotis_core::Notification {
         id: 1,
+        generation: 1,
         app_name: "app".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),
@@ -361,6 +362,7 @@ fn resolve_expiration_treats_positive_timeout_as_caller_owned_even_when_default_
     config.popups.default_timeout_ms = 0;
     let mut notification = unixnotis_core::Notification {
         id: 1,
+        generation: 1,
         app_name: "app".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),

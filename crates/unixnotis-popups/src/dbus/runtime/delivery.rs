@@ -1,7 +1,7 @@
 //! Authenticated notification pulls after lightweight signal delivery
 
 use tracing::warn;
-use unixnotis_core::{timed_dbus_call, ControlProxy};
+use unixnotis_core::{timed_dbus_call, ControlProxy, PopupCandidate};
 
 use crate::dbus::UiEvent;
 
@@ -9,20 +9,14 @@ pub(super) async fn push_active_notification_event(
     proxy: &ControlProxy<'_>,
     sender: &async_channel::Sender<UiEvent>,
     id: u32,
-    show_popup: bool,
+    generation: u64,
     is_add: bool,
 ) {
-    // The daemon remains the authority for the complete notification payload
-    match timed_dbus_call(proxy.get_active_notification(id)).await {
-        Ok(mut notifications) => {
-            // A close signal may win this fetch race, making an empty result normal
-            let Some(notification) = notifications.pop() else {
+    // Payload and popup policy come from one daemon-side store snapshot
+    match timed_dbus_call(proxy.get_popup_candidate(id)).await {
+        Ok(candidates) => {
+            let Some(event) = popup_event(candidates, generation, is_add) else {
                 return;
-            };
-            let event = if is_add {
-                UiEvent::NotificationAdded(notification, show_popup)
-            } else {
-                UiEvent::NotificationUpdated(notification, show_popup)
             };
             let _ = sender.send(event).await;
         }
@@ -33,5 +27,29 @@ pub(super) async fn push_active_notification_event(
                 id, "failed to fetch popup notification after signal"
             );
         }
+    }
+}
+
+pub(super) fn popup_event(
+    mut candidates: Vec<PopupCandidate>,
+    generation: u64,
+    is_add: bool,
+) -> Option<UiEvent> {
+    // A close signal may win this fetch race, making an empty result normal
+    let candidate = candidates.pop()?;
+    // A delayed signal must never lend its admission to a replacement payload
+    if candidate.notification.generation != generation {
+        return None;
+    }
+    if is_add {
+        Some(UiEvent::NotificationAdded(
+            candidate.notification,
+            candidate.should_show,
+        ))
+    } else {
+        Some(UiEvent::NotificationUpdated(
+            candidate.notification,
+            candidate.should_show,
+        ))
     }
 }

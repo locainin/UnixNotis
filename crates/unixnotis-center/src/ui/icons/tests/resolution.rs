@@ -72,6 +72,7 @@ fn file_icon_resolution_enqueues_decodes_and_applies_the_worker_result() {
     let resolver = resolver_inner(update_tx);
     let notification = NotificationView {
         id: 1,
+        generation: 1,
         app_name: "Icon test".to_string(),
         attribution: unixnotis_core::NotificationAttribution::default(),
         summary: String::new(),

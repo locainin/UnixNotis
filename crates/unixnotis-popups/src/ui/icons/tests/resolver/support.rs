@@ -3,6 +3,7 @@ use unixnotis_core::{NotificationImage, NotificationView};
 pub(super) fn notification(app_name: &str, icon_name: &str) -> NotificationView {
     NotificationView {
         id: 1,
+        generation: 1,
         app_name: app_name.to_string(),
         attribution: unixnotis_core::NotificationAttribution {
             display_name: app_name.to_string(),

@@ -13,6 +13,7 @@ use crate::ui::notifications::test_support as support;
 fn notification(app_name: &str) -> Rc<NotificationView> {
     Rc::new(NotificationView {
         id: 1,
+        generation: 1,
         app_name: app_name.to_string(),
         attribution: unixnotis_core::NotificationAttribution {
             display_name: app_name.to_string(),

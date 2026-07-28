@@ -2,7 +2,7 @@
 
 use futures_util::stream::{self, StreamExt};
 use tracing::warn;
-use unixnotis_core::CloseReason;
+use unixnotis_core::{CloseReason, NotificationKey};
 
 use crate::daemon::{ControlServer, DaemonState, NotificationServer, NotificationSignalMode};
 
@@ -17,9 +17,9 @@ pub(super) struct ClearAllSignalPlan {
     pub(super) publish_state_changed: bool,
 }
 
-pub(super) const fn clear_all_signal_plan(ids: &[u32]) -> ClearAllSignalPlan {
+pub(super) const fn clear_all_signal_plan(keys: &[NotificationKey]) -> ClearAllSignalPlan {
     ClearAllSignalPlan {
-        publish_close_signals: !ids.is_empty(),
+        publish_close_signals: !keys.is_empty(),
         // Empty clears remain a recovery path for stale materialized client views
         publish_snapshot_invalidated: true,
         publish_state_changed: true,
@@ -27,14 +27,14 @@ pub(super) const fn clear_all_signal_plan(ids: &[u32]) -> ClearAllSignalPlan {
 }
 
 impl DaemonState {
-    pub(in crate::daemon) async fn publish_notification_closed(
+    pub(crate) async fn publish_notification_closed(
         &self,
-        id: u32,
+        key: NotificationKey,
         reason: CloseReason,
     ) -> zbus::Result<()> {
         let mut first_error = self
             .events
-            .notification_closed(id, reason, true)
+            .notification_closed(key, reason, true)
             .await
             .err();
         if let Err(error) = self.publish_state_changed().await {
@@ -45,12 +45,12 @@ impl DaemonState {
 
     pub(in crate::daemon) async fn publish_notification_dismissed(
         &self,
-        id: u32,
+        key: NotificationKey,
         removed_active: bool,
     ) -> zbus::Result<()> {
         let mut first_error = self
             .events
-            .notification_closed(id, CloseReason::DismissedByUser, removed_active)
+            .notification_closed(key, CloseReason::DismissedByUser, removed_active)
             .await
             .err();
         if let Err(error) = self.publish_state_changed().await {
@@ -62,26 +62,26 @@ impl DaemonState {
     pub(in crate::daemon) async fn publish_notification_change(
         &self,
         mode: NotificationSignalMode,
-        id: u32,
+        key: NotificationKey,
         replaced: bool,
-        show_popup: bool,
     ) -> zbus::Result<()> {
-        self.events
-            .notification_change(mode, id, replaced, show_popup)
-            .await
+        self.events.notification_change(mode, key, replaced).await
     }
 
     pub(in crate::daemon) async fn publish_evicted_notifications(
         &self,
-        ids: &[u32],
+        keys: &[NotificationKey],
     ) -> zbus::Result<()> {
-        self.events.evicted_notifications(ids).await
+        self.events.evicted_notifications(keys).await
     }
 
-    pub(in crate::daemon) async fn publish_notifications_cleared(&self, ids: Vec<u32>) {
-        let plan = clear_all_signal_plan(&ids);
+    pub(in crate::daemon) async fn publish_notifications_cleared(
+        &self,
+        keys: Vec<NotificationKey>,
+    ) {
+        let plan = clear_all_signal_plan(&keys);
         if plan.publish_close_signals {
-            if let Err(error) = self.events.cleared_notifications(ids).await {
+            if let Err(error) = self.events.cleared_notifications(keys).await {
                 warn!(
                     ?error,
                     "notification clear committed but close fanout failed"
@@ -110,7 +110,7 @@ impl DaemonState {
 impl DaemonEventPublisher {
     async fn notification_closed(
         &self,
-        id: u32,
+        key: NotificationKey,
         reason: CloseReason,
         publish_freedesktop: bool,
     ) -> zbus::Result<()> {
@@ -119,7 +119,8 @@ impl DaemonEventPublisher {
             match self.notification_context() {
                 Ok(context) => {
                     if let Err(error) =
-                        NotificationServer::notification_closed(&context, id, reason as u32).await
+                        NotificationServer::notification_closed(&context, key.id, reason as u32)
+                            .await
                     {
                         record_first_error(&mut first_error, error);
                     }
@@ -129,7 +130,10 @@ impl DaemonEventPublisher {
         }
         match self.control_context() {
             Ok(context) => {
-                if let Err(error) = ControlServer::notification_closed(&context, id, reason).await {
+                if let Err(error) =
+                    ControlServer::notification_closed(&context, key.id, key.generation, reason)
+                        .await
+                {
                     record_first_error(&mut first_error, error);
                 }
             }
@@ -141,43 +145,46 @@ impl DaemonEventPublisher {
     async fn notification_change(
         &self,
         mode: NotificationSignalMode,
-        id: u32,
+        key: NotificationKey,
         replaced: bool,
-        show_popup: bool,
     ) -> zbus::Result<()> {
         match mode {
             NotificationSignalMode::Direct => {
                 let context = self.control_context()?;
                 if replaced {
-                    ControlServer::notification_updated(&context, id, show_popup).await
+                    ControlServer::notification_updated(&context, key.id, key.generation).await
                 } else {
-                    ControlServer::notification_added(&context, id, show_popup).await
+                    ControlServer::notification_added(&context, key.id, key.generation).await
                 }
             }
             NotificationSignalMode::SnapshotOnly => self.snapshot_invalidated().await,
         }
     }
 
-    async fn evicted_notifications(&self, ids: &[u32]) -> zbus::Result<()> {
-        if ids.is_empty() {
+    async fn evicted_notifications(&self, keys: &[NotificationKey]) -> zbus::Result<()> {
+        if keys.is_empty() {
             return Ok(());
         }
         let notification_context = self.notification_context()?;
         let control_context = self.control_context()?;
         let mut first_error = None;
-        for &id in ids {
+        for &key in keys {
             if let Err(error) = NotificationServer::notification_closed(
                 &notification_context,
-                id,
+                key.id,
                 CloseReason::Undefined as u32,
             )
             .await
             {
                 record_first_error(&mut first_error, error);
             }
-            if let Err(error) =
-                ControlServer::notification_closed(&control_context, id, CloseReason::Undefined)
-                    .await
+            if let Err(error) = ControlServer::notification_closed(
+                &control_context,
+                key.id,
+                key.generation,
+                CloseReason::Undefined,
+            )
+            .await
             {
                 record_first_error(&mut first_error, error);
             }
@@ -185,21 +192,21 @@ impl DaemonEventPublisher {
         first_error.map_or(Ok(()), Err)
     }
 
-    async fn cleared_notifications(&self, ids: Vec<u32>) -> zbus::Result<()> {
+    async fn cleared_notifications(&self, keys: Vec<NotificationKey>) -> zbus::Result<()> {
         let notification_context = self.notification_context()?;
         let control_context = self.control_context()?;
         let first_error = std::sync::Mutex::new(None);
 
         // Contexts are reused and concurrency remains bounded for large configured stores
-        stream::iter(ids)
-            .for_each_concurrent(CLEAR_ALL_CONCURRENCY, |id| {
+        stream::iter(keys)
+            .for_each_concurrent(CLEAR_ALL_CONCURRENCY, |key| {
                 let notification_context = notification_context.clone();
                 let control_context = control_context.clone();
                 let first_error = &first_error;
                 async move {
                     if let Err(error) = NotificationServer::notification_closed(
                         &notification_context,
-                        id,
+                        key.id,
                         CloseReason::DismissedByUser as u32,
                     )
                     .await
@@ -211,7 +218,8 @@ impl DaemonEventPublisher {
                     }
                     if let Err(error) = ControlServer::notification_closed(
                         &control_context,
-                        id,
+                        key.id,
+                        key.generation,
                         CloseReason::DismissedByUser,
                     )
                     .await

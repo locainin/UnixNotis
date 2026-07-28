@@ -3,7 +3,9 @@
 //! These paths own entry-level changes after the list has already been constructed
 
 use tracing::debug;
-use unixnotis_core::{should_archive_closed_notification, CloseReason, NotificationView};
+use unixnotis_core::{
+    should_archive_closed_notification, CloseReason, NotificationKey, NotificationView,
+};
 
 use super::types::NotificationList;
 
@@ -11,6 +13,15 @@ impl NotificationList {
     pub fn add_or_update(&mut self, notification: NotificationView, is_active: bool) {
         let id = notification.id;
         let existing_entry = self.entries.get(&id);
+        if existing_entry.is_some_and(|entry| entry.view.generation > notification.generation) {
+            // Reordered signals must never roll a row back to an older payload
+            debug!(
+                id,
+                generation = notification.generation,
+                "stale row update skipped"
+            );
+            return;
+        }
         let old_group = existing_entry.map(|entry| entry.app_key.clone());
         let was_in_active = existing_entry.is_some_and(|entry| entry.is_active);
         let was_in_history = existing_entry.is_some() && !was_in_active;
@@ -160,7 +171,16 @@ impl NotificationList {
         self.request_rebuild();
     }
 
-    pub fn mark_closed(&mut self, id: u32, reason: CloseReason) {
+    pub fn mark_closed(&mut self, key: NotificationKey, reason: CloseReason) {
+        let id = key.id;
+        let Some(current) = self.entries.get(&id) else {
+            return;
+        };
+        if current.view.generation != key.generation {
+            // A close for an older generation cannot mutate its replacement
+            debug!(id, generation = key.generation, "stale row close skipped");
+            return;
+        }
         let group_key = self.entries.get(&id).map(|entry| entry.app_key.clone());
         let should_archive = self.entries.get(&id).is_some_and(|entry| {
             should_archive_entry(entry.view.as_ref(), reason, self.transient_to_history)

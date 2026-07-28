@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use unixnotis_core::{
     popup_allowed_by_state, should_archive_closed_notification, CloseReason, ControlState,
-    Notification, Urgency,
+    Notification, NotificationKey, Urgency,
 };
 
 use crate::store::{InsertOutcome, NotificationStore, PopupAdmission, PopupSuppressionReason};
@@ -47,6 +47,12 @@ impl NotificationStore {
             self.next_id()
         };
         notification.id = assigned_id;
+        // A replacement keeps its protocol ID but always receives a fresh commit identity
+        notification.generation = self.next_generation;
+        self.next_generation = self
+            .next_generation
+            .checked_add(1)
+            .expect("notification generation space must not be exhausted");
 
         // Drop stale copies before inserting the fresh one
         self.active.shift_remove(&assigned_id);
@@ -69,18 +75,19 @@ impl NotificationStore {
         }
     }
 
-    fn enforce_active_limit(&mut self) -> Vec<u32> {
+    fn enforce_active_limit(&mut self) -> Vec<NotificationKey> {
         // Config limit still applies, but active list never exceeds the global safety cap
         let max_active = self.config.history.max_active.min(ACTIVE_HARD_CAP);
         if max_active == 0 {
             // max_active=0 means archive everything immediately
             let mut evicted = Vec::new();
             while let Some((id, notification)) = self.active.shift_remove_index(0) {
+                let key = notification.key();
                 // Evicted notifications should not retain pending expiration entries
                 self.expirations.remove(&id);
                 // Active-cap eviction behaves like a daemon-side close for history policy
                 self.push_history(notification, CloseReason::Undefined);
-                evicted.push(id);
+                evicted.push(key);
             }
             return evicted;
         }
@@ -89,11 +96,12 @@ impl NotificationStore {
         while self.active.len() > max_active {
             // remove_index(0) always pops the oldest notification first
             if let Some((id, notification)) = self.active.shift_remove_index(0) {
+                let key = notification.key();
                 // Eviction path mirrors close path so state stays consistent
                 self.expirations.remove(&id);
                 // Evicted rows still need the same archive rule as any other close
                 self.push_history(notification, CloseReason::Undefined);
-                evicted.push(id);
+                evicted.push(key);
             } else {
                 // Defensive break for impossible map/index mismatch cases
                 break;
@@ -126,7 +134,7 @@ impl NotificationStore {
         self.history.evict_to_limit(self.config.history.max_entries);
     }
 
-    fn popup_admission(&self, notification: &Notification) -> PopupAdmission {
+    pub(crate) fn popup_admission(&self, notification: &Notification) -> PopupAdmission {
         // Rule-level popup suppression is highest priority
         if notification.suppress_popup {
             return PopupAdmission::Suppressed(PopupSuppressionReason::Rule);

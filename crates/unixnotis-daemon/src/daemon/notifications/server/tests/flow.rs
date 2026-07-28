@@ -23,6 +23,7 @@ use crate::test_support::daemon_state_for_test;
 fn notification_with_id(id: u32) -> Arc<Notification> {
     Arc::new(Notification {
         id,
+        generation: 1,
         app_name: "app".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),
@@ -276,12 +277,21 @@ async fn ingest_notify_emits_notification_added_signal() {
         .expect("notify should store");
 
     let signal = next_signal(&mut stream).await;
-    let (signal_id, show_popup) = signal
+    let (signal_id, generation) = signal
         .body()
-        .deserialize::<(u32, bool)>()
+        .deserialize::<(u32, u64)>()
         .expect("notification added body");
     assert_eq!(signal_id, id);
-    assert!(show_popup);
+    assert_eq!(
+        generation,
+        state
+            .store
+            .lock()
+            .await
+            .active_notification_view(id)
+            .expect("signalled notification should remain active")
+            .generation
+    );
 }
 
 #[tokio::test]
@@ -325,10 +335,11 @@ async fn ingest_notify_emits_control_close_for_evicted_active_notification() {
         .expect("second notify should store");
 
     let signal = next_signal(&mut stream).await;
-    let (signal_id, reason) = signal
+    let (signal_id, signal_generation, reason) = signal
         .body()
-        .deserialize::<(u32, CloseReason)>()
+        .deserialize::<(u32, u64, CloseReason)>()
         .expect("notification closed body");
     assert_eq!(signal_id, first_id);
+    assert!(signal_generation > 0);
     assert_eq!(reason as u32, CloseReason::Undefined as u32);
 }

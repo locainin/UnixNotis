@@ -12,11 +12,20 @@ use super::reply::InlineReply;
 use super::types::{Action, Urgency};
 use crate::util::{fold_text_for_layout, MAX_DISPLAY_TOKEN_WIDTH};
 
+/// Exact identity of one committed notification payload
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq, Hash)]
+pub struct NotificationKey {
+    pub id: u32,
+    pub generation: u64,
+}
+
 /// Full notification record stored by the daemon
 #[derive(Debug)]
 pub struct Notification {
     // Stable identifier assigned by the daemon
     pub id: u32,
+    // Process-wide commit generation distinguishes same-ID replacements
+    pub generation: u64,
     // Origin metadata for display and filtering
     pub app_name: String,
     pub app_icon: String,
@@ -54,11 +63,21 @@ pub struct Notification {
 }
 
 impl Notification {
+    /// Return the exact key for this committed payload
+    #[must_use]
+    pub const fn key(&self) -> NotificationKey {
+        NotificationKey {
+            id: self.id,
+            generation: self.generation,
+        }
+    }
+
     /// Convert to a lightweight view for UI consumption
     #[must_use]
     pub fn to_view(&self) -> NotificationView {
         NotificationView {
             id: self.id,
+            generation: self.generation,
             app_name: self.attribution.display_name.clone(),
             attribution: self.attribution.clone(),
             summary: notification_display_text(&self.summary),
@@ -80,6 +99,7 @@ impl Notification {
     pub fn to_list_view(&self) -> NotificationView {
         NotificationView {
             id: self.id,
+            generation: self.generation,
             app_name: self.attribution.display_name.clone(),
             attribution: self.attribution.clone(),
             summary: notification_display_text(&self.summary),
@@ -105,6 +125,7 @@ impl Notification {
         image.image_data = Default::default();
         Self {
             id: self.id,
+            generation: self.generation,
             app_name: self.app_name.clone(),
             app_icon: self.app_icon.clone(),
             attribution: self.attribution.clone(),
@@ -288,6 +309,8 @@ fn collapse_notification_whitespace(input: &str) -> String {
 pub struct NotificationView {
     // Identifier matches Notification::id
     pub id: u32,
+    // Generation identifies the exact same-ID payload represented by this view
+    pub generation: u64,
     // Lightweight fields used for UI display and filtering
     // Intentionally omits daemon-only protocol flags and timestamps
     pub app_name: String,

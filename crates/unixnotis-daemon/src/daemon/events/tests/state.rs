@@ -3,7 +3,9 @@ use std::time::Duration;
 
 use futures_util::TryStreamExt;
 use tokio::sync::Barrier;
-use unixnotis_core::{CloseReason, Config, ControlState, PopupGateState, CONTROL_OBJECT_PATH};
+use unixnotis_core::{
+    CloseReason, Config, ControlState, NotificationKey, PopupGateState, CONTROL_OBJECT_PATH,
+};
 use zbus::message::Type;
 use zbus::{Connection, MatchRule, Message, MessageStream};
 
@@ -153,7 +155,13 @@ async fn publish_notification_closed_sends_freedesktop_and_control_close_signals
     let mut control_stream = control_signal_stream(&state, "NotificationClosed").await;
 
     state
-        .publish_notification_closed(7, CloseReason::ClosedByCall)
+        .publish_notification_closed(
+            NotificationKey {
+                id: 7,
+                generation: 70,
+            },
+            CloseReason::ClosedByCall,
+        )
         .await
         .expect("close fanout should emit");
 
@@ -166,11 +174,12 @@ async fn publish_notification_closed_sends_freedesktop_and_control_close_signals
     assert_eq!(freedesktop_reason, CloseReason::ClosedByCall as u32);
 
     let control_signal = next_signal(&mut control_stream).await;
-    let (control_id, control_reason) = control_signal
+    let (control_id, control_generation, control_reason) = control_signal
         .body()
-        .deserialize::<(u32, CloseReason)>()
+        .deserialize::<(u32, u64, CloseReason)>()
         .expect("control close body");
     assert_eq!(control_id, 7);
+    assert_eq!(control_generation, 70);
     assert_eq!(control_reason as u32, CloseReason::ClosedByCall as u32);
 }
 
@@ -180,16 +189,23 @@ async fn publish_notification_dismissed_sends_control_close_signal() {
     let mut control_stream = control_signal_stream(&state, "NotificationClosed").await;
 
     state
-        .publish_notification_dismissed(8, false)
+        .publish_notification_dismissed(
+            NotificationKey {
+                id: 8,
+                generation: 80,
+            },
+            false,
+        )
         .await
         .expect("dismiss fanout should emit");
 
     let control_signal = next_signal(&mut control_stream).await;
-    let (control_id, control_reason) = control_signal
+    let (control_id, control_generation, control_reason) = control_signal
         .body()
-        .deserialize::<(u32, CloseReason)>()
+        .deserialize::<(u32, u64, CloseReason)>()
         .expect("control close body");
     assert_eq!(control_id, 8);
+    assert_eq!(control_generation, 80);
     assert_eq!(control_reason as u32, CloseReason::DismissedByUser as u32);
 }
 

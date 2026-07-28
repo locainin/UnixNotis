@@ -1,11 +1,18 @@
 use std::time::Duration;
 
 use chrono::Utc;
-use unixnotis_core::Config;
+use unixnotis_core::{Config, NotificationKey};
 
 use crate::expire::{ExpirationCommand, ExpirationScheduler};
 use crate::store::NotificationStore;
 use crate::test_support::{daemon_state_for_test, TempRoot};
+
+fn key(id: u32) -> NotificationKey {
+    NotificationKey {
+        id,
+        generation: u64::from(id),
+    }
+}
 
 #[tokio::test]
 async fn dnd_state_rolls_back_when_persistence_fails() {
@@ -118,14 +125,16 @@ async fn cancel_expiration_sends_cancel_command_when_scheduler_is_installed() {
     let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();
 
     state.set_scheduler(scheduler);
-    state.cancel_expiration(42);
+    state.cancel_expiration(key(42));
 
     let command = tokio::time::timeout(Duration::from_millis(100), receiver.recv())
         .await
         .expect("cancel command should arrive")
         .expect("scheduler channel should stay open");
     match command {
-        ExpirationCommand::Cancel { id } => assert_eq!(id, 42),
+        ExpirationCommand::Cancel { id, generation } => {
+            assert_eq!((id, generation), (42, 42));
+        }
         ExpirationCommand::Schedule { .. } => panic!("cancel should not schedule a deadline"),
     }
 }
@@ -136,7 +145,7 @@ async fn cancel_expirations_sends_cancel_for_each_id_in_order() {
     let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();
 
     state.set_scheduler(scheduler);
-    state.cancel_expirations(&[7, 8, 9]);
+    state.cancel_expirations(&[key(7), key(8), key(9)]);
 
     let mut ids = Vec::new();
     for _ in 0..3 {
@@ -145,7 +154,7 @@ async fn cancel_expirations_sends_cancel_for_each_id_in_order() {
             .expect("cancel command should arrive")
             .expect("scheduler channel should stay open");
         match command {
-            ExpirationCommand::Cancel { id } => ids.push(id),
+            ExpirationCommand::Cancel { id, .. } => ids.push(id),
             ExpirationCommand::Schedule { .. } => panic!("cancel should not schedule a deadline"),
         }
     }
@@ -162,14 +171,16 @@ async fn duplicate_scheduler_install_keeps_original_sender() {
 
     state.set_scheduler(first_scheduler);
     state.set_scheduler(second_scheduler);
-    state.cancel_expiration(11);
+    state.cancel_expiration(key(11));
 
     let command = tokio::time::timeout(Duration::from_millis(100), first_receiver.recv())
         .await
         .expect("original scheduler should receive cancel")
         .expect("original scheduler channel should stay open");
     match command {
-        ExpirationCommand::Cancel { id } => assert_eq!(id, 11),
+        ExpirationCommand::Cancel { id, generation } => {
+            assert_eq!((id, generation), (11, 11));
+        }
         ExpirationCommand::Schedule { .. } => panic!("cancel should not schedule a deadline"),
     }
     assert!(second_receiver.try_recv().is_err());
@@ -179,8 +190,8 @@ async fn duplicate_scheduler_install_keeps_original_sender() {
 async fn missing_scheduler_cancel_is_a_noop() {
     let state = daemon_state_for_test(false).await;
 
-    state.cancel_expiration(1);
-    state.cancel_expirations(&[2, 3]);
+    state.cancel_expiration(key(1));
+    state.cancel_expirations(&[key(2), key(3)]);
 
     assert!(!state.mark_missing_scheduler_warning_needed());
 }

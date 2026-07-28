@@ -8,6 +8,7 @@ use tracing::{debug, warn};
 use crate::dnd_expiration::DndExpirationScheduler;
 use crate::expire::ExpirationScheduler;
 use crate::store::DndWrite;
+use unixnotis_core::NotificationKey;
 
 use super::DaemonState;
 
@@ -151,21 +152,21 @@ impl DaemonState {
         !self.scheduler_missing_warned.swap(true, Ordering::SeqCst)
     }
 
-    pub(in crate::daemon) fn cancel_expiration(&self, id: u32) {
+    pub(in crate::daemon) fn cancel_expiration(&self, key: NotificationKey) {
         // Missing scheduler means startup is still incomplete, so skip quietly
         let Some(scheduler) = self.scheduler() else {
             return;
         };
-        scheduler.schedule(id, None);
+        scheduler.schedule(key.id, key.generation, None);
     }
 
-    pub fn cancel_expirations(&self, ids: &[u32]) {
+    pub fn cancel_expirations(&self, keys: &[NotificationKey]) {
         // Per-id cancel keeps the lazy expiration heap bounded without rebuilding it here
         let Some(scheduler) = self.scheduler() else {
             return;
         };
-        for id in ids {
-            scheduler.schedule(*id, None);
+        for key in keys {
+            scheduler.schedule(key.id, key.generation, None);
         }
     }
 }
