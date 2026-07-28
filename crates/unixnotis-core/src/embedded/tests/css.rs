@@ -131,3 +131,27 @@ fn critical_alert_assets_define_composed_popup_and_panel_states() {
     assert!(!DEFAULT_PANEL_CSS.contains("animation:"));
     assert!(!DEFAULT_POPUP_CSS.contains("animation:"));
 }
+
+#[test]
+fn popup_theme_keeps_kind_trust_and_compact_media_hooks() {
+    for selector in [
+        ".unixnotis-popup-card.utility",
+        ".unixnotis-popup-communication-content",
+        ".unixnotis-popup-utility-content",
+        ".unixnotis-popup-warning-content",
+        ".unixnotis-popup-trust-chip.unverified",
+        ".unixnotis-popup-trust-chip.suspicious",
+        ".unixnotis-popup-time",
+    ] {
+        assert!(
+            DEFAULT_POPUP_CSS.contains(selector),
+            "popup CSS should retain {selector}"
+        );
+    }
+
+    // Default popups must not restore the old raw provenance body row
+    assert!(!DEFAULT_POPUP_CSS.contains(".unixnotis-popup-source"));
+    assert!(DEFAULT_POPUP_CSS.contains("min-width: 20px"));
+    assert!(DEFAULT_POPUP_CSS.contains("min-width: 24px"));
+    assert!(DEFAULT_POPUP_CSS.contains("min-width: 48px"));
+}
