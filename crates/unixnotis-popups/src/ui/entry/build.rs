@@ -7,7 +7,9 @@ use unixnotis_ui::CutCorner;
 
 use super::super::window::refresh_popup_input_region;
 use super::super::UiState;
-use super::builders::{build_action_row, build_close_button, build_popup_content};
+use super::builders::{
+    build_action_row, build_close_button, build_inline_reply, build_popup_content,
+};
 use super::commands::try_send_command;
 use super::presentation::PopupEntryViewModel;
 use crate::dbus::UiCommand;
@@ -65,6 +67,9 @@ impl UiState {
         set_class_state(&root, hooks::popup_card::HAS_IMAGE, rendered.has_image);
         root.append(&rendered.widget);
 
+        if let Some(reply) = build_inline_reply(notification, &view, &self.command_tx) {
+            root.append(&reply);
+        }
         if let Some(actions) = build_action_row(&self.command_tx, notification.id, &view) {
             root.append(&actions);
         }
@@ -135,7 +140,9 @@ fn build_card_root(state: &UiState, view: &PopupEntryViewModel) -> gtk::Box {
     set_class_state(
         &root,
         hooks::popup_card::HAS_ACTIONS,
-        !view.primary_actions.is_empty() || !view.overflow_actions.is_empty(),
+        view.trust.reply == super::presentation::ReplyPresentation::Available
+            || !view.primary_actions.is_empty()
+            || !view.overflow_actions.is_empty(),
     );
     root
 }

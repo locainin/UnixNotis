@@ -207,6 +207,33 @@
   box-shadow: 0 4px 12px -8px alpha(#00a2ff, 0.4), inset 0 1px 0 alpha(#ffffff, 0.12);
 }
 
+.unixnotis-popup-action-overflow {
+  min-width: 32px;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+.unixnotis-popup-action-overflow-list {
+  padding: 6px;
+}
+
+.unixnotis-popup-inline-reply {
+  margin-top: 8px;
+}
+
+.unixnotis-popup-reply-entry {
+  min-height: 30px;
+  border-radius: 10px;
+  padding-left: 9px;
+  padding-right: 9px;
+}
+
+.unixnotis-popup-reply-error {
+  color: alpha(#fb7185, 0.88);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
 /* Critical state composes after the ordinary card and interaction rules */
 .unixnotis-popup-card.critical {
   background-image: linear-gradient(

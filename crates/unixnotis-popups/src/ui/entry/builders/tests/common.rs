@@ -9,7 +9,7 @@ use unixnotis_core::{
 };
 
 use crate::dbus::UiCommand;
-use crate::ui::entry::presentation::PopupEntryViewModel;
+use crate::ui::entry::presentation::{PopupEntryViewModel, ReplyPresentation};
 
 #[gtk::test]
 fn popup_critical_badge_uses_shared_hook_and_visibility() {
@@ -47,7 +47,7 @@ fn reply_note_exists_only_when_the_policy_explanation_is_needed() {
     let mut view = view_model();
     assert!(build_reply_note(&view).is_none());
 
-    view.trust.show_reply_unavailable = true;
+    view.trust.reply = ReplyPresentation::Unavailable;
     let note = build_reply_note(&view).expect("reply unavailable note");
 
     assert_eq!(note.text().as_str(), "Reply unavailable");

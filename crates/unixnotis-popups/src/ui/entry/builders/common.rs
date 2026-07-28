@@ -6,7 +6,7 @@ use gtk::Align;
 use unixnotis_core::{hooks, NotificationView};
 
 use super::super::commands::try_send_command;
-use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation};
+use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation, ReplyPresentation};
 use crate::dbus::UiCommand;
 use crate::ui::UiState;
 
@@ -96,7 +96,7 @@ pub(super) fn build_body_label(view: &PopupEntryViewModel, line_limit: i32) -> O
 }
 
 pub(super) fn build_reply_note(view: &PopupEntryViewModel) -> Option<gtk::Label> {
-    if !view.trust.show_reply_unavailable {
+    if view.trust.reply != ReplyPresentation::Unavailable {
         return None;
     }
 

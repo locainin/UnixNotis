@@ -24,12 +24,41 @@ pub enum UiEvent {
 }
 
 /// Commands sent from GTK handlers to the D-Bus runtime
-#[derive(Debug, Clone)]
 pub enum UiCommand {
     Dismiss(u32),
-    InvokeAction { id: u32, action_key: String },
+    InvokeAction {
+        id: u32,
+        action_key: String,
+    },
+    Reply {
+        id: u32,
+        generation: u64,
+        text: String,
+        outcome: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
     // A synchronous acknowledgement lets GTK wait for MarkPopupsNotReady before process exit
     Shutdown(std::sync::mpsc::SyncSender<()>),
+}
+
+impl std::fmt::Debug for UiCommand {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Dismiss(id) => formatter.debug_tuple("Dismiss").field(id).finish(),
+            Self::InvokeAction { id, action_key } => formatter
+                .debug_struct("InvokeAction")
+                .field("id", id)
+                .field("action_key", action_key)
+                .finish(),
+            Self::Reply { id, generation, .. } => formatter
+                .debug_struct("Reply")
+                .field("id", id)
+                .field("generation", generation)
+                // Reply text is private message content and must never enter debug logs
+                .field("text", &"<redacted>")
+                .finish_non_exhaustive(),
+            Self::Shutdown(_) => formatter.write_str("Shutdown(..)"),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -23,6 +23,27 @@ fn shutdown_command_preserves_the_cleanup_acknowledgement() {
 }
 
 #[test]
+fn reply_debug_output_redacts_private_message_text() {
+    let (outcome, _result) = tokio::sync::oneshot::channel();
+    let command = UiCommand::Reply {
+        id: 17,
+        generation: 23,
+        text: "private reply content".to_string(),
+        outcome,
+    };
+    let rendered = format!("{command:?}");
+
+    assert!(
+        !rendered.contains("private reply content"),
+        "reply text must not enter debug output"
+    );
+    assert!(
+        rendered.contains("<redacted>"),
+        "debug output should make redaction explicit"
+    );
+}
+
+#[test]
 fn reload_events_remain_distinct() {
     assert!(matches!(UiEvent::CssReload, UiEvent::CssReload));
     assert!(matches!(UiEvent::ConfigReload, UiEvent::ConfigReload));
