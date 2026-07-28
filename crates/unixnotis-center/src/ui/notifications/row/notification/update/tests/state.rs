@@ -38,11 +38,30 @@ fn update_notification_row_applies_state_classes_and_text() {
     assert!(!row.card.has_css_class(hooks::panel_card::GROUP_EXPANDED));
     assert!(row.stack_ghost_1.get_visible());
     assert!(row.stack_ghost_2.get_visible());
+    assert!(row.urgency_badge.get_visible());
+    assert_eq!(row.urgency_badge.text().as_str(), "Critical");
     assert_eq!(row.app_label.text().as_str(), "demo");
     assert_eq!(row.summary_label.text().as_str(), "summary");
     assert_eq!(row.body_label.text().as_str(), "body");
     assert_eq!(row.notify_id.get(), 1);
     assert!(row.icon_sig.borrow().is_some());
+}
+
+#[gtk::test]
+fn recycled_panel_row_hides_critical_badge_after_urgency_returns_to_normal() {
+    let (_root, row) = notification_row();
+    let mut critical = sample_notification();
+    critical.urgency = Urgency::Critical as u8;
+    let critical = row_data(Rc::new(critical), RowFlags::default());
+    let normal = row_data(Rc::new(sample_notification()), RowFlags::default());
+    let (command_tx, _rx) = tokio::sync::mpsc::channel(4);
+
+    update_notification_row(&row, &critical, &IconResolver::new(), &command_tx);
+    assert!(row.urgency_badge.get_visible());
+
+    update_notification_row(&row, &normal, &IconResolver::new(), &command_tx);
+    assert!(!row.card.has_css_class(hooks::shared_state::CRITICAL));
+    assert!(!row.urgency_badge.get_visible());
 }
 
 #[gtk::test]

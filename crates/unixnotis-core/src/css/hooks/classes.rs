@@ -9,6 +9,11 @@ pub mod shared_state {
     pub const STACKED: &str = "stacked";
 }
 
+pub mod urgency {
+    // One badge class keeps popup and panel urgency labels visually aligned
+    pub const BADGE: &str = "unixnotis-urgency-badge";
+}
+
 pub mod cut_corner {
     // The wrapper hook lets themes adjust the primitive without using its custom CSS node name
     pub const ROOT: &str = "unixnotis-cut-corner";

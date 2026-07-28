@@ -22,6 +22,8 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) icon: gtk::Image,
     // App name text shown beside the icon
     pub(super) app_label: gtk::Label,
+    // Critical badge remains allocated so urgency changes only toggle visibility
+    pub(super) urgency_badge: gtk::Label,
     // Optional metadata rows are present for themes but hidden unless config enables them
     pub(super) meta_top: gtk::Box,
     // Optional top metadata label for category/urgency styling

@@ -78,6 +78,12 @@ pub(in crate::ui::notifications) fn build_notification_row(
     app_label.set_max_width_chars(40);
     app_label.add_css_class("unixnotis-panel-app");
 
+    let urgency_badge = gtk::Label::new(Some("Critical"));
+    // Reused rows toggle this widget instead of rebuilding the header tree
+    urgency_badge.add_css_class(hooks::urgency::BADGE);
+    urgency_badge.set_single_line_mode(true);
+    urgency_badge.set_visible(false);
+
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
     // Spacer pushes close button to the far edge
     spacer.set_hexpand(true);
@@ -88,6 +94,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
 
     header.append(&icon);
     header.append(&app_label);
+    header.append(&urgency_badge);
     header.append(&spacer);
     header.append(&close_button);
 
@@ -207,6 +214,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
             stack_ghost_2,
             icon,
             app_label,
+            urgency_badge,
             meta_top,
             meta_label,
             time_badge,
