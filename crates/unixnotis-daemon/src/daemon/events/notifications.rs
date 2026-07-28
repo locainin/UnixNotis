@@ -155,7 +155,6 @@ impl DaemonEventPublisher {
                 }
             }
             NotificationSignalMode::SnapshotOnly => self.snapshot_invalidated().await,
-            NotificationSignalMode::Suppress => Ok(()),
         }
     }
 
