@@ -60,6 +60,52 @@ fn popup_entry_uses_the_configured_cut_corner_primitive() {
 }
 
 #[gtk::test]
+fn default_popup_entry_uses_the_native_rounded_card_without_a_clipper() {
+    let app = gtk::Application::builder()
+        .application_id("org.unixnotis.PopupRoundedCardTest")
+        .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    app.register(None::<&gtk::gio::Cancellable>)
+        .expect("register popup rounded-card test application");
+    let config = Config::default();
+    let config_root = std::env::temp_dir().join("unixnotis-popup-rounded-card");
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let css = CssManager::new_popup(theme_paths(&config_root), config.theme.clone());
+    let mut state = UiState::new(
+        &app,
+        config,
+        config_root.join("config.toml"),
+        command_tx,
+        css,
+    );
+    let notification = NotificationView {
+        id: 1,
+        generation: 1,
+        app_name: "Demo".to_string(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
+        summary: "Summary".to_string(),
+        body: "Body".to_string(),
+        actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+        urgency: 1,
+        category: String::new(),
+        is_transient: false,
+        received_at_unix_seconds: 0,
+        image: NotificationImage::default(),
+    };
+
+    let entry = state.build_popup_entry(&notification);
+    let root = entry.root.expect("popup entry should keep its styled root");
+    let child = entry
+        .revealer
+        .and_then(|revealer| revealer.child())
+        .expect("popup revealer should contain its card");
+
+    assert_eq!(child, root.upcast::<gtk::Widget>());
+}
+
+#[gtk::test]
 fn constructor_keeps_config_path_and_starts_with_empty_runtime_collections() {
     let app = gtk::Application::builder()
         .application_id("org.unixnotis.PopupStateTest")

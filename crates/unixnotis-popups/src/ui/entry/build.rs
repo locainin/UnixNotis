@@ -92,9 +92,14 @@ impl UiState {
             revealer.set_transition_type(gtk::RevealerTransitionType::Crossfade);
             revealer.set_transition_duration(200);
         }
-        // The shared primitive clips the full styled popup instead of approximating the corners
-        let plate = CutCorner::new(root, self.config.theme.notification_corners);
-        revealer.set_child(Some(&plate));
+        if self.config.theme.notification_corners.is_active() {
+            // Explicit diagonal cuts still use the shared clipping primitive
+            let plate = CutCorner::new(root, self.config.theme.notification_corners);
+            revealer.set_child(Some(&plate));
+        } else {
+            // The default card relies on GTK CSS rounding without a custom snapshot wrapper
+            revealer.set_child(Some(root));
+        }
         // Visibility is driven centrally so only rows inside max_visible animate in
         revealer.set_reveal_child(false);
 

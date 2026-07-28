@@ -72,14 +72,27 @@ impl UiState {
                 continue;
             };
             root.set_size_request(popup_width, -1);
-            if let Some(plate) = entry
-                .revealer
-                .as_ref()
-                .and_then(gtk::Revealer::child)
-                .and_downcast::<CutCorner>()
-            {
-                // Theme corner changes apply to existing visible popups immediately
-                plate.set_corners(self.config.theme.notification_corners);
+            let Some(revealer) = entry.revealer.as_ref() else {
+                continue;
+            };
+            let plate = revealer.child().and_downcast::<CutCorner>();
+            match (self.config.theme.notification_corners.is_active(), plate) {
+                (true, Some(plate)) => {
+                    // Active cut geometry updates without rebuilding the full card
+                    plate.set_corners(self.config.theme.notification_corners);
+                }
+                (true, None) => {
+                    // Detach the ordinary card before moving it under the opt-in clipper
+                    revealer.set_child(gtk::Widget::NONE);
+                    let plate = CutCorner::new(root, self.config.theme.notification_corners);
+                    revealer.set_child(Some(&plate));
+                }
+                (false, Some(plate)) => {
+                    // Return the card to the revealer before dropping the disabled clipper
+                    plate.set_child(gtk::Widget::NONE);
+                    revealer.set_child(Some(root));
+                }
+                (false, None) => {}
             }
         }
         // Re-run visibility so max_visible changes take effect right away

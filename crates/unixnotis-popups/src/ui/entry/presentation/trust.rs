@@ -4,7 +4,7 @@ use unixnotis_core::{AttributionClass, InlineReplyPolicy, NotificationView};
 
 /// Small set of trust states used by popup styling and interaction hints
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::ui::entry) enum TrustLevel {
+pub(in crate::ui) enum TrustLevel {
     Verified,
     Unverified,
     Suspicious,

@@ -179,14 +179,19 @@ impl UiState {
         if old_root.has_css_class("unixnotis-popup-visible") {
             new_root.add_css_class("unixnotis-popup-visible");
         }
-        if let Some(plate) = revealer.child().and_downcast::<CutCorner>() {
-            // Preserve the reveal animation while swapping only the clipped card contents
-            plate.set_child(Some(&new_root));
-            plate.set_corners(self.config.theme.notification_corners);
+        if self.config.theme.notification_corners.is_active() {
+            if let Some(plate) = revealer.child().and_downcast::<CutCorner>() {
+                // Preserve the reveal animation while swapping only the clipped card contents
+                plate.set_child(Some(&new_root));
+                plate.set_corners(self.config.theme.notification_corners);
+            } else {
+                // Enabling experimental cuts replaces the ordinary card wrapper on rebuild
+                let plate = CutCorner::new(&new_root, self.config.theme.notification_corners);
+                revealer.set_child(Some(&plate));
+            }
         } else {
-            // Older in-memory rows cannot normally reach this branch, but rebuilding stays safe
-            let plate = CutCorner::new(&new_root, self.config.theme.notification_corners);
-            revealer.set_child(Some(&plate));
+            // Disabling experimental cuts restores the native rounded card shape
+            revealer.set_child(Some(&new_root));
         }
 
         if let Some(entry) = self.popups.get_mut(&id) {
