@@ -89,6 +89,31 @@ fn action_row_dispatches_the_prepared_action_identity() {
 }
 
 #[gtk::test]
+fn extra_safe_action_builds_a_compact_overflow_menu() {
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let mut notification = notification();
+    notification.actions = vec![
+        Action {
+            key: "default".to_string(),
+            label: "Open".to_string(),
+        },
+        Action {
+            key: "folder".to_string(),
+            label: "Open folder".to_string(),
+        },
+    ];
+    let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
+    let row = build_action_row(&command_tx, 41, &view).expect("action row");
+    let menu = row
+        .last_child()
+        .and_downcast::<gtk::MenuButton>()
+        .expect("overflow menu");
+
+    assert_eq!(menu.icon_name().as_deref(), Some("view-more-symbolic"));
+    assert!(menu.popover().is_some());
+}
+
+#[gtk::test]
 fn empty_action_model_does_not_build_an_action_row() {
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
     assert!(build_action_row(&command_tx, 41, &view_model()).is_none());

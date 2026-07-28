@@ -10,8 +10,6 @@ use crate::ui::entry::labels::{
     POPUP_BODY_MAX_CHARS, POPUP_SUMMARY_MAX_CHARS,
 };
 
-const DECORATIVE_SQUARE_IMAGE_MAX: i32 = 128;
-
 /// One safe application action prepared for a compact popup button
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::ui::entry) struct ActionViewModel {
@@ -35,7 +33,8 @@ pub(in crate::ui::entry) struct PopupEntryViewModel {
     pub(in crate::ui::entry) title: String,
     pub(in crate::ui::entry) body: Option<String>,
     pub(in crate::ui::entry) thumbnail: ThumbnailKind,
-    pub(in crate::ui::entry) actions: Vec<ActionViewModel>,
+    pub(in crate::ui::entry) primary_actions: Vec<ActionViewModel>,
+    pub(in crate::ui::entry) overflow_actions: Vec<ActionViewModel>,
     pub(in crate::ui::entry) trust: PopupTrustPresentation,
     pub(in crate::ui::entry) critical: bool,
 }
@@ -56,7 +55,7 @@ impl PopupEntryViewModel {
     ) -> Self {
         let trust = PopupTrustPresentation::for_notification(notification);
         let kind = PopupKind::for_notification(notification, trust.level);
-        let actions = visible_actions(notification, kind);
+        let (primary_actions, overflow_actions) = visible_actions(notification, kind);
 
         Self {
             kind,
@@ -70,26 +69,31 @@ impl PopupEntryViewModel {
             body: has_visible_text(&notification.body)
                 .then(|| clamp_label_text(&notification.body, POPUP_BODY_MAX_CHARS).into_owned()),
             thumbnail: thumbnail_kind(notification),
-            actions,
+            primary_actions,
+            overflow_actions,
             trust,
             critical: notification.urgency == Urgency::Critical as u8,
         }
     }
 }
 
-fn visible_actions(notification: &NotificationView, kind: PopupKind) -> Vec<ActionViewModel> {
+fn visible_actions(
+    notification: &NotificationView,
+    kind: PopupKind,
+) -> (Vec<ActionViewModel>, Vec<ActionViewModel>) {
     // The daemon enforces the same boundary when a control client invokes an action
     if notification.attribution.application_action_policy() != ApplicationActionPolicy::Allow {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
 
-    notification
+    let mut actions = notification
         .actions
         .iter()
         .filter(|action| action.key != "inline-reply")
-        .take(kind.action_limit())
         .map(action_view_model)
-        .collect()
+        .collect::<Vec<_>>();
+    let overflow_actions = actions.split_off(actions.len().min(kind.action_limit()));
+    (actions, overflow_actions)
 }
 
 fn action_view_model(action: &Action) -> ActionViewModel {
@@ -118,21 +122,40 @@ fn thumbnail_kind(notification: &NotificationView) -> ThumbnailKind {
         return ThumbnailKind::Content;
     }
 
-    let badge = notification.attribution.badge_icon.trim();
-    let source_matches_badge = !badge.is_empty()
-        && (notification.image.icon_name.trim() == badge
-            || notification.image.image_path.trim() == badge);
-    let image_data = &notification.image.image_data;
-    let looks_like_small_square_icon = notification.image.has_image_data
-        && image_data.width > 0
-        && image_data.width == image_data.height
-        && image_data.width <= DECORATIVE_SQUARE_IMAGE_MAX;
-
-    if source_matches_badge || looks_like_small_square_icon {
+    if image_source_matches_authenticated_badge(notification) {
         ThumbnailKind::None
     } else {
         ThumbnailKind::Content
     }
+}
+
+fn image_source_matches_authenticated_badge(notification: &NotificationView) -> bool {
+    let badge = notification.attribution.badge_icon.trim();
+    if badge.is_empty() {
+        return false;
+    }
+    if notification.image.icon_name.trim() == badge {
+        return true;
+    }
+
+    let image_path = notification.image.image_path.trim();
+    if image_path.is_empty() {
+        return false;
+    }
+    if image_path == badge {
+        return true;
+    }
+
+    // Canonical file identity handles symlink aliases without guessing from dimensions
+    let badge_path = std::path::Path::new(badge);
+    let image_path = std::path::Path::new(image_path);
+    if !badge_path.is_absolute() || !image_path.is_absolute() {
+        return false;
+    }
+    let Some(badge_path) = std::fs::canonicalize(badge_path).ok() else {
+        return false;
+    };
+    std::fs::canonicalize(image_path).is_ok_and(|path| path == badge_path)
 }
 
 fn relative_time_label(received_at: i64, now: i64) -> String {

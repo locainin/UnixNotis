@@ -135,7 +135,7 @@ fn build_card_root(state: &UiState, view: &PopupEntryViewModel) -> gtk::Box {
     set_class_state(
         &root,
         hooks::popup_card::HAS_ACTIONS,
-        !view.actions.is_empty(),
+        !view.primary_actions.is_empty() || !view.overflow_actions.is_empty(),
     );
     root
 }
@@ -159,8 +159,9 @@ fn connect_default_action(
     command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
 ) {
     let Some(action_key) = view
-        .actions
+        .primary_actions
         .iter()
+        .chain(&view.overflow_actions)
         .find(|action| action.key == "default")
         .map(|action| action.key.clone())
     else {
