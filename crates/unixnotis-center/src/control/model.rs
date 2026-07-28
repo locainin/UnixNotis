@@ -49,6 +49,7 @@ pub enum UiCommand {
     },
     Reply {
         id: u32,
+        generation: u64,
         text: String,
         outcome: tokio::sync::oneshot::Sender<Result<(), String>>,
     },
@@ -67,9 +68,10 @@ impl fmt::Debug for UiCommand {
                 .field("id", id)
                 .field("action_key", action_key)
                 .finish(),
-            Self::Reply { id, .. } => formatter
+            Self::Reply { id, generation, .. } => formatter
                 .debug_struct("Reply")
                 .field("id", id)
+                .field("generation", generation)
                 // Typed message content must never enter diagnostic logs
                 .field("text", &"[redacted]")
                 .finish_non_exhaustive(),

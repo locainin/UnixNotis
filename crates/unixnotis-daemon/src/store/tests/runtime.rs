@@ -100,10 +100,7 @@ fn notification_diagnostics_report_renderer_and_store_admission_separately() {
 #[test]
 fn active_inline_reply_target_requires_a_live_explicit_reply_action() {
     let mut store = make_store_with_limits(12, 20);
-    let ordinary_id = store
-        .insert(make_notification("ordinary"), 0)
-        .notification
-        .id;
+    let ordinary = store.insert(make_notification("ordinary"), 0).notification;
     let mut reply = make_notification("reply");
     reply.inline_reply = InlineReply {
         available: true,
@@ -114,14 +111,19 @@ fn active_inline_reply_target_requires_a_live_explicit_reply_action() {
         key: "inline-reply".to_string(),
         label: "Reply".to_string(),
     });
-    let reply_id = store.insert(reply, 0).notification.id;
+    let reply = store.insert(reply, 0).notification;
 
-    assert!(store.active_inline_reply_target(ordinary_id).is_none());
+    assert!(store
+        .active_inline_reply_target(ordinary.id, ordinary.generation)
+        .is_none());
     let target = store
-        .active_inline_reply_target(reply_id)
+        .active_inline_reply_target(reply.id, reply.generation)
         .expect("reply target");
-    assert_eq!(target.id, reply_id);
+    assert_eq!(target.id, reply.id);
     assert!(!target.is_resident);
+    assert!(store
+        .active_inline_reply_target(reply.id, reply.generation.saturating_sub(1))
+        .is_none());
 }
 
 #[test]
@@ -206,19 +208,21 @@ fn inline_reply_target_reports_resident_state_and_rejects_history_entries() {
         label: "Reply".to_string(),
     });
     reply.is_resident = true;
-    let id = store.insert(reply, 0).notification.id;
+    let reply = store.insert(reply, 0).notification;
 
     assert!(
         store
-            .active_inline_reply_target(id)
+            .active_inline_reply_target(reply.id, reply.generation)
             .expect("resident reply target")
             .is_resident
     );
 
-    store.close(id, CloseReason::Expired);
+    store.close(reply.id, CloseReason::Expired);
 
-    assert!(store.active_inline_reply_target(id).is_none());
-    assert!(store.list_history().iter().any(|view| view.id == id));
+    assert!(store
+        .active_inline_reply_target(reply.id, reply.generation)
+        .is_none());
+    assert!(store.list_history().iter().any(|view| view.id == reply.id));
 }
 
 #[test]
@@ -226,9 +230,11 @@ fn inline_reply_metadata_without_the_protocol_action_is_rejected() {
     let mut store = make_store_with_limits(12, 20);
     let mut malformed = make_notification("metadata only");
     malformed.inline_reply.available = true;
-    let id = store.insert(malformed, 0).notification.id;
+    let malformed = store.insert(malformed, 0).notification;
 
-    assert!(store.active_inline_reply_target(id).is_none());
+    assert!(store
+        .active_inline_reply_target(malformed.id, malformed.generation)
+        .is_none());
 }
 
 #[test]
@@ -241,7 +247,9 @@ fn inline_reply_policy_denies_a_complete_reply_action() {
         key: "inline-reply".to_string(),
         label: "Reply".to_string(),
     });
-    let id = store.insert(notification, 0).notification.id;
+    let notification = store.insert(notification, 0).notification;
 
-    assert!(store.active_inline_reply_target(id).is_none());
+    assert!(store
+        .active_inline_reply_target(notification.id, notification.generation)
+        .is_none());
 }

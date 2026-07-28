@@ -217,12 +217,13 @@ impl ControlServer {
     pub(super) async fn reply_notification(
         &self,
         id: u32,
+        generation: u64,
         reply_text: &str,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ReplyNotification")
             .await?;
-        self.submit_inline_reply(id, reply_text).await
+        self.submit_inline_reply(id, generation, reply_text).await
     }
 
     pub(super) async fn clear_all(

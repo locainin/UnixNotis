@@ -60,16 +60,16 @@ async fn submit_inline_reply_emits_text_and_removes_nonresident_notification() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
     let mut stream = reply_signal_stream(&state, &sender).await;
-    let id = {
+    let (id, generation) = {
         let mut store = state.store.lock().await;
-        store
+        let notification = store
             .insert(reply_notification(false, &sender), 0)
-            .notification
-            .id
+            .notification;
+        (notification.id, notification.generation)
     };
 
     ControlServer::new(state.clone())
-        .submit_inline_reply(id, "  On my way  ")
+        .submit_inline_reply(id, generation, "  On my way  ")
         .await
         .expect("submit live inline reply");
 
@@ -85,16 +85,16 @@ async fn submit_inline_reply_keeps_resident_notification_live() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
     let mut stream = reply_signal_stream(&state, &sender).await;
-    let id = {
+    let (id, generation) = {
         let mut store = state.store.lock().await;
-        store
+        let notification = store
             .insert(reply_notification(true, &sender), 0)
-            .notification
-            .id
+            .notification;
+        (notification.id, notification.generation)
     };
 
     ControlServer::new(state.clone())
-        .submit_inline_reply(id, "Another update")
+        .submit_inline_reply(id, generation, "Another update")
         .await
         .expect("submit resident inline reply");
 
@@ -102,6 +102,36 @@ async fn submit_inline_reply_keeps_resident_notification_live() {
     assert_eq!(signal_id, id);
     assert_eq!(text, "Another update");
     assert_eq!(state.store.lock().await.list_active().len(), 1);
+}
+
+#[tokio::test]
+async fn stale_reply_generation_cannot_target_a_same_id_replacement() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let (id, old_generation, replacement_generation) = {
+        let mut store = state.store.lock().await;
+        let original = store
+            .insert(reply_notification(false, &sender), 0)
+            .notification;
+        let replacement = store
+            .insert(reply_notification(false, &sender), original.id)
+            .notification;
+        (original.id, original.generation, replacement.generation)
+    };
+
+    let error = ControlServer::new(state.clone())
+        .submit_inline_reply(id, old_generation, "stale draft")
+        .await
+        .expect_err("stale reply generation must be rejected");
+
+    assert!(error.to_string().contains("generation is stale"));
+    let active = state
+        .store
+        .lock()
+        .await
+        .active_notification_view(id)
+        .expect("replacement should remain active");
+    assert_eq!(active.generation, replacement_generation);
 }
 
 #[tokio::test]
@@ -118,16 +148,16 @@ async fn submit_inline_reply_round_trips_unicode_and_exact_byte_limit() {
     ];
 
     for message in messages {
-        let id = {
+        let (id, generation) = {
             let mut store = state.store.lock().await;
-            store
+            let notification = store
                 .insert(reply_notification(true, &sender), 0)
-                .notification
-                .id
+                .notification;
+            (notification.id, notification.generation)
         };
 
         ControlServer::new(state.clone())
-            .submit_inline_reply(id, &message)
+            .submit_inline_reply(id, generation, &message)
             .await
             .expect("submit exact reply text");
 
@@ -142,18 +172,18 @@ async fn reply_listener_replacement_survives_generation_safe_dismissal() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
     let mut stream = reply_signal_stream(&state, &sender).await;
-    let id = {
+    let (id, generation) = {
         let mut store = state.store.lock().await;
-        store
+        let notification = store
             .insert(reply_notification(false, &sender), 0)
-            .notification
-            .id
+            .notification;
+        (notification.id, notification.generation)
     };
     let replacement_state = state.clone();
     let replacement_sender = sender.clone();
 
     ControlServer::new(state.clone())
-        .submit_inline_reply_with_post_emit(id, "yes", move || async move {
+        .submit_inline_reply_with_post_emit(id, generation, "yes", move || async move {
             // This models the sender updating the same row while handling the reply signal
             let (signal_id, text) = next_reply_signal(&mut stream).await;
             assert_eq!((signal_id, text.as_str()), (id, "yes"));
@@ -179,17 +209,17 @@ async fn reply_listener_close_removes_replied_notification_without_history() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
     let mut stream = reply_signal_stream(&state, &sender).await;
-    let id = {
+    let (id, generation) = {
         let mut store = state.store.lock().await;
-        store
+        let notification = store
             .insert(reply_notification(false, &sender), 0)
-            .notification
-            .id
+            .notification;
+        (notification.id, notification.generation)
     };
     let closing_state = state.clone();
 
     ControlServer::new(state.clone())
-        .submit_inline_reply_with_post_emit(id, "yes", move || async move {
+        .submit_inline_reply_with_post_emit(id, generation, "yes", move || async move {
             let (signal_id, text) = next_reply_signal(&mut stream).await;
             assert_eq!((signal_id, text.as_str()), (id, "yes"));
             closing_state
@@ -209,12 +239,12 @@ async fn reply_listener_close_removes_replied_notification_without_history() {
 async fn submit_inline_reply_rejects_sender_that_no_longer_owns_bus_name() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
-    let id = {
+    let (id, generation) = {
         let mut store = state.store.lock().await;
-        store
+        let notification = store
             .insert(reply_notification(false, &sender), 0)
-            .notification
-            .id
+            .notification;
+        (notification.id, notification.generation)
     };
     let sender_name = sender.unique_name().expect("sender unique name").clone();
     sender.close().await.expect("close sender connection");
@@ -237,7 +267,7 @@ async fn submit_inline_reply_rejects_sender_that_no_longer_owns_bus_name() {
     .expect("bus should release the closed sender name");
 
     let error = ControlServer::new(state.clone())
-        .submit_inline_reply(id, "Anyone there?")
+        .submit_inline_reply(id, generation, "Anyone there?")
         .await
         .expect_err("closed sender must reject replies");
 
@@ -259,16 +289,16 @@ async fn inline_reply_signal_reaches_owner_but_not_unrelated_observer() {
     let observer = Connection::session().await.expect("observer session bus");
     let mut owner_stream = reply_signal_stream(&state, &owner).await;
     let mut observer_stream = reply_signal_stream(&state, &observer).await;
-    let id = {
+    let (id, generation) = {
         let mut store = state.store.lock().await;
-        store
+        let notification = store
             .insert(reply_notification(true, &owner), 0)
-            .notification
-            .id
+            .notification;
+        (notification.id, notification.generation)
     };
 
     ControlServer::new(state)
-        .submit_inline_reply(id, "private reply")
+        .submit_inline_reply(id, generation, "private reply")
         .await
         .expect("submit owner reply");
 

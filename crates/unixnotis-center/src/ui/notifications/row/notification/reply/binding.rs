@@ -35,6 +35,11 @@ pub(in super::super) fn configure_inline_reply(
     }
     // Unavailable policies also clear the command target used by click handlers
     widgets.state.bound_id.set(if available { id } else { 0 });
+    widgets.state.bound_generation.set(if available {
+        notification.generation
+    } else {
+        0
+    });
     if !available {
         // History and ordinary actions never expose a stale reply field
         return;

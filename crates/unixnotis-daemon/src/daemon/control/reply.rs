@@ -18,15 +18,19 @@ impl ControlServer {
     pub(super) async fn submit_inline_reply(
         &self,
         id: u32,
+        generation: u64,
         reply_text: &str,
     ) -> zbus::fdo::Result<()> {
-        self.submit_inline_reply_with_post_emit(id, reply_text, || std::future::ready(()))
-            .await
+        self.submit_inline_reply_with_post_emit(id, generation, reply_text, || {
+            std::future::ready(())
+        })
+        .await
     }
 
     async fn submit_inline_reply_with_post_emit<F, Fut>(
         &self,
         id: u32,
+        generation: u64,
         reply_text: &str,
         post_emit: F,
     ) -> zbus::fdo::Result<()>
@@ -39,11 +43,14 @@ impl ControlServer {
         let target = {
             // Keep the Arc so later cleanup can distinguish a same-ID replacement
             let store = self.state.store.lock().await;
-            store.active_inline_reply_target(id).ok_or_else(|| {
-                zbus::fdo::Error::InvalidArgs(
-                    "notification is not live or does not support inline reply".to_string(),
-                )
-            })?
+            store
+                .active_inline_reply_target(id, generation)
+                .ok_or_else(|| {
+                    zbus::fdo::Error::InvalidArgs(
+                        "notification generation is stale or does not support inline reply"
+                            .to_string(),
+                    )
+                })?
         };
         let destination = self.reply_destination(&target).await?;
 

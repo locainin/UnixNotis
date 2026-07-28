@@ -69,6 +69,7 @@ fn enqueue_offline_command_rejects_live_reply_text_and_reports_failure() {
         &mut offline,
         UiCommand::Reply {
             id: 7,
+            generation: 11,
             text: "Still there?".to_string(),
             outcome,
         }

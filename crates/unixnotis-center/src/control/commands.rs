@@ -24,8 +24,13 @@ pub async fn handle_command(
         UiCommand::InvokeAction { id, action_key } => {
             timed_dbus_call(proxy.invoke_action(id, &action_key)).await
         }
-        UiCommand::Reply { id, text, outcome } => {
-            let result = timed_dbus_call(proxy.reply_notification(id, &text)).await;
+        UiCommand::Reply {
+            id,
+            generation,
+            text,
+            outcome,
+        } => {
+            let result = timed_dbus_call(proxy.reply_notification(id, generation, &text)).await;
             let reply_result = match &result {
                 Ok(()) => Ok(()),
                 Err(err) => Err(err.to_string()),

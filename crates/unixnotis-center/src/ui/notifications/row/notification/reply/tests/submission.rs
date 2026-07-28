@@ -43,7 +43,9 @@ fn inline_reply_submit_sends_text_once_and_hides_after_success() {
     row.inline_reply.entry.emit_activate();
     row.inline_reply.send_button.emit_clicked();
 
-    let UiCommand::Reply { id, text, outcome } = command_rx.try_recv().expect("reply command")
+    let UiCommand::Reply {
+        id, text, outcome, ..
+    } = command_rx.try_recv().expect("reply command")
     else {
         panic!("expected inline reply command");
     };
