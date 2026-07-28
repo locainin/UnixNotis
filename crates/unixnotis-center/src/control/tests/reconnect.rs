@@ -7,6 +7,9 @@ use futures_util::StreamExt;
 use zbus::fdo::DBusProxy;
 use zbus::ConnectionBuilder;
 
+use super::{
+    owner_error_is_disconnected, wait_for_control_owner_with_probe, GetOwnerError, OwnerWait,
+};
 use crate::test_support::broker::read_broker_address;
 
 static NEXT_BROKER: AtomicUsize = AtomicUsize::new(0);
@@ -160,4 +163,69 @@ fn broker_socket_is_scoped_to_a_unique_temporary_directory() {
     assert_eq!(first.file_name(), Some(std::ffi::OsStr::new("bus.sock")));
     let _ = std::fs::remove_dir_all(first.parent().expect("temporary socket has a parent"));
     let _ = std::fs::remove_dir_all(second.parent().expect("temporary socket has a parent"));
+}
+
+#[test]
+fn transient_initial_owner_probe_retries_without_an_owner_change_signal() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build test runtime");
+    runtime.block_on(async {
+        let attempts = std::sync::Arc::new(AtomicUsize::new(0));
+        let mut owner_changes =
+            futures_util::stream::pending::<Option<zbus::names::UniqueName<'static>>>();
+        let (event_tx, event_rx) = async_channel::bounded(4);
+        let (_command_tx, mut command_rx) = tokio::sync::mpsc::channel(1);
+        let mut offline_commands = std::collections::VecDeque::new();
+        let outcome = tokio::time::timeout(
+            Duration::from_millis(100),
+            wait_for_control_owner_with_probe(
+                {
+                    let attempts = attempts.clone();
+                    move || {
+                        let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                        async move {
+                            if attempt == 0 {
+                                Err(GetOwnerError::Transient("injected timeout".to_string()))
+                            } else {
+                                Ok(":1.42".to_string())
+                            }
+                        }
+                    }
+                },
+                &mut owner_changes,
+                &event_tx,
+                &mut command_rx,
+                &mut offline_commands,
+                1,
+            ),
+        )
+        .await
+        .expect("owner retry should finish without a signal");
+
+        assert_eq!(outcome, OwnerWait::Ready(":1.42".to_string()));
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(super::UiEvent::Disconnected)
+        ));
+        assert!(event_rx.try_recv().is_err());
+    });
+}
+
+#[test]
+fn owner_lookup_errors_distinguish_connection_loss_from_transient_failures() {
+    assert!(owner_error_is_disconnected(&zbus::fdo::Error::IOError(
+        "broken socket".to_string()
+    )));
+    assert!(owner_error_is_disconnected(&zbus::fdo::Error::NoServer(
+        "missing broker".to_string()
+    )));
+    assert!(!owner_error_is_disconnected(&zbus::fdo::Error::Timeout(
+        "slow broker".to_string()
+    )));
+    assert!(!owner_error_is_disconnected(
+        &zbus::fdo::Error::NameHasNoOwner("service absent".to_string())
+    ));
 }
