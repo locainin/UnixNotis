@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use gtk::prelude::*;
-use unixnotis_core::{Config, CutCorners, NotificationImage, NotificationView, ThemePaths};
+use unixnotis_core::{
+    hooks, Config, CutCorners, NotificationImage, NotificationView, ThemePaths, Urgency,
+};
 use unixnotis_ui::{css::CssManager, CutCorner};
 
 use super::super::UiState;
@@ -89,4 +91,63 @@ fn constructor_keeps_config_path_and_starts_with_empty_runtime_collections() {
     assert!(state.popups.is_empty());
     assert!(state.popup_order.is_empty());
     assert!(state.visible_popups.is_empty());
+}
+
+#[gtk::test]
+fn critical_popup_probe_builds_the_root_class_and_badge() {
+    let app = gtk::Application::builder()
+        .application_id("org.unixnotis.PopupCriticalProbe")
+        .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    app.register(None::<&gtk::gio::Cancellable>)
+        .expect("register popup critical probe application");
+    let config = Config::default();
+    let config_root = std::env::temp_dir().join("unixnotis-popup-critical-probe");
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let css = CssManager::new_popup(theme_paths(&config_root), config.theme.clone());
+    let mut state = UiState::new(
+        &app,
+        config,
+        config_root.join("config.toml"),
+        command_tx,
+        css,
+    );
+    let notification = NotificationView {
+        id: 2,
+        app_name: "Critical probe".to_string(),
+        attribution: unixnotis_core::NotificationAttribution {
+            display_name: "Critical probe".to_string(),
+            ..unixnotis_core::NotificationAttribution::default()
+        },
+        summary: "Critical popup".to_string(),
+        body: "The composed critical state must be visible".to_string(),
+        actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+        urgency: Urgency::Critical as u8,
+        is_transient: false,
+        image: NotificationImage::default(),
+    };
+
+    let root = state.build_popup_root(&notification);
+
+    assert!(root.has_css_class(hooks::shared_state::CRITICAL));
+    assert!(visible_descendant_has_class(
+        root.upcast_ref(),
+        hooks::urgency::BADGE
+    ));
+}
+
+fn visible_descendant_has_class(widget: &gtk::Widget, class_name: &str) -> bool {
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if current.get_visible() && current.has_css_class(class_name) {
+            return true;
+        }
+        if visible_descendant_has_class(&current, class_name) {
+            return true;
+        }
+        child = current.next_sibling();
+    }
+    false
 }

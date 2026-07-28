@@ -29,14 +29,12 @@ pub(super) fn apply_visual_state(
     has_thumbnail: bool,
 ) {
     let card = &row.card;
+    let is_critical = notification.urgency == Urgency::Critical as u8;
     // Theme changes update recycled rows without rebuilding the GTK child tree
     row.card_plate.set_corners(data.presentation.card_corners);
     // Explicit state updates prevent recycled rows from retaining stale classes
-    set_class_state(
-        card,
-        hooks::shared_state::CRITICAL,
-        notification.urgency == Urgency::Critical as u8,
-    );
+    set_class_state(card, hooks::shared_state::CRITICAL, is_critical);
+    set_widget_visible_if_changed(&row.urgency_badge, is_critical);
     set_class_state(card, hooks::shared_state::ACTIVE, data.is_active);
     set_class_state(card, hooks::shared_state::STACKED, data.stacked);
     set_class_state(card, hooks::panel_card::GROUPED, true);

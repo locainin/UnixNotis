@@ -1,13 +1,26 @@
 use super::{
-    popup_action_is_visible, popup_header_spacer_expands, widget_type_blocks_default_action,
+    build_urgency_badge, popup_action_is_visible, popup_header_spacer_expands,
+    widget_type_blocks_default_action,
 };
 use gtk::glib::prelude::StaticType;
+use gtk::prelude::*;
 use unixnotis_core::Action;
 
 #[test]
 fn popup_header_spacer_expands_to_hold_close_alignment() {
     // The spacer owns unused header width so the close button stays aligned
     assert!(popup_header_spacer_expands());
+}
+
+#[gtk::test]
+fn popup_critical_badge_uses_shared_hook_and_visibility() {
+    let critical = build_urgency_badge(true);
+    let normal = build_urgency_badge(false);
+
+    assert!(critical.has_css_class(unixnotis_core::hooks::urgency::BADGE));
+    assert_eq!(critical.text().as_str(), "Critical");
+    assert!(critical.get_visible());
+    assert!(!normal.get_visible());
 }
 
 #[gtk::test]

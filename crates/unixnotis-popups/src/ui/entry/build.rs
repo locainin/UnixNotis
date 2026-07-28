@@ -73,7 +73,8 @@ impl UiState {
         root.set_hexpand(false);
         // New roots stay hidden until visibility logic decides otherwise
         root.set_visible(false);
-        if notification.urgency == Urgency::Critical as u8 {
+        let is_critical = notification.urgency == Urgency::Critical as u8;
+        if is_critical {
             // Critical rows keep the shared urgency class at the root
             root.add_css_class(hooks::shared_state::CRITICAL);
         }
@@ -128,6 +129,7 @@ impl UiState {
 
         // Close stays on the right edge even when the title text shrinks
         header.append(&app);
+        header.append(&build_urgency_badge(is_critical));
         header.append(&build_popup_header_spacer());
         header.append(&close);
 
@@ -272,6 +274,15 @@ fn build_popup_header_spacer() -> gtk::Box {
     // Plain halign on the button is not enough inside a horizontal box
     spacer.set_hexpand(popup_header_spacer_expands());
     spacer
+}
+
+fn build_urgency_badge(is_critical: bool) -> gtk::Label {
+    let badge = gtk::Label::new(Some("Critical"));
+    // The widget stays in the tree so header composition remains stable across payload variants
+    badge.add_css_class(hooks::urgency::BADGE);
+    badge.set_single_line_mode(true);
+    badge.set_visible(is_critical);
+    badge
 }
 
 pub(super) const fn popup_header_spacer_expands() -> bool {
