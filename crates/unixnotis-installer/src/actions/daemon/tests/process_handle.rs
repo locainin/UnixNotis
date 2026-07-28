@@ -63,3 +63,57 @@ fn invalid_process_ids_are_treated_as_already_gone() {
         ProcessState::Gone
     ));
 }
+
+#[test]
+fn current_process_start_time_is_read_from_proc() {
+    let start_time = read_process_start_time(std::process::id())
+        .expect("read current process state")
+        .expect("current process should exist");
+
+    assert!(start_time > 1);
+}
+
+#[test]
+fn missing_process_start_time_returns_none() {
+    assert_eq!(
+        read_process_start_time(i32::MAX as u32).expect("missing process is not an I/O failure"),
+        None
+    );
+}
+
+#[test]
+fn only_not_found_process_state_errors_mean_the_process_exited() {
+    assert!(process_state_is_missing(&std::io::Error::from(
+        std::io::ErrorKind::NotFound
+    )));
+    assert!(!process_state_is_missing(&std::io::Error::from(
+        std::io::ErrorKind::PermissionDenied
+    )));
+}
+
+#[test]
+fn fallback_lifetime_check_accepts_current_and_rejects_stale_start_times() {
+    let raw_pid = std::process::id();
+    let pid = process_id(raw_pid).expect("current process id");
+    let start_time = read_process_start_time(raw_pid)
+        .expect("read current process state")
+        .expect("current process should exist");
+    let current = ProcessHandle {
+        pid,
+        start_time,
+        pidfd: None,
+    };
+    let stale = ProcessHandle {
+        pid,
+        start_time: start_time.saturating_add(1),
+        pidfd: None,
+    };
+
+    current
+        .require_current_lifetime()
+        .expect("matching fallback lifetime");
+    assert!(stale.require_current_lifetime().is_err());
+    stale
+        .wait_for_exit()
+        .expect("a different lifetime means the original process exited");
+}

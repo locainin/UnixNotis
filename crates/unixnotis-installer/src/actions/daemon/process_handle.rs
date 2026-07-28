@@ -119,9 +119,9 @@ fn wait_for_pidfd(pidfd: &OwnedFd) -> Result<()> {
         tv_sec: PROCESS_EXIT_TIMEOUT.as_secs() as i64,
         tv_nsec: 0,
     };
-    let ready = poll(&mut descriptors, Some(&timeout))
+    poll(&mut descriptors, Some(&timeout))
         .context("failed while waiting for notification daemon pidfd")?;
-    if ready > 0 && descriptors[0].revents().contains(PollFlags::IN) {
+    if descriptors[0].revents().contains(PollFlags::IN) {
         return Ok(());
     }
     Err(anyhow!("process did not exit after 5s"))
@@ -149,7 +149,7 @@ fn read_process_start_time(pid: u32) -> Result<Option<u64>> {
     let path = format!("/proc/{pid}/stat");
     let contents = match fs::read_to_string(&path) {
         Ok(contents) => contents,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if process_state_is_missing(&error) => return Ok(None),
         Err(error) => {
             return Err(error).with_context(|| format!("failed to read process state from {path}"))
         }
@@ -157,6 +157,10 @@ fn read_process_start_time(pid: u32) -> Result<Option<u64>> {
     parse_process_start_time(&contents)
         .map(Some)
         .ok_or_else(|| anyhow!("failed to parse process start time for pid {pid}"))
+}
+
+fn process_state_is_missing(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::NotFound
 }
 
 fn parse_process_start_time(stat: &str) -> Option<u64> {
