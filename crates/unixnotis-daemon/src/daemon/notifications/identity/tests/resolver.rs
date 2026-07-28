@@ -43,7 +43,11 @@ impl DesktopRecordFixture for DesktopRecord {
             system_association: system_entry,
             association_eligible: true,
             dbus_activatable,
-            launch_spec: None,
+            launch_spec: Some(LaunchSpec {
+                executable: identity,
+                arguments: Vec::new(),
+                literal_files_are_system_managed: true,
+            }),
             names: HashSet::from([normalize_name(display_name)]),
         }
     }
@@ -63,7 +67,6 @@ impl DesktopRecordFixture for DesktopRecord {
                     })
                 })
                 .collect(),
-            protected_literal_files: 1,
             literal_files_are_system_managed: true,
         });
         self
@@ -121,6 +124,7 @@ fn sender(path: &str, identity: FileIdentity) -> SenderMetadata {
         sender_name: Some(":1.42".to_string()),
         sender_executable: Some(path.to_string()),
         sender_executable_identity: Some(identity),
+        sender_cmdline: Some(vec![path.as_bytes().to_vec()]),
         ..SenderMetadata::default()
     }
 }
@@ -186,7 +190,7 @@ fn system_desktop_identity_allows_legitimate_signal_reply() {
 }
 
 #[test]
-fn dedicated_system_binary_with_empty_claim_accepts_runtime_added_flags() {
+fn dedicated_system_binary_rejects_runtime_added_flags_outside_the_exec_contract() {
     let (signal_path, signal_identity) = installed_system_executable();
     let record = system_record("signal", "Signal", &signal_path, signal_identity)
         .with_launch_literals(&["--", "sgnl://expected"]);
@@ -207,12 +211,11 @@ fn dedicated_system_binary_with_empty_claim_accepts_runtime_added_flags() {
         &HashSet::new(),
     );
 
-    assert_eq!(
+    assert_ne!(
         resolution.attribution.class,
         AttributionClass::SystemAssociated
     );
-    assert_eq!(resolution.attribution.display_name, "Signal");
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
 #[test]
@@ -239,11 +242,7 @@ fn verified_executable_recovers_from_stale_desktop_hint() {
             // Electron derives this hint from a differently named local desktop file
             desktop_entry: Some("signal-desktop"),
         },
-        &sender_with_arguments(
-            &signal_path,
-            signal_identity,
-            &["--password-store=kwallet6", "--"],
-        ),
+        &sender(&signal_path, signal_identity),
         &index,
         &HashSet::new(),
     );
@@ -299,9 +298,8 @@ fn duplicate_desktop_id_prefers_the_protected_record() {
     let index = DesktopIdentityIndex::from_records(vec![user_record, system_record], Vec::new());
     let records = index.records_for_executable(app_identity);
 
-    let verified =
-        verified_executable_record(&records, "", &sender(&app_path, app_identity), &index)
-            .expect("duplicate desktop id should keep one verified record");
+    let verified = verified_executable_record(&records, "", &sender(&app_path, app_identity))
+        .expect("duplicate desktop id should keep one verified record");
 
     assert!(verified.0.system_association);
     assert_eq!(verified.0.badge_icon, "protected-signal");
@@ -317,9 +315,8 @@ fn duplicate_protected_desktop_id_keeps_stable_index_order() {
     let index = DesktopIdentityIndex::from_records(vec![first, second], Vec::new());
     let records = index.records_for_executable(app_identity);
 
-    let verified =
-        verified_executable_record(&records, "", &sender(&app_path, app_identity), &index)
-            .expect("duplicate protected records should keep one verified record");
+    let verified = verified_executable_record(&records, "", &sender(&app_path, app_identity))
+        .expect("duplicate protected records should keep one verified record");
 
     assert_eq!(verified.0.badge_icon, "first-signal");
 }
@@ -564,6 +561,69 @@ fn matching_fixed_system_application_argument_allows_association() {
 }
 
 #[test]
+fn arbitrary_executable_name_still_requires_its_fixed_application_payload() {
+    let (launcher_path, launcher_identity) = installed_system_executable();
+    let record = system_record(
+        "org.example.CustomRuntime",
+        "Custom Runtime App",
+        &launcher_path,
+        launcher_identity,
+    )
+    .with_launch_literals(&["/usr/share/custom-runtime/application.bin"]);
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Custom Runtime App",
+            desktop_entry: Some("org.example.CustomRuntime"),
+        },
+        &sender_with_arguments(
+            &launcher_path,
+            launcher_identity,
+            &["/tmp/attacker-controlled.bin"],
+        ),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_ne!(
+        resolution.attribution.class,
+        AttributionClass::SystemAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
+fn unavailable_process_command_line_fails_closed() {
+    let (launcher_path, launcher_identity) = installed_system_executable();
+    let record = system_record(
+        "org.example.CommandLine",
+        "Command Line App",
+        &launcher_path,
+        launcher_identity,
+    );
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+    let mut missing_command_line = sender(&launcher_path, launcher_identity);
+    missing_command_line.sender_cmdline = None;
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Command Line App",
+            desktop_entry: Some("org.example.CommandLine"),
+        },
+        &missing_command_line,
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_ne!(
+        resolution.attribution.class,
+        AttributionClass::SystemAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
 fn no_hint_shared_runtimes_with_wrong_payloads_are_denied() {
     for (serial, executable, expected, actual) in [
         (
@@ -759,7 +819,7 @@ fn an_empty_app_name_does_not_turn_an_untrusted_relay_into_a_portal() {
 #[test]
 fn portal_mediated_flatpak_uses_broker_verified_desktop_identity() {
     let flatpak_identity = identity(22, 220, 0);
-    let portal_identity = identity(23, 230, 0);
+    let (portal_path, portal_identity) = installed_system_executable();
     let mut record = system_record(
         "org.example.FlatpakApp",
         "Flatpak App",
@@ -768,10 +828,8 @@ fn portal_mediated_flatpak_uses_broker_verified_desktop_identity() {
     );
     record.association_eligible = false;
     record.system_association = false;
-    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new()).with_trusted_portal(
-        PathBuf::from("/usr/lib/xdg-desktop-portal-gtk"),
-        portal_identity,
-    );
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new())
+        .with_trusted_portal(PathBuf::from(&portal_path), portal_identity);
 
     let resolution = resolve_with_evidence(
         AppClaim {
@@ -779,7 +837,7 @@ fn portal_mediated_flatpak_uses_broker_verified_desktop_identity() {
             reported_name: "",
             desktop_entry: Some("org.example.FlatpakApp"),
         },
-        &sender("/usr/lib/xdg-desktop-portal-gtk", portal_identity),
+        &sender(&portal_path, portal_identity),
         &index,
         &HashSet::new(),
     );
@@ -790,6 +848,35 @@ fn portal_mediated_flatpak_uses_broker_verified_desktop_identity() {
     );
     assert_eq!(resolution.attribution.display_name, "Flatpak App");
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+}
+
+#[test]
+fn trusted_portal_rejects_a_stale_indexed_inode() {
+    let (portal_path, live_identity) = installed_system_executable();
+    let stale_identity = FileIdentity {
+        inode: live_identity.inode.saturating_add(1),
+        ..live_identity
+    };
+    let index = DesktopIdentityIndex::from_records(Vec::new(), Vec::new())
+        .with_trusted_portal(PathBuf::from(&portal_path), stale_identity);
+
+    assert!(index
+        .trusted_portal_path(live_identity, std::path::Path::new(&portal_path))
+        .is_none());
+}
+
+#[test]
+fn trusted_portal_rejects_a_live_path_outside_protected_roots() {
+    let (portal_path, portal_identity) = installed_system_executable();
+    let index = DesktopIdentityIndex::from_records(Vec::new(), Vec::new())
+        .with_trusted_portal(PathBuf::from(&portal_path), portal_identity);
+
+    assert!(index
+        .trusted_portal_path(
+            portal_identity,
+            std::path::Path::new("/tmp/xdg-desktop-portal")
+        )
+        .is_none());
 }
 
 #[test]

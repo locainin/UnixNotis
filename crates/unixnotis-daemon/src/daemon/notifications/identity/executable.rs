@@ -1,6 +1,7 @@
 //! Stable executable identity captured from open file metadata
 
 use std::fs::{File, Metadata};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
@@ -54,9 +55,14 @@ pub(in crate::daemon) fn executable_evidence_for_pid(pid: u32) -> Option<Executa
     // Opening the procfs link binds metadata to the running file instead of a mutable path
     let file = File::open(&proc_executable).ok()?;
     let identity = FileIdentity::from_metadata(&file.metadata().ok()?);
+    let live_path = std::fs::read_link(&proc_executable).ok()?;
+    if live_path.as_os_str().as_bytes().ends_with(b" (deleted)") {
+        // Deleted mappings no longer have a protected installed path to revalidate
+        return None;
+    }
     let canonical_path = proc_executable
         .canonicalize()
-        .or_else(|_| std::fs::read_link(&proc_executable))
+        .or(Ok::<PathBuf, std::io::Error>(live_path))
         .ok()?;
     Some(ExecutableEvidence {
         canonical_path,

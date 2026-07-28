@@ -12,7 +12,7 @@ use super::desktop_index::{
 };
 use super::executable::{executable_evidence_for_path, FileIdentity};
 use super::policy::inline_reply_policy;
-use super::sender::SenderMetadata;
+use super::sender::{refresh_sender_security_evidence, SenderMetadata};
 
 const MAX_DESKTOP_ID_BYTES: usize = 256;
 
@@ -68,7 +68,9 @@ pub(in crate::daemon) async fn resolve_attribution(
             owned_desktop_ids.insert(normalize_desktop_id(&desktop_id));
         }
     }
-    resolve_with_evidence(claim, sender, index, &owned_desktop_ids)
+    // Cached D-Bus metadata is refreshed before it can grant application authority
+    let sender = refresh_sender_security_evidence(sender);
+    resolve_with_evidence(claim, &sender, index, &owned_desktop_ids)
 }
 
 fn resolve_with_evidence(
@@ -83,18 +85,14 @@ fn resolve_with_evidence(
     if let Some(desktop_id) = desktop_entry.as_deref() {
         let records = index.records_for_id(desktop_id);
         if !records.is_empty() {
-            if claim.reported_name.trim().is_empty()
-                && sender
-                    .sender_executable_identity
-                    .and_then(|identity| index.trusted_portal_path(identity))
-                    .is_some()
+            if claim.reported_name.trim().is_empty() && trusted_portal_path(sender, index).is_some()
             {
                 // Portal backends forward a broker-verified app id as desktop-entry
                 return resolution_for_portal_record(records[0], sender, index);
             }
             if let Some(record) = records
                 .iter()
-                .find_map(|record| verify_record_sender(record, sender, index))
+                .find_map(|record| verify_record_sender(record, sender))
             {
                 return resolution_for_record(record, claim.reported_name, sender, index);
             }
@@ -114,14 +112,12 @@ fn resolve_with_evidence(
     if let Some(identity) = sender.sender_executable_identity {
         // Exact file association is stronger than every caller-controlled application name
         let records = index.records_for_executable(identity);
-        if let Some(record) =
-            verified_executable_record(&records, claim.reported_name, sender, index)
-        {
+        if let Some(record) = verified_executable_record(&records, claim.reported_name, sender) {
             return resolution_for_record(record, claim.reported_name, sender, index);
         }
         if records
             .iter()
-            .any(|record| record.system_association && record_matches_sender(record, sender, index))
+            .any(|record| record.system_association && record_matches_sender(record, sender))
         {
             // A known executable with a conflicting name must fail closed
             return conflict_resolution(claim.reported_name, sender, "application claim mismatch");
@@ -172,7 +168,7 @@ fn resolution_for_portal_record(
 ) -> AttributionResolution {
     let portal = sender
         .sender_executable_identity
-        .and_then(|identity| index.trusted_portal_path(identity))
+        .and_then(|_| trusted_portal_path(sender, index))
         .map_or_else(
             || "desktop portal".to_string(),
             |path| path.display().to_string(),
@@ -188,6 +184,15 @@ fn resolution_for_portal_record(
         group_key,
     );
     policy_resolution(attribution)
+}
+
+fn trusted_portal_path<'index>(
+    sender: &SenderMetadata,
+    index: &'index DesktopIdentityIndex,
+) -> Option<&'index std::path::Path> {
+    let identity = sender.sender_executable_identity?;
+    let path = std::path::Path::new(sender.sender_executable.as_deref()?);
+    index.trusted_portal_path(identity, path)
 }
 
 fn resolution_for_record(
@@ -273,12 +278,11 @@ fn verified_executable_record<'record>(
     records: &[&'record DesktopRecord],
     reported_name: &str,
     sender: &SenderMetadata,
-    index: &DesktopIdentityIndex,
 ) -> Option<VerifiedDesktopRecord<'record>> {
     let missing_name = reported_name.trim().is_empty();
     let mut matches = records.iter().filter_map(|record| {
         (missing_name || record.claim_matches(reported_name))
-            .then(|| verify_record_sender(record, sender, index))
+            .then(|| verify_record_sender(record, sender))
             .flatten()
     });
     let first = matches.next()?;
@@ -298,11 +302,7 @@ fn verified_executable_record<'record>(
     Some(preferred)
 }
 
-fn record_matches_sender(
-    record: &DesktopRecord,
-    sender: &SenderMetadata,
-    index: &DesktopIdentityIndex,
-) -> bool {
+fn record_matches_sender(record: &DesktopRecord, sender: &SenderMetadata) -> bool {
     if !record.association_eligible {
         return false;
     }
@@ -333,9 +333,8 @@ fn record_matches_sender(
         }
     }
 
-    // Dedicated application binaries may add safe runtime flags after desktop activation
-    !index.requires_launch_arguments(record)
-        || record_launch_matches(record, sender_identity, sender.sender_cmdline.as_deref())
+    // Exact argv matching prevents any executable from acting as an implicit shared launcher
+    record_launch_matches(record, sender_identity, sender.sender_cmdline.as_deref())
 }
 
 const fn current_system_identity_matches_sender(
@@ -351,10 +350,9 @@ const fn current_system_identity_matches_sender(
 fn verify_record_sender<'record>(
     record: &'record DesktopRecord,
     sender: &SenderMetadata,
-    index: &DesktopIdentityIndex,
 ) -> Option<VerifiedDesktopRecord<'record>> {
     // This wrapper makes sender launch verification mandatory at every association call site
-    record_matches_sender(record, sender, index).then_some(VerifiedDesktopRecord(record))
+    record_matches_sender(record, sender).then_some(VerifiedDesktopRecord(record))
 }
 
 fn unknown_group_key(reported_name: &str, sender: &SenderMetadata) -> String {

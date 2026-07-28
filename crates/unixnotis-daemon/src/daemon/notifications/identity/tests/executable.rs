@@ -1,4 +1,5 @@
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::process::{Command, Stdio};
 
 use super::*;
 
@@ -85,4 +86,29 @@ fn missing_executable_path_has_no_identity_evidence() {
         "/path/that/does/not/exist/unixnotis"
     ))
     .is_none());
+}
+
+#[test]
+fn deleted_running_executable_has_no_trusted_identity_evidence() {
+    let root = crate::test_support::TempRoot::new("deleted-running-executable");
+    let source = unixnotis_core::util::trusted_system_program_path("sleep")
+        .expect("find protected sleep executable");
+    let executable = root.join("temporary-sleep");
+    std::fs::copy(source, &executable).expect("copy sleep executable");
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755))
+        .expect("make copied executable runnable");
+    let mut child = Command::new(&executable)
+        .arg("30")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn copied executable");
+    std::fs::remove_file(&executable).expect("unlink running executable");
+
+    let evidence = executable_evidence_for_pid(child.id());
+
+    child.kill().expect("stop copied executable");
+    child.wait().expect("reap copied executable");
+    assert!(evidence.is_none());
 }

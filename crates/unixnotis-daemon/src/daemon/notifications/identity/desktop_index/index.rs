@@ -4,7 +4,7 @@ use std::path::Path;
 
 use super::super::executable::{executable_evidence_for_path, FileIdentity};
 use super::model::{DesktopIdentityIndex, DesktopRecord, ExecutableIdentity};
-use super::names::{is_shared_launcher, normalize_brand_name, normalize_desktop_id};
+use super::names::{normalize_brand_name, normalize_desktop_id};
 
 impl DesktopIdentityIndex {
     pub(in crate::daemon::notifications::identity) fn records_for_id(
@@ -31,28 +31,6 @@ impl DesktopIdentityIndex {
             .flatten()
             .filter_map(|index| self.records.get(*index))
             .collect()
-    }
-
-    pub(in crate::daemon::notifications::identity) fn requires_launch_arguments(
-        &self,
-        record: &DesktopRecord,
-    ) -> bool {
-        let Some(identity) = record.executable_identity else {
-            return true;
-        };
-        let Some(path) = record.executable_path.as_deref() else {
-            return true;
-        };
-        // Generic runtimes need their fixed payload because the binary is not the application
-        if is_shared_launcher(path) {
-            return true;
-        }
-
-        let record_id = normalize_desktop_id(&record.id);
-        // One binary serving distinct desktop applications needs argv to select the right record
-        self.records_for_executable(identity)
-            .iter()
-            .any(|candidate| normalize_desktop_id(&candidate.id) != record_id)
     }
 
     pub(in crate::daemon::notifications::identity) fn claim_matches_system_app(
@@ -85,11 +63,24 @@ impl DesktopIdentityIndex {
 
     pub(in crate::daemon::notifications::identity) fn trusted_portal_path(
         &self,
-        identity: FileIdentity,
+        sender_identity: FileIdentity,
+        sender_path: &Path,
     ) -> Option<&Path> {
         self.trusted_portals
             .iter()
-            .find(|portal| portal.identity.same_file(identity))
+            .find(|portal| {
+                let Some(current) = executable_evidence_for_path(&portal.path) else {
+                    return false;
+                };
+                // Both the running path and installed path must remain under protected roots
+                trusted_system_executable_path(sender_path)
+                    && trusted_system_executable_path(&current.canonical_path)
+                    && current.canonical_path == portal.path
+                    && current.identity.same_file(portal.identity)
+                    && current.identity.same_file(sender_identity)
+                    && current.identity.is_system_managed()
+                    && current.identity.is_executable_regular()
+            })
             .map(|portal| portal.path.as_path())
     }
 
@@ -151,7 +142,7 @@ impl DesktopIdentityIndex {
             .entry(normalize_desktop_id(&record.id))
             .or_default()
             .push(record_index);
-        // Generic launchers are presentation records but never executable evidence
+        // Only records with a reproducible launch contract become executable evidence
         if record.association_eligible {
             if let Some(identity) = record.executable_identity {
                 self.by_identity
@@ -162,4 +153,19 @@ impl DesktopIdentityIndex {
         }
         self.records.push(record);
     }
+}
+
+fn trusted_system_executable_path(path: &Path) -> bool {
+    const ROOTS: [&str; 8] = [
+        "/bin",
+        "/lib",
+        "/lib64",
+        "/usr/bin",
+        "/usr/lib",
+        "/usr/libexec",
+        "/usr/local/lib",
+        "/usr/local/libexec",
+    ];
+
+    path.is_absolute() && ROOTS.iter().any(|root| path.starts_with(root))
 }
