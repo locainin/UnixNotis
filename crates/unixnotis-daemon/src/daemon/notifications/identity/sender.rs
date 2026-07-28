@@ -119,7 +119,7 @@ pub(super) fn refresh_sender_security_evidence(metadata: &SenderMetadata) -> Sen
     let executable = executable_evidence_for_pid(pid);
     let cmdline = read_process_cmdline(pid);
     let start_after = read_process_start_time(pid);
-    if start_before != Some(expected_start) || start_after != Some(expected_start) {
+    if !process_lifetime_matches(start_before, expected_start, start_after) {
         // Stale cache entries retain bus context but lose all application identity authority
         refreshed.sender_start_time = None;
         refreshed.sender_executable = None;
@@ -134,6 +134,14 @@ pub(super) fn refresh_sender_security_evidence(metadata: &SenderMetadata) -> Sen
     refreshed.sender_executable_identity = executable.map(|evidence| evidence.identity);
     refreshed.sender_cmdline = cmdline;
     refreshed
+}
+
+fn process_lifetime_matches(
+    start_before: Option<u64>,
+    expected_start: u64,
+    start_after: Option<u64>,
+) -> bool {
+    start_before == Some(expected_start) && start_after == Some(expected_start)
 }
 
 #[cfg(target_os = "linux")]

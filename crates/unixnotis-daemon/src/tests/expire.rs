@@ -41,6 +41,27 @@ fn expiration_heap_orders_by_deadline() {
 }
 
 #[test]
+fn expiration_items_are_equal_only_for_the_same_complete_ticket() {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let item = ExpirationItem {
+        ticket: ticket(7, 3, deadline),
+    };
+
+    assert_eq!(
+        item,
+        ExpirationItem {
+            ticket: ticket(7, 3, deadline)
+        }
+    );
+    assert_ne!(
+        item,
+        ExpirationItem {
+            ticket: ticket(7, 4, deadline)
+        }
+    );
+}
+
+#[test]
 fn apply_command_tracks_latest_schedule() {
     let now = Instant::now();
     let mut heap = BinaryHeap::new();
