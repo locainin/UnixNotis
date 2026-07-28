@@ -21,6 +21,7 @@ impl NotificationStore {
 pub(in crate::store) fn make_notification(summary: &str) -> Notification {
     Notification {
         id: 0,
+        generation: 0,
         app_name: "TestApp".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),

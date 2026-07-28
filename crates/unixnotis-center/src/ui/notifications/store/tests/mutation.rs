@@ -6,6 +6,7 @@ use crate::ui::notifications::test_support as support;
 fn make_view(is_transient: bool) -> NotificationView {
     NotificationView {
         id: 7,
+        generation: 7,
         app_name: "Test".to_string(),
         attribution: unixnotis_core::NotificationAttribution {
             display_name: "Test".to_string(),
@@ -29,6 +30,7 @@ fn make_view(is_transient: bool) -> NotificationView {
 fn view(id: u32, app_name: &str, is_transient: bool) -> NotificationView {
     NotificationView {
         id,
+        generation: u64::from(id),
         app_name: app_name.to_string(),
         attribution: unixnotis_core::NotificationAttribution {
             display_name: app_name.to_string(),

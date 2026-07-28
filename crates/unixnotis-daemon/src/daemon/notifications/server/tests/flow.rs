@@ -23,6 +23,7 @@ use crate::test_support::daemon_state_for_test;
 fn notification_with_id(id: u32) -> Arc<Notification> {
     Arc::new(Notification {
         id,
+        generation: 1,
         app_name: "app".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),

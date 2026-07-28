@@ -13,6 +13,7 @@ use crate::test_support::daemon_state_for_test;
 fn notification(summary: &str) -> Notification {
     Notification {
         id: 0,
+        generation: 0,
         app_name: "TestApp".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),
@@ -57,7 +58,7 @@ async fn next_cancel_id(
         .expect("cancel command should arrive")
         .expect("scheduler channel should stay open");
     match command {
-        ExpirationCommand::Cancel { id } => id,
+        ExpirationCommand::Cancel { id, .. } => id,
         ExpirationCommand::Schedule { .. } => panic!("clear should cancel expiration"),
     }
 }

@@ -15,6 +15,7 @@ fn notification_view(
 ) -> NotificationView {
     NotificationView {
         id: 1,
+        generation: 1,
         app_name: app_name.to_string(),
         attribution,
         summary: String::new(),

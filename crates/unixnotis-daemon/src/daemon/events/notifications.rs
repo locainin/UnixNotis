@@ -27,7 +27,7 @@ pub(super) const fn clear_all_signal_plan(ids: &[u32]) -> ClearAllSignalPlan {
 }
 
 impl DaemonState {
-    pub(in crate::daemon) async fn publish_notification_closed(
+    pub(crate) async fn publish_notification_closed(
         &self,
         id: u32,
         reason: CloseReason,

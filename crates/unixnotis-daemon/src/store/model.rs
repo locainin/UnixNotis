@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use indexmap::IndexMap;
-use unixnotis_core::{Config, Notification};
+use unixnotis_core::{Config, Notification, NotificationKey};
 
 use super::dnd::DndStateStore;
 use super::inhibitors::Inhibitor;
@@ -15,12 +15,14 @@ pub struct NotificationStore {
     pub(super) config: Config,
     // Next candidate id for allocation
     pub(super) next_id: u32,
+    // Commit generations never reuse identity when replacements preserve an ID
+    pub(super) next_generation: u64,
     // Active notifications in insertion order
     pub(super) active: IndexMap<u32, Arc<Notification>>,
     // Archived notifications with bounded retention
     pub(super) history: HistoryStore,
-    // Optional expiration deadline per active id
-    pub(super) expirations: HashMap<u32, Instant>,
+    // Exact expiration identity per active notification generation
+    pub(super) expirations: HashMap<u32, ExpirationTicket>,
     // Effective DND switch after loading persisted state
     pub(super) dnd_enabled: bool,
     // Wall-clock deadline survives daemon restarts; None means indefinite
@@ -48,9 +50,17 @@ pub struct InsertOutcome {
     // Whether sound playback is allowed for this payload
     pub allow_sound: bool,
     // Active ids evicted because max_active was exceeded
-    pub evicted: Vec<u32>,
+    pub evicted: Vec<NotificationKey>,
     // True when payload was intentionally dropped by inhibit mode
     pub dropped: bool,
+}
+
+/// Exact identity required to expire one committed notification
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExpirationTicket {
+    pub id: u32,
+    pub generation: u64,
+    pub deadline: Instant,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -91,8 +101,8 @@ pub struct DndWrite {
 }
 
 pub struct DismissOutcome {
-    // True when an active entry was removed
-    pub removed_active: bool,
+    // Exact active generation removed by the operation
+    pub removed_active: Option<NotificationKey>,
     // True when a history entry was removed
     pub removed_history: bool,
 }
@@ -100,6 +110,6 @@ pub struct DismissOutcome {
 impl DismissOutcome {
     pub const fn removed_any(&self) -> bool {
         // Convenience helper for callers that only need yes/no
-        self.removed_active || self.removed_history
+        self.removed_active.is_some() || self.removed_history
     }
 }

@@ -61,6 +61,8 @@ impl NotificationStore {
         Self {
             // IDs start at 1 to preserve protocol expectations
             next_id: 1,
+            // Generation zero stays reserved for payloads not committed to the store
+            next_generation: 1,
             dnd_enabled,
             dnd_expires_at,
             dnd_revision: 0,

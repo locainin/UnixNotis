@@ -15,6 +15,7 @@ use super::state::NotificationRowWidgets;
 pub(super) fn sample_notification() -> NotificationView {
     NotificationView {
         id: 1,
+        generation: 1,
         app_name: "demo".to_string(),
         attribution: unixnotis_core::NotificationAttribution {
             display_name: "demo".to_string(),

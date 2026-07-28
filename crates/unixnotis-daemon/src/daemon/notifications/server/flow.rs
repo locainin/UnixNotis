@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::time::Duration;
-use std::time::Instant;
 
 use tracing::{debug, warn};
-use unixnotis_core::Notification;
+use unixnotis_core::{Notification, NotificationKey};
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 
@@ -21,7 +20,6 @@ use super::NotificationServer;
 
 struct StoredNotification {
     outcome: InsertOutcome,
-    expiration: Option<Instant>,
 }
 
 struct WireNotification {
@@ -76,8 +74,7 @@ impl NotificationServer {
             )
             .await;
         let stored = self.store_notification(notification, replaces_id).await;
-        self.finish_notification_change(stored.outcome, stored.expiration)
-            .await
+        self.finish_notification_change(stored.outcome).await
     }
 
     fn log_received_notification(
@@ -181,24 +178,28 @@ impl NotificationServer {
         notification: Notification,
         replaces_id: u32,
     ) -> StoredNotification {
-        // Store mutation and expiration scheduling happen under one lock scope
-        let (outcome, expiration) = {
+        // Store mutation and scheduler delivery share one serialized lock scope
+        let outcome = {
             let mut store = self.state.store.lock().await;
             let outcome = store.insert(notification, replaces_id);
-            let expiration = if outcome.dropped {
-                None
-            } else {
+            if !outcome.dropped {
                 // Resolve timeout after insertion so rule-mapped fields are already final
                 let expiration = resolve_expiration(store.config(), &outcome.notification);
-                store.set_expiration(outcome.notification.id, expiration);
-                expiration
-            };
-            (outcome, expiration)
+                store.set_expiration(&outcome.notification, expiration);
+                // Unbounded send is synchronous, so commit order is preserved without an await
+                self.scheduler.schedule(
+                    outcome.notification.id,
+                    outcome.notification.generation,
+                    expiration,
+                );
+            }
+            // Eviction cancellation is committed in the same order as the insertion
+            for key in &outcome.evicted {
+                self.scheduler.schedule(key.id, key.generation, None);
+            }
+            outcome
         };
-        StoredNotification {
-            outcome,
-            expiration,
-        }
+        StoredNotification { outcome }
     }
 
     fn handle_dropped_notification(outcome: &InsertOutcome) -> Option<u32> {
@@ -213,8 +214,7 @@ impl NotificationServer {
         Some(outcome.notification.id)
     }
 
-    fn schedule_and_play(&self, outcome: &InsertOutcome, expiration: Option<Instant>) {
-        self.scheduler.schedule(outcome.notification.id, expiration);
+    fn play_sound(&self, outcome: &InsertOutcome) {
         // Sound is best-effort and decided by rules and per-notification hints
         self.state
             .sound
@@ -243,16 +243,12 @@ impl NotificationServer {
             .map_err(to_fdo_error)
     }
 
-    async fn finish_notification_change(
-        &self,
-        outcome: InsertOutcome,
-        expiration: Option<Instant>,
-    ) -> zbus::fdo::Result<u32> {
+    async fn finish_notification_change(&self, outcome: InsertOutcome) -> zbus::fdo::Result<u32> {
         if let Some(id) = Self::handle_dropped_notification(&outcome) {
             return Ok(id);
         }
 
-        self.schedule_and_play(&outcome, expiration);
+        self.play_sound(&outcome);
         debug!(
             id = outcome.notification.id,
             decision = ?outcome.popup_admission,
@@ -284,15 +280,14 @@ impl NotificationServer {
         Ok(id)
     }
 
-    async fn handle_evicted(&self, evicted: Vec<u32>) -> zbus::fdo::Result<()> {
+    async fn handle_evicted(&self, evicted: Vec<NotificationKey>) -> zbus::fdo::Result<()> {
         if evicted.is_empty() {
             // Fast path avoids context allocation when no eviction happened
             return Ok(());
         }
-        self.state.cancel_expirations(&evicted);
-
+        let ids: Vec<u32> = evicted.iter().map(|key| key.id).collect();
         self.state
-            .publish_evicted_notifications(&evicted)
+            .publish_evicted_notifications(&ids)
             .await
             .map_err(to_fdo_error)
     }

@@ -282,6 +282,7 @@ async fn inline_reply_signal_reaches_owner_but_not_unrelated_observer() {
 fn reply_notification(is_resident: bool, sender: &Connection) -> Notification {
     Notification {
         id: 0,
+        generation: 0,
         app_name: "Messages".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),

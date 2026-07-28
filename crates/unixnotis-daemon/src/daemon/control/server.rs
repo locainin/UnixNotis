@@ -53,12 +53,14 @@ impl ControlServer {
     }
 
     pub(super) async fn drain_active_notifications(&self) -> Vec<u32> {
-        let ids = {
+        let keys = {
             let mut store = self.state.store.lock().await;
-            store.drain_active_ids()
+            let keys = store.drain_active_keys();
+            // Cancellation is sent before same-ID replacements can commit
+            self.state.cancel_expirations(&keys);
+            keys
         };
-        self.state.cancel_expirations(&ids);
-        ids
+        keys.into_iter().map(|key| key.id).collect()
     }
 
     pub(super) async fn clear_saved_history(&self) {

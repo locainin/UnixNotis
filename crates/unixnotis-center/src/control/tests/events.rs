@@ -5,6 +5,7 @@ use super::{active_notification_event, UiEvent};
 fn notification(id: u32) -> NotificationView {
     NotificationView {
         id,
+        generation: u64::from(id),
         app_name: "example".to_string(),
         attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "summary".to_string(),

@@ -18,6 +18,7 @@ fn notification_with_image(image: NotificationImage) -> Notification {
 
     Notification {
         id: 42,
+        generation: 11,
         app_name: "Mail".to_string(),
         app_icon: "mail".to_string(),
         attribution: NotificationAttribution::associated(

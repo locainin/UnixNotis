@@ -47,6 +47,7 @@ fn popup_entry_uses_the_configured_cut_corner_primitive() {
     );
     let notification = NotificationView {
         id: 1,
+        generation: 1,
         app_name: "Demo".to_string(),
         attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "Summary".to_string(),
@@ -114,6 +115,7 @@ fn critical_popup_probe_builds_the_root_class_and_badge() {
     );
     let notification = NotificationView {
         id: 2,
+        generation: 2,
         app_name: "Critical probe".to_string(),
         attribution: unixnotis_core::NotificationAttribution {
             display_name: "Critical probe".to_string(),

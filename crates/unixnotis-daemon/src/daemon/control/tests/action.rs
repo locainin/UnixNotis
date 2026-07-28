@@ -102,6 +102,7 @@ async fn validated_action_rejects_missing_and_stale_action_generations() {
 fn action_notification(sender: &Connection, key: &str) -> Notification {
     Notification {
         id: 0,
+        generation: 0,
         app_name: "ActionApp".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),

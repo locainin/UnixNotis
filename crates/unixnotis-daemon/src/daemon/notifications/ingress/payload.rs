@@ -79,6 +79,8 @@ pub(in crate::daemon::notifications) fn build_notification(
 
     Notification {
         id: 0,
+        // The store assigns a process-wide generation during the commit
+        generation: 0,
         app_name: if app_name.is_empty() {
             // Keep explicit fallback text for empty callers
             "Unknown".to_string()
