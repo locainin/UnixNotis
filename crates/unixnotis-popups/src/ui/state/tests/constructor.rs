@@ -1,24 +1,9 @@
-use std::path::Path;
-
 use gtk::prelude::*;
-use unixnotis_core::{
-    hooks, Config, CutCorners, NotificationImage, NotificationView, ThemePaths, Urgency,
-};
+use unixnotis_core::{hooks, Config, CutCorners, NotificationImage, NotificationView, Urgency};
 use unixnotis_ui::{css::CssManager, CutCorner};
 
 use super::super::UiState;
-
-fn theme_paths(root: &Path) -> ThemePaths {
-    let root = root.to_path_buf();
-    ThemePaths {
-        base_dir: root.clone(),
-        base_css: root.join("base.css"),
-        popup_css: root.join("popup.css"),
-        panel_css: root.join("panel.css"),
-        widgets_css: root.join("widgets.css"),
-        media_css: root.join("media.css"),
-    }
-}
+use super::support::theme_paths;
 
 #[gtk::test]
 fn popup_entry_uses_the_configured_cut_corner_primitive() {
