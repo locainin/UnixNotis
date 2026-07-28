@@ -15,7 +15,7 @@ pub struct CliArgs {
 }
 
 /// Top-level command-line result
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CliAction {
     /// Continue into installer startup using the parsed options
     Run(CliArgs),

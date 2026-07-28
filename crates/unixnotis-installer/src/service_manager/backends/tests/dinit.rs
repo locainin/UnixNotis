@@ -62,9 +62,7 @@ fn dinit_backend_commands_match_expected_behavior() {
     // Enablement is artifact-backed, so no manager command should be required for install state
     assert!(manager.is_enabled_command().is_none());
 
-    let active = manager
-        .active_probe()
-        .expect("dinit has an active-state command");
+    let active = manager.active_probe();
     assert_eq!(
         active.command().args(),
         &[
@@ -78,17 +76,13 @@ fn dinit_backend_commands_match_expected_behavior() {
     // First install should not reload a service that dinit has not loaded yet
     assert!(manager.refresh_after_artifact_change().is_none());
 
-    let enable = manager
-        .enable_now_command()
-        .expect("dinit starts after artifacts handle persistence");
+    let enable = manager.enable_now_command();
     assert_eq!(
         enable.args(),
         &["--user", "start", UNIXNOTIS_DAEMON_DINIT_SERVICE]
     );
 
-    let disable = manager
-        .disable_now_command()
-        .expect("dinit can stop during uninstall");
+    let disable = manager.disable_now_command();
     assert_eq!(
         disable.args(),
         &[

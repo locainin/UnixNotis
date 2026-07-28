@@ -43,15 +43,13 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     ]
 }
 
-pub fn availability_command() -> Option<CommandSpec> {
-    Some(
-        CommandSpec::new(
-            "dinitctl --user --quiet list",
-            "dinitctl",
-            ["--user", "--quiet", "list"],
-        )
-        .quiet(),
+pub fn availability_command() -> CommandSpec {
+    CommandSpec::new(
+        "dinitctl --user --quiet list",
+        "dinitctl",
+        ["--user", "--quiet", "list"],
     )
+    .quiet()
 }
 
 pub const fn is_enabled_command() -> Option<CommandSpec> {
@@ -59,12 +57,12 @@ pub const fn is_enabled_command() -> Option<CommandSpec> {
     None
 }
 
-pub fn is_active_command() -> Option<CommandSpec> {
-    Some(CommandSpec::new(
+pub fn is_active_command() -> CommandSpec {
+    CommandSpec::new(
         format!("dinitctl --user --quiet is-started {SERVICE_NAME}"),
         "dinitctl",
         ["--user", "--quiet", "is-started", SERVICE_NAME],
-    ))
+    )
 }
 
 pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
@@ -72,25 +70,25 @@ pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
     None
 }
 
-pub fn enable_now_command() -> Option<CommandSpec> {
+pub fn enable_now_command() -> CommandSpec {
     // The boot.d artifact owns persistence; start only handles the live session
     start_command()
 }
 
-pub fn start_command() -> Option<CommandSpec> {
-    Some(CommandSpec::new(
+pub fn start_command() -> CommandSpec {
+    CommandSpec::new(
         format!("dinitctl --user start {SERVICE_NAME}"),
         "dinitctl",
         ["--user", "start", SERVICE_NAME],
-    ))
+    )
 }
 
-pub fn disable_now_command() -> Option<CommandSpec> {
-    Some(stop_ignoring_unstarted())
+pub fn disable_now_command() -> CommandSpec {
+    stop_ignoring_unstarted()
 }
 
-pub fn stop_for_reinstall_command() -> Option<CommandSpec> {
-    Some(stop_ignoring_unstarted())
+pub fn stop_for_reinstall_command() -> CommandSpec {
+    stop_ignoring_unstarted()
 }
 
 pub fn hyprland_startup_commands(import_vars: &[&str]) -> Vec<String> {

@@ -42,19 +42,16 @@ pub(in crate::actions) fn detect_service_manager_conflict_state(
                 .iter()
                 .all(crate::service_manager::ServiceArtifact::is_present_safely);
         // Active probes are best-effort because missing tools should not become false conflicts
-        let active = match manager.active_probe() {
-            Some(probe) => match probe.evaluate() {
-                Ok(active) => active,
-                Err(err) => {
-                    // Probe failures do not block install, but they should not disappear either
-                    warnings.push(format!(
-                        "could not check whether {} is active: {err}",
-                        manager.label()
-                    ));
-                    false
-                }
-            },
-            None => false,
+        let active = match manager.active_probe().evaluate() {
+            Ok(active) => active,
+            Err(err) => {
+                // Probe failures do not block install, but they should not disappear either
+                warnings.push(format!(
+                    "could not check whether {} is active: {err}",
+                    manager.label()
+                ));
+                false
+            }
         };
 
         // Only real evidence should block install; probe errors are treated as not active

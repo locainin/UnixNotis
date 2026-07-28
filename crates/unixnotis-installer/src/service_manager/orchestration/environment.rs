@@ -5,7 +5,7 @@ use super::super::contract::{CommandSpec, ServiceArtifact};
 use super::model::{ServiceManager, ServiceManagerKind};
 
 impl ServiceManager {
-    pub fn import_variable_names(&self) -> &'static [&'static str] {
+    pub const fn import_variable_names(&self) -> &'static [&'static str] {
         // Backend-specific policy prevents transient shell state from reaching systemd
         unixnotis_core::service_manager::variables_for_backend(self.shared_kind())
     }

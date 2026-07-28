@@ -65,7 +65,9 @@ impl CommandSpec {
         self.command.args().unwrap_or_default()
     }
 
-    pub fn envs(&self) -> &std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> {
+    pub const fn envs(
+        &self,
+    ) -> &std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> {
         self.command
             .env()
             .expect("installer service commands are always direct")

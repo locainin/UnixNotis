@@ -91,7 +91,7 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
         && is_regular_file(&default_bundle_member(artifact_root))
 }
 
-pub fn active_probe(live_dir: &Path) -> Option<ServiceProbe> {
+pub fn active_probe(live_dir: &Path) -> ServiceProbe {
     let service = live_service_dir(live_dir).display().to_string();
     // s6-svstat -o up is machine-readable and avoids parsing human status text
     let command = CommandSpec::new(
@@ -99,33 +99,33 @@ pub fn active_probe(live_dir: &Path) -> Option<ServiceProbe> {
         "s6-svstat",
         ["-o".to_string(), "up".to_string(), service],
     );
-    Some(ServiceProbe::stdout(command, status_output_is_running))
+    ServiceProbe::stdout(command, status_output_is_running)
 }
 
 pub fn refresh_after_artifact_change(
     artifact_root: &Path,
     live_dir: &Path,
-) -> Option<ServiceArtifactRefresh> {
+) -> ServiceArtifactRefresh {
     // s6 source changes must be compiled into a database before s6-rc can see them
-    Some(ServiceArtifactRefresh::S6Database(S6DatabaseRefresh::new(
+    ServiceArtifactRefresh::S6Database(S6DatabaseRefresh::new(
         artifact_root.to_path_buf(),
         live_dir.to_path_buf(),
-    )))
+    ))
 }
 
-pub fn enable_now_command(live_dir: &Path) -> Option<CommandSpec> {
+pub fn enable_now_command(live_dir: &Path) -> CommandSpec {
     start_command(live_dir)
 }
 
-pub fn start_command(live_dir: &Path) -> Option<CommandSpec> {
-    Some(s6_rc_change_command(live_dir, "-u"))
+pub fn start_command(live_dir: &Path) -> CommandSpec {
+    s6_rc_change_command(live_dir, "-u")
 }
 
-pub fn disable_now_command(live_dir: &Path) -> Option<CommandSpec> {
-    Some(s6_rc_change_command(live_dir, "-d"))
+pub fn disable_now_command(live_dir: &Path) -> CommandSpec {
+    s6_rc_change_command(live_dir, "-d")
 }
 
-pub fn stop_for_reinstall_command(live_dir: &Path) -> Option<CommandSpec> {
+pub fn stop_for_reinstall_command(live_dir: &Path) -> CommandSpec {
     disable_now_command(live_dir)
 }
 

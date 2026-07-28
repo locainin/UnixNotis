@@ -87,9 +87,7 @@ fn systemd_backend_commands_match_existing_behavior() {
         &["--user", "is-enabled", "--quiet", UNIXNOTIS_DAEMON_SERVICE]
     );
 
-    let active = manager
-        .active_probe()
-        .expect("systemd has an active-state command");
+    let active = manager.active_probe();
     assert_eq!(
         active.command().args(),
         &["--user", "is-active", "--quiet", UNIXNOTIS_DAEMON_SERVICE]
@@ -102,29 +100,23 @@ fn systemd_backend_commands_match_existing_behavior() {
     };
     assert_eq!(reload.args(), &["--user", "daemon-reload"]);
 
-    let enable = manager
-        .enable_now_command()
-        .expect("systemd can enable and start");
+    let enable = manager.enable_now_command();
     assert_eq!(
         enable.args(),
         &["--user", "enable", "--now", UNIXNOTIS_DAEMON_SERVICE]
     );
 
-    let start = manager.start_command().expect("systemd can start");
+    let start = manager.start_command();
     assert_eq!(start.args(), &["--user", "start", UNIXNOTIS_DAEMON_SERVICE]);
 
-    let disable = manager
-        .disable_now_command()
-        .expect("systemd can disable and stop");
+    let disable = manager.disable_now_command();
     assert_eq!(
         disable.args(),
         &["--user", "disable", "--now", UNIXNOTIS_DAEMON_SERVICE]
     );
 
     // Reinstall should stop only UnixNotis and never broaden into user-session targets
-    let stop = manager
-        .stop_for_reinstall_command()
-        .expect("systemd can stop during reinstall");
+    let stop = manager.stop_for_reinstall_command();
     assert_eq!(stop.args(), &["--user", "stop", UNIXNOTIS_DAEMON_SERVICE]);
 }
 

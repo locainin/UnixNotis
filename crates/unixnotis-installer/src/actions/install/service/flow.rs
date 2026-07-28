@@ -98,18 +98,9 @@ pub fn uninstall_service(ctx: &mut ActionContext) -> Result<()> {
     let unsafe_artifact_exists = log_unsafe_service_artifacts(ctx, &artifacts);
 
     if artifact_exists {
-        if let Some(spec) = ctx.paths.service.disable_now_command() {
-            if let Err(err) = run_command_spec(ctx, &spec) {
-                log_line(ctx, format!("Warning: {err}"));
-            }
-        } else {
-            log_line(
-                ctx,
-                format!(
-                    "Skipping disable; {} has no disable command",
-                    ctx.paths.service.label()
-                ),
-            );
+        let spec = ctx.paths.service.disable_now_command();
+        if let Err(err) = run_command_spec(ctx, &spec) {
+            log_line(ctx, format!("Warning: {err}"));
         }
 
         for artifact in artifacts.iter().rev() {

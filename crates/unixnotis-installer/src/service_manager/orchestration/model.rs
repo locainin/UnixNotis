@@ -68,7 +68,7 @@ impl ServiceManager {
         }
     }
 
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         self.kind.label()
     }
 
@@ -98,7 +98,7 @@ impl ServiceManager {
         }
     }
 
-    pub fn artifact_label(&self) -> &'static str {
+    pub const fn artifact_label(&self) -> &'static str {
         // Artifact labels describe the manager-specific file shown in summaries
         match self.kind {
             ServiceManagerKind::Systemd => systemd::artifact_label(),
@@ -108,7 +108,7 @@ impl ServiceManager {
         }
     }
 
-    pub fn manager_label(&self) -> &'static str {
+    pub const fn manager_label(&self) -> &'static str {
         // Manager labels remain separate from short service identifiers
         match self.kind {
             ServiceManagerKind::Systemd => systemd::manager_label(),

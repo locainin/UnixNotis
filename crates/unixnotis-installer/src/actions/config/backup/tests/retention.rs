@@ -15,9 +15,9 @@ fn prune_old_backups(
     ctx: &mut crate::actions::ActionContext,
     config_dir: &std::path::Path,
     keep: usize,
-) -> anyhow::Result<()> {
+) {
     // Direct retention tests do not need to protect a newly created backup
-    prune_old_backups_except(ctx, config_dir, keep, None)
+    prune_old_backups_except(ctx, config_dir, keep, None);
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn prune_old_backups_keeps_newest() {
         restore_backup: None,
         service_reload_required: Arc::new(AtomicBool::new(false)),
     };
-    prune_old_backups(&mut ctx, &root, 2).expect("prune should succeed");
+    prune_old_backups(&mut ctx, &root, 2);
 
     // Only the two newest entries should remain
     let mut remaining = list_backup_dirs(&root)
@@ -157,7 +157,7 @@ fn prune_old_backups_rejects_symlink_children_without_touching_target() {
     let paths = super::support::test_paths(&root);
     let mut context = super::support::test_context(&detection, &paths);
 
-    prune_old_backups(&mut context, &root, 1).expect("prune remains best effort");
+    prune_old_backups(&mut context, &root, 1);
 
     assert!(oldest.exists());
     assert!(newest.exists());

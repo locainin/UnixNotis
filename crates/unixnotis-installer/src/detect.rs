@@ -35,7 +35,7 @@ pub use unixnotis_core::KNOWN_NOTIFICATION_DAEMONS as KNOWN_DAEMONS;
 
 pub fn detect() -> Detection {
     let owner = detect_owner();
-    let daemons = detect_known_daemons(&owner);
+    let daemons = detect_known_daemons(owner.as_ref());
     Detection { owner, daemons }
 }
 
@@ -209,8 +209,8 @@ fn run_busctl(args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-fn detect_known_daemons(owner: &Option<OwnerInfo>) -> Vec<DetectedDaemon> {
-    let owner_name = owner.as_ref().and_then(|info| info.comm.as_deref());
+fn detect_known_daemons(owner: Option<&OwnerInfo>) -> Vec<DetectedDaemon> {
+    let owner_name = owner.and_then(|info| info.comm.as_deref());
     KNOWN_DAEMONS
         .iter()
         .map(|daemon| {

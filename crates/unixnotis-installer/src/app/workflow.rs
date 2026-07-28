@@ -1,7 +1,6 @@
 //! Action workflow, worker coordination, and state transitions for the installer
 
 use anyhow::Result;
-use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -63,13 +62,13 @@ pub fn start_action(
     let ui_tx = ui_tx.clone();
     thread::spawn(move || {
         run_action_worker(
-            plan,
+            &plan,
             mode,
-            detection,
-            paths,
-            install_state,
-            restore_backup,
-            ui_tx,
+            &detection,
+            &paths,
+            install_state.as_ref(),
+            restore_backup.as_deref(),
+            &ui_tx,
         );
     });
 
@@ -77,13 +76,13 @@ pub fn start_action(
 }
 
 fn run_action_worker(
-    plan: Vec<StepKind>,
+    plan: &[StepKind],
     mode: ActionMode,
-    detection: crate::detect::Detection,
-    paths: InstallPaths,
-    install_state: Option<crate::actions::InstallState>,
-    restore_backup: Option<PathBuf>,
-    ui_tx: mpsc::SyncSender<UiMessage>,
+    detection: &crate::detect::Detection,
+    paths: &InstallPaths,
+    install_state: Option<&crate::actions::InstallState>,
+    restore_backup: Option<&std::path::Path>,
+    ui_tx: &mpsc::SyncSender<UiMessage>,
 ) {
     // Run plan steps on the worker thread and stream progress events to the UI
     // The flag lives across steps so install can decide later whether reload is needed
@@ -95,12 +94,12 @@ fn run_action_worker(
         // Build per-step context; clone install_state to avoid borrow issues
         let result = {
             let mut ctx = ActionContext {
-                detection: &detection,
-                paths: &paths,
-                install_state: install_state.clone(),
+                detection,
+                paths,
+                install_state: install_state.cloned(),
                 log_tx: ui_tx.clone(),
                 action_mode: mode,
-                restore_backup: restore_backup.clone(),
+                restore_backup: restore_backup.map(std::path::Path::to_path_buf),
                 service_reload_required: service_reload_required.clone(),
             };
             run_step(*step, &mut ctx)

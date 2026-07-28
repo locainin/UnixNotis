@@ -40,18 +40,19 @@ impl ServiceManager {
     pub fn refresh_after_artifact_change(&self) -> Option<ServiceArtifactRefresh> {
         // s6 returns a compile plan while simpler managers return one reload command
         match self.kind {
-            ServiceManagerKind::Systemd => {
-                systemd::reload_after_artifact_change().map(ServiceArtifactRefresh::Command)
-            }
+            ServiceManagerKind::Systemd => Some(ServiceArtifactRefresh::Command(
+                systemd::reload_after_artifact_change(),
+            )),
             ServiceManagerKind::Dinit => {
                 dinit::reload_after_artifact_change().map(ServiceArtifactRefresh::Command)
             }
             ServiceManagerKind::Runit => {
                 runit::reload_after_artifact_change().map(ServiceArtifactRefresh::Command)
             }
-            ServiceManagerKind::S6 => {
-                s6::refresh_after_artifact_change(&self.artifact_root, self.live_root())
-            }
+            ServiceManagerKind::S6 => Some(s6::refresh_after_artifact_change(
+                &self.artifact_root,
+                self.live_root(),
+            )),
         }
     }
 

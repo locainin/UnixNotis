@@ -242,18 +242,17 @@ pub(in crate::actions::environment) fn format_path_for_shell_line(
     bin_dir: &Path,
 ) -> String {
     // Prefer `$HOME` when possible so startup files stay portable across usernames
-    if let Ok(stripped) = bin_dir.strip_prefix(home) {
-        let tail = stripped.to_string_lossy();
-
-        // If the bin directory is exactly the home directory, `$HOME` alone is enough
-        if tail.is_empty() {
-            "$HOME".to_string()
-        } else {
-            // Convert the home-relative suffix into a shell-friendly `$HOME/...` path
-            format!("$HOME/{}", tail.trim_start_matches('/'))
-        }
-    } else {
-        // Fall back to the absolute path when the bin directory is outside home
-        bin_dir.display().to_string()
-    }
+    bin_dir.strip_prefix(home).map_or_else(
+        |_error| bin_dir.display().to_string(),
+        |stripped| {
+            let tail = stripped.to_string_lossy();
+            // `$HOME` alone covers the exact home directory
+            if tail.is_empty() {
+                "$HOME".to_string()
+            } else {
+                // The home-relative suffix keeps startup files portable across usernames
+                format!("$HOME/{}", tail.trim_start_matches('/'))
+            }
+        },
+    )
 }

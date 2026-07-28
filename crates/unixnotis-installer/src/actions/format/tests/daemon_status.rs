@@ -8,14 +8,14 @@ fn summarize_owner_includes_comm_and_pid() {
         pid: Some(4242),
         comm: Some("unixnotis-daemon".to_string()),
     };
-    let rendered = summarize_owner(&Some(owner));
+    let rendered = summarize_owner(Some(&owner));
     assert_eq!(rendered, "unixnotis-daemon (pid 4242)");
 }
 
 #[test]
 fn summarize_owner_handles_missing_owner() {
     // Ensures the empty-owner branch renders a stable placeholder string.
-    let rendered = summarize_owner(&None);
+    let rendered = summarize_owner(None);
     assert_eq!(rendered, "none detected");
 }
 

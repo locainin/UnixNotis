@@ -50,13 +50,7 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
             let (label, command) = if is_unixnotis {
                 // Reinstall can race with session hooks that start the daemon when the bus name drops
                 // The irreversible stop job keeps that start request from canceling the stop in flight
-                let spec = ctx
-                    .paths
-                    .service
-                    .stop_for_reinstall_command()
-                    .ok_or_else(|| {
-                        anyhow!("service manager cannot stop unixnotis for reinstall")
-                    })?;
+                let spec = ctx.paths.service.stop_for_reinstall_command();
                 (spec.label().to_string(), spec.to_command()?)
             } else {
                 let mut command = system_tools::command("systemctl")
@@ -117,22 +111,35 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
         }
     }
 
-    if let Some(comm) = owner_comm {
-        let message = format!(
-            "Detected owner '{comm}' is not managed by a known unit; stop it manually before install."
-        );
-        log_line(ctx, message.clone());
-        return Err(anyhow!(message));
-    }
-    if let Some(pid) = owner_pid {
-        let message = format!(
-            "Detected owner pid {pid} is not managed by a known unit; stop it manually before install."
-        );
-        log_line(ctx, message.clone());
-        return Err(anyhow!(message));
-    }
-    let message = "Detected owner is not managed by a known unit; stop it manually before install."
-        .to_string();
+    unmanaged_owner_error(ctx, owner_comm, owner_pid)
+}
+
+fn unmanaged_owner_error(
+    ctx: &mut ActionContext,
+    owner_comm: Option<&str>,
+    owner_pid: Option<u32>,
+) -> Result<()> {
+    // Preserve the strongest broker identity available in the manual-stop instruction
+    let message = owner_comm.map_or_else(
+        || {
+            owner_pid.map_or_else(
+                || {
+                    "Detected owner is not managed by a known unit; stop it manually before install."
+                        .to_string()
+                },
+                |pid| {
+                    format!(
+                        "Detected owner pid {pid} is not managed by a known unit; stop it manually before install."
+                    )
+                },
+            )
+        },
+        |comm| {
+            format!(
+                "Detected owner '{comm}' is not managed by a known unit; stop it manually before install."
+            )
+        },
+    );
     log_line(ctx, message.clone());
     Err(anyhow!(message))
 }

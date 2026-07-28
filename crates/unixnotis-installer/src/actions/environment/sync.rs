@@ -55,41 +55,41 @@ pub fn sync_user_environment(ctx: &mut ActionContext) -> Result<()> {
         let message = "no session environment variables found to import for the service manager";
         log_line(ctx, format!("Error: {message}"));
         return Err(anyhow!(message));
-    } else {
-        let env_artifacts = ctx
-            .paths
-            .service
-            .environment_sync_artifacts(import_var_names, &vars);
-        for artifact in &env_artifacts {
-            // Artifact-based managers persist a small envdir instead of importing into a daemon
-            write_service_artifact(ctx, artifact)?;
-            updated = true;
-        }
-        if !env_artifacts.is_empty() {
-            log_line(ctx, "Environment synced with service environment files");
-        }
+    }
 
-        let specs = ctx
-            .paths
-            .service
-            .environment_sync_commands(&vars, dbus_update_available);
-        for spec in specs {
-            log_line(ctx, format!("Syncing environment with {}", spec.program()));
-            // Import commands can echo names or values on stdout on some setups
-            let command = match spec.to_command() {
-                Ok(command) => command,
-                Err(err) => {
-                    log_line(ctx, format!("Warning: {err}"));
-                    continue;
-                }
-            };
-            if let Err(err) = run_command_without_stdout(ctx, spec.label(), command, None) {
+    let env_artifacts = ctx
+        .paths
+        .service
+        .environment_sync_artifacts(import_var_names, &vars);
+    for artifact in &env_artifacts {
+        // Artifact-based managers persist a small envdir instead of importing into a daemon
+        write_service_artifact(ctx, artifact)?;
+        updated = true;
+    }
+    if !env_artifacts.is_empty() {
+        log_line(ctx, "Environment synced with service environment files");
+    }
+
+    let specs = ctx
+        .paths
+        .service
+        .environment_sync_commands(&vars, dbus_update_available);
+    for spec in specs {
+        log_line(ctx, format!("Syncing environment with {}", spec.program()));
+        // Import commands can echo names or values on stdout on some setups
+        let command = match spec.to_command() {
+            Ok(command) => command,
+            Err(err) => {
                 log_line(ctx, format!("Warning: {err}"));
                 continue;
             }
-            log_line(ctx, format!("Environment synced with {}", spec.program()));
-            updated = true;
+        };
+        if let Err(err) = run_command_without_stdout(ctx, spec.label(), command, None) {
+            log_line(ctx, format!("Warning: {err}"));
+            continue;
         }
+        log_line(ctx, format!("Environment synced with {}", spec.program()));
+        updated = true;
     }
 
     if !updated {

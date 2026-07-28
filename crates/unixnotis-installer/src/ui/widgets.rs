@@ -114,6 +114,8 @@ fn take_display_width(text: &str, width: usize) -> String {
 }
 
 pub(super) fn summarize_error(err: &str) -> String {
+    const MAX_LEN: usize = 72;
+
     // Provide a short user-friendly error line while keeping full details in logs
     if err.contains("failed to install") {
         return "failed to install binary (see logs)".to_string();
@@ -127,8 +129,6 @@ pub(super) fn summarize_error(err: &str) -> String {
     if err.contains("repository root not found") {
         return "repository root not found (see logs)".to_string();
     }
-
-    const MAX_LEN: usize = 72;
 
     let mut out = String::new();
     for ch in err.chars().take(MAX_LEN) {

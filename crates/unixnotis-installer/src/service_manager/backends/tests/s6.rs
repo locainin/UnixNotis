@@ -94,7 +94,7 @@ fn s6_backend_commands_match_expected_behavior() {
         &["-l", "/run/user/s6-rc", "/tmp/s6-data/rc/compiled-next"]
     );
     assert_eq!(
-        manager.start_command().expect("s6 start command").args(),
+        manager.start_command().args(),
         &[
             "-l",
             "/run/user/s6-rc",
@@ -104,10 +104,7 @@ fn s6_backend_commands_match_expected_behavior() {
         ]
     );
     assert_eq!(
-        manager
-            .disable_now_command()
-            .expect("s6 stop command")
-            .args(),
+        manager.disable_now_command().args(),
         &[
             "-l",
             "/run/user/s6-rc",
@@ -124,7 +121,7 @@ fn s6_backend_active_probe_parses_s6_svstat_output() {
         PathBuf::from("/tmp/s6-data"),
         PathBuf::from("/run/user/s6-rc"),
     );
-    let active = manager.active_probe().expect("s6 active probe");
+    let active = manager.active_probe();
 
     // s6-svstat -o up prints a boolean, so parsing stays exact and cheap
     assert_eq!(active.parser_matches("true\n"), Some(true));
@@ -299,7 +296,7 @@ fn s6_readiness_rejects_tools_that_exist_only_on_path() {
         "s6-envdir",
         "s6-svstat",
     ] {
-        write_executable(path_bin.join(tool), "#!/bin/sh\nexit 0\n");
+        write_executable(&path_bin.join(tool), "#!/bin/sh\nexit 0\n");
     }
     let _path = EnvPathGuard::prepend(&path_bin);
     let _tools = use_fake_tool_bin(&trusted_bin);
@@ -390,7 +387,7 @@ fn s6_active_probe_rejects_truthy_but_non_exact_output() {
         PathBuf::from("/tmp/s6-data"),
         PathBuf::from("/run/user/s6-rc"),
     );
-    let active = manager.active_probe().expect("s6 active probe");
+    let active = manager.active_probe();
 
     // s6-svstat -o up emits exact true/false, so loose text must not count as active
     assert_eq!(active.parser_matches(" true\n"), Some(true));
@@ -404,8 +401,8 @@ fn test_root(name: &str) -> PathBuf {
     root
 }
 
-fn write_executable(path: PathBuf, contents: &str) {
-    write_test_executable(&path, contents);
+fn write_executable(path: &Path, contents: &str) {
+    write_test_executable(path, contents);
 }
 
 struct EnvPathGuard {

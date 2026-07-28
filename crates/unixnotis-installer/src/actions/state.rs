@@ -9,7 +9,7 @@ use crate::paths::format_with_home;
 use crate::service_manager::ReadinessIssue;
 
 use super::installation_channel::reject_conflicting_installation_channel;
-use super::{context::ActionContext, install_state::check_install_state, log_line};
+use super::{context::ActionContext, install_state::check_install_state, log_line, InstallState};
 
 pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     // Use cached install state when available to keep the UI consistent with the plan
@@ -60,43 +60,7 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     if let Some(err) = state.service_enabled_error.as_ref() {
         log_line(ctx, format!("- service enable check failed: {err}"));
     }
-    for warning in &state.service_conflict_warnings {
-        // Non-selected backend path issues are diagnostics, not blockers for the selected backend
-        log_line(
-            ctx,
-            format!("Warning: could not inspect another service manager ({warning})"),
-        );
-    }
-    if !state.service_conflicts.is_empty() {
-        // Block before build/copy/write steps so two managers never race to restart the daemon
-        for conflict in &state.service_conflicts {
-            if conflict.active {
-                log_line(
-                    ctx,
-                    format!(
-                        "Error: UnixNotis is active under {}; selected backend is {}",
-                        conflict.manager_label,
-                        ctx.paths.service.label()
-                    ),
-                );
-            }
-            if conflict.installed {
-                log_line(
-                    ctx,
-                    format!(
-                        "Error: {} already exists under {} at {}",
-                        conflict.artifact_label,
-                        conflict.manager_label,
-                        format_with_home(&conflict.artifact_path)
-                    ),
-                );
-            }
-        }
-        return Err(anyhow!(
-            "UnixNotis already appears managed by another service manager; uninstall or migrate it before installing with {}",
-            ctx.paths.service.label()
-        ));
-    }
+    reject_service_manager_conflicts(ctx, &state)?;
     // The source installer must not shadow or combine with package-owned systemd artifacts
     reject_conflicting_installation_channel(ctx)?;
     let mut readiness_errors = Vec::new();
@@ -119,6 +83,11 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
             readiness_errors.join("; ")
         ));
     }
+    log_install_summary(ctx, &state);
+    Ok(())
+}
+
+fn log_install_summary(ctx: &mut ActionContext, state: &InstallState) {
     log_line(
         ctx,
         format!(
@@ -133,7 +102,6 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
             if state.service_active { "yes" } else { "no" }
         ),
     );
-
     if state.is_fully_installed() {
         if matches!(ctx.action_mode, ActionMode::Install) {
             log_line(
@@ -159,8 +127,48 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     } else {
         log_line(ctx, "Install will continue and update missing items.");
     }
+}
 
-    Ok(())
+fn reject_service_manager_conflicts(ctx: &mut ActionContext, state: &InstallState) -> Result<()> {
+    for warning in &state.service_conflict_warnings {
+        // Non-selected backend path issues are diagnostics, not blockers for the selected backend
+        log_line(
+            ctx,
+            format!("Warning: could not inspect another service manager ({warning})"),
+        );
+    }
+    if state.service_conflicts.is_empty() {
+        return Ok(());
+    }
+
+    // Block before build/copy/write steps so two managers never race to restart the daemon
+    for conflict in &state.service_conflicts {
+        if conflict.active {
+            log_line(
+                ctx,
+                format!(
+                    "Error: UnixNotis is active under {}; selected backend is {}",
+                    conflict.manager_label,
+                    ctx.paths.service.label()
+                ),
+            );
+        }
+        if conflict.installed {
+            log_line(
+                ctx,
+                format!(
+                    "Error: {} already exists under {} at {}",
+                    conflict.artifact_label,
+                    conflict.manager_label,
+                    format_with_home(&conflict.artifact_path)
+                ),
+            );
+        }
+    }
+    Err(anyhow!(
+        "UnixNotis already appears managed by another service manager; uninstall or migrate it before installing with {}",
+        ctx.paths.service.label()
+    ))
 }
 
 #[cfg(test)]

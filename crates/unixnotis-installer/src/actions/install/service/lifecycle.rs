@@ -1,6 +1,6 @@
 //! Service lifecycle command helpers
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 
 use crate::paths::format_with_home;
 use crate::service_manager::CommandSpec;
@@ -42,11 +42,7 @@ pub(in crate::actions::install) fn run_service_start(ctx: &mut ActionContext) ->
                 ctx,
                 format!("Enabling and starting {}", ctx.paths.service.service_name()),
             );
-            let spec = ctx
-                .paths
-                .service
-                .enable_now_command()
-                .ok_or_else(|| anyhow!("service manager cannot enable and start service"))?;
+            let spec = ctx.paths.service.enable_now_command();
             run_command_spec(ctx, &spec)
         }
         ServiceStartMode::StartOnly => {
@@ -55,11 +51,7 @@ pub(in crate::actions::install) fn run_service_start(ctx: &mut ActionContext) ->
                 ctx,
                 format!("Starting {}", ctx.paths.service.service_name()),
             );
-            let spec = ctx
-                .paths
-                .service
-                .start_command()
-                .ok_or_else(|| anyhow!("service manager cannot start service"))?;
+            let spec = ctx.paths.service.start_command();
             run_command_spec(ctx, &spec)
         }
     }

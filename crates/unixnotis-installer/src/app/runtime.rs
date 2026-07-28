@@ -31,7 +31,7 @@ pub fn run_app(terminal_guard: &mut TerminalGuard, app: &mut App) -> Result<Exit
     loop {
         match ui_rx.recv() {
             Ok(UiMessage::Input(input)) => {
-                if let Some(exit) = handle_event(app, terminal_guard, &ui_tx, input)? {
+                if let Some(exit) = handle_event(app, terminal_guard, &ui_tx, &input)? {
                     return Ok(exit);
                 }
             }
@@ -54,18 +54,17 @@ fn handle_event(
     app: &mut App,
     terminal_guard: &mut TerminalGuard,
     ui_tx: &mpsc::SyncSender<UiMessage>,
-    event: Event,
+    event: &Event,
 ) -> Result<Option<ExitAction>> {
     match event {
         Event::Key(key) => match app.screen {
-            Screen::Welcome => handle_welcome_key(app, key),
-            Screen::Confirm(mode) => handle_confirm_key(app, terminal_guard, ui_tx, key, mode),
-            Screen::ResetMenu => handle_reset_menu_key(app, key),
-            Screen::RestoreSelect => handle_restore_select_key(app, key),
-            Screen::Progress(_) => handle_progress_key(app, key),
-            Screen::BuildAccel => handle_build_accel_key(app, key),
+            Screen::Welcome => Ok(handle_welcome_key(app, *key)),
+            Screen::Confirm(mode) => handle_confirm_key(app, terminal_guard, ui_tx, *key, mode),
+            Screen::ResetMenu => Ok(handle_reset_menu_key(app, *key)),
+            Screen::RestoreSelect => Ok(handle_restore_select_key(app, *key)),
+            Screen::Progress(_) => Ok(handle_progress_key(app, *key)),
+            Screen::BuildAccel => Ok(handle_build_accel_key(app, *key)),
         },
-        Event::Resize(_, _) => Ok(None),
         _ => Ok(None),
     }
 }

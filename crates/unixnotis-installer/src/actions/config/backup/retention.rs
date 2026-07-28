@@ -24,7 +24,7 @@ pub(in crate::actions::config) fn create_backup_dir(
     }
 
     // Each reset gets its own dated directory so filenames stay simple
-    let stamp = backup_stamp_from_system_time()?;
+    let stamp = backup_stamp_from_system_time();
     let base_name = format!("{BACKUP_PREFIX}{stamp}");
     let mut candidate = config_dir.join(base_name);
 
@@ -42,7 +42,7 @@ pub(in crate::actions::config) fn create_backup_dir(
         format!("Backup directory created: {}", format_with_home(&candidate)),
     );
 
-    prune_old_backups_except(ctx, config_dir, keep, Some(candidate.as_path()))?;
+    prune_old_backups_except(ctx, config_dir, keep, Some(candidate.as_path()));
     Ok(Some(candidate))
 }
 
@@ -73,9 +73,9 @@ pub(in crate::actions::config::backup) fn prune_old_backups_except(
     config_dir: &Path,
     keep: usize,
     protected_backup: Option<&Path>,
-) -> Result<()> {
+) {
     if keep == 0 {
-        return Ok(());
+        return;
     }
 
     let mut backups = list_backup_dirs(config_dir);
@@ -83,7 +83,7 @@ pub(in crate::actions::config::backup) fn prune_old_backups_except(
     backups.sort();
 
     if backups.len() <= keep {
-        return Ok(());
+        return;
     }
 
     let mut excess = backups.len().saturating_sub(keep);
@@ -111,11 +111,9 @@ pub(in crate::actions::config::backup) fn prune_old_backups_except(
         }
         excess -= 1;
     }
-
-    Ok(())
 }
 
-fn backup_stamp_from_system_time() -> Result<String> {
+fn backup_stamp_from_system_time() -> String {
     // Use chrono for a stable YYYY-MM-DD stamp without hand-rolled time math
-    Ok(Local::now().format("%Y-%m-%d").to_string())
+    Local::now().format("%Y-%m-%d").to_string()
 }

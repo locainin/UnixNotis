@@ -67,9 +67,9 @@ pub fn install_artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArt
     ]
 }
 
-pub fn availability_command() -> Option<CommandSpec> {
+pub fn availability_command() -> CommandSpec {
     // `sv -V` checks the control binary without requiring the service to exist yet
-    Some(CommandSpec::new("sv -V", "sv", ["-V"]).quiet())
+    CommandSpec::new("sv -V", "sv", ["-V"]).quiet()
 }
 
 pub const fn is_enabled_command() -> Option<CommandSpec> {
@@ -87,7 +87,7 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
         && path_is_missing(&service.join(DOWN_FILE))
 }
 
-pub fn active_probe(artifact_root: &Path) -> Option<ServiceProbe> {
+pub fn active_probe(artifact_root: &Path) -> ServiceProbe {
     let service = service_dir_arg(artifact_root);
     // sv check can succeed for a requested down state, so parse status text instead
     let command = CommandSpec::new(
@@ -95,7 +95,7 @@ pub fn active_probe(artifact_root: &Path) -> Option<ServiceProbe> {
         "sv",
         ["status".to_string(), service],
     );
-    Some(ServiceProbe::stdout(command, status_output_is_running))
+    ServiceProbe::stdout(command, status_output_is_running)
 }
 
 pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
@@ -103,20 +103,20 @@ pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
     None
 }
 
-pub fn enable_now_command(artifact_root: &Path) -> Option<CommandSpec> {
+pub fn enable_now_command(artifact_root: &Path) -> CommandSpec {
     start_command(artifact_root)
 }
 
-pub fn start_command(artifact_root: &Path) -> Option<CommandSpec> {
-    Some(sv_command("start", artifact_root))
+pub fn start_command(artifact_root: &Path) -> CommandSpec {
+    sv_command("start", artifact_root)
 }
 
-pub fn disable_now_command(artifact_root: &Path) -> Option<CommandSpec> {
-    Some(sv_command("stop", artifact_root))
+pub fn disable_now_command(artifact_root: &Path) -> CommandSpec {
+    sv_command("stop", artifact_root)
 }
 
-pub fn stop_for_reinstall_command(artifact_root: &Path) -> Option<CommandSpec> {
-    Some(sv_command("stop", artifact_root))
+pub fn stop_for_reinstall_command(artifact_root: &Path) -> CommandSpec {
+    sv_command("stop", artifact_root)
 }
 
 pub fn hyprland_startup_commands(_artifact_root: &Path, _import_vars: &[&str]) -> Vec<String> {

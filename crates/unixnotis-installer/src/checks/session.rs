@@ -54,10 +54,10 @@ impl Checks {
         let gtk4_layer_shell = gtk::gtk4_layer_shell_check(&pkg_config);
         let busctl = system::busctl_check();
 
-        let dbus_update_env = match &discovered_paths {
-            Ok(paths) => system::dbus_update_env_check(Some(&paths.service)),
-            Err(_) => system::dbus_update_env_check(None),
-        };
+        let dbus_update_env = discovered_paths.as_ref().map_or_else(
+            |_error| system::dbus_update_env_check(None),
+            |paths| system::dbus_update_env_check(Some(&paths.service)),
+        );
         let (install_paths, path_contains_bin) = match discovered_paths {
             Ok(paths) => {
                 // Path discovery runs once so every later row reports the same install target

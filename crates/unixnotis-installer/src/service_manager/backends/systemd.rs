@@ -29,78 +29,76 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     ]
 }
 
-pub fn availability_command() -> Option<CommandSpec> {
-    Some(
-        CommandSpec::new(
-            "systemctl --user --no-pager --plain list-units --type=service",
-            "systemctl",
-            [
-                "--user",
-                "--no-pager",
-                "--plain",
-                "list-units",
-                "--type=service",
-            ],
-        )
-        .quiet(),
+pub fn availability_command() -> CommandSpec {
+    CommandSpec::new(
+        "systemctl --user --no-pager --plain list-units --type=service",
+        "systemctl",
+        [
+            "--user",
+            "--no-pager",
+            "--plain",
+            "list-units",
+            "--type=service",
+        ],
     )
+    .quiet()
 }
 
-pub fn is_enabled_command() -> Option<CommandSpec> {
-    Some(CommandSpec::new(
+pub fn is_enabled_command() -> CommandSpec {
+    CommandSpec::new(
         format!("systemctl --user is-enabled --quiet {SERVICE_NAME}"),
         "systemctl",
         ["--user", "is-enabled", "--quiet", SERVICE_NAME],
-    ))
+    )
 }
 
-pub fn is_active_command() -> Option<CommandSpec> {
-    Some(CommandSpec::new(
+pub fn is_active_command() -> CommandSpec {
+    CommandSpec::new(
         format!("systemctl --user is-active --quiet {SERVICE_NAME}"),
         "systemctl",
         ["--user", "is-active", "--quiet", SERVICE_NAME],
-    ))
+    )
 }
 
-pub fn reload_after_artifact_change() -> Option<CommandSpec> {
-    Some(CommandSpec::new(
+pub fn reload_after_artifact_change() -> CommandSpec {
+    CommandSpec::new(
         "systemctl --user daemon-reload",
         "systemctl",
         ["--user", "daemon-reload"],
-    ))
+    )
 }
 
-pub fn enable_now_command() -> Option<CommandSpec> {
-    Some(CommandSpec::new(
+pub fn enable_now_command() -> CommandSpec {
+    CommandSpec::new(
         format!("systemctl --user enable --now {SERVICE_NAME}"),
         "systemctl",
         ["--user", "enable", "--now", SERVICE_NAME],
-    ))
+    )
 }
 
-pub fn start_command() -> Option<CommandSpec> {
-    Some(CommandSpec::new(
+pub fn start_command() -> CommandSpec {
+    CommandSpec::new(
         format!("systemctl --user start {SERVICE_NAME}"),
         "systemctl",
         ["--user", "start", SERVICE_NAME],
-    ))
+    )
 }
 
-pub fn disable_now_command() -> Option<CommandSpec> {
-    Some(CommandSpec::new(
+pub fn disable_now_command() -> CommandSpec {
+    CommandSpec::new(
         format!("systemctl --user disable --now {SERVICE_NAME}"),
         "systemctl",
         ["--user", "disable", "--now", SERVICE_NAME],
-    ))
+    )
 }
 
-pub fn stop_for_reinstall_command() -> Option<CommandSpec> {
+pub fn stop_for_reinstall_command() -> CommandSpec {
     // Stop only this unit during reinstall so systemd never treats the user session as disposable
-    Some(CommandSpec::new(
+    CommandSpec::new(
         format!("systemctl --user stop {SERVICE_NAME}"),
         "systemctl",
         ["--user", "stop", SERVICE_NAME],
-    ))
+    )
 }
 
 pub fn hyprland_startup_commands(import_vars: &[&str]) -> Vec<String> {
