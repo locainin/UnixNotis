@@ -18,6 +18,7 @@ pub(super) fn notification(app_name: &str, icon_name: &str) -> NotificationView 
         urgency: 1,
         category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         image: NotificationImage {
             icon_name: icon_name.to_string(),
             ..NotificationImage::default()

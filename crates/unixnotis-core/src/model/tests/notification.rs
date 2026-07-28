@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use chrono::Utc;
 use zbus::zvariant::{serialized::Context, to_bytes, Value, LE};
 
 use super::{Notification, NotificationImage};
@@ -47,7 +46,8 @@ fn notification_with_image(image: NotificationImage) -> Notification {
         suppress_sound: true,
         image,
         expire_timeout: 5000,
-        received_at: Utc::now(),
+        received_at: chrono::DateTime::from_timestamp(1_700_000_000, 0)
+            .expect("fixed notification timestamp"),
         sender_name: Some(":1.42".to_string()),
         sender_pid: Some(1234),
         sender_start_time: Some(9000),
@@ -88,6 +88,7 @@ fn notification_view_keeps_ui_fields_and_transient_policy_flag() {
     assert_eq!(view.actions.len(), 1);
     assert_eq!(view.urgency, Urgency::Critical.as_u8());
     assert!(view.is_transient);
+    assert_eq!(view.received_at_unix_seconds, 1_700_000_000);
     assert!(view.image.has_image_data);
 }
 

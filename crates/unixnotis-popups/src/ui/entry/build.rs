@@ -1,18 +1,15 @@
-//! Popup entry construction and UI action wiring
+//! Popup entry lifecycle and high-level card assembly
 
-use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use gtk::Align;
-use unixnotis_core::{hooks, Action, AttributionClass, NotificationView, Urgency};
+use unixnotis_core::{hooks, NotificationView};
 use unixnotis_ui::CutCorner;
 
 use super::super::window::refresh_popup_input_region;
 use super::super::UiState;
+use super::builders::{build_action_row, build_close_button, build_popup_content};
 use super::commands::try_send_command;
-use super::labels::{
-    clamp_label_text, has_visible_text, update_optional_label, POPUP_ACTION_LABEL_MAX_CHARS,
-    POPUP_APP_MAX_CHARS, POPUP_BODY_MAX_CHARS, POPUP_SUMMARY_MAX_CHARS,
-};
+use super::presentation::PopupEntryViewModel;
 use crate::dbus::UiCommand;
 
 pub(in crate::ui) struct PopupEntry {
@@ -39,8 +36,6 @@ impl PopupEntry {
     }
 }
 
-const MAX_POPUP_ACTIONS: usize = 3;
-
 impl UiState {
     pub(in crate::ui) fn build_popup_entry(
         &mut self,
@@ -59,213 +54,23 @@ impl UiState {
     }
 
     pub(in crate::ui) fn build_popup_root(&mut self, notification: &NotificationView) -> gtk::Box {
-        // One vertical box owns the whole popup card layout
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        root.add_css_class("unixnotis-popup-card");
-        // Use the live stack width when a row is built or rebuilt
-        let popup_width = self
-            .popup_stack
-            .width()
-            .max(self.popup_stack.width_request())
-            .max(1);
-        root.set_size_request(popup_width, -1);
-        root.set_halign(Align::Fill);
-        root.set_hexpand(false);
-        // New roots stay hidden until visibility logic decides otherwise
-        root.set_visible(false);
-        let is_critical = notification.urgency == Urgency::Critical as u8;
-        if is_critical {
-            // Critical rows keep the shared urgency class at the root
-            root.add_css_class(hooks::shared_state::CRITICAL);
-        }
-        if matches!(
-            notification.attribution.class,
-            AttributionClass::Unknown | AttributionClass::Conflict
-        ) {
-            // Unknown claims receive a visible semantic border instead of trusted branding
-            root.add_css_class("unverified");
-        }
-        let has_popup_actions = notification.actions.iter().any(popup_action_is_visible);
-        // State classes make popup theming less dependent on child selector tricks
-        set_class_state(
-            &root,
-            hooks::popup_card::HAS_SUMMARY,
-            has_visible_text(&notification.summary),
-        );
-        set_class_state(
-            &root,
-            hooks::popup_card::HAS_BODY,
-            has_visible_text(&notification.body),
-        );
-        set_class_state(&root, hooks::popup_card::HAS_ACTIONS, has_popup_actions);
+        let view = PopupEntryViewModel::for_notification(notification);
+        let root = build_card_root(self, &view);
+        let close = build_close_button();
+        let rendered = build_popup_content(self, notification, &view, &close);
 
-        // Main row keeps the large badge beside one compact text column
-        let main = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        main.add_css_class("unixnotis-popup-main");
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        content.set_hexpand(true);
-        content.add_css_class("unixnotis-popup-content");
+        // Builder results feed stable state classes used by user themes
+        set_class_state(&root, hooks::popup_card::HAS_ICON, rendered.has_icon);
+        set_class_state(&root, hooks::popup_card::NO_ICON, !rendered.has_icon);
+        set_class_state(&root, hooks::popup_card::HAS_IMAGE, rendered.has_image);
+        root.append(&rendered.widget);
 
-        // Header keeps app identity and close control on one compact line
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        header.add_css_class("unixnotis-popup-header-row");
-        if let Some(icon) = self.build_image_widget(notification) {
-            // Icon presence is exposed as a state class for theme rules
-            set_class_state(&root, hooks::popup_card::HAS_ICON, true);
-            icon.set_valign(Align::Center);
-            icon.set_halign(Align::Start);
-            icon.add_css_class("unixnotis-popup-icon");
-            main.append(&icon);
-        } else {
-            // Missing icons also get a root class so themes can rebalance spacing
-            set_class_state(&root, hooks::popup_card::NO_ICON, true);
-        }
-        // Primary identity stays short while source evidence lives in a tooltip
-        let app = gtk::Label::new(Some(&notification.attribution.display_name));
-        app.set_xalign(0.0);
-        app.set_single_line_mode(true);
-        app.set_ellipsize(EllipsizeMode::End);
-        app.set_max_width_chars(POPUP_APP_MAX_CHARS as i32);
-        app.set_text(
-            clamp_label_text(&notification.attribution.display_name, POPUP_APP_MAX_CHARS).as_ref(),
-        );
-        if !notification.attribution.source_label.is_empty() {
-            app.set_tooltip_text(Some(&notification.attribution.source_label));
-        }
-        if notification.attribution.has_warning() {
-            app.add_css_class("unixnotis-attribution-warning");
-        }
-        app.add_css_class("unixnotis-popup-header");
-
-        let close = gtk::Button::from_icon_name("window-close-symbolic");
-        close.add_css_class("unixnotis-popup-close");
-        close.set_halign(Align::End);
-
-        // Close stays on the right edge even when the title text shrinks
-        header.append(&app);
-        header.append(&build_urgency_badge(is_critical));
-        header.append(&build_popup_header_spacer());
-        header.append(&close);
-
-        // Source warnings remain visible instead of living only in a tooltip
-        let source = gtk::Label::new(None);
-        source.set_xalign(0.0);
-        source.set_wrap(true);
-        source.set_wrap_mode(WrapMode::WordChar);
-        source.set_lines(2);
-        source.add_css_class("unixnotis-popup-source");
-        update_optional_label(&source, &notification.attribution.source_label, 96);
-
-        // Summary stays short and collapses when the payload has no title
-        let summary = gtk::Label::new(Some(&notification.summary));
-        summary.set_xalign(0.0);
-        summary.set_wrap(true);
-        summary.set_wrap_mode(WrapMode::WordChar);
-        summary.set_ellipsize(EllipsizeMode::End);
-        summary.set_lines(2);
-        summary.set_max_width_chars(POPUP_SUMMARY_MAX_CHARS as i32);
-        summary.add_css_class("unixnotis-popup-summary");
-        update_optional_label(&summary, &notification.summary, POPUP_SUMMARY_MAX_CHARS);
-
-        // Body follows the same bounded layout rules as the summary
-        let body = gtk::Label::new(None);
-        body.set_xalign(0.0);
-        body.set_wrap(true);
-        body.set_wrap_mode(WrapMode::WordChar);
-        body.set_ellipsize(EllipsizeMode::End);
-        body.set_lines(3);
-        body.set_max_width_chars(POPUP_BODY_MAX_CHARS as i32);
-        body.add_css_class("unixnotis-popup-body");
-        update_optional_label(&body, &notification.body, POPUP_BODY_MAX_CHARS);
-
-        // Text rows stay beside the badge so compact cards do not grow around empty icon space
-        content.append(&header);
-        content.append(&source);
-        content.append(&summary);
-        content.append(&body);
-
-        if let Some(image) = self.build_content_image_widget(notification) {
-            // Caller content stays in the body and never becomes the application badge
-            set_class_state(&root, hooks::popup_card::HAS_IMAGE, true);
-            image.set_halign(Align::Start);
-            image.add_css_class("unixnotis-popup-content-image");
-            content.append(&image);
-        }
-        main.append(&content);
-        root.append(&main);
-
-        // Action buttons are only built when the payload exposes actions
-        if has_popup_actions {
-            let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-            actions.add_css_class("unixnotis-popup-actions");
-            for action in notification
-                .actions
-                .iter()
-                .filter(|action| popup_action_is_visible(action))
-                .take(MAX_POPUP_ACTIONS)
-            {
-                // Button labels are clamped before GTK measures them
-                let button = gtk::Button::with_label(
-                    clamp_label_text(&action.label, POPUP_ACTION_LABEL_MAX_CHARS).as_ref(),
-                );
-                button.add_css_class("unixnotis-popup-action");
-                let action_key = action.key.clone();
-                let tx = self.command_tx.clone();
-                let id = notification.id;
-                button.connect_clicked(move |_| {
-                    // Click handlers only enqueue the DBus command
-                    try_send_command(
-                        &tx,
-                        UiCommand::InvokeAction {
-                            id,
-                            action_key: action_key.clone(),
-                        },
-                    );
-                });
-                actions.append(&button);
-            }
+        if let Some(actions) = build_action_row(&self.command_tx, notification.id, &view) {
             root.append(&actions);
         }
 
-        // Close still targets the notification id even when the row is rebuilt
-        let id = notification.id;
-        let command_tx_close = self.command_tx.clone();
-        close.connect_clicked(move |_| {
-            try_send_command(&command_tx_close, UiCommand::Dismiss(id));
-        });
-
-        // Default action still fires from the rebuilt card body
-        let default_action = notification
-            .actions
-            .iter()
-            .find(|action| action.key == "default")
-            .map(|action| action.key.clone());
-        if let Some(action_key) = default_action {
-            let gesture = gtk::GestureClick::new();
-            // Default card actions only belong to plain card clicks
-            // Real buttons should keep their own handlers without also triggering the card action
-            gesture.set_button(1);
-            let root_weak = root.downgrade();
-            let tx = self.command_tx.clone();
-            gesture.connect_released(move |_, _, x, y| {
-                let Some(root) = root_weak.upgrade() else {
-                    return;
-                };
-                if picked_widget_blocks_default_action(root.pick(x, y, gtk::PickFlags::DEFAULT)) {
-                    return;
-                }
-                // Card clicks mirror the default action button behavior
-                try_send_command(
-                    &tx,
-                    UiCommand::InvokeAction {
-                        id,
-                        action_key: action_key.clone(),
-                    },
-                );
-            });
-            root.add_controller(gesture);
-        }
-
+        connect_close_action(&close, notification.id, &self.command_tx);
+        connect_default_action(&root, notification.id, &view, &self.command_tx);
         root
     }
 
@@ -292,8 +97,7 @@ impl UiState {
         let popup_stack = self.popup_stack.clone();
         let popup_input_region = self.popup_input_region.clone();
         revealer.connect_notify_local(Some("child-revealed"), move |_, _| {
-            // The first popup can finish revealing after the only earlier refresh ran
-            // Refresh again here so action rows do not inherit an old empty region
+            // Refresh after reveal so action rows never inherit an earlier empty input region
             refresh_popup_input_region(&popup_window, &popup_stack, &popup_input_region);
         });
 
@@ -301,26 +105,90 @@ impl UiState {
     }
 }
 
-fn build_popup_header_spacer() -> gtk::Box {
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
-    // Spacer width takes up the slack so the trailing button does not drift
-    // Plain halign on the button is not enough inside a horizontal box
-    spacer.set_hexpand(popup_header_spacer_expands());
-    spacer
+fn build_card_root(state: &UiState, view: &PopupEntryViewModel) -> gtk::Box {
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    root.add_css_class("unixnotis-popup-card");
+    root.add_css_class(view.kind.css_class());
+    root.add_css_class(view.trust.level.css_class());
+
+    // Use the live stack width when a row is built or rebuilt
+    let popup_width = state
+        .popup_stack
+        .width()
+        .max(state.popup_stack.width_request())
+        .max(1);
+    root.set_size_request(popup_width, -1);
+    root.set_halign(Align::Fill);
+    root.set_hexpand(false);
+    // New roots stay hidden until visibility logic decides otherwise
+    root.set_visible(false);
+
+    if view.critical {
+        root.add_css_class(hooks::shared_state::CRITICAL);
+    }
+    set_class_state(
+        &root,
+        hooks::popup_card::HAS_SUMMARY,
+        !view.title.trim().is_empty(),
+    );
+    set_class_state(&root, hooks::popup_card::HAS_BODY, view.body.is_some());
+    set_class_state(
+        &root,
+        hooks::popup_card::HAS_ACTIONS,
+        !view.actions.is_empty(),
+    );
+    root
 }
 
-fn build_urgency_badge(is_critical: bool) -> gtk::Label {
-    let badge = gtk::Label::new(Some("Critical"));
-    // The widget stays in the tree so header composition remains stable across payload variants
-    badge.add_css_class(hooks::urgency::BADGE);
-    badge.set_single_line_mode(true);
-    badge.set_visible(is_critical);
-    badge
+fn connect_close_action(
+    close: &gtk::Button,
+    notification_id: u32,
+    command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
+) {
+    let command_tx = command_tx.clone();
+    close.connect_clicked(move |_| {
+        // Dismissal remains independent from application-owned action policy
+        try_send_command(&command_tx, UiCommand::Dismiss(notification_id));
+    });
 }
 
-pub(super) const fn popup_header_spacer_expands() -> bool {
-    // Keep the alignment rule easy to test without constructing full GTK rows
-    true
+fn connect_default_action(
+    root: &gtk::Box,
+    notification_id: u32,
+    view: &PopupEntryViewModel,
+    command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
+) {
+    let Some(action_key) = view
+        .actions
+        .iter()
+        .find(|action| action.key == "default")
+        .map(|action| action.key.clone())
+    else {
+        return;
+    };
+
+    let gesture = gtk::GestureClick::new();
+    // Default card actions only belong to plain card clicks
+    gesture.set_button(1);
+    let root_weak = root.downgrade();
+    let tx = command_tx.clone();
+    gesture.connect_released(move |_, _, x, y| {
+        let Some(root) = root_weak.upgrade() else {
+            return;
+        };
+        if picked_widget_blocks_default_action(root.pick(x, y, gtk::PickFlags::DEFAULT)) {
+            return;
+        }
+        // The presentation model already removed actions with weak provenance
+        try_send_command(
+            &tx,
+            UiCommand::InvokeAction {
+                id: notification_id,
+                action_key: action_key.clone(),
+            },
+        );
+    });
+    root.add_controller(gesture);
 }
 
 fn picked_widget_blocks_default_action(mut widget: Option<gtk::Widget>) -> bool {
@@ -336,11 +204,6 @@ fn picked_widget_blocks_default_action(mut widget: Option<gtk::Widget>) -> bool 
 fn widget_type_blocks_default_action(widget_type: gtk::glib::Type) -> bool {
     // Button clicks should always stay owned by the button widget subtree
     widget_type.is_a(gtk::Button::static_type())
-}
-
-fn popup_action_is_visible(action: &Action) -> bool {
-    // Inline reply needs a text field, so it is available in the panel instead of popup buttons
-    action.key != "inline-reply"
 }
 
 fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {

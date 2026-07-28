@@ -83,6 +83,7 @@ fn file_icon_resolution_enqueues_decodes_and_applies_the_worker_result() {
         urgency: 1,
         category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         image: NotificationImage {
             image_path: path.to_string_lossy().into_owned(),
             ..NotificationImage::default()

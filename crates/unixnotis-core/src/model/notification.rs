@@ -89,6 +89,8 @@ impl Notification {
             category: self.category.clone().unwrap_or_default(),
             // Center and popup policy both need the transient bit to stay in sync
             is_transient: self.is_transient,
+            // Relative popup time needs the original commit time after reconnect and seed
+            received_at_unix_seconds: self.received_at.timestamp(),
             // UIs only need the text, actions, and image payload used for rendering
             image: self.image.clone(),
             // Protocol flags and sender metadata stay daemon-side to keep D-Bus payloads small
@@ -112,6 +114,8 @@ impl Notification {
             category: self.category.clone().unwrap_or_default(),
             // History policy still depends on the transient bit in panel rows
             is_transient: self.is_transient,
+            // List and popup views use the same stable wall-clock timestamp
+            received_at_unix_seconds: self.received_at.timestamp(),
             // List rows should avoid carrying raw image buffers across D-Bus
             image: self.image.for_listing(),
             // Protocol flags and sender metadata stay daemon-side to keep D-Bus payloads small
@@ -314,7 +318,7 @@ pub struct NotificationView {
     // Generation identifies the exact same-ID payload represented by this view
     pub generation: u64,
     // Lightweight fields used for UI display and filtering
-    // Intentionally omits daemon-only protocol flags and timestamps
+    // Intentionally omits daemon-only protocol flags and full timestamp objects
     pub app_name: String,
     // Authenticated badge identity and any mismatched caller-supplied brand claim
     pub attribution: NotificationAttribution,
@@ -328,6 +332,8 @@ pub struct NotificationView {
     pub category: String,
     // Close handling needs this flag so history policy stays shared
     pub is_transient: bool,
+    // Unix seconds preserve the original receipt time across UI reconnects
+    pub received_at_unix_seconds: i64,
     // Image metadata intended for UI usage
     pub image: NotificationImage,
 }

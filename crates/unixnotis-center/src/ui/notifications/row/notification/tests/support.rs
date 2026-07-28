@@ -31,6 +31,7 @@ pub(super) fn sample_notification() -> NotificationView {
         urgency: Urgency::Normal as u8,
         category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
     }
 }
