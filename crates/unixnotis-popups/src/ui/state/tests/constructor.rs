@@ -56,6 +56,7 @@ fn popup_entry_uses_the_configured_cut_corner_primitive() {
         inline_reply: unixnotis_core::InlineReply::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
+        category: String::new(),
         is_transient: false,
         image: NotificationImage::default(),
     };
@@ -127,6 +128,7 @@ fn critical_popup_probe_builds_the_root_class_and_badge() {
         inline_reply: unixnotis_core::InlineReply::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         urgency: Urgency::Critical as u8,
+        category: String::new(),
         is_transient: false,
         image: NotificationImage::default(),
     };
@@ -140,6 +142,55 @@ fn critical_popup_probe_builds_the_root_class_and_badge() {
     ));
 }
 
+#[gtk::test]
+fn unknown_attribution_builds_a_visible_unverified_state() {
+    let app = gtk::Application::builder()
+        .application_id("org.unixnotis.PopupUnverifiedProbe")
+        .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    app.register(None::<&gtk::gio::Cancellable>)
+        .expect("register popup unverified probe application");
+    let config = Config::default();
+    let config_root = std::env::temp_dir().join("unixnotis-popup-unverified-probe");
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let css = CssManager::new_popup(theme_paths(&config_root), config.theme.clone());
+    let mut state = UiState::new(
+        &app,
+        config,
+        config_root.join("config.toml"),
+        command_tx,
+        css,
+    );
+    let notification = NotificationView {
+        id: 3,
+        generation: 3,
+        app_name: "Signal".to_string(),
+        attribution: unixnotis_core::NotificationAttribution {
+            display_name: "Unverified application".to_string(),
+            source_label: "Claims to be Signal".to_string(),
+            class: unixnotis_core::AttributionClass::Unknown,
+            ..unixnotis_core::NotificationAttribution::default()
+        },
+        summary: "John Doe".to_string(),
+        body: "Are you free later?".to_string(),
+        actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+        urgency: Urgency::Normal as u8,
+        category: String::new(),
+        is_transient: false,
+        image: NotificationImage::default(),
+    };
+
+    let root = state.build_popup_root(&notification);
+
+    assert!(root.has_css_class("unverified"));
+    assert!(visible_descendant_has_text(
+        root.upcast_ref(),
+        "Claims to be Signal"
+    ));
+}
+
 fn visible_descendant_has_class(widget: &gtk::Widget, class_name: &str) -> bool {
     let mut child = widget.first_child();
     while let Some(current) = child {
@@ -147,6 +198,23 @@ fn visible_descendant_has_class(widget: &gtk::Widget, class_name: &str) -> bool 
             return true;
         }
         if visible_descendant_has_class(&current, class_name) {
+            return true;
+        }
+        child = current.next_sibling();
+    }
+    false
+}
+
+fn visible_descendant_has_text(widget: &gtk::Widget, expected: &str) -> bool {
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if current
+            .downcast_ref::<gtk::Label>()
+            .is_some_and(|label| label.get_visible() && label.text() == expected)
+        {
+            return true;
+        }
+        if visible_descendant_has_text(&current, expected) {
             return true;
         }
         child = current.next_sibling();

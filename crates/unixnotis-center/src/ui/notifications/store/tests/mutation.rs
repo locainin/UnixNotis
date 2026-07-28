@@ -22,6 +22,7 @@ fn make_view(is_transient: bool) -> NotificationView {
         inline_reply: unixnotis_core::InlineReply::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
+        category: String::new(),
         is_transient,
         image: NotificationImage::default(),
     }
@@ -43,6 +44,7 @@ fn view(id: u32, app_name: &str, is_transient: bool) -> NotificationView {
         inline_reply: unixnotis_core::InlineReply::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
+        category: String::new(),
         is_transient,
         image: NotificationImage::default(),
     }

@@ -25,7 +25,7 @@ impl Default for PopupConfig {
             margin: Margins::default(),
             width: 360,
             spacing: 12,
-            max_visible: 4,
+            max_visible: 3,
             default_timeout_ms: 5000,
             critical_timeout_ms: None,
             allow_click_through: false,

@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use gtk::prelude::*;
 
 // Header/app title stays single-line and clipped at this length
-pub(super) const POPUP_APP_MAX_CHARS: usize = 40;
+pub(super) const POPUP_APP_MAX_CHARS: usize = 64;
 // Summary is visually dominant but still bounded to avoid tall cards
 pub(super) const POPUP_SUMMARY_MAX_CHARS: usize = 120;
 // Body keeps enough context while preventing oversized popup growth

@@ -70,6 +70,7 @@ pub(super) fn notification(id: u32, app_name: &str) -> NotificationView {
         inline_reply: unixnotis_core::InlineReply::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
+        category: String::new(),
         is_transient: false,
         image: NotificationImage::default(),
     }

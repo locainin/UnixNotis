@@ -18,6 +18,7 @@ fn make_view(id: u32, urgency: Urgency, summary: &str) -> NotificationView {
         inline_reply: unixnotis_core::InlineReply::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: urgency as u8,
+        category: String::new(),
         is_transient: false,
         image: NotificationImage::default(),
     }
