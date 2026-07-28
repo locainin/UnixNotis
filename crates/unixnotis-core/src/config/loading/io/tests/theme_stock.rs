@@ -106,7 +106,7 @@ fn matching_existing_backup_allows_a_retried_migration() {
 }
 
 #[test]
-fn conflicting_existing_backup_prevents_replacement() {
+fn conflicting_existing_backup_uses_a_new_suffix_without_overwriting() {
     let root = test_root("stock-migration-backup-conflict");
     fs::create_dir_all(&root).expect("theme root");
     let target = root.join("panel.css");
@@ -114,13 +114,20 @@ fn conflicting_existing_backup_prevents_replacement() {
     fs::write(&target, OLD_STOCK).expect("legacy stock");
     fs::write(&backup, b"custom backup").expect("conflicting stock backup");
 
-    let result = migrate(&target, OLD_STOCK);
+    let migrated = migrate(&target, OLD_STOCK).expect("collision-safe migration");
+    let mut fallback_name = backup.as_os_str().to_os_string();
+    fallback_name.push(".1");
+    let fallback = std::path::PathBuf::from(fallback_name);
 
-    assert!(result.is_err());
-    assert_eq!(fs::read(&target).expect("legacy stock"), OLD_STOCK);
+    assert!(migrated);
+    assert_eq!(fs::read(&target).expect("current stock"), CURRENT_STOCK);
     assert_eq!(
         fs::read(&backup).expect("conflicting stock backup"),
         b"custom backup"
+    );
+    assert_eq!(
+        fs::read(fallback).expect("fallback stock backup"),
+        OLD_STOCK
     );
     let _ = fs::remove_dir_all(root);
 }
