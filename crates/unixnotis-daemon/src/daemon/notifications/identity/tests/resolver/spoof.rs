@@ -102,6 +102,10 @@ fn basename_spoof_is_conflicting_and_cannot_join_or_reply_as_signal() {
 
     assert_eq!(resolution.attribution.class, AttributionClass::Conflict);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    assert_eq!(
+        resolution.diagnostics.verification,
+        LaunchVerificationView::DefinitiveMismatch
+    );
     assert_ne!(
         resolution.attribution.group_key,
         "desktop:org.signal.Signal"

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use unixnotis_core::{
     Action, AttributionClass, CloseReason, Config, InlineReply, InlineReplyPolicy,
-    NotificationAttribution,
+    NotificationAttribution, PopupAdmissionView,
 };
 
 use crate::store::test_support::{make_notification, make_store_with_limits};
@@ -46,7 +46,7 @@ fn popup_candidate_pairs_rule_suppression_with_replacement_generation() {
 
     assert_eq!(candidate.notification.generation, replacement.generation);
     assert_eq!(candidate.notification.summary, "rule suppressed");
-    assert!(!candidate.should_show);
+    assert_eq!(candidate.admission, PopupAdmissionView::Rule);
 }
 
 #[test]
@@ -64,7 +64,37 @@ fn popup_candidate_pairs_dnd_suppression_with_replacement_generation() {
 
     assert_eq!(candidate.notification.generation, replacement.generation);
     assert_eq!(candidate.notification.summary, "dnd suppressed");
-    assert!(!candidate.should_show);
+    assert_eq!(candidate.admission, PopupAdmissionView::Dnd);
+}
+
+#[test]
+fn notification_diagnostics_report_renderer_and_store_admission_separately() {
+    let mut store = make_store_with_limits(10, 10);
+    let visible = store.insert(make_notification("visible"), 0).notification;
+    let unavailable = store
+        .notification_diagnostics(visible.id, &unixnotis_core::UiHealth::default())
+        .expect("active notification diagnostics");
+
+    assert_eq!(
+        unavailable.popup_admission,
+        PopupAdmissionView::RendererUnavailable
+    );
+    assert!(!unavailable.renderer_process_running);
+    assert!(!unavailable.renderer_ready);
+
+    store.set_dnd(true);
+    let ready = unixnotis_core::UiHealth {
+        popups_process_running: true,
+        popups_ready: true,
+        ..unixnotis_core::UiHealth::default()
+    };
+    let suppressed = store
+        .notification_diagnostics(visible.id, &ready)
+        .expect("DND diagnostics");
+
+    assert_eq!(suppressed.popup_admission, PopupAdmissionView::Dnd);
+    assert!(suppressed.renderer_process_running);
+    assert!(suppressed.renderer_ready);
 }
 
 #[test]

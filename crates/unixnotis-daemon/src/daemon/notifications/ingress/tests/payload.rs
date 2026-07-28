@@ -31,6 +31,7 @@ fn build_notification_clamps_summary_and_body_sizes() {
             ..SenderMetadata::default()
         },
         attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         expire_timeout: 0,
     });
@@ -57,6 +58,7 @@ fn build_notification_strips_display_spoofing_controls() {
             ..SenderMetadata::default()
         },
         attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         expire_timeout: 0,
     });
@@ -103,6 +105,7 @@ fn build_notification_collects_inline_reply_action_and_kde_labels() {
             false,
             "desktop:org.example.Messages".to_string(),
         ),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         expire_timeout: 0,
     });
@@ -133,6 +136,7 @@ fn build_notification_keeps_protocol_reply_metadata_separate_from_denied_policy(
             "source /usr/bin/unknown-client",
             "executable:1:2".to_string(),
         ),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         expire_timeout: 0,
     });
@@ -165,6 +169,7 @@ fn build_notification_keeps_unknown_sender_reply_policy_denied() {
             "",
             "unknown:messages".to_string(),
         ),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         expire_timeout: 0,
     });
@@ -199,6 +204,7 @@ fn build_notification_ignores_reply_hints_without_explicit_action() {
         hints,
         sender: SenderMetadata::default(),
         attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         expire_timeout: 0,
     });
@@ -311,6 +317,7 @@ fn resolve_expiration_respects_protocol_and_config_rules() {
         app_name: "app".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         summary: "summary".to_string(),
         body: String::new(),
         actions: Vec::new(),
@@ -366,6 +373,7 @@ fn resolve_expiration_treats_positive_timeout_as_caller_owned_even_when_default_
         app_name: "app".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         summary: "summary".to_string(),
         body: String::new(),
         actions: Vec::new(),

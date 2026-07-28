@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use unixnotis_core::{AttributionClass, InlineReplyPolicy};
+use unixnotis_core::{
+    AttributionClass, CommandLineQualityView, InlineReplyPolicy, LaunchAuthorityView,
+    LaunchVerificationView,
+};
 
 use super::*;
 use crate::daemon::notifications::identity::desktop_index::model::{

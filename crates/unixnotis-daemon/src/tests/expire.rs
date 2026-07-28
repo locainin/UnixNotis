@@ -323,6 +323,7 @@ fn make_notification(summary: &str) -> Notification {
         app_name: "TestApp".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         summary: summary.to_string(),
         body: String::new(),
         actions: Vec::new(),

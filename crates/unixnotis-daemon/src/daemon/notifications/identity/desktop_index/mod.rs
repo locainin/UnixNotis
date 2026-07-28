@@ -13,7 +13,7 @@ mod wrappers;
 
 pub use model::DesktopIdentityIndex;
 pub(super) use model::DesktopRecord;
-pub(super) use model::{LaunchFailure, LaunchVerification};
+pub(super) use model::{LaunchFailure, LaunchVerification, VerifiedLaunch};
 pub(super) use names::{normalize_desktop_id, normalize_name};
 pub use refresh::spawn_desktop_index_refresh;
 pub use scan::DesktopIndexSnapshot;

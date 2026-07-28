@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use zbus::zvariant::{OwnedValue, Type};
 
 use super::attribution::{InlineReplyPolicy, NotificationAttribution};
+use super::diagnostics::AttributionDiagnostics;
 use super::image::NotificationImage;
 use super::reply::InlineReply;
 use super::types::{Action, Urgency};
@@ -31,6 +32,8 @@ pub struct Notification {
     pub app_icon: String,
     // Daemon-resolved application association stays stable for the notification lifetime
     pub attribution: NotificationAttribution,
+    // Structured evidence is retained for authenticated explanation requests
+    pub attribution_diagnostics: AttributionDiagnostics,
     // User-facing content as provided by the sender
     pub summary: String,
     pub body: String,
@@ -135,6 +138,7 @@ impl Notification {
             app_name: self.app_name.clone(),
             app_icon: self.app_icon.clone(),
             attribution: self.attribution.clone(),
+            attribution_diagnostics: self.attribution_diagnostics.clone(),
             summary: self.summary.clone(),
             body: self.body.clone(),
             actions: self.actions.clone(),

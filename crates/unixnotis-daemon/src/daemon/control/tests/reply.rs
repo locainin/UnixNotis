@@ -286,6 +286,7 @@ fn reply_notification(is_resident: bool, sender: &Connection) -> Notification {
         app_name: "Messages".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         summary: "New message".to_string(),
         body: "Are you coming?".to_string(),
         actions: vec![unixnotis_core::Action {

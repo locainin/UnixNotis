@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use indexmap::IndexMap;
-use unixnotis_core::{Config, Notification, NotificationKey};
+use unixnotis_core::{Config, Notification, NotificationKey, PopupAdmissionView};
 
 use super::dnd::DndStateStore;
 use super::inhibitors::Inhibitor;
@@ -72,6 +72,17 @@ pub enum PopupAdmission {
 impl PopupAdmission {
     pub const fn should_show(self) -> bool {
         matches!(self, Self::Show)
+    }
+
+    pub const fn to_view(self) -> PopupAdmissionView {
+        match self {
+            Self::Show => PopupAdmissionView::Show,
+            Self::Suppressed(PopupSuppressionReason::Rule) => PopupAdmissionView::Rule,
+            Self::Suppressed(PopupSuppressionReason::Dnd) => PopupAdmissionView::Dnd,
+            Self::Suppressed(
+                PopupSuppressionReason::Inhibitor | PopupSuppressionReason::DropAllInhibitor,
+            ) => PopupAdmissionView::Inhibitor,
+        }
     }
 }
 

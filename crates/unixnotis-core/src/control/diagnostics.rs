@@ -1,0 +1,21 @@
+//! Read-only notification explanation returned by the control service
+
+use serde::{Deserialize, Serialize};
+use zbus::zvariant::Type;
+
+use crate::AttributionDiagnostics;
+
+use super::PopupAdmissionView;
+
+/// One active notification and the state that controls its popup rendering
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct NotificationDiagnosticsView {
+    pub id: u32,
+    pub generation: u64,
+    pub stored: bool,
+    pub attribution: AttributionDiagnostics,
+    pub popup_admission: PopupAdmissionView,
+    pub renderer_process_running: bool,
+    pub renderer_ready: bool,
+    pub configured_max_visible: u32,
+}

@@ -29,6 +29,7 @@ fn notification_with_image(image: NotificationImage) -> Notification {
             false,
             "desktop:org.example.Mail".to_string(),
         ),
+        attribution_diagnostics: crate::AttributionDiagnostics::default(),
         summary: "Subject".to_string(),
         body: "Body".to_string(),
         actions: vec![Action {

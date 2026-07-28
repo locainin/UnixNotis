@@ -4,7 +4,8 @@ use std::sync::Arc;
 use indexmap::IndexMap;
 use tracing::{debug, warn};
 use unixnotis_core::{
-    ApplicationActionPolicy, Config, ControlState, Notification, NotificationView, PopupCandidate,
+    ApplicationActionPolicy, Config, ControlState, Notification, NotificationDiagnosticsView,
+    NotificationView, PopupAdmissionView, PopupCandidate, UiHealth,
 };
 
 use super::dnd::{DndStateStore, DND_STATE_VERSION};
@@ -140,7 +141,35 @@ impl NotificationStore {
         let notification = self.active.get(&id)?;
         Some(PopupCandidate {
             notification: notification.to_view(),
-            should_show: self.popup_admission(notification).should_show(),
+            admission: self.popup_admission(notification).to_view(),
+        })
+    }
+
+    pub fn notification_diagnostics(
+        &self,
+        id: u32,
+        ui_health: &UiHealth,
+    ) -> Option<NotificationDiagnosticsView> {
+        let notification = self.active.get(&id)?;
+        let stored_admission = self.popup_admission(notification).to_view();
+        let popup_admission = if stored_admission != PopupAdmissionView::Show {
+            stored_admission
+        } else if ui_health.popups_process_running && ui_health.popups_ready {
+            PopupAdmissionView::Show
+        } else {
+            PopupAdmissionView::RendererUnavailable
+        };
+
+        Some(NotificationDiagnosticsView {
+            id,
+            generation: notification.generation,
+            stored: true,
+            attribution: notification.attribution_diagnostics.clone(),
+            popup_admission,
+            renderer_process_running: ui_health.popups_process_running,
+            renderer_ready: ui_health.popups_ready,
+            configured_max_visible: u32::try_from(self.config.popups.max_visible)
+                .unwrap_or(u32::MAX),
         })
     }
 

@@ -2,17 +2,24 @@
 
 use std::collections::HashSet;
 
-use unixnotis_core::{AttributionClass, InlineReplyPolicy, NotificationAttribution};
+use unixnotis_core::{
+    AttributionClass, AttributionDiagnostics, InlineReplyPolicy, NotificationAttribution,
+    RecordTrust,
+};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
 use super::desktop_index::{
     normalize_desktop_id, normalize_name, verify_record_launch, DesktopIdentityIndex,
-    DesktopRecord, LaunchFailure, LaunchVerification,
+    DesktopRecord, LaunchFailure, LaunchVerification, VerifiedLaunch,
 };
 use super::executable::{executable_evidence_for_path, FileIdentity};
 use super::policy::inline_reply_policy;
 use super::sender::{refresh_sender_security_evidence, SenderMetadata};
+
+mod diagnostics;
+
+use diagnostics::{launch_failure_label, with_diagnostics};
 
 const MAX_DESKTOP_ID_BYTES: usize = 256;
 
@@ -24,11 +31,12 @@ pub(in crate::daemon) struct AppClaim<'a> {
 
 pub(in crate::daemon) struct AttributionResolution {
     pub(in crate::daemon) attribution: NotificationAttribution,
+    pub(in crate::daemon) diagnostics: AttributionDiagnostics,
     pub(in crate::daemon) inline_reply_policy: InlineReplyPolicy,
 }
 
 #[derive(Clone, Copy)]
-struct VerifiedDesktopRecord<'record>(&'record DesktopRecord);
+struct VerifiedDesktopRecord<'record>(&'record DesktopRecord, VerifiedLaunch);
 
 #[derive(Clone, Copy)]
 struct CandidateVerification<'record> {
@@ -45,14 +53,22 @@ pub(in crate::daemon) fn unknown_reply_denied(
         || reason.to_string(),
         |path| format!("{reason}; source {path}"),
     );
-    AttributionResolution {
+    let resolution = AttributionResolution {
         attribution: NotificationAttribution::unknown(
             claim.reported_name,
             &source,
             unknown_group_key(claim.reported_name, sender),
         ),
+        diagnostics: AttributionDiagnostics::default(),
         inline_reply_policy: InlineReplyPolicy::Deny,
-    }
+    };
+    with_diagnostics(
+        resolution,
+        claim,
+        sender,
+        None,
+        LaunchVerification::InsufficientEvidence(LaunchFailure::MissingCommandLine),
+    )
 }
 
 pub(in crate::daemon) async fn resolve_attribution(
@@ -95,7 +111,16 @@ fn resolve_with_evidence(
         && trusted_portal_path(sender, index).is_some()
     {
         // Portal backends forward a broker-verified app id as desktop-entry
-        return resolution_for_portal_record(hint_records[0], sender, index);
+        let mut resolution = with_diagnostics(
+            resolution_for_portal_record(hint_records[0], sender, index),
+            claim,
+            sender,
+            Some(hint_records[0]),
+            LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable),
+        );
+        resolution.diagnostics.record_trust = RecordTrust::Portal;
+        resolution.diagnostics.reason = "verified portal application identity".to_string();
+        return resolution;
     }
 
     // Hint and live-executable candidates are evaluated together so weak metadata cannot win early
@@ -112,27 +137,29 @@ fn resolve_with_evidence(
         })
         .collect::<Vec<_>>();
     if let Some(record) = strongest_verified_result(&results, claim.reported_name) {
-        return resolution_for_record(record, claim.reported_name, sender, index);
+        return with_diagnostics(
+            resolution_for_record(record, claim.reported_name, sender, index),
+            claim,
+            sender,
+            Some(record.0),
+            LaunchVerification::Verified(record.1),
+        );
     }
 
-    if let Some(identity) = sender.sender_executable_identity {
-        if let Some(path) = index.trusted_relay_path(identity) {
-            // Relay groups include both relay identity and the relayed claim
-            let group_key = format!(
-                "relay:{}:{}",
-                identity.group_fragment(),
-                normalize_name(claim.reported_name)
-            );
-            let attribution = NotificationAttribution::trusted_relay(
-                claim.reported_name,
-                &format!("Sent via {}", path.display()),
-                index.claim_matches_system_app(claim.reported_name),
-                group_key,
-            );
-            return policy_resolution(attribution);
-        }
+    if let Some(resolution) = trusted_relay_resolution(claim, sender, index) {
+        return resolution;
     }
 
+    resolve_unverified_candidates(claim, sender, index, &hint_records, &results)
+}
+
+fn resolve_unverified_candidates(
+    claim: AppClaim<'_>,
+    sender: &SenderMetadata,
+    index: &DesktopIdentityIndex,
+    hint_records: &[&DesktopRecord],
+    results: &[CandidateVerification<'_>],
+) -> AttributionResolution {
     let hint_is_definitive = !hint_records.is_empty()
         && results
             .iter()
@@ -148,18 +175,19 @@ fn resolve_with_evidence(
             && result.is_definitive_mismatch()
     });
     if hint_is_definitive || matching_system_is_definitive {
-        return conflict_resolution(
-            claim.reported_name,
+        let mismatch = results
+            .iter()
+            .find(|result| result.is_definitive_mismatch());
+        let failure = mismatch.map_or(
+            LaunchFailure::DesktopClaimMismatch,
+            CandidateVerification::failure,
+        );
+        return with_diagnostics(
+            conflict_resolution(claim.reported_name, sender, launch_failure_label(failure)),
+            claim,
             sender,
-            launch_failure_label(
-                results
-                    .iter()
-                    .find(|result| result.is_definitive_mismatch())
-                    .map_or(
-                        LaunchFailure::DesktopClaimMismatch,
-                        CandidateVerification::failure,
-                    ),
-            ),
+            mismatch.map(|result| result.record),
+            LaunchVerification::DefinitiveMismatch(failure),
         );
     }
 
@@ -174,7 +202,13 @@ fn resolve_with_evidence(
         && !matching_claim_has_insufficient_evidence
     {
         // Protected branding without the matching executable is an explicit conflict
-        return conflict_resolution(claim.reported_name, sender, "executable identity mismatch");
+        return with_diagnostics(
+            conflict_resolution(claim.reported_name, sender, "executable identity mismatch"),
+            claim,
+            sender,
+            None,
+            LaunchVerification::DefinitiveMismatch(LaunchFailure::ExecutableMismatch),
+        );
     }
 
     let source = sender
@@ -183,11 +217,57 @@ fn resolve_with_evidence(
         .map(|path| format!("Source: {path}"))
         .unwrap_or_default();
     let group_key = unknown_group_key(claim.reported_name, sender);
-    policy_resolution(NotificationAttribution::unknown(
+    let insufficient = results.iter().find(|result| {
+        result.record.claim_matches(claim.reported_name)
+            && matches!(
+                result.verification,
+                LaunchVerification::InsufficientEvidence(_)
+            )
+    });
+    with_diagnostics(
+        policy_resolution(NotificationAttribution::unknown(
+            claim.reported_name,
+            &source,
+            group_key,
+        )),
+        claim,
+        sender,
+        insufficient.map(|result| result.record),
+        insufficient.map_or(
+            LaunchVerification::InsufficientEvidence(LaunchFailure::AmbiguousDesktopAssociation),
+            |result| result.verification,
+        ),
+    )
+}
+
+fn trusted_relay_resolution(
+    claim: AppClaim<'_>,
+    sender: &SenderMetadata,
+    index: &DesktopIdentityIndex,
+) -> Option<AttributionResolution> {
+    let identity = sender.sender_executable_identity?;
+    let path = index.trusted_relay_path(identity)?;
+    // Relay groups include both relay identity and the relayed claim
+    let group_key = format!(
+        "relay:{}:{}",
+        identity.group_fragment(),
+        normalize_name(claim.reported_name)
+    );
+    let attribution = NotificationAttribution::trusted_relay(
         claim.reported_name,
-        &source,
+        &format!("Sent via {}", path.display()),
+        index.claim_matches_system_app(claim.reported_name),
         group_key,
-    ))
+    );
+    let mut resolution = with_diagnostics(
+        policy_resolution(attribution),
+        claim,
+        sender,
+        None,
+        LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable),
+    );
+    resolution.diagnostics.reason = "verified trusted relay executable".to_string();
+    Some(resolution)
 }
 
 impl CandidateVerification<'_> {
@@ -230,7 +310,10 @@ fn strongest_verified_result<'record>(
             return None;
         }
     }
-    Some(VerifiedDesktopRecord(preferred.record))
+    let LaunchVerification::Verified(launch) = preferred.verification else {
+        return None;
+    };
+    Some(VerifiedDesktopRecord(preferred.record, launch))
 }
 
 const fn record_trust_rank(record: &DesktopRecord) -> u8 {
@@ -238,20 +321,6 @@ const fn record_trust_rank(record: &DesktopRecord) -> u8 {
         2
     } else {
         1
-    }
-}
-
-const fn launch_failure_label(reason: LaunchFailure) -> &'static str {
-    match reason {
-        LaunchFailure::MissingCommandLine => "missing command-line evidence",
-        LaunchFailure::UnstructuredCommandLine => "unstructured command-line evidence",
-        LaunchFailure::UnsupportedWrapper => "unsupported launch wrapper",
-        LaunchFailure::AmbiguousDesktopAssociation => "ambiguous desktop association",
-        LaunchFailure::DynamicOnlyContract => "dynamic-only launch contract",
-        LaunchFailure::ExecutableMismatch => "executable identity mismatch",
-        LaunchFailure::ProtectedPayloadMismatch => "protected application payload mismatch",
-        LaunchFailure::RequiredArgumentMismatch => "required launch argument mismatch",
-        LaunchFailure::DesktopClaimMismatch => "desktop claim mismatch",
     }
 }
 
@@ -360,11 +429,12 @@ fn conflict_resolution(
     ))
 }
 
-const fn policy_resolution(attribution: NotificationAttribution) -> AttributionResolution {
+fn policy_resolution(attribution: NotificationAttribution) -> AttributionResolution {
     // Interaction policy remains separate so presentation changes cannot enable replies
     AttributionResolution {
         inline_reply_policy: inline_reply_policy(attribution.class),
         attribution,
+        diagnostics: AttributionDiagnostics::default(),
     }
 }
 
