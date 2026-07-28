@@ -4,7 +4,8 @@ use std::fs;
 use std::io;
 
 use super::super::theme_stock::{
-    migrate_known_stock_file, migrate_stock_file_with_writer, stock_backup_path,
+    migrate_known_stock_file, migrate_stock_file_with_writer, replace_file_if_snapshot_matches,
+    stock_backup_path,
 };
 use super::support::test_root;
 
@@ -73,7 +74,7 @@ fn interrupted_replacement_keeps_complete_legacy_file_and_backup() {
         CURRENT_STOCK,
         &digest,
         BACKUP_TAG,
-        |_path, _contents| {
+        |_path, _contents, _snapshot| {
             Err(io::Error::new(
                 io::ErrorKind::Interrupted,
                 "test interruption",
@@ -83,6 +84,35 @@ fn interrupted_replacement_keeps_complete_legacy_file_and_backup() {
 
     assert!(result.is_err());
     assert_eq!(fs::read(&target).expect("legacy stock"), OLD_STOCK);
+    let backup = stock_backup_path(&target, BACKUP_TAG).expect("backup path");
+    assert_eq!(fs::read(backup).expect("stock backup"), OLD_STOCK);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn file_edited_after_backup_is_preserved_instead_of_migrated() {
+    let root = test_root("stock-migration-concurrent-edit");
+    fs::create_dir_all(&root).expect("theme root");
+    let target = root.join("panel.css");
+    fs::write(&target, OLD_STOCK).expect("legacy stock");
+    let digest = blake3::hash(OLD_STOCK).to_hex().to_string();
+    let edited = b"/* user edit during migration */\n";
+
+    let migrated = migrate_stock_file_with_writer(
+        &target,
+        CURRENT_STOCK,
+        &digest,
+        BACKUP_TAG,
+        |path, contents, snapshot| {
+            // This hook models an editor winning the race after the backup completes
+            fs::write(path, edited)?;
+            replace_file_if_snapshot_matches(path, contents, snapshot)
+        },
+    )
+    .expect("concurrent migration check");
+
+    assert!(!migrated);
+    assert_eq!(fs::read(&target).expect("edited theme"), edited);
     let backup = stock_backup_path(&target, BACKUP_TAG).expect("backup path");
     assert_eq!(fs::read(backup).expect("stock backup"), OLD_STOCK);
     let _ = fs::remove_dir_all(root);
