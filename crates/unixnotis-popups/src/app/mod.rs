@@ -2,6 +2,7 @@
 
 mod command;
 mod reload;
+pub mod resources;
 mod runtime;
 mod startup;
 

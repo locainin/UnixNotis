@@ -7,3 +7,4 @@ mod labels;
 mod presentation;
 
 pub(in crate::ui) use build::PopupEntry;
+pub(in crate::ui) use presentation::TrustLevel;

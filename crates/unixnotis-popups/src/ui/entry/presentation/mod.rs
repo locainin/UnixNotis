@@ -5,7 +5,8 @@ mod trust;
 mod view_model;
 
 pub(in crate::ui::entry) use kind::PopupKind;
-pub(in crate::ui::entry) use trust::{PopupTrustPresentation, ReplyPresentation, TrustLevel};
+pub(in crate::ui) use trust::TrustLevel;
+pub(in crate::ui::entry) use trust::{PopupTrustPresentation, ReplyPresentation};
 pub(in crate::ui::entry) use view_model::{ActionViewModel, PopupEntryViewModel, ThumbnailKind};
 
 #[cfg(test)]
