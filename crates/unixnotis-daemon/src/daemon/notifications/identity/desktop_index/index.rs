@@ -4,7 +4,7 @@ use std::path::Path;
 
 use super::super::executable::{executable_evidence_for_path, FileIdentity};
 use super::model::{DesktopIdentityIndex, DesktopRecord, ExecutableIdentity};
-use super::names::{normalize_brand_name, normalize_desktop_id};
+use super::names::{is_shared_launcher, normalize_brand_name, normalize_desktop_id};
 
 impl DesktopIdentityIndex {
     pub(in crate::daemon::notifications::identity) fn records_for_id(
@@ -31,6 +31,28 @@ impl DesktopIdentityIndex {
             .flatten()
             .filter_map(|index| self.records.get(*index))
             .collect()
+    }
+
+    pub(in crate::daemon::notifications::identity) fn requires_launch_arguments(
+        &self,
+        record: &DesktopRecord,
+    ) -> bool {
+        let Some(identity) = record.executable_identity else {
+            return true;
+        };
+        let Some(path) = record.executable_path.as_deref() else {
+            return true;
+        };
+        // Generic runtimes need their fixed payload because the binary is not the application
+        if is_shared_launcher(path) {
+            return true;
+        }
+
+        let record_id = normalize_desktop_id(&record.id);
+        // One binary serving distinct desktop applications needs argv to select the right record
+        self.records_for_executable(identity)
+            .iter()
+            .any(|candidate| normalize_desktop_id(&candidate.id) != record_id)
     }
 
     pub(in crate::daemon::notifications::identity) fn claim_matches_system_app(

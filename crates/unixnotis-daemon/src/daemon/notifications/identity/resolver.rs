@@ -10,6 +10,7 @@ use super::desktop_index::{
     normalize_desktop_id, normalize_name, record_launch_matches, DesktopIdentityIndex,
     DesktopRecord,
 };
+use super::executable::{executable_evidence_for_path, FileIdentity};
 use super::policy::inline_reply_policy;
 use super::sender::SenderMetadata;
 
@@ -78,6 +79,7 @@ fn resolve_with_evidence(
 ) -> AttributionResolution {
     // An explicit desktop hint is accepted only when its executable is the sender file
     let desktop_entry = claim.desktop_entry.and_then(validate_desktop_id);
+    let mut desktop_hint_conflict = None;
     if let Some(desktop_id) = desktop_entry.as_deref() {
         let records = index.records_for_id(desktop_id);
         if !records.is_empty() {
@@ -92,7 +94,7 @@ fn resolve_with_evidence(
             }
             if let Some(record) = records
                 .iter()
-                .find_map(|record| verify_record_sender(record, sender))
+                .find_map(|record| verify_record_sender(record, sender, index))
             {
                 return resolution_for_record(record, claim.reported_name, sender, index);
             }
@@ -101,30 +103,25 @@ fn resolve_with_evidence(
                 .any(|record| owned_desktop_ids.contains(&normalize_desktop_id(&record.id)))
             {
                 // Session applications can request names, so ownership is context rather than proof
-                return conflict_resolution(
-                    claim.reported_name,
-                    sender,
-                    "bus name ownership lacks executable association",
-                );
+                desktop_hint_conflict = Some("bus name ownership lacks executable association");
+            } else {
+                // Packaging aliases may be stale, so exact executable evidence still gets a chance
+                desktop_hint_conflict = Some("desktop identity mismatch");
             }
-            return conflict_resolution(claim.reported_name, sender, "desktop identity mismatch");
         }
     }
 
     if let Some(identity) = sender.sender_executable_identity {
         // Exact file association is stronger than every caller-controlled application name
         let records = index.records_for_executable(identity);
-        if let Some(record) = records.iter().find_map(|record| {
-            record
-                .claim_matches(claim.reported_name)
-                .then(|| verify_record_sender(record, sender))
-                .flatten()
-        }) {
+        if let Some(record) =
+            verified_executable_record(&records, claim.reported_name, sender, index)
+        {
             return resolution_for_record(record, claim.reported_name, sender, index);
         }
         if records
             .iter()
-            .any(|record| record.system_association && record_matches_sender(record, sender))
+            .any(|record| record.system_association && record_matches_sender(record, sender, index))
         {
             // A known executable with a conflicting name must fail closed
             return conflict_resolution(claim.reported_name, sender, "application claim mismatch");
@@ -144,6 +141,10 @@ fn resolve_with_evidence(
             );
             return policy_resolution(attribution);
         }
+    }
+
+    if let Some(reason) = desktop_hint_conflict {
+        return conflict_resolution(claim.reported_name, sender, reason);
     }
 
     if index.claim_matches_system_app(claim.reported_name) {
@@ -197,7 +198,7 @@ fn resolution_for_record(
 ) -> AttributionResolution {
     let record = verified.0;
     // Display metadata is projected only after the record and sender identities agree
-    if !record.claim_matches(reported_name) {
+    if !reported_name.trim().is_empty() && !record.claim_matches(reported_name) {
         return conflict_resolution(reported_name, sender, "application claim mismatch");
     }
     let class = if record.system_association {
@@ -268,28 +269,92 @@ const fn policy_resolution(attribution: NotificationAttribution) -> AttributionR
     }
 }
 
-fn record_matches_sender(record: &DesktopRecord, sender: &SenderMetadata) -> bool {
+fn verified_executable_record<'record>(
+    records: &[&'record DesktopRecord],
+    reported_name: &str,
+    sender: &SenderMetadata,
+    index: &DesktopIdentityIndex,
+) -> Option<VerifiedDesktopRecord<'record>> {
+    let missing_name = reported_name.trim().is_empty();
+    let mut matches = records.iter().filter_map(|record| {
+        (missing_name || record.claim_matches(reported_name))
+            .then(|| verify_record_sender(record, sender, index))
+            .flatten()
+    });
+    let first = matches.next()?;
+    let first_id = normalize_desktop_id(&first.0.id);
+    let mut preferred = first;
+
+    for candidate in matches {
+        // One executable cannot prove which of two distinct desktop applications sent the message
+        if normalize_desktop_id(&candidate.0.id) != first_id {
+            return None;
+        }
+        // Protected records win over duplicate user metadata for the same desktop id
+        if candidate.0.system_association && !preferred.0.system_association {
+            preferred = candidate;
+        }
+    }
+    Some(preferred)
+}
+
+fn record_matches_sender(
+    record: &DesktopRecord,
+    sender: &SenderMetadata,
+    index: &DesktopIdentityIndex,
+) -> bool {
     if !record.association_eligible {
         return false;
     }
-    match (
+    let (Some(record_identity), Some(sender_identity)) = (
         record.executable_identity,
         sender.sender_executable_identity,
-    ) {
-        (Some(record_identity), Some(sender_identity)) => {
-            record_identity.same_file(sender_identity)
-                && record_launch_matches(record, sender_identity, sender.sender_cmdline.as_deref())
-        }
-        _ => false,
+    ) else {
+        return false;
+    };
+    if !record_identity.same_file(sender_identity) {
+        return false;
     }
+
+    if record.system_association {
+        // Cached inode equality cannot carry root ownership across inode reuse
+        if !sender_identity.is_system_managed() || !sender_identity.is_executable_regular() {
+            return false;
+        }
+        let Some(path) = record.executable_path.as_deref() else {
+            return false;
+        };
+        // Reopen the installed path so stale index authority cannot outlive replacement
+        let Some(current) = executable_evidence_for_path(path) else {
+            return false;
+        };
+        if !current_system_identity_matches_sender(current.identity, sender_identity) {
+            return false;
+        }
+    }
+
+    // Dedicated application binaries may add safe runtime flags after desktop activation
+    !index.requires_launch_arguments(record)
+        || record_launch_matches(record, sender_identity, sender.sender_cmdline.as_deref())
+}
+
+const fn current_system_identity_matches_sender(
+    current: FileIdentity,
+    sender_identity: FileIdentity,
+) -> bool {
+    // Every property is checked again because the cached inode may have changed in place
+    current.same_file(sender_identity)
+        && current.is_system_managed()
+        && current.is_executable_regular()
 }
 
 fn verify_record_sender<'record>(
     record: &'record DesktopRecord,
     sender: &SenderMetadata,
+    index: &DesktopIdentityIndex,
 ) -> Option<VerifiedDesktopRecord<'record>> {
     // This wrapper makes sender launch verification mandatory at every association call site
-    record_matches_sender(record, sender).then_some(VerifiedDesktopRecord(record))
+    record_matches_sender(record, sender, index).then_some(VerifiedDesktopRecord(record))
 }
 
 fn unknown_group_key(reported_name: &str, sender: &SenderMetadata) -> String {
