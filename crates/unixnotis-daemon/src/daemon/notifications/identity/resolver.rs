@@ -94,7 +94,7 @@ fn resolve_with_evidence(
             }
             if let Some(record) = records
                 .iter()
-                .find_map(|record| verify_record_sender(record, sender, index))
+                .find_map(|record| verify_record_sender(record, sender))
             {
                 return resolution_for_record(record, claim.reported_name, sender, index);
             }
@@ -114,14 +114,12 @@ fn resolve_with_evidence(
     if let Some(identity) = sender.sender_executable_identity {
         // Exact file association is stronger than every caller-controlled application name
         let records = index.records_for_executable(identity);
-        if let Some(record) =
-            verified_executable_record(&records, claim.reported_name, sender, index)
-        {
+        if let Some(record) = verified_executable_record(&records, claim.reported_name, sender) {
             return resolution_for_record(record, claim.reported_name, sender, index);
         }
         if records
             .iter()
-            .any(|record| record.system_association && record_matches_sender(record, sender, index))
+            .any(|record| record.system_association && record_matches_sender(record, sender))
         {
             // A known executable with a conflicting name must fail closed
             return conflict_resolution(claim.reported_name, sender, "application claim mismatch");
@@ -273,12 +271,11 @@ fn verified_executable_record<'record>(
     records: &[&'record DesktopRecord],
     reported_name: &str,
     sender: &SenderMetadata,
-    index: &DesktopIdentityIndex,
 ) -> Option<VerifiedDesktopRecord<'record>> {
     let missing_name = reported_name.trim().is_empty();
     let mut matches = records.iter().filter_map(|record| {
         (missing_name || record.claim_matches(reported_name))
-            .then(|| verify_record_sender(record, sender, index))
+            .then(|| verify_record_sender(record, sender))
             .flatten()
     });
     let first = matches.next()?;
@@ -298,11 +295,7 @@ fn verified_executable_record<'record>(
     Some(preferred)
 }
 
-fn record_matches_sender(
-    record: &DesktopRecord,
-    sender: &SenderMetadata,
-    index: &DesktopIdentityIndex,
-) -> bool {
+fn record_matches_sender(record: &DesktopRecord, sender: &SenderMetadata) -> bool {
     if !record.association_eligible {
         return false;
     }
@@ -333,9 +326,8 @@ fn record_matches_sender(
         }
     }
 
-    // Dedicated application binaries may add safe runtime flags after desktop activation
-    !index.requires_launch_arguments(record)
-        || record_launch_matches(record, sender_identity, sender.sender_cmdline.as_deref())
+    // Exact argv matching prevents any executable from acting as an implicit shared launcher
+    record_launch_matches(record, sender_identity, sender.sender_cmdline.as_deref())
 }
 
 const fn current_system_identity_matches_sender(
@@ -351,10 +343,9 @@ const fn current_system_identity_matches_sender(
 fn verify_record_sender<'record>(
     record: &'record DesktopRecord,
     sender: &SenderMetadata,
-    index: &DesktopIdentityIndex,
 ) -> Option<VerifiedDesktopRecord<'record>> {
     // This wrapper makes sender launch verification mandatory at every association call site
-    record_matches_sender(record, sender, index).then_some(VerifiedDesktopRecord(record))
+    record_matches_sender(record, sender).then_some(VerifiedDesktopRecord(record))
 }
 
 fn unknown_group_key(reported_name: &str, sender: &SenderMetadata) -> String {

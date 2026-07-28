@@ -27,7 +27,6 @@ pub(super) fn build_launch_spec(
     }
 
     let mut arguments = Vec::with_capacity(words.len().saturating_sub(1));
-    let mut protected_literal_files = 0_usize;
     let mut literal_files_are_system_managed = true;
     for word in words.into_iter().skip(1) {
         let argument = match word.as_str() {
@@ -47,9 +46,7 @@ pub(super) fn build_launch_spec(
                 let literal = literal_argument(literal.into_bytes());
                 if let LaunchArgument::Literal(literal) = &literal {
                     if let Some((_path, identity)) = &literal.file {
-                        if identity.is_system_managed() {
-                            protected_literal_files += 1;
-                        } else {
+                        if !identity.is_system_managed() {
                             literal_files_are_system_managed = false;
                         }
                     } else if literal_path_candidate(&literal.value) {
@@ -66,7 +63,6 @@ pub(super) fn build_launch_spec(
     Some(LaunchSpec {
         executable,
         arguments,
-        protected_literal_files,
         literal_files_are_system_managed,
     })
 }

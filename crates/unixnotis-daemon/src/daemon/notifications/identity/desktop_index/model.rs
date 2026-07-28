@@ -10,7 +10,6 @@ use super::names::normalize_name;
 pub(in crate::daemon::notifications::identity) struct LaunchSpec {
     pub(in crate::daemon::notifications::identity) executable: FileIdentity,
     pub(in crate::daemon::notifications::identity) arguments: Vec<LaunchArgument>,
-    pub(in crate::daemon::notifications::identity) protected_literal_files: usize,
     pub(in crate::daemon::notifications::identity) literal_files_are_system_managed: bool,
 }
 

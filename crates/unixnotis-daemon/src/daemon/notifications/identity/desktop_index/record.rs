@@ -8,7 +8,7 @@ use gio::prelude::AppInfoExt;
 use super::super::executable::{executable_evidence_for_path, FileIdentity};
 use super::launch::build_launch_spec;
 use super::model::{DesktopIdentityIndex, DesktopRecord};
-use super::names::{is_shared_launcher, normalize_desktop_id, normalize_name};
+use super::names::{normalize_desktop_id, normalize_name};
 use super::program::{desktop_executable, resolve_program};
 
 impl DesktopIdentityIndex {
@@ -36,12 +36,8 @@ impl DesktopIdentityIndex {
         let desktop_identity = executable_evidence_for_path(path).map(|evidence| evidence.identity);
         let launch_spec =
             executable_identity.and_then(|identity| build_launch_spec(&desktop, path, identity));
-        let shared_launcher = desktop_program.as_deref().is_none_or(is_shared_launcher);
-        // Shared runtimes need one immutable application payload in addition to exact argv matching
-        let association_eligible = launch_spec.as_ref().is_some_and(|spec| {
-            !shared_launcher
-                || (spec.protected_literal_files != 0 && spec.literal_files_are_system_managed)
-        });
+        // Every association needs a complete Exec contract instead of a runtime-name exception
+        let association_eligible = launch_spec.is_some();
         // System association requires protected metadata and a reproducible launch specification
         let system_association = association_eligible
             && system_origin

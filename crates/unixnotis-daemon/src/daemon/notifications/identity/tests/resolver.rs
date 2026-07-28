@@ -43,7 +43,11 @@ impl DesktopRecordFixture for DesktopRecord {
             system_association: system_entry,
             association_eligible: true,
             dbus_activatable,
-            launch_spec: None,
+            launch_spec: Some(LaunchSpec {
+                executable: identity,
+                arguments: Vec::new(),
+                literal_files_are_system_managed: true,
+            }),
             names: HashSet::from([normalize_name(display_name)]),
         }
     }
@@ -63,7 +67,6 @@ impl DesktopRecordFixture for DesktopRecord {
                     })
                 })
                 .collect(),
-            protected_literal_files: 1,
             literal_files_are_system_managed: true,
         });
         self
@@ -121,6 +124,7 @@ fn sender(path: &str, identity: FileIdentity) -> SenderMetadata {
         sender_name: Some(":1.42".to_string()),
         sender_executable: Some(path.to_string()),
         sender_executable_identity: Some(identity),
+        sender_cmdline: Some(vec![path.as_bytes().to_vec()]),
         ..SenderMetadata::default()
     }
 }
@@ -186,7 +190,7 @@ fn system_desktop_identity_allows_legitimate_signal_reply() {
 }
 
 #[test]
-fn dedicated_system_binary_with_empty_claim_accepts_runtime_added_flags() {
+fn dedicated_system_binary_rejects_runtime_added_flags_outside_the_exec_contract() {
     let (signal_path, signal_identity) = installed_system_executable();
     let record = system_record("signal", "Signal", &signal_path, signal_identity)
         .with_launch_literals(&["--", "sgnl://expected"]);
@@ -207,12 +211,11 @@ fn dedicated_system_binary_with_empty_claim_accepts_runtime_added_flags() {
         &HashSet::new(),
     );
 
-    assert_eq!(
+    assert_ne!(
         resolution.attribution.class,
         AttributionClass::SystemAssociated
     );
-    assert_eq!(resolution.attribution.display_name, "Signal");
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
 #[test]
@@ -239,11 +242,7 @@ fn verified_executable_recovers_from_stale_desktop_hint() {
             // Electron derives this hint from a differently named local desktop file
             desktop_entry: Some("signal-desktop"),
         },
-        &sender_with_arguments(
-            &signal_path,
-            signal_identity,
-            &["--password-store=kwallet6", "--"],
-        ),
+        &sender(&signal_path, signal_identity),
         &index,
         &HashSet::new(),
     );
@@ -299,9 +298,8 @@ fn duplicate_desktop_id_prefers_the_protected_record() {
     let index = DesktopIdentityIndex::from_records(vec![user_record, system_record], Vec::new());
     let records = index.records_for_executable(app_identity);
 
-    let verified =
-        verified_executable_record(&records, "", &sender(&app_path, app_identity), &index)
-            .expect("duplicate desktop id should keep one verified record");
+    let verified = verified_executable_record(&records, "", &sender(&app_path, app_identity))
+        .expect("duplicate desktop id should keep one verified record");
 
     assert!(verified.0.system_association);
     assert_eq!(verified.0.badge_icon, "protected-signal");
@@ -317,9 +315,8 @@ fn duplicate_protected_desktop_id_keeps_stable_index_order() {
     let index = DesktopIdentityIndex::from_records(vec![first, second], Vec::new());
     let records = index.records_for_executable(app_identity);
 
-    let verified =
-        verified_executable_record(&records, "", &sender(&app_path, app_identity), &index)
-            .expect("duplicate protected records should keep one verified record");
+    let verified = verified_executable_record(&records, "", &sender(&app_path, app_identity))
+        .expect("duplicate protected records should keep one verified record");
 
     assert_eq!(verified.0.badge_icon, "first-signal");
 }
@@ -561,6 +558,69 @@ fn matching_fixed_system_application_argument_allows_association() {
         AttributionClass::SystemAssociated
     );
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+}
+
+#[test]
+fn arbitrary_executable_name_still_requires_its_fixed_application_payload() {
+    let (launcher_path, launcher_identity) = installed_system_executable();
+    let record = system_record(
+        "org.example.CustomRuntime",
+        "Custom Runtime App",
+        &launcher_path,
+        launcher_identity,
+    )
+    .with_launch_literals(&["/usr/share/custom-runtime/application.bin"]);
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Custom Runtime App",
+            desktop_entry: Some("org.example.CustomRuntime"),
+        },
+        &sender_with_arguments(
+            &launcher_path,
+            launcher_identity,
+            &["/tmp/attacker-controlled.bin"],
+        ),
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_ne!(
+        resolution.attribution.class,
+        AttributionClass::SystemAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
+fn unavailable_process_command_line_fails_closed() {
+    let (launcher_path, launcher_identity) = installed_system_executable();
+    let record = system_record(
+        "org.example.CommandLine",
+        "Command Line App",
+        &launcher_path,
+        launcher_identity,
+    );
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+    let mut missing_command_line = sender(&launcher_path, launcher_identity);
+    missing_command_line.sender_cmdline = None;
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Command Line App",
+            desktop_entry: Some("org.example.CommandLine"),
+        },
+        &missing_command_line,
+        &index,
+        &HashSet::new(),
+    );
+
+    assert_ne!(
+        resolution.attribution.class,
+        AttributionClass::SystemAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
 #[test]

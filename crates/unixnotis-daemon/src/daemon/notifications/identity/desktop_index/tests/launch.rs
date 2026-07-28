@@ -10,7 +10,7 @@ use crate::daemon::notifications::identity::executable::executable_evidence_for_
 use crate::test_support::TempRoot;
 
 #[test]
-fn shared_launcher_requires_the_fixed_immutable_application_argument() {
+fn fixed_immutable_application_argument_is_matched_exactly() {
     let shell = executable_evidence_for_path(Path::new("/usr/bin/sh")).expect("system shell");
     let immutable_script =
         executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system fixture");
@@ -26,7 +26,6 @@ fn shared_launcher_requires_the_fixed_immutable_application_argument() {
     let desktop = gio::DesktopAppInfo::from_filename(&path).expect("parse desktop entry");
     let spec = build_launch_spec(&desktop, &path, shell.identity).expect("build launch spec");
 
-    assert_eq!(spec.protected_literal_files, 1);
     assert!(launch_spec_matches_sender(
         &spec,
         shell.identity,
@@ -201,7 +200,6 @@ fn process_matcher_checks_identity_emptiness_and_argument_limits_independently()
     let spec = LaunchSpec {
         executable: executable.identity,
         arguments: vec![LaunchArgument::FieldCode(FieldCode::Files)],
-        protected_literal_files: 0,
         literal_files_are_system_managed: true,
     };
     let exact_limit =

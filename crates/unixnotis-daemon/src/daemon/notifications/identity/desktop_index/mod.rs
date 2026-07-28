@@ -21,7 +21,8 @@ pub(in crate::daemon::notifications::identity) fn record_launch_matches(
     cmdline: Option<&[Vec<u8>]>,
 ) -> bool {
     match &record.launch_spec {
-        None => true,
+        // Missing or unparsable Exec metadata cannot bind a process to an application
+        None => false,
         Some(spec) => cmdline.is_some_and(|cmdline| {
             launch::launch_spec_matches_sender(spec, sender_identity, cmdline)
         }),
