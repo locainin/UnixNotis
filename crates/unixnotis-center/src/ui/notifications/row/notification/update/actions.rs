@@ -7,7 +7,8 @@ use std::time::Duration;
 use gtk::prelude::*;
 use tokio::sync::mpsc;
 use tracing::debug;
-use unixnotis_core::{InlineReplyPolicy, NotificationView};
+use unixnotis_core::NotificationView;
+use unixnotis_ui::presentation::{NotificationPresentation, ReplyPresentation};
 
 use crate::control::UiCommand;
 use crate::ui::panel::behavior::input::ClickCooldown;
@@ -31,16 +32,23 @@ pub(super) fn update_actions(
     notification: &Rc<NotificationView>,
     is_active: bool,
 ) {
+    let presentation = NotificationPresentation::from_view(notification);
     configure_inline_reply(&row.inline_reply, notification, is_active);
+    let safe_actions = presentation
+        .actions
+        .primary
+        .iter()
+        .chain(&presentation.actions.overflow)
+        .collect::<Vec<_>>();
     // Fast path skips button rebuilding when the action set is unchanged
     {
         let cached = row.action_cache.borrow();
         let reply_cached = row.reply_cache.borrow();
         if row.action_cache_id.get() == notification.id
-            && cached.len() == notification.actions.len()
+            && cached.len() == safe_actions.len()
             && cached
                 .iter()
-                .zip(notification.actions.iter())
+                .zip(&safe_actions)
                 .all(|((key, label), action)| key == &action.key && label == &action.label)
             && reply_cached.0 == notification.inline_reply
             && reply_cached.1 == notification.inline_reply_policy
@@ -54,8 +62,8 @@ pub(super) fn update_actions(
         // Cache the current action signature for the next update cycle
         let mut cached = row.action_cache.borrow_mut();
         cached.clear();
-        cached.reserve(notification.actions.len());
-        for action in &notification.actions {
+        cached.reserve(safe_actions.len());
+        for action in &safe_actions {
             cached.push((action.key.clone(), action.label.clone()));
         }
         row.action_cache_id.set(notification.id);
@@ -70,36 +78,32 @@ pub(super) fn update_actions(
     while let Some(child) = row.actions_box.first_child() {
         row.actions_box.remove(&child);
     }
-    if visible_action_count(notification, is_active) == 0 {
+    if visible_action_count_from(&presentation, is_active) == 0 {
         return;
     }
 
-    let mut reply_button_added = false;
-    for action in &notification.actions {
-        if action.key == "inline-reply" {
-            if reply_button_added
-                || !is_active
-                || !notification.inline_reply.available
-                || notification.inline_reply_policy != InlineReplyPolicy::Allow
-            {
-                continue;
-            }
-            reply_button_added = true;
-            let label = if !notification.inline_reply.label.is_empty() {
-                notification.inline_reply.label.as_str()
-            } else if !action.label.is_empty() {
-                action.label.as_str()
-            } else {
-                "Reply"
-            };
-            let button = gtk::Button::with_label(clamp_action_label_text(label).as_ref());
-            button.add_css_class("unixnotis-panel-action");
-            button.add_css_class("unixnotis-notification-action");
-            connect_inline_reply_button(&button, &row.inline_reply);
-            row.actions_box.append(&button);
-            continue;
-        }
+    if is_active && presentation.trust.reply == ReplyPresentation::Available {
+        let action_label = notification
+            .actions
+            .iter()
+            .find(|action| action.key == "inline-reply")
+            .map(|action| action.label.as_str())
+            .unwrap_or_default();
+        let label = if !notification.inline_reply.label.is_empty() {
+            notification.inline_reply.label.as_str()
+        } else if !action_label.is_empty() {
+            action_label
+        } else {
+            "Reply"
+        };
+        let button = gtk::Button::with_label(clamp_action_label_text(label).as_ref());
+        button.add_css_class("unixnotis-panel-action");
+        button.add_css_class("unixnotis-notification-action");
+        connect_inline_reply_button(&button, &row.inline_reply);
+        row.actions_box.append(&button);
+    }
 
+    for action in safe_actions {
         // Bound action text before GTK measures the button
         let button = gtk::Button::with_label(clamp_action_label_text(&action.label).as_ref());
         button.add_css_class("unixnotis-panel-action");
@@ -127,17 +131,14 @@ pub(super) fn update_actions(
 }
 
 pub(super) fn visible_action_count(notification: &NotificationView, is_active: bool) -> usize {
-    let regular = notification
-        .actions
-        .iter()
-        .filter(|action| action.key != "inline-reply")
-        .count();
-    let reply = is_active
-        && notification.inline_reply.available
-        && notification.inline_reply_policy == InlineReplyPolicy::Allow
-        && notification
-            .actions
-            .iter()
-            .any(|action| action.key == "inline-reply");
+    visible_action_count_from(
+        &NotificationPresentation::from_view(notification),
+        is_active,
+    )
+}
+
+fn visible_action_count_from(presentation: &NotificationPresentation, is_active: bool) -> usize {
+    let regular = presentation.actions.primary.len() + presentation.actions.overflow.len();
+    let reply = is_active && presentation.trust.reply == ReplyPresentation::Available;
     regular + usize::from(reply)
 }

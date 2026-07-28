@@ -2,6 +2,7 @@
 
 use gtk::prelude::*;
 use unixnotis_core::{hooks, NotificationView, Urgency};
+use unixnotis_ui::presentation::{NotificationPresentation, TrustLevel};
 
 use super::super::super::super::item::RowData;
 use super::super::state::NotificationRowWidgets;
@@ -29,11 +30,20 @@ pub(super) fn apply_visual_state(
     has_thumbnail: bool,
 ) {
     let card = &row.card;
+    let presentation = NotificationPresentation::from_view(notification);
     let is_critical = notification.urgency == Urgency::Critical as u8;
     // Theme changes update recycled rows without rebuilding the GTK child tree
     row.card_plate.set_corners(data.presentation.card_corners);
     // Explicit state updates prevent recycled rows from retaining stale classes
     set_class_state(card, hooks::shared_state::CRITICAL, is_critical);
+    for (level, class_name) in [
+        (TrustLevel::Verified, "verified"),
+        (TrustLevel::Unverified, "unverified"),
+        (TrustLevel::Suspicious, "suspicious"),
+        (TrustLevel::System, "system"),
+    ] {
+        set_class_state(card, class_name, presentation.trust.level == level);
+    }
     set_widget_visible_if_changed(&row.urgency_badge, is_critical);
     set_class_state(card, hooks::shared_state::ACTIVE, data.is_active);
     set_class_state(card, hooks::shared_state::STACKED, data.stacked);

@@ -3,7 +3,6 @@
 mod build;
 mod builders;
 mod commands;
-mod labels;
 mod presentation;
 
 pub(in crate::ui) use build::PopupEntry;

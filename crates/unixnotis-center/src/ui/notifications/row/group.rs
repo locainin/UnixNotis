@@ -10,6 +10,7 @@ use gtk::pango;
 use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::{css::hooks, util};
+use unixnotis_ui::presentation::{NotificationPresentation, TrustLevel};
 
 use crate::control::UiEvent;
 
@@ -117,7 +118,11 @@ pub(in crate::ui::notifications) fn update_group_row(
     let display_name = data
         .notification
         .as_ref()
-        .map(|notification| notification.attribution.display_name.clone())
+        .map(|notification| {
+            NotificationPresentation::from_view(notification)
+                .identity
+                .primary_label
+        })
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| data.group_key.to_string());
     // Display application presentation while the daemon identity key drives grouping behavior
@@ -137,17 +142,16 @@ pub(in crate::ui::notifications) fn update_group_row(
     *group.group_key.borrow_mut() = data.group_key.clone();
 
     if let Some(notification) = data.notification.as_ref() {
-        if notification.attribution.source_label.is_empty() {
+        let presentation = NotificationPresentation::from_view(notification);
+        if presentation.trust.details_label.is_none() {
             group.title.set_tooltip_text(None);
-        } else {
-            group
-                .title
-                .set_tooltip_text(Some(&notification.attribution.source_label));
+        } else if let Some(details) = presentation.trust.details_label.as_deref() {
+            group.title.set_tooltip_text(Some(details));
         }
         set_class_state(
             root,
             "unixnotis-attribution-warning",
-            notification.attribution.has_warning(),
+            presentation.trust.level == TrustLevel::Suspicious,
         );
         let scale = root.scale_factor();
         // Group headers use the associated badge path instead of caller content images

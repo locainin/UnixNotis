@@ -2,6 +2,7 @@
 
 use gtk::prelude::*;
 use tokio::sync::mpsc;
+use unixnotis_ui::presentation::NotificationPresentation;
 
 use crate::control::UiCommand;
 use crate::ui::icons::IconResolver;
@@ -27,6 +28,7 @@ pub(in crate::ui::notifications) fn update_notification_row(
         return;
     };
     let notification = notification_snapshot.as_ref();
+    let presentation = NotificationPresentation::from_view(notification);
     let has_actions = visible_action_count(notification, data.is_active) > 0;
     let has_thumbnail =
         data.presentation.show_thumbnail && notification_has_thumbnail(notification);
@@ -34,15 +36,14 @@ pub(in crate::ui::notifications) fn update_notification_row(
     apply_visual_state(row, data, notification, has_actions, has_thumbnail);
     update_notification_text(
         row,
-        &notification.attribution.display_name,
-        &notification.summary,
-        &notification.body,
+        &presentation.identity.primary_label,
+        &presentation.title,
+        presentation.body.as_deref().unwrap_or_default(),
     );
-    if notification.attribution.source_label.is_empty() {
+    if presentation.trust.details_label.is_none() {
         row.app_label.set_tooltip_text(None);
-    } else {
-        row.app_label
-            .set_tooltip_text(Some(&notification.attribution.source_label));
+    } else if let Some(details) = presentation.trust.details_label.as_deref() {
+        row.app_label.set_tooltip_text(Some(details));
     }
     update_metadata_labels(row, data, notification);
     row.notify_id.set(notification.id);
