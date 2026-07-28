@@ -72,6 +72,7 @@ pub(super) fn notification(id: u32, app_name: &str) -> NotificationView {
         urgency: 1,
         category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
     }
 }

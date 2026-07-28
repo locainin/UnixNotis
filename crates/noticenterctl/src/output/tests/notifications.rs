@@ -25,6 +25,7 @@ fn sample_notification() -> NotificationView {
         urgency: 1,
         category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         // CLI formatting only needs the lightweight transport fields
         image: NotificationImage::default(),
     }

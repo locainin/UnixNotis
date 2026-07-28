@@ -18,6 +18,7 @@ fn candidate(generation: u64, should_show: bool) -> PopupCandidate {
             urgency: 1,
             category: String::new(),
             is_transient: false,
+            received_at_unix_seconds: 0,
             image: NotificationImage::default(),
         },
         should_show,

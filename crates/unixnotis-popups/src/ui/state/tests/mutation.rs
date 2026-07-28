@@ -1,6 +1,6 @@
 use gtk::prelude::*;
 use unixnotis_core::{
-    CloseReason, Config, ImageData, NotificationImage, NotificationKey, NotificationView,
+    hooks, CloseReason, Config, ImageData, NotificationImage, NotificationKey, NotificationView,
 };
 use unixnotis_ui::css::CssManager;
 
@@ -103,17 +103,40 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
     };
     // Image categories retain real content even when the thumbnail is compact
     assert!(state.build_content_image_widget(&content).is_some());
+    let content_root = state.build_popup_root(&content);
+    assert!(content_root.has_css_class(hooks::popup_card::HAS_IMAGE));
+    assert!(descendant_has_class(
+        content_root.upcast_ref(),
+        "unixnotis-popup-content-image"
+    ));
 
     let mut missing_content = notification(9, 1, "missing");
     missing_content.attribution.badge_icon.clear();
     missing_content.attribution.desktop_id.clear();
     // Empty content and badge sources must not create placeholder image widgets
     assert!(state.build_content_image_widget(&missing_content).is_none());
-    assert!(state.build_image_widget(&missing_content).is_none());
+    assert!(state.build_app_icon_widget(&missing_content, 20).is_none());
+    let missing_root = state.build_popup_root(&missing_content);
+    assert!(!missing_root.has_css_class(hooks::popup_card::HAS_IMAGE));
+    assert!(!descendant_has_class(
+        missing_root.upcast_ref(),
+        "unixnotis-popup-content-image"
+    ));
 
     // A daemon-selected badge remains independent from caller image content
     missing_content.attribution.badge_icon = "dialog-information".to_string();
-    assert!(state.build_image_widget(&missing_content).is_some());
+    assert!(state.build_app_icon_widget(&missing_content, 20).is_some());
+}
+
+fn descendant_has_class(widget: &gtk::Widget, class_name: &str) -> bool {
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if current.has_css_class(class_name) || descendant_has_class(&current, class_name) {
+            return true;
+        }
+        child = current.next_sibling();
+    }
+    false
 }
 
 fn popup_state(application_id: &str) -> UiState {
@@ -147,6 +170,7 @@ fn notification(id: u32, generation: u64, summary: &str) -> NotificationView {
         urgency: 1,
         category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
     }
 }

@@ -43,6 +43,7 @@ fn popup_entry_uses_the_configured_cut_corner_primitive() {
         urgency: 1,
         category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
     };
 
@@ -115,12 +116,21 @@ fn critical_popup_probe_builds_the_root_class_and_badge() {
         urgency: Urgency::Critical as u8,
         category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
     };
 
     let root = state.build_popup_root(&notification);
 
     assert!(root.has_css_class(hooks::shared_state::CRITICAL));
+    assert!(root.has_css_class(hooks::popup_card::HAS_SUMMARY));
+    assert!(root.has_css_class(hooks::popup_card::HAS_BODY));
+    assert!(!root.has_css_class(hooks::popup_card::HAS_ACTIONS));
+    assert_ne!(
+        root.has_css_class(hooks::popup_card::HAS_ICON),
+        root.has_css_class(hooks::popup_card::NO_ICON)
+    );
+    assert_eq!(root.height_request(), -1);
     assert!(visible_descendant_has_class(
         root.upcast_ref(),
         hooks::urgency::BADGE
@@ -128,7 +138,7 @@ fn critical_popup_probe_builds_the_root_class_and_badge() {
 }
 
 #[gtk::test]
-fn unknown_attribution_builds_a_visible_unverified_state() {
+fn unknown_attribution_uses_a_short_chip_without_showing_raw_provenance() {
     let app = gtk::Application::builder()
         .application_id("org.unixnotis.PopupUnverifiedProbe")
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
@@ -164,15 +174,69 @@ fn unknown_attribution_builds_a_visible_unverified_state() {
         urgency: Urgency::Normal as u8,
         category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
     };
 
     let root = state.build_popup_root(&notification);
 
     assert!(root.has_css_class("unverified"));
-    assert!(visible_descendant_has_text(
+    assert!(root.has_css_class("utility"));
+    assert!(visible_descendant_has_text(root.upcast_ref(), "Unverified"));
+    assert!(!visible_descendant_has_text(
         root.upcast_ref(),
         "Claims to be Signal"
+    ));
+}
+
+#[gtk::test]
+fn conflicting_attribution_uses_the_warning_layout_and_suspicious_chip() {
+    let app = gtk::Application::builder()
+        .application_id("org.unixnotis.PopupSuspiciousProbe")
+        .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    app.register(None::<&gtk::gio::Cancellable>)
+        .expect("register popup suspicious probe application");
+    let config = Config::default();
+    let config_root = std::env::temp_dir().join("unixnotis-popup-suspicious-probe");
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let css = CssManager::new_popup(theme_paths(&config_root), config.theme.clone());
+    let mut state = UiState::new(
+        &app,
+        config,
+        config_root.join("config.toml"),
+        command_tx,
+        css,
+    );
+    let notification = NotificationView {
+        id: 4,
+        generation: 4,
+        app_name: "Signal".to_string(),
+        attribution: unixnotis_core::NotificationAttribution::conflict(
+            "Signal",
+            "application claim mismatch; source /tmp/fake",
+            "conflict:signal".to_string(),
+        ),
+        summary: "John Doe".to_string(),
+        body: "Are you free later?".to_string(),
+        actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+        urgency: Urgency::Normal as u8,
+        category: "im.received".to_string(),
+        is_transient: false,
+        received_at_unix_seconds: 0,
+        image: NotificationImage::default(),
+    };
+
+    let root = state.build_popup_root(&notification);
+
+    assert!(root.has_css_class("warning"));
+    assert!(root.has_css_class("suspicious"));
+    assert!(visible_descendant_has_text(root.upcast_ref(), "Suspicious"));
+    assert!(!visible_descendant_has_text(
+        root.upcast_ref(),
+        "application claim mismatch; source /tmp/fake"
     ));
 }
 

@@ -24,6 +24,7 @@ fn make_view(is_transient: bool) -> NotificationView {
         urgency: 1,
         category: String::new(),
         is_transient,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
     }
 }
@@ -46,6 +47,7 @@ fn view(id: u32, app_name: &str, is_transient: bool) -> NotificationView {
         urgency: 1,
         category: String::new(),
         is_transient,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
     }
 }
