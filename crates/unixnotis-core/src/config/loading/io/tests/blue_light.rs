@@ -69,6 +69,7 @@ fn stopping_night_mode_visits_every_active_supported_backend() {
         &root.join("bin/pkill"),
         "#!/bin/sh\nprintf 'pkill %s\\n' \"$*\" >> \"$TEST_LOG\"\n",
     );
+    write_executable(&root.join("bin/sleep"), "#!/bin/sh\nexit 0\n");
 
     let status = Command::new("/bin/sh")
         .args(["-c", ". \"$1\"; stop_active_backends", "blue-light-test"])
@@ -82,7 +83,6 @@ fn stopping_night_mode_visits_every_active_supported_backend() {
     let calls = fs::read_to_string(&log).expect("read stop calls");
     for expected in [
         "pkill -x hyprsunset",
-        "gammastep -x",
         "pkill -x gammastep",
         "pkill -x wlsunset",
         "sunsetr stop",
@@ -93,6 +93,10 @@ fn stopping_night_mode_visits_every_active_supported_backend() {
             "missing {expected}"
         );
     }
+    assert!(
+        !calls.lines().any(|call| call == "gammastep -x"),
+        "stopping Night mode must not invoke the blocking reset process"
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -109,7 +113,10 @@ fn night_mode_falls_through_when_the_first_installed_backend_cannot_stay_running
         "#!/bin/sh\n[ \"$2\" = gammastep ] && [ -f \"$TEST_MARKER\" ]\n",
     );
     write_executable(&root.join("bin/pkill"), "#!/bin/sh\nexit 0\n");
-    write_executable(&root.join("bin/sleep"), "#!/bin/sh\nexit 0\n");
+    write_executable(
+        &root.join("bin/sleep"),
+        "#!/bin/sh\nexec /bin/sleep \"$1\"\n",
+    );
 
     let status = Command::new("/bin/sh")
         .args(["-c", ". \"$1\"; start_available_backend", "blue-light-test"])
@@ -117,7 +124,7 @@ fn night_mode_falls_through_when_the_first_installed_backend_cannot_stay_running
         .env("PATH", root.join("bin"))
         .env("TEST_LOG", &log)
         .env("TEST_MARKER", &marker)
-        .env("UNIXNOTIS_BLUE_LIGHT_STARTUP_DELAY", "0")
+        .env("UNIXNOTIS_BLUE_LIGHT_STARTUP_DELAY", "0.05")
         .status()
         .expect("start first healthy blue-light backend");
 
@@ -127,6 +134,10 @@ fn night_mode_falls_through_when_the_first_installed_backend_cannot_stay_running
     assert!(calls
         .lines()
         .any(|call| call.starts_with("gammastep -m wayland")));
+    assert!(
+        !calls.lines().any(|call| call == "gammastep -x"),
+        "fallback must not block on an inactive gammastep reset"
+    );
     let _ = fs::remove_dir_all(root);
 }
 
