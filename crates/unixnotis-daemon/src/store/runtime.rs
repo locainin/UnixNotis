@@ -140,7 +140,7 @@ impl NotificationStore {
         let notification = self.active.get(&id)?;
         Some(PopupCandidate {
             notification: notification.to_view(),
-            should_show: self.popup_admission(notification).should_show(),
+            admission: self.popup_admission(notification).to_view(),
         })
     }
 

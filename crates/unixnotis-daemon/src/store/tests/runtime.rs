@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use unixnotis_core::{
     Action, AttributionClass, CloseReason, Config, InlineReply, InlineReplyPolicy,
-    NotificationAttribution,
+    NotificationAttribution, PopupAdmissionView,
 };
 
 use crate::store::test_support::{make_notification, make_store_with_limits};
@@ -46,7 +46,7 @@ fn popup_candidate_pairs_rule_suppression_with_replacement_generation() {
 
     assert_eq!(candidate.notification.generation, replacement.generation);
     assert_eq!(candidate.notification.summary, "rule suppressed");
-    assert!(!candidate.should_show);
+    assert_eq!(candidate.admission, PopupAdmissionView::Rule);
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn popup_candidate_pairs_dnd_suppression_with_replacement_generation() {
 
     assert_eq!(candidate.notification.generation, replacement.generation);
     assert_eq!(candidate.notification.summary, "dnd suppressed");
-    assert!(!candidate.should_show);
+    assert_eq!(candidate.admission, PopupAdmissionView::Dnd);
 }
 
 #[test]

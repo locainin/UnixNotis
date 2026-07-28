@@ -1,9 +1,9 @@
-use unixnotis_core::{NotificationImage, NotificationView, PopupCandidate};
+use unixnotis_core::{NotificationImage, NotificationView, PopupAdmissionView, PopupCandidate};
 
 use super::super::delivery::popup_event;
 use crate::dbus::UiEvent;
 
-fn candidate(generation: u64, should_show: bool) -> PopupCandidate {
+fn candidate(generation: u64, admission: PopupAdmissionView) -> PopupCandidate {
     PopupCandidate {
         notification: NotificationView {
             id: 7,
@@ -21,20 +21,20 @@ fn candidate(generation: u64, should_show: bool) -> PopupCandidate {
             received_at_unix_seconds: 0,
             image: NotificationImage::default(),
         },
-        should_show,
+        admission,
     }
 }
 
 #[test]
 fn old_allowed_signal_cannot_display_new_suppressed_replacement() {
-    let event = popup_event(vec![candidate(2, false)], 1, true);
+    let event = popup_event(vec![candidate(2, PopupAdmissionView::Rule)], 1, true);
 
     assert!(event.is_none());
 }
 
 #[test]
 fn current_suppressed_replacement_is_delivered_as_hidden_update() {
-    let event = popup_event(vec![candidate(2, false)], 2, false);
+    let event = popup_event(vec![candidate(2, PopupAdmissionView::Dnd)], 2, false);
 
     assert!(matches!(
         event,

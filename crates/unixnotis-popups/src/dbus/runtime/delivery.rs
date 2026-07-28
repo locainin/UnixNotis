@@ -44,12 +44,12 @@ pub(super) fn popup_event(
     if is_add {
         Some(UiEvent::NotificationAdded(
             candidate.notification,
-            candidate.should_show,
+            candidate.admission.should_show(),
         ))
     } else {
         Some(UiEvent::NotificationUpdated(
             candidate.notification,
-            candidate.should_show,
+            candidate.admission.should_show(),
         ))
     }
 }
