@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::float_cmp,
     reason = "TOML parsing preserves these exactly representable slider values"
 )]

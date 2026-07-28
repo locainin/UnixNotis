@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::float_cmp,
     reason = "theme sanitization assigns exact clamp boundaries and explicit fallback constants"
 )]

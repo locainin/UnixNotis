@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::float_cmp,
     reason = "the parser returns exact finite values for these integer CSS inputs"
 )]

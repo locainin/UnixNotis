@@ -26,7 +26,9 @@ pub async fn log_session_bus_identity(
     let dbus = DBusProxy::new(connection).await?;
     let bus_id = tokio::time::timeout(INTERNAL_DBUS_CALL_TIMEOUT, dbus.get_id())
         .await
-        .map_err(|_| zbus::Error::Failure("session bus identity probe timed out".to_string()))?
+        .map_err(|_elapsed| {
+            zbus::Error::Failure("session bus identity probe timed out".to_string())
+        })?
         .map_err(zbus::Error::from)?;
     let unique_name = connection
         .unique_name()

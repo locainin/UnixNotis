@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::float_cmp,
     reason = "the tolerance helper returns exact configured constants for these finite inputs"
 )]

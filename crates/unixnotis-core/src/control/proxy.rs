@@ -1,7 +1,10 @@
 //! Generated D-Bus control proxy contract
 
 // The proxy macro creates signal collections consumed through generated streams
-#![allow(clippy::collection_is_never_read)]
+#![expect(
+    clippy::collection_is_never_read,
+    reason = "the zbus proxy macro generates signal collections consumed through generated streams"
+)]
 
 use zbus::proxy;
 

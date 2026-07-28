@@ -1,8 +1,3 @@
-#![allow(
-    clippy::float_cmp,
-    reason = "the parser produces exact values for these bounded decimal inputs"
-)]
-
 use unixnotis_core::NumericParseMode;
 
 use super::{parse_muted, parse_numeric};
