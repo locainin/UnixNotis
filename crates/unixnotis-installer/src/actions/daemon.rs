@@ -1,13 +1,13 @@
 //! Stop and verify the currently running notification daemon
 
-use std::process::Stdio;
-use std::thread;
-use std::time::{Duration, Instant};
-
 use anyhow::{anyhow, Context, Result};
 
 use super::{log_line, run_command, ActionContext};
 use crate::system_tools;
+
+mod process_handle;
+
+use process_handle::{ProcessHandle, ProcessState};
 
 pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
     let Some(owner) = ctx.detection.owner.as_ref() else {
@@ -80,34 +80,18 @@ pub fn stop_active_daemon(ctx: &mut ActionContext) -> Result<()> {
 
         if let Some(pid) = owner_pid {
             log_line(ctx, format!("Stopping {} (pid {})", daemon.name, pid));
-            // If the process is already gone, the stop goal is satisfied
-            if !pid_alive(pid)? {
-                log_line(ctx, format!("Process {pid} already stopped."));
-                return Ok(());
-            }
-            // Re-check the command name to avoid signaling a recycled PID
-            if !pid_matches_comm(pid, &daemon.name)? {
-                // Re-check liveness to treat a natural exit as success
-                if !pid_alive(pid)? {
+            // A stable process handle prevents a recycled PID from receiving the signal
+            let handle = match ProcessHandle::open(pid, &daemon.name)? {
+                ProcessState::Gone => {
                     log_line(ctx, format!("Process {pid} already stopped."));
                     return Ok(());
                 }
-                return Err(anyhow!(
-                    "pid {} no longer matches expected daemon {}; aborting stop",
-                    pid,
-                    daemon.name
-                ));
-            }
-            let status = system_tools::command("kill")
-                .context("failed to locate trusted kill")?
-                .args(["-TERM", &pid.to_string()])
-                .status()
-                .context("failed to terminate notification daemon")?;
-            if status.success() {
-                wait_for_exit(ctx, pid, &daemon.name)?;
-                return Ok(());
-            }
-            return Err(anyhow!("failed to stop {}", daemon.name));
+                ProcessState::Running(handle) => handle,
+            };
+            handle.terminate()?;
+            handle.wait_for_exit()?;
+            log_line(ctx, format!("Process {pid} stopped."));
+            return Ok(());
         }
     }
 
@@ -142,66 +126,6 @@ fn unmanaged_owner_error(
     );
     log_line(ctx, message.clone());
     Err(anyhow!(message))
-}
-
-fn wait_for_exit(ctx: &mut ActionContext, pid: u32, expected_comm: &str) -> Result<()> {
-    let start = Instant::now();
-    let timeout = Duration::from_secs(5);
-    let poll = Duration::from_millis(100);
-
-    while start.elapsed() < timeout {
-        if !pid_alive(pid)? {
-            log_line(ctx, format!("Process {pid} stopped."));
-            return Ok(());
-        }
-        // PID reuse protection verifies the command name during the wait loop
-        if !pid_matches_comm(pid, expected_comm)? {
-            return Err(anyhow!(
-                "pid {pid} no longer matches expected daemon {expected_comm}; aborting wait"
-            ));
-        }
-        thread::sleep(poll);
-    }
-
-    Err(anyhow!("process {pid} did not exit after 5s"))
-}
-
-fn pid_alive(pid: u32) -> Result<bool> {
-    if pid == 0 || pid > i32::MAX as u32 {
-        return Ok(false);
-    }
-
-    let status = system_tools::command("kill")
-        .context("failed to locate trusted kill")?
-        .args(["-0", &pid.to_string()])
-        // Dead-PID probes are expected during waits, so keep kill diagnostics out of the TUI
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .with_context(|| format!("failed to probe pid {pid}"))?;
-    Ok(status.success())
-}
-
-fn pid_matches_comm(pid: u32, expected: &str) -> Result<bool> {
-    // Argv preserves daemon basenames longer than Linux's 15-byte comm field
-    if let Some(program) = crate::detect::read_cmdline_program(pid) {
-        return Ok(program == expected);
-    }
-    // Validate the process name with ps before sending signals to avoid PID reuse hazards
-    let output = system_tools::command("ps")
-        .context("failed to locate trusted ps")?
-        .args(["-p", &pid.to_string(), "-o", "comm="])
-        .output()
-        .with_context(|| format!("failed to read comm for pid {pid}"))?;
-    if !output.status.success() {
-        return Ok(false);
-    }
-    let comm = String::from_utf8_lossy(&output.stdout);
-    let comm = comm.trim();
-    if comm.is_empty() {
-        return Ok(false);
-    }
-    Ok(comm == expected)
 }
 
 fn is_systemd_unit_inactive(unit: &str) -> Result<bool> {
