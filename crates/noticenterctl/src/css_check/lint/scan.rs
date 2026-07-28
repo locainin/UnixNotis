@@ -18,13 +18,38 @@ struct CssLintContext<'a> {
     duplicate_selector_allowlist: &'a DuplicateSelectorAllowlist,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct LintOptions {
+    pub(super) honor_suppressions: bool,
+}
+
+impl Default for LintOptions {
+    fn default() -> Self {
+        Self {
+            honor_suppressions: true,
+        }
+    }
+}
+
 pub(super) fn lint_css_contents_with_properties(
     contents: &str,
     custom_properties: &CssCustomPropertyScopes,
 ) -> Vec<CssCheckLintFinding> {
+    lint_css_contents_with_options(contents, custom_properties, LintOptions::default())
+}
+
+pub(super) fn lint_css_contents_with_options(
+    contents: &str,
+    custom_properties: &CssCustomPropertyScopes,
+    options: LintOptions,
+) -> Vec<CssCheckLintFinding> {
     // One collection keeps source order stable across color and rule diagnostics
     let mut warnings = Vec::new();
-    let duplicate_selector_allowlist = DuplicateSelectorAllowlist::from_source(contents);
+    let duplicate_selector_allowlist = if options.honor_suppressions {
+        DuplicateSelectorAllowlist::from_source(contents)
+    } else {
+        DuplicateSelectorAllowlist::default()
+    };
 
     // Strip comments first so block scanning stays honest
     let stripped = strip_css_comments(contents);

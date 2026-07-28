@@ -39,47 +39,12 @@ impl DuplicateSelectorAllowlist {
             remaining = after_end;
         }
 
-        if ranges.is_empty() {
-            // Existing untouched installs predate directives but retain known stock bytes
-            if let Some(start) = legacy_stock_override_start(source) {
-                ranges.push(start..source.len());
-            }
-        }
-
         Self { ranges }
     }
 
     pub(super) fn contains(&self, offset: usize) -> bool {
         self.ranges.iter().any(|range| range.contains(&offset))
     }
-}
-
-fn legacy_stock_override_start(source: &str) -> Option<usize> {
-    [
-        (
-            unixnotis_core::DEFAULT_PANEL_CSS,
-            "/* Restrained default composition",
-        ),
-        (
-            unixnotis_core::DEFAULT_WIDGETS_CSS,
-            "/* Restrained widget composition",
-        ),
-        (
-            unixnotis_core::DEFAULT_MEDIA_CSS,
-            "/* Restrained media transport */",
-        ),
-    ]
-    .into_iter()
-    .find_map(|(current, override_header)| {
-        let legacy = current
-            .replace(&format!("{ALLOW_DUPLICATE_SELECTORS_START}\n"), "")
-            .replace(&format!("{ALLOW_DUPLICATE_SELECTORS_END}\n"), "");
-        (source == legacy).then(|| {
-            source
-                .find(override_header)
-                .expect("stock override header remains present")
-        })
-    })
 }
 
 #[cfg(test)]

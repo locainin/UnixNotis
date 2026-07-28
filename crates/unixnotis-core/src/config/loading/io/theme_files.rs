@@ -10,6 +10,7 @@ use crate::{
     DEFAULT_WIDGETS_CSS,
 };
 
+use super::theme_stock::migrate_known_stock_themes;
 use super::write::write_if_missing;
 use super::{ConfigError, ThemePaths};
 
@@ -38,6 +39,7 @@ impl Config {
         write_if_missing(&theme_paths.popup_css, DEFAULT_POPUP_CSS)?;
         write_if_missing(&theme_paths.widgets_css, DEFAULT_WIDGETS_CSS)?;
         write_if_missing(&theme_paths.media_css, DEFAULT_MEDIA_CSS)?;
+        migrate_known_stock_themes(theme_paths)?;
 
         if legacy_contents.is_some() {
             let backup = legacy.with_extension("css.bak");

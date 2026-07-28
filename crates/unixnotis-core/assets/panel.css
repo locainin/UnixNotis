@@ -4,21 +4,16 @@
  */
 .unixnotis-panel {
   min-width: 420px;
-  /* Primary surface gradient.
-   * The last stop (panel-grad-3) is intentionally hotpink-leaning to create a
-   * bottom-right glow without changing any layout logic. */
-  background-image: linear-gradient(155deg, @unixnotis-panel-grad-1 0%, @unixnotis-panel-grad-2 55%, @unixnotis-panel-grad-3 100%);
+  background-image: linear-gradient(155deg, alpha(#080d18, 0.98) 0%, alpha(#10152a, 0.98) 58%, alpha(#241734, 0.97) 100%);
   color: @unixnotis-text;
-  border-radius: 30px;
-  border-radius: var(--unixnotis-panel-radius);
+  border-radius: 20px;
   padding: 16px;
   padding: var(--unixnotis-panel-padding);
-  border: 1px solid @unixnotis-outline;
+  border: 1px solid alpha(#9bb8e8, 0.16);
+  font-family: "Inter", "Manrope", "Noto Sans", sans-serif;
   box-shadow:
-    0 28px 70px -38px @unixnotis-glow-cyan,
-    0 22px 60px -42px @unixnotis-glow-pink,
-    0 12px 28px -20px @unixnotis-shadow-soft,
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+    0 26px 64px -34px alpha(#000000, 0.88),
+    inset 0 1px 0 alpha(#ffffff, 0.035);
 }
 
 
@@ -26,14 +21,14 @@
   margin-bottom: 12px;
   padding: 12px;
   padding: var(--unixnotis-panel-header-padding);
-  border-radius: 18px;
-  border-radius: var(--unixnotis-panel-header-radius);
-  background-image: linear-gradient(160deg, alpha(@unixnotis-surface-soft, 0.7), alpha(@unixnotis-surface, 0.9));
-  border: 1px solid alpha(@unixnotis-accent, 0.16);
-  box-shadow:
-    0 10px 24px -18px @unixnotis-shadow-soft,
-    0 0 22px -18px @unixnotis-glow-cyan,
-    inset 0 0 0 1px alpha(#ffffff, 0.03);
+  padding-left: 2px;
+  padding-right: 2px;
+  padding-bottom: 12px;
+  border: 0;
+  border-bottom: 1px solid alpha(#9bb8e8, 0.12);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .unixnotis-panel-header-top {
@@ -79,21 +74,20 @@
 .unixnotis-panel-title {
   font-weight: 700;
   font-size: 16px;
-  letter-spacing: 0.3px;
+  letter-spacing: -0.01em;
 }
 
 .unixnotis-panel-count {
-  background-image: linear-gradient(160deg, alpha(@unixnotis-accent, 0.22), alpha(@unixnotis-accent-2, 0.18));
-  color: @unixnotis-text;
+  background: alpha(@unixnotis-accent, 0.12);
+  color: #bffaf5;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   border-radius: 999px;
   padding: 2px 8px;
-  border: 1px solid alpha(@unixnotis-accent, 0.35);
+  border: 1px solid alpha(@unixnotis-accent, 0.28);
   min-width: 26px;
-  /* Slight bloom improves readability over complex wallpapers. */
-  box-shadow: 0 0 12px -10px @unixnotis-glow-cyan;
+  box-shadow: none;
 }
 
 .unixnotis-panel-actions {
@@ -107,18 +101,19 @@
 }
 
 .unixnotis-panel-action {
-  background-image: linear-gradient(160deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.9));
-  color: @unixnotis-text;
-  border-radius: 999px;
+  background: alpha(#ffffff, 0.045);
+  color: alpha(#ffffff, 0.75);
+  border-radius: 10px;
   padding: 6px 10px;
   padding: var(--unixnotis-panel-action-gap) calc(var(--unixnotis-panel-action-gap) + 4px);
-  border: 1px solid alpha(@unixnotis-accent, 0.18);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
   min-height: 28px;
-  box-shadow:
-    0 8px 16px -12px @unixnotis-shadow-soft,
-    0 0 18px -16px @unixnotis-glow-cyan,
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
   font-size: 11px;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
 
 .unixnotis-panel-action-focus,
@@ -160,8 +155,12 @@
 }
 
 .unixnotis-panel-action:hover {
-  background-image: linear-gradient(160deg, @unixnotis-action-bg-hover, alpha(@unixnotis-accent-2, 0.16));
-  border-color: alpha(@unixnotis-accent, 0.5);
+  background: alpha(#ffffff, 0.08);
+  border-top: 1px solid alpha(#ffffff, 0.14);
+  border-left: 1px solid alpha(#ffffff, 0.10);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.04);
+  color: #ffffff;
   box-shadow:
     0 10px 18px -14px @unixnotis-shadow-soft,
     0 0 22px -18px @unixnotis-glow-cyan,
@@ -170,13 +169,14 @@
 }
 
 .unixnotis-panel-action:checked {
-  background-image: linear-gradient(140deg, @unixnotis-action-bg-active, alpha(@unixnotis-accent-2, 0.3));
-  border-color: alpha(@unixnotis-accent, 0.75);
+  background-image: linear-gradient(135deg, alpha(#00b4db, 0.22), alpha(#0083b0, 0.22));
+  border: 1px solid alpha(#00a2ff, 0.50);
+  box-shadow: 0 4px 12px -8px alpha(#00a2ff, 0.4), inset 0 1px 0 alpha(#ffffff, 0.12);
 }
 
 .unixnotis-panel-action:checked .unixnotis-panel-action-glyph,
 .unixnotis-panel-action:checked .unixnotis-panel-action-label {
-  color: @unixnotis-text;
+  color: #ffffff;
 }
 
 .unixnotis-panel-action-icon {
@@ -188,17 +188,20 @@
 .unixnotis-panel-action-close {
   /* Close action is visually isolated from destructive list actions. */
   margin-left: 6px;
-  background-image: linear-gradient(160deg, alpha(@unixnotis-surface-strong, 0.88), alpha(@unixnotis-surface-soft, 0.84));
-  border-color: alpha(@unixnotis-accent, 0.26);
-  box-shadow:
-    0 8px 14px -12px @unixnotis-shadow-soft,
-    0 0 14px -14px @unixnotis-glow-cyan,
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
+  background: alpha(#ffffff, 0.045);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 10px;
+  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
 
 .unixnotis-panel-action-close:hover {
-  background-image: linear-gradient(160deg, alpha(@unixnotis-action-bg-hover, 0.88), alpha(@unixnotis-accent-2, 0.18));
-  border-color: alpha(@unixnotis-accent, 0.58);
+  background: alpha(#fb7185, 0.16);
+  border-color: alpha(#fb7185, 0.45);
+  color: #fb7185;
 }
 
 /* The DND menu is a compact action list rather than a stack of stock buttons */
@@ -315,7 +318,7 @@ entry selection {
 
 .unixnotis-panel-close {
   background: alpha(#ffffff, 0.045);
-  border-radius: 999px;
+  border-radius: 10px;
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
   border-right: 1px solid alpha(#ffffff, 0.04);
@@ -355,17 +358,25 @@ entry selection {
 }
 
 .unixnotis-group-header {
-  background-image: linear-gradient(160deg, @unixnotis-pill-bg, alpha(@unixnotis-surface-soft, 0.86));
+  background: alpha(#ffffff, 0.025);
   color: @unixnotis-text;
   border-radius: 999px;
   padding: 6px 12px;
-  border: 1px solid @unixnotis-pill-border;
-  box-shadow: 0 10px 18px -16px @unixnotis-shadow-soft;
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.03);
+  border-bottom: 1px solid alpha(#ffffff, 0.01);
+  box-shadow: none;
   outline: none;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 .unixnotis-group-header:hover {
-  background-image: linear-gradient(160deg, @unixnotis-pill-hover, alpha(@unixnotis-accent-2, 0.18));
+  background: alpha(#ffffff, 0.05);
+  border-top-color: alpha(#ffffff, 0.14);
+  border-left-color: alpha(#ffffff, 0.10);
+  border-right-color: alpha(#ffffff, 0.05);
+  border-bottom-color: alpha(#ffffff, 0.02);
 }
 
 .unixnotis-group-header:focus,
@@ -391,15 +402,16 @@ entry selection {
 }
 
 .unixnotis-group-count {
-  background-image: linear-gradient(160deg, alpha(@unixnotis-accent, 0.22), alpha(@unixnotis-accent-2, 0.2));
-  color: @unixnotis-text;
+  background: alpha(@unixnotis-accent, 0.12);
+  color: #bffaf5;
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  border: 1px solid alpha(@unixnotis-accent, 0.35);
+  border: 1px solid alpha(@unixnotis-accent, 0.28);
   min-width: 22px;
+  box-shadow: none;
 }
 
 .unixnotis-group-chevron {
@@ -427,24 +439,22 @@ entry selection {
 }
 
 .unixnotis-panel-card {
-  background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
-  border: 1px solid @unixnotis-card-border;
-  border-radius: 20px;
-  border-radius: var(--unixnotis-notification-card-radius);
+  background-image: linear-gradient(135deg, alpha(#17253f, 0.90), alpha(#12182c, 0.96));
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 16px;
   padding: 10px 12px;
   padding: var(--unixnotis-panel-card-padding-y) var(--unixnotis-panel-card-padding-x);
   margin-bottom: 8px;
-  box-shadow:
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 22px -18px alpha(@unixnotis-accent, 0.16),
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.02), 0 4px 12px -8px alpha(#000000, 0.7);
+  transition: border-color 0.15s ease-out;
 }
 
 .unixnotis-panel-card.stacked {
   /* One focused shadow keeps the foreground content visually above the rear layers */
-  box-shadow:
-    0 12px 24px -20px @unixnotis-shadow-strong,
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+  box-shadow: 0 12px 24px -20px alpha(#000000, 0.78);
 }
 
 .unixnotis-panel-card-group-collapsed {
@@ -459,8 +469,8 @@ entry selection {
 
 .unixnotis-stack-ghost {
   /* Full card silhouettes preserve the stack shape if card colors are customized */
-  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.10);
-  border-radius: 18px;
+  background: #172238;
+  border-radius: 16px;
   padding: 0;
   min-height: 68px;
   opacity: 1;
@@ -468,62 +478,81 @@ entry selection {
   margin-right: 10px;
   margin-top: -58px;
   margin-bottom: 0;
-  border: 1px solid alpha(@unixnotis-card-border, 0.62);
-  box-shadow:
-    0 -2px 10px -8px alpha(@unixnotis-accent, 0.22),
-    0 8px 14px -14px @unixnotis-shadow-soft;
+  border: 1px solid alpha(#9bb8e8, 0.18);
+  box-shadow: none;
 }
 
 .unixnotis-stack-ghost-2 {
-  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.06);
+  background: #121c2f;
   min-height: 68px;
   opacity: 1;
   margin-left: 20px;
   margin-right: 20px;
   margin-top: 0;
   margin-bottom: 0;
-  border-color: alpha(@unixnotis-card-border, 0.42);
-  box-shadow:
-    0 -2px 10px -9px alpha(@unixnotis-accent, 0.14),
-    0 10px 16px -15px @unixnotis-shadow-soft;
+  border-color: alpha(#9bb8e8, 0.14);
+  border-radius: 16px;
 }
 
 .unixnotis-panel-card.active {
-  box-shadow:
-    0 0 0 1px alpha(@unixnotis-accent, 0.28),
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 26px -20px @unixnotis-glow-cyan,
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
-}
-
-.unixnotis-panel-card.critical {
-  box-shadow:
-    0 0 0 1px alpha(@unixnotis-urgent, 0.35),
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 26px -20px alpha(@unixnotis-urgent, 0.35),
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
+  background-image: linear-gradient(135deg, alpha(#1a2e50, 0.93), alpha(#111627, 0.96));
+  border-top: 1px solid alpha(#ffffff, 0.12);
+  border-left: 1px solid alpha(#ffffff, 0.09);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.03);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.03), 0 6px 16px -8px alpha(#000000, 0.8);
 }
 
 .unixnotis-panel-card.stacked.active {
   /* Active state should not erase the collapsed-stack shadow */
+  box-shadow: 0 12px 24px -20px alpha(#000000, 0.78);
+}
+
+/* Critical state composes after the ordinary active and stack rules */
+.unixnotis-panel-card.critical,
+.unixnotis-panel-card.active.critical {
+  background-image: linear-gradient(
+    145deg,
+    alpha(@unixnotis-critical-surface, 0.82),
+    alpha(#12182c, 0.97)
+  );
+  border-color: alpha(@unixnotis-critical-border, 0.48);
   box-shadow:
-    0 8px 0 -4px alpha(@unixnotis-accent, 0.18),
-    0 16px 0 -8px alpha(@unixnotis-accent, 0.14),
-    0 0 0 1px alpha(@unixnotis-accent, 0.28),
     0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 26px -20px @unixnotis-glow-cyan,
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
+    0 0 20px -16px alpha(@unixnotis-critical-border, 0.32),
+    inset 0 1px 0 alpha(#ffffff, 0.05);
+}
+
+.unixnotis-panel-card.critical .unixnotis-panel-app {
+  color: @unixnotis-critical-text;
+}
+
+.unixnotis-panel-card.critical .unixnotis-panel-icon {
+  background: alpha(@unixnotis-critical-border, 0.12);
+  border: 1px solid alpha(@unixnotis-critical-border, 0.28);
+  border-radius: 8px;
+  color: @unixnotis-critical-icon;
+  padding: 4px;
+}
+
+.unixnotis-panel-card.critical .unixnotis-panel-summary {
+  color: #ffffff;
 }
 
 .unixnotis-panel-card.stacked.critical,
 .unixnotis-panel-card.stacked.active.critical {
-  /* Urgent stacks keep the same depth while using the urgent border color */
+  /* Urgent stacks keep the same depth while using the critical border color */
+  background-image: linear-gradient(
+    145deg,
+    alpha(@unixnotis-critical-surface, 0.82),
+    alpha(#12182c, 0.97)
+  );
+  border-color: alpha(@unixnotis-critical-border, 0.48);
   box-shadow:
-    0 8px 0 -4px alpha(@unixnotis-urgent, 0.20),
-    0 16px 0 -8px alpha(@unixnotis-urgent, 0.14),
-    0 0 0 1px alpha(@unixnotis-urgent, 0.35),
+    0 8px 0 -4px alpha(@unixnotis-critical-border, 0.18),
+    0 16px 0 -8px alpha(@unixnotis-critical-border, 0.12),
     0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 26px -20px alpha(@unixnotis-urgent, 0.35),
+    0 0 20px -16px alpha(@unixnotis-critical-border, 0.32),
     inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
@@ -567,15 +596,20 @@ entry selection {
 
 .unixnotis-panel-app {
   font-weight: 700;
-  font-size: 14px;
+  color: #a3b3cc;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 
 .unixnotis-panel-summary {
   font-size: 13px;
+  color: #ffffff;
+  font-weight: 700;
 }
 
 .unixnotis-panel-body {
-  color: @unixnotis-muted;
+  color: #cbd5e1;
   font-size: 12px;
 }
 
@@ -621,129 +655,11 @@ entry selection {
   box-shadow: 0 0 16px -12px @unixnotis-glow-cyan;
 }
 
-/* unixnotis-css-check allow-duplicate-selectors:start */
-/* Restrained default composition
- *
- * Navy remains the visual identity while flat surfaces and spacing carry hierarchy
- */
-.unixnotis-panel {
-  background-image: linear-gradient(155deg, alpha(#080d18, 0.98) 0%, alpha(#10152a, 0.98) 58%, alpha(#241734, 0.97) 100%);
-  border: 1px solid alpha(#9bb8e8, 0.16);
-  border-radius: 20px;
-  font-family: "Inter", "Manrope", "Noto Sans", sans-serif;
-  box-shadow:
-    0 26px 64px -34px alpha(#000000, 0.88),
-    inset 0 1px 0 alpha(#ffffff, 0.035);
-}
-
-.unixnotis-panel-header {
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid alpha(#9bb8e8, 0.12);
-  border-radius: 0;
-  box-shadow: none;
-  padding-left: 2px;
-  padding-right: 2px;
-  padding-bottom: 12px;
-}
-
-.unixnotis-panel-title {
-  font-size: 16px;
-  letter-spacing: -0.01em;
-}
-
-.unixnotis-panel-count,
-.unixnotis-group-count {
-  background: alpha(@unixnotis-accent, 0.12);
-  color: #bffaf5;
-  border-color: alpha(@unixnotis-accent, 0.28);
-  box-shadow: none;
-}
-
-.unixnotis-panel-action {
-  background: alpha(#ffffff, 0.045);
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
-  border-bottom: 1px solid alpha(#ffffff, 0.02);
-  border-radius: 10px;
-  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
-  color: alpha(#ffffff, 0.75);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
-}
-
-.unixnotis-panel-action:hover {
-  background: alpha(#ffffff, 0.08);
-  border-top: 1px solid alpha(#ffffff, 0.14);
-  border-left: 1px solid alpha(#ffffff, 0.10);
-  border-right: 1px solid alpha(#ffffff, 0.06);
-  border-bottom: 1px solid alpha(#ffffff, 0.04);
-  color: #ffffff;
-}
-
-.unixnotis-panel-action:checked {
-  background-image: linear-gradient(135deg, alpha(#00b4db, 0.22), alpha(#0083b0, 0.22));
-  border: 1px solid alpha(#00a2ff, 0.50);
-  box-shadow: 0 4px 12px -8px alpha(#00a2ff, 0.4), inset 0 1px 0 alpha(#ffffff, 0.12);
-}
-
-.unixnotis-panel-action:checked .unixnotis-panel-action-glyph,
-.unixnotis-panel-action:checked .unixnotis-panel-action-label {
-  color: #ffffff;
-}
-
-.unixnotis-panel-action-close,
-.unixnotis-panel-close {
-  background: alpha(#ffffff, 0.045);
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
-  border-bottom: 1px solid alpha(#ffffff, 0.02);
-  border-radius: 10px;
-  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
-}
-
-.unixnotis-panel-action-close:hover,
-.unixnotis-panel-close:hover {
-  background: alpha(#fb7185, 0.16);
-  border-color: alpha(#fb7185, 0.45);
-  color: #fb7185;
-}
-
-.unixnotis-group-header {
-  background: alpha(#ffffff, 0.025);
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.03);
-  border-bottom: 1px solid alpha(#ffffff, 0.01);
-  box-shadow: none;
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
-}
-
-.unixnotis-group-header:hover {
-  background: alpha(#ffffff, 0.05);
-  border-top-color: alpha(#ffffff, 0.14);
-  border-left-color: alpha(#ffffff, 0.10);
-  border-right-color: alpha(#ffffff, 0.05);
-  border-bottom-color: alpha(#ffffff, 0.02);
-}
-
+/* Interactive refinements follow the canonical base rules */
 .unixnotis-group-header:hover .unixnotis-group-count {
   background: alpha(@unixnotis-accent, 0.22);
   color: #ffffff;
   border-color: alpha(@unixnotis-accent, 0.45);
-}
-
-.unixnotis-panel-card {
-  background-image: linear-gradient(135deg, alpha(#17253f, 0.90), alpha(#12182c, 0.96));
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
-  border-bottom: 1px solid alpha(#ffffff, 0.02);
-  border-radius: 16px;
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.02), 0 4px 12px -8px alpha(#000000, 0.7);
-  transition: border-color 0.15s ease-out;
 }
 
 .unixnotis-panel-card:hover {
@@ -755,15 +671,6 @@ entry selection {
   box-shadow: inset 0 1px 0 alpha(#ffffff, 0.04), 0 10px 24px -16px alpha(#000000, 0.85);
 }
 
-.unixnotis-panel-card.active {
-  background-image: linear-gradient(135deg, alpha(#1a2e50, 0.93), alpha(#111627, 0.96));
-  border-top: 1px solid alpha(#ffffff, 0.12);
-  border-left: 1px solid alpha(#ffffff, 0.09);
-  border-right: 1px solid alpha(#ffffff, 0.06);
-  border-bottom: 1px solid alpha(#ffffff, 0.03);
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.03), 0 6px 16px -8px alpha(#000000, 0.8);
-}
-
 .unixnotis-panel-card.active:hover {
   background-image: linear-gradient(135deg, alpha(#264375, 0.95), alpha(#151b32, 0.97));
   border-top: 1px solid alpha(#ffffff, 0.18);
@@ -771,40 +678,6 @@ entry selection {
   border-right: 1px solid alpha(#ffffff, 0.08);
   border-bottom: 1px solid alpha(#ffffff, 0.04);
   box-shadow: inset 0 1px 0 alpha(#ffffff, 0.05), 0 12px 28px -14px alpha(#000000, 0.9);
-}
-
-.unixnotis-panel-card.stacked,
-.unixnotis-panel-card.stacked.active {
-  box-shadow: 0 12px 24px -20px alpha(#000000, 0.78);
-}
-
-.unixnotis-stack-ghost {
-  background: #172238;
-  border-color: alpha(#9bb8e8, 0.18);
-  border-radius: 16px;
-  box-shadow: none;
-}
-
-.unixnotis-stack-ghost-2 {
-  background: #121c2f;
-  border-color: alpha(#9bb8e8, 0.14);
-  border-radius: 16px;
-}
-
-.unixnotis-panel-app {
-  color: #a3b3cc;
-  font-size: 10px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.unixnotis-panel-summary {
-  color: #ffffff;
-  font-weight: 700;
-}
-
-.unixnotis-panel-body {
-  color: #cbd5e1;
 }
 
 /*
@@ -839,10 +712,11 @@ scrollbar slider {
 scrollbar slider:hover {
   background: alpha(#52d9da, 0.85);
   box-shadow: 0 0 8px alpha(#52d9da, 0.50);
+  min-width: 6px;
 }
 
 scrollbar slider:active {
   background: #52d9da;
   box-shadow: 0 0 12px alpha(#52d9da, 0.80);
+  min-width: 6px;
 }
-/* unixnotis-css-check allow-duplicate-selectors:end */
