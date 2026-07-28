@@ -46,7 +46,9 @@ fn stop_active_daemon_errors_for_unmanaged_owner() {
 
 #[test]
 fn stop_active_daemon_terminates_the_exact_non_systemd_owner() {
-    let mut child = Command::new("sleep")
+    let sleep = unixnotis_core::util::trusted_system_program_path("sleep")
+        .expect("find sleep in a trusted system directory");
+    let mut child = Command::new(sleep)
         .arg("30")
         .stdin(Stdio::null())
         .stdout(Stdio::null())

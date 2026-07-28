@@ -31,7 +31,9 @@ fn process_handle_rejects_a_mismatched_program_before_signaling() {
 
 #[test]
 fn pidfd_signal_and_wait_stop_the_exact_child_process() {
-    let mut child = Command::new("sleep")
+    let sleep = unixnotis_core::util::trusted_system_program_path("sleep")
+        .expect("find sleep in a trusted system directory");
+    let mut child = Command::new(sleep)
         .arg("30")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -122,7 +124,9 @@ fn fallback_lifetime_check_accepts_current_and_rejects_stale_start_times() {
 
 #[test]
 fn pidfd_wait_times_out_while_the_exact_process_is_still_running() {
-    let mut child = Command::new("sleep")
+    let sleep = unixnotis_core::util::trusted_system_program_path("sleep")
+        .expect("find sleep in a trusted system directory");
+    let mut child = Command::new(sleep)
         .arg("30")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
