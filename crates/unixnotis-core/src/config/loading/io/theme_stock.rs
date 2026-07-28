@@ -13,7 +13,7 @@ use crate::{DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_WIDGETS_CSS};
 
 use super::{ConfigError, ThemePaths};
 
-const MAX_STOCK_THEME_BYTES: u64 = 1_048_576;
+pub(super) const MAX_STOCK_THEME_BYTES: u64 = 1_048_576;
 const MAX_BACKUP_COLLISION_RETRIES: u8 = 8;
 const LEGACY_BACKUP_TAG: &str = "unixnotis-stock-9ca42584";
 const LEGACY_PANEL_DIGEST: &str =
