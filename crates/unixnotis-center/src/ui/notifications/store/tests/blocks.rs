@@ -2,22 +2,10 @@ use std::rc::Rc;
 
 use gio::prelude::ListModelExt;
 
-use super::{collapsed_stack_depth, common_prefix_suffix};
+use super::common_prefix_suffix;
 use crate::ui::notifications::item::{RowData, RowItem};
 use crate::ui::notifications::model::types::{GroupRange, RowKey};
 use crate::ui::notifications::test_support as support;
-
-#[test]
-fn collapsed_stack_depth_caps_at_two() {
-    assert_eq!(collapsed_stack_depth(1, false), 0);
-    assert_eq!(collapsed_stack_depth(2, false), 1);
-    assert_eq!(collapsed_stack_depth(4, false), 2);
-}
-
-#[test]
-fn collapsed_stack_depth_is_zero_when_expanded() {
-    assert_eq!(collapsed_stack_depth(4, true), 0);
-}
 
 #[test]
 fn common_prefix_suffix_finds_stable_edges() {
@@ -88,7 +76,7 @@ fn build_group_block_collapses_group_to_header_and_top_notification() {
     assert!(!header.expanded);
     let visible = items[1].data();
     assert!(visible.stacked);
-    assert_eq!(visible.stack_depth, 2);
+    assert_eq!(visible.stack_depth, 0);
     assert!(!visible.expanded);
 }
 
@@ -101,8 +89,8 @@ fn build_group_block_keeps_single_collapsed_notification_unstacked() {
 
     let (items, _keys) = list.build_group_block(&key, &ids);
 
-    assert_eq!(items.len(), 2);
-    let visible = items[1].data();
+    assert_eq!(items.len(), 1);
+    let visible = items[0].data();
     assert!(!visible.stacked);
     assert_eq!(visible.stack_depth, 0);
 }

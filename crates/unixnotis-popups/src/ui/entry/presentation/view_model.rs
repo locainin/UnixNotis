@@ -16,6 +16,8 @@ pub(in crate::ui::entry) use unixnotis_ui::presentation::{
 pub(in crate::ui::entry) struct PopupEntryViewModel {
     pub(in crate::ui::entry) kind: PopupKind,
     pub(in crate::ui::entry) app_label: String,
+    pub(in crate::ui::entry) secondary_claim: Option<String>,
+    pub(in crate::ui::entry) badge: unixnotis_ui::presentation::BadgePresentation,
     pub(in crate::ui::entry) timestamp_label: String,
     pub(in crate::ui::entry) title: String,
     pub(in crate::ui::entry) body: Option<String>,
@@ -47,6 +49,8 @@ impl PopupEntryViewModel {
         Self {
             kind: shared.kind,
             app_label: shared.identity.primary_label,
+            secondary_claim: shared.identity.secondary_claim,
+            badge: shared.identity.badge,
             timestamp_label: shared.timestamp,
             title: shared.title,
             body: shared.body,

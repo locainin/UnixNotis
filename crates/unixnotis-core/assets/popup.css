@@ -146,6 +146,12 @@
   margin-top: 2px;
 }
 
+.unixnotis-popup-secondary-claim {
+  color: alpha(#fbbf24, 0.82);
+  font-size: 12px;
+  margin-top: 1px;
+}
+
 .unixnotis-popup-content-image {
   min-width: 48px;
   min-height: 48px;

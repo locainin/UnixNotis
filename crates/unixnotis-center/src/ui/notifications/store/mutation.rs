@@ -91,11 +91,6 @@ impl NotificationList {
                     .unwrap_or(false);
                 let group_len = self.grouped_cache.get(&entry.app_key).map_or(0, Vec::len);
                 let stacked = collapsed_group_is_stacked(expanded, group_len);
-                let stack_depth = if expanded {
-                    0
-                } else {
-                    group_len.saturating_sub(1).min(2) as u8
-                };
                 let presentation = super::item::RowPresentation {
                     received_at_ms: entry.received_at_ms,
                     show_metadata: self.show_notification_metadata,
@@ -109,7 +104,7 @@ impl NotificationList {
                     entry.app_key.clone(),
                     entry.view.clone(),
                     stacked,
-                    stack_depth,
+                    0,
                     expanded,
                     entry.is_active,
                     presentation,

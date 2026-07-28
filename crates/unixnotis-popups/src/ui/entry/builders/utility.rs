@@ -3,6 +3,7 @@
 use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::NotificationView;
+use unixnotis_ui::presentation::build_semantic_badge;
 
 use super::common::{build_body_label, build_identity_header, build_title_label};
 use super::{append_thumbnail, RenderedPopup};
@@ -20,8 +21,9 @@ pub(super) fn build_utility_popup(
     let main = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     main.add_css_class("unixnotis-popup-utility-content");
 
-    let has_icon = if let Some(icon) = state.build_app_icon_widget(notification, UTILITY_ICON_SIZE)
-    {
+    let icon = build_semantic_badge(view.badge, UTILITY_ICON_SIZE)
+        .or_else(|| state.build_app_icon_widget(notification, UTILITY_ICON_SIZE));
+    let has_icon = if let Some(icon) = icon {
         // Utility symbols support scanning without becoming the card's dominant object
         icon.set_halign(Align::Start);
         icon.set_valign(Align::Start);

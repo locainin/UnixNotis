@@ -98,6 +98,33 @@ fn notification_diagnostics_report_renderer_and_store_admission_separately() {
 }
 
 #[test]
+fn notification_diagnostics_require_both_renderer_process_and_readiness() {
+    let mut store = make_store_with_limits(10, 10);
+    let visible = store.insert(make_notification("visible"), 0).notification;
+
+    for (process_running, ready, expected) in [
+        (false, false, PopupAdmissionView::RendererUnavailable),
+        (true, false, PopupAdmissionView::RendererUnavailable),
+        (false, true, PopupAdmissionView::RendererUnavailable),
+        (true, true, PopupAdmissionView::Show),
+    ] {
+        let health = unixnotis_core::UiHealth {
+            popups_process_running: process_running,
+            popups_ready: ready,
+            ..unixnotis_core::UiHealth::default()
+        };
+        let diagnostics = store
+            .notification_diagnostics(visible.id, &health)
+            .expect("active notification diagnostics");
+
+        assert_eq!(
+            diagnostics.popup_admission, expected,
+            "process_running={process_running}, ready={ready}"
+        );
+    }
+}
+
+#[test]
 fn active_inline_reply_target_requires_a_live_explicit_reply_action() {
     let mut store = make_store_with_limits(12, 20);
     let ordinary = store.insert(make_notification("ordinary"), 0).notification;

@@ -10,7 +10,7 @@ use gtk::pango;
 use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::{css::hooks, util};
-use unixnotis_ui::presentation::{NotificationPresentation, TrustLevel};
+use unixnotis_ui::presentation::{build_semantic_badge, NotificationPresentation, TrustLevel};
 
 use crate::control::UiEvent;
 
@@ -153,9 +153,14 @@ pub(in crate::ui::notifications) fn update_group_row(
             "unixnotis-attribution-warning",
             presentation.trust.level == TrustLevel::Suspicious,
         );
-        let scale = root.scale_factor();
-        // Group headers use the associated badge path instead of caller content images
-        icon_resolver.apply_badge(&group.icon, notification.as_ref(), 18, scale);
+        if let Some(image) = build_semantic_badge(presentation.identity.badge, 18) {
+            group.icon.set_paintable(image.paintable().as_ref());
+            group.icon.set_visible(true);
+        } else {
+            let scale = root.scale_factor();
+            // Verified groups keep authenticated application art from the shared resolver
+            icon_resolver.apply_badge(&group.icon, notification.as_ref(), 18, scale);
+        }
         set_class_state(root, hooks::group_row::HAS_ICON, true);
         set_class_state(root, hooks::group_row::NO_ICON, false);
     } else {

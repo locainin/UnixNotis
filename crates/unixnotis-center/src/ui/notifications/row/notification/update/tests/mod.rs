@@ -3,7 +3,6 @@
 mod actions;
 mod labels;
 mod metadata;
-mod stack;
 mod state;
 mod thumbnail;
 
@@ -14,4 +13,3 @@ pub(super) use super::metadata::{
 };
 pub(super) use super::row::update_notification_row;
 pub(super) use super::thumbnail::notification_has_thumbnail;
-pub(super) use super::visual::{stack_ghost_visibility, StackGhostVisibility};

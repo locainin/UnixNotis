@@ -7,6 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use unixnotis_core::NotificationView;
+use unixnotis_ui::presentation::{BadgePresentation, NotificationPresentation};
 
 use super::reply::InlineReplyWidgets;
 
@@ -15,9 +16,6 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) card: gtk::Box,
     // Polygon wrapper clips both visual output and pointer hit testing
     pub(super) card_plate: unixnotis_ui::CutCorner,
-    // Internal stack depth cards keep collapsed stacks in the same row update
-    pub(super) stack_ghost_1: gtk::Box,
-    pub(super) stack_ghost_2: gtk::Box,
     // Main icon shown at the top-left of the row
     pub(super) icon: gtk::Image,
     // App name text shown beside the icon
@@ -78,6 +76,7 @@ pub(in crate::ui::notifications) struct IconSignature {
     // Header badges depend only on daemon-associated attribution inputs
     badge_icon: String,
     desktop_id: String,
+    presentation: BadgePresentation,
 }
 
 impl IconSignature {
@@ -87,6 +86,9 @@ impl IconSignature {
         Self {
             badge_icon: notification.attribution.badge_icon.clone(),
             desktop_id: notification.attribution.desktop_id.clone(),
+            presentation: NotificationPresentation::from_view(notification)
+                .identity
+                .badge,
         }
     }
 }

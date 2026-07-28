@@ -3682,7 +3682,6 @@ dependencies = [
  "gdk4-wayland",
  "gio",
  "glib",
- "glib-build-tools",
  "gtk4",
  "gtk4-layer-shell",
  "image",
@@ -3699,6 +3698,7 @@ dependencies = [
 name = "unixnotis-ui"
 version = "1.2.0"
 dependencies = [
+ "glib-build-tools",
  "gtk4",
  "notify",
  "serde",

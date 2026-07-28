@@ -5,7 +5,7 @@ use std::io;
 
 use super::super::theme_stock::{
     migrate_known_stock_file, migrate_stock_file_with_writer, replace_file_if_snapshot_matches,
-    stock_backup_path,
+    stock_backup_path, MAX_STOCK_THEME_BYTES,
 };
 use super::support::test_root;
 
@@ -160,6 +160,35 @@ fn conflicting_existing_backup_uses_a_new_suffix_without_overwriting() {
         OLD_STOCK
     );
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn stock_migration_size_limit_accepts_exact_boundary_and_rejects_one_more_byte() {
+    let exact = vec![b'a'; usize::try_from(MAX_STOCK_THEME_BYTES).expect("test size")];
+    let oversized =
+        vec![b'b'; usize::try_from(MAX_STOCK_THEME_BYTES.saturating_add(1)).expect("test size")];
+
+    for (name, contents, expected) in [
+        ("exact-size-stock", exact, true),
+        ("oversized-stock", oversized, false),
+    ] {
+        let root = test_root(name);
+        fs::create_dir_all(&root).expect("theme root");
+        let target = root.join("panel.css");
+        fs::write(&target, &contents).expect("stock fixture");
+        let digest = blake3::hash(&contents).to_hex().to_string();
+
+        let migrated = migrate_known_stock_file(&target, CURRENT_STOCK, &digest, BACKUP_TAG)
+            .expect("size boundary migration");
+
+        assert_eq!(migrated, expected, "{name}");
+        if expected {
+            assert_eq!(fs::read(&target).expect("migrated stock"), CURRENT_STOCK);
+        } else {
+            assert_eq!(fs::read(&target).expect("preserved stock"), contents);
+        }
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 fn migrate(target: &std::path::Path, legacy: &[u8]) -> Result<bool, super::super::ConfigError> {

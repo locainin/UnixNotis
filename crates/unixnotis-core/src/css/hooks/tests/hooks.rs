@@ -242,9 +242,9 @@ fn stock_panel_css_targets_real_group_card_hooks() {
     let css = crate::theme::DEFAULT_PANEL_CSS;
 
     // Group headers and notification cards are sibling ListView rows, not nested widgets
-    // Stock CSS must target direct card hooks so grouped spacing actually applies
-    assert!(css.contains(&format!(".{}", panel_card::GROUPED)));
+    // Stock CSS targets explicit collapsed and expanded content states
     assert!(css.contains(&format!(".{}", panel_card::GROUP_COLLAPSED)));
+    assert!(css.contains(&format!(".{}", panel_card::GROUP_EXPANDED)));
 
     // These selectors belonged to an older nested-card idea and do not match the real tree
     assert!(!css.contains("unixnotis-group-cards"));
@@ -253,17 +253,19 @@ fn stock_panel_css_targets_real_group_card_hooks() {
 }
 
 #[test]
-fn stock_panel_css_uses_two_overlapping_full_card_stack_layers() {
+fn stock_panel_css_avoids_decorative_stack_ghosts_and_negative_overlap() {
     let css = crate::theme::DEFAULT_PANEL_CSS;
 
-    // Full-height rear layers overlap so themes retain a coherent card silhouette
-    assert!(css.contains(".unixnotis-stack-ghost"));
-    assert!(css.contains("min-height: 68px;"));
-    assert!(css.contains("margin-left: 10px;"));
-    assert!(css.contains("margin-top: -58px;"));
+    assert!(!css.contains(".unixnotis-stack-ghost"));
+    assert!(!css.contains("margin-top: -58px;"));
+}
 
-    // The back layer narrows again and starts the stack without a negative offset
-    assert!(css.contains(".unixnotis-stack-ghost-2"));
-    assert!(css.contains("margin-left: 20px;"));
-    assert!(css.contains("margin-top: 0;"));
+#[test]
+fn stock_panel_close_control_stays_quiet_until_hover_or_focus() {
+    let css = crate::theme::DEFAULT_PANEL_CSS;
+
+    assert!(css.contains(".unixnotis-panel-close {\n"));
+    assert!(css.contains("opacity: 0;"));
+    assert!(css.contains(".unixnotis-panel-card:hover .unixnotis-panel-close"));
+    assert!(css.contains(".unixnotis-panel-close:focus"));
 }

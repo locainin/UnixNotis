@@ -222,6 +222,10 @@ fn conflicting_claim_uses_warning_layout_and_drops_actions() {
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
     assert_eq!(model.kind, PopupKind::Warning);
+    assert_eq!(
+        model.secondary_claim.as_deref(),
+        Some("Claims to be Signal")
+    );
     assert!(model.primary_actions.is_empty());
     assert!(model.overflow_actions.is_empty());
 }

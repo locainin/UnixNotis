@@ -137,7 +137,7 @@ fn flush_rebuild_builds_seeded_rows_and_hides_empty_overlay() {
     list.flush_rebuild();
 
     assert!(!list.needs_rebuild());
-    assert_eq!(list.store.n_items(), 2);
+    assert_eq!(list.store.n_items(), 1);
     assert!(!list.empty_overlay.get_visible());
 }
 
@@ -153,23 +153,15 @@ fn flush_rebuild_filters_existing_list_with_minimal_middle_splice() {
     );
     list.flush_rebuild();
     let browser = list.entries.get(&2).expect("browser").app_key.clone();
-    assert_eq!(list.store.n_items(), 4);
+    assert_eq!(list.store.n_items(), 2);
 
     assert!(list.set_filter_query("browser"));
     list.flush_rebuild();
 
-    assert_eq!(list.store.n_items(), 2);
-    assert_eq!(
-        list.current_keys,
-        vec![
-            RowKey::GroupHeader {
-                group: browser.clone()
-            },
-            RowKey::Notification { id: 2 },
-        ]
-    );
+    assert_eq!(list.store.n_items(), 1);
+    assert_eq!(list.current_keys, vec![RowKey::Notification { id: 2 }]);
     assert_eq!(list.group_ranges[&browser].start, 0);
-    assert_eq!(list.group_ranges[&browser].len, 2);
+    assert_eq!(list.group_ranges[&browser].len, 1);
 }
 
 #[gtk::test]
@@ -224,23 +216,17 @@ fn flush_rebuild_rebuilds_from_nonempty_store_when_ranges_are_missing() {
     list.request_rebuild();
     list.flush_rebuild();
 
-    assert_eq!(list.store.n_items(), 4);
+    assert_eq!(list.store.n_items(), 2);
     assert_eq!(
         list.current_keys,
         vec![
-            RowKey::GroupHeader {
-                group: editor.clone()
-            },
             RowKey::Notification { id: 3 },
-            RowKey::GroupHeader {
-                group: terminal.clone()
-            },
             RowKey::Notification { id: 1 },
         ]
     );
     assert!(!list.group_ranges.contains_key(&browser));
     assert_eq!(list.group_ranges[&editor].start, 0);
-    assert_eq!(list.group_ranges[&terminal].start, 2);
+    assert_eq!(list.group_ranges[&terminal].start, 1);
     assert!(!list.interned.iter().any(|key| key.as_ref() == "stale"));
 }
 
@@ -262,13 +248,10 @@ fn flush_rebuild_applies_dirty_group_span_changes_incrementally() {
     list.toggle_group(terminal.as_ref());
     list.flush_rebuild();
 
-    assert_eq!(list.store.n_items(), 5);
+    assert_eq!(list.store.n_items(), 4);
     assert_eq!(
         list.current_keys,
         vec![
-            RowKey::GroupHeader {
-                group: browser.clone()
-            },
             RowKey::Notification { id: 3 },
             RowKey::GroupHeader {
                 group: terminal.clone()
@@ -278,15 +261,21 @@ fn flush_rebuild_applies_dirty_group_span_changes_incrementally() {
         ]
     );
     assert_eq!(list.group_ranges[&browser].start, 0);
-    assert_eq!(list.group_ranges[&browser].len, 2);
-    assert_eq!(list.group_ranges[&terminal].start, 2);
+    assert_eq!(list.group_ranges[&browser].len, 1);
+    assert_eq!(list.group_ranges[&terminal].start, 1);
     assert_eq!(list.group_ranges[&terminal].len, 3);
 }
 
 #[gtk::test]
 fn flush_rebuild_refreshes_dirty_group_even_when_span_is_stable() {
     let mut list = support::make_list();
-    list.seed(vec![support::notification(1, "Terminal")], Vec::new());
+    list.seed(
+        vec![
+            support::notification(1, "Terminal"),
+            support::notification(2, "Terminal"),
+        ],
+        Vec::new(),
+    );
     list.flush_rebuild();
     let terminal = list.entries.get(&1).expect("terminal").app_key.clone();
     let view = list.entries.get(&1).expect("terminal").view.clone();
@@ -298,7 +287,7 @@ fn flush_rebuild_refreshes_dirty_group_even_when_span_is_stable() {
     list.flush_rebuild();
 
     assert_eq!(list.store.n_items(), 2);
-    assert_eq!(header.data().count, 1);
+    assert_eq!(header.data().count, 2);
     assert_eq!(list.group_ranges[&terminal].start, 0);
     assert_eq!(list.group_ranges[&terminal].len, 2);
 }
@@ -316,10 +305,10 @@ fn flush_rebuild_places_multiple_pending_dirty_groups_before_kept_group() {
     let terminal = list.entries.get(&1).expect("terminal").app_key.clone();
     let browser = list.entries.get(&2).expect("browser").app_key.clone();
     let editor = list.entries.get(&3).expect("editor").app_key.clone();
-    assert_eq!(list.store.n_items(), 6);
+    assert_eq!(list.store.n_items(), 3);
     assert_eq!(list.group_ranges[&editor].start, 0);
-    assert_eq!(list.group_ranges[&browser].start, 2);
-    assert_eq!(list.group_ranges[&terminal].start, 4);
+    assert_eq!(list.group_ranges[&browser].start, 1);
+    assert_eq!(list.group_ranges[&terminal].start, 2);
 }
 
 #[gtk::test]
@@ -341,19 +330,11 @@ fn flush_rebuild_removes_empty_dirty_group_and_keeps_following_ranges_valid() {
     list.request_rebuild();
     list.flush_rebuild();
 
-    assert_eq!(list.store.n_items(), 2);
-    assert_eq!(
-        list.current_keys,
-        vec![
-            RowKey::GroupHeader {
-                group: terminal.clone()
-            },
-            RowKey::Notification { id: 1 },
-        ]
-    );
+    assert_eq!(list.store.n_items(), 1);
+    assert_eq!(list.current_keys, vec![RowKey::Notification { id: 1 }]);
     assert!(!list.group_ranges.contains_key(&browser));
     assert_eq!(list.group_ranges[&terminal].start, 0);
-    assert_eq!(list.group_ranges[&terminal].len, 2);
+    assert_eq!(list.group_ranges[&terminal].len, 1);
 }
 
 #[gtk::test]
@@ -374,9 +355,9 @@ fn flush_rebuild_restores_missing_range_with_full_rebuild_fallback() {
     list.request_rebuild();
     list.flush_rebuild();
 
-    assert_eq!(list.store.n_items(), 4);
+    assert_eq!(list.store.n_items(), 2);
     assert_eq!(list.group_ranges[&browser].start, 0);
-    assert_eq!(list.group_ranges[&terminal].start, 2);
+    assert_eq!(list.group_ranges[&terminal].start, 1);
 }
 
 #[gtk::test]
@@ -395,8 +376,8 @@ fn flush_rebuild_restores_store_length_with_full_rebuild_fallback() {
     list.request_rebuild();
     list.flush_rebuild();
 
-    assert_eq!(list.store.n_items(), 4);
-    assert_eq!(list.current_keys.len(), 4);
+    assert_eq!(list.store.n_items(), 2);
+    assert_eq!(list.current_keys.len(), 2);
 }
 
 #[gtk::test]
@@ -410,20 +391,14 @@ fn flush_rebuild_batches_new_dirty_groups_before_kept_groups() {
 
     let browser = list.entries.get(&2).expect("browser").app_key.clone();
     let terminal = list.entries.get(&1).expect("terminal").app_key.clone();
-    assert_eq!(list.store.n_items(), 4);
+    assert_eq!(list.store.n_items(), 2);
     assert_eq!(
         list.current_keys,
         vec![
-            RowKey::GroupHeader {
-                group: browser.clone()
-            },
             RowKey::Notification { id: 2 },
-            RowKey::GroupHeader {
-                group: terminal.clone()
-            },
             RowKey::Notification { id: 1 },
         ]
     );
     assert_eq!(list.group_ranges[&browser].start, 0);
-    assert_eq!(list.group_ranges[&terminal].start, 2);
+    assert_eq!(list.group_ranges[&terminal].start, 1);
 }

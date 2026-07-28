@@ -7,10 +7,25 @@ use unixnotis_core::{hooks, Action, CutCorners, NotificationMetadataConfig, Urge
 
 use crate::ui::icons::IconResolver;
 
+use super::super::super::state::IconSignature;
 use super::super::super::test_support::{
     notification_row, row_data, sample_notification, RowFlags,
 };
 use super::update_notification_row;
+
+#[test]
+fn icon_signature_changes_when_trust_presentation_changes() {
+    let verified = sample_notification();
+    let mut suspicious = verified.clone();
+    // Keep resolver inputs unchanged to isolate the trust-state regression
+    suspicious.attribution.warning = true;
+
+    assert_ne!(
+        IconSignature::from(&verified),
+        IconSignature::from(&suspicious),
+        "trust changes must refresh a recycled row badge"
+    );
+}
 
 #[gtk::test]
 fn update_notification_row_applies_state_classes_and_text() {
@@ -36,15 +51,15 @@ fn update_notification_row_applies_state_classes_and_text() {
     assert!(row.card.has_css_class(hooks::shared_state::STACKED));
     assert!(row.card.has_css_class(hooks::panel_card::GROUP_COLLAPSED));
     assert!(!row.card.has_css_class(hooks::panel_card::GROUP_EXPANDED));
-    assert!(row.stack_ghost_1.get_visible());
-    assert!(row.stack_ghost_2.get_visible());
+    assert!(!row.app_label.get_visible());
+    assert!(!row.icon.get_visible());
     assert!(row.urgency_badge.get_visible());
     assert_eq!(row.urgency_badge.text().as_str(), "Critical");
     assert_eq!(row.app_label.text().as_str(), "demo");
     assert_eq!(row.summary_label.text().as_str(), "summary");
     assert_eq!(row.body_label.text().as_str(), "body");
     assert_eq!(row.notify_id.get(), 1);
-    assert!(row.icon_sig.borrow().is_some());
+    assert!(row.icon_sig.borrow().is_none());
 }
 
 #[gtk::test]
@@ -62,6 +77,18 @@ fn recycled_panel_row_hides_critical_badge_after_urgency_returns_to_normal() {
     update_notification_row(&row, &normal, &IconResolver::new(), &command_tx);
     assert!(!row.card.has_css_class(hooks::shared_state::CRITICAL));
     assert!(!row.urgency_badge.get_visible());
+}
+
+#[gtk::test]
+fn single_notification_row_keeps_its_identity_visible_without_a_group_header() {
+    let (_root, row) = notification_row();
+    let data = row_data(Rc::new(sample_notification()), RowFlags::default());
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+
+    assert!(row.app_label.get_visible());
+    assert_eq!(row.app_label.text().as_str(), "demo");
 }
 
 #[gtk::test]

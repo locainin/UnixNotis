@@ -329,10 +329,14 @@ entry selection {
   min-height: 28px;
   min-height: var(--unixnotis-panel-close-size);
   box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
+  opacity: 0;
+  transition: opacity 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
 
+.unixnotis-panel-card:hover .unixnotis-panel-close,
+.unixnotis-panel-close:focus,
 .unixnotis-panel-close:hover {
+  opacity: 1;
   background: alpha(#fb7185, 0.16);
   border-color: alpha(#fb7185, 0.45);
   color: #fb7185;
@@ -426,10 +430,6 @@ entry selection {
   margin-left: 2px;
 }
 
-.unixnotis-panel-card-grouped {
-  margin-left: 8px;
-}
-
 /*
  * Notification cards (panel)
  */
@@ -453,45 +453,15 @@ entry selection {
 }
 
 .unixnotis-panel-card.stacked {
-  /* One focused shadow keeps the foreground content visually above the rear layers */
-  box-shadow: 0 12px 24px -20px alpha(#000000, 0.78);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.02), 0 4px 12px -8px alpha(#000000, 0.7);
 }
 
 .unixnotis-panel-card-group-collapsed {
-  /* Pull the foreground over the middle layer while leaving its rounded top visible */
-  margin-top: -58px;
   margin-bottom: 8px;
 }
 
 .unixnotis-panel-card-group-expanded {
   margin-bottom: var(--unixnotis-panel-card-gap);
-}
-
-.unixnotis-stack-ghost {
-  /* Full card silhouettes preserve the stack shape if card colors are customized */
-  background: #172238;
-  border-radius: 16px;
-  padding: 0;
-  min-height: 68px;
-  opacity: 1;
-  margin-left: 10px;
-  margin-right: 10px;
-  margin-top: -58px;
-  margin-bottom: 0;
-  border: 1px solid alpha(#9bb8e8, 0.18);
-  box-shadow: none;
-}
-
-.unixnotis-stack-ghost-2 {
-  background: #121c2f;
-  min-height: 68px;
-  opacity: 1;
-  margin-left: 20px;
-  margin-right: 20px;
-  margin-top: 0;
-  margin-bottom: 0;
-  border-color: alpha(#9bb8e8, 0.14);
-  border-radius: 16px;
 }
 
 .unixnotis-panel-card.active {

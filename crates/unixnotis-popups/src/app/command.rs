@@ -11,12 +11,14 @@ use glib::MainContext;
 use gtk::prelude::*;
 use tracing::{info, warn};
 use unixnotis_core::Config;
-use unixnotis_ui::css::{self, CssKind};
+use unixnotis_ui::{
+    css::{self, CssKind},
+    presentation::register_semantic_badges,
+};
 
 use crate::{dbus, ui};
 
 use super::reload::{start_reload_timer, ReloadGate};
-use super::resources;
 use super::runtime::handle_ui_event;
 use super::startup::{init_tracing, is_wayland_session, load_config, ConfigSource};
 
@@ -31,7 +33,7 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
-    resources::register()?;
+    register_semantic_badges().map_err(anyhow::Error::msg)?;
     // Load and validate config before GTK starts so startup failures stay clear
     let (config, config_path, config_source) = load_config(&args).context("load config")?;
     init_tracing(&config);

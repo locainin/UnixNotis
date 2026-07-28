@@ -109,6 +109,10 @@ fn update_group_row_keeps_conflict_warning_out_of_the_title() {
         .title
         .tooltip_text()
         .is_some_and(|text| text.contains("Trusted Brand")));
+    assert!(
+        widgets.icon.paintable().is_some(),
+        "conflicting identity should use a controlled warning badge"
+    );
     assert!(root.has_css_class("unixnotis-attribution-warning"));
 }
 
