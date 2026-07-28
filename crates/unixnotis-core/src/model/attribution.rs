@@ -135,6 +135,23 @@ impl NotificationAttribution {
     pub const fn has_warning(&self) -> bool {
         self.warning
     }
+
+    /// Whether application-owned actions may be sent back to this notification source
+    #[must_use]
+    pub const fn allows_application_actions(&self) -> bool {
+        // A warning means current evidence conflicts even when a weak association was found
+        if self.warning {
+            return false;
+        }
+
+        // Relay and unknown senders may display content but cannot receive trusted UI actions
+        matches!(
+            self.class,
+            AttributionClass::SystemAssociated
+                | AttributionClass::PortalAssociated
+                | AttributionClass::UserAssociated
+        )
+    }
 }
 
 fn bounded_text(value: &str) -> String {

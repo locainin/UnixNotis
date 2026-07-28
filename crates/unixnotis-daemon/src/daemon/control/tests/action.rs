@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use futures_util::TryStreamExt;
-use unixnotis_core::{Action, Notification, NotificationImage, Urgency};
+use unixnotis_core::{
+    Action, AttributionClass, Notification, NotificationAttribution, NotificationImage, Urgency,
+};
 use zbus::message::Type;
 use zbus::zvariant::OwnedValue;
 use zbus::{Connection, MatchRule, MessageStream};
@@ -99,13 +101,47 @@ async fn validated_action_rejects_missing_and_stale_action_generations() {
         .expect_err("stale action generation must fail");
 }
 
+#[tokio::test]
+async fn validated_action_rejects_a_conflicting_application_claim() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let id = {
+        let mut notification = action_notification(&sender, "open");
+        notification.attribution = NotificationAttribution::conflict(
+            "Signal",
+            "application claim mismatch; source /tmp/fake",
+            "conflict:signal".to_string(),
+        );
+        state
+            .store
+            .lock()
+            .await
+            .insert(notification, 0)
+            .notification
+            .id
+    };
+
+    ControlServer::new(state)
+        .invoke_validated_action(id, "open")
+        .await
+        .expect_err("conflicting attribution must not receive an action signal");
+}
+
 fn action_notification(sender: &Connection, key: &str) -> Notification {
     Notification {
         id: 0,
         generation: 0,
         app_name: "ActionApp".to_string(),
         app_icon: String::new(),
-        attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution: NotificationAttribution::associated(
+            "ActionApp",
+            "org.example.ActionApp",
+            "org.example.ActionApp",
+            "",
+            AttributionClass::SystemAssociated,
+            false,
+            "system-desktop:org.example.ActionApp".to_string(),
+        ),
         summary: "Action".to_string(),
         body: String::new(),
         actions: vec![Action {

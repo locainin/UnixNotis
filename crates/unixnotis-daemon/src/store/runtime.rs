@@ -157,6 +157,10 @@ impl NotificationStore {
 
     pub fn active_action_target(&self, id: u32, action_key: &str) -> Option<Arc<Notification>> {
         let notification = self.active.get(&id)?;
+        // Weak or conflicting provenance must not gain an application-directed signal
+        if !notification.attribution.allows_application_actions() {
+            return None;
+        }
         // Exact matching prevents a trusted control caller from inventing application actions
         notification
             .actions

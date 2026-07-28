@@ -111,3 +111,63 @@ fn unknown_sender_keeps_bounded_presentation_without_gaining_association() {
     assert_eq!(attribution.group_key, "executable:7:9:localhelper");
     assert!(!attribution.has_warning());
 }
+
+#[test]
+fn application_actions_require_a_non_conflicting_desktop_association() {
+    for class in [
+        AttributionClass::SystemAssociated,
+        AttributionClass::PortalAssociated,
+        AttributionClass::UserAssociated,
+    ] {
+        let attribution = NotificationAttribution::associated(
+            "Associated",
+            "org.example.Associated",
+            "org.example.Associated",
+            "",
+            class,
+            false,
+            "associated".to_string(),
+        );
+
+        assert!(
+            attribution.allows_application_actions(),
+            "{class:?} should allow application actions"
+        );
+    }
+
+    for class in [
+        AttributionClass::TrustedRelay,
+        AttributionClass::Unknown,
+        AttributionClass::Conflict,
+    ] {
+        let attribution = NotificationAttribution::associated(
+            "Weak source",
+            "",
+            "dialog-information-symbolic",
+            "",
+            class,
+            false,
+            "weak".to_string(),
+        );
+
+        assert!(
+            !attribution.allows_application_actions(),
+            "{class:?} should deny application actions"
+        );
+    }
+}
+
+#[test]
+fn warning_state_denies_actions_even_for_an_associated_desktop_entry() {
+    let attribution = NotificationAttribution::associated(
+        "Shadowed application",
+        "org.example.Shadowed",
+        "org.example.Shadowed",
+        "Shadows a system desktop entry",
+        AttributionClass::UserAssociated,
+        true,
+        "shadowed".to_string(),
+    );
+
+    assert!(!attribution.allows_application_actions());
+}
