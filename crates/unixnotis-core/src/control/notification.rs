@@ -17,13 +17,14 @@ pub enum CloseReason {
 }
 
 /// Current reason a stored notification may or may not become a popup
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize_repr, Deserialize_repr, Type)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize_repr, Deserialize_repr, Type)]
 #[repr(u8)]
 pub enum PopupAdmissionView {
     Show = 0,
     Rule = 1,
     Dnd = 2,
     Inhibitor = 3,
+    #[default]
     RendererUnavailable = 4,
     RendererDisabled = 5,
 }

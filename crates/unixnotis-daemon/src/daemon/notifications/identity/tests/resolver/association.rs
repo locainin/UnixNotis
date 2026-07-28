@@ -118,6 +118,18 @@ fn dedicated_executable_with_rewritten_argv_is_not_a_conflict() {
         AttributionClass::SystemAssociated
     );
     assert_ne!(resolution.attribution.class, AttributionClass::Conflict);
+    assert_eq!(
+        resolution.diagnostics.command_line_quality,
+        CommandLineQualityView::RewrittenProcessTitle
+    );
+    assert_eq!(
+        resolution.diagnostics.verification,
+        LaunchVerificationView::Verified
+    );
+    assert_eq!(
+        resolution.diagnostics.launch_authority,
+        LaunchAuthorityView::DedicatedExecutable
+    );
 }
 
 #[test]

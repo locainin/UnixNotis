@@ -157,6 +157,18 @@ impl NotificationServer {
                 "notification application claim conflicts with sender evidence"
             );
         }
+        debug!(
+            claim = %resolution.diagnostics.claimed_name,
+            desktop_entry = %resolution.diagnostics.claimed_desktop_entry,
+            sender_executable = %resolution.diagnostics.sender_executable,
+            matched_desktop_id = %resolution.diagnostics.matched_desktop_id,
+            record_origin = ?resolution.diagnostics.record_trust,
+            launch_authority = ?resolution.diagnostics.launch_authority,
+            cmdline_quality = ?resolution.diagnostics.command_line_quality,
+            verification = ?resolution.diagnostics.verification,
+            reason = %resolution.diagnostics.reason,
+            "notification attribution decided"
+        );
 
         // Build a safe notification record from untrusted wire data
         build_notification(NotificationInput {
@@ -168,6 +180,7 @@ impl NotificationServer {
             hints: input.hints,
             sender,
             attribution: resolution.attribution,
+            attribution_diagnostics: resolution.diagnostics,
             inline_reply_policy: resolution.inline_reply_policy,
             expire_timeout: input.expire_timeout,
         })

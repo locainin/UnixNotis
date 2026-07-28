@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use unixnotis_core::{
-    util, Action, Config, InlineReply, InlineReplyPolicy, Notification, NotificationAttribution,
-    NotificationImage, Urgency,
+    util, Action, AttributionDiagnostics, Config, InlineReply, InlineReplyPolicy, Notification,
+    NotificationAttribution, NotificationImage, Urgency,
 };
 use zbus::zvariant::{OwnedValue, Value};
 
@@ -28,6 +28,7 @@ pub(in crate::daemon::notifications) struct NotificationInput {
     pub(in crate::daemon::notifications) hints: HashMap<String, OwnedValue>,
     pub(in crate::daemon::notifications) sender: SenderMetadata,
     pub(in crate::daemon::notifications) attribution: NotificationAttribution,
+    pub(in crate::daemon::notifications) attribution_diagnostics: AttributionDiagnostics,
     pub(in crate::daemon::notifications) inline_reply_policy: InlineReplyPolicy,
     pub(in crate::daemon::notifications) expire_timeout: i32,
 }
@@ -44,6 +45,7 @@ pub(in crate::daemon::notifications) fn build_notification(
         hints,
         sender,
         attribution,
+        attribution_diagnostics,
         inline_reply_policy,
         expire_timeout,
     } = input;
@@ -89,6 +91,7 @@ pub(in crate::daemon::notifications) fn build_notification(
         },
         app_icon: util::truncate_utf8_bytes(&app_icon, MAX_APP_ICON_BYTES),
         attribution,
+        attribution_diagnostics,
         // Truncate bytes first, then fold long contiguous runs to keep UTF-8 boundaries valid
         // Fold very long unbroken runs so renderer width remains bounded
         summary: util::fold_text_for_layout(

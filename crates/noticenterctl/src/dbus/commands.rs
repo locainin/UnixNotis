@@ -4,8 +4,8 @@ use unixnotis_core::util;
 use crate::cli::{Command, DndState};
 use crate::debug_logs::follow_debug_logs;
 use crate::output::{
-    allow_full_output, print_inhibitors, print_notifications, warn_full_requires_diagnostic,
-    write_stderr, write_stdout,
+    allow_full_output, print_inhibitors, print_notification_diagnostics, print_notifications,
+    warn_full_requires_diagnostic, write_stderr, write_stdout,
 };
 
 use super::client::ControlClient;
@@ -56,6 +56,13 @@ pub(super) async fn handle_command_with_debug_logs(
         Command::Dismiss { id } => {
             // Dismiss targets a single notification by id
             client.dismiss(id).await?;
+        }
+        Command::ExplainNotification { id } => {
+            let mut diagnostics = client.notification_diagnostics(id).await?;
+            let view = diagnostics
+                .pop()
+                .ok_or_else(|| anyhow::anyhow!("notification {id} is not active"))?;
+            print_notification_diagnostics(&view)?;
         }
         Command::ListActive { full } => {
             let diagnostic_mode = util::diagnostic_mode();

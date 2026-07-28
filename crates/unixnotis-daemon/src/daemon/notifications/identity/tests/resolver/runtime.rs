@@ -335,11 +335,11 @@ fn no_hint_wrong_payload_with_unrelated_claim_remains_unknown() {
 
 #[test]
 fn dynamic_only_contract_is_unverified_instead_of_suspicious() {
-    let runtime_identity = identity(70, 700, 0);
+    let (runtime_path, runtime_identity) = installed_system_executable();
     let mut first = system_record(
         "org.example.Dynamic",
         "Dynamic App",
-        "/usr/bin/runtime",
+        &runtime_path,
         runtime_identity,
     );
     first
@@ -350,7 +350,7 @@ fn dynamic_only_contract_is_unverified_instead_of_suspicious() {
     let second = system_record(
         "org.example.Other",
         "Other App",
-        "/usr/bin/runtime",
+        &runtime_path,
         runtime_identity,
     );
     let index = DesktopIdentityIndex::from_records(vec![first, second], Vec::new());
@@ -360,11 +360,23 @@ fn dynamic_only_contract_is_unverified_instead_of_suspicious() {
             reported_name: "Dynamic App",
             desktop_entry: Some("org.example.Dynamic"),
         },
-        &sender_with_arguments("/usr/bin/runtime", runtime_identity, &["/tmp/payload"]),
+        &sender_with_arguments(&runtime_path, runtime_identity, &["/tmp/payload"]),
         &index,
         &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.class, AttributionClass::Unknown);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    assert_eq!(
+        resolution.diagnostics.verification,
+        LaunchVerificationView::InsufficientEvidence
+    );
+    assert_eq!(
+        resolution.diagnostics.launch_authority,
+        LaunchAuthorityView::DynamicOnly
+    );
+    assert_eq!(
+        resolution.diagnostics.matched_desktop_id,
+        "org.example.Dynamic"
+    );
 }

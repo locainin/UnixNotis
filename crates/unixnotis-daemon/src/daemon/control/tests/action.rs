@@ -142,6 +142,7 @@ fn action_notification(sender: &Connection, key: &str) -> Notification {
             false,
             "system-desktop:org.example.ActionApp".to_string(),
         ),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         summary: "Action".to_string(),
         body: String::new(),
         actions: vec![Action {

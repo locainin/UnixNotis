@@ -38,6 +38,10 @@ pub enum Command {
     Dismiss {
         id: u32,
     },
+    // Explain application identity and popup suppression for one active notification
+    ExplainNotification {
+        id: u32,
+    },
     // List active notifications; full output requires diagnostic mode
     ListActive {
         #[arg(long)]

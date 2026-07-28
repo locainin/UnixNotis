@@ -8,7 +8,7 @@
 
 use zbus::proxy;
 
-use crate::{NotificationView, PopupCandidate};
+use crate::{NotificationDiagnosticsView, NotificationView, PopupCandidate};
 
 use super::{
     CloseReason, ControlState, InhibitorInfo, PanelDebugLevel, PanelRequest, PopupGateState,
@@ -35,6 +35,11 @@ trait Control {
     fn get_active_notification(&self, id: u32) -> zbus::Result<Vec<NotificationView>>;
     /// Fetch one current popup payload and admission decision atomically
     fn get_popup_candidate(&self, id: u32) -> zbus::Result<Vec<PopupCandidate>>;
+    /// Explain attribution and popup admission for one active notification
+    fn get_notification_diagnostics(
+        &self,
+        id: u32,
+    ) -> zbus::Result<Vec<NotificationDiagnosticsView>>;
     /// Open the control center panel
     fn open_panel(&self) -> zbus::Result<()>;
     /// Open the control center panel with debug logging

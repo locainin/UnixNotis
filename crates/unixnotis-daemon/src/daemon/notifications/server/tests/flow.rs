@@ -27,6 +27,7 @@ fn notification_with_id(id: u32) -> Arc<Notification> {
         app_name: "app".to_string(),
         app_icon: String::new(),
         attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         summary: "summary".to_string(),
         body: String::new(),
         actions: Vec::new(),

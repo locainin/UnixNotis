@@ -68,6 +68,36 @@ fn popup_candidate_pairs_dnd_suppression_with_replacement_generation() {
 }
 
 #[test]
+fn notification_diagnostics_report_renderer_and_store_admission_separately() {
+    let mut store = make_store_with_limits(10, 10);
+    let visible = store.insert(make_notification("visible"), 0).notification;
+    let unavailable = store
+        .notification_diagnostics(visible.id, &unixnotis_core::UiHealth::default())
+        .expect("active notification diagnostics");
+
+    assert_eq!(
+        unavailable.popup_admission,
+        PopupAdmissionView::RendererUnavailable
+    );
+    assert!(!unavailable.renderer_process_running);
+    assert!(!unavailable.renderer_ready);
+
+    store.set_dnd(true);
+    let ready = unixnotis_core::UiHealth {
+        popups_process_running: true,
+        popups_ready: true,
+        ..unixnotis_core::UiHealth::default()
+    };
+    let suppressed = store
+        .notification_diagnostics(visible.id, &ready)
+        .expect("DND diagnostics");
+
+    assert_eq!(suppressed.popup_admission, PopupAdmissionView::Dnd);
+    assert!(suppressed.renderer_process_running);
+    assert!(suppressed.renderer_ready);
+}
+
+#[test]
 fn active_inline_reply_target_requires_a_live_explicit_reply_action() {
     let mut store = make_store_with_limits(12, 20);
     let ordinary_id = store

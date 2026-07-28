@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 
-use unixnotis_core::{InhibitorInfo, NotificationView, PanelDebugLevel};
+use unixnotis_core::{
+    InhibitorInfo, NotificationDiagnosticsView, NotificationView, PanelDebugLevel,
+};
 
 use super::super::client::{ControlClient, ControlFuture};
 
@@ -14,6 +16,7 @@ pub(super) enum RecordedCall {
     ClearActive,
     ClearHistory,
     Dismiss(u32),
+    NotificationDiagnostics(u32),
     ListActive,
     ListHistory,
     SetDnd(bool),
@@ -93,6 +96,19 @@ impl ControlClient for RecordingControlClient {
 
     fn dismiss(&self, id: u32) -> ControlFuture<'_, ()> {
         self.record(RecordedCall::Dismiss(id), ())
+    }
+
+    fn notification_diagnostics(
+        &self,
+        id: u32,
+    ) -> ControlFuture<'_, Vec<NotificationDiagnosticsView>> {
+        self.record(
+            RecordedCall::NotificationDiagnostics(id),
+            vec![NotificationDiagnosticsView {
+                id,
+                ..NotificationDiagnosticsView::default()
+            }],
+        )
     }
 
     fn list_active(&self) -> ControlFuture<'_, Vec<NotificationView>> {

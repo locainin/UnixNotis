@@ -2,7 +2,9 @@ use std::future::Future;
 use std::pin::Pin;
 
 use anyhow::Result;
-use unixnotis_core::{ControlProxy, InhibitorInfo, NotificationView, PanelDebugLevel};
+use unixnotis_core::{
+    ControlProxy, InhibitorInfo, NotificationDiagnosticsView, NotificationView, PanelDebugLevel,
+};
 
 use super::timeout::run_control_call;
 
@@ -34,6 +36,12 @@ pub trait ControlClient {
 
     // Remove one notification by its id
     fn dismiss(&self, id: u32) -> ControlFuture<'_, ()>;
+
+    // Fetch structured attribution and popup state for one active notification
+    fn notification_diagnostics(
+        &self,
+        id: u32,
+    ) -> ControlFuture<'_, Vec<NotificationDiagnosticsView>>;
 
     // Fetch the notifications that are active right now
     fn list_active(&self) -> ControlFuture<'_, Vec<NotificationView>>;
@@ -102,6 +110,15 @@ impl ControlClient for ControlProxy<'_> {
     fn dismiss(&self, id: u32) -> ControlFuture<'_, ()> {
         // Send the id so the daemon knows exactly which notification to remove
         Box::pin(run_control_call(ControlProxy::dismiss(self, id)))
+    }
+
+    fn notification_diagnostics(
+        &self,
+        id: u32,
+    ) -> ControlFuture<'_, Vec<NotificationDiagnosticsView>> {
+        Box::pin(run_control_call(
+            ControlProxy::get_notification_diagnostics(self, id),
+        ))
     }
 
     fn list_active(&self) -> ControlFuture<'_, Vec<NotificationView>> {

@@ -183,6 +183,10 @@ async fn notification_commands_dispatch_to_matching_control_calls() {
     let cases = [
         (Command::Dismiss { id: 7 }, RecordedCall::Dismiss(7)),
         (
+            Command::ExplainNotification { id: 8 },
+            RecordedCall::NotificationDiagnostics(8),
+        ),
+        (
             Command::ListActive { full: false },
             RecordedCall::ListActive,
         ),

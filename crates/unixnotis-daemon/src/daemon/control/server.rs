@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use unixnotis_core::{
-    CloseReason, ControlState, InhibitorInfo, NotificationKey, NotificationView, PanelDebugLevel,
-    PanelRequest, PopupCandidate, PopupGateState, UiHealth,
+    CloseReason, ControlState, InhibitorInfo, NotificationDiagnosticsView, NotificationKey,
+    NotificationView, PanelDebugLevel, PanelRequest, PopupCandidate, PopupGateState, UiHealth,
 };
 use zbus::message::Header;
 use zbus::{interface, SignalContext};
@@ -114,6 +114,14 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<Vec<PopupCandidate>> {
         self.query_popup_candidate(id, &header).await
+    }
+
+    async fn get_notification_diagnostics(
+        &self,
+        id: u32,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<Vec<NotificationDiagnosticsView>> {
+        self.query_notification_diagnostics(id, &header).await
     }
 
     async fn open_panel(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
