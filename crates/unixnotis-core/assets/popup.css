@@ -1,6 +1,6 @@
 /* UnixNotis popup theme */
 
-/* Shared close button styling for popup surfaces. */
+/* Shared close button styling for popup surfaces */
 .unixnotis-popup-close {
   background: alpha(#ffffff, 0.045);
   border-radius: 999px;
@@ -9,9 +9,9 @@
   border-right: 1px solid alpha(#ffffff, 0.04);
   border-bottom: 1px solid alpha(#ffffff, 0.02);
   padding: 3px;
-  min-width: 24px;
+  min-width: 26px;
   min-width: var(--unixnotis-popup-close-size);
-  min-height: 24px;
+  min-height: 26px;
   min-height: var(--unixnotis-popup-close-size);
   box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
   color: alpha(#ffffff, 0.70);
@@ -50,7 +50,7 @@
   color: #ffffff;
   border-radius: 20px;
   border-radius: var(--unixnotis-popup-card-radius);
-  padding: 14px 16px;
+  padding: 14px;
   padding: var(--unixnotis-popup-card-padding-y) var(--unixnotis-popup-card-padding-x);
   border: 1px solid alpha(#ffffff, 0.10);
   box-shadow:
@@ -58,14 +58,52 @@
     0 2px 8px -4px alpha(#000000, 0.36);
 }
 
-.unixnotis-popup-header-row {
-  margin-bottom: 2px;
+.unixnotis-popup-card.utility {
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
-.unixnotis-popup-header {
+.unixnotis-popup-communication-content,
+.unixnotis-popup-utility-content,
+.unixnotis-popup-warning-content {
+  background: transparent;
+}
+
+.unixnotis-popup-header-row {
+  min-height: 20px;
+  margin-bottom: 1px;
+}
+
+.unixnotis-popup-app-name {
   color: alpha(#ffffff, 0.76);
   font-weight: 600;
   font-size: 12px;
+}
+
+.unixnotis-popup-time {
+  color: alpha(#ffffff, 0.56);
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.unixnotis-popup-trust-chip {
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.unixnotis-popup-trust-chip.unverified,
+.unixnotis-popup-trust-chip.system {
+  background: alpha(#fbbf24, 0.10);
+  color: alpha(#fde68a, 0.84);
+  border: 1px solid alpha(#fbbf24, 0.20);
+}
+
+.unixnotis-popup-trust-chip.suspicious {
+  background: alpha(#fb7185, 0.13);
+  color: #fecdd3;
+  border: 1px solid alpha(#fb7185, 0.34);
 }
 
 .unixnotis-popup-summary {
@@ -74,9 +112,25 @@
   margin-top: 1px;
 }
 
+.unixnotis-popup-app-icon {
+  min-width: 20px;
+  min-height: 20px;
+}
+
 .unixnotis-popup-icon {
-  min-width: 44px;
-  min-height: 44px;
+  color: inherit;
+}
+
+.unixnotis-popup-utility-icon {
+  min-width: 24px;
+  min-height: 24px;
+  margin-top: 1px;
+}
+
+.unixnotis-popup-warning-icon {
+  min-width: 20px;
+  min-height: 20px;
+  margin-top: 1px;
 }
 
 .unixnotis-popup-body {
@@ -86,20 +140,28 @@
   margin-top: 2px;
 }
 
-.unixnotis-popup-source {
-  color: alpha(#fbbf24, 0.86);
-  font-size: 12px;
+.unixnotis-popup-footer-note {
+  color: alpha(#fbbf24, 0.72);
+  font-size: 11px;
+  margin-top: 2px;
 }
 
 .unixnotis-popup-content-image {
-  min-width: 72px;
-  min-height: 72px;
+  min-width: 48px;
+  min-height: 48px;
   margin-top: 6px;
-  border-radius: 10px;
+  border-radius: 9px;
 }
 
 .unixnotis-popup-card.unverified {
-  border-color: alpha(#fbbf24, 0.45);
+  border-color: alpha(#fbbf24, 0.24);
+}
+
+.unixnotis-popup-card.suspicious {
+  border-color: alpha(#fb7185, 0.48);
+  box-shadow:
+    0 12px 32px -12px alpha(#000000, 0.58),
+    inset 2px 0 alpha(#fb7185, 0.58);
 }
 
 .unixnotis-popup-actions {
@@ -114,10 +176,6 @@
 .unixnotis-popup-card-has-actions .unixnotis-popup-actions {
   border-top: 1px solid alpha(#ffffff, 0.06);
   padding-top: calc(var(--unixnotis-popup-actions-gap) - 2px);
-}
-
-.unixnotis-popup-card-no-icon .unixnotis-popup-header-row {
-  padding-left: 0;
 }
 
 .unixnotis-popup-action {
@@ -163,10 +221,13 @@
     inset 3px 0 @unixnotis-critical-border;
 }
 
-.unixnotis-popup-card.critical .unixnotis-popup-header {
+.unixnotis-popup-card.critical .unixnotis-popup-app-name {
   color: @unixnotis-critical-text;
 }
 
+.unixnotis-popup-card.critical .unixnotis-popup-app-icon,
+.unixnotis-popup-card.critical .unixnotis-popup-utility-icon,
+.unixnotis-popup-card.critical .unixnotis-popup-warning-icon,
 .unixnotis-popup-card.critical .unixnotis-popup-icon {
   color: @unixnotis-critical-icon;
 }
@@ -174,4 +235,4 @@
 .unixnotis-popup-card.critical .unixnotis-popup-summary {
   color: #ffffff;
 }
-/* End of popup theme. */
+/* End of popup theme */
