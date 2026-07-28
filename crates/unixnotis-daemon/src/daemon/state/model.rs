@@ -52,9 +52,8 @@ pub struct DaemonState {
     pub(crate) desktop_identity_index: Arc<ArcSwap<DesktopIdentityIndex>>,
     // Trial mode allows local rebuild loops without forcing daemon restarts for control auth
     pub(in crate::daemon::state) trial_mode: bool,
-    #[cfg(test)]
-    // Integration tests can authorize one broker-assigned sender without weakening production
-    pub(in crate::daemon::state) trusted_test_control_sender: StdMutex<Option<String>>,
+    // Normal startup supplies None; private-bus protocol tests can inject one unique owner
+    pub(in crate::daemon::state) preauthorized_control_owner: Option<String>,
 }
 
 impl DaemonState {
@@ -64,9 +63,17 @@ impl DaemonState {
         sound: SoundSettings,
         trial_mode: bool,
         desktop_identity_index: Arc<ArcSwap<DesktopIdentityIndex>>,
+        preauthorized_control_owner: Option<String>,
     ) -> Arc<Self> {
         let store = NotificationStore::new(config);
-        Self::new_with_store(connection, store, sound, trial_mode, desktop_identity_index)
+        Self::new_with_store(
+            connection,
+            store,
+            sound,
+            trial_mode,
+            desktop_identity_index,
+            preauthorized_control_owner,
+        )
     }
 
     pub(crate) fn new_with_store(
@@ -75,6 +82,7 @@ impl DaemonState {
         sound: SoundSettings,
         trial_mode: bool,
         desktop_identity_index: Arc<ArcSwap<DesktopIdentityIndex>>,
+        preauthorized_control_owner: Option<String>,
     ) -> Arc<Self> {
         // One construction path keeps scheduler, signal cache, and popup state in sync
         Arc::new(Self {
@@ -97,8 +105,7 @@ impl DaemonState {
             sender_metadata_cache: SenderMetadataCache::new(),
             desktop_identity_index,
             trial_mode,
-            #[cfg(test)]
-            trusted_test_control_sender: StdMutex::new(None),
+            preauthorized_control_owner,
         })
     }
 

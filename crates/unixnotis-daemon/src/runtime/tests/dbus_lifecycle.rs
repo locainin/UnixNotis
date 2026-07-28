@@ -9,9 +9,10 @@ use futures_util::StreamExt;
 use unixnotis_core::{ControlProxy, NotificationsProxy, CONTROL_BUS_NAME, NOTIFICATIONS_BUS_NAME};
 use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
+use zbus::zvariant::OwnedValue;
 use zbus::{Connection, ConnectionBuilder};
 
-use super::super::{run_with_builder, run_with_builder_for_test};
+use super::super::{run_with_builder, run_with_builder_inner};
 use crate::cli::Args;
 use unixnotis_core::Config;
 
@@ -146,11 +147,11 @@ fn spawn_daemon_with_trusted_sender(
         .expect("parse bounded daemon command");
         let builder = zbus::connection::Builder::address(address.as_str())
             .expect("parse daemon broker address");
-        Box::pin(run_with_builder_for_test(
+        Box::pin(run_with_builder_inner(
             &args,
             Config::default(),
             builder,
-            trusted_sender,
+            Some(trusted_sender),
         ))
         .await
     })
@@ -305,7 +306,7 @@ async fn strict_broker_accepts_full_notification_view_after_added_signal() {
             "Complete notification view",
             "The strict broker must accept the nested enum payload",
             Vec::new(),
-            HashMap::new(),
+            HashMap::from([("urgency".to_string(), OwnedValue::from(2_u8))]),
             2_000,
         )
         .await
@@ -325,6 +326,7 @@ async fn strict_broker_accepts_full_notification_view_after_added_signal() {
     assert_eq!(views.len(), 1);
     assert_eq!(views[0].id, id);
     assert_eq!(views[0].summary, "Complete notification view");
+    assert_eq!(views[0].urgency, 2);
     let popup_candidates = control
         .list_popup_candidates()
         .await

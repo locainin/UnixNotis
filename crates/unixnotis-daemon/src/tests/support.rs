@@ -36,6 +36,7 @@ pub async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> {
         sound,
         trial_mode,
         Arc::new(ArcSwap::from_pointee(DesktopIdentityIndex::default())),
+        None,
     )
 }
 

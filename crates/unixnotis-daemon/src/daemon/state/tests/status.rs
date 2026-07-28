@@ -62,6 +62,17 @@ async fn popup_readiness_can_only_be_cleared_by_its_owner_generation() {
 }
 
 #[tokio::test]
+async fn popup_owner_loss_clears_readiness_for_the_matching_generation() {
+    let state = daemon_state_for_test(true).await;
+    state.set_popups_process_running(true);
+    state.set_popups_ready(":1.10", true);
+
+    state.remove_disconnected_client(":1.10").await;
+
+    assert!(!state.popups_ready());
+}
+
+#[tokio::test]
 async fn stopped_popup_process_clears_composite_readiness() {
     let state = daemon_state_for_test(true).await;
     state.set_popups_process_running(true);

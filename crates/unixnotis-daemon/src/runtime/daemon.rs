@@ -32,7 +32,7 @@ pub(super) async fn run_daemon(
     dbus_proxy: &DBusProxy<'_>,
     desktop_identity_index: Arc<ArcSwap<DesktopIdentityIndex>>,
     watched_desktop_directories: Vec<PathBuf>,
-    trusted_test_control_sender: Option<String>,
+    preauthorized_control_owner: Option<String>,
 ) -> Result<()> {
     // Resolve sound settings once to avoid repeated filesystem work
     let sound_settings = SoundSettings::from_config(&config, args.config.as_deref());
@@ -42,11 +42,8 @@ pub(super) async fn run_daemon(
         sound_settings,
         args.trial,
         desktop_identity_index,
+        preauthorized_control_owner,
     );
-    #[cfg(test)]
-    state.set_trusted_test_control_sender(trusted_test_control_sender);
-    #[cfg(not(test))]
-    let _ = trusted_test_control_sender;
     if let Err(error) = spawn_desktop_index_refresh(
         state.desktop_identity_index.clone(),
         watched_desktop_directories,
