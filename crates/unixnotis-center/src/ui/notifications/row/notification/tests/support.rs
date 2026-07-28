@@ -20,6 +20,7 @@ pub(super) fn sample_notification() -> NotificationView {
         attribution: unixnotis_core::NotificationAttribution {
             display_name: "demo".to_string(),
             badge_icon: "demo".to_string(),
+            class: unixnotis_core::AttributionClass::SystemAssociated,
             group_key: "test:demo".to_string(),
             ..unixnotis_core::NotificationAttribution::default()
         },

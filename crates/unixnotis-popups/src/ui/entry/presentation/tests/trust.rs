@@ -7,6 +7,10 @@ use super::support::notification;
 fn protected_desktop_association_stays_verified_and_visually_quiet() {
     let mut view = notification();
     view.inline_reply.available = true;
+    view.actions.push(Action {
+        key: "inline-reply".to_string(),
+        label: "Reply".to_string(),
+    });
 
     let trust = PopupTrustPresentation::for_notification(&view);
 
@@ -104,5 +108,5 @@ fn only_the_exact_inline_reply_action_key_requests_reply_ui() {
         label: "Reply".to_string(),
     });
     let inline_trust = PopupTrustPresentation::for_notification(&inline_reply);
-    assert_eq!(inline_trust.reply, ReplyPresentation::Available);
+    assert_eq!(inline_trust.reply, ReplyPresentation::Unavailable);
 }

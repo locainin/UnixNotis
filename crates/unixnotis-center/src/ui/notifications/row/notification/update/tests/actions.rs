@@ -92,6 +92,34 @@ fn update_notification_row_rebuilds_actions_only_when_signature_changes() {
 }
 
 #[gtk::test]
+fn unverified_panel_row_hides_application_actions_like_the_popup() {
+    let (_root, row) = notification_row();
+    let mut notification = sample_notification();
+    notification.attribution = unixnotis_core::NotificationAttribution::unknown(
+        "Claimed application",
+        "unverified sender",
+        "unknown:claimed".to_string(),
+    );
+    notification.actions = vec![Action {
+        key: "default".to_string(),
+        label: "Open".to_string(),
+    }];
+    let data = row_data(
+        Rc::new(notification),
+        RowFlags {
+            is_active: true,
+            ..Default::default()
+        },
+    );
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+
+    assert_eq!(child_count(&row.actions_box), 0);
+    assert!(row.card.has_css_class("unverified"));
+}
+
+#[gtk::test]
 fn reply_action_cache_tracks_allow_and_deny_policy_transitions() {
     let (_root, row) = notification_row();
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
