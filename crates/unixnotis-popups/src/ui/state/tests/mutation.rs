@@ -13,9 +13,14 @@ fn popup_events_preserve_newest_generation_and_exact_close_identity() {
     let mut state = popup_state("org.unixnotis.PopupMutationEvents");
     let original = notification(7, 1, "original");
 
-    state.handle_event(UiEvent::NotificationAdded(original.clone(), true));
+    state.handle_event(UiEvent::NotificationAdded(original, true));
     assert_eq!(
-        state.popups.get(&7).unwrap().notification.summary,
+        state
+            .popups
+            .get(&7)
+            .expect("original popup should be visible")
+            .notification
+            .summary,
         "original"
     );
 
@@ -23,14 +28,24 @@ fn popup_events_preserve_newest_generation_and_exact_close_identity() {
     // Equal generations cannot replace the payload already accepted by the UI
     state.handle_event(UiEvent::NotificationAdded(duplicate, true));
     assert_eq!(
-        state.popups.get(&7).unwrap().notification.summary,
+        state
+            .popups
+            .get(&7)
+            .expect("equal generation should preserve the popup")
+            .notification
+            .summary,
         "original"
     );
 
     let replacement = notification(7, 2, "replacement");
     state.handle_event(UiEvent::NotificationUpdated(replacement, true));
     assert_eq!(
-        state.popups.get(&7).unwrap().notification.summary,
+        state
+            .popups
+            .get(&7)
+            .expect("newer generation should replace the popup")
+            .notification
+            .summary,
         "replacement"
     );
 

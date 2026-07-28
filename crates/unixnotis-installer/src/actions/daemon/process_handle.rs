@@ -89,7 +89,7 @@ impl ProcessHandle {
 
         let started = Instant::now();
         while started.elapsed() < self.exit_timeout {
-            match read_process_start_time(self.pid.as_raw_pid() as u32)? {
+            match read_process_start_time(self.pid.as_raw_pid().cast_unsigned())? {
                 None => return Ok(()),
                 // A new lifetime means the original target exited and must not be inspected
                 Some(current) if current != self.start_time => return Ok(()),
@@ -107,7 +107,7 @@ impl ProcessHandle {
     }
 
     fn require_current_lifetime(&self) -> Result<()> {
-        let current = read_process_start_time(self.pid.as_raw_pid() as u32)?;
+        let current = read_process_start_time(self.pid.as_raw_pid().cast_unsigned())?;
         if current == Some(self.start_time) {
             return Ok(());
         }
@@ -121,7 +121,8 @@ impl ProcessHandle {
 fn wait_for_pidfd(pidfd: &OwnedFd, timeout: Duration) -> Result<()> {
     let mut descriptors = [PollFd::new(pidfd, PollFlags::IN)];
     let timeout = Timespec {
-        tv_sec: timeout.as_secs() as i64,
+        // Poll accepts signed seconds, so durations above its range saturate safely
+        tv_sec: i64::try_from(timeout.as_secs()).unwrap_or(i64::MAX),
         tv_nsec: i64::from(timeout.subsec_nanos()),
     };
     poll(&mut descriptors, Some(&timeout))

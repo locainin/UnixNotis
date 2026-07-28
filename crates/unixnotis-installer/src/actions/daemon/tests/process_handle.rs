@@ -20,9 +20,8 @@ fn process_start_time_parser_rejects_missing_and_invalid_fields() {
 
 #[test]
 fn process_handle_rejects_a_mismatched_program_before_signaling() {
-    let error = match ProcessHandle::open(std::process::id(), "not-the-test-process") {
-        Ok(_) => panic!("mismatched program must fail closed"),
-        Err(error) => error,
+    let Err(error) = ProcessHandle::open(std::process::id(), "not-the-test-process") else {
+        panic!("mismatched program must fail closed");
     };
 
     assert!(error
