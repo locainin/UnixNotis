@@ -12,6 +12,7 @@ use crate::{DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_WIDGETS_CSS};
 use super::{ConfigError, ThemePaths};
 
 const MAX_STOCK_THEME_BYTES: u64 = 1_048_576;
+const MAX_BACKUP_COLLISION_RETRIES: u8 = 8;
 const LEGACY_BACKUP_TAG: &str = "unixnotis-stock-9ca42584";
 const LEGACY_PANEL_DIGEST: &str =
     "bd2342e4ff91dab10dbdece082d1c58e9352b3b8167e046697dd921b6de4ceb3";
@@ -74,22 +75,49 @@ pub(super) fn migrate_stock_file_with_writer(
     }
 
     // The exact previous bytes are recoverable before the current stock file is published
-    let backup = stock_backup_path(path, backup_tag)?;
-    let backup_created = write_file_if_missing(&backup, &existing, 0o644)
-        .map_err(|error| migration_error(path, &error))?;
-    if !backup_created
-        && !regular_file_contents_equal(&backup, &existing, MAX_STOCK_THEME_BYTES)
-            .map_err(|error| migration_error(path, &error))?
-    {
-        return Err(ConfigError::ReadFailed(format!(
-            "refusing to replace stock theme because backup differs: {}",
-            backup.display()
-        )));
-    }
+    let Some(_backup) = reserve_stock_backup(path, backup_tag, &existing)? else {
+        // A backup problem must retain the old theme without blocking daemon startup
+        return Ok(false);
+    };
 
     // Atomic replacement keeps the prior complete file visible if publication is interrupted
     replace_file(path, current_stock).map_err(|error| migration_error(path, &error))?;
     Ok(true)
+}
+
+fn reserve_stock_backup(
+    path: &Path,
+    backup_tag: &str,
+    existing: &[u8],
+) -> Result<Option<PathBuf>, ConfigError> {
+    let base = stock_backup_path(path, backup_tag)?;
+    for suffix in 0..=MAX_BACKUP_COLLISION_RETRIES {
+        let candidate = backup_candidate(&base, suffix);
+        match write_file_if_missing(&candidate, existing, 0o644) {
+            Ok(true) => return Ok(Some(candidate)),
+            Ok(false) => {
+                // Identical content is already a complete valid backup
+                if regular_file_contents_equal(&candidate, existing, MAX_STOCK_THEME_BYTES)
+                    .unwrap_or(false)
+                {
+                    return Ok(Some(candidate));
+                }
+            }
+            Err(_) => {
+                // Another suffix may still be usable after a single path collision or race
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn backup_candidate(base: &Path, suffix: u8) -> PathBuf {
+    if suffix == 0 {
+        return base.to_path_buf();
+    }
+    let mut name = base.as_os_str().to_os_string();
+    name.push(format!(".{suffix}"));
+    PathBuf::from(name)
 }
 
 pub(super) fn stock_backup_path(path: &Path, backup_tag: &str) -> Result<PathBuf, ConfigError> {
