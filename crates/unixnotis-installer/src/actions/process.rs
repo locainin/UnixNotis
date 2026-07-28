@@ -81,13 +81,13 @@ fn run_command_with_output(
     let stdout_handle = stdout.map(|stream| {
         let tx = log_tx.clone();
         let label = label_string.clone();
-        thread::spawn(move || read_stream(stream, tx, label, "stdout"))
+        thread::spawn(move || read_stream(stream, &tx, &label, "stdout"))
     });
 
     let stderr_handle = stderr.map(|stream| {
         let tx = log_tx.clone();
         let label = label_string.clone();
-        thread::spawn(move || read_stream(stream, tx, label, "stderr"))
+        thread::spawn(move || read_stream(stream, &tx, &label, "stderr"))
     });
 
     let status = child
@@ -114,7 +114,8 @@ fn run_command_with_output(
 }
 
 pub fn log_line(ctx: &mut ActionContext, line: impl Into<String>) {
-    send_log_line(&ctx.log_tx, line.into());
+    let line = line.into();
+    send_log_line(&ctx.log_tx, &line);
 }
 
 fn sanitize_log_line(line: &str) -> String {
@@ -134,8 +135,8 @@ fn sanitize_log_line_with_source_truncation(line: &str, source_truncated: bool) 
 
 fn read_stream(
     stream: impl std::io::Read,
-    tx: SyncSender<UiMessage>,
-    label: String,
+    tx: &SyncSender<UiMessage>,
+    label: &str,
     stream_name: &str,
 ) {
     let mut reader = BufReader::new(stream);
@@ -146,13 +147,13 @@ fn read_stream(
             Ok(Some(source_truncated)) => {
                 // Invalid subprocess bytes are replaced only after the retained input is bounded
                 let line = String::from_utf8_lossy(&line);
-                send_log_line_with_source_truncation(&tx, &line, source_truncated);
+                send_log_line_with_source_truncation(tx, &line, source_truncated);
             }
             Ok(None) => break,
             Err(err) => {
                 send_log_line(
-                    &tx,
-                    format!("Warning: log stream error for {label} ({stream_name}): {err}"),
+                    tx,
+                    &format!("Warning: log stream error for {label} ({stream_name}): {err}"),
                 );
                 break;
             }
@@ -202,8 +203,8 @@ fn read_bounded_log_line(
     }
 }
 
-fn send_log_line(tx: &SyncSender<UiMessage>, line: String) {
-    let line = sanitize_log_line(&line);
+fn send_log_line(tx: &SyncSender<UiMessage>, line: &str) {
+    let line = sanitize_log_line(line);
     send_sanitized_log_line(tx, line);
 }
 

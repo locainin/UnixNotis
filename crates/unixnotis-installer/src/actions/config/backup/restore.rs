@@ -133,10 +133,10 @@ fn normalize_path_for_compare(path: &Path) -> PathBuf {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
-        match std::env::current_dir() {
-            Ok(current_dir) => current_dir.join(path),
-            Err(_) => path.to_path_buf(),
-        }
+        std::env::current_dir().map_or_else(
+            |_error| path.to_path_buf(),
+            |current_dir| current_dir.join(path),
+        )
     };
     if let Ok(canonical) = fs::canonicalize(&absolute) {
         return canonical;

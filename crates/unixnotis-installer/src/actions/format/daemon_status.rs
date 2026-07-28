@@ -2,18 +2,18 @@
 
 use crate::detect::DetectedDaemon;
 
-pub fn summarize_owner(owner: &Option<crate::detect::OwnerInfo>) -> String {
-    match owner {
-        Some(info) => {
+pub fn summarize_owner(owner: Option<&crate::detect::OwnerInfo>) -> String {
+    owner.map_or_else(
+        || "none detected".to_string(),
+        |info| {
             // Keep missing fields readable instead of showing an empty tuple
             let name = info.comm.as_deref().unwrap_or("unknown");
             let pid = info
                 .pid
                 .map_or_else(|| "unknown".to_string(), |pid| pid.to_string());
             format!("{name} (pid {pid})")
-        }
-        None => "none detected".to_string(),
-    }
+        },
+    )
 }
 
 pub const fn daemon_has_displayable_status(daemon: &DetectedDaemon) -> bool {

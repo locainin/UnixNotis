@@ -1,6 +1,7 @@
 //! Hyprland bootstrap flow for install and uninstall
 
 use std::fs;
+use std::path::Path;
 
 use super::super::{log_line, ActionContext};
 use super::block::strip_hyprland_bootstrap_block;
@@ -8,7 +9,9 @@ use super::detect::{
     has_import_command_with_vars, has_legacy_dbus_update, has_startup_command,
     hyprland_startup_line,
 };
-use super::paths::{existing_hyprland_config_targets, hyprland_config_target};
+use super::paths::{
+    existing_hyprland_config_targets, hyprland_config_target, HyprlandConfigSyntax,
+};
 use super::write_target::resolve_hyprland_write_path;
 use crate::paths::format_with_home;
 use crate::write_target::reject_unsafe_write_target;
@@ -52,19 +55,8 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
         );
         return;
     }
-    let contents = match fs::read_to_string(&write_path) {
-        Ok(contents) => contents,
-        Err(err) => {
-            log_line(
-                ctx,
-                format!(
-                    "Warning: failed to read {}: {}",
-                    format_with_home(&hypr_config),
-                    err
-                ),
-            );
-            return;
-        }
+    let Some(contents) = read_hyprland_config(ctx, &write_path, &hypr_config) else {
+        return;
     };
 
     // Strip any managed block first so missing lines can be rebuilt cleanly
@@ -121,17 +113,34 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
         return;
     }
 
-    let mut updated_contents = stripped;
+    write_hyprland_bootstrap(
+        ctx,
+        &write_path,
+        &hypr_config,
+        target.syntax,
+        &additions,
+        stripped,
+    );
+}
+
+fn write_hyprland_bootstrap(
+    ctx: &mut ActionContext,
+    write_path: &Path,
+    hypr_config: &Path,
+    syntax: HyprlandConfigSyntax,
+    additions: &[String],
+    mut updated_contents: String,
+) {
+    // Keep publication in one helper so the discovery path remains easy to audit
     if !updated_contents.ends_with('\n') {
         updated_contents.push('\n');
     }
     updated_contents.push_str(&super::block::render_hyprland_bootstrap_block(
-        target.syntax,
-        &additions,
+        syntax, additions,
     ));
 
     if let Err(err) =
-        write_file_atomic_preserving_mode(&write_path, updated_contents.as_bytes(), 0o644)
+        write_file_atomic_preserving_mode(write_path, updated_contents.as_bytes(), 0o644)
     {
         log_line(
             ctx,
@@ -142,10 +151,28 @@ pub(in crate::actions) fn ensure_hyprland_autostart(ctx: &mut ActionContext) {
             ctx,
             format!(
                 "Updated Hyprland config at {}",
-                format_with_home(&hypr_config)
+                format_with_home(hypr_config)
             ),
         );
     }
+}
+
+fn read_hyprland_config(
+    ctx: &mut ActionContext,
+    write_path: &Path,
+    display_path: &Path,
+) -> Option<String> {
+    fs::read_to_string(write_path)
+        .map_err(|error| {
+            log_line(
+                ctx,
+                format!(
+                    "Warning: failed to read {}: {error}",
+                    format_with_home(display_path)
+                ),
+            );
+        })
+        .ok()
 }
 
 fn hyprland_command_present(contents: &str, command: &str, import_variables: &[&str]) -> bool {

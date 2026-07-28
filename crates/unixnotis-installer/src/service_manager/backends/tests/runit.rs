@@ -80,9 +80,7 @@ fn runit_backend_commands_match_expected_behavior() {
     assert!(manager.refresh_after_artifact_change().is_none());
 
     // sv check tracks the requested state, so active status must parse sv status output
-    let active = manager
-        .active_probe()
-        .expect("runit can parse current status");
+    let active = manager.active_probe();
     assert_eq!(active.command().args(), &["status", service_path]);
     assert_eq!(
         active.parser_matches("run: /tmp/service/unixnotis-daemon: (pid 123) 2s"),
@@ -93,19 +91,13 @@ fn runit_backend_commands_match_expected_behavior() {
         Some(false)
     );
 
-    let enable = manager
-        .enable_now_command()
-        .expect("runit starts watched service directories");
+    let enable = manager.enable_now_command();
     assert_eq!(enable.args(), &["start", service_path]);
 
-    let disable = manager
-        .disable_now_command()
-        .expect("runit stops watched service directories");
+    let disable = manager.disable_now_command();
     assert_eq!(disable.args(), &["stop", service_path]);
 
-    let stop = manager
-        .stop_for_reinstall_command()
-        .expect("runit can stop before reinstall");
+    let stop = manager.stop_for_reinstall_command();
     assert_eq!(stop.args(), &["stop", service_path]);
 }
 
@@ -277,7 +269,7 @@ fn runit_readiness_rejects_chpst_that_exists_only_on_path() {
     let trusted_bin = root.join("trusted-bin");
     fs::create_dir_all(&path_bin).expect("path bin");
     fs::create_dir_all(&trusted_bin).expect("trusted bin");
-    write_executable(path_bin.join("chpst"), "#!/bin/sh\nexit 0\n");
+    write_executable(&path_bin.join("chpst"), "#!/bin/sh\nexit 0\n");
     let _path = EnvPathGuard::prepend(&path_bin);
     let _tools = use_fake_tool_bin(&trusted_bin);
 
@@ -296,8 +288,8 @@ fn test_root(name: &str) -> PathBuf {
     root
 }
 
-fn write_executable(path: PathBuf, contents: &str) {
-    write_test_executable(&path, contents);
+fn write_executable(path: &Path, contents: &str) {
+    write_test_executable(path, contents);
 }
 
 struct EnvPathGuard {

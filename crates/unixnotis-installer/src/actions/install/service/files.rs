@@ -58,10 +58,10 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
 
     if contents_changed {
         // Explicit modes keep service scripts independent of process umask
-        match mode {
-            Some(mode) => write_file_atomic(path, contents.as_bytes(), mode),
-            None => write_file_atomic_preserving_mode(path, contents.as_bytes(), 0o644),
-        }
+        mode.map_or_else(
+            || write_file_atomic_preserving_mode(path, contents.as_bytes(), 0o644),
+            |mode| write_file_atomic(path, contents.as_bytes(), mode),
+        )
         .with_context(|| format!("failed to write {artifact_label}"))?;
     } else if mode_changed {
         #[cfg(unix)]

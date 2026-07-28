@@ -260,11 +260,12 @@ pub(in crate::actions::install) fn strip_ansi_csi_sequences(line: &str) -> Strin
 }
 
 pub(in crate::actions::install) fn truncate_diagnostic(mut line: String, max_len: usize) -> String {
+    const ELLIPSIS: &str = "...";
+
     if line.len() <= max_len {
         return line;
     }
 
-    const ELLIPSIS: &str = "...";
     if max_len <= ELLIPSIS.len() {
         // Very small budgets still need valid UTF-8 and must not exceed the caller limit
         return ELLIPSIS[..max_len].to_string();

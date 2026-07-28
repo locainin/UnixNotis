@@ -193,12 +193,11 @@ impl App {
         }
     }
 
-    pub fn build_accel_menu_len(&self) -> usize {
+    pub const fn build_accel_menu_len(&self) -> usize {
         // Keep menu length aligned with the chosen mode to avoid invalid indices
         match self.build_accel_menu_mode() {
             BuildAccelMenuMode::ReturnOnly => 1,
-            BuildAccelMenuMode::EnableOrSkip => 2,
-            BuildAccelMenuMode::Reinstall => 2,
+            BuildAccelMenuMode::EnableOrSkip | BuildAccelMenuMode::Reinstall => 2,
         }
     }
 

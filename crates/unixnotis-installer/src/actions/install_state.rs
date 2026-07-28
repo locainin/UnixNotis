@@ -78,10 +78,7 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
     // Enabled state decides whether reinstall can skip `enable --now`
     // Some backends store enablement as installer-owned artifacts instead of manager state
     let mut service_enabled_error = None;
-    let service_enabled = if let Some(enabled) = paths.service.enabled_by_artifacts() {
-        // Artifact-backed managers prove enablement through installer-owned filesystem state
-        enabled
-    } else {
+    let service_enabled = paths.service.enabled_by_artifacts().unwrap_or_else(|| {
         if let Some(spec) = paths.service.is_enabled_command() {
             match spec.to_command().and_then(|mut command| command.status()) {
                 // Command-backed managers still use the native manager status probe
@@ -97,22 +94,16 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
                 Some("service manager has no enabled-state command".to_string());
             false
         }
-    };
+    });
     // Active state still matters for the install summary shown in the UI
     let mut service_active_error = None;
-    let service_active = if let Some(probe) = paths.service.active_probe() {
-        match probe.evaluate() {
-            // Active probes can be plain exit status or stdout parsing, depending on backend
-            Ok(active) => active,
-            Err(err) => {
-                service_active_error = Some(err.to_string());
-                false
-            }
+    let service_active = match paths.service.active_probe().evaluate() {
+        // Active probes can be plain exit status or stdout parsing, depending on backend
+        Ok(active) => active,
+        Err(err) => {
+            service_active_error = Some(err.to_string());
+            false
         }
-    } else {
-        // Backends without active state still allow install, but cannot claim a running service
-        service_active_error = Some("service manager has no active-state command".to_string());
-        false
     };
 
     let (service_conflicts, service_conflict_warnings) =

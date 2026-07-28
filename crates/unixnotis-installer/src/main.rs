@@ -1,19 +1,5 @@
 //! `UnixNotis` installer entrypoint with a ratatui-driven flow
 
-#![expect(
-    clippy::collapsible_else_if,
-    clippy::items_after_statements,
-    clippy::match_same_arms,
-    clippy::missing_const_for_fn,
-    clippy::needless_pass_by_value,
-    clippy::option_if_let_else,
-    clippy::redundant_else,
-    clippy::ref_option,
-    clippy::too_many_lines,
-    clippy::unnecessary_wraps,
-    reason = "reviewed installer state-machine, backend, and TUI boundaries keep explicit control flow for auditable lifecycle behavior"
-)]
-
 mod actions;
 mod app;
 mod checks;
@@ -64,7 +50,7 @@ fn main() -> Result<()> {
 
     match exit_action {
         Ok(ExitAction::None) => Ok(()),
-        Ok(ExitAction::RunTrial { repo_root }) => run_trial(repo_root),
+        Ok(ExitAction::RunTrial { repo_root }) => run_trial(&repo_root),
         Err(err) => Err(err),
     }
 }

@@ -125,7 +125,7 @@ fn render_daemon_section(app: &App, lines: &mut Vec<Line<'static>>) {
     lines.push(Line::from(vec![
         Span::styled("Owner: ", Style::default().add_modifier(Modifier::BOLD)),
         Span::styled(
-            summarize_owner(&app.detection.owner),
+            summarize_owner(app.detection.owner.as_ref()),
             daemon_owner_style(app.detection.owner.is_some()),
         ),
     ]));
