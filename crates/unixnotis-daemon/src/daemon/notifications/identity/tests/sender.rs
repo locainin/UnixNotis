@@ -113,3 +113,12 @@ fn security_refresh_clears_evidence_for_a_stale_process_lifetime() {
     assert!(refreshed.sender_executable_identity.is_none());
     assert!(refreshed.sender_cmdline.is_none());
 }
+
+#[test]
+fn process_lifetime_match_requires_both_reads_to_equal_the_cached_start() {
+    assert!(process_lifetime_matches(Some(42), 42, Some(42)));
+    assert!(!process_lifetime_matches(Some(41), 42, Some(42)));
+    assert!(!process_lifetime_matches(Some(42), 42, Some(43)));
+    assert!(!process_lifetime_matches(None, 42, Some(42)));
+    assert!(!process_lifetime_matches(Some(42), 42, None));
+}

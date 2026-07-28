@@ -47,6 +47,29 @@ fn fixed_immutable_application_argument_is_matched_exactly() {
 }
 
 #[test]
+fn user_writable_literal_payload_cannot_support_a_system_association() {
+    let shell = executable_evidence_for_path(Path::new("/usr/bin/sh")).expect("system shell");
+    let root = TempRoot::new("launch-spec-user-payload");
+    let payload = root.join("application-script");
+    fs::write(&payload, "exit 0\n").expect("write user payload");
+    let desktop_path = root.join("org.example.UserPayload.desktop");
+    fs::write(
+        &desktop_path,
+        format!(
+            "[Desktop Entry]\nType=Application\nName=User Payload\nExec=/usr/bin/sh {}\n",
+            payload.display()
+        ),
+    )
+    .expect("write desktop entry");
+    let desktop = gio::DesktopAppInfo::from_filename(&desktop_path).expect("parse desktop entry");
+
+    let spec =
+        build_launch_spec(&desktop, &desktop_path, shell.identity).expect("build launch spec");
+
+    assert!(!spec.literal_files_are_system_managed);
+}
+
+#[test]
 fn launch_spec_rejects_unmodeled_flags_and_invalid_url_fields() {
     let executable =
         executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system fixture");

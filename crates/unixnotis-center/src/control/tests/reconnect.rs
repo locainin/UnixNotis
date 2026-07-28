@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::StreamExt;
@@ -221,6 +222,15 @@ fn owner_lookup_errors_distinguish_connection_loss_from_transient_failures() {
     )));
     assert!(owner_error_is_disconnected(&zbus::fdo::Error::NoServer(
         "missing broker".to_string()
+    )));
+    assert!(owner_error_is_disconnected(&zbus::fdo::Error::NoNetwork(
+        "network unavailable".to_string()
+    )));
+    assert!(owner_error_is_disconnected(&zbus::fdo::Error::ZBus(
+        zbus::Error::InputOutput(Arc::new(std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "broker closed",
+        )))
     )));
     assert!(!owner_error_is_disconnected(&zbus::fdo::Error::Timeout(
         "slow broker".to_string()
