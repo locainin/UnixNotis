@@ -34,13 +34,18 @@ fn small_square_image_data_is_suppressed_as_decorative_content() {
 
 #[test]
 fn media_category_keeps_a_small_square_content_thumbnail() {
-    let mut notification = notification_with_image();
-    notification.category = "image.photo".to_string();
-    notification.image.has_image_data = true;
-    notification.image.image_data.width = 96;
-    notification.image.image_data.height = 96;
+    for category in ["image.photo", "media.video", "photo"] {
+        let mut notification = notification_with_image();
+        notification.category = category.to_string();
+        notification.image.has_image_data = true;
+        notification.image.image_data.width = 96;
+        notification.image.image_data.height = 96;
 
-    assert!(!content_image_is_decorative(&notification));
+        assert!(
+            !content_image_is_decorative(&notification),
+            "{category} should preserve real content"
+        );
+    }
 }
 
 #[test]
@@ -50,6 +55,44 @@ fn content_source_matching_badge_is_suppressed_without_image_data() {
     notification.image.icon_name = "signal".to_string();
 
     assert!(content_image_is_decorative(&notification));
+}
+
+#[test]
+fn content_path_matching_badge_is_suppressed_without_image_data() {
+    let mut notification = notification_with_image();
+    notification.attribution.badge_icon = "/usr/share/icons/signal.png".to_string();
+    notification.image.image_path = "/usr/share/icons/signal.png".to_string();
+
+    assert!(content_image_is_decorative(&notification));
+}
+
+#[test]
+fn empty_badge_does_not_match_empty_content_sources() {
+    let notification = notification_with_image();
+
+    assert!(!content_image_is_decorative(&notification));
+}
+
+#[test]
+fn square_image_heuristic_requires_data_positive_dimensions_and_size_limit() {
+    let cases = [
+        (false, 96, 96),
+        (true, 0, 0),
+        (true, 96, 72),
+        (true, 129, 129),
+    ];
+
+    for (has_image_data, width, height) in cases {
+        let mut notification = notification_with_image();
+        notification.image.has_image_data = has_image_data;
+        notification.image.image_data.width = width;
+        notification.image.image_data.height = height;
+
+        assert!(
+            !content_image_is_decorative(&notification),
+            "data={has_image_data} width={width} height={height} should remain nondecorative"
+        );
+    }
 }
 
 fn notification_with_image() -> unixnotis_core::NotificationView {
