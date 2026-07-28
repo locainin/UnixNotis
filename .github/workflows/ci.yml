@@ -49,6 +49,7 @@ jobs:
             libgtk-4-dev \
             libgtk4-layer-shell-dev \
             pkg-config \
+            ripgrep \
             shellcheck \
             xauth \
             xvfb \

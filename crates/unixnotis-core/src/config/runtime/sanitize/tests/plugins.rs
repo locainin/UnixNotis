@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::float_cmp,
     reason = "sanitization assigns exact finite constants and test inputs"
 )]

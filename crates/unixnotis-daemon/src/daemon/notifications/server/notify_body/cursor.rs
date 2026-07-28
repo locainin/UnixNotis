@@ -90,8 +90,9 @@ impl<'a> Cursor<'a> {
         budget: &mut StringBudget,
     ) -> Result<&'a [u8], PreflightError> {
         // Length is rejected before a slice is exposed to later parsing
-        let length = usize::try_from(self.read_u32()?)
-            .map_err(|_| PreflightError::LimitsExceeded("Notify string is too large"))?;
+        let length = usize::try_from(self.read_u32()?).map_err(|_conversion_error| {
+            PreflightError::LimitsExceeded("Notify string is too large")
+        })?;
         if length > limit {
             return Err(PreflightError::LimitsExceeded(
                 "Notify string exceeds its field limit",
@@ -141,8 +142,9 @@ impl<'a> Cursor<'a> {
         element_alignment: usize,
     ) -> Result<usize, PreflightError> {
         // Array byte lengths are validated before any element walk begins
-        let length = usize::try_from(self.read_u32()?)
-            .map_err(|_| PreflightError::LimitsExceeded("Notify array is too large"))?;
+        let length = usize::try_from(self.read_u32()?).map_err(|_conversion_error| {
+            PreflightError::LimitsExceeded("Notify array is too large")
+        })?;
         self.align(element_alignment)?;
         let end = self
             .offset

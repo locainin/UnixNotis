@@ -18,7 +18,10 @@ pub trait Notifications {
     fn get_server_information(&self) -> zbus::Result<(String, String, String, String)>;
 
     /// Submit one notification and return its assigned identifier
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the D-Bus method must match the freedesktop notification protocol"
+    )]
     fn notify(
         &self,
         app_name: &str,
