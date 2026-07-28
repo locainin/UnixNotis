@@ -3,9 +3,11 @@
 use crate::daemon::DaemonState;
 
 impl DaemonState {
-    pub(in crate::daemon::bus) async fn remove_disconnected_client(&self, owner: &str) {
+    pub(in crate::daemon) async fn remove_disconnected_client(&self, owner: &str) {
         // Sender metadata is keyed by unique names and cannot survive owner loss
         self.sender_metadata_cache.remove(owner);
+        // Only the owner that published the active popup generation can clear it
+        self.set_popups_ready(owner, false);
 
         let inhibitors_removed = {
             let mut store = self.store.lock().await;

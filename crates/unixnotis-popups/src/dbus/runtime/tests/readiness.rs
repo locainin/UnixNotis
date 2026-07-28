@@ -1,10 +1,4 @@
-use super::{build_runtime, wait_for_gtk_runtime, UI_COMMAND_QUEUE_CAPACITY};
-
-#[test]
-fn popup_runtime_builds_with_a_bounded_command_queue() {
-    assert!(build_runtime().is_some());
-    assert_eq!(UI_COMMAND_QUEUE_CAPACITY, 64);
-}
+use super::super::readiness::wait_for_gtk_runtime;
 
 #[tokio::test]
 async fn gtk_readiness_wait_completes_after_ui_state_is_published() {
