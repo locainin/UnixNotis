@@ -88,6 +88,7 @@ async fn daemon_state_with_config(config: Config) -> Arc<DaemonState> {
         sound,
         false,
         Arc::new(ArcSwap::from_pointee(DesktopIdentityIndex::default())),
+        None,
     )
 }
 

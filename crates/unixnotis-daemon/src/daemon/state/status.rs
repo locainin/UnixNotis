@@ -90,20 +90,7 @@ impl DaemonState {
         self.trial_mode
     }
 
-    #[cfg(test)]
-    pub(crate) fn set_trusted_test_control_sender(&self, sender: Option<String>) {
-        *self
-            .trusted_test_control_sender
-            .lock()
-            .expect("trusted test sender lock poisoned") = sender;
-    }
-
-    #[cfg(test)]
-    pub(crate) fn is_trusted_test_control_sender(&self, sender: &str) -> bool {
-        self.trusted_test_control_sender
-            .lock()
-            .expect("trusted test sender lock poisoned")
-            .as_deref()
-            == Some(sender)
+    pub(in crate::daemon) fn control_owner_is_preauthorized(&self, owner: &str) -> bool {
+        self.preauthorized_control_owner.as_deref() == Some(owner)
     }
 }

@@ -25,27 +25,11 @@ async fn run_with_builder(args: &Args, config: Config, builder: Builder<'_>) -> 
     Box::pin(run_with_builder_inner(args, config, builder, None)).await
 }
 
-#[cfg(test)]
-async fn run_with_builder_for_test(
-    args: &Args,
-    config: Config,
-    builder: Builder<'_>,
-    trusted_control_sender: String,
-) -> Result<()> {
-    Box::pin(run_with_builder_inner(
-        args,
-        config,
-        builder,
-        Some(trusted_control_sender),
-    ))
-    .await
-}
-
 async fn run_with_builder_inner(
     args: &Args,
     config: Config,
     builder: Builder<'_>,
-    trusted_test_control_sender: Option<String>,
+    preauthorized_control_owner: Option<String>,
 ) -> Result<()> {
     let connection = builder
         .max_queued(DAEMON_DBUS_QUEUE_CAPACITY)
@@ -80,7 +64,7 @@ async fn run_with_builder_inner(
         &dbus_proxy,
         desktop_identity_index,
         watched_directories,
-        trusted_test_control_sender,
+        preauthorized_control_owner,
     )
     .await;
     let restore_result = trial_cleanup::finish_trial(
