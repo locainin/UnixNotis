@@ -18,17 +18,6 @@ use crate::ui::try_send_command;
 use super::reply::build_inline_reply;
 use super::state::NotificationRowWidgets;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum StackLayer {
-    Back,
-    Middle,
-    Foreground,
-}
-
-// Later GTK siblings paint above earlier siblings when card margins overlap
-pub(super) const STACK_LAYER_ORDER: [StackLayer; 3] =
-    [StackLayer::Back, StackLayer::Middle, StackLayer::Foreground];
-
 pub(in crate::ui::notifications) fn build_notification_row(
     command_tx: mpsc::Sender<UiCommand>,
 ) -> (gtk::Box, NotificationRowWidgets) {
@@ -176,17 +165,8 @@ pub(in crate::ui::notifications) fn build_notification_row(
     // The wrapper clips the complete styled card while the inner box keeps all CSS hooks
     let card_plate = CutCorner::new(&card, unixnotis_core::CutCorners::default());
 
-    let stack_ghost_1 = build_stack_ghost(1);
-    let stack_ghost_2 = build_stack_ghost(2);
-
-    // The explicit plan makes paint order reviewable without starting GTK in unit tests
-    for layer in STACK_LAYER_ORDER {
-        match layer {
-            StackLayer::Back => root.append(&stack_ghost_2),
-            StackLayer::Middle => root.append(&stack_ghost_1),
-            StackLayer::Foreground => root.append(&card_plate),
-        }
-    }
+    // One content card keeps grouped rows calm without decorative fake stack layers
+    root.append(&card_plate);
 
     let notify_id = Rc::new(Cell::new(0));
     // Close click always targets the latest id assigned to this row
@@ -210,8 +190,6 @@ pub(in crate::ui::notifications) fn build_notification_row(
         NotificationRowWidgets {
             card,
             card_plate,
-            stack_ghost_1,
-            stack_ghost_2,
             icon,
             app_label,
             urgency_badge,
@@ -237,15 +215,4 @@ pub(in crate::ui::notifications) fn build_notification_row(
             icon_sig: RefCell::new(None),
         },
     )
-}
-
-fn build_stack_ghost(depth: u8) -> gtk::Box {
-    let ghost = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    // The real card and its shadows share theme hooks for consistent colors
-    ghost.add_css_class("unixnotis-panel-card");
-    ghost.add_css_class("unixnotis-stack-ghost");
-    ghost.add_css_class(&format!("unixnotis-stack-ghost-{depth}"));
-    ghost.set_hexpand(true);
-    ghost.set_visible(false);
-    ghost
 }

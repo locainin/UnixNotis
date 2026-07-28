@@ -29,6 +29,7 @@ pub(in crate::ui::notifications) fn update_notification_row(
     };
     let notification = notification_snapshot.as_ref();
     let presentation = NotificationPresentation::from_view(notification);
+    let show_identity = !data.stacked && !data.expanded;
     let has_actions = visible_action_count(notification, data.is_active) > 0;
     let has_thumbnail =
         data.presentation.show_thumbnail && notification_has_thumbnail(notification);
@@ -52,11 +53,15 @@ pub(in crate::ui::notifications) fn update_notification_row(
     // Text and action changes must not restart an unchanged icon pipeline
     let next_sig = IconSignature::from(notification);
     let mut sig_guard = row.icon_sig.borrow_mut();
-    if sig_guard.as_ref() != Some(&next_sig) {
+    if show_identity && sig_guard.as_ref() != Some(&next_sig) {
         let scale = row.card.scale_factor();
         icon_resolver.apply_badge(&row.icon, notification, 22, scale);
         *sig_guard = Some(next_sig);
+    } else if !show_identity {
+        *sig_guard = None;
     }
+    set_widget_visible_if_changed(&row.icon, show_identity);
+    set_widget_visible_if_changed(&row.app_label, show_identity);
     if has_thumbnail {
         // Reapply visible thumbnails so config reloads cannot leave stale previews
         let scale = row.card.scale_factor();

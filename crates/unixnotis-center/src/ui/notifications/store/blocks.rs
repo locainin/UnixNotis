@@ -20,31 +20,30 @@ impl NotificationList {
             return (Vec::new(), Vec::new());
         };
 
-        // Cached header objects preserve GTK bindings across incremental rebuilds
-        let header = self.group_headers.entry(key.clone()).or_insert_with(|| {
-            RowItem::new(RowData::group_header(
+        let mut items = Vec::new();
+        let mut keys = Vec::new();
+        if ids.len() > 1 {
+            // Multi-item groups own one shared application identity header
+            let header = self.group_headers.entry(key.clone()).or_insert_with(|| {
+                RowItem::new(RowData::group_header(
+                    key.clone(),
+                    ids.len(),
+                    expanded,
+                    first_entry.view.clone(),
+                ))
+            });
+            header.update(RowData::group_header(
                 key.clone(),
                 ids.len(),
                 expanded,
                 first_entry.view.clone(),
-            ))
-        });
-        header.update(RowData::group_header(
-            key.clone(),
-            ids.len(),
-            expanded,
-            first_entry.view.clone(),
-        ));
+            ));
+            items.push(header.clone());
+            keys.push(RowKey::GroupHeader { group: key.clone() });
+        }
 
-        let mut items = Vec::new();
-        let mut keys = Vec::new();
-        items.push(header.clone());
-        keys.push(RowKey::GroupHeader { group: key.clone() });
-
-        // Collapsed groups render one notification row
-        // The row owns stack decoration so GTK does not virtualize it separately
+        // Collapsed groups render the newest content row under their shared header
         let stacked = !expanded && ids.len() > 1;
-        let stack_depth = collapsed_stack_depth(ids.len(), expanded);
         for (index, id) in ids.iter().enumerate() {
             if !expanded && index > 0 {
                 break;
@@ -64,7 +63,7 @@ impl NotificationList {
                 entry.app_key.clone(),
                 entry.view.clone(),
                 stacked,
-                stack_depth,
+                0,
                 expanded,
                 entry.is_active,
                 presentation,
@@ -82,7 +81,10 @@ impl NotificationList {
         ids: &[u32],
     ) -> usize {
         let expanded = self.group_expanded.get(key).copied().unwrap_or(false);
-        let mut len = 1; // header
+        if ids.len() <= 1 {
+            return usize::from(!ids.is_empty());
+        }
+        let mut len = 1; // shared header
         if expanded {
             len += ids.len();
         } else if !ids.is_empty() {
@@ -145,14 +147,6 @@ impl NotificationList {
             }
         }
     }
-}
-
-fn collapsed_stack_depth(count: usize, expanded: bool) -> u8 {
-    if expanded {
-        return 0;
-    }
-    // One extra notification shows one shadow, larger stacks cap at two
-    count.saturating_sub(1).min(2) as u8
 }
 
 pub(in crate::ui::notifications) fn common_prefix_suffix(

@@ -15,9 +15,6 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) card: gtk::Box,
     // Polygon wrapper clips both visual output and pointer hit testing
     pub(super) card_plate: unixnotis_ui::CutCorner,
-    // Internal stack depth cards keep collapsed stacks in the same row update
-    pub(super) stack_ghost_1: gtk::Box,
-    pub(super) stack_ghost_2: gtk::Box,
     // Main icon shown at the top-left of the row
     pub(super) icon: gtk::Image,
     // App name text shown beside the icon

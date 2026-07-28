@@ -8,20 +8,6 @@ use super::super::super::super::item::RowData;
 use super::super::state::NotificationRowWidgets;
 use super::labels::has_visible_text;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct StackGhostVisibility {
-    pub(super) middle: bool,
-    pub(super) back: bool,
-}
-
-pub(super) const fn stack_ghost_visibility(stack_depth: u8) -> StackGhostVisibility {
-    // A single rear layer uses the back slot because it starts without overlap
-    StackGhostVisibility {
-        middle: stack_depth >= 2,
-        back: stack_depth >= 1,
-    }
-}
-
 pub(super) fn apply_visual_state(
     row: &NotificationRowWidgets,
     data: &RowData,
@@ -47,14 +33,10 @@ pub(super) fn apply_visual_state(
     set_widget_visible_if_changed(&row.urgency_badge, is_critical);
     set_class_state(card, hooks::shared_state::ACTIVE, data.is_active);
     set_class_state(card, hooks::shared_state::STACKED, data.stacked);
-    set_class_state(card, hooks::panel_card::GROUPED, true);
+    let grouped = data.stacked || data.expanded;
+    set_class_state(card, hooks::panel_card::GROUPED, grouped);
     set_class_state(card, hooks::panel_card::GROUP_COLLAPSED, data.stacked);
     set_class_state(card, hooks::panel_card::GROUP_EXPANDED, data.expanded);
-
-    // Rear layers occupy fixed paint slots with different overlap rules
-    let ghost_visibility = stack_ghost_visibility(data.stack_depth);
-    set_widget_visible_if_changed(&row.stack_ghost_1, ghost_visibility.middle);
-    set_widget_visible_if_changed(&row.stack_ghost_2, ghost_visibility.back);
 
     set_class_state(
         card,
