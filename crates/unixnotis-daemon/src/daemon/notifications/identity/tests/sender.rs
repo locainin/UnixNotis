@@ -66,3 +66,50 @@ fn stable_process_evidence_discards_pid_reuse_or_missing_observations() {
         (None, None)
     );
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn security_refresh_reloads_current_process_evidence() {
+    let pid = std::process::id();
+    let start_time = read_process_start_time(pid).expect("current process start time");
+    let original = SenderMetadata {
+        sender_pid: Some(pid),
+        sender_start_time: Some(start_time),
+        ..SenderMetadata::default()
+    };
+
+    let refreshed = refresh_sender_security_evidence(&original);
+
+    assert_eq!(refreshed.sender_start_time, Some(start_time));
+    assert!(refreshed.sender_executable_identity.is_some());
+    assert!(refreshed.sender_cmdline.is_some());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn security_refresh_clears_evidence_for_a_stale_process_lifetime() {
+    let pid = std::process::id();
+    let stale_start = read_process_start_time(pid)
+        .expect("current process start time")
+        .saturating_add(1);
+    let original = SenderMetadata {
+        sender_pid: Some(pid),
+        sender_start_time: Some(stale_start),
+        sender_executable: Some("/usr/bin/trusted-app".to_string()),
+        sender_executable_identity: Some(FileIdentity {
+            device: 1,
+            inode: 2,
+            uid: 0,
+            mode: 0o100_755,
+        }),
+        sender_cmdline: Some(vec![b"/usr/bin/trusted-app".to_vec()]),
+        ..SenderMetadata::default()
+    };
+
+    let refreshed = refresh_sender_security_evidence(&original);
+
+    assert!(refreshed.sender_start_time.is_none());
+    assert!(refreshed.sender_executable.is_none());
+    assert!(refreshed.sender_executable_identity.is_none());
+    assert!(refreshed.sender_cmdline.is_none());
+}

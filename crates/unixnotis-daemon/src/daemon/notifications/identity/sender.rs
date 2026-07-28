@@ -107,6 +107,35 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
     metadata
 }
 
+pub(super) fn refresh_sender_security_evidence(metadata: &SenderMetadata) -> SenderMetadata {
+    let mut refreshed = metadata.clone();
+    let (Some(pid), Some(expected_start)) = (metadata.sender_pid, metadata.sender_start_time)
+    else {
+        return refreshed;
+    };
+
+    // Refresh every process-derived field before a security-sensitive association decision
+    let start_before = read_process_start_time(pid);
+    let executable = executable_evidence_for_pid(pid);
+    let cmdline = read_process_cmdline(pid);
+    let start_after = read_process_start_time(pid);
+    if start_before != Some(expected_start) || start_after != Some(expected_start) {
+        // Stale cache entries retain bus context but lose all application identity authority
+        refreshed.sender_start_time = None;
+        refreshed.sender_executable = None;
+        refreshed.sender_executable_identity = None;
+        refreshed.sender_cmdline = None;
+        return refreshed;
+    }
+
+    refreshed.sender_executable = executable
+        .as_ref()
+        .map(|evidence| evidence.canonical_path.display().to_string());
+    refreshed.sender_executable_identity = executable.map(|evidence| evidence.identity);
+    refreshed.sender_cmdline = cmdline;
+    refreshed
+}
+
 #[cfg(target_os = "linux")]
 fn read_process_start_time(pid: u32) -> Option<u64> {
     // /proc/<pid>/stat keeps the process lifetime tick count in field 22

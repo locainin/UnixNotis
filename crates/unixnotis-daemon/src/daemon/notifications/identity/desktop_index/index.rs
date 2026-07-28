@@ -63,11 +63,24 @@ impl DesktopIdentityIndex {
 
     pub(in crate::daemon::notifications::identity) fn trusted_portal_path(
         &self,
-        identity: FileIdentity,
+        sender_identity: FileIdentity,
+        sender_path: &Path,
     ) -> Option<&Path> {
         self.trusted_portals
             .iter()
-            .find(|portal| portal.identity.same_file(identity))
+            .find(|portal| {
+                let Some(current) = executable_evidence_for_path(&portal.path) else {
+                    return false;
+                };
+                // Both the running path and installed path must remain under protected roots
+                trusted_system_executable_path(sender_path)
+                    && trusted_system_executable_path(&current.canonical_path)
+                    && current.canonical_path == portal.path
+                    && current.identity.same_file(portal.identity)
+                    && current.identity.same_file(sender_identity)
+                    && current.identity.is_system_managed()
+                    && current.identity.is_executable_regular()
+            })
             .map(|portal| portal.path.as_path())
     }
 
@@ -140,4 +153,19 @@ impl DesktopIdentityIndex {
         }
         self.records.push(record);
     }
+}
+
+fn trusted_system_executable_path(path: &Path) -> bool {
+    const ROOTS: [&str; 8] = [
+        "/bin",
+        "/lib",
+        "/lib64",
+        "/usr/bin",
+        "/usr/lib",
+        "/usr/libexec",
+        "/usr/local/lib",
+        "/usr/local/libexec",
+    ];
+
+    path.is_absolute() && ROOTS.iter().any(|root| path.starts_with(root))
 }

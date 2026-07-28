@@ -12,7 +12,7 @@ use super::desktop_index::{
 };
 use super::executable::{executable_evidence_for_path, FileIdentity};
 use super::policy::inline_reply_policy;
-use super::sender::SenderMetadata;
+use super::sender::{refresh_sender_security_evidence, SenderMetadata};
 
 const MAX_DESKTOP_ID_BYTES: usize = 256;
 
@@ -68,7 +68,9 @@ pub(in crate::daemon) async fn resolve_attribution(
             owned_desktop_ids.insert(normalize_desktop_id(&desktop_id));
         }
     }
-    resolve_with_evidence(claim, sender, index, &owned_desktop_ids)
+    // Cached D-Bus metadata is refreshed before it can grant application authority
+    let sender = refresh_sender_security_evidence(sender);
+    resolve_with_evidence(claim, &sender, index, &owned_desktop_ids)
 }
 
 fn resolve_with_evidence(
@@ -83,11 +85,7 @@ fn resolve_with_evidence(
     if let Some(desktop_id) = desktop_entry.as_deref() {
         let records = index.records_for_id(desktop_id);
         if !records.is_empty() {
-            if claim.reported_name.trim().is_empty()
-                && sender
-                    .sender_executable_identity
-                    .and_then(|identity| index.trusted_portal_path(identity))
-                    .is_some()
+            if claim.reported_name.trim().is_empty() && trusted_portal_path(sender, index).is_some()
             {
                 // Portal backends forward a broker-verified app id as desktop-entry
                 return resolution_for_portal_record(records[0], sender, index);
@@ -170,7 +168,7 @@ fn resolution_for_portal_record(
 ) -> AttributionResolution {
     let portal = sender
         .sender_executable_identity
-        .and_then(|identity| index.trusted_portal_path(identity))
+        .and_then(|_| trusted_portal_path(sender, index))
         .map_or_else(
             || "desktop portal".to_string(),
             |path| path.display().to_string(),
@@ -186,6 +184,15 @@ fn resolution_for_portal_record(
         group_key,
     );
     policy_resolution(attribution)
+}
+
+fn trusted_portal_path<'index>(
+    sender: &SenderMetadata,
+    index: &'index DesktopIdentityIndex,
+) -> Option<&'index std::path::Path> {
+    let identity = sender.sender_executable_identity?;
+    let path = std::path::Path::new(sender.sender_executable.as_deref()?);
+    index.trusted_portal_path(identity, path)
 }
 
 fn resolution_for_record(
