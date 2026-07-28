@@ -218,7 +218,7 @@ fn malicious_notify_send_basename_is_not_a_trusted_relay() {
 }
 
 #[test]
-fn owned_dbus_application_name_cannot_replace_executable_association() {
+fn owned_dbus_application_name_without_executable_evidence_remains_unverified() {
     let app_identity = identity(4, 40, 0);
     let mut record = DesktopRecord::fixture(
         "org.example.App",
@@ -242,12 +242,12 @@ fn owned_dbus_application_name_cannot_replace_executable_association() {
         &owned,
     );
 
-    assert_eq!(resolution.attribution.class, AttributionClass::Conflict);
+    assert_eq!(resolution.attribution.class, AttributionClass::Unknown);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     assert!(resolution
         .attribution
         .source_label
-        .contains("bus name ownership lacks executable association"));
+        .contains("/usr/lib/example-launcher"));
 }
 
 #[test]

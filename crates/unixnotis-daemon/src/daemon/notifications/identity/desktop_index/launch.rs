@@ -1,22 +1,21 @@
 //! Desktop `Exec` template parsing and process-command matching
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use gio::prelude::AppInfoExt;
 
-use super::super::executable::{executable_evidence_for_path, FileIdentity};
+use super::super::executable::executable_evidence_for_path;
 use super::model::{FieldCode, LaunchArgument, LaunchSpec, LiteralArgument};
+use super::program::resolve_program;
+use super::wrappers::normalize_launch_command;
 
 const MAX_EXEC_TEMPLATE_BYTES: usize = 16 * 1024;
 const MAX_EXEC_TEMPLATE_ARGUMENTS: usize = 128;
-const MAX_PROCESS_ARGUMENTS: usize = 256;
 
 pub(super) fn build_launch_spec(
     desktop: &gio::DesktopAppInfo,
     desktop_path: &Path,
-    executable: FileIdentity,
-) -> Option<LaunchSpec> {
+) -> Option<(PathBuf, LaunchSpec)> {
     let template = desktop.string("Exec")?;
     if template.len() > MAX_EXEC_TEMPLATE_BYTES {
         return None;
@@ -25,10 +24,13 @@ pub(super) fn build_launch_spec(
     if words.is_empty() || words.len() > MAX_EXEC_TEMPLATE_ARGUMENTS {
         return None;
     }
+    let normalized = normalize_launch_command(words).ok()?;
+    let executable_path = resolve_program(Path::new(&normalized.executable))?;
+    let executable = executable_evidence_for_path(&executable_path)?.identity;
 
-    let mut arguments = Vec::with_capacity(words.len().saturating_sub(1));
+    let mut arguments = Vec::with_capacity(normalized.arguments.len());
     let mut literal_files_are_system_managed = true;
-    for word in words.into_iter().skip(1) {
+    for word in normalized.arguments {
         let argument = match word.as_str() {
             "%f" => LaunchArgument::FieldCode(FieldCode::File),
             "%F" => LaunchArgument::FieldCode(FieldCode::Files),
@@ -60,29 +62,16 @@ pub(super) fn build_launch_spec(
         arguments.push(argument);
     }
 
-    Some(LaunchSpec {
-        executable,
-        arguments,
-        literal_files_are_system_managed,
-    })
-}
-
-pub(super) fn launch_spec_matches_sender(
-    spec: &LaunchSpec,
-    sender_identity: FileIdentity,
-    cmdline: &[Vec<u8>],
-) -> bool {
-    if !spec.executable.same_file(sender_identity)
-        || cmdline.is_empty()
-        || cmdline.len() > MAX_PROCESS_ARGUMENTS
-    {
-        return false;
-    }
-    if !literal_file_identities_are_current(spec) {
-        return false;
-    }
-    let mut visited = HashSet::new();
-    match_arguments(&spec.arguments, &cmdline[1..], 0, 0, &mut visited)
+    Some((
+        executable_path,
+        LaunchSpec {
+            executable,
+            arguments,
+            environment: normalized.environment,
+            wrappers: normalized.wrappers,
+            literal_files_are_system_managed,
+        },
+    ))
 }
 
 fn literal_argument(value: Vec<u8>) -> LaunchArgument {
@@ -115,116 +104,6 @@ fn percent_literal(word: &str) -> Option<String> {
         output.push('%');
     }
     Some(output)
-}
-
-fn literal_file_identities_are_current(spec: &LaunchSpec) -> bool {
-    spec.arguments.iter().all(|argument| {
-        let LaunchArgument::Literal(LiteralArgument {
-            file: Some((path, expected)),
-            ..
-        }) = argument
-        else {
-            return true;
-        };
-        executable_evidence_for_path(path).is_some_and(|evidence| {
-            evidence.identity.same_file(*expected) && evidence.identity.is_system_managed()
-        })
-    })
-}
-
-fn match_arguments(
-    template: &[LaunchArgument],
-    actual: &[Vec<u8>],
-    template_index: usize,
-    actual_index: usize,
-    visited: &mut HashSet<(usize, usize)>,
-) -> bool {
-    if !visited.insert((template_index, actual_index)) {
-        return false;
-    }
-    let Some(argument) = template.get(template_index) else {
-        return actual_index == actual.len();
-    };
-    match argument {
-        LaunchArgument::Literal(literal) => {
-            actual.get(actual_index) == Some(&literal.value)
-                && match_arguments(
-                    template,
-                    actual,
-                    template_index + 1,
-                    actual_index + 1,
-                    visited,
-                )
-        }
-        LaunchArgument::OptionalIcon { name } => {
-            match_arguments(template, actual, template_index + 1, actual_index, visited)
-                || (actual
-                    .get(actual_index)
-                    .is_some_and(|value| value == b"--icon")
-                    && actual
-                        .get(actual_index + 1)
-                        .is_some_and(|value| value == name.as_bytes())
-                    && match_arguments(
-                        template,
-                        actual,
-                        template_index + 1,
-                        actual_index + 2,
-                        visited,
-                    ))
-        }
-        LaunchArgument::FieldCode(code) => match_field_code(
-            *code,
-            template,
-            actual,
-            template_index,
-            actual_index,
-            visited,
-        ),
-    }
-}
-
-fn match_field_code(
-    code: FieldCode,
-    template: &[LaunchArgument],
-    actual: &[Vec<u8>],
-    template_index: usize,
-    actual_index: usize,
-    visited: &mut HashSet<(usize, usize)>,
-) -> bool {
-    let maximum = match code {
-        FieldCode::File | FieldCode::Url => 1,
-        FieldCode::Files | FieldCode::Urls => actual.len().saturating_sub(actual_index),
-    };
-    for count in 0..=maximum {
-        let values = actual
-            .get(actual_index..actual_index + count)
-            .unwrap_or_default();
-        if !values.iter().all(|value| field_value_matches(code, value)) {
-            break;
-        }
-        if match_arguments(
-            template,
-            actual,
-            template_index + 1,
-            actual_index + count,
-            visited,
-        ) {
-            return true;
-        }
-    }
-    false
-}
-
-fn field_value_matches(code: FieldCode, value: &[u8]) -> bool {
-    if value.is_empty() || value.starts_with(b"-") {
-        return false;
-    }
-    match code {
-        FieldCode::File | FieldCode::Files => true,
-        FieldCode::Url | FieldCode::Urls => std::str::from_utf8(value)
-            .ok()
-            .is_some_and(|value| url::Url::parse(value).is_ok()),
-    }
 }
 
 #[cfg(test)]

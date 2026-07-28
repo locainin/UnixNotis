@@ -10,17 +10,19 @@ use super::names::normalize_name;
 pub(in crate::daemon::notifications::identity) struct LaunchSpec {
     pub(in crate::daemon::notifications::identity) executable: FileIdentity,
     pub(in crate::daemon::notifications::identity) arguments: Vec<LaunchArgument>,
+    pub(in crate::daemon::notifications::identity) environment: Vec<(Vec<u8>, Vec<u8>)>,
+    pub(in crate::daemon::notifications::identity) wrappers: Vec<LaunchWrapper>,
     pub(in crate::daemon::notifications::identity) literal_files_are_system_managed: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::daemon::notifications::identity) enum LaunchArgument {
     Literal(LiteralArgument),
     FieldCode(FieldCode),
     OptionalIcon { name: String },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::daemon::notifications::identity) struct LiteralArgument {
     pub(in crate::daemon::notifications::identity) value: Vec<u8>,
     pub(in crate::daemon::notifications::identity) file: Option<(PathBuf, FileIdentity)>,
@@ -32,6 +34,50 @@ pub(in crate::daemon::notifications::identity) enum FieldCode {
     Files,
     Url,
     Urls,
+}
+
+/// Wrapper programs removed before application identity is evaluated
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(in crate::daemon::notifications::identity) enum LaunchWrapper {
+    Env,
+}
+
+/// Evidence that establishes which application a desktop record launches
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(in crate::daemon::notifications::identity) enum LaunchAuthority {
+    DedicatedExecutable,
+    ProtectedPayload,
+    DynamicOnly,
+    Ambiguous,
+}
+
+/// Positive launch identity retained for diagnostics and candidate ranking
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(in crate::daemon::notifications::identity) enum VerifiedLaunch {
+    DedicatedExecutable,
+    ProtectedPayload,
+}
+
+/// Stable reason for a launch decision that cannot authenticate the claim
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(in crate::daemon::notifications::identity) enum LaunchFailure {
+    MissingCommandLine,
+    UnstructuredCommandLine,
+    UnsupportedWrapper,
+    AmbiguousDesktopAssociation,
+    DynamicOnlyContract,
+    ExecutableMismatch,
+    ProtectedPayloadMismatch,
+    RequiredArgumentMismatch,
+    DesktopClaimMismatch,
+}
+
+/// Three-way launch result keeps missing evidence distinct from contradiction
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(in crate::daemon::notifications::identity) enum LaunchVerification {
+    Verified(VerifiedLaunch),
+    InsufficientEvidence(LaunchFailure),
+    DefinitiveMismatch(LaunchFailure),
 }
 
 #[derive(Debug, Clone)]

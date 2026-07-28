@@ -1,7 +1,6 @@
 use std::fs;
-use std::path::Path;
 
-use super::super::program::desktop_executable;
+use super::super::model::{LaunchArgument, LaunchWrapper};
 use super::super::DesktopIdentityIndex;
 use crate::test_support::TempRoot;
 
@@ -14,10 +13,6 @@ fn dbus_activated_desktop_entry_without_exec_has_no_executable() {
         "[Desktop Entry]\nType=Application\nName=No Exec\nDBusActivatable=true\n",
     )
     .expect("desktop entry without Exec");
-    let desktop = gio::DesktopAppInfo::from_filename(&path).expect("valid desktop entry");
-
-    assert!(desktop_executable(&desktop).is_none());
-
     let mut index = DesktopIdentityIndex::default();
     index.add_desktop_file(&path, true);
     assert_eq!(index.records.len(), 1);
@@ -26,7 +21,7 @@ fn dbus_activated_desktop_entry_without_exec_has_no_executable() {
 }
 
 #[test]
-fn desktop_entry_exec_is_reduced_by_gio_to_its_program() {
+fn desktop_entry_exec_is_resolved_to_its_application_program() {
     let root = TempRoot::new("desktop-with-exec");
     let path = root.join("org.example.True.desktop");
     fs::write(
@@ -34,12 +29,46 @@ fn desktop_entry_exec_is_reduced_by_gio_to_its_program() {
         "[Desktop Entry]\nType=Application\nName=True\nExec=/usr/bin/true %U\n",
     )
     .expect("desktop entry with Exec");
-    let desktop = gio::DesktopAppInfo::from_filename(&path).expect("valid desktop entry");
+    let mut index = DesktopIdentityIndex::default();
+    index.add_desktop_file(&path, true);
 
     assert_eq!(
-        desktop_executable(&desktop).as_deref(),
-        Some(Path::new("/usr/bin/true"))
+        index.records[0]
+            .executable_path
+            .as_deref()
+            .and_then(std::path::Path::file_name),
+        Some(std::ffi::OsStr::new("true"))
     );
+}
+
+#[test]
+fn env_wrapped_desktop_entry_indexes_the_wrapped_application() {
+    let root = TempRoot::new("desktop-env-wrapper");
+    let path = root.join("org.example.Wrapped.desktop");
+    fs::write(
+        &path,
+        "[Desktop Entry]\nType=Application\nName=Wrapped\nExec=/usr/bin/env FEATURE=1 /usr/bin/true --fixed %u\n",
+    )
+    .expect("desktop entry with env wrapper");
+    let mut index = DesktopIdentityIndex::default();
+
+    index.add_desktop_file(&path, true);
+
+    let record = &index.records[0];
+    assert_eq!(
+        record
+            .executable_path
+            .as_deref()
+            .and_then(std::path::Path::file_name),
+        Some(std::ffi::OsStr::new("true"))
+    );
+    let spec = record.launch_spec.as_ref().expect("normalized launch spec");
+    assert_eq!(spec.wrappers, [LaunchWrapper::Env]);
+    assert_eq!(spec.environment, [(b"FEATURE".to_vec(), b"1".to_vec())]);
+    assert!(matches!(
+        &spec.arguments[0],
+        LaunchArgument::Literal(argument) if argument.value == b"--fixed"
+    ));
 }
 
 #[test]

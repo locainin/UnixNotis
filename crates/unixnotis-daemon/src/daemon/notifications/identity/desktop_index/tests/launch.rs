@@ -1,13 +1,145 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
 use super::super::launch::{
-    build_launch_spec, field_value_matches, launch_spec_matches_sender,
-    MAX_EXEC_TEMPLATE_ARGUMENTS, MAX_EXEC_TEMPLATE_BYTES, MAX_PROCESS_ARGUMENTS,
+    build_launch_spec, MAX_EXEC_TEMPLATE_ARGUMENTS, MAX_EXEC_TEMPLATE_BYTES,
 };
-use super::super::model::{FieldCode, LaunchArgument, LaunchSpec};
-use crate::daemon::notifications::identity::executable::executable_evidence_for_path;
+use super::super::model::{FieldCode, LaunchArgument, LaunchSpec, LiteralArgument};
+use crate::daemon::notifications::identity::executable::{
+    executable_evidence_for_path, FileIdentity,
+};
 use crate::test_support::TempRoot;
+
+const MAX_PROCESS_ARGUMENTS: usize = 256;
+
+fn launch_spec_matches_sender(
+    spec: &LaunchSpec,
+    sender_identity: FileIdentity,
+    cmdline: &[Vec<u8>],
+) -> bool {
+    if !spec.executable.same_file(sender_identity)
+        || cmdline.is_empty()
+        || cmdline.len() > MAX_PROCESS_ARGUMENTS
+    {
+        return false;
+    }
+    if !literal_file_identities_are_current(spec) {
+        return false;
+    }
+    let mut visited = HashSet::new();
+    match_arguments(&spec.arguments, &cmdline[1..], 0, 0, &mut visited)
+}
+
+fn literal_file_identities_are_current(spec: &LaunchSpec) -> bool {
+    spec.arguments.iter().all(|argument| {
+        let LaunchArgument::Literal(LiteralArgument {
+            file: Some((path, expected)),
+            ..
+        }) = argument
+        else {
+            return true;
+        };
+        executable_evidence_for_path(path).is_some_and(|evidence| {
+            evidence.identity.same_file(*expected) && evidence.identity.is_system_managed()
+        })
+    })
+}
+
+fn match_arguments(
+    template: &[LaunchArgument],
+    actual: &[Vec<u8>],
+    template_index: usize,
+    actual_index: usize,
+    visited: &mut HashSet<(usize, usize)>,
+) -> bool {
+    if !visited.insert((template_index, actual_index)) {
+        return false;
+    }
+    let Some(argument) = template.get(template_index) else {
+        return actual_index == actual.len();
+    };
+    match argument {
+        LaunchArgument::Literal(literal) => {
+            actual.get(actual_index) == Some(&literal.value)
+                && match_arguments(
+                    template,
+                    actual,
+                    template_index + 1,
+                    actual_index + 1,
+                    visited,
+                )
+        }
+        LaunchArgument::OptionalIcon { name } => {
+            match_arguments(template, actual, template_index + 1, actual_index, visited)
+                || (actual
+                    .get(actual_index)
+                    .is_some_and(|value| value == b"--icon")
+                    && actual
+                        .get(actual_index + 1)
+                        .is_some_and(|value| value == name.as_bytes())
+                    && match_arguments(
+                        template,
+                        actual,
+                        template_index + 1,
+                        actual_index + 2,
+                        visited,
+                    ))
+        }
+        LaunchArgument::FieldCode(code) => match_field_code(
+            *code,
+            template,
+            actual,
+            template_index,
+            actual_index,
+            visited,
+        ),
+    }
+}
+
+fn match_field_code(
+    code: FieldCode,
+    template: &[LaunchArgument],
+    actual: &[Vec<u8>],
+    template_index: usize,
+    actual_index: usize,
+    visited: &mut HashSet<(usize, usize)>,
+) -> bool {
+    let maximum = match code {
+        FieldCode::File | FieldCode::Url => 1,
+        FieldCode::Files | FieldCode::Urls => actual.len().saturating_sub(actual_index),
+    };
+    for count in 0..=maximum {
+        let values = actual
+            .get(actual_index..actual_index + count)
+            .unwrap_or_default();
+        if !values.iter().all(|value| field_value_matches(code, value)) {
+            break;
+        }
+        if match_arguments(
+            template,
+            actual,
+            template_index + 1,
+            actual_index + count,
+            visited,
+        ) {
+            return true;
+        }
+    }
+    false
+}
+
+fn field_value_matches(code: FieldCode, value: &[u8]) -> bool {
+    if value.is_empty() || value.starts_with(b"-") {
+        return false;
+    }
+    match code {
+        FieldCode::File | FieldCode::Files => true,
+        FieldCode::Url | FieldCode::Urls => std::str::from_utf8(value)
+            .ok()
+            .is_some_and(|value| url::Url::parse(value).is_ok()),
+    }
+}
 
 #[test]
 fn fixed_immutable_application_argument_is_matched_exactly() {
@@ -24,7 +156,7 @@ fn fixed_immutable_application_argument_is_matched_exactly() {
     )
     .expect("write desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&path).expect("parse desktop entry");
-    let spec = build_launch_spec(&desktop, &path, shell.identity).expect("build launch spec");
+    let (_executable_path, spec) = build_launch_spec(&desktop, &path).expect("build launch spec");
 
     assert!(launch_spec_matches_sender(
         &spec,
@@ -48,7 +180,6 @@ fn fixed_immutable_application_argument_is_matched_exactly() {
 
 #[test]
 fn user_writable_literal_payload_cannot_support_a_system_association() {
-    let shell = executable_evidence_for_path(Path::new("/usr/bin/sh")).expect("system shell");
     let root = TempRoot::new("launch-spec-user-payload");
     let payload = root.join("application-script");
     fs::write(&payload, "exit 0\n").expect("write user payload");
@@ -63,8 +194,8 @@ fn user_writable_literal_payload_cannot_support_a_system_association() {
     .expect("write desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&desktop_path).expect("parse desktop entry");
 
-    let spec =
-        build_launch_spec(&desktop, &desktop_path, shell.identity).expect("build launch spec");
+    let (_executable_path, spec) =
+        build_launch_spec(&desktop, &desktop_path).expect("build launch spec");
 
     assert!(!spec.literal_files_are_system_managed);
 }
@@ -81,7 +212,7 @@ fn launch_spec_rejects_unmodeled_flags_and_invalid_url_fields() {
     )
     .expect("write desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&path).expect("parse desktop entry");
-    let spec = build_launch_spec(&desktop, &path, executable.identity).expect("build launch spec");
+    let (_executable_path, spec) = build_launch_spec(&desktop, &path).expect("build launch spec");
 
     assert!(launch_spec_matches_sender(
         &spec,
@@ -114,8 +245,6 @@ fn launch_spec_rejects_unmodeled_flags_and_invalid_url_fields() {
 
 #[test]
 fn launch_spec_enforces_template_size_and_argument_limits_at_the_boundary() {
-    let executable =
-        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system fixture");
     let root = TempRoot::new("launch-spec-limits");
     let executable_prefix = "/usr/bin/true ";
 
@@ -163,7 +292,7 @@ fn launch_spec_enforces_template_size_and_argument_limits_at_the_boundary() {
             .unwrap_or_else(|| panic!("parse {name} desktop entry"));
 
         assert_eq!(
-            build_launch_spec(&desktop, &path, executable.identity).is_some(),
+            build_launch_spec(&desktop, &path).is_some(),
             accepted,
             "{name}"
         );
@@ -172,8 +301,6 @@ fn launch_spec_enforces_template_size_and_argument_limits_at_the_boundary() {
 
 #[test]
 fn launch_spec_parses_every_supported_desktop_field_code() {
-    let executable =
-        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system fixture");
     let root = TempRoot::new("launch-spec-field-codes");
     let path = root.join("org.example.Fields.desktop");
     fs::write(
@@ -182,7 +309,7 @@ fn launch_spec_parses_every_supported_desktop_field_code() {
     )
     .expect("write field-code desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&path).expect("parse desktop entry");
-    let spec = build_launch_spec(&desktop, &path, executable.identity).expect("build launch spec");
+    let (_executable_path, spec) = build_launch_spec(&desktop, &path).expect("build launch spec");
 
     assert!(matches!(
         spec.arguments[0],
@@ -223,6 +350,8 @@ fn process_matcher_checks_identity_emptiness_and_argument_limits_independently()
     let spec = LaunchSpec {
         executable: executable.identity,
         arguments: vec![LaunchArgument::FieldCode(FieldCode::Files)],
+        environment: Vec::new(),
+        wrappers: Vec::new(),
         literal_files_are_system_managed: true,
     };
     let exact_limit =

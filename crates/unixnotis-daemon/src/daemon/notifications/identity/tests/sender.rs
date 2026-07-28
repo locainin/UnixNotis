@@ -36,15 +36,15 @@ fn process_cmdline_parser_preserves_argument_boundaries_and_rejects_truncation()
 async fn process_metadata_helpers_read_current_process_on_linux() {
     let pid = std::process::id();
 
-    let exe = executable_evidence_for_pid(pid)
-        .map(|evidence| evidence.canonical_path)
-        .expect("current process executable should be readable");
-    assert!(exe.is_absolute());
+    let executable =
+        executable_evidence_for_pid(pid).expect("current process executable should be readable");
+    assert!(executable.canonical_path.is_absolute());
 
     let start_time = read_process_start_time(pid).expect("current process start time should exist");
     assert!(start_time > 1);
-    let cmdline = read_process_cmdline(pid).expect("current process cmdline should exist");
-    assert!(!cmdline.is_empty());
+    let command_line = read_process_cmdline(pid, Some(&executable));
+    assert_eq!(command_line.quality, CommandLineQuality::Structured);
+    assert!(!command_line.argv.is_empty());
 }
 
 #[test]
@@ -82,7 +82,11 @@ fn security_refresh_reloads_current_process_evidence() {
 
     assert_eq!(refreshed.sender_start_time, Some(start_time));
     assert!(refreshed.sender_executable_identity.is_some());
-    assert!(refreshed.sender_cmdline.is_some());
+    assert_eq!(
+        refreshed.command_line.quality,
+        CommandLineQuality::Structured
+    );
+    assert!(!refreshed.command_line.argv.is_empty());
 }
 
 #[cfg(target_os = "linux")]
@@ -102,7 +106,10 @@ fn security_refresh_clears_evidence_for_a_stale_process_lifetime() {
             uid: 0,
             mode: 0o100_755,
         }),
-        sender_cmdline: Some(vec![b"/usr/bin/trusted-app".to_vec()]),
+        command_line: CommandLineEvidence {
+            argv: vec![b"/usr/bin/trusted-app".to_vec()],
+            quality: CommandLineQuality::Structured,
+        },
         ..SenderMetadata::default()
     };
 
@@ -111,7 +118,31 @@ fn security_refresh_clears_evidence_for_a_stale_process_lifetime() {
     assert!(refreshed.sender_start_time.is_none());
     assert!(refreshed.sender_executable.is_none());
     assert!(refreshed.sender_executable_identity.is_none());
-    assert!(refreshed.sender_cmdline.is_none());
+    assert_eq!(
+        refreshed.command_line.quality,
+        CommandLineQuality::Unavailable
+    );
+    assert!(refreshed.command_line.argv.is_empty());
+}
+
+#[test]
+fn rewritten_process_title_is_kept_as_unstructured_evidence() {
+    let executable = super::super::executable::ExecutableEvidence {
+        canonical_path: "/opt/example/example-app".into(),
+        identity: FileIdentity {
+            device: 1,
+            inode: 2,
+            uid: 0,
+            mode: 0o100_755,
+        },
+    };
+    let evidence = classify_command_line(
+        vec![b"/opt/example/example-app --runtime-flag".to_vec()],
+        Some(&executable),
+    );
+
+    assert_eq!(evidence.quality, CommandLineQuality::RewrittenProcessTitle);
+    assert_eq!(evidence.argv.len(), 1);
 }
 
 #[test]

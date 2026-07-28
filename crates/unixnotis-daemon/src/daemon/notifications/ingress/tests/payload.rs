@@ -28,7 +28,7 @@ fn build_notification_clamps_summary_and_body_sizes() {
             sender_start_time: Some(77),
             sender_executable: Some("/usr/bin/test-app".to_string()),
             sender_executable_identity: None,
-            sender_cmdline: None,
+            ..SenderMetadata::default()
         },
         attribution: unixnotis_core::NotificationAttribution::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
@@ -54,7 +54,7 @@ fn build_notification_strips_display_spoofing_controls() {
             sender_start_time: Some(77),
             sender_executable: Some("/usr/bin/test-app".to_string()),
             sender_executable_identity: None,
-            sender_cmdline: None,
+            ..SenderMetadata::default()
         },
         attribution: unixnotis_core::NotificationAttribution::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,

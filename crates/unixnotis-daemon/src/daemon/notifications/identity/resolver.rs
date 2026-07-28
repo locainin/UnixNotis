@@ -7,8 +7,8 @@ use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
 use super::desktop_index::{
-    normalize_desktop_id, normalize_name, record_launch_matches, DesktopIdentityIndex,
-    DesktopRecord,
+    normalize_desktop_id, normalize_name, verify_record_launch, DesktopIdentityIndex,
+    DesktopRecord, LaunchFailure, LaunchVerification,
 };
 use super::executable::{executable_evidence_for_path, FileIdentity};
 use super::policy::inline_reply_policy;
@@ -29,6 +29,12 @@ pub(in crate::daemon) struct AttributionResolution {
 
 #[derive(Clone, Copy)]
 struct VerifiedDesktopRecord<'record>(&'record DesktopRecord);
+
+#[derive(Clone, Copy)]
+struct CandidateVerification<'record> {
+    record: &'record DesktopRecord,
+    verification: LaunchVerification,
+}
 
 pub(in crate::daemon) fn unknown_reply_denied(
     claim: AppClaim<'_>,
@@ -77,51 +83,39 @@ fn resolve_with_evidence(
     claim: AppClaim<'_>,
     sender: &SenderMetadata,
     index: &DesktopIdentityIndex,
-    owned_desktop_ids: &HashSet<String>,
+    _owned_desktop_ids: &HashSet<String>,
 ) -> AttributionResolution {
-    // An explicit desktop hint is accepted only when its executable is the sender file
     let desktop_entry = claim.desktop_entry.and_then(validate_desktop_id);
-    let mut desktop_hint_conflict = None;
-    if let Some(desktop_id) = desktop_entry.as_deref() {
-        let records = index.records_for_id(desktop_id);
-        if !records.is_empty() {
-            if claim.reported_name.trim().is_empty() && trusted_portal_path(sender, index).is_some()
-            {
-                // Portal backends forward a broker-verified app id as desktop-entry
-                return resolution_for_portal_record(records[0], sender, index);
-            }
-            if let Some(record) = records
-                .iter()
-                .find_map(|record| verify_record_sender(record, sender))
-            {
-                return resolution_for_record(record, claim.reported_name, sender, index);
-            }
-            if records
-                .iter()
-                .any(|record| owned_desktop_ids.contains(&normalize_desktop_id(&record.id)))
-            {
-                // Session applications can request names, so ownership is context rather than proof
-                desktop_hint_conflict = Some("bus name ownership lacks executable association");
-            } else {
-                // Packaging aliases may be stale, so exact executable evidence still gets a chance
-                desktop_hint_conflict = Some("desktop identity mismatch");
-            }
-        }
+    let hint_records = desktop_entry
+        .as_deref()
+        .map_or_else(Vec::new, |desktop_id| index.records_for_id(desktop_id));
+    if desktop_entry.is_some()
+        && !hint_records.is_empty()
+        && claim.reported_name.trim().is_empty()
+        && trusted_portal_path(sender, index).is_some()
+    {
+        // Portal backends forward a broker-verified app id as desktop-entry
+        return resolution_for_portal_record(hint_records[0], sender, index);
+    }
+
+    // Hint and live-executable candidates are evaluated together so weak metadata cannot win early
+    let mut candidates = hint_records.clone();
+    if let Some(identity) = sender.sender_executable_identity {
+        candidates.extend(index.records_for_executable(identity));
+    }
+    candidates.dedup_by(|left, right| std::ptr::eq(*left, *right));
+    let results = candidates
+        .iter()
+        .map(|record| CandidateVerification {
+            record,
+            verification: verify_record_sender(record, sender, index),
+        })
+        .collect::<Vec<_>>();
+    if let Some(record) = strongest_verified_result(&results, claim.reported_name) {
+        return resolution_for_record(record, claim.reported_name, sender, index);
     }
 
     if let Some(identity) = sender.sender_executable_identity {
-        // Exact file association is stronger than every caller-controlled application name
-        let records = index.records_for_executable(identity);
-        if let Some(record) = verified_executable_record(&records, claim.reported_name, sender) {
-            return resolution_for_record(record, claim.reported_name, sender, index);
-        }
-        if records
-            .iter()
-            .any(|record| record.system_association && record_matches_sender(record, sender))
-        {
-            // A known executable with a conflicting name must fail closed
-            return conflict_resolution(claim.reported_name, sender, "application claim mismatch");
-        }
         if let Some(path) = index.trusted_relay_path(identity) {
             // Relay groups include both relay identity and the relayed claim
             let group_key = format!(
@@ -139,11 +133,46 @@ fn resolve_with_evidence(
         }
     }
 
-    if let Some(reason) = desktop_hint_conflict {
-        return conflict_resolution(claim.reported_name, sender, reason);
+    let hint_is_definitive = !hint_records.is_empty()
+        && results
+            .iter()
+            .filter(|result| {
+                hint_records
+                    .iter()
+                    .any(|record| std::ptr::eq(*record, result.record))
+            })
+            .all(CandidateVerification::is_definitive_mismatch);
+    let matching_system_is_definitive = results.iter().any(|result| {
+        result.record.system_association
+            && result.record.claim_matches(claim.reported_name)
+            && result.is_definitive_mismatch()
+    });
+    if hint_is_definitive || matching_system_is_definitive {
+        return conflict_resolution(
+            claim.reported_name,
+            sender,
+            launch_failure_label(
+                results
+                    .iter()
+                    .find(|result| result.is_definitive_mismatch())
+                    .map_or(
+                        LaunchFailure::DesktopClaimMismatch,
+                        CandidateVerification::failure,
+                    ),
+            ),
+        );
     }
 
-    if index.claim_matches_system_app(claim.reported_name) {
+    let matching_claim_has_insufficient_evidence = results.iter().any(|result| {
+        result.record.claim_matches(claim.reported_name)
+            && matches!(
+                result.verification,
+                LaunchVerification::InsufficientEvidence(_)
+            )
+    });
+    if index.claim_matches_system_app(claim.reported_name)
+        && !matching_claim_has_insufficient_evidence
+    {
         // Protected branding without the matching executable is an explicit conflict
         return conflict_resolution(claim.reported_name, sender, "executable identity mismatch");
     }
@@ -159,6 +188,71 @@ fn resolve_with_evidence(
         &source,
         group_key,
     ))
+}
+
+impl CandidateVerification<'_> {
+    const fn is_definitive_mismatch(&self) -> bool {
+        matches!(self.verification, LaunchVerification::DefinitiveMismatch(_))
+    }
+
+    const fn failure(&self) -> LaunchFailure {
+        match self.verification {
+            LaunchVerification::Verified(_) => LaunchFailure::DesktopClaimMismatch,
+            LaunchVerification::InsufficientEvidence(reason)
+            | LaunchVerification::DefinitiveMismatch(reason) => reason,
+        }
+    }
+}
+
+fn strongest_verified_result<'record>(
+    results: &[CandidateVerification<'record>],
+    reported_name: &str,
+) -> Option<VerifiedDesktopRecord<'record>> {
+    let missing_name = reported_name.trim().is_empty();
+    let mut verified = results.iter().filter(|result| {
+        matches!(result.verification, LaunchVerification::Verified(_))
+            && (missing_name || result.record.claim_matches(reported_name))
+    });
+    let first = verified.next()?;
+    let mut preferred = first;
+    for candidate in verified {
+        let preferred_rank = record_trust_rank(preferred.record);
+        let candidate_rank = record_trust_rank(candidate.record);
+        if candidate_rank > preferred_rank {
+            preferred = candidate;
+            continue;
+        }
+        if candidate_rank == preferred_rank
+            && normalize_desktop_id(&candidate.record.id)
+                != normalize_desktop_id(&preferred.record.id)
+        {
+            // Equal-strength records for distinct applications remain ambiguous
+            return None;
+        }
+    }
+    Some(VerifiedDesktopRecord(preferred.record))
+}
+
+const fn record_trust_rank(record: &DesktopRecord) -> u8 {
+    if record.system_association {
+        2
+    } else {
+        1
+    }
+}
+
+const fn launch_failure_label(reason: LaunchFailure) -> &'static str {
+    match reason {
+        LaunchFailure::MissingCommandLine => "missing command-line evidence",
+        LaunchFailure::UnstructuredCommandLine => "unstructured command-line evidence",
+        LaunchFailure::UnsupportedWrapper => "unsupported launch wrapper",
+        LaunchFailure::AmbiguousDesktopAssociation => "ambiguous desktop association",
+        LaunchFailure::DynamicOnlyContract => "dynamic-only launch contract",
+        LaunchFailure::ExecutableMismatch => "executable identity mismatch",
+        LaunchFailure::ProtectedPayloadMismatch => "protected application payload mismatch",
+        LaunchFailure::RequiredArgumentMismatch => "required launch argument mismatch",
+        LaunchFailure::DesktopClaimMismatch => "desktop claim mismatch",
+    }
 }
 
 fn resolution_for_portal_record(
@@ -274,67 +368,42 @@ const fn policy_resolution(attribution: NotificationAttribution) -> AttributionR
     }
 }
 
-fn verified_executable_record<'record>(
-    records: &[&'record DesktopRecord],
-    reported_name: &str,
+fn verify_record_sender(
+    record: &DesktopRecord,
     sender: &SenderMetadata,
-) -> Option<VerifiedDesktopRecord<'record>> {
-    let missing_name = reported_name.trim().is_empty();
-    let mut matches = records.iter().filter_map(|record| {
-        (missing_name || record.claim_matches(reported_name))
-            .then(|| verify_record_sender(record, sender))
-            .flatten()
-    });
-    let first = matches.next()?;
-    let first_id = normalize_desktop_id(&first.0.id);
-    let mut preferred = first;
-
-    for candidate in matches {
-        // One executable cannot prove which of two distinct desktop applications sent the message
-        if normalize_desktop_id(&candidate.0.id) != first_id {
-            return None;
-        }
-        // Protected records win over duplicate user metadata for the same desktop id
-        if candidate.0.system_association && !preferred.0.system_association {
-            preferred = candidate;
-        }
-    }
-    Some(preferred)
-}
-
-fn record_matches_sender(record: &DesktopRecord, sender: &SenderMetadata) -> bool {
+    index: &DesktopIdentityIndex,
+) -> LaunchVerification {
     if !record.association_eligible {
-        return false;
+        return LaunchVerification::InsufficientEvidence(LaunchFailure::UnsupportedWrapper);
     }
     let (Some(record_identity), Some(sender_identity)) = (
         record.executable_identity,
         sender.sender_executable_identity,
     ) else {
-        return false;
+        return LaunchVerification::InsufficientEvidence(LaunchFailure::ExecutableMismatch);
     };
     if !record_identity.same_file(sender_identity) {
-        return false;
+        return LaunchVerification::DefinitiveMismatch(LaunchFailure::ExecutableMismatch);
     }
 
     if record.system_association {
         // Cached inode equality cannot carry root ownership across inode reuse
         if !sender_identity.is_system_managed() || !sender_identity.is_executable_regular() {
-            return false;
+            return LaunchVerification::InsufficientEvidence(LaunchFailure::ExecutableMismatch);
         }
         let Some(path) = record.executable_path.as_deref() else {
-            return false;
+            return LaunchVerification::InsufficientEvidence(LaunchFailure::ExecutableMismatch);
         };
         // Reopen the installed path so stale index authority cannot outlive replacement
         let Some(current) = executable_evidence_for_path(path) else {
-            return false;
+            return LaunchVerification::InsufficientEvidence(LaunchFailure::ExecutableMismatch);
         };
         if !current_system_identity_matches_sender(current.identity, sender_identity) {
-            return false;
+            return LaunchVerification::InsufficientEvidence(LaunchFailure::ExecutableMismatch);
         }
     }
 
-    // Exact argv matching prevents any executable from acting as an implicit shared launcher
-    record_launch_matches(record, sender_identity, sender.sender_cmdline.as_deref())
+    verify_record_launch(record, index, sender_identity, &sender.command_line)
 }
 
 const fn current_system_identity_matches_sender(
@@ -345,14 +414,6 @@ const fn current_system_identity_matches_sender(
     current.same_file(sender_identity)
         && current.is_system_managed()
         && current.is_executable_regular()
-}
-
-fn verify_record_sender<'record>(
-    record: &'record DesktopRecord,
-    sender: &SenderMetadata,
-) -> Option<VerifiedDesktopRecord<'record>> {
-    // This wrapper makes sender launch verification mandatory at every association call site
-    record_matches_sender(record, sender).then_some(VerifiedDesktopRecord(record))
 }
 
 fn unknown_group_key(reported_name: &str, sender: &SenderMetadata) -> String {

@@ -5,9 +5,10 @@ use unixnotis_core::{AttributionClass, InlineReplyPolicy};
 
 use super::*;
 use crate::daemon::notifications::identity::desktop_index::model::{
-    ExecutableIdentity, LaunchArgument, LaunchSpec, LiteralArgument,
+    ExecutableIdentity, FieldCode, LaunchArgument, LaunchSpec, LiteralArgument,
 };
 use crate::daemon::notifications::identity::desktop_index::{DesktopIdentityIndex, DesktopRecord};
+use crate::daemon::notifications::identity::sender::{CommandLineEvidence, CommandLineQuality};
 use crate::daemon::notifications::identity::FileIdentity;
 
 trait DesktopRecordFixture {
@@ -46,6 +47,8 @@ impl DesktopRecordFixture for DesktopRecord {
             launch_spec: Some(LaunchSpec {
                 executable: identity,
                 arguments: Vec::new(),
+                environment: Vec::new(),
+                wrappers: Vec::new(),
                 literal_files_are_system_managed: true,
             }),
             names: HashSet::from([normalize_name(display_name)]),
@@ -67,6 +70,8 @@ impl DesktopRecordFixture for DesktopRecord {
                     })
                 })
                 .collect(),
+            environment: Vec::new(),
+            wrappers: Vec::new(),
             literal_files_are_system_managed: true,
         });
         self
@@ -124,19 +129,23 @@ fn sender(path: &str, identity: FileIdentity) -> SenderMetadata {
         sender_name: Some(":1.42".to_string()),
         sender_executable: Some(path.to_string()),
         sender_executable_identity: Some(identity),
-        sender_cmdline: Some(vec![path.as_bytes().to_vec()]),
+        command_line: CommandLineEvidence {
+            argv: vec![path.as_bytes().to_vec()],
+            quality: CommandLineQuality::Structured,
+        },
         ..SenderMetadata::default()
     }
 }
 
 fn sender_with_arguments(path: &str, identity: FileIdentity, arguments: &[&str]) -> SenderMetadata {
     let mut metadata = sender(path, identity);
-    metadata.sender_cmdline = Some(
-        std::iter::once(path)
+    metadata.command_line = CommandLineEvidence {
+        argv: std::iter::once(path)
             .chain(arguments.iter().copied())
             .map(|argument| argument.as_bytes().to_vec())
             .collect(),
-    );
+        quality: CommandLineQuality::Structured,
+    };
     metadata
 }
 
@@ -151,6 +160,22 @@ fn installed_system_executable() -> (String, FileIdentity) {
     assert!(evidence.identity.is_system_managed());
     assert!(evidence.identity.is_executable_regular());
     (path.display().to_string(), evidence.identity)
+}
+
+fn verified_executable_record<'record>(
+    records: &[&'record DesktopRecord],
+    reported_name: &str,
+    sender: &SenderMetadata,
+    index: &DesktopIdentityIndex,
+) -> Option<VerifiedDesktopRecord<'record>> {
+    let results = records
+        .iter()
+        .map(|record| CandidateVerification {
+            record,
+            verification: verify_record_sender(record, sender, index),
+        })
+        .collect::<Vec<_>>();
+    strongest_verified_result(&results, reported_name)
 }
 
 #[path = "resolver/association.rs"]
