@@ -8,10 +8,8 @@ use std::time::{Duration, Instant};
 pub enum NotificationSignalMode {
     // Normal path: send the precise notification signal
     Direct,
-    // Burst path: send one invalidation so clients can rebuild from state
+    // Burst path: send invalidations so clients can rebuild from committed state
     SnapshotOnly,
-    // Extra burst events are skipped until the window resets
-    Suppress,
 }
 
 #[derive(Clone, Debug)]
@@ -19,7 +17,6 @@ pub(in crate::daemon) struct NotificationBurstState {
     window_started: Instant,
     last_seen: Instant,
     count: u16,
-    snapshot_emitted: bool,
 }
 
 const NOTIFICATION_SIGNAL_WINDOW: Duration = Duration::from_secs(1);
@@ -32,7 +29,14 @@ pub(in crate::daemon) fn notification_signal_mode_for_sender(
     cache: &StdMutex<HashMap<String, NotificationBurstState>>,
     sender: &str,
 ) -> NotificationSignalMode {
-    let now = Instant::now();
+    notification_signal_mode_for_sender_at(cache, sender, Instant::now())
+}
+
+fn notification_signal_mode_for_sender_at(
+    cache: &StdMutex<HashMap<String, NotificationBurstState>>,
+    sender: &str,
+    now: Instant,
+) -> NotificationSignalMode {
     let mut cache = match cache.lock() {
         Ok(cache) => cache,
         Err(poisoned) => poisoned.into_inner(),
@@ -51,14 +55,12 @@ pub(in crate::daemon) fn notification_signal_mode_for_sender(
             window_started: now,
             last_seen: now,
             count: 0,
-            snapshot_emitted: false,
         });
 
     // A fresh window resets the direct-signal allowance for that sender
-    if now.duration_since(state.window_started) > NOTIFICATION_SIGNAL_WINDOW {
+    if now.duration_since(state.window_started) >= NOTIFICATION_SIGNAL_WINDOW {
         state.window_started = now;
         state.count = 0;
-        state.snapshot_emitted = false;
     }
     state.last_seen = now;
     state.count = state.count.saturating_add(1);
@@ -66,13 +68,8 @@ pub(in crate::daemon) fn notification_signal_mode_for_sender(
     if state.count <= NOTIFICATION_DIRECT_SIGNAL_LIMIT {
         return NotificationSignalMode::Direct;
     }
-    if !state.snapshot_emitted {
-        // One snapshot invalidation tells trusted UIs to resync once without replaying the whole burst
-        state.snapshot_emitted = true;
-        return NotificationSignalMode::SnapshotOnly;
-    }
-    // Extra events inside the same burst window add no value once the snapshot refresh is queued
-    NotificationSignalMode::Suppress
+    // Every trailing commit invalidates the prior snapshot because its fetch may already be running
+    NotificationSignalMode::SnapshotOnly
 }
 
 #[cfg(test)]

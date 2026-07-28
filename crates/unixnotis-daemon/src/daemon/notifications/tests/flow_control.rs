@@ -3,12 +3,13 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use super::{
-    notification_signal_mode_for_sender, NotificationBurstState, NotificationSignalMode,
-    NOTIFICATION_DIRECT_SIGNAL_LIMIT, NOTIFICATION_SIGNAL_TRACK_LIMIT, NOTIFICATION_SIGNAL_WINDOW,
+    notification_signal_mode_for_sender, notification_signal_mode_for_sender_at,
+    NotificationBurstState, NotificationSignalMode, NOTIFICATION_DIRECT_SIGNAL_LIMIT,
+    NOTIFICATION_SIGNAL_TRACK_LIMIT, NOTIFICATION_SIGNAL_WINDOW,
 };
 
 #[test]
-fn notification_signal_mode_falls_back_after_burst_limit() {
+fn notification_signal_mode_invalidates_every_trailing_burst_commit() {
     let cache = Mutex::new(HashMap::<String, NotificationBurstState>::new());
 
     for _ in 0..NOTIFICATION_DIRECT_SIGNAL_LIMIT {
@@ -18,16 +19,18 @@ fn notification_signal_mode_falls_back_after_burst_limit() {
         );
     }
 
-    // One snapshot tells clients to resync without flooding the bus
+    // The first overflow switches clients to the bounded snapshot path
     assert_eq!(
         notification_signal_mode_for_sender(&cache, ":1.55"),
         NotificationSignalMode::SnapshotOnly
     );
-    // Further events inside the same burst window are redundant
-    assert_eq!(
-        notification_signal_mode_for_sender(&cache, ":1.55"),
-        NotificationSignalMode::Suppress
-    );
+    // Later commits need their own invalidation because the first fetch may already be in flight
+    for _ in 0..3 {
+        assert_eq!(
+            notification_signal_mode_for_sender(&cache, ":1.55"),
+            NotificationSignalMode::SnapshotOnly
+        );
+    }
 }
 
 #[test]
@@ -41,7 +44,6 @@ fn notification_signal_mode_caps_unique_senders_without_blocking_known_sender() 
                 window_started: now,
                 last_seen: now,
                 count: 1,
-                snapshot_emitted: false,
             },
         );
     }
@@ -72,7 +74,6 @@ fn notification_signal_mode_prunes_expired_senders_before_track_limit_check() {
                 window_started: stale,
                 last_seen: stale,
                 count: 1,
-                snapshot_emitted: false,
             },
         );
     }
@@ -98,7 +99,6 @@ fn notification_signal_mode_resets_existing_sender_after_window_expires() {
             // Recent last_seen keeps the sender in the map so only the per-sender window resets
             last_seen: now,
             count: NOTIFICATION_DIRECT_SIGNAL_LIMIT + 1,
-            snapshot_emitted: true,
         },
     );
     let cache = Mutex::new(seeded);
@@ -106,6 +106,27 @@ fn notification_signal_mode_resets_existing_sender_after_window_expires() {
     // Expired windows regain the direct-signal allowance for normal later activity
     assert_eq!(
         notification_signal_mode_for_sender(&cache, ":1.noisy"),
+        NotificationSignalMode::Direct
+    );
+}
+
+#[test]
+fn notification_signal_mode_resets_at_the_exact_window_boundary() {
+    let now = Instant::now();
+    let window_started = now
+        .checked_sub(NOTIFICATION_SIGNAL_WINDOW)
+        .expect("test clock should represent the burst boundary");
+    let cache = Mutex::new(HashMap::from([(
+        ":1.boundary".to_string(),
+        NotificationBurstState {
+            window_started,
+            last_seen: now,
+            count: NOTIFICATION_DIRECT_SIGNAL_LIMIT + 1,
+        },
+    )]));
+
+    assert_eq!(
+        notification_signal_mode_for_sender_at(&cache, ":1.boundary", now),
         NotificationSignalMode::Direct
     );
 }
