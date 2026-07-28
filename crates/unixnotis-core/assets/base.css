@@ -38,6 +38,11 @@
 @define-color unixnotis-accent #66f2e6;
 @define-color unixnotis-accent-2 #ff4fb7;
 @define-color unixnotis-urgent #ff5a78;
+@define-color unixnotis-critical-surface #29151d;
+@define-color unixnotis-critical-surface-strong #351923;
+@define-color unixnotis-critical-border #fb7185;
+@define-color unixnotis-critical-text #fecdd3;
+@define-color unixnotis-critical-icon #fda4af;
 
 /* Per-toggle accents
  *
@@ -102,5 +107,18 @@
   background: transparent;
   font-family: "Manrope", "SF Pro Text", "CaskaydiaCove Nerd Font Propo", "Noto Sans", sans-serif;
   font-family: var(--unixnotis-ui-font-family);
+}
+
+/* Shared urgency badge stays compact enough for long application names */
+.unixnotis-urgency-badge {
+  background: alpha(@unixnotis-critical-border, 0.12);
+  border: 1px solid alpha(@unixnotis-critical-border, 0.42);
+  border-radius: 999px;
+  color: @unixnotis-critical-text;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  text-transform: uppercase;
 }
 /* End of base theme. */

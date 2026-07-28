@@ -77,3 +77,57 @@ fn stock_panel_hover_styles_avoid_transform_and_geometry_animation() {
     assert!(!DEFAULT_WIDGETS_CSS.contains("transition: min-width"));
     assert!(!DEFAULT_WIDGETS_CSS.contains("transition: min-height"));
 }
+
+#[test]
+fn stock_scrollbar_keeps_master_sizing_without_geometry_animation() {
+    assert!(DEFAULT_PANEL_CSS.contains(
+        "scrollbar slider {\n  background: alpha(#ffffff, 0.16);\n  border-radius: 999px;\n  border: none;\n  min-width: 4px;"
+    ));
+    for selector in ["scrollbar slider:hover", "scrollbar slider:active"] {
+        let rule = DEFAULT_PANEL_CSS
+            .split(selector)
+            .nth(1)
+            .and_then(|suffix| suffix.split('}').next())
+            .expect("stock scrollbar state rule");
+        assert!(
+            rule.contains("min-width: 6px"),
+            "{selector} should retain the master width"
+        );
+    }
+    assert!(!DEFAULT_PANEL_CSS.contains("transition: background-color 0.15s ease-out, min-width"));
+}
+
+#[test]
+fn critical_alert_assets_define_composed_popup_and_panel_states() {
+    for token in [
+        "unixnotis-critical-surface",
+        "unixnotis-critical-surface-strong",
+        "unixnotis-critical-border",
+        "unixnotis-critical-text",
+        "unixnotis-critical-icon",
+    ] {
+        assert!(
+            DEFAULT_BASE_CSS.contains(token),
+            "base CSS should define {token}"
+        );
+    }
+
+    for selector in [
+        ".unixnotis-popup-card.critical",
+        ".unixnotis-popup-card.critical .unixnotis-popup-icon",
+        ".unixnotis-panel-card.critical,\n.unixnotis-panel-card.active.critical",
+        ".unixnotis-panel-card.stacked.critical,\n.unixnotis-panel-card.stacked.active.critical",
+        ".unixnotis-panel-card.critical .unixnotis-panel-icon",
+    ] {
+        let css = if selector.contains("popup") {
+            DEFAULT_POPUP_CSS
+        } else {
+            DEFAULT_PANEL_CSS
+        };
+        assert!(css.contains(selector), "stock CSS should retain {selector}");
+    }
+
+    assert!(DEFAULT_BASE_CSS.contains(".unixnotis-urgency-badge"));
+    assert!(!DEFAULT_PANEL_CSS.contains("animation:"));
+    assert!(!DEFAULT_POPUP_CSS.contains("animation:"));
+}

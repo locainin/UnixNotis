@@ -60,27 +60,36 @@
 }
 
 .unixnotis-media-nav {
-  background-image: linear-gradient(150deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.9));
-  border-radius: 12px;
-  padding: calc((var(--unixnotis-media-nav-size) - 14px) / 2);
-  border: 1px solid alpha(@unixnotis-accent, 0.2);
+  background: alpha(#ffffff, 0.04);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: var(--unixnotis-media-button-radius);
+  padding: 3px;
+  margin: 0;
   font-weight: 700;
   font-size: 12px;
-  min-width: var(--unixnotis-media-nav-size);
-  color: @unixnotis-text;
-  box-shadow:
-    0 6px 12px -10px @unixnotis-shadow-soft,
-    0 0 16px -14px @unixnotis-glow-cyan;
+  min-width: 18px;
+  min-height: 18px;
+  color: alpha(#ffffff, 0.85);
+  box-shadow: none;
+  transition: background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out;
 }
 
 .unixnotis-media-nav:hover {
-  background-image: linear-gradient(150deg, @unixnotis-action-bg-hover, alpha(@unixnotis-accent-2, 0.16));
-  border-color: alpha(@unixnotis-accent, 0.5);
+  background: alpha(#ffffff, 0.09);
+  border-top-color: alpha(#ffffff, 0.16);
+  border-left-color: alpha(#ffffff, 0.12);
+  border-right-color: alpha(#ffffff, 0.06);
+  border-bottom-color: alpha(#ffffff, 0.03);
+  box-shadow: 0 4px 10px -5px alpha(#000000, 0.4), inset 0 1px 0 alpha(#ffffff, 0.05);
+  color: #ffffff;
 }
 
 .unixnotis-media-nav-prev,
 .unixnotis-media-nav-next {
-  min-width: var(--unixnotis-media-nav-size);
+  min-width: 18px;
 }
 
 .unixnotis-media-position {
@@ -90,15 +99,16 @@
 }
 
 .unixnotis-media-card {
-  background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, alpha(#0f1828, 0.94));
-  border-radius: 18px;
-  border: 1px solid @unixnotis-card-border;
+  background: alpha(#ffffff, 0.035);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: var(--unixnotis-media-card-radius);
   padding: var(--unixnotis-media-card-padding-y) var(--unixnotis-media-card-padding-x);
   min-height: 68px;
-  box-shadow:
-    0 14px 26px -20px @unixnotis-shadow-strong,
-    0 0 22px -20px alpha(@unixnotis-accent-2, 0.16),
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+  box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 .unixnotis-media-card-carousel {
@@ -126,7 +136,14 @@
 }
 
 .unixnotis-media-card.playing {
-  border-left: 1px solid @unixnotis-card-border;
+  background-image: linear-gradient(135deg, alpha(#ffffff, 0.075), alpha(#ffffff, 0.025));
+  border-top: 1px solid alpha(#ffffff, 0.16);
+  border-left: 1px solid alpha(#ffffff, 0.12);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.03);
+  box-shadow:
+    0 16px 36px -20px alpha(#000000, 0.8),
+    inset 0 1px 0 alpha(#ffffff, 0.12);
 }
 
 /*
@@ -214,75 +231,19 @@
 }
 
 .unixnotis-media-button {
-  background-image: linear-gradient(160deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.95));
-  border-radius: 10px;
-  border: 1px solid alpha(@unixnotis-accent, 0.2);
-  padding: var(--unixnotis-media-button-padding-y) var(--unixnotis-media-button-padding-x);
-  box-shadow:
-    0 6px 14px -12px @unixnotis-shadow-soft,
-    0 0 14px -14px @unixnotis-glow-cyan;
-}
-
-.unixnotis-media-button:hover {
-  background-image: linear-gradient(160deg, @unixnotis-action-bg-hover, alpha(@unixnotis-accent-2, 0.2));
-  border-color: alpha(@unixnotis-accent, 0.5);
-}
-
-.unixnotis-media-button.primary {
-  background-image: linear-gradient(160deg, @unixnotis-action-bg-active, alpha(@unixnotis-accent-2, 0.28));
-  border-color: alpha(@unixnotis-accent, 0.75);
-}
-
-/* unixnotis-css-check allow-duplicate-selectors:start */
-/* Restrained media transport */
-.unixnotis-media-card {
-  background: alpha(#ffffff, 0.035);
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
-  border-bottom: 1px solid alpha(#ffffff, 0.02);
-  border-radius: 16px;
-  border-radius: var(--unixnotis-media-card-radius);
-  box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
-}
-
-.unixnotis-media-card:hover {
-  background-image: linear-gradient(135deg, alpha(#ffffff, 0.075), alpha(#ffffff, 0.025));
-  border-top-color: alpha(#ffffff, 0.14);
-  border-left-color: alpha(#ffffff, 0.10);
-  border-right-color: alpha(#ffffff, 0.06);
-  border-bottom-color: alpha(#ffffff, 0.03);
-  box-shadow: 0 8px 20px -10px alpha(#000000, 0.7), inset 0 1px 0 alpha(#ffffff, 0.05);
-}
-
-.unixnotis-media-card.playing {
-  background-image: linear-gradient(135deg, alpha(#ffffff, 0.075), alpha(#ffffff, 0.025));
-  border-top: 1px solid alpha(#ffffff, 0.16);
-  border-left: 1px solid alpha(#ffffff, 0.12);
-  border-right: 1px solid alpha(#ffffff, 0.06);
-  border-bottom: 1px solid alpha(#ffffff, 0.03);
-  box-shadow:
-    0 16px 36px -20px alpha(#000000, 0.8),
-    inset 0 1px 0 alpha(#ffffff, 0.12);
-}
-
-.unixnotis-media-button,
-.unixnotis-media-nav {
   background: alpha(#ffffff, 0.04);
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
   border-right: 1px solid alpha(#ffffff, 0.04);
   border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: var(--unixnotis-media-button-radius);
+  padding: var(--unixnotis-media-button-padding-y) var(--unixnotis-media-button-padding-x);
   box-shadow: none;
   color: alpha(#ffffff, 0.85);
-  border-radius: 999px;
-  border-radius: var(--unixnotis-media-button-radius);
   transition: background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out;
 }
 
-.unixnotis-media-button:hover,
-.unixnotis-media-nav:hover {
+.unixnotis-media-button:hover {
   background: alpha(#ffffff, 0.09);
   border-top-color: alpha(#ffffff, 0.16);
   border-left-color: alpha(#ffffff, 0.12);
@@ -299,6 +260,16 @@
   box-shadow: 0 4px 10px -3px alpha(#000000, 0.3);
 }
 
+/* Restrained media transport */
+.unixnotis-media-card:hover {
+  background-image: linear-gradient(135deg, alpha(#ffffff, 0.075), alpha(#ffffff, 0.025));
+  border-top-color: alpha(#ffffff, 0.14);
+  border-left-color: alpha(#ffffff, 0.10);
+  border-right-color: alpha(#ffffff, 0.06);
+  border-bottom-color: alpha(#ffffff, 0.03);
+  box-shadow: 0 8px 20px -10px alpha(#000000, 0.7), inset 0 1px 0 alpha(#ffffff, 0.05);
+}
+
 .unixnotis-media-button.primary:hover {
   background: alpha(#ffffff, 0.90);
   border-color: alpha(#ffffff, 0.90);
@@ -311,17 +282,3 @@
   /* Remove default blue focus rings from GTK button selections */
   outline: none;
 }
-
-/* Compact carousel navigation to protect panel width budget */
-.unixnotis-media-nav {
-  min-width: 18px;
-  min-height: 18px;
-  padding: 3px;
-  margin: 0;
-}
-
-.unixnotis-media-nav-prev,
-.unixnotis-media-nav-next {
-  min-width: 18px;
-}
-/* unixnotis-css-check allow-duplicate-selectors:end */

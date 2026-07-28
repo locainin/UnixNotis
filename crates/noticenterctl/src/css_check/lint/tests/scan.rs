@@ -1,4 +1,4 @@
-use super::lint_css_contents_with_properties;
+use super::{lint_css_contents_with_options, lint_css_contents_with_properties, LintOptions};
 use crate::css_check::geometry::collect_custom_property_scopes;
 
 #[test]
@@ -100,47 +100,30 @@ fn shipped_css_assets_are_lint_clean() {
     let properties = collect_custom_property_scopes(&combined);
 
     for css in assets {
-        let findings = lint_css_contents_with_properties(css, &properties);
+        let findings = lint_css_contents_with_options(
+            css,
+            &properties,
+            LintOptions {
+                honor_suppressions: false,
+            },
+        );
 
         assert!(findings.is_empty(), "{findings:?}");
     }
 }
 
 #[test]
-fn untouched_legacy_stock_assets_are_lint_clean_without_rewriting_user_files() {
-    let marker_lines = [
-        "/* unixnotis-css-check allow-duplicate-selectors:start */\n",
-        "/* unixnotis-css-check allow-duplicate-selectors:end */\n",
-    ];
-    let assets = [
-        unixnotis_core::DEFAULT_PANEL_CSS,
-        unixnotis_core::DEFAULT_WIDGETS_CSS,
-        unixnotis_core::DEFAULT_MEDIA_CSS,
-    ];
-    let config = unixnotis_core::Config::default();
-    let generated = unixnotis_core::build_modern_theme_custom_properties(
-        &config.theme,
-        unixnotis_core::gtk_css_features_for_version(4, 16),
-    );
-    let current_assets = [
+fn current_stock_assets_contain_no_lint_suppressions() {
+    for css in [
         unixnotis_core::DEFAULT_BASE_CSS,
         unixnotis_core::DEFAULT_PANEL_CSS,
         unixnotis_core::DEFAULT_POPUP_CSS,
         unixnotis_core::DEFAULT_WIDGETS_CSS,
         unixnotis_core::DEFAULT_MEDIA_CSS,
-    ];
-    let combined = std::iter::once(generated.as_str())
-        .chain(current_assets)
-        .collect::<Vec<_>>()
-        .join("\n");
-    let properties = collect_custom_property_scopes(&combined);
-
-    for current in assets {
-        let legacy = marker_lines
-            .iter()
-            .fold(current.to_string(), |css, marker| css.replace(marker, ""));
-        let findings = lint_css_contents_with_properties(&legacy, &properties);
-
-        assert!(findings.is_empty(), "{findings:?}");
+    ] {
+        assert!(
+            !css.contains("unixnotis-css-check allow-duplicate-selectors"),
+            "current stock CSS must not suppress repository lint findings"
+        );
     }
 }

@@ -3599,6 +3599,7 @@ dependencies = [
 name = "unixnotis-core"
 version = "1.2.0"
 dependencies = [
+ "blake3",
  "chrono",
  "image",
  "proptest",
