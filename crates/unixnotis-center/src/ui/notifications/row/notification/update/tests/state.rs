@@ -9,7 +9,8 @@ use crate::ui::icons::IconResolver;
 
 use super::super::super::state::IconSignature;
 use super::super::super::test_support::{
-    notification_row, notification_row_with_receiver, row_data, sample_notification, RowFlags,
+    child_count, notification_row, notification_row_with_receiver, row_data, sample_notification,
+    RowFlags,
 };
 use super::update_notification_row;
 
@@ -73,8 +74,7 @@ fn update_notification_row_applies_state_classes_and_text() {
     assert!(row
         .card
         .has_css_class(hooks::shared_state::COLLAPSED_GROUP_PREVIEW));
-    assert!(row.card.has_css_class(hooks::panel_card::GROUP_COLLAPSED));
-    assert!(!row.card.has_css_class(hooks::panel_card::GROUP_EXPANDED));
+    assert!(row.card.has_css_class(hooks::panel_card::GROUPED));
     assert!(!row.app_label.get_visible());
     assert!(!row.icon.get_visible());
     assert!(row.header.get_visible());
@@ -181,13 +181,12 @@ fn grouped_relay_row_hides_identity_details_owned_by_the_group_header() {
 }
 
 #[gtk::test]
-fn collapsed_group_preview_shows_master_style_rear_layers() {
-    let (_root, row) = notification_row();
+fn collapsed_group_preview_uses_one_content_surface() {
+    let (root, row) = notification_row();
     let data = row_data(
         Rc::new(sample_notification()),
         RowFlags {
             collapsed_group_preview: true,
-            stack_depth: 2,
             ..Default::default()
         },
     );
@@ -195,8 +194,12 @@ fn collapsed_group_preview_shows_master_style_rear_layers() {
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
-    assert!(row.stack_ghost_middle.get_visible());
-    assert!(row.stack_ghost_back.get_visible());
+    assert_eq!(child_count(&root), 1);
+    assert!(
+        row.card
+            .has_css_class(hooks::shared_state::COLLAPSED_GROUP_PREVIEW),
+        "the single readable surface should retain collapsed preview state"
+    );
 }
 
 #[gtk::test]
@@ -359,6 +362,41 @@ fn update_notification_row_applies_custom_metadata_and_corner_geometry() {
     assert_eq!(row.footer_left.text().as_str(), "ARCHIVE");
     assert_eq!(row.footer_right.text().as_str(), "2 OPTIONS");
     assert_eq!(row.card_plate.corners(), corners);
+}
+
+#[gtk::test]
+fn grouped_rows_keep_cut_corners_only_on_the_outer_bottom_edge() {
+    let (_root, row) = notification_row();
+    let corners = CutCorners {
+        top_left: 8,
+        top_right: 9,
+        bottom_right: 10,
+        bottom_left: 11,
+    };
+    let mut middle = row_data(
+        Rc::new(sample_notification()),
+        RowFlags {
+            card_corners: corners,
+            ..Default::default()
+        },
+    );
+    middle.expanded = true;
+    let (command_tx, _rx) = tokio::sync::mpsc::channel(1);
+
+    update_notification_row(&row, &middle, &IconResolver::new(), &command_tx);
+    assert_eq!(row.card_plate.corners(), CutCorners::default());
+
+    let mut last = middle;
+    last.group_last = true;
+    update_notification_row(&row, &last, &IconResolver::new(), &command_tx);
+    assert_eq!(
+        row.card_plate.corners(),
+        CutCorners {
+            bottom_right: 10,
+            bottom_left: 11,
+            ..CutCorners::default()
+        }
+    );
 }
 
 #[gtk::test]

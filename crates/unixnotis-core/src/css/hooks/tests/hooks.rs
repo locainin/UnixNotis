@@ -102,8 +102,6 @@ fn hook_names_stay_unique() {
         panel_card::FOOTER_LEFT,
         panel_card::FOOTER_RIGHT,
         panel_card::THUMBNAIL,
-        panel_card::GROUP_COLLAPSED,
-        panel_card::GROUP_EXPANDED,
         panel_card::GROUPED,
         panel_card::GROUP_FIRST,
         panel_card::GROUP_LAST,
@@ -245,16 +243,15 @@ fn stock_panel_css_targets_real_group_card_hooks() {
     let css = crate::theme::DEFAULT_PANEL_CSS;
 
     // Group headers and notification cards are sibling ListView rows, not nested widgets
-    // Stock CSS targets explicit collapsed and expanded content states
-    assert!(css.contains(&format!(".{}", panel_card::GROUP_COLLAPSED)));
-    assert!(css.contains(&format!(".{}", panel_card::GROUP_EXPANDED)));
+    // One grouped-card hook joins both collapsed previews and expanded children to the header
+    assert!(css.contains(&format!(".unixnotis-panel-card.{}", panel_card::GROUPED)));
     assert!(css.contains(&format!(
         ".unixnotis-panel-card-foreground.{}",
-        panel_card::GROUP_COLLAPSED
+        panel_card::GROUPED
     )));
     assert!(css.contains(&format!(
-        ".unixnotis-panel-card-foreground.{}",
-        panel_card::GROUP_EXPANDED
+        ".unixnotis-panel-card.{}",
+        shared_state::COLLAPSED_GROUP_PREVIEW
     )));
 
     // These selectors belonged to an older nested-card idea and do not match the real tree
@@ -276,18 +273,15 @@ fn stock_group_count_stays_neutral_during_header_hover() {
 }
 
 #[test]
-fn stock_panel_css_preserves_master_style_collapsed_stack_layers() {
+fn stock_panel_css_uses_one_continuous_group_surface_without_ghost_layers() {
     let css = crate::theme::DEFAULT_PANEL_CSS;
 
-    // Rear silhouettes make a collapsed group visibly different from one card
-    assert!(css.contains(".unixnotis-stack-ghost {"));
-    assert!(css.contains(".unixnotis-stack-ghost-1 {"));
-    assert!(css.contains(".unixnotis-stack-ghost-2 {"));
-
-    // Only the foreground overlaps the rear layers
-    assert!(css.contains(
-        ".unixnotis-panel-card-foreground.unixnotis-panel-card-group-collapsed {\n  margin-top: -58px;"
-    ));
+    assert!(!css.contains("unixnotis-stack-ghost"));
+    assert!(!css.contains("margin-top: -58px"));
+    assert!(css
+        .contains(".unixnotis-panel-card.unixnotis-panel-card-grouped {\n  border-top-width: 0;"));
+    assert!(css
+        .contains(".unixnotis-panel-card.unixnotis-panel-card-group-last {\n  border-radius: 0 0"));
 }
 
 #[test]

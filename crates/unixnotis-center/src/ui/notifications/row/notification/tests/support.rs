@@ -61,7 +61,6 @@ pub(super) fn notification_row_with_receiver() -> (
 pub(super) struct RowFlags {
     pub(super) is_active: bool,
     pub(super) collapsed_group_preview: bool,
-    pub(super) stack_depth: u8,
     pub(super) show_metadata: bool,
     pub(super) show_thumbnail: bool,
     pub(super) reduced_motion: bool,
@@ -70,7 +69,7 @@ pub(super) struct RowFlags {
 }
 
 pub(super) fn row_data(notification: Rc<NotificationView>, flags: RowFlags) -> RowData {
-    let mut row = RowData::notification(
+    RowData::notification(
         Rc::from(notification.app_name.to_ascii_lowercase()),
         notification,
         flags.collapsed_group_preview,
@@ -84,9 +83,7 @@ pub(super) fn row_data(notification: Rc<NotificationView>, flags: RowFlags) -> R
             metadata: Rc::new(flags.metadata.unwrap_or_default()),
             card_corners: flags.card_corners,
         },
-    );
-    row.stack_depth = flags.stack_depth;
-    row
+    )
 }
 
 pub(super) fn current_millis() -> i64 {
