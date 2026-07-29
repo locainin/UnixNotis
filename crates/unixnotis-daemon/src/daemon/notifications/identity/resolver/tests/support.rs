@@ -31,8 +31,10 @@ impl DesktopRecordFixture for DesktopRecord {
             desktop_path: Some(PathBuf::from(format!(
                 "/usr/share/applications/{id}.desktop"
             ))),
-            executable_path: Some(PathBuf::from(executable_path)),
-            executable_identity: Some(identity),
+            declared_executable_path: Some(PathBuf::from(executable_path)),
+            declared_executable_identity: Some(identity),
+            runtime_executable_path: Some(PathBuf::from(executable_path)),
+            runtime_executable_identity: Some(identity),
             desktop_identity: Some(identity),
             desktop_provenance: if system_entry {
                 InstallProvenance::Package {
@@ -42,7 +44,15 @@ impl DesktopRecordFixture for DesktopRecord {
             } else {
                 InstallProvenance::Unknown
             },
-            executable_provenance: if system_entry {
+            declared_executable_provenance: if system_entry {
+                InstallProvenance::Package {
+                    provider: PackageProvider::Pacman,
+                    package_id: id.to_string(),
+                }
+            } else {
+                InstallProvenance::Unknown
+            },
+            runtime_executable_provenance: if system_entry {
                 InstallProvenance::Package {
                     provider: PackageProvider::Pacman,
                     package_id: id.to_string(),
@@ -54,10 +64,12 @@ impl DesktopRecordFixture for DesktopRecord {
             system_association: system_entry,
             association_eligible: true,
             launch_spec: Some(LaunchSpec {
-                executable: identity,
+                declared_executable: identity,
+                runtime_executable: identity,
                 arguments: Vec::new(),
                 environment: Vec::new(),
                 wrappers: Vec::new(),
+                package_launcher: None,
                 literal_files_are_system_managed: true,
             }),
             names: HashSet::from([normalize_name(display_name)]),
@@ -66,10 +78,11 @@ impl DesktopRecordFixture for DesktopRecord {
 
     fn with_launch_literals(mut self, arguments: &[&str]) -> Self {
         let executable = self
-            .executable_identity
+            .runtime_executable_identity
             .expect("launch fixture needs executable identity");
         self.launch_spec = Some(LaunchSpec {
-            executable,
+            declared_executable: executable,
+            runtime_executable: executable,
             arguments: arguments
                 .iter()
                 .map(|value| {
@@ -81,6 +94,7 @@ impl DesktopRecordFixture for DesktopRecord {
                 .collect(),
             environment: Vec::new(),
             wrappers: Vec::new(),
+            package_launcher: None,
             literal_files_are_system_managed: true,
         });
         self

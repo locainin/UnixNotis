@@ -24,6 +24,11 @@ pub(super) fn with_diagnostics(
             LaunchAuthorityView::DedicatedExecutable,
             "verified by dedicated executable identity",
         ),
+        LaunchVerification::Verified(VerifiedLaunch::PackageLauncherTarget) => (
+            LaunchVerificationView::Verified,
+            LaunchAuthorityView::DedicatedExecutable,
+            "verified by protected package launcher and runtime identity",
+        ),
         LaunchVerification::Verified(VerifiedLaunch::ProtectedPayload) => (
             LaunchVerificationView::Verified,
             LaunchAuthorityView::ProtectedPayload,
@@ -74,6 +79,7 @@ pub(super) const fn launch_failure_label(reason: LaunchFailure) -> &'static str 
             "empty launch contract requires structured command-line evidence"
         }
         LaunchFailure::UnsupportedWrapper => "unsupported launch wrapper",
+        LaunchFailure::LauncherBindingChanged => "package launcher binding changed",
         LaunchFailure::AmbiguousDesktopAssociation => "ambiguous desktop association",
         LaunchFailure::DynamicOnlyContract => "dynamic-only launch contract",
         LaunchFailure::ExecutableMismatch => "executable identity mismatch",
@@ -88,7 +94,9 @@ const fn launch_authority_for_failure(failure: LaunchFailure) -> LaunchAuthority
     match failure {
         LaunchFailure::DynamicOnlyContract => LaunchAuthorityView::DynamicOnly,
         LaunchFailure::AmbiguousDesktopAssociation => LaunchAuthorityView::Ambiguous,
-        LaunchFailure::EmptyContractNeedsCommandLine => LaunchAuthorityView::DedicatedExecutable,
+        LaunchFailure::EmptyContractNeedsCommandLine | LaunchFailure::LauncherBindingChanged => {
+            LaunchAuthorityView::DedicatedExecutable
+        }
         LaunchFailure::ProtectedPayloadMismatch
         | LaunchFailure::MissingCommandLine
         | LaunchFailure::UnstructuredCommandLine => LaunchAuthorityView::ProtectedPayload,

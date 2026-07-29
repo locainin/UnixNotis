@@ -90,13 +90,15 @@ pub(super) fn resolution_for_record(
     let canonical = index.canonical_record_for_record(record);
     let canonical_id = index.canonical_id_for_record(record);
     let source = record
-        .executable_path
+        .runtime_executable_path
         .as_deref()
         .map(|path| path.display().to_string())
         .unwrap_or_default();
     if record.system_association {
         let reason = match verified.1 {
-            VerifiedLaunch::DedicatedExecutable => AttributionReason::ExactSystemExecutable,
+            VerifiedLaunch::DedicatedExecutable | VerifiedLaunch::PackageLauncherTarget => {
+                AttributionReason::ExactSystemExecutable
+            }
             VerifiedLaunch::ProtectedPayload => AttributionReason::VerifiedProtectedPayload,
         };
         return policy_resolution(NotificationAttribution::verified(
@@ -220,7 +222,9 @@ const fn attribution_reason_for_failure(failure: LaunchFailure) -> AttributionRe
         LaunchFailure::MissingCommandLine
         | LaunchFailure::UnstructuredCommandLine
         | LaunchFailure::EmptyContractNeedsCommandLine => AttributionReason::MissingCommandLine,
-        LaunchFailure::UnsupportedWrapper => AttributionReason::UnsupportedWrapper,
+        LaunchFailure::UnsupportedWrapper | LaunchFailure::LauncherBindingChanged => {
+            AttributionReason::UnsupportedWrapper
+        }
         LaunchFailure::AmbiguousDesktopAssociation | LaunchFailure::RequiredArgumentMismatch => {
             AttributionReason::AmbiguousDesktopRecords
         }

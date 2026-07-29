@@ -1,8 +1,11 @@
 use std::fs;
 use std::os::unix::fs::symlink;
 
+use super::super::launcher::launcher_binding_is_current;
+use super::super::model::{LaunchVerification, VerifiedLaunch};
 use super::super::scan::{ScanBudget, ScanLimits};
-use super::super::DesktopIdentityIndex;
+use super::super::{verify_record_launch, DesktopIdentityIndex};
+use crate::daemon::notifications::identity::sender::{CommandLineEvidence, CommandLineQuality};
 use crate::test_support::TempRoot;
 
 #[test]
@@ -175,4 +178,65 @@ fn exhausted_user_budget_does_not_block_system_desktop_records() {
         .iter()
         .any(|record| record.system_origin && record.display_name == "System App"));
     assert_eq!(snapshot.watched_directories.len(), 2);
+}
+
+#[test]
+fn local_arch_package_launcher_reaches_its_runtime_target() {
+    let desktop = std::path::Path::new("/usr/share/applications/signal.desktop");
+    if !desktop.exists() {
+        return;
+    }
+
+    let snapshot = DesktopIdentityIndex::build_snapshot();
+    let record = snapshot
+        .index
+        .records_for_id("signal")
+        .into_iter()
+        .find(|record| record.system_origin)
+        .expect("installed package desktop record");
+
+    assert!(record.system_association);
+    assert_eq!(
+        record.declared_executable_path.as_deref(),
+        Some(std::path::Path::new("/usr/bin/signal-desktop"))
+    );
+    assert_eq!(
+        record.runtime_executable_path.as_deref(),
+        Some(std::path::Path::new(
+            "/usr/lib/signal-desktop/signal-desktop"
+        ))
+    );
+    let binding = record
+        .launch_spec
+        .as_ref()
+        .and_then(|spec| spec.package_launcher.as_ref())
+        .expect("installed package launcher binding");
+    assert!(launcher_binding_is_current(binding));
+    let mut stale_digest = binding.clone();
+    stale_digest.launcher_digest[0] ^= 1;
+    assert!(!launcher_binding_is_current(&stale_digest));
+    let mut changed_target = binding.clone();
+    changed_target.target_path = "/usr/bin/true".into();
+    assert!(!launcher_binding_is_current(&changed_target));
+    let runtime_identity = record
+        .runtime_executable_identity
+        .expect("installed runtime identity");
+    let command_line = CommandLineEvidence {
+        argv: [
+            "/usr/lib/signal-desktop/signal-desktop",
+            "--password-store=kwallet6",
+            "--ozone-platform=x11",
+            "--use-tray-icon",
+            "--",
+        ]
+        .into_iter()
+        .map(|argument| argument.as_bytes().to_vec())
+        .collect(),
+        quality: CommandLineQuality::Structured,
+    };
+
+    assert_eq!(
+        verify_record_launch(record, &snapshot.index, runtime_identity, &command_line),
+        LaunchVerification::Verified(VerifiedLaunch::PackageLauncherTarget)
+    );
 }

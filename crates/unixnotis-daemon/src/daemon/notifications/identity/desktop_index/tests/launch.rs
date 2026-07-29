@@ -19,7 +19,7 @@ fn launch_spec_matches_sender(
     sender_identity: FileIdentity,
     cmdline: &[Vec<u8>],
 ) -> bool {
-    if !spec.executable.same_file(sender_identity)
+    if !spec.runtime_executable.same_file(sender_identity)
         || cmdline.is_empty()
         || cmdline.len() > MAX_PROCESS_ARGUMENTS
     {
@@ -157,7 +157,9 @@ fn fixed_immutable_application_argument_is_matched_exactly() {
     )
     .expect("write desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&path).expect("parse desktop entry");
-    let (_executable_path, spec) = build_launch_spec(&desktop, &path).expect("build launch spec");
+    let spec = build_launch_spec(&desktop, &path)
+        .expect("build launch spec")
+        .spec;
 
     assert!(launch_spec_matches_sender(
         &spec,
@@ -198,8 +200,9 @@ fn user_writable_literal_payload_cannot_support_a_system_association() {
     .expect("write desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&desktop_path).expect("parse desktop entry");
 
-    let (_executable_path, spec) =
-        build_launch_spec(&desktop, &desktop_path).expect("build launch spec");
+    let spec = build_launch_spec(&desktop, &desktop_path)
+        .expect("build launch spec")
+        .spec;
 
     assert!(!spec.literal_files_are_system_managed);
 }
@@ -216,7 +219,9 @@ fn launch_spec_rejects_unmodeled_flags_and_invalid_url_fields() {
     )
     .expect("write desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&path).expect("parse desktop entry");
-    let (_executable_path, spec) = build_launch_spec(&desktop, &path).expect("build launch spec");
+    let spec = build_launch_spec(&desktop, &path)
+        .expect("build launch spec")
+        .spec;
 
     assert!(launch_spec_matches_sender(
         &spec,
@@ -313,7 +318,9 @@ fn launch_spec_parses_every_supported_desktop_field_code() {
     )
     .expect("write field-code desktop entry");
     let desktop = gio::DesktopAppInfo::from_filename(&path).expect("parse desktop entry");
-    let (_executable_path, spec) = build_launch_spec(&desktop, &path).expect("build launch spec");
+    let spec = build_launch_spec(&desktop, &path)
+        .expect("build launch spec")
+        .spec;
 
     assert!(matches!(
         spec.arguments[0],
@@ -352,10 +359,12 @@ fn process_matcher_checks_identity_emptiness_and_argument_limits_independently()
         executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system fixture");
     let other = executable_evidence_for_path(Path::new("/usr/bin/false")).expect("other fixture");
     let spec = LaunchSpec {
-        executable: executable.identity,
+        declared_executable: executable.identity,
+        runtime_executable: executable.identity,
         arguments: vec![LaunchArgument::FieldCode(FieldCode::Files)],
         environment: Vec::new(),
         wrappers: Vec::new(),
+        package_launcher: None,
         literal_files_are_system_managed: true,
     };
     let exact_limit =

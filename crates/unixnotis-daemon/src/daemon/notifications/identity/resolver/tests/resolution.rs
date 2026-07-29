@@ -4,6 +4,7 @@ use super::super::resolution::{
     resolution_for_record, sender_claim_group_key, unknown_reply_denied,
 };
 use super::*;
+use unixnotis_core::ApplicationActionPolicy;
 
 #[test]
 fn sender_claim_group_key_is_nonempty_and_bound_to_sender_identity() {
@@ -41,6 +42,36 @@ fn verified_record_with_a_contradictory_name_becomes_conflict() {
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Conflict);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
+fn verified_package_launcher_target_receives_application_authority() {
+    let record = system_record(
+        "org.example.App",
+        "Example App",
+        "/usr/lib/example-app/runtime",
+        identity(207, 2_070, 0),
+    );
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+    let record = index
+        .records_for_id("org.example.App")
+        .into_iter()
+        .next()
+        .expect("fixture record should be indexed");
+
+    let resolution = resolution_for_record(
+        VerifiedDesktopRecord(record, VerifiedLaunch::PackageLauncherTarget),
+        "Example App",
+        &sender("/usr/lib/example-app/runtime", identity(207, 2_070, 0)),
+        &index,
+    );
+
+    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+    assert_eq!(
+        resolution.attribution.application_action_policy(),
+        ApplicationActionPolicy::Allow
+    );
 }
 
 #[test]

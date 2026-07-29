@@ -377,7 +377,7 @@ fn owned_dbus_application_name_without_executable_evidence_remains_unverified() 
         app_identity,
         true,
     );
-    record.executable_identity = None;
+    record.runtime_executable_identity = None;
     let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
 
     let resolution = resolve_with_evidence(

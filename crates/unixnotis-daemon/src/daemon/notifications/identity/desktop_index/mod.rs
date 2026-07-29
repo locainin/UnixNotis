@@ -2,6 +2,7 @@
 
 mod index;
 mod launch;
+mod launcher;
 pub(in crate::daemon::notifications::identity) mod model;
 mod names;
 mod program;

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use gio::prelude::AppInfoExt;
 
 use super::super::executable::executable_evidence_for_path;
+use super::launcher::inspect_package_shell_launcher;
 use super::model::{FieldCode, LaunchArgument, LaunchSpec, LiteralArgument};
 use super::program::resolve_program;
 use super::wrappers::normalize_launch_command;
@@ -12,10 +13,16 @@ use super::wrappers::normalize_launch_command;
 const MAX_EXEC_TEMPLATE_BYTES: usize = 16 * 1024;
 const MAX_EXEC_TEMPLATE_ARGUMENTS: usize = 128;
 
+pub(super) struct BuiltLaunchSpec {
+    pub(super) declared_path: PathBuf,
+    pub(super) runtime_path: PathBuf,
+    pub(super) spec: LaunchSpec,
+}
+
 pub(super) fn build_launch_spec(
     desktop: &gio::DesktopAppInfo,
     desktop_path: &Path,
-) -> Option<(PathBuf, LaunchSpec)> {
+) -> Option<BuiltLaunchSpec> {
     let template = desktop.string("Exec")?;
     if template.len() > MAX_EXEC_TEMPLATE_BYTES {
         return None;
@@ -25,8 +32,17 @@ pub(super) fn build_launch_spec(
         return None;
     }
     let normalized = normalize_launch_command(words).ok()?;
-    let executable_path = resolve_program(Path::new(&normalized.executable))?;
-    let executable = executable_evidence_for_path(&executable_path)?.identity;
+    let declared_path = resolve_program(Path::new(&normalized.executable))?;
+    let declared_executable = executable_evidence_for_path(&declared_path)?.identity;
+    // Inspection never runs a launcher and accepts only one protected literal final target
+    let package_launcher = inspect_package_shell_launcher(&declared_path, declared_executable);
+    let runtime_path = package_launcher.as_ref().map_or_else(
+        || declared_path.clone(),
+        |binding| binding.target_path.clone(),
+    );
+    let runtime_executable = package_launcher
+        .as_ref()
+        .map_or(declared_executable, |binding| binding.target_identity);
 
     let mut arguments = Vec::with_capacity(normalized.arguments.len());
     let mut literal_files_are_system_managed = true;
@@ -62,16 +78,19 @@ pub(super) fn build_launch_spec(
         arguments.push(argument);
     }
 
-    Some((
-        executable_path,
-        LaunchSpec {
-            executable,
+    Some(BuiltLaunchSpec {
+        declared_path,
+        runtime_path,
+        spec: LaunchSpec {
+            declared_executable,
+            runtime_executable,
             arguments,
             environment: normalized.environment,
             wrappers: normalized.wrappers,
+            package_launcher,
             literal_files_are_system_managed,
         },
-    ))
+    })
 }
 
 fn literal_argument(value: Vec<u8>) -> LaunchArgument {
