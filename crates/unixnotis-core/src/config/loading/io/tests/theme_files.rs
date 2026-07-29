@@ -5,6 +5,7 @@ use std::fs;
 use crate::{Config, DEFAULT_BASE_CSS};
 
 use super::super::theme_files::warn_legacy_rename_once;
+use super::super::theme_stock::files::stock_preview_path;
 use super::support::test_root;
 
 #[test]
@@ -61,6 +62,33 @@ fn ensure_theme_files_preserves_existing_base_css() {
         "/* keep */"
     );
     assert!(root.join("style.css").exists());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn ensure_theme_files_stages_versioned_stock_without_replacing_user_css() {
+    let root = test_root("theme-stock-preview");
+    fs::create_dir_all(&root).expect("theme root");
+    let config = Config::default();
+    let paths = config
+        .resolve_theme_paths_from(&root)
+        .expect("theme paths should resolve");
+    fs::write(&paths.panel_css, "/* user panel */").expect("custom panel css");
+
+    config
+        .ensure_theme_files(&paths)
+        .expect("theme previews should be staged");
+
+    assert_eq!(
+        fs::read_to_string(&paths.panel_css).expect("custom panel remains"),
+        "/* user panel */"
+    );
+    let preview = stock_preview_path(&paths.panel_css).expect("versioned preview path");
+    assert_eq!(
+        fs::read_to_string(preview).expect("versioned stock preview"),
+        crate::DEFAULT_PANEL_CSS
+    );
 
     let _ = fs::remove_dir_all(root);
 }
