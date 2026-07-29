@@ -63,22 +63,22 @@ fn unwrap_env(tokens: &[String]) -> Result<Option<NormalizedPrefix>, ExecParseEr
     let mut environment = Vec::new();
     while let Some(token) = tokens.get(index) {
         if token == "--" {
-            index += 1;
+            advance_index(&mut index, 1)?;
             break;
         }
         if token == "-i" || token == "--ignore-environment" {
-            index += 1;
+            advance_index(&mut index, 1)?;
             continue;
         }
         if token == "-u" {
             if tokens.get(index + 1).is_none() {
                 return Err(ExecParseError::MalformedEnvCommand);
             }
-            index += 2;
+            advance_index(&mut index, 2)?;
             continue;
         }
         if token.starts_with("--unset=") {
-            index += 1;
+            advance_index(&mut index, 1)?;
             continue;
         }
         if token.starts_with('-') {
@@ -87,7 +87,7 @@ fn unwrap_env(tokens: &[String]) -> Result<Option<NormalizedPrefix>, ExecParseEr
         }
         if let Some((name, value)) = parse_environment_assignment(token) {
             environment.push((name.as_bytes().to_vec(), value.as_bytes().to_vec()));
-            index += 1;
+            advance_index(&mut index, 1)?;
             continue;
         }
         break;
@@ -101,6 +101,14 @@ fn unwrap_env(tokens: &[String]) -> Result<Option<NormalizedPrefix>, ExecParseEr
         environment,
         wrapper: LaunchWrapper::Env,
     }))
+}
+
+fn advance_index(index: &mut usize, amount: usize) -> Result<(), ExecParseError> {
+    // Checked progress prevents malformed input from wrapping the parser cursor
+    *index = index
+        .checked_add(amount)
+        .ok_or(ExecParseError::MalformedEnvCommand)?;
+    Ok(())
 }
 
 fn parse_environment_assignment(value: &str) -> Option<(&str, &str)> {

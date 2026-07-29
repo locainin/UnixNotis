@@ -108,13 +108,15 @@ fn java_cannot_associate_a_different_jar() {
 #[test]
 fn matching_fixed_system_application_argument_allows_association() {
     let (runtime_path, runtime_identity) = installed_system_executable();
+    let (payload_path, payload_identity) = installed_system_executable();
     let record = system_record(
         "org.example.ScriptApp",
         "Script App",
         &runtime_path,
         runtime_identity,
     )
-    .with_launch_literals(&["/usr/share/script-app/main.py"]);
+    .with_launch_literals(&[&payload_path])
+    .with_protected_launch_file(&payload_path, payload_identity);
     let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
 
     let resolution = resolve_with_evidence(
@@ -122,11 +124,7 @@ fn matching_fixed_system_application_argument_allows_association() {
             reported_name: "Script App",
             desktop_entry: Some("org.example.ScriptApp"),
         },
-        &sender_with_arguments(
-            &runtime_path,
-            runtime_identity,
-            &["/usr/share/script-app/main.py"],
-        ),
+        &sender_with_arguments(&runtime_path, runtime_identity, &[&payload_path]),
         &index,
         &HashSet::new(),
     );
@@ -277,13 +275,15 @@ fn no_hint_shared_runtimes_with_wrong_payloads_are_denied() {
 #[test]
 fn no_hint_shared_runtime_with_matching_protected_payload_is_allowed() {
     let (runtime_path, runtime_identity) = installed_system_executable();
+    let (payload_path, payload_identity) = installed_system_executable();
     let record = system_record(
         "org.example.PasswordManager",
         "Example Password Manager",
         &runtime_path,
         runtime_identity,
     )
-    .with_launch_literals(&["/usr/share/password-manager/main.py"]);
+    .with_launch_literals(&[&payload_path])
+    .with_protected_launch_file(&payload_path, payload_identity);
     let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
 
     let resolution = resolve_with_evidence(
@@ -291,11 +291,7 @@ fn no_hint_shared_runtime_with_matching_protected_payload_is_allowed() {
             reported_name: "Example Password Manager",
             desktop_entry: None,
         },
-        &sender_with_arguments(
-            &runtime_path,
-            runtime_identity,
-            &["/usr/share/password-manager/main.py"],
-        ),
+        &sender_with_arguments(&runtime_path, runtime_identity, &[&payload_path]),
         &index,
         &HashSet::new(),
     );
