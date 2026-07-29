@@ -7,6 +7,9 @@ use gtk::prelude::*;
 use tracing::{debug, warn};
 use unixnotis_ui::CutCorner;
 
+use crate::dbus::UiCommand;
+use crate::ui::entry::try_send_command;
+
 impl UiState {
     pub(in super::super) fn update_popup_visibility(&mut self, force_region_refresh: bool) {
         // Visibility contract is driven strictly by configured max_visible count
@@ -55,23 +58,16 @@ impl UiState {
     }
 
     pub(in super::super) fn refresh_after_config_reload(&mut self) {
-        // Only built rows have GTK roots that need a width refresh
-        let resized_roots = self
+        // Only built rows have GTK wrappers that may need a corner refresh
+        let materialized_roots = self
             .popups
             .values()
             .filter(|entry| entry.root.is_some())
             .count();
-        // Prefer the live width when GTK has already measured the stack
-        let popup_width = self
-            .popup_stack
-            .width()
-            .max(self.popup_stack.width_request())
-            .max(1);
         for entry in self.popups.values() {
             let Some(root) = entry.root.as_ref() else {
                 continue;
             };
-            root.set_size_request(popup_width, -1);
             let Some(revealer) = entry.revealer.as_ref() else {
                 continue;
             };
@@ -98,7 +94,7 @@ impl UiState {
         // Re-run visibility so max_visible changes take effect right away
         self.update_popup_visibility(true);
         debug!(
-            resized_roots,
+            materialized_roots,
             visible_target =
                 visible_popup_target(self.popups.len(), self.config.popups.max_visible),
             total = self.popups.len(),
@@ -125,6 +121,10 @@ impl UiState {
         // Attach or move only the rows that actually changed order
         let mut previous_revealer: Option<gtk::Revealer> = None;
         for id in &desired_visible {
+            let was_materialized = self
+                .popups
+                .get(id)
+                .is_some_and(super::super::entry::PopupEntry::is_materialized);
             self.materialize_popup(*id);
             let Some(entry) = self.popups.get(id) else {
                 warn!(id, "popup marked visible but entry is missing");
@@ -149,6 +149,13 @@ impl UiState {
             }
 
             previous_revealer = Some(revealer.clone());
+            if !was_materialized {
+                // Materialization is complete only after the row joins the live stack
+                try_send_command(
+                    &self.command_tx,
+                    UiCommand::Materialized(entry.notification.key()),
+                );
+            }
             applied_visible.push(*id);
         }
 

@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use unixnotis_core::{log_session_bus_identity, ControlProxy};
+use unixnotis_core::{ensure_control_api_version, log_session_bus_identity, ControlProxy};
 use zbus::Connection;
 
 use crate::cli::{Args, Command};
@@ -64,6 +64,9 @@ async fn run_async(command: Command) -> Result<()> {
     let proxy = ControlProxy::new(&connection)
         .await
         .context("connect to unixnotis control interface")?;
+    ensure_control_api_version(&proxy)
+        .await
+        .context("validate UnixNotis component version")?;
 
     crate::dbus::handle_command(&proxy, command).await
 }

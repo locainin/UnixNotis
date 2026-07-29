@@ -71,6 +71,10 @@ impl ControlServer {
 
 #[interface(name = "com.unixnotis.Control")]
 impl ControlServer {
+    async fn get_api_version(&self) -> u32 {
+        unixnotis_core::CONTROL_API_VERSION
+    }
+
     async fn get_state(&self) -> zbus::fdo::Result<ControlState> {
         self.query_state().await
     }
@@ -195,15 +199,6 @@ impl ControlServer {
         self.query_inhibitors(&header).await
     }
 
-    async fn dismiss(&self, id: u32, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
-        self.authorize_control_call(&header, "Dismiss").await?;
-        // Delegate to shared state helper so all close signals stay consistent
-        self.state
-            .dismiss_from_panel(id)
-            .await
-            .map_err(to_fdo_error)
-    }
-
     pub(super) async fn dismiss_generation(
         &self,
         id: u32,
@@ -216,16 +211,6 @@ impl ControlServer {
             .dismiss_generation(NotificationKey { id, generation })
             .await
             .map_err(to_fdo_error)
-    }
-
-    pub(super) async fn invoke_action(
-        &self,
-        id: u32,
-        action_key: &str,
-        #[zbus(header)] header: Header<'_>,
-    ) -> zbus::fdo::Result<()> {
-        self.authorize_control_call(&header, "InvokeAction").await?;
-        self.invoke_validated_action(id, action_key).await
     }
 
     pub(super) async fn invoke_action_generation(
@@ -310,14 +295,34 @@ impl ControlServer {
             .await
     }
 
-    async fn mark_popup_rendered(
+    async fn mark_popup_materialized(
         &self,
         id: u32,
         generation: u64,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
-        self.mark_popup_generation_rendered(NotificationKey { id, generation }, &header)
-            .await
+        self.mark_popup_generation_stage(
+            NotificationKey { id, generation },
+            unixnotis_core::PopupDeliveryStage::Materialized,
+            "MarkPopupMaterialized",
+            &header,
+        )
+        .await
+    }
+
+    async fn mark_popup_visible(
+        &self,
+        id: u32,
+        generation: u64,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.mark_popup_generation_stage(
+            NotificationKey { id, generation },
+            unixnotis_core::PopupDeliveryStage::Visible,
+            "MarkPopupVisible",
+            &header,
+        )
+        .await
     }
 
     #[zbus(signal)]

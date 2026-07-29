@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::Utc;
 use futures_util::TryStreamExt;
 use unixnotis_core::{
-    Action, AttributionClass, Notification, NotificationAttribution, NotificationImage, Urgency,
+    Action, AttributionReason, Notification, NotificationAttribution, NotificationImage, Urgency,
 };
 use zbus::message::Type;
 use zbus::zvariant::OwnedValue;
@@ -18,22 +18,22 @@ async fn validated_action_emits_only_an_advertised_live_action() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
     let mut stream = action_signal_stream(&sender).await;
-    let id = {
+    let notification = {
         let mut store = state.store.lock().await;
         store
             .insert(action_notification(&sender, "open"), 0)
             .notification
-            .id
+            .key()
     };
 
     ControlServer::new(state)
-        .invoke_validated_action(id, "open")
+        .invoke_validated_action_generation(notification, "open")
         .await
         .expect("invoke advertised action");
 
     assert_eq!(
         next_action_signal(&mut stream).await,
-        (id, "open".to_string())
+        (notification.id, "open".to_string())
     );
 }
 
@@ -44,22 +44,22 @@ async fn action_signal_reaches_owner_but_not_unrelated_observer() {
     let observer = Connection::session().await.expect("observer session bus");
     let mut owner_stream = action_signal_stream(&owner).await;
     let mut observer_stream = action_signal_stream(&observer).await;
-    let id = {
+    let notification = {
         let mut store = state.store.lock().await;
         store
             .insert(action_notification(&owner, "open"), 0)
             .notification
-            .id
+            .key()
     };
 
     ControlServer::new(state)
-        .invoke_validated_action(id, "open")
+        .invoke_validated_action_generation(notification, "open")
         .await
         .expect("invoke owner action");
 
     assert_eq!(
         next_action_signal(&mut owner_stream).await,
-        (id, "open".to_string())
+        (notification.id, "open".to_string())
     );
     assert!(
         tokio::time::timeout(
@@ -86,7 +86,7 @@ async fn validated_action_rejects_missing_and_stale_action_generations() {
     let server = ControlServer::new(state.clone());
 
     server
-        .invoke_validated_action(id, "missing")
+        .invoke_validated_action_generation(notification, "missing")
         .await
         .expect_err("unadvertised action must fail");
     let replacement_state = state.clone();
@@ -137,10 +137,12 @@ async fn stale_action_does_not_target_same_id_replacement() {
 async fn validated_action_rejects_a_conflicting_application_claim() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
-    let id = {
+    let notification = {
         let mut notification = action_notification(&sender, "open");
         notification.attribution = NotificationAttribution::conflict(
             "Signal",
+            "org.signal.Signal",
+            AttributionReason::ApplicationClaimMismatch,
             "application claim mismatch; source /tmp/fake",
             "conflict:signal".to_string(),
         );
@@ -150,11 +152,11 @@ async fn validated_action_rejects_a_conflicting_application_claim() {
             .await
             .insert(notification, 0)
             .notification
-            .id
+            .key()
     };
 
     ControlServer::new(state)
-        .invoke_validated_action(id, "open")
+        .invoke_validated_action_generation(notification, "open")
         .await
         .expect_err("conflicting attribution must not receive an action signal");
 }
@@ -165,14 +167,14 @@ fn action_notification(sender: &Connection, key: &str) -> Notification {
         generation: 0,
         app_name: "ActionApp".to_string(),
         app_icon: String::new(),
-        attribution: NotificationAttribution::associated(
+        attribution: NotificationAttribution::verified(
+            "ActionApp",
             "ActionApp",
             "org.example.ActionApp",
-            "org.example.ActionApp",
             "",
-            AttributionClass::SystemAssociated,
-            false,
-            "system-desktop:org.example.ActionApp".to_string(),
+            AttributionReason::ExactSystemExecutable,
+            "exact system executable",
+            "system-app:org.example.ActionApp".to_string(),
         ),
         attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         summary: "Action".to_string(),

@@ -129,6 +129,56 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
 }
 
 #[gtk::test]
+fn popup_widget_tree_keeps_one_identity_grid_and_overlay_close_control() {
+    let mut state = popup_state("org.unixnotis.PopupWidgetTree");
+    let mut relayed = notification(12, 1, "Build finished");
+    relayed.attribution = unixnotis_core::NotificationAttribution::relay(
+        "Builder",
+        "Sent through /usr/bin/notify-send",
+        "relay:notify-send:builder".to_string(),
+    );
+    let root = state.build_popup_root(&relayed);
+    let overlay = root
+        .first_child()
+        .and_downcast::<gtk::Overlay>()
+        .expect("popup root should contain one overlay");
+    let content = overlay
+        .child()
+        .and_downcast::<gtk::Box>()
+        .expect("overlay should own the measured popup content");
+    let grid = content
+        .first_child()
+        .and_downcast::<gtk::Grid>()
+        .expect("popup content should start with the identity grid");
+
+    assert!(grid.has_css_class("unixnotis-popup-content-grid"));
+    assert_eq!(grid.column_spacing(), 10);
+    assert_eq!(grid.row_spacing(), 2);
+    assert_eq!(
+        grid.property::<gtk::AccessibleRole>("accessible-role"),
+        gtk::AccessibleRole::Group
+    );
+    assert_eq!(
+        descendant_class_count(root.upcast_ref(), "unixnotis-identity-avatar"),
+        1,
+        "one provenance-controlled avatar must own application identity"
+    );
+    assert!(descendant_has_text(
+        root.upcast_ref(),
+        "Command-line notification"
+    ));
+    assert!(descendant_has_text(root.upcast_ref(), "App label: Builder"));
+    assert!(!descendant_has_class(
+        content.upcast_ref(),
+        "unixnotis-popup-close"
+    ));
+    assert!(descendant_has_class(
+        overlay.upcast_ref(),
+        "unixnotis-popup-close"
+    ));
+}
+
+#[gtk::test]
 fn visible_popup_materialization_and_rebuild_replace_the_exact_widget_generation() {
     let (mut state, mut command_rx) =
         popup_state_with_commands("org.unixnotis.PopupMaterialization", 1);
@@ -146,7 +196,7 @@ fn visible_popup_materialization_and_rebuild_replace_the_exact_widget_generation
         .clone()
         .expect("visible popup should have a root");
     assert!(original_root.is_visible());
-    assert_rendered_command(&mut command_rx, original.key());
+    assert_materialized_and_visible_commands(&mut command_rx, original.key());
 
     let replacement = notification(21, 2, "replacement");
     state.update_popup(replacement.clone(), true);
@@ -160,15 +210,85 @@ fn visible_popup_materialization_and_rebuild_replace_the_exact_widget_generation
         replacement_root.upcast_ref(),
         "replacement"
     ));
-    assert_rendered_command(&mut command_rx, replacement.key());
+    assert_materialized_and_visible_commands(&mut command_rx, replacement.key());
 }
 
-fn assert_rendered_command(
+#[gtk::test]
+fn visible_popup_callbacks_report_each_generation_only_once() {
+    let (mut state, mut command_rx) =
+        popup_state_with_commands("org.unixnotis.PopupVisibleOnce", 1);
+    let original = notification(24, 1, "original");
+    state.add_popup(original.clone());
+    assert_materialized_and_visible_commands(&mut command_rx, original.key());
+
+    let entry = state
+        .popups
+        .get(&original.id)
+        .expect("visible popup should be stored");
+    let revealer = entry
+        .revealer
+        .as_ref()
+        .expect("visible popup should have a revealer");
+    let visibility = entry
+        .visibility
+        .as_ref()
+        .expect("visible popup should retain its visibility binding");
+    visibility.report_if_visible(revealer, &state.popup_window, &state.command_tx);
+    visibility.report_if_visible(revealer, &state.popup_window, &state.command_tx);
+    assert!(
+        command_rx.try_recv().is_err(),
+        "duplicate map and reveal callbacks must not send another acknowledgement"
+    );
+
+    let replacement = notification(24, 2, "replacement");
+    state.update_popup(replacement.clone(), true);
+    assert_materialized_and_visible_commands(&mut command_rx, replacement.key());
+    assert!(
+        command_rx.try_recv().is_err(),
+        "one replacement generation should produce one visibility acknowledgement"
+    );
+}
+
+#[gtk::test]
+fn mapped_window_does_not_acknowledge_an_unrevealed_popup_row() {
+    let (mut state, mut command_rx) = popup_state_with_commands("org.unixnotis.PopupHiddenRow", 1);
+    let visible = notification(25, 1, "visible");
+    state.add_popup(visible.clone());
+    assert_materialized_and_visible_commands(&mut command_rx, visible.key());
+    assert!(state.popup_window.is_mapped());
+
+    let hidden_revealer = gtk::Revealer::new();
+    hidden_revealer.set_child(Some(&gtk::Label::new(Some("hidden"))));
+    hidden_revealer.set_reveal_child(false);
+    let hidden_key = NotificationKey {
+        id: 26,
+        generation: 1,
+    };
+    let visibility = crate::ui::entry::PopupVisibilityBinding::new(hidden_key);
+
+    visibility.report_if_visible(&hidden_revealer, &state.popup_window, &state.command_tx);
+
+    assert!(
+        command_rx.try_recv().is_err(),
+        "a mapped window cannot make an unrevealed row visible"
+    );
+}
+
+fn assert_materialized_and_visible_commands(
     command_rx: &mut tokio::sync::mpsc::Receiver<crate::dbus::UiCommand>,
     expected: NotificationKey,
 ) {
-    match command_rx.try_recv().expect("render acknowledgement") {
-        crate::dbus::UiCommand::Rendered(notification) => {
+    match command_rx
+        .try_recv()
+        .expect("materialization acknowledgement")
+    {
+        crate::dbus::UiCommand::Materialized(notification) => {
+            assert_eq!(notification, expected);
+        }
+        command => panic!("unexpected command: {command:?}"),
+    }
+    match command_rx.try_recv().expect("visibility acknowledgement") {
+        crate::dbus::UiCommand::Visible(notification) => {
             assert_eq!(notification, expected);
         }
         command => panic!("unexpected command: {command:?}"),
@@ -184,6 +304,17 @@ fn descendant_has_class(widget: &gtk::Widget, class_name: &str) -> bool {
         child = current.next_sibling();
     }
     false
+}
+
+fn descendant_class_count(widget: &gtk::Widget, class_name: &str) -> usize {
+    let own = usize::from(widget.has_css_class(class_name));
+    let mut count = own;
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        count += descendant_class_count(&current, class_name);
+        child = current.next_sibling();
+    }
+    count
 }
 
 fn descendant_has_text(widget: &gtk::Widget, expected: &str) -> bool {

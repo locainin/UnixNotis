@@ -7,6 +7,7 @@ mod panel;
 mod policy;
 mod proxy;
 mod state;
+mod version;
 
 pub use constants::*;
 pub use diagnostics::*;
@@ -15,3 +16,4 @@ pub use panel::*;
 pub use policy::*;
 pub use proxy::*;
 pub use state::*;
+pub use version::*;

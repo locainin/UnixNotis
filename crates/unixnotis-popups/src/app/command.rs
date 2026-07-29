@@ -58,9 +58,7 @@ pub fn run(args: Args) -> Result<()> {
     let theme_paths = config
         .resolve_theme_paths_from(&theme_base)
         .context("resolve theme paths")?;
-    config
-        .ensure_theme_files(&theme_paths)
-        .context("ensure theme files")?;
+    // Popup startup never creates or migrates user-editable theme files
 
     let app = gtk::Application::new(Some("com.unixnotis.Popups"), Default::default());
     // Activation can happen more than once in one process, so runtime setup

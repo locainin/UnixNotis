@@ -18,26 +18,6 @@ impl NotificationStore {
         removed
     }
 
-    pub fn dismiss_from_panel(&mut self, id: u32) -> DismissOutcome {
-        // Panel dismissal can target active, history, or both
-        let removed_active = self.active.shift_remove(&id);
-        if removed_active.is_some() {
-            self.expirations.remove(&id);
-        }
-
-        let removed_history = self
-            .history
-            .remove(&id)
-            .map(|notification| notification.key());
-
-        let outcome = DismissOutcome {
-            removed_active: removed_active.map(|notification| notification.key()),
-            removed_history,
-        };
-        self.prune_popup_decisions();
-        outcome
-    }
-
     pub fn dismiss_generation(&mut self, key: NotificationKey) -> DismissOutcome {
         // Validate the generation before mutating either active or retained history state
         let active_matches = self

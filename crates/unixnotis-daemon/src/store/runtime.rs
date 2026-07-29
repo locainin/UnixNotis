@@ -10,7 +10,7 @@ use unixnotis_core::{
 };
 
 use super::dnd::{DndStateStore, DND_STATE_VERSION};
-use super::model::NotificationStore;
+use super::model::{DeliveryStageUpdate, NotificationStore};
 use super::notifications::HistoryStore;
 
 impl NotificationStore {
@@ -223,13 +223,17 @@ impl NotificationStore {
     pub fn record_popup_delivery_stage(
         &mut self,
         key: NotificationKey,
-        stage: PopupDeliveryStage,
-    ) -> bool {
+        next: PopupDeliveryStage,
+    ) -> DeliveryStageUpdate {
         let Some(decision) = self.popup_decisions.get_mut(&key) else {
-            return false;
+            return DeliveryStageUpdate::MissingGeneration;
         };
-        decision.delivery_stage = stage;
-        true
+        // Duplicate or delayed acknowledgements cannot rewrite retained history
+        if next.rank() <= decision.delivery_stage.rank() {
+            return DeliveryStageUpdate::AlreadyAtOrBeyond;
+        }
+        decision.delivery_stage = next;
+        DeliveryStageUpdate::Advanced
     }
 
     pub(super) fn prune_popup_decisions(&mut self) {
@@ -273,14 +277,6 @@ impl NotificationStore {
             && notification.inline_reply_policy == unixnotis_core::InlineReplyPolicy::Allow
             && has_reply_action)
             .then(|| Arc::clone(notification))
-    }
-
-    pub fn active_action_target(&self, id: u32, action_key: &str) -> Option<Arc<Notification>> {
-        let generation = self.active.get(&id)?.generation;
-        self.active_action_target_generation(
-            unixnotis_core::NotificationKey { id, generation },
-            action_key,
-        )
     }
 
     pub fn active_action_target_generation(

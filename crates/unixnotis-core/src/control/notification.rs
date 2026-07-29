@@ -46,7 +46,16 @@ pub enum PopupDeliveryStage {
     Admitted = 1,
     FanoutFailed = 2,
     RendererFetched = 3,
-    Rendered = 4,
+    Materialized = 4,
+    Visible = 5,
+}
+
+impl PopupDeliveryStage {
+    /// Monotonic ordering for retained delivery history
+    #[must_use]
+    pub const fn rank(self) -> u8 {
+        self as u8
+    }
 }
 
 /// Immutable arrival decision plus later delivery progress for one generation

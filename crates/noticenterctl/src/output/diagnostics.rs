@@ -11,6 +11,10 @@ use unixnotis_core::{
 use super::write_stdout;
 
 pub fn print_notification_diagnostics(view: &NotificationDiagnosticsView) -> Result<()> {
+    write_stdout(&format_notification_diagnostics(view)?)
+}
+
+fn format_notification_diagnostics(view: &NotificationDiagnosticsView) -> Result<String> {
     let diagnostics = &view.attribution;
     let mut output = String::new();
     writeln!(output, "Notification: {}:{}", view.id, view.generation)?;
@@ -51,12 +55,12 @@ pub fn print_notification_diagnostics(view: &NotificationDiagnosticsView) -> Res
     )?;
     writeln!(
         output,
-        "Identity result: {}",
+        "Launch verification: {}",
         verification(diagnostics.verification)
     )?;
     writeln!(
         output,
-        "Identity reason: {}",
+        "Launch detail: {}",
         value_or_none(&diagnostics.reason)
     )?;
     writeln!(output, "Stored: {}", yes_no(view.stored))?;
@@ -99,7 +103,7 @@ pub fn print_notification_diagnostics(view: &NotificationDiagnosticsView) -> Res
         "Delivery stage: {}",
         popup_delivery_stage(view.delivery_stage)
     )?;
-    write_stdout(&output)
+    Ok(output)
 }
 
 const fn popup_delivery_stage(value: PopupDeliveryStage) -> &'static str {
@@ -108,7 +112,8 @@ const fn popup_delivery_stage(value: PopupDeliveryStage) -> &'static str {
         PopupDeliveryStage::Admitted => "admitted",
         PopupDeliveryStage::FanoutFailed => "fanout failed",
         PopupDeliveryStage::RendererFetched => "renderer fetched",
-        PopupDeliveryStage::Rendered => "rendered",
+        PopupDeliveryStage::Materialized => "materialized",
+        PopupDeliveryStage::Visible => "visible",
     }
 }
 
@@ -174,3 +179,7 @@ const fn popup_admission(value: PopupAdmissionView) -> &'static str {
         PopupAdmissionView::RendererDisabled => "renderer disabled",
     }
 }
+
+#[cfg(test)]
+#[path = "tests/diagnostics.rs"]
+mod tests;

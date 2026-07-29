@@ -28,7 +28,8 @@ fn popup_delivery_stage_wire_values_remain_stable_and_complete() {
         (PopupDeliveryStage::Admitted, 1),
         (PopupDeliveryStage::FanoutFailed, 2),
         (PopupDeliveryStage::RendererFetched, 3),
-        (PopupDeliveryStage::Rendered, 4),
+        (PopupDeliveryStage::Materialized, 4),
+        (PopupDeliveryStage::Visible, 5),
     ] {
         let encoded = to_bytes(Context::new_dbus(LE, 0), &stage)
             .expect("popup delivery stage should serialize");

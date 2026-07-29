@@ -7,8 +7,8 @@ mod notifications;
 mod runtime;
 
 pub use model::{
-    DismissOutcome, DndWrite, ExpirationTicket, InsertOutcome, NotificationStore, PopupAdmission,
-    PopupSuppressionReason,
+    DeliveryStageUpdate, DismissOutcome, DndWrite, ExpirationTicket, InsertOutcome,
+    NotificationStore, PopupAdmission, PopupSuppressionReason,
 };
 
 #[cfg(test)]

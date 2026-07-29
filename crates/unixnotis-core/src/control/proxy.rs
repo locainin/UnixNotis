@@ -21,6 +21,8 @@ use super::{
     default_path = "/com/unixnotis/Control"
 )]
 trait Control {
+    /// Coordinated private interface version
+    fn get_api_version(&self) -> zbus::Result<u32>;
     /// Current daemon state
     fn get_state(&self) -> zbus::Result<ControlState>;
     /// Readiness of the daemon-managed center and popup clients
@@ -60,12 +62,8 @@ trait Control {
     fn uninhibit(&self, id: u64) -> zbus::Result<()>;
     /// List active inhibitors
     fn list_inhibitors(&self) -> zbus::Result<Vec<InhibitorInfo>>;
-    /// Remove a notification by identifier
-    fn dismiss(&self, id: u32) -> zbus::Result<()>;
     /// Remove only the exact notification generation represented by a UI row
     fn dismiss_generation(&self, id: u32, generation: u64) -> zbus::Result<()>;
-    /// Invoke an action key for a notification
-    fn invoke_action(&self, id: u32, action_key: &str) -> zbus::Result<()>;
     /// Invoke an action only for the exact notification generation represented by a UI row
     fn invoke_action_generation(
         &self,
@@ -91,8 +89,10 @@ trait Control {
     /// Clear popup readiness during orderly shutdown without activating the daemon
     #[zbus(no_autostart)]
     fn mark_popups_not_ready(&self) -> zbus::Result<()>;
-    /// Confirm that the popup renderer materialized one exact generation
-    fn mark_popup_rendered(&self, id: u32, generation: u64) -> zbus::Result<()>;
+    /// Confirm that GTK attached one exact generation to the popup stack
+    fn mark_popup_materialized(&self, id: u32, generation: u64) -> zbus::Result<()>;
+    /// Confirm that one exact generation became visible on a mapped popup surface
+    fn mark_popup_visible(&self, id: u32, generation: u64) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn notification_added(&self, id: u32, generation: u64) -> zbus::Result<()>;

@@ -18,18 +18,8 @@ fn dismiss_command_preserves_notification_generation() {
 fn reload_events_remain_distinct() {
     assert!(matches!(UiEvent::CssReload, UiEvent::CssReload));
     assert!(matches!(UiEvent::ConfigReload, UiEvent::ConfigReload));
-    assert!(matches!(
-        UiEvent::ThemeMigrationPreview,
-        UiEvent::ThemeMigrationPreview
-    ));
-    assert!(matches!(
-        UiEvent::ThemeMigrationApply,
-        UiEvent::ThemeMigrationApply
-    ));
-    assert!(matches!(
-        UiEvent::ThemeMigrationKeepCurrent,
-        UiEvent::ThemeMigrationKeepCurrent
-    ));
+    assert!(matches!(UiEvent::UseStockTheme, UiEvent::UseStockTheme));
+    assert!(matches!(UiEvent::OpenThemeFolder, UiEvent::OpenThemeFolder));
 }
 
 #[test]
