@@ -200,13 +200,7 @@ fn connect_default_action(
     view: &PopupEntryViewModel,
     command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
 ) {
-    let Some(action_key) = view
-        .primary_actions
-        .iter()
-        .chain(&view.overflow_actions)
-        .find(|action| action.key == "default")
-        .map(|action| action.key.clone())
-    else {
+    let Some(action_key) = view.default_action_key.clone() else {
         return;
     };
 

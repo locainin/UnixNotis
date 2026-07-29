@@ -58,10 +58,26 @@ fn utility_layout_moves_extra_safe_actions_into_overflow() {
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
     assert_eq!(model.kind, PopupKind::Utility);
+    assert_eq!(model.default_action_key.as_deref(), Some("default"));
     assert_eq!(model.primary_actions.len(), 2);
     assert_eq!(model.primary_actions[0].key, "default");
     assert_eq!(model.overflow_actions.len(), 1);
     assert_eq!(model.overflow_actions[0].key, "archive");
+}
+
+#[test]
+fn blank_default_action_is_clickable_without_becoming_a_visible_control() {
+    let mut view = notification();
+    view.actions.push(Action {
+        key: "default".to_string(),
+        label: String::new(),
+    });
+
+    let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
+
+    assert_eq!(model.default_action_key.as_deref(), Some("default"));
+    assert!(model.primary_actions.is_empty());
+    assert!(model.overflow_actions.is_empty());
 }
 
 #[test]

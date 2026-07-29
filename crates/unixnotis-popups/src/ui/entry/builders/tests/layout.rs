@@ -45,6 +45,7 @@ fn view_model() -> PopupEntryViewModel {
         title: "Build finished".to_string(),
         body: None,
         thumbnail: ThumbnailKind::None,
+        default_action_key: None,
         primary_actions: Vec::new(),
         overflow_actions: Vec::new(),
         trust: TrustPresentation {

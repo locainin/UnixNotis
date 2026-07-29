@@ -53,6 +53,22 @@ fn exact_default_action_adds_card_click_handling() {
 }
 
 #[gtk::test]
+fn blank_default_action_still_adds_card_click_handling() {
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let mut view = notification();
+    view.actions.push(Action {
+        key: "default".to_string(),
+        label: String::new(),
+    });
+    let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
+
+    connect_default_action(&root, view.key(), &model, &command_tx);
+
+    assert_eq!(root.observe_controllers().n_items(), 1);
+}
+
+#[gtk::test]
 fn nondefault_action_does_not_make_the_whole_card_clickable() {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
