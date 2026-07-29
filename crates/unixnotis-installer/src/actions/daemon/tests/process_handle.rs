@@ -1,6 +1,44 @@
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 use super::*;
+
+const CHILD_EXEC_TIMEOUT: Duration = Duration::from_secs(2);
+const CHILD_EXEC_POLL_INTERVAL: Duration = Duration::from_millis(1);
+
+fn spawn_ready_sleep_child() -> Child {
+    let sleep = unixnotis_core::util::trusted_system_program_path("sleep")
+        .expect("find sleep in a trusted system directory");
+    let mut child = Command::new(sleep)
+        .arg("30")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn sleep child");
+    let deadline = Instant::now() + CHILD_EXEC_TIMEOUT;
+
+    // Command::spawn can return before the child replaces the test executable
+    while !process_matches_program(child.id(), "sleep") {
+        match child.try_wait() {
+            Ok(Some(status)) => panic!("sleep child exited before exec completed: {status}"),
+            Ok(None) => {}
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("inspect sleep child before exec completed: {error}");
+            }
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("sleep child did not complete exec within {CHILD_EXEC_TIMEOUT:?}");
+        }
+        std::thread::sleep(CHILD_EXEC_POLL_INTERVAL);
+    }
+
+    child
+}
 
 #[test]
 fn process_start_time_parser_handles_spaces_in_the_command_name() {
@@ -30,16 +68,42 @@ fn process_handle_rejects_a_mismatched_program_before_signaling() {
 }
 
 #[test]
+fn fallback_poll_budget_rounds_up_and_keeps_zero_immediate() {
+    assert_eq!(fallback_poll_count(Duration::ZERO), 0);
+    assert_eq!(fallback_poll_count(Duration::from_nanos(1)), 1);
+    assert_eq!(fallback_poll_count(FALLBACK_POLL_INTERVAL), 1);
+    assert_eq!(
+        fallback_poll_count(FALLBACK_POLL_INTERVAL + Duration::from_nanos(1)),
+        2
+    );
+}
+
+#[test]
+fn proc_comm_reader_reports_the_live_name_and_rejects_missing_processes() {
+    let expected = std::fs::read_to_string("/proc/self/comm")
+        .expect("read current process comm")
+        .trim()
+        .to_string();
+
+    assert_eq!(
+        read_proc_comm(std::process::id()).as_deref(),
+        Some(expected.as_str())
+    );
+    assert_eq!(read_proc_comm(i32::MAX as u32), None);
+}
+
+#[test]
+fn proc_comm_parser_rejects_blank_names_and_trims_kernel_newlines() {
+    assert_eq!(
+        parse_proc_comm("unixnotis-daemon\n").as_deref(),
+        Some("unixnotis-daemon")
+    );
+    assert_eq!(parse_proc_comm(" \n\t"), None);
+}
+
+#[test]
 fn pidfd_signal_and_wait_stop_the_exact_child_process() {
-    let sleep = unixnotis_core::util::trusted_system_program_path("sleep")
-        .expect("find sleep in a trusted system directory");
-    let mut child = Command::new(sleep)
-        .arg("30")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn sleep child");
+    let mut child = spawn_ready_sleep_child();
     let pid = child.id();
 
     let handle = match ProcessHandle::open(pid, "sleep").expect("open sleep process handle") {
@@ -124,15 +188,7 @@ fn fallback_lifetime_check_accepts_current_and_rejects_stale_start_times() {
 
 #[test]
 fn pidfd_wait_times_out_while_the_exact_process_is_still_running() {
-    let sleep = unixnotis_core::util::trusted_system_program_path("sleep")
-        .expect("find sleep in a trusted system directory");
-    let mut child = Command::new(sleep)
-        .arg("30")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn sleep child");
+    let mut child = spawn_ready_sleep_child();
     let mut handle = match ProcessHandle::open(child.id(), "sleep").expect("open sleep handle") {
         ProcessState::Running(handle) => handle,
         ProcessState::Gone => panic!("sleep child should still be running"),

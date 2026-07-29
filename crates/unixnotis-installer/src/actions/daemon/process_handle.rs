@@ -3,7 +3,7 @@
 use std::fs;
 use std::os::fd::OwnedFd;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use rustix::event::{poll, PollFd, PollFlags, Timespec};
@@ -87,15 +87,18 @@ impl ProcessHandle {
             return wait_for_pidfd(pidfd, self.exit_timeout);
         }
 
-        let started = Instant::now();
-        while started.elapsed() < self.exit_timeout {
+        // A finite poll budget keeps fallback shutdown bounded even if the clock changes
+        for poll_index in 0..fallback_poll_count(self.exit_timeout) {
             match read_process_start_time(self.pid.as_raw_pid().cast_unsigned())? {
                 None => return Ok(()),
                 // A new lifetime means the original target exited and must not be inspected
                 Some(current) if current != self.start_time => return Ok(()),
-                Some(_) => thread::sleep(
-                    FALLBACK_POLL_INTERVAL.min(self.exit_timeout.saturating_sub(started.elapsed())),
-                ),
+                Some(_) => {
+                    let elapsed = FALLBACK_POLL_INTERVAL.saturating_mul(poll_index);
+                    thread::sleep(
+                        FALLBACK_POLL_INTERVAL.min(self.exit_timeout.saturating_sub(elapsed)),
+                    );
+                }
             }
         }
 
@@ -116,6 +119,13 @@ impl ProcessHandle {
             self.pid.as_raw_pid()
         ))
     }
+}
+
+fn fallback_poll_count(timeout: Duration) -> u32 {
+    let polls = timeout
+        .as_nanos()
+        .div_ceil(FALLBACK_POLL_INTERVAL.as_nanos());
+    u32::try_from(polls).unwrap_or(u32::MAX)
 }
 
 fn wait_for_pidfd(pidfd: &OwnedFd, timeout: Duration) -> Result<()> {
@@ -147,6 +157,10 @@ fn process_matches_program(pid: u32, expected: &str) -> bool {
 
 fn read_proc_comm(pid: u32) -> Option<String> {
     let contents = fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
+    parse_proc_comm(&contents)
+}
+
+fn parse_proc_comm(contents: &str) -> Option<String> {
     let comm = contents.trim();
     (!comm.is_empty()).then(|| comm.to_string())
 }
