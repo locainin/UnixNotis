@@ -11,7 +11,7 @@ use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
 use crate::test_support::env::{test_env_lock, EnvGuard};
-use unixnotis_core::Config;
+use unixnotis_core::{Config, ThemeMode};
 
 use super::super::provision::{ensure_config, reset_config};
 
@@ -37,7 +37,7 @@ fn test_context<'a>(detection: &'a Detection, paths: &'a InstallPaths) -> Action
 }
 
 #[test]
-fn ensure_config_creates_every_default_and_preserves_the_live_config() {
+fn ensure_config_uses_embedded_theme_and_preserves_the_live_config() {
     let _lock = test_env_lock();
     let root = crate::test_support::fs::unique_temp_path("ensure-config");
     let xdg_root = root.join("xdg");
@@ -63,8 +63,12 @@ fn ensure_config_creates_every_default_and_preserves_the_live_config() {
         "popup.css",
         "widgets.css",
         "media.css",
+        "theme.toml",
     ] {
-        assert!(config_dir.join(name).is_file(), "missing theme file {name}");
+        assert!(
+            !config_dir.join(name).exists(),
+            "new installs should not create custom theme file {name}"
+        );
     }
     for script in unixnotis_core::DEFAULT_SCRIPTS {
         assert!(config_dir.join(script.relative_path).is_file());
@@ -80,7 +84,7 @@ fn ensure_config_creates_every_default_and_preserves_the_live_config() {
 }
 
 #[test]
-fn reset_config_backs_up_custom_files_and_restores_every_default() {
+fn reset_config_backs_up_custom_files_and_selects_embedded_stock() {
     let _lock = test_env_lock();
     let root = crate::test_support::fs::unique_temp_path("reset-config");
     let xdg_root = root.join("xdg");
@@ -103,11 +107,17 @@ fn reset_config_backs_up_custom_files_and_restores_every_default() {
     reset_config(&mut context).expect("config reset should succeed");
 
     let config_text = fs::read_to_string(&config_path).expect("read reset config");
-    toml::from_str::<Config>(&config_text).expect("reset config should parse");
+    let reset = toml::from_str::<Config>(&config_text).expect("reset config should parse");
     assert_ne!(config_text, "custom = true\n");
+    assert_eq!(reset.theme.mode, ThemeMode::Stock);
     assert_eq!(
         fs::read_to_string(config_dir.join("base.css")).expect("read reset theme"),
-        unixnotis_core::DEFAULT_BASE_CSS
+        "/* custom */\n",
+        "reset must not convert embedded stock into a custom theme snapshot"
+    );
+    assert!(
+        !config_dir.join("theme.toml").exists(),
+        "ordinary reset must not materialize a stock theme manifest"
     );
     assert_eq!(
         fs::read_to_string(&script_path).expect("read reset script"),

@@ -1,4 +1,4 @@
-//! Explicit stock theme migration UI flow
+//! Versioned custom theme compatibility UI
 
 mod actions;
 mod flow;

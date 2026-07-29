@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
-use unixnotis_core::{Config, IconAssetResolver, Margins, StockThemeMigration};
+use unixnotis_core::{Config, IconAssetResolver, Margins};
 use unixnotis_ui::css::CssManager;
 
 use crate::control::{UiCommand, UiEvent};
@@ -56,10 +56,6 @@ pub struct UiState {
     pub(super) last_slow_refresh: Option<Instant>,
     // Separate config and CSS state preserves severity priority across watcher races
     pub(super) reload_notices: reload::ReloadNoticeState,
-    // Exact stock candidates remain bound to the filesystem snapshot shown in the notice
-    pub(super) theme_migration: Option<StockThemeMigration>,
-    // Preview changes only the in-memory CSS paths and never the configured active files
-    pub(super) theme_preview_active: bool,
     // Keeps the shared async runtime alive for D-Bus and media tasks
     pub(super) _runtime: Arc<tokio::runtime::Runtime>,
 }

@@ -116,9 +116,12 @@ fn old_dismissal_does_not_hide_a_failure_after_an_intervening_fingerprint() {
 }
 
 #[test]
-fn migration_notice_waits_behind_failures_and_returns_after_recovery() {
+fn theme_compatibility_notice_waits_behind_failures_and_returns_after_recovery() {
     let mut state = ReloadNoticeState::default();
-    state.set(notice(ReloadNoticeKind::ThemeMigration, "migration-a"));
+    state.set(notice(
+        ReloadNoticeKind::ThemeCompatibility,
+        "compatibility-a",
+    ));
     state.set(notice(ReloadNoticeKind::Css, "css-a"));
     state.set(notice(ReloadNoticeKind::Config, "config-a"));
 
@@ -134,19 +137,22 @@ fn migration_notice_waits_behind_failures_and_returns_after_recovery() {
     state.clear(ReloadNoticeKind::Css);
     assert_eq!(
         state.visible().map(|notice| notice.fingerprint.kind),
-        Some(ReloadNoticeKind::ThemeMigration)
+        Some(ReloadNoticeKind::ThemeCompatibility)
     );
 }
 
 #[test]
-fn generic_dismissal_does_not_discard_a_migration_choice() {
+fn generic_dismissal_does_not_discard_a_theme_compatibility_choice() {
     let mut state = ReloadNoticeState::default();
-    state.set(notice(ReloadNoticeKind::ThemeMigration, "migration-a"));
+    state.set(notice(
+        ReloadNoticeKind::ThemeCompatibility,
+        "compatibility-a",
+    ));
 
     state.dismiss_visible();
 
     assert_eq!(
         state.visible().map(|notice| notice.fingerprint.kind),
-        Some(ReloadNoticeKind::ThemeMigration)
+        Some(ReloadNoticeKind::ThemeCompatibility)
     );
 }

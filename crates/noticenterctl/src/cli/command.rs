@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 
-use super::args::{DndState, DoctorServiceManagerArg, PresetCommand};
+use super::args::{DndState, DoctorServiceManagerArg, PresetCommand, ThemeCommand};
 use super::{DebugLevelArg, InhibitScopeArg};
 use super::{DndClockTime, DndDuration};
 
@@ -90,6 +90,11 @@ pub enum Command {
         #[command(subcommand)]
         command: PresetCommand,
     },
+    // Export editable stock theme files without changing the active theme mode
+    Theme {
+        #[command(subcommand)]
+        command: ThemeCommand,
+    },
 }
 
 impl Command {
@@ -117,6 +122,7 @@ impl Command {
             Self::CssCheck { .. }
                 | Self::Doctor { .. }
                 | Self::Preset { .. }
+                | Self::Theme { .. }
                 | Self::SyncSessionEnvironment { .. }
         )
     }
@@ -125,7 +131,10 @@ impl Command {
         // Doctor uses local inputs but still needs asynchronous D-Bus and process timeouts
         matches!(
             self,
-            Self::CssCheck { .. } | Self::Preset { .. } | Self::SyncSessionEnvironment { .. }
+            Self::CssCheck { .. }
+                | Self::Preset { .. }
+                | Self::Theme { .. }
+                | Self::SyncSessionEnvironment { .. }
         )
     }
 }

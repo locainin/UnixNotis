@@ -23,19 +23,21 @@ fn reload_notice_starts_hidden_and_dismiss_button_hides_it() {
 }
 
 #[gtk::test]
-fn migration_actions_have_distinct_labels_and_primary_apply_style() {
+fn compatibility_actions_have_distinct_labels_and_primary_stock_style() {
     let notice = build_reload_notice();
 
-    assert_eq!(notice.preview_button.label().as_deref(), Some("Preview"));
-    assert_eq!(notice.apply_button.label().as_deref(), Some("Apply"));
-    assert_eq!(notice.keep_button.label().as_deref(), Some("Keep Current"));
+    assert_eq!(
+        notice.use_stock_button.label().as_deref(),
+        Some("Use stock theme")
+    );
+    assert_eq!(
+        notice.open_theme_folder_button.label().as_deref(),
+        Some("Open theme folder")
+    );
     assert!(notice
-        .apply_button
+        .use_stock_button
         .has_css_class(hooks::panel_shell::RELOAD_NOTICE_ACTION_PRIMARY));
     assert!(!notice
-        .preview_button
-        .has_css_class(hooks::panel_shell::RELOAD_NOTICE_ACTION_PRIMARY));
-    assert!(!notice
-        .keep_button
+        .open_theme_folder_button
         .has_css_class(hooks::panel_shell::RELOAD_NOTICE_ACTION_PRIMARY));
 }

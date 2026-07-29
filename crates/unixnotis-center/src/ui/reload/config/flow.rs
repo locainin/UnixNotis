@@ -42,9 +42,7 @@ impl UiState {
         // Any accepted config replaces a prior rejection before CSS reports its own result
         self.clear_reload_notice(ReloadNoticeKind::Config);
         self.apply_css_reload_notice(&css);
-        // Accepted paths end any in-memory preview and may expose a different exact stock plan
-        self.theme_preview_active = false;
-        self.refresh_stock_theme_migration_notice();
+        self.refresh_theme_compatibility_notice();
         ConfigReloadOutcome::Applied {
             diagnostics: reload.diagnostics,
             css,
@@ -86,6 +84,7 @@ impl UiState {
         self.capture_notice_dismissal();
         let report = self.css.reload(unixnotis_ui::css::DEFAULT_CSS);
         self.apply_css_reload_notice(&report);
+        self.refresh_theme_compatibility_notice();
         report
     }
 }

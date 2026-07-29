@@ -6,5 +6,5 @@ mod paths;
 mod script_migrations;
 mod scripts;
 mod support;
-mod theme_files;
-mod write;
+mod theme_contract;
+mod theme_mode;

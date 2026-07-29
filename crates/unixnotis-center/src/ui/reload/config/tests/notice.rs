@@ -3,7 +3,9 @@ use std::fs;
 use gtk::prelude::*;
 
 use super::super::outcome::ConfigReloadOutcome;
-use super::support::{state, write_config};
+use super::support::{
+    enable_missing_panel_layer_fixture, state, write_compatible_theme_manifest, write_config,
+};
 
 #[gtk::test]
 fn accepted_reload_clears_rejected_config_notice() {
@@ -25,6 +27,7 @@ fn accepted_reload_clears_rejected_config_notice() {
     ] {
         fs::write(path, "/* intentionally valid */").expect("theme css");
     }
+    write_compatible_theme_manifest(&state);
 
     let outcome = state.reload_config();
 
@@ -53,6 +56,7 @@ fn dismissed_reload_notice_stays_hidden_until_failure_fingerprint_changes() {
 #[gtk::test]
 fn changed_css_failure_reopens_after_the_previous_failure_was_dismissed() {
     let mut state = state();
+    enable_missing_panel_layer_fixture(&mut state);
     let first_report = state.reload_css();
     assert!(first_report.read_failures().count() > 1);
     assert!(state.panel.reload_notice.revealer.reveals_child());
@@ -90,6 +94,7 @@ fn successful_css_only_reload_does_not_clear_config_rejection_notice() {
     ] {
         fs::write(path, "/* valid reload css */").expect("theme css");
     }
+    write_compatible_theme_manifest(&state);
     fs::write(&state.config_path, "[panel\ntitle = broken").expect("broken config");
     let _outcome = state.reload_config();
     let rejection = state.panel.reload_notice.label.text();
@@ -104,6 +109,7 @@ fn successful_css_only_reload_does_not_clear_config_rejection_notice() {
 #[gtk::test]
 fn css_failure_cannot_replace_an_active_config_rejection() {
     let mut state = state();
+    enable_missing_panel_layer_fixture(&mut state);
     fs::write(&state.config_path, "[panel\ntitle = broken").expect("broken config");
     let _outcome = state.reload_config();
     let rejection = state.panel.reload_notice.label.text();
@@ -123,6 +129,7 @@ fn css_failure_cannot_replace_an_active_config_rejection() {
 #[gtk::test]
 fn css_reload_notice_summarizes_multiple_unreadable_layers() {
     let mut state = state();
+    enable_missing_panel_layer_fixture(&mut state);
     let report = state.reload_css();
 
     assert!(report.read_failures().count() > 1);
@@ -141,13 +148,13 @@ fn css_reload_notice_summarizes_multiple_unreadable_layers() {
 }
 
 #[gtk::test]
-fn migration_notice_requires_an_explicit_action_instead_of_generic_dismissal() {
+fn theme_compatibility_notice_requires_an_explicit_action() {
     let mut state = state();
     state.set_reload_notice(
-        crate::ui::reload::ReloadNoticeKind::ThemeMigration,
-        "Stock theme update available",
+        crate::ui::reload::ReloadNoticeKind::ThemeCompatibility,
+        "Theme is incompatible",
         false,
-        "migration-a",
+        "compatibility-a",
     );
 
     assert!(state.panel.reload_notice.revealer.reveals_child());

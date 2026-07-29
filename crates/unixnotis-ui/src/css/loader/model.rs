@@ -3,6 +3,8 @@
 /// Source used for the CSS bytes passed to GTK
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::css) enum CssFileLoadSource {
+    /// Embedded stock CSS was selected by the versioned theme contract
+    EmbeddedStock,
     /// Non-empty custom CSS was read from disk
     Custom,
     /// An intentionally empty file used embedded defaults
@@ -19,6 +21,13 @@ pub(in crate::css) struct CssFileLoadResult {
 }
 
 impl CssFileLoadResult {
+    pub(in crate::css) const fn embedded_stock() -> Self {
+        Self {
+            source: CssFileLoadSource::EmbeddedStock,
+            error: None,
+        }
+    }
+
     pub(in crate::css) const fn custom() -> Self {
         Self {
             source: CssFileLoadSource::Custom,

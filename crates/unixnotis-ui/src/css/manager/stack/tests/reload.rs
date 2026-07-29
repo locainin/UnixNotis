@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use gtk::gdk;
-use unixnotis_core::{ThemeConfig, ThemePaths};
+use unixnotis_core::{ThemeConfig, ThemeMode, ThemePaths, THEME_API_VERSION};
 
 use super::super::model::{CssManager, CssManagerInner};
 use crate::css::manager::layers::CssProviderLayer;
@@ -69,6 +69,11 @@ fn write_theme(paths: &ThemePaths, marker: &str) {
     .expect("widgets css");
     fs::write(&paths.media_css, format!(".media {{ color: {marker}; }}")).expect("media css");
     fs::write(&paths.popup_css, format!(".popup {{ color: {marker}; }}")).expect("popup css");
+    fs::write(
+        paths.manifest_path(),
+        format!("api_version = {THEME_API_VERSION}\nname = \"Test theme\"\n"),
+    )
+    .expect("theme manifest");
 }
 
 #[expect(
@@ -79,9 +84,13 @@ fn panel_manager(
     paths: ThemePaths,
     loaded: Rc<RefCell<Vec<(&'static str, String)>>>,
 ) -> CssManagerInner<RecordingProvider> {
+    let theme_config = ThemeConfig {
+        mode: ThemeMode::Custom,
+        ..ThemeConfig::default()
+    };
     CssManagerInner {
         theme_paths: paths,
-        theme_config: ThemeConfig::default(),
+        theme_config,
         internal_structure: RecordingProvider::new("internal", Rc::clone(&loaded)),
         base: RecordingProvider::new("base", Rc::clone(&loaded)),
         panel: Some(RecordingProvider::new("panel", Rc::clone(&loaded))),
@@ -90,6 +99,51 @@ fn panel_manager(
         motion_policy: Some(RecordingProvider::new("motion", Rc::clone(&loaded))),
         popup: None,
     }
+}
+
+#[test]
+fn stock_mode_ignores_compatible_custom_theme_files() {
+    let root = unique_theme_root("stock-mode");
+    let paths = theme_paths(&root);
+    let loaded = Rc::new(RefCell::new(Vec::new()));
+    write_theme(&paths, "magenta");
+    let mut manager = panel_manager(paths, Rc::clone(&loaded));
+    manager.theme_config.mode = ThemeMode::Stock;
+
+    let report = manager.reload(".fallback { color: red; }");
+
+    assert!(report
+        .layers
+        .iter()
+        .all(|layer| layer.source == CssLayerSource::EmbeddedStock));
+    assert!(loaded
+        .borrow()
+        .iter()
+        .all(|(_label, css)| !css.contains("magenta")));
+    fs::remove_dir_all(root).expect("remove stock mode test root");
+}
+
+#[test]
+fn incompatible_theme_uses_embedded_stock_without_reading_custom_css() {
+    let root = unique_theme_root("incompatible-theme");
+    let paths = theme_paths(&root);
+    let loaded = Rc::new(RefCell::new(Vec::new()));
+    write_theme(&paths, "magenta");
+    fs::write(paths.manifest_path(), "api_version = 1\nname = \"Old\"\n").expect("old manifest");
+    let manager = panel_manager(paths, Rc::clone(&loaded));
+
+    let report = manager.reload(".fallback { color: red; }");
+
+    assert!(report
+        .layers
+        .iter()
+        .all(|layer| layer.source == CssLayerSource::EmbeddedStock));
+    assert!(loaded
+        .borrow()
+        .iter()
+        .filter(|(label, _)| matches!(*label, "base" | "panel" | "widgets" | "media"))
+        .all(|(_, css)| !css.contains("magenta")));
+    fs::remove_dir_all(root).expect("remove incompatible theme test root");
 }
 
 #[test]
@@ -148,7 +202,11 @@ fn update_theme_changes_the_paths_used_by_the_next_reload() {
     write_theme(&new_paths, "blue");
     let mut manager = panel_manager(old_paths, Rc::clone(&loaded));
 
-    manager.update_theme(new_paths, ThemeConfig::default());
+    let theme = ThemeConfig {
+        mode: ThemeMode::Custom,
+        ..ThemeConfig::default()
+    };
+    manager.update_theme(new_paths, theme);
     let report = manager.reload(".fallback { color: red; }");
 
     assert_eq!(report.layers.len(), 4);
@@ -174,9 +232,13 @@ fn public_manager_reload_and_theme_update_report_the_applied_stack() {
     let new_paths = theme_paths(&new_root);
     write_theme(&old_paths, "red");
     write_theme(&new_paths, "blue");
-    let mut manager = CssManager::new_panel(old_paths, ThemeConfig::default());
+    let theme = ThemeConfig {
+        mode: ThemeMode::Custom,
+        ..ThemeConfig::default()
+    };
+    let mut manager = CssManager::new_panel(old_paths, theme.clone());
 
-    manager.update_theme(new_paths.clone(), ThemeConfig::default());
+    manager.update_theme(new_paths.clone(), theme);
     let report = manager.reload(".fallback { color: red; }");
 
     assert_eq!(report.layers.len(), 4);
