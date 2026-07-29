@@ -1,14 +1,35 @@
 use super::{UiCommand, UiEvent};
+use unixnotis_core::NotificationKey;
 
 #[test]
-fn dismiss_command_preserves_notification_id() {
-    assert!(matches!(UiCommand::Dismiss(29), UiCommand::Dismiss(29)));
+fn dismiss_command_preserves_notification_generation() {
+    let notification = NotificationKey {
+        id: 29,
+        generation: 31,
+    };
+
+    assert!(matches!(
+        UiCommand::Dismiss(notification),
+        UiCommand::Dismiss(key) if key == notification
+    ));
 }
 
 #[test]
 fn reload_events_remain_distinct() {
     assert!(matches!(UiEvent::CssReload, UiEvent::CssReload));
     assert!(matches!(UiEvent::ConfigReload, UiEvent::ConfigReload));
+    assert!(matches!(
+        UiEvent::ThemeMigrationPreview,
+        UiEvent::ThemeMigrationPreview
+    ));
+    assert!(matches!(
+        UiEvent::ThemeMigrationApply,
+        UiEvent::ThemeMigrationApply
+    ));
+    assert!(matches!(
+        UiEvent::ThemeMigrationKeepCurrent,
+        UiEvent::ThemeMigrationKeepCurrent
+    ));
 }
 
 #[test]

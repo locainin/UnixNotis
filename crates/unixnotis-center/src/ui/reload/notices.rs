@@ -1,9 +1,10 @@
 //! Priority and dismissal state for configuration and CSS reload notices
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ReloadNoticeKind {
+pub(in crate::ui) enum ReloadNoticeKind {
     Config,
     Css,
+    ThemeMigration,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,6 +24,7 @@ pub(super) struct ReloadNotice {
 pub(in crate::ui) struct ReloadNoticeState {
     config: Option<ReloadNotice>,
     css: Option<ReloadNotice>,
+    theme_migration: Option<ReloadNotice>,
     dismissed_config: Option<ReloadNoticeFingerprint>,
     dismissed_css: Option<ReloadNoticeFingerprint>,
 }
@@ -38,6 +40,10 @@ impl ReloadNoticeState {
                 // Duplicate watcher events retain dismissal for the same failure
                 Self::replace_notice(&mut self.css, &mut self.dismissed_css, notice);
             }
+            ReloadNoticeKind::ThemeMigration => {
+                // Migration requires an explicit choice and has no generic dismissal lifecycle
+                self.theme_migration = Some(notice);
+            }
         }
     }
 
@@ -52,6 +58,7 @@ impl ReloadNoticeState {
                 self.css = None;
                 self.dismissed_css = None;
             }
+            ReloadNoticeKind::ThemeMigration => self.theme_migration = None,
         }
     }
 
@@ -79,6 +86,7 @@ impl ReloadNoticeState {
             // Each class remembers dismissal independently across priority changes
             ReloadNoticeKind::Config => self.dismissed_config = Some(notice.fingerprint),
             ReloadNoticeKind::Css => self.dismissed_css = Some(notice.fingerprint),
+            ReloadNoticeKind::ThemeMigration => {}
         }
     }
 
@@ -93,6 +101,7 @@ impl ReloadNoticeState {
                     .as_ref()
                     .filter(|notice| self.dismissed_css.as_ref() != Some(&notice.fingerprint))
             })
+            .or(self.theme_migration.as_ref())
     }
 }
 

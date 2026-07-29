@@ -24,7 +24,7 @@ impl UiState {
         self.set_reload_notice(ReloadNoticeKind::Config, &message, true, &identity);
     }
 
-    pub(super) fn apply_css_reload_notice(&mut self, report: &CssReloadReport) {
+    pub(in crate::ui) fn apply_css_reload_notice(&mut self, report: &CssReloadReport) {
         // Intentional empty files are valid fallback requests and do not produce a notice
         let failures = report.read_failures().collect::<Vec<_>>();
         if failures.is_empty() {
@@ -50,7 +50,7 @@ impl UiState {
         self.set_reload_notice(ReloadNoticeKind::Css, &message, false, &identity);
     }
 
-    fn set_reload_notice(
+    pub(in crate::ui) fn set_reload_notice(
         &mut self,
         kind: ReloadNoticeKind,
         message: &str,
@@ -90,10 +90,20 @@ impl UiState {
             } else {
                 hooks::panel_shell::RELOAD_NOTICE_WARNING
             });
+        let shows_migration_actions = notice.fingerprint.kind == ReloadNoticeKind::ThemeMigration;
+        // Action notices cannot be dismissed without recording an explicit policy choice
+        self.panel
+            .reload_notice
+            .close
+            .set_visible(!shows_migration_actions);
+        self.panel
+            .reload_notice
+            .actions
+            .set_visible(shows_migration_actions);
         self.panel.reload_notice.revealer.set_reveal_child(true);
     }
 
-    pub(super) fn clear_reload_notice(&mut self, kind: ReloadNoticeKind) {
+    pub(in crate::ui) fn clear_reload_notice(&mut self, kind: ReloadNoticeKind) {
         self.reload_notices.clear(kind);
         self.render_reload_notice();
     }

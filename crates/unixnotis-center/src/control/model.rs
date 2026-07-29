@@ -38,6 +38,9 @@ pub enum UiEvent {
     WidgetsCollapsed(bool),
     CssReload,
     ConfigReload,
+    ThemeMigrationPreview,
+    ThemeMigrationApply,
+    ThemeMigrationKeepCurrent,
 }
 
 /// Commands sent from GTK handlers to the D-Bus runtime.

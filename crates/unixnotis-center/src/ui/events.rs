@@ -206,6 +206,18 @@ impl UiState {
                     }
                 }
             }
+            UiEvent::ThemeMigrationPreview => {
+                debug!("stock theme preview requested");
+                self.preview_stock_theme_migration();
+            }
+            UiEvent::ThemeMigrationApply => {
+                debug!("stock theme apply requested");
+                self.apply_stock_theme_migration();
+            }
+            UiEvent::ThemeMigrationKeepCurrent => {
+                debug!("stock theme retention requested");
+                self.keep_current_stock_theme();
+            }
         }
     }
 
