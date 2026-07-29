@@ -23,10 +23,7 @@ fn python_desktop_entry_cannot_trust_an_unrelated_python_process() {
         &HashSet::new(),
     );
 
-    assert_ne!(
-        resolution.attribution.class,
-        AttributionClass::SystemAssociated
-    );
+    assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
@@ -68,8 +65,8 @@ fn unlisted_runtimes_cannot_associate_a_different_application_payload() {
         );
 
         assert_ne!(
-            resolution.attribution.class,
-            AttributionClass::SystemAssociated,
+            resolution.attribution.status,
+            AttributionStatus::Verified,
             "{executable} accepted a different application payload"
         );
         assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
@@ -98,10 +95,7 @@ fn java_cannot_associate_a_different_jar() {
         &HashSet::new(),
     );
 
-    assert_ne!(
-        resolution.attribution.class,
-        AttributionClass::SystemAssociated
-    );
+    assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
@@ -129,10 +123,7 @@ fn matching_fixed_system_application_argument_allows_association() {
         &HashSet::new(),
     );
 
-    assert_eq!(
-        resolution.attribution.class,
-        AttributionClass::SystemAssociated
-    );
+    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
 }
 
@@ -162,10 +153,7 @@ fn arbitrary_executable_name_still_requires_its_fixed_application_payload() {
         &HashSet::new(),
     );
 
-    assert_ne!(
-        resolution.attribution.class,
-        AttributionClass::SystemAssociated
-    );
+    assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
@@ -173,7 +161,7 @@ fn arbitrary_executable_name_still_requires_its_fixed_application_payload() {
 fn dedicated_executable_remains_verified_when_command_line_is_unavailable() {
     let (launcher_path, launcher_identity) = installed_system_executable();
     let record = system_record(
-        "org.example.CommandLine",
+        "org.example.True",
         "Command Line App",
         &launcher_path,
         launcher_identity,
@@ -185,17 +173,14 @@ fn dedicated_executable_remains_verified_when_command_line_is_unavailable() {
     let resolution = resolve_with_evidence(
         AppClaim {
             reported_name: "Command Line App",
-            desktop_entry: Some("org.example.CommandLine"),
+            desktop_entry: Some("org.example.True"),
         },
         &missing_command_line,
         &index,
         &HashSet::new(),
     );
 
-    assert_eq!(
-        resolution.attribution.class,
-        AttributionClass::SystemAssociated
-    );
+    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
 }
 
@@ -264,8 +249,8 @@ fn no_hint_shared_runtimes_with_wrong_payloads_are_denied() {
         );
 
         assert_ne!(
-            resolution.attribution.class,
-            AttributionClass::SystemAssociated,
+            resolution.attribution.status,
+            AttributionStatus::Verified,
             "{executable} accepted a different no-hint application payload"
         );
         assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
@@ -296,10 +281,7 @@ fn no_hint_shared_runtime_with_matching_protected_payload_is_allowed() {
         &HashSet::new(),
     );
 
-    assert_eq!(
-        resolution.attribution.class,
-        AttributionClass::SystemAssociated
-    );
+    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
 }
 
@@ -325,7 +307,7 @@ fn no_hint_wrong_payload_with_unrelated_claim_remains_unknown() {
         &HashSet::new(),
     );
 
-    assert_eq!(resolution.attribution.class, AttributionClass::Unknown);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
@@ -361,7 +343,7 @@ fn dynamic_only_contract_is_unverified_instead_of_suspicious() {
         &HashSet::new(),
     );
 
-    assert_eq!(resolution.attribution.class, AttributionClass::Unknown);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     assert_eq!(
         resolution.diagnostics.verification,

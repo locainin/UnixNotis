@@ -23,10 +23,7 @@ fn unmediated_flatpak_process_cannot_become_portal_associated() {
         &HashSet::new(),
     );
 
-    assert_ne!(
-        resolution.attribution.class,
-        AttributionClass::PortalAssociated
-    );
+    assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
@@ -54,10 +51,7 @@ fn an_empty_app_name_does_not_turn_an_untrusted_relay_into_a_portal() {
         &HashSet::new(),
     );
 
-    assert_ne!(
-        resolution.attribution.class,
-        AttributionClass::PortalAssociated
-    );
+    assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
@@ -87,10 +81,7 @@ fn portal_mediated_flatpak_uses_broker_verified_desktop_identity() {
         &HashSet::new(),
     );
 
-    assert_eq!(
-        resolution.attribution.class,
-        AttributionClass::PortalAssociated
-    );
+    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
     assert_eq!(resolution.attribution.display_name, "Flatpak App");
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
 }

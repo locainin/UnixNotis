@@ -6,9 +6,13 @@ fn metadata(sender: &str, pid: u32) -> SenderMetadata {
         sender_name: Some(sender.to_string()),
         sender_pid: Some(pid),
         sender_start_time: Some(u64::from(pid)),
+        sender_uid: None,
         sender_executable: Some(format!("/usr/bin/app-{pid}")),
         sender_executable_identity: None,
+        install_provenance:
+            crate::daemon::notifications::identity::desktop_index::InstallProvenance::default(),
         command_line: CommandLineEvidence::default(),
+        ancestors: Vec::new(),
     }
 }
 

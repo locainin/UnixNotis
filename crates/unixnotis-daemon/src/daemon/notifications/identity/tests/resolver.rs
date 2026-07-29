@@ -2,16 +2,21 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use unixnotis_core::{
-    AttributionClass, CommandLineQualityView, InlineReplyPolicy, LaunchAuthorityView,
-    LaunchVerificationView,
+    AttributionStatus, CommandLineQualityView, InlineReplyPolicy, LaunchAuthorityView,
+    LaunchVerificationView, RecordTrust,
 };
 
 use super::*;
 use crate::daemon::notifications::identity::desktop_index::model::{
     ExecutableIdentity, FieldCode, LaunchArgument, LaunchSpec, LiteralArgument,
 };
-use crate::daemon::notifications::identity::desktop_index::{DesktopIdentityIndex, DesktopRecord};
-use crate::daemon::notifications::identity::sender::{CommandLineEvidence, CommandLineQuality};
+use crate::daemon::notifications::identity::desktop_index::provenance::PackageProvider;
+use crate::daemon::notifications::identity::desktop_index::{
+    DesktopIdentityIndex, DesktopRecord, InstallProvenance,
+};
+use crate::daemon::notifications::identity::sender::{
+    CommandLineEvidence, CommandLineQuality, ProcessLineageEvidence,
+};
 use crate::daemon::notifications::identity::FileIdentity;
 
 trait DesktopRecordFixture {
@@ -42,9 +47,28 @@ impl DesktopRecordFixture for DesktopRecord {
             id: id.to_string(),
             display_name: display_name.to_string(),
             badge_icon: id.to_string(),
+            desktop_path: Some(PathBuf::from(format!(
+                "/usr/share/applications/{id}.desktop"
+            ))),
             executable_path: Some(PathBuf::from(executable_path)),
             executable_identity: Some(identity),
             desktop_identity: Some(identity),
+            desktop_provenance: if system_entry {
+                InstallProvenance::Package {
+                    provider: PackageProvider::Pacman,
+                    package_id: id.to_string(),
+                }
+            } else {
+                InstallProvenance::Unknown
+            },
+            executable_provenance: if system_entry {
+                InstallProvenance::Package {
+                    provider: PackageProvider::Pacman,
+                    package_id: id.to_string(),
+                }
+            } else {
+                InstallProvenance::Unknown
+            },
             system_origin: system_entry,
             system_association: system_entry,
             association_eligible: true,
@@ -148,6 +172,13 @@ fn identity(device: u64, inode: u64, uid: u32) -> FileIdentity {
     }
 }
 
+fn package(package_id: &str) -> InstallProvenance {
+    InstallProvenance::Package {
+        provider: PackageProvider::Pacman,
+        package_id: package_id.to_string(),
+    }
+}
+
 fn sender(path: &str, identity: FileIdentity) -> SenderMetadata {
     SenderMetadata {
         sender_name: Some(":1.42".to_string()),
@@ -199,7 +230,7 @@ fn verified_executable_record<'record>(
             verification: verify_record_sender(record, sender, index),
         })
         .collect::<Vec<_>>();
-    strongest_verified_result(&results, reported_name)
+    strongest_verified_result(&results, reported_name, index)
 }
 
 #[path = "resolver/association.rs"]
