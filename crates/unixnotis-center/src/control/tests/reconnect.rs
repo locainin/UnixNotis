@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::StreamExt;
+use unixnotis_core::reconnect::BACKOFF_JITTER_MS;
 use unixnotis_core::CONTROL_BUS_NAME;
 use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
@@ -182,8 +183,9 @@ fn transient_initial_owner_probe_retries_without_an_owner_change_signal() {
         let (event_tx, event_rx) = async_channel::bounded(4);
         let (_command_tx, mut command_rx) = tokio::sync::mpsc::channel(1);
         let mut offline_commands = std::collections::VecDeque::new();
+        // The deadline covers the production jitter ceiling plus scheduler headroom
         let outcome = tokio::time::timeout(
-            Duration::from_millis(100),
+            Duration::from_millis(BACKOFF_JITTER_MS + 100),
             wait_for_control_owner_with_probe(
                 {
                     let attempts = attempts.clone();
