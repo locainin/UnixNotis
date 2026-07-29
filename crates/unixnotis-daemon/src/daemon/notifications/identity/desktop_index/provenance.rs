@@ -3,10 +3,13 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
+
+use rustix::process::{kill_process_group, Pid, Signal};
 
 use super::super::executable::executable_evidence_for_path;
 use wait_timeout::ChildExt;
@@ -329,12 +332,16 @@ fn run_package_query_with_timeout(
     output_limit: usize,
     timeout: Duration,
 ) -> Option<PackageQueryOutput> {
+    // A provider may launch helpers that keep the output pipe open after its leader exits
+    command.process_group(0);
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
+    // The child is its new process-group leader because process_group received zero
+    let process_group = Pid::from_child(&child);
     let stdout = child.stdout.take()?;
     let reader = std::thread::spawn(move || {
         let limit = u64::try_from(output_limit)
@@ -348,7 +355,10 @@ fn run_package_query_with_timeout(
     let status = if let Some(status) = child.wait_timeout(timeout).ok()? {
         status
     } else {
-        let _kill_result = child.kill();
+        // Kill descendants before joining the reader so inherited pipe handles cannot stall it
+        if kill_process_group(process_group, Signal::KILL).is_err() {
+            let _kill_result = child.kill();
+        }
         let _wait_result = child.wait();
         let _reader_result = reader.join();
         return None;
