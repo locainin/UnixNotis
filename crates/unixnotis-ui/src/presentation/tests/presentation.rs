@@ -68,10 +68,187 @@ fn shared_model_downgrades_conflicts_and_denies_application_interaction() {
     );
     assert_eq!(
         presentation.identity.secondary_claim.as_deref(),
-        Some("Claims to be Known application")
+        Some("Claims “Known application”")
     );
     assert!(presentation.actions.primary.is_empty());
     assert!(presentation.actions.overflow.is_empty());
+}
+
+#[test]
+fn trusted_relay_claim_never_becomes_the_primary_application_identity() {
+    let mut view = notification();
+    view.category = "im.received".to_string();
+    view.attribution = NotificationAttribution::trusted_relay(
+        "Signal",
+        "Sent via /usr/bin/notify-send",
+        true,
+        "relay:notify-send:signal".to_string(),
+    );
+    view.image.icon_name = "signal-desktop".to_string();
+
+    let presentation = NotificationPresentation::from_view_at(&view, 1_000);
+
+    assert_eq!(presentation.kind, NotificationKind::Utility);
+    assert_eq!(presentation.trust.level, TrustLevel::CommandLine);
+    assert!(presentation.trust.short_label.is_none());
+    assert_eq!(
+        presentation.identity.primary_label,
+        "Command-line notification"
+    );
+    assert_eq!(
+        presentation.identity.secondary_claim.as_deref(),
+        Some("App label: Signal")
+    );
+    assert_eq!(presentation.identity.badge, BadgePresentation::CommandLine);
+    assert_eq!(presentation.media.thumbnail, ThumbnailKind::None);
+}
+
+#[test]
+fn unknown_claim_stays_secondary_and_unverified() {
+    let mut view = notification();
+    view.attribution = NotificationAttribution::unknown(
+        "Local helper",
+        "Source: /tmp/local-helper",
+        "unknown:local-helper".to_string(),
+    );
+
+    let presentation = NotificationPresentation::from_view_at(&view, 1_000);
+
+    assert_eq!(presentation.trust.level, TrustLevel::Unverified);
+    assert_eq!(presentation.identity.primary_label, "Unknown application");
+    assert_eq!(
+        presentation.identity.secondary_claim.as_deref(),
+        Some("App label: Local helper")
+    );
+}
+
+#[test]
+fn untrusted_non_media_notification_cannot_render_content_art() {
+    let mut view = notification();
+    view.attribution = NotificationAttribution::trusted_relay(
+        "Signal",
+        "Sent via /usr/bin/notify-send",
+        false,
+        "relay:notify-send:signal".to_string(),
+    );
+    view.image.image_path = "/tmp/signal-logo.png".to_string();
+
+    assert_eq!(
+        NotificationPresentation::from_view_at(&view, 1_000)
+            .media
+            .thumbnail,
+        ThumbnailKind::None
+    );
+
+    view.category = "image.received".to_string();
+    assert_eq!(
+        NotificationPresentation::from_view_at(&view, 1_000)
+            .media
+            .thumbnail,
+        ThumbnailKind::Content
+    );
+}
+
+#[test]
+fn popup_status_uses_the_committed_reason_instead_of_current_state() {
+    let mut view = notification();
+    view.popup_decision = unixnotis_core::PopupDecisionRecord {
+        admission_at_commit: unixnotis_core::PopupAdmissionView::RendererDisabled,
+        renderer_process_running_at_commit: true,
+        renderer_ready_at_commit: true,
+        max_visible_at_commit: 0,
+        decided_at_unix_ms: 1_000,
+        delivery_stage: unixnotis_core::PopupDeliveryStage::Suppressed,
+    };
+
+    assert_eq!(
+        NotificationPresentation::from_view_at(&view, 1_000)
+            .popup_status
+            .as_deref(),
+        Some("Not shown — popups are disabled")
+    );
+}
+
+#[test]
+fn popup_status_distinguishes_renderer_recovery_and_delivery_failure() {
+    for (stage, admission, expected) in [
+        (
+            unixnotis_core::PopupDeliveryStage::Rendered,
+            unixnotis_core::PopupAdmissionView::RendererUnavailable,
+            Some("Shown after popup renderer recovered"),
+        ),
+        (
+            unixnotis_core::PopupDeliveryStage::RendererFetched,
+            unixnotis_core::PopupAdmissionView::RendererUnavailable,
+            Some("Not shown — popup renderer was unavailable"),
+        ),
+        (
+            unixnotis_core::PopupDeliveryStage::FanoutFailed,
+            unixnotis_core::PopupAdmissionView::Show,
+            Some("Not shown — notification delivery failed"),
+        ),
+        (
+            unixnotis_core::PopupDeliveryStage::Rendered,
+            unixnotis_core::PopupAdmissionView::Show,
+            None,
+        ),
+    ] {
+        let mut view = notification();
+        view.popup_decision = unixnotis_core::PopupDecisionRecord {
+            admission_at_commit: admission,
+            decided_at_unix_ms: 1_000,
+            delivery_stage: stage,
+            ..unixnotis_core::PopupDecisionRecord::default()
+        };
+
+        assert_eq!(
+            NotificationPresentation::from_view_at(&view, 1_000)
+                .popup_status
+                .as_deref(),
+            expected,
+            "stage={stage:?}, admission={admission:?}"
+        );
+    }
+}
+
+#[test]
+fn empty_and_generic_claims_never_create_secondary_identity_copy() {
+    for claim in ["", "Unknown application"] {
+        let mut view = notification();
+        view.attribution = NotificationAttribution::trusted_relay(
+            claim,
+            "Sent via /usr/bin/notify-send",
+            false,
+            format!("relay:notify-send:{claim}"),
+        );
+
+        assert!(
+            NotificationPresentation::from_view_at(&view, 1_000)
+                .identity
+                .secondary_claim
+                .is_none(),
+            "claim={claim:?}"
+        );
+    }
+}
+
+#[test]
+fn verified_media_category_or_pixel_data_can_override_duplicate_badge_suppression() {
+    for (has_image_data, category) in [(false, "image.received"), (true, "")] {
+        let mut view = notification();
+        view.attribution.badge_icon = "same-icon".to_string();
+        view.image.image_path = "same-icon".to_string();
+        view.image.has_image_data = has_image_data;
+        view.category = category.to_string();
+
+        assert_eq!(
+            NotificationPresentation::from_view_at(&view, 1_000)
+                .media
+                .thumbnail,
+            ThumbnailKind::Content,
+            "has_image_data={has_image_data}, category={category:?}"
+        );
+    }
 }
 
 #[test]

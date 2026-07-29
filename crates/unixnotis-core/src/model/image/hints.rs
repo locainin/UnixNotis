@@ -12,7 +12,7 @@ use super::{
 
 impl NotificationImage {
     pub fn from_hints(app_name: &str, app_icon: &str, hints: &HashMap<String, OwnedValue>) -> Self {
-        // The notification spec prefers image-data over image-path and app_icon
+        // Content-image hints stay separate from the application identity icon
         let image_data = hints
             .get("image-data")
             .and_then(Self::parse_image_data)
@@ -20,7 +20,7 @@ impl NotificationImage {
             .or_else(|| hints.get("icon_data").and_then(Self::parse_image_data));
         let image_data = image_data.filter(Self::is_image_data_usable);
 
-        let mut image_path = hints
+        let image_path = hints
             .get("image-path")
             .and_then(owned_to_string)
             .or_else(|| hints.get("image_path").and_then(owned_to_string))
@@ -33,11 +33,6 @@ impl NotificationImage {
             .and_then(owned_to_string)
             .map(|entry| strip_desktop_suffix(&entry));
         let app_icon_path = normalize_app_icon_path(app_icon);
-        if image_path.is_empty() {
-            if let Some(path) = app_icon_path.as_ref() {
-                image_path = path.clone();
-            }
-        }
         let icon_name = bound_icon_name(&resolve_icon_name(
             app_name,
             app_icon,

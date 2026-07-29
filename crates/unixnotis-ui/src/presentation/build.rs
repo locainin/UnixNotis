@@ -3,7 +3,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use unixnotis_core::{
-    Action, ApplicationActionPolicy, AttributionClass, InlineReplyPolicy, NotificationView, Urgency,
+    Action, ApplicationActionPolicy, AttributionClass, InlineReplyPolicy, NotificationView,
+    PopupAdmissionView, Urgency,
 };
 
 use super::text::{
@@ -24,6 +25,7 @@ pub struct NotificationPresentation {
     pub title: String,
     pub body: Option<String>,
     pub timestamp: String,
+    pub popup_status: Option<String>,
     pub media: MediaPresentation,
     pub actions: ActionPresentation,
     pub critical: bool,
@@ -54,6 +56,7 @@ impl NotificationPresentation {
             body: has_visible_text(&notification.body)
                 .then(|| clamp_label_text(&notification.body, BODY_LABEL_MAX_CHARS).into_owned()),
             timestamp: relative_time_label(notification.received_at_unix_seconds, now),
+            popup_status: popup_status(notification),
             media: MediaPresentation {
                 thumbnail: thumbnail_kind(notification),
             },
@@ -63,13 +66,38 @@ impl NotificationPresentation {
     }
 }
 
+fn popup_status(notification: &NotificationView) -> Option<String> {
+    let decision = &notification.popup_decision;
+    if decision.decided_at_unix_ms <= 0 {
+        return None;
+    }
+    if decision.delivery_stage == unixnotis_core::PopupDeliveryStage::Rendered {
+        return (decision.admission_at_commit == PopupAdmissionView::RendererUnavailable)
+            .then(|| "Shown after popup renderer recovered".to_string());
+    }
+    let status = match decision.delivery_stage {
+        unixnotis_core::PopupDeliveryStage::FanoutFailed => {
+            "Not shown — notification delivery failed"
+        }
+        _ => match decision.admission_at_commit {
+            PopupAdmissionView::Show => return None,
+            PopupAdmissionView::Rule => "Not shown — matched notification rule",
+            PopupAdmissionView::Dnd => "Not shown — Do Not Disturb was enabled",
+            PopupAdmissionView::Inhibitor => "Not shown — notifications were inhibited",
+            PopupAdmissionView::RendererUnavailable => "Not shown — popup renderer was unavailable",
+            PopupAdmissionView::RendererDisabled => "Not shown — popups are disabled",
+        },
+    };
+    Some(status.to_string())
+}
+
 pub(super) fn trust_presentation(notification: &NotificationView) -> TrustPresentation {
     let level = trust_level(notification);
     let short_label = match level {
-        TrustLevel::Verified => None,
+        // Verified and command-line primary labels already communicate their source clearly
+        TrustLevel::Verified | TrustLevel::CommandLine => None,
         TrustLevel::Unverified => Some("Unverified".to_string()),
         TrustLevel::Suspicious => Some("Suspicious".to_string()),
-        TrustLevel::System => Some("Command-line tool".to_string()),
     };
     let details_label = nonempty_text(&notification.attribution.source_label);
     let has_reply_action = notification
@@ -98,15 +126,23 @@ pub(super) fn trust_presentation(notification: &NotificationView) -> TrustPresen
 }
 
 const fn trust_level(notification: &NotificationView) -> TrustLevel {
-    if notification.attribution.has_warning() {
-        return TrustLevel::Suspicious;
-    }
     match notification.attribution.class {
         AttributionClass::SystemAssociated | AttributionClass::PortalAssociated => {
-            TrustLevel::Verified
+            if notification.attribution.has_warning() {
+                TrustLevel::Suspicious
+            } else {
+                TrustLevel::Verified
+            }
         }
-        AttributionClass::UserAssociated | AttributionClass::Unknown => TrustLevel::Unverified,
-        AttributionClass::TrustedRelay => TrustLevel::System,
+        AttributionClass::UserAssociated | AttributionClass::Unknown => {
+            if notification.attribution.has_warning() {
+                TrustLevel::Suspicious
+            } else {
+                TrustLevel::Unverified
+            }
+        }
+        // A verified relay remains a relay even when its caller-controlled label names an app
+        AttributionClass::TrustedRelay => TrustLevel::CommandLine,
         AttributionClass::Conflict => TrustLevel::Suspicious,
     }
 }
@@ -115,16 +151,31 @@ fn identity_presentation(
     notification: &NotificationView,
     level: TrustLevel,
 ) -> IdentityPresentation {
-    let primary_label =
-        clamp_label_text(&notification.attribution.display_name, APP_LABEL_MAX_CHARS).into_owned();
-    let secondary_claim = (level == TrustLevel::Suspicious)
-        .then(|| claimed_identity(&notification.attribution.source_label))
-        .flatten();
+    let claimed_label =
+        clamp_label_text(&notification.attribution.display_name, APP_LABEL_MAX_CHARS);
+    let (primary_label, secondary_claim) = match notification.attribution.class {
+        AttributionClass::TrustedRelay => (
+            "Command-line notification".to_string(),
+            visible_claim(&claimed_label).map(|claim| format!("App label: {claim}")),
+        ),
+        AttributionClass::Conflict => (
+            "Unknown application".to_string(),
+            claimed_identity(&notification.attribution.source_label)
+                .map(|claim| format!("Claims “{claim}”")),
+        ),
+        AttributionClass::Unknown => (
+            "Unknown application".to_string(),
+            visible_claim(&claimed_label).map(|claim| format!("App label: {claim}")),
+        ),
+        AttributionClass::SystemAssociated
+        | AttributionClass::PortalAssociated
+        | AttributionClass::UserAssociated => (claimed_label.into_owned(), None),
+    };
     let badge = match level {
         TrustLevel::Verified => BadgePresentation::AuthenticatedApplication,
         TrustLevel::Unverified => BadgePresentation::UnknownApplication,
         TrustLevel::Suspicious => BadgePresentation::SuspiciousApplication,
-        TrustLevel::System => BadgePresentation::CommandLine,
+        TrustLevel::CommandLine => BadgePresentation::CommandLine,
     };
     IdentityPresentation {
         primary_label,
@@ -138,16 +189,24 @@ fn claimed_identity(source: &str) -> Option<String> {
         .split(';')
         .next()
         .map(str::trim)
-        .filter(|value| value.starts_with("Claims to be "))?;
-    Some(claim.to_string())
+        .and_then(|value| value.strip_prefix("Claims to be "))?
+        .trim();
+    visible_claim(claim).map(ToString::to_string)
+}
+
+fn visible_claim(claim: &str) -> Option<&str> {
+    let claim = claim.trim();
+    (!claim.is_empty() && claim != "Unknown application").then_some(claim)
 }
 
 pub(super) fn notification_kind(
     notification: &NotificationView,
     trust_level: TrustLevel,
 ) -> NotificationKind {
-    if trust_level == TrustLevel::Suspicious {
-        return NotificationKind::Warning;
+    match trust_level {
+        TrustLevel::Suspicious => return NotificationKind::Warning,
+        TrustLevel::Unverified | TrustLevel::CommandLine => return NotificationKind::Utility,
+        TrustLevel::Verified => {}
     }
     let category_class = notification
         .category
@@ -221,20 +280,31 @@ fn thumbnail_kind(notification: &NotificationView) -> ThumbnailKind {
             .unwrap_or_default()
             .eq_ignore_ascii_case(category)
     });
-    if category_is_media || !image_source_matches_authenticated_badge(notification) {
-        ThumbnailKind::Content
-    } else {
-        ThumbnailKind::None
+    let identity_is_verified = matches!(
+        notification.attribution.class,
+        AttributionClass::SystemAssociated | AttributionClass::PortalAssociated
+    ) && !notification.attribution.has_warning();
+    if !identity_is_verified {
+        // Untrusted senders need an explicit media category before large imagery is shown
+        return if category_is_media {
+            ThumbnailKind::Content
+        } else {
+            ThumbnailKind::None
+        };
     }
+    if notification.image.has_image_data
+        || category_is_media
+        || !image_path_matches_authenticated_badge(notification)
+    {
+        return ThumbnailKind::Content;
+    }
+    ThumbnailKind::None
 }
 
-fn image_source_matches_authenticated_badge(notification: &NotificationView) -> bool {
+fn image_path_matches_authenticated_badge(notification: &NotificationView) -> bool {
     let badge = notification.attribution.badge_icon.trim();
     if badge.is_empty() {
         return false;
-    }
-    if notification.image.icon_name.trim() == badge {
-        return true;
     }
     let image_path = notification.image.image_path.trim();
     if image_path.is_empty() {

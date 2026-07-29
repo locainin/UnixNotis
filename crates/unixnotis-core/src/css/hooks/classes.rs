@@ -70,8 +70,12 @@ pub mod panel_shell {
     pub const RELOAD_NOTICE: &str = "unixnotis-reload-notice";
     pub const RELOAD_NOTICE_ERROR: &str = "unixnotis-reload-notice-error";
     pub const RELOAD_NOTICE_WARNING: &str = "unixnotis-reload-notice-warning";
+    pub const RELOAD_NOTICE_CONTENT: &str = "unixnotis-reload-notice-content";
     pub const RELOAD_NOTICE_TEXT: &str = "unixnotis-reload-notice-text";
     pub const RELOAD_NOTICE_CLOSE: &str = "unixnotis-reload-notice-close";
+    pub const RELOAD_NOTICE_ACTIONS: &str = "unixnotis-reload-notice-actions";
+    pub const RELOAD_NOTICE_ACTION: &str = "unixnotis-reload-notice-action";
+    pub const RELOAD_NOTICE_ACTION_PRIMARY: &str = "unixnotis-reload-notice-action-primary";
     pub const BODY_STACK: &str = "unixnotis-panel-body-stack";
     pub const EDGE_TOP: &str = "unixnotis-panel-edge-top";
     pub const EDGE_BOTTOM: &str = "unixnotis-panel-edge-bottom";
@@ -111,6 +115,8 @@ pub mod panel_card {
     pub const GROUP_COLLAPSED: &str = "unixnotis-panel-card-group-collapsed";
     pub const GROUP_EXPANDED: &str = "unixnotis-panel-card-group-expanded";
     pub const GROUPED: &str = "unixnotis-panel-card-grouped";
+    pub const GROUP_FIRST: &str = "unixnotis-panel-card-group-first";
+    pub const GROUP_LAST: &str = "unixnotis-panel-card-group-last";
     pub const HAS_ACTIONS: &str = "unixnotis-panel-card-has-actions";
     pub const HAS_BODY: &str = "unixnotis-panel-card-has-body";
     pub const HAS_SUMMARY: &str = "unixnotis-panel-card-has-summary";

@@ -64,8 +64,12 @@ fn hook_names_stay_unique() {
         panel_shell::RELOAD_NOTICE,
         panel_shell::RELOAD_NOTICE_ERROR,
         panel_shell::RELOAD_NOTICE_WARNING,
+        panel_shell::RELOAD_NOTICE_CONTENT,
         panel_shell::RELOAD_NOTICE_TEXT,
         panel_shell::RELOAD_NOTICE_CLOSE,
+        panel_shell::RELOAD_NOTICE_ACTIONS,
+        panel_shell::RELOAD_NOTICE_ACTION,
+        panel_shell::RELOAD_NOTICE_ACTION_PRIMARY,
         panel_shell::BODY_STACK,
         panel_shell::EDGE_TOP,
         panel_shell::EDGE_BOTTOM,
@@ -102,6 +106,8 @@ fn hook_names_stay_unique() {
         panel_card::GROUP_COLLAPSED,
         panel_card::GROUP_EXPANDED,
         panel_card::GROUPED,
+        panel_card::GROUP_FIRST,
+        panel_card::GROUP_LAST,
         panel_card::HAS_ACTIONS,
         panel_card::HAS_BODY,
         panel_card::HAS_SUMMARY,
@@ -245,11 +251,31 @@ fn stock_panel_css_targets_real_group_card_hooks() {
     // Stock CSS targets explicit collapsed and expanded content states
     assert!(css.contains(&format!(".{}", panel_card::GROUP_COLLAPSED)));
     assert!(css.contains(&format!(".{}", panel_card::GROUP_EXPANDED)));
+    assert!(css.contains(&format!(
+        ".unixnotis-panel-card.{}",
+        panel_card::GROUP_COLLAPSED
+    )));
+    assert!(css.contains(&format!(
+        ".unixnotis-panel-card.{}",
+        panel_card::GROUP_EXPANDED
+    )));
 
     // These selectors belonged to an older nested-card idea and do not match the real tree
     assert!(!css.contains("unixnotis-group-cards"));
     assert!(!css.contains(".unixnotis-group .unixnotis-panel-card"));
     assert!(!css.contains(".unixnotis-group-row-collapsed .unixnotis-panel-card"));
+}
+
+#[test]
+fn stock_group_count_stays_neutral_during_header_hover() {
+    let css = crate::theme::DEFAULT_PANEL_CSS;
+
+    assert!(css.contains(
+        ".unixnotis-group-header:hover .unixnotis-group-count {\n  background: alpha(#ffffff, 0.09);"
+    ));
+    assert!(!css.contains(
+        ".unixnotis-group-header:hover .unixnotis-group-count {\n  background: alpha(@unixnotis-accent"
+    ));
 }
 
 #[test]
@@ -266,6 +292,6 @@ fn stock_panel_close_control_stays_quiet_until_hover_or_focus() {
 
     assert!(css.contains(".unixnotis-panel-close {\n"));
     assert!(css.contains("opacity: 0;"));
-    assert!(css.contains(".unixnotis-panel-card:hover .unixnotis-panel-close"));
+    assert!(css.contains(".unixnotis-panel-card-overlay:hover .unixnotis-panel-close"));
     assert!(css.contains(".unixnotis-panel-close:focus"));
 }
