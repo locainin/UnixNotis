@@ -1,18 +1,17 @@
 //! Notification D-Bus interface implementation
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::Semaphore;
 use tracing::debug;
 use zbus::message::Header;
-use zbus::zvariant::OwnedValue;
 use zbus::{interface, SignalContext};
 
 use crate::expire::ExpirationScheduler;
 
 use super::capabilities::notification_capabilities;
+use super::wire_hints::WireHints;
 use crate::daemon::notifications::ingress::metrics::{IngressMetrics, RejectedRequest};
 use crate::daemon::notifications::ingress::quota::NotificationQuota;
 use crate::daemon::DaemonState;
@@ -68,7 +67,7 @@ impl NotificationServer {
         summary: String,
         body: String,
         actions: Vec<String>,
-        hints: HashMap<String, OwnedValue>,
+        hints: WireHints,
         #[zbus(header)] header: Header<'_>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {

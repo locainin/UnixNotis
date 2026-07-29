@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::super::{preflight_notify, PreflightError};
 use super::support::notify_message;
-use crate::daemon::notifications::server::ingress::MAX_NOTIFY_WIRE_BODY_BYTES;
+use crate::daemon::notifications::server::notify_body::MAX_NOTIFY_WIRE_BODY_BYTES;
 
 #[test]
 fn under_wire_limit_tiny_action_flood_is_rejected() {

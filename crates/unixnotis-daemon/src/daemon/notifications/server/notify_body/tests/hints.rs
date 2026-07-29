@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use zbus::zvariant::{OwnedValue, Structure, Value};
+use zbus::zvariant::{OwnedValue, SerializeValue, Value};
+use zbus::Message;
 
 use super::super::{preflight_notify, PreflightError};
 use super::support::notify_message;
-use crate::daemon::notifications::server::ingress::MAX_NOTIFY_WIRE_BODY_BYTES;
+use crate::daemon::notifications::server::notify_body::MAX_NOTIFY_WIRE_BODY_BYTES;
 
 #[test]
 fn hint_entry_flood_is_rejected_before_map_allocation() {
@@ -23,42 +24,14 @@ fn hint_entry_flood_is_rejected_before_map_allocation() {
 
 #[test]
 fn contiguous_image_array_keeps_its_separate_large_allowance() {
-    let image = Structure::from((
-        256_i32,
-        256_i32,
-        1024_i32,
-        true,
-        8_i32,
-        4_i32,
-        vec![0_u8; 256 * 1024],
-    ));
-    let mut hints = HashMap::new();
-    hints.insert(
-        "image-data".to_string(),
-        OwnedValue::try_from(Value::from(image)).expect("owned image hint"),
-    );
-    let message = notify_message("app", "", "summary", "", Vec::new(), hints);
+    let message = notify_message_with_image(1024 * 1024);
 
     assert_eq!(preflight_notify(&message), Ok(()));
 }
 
 #[test]
-fn image_array_above_its_allowance_is_rejected_below_the_wire_limit() {
-    let image = Structure::from((
-        256_i32,
-        256_i32,
-        1024_i32,
-        true,
-        8_i32,
-        4_i32,
-        vec![0_u8; 256 * 1024 + 1],
-    ));
-    let mut hints = HashMap::new();
-    hints.insert(
-        "image-data".to_string(),
-        OwnedValue::try_from(Value::from(image)).expect("owned image hint"),
-    );
-    let message = notify_message("app", "", "summary", "", Vec::new(), hints);
+fn image_array_above_native_allowance_is_rejected_below_the_wire_limit() {
+    let message = notify_message_with_image(4 * 1024 * 1024 + 1);
 
     assert!(message.body().len() < MAX_NOTIFY_WIRE_BODY_BYTES);
     assert_eq!(
@@ -67,6 +40,35 @@ fn image_array_above_its_allowance_is_rejected_below_the_wire_limit() {
             "Notify byte array exceeds its allowance"
         ))
     );
+}
+
+fn notify_message_with_image(image_bytes: usize) -> Message {
+    let image = (
+        256_i32,
+        256_i32,
+        1024_i32,
+        true,
+        8_i32,
+        4_i32,
+        vec![0_u8; image_bytes],
+    );
+    let hints = HashMap::from([("image-data", SerializeValue(&image))]);
+
+    Message::method("/org/freedesktop/Notifications", "Notify")
+        .expect("method builder")
+        .interface("org.freedesktop.Notifications")
+        .expect("notification interface")
+        .build(&(
+            "app",
+            0_u32,
+            "",
+            "summary",
+            "",
+            Vec::<String>::new(),
+            hints,
+            0_i32,
+        ))
+        .expect("Notify message")
 }
 
 #[test]

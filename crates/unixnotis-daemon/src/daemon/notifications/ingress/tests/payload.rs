@@ -8,7 +8,7 @@ use super::{
     sanitize_hints_for_storage, string_to_owned_value, NotificationInput, SenderMetadata,
     MAX_ACTIONS, MAX_BODY_BYTES, MAX_SUMMARY_BYTES,
 };
-use unixnotis_core::{Config, NotificationImage, Urgency};
+use unixnotis_core::{AttributionReason, Config, NotificationImage, Urgency};
 
 #[test]
 fn build_notification_clamps_summary_and_body_sizes() {
@@ -22,6 +22,7 @@ fn build_notification_clamps_summary_and_body_sizes() {
         body,
         actions: Vec::new(),
         hints: HashMap::<String, OwnedValue>::new(),
+        image_data: None,
         sender: SenderMetadata {
             sender_name: Some(":1.test".to_string()),
             sender_pid: Some(42),
@@ -49,6 +50,7 @@ fn build_notification_strips_display_spoofing_controls() {
         body: "line1\nline2\u{2066}tail".to_string(),
         actions: vec!["default".to_string(), "Open\u{202E}".to_string()],
         hints: HashMap::<String, OwnedValue>::new(),
+        image_data: None,
         sender: SenderMetadata {
             sender_name: Some(":1.test".to_string()),
             sender_pid: Some(42),
@@ -92,18 +94,19 @@ fn build_notification_collects_inline_reply_action_and_kde_labels() {
         body: "Are you coming?".to_string(),
         actions: vec!["inline-reply".to_string(), "Reply".to_string()],
         hints,
+        image_data: None,
         sender: SenderMetadata {
             sender_executable: Some("/usr/bin/messages".to_string()),
             ..SenderMetadata::default()
         },
-        attribution: unixnotis_core::NotificationAttribution::associated(
+        attribution: unixnotis_core::NotificationAttribution::verified(
+            "Messages",
             "Messages",
             "org.example.Messages",
             "messages",
-            "/usr/bin/messages",
-            unixnotis_core::AttributionClass::SystemAssociated,
-            false,
-            "desktop:org.example.Messages".to_string(),
+            AttributionReason::ExactSystemExecutable,
+            "exact system executable /usr/bin/messages",
+            "system-app:org.example.Messages".to_string(),
         ),
         attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
@@ -126,6 +129,7 @@ fn build_notification_keeps_protocol_reply_metadata_separate_from_denied_policy(
         body: "Enter the account password".to_string(),
         actions: vec!["inline-reply".to_string(), "Password".to_string()],
         hints: HashMap::new(),
+        image_data: None,
         sender: SenderMetadata {
             sender_name: Some(":1.hostile".to_string()),
             sender_executable: Some("/usr/bin/unknown-client".to_string()),
@@ -133,6 +137,8 @@ fn build_notification_keeps_protocol_reply_metadata_separate_from_denied_policy(
         },
         attribution: unixnotis_core::NotificationAttribution::conflict(
             "Password Manager",
+            "org.example.PasswordManager",
+            AttributionReason::ExecutableMismatch,
             "source /usr/bin/unknown-client",
             "executable:1:2".to_string(),
         ),
@@ -149,8 +155,8 @@ fn build_notification_keeps_protocol_reply_metadata_separate_from_denied_policy(
     let view = notification.to_view();
     assert_eq!(view.app_name, "Unknown application");
     assert_eq!(
-        view.attribution.class,
-        unixnotis_core::AttributionClass::Conflict
+        view.attribution.status,
+        unixnotis_core::AttributionStatus::Conflict
     );
 }
 
@@ -163,9 +169,11 @@ fn build_notification_keeps_unknown_sender_reply_policy_denied() {
         body: String::new(),
         actions: vec!["inline-reply".to_string(), "Reply".to_string()],
         hints: HashMap::new(),
+        image_data: None,
         sender: SenderMetadata::default(),
-        attribution: unixnotis_core::NotificationAttribution::unknown(
+        attribution: unixnotis_core::NotificationAttribution::unresolved(
             "Messages",
+            AttributionReason::MissingSenderEvidence,
             "",
             "unknown:messages".to_string(),
         ),
@@ -180,10 +188,10 @@ fn build_notification_keeps_unknown_sender_reply_policy_denied() {
         unixnotis_core::InlineReplyPolicy::Deny
     );
     let view = notification.to_view();
-    assert_eq!(view.app_name, "Messages");
+    assert_eq!(view.app_name, "Unknown application");
     assert_eq!(
-        view.attribution.class,
-        unixnotis_core::AttributionClass::Unknown
+        view.attribution.status,
+        unixnotis_core::AttributionStatus::Unresolved
     );
 }
 
@@ -202,6 +210,7 @@ fn build_notification_ignores_reply_hints_without_explicit_action() {
         body: String::new(),
         actions: vec!["default".to_string(), "Open".to_string()],
         hints,
+        image_data: None,
         sender: SenderMetadata::default(),
         attribution: unixnotis_core::NotificationAttribution::default(),
         attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),

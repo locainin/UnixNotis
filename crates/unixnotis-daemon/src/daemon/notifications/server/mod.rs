@@ -6,6 +6,7 @@ mod flow;
 mod ingress;
 mod interface;
 mod notify_body;
+mod wire_hints;
 
 pub use ingress::NotificationIngress;
 pub use interface::NotificationServer;

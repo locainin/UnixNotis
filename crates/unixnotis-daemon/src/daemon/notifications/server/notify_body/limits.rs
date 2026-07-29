@@ -1,6 +1,11 @@
 //! Limits and errors shared by raw Notify body readers
 
-pub(super) const MAX_IMAGE_BYTES: usize = 256 * 1024;
+// Common native clients send decoded 1024x1024 RGBA application or contact images
+pub(in crate::daemon::notifications::server) const MAX_NOTIFY_WIRE_IMAGE_BYTES: usize =
+    4 * 1024 * 1024;
+// The image allowance plus bounded strings, actions, hints, and D-Bus alignment
+pub(in crate::daemon::notifications::server) const MAX_NOTIFY_WIRE_BODY_BYTES: usize =
+    MAX_NOTIFY_WIRE_IMAGE_BYTES + 128 * 1024;
 pub(super) const MAX_NON_IMAGE_ARRAY_BYTES: usize = 16 * 1024;
 pub(super) const MAX_NON_IMAGE_STRING_BYTES: usize = 64 * 1024;
 pub(super) const MAX_NESTED_CONTAINER_ELEMENTS: usize = 64;

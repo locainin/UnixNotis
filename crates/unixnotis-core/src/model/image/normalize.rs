@@ -3,6 +3,12 @@
 use super::{ImageData, NotificationImage, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION};
 
 impl NotificationImage {
+    /// Returns the maximum decoded image payload retained by the notification model
+    #[must_use]
+    pub const fn retained_byte_limit() -> usize {
+        MAX_IMAGE_BYTES
+    }
+
     pub(super) fn is_image_data_usable(data: &ImageData) -> bool {
         // Hard dimension caps keep texture creation and D-Bus payloads predictable
         if data.width > MAX_IMAGE_DIMENSION || data.height > MAX_IMAGE_DIMENSION {
@@ -23,7 +29,9 @@ impl NotificationImage {
         .is_some()
     }
 
-    pub(super) fn normalize_image_data(image: ImageData) -> Option<ImageData> {
+    /// Validates raw pixels and normalizes supported RGB images to RGBA
+    #[must_use]
+    pub fn normalize_image_data(image: ImageData) -> Option<ImageData> {
         if image.bits_per_sample != 8 {
             return None;
         }

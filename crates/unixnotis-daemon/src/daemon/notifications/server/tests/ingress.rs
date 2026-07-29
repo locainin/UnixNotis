@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::os::fd::AsFd;
+use std::time::Duration;
 
-use zbus::zvariant::{OwnedValue, Structure, Value};
-use zbus::Connection;
+use zbus::zvariant::{OwnedValue, SerializeValue, Structure, Value};
+use zbus::{Connection, Message};
 
 use super::{
     notify_body_is_oversized, notify_has_unix_fds, NotificationIngress, MAX_NOTIFY_WIRE_BODY_BYTES,
@@ -12,10 +13,11 @@ use crate::expire::ExpirationScheduler;
 use crate::test_support::daemon_state_for_test;
 
 const NOTIFICATIONS_INTERFACE: &str = "org.freedesktop.Notifications";
+const TEST_NOTIFY_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[test]
 fn notify_wire_limit_applies_only_to_oversized_notify_calls() {
-    assert_eq!(MAX_NOTIFY_WIRE_BODY_BYTES, 393_216);
+    assert_eq!(MAX_NOTIFY_WIRE_BODY_BYTES, 4_325_376);
     assert!(!notify_body_is_oversized(
         "Notify",
         MAX_NOTIFY_WIRE_BODY_BYTES
@@ -109,43 +111,209 @@ async fn oversized_hint_map_is_rejected_before_notify_deserialization() {
 #[tokio::test]
 async fn oversized_image_array_is_rejected_before_notify_deserialization() {
     let (state, client) = notification_ingress().await;
-    let image = Structure::from((
-        1_i32,
-        1_i32,
-        4_i32,
-        true,
-        8_i32,
-        4_i32,
-        vec![0_u8; MAX_NOTIFY_WIRE_BODY_BYTES + 1],
-    ));
-    let mut hints = HashMap::new();
-    hints.insert(
-        "image-data".to_string(),
-        OwnedValue::try_from(Value::from(image)).expect("owned image hint"),
-    );
+    let error = send_image_notification(&state, &client, 1, 1, 4, MAX_NOTIFY_WIRE_BODY_BYTES + 1)
+        .await
+        .expect_err("image above the wire limit must fail");
 
-    assert_oversized_notify_rejected(&state, &client, Vec::new(), hints, String::new()).await;
+    assert!(
+        error.to_string().contains("LimitsExceeded"),
+        "unexpected D-Bus error: {error}"
+    );
+    assert!(state.store.lock().await.list_active().is_empty());
 }
 
 #[tokio::test]
-async fn under_wire_limit_image_above_its_allowance_never_reaches_typed_notify() {
+async fn native_image_above_retained_limit_keeps_the_text_notification() {
     let (state, client) = notification_ingress().await;
-    let image = Structure::from((
-        256_i32,
-        256_i32,
-        1024_i32,
-        true,
-        8_i32,
-        4_i32,
-        vec![0_u8; 256 * 1024 + 1],
-    ));
-    let mut hints = HashMap::new();
-    hints.insert(
-        "image-data".to_string(),
-        OwnedValue::try_from(Value::from(image)).expect("owned image hint"),
-    );
+    let reply = send_image_notification(&state, &client, 1_024, 1_024, 4_096, 1_024 * 1_024 * 4)
+        .await
+        .expect("normal native image must not discard the text notification");
+    let id = reply.body().deserialize::<u32>().expect("notification id");
+    let active = state
+        .store
+        .lock()
+        .await
+        .active_notification_view(id)
+        .expect("notification should be retained");
 
-    assert_oversized_notify_rejected(&state, &client, Vec::new(), hints, String::new()).await;
+    assert_eq!(active.summary, "summary");
+    assert!(!active.image.has_image_data);
+}
+
+#[tokio::test]
+async fn native_image_within_retained_limit_reaches_the_notification_model() {
+    let (state, client) = notification_ingress().await;
+    let reply = send_image_notification(&state, &client, 128, 128, 512, 128 * 128 * 4)
+        .await
+        .expect("bounded native image should reach the typed interface");
+    let id = reply.body().deserialize::<u32>().expect("notification id");
+    let active = state
+        .store
+        .lock()
+        .await
+        .active_notification_view(id)
+        .expect("notification should be retained");
+
+    assert!(active.image.has_image_data);
+    assert_eq!(active.image.image_data.data.len(), 128 * 128 * 4);
+}
+
+#[tokio::test]
+async fn bounded_unknown_variant_does_not_break_notification_delivery() {
+    let (state, client) = notification_ingress().await;
+    let hints = HashMap::from([("sender-pid".to_string(), OwnedValue::from(42_u32))]);
+    let reply = send_owned_hints_notification(&state, &client, hints)
+        .await
+        .expect("bounded unknown hint should be ignored");
+    let id = reply.body().deserialize::<u32>().expect("notification id");
+
+    assert_eq!(id, 1);
+    assert_eq!(state.store.lock().await.list_active().len(), 1);
+}
+
+#[tokio::test]
+async fn supported_wire_hints_keep_text_boolean_and_both_urgency_types() {
+    let (state, client) = notification_ingress().await;
+    let category =
+        OwnedValue::try_from(Value::from("im.received")).expect("owned category hint string");
+    let first_hints = HashMap::from([
+        ("category".to_string(), category),
+        ("transient".to_string(), OwnedValue::from(true)),
+        ("urgency".to_string(), OwnedValue::from(2_u8)),
+    ]);
+    let first_reply = send_owned_hints_notification(&state, &client, first_hints)
+        .await
+        .expect("supported byte urgency hints should reach the typed interface");
+    let first_id = first_reply
+        .body()
+        .deserialize::<u32>()
+        .expect("first notification id");
+    let second_hints = HashMap::from([("urgency".to_string(), OwnedValue::from(1_u32))]);
+    let second_reply = send_owned_hints_notification(&state, &client, second_hints)
+        .await
+        .expect("supported integer urgency hints should reach the typed interface");
+    let second_id = second_reply
+        .body()
+        .deserialize::<u32>()
+        .expect("second notification id");
+    let store = state.store.lock().await;
+    let first = store
+        .active_notification_view(first_id)
+        .expect("first notification should be retained");
+    let second = store
+        .active_notification_view(second_id)
+        .expect("second notification should be retained");
+
+    assert_eq!(first.category, "im.received");
+    assert!(first.is_transient);
+    assert_eq!(first.urgency, 2);
+    assert_eq!(second.urgency, 1);
+}
+
+#[tokio::test]
+async fn image_hint_aliases_follow_standard_precedence_independent_of_wire_order() {
+    let (state, client) = notification_ingress().await;
+    let all_aliases = HashMap::from([
+        ("icon_data".to_string(), owned_rgba_pixel([3, 0, 0, 255])),
+        ("image_data".to_string(), owned_rgba_pixel([2, 0, 0, 255])),
+        ("image-data".to_string(), owned_rgba_pixel([1, 0, 0, 255])),
+    ]);
+    let standard_id = send_owned_hints_notification(&state, &client, all_aliases)
+        .await
+        .expect("standard image alias should decode")
+        .body()
+        .deserialize::<u32>()
+        .expect("standard image notification id");
+    let legacy_aliases = HashMap::from([
+        ("icon_data".to_string(), owned_rgba_pixel([3, 0, 0, 255])),
+        ("image_data".to_string(), owned_rgba_pixel([2, 0, 0, 255])),
+    ]);
+    let legacy_id = send_owned_hints_notification(&state, &client, legacy_aliases)
+        .await
+        .expect("legacy image alias should decode")
+        .body()
+        .deserialize::<u32>()
+        .expect("legacy image notification id");
+    let icon_only = HashMap::from([("icon_data".to_string(), owned_rgba_pixel([3, 0, 0, 255]))]);
+    let icon_id = send_owned_hints_notification(&state, &client, icon_only)
+        .await
+        .expect("legacy icon alias should decode")
+        .body()
+        .deserialize::<u32>()
+        .expect("legacy icon notification id");
+    let store = state.store.lock().await;
+
+    assert_eq!(
+        store
+            .active_notification_view(standard_id)
+            .expect("standard image notification")
+            .image
+            .image_data
+            .data,
+        [1, 0, 0, 255]
+    );
+    assert_eq!(
+        store
+            .active_notification_view(legacy_id)
+            .expect("legacy image notification")
+            .image
+            .image_data
+            .data,
+        [2, 0, 0, 255]
+    );
+    assert_eq!(
+        store
+            .active_notification_view(icon_id)
+            .expect("legacy icon notification")
+            .image
+            .image_data
+            .data,
+        [3, 0, 0, 255]
+    );
+}
+
+#[tokio::test]
+async fn supported_hint_with_wrong_signature_is_rejected_without_daemon_failure() {
+    let (state, client) = notification_ingress().await;
+    let invalid_hints = [
+        HashMap::from([("category".to_string(), OwnedValue::from(true))]),
+        HashMap::from([(
+            "transient".to_string(),
+            OwnedValue::try_from(Value::from("yes")).expect("owned boolean mismatch"),
+        )]),
+        HashMap::from([(
+            "urgency".to_string(),
+            OwnedValue::try_from(Value::from("high")).expect("owned urgency mismatch"),
+        )]),
+        HashMap::from([(
+            "image-data".to_string(),
+            OwnedValue::try_from(Value::from("pixels")).expect("owned image mismatch"),
+        )]),
+    ];
+
+    for hints in invalid_hints {
+        let error = send_owned_hints_notification(&state, &client, hints)
+            .await
+            .expect_err("known hint with wrong signature must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("notification hint has an unexpected D-Bus signature"),
+            "unexpected mismatched-hint error: {error}"
+        );
+    }
+
+    assert!(state.store.lock().await.list_active().is_empty());
+    let recovery = send_owned_hints_notification(&state, &client, HashMap::new())
+        .await
+        .expect("valid notification should still work after rejected hints");
+    assert_eq!(
+        recovery
+            .body()
+            .deserialize::<u32>()
+            .expect("recovery notification id"),
+        1
+    );
 }
 
 #[tokio::test]
@@ -197,6 +365,94 @@ async fn notification_ingress() -> (std::sync::Arc<crate::daemon::DaemonState>, 
         .expect("register guarded notification interface");
     let client = Connection::session().await.expect("notification client");
     (state, client)
+}
+
+async fn send_image_notification(
+    state: &crate::daemon::DaemonState,
+    client: &Connection,
+    width: i32,
+    height: i32,
+    rowstride: i32,
+    image_bytes: usize,
+) -> zbus::Result<Message> {
+    let destination = state
+        .connection()
+        .unique_name()
+        .expect("daemon unique name")
+        .clone();
+    let image = (
+        width,
+        height,
+        rowstride,
+        true,
+        8_i32,
+        4_i32,
+        vec![0_u8; image_bytes],
+    );
+    let hints = HashMap::from([("image-data", SerializeValue(&image))]);
+    let payload = (
+        "app",
+        0_u32,
+        "",
+        "summary",
+        "body",
+        Vec::<String>::new(),
+        hints,
+        0_i32,
+    );
+
+    tokio::time::timeout(
+        TEST_NOTIFY_TIMEOUT,
+        client.call_method(
+            Some(destination),
+            NOTIFICATIONS_OBJECT_PATH,
+            Some(NOTIFICATIONS_INTERFACE),
+            "Notify",
+            &payload,
+        ),
+    )
+    .await
+    .expect("Notify response timed out")
+}
+
+async fn send_owned_hints_notification(
+    state: &crate::daemon::DaemonState,
+    client: &Connection,
+    hints: HashMap<String, OwnedValue>,
+) -> zbus::Result<Message> {
+    let destination = state
+        .connection()
+        .unique_name()
+        .expect("daemon unique name")
+        .clone();
+    let payload = (
+        "app",
+        0_u32,
+        "",
+        "summary",
+        "body",
+        Vec::<String>::new(),
+        hints,
+        0_i32,
+    );
+
+    tokio::time::timeout(
+        TEST_NOTIFY_TIMEOUT,
+        client.call_method(
+            Some(destination),
+            NOTIFICATIONS_OBJECT_PATH,
+            Some(NOTIFICATIONS_INTERFACE),
+            "Notify",
+            &payload,
+        ),
+    )
+    .await
+    .expect("Notify response timed out")
+}
+
+fn owned_rgba_pixel(data: [u8; 4]) -> OwnedValue {
+    let image = Structure::from((1_i32, 1_i32, 4_i32, true, 8_i32, 4_i32, data.to_vec()));
+    OwnedValue::try_from(Value::from(image)).expect("owned one-pixel image hint")
 }
 
 async fn assert_oversized_notify_rejected(

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use tracing::{debug, warn};
-use unixnotis_core::{Notification, NotificationKey};
+use unixnotis_core::{ImageData, Notification, NotificationKey};
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 
@@ -16,6 +16,7 @@ use crate::daemon::notifications::ingress::payload::{
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::InsertOutcome;
 
+use super::wire_hints::WireHints;
 use super::NotificationServer;
 
 struct StoredNotification {
@@ -29,11 +30,12 @@ struct WireNotification {
     body: String,
     actions: Vec<String>,
     hints: HashMap<String, OwnedValue>,
+    image_data: Option<ImageData>,
     expire_timeout: i32,
 }
 
 const SENDER_METADATA_TIMEOUT: Duration = Duration::from_millis(100);
-const ATTRIBUTION_TIMEOUT: Duration = Duration::from_millis(100);
+const ATTRIBUTION_TIMEOUT: Duration = Duration::from_millis(500);
 
 impl NotificationServer {
     #[expect(
@@ -48,7 +50,7 @@ impl NotificationServer {
         summary: String,
         body: String,
         actions: Vec<String>,
-        hints: HashMap<String, OwnedValue>,
+        hints: WireHints,
         header: &Header<'_>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
@@ -59,6 +61,7 @@ impl NotificationServer {
             replaces_id,
             expire_timeout,
         );
+        let (hints, image_data) = hints.into_parts();
         let notification = self
             .notification_from_wire(
                 WireNotification {
@@ -68,6 +71,7 @@ impl NotificationServer {
                     body,
                     actions,
                     hints,
+                    image_data,
                     expire_timeout,
                 },
                 header,
@@ -148,12 +152,15 @@ impl NotificationServer {
             warn!("notification attribution timed out and failed closed");
             unknown_reply_denied(claim, &sender, "attribution timed out")
         };
-        if resolution.attribution.has_warning() {
+        if matches!(
+            resolution.attribution.status,
+            unixnotis_core::AttributionStatus::Conflict
+        ) {
             debug!(
                 app_name = %input.app_name,
                 sender = sender.sender_name.as_deref().unwrap_or("unknown"),
                 sender_executable = sender.sender_executable.as_deref().unwrap_or("unknown"),
-                source = %resolution.attribution.source_label,
+                detail = %resolution.attribution.diagnostic_detail,
                 "notification application claim conflicts with sender evidence"
             );
         }
@@ -178,6 +185,7 @@ impl NotificationServer {
             body: input.body,
             actions: input.actions,
             hints: input.hints,
+            image_data: input.image_data,
             sender,
             attribution: resolution.attribution,
             attribution_diagnostics: resolution.diagnostics,
