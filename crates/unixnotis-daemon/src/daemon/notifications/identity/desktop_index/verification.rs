@@ -9,7 +9,6 @@ use super::model::{
     DesktopIdentityIndex, DesktopRecord, FieldCode, LaunchArgument, LaunchAuthority, LaunchFailure,
     LaunchSpec, LaunchVerification, LiteralArgument, VerifiedLaunch,
 };
-use super::names::normalize_desktop_id;
 
 const MAX_PROCESS_ARGUMENTS: usize = 256;
 
@@ -53,14 +52,13 @@ fn classify_launch_authority(
         return LaunchAuthority::ProtectedPayload;
     }
 
-    // A caller-selected file or URL can change what a shared runtime executes
-    // Uniqueness in the desktop index cannot turn that open-ended selector into app identity
-    if !spec.arguments.is_empty() && spec.arguments.iter().all(is_dynamic_or_option) {
-        return LaunchAuthority::DynamicOnly;
-    }
-
     if executable_contract_is_dedicated(record, index, spec) {
         return LaunchAuthority::DedicatedExecutable;
+    }
+
+    // Dynamic documents are safe only after the executable establishes the application
+    if spec.arguments.iter().any(is_dynamic_document_field) {
+        return LaunchAuthority::DynamicOnly;
     }
 
     LaunchAuthority::Ambiguous
@@ -71,27 +69,18 @@ fn executable_contract_is_dedicated(
     index: &DesktopIdentityIndex,
     spec: &LaunchSpec,
 ) -> bool {
-    let distinct_ids = index
-        .records_for_executable(spec.executable)
-        .into_iter()
-        .filter(|candidate| !record.system_origin || candidate.system_origin)
-        .map(|candidate| normalize_desktop_id(&candidate.id))
-        .collect::<HashSet<_>>();
-
-    // A dedicated executable contract has no unresolved positional selector
-    // Fixed positional values on a shared runtime could select code just like a file field
-    distinct_ids.len() == 1
-        && !spec
-            .arguments
-            .iter()
-            .any(|argument| matches!(argument, LaunchArgument::FieldCode(_)))
-        && !spec.arguments.iter().any(|argument| {
-            matches!(
-                argument,
-                LaunchArgument::Literal(literal)
-                    if !literal.value.starts_with(b"-") && literal.file.is_none()
-            )
-        })
+    record.system_origin
+        && record.system_association
+        && spec.executable.is_system_managed()
+        && spec.executable.is_executable_regular()
+        && record
+            .desktop_provenance
+            .same_application_source(&record.executable_provenance)
+        && index.records_form_one_application_family(spec.executable, record.system_origin)
+        // A file in argv[1] can be either a document or an interpreter's active program
+        // Static desktop metadata cannot distinguish those roles without a protected payload
+        && !spec.arguments.iter().any(is_dynamic_file_field)
+        && !spec.arguments.iter().any(is_unprotected_fixed_payload)
 }
 
 fn verify_dedicated(command_line: &CommandLineEvidence, spec: &LaunchSpec) -> LaunchVerification {
@@ -105,7 +94,7 @@ fn verify_dedicated(command_line: &CommandLineEvidence, spec: &LaunchSpec) -> La
         CommandLineQuality::Structured => {
             let actual = command_line.argv.get(1..).unwrap_or_default();
             if actual.len() <= MAX_PROCESS_ARGUMENTS
-                && match_ordered_dedicated_contract(spec, actual)
+                && (spec.arguments.is_empty() || match_ordered_dedicated_contract(spec, actual))
             {
                 LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable)
             } else {
@@ -199,8 +188,14 @@ fn match_dedicated_arguments(
                         visited,
                     ))
         }
-        // Dynamic selectors prevent dedicated classification before matching begins
-        LaunchArgument::FieldCode(_) => false,
+        LaunchArgument::FieldCode(code) => match_dedicated_field(
+            *code,
+            template,
+            actual,
+            template_index,
+            actual_index,
+            visited,
+        ),
     };
     if matches_expected {
         return true;
@@ -217,6 +212,41 @@ fn match_dedicated_arguments(
             actual_index.saturating_add(1),
             visited,
         )
+}
+
+fn match_dedicated_field(
+    code: FieldCode,
+    template: &[LaunchArgument],
+    actual: &[Vec<u8>],
+    template_index: usize,
+    actual_index: usize,
+    visited: &mut HashSet<(usize, usize)>,
+) -> bool {
+    let maximum = match code {
+        FieldCode::File | FieldCode::Url => 1,
+        FieldCode::Files | FieldCode::Urls => actual.len().saturating_sub(actual_index),
+    };
+    for count in 0..=maximum {
+        let Some(end) = actual_index.checked_add(count) else {
+            break;
+        };
+        let Some(values) = actual.get(actual_index..end) else {
+            break;
+        };
+        if !values.iter().all(|value| field_value_matches(code, value)) {
+            break;
+        }
+        if match_dedicated_arguments(
+            template,
+            actual,
+            template_index.saturating_add(1),
+            end,
+            visited,
+        ) {
+            return true;
+        }
+    }
+    false
 }
 
 fn match_ordered_exec_contract(spec: &LaunchSpec, actual: &[Vec<u8>]) -> bool {
@@ -344,10 +374,17 @@ fn protected_payload_position_mismatch(spec: &LaunchSpec, actual: &[Vec<u8>]) ->
             };
             is_protected_payload(argument).then_some((index, literal))
         })
-        .any(|(index, literal)| {
-            !actual
-                .get(index)
-                .is_some_and(|value| literal_file_matches(literal, value))
+        .any(|(template_index, literal)| {
+            !(0..actual.len()).any(|actual_index| {
+                let mut visited = HashSet::new();
+                match_arguments(
+                    &spec.arguments[..template_index],
+                    &actual[..actual_index],
+                    0,
+                    0,
+                    &mut visited,
+                ) && literal_file_matches(literal, &actual[actual_index])
+            })
         })
 }
 
@@ -387,11 +424,23 @@ fn is_protected_payload(argument: &LaunchArgument) -> bool {
     )
 }
 
-fn is_dynamic_or_option(argument: &LaunchArgument) -> bool {
-    match argument {
-        LaunchArgument::FieldCode(_) | LaunchArgument::OptionalIcon { .. } => true,
-        LaunchArgument::Literal(literal) => literal.value.starts_with(b"-"),
-    }
+const fn is_dynamic_document_field(argument: &LaunchArgument) -> bool {
+    matches!(argument, LaunchArgument::FieldCode(_))
+}
+
+const fn is_dynamic_file_field(argument: &LaunchArgument) -> bool {
+    matches!(
+        argument,
+        LaunchArgument::FieldCode(FieldCode::File | FieldCode::Files)
+    )
+}
+
+fn is_unprotected_fixed_payload(argument: &LaunchArgument) -> bool {
+    matches!(
+        argument,
+        LaunchArgument::Literal(literal)
+            if !literal.value.starts_with(b"-") && literal.file.is_none()
+    )
 }
 
 #[cfg(test)]

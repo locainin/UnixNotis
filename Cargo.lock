@@ -3650,6 +3650,7 @@ dependencies = [
  "unicode-security",
  "unixnotis-core",
  "url",
+ "wait-timeout",
  "zbus",
 ]
 
