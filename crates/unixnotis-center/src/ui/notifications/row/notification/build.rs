@@ -9,7 +9,7 @@ use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use tokio::sync::mpsc;
 use tracing::debug;
-use unixnotis_core::css::hooks;
+use unixnotis_core::{css::hooks, NotificationKey};
 use unixnotis_ui::CutCorner;
 
 use crate::control::UiCommand;
@@ -34,6 +34,8 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let meta_top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     meta_top.add_css_class(hooks::panel_card::META_TOP);
     meta_top.set_hexpand(true);
+    // Overlay dismiss control occupies the card's top-right corner
+    meta_top.set_margin_end(30);
     meta_top.set_visible(false);
 
     let meta_label = gtk::Label::new(None);
@@ -52,12 +54,16 @@ pub(in crate::ui::notifications) fn build_notification_row(
     meta_top.append(&meta_spacer);
     meta_top.append(&time_badge);
 
-    // Header packs icon + app label + close button
+    // Header packs the identity shown only for standalone rows
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     header.add_css_class(hooks::panel_card::HEADER);
     let icon = gtk::Image::new();
-    icon.set_pixel_size(22);
+    icon.set_pixel_size(20);
     icon.add_css_class("unixnotis-panel-icon");
+
+    let identity = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    identity.set_hexpand(true);
+    let identity_top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
 
     let app_label = gtk::Label::new(None);
     app_label.set_xalign(0.0);
@@ -67,25 +73,38 @@ pub(in crate::ui::notifications) fn build_notification_row(
     app_label.set_max_width_chars(40);
     app_label.add_css_class("unixnotis-panel-app");
 
+    let trust_chip = gtk::Label::new(None);
+    trust_chip.set_single_line_mode(true);
+    trust_chip.add_css_class("unixnotis-panel-trust-chip");
+    trust_chip.set_visible(false);
+
+    let secondary_claim = gtk::Label::new(None);
+    secondary_claim.set_xalign(0.0);
+    secondary_claim.set_single_line_mode(true);
+    secondary_claim.set_ellipsize(EllipsizeMode::End);
+    secondary_claim.add_css_class("unixnotis-panel-secondary-claim");
+    secondary_claim.set_visible(false);
+
     let urgency_badge = gtk::Label::new(Some("Critical"));
     // Reused rows toggle this widget instead of rebuilding the header tree
     urgency_badge.add_css_class(hooks::urgency::BADGE);
     urgency_badge.set_single_line_mode(true);
     urgency_badge.set_visible(false);
 
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
-    // Spacer pushes close button to the far edge
-    spacer.set_hexpand(true);
-
     let close_button = gtk::Button::from_icon_name("window-close-symbolic");
     close_button.set_halign(gtk::Align::End);
+    close_button.set_valign(gtk::Align::Start);
+    close_button.set_margin_top(6);
+    close_button.set_margin_end(6);
     close_button.add_css_class("unixnotis-panel-close");
 
+    identity_top.append(&app_label);
+    identity_top.append(&trust_chip);
+    identity_top.append(&urgency_badge);
+    identity.append(&identity_top);
+    identity.append(&secondary_claim);
     header.append(&icon);
-    header.append(&app_label);
-    header.append(&urgency_badge);
-    header.append(&spacer);
-    header.append(&close_button);
+    header.append(&identity);
 
     let body_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     body_row.set_hexpand(true);
@@ -103,27 +122,36 @@ pub(in crate::ui::notifications) fn build_notification_row(
     // Summary is optional, so the update path decides later if the row should exist
     let summary_label = gtk::Label::new(None);
     summary_label.set_xalign(0.0);
-    // Summary can wrap but stays bounded to three lines
+    // One title line keeps short grouped rows compact
     summary_label.set_wrap(true);
     summary_label.set_wrap_mode(WrapMode::WordChar);
     summary_label.set_ellipsize(EllipsizeMode::End);
-    summary_label.set_lines(3);
+    summary_label.set_lines(1);
     summary_label.set_max_width_chars(88);
     summary_label.add_css_class("unixnotis-panel-summary");
 
     // Body follows the same optional-row rule as summary text
     let body_label = gtk::Label::new(None);
     body_label.set_xalign(0.0);
-    // Body gets more lines than summary but still has upper bounds
+    // Three body lines provide context without dominating the panel
     body_label.set_wrap(true);
     body_label.set_wrap_mode(WrapMode::WordChar);
     body_label.set_ellipsize(EllipsizeMode::End);
-    body_label.set_lines(8);
+    body_label.set_lines(3);
     body_label.set_max_width_chars(112);
     body_label.add_css_class("unixnotis-panel-body");
 
+    let popup_status = gtk::Label::new(None);
+    popup_status.set_xalign(0.0);
+    popup_status.set_wrap(true);
+    popup_status.set_wrap_mode(WrapMode::WordChar);
+    popup_status.set_lines(2);
+    popup_status.add_css_class("unixnotis-popup-status");
+    popup_status.set_visible(false);
+
     text_stack.append(&summary_label);
     text_stack.append(&body_label);
+    text_stack.append(&popup_status);
     body_row.append(&thumbnail);
     body_row.append(&text_stack);
 
@@ -165,22 +193,35 @@ pub(in crate::ui::notifications) fn build_notification_row(
     // The wrapper clips the complete styled card while the inner box keeps all CSS hooks
     let card_plate = CutCorner::new(&card, unixnotis_core::CutCorners::default());
 
-    // One content card keeps grouped rows calm without decorative fake stack layers
-    root.append(&card_plate);
+    // Overlay controls never change the card's natural height
+    let card_overlay = gtk::Overlay::new();
+    card_overlay.add_css_class("unixnotis-panel-card-overlay");
+    card_overlay.set_child(Some(&card_plate));
+    card_overlay.add_overlay(&close_button);
 
-    let notify_id = Rc::new(Cell::new(0));
-    // Close click always targets the latest id assigned to this row
+    // One content card keeps grouped rows calm without decorative fake stack layers
+    root.append(&card_overlay);
+
+    let notify_key = Rc::new(Cell::new(NotificationKey {
+        id: 0,
+        generation: 0,
+    }));
+    // Close click always targets the exact generation assigned to this recycled row
     let close_tx = command_tx;
-    let notify_id_clone = notify_id.clone();
+    let notify_key_clone = notify_key.clone();
     close_button.connect_clicked(move |_| {
-        let id = notify_id_clone.get();
-        if id == 0 {
+        let notification = notify_key_clone.get();
+        if notification.id == 0 {
             // Ignore clicks before first binding
             return;
         }
-        debug!(id, "dismiss clicked");
+        debug!(
+            id = notification.id,
+            generation = notification.generation,
+            "dismiss clicked"
+        );
         // Non-blocking enqueue avoids GTK stalls during D-Bus backpressure
-        try_send_command(&close_tx, UiCommand::Dismiss(id));
+        try_send_command(&close_tx, UiCommand::Dismiss(notification));
     });
 
     // The reusable widget bundle is returned with the root so the list factory
@@ -191,7 +232,10 @@ pub(in crate::ui::notifications) fn build_notification_row(
             card,
             card_plate,
             icon,
+            header,
             app_label,
+            secondary_claim,
+            trust_chip,
             urgency_badge,
             meta_top,
             meta_label,
@@ -199,13 +243,17 @@ pub(in crate::ui::notifications) fn build_notification_row(
             thumbnail,
             summary_label,
             body_label,
+            popup_status,
             footer,
             footer_left,
             footer_right,
             actions_box,
             inline_reply,
-            notify_id,
-            action_cache_id: Cell::new(0),
+            notify_key,
+            action_cache_key: Cell::new(NotificationKey {
+                id: 0,
+                generation: 0,
+            }),
             action_cache: RefCell::new(Vec::new()),
             reply_cache: RefCell::new((
                 unixnotis_core::InlineReply::default(),

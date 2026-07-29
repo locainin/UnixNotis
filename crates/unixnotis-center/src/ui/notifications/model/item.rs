@@ -63,6 +63,9 @@ pub struct RowData {
     pub group_key: Rc<str>,
     pub count: u32,
     pub expanded: bool,
+    // Position flags let CSS form one continuous grouped surface
+    pub group_first: bool,
+    pub group_last: bool,
     // True when this notification is the visible card for a collapsed group
     pub stacked: bool,
     // Number of internal ghost cards shown under the visible notification card
@@ -81,6 +84,8 @@ impl Default for RowData {
             group_key: Rc::from(""),
             count: 0,
             expanded: false,
+            group_first: false,
+            group_last: false,
             stacked: false,
             stack_depth: 0,
             is_active: false,
@@ -104,6 +109,8 @@ impl RowData {
             group_key,
             count: count as u32,
             expanded,
+            group_first: false,
+            group_last: false,
             stacked: false,
             stack_depth: 0,
             is_active: false,
@@ -128,6 +135,8 @@ impl RowData {
             group_key,
             count: 0,
             expanded,
+            group_first: false,
+            group_last: false,
             stacked,
             stack_depth,
             is_active,
@@ -143,6 +152,8 @@ impl RowData {
             && Rc::ptr_eq(&self.group_key, &other.group_key)
             && self.count == other.count
             && self.expanded == other.expanded
+            && self.group_first == other.group_first
+            && self.group_last == other.group_last
             && self.stacked == other.stacked
             && self.stack_depth == other.stack_depth
             && self.is_active == other.is_active

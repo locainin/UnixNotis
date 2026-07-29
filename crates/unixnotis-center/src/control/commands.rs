@@ -20,9 +20,20 @@ pub async fn handle_command(
 ) -> ZbusResult<()> {
     match command {
         // Per-row actions still map straight to the daemon methods
-        UiCommand::Dismiss(id) => timed_dbus_call(proxy.dismiss(id)).await,
-        UiCommand::InvokeAction { id, action_key } => {
-            timed_dbus_call(proxy.invoke_action(id, &action_key)).await
+        UiCommand::Dismiss(notification) => {
+            timed_dbus_call(proxy.dismiss_generation(notification.id, notification.generation))
+                .await
+        }
+        UiCommand::InvokeAction {
+            notification,
+            action_key,
+        } => {
+            timed_dbus_call(proxy.invoke_action_generation(
+                notification.id,
+                notification.generation,
+                &action_key,
+            ))
+            .await
         }
         UiCommand::Reply {
             id,
@@ -138,7 +149,7 @@ pub async fn flush_offline_commands(
 }
 
 pub fn drop_stale_offline_commands(offline: &mut VecDeque<UiCommand>) {
-    // Drop ID-based commands after reconnect to avoid acting on stale IDs
+    // Drop notification-key commands after reconnect because daemon generations are process-local
     // Commands that do not depend on old notification ids are kept
     let before = offline.len();
     offline.retain(|command| {

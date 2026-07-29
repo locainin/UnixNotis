@@ -13,11 +13,13 @@ pub(super) fn update_notification_text(
     app_name: &str,
     summary: &str,
     body: &str,
+    popup_status: Option<&str>,
 ) {
     // App name always renders while optional rows collapse on empty text
     set_label_text_if_changed(&row.app_label, app_name);
     update_optional_label(&row.summary_label, summary, MAX_SUMMARY_LABEL_CHARS);
     update_optional_label(&row.body_label, body, MAX_BODY_LABEL_CHARS);
+    update_optional_label(&row.popup_status, popup_status.unwrap_or_default(), 160);
 }
 
 pub(super) fn optional_label_state(text: &str, max_chars: usize) -> OptionalLabelState<'_> {

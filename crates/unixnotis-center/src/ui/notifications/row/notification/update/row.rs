@@ -2,7 +2,7 @@
 
 use gtk::prelude::*;
 use tokio::sync::mpsc;
-use unixnotis_ui::presentation::{build_semantic_badge, NotificationPresentation};
+use unixnotis_ui::presentation::{apply_semantic_badge, NotificationPresentation};
 
 use crate::control::UiCommand;
 use crate::ui::icons::IconResolver;
@@ -40,27 +40,51 @@ pub(in crate::ui::notifications) fn update_notification_row(
         &presentation.identity.primary_label,
         &presentation.title,
         presentation.body.as_deref().unwrap_or_default(),
+        presentation.popup_status.as_deref(),
     );
     if presentation.trust.details_label.is_none() {
         row.app_label.set_tooltip_text(None);
     } else if let Some(details) = presentation.trust.details_label.as_deref() {
         row.app_label.set_tooltip_text(Some(details));
     }
+    super::labels::set_label_text_if_changed(
+        &row.secondary_claim,
+        presentation
+            .identity
+            .secondary_claim
+            .as_deref()
+            .unwrap_or_default(),
+    );
+    super::labels::set_label_visible_if_changed(
+        &row.secondary_claim,
+        show_identity && presentation.identity.secondary_claim.is_some(),
+    );
+    super::labels::set_label_text_if_changed(
+        &row.trust_chip,
+        presentation
+            .trust
+            .short_label
+            .as_deref()
+            .unwrap_or_default(),
+    );
+    super::labels::set_label_visible_if_changed(
+        &row.trust_chip,
+        show_identity && presentation.trust.short_label.is_some(),
+    );
     update_metadata_labels(row, data, notification);
-    row.notify_id.set(notification.id);
+    row.notify_key.set(notification.key());
     update_actions(row, command_tx, notification_snapshot, data.is_active);
 
     // Text and action changes must not restart an unchanged icon pipeline
     let next_sig = IconSignature::from(notification);
     let mut sig_guard = row.icon_sig.borrow_mut();
     if show_identity && sig_guard.as_ref() != Some(&next_sig) {
-        if let Some(image) = build_semantic_badge(presentation.identity.badge, 22) {
-            row.icon.set_paintable(image.paintable().as_ref());
+        if apply_semantic_badge(&row.icon, presentation.identity.badge, 20) {
             row.icon.set_visible(true);
         } else {
             let scale = row.card.scale_factor();
             // Verified rows keep authenticated application art from the shared resolver
-            icon_resolver.apply_badge(&row.icon, notification, 22, scale);
+            icon_resolver.apply_badge(&row.icon, notification, 20, scale);
         }
         *sig_guard = Some(next_sig);
     } else if !show_identity {
@@ -68,6 +92,7 @@ pub(in crate::ui::notifications) fn update_notification_row(
     }
     set_widget_visible_if_changed(&row.icon, show_identity);
     set_widget_visible_if_changed(&row.app_label, show_identity);
+    set_widget_visible_if_changed(&row.header, show_identity);
     if has_thumbnail {
         // Reapply visible thumbnails so config reloads cannot leave stale previews
         let scale = row.card.scale_factor();

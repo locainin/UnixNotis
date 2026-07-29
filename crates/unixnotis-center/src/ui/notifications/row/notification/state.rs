@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use unixnotis_core::NotificationView;
+use unixnotis_core::{NotificationKey, NotificationView};
 use unixnotis_ui::presentation::{BadgePresentation, NotificationPresentation};
 
 use super::reply::InlineReplyWidgets;
@@ -18,8 +18,13 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) card_plate: unixnotis_ui::CutCorner,
     // Main icon shown at the top-left of the row
     pub(super) icon: gtk::Image,
+    // Identity header collapses completely for rows owned by a group header
+    pub(super) header: gtk::Box,
     // App name text shown beside the icon
     pub(super) app_label: gtk::Label,
+    // Headerless singleton rows retain the caller label and trust state visibly
+    pub(super) secondary_claim: gtk::Label,
+    pub(super) trust_chip: gtk::Label,
     // Critical badge remains allocated so urgency changes only toggle visibility
     pub(super) urgency_badge: gtk::Label,
     // Optional metadata rows are present for themes but hidden unless config enables them
@@ -34,6 +39,8 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) summary_label: gtk::Label,
     // Body text section that can span multiple lines
     pub(super) body_label: gtk::Label,
+    // Arrival-time popup explanation remains visible after runtime state changes
+    pub(super) popup_status: gtk::Label,
     pub(super) footer: gtk::Box,
     // Optional footer metadata hooks for theme-specific chips
     pub(super) footer_left: gtk::Label,
@@ -42,10 +49,10 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) actions_box: gtk::Box,
     // Live-only reply form is kept outside the action button cache
     pub(super) inline_reply: InlineReplyWidgets,
-    // Current notification id bound to this reused row widget
-    pub(super) notify_id: Rc<Cell<u32>>,
-    // Recycled rows must rebuild action closures when the notification id changes
-    pub(super) action_cache_id: Cell<u32>,
+    // Exact notification identity bound to this reused row widget
+    pub(super) notify_key: Rc<Cell<NotificationKey>>,
+    // Recycled rows must rebuild action closures when the notification generation changes
+    pub(super) action_cache_key: Cell<NotificationKey>,
     // Last rendered action signature for cheap no-op detection
     pub(super) action_cache: RefCell<Vec<(String, String)>>,
     // Reply metadata and live state are cached separately from ordinary actions

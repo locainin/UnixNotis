@@ -42,9 +42,9 @@ pub enum UiEvent {
 
 /// Commands sent from GTK handlers to the D-Bus runtime.
 pub enum UiCommand {
-    Dismiss(u32),
+    Dismiss(NotificationKey),
     InvokeAction {
-        id: u32,
+        notification: NotificationKey,
         action_key: String,
     },
     Reply {
@@ -62,10 +62,16 @@ pub enum UiCommand {
 impl fmt::Debug for UiCommand {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Dismiss(id) => formatter.debug_tuple("Dismiss").field(id).finish(),
-            Self::InvokeAction { id, action_key } => formatter
+            Self::Dismiss(notification) => formatter
+                .debug_tuple("Dismiss")
+                .field(notification)
+                .finish(),
+            Self::InvokeAction {
+                notification,
+                action_key,
+            } => formatter
                 .debug_struct("InvokeAction")
-                .field("id", id)
+                .field("notification", notification)
                 .field("action_key", action_key)
                 .finish(),
             Self::Reply { id, generation, .. } => formatter

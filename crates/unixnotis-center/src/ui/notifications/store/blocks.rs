@@ -59,7 +59,7 @@ impl NotificationList {
                 metadata: self.notification_metadata.clone(),
                 card_corners: self.notification_corners,
             };
-            entry.item.update(RowData::notification(
+            let mut row = RowData::notification(
                 entry.app_key.clone(),
                 entry.view.clone(),
                 stacked,
@@ -67,7 +67,12 @@ impl NotificationList {
                 expanded,
                 entry.is_active,
                 presentation,
-            ));
+            );
+            if ids.len() > 1 {
+                row.group_first = index == 0;
+                row.group_last = !expanded || index + 1 == ids.len();
+            }
+            entry.item.update(row);
             items.push(entry.item.clone());
             keys.push(RowKey::Notification { id: *id });
         }
