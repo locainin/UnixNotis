@@ -121,7 +121,13 @@ jobs:
         run: tests/package-release.sh
 
       - name: Run workspace tests
-        run: xvfb-run -a dbus-run-session -- cargo test --workspace --all-targets --all-features
+        run: |
+          set -euo pipefail
+          ci_runtime_dir="${RUNNER_TEMP:?}/unixnotis-runtime"
+          install -d -m 0700 "${ci_runtime_dir}"
+          XDG_RUNTIME_DIR="${ci_runtime_dir}" \
+            xvfb-run -a dbus-run-session -- \
+            cargo test --workspace --all-targets --all-features
 
       - name: Run dependency audit
         run: cargo audit --deny warnings
