@@ -5,4 +5,4 @@ mod notices;
 mod refresh;
 
 pub(in crate::ui) use config::{log_reload_rejection, ConfigReloadOutcome};
-pub(in crate::ui) use notices::ReloadNoticeState;
+pub(in crate::ui) use notices::{ReloadNoticeKind, ReloadNoticeState};
