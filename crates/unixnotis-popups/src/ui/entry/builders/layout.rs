@@ -29,7 +29,7 @@ pub(super) fn build_popup_grid(
     grid.add_css_class(layout.css_class);
     grid.add_css_class("unixnotis-popup-content-grid");
     grid.set_column_spacing(10);
-    grid.set_row_spacing(2);
+    grid.set_row_spacing(4);
     grid.set_hexpand(true);
     grid.set_accessible_role(gtk::AccessibleRole::Group);
     let accessible_label = popup_accessible_label(view);

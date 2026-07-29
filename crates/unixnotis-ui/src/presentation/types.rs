@@ -108,6 +108,7 @@ pub struct ActionView {
 /// Compact actions split without silently dropping safe overflow
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ActionPresentation {
+    pub default_key: Option<String>,
     pub primary: Vec<ActionView>,
     pub overflow: Vec<ActionView>,
 }

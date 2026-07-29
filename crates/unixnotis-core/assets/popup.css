@@ -57,6 +57,15 @@
     inset 0 1px 0 alpha(#ffffff, 0.035);
 }
 
+.unixnotis-popup-card.unixnotis-popup-default-action:focus-visible {
+  border-color: alpha(@unixnotis-accent, 0.48);
+  outline: none;
+  box-shadow:
+    0 14px 34px -18px @unixnotis-shadow-strong,
+    0 0 0 2px alpha(@unixnotis-accent, 0.18),
+    inset 0 1px 0 alpha(#ffffff, 0.035);
+}
+
 .unixnotis-popup-card.utility {
   padding-top: 12px;
   padding-bottom: 12px;
@@ -71,15 +80,19 @@
   min-width: 0;
 }
 
-.unixnotis-popup-identity-row,
-.unixnotis-popup-message {
+.unixnotis-popup-identity-row {
   min-width: 0;
 }
 
+.unixnotis-popup-message {
+  min-width: 0;
+  margin-top: 1px;
+}
+
 .unixnotis-popup-app-name {
-  color: alpha(@unixnotis-text, 0.78);
+  color: alpha(@unixnotis-text, 0.68);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .unixnotis-popup-time {
@@ -110,9 +123,10 @@
 }
 
 .unixnotis-popup-summary {
-  font-weight: 650;
+  color: alpha(@unixnotis-text, 0.98);
+  font-weight: 700;
   font-size: 15px;
-  margin-top: 1px;
+  margin-top: 0;
 }
 
 .unixnotis-popup-icon {
@@ -147,10 +161,10 @@
 }
 
 .unixnotis-popup-body {
-  color: @unixnotis-muted;
+  color: alpha(@unixnotis-muted, 0.88);
   font-weight: 400;
   font-size: 13px;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .unixnotis-popup-footer-note {

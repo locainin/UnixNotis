@@ -1,5 +1,5 @@
-use super::{connect_close_action, connect_default_action, widget_type_blocks_default_action};
-use gtk::glib::prelude::StaticType;
+use super::connect_close_action;
+use crate::ui::entry::activation::connect_default_action;
 use gtk::prelude::*;
 use unixnotis_core::{
     Action, AttributionReason, InlineReply, InlineReplyPolicy, NotificationAttribution,
@@ -8,18 +8,6 @@ use unixnotis_core::{
 
 use crate::dbus::UiCommand;
 use crate::ui::entry::presentation::PopupEntryViewModel;
-
-#[gtk::test]
-fn default_card_action_is_blocked_for_button_widgets() {
-    // Button clicks must remain owned by the button action
-    assert!(widget_type_blocks_default_action(gtk::Button::static_type()));
-}
-
-#[gtk::test]
-fn default_card_action_is_allowed_for_plain_content_widgets() {
-    // Plain card content may use the notification default action
-    assert!(!widget_type_blocks_default_action(gtk::Label::static_type()));
-}
 
 #[gtk::test]
 fn close_button_dispatches_only_the_notification_dismissal() {
@@ -49,7 +37,25 @@ fn exact_default_action_adds_card_click_handling() {
 
     connect_default_action(&root, view.key(), &model, &command_tx);
 
-    assert_eq!(root.observe_controllers().n_items(), 1);
+    assert_eq!(root.observe_controllers().n_items(), 2);
+    assert!(root.is_focusable());
+}
+
+#[gtk::test]
+fn blank_default_action_still_adds_card_click_handling() {
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let mut view = notification();
+    view.actions.push(Action {
+        key: "default".to_string(),
+        label: String::new(),
+    });
+    let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
+
+    connect_default_action(&root, view.key(), &model, &command_tx);
+
+    assert_eq!(root.observe_controllers().n_items(), 2);
+    assert!(root.is_focusable());
 }
 
 #[gtk::test]
@@ -68,7 +74,7 @@ fn nondefault_action_does_not_make_the_whole_card_clickable() {
     assert_eq!(root.observe_controllers().n_items(), 0);
 }
 
-fn notification() -> NotificationView {
+pub(super) fn notification() -> NotificationView {
     NotificationView {
         id: 31,
         generation: 1,

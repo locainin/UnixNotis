@@ -9,6 +9,7 @@ use unixnotis_ui::presentation::build_semantic_badge;
 use super::super::commands::try_send_command;
 use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation, ReplyPresentation};
 use crate::dbus::UiCommand;
+use crate::ui::entry::activation::mark_interactive;
 use crate::ui::UiState;
 
 pub(super) struct IdentityAvatar {
@@ -29,6 +30,9 @@ pub(super) fn build_identity_avatar(
     icon.set_size_request(icon_size, icon_size);
     icon.set_valign(Align::Center);
     icon.set_halign(Align::Center);
+    // Expansion centers the glyph optically inside the fixed avatar allocation
+    icon.set_hexpand(true);
+    icon.set_vexpand(true);
     icon.set_accessible_role(gtk::AccessibleRole::Presentation);
     icon.add_css_class("unixnotis-popup-icon");
 
@@ -142,6 +146,7 @@ pub(in crate::ui::entry) fn build_close_button() -> gtk::Button {
     close.add_css_class("unixnotis-popup-close");
     close.set_halign(Align::End);
     close.set_tooltip_text(Some("Dismiss notification"));
+    mark_interactive(&close);
     close
 }
 
@@ -173,6 +178,7 @@ fn build_action_button(
 ) -> gtk::Button {
     let button = gtk::Button::with_label(&action.label);
     button.add_css_class("unixnotis-popup-action");
+    mark_interactive(&button);
     let action_key = action.key.clone();
     let tx = command_tx.clone();
     let popover = popover.cloned();
@@ -201,6 +207,7 @@ fn build_overflow_menu(
     menu.set_icon_name("view-more-symbolic");
     menu.set_tooltip_text(Some("More actions"));
     menu.add_css_class("unixnotis-popup-action-overflow");
+    mark_interactive(&menu);
 
     let popover = gtk::Popover::new();
     let list = gtk::Box::new(gtk::Orientation::Vertical, 4);

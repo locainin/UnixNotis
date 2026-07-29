@@ -240,14 +240,25 @@ fn visible_actions(notification: &NotificationView, kind: NotificationKind) -> A
     if notification.attribution.application_action_policy() != ApplicationActionPolicy::Allow {
         return ActionPresentation::default();
     }
+    // A blank default label keeps card activation without creating an empty button
+    let default_key = notification
+        .actions
+        .iter()
+        .find(|action| action.key == "default")
+        .map(|action| action.key.clone());
     let mut actions = notification
         .actions
         .iter()
-        .filter(|action| action.key != "inline-reply")
+        .filter(|action| {
+            action.key != "inline-reply"
+                && !action.key.trim().is_empty()
+                && !action.label.trim().is_empty()
+        })
         .map(action_view)
         .collect::<Vec<_>>();
     let overflow = actions.split_off(actions.len().min(kind.action_limit()));
     ActionPresentation {
+        default_key,
         primary: actions,
         overflow,
     }

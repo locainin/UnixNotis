@@ -42,8 +42,26 @@ fn shared_model_keeps_verified_communication_content_and_actions_consistent() {
     );
     assert_eq!(presentation.media.thumbnail, ThumbnailKind::Content);
     assert_eq!(presentation.actions.primary.len(), 1);
+    assert_eq!(presentation.actions.primary[0].key, "default");
+    assert_eq!(presentation.actions.primary[0].label, "Open");
     assert!(presentation.actions.overflow.is_empty());
+    assert_eq!(presentation.actions.default_key.as_deref(), Some("default"));
     assert_eq!(presentation.timestamp, "2m");
+}
+
+#[test]
+fn blank_default_action_keeps_card_activation_without_rendering_a_button() {
+    let mut view = notification();
+    view.actions = vec![Action {
+        key: "default".to_string(),
+        label: "  ".to_string(),
+    }];
+
+    let presentation = NotificationPresentation::from_view_at(&view, 1_000);
+
+    assert_eq!(presentation.actions.default_key.as_deref(), Some("default"));
+    assert!(presentation.actions.primary.is_empty());
+    assert!(presentation.actions.overflow.is_empty());
 }
 
 #[test]
