@@ -1,6 +1,6 @@
 use zbus::zvariant::{serialized::Context, to_bytes, Type, LE};
 
-use super::PopupAdmissionView;
+use super::{PopupAdmissionView, PopupDeliveryStage};
 
 #[test]
 fn popup_admission_wire_values_remain_stable_and_complete() {
@@ -19,6 +19,24 @@ fn popup_admission_wire_values_remain_stable_and_complete() {
     }
 
     assert_eq!(PopupAdmissionView::signature(), u8::signature());
+}
+
+#[test]
+fn popup_delivery_stage_wire_values_remain_stable_and_complete() {
+    for (stage, expected) in [
+        (PopupDeliveryStage::Suppressed, 0_u8),
+        (PopupDeliveryStage::Admitted, 1),
+        (PopupDeliveryStage::FanoutFailed, 2),
+        (PopupDeliveryStage::RendererFetched, 3),
+        (PopupDeliveryStage::Rendered, 4),
+    ] {
+        let encoded = to_bytes(Context::new_dbus(LE, 0), &stage)
+            .expect("popup delivery stage should serialize");
+
+        assert_eq!(encoded.bytes(), &[expected]);
+    }
+
+    assert_eq!(PopupDeliveryStage::signature(), u8::signature());
 }
 
 #[test]

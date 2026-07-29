@@ -205,6 +205,78 @@ async fn invoke_action_rejects_unauthorized_sender_before_signal_emit() {
 }
 
 #[tokio::test]
+async fn generation_dismiss_rejects_unauthorized_sender_before_mutating_state() {
+    let state = daemon_state_for_test(false).await;
+    let key = state
+        .store
+        .lock()
+        .await
+        .insert(notification("protected generation"), 0)
+        .notification
+        .key();
+    let server = ControlServer::new(state.clone());
+    let message = control_header_message("DismissGeneration");
+
+    server
+        .dismiss_generation(key.id, key.generation, message.header())
+        .await
+        .expect_err("unauthorized generation dismiss should fail");
+
+    assert_eq!(
+        state
+            .store
+            .lock()
+            .await
+            .active_notification_view(key.id)
+            .expect("unauthorized dismiss must preserve the notification")
+            .key(),
+        key
+    );
+}
+
+#[tokio::test]
+async fn generation_action_rejects_unauthorized_sender_before_validation() {
+    let state = daemon_state_for_test(false).await;
+    let server = ControlServer::new(state);
+    let message = control_header_message("InvokeActionGeneration");
+
+    server
+        .invoke_action_generation(7, 11, "default", message.header())
+        .await
+        .expect_err("unauthorized generation action should fail");
+}
+
+#[tokio::test]
+async fn popup_render_acknowledgement_rejects_unauthorized_sender() {
+    let state = daemon_state_for_test(false).await;
+    let key = state
+        .store
+        .lock()
+        .await
+        .insert(notification("render acknowledgement"), 0)
+        .notification
+        .key();
+    let server = ControlServer::new(state.clone());
+    let message = control_header_message("MarkPopupRendered");
+
+    server
+        .mark_popup_generation_rendered(key, &message.header())
+        .await
+        .expect_err("unauthorized render acknowledgement should fail");
+
+    assert_ne!(
+        state
+            .store
+            .lock()
+            .await
+            .notification_diagnostics(key.id, &unixnotis_core::UiHealth::default())
+            .expect("notification diagnostics should remain available")
+            .delivery_stage,
+        unixnotis_core::PopupDeliveryStage::Rendered
+    );
+}
+
+#[tokio::test]
 async fn timed_dnd_rejects_unauthorized_sender_before_mutating_state() {
     let state = daemon_state_for_test(false).await;
     let server = ControlServer::new(state.clone());

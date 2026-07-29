@@ -28,6 +28,7 @@ fn sample_notification() -> NotificationView {
         received_at_unix_seconds: 0,
         // CLI formatting only needs the lightweight transport fields
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     }
 }
 

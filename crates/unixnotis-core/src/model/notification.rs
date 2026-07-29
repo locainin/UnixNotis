@@ -12,6 +12,7 @@ use super::image::NotificationImage;
 use super::reply::InlineReply;
 use super::types::{Action, Urgency};
 use crate::util::{fold_text_for_layout, MAX_DISPLAY_TOKEN_WIDTH};
+use crate::PopupDecisionRecord;
 
 /// Exact identity of one committed notification payload
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq, Hash)]
@@ -96,6 +97,7 @@ impl Notification {
             received_at_unix_seconds: self.received_at.timestamp(),
             // UIs only need the text, actions, and image payload used for rendering
             image: self.image.clone(),
+            popup_decision: PopupDecisionRecord::default(),
             // Protocol flags and sender metadata stay daemon-side to keep D-Bus payloads small
         }
     }
@@ -121,6 +123,7 @@ impl Notification {
             received_at_unix_seconds: self.received_at.timestamp(),
             // List rows should avoid carrying raw image buffers across D-Bus
             image: self.image.for_listing(),
+            popup_decision: PopupDecisionRecord::default(),
             // Protocol flags and sender metadata stay daemon-side to keep D-Bus payloads small
         }
     }
@@ -340,6 +343,19 @@ pub struct NotificationView {
     pub received_at_unix_seconds: i64,
     // Image metadata intended for UI usage
     pub image: NotificationImage,
+    // Arrival-time popup reasoning stays stable while DND and renderer state change later
+    pub popup_decision: PopupDecisionRecord,
+}
+
+impl NotificationView {
+    /// Return the exact committed identity represented by this UI snapshot
+    #[must_use]
+    pub const fn key(&self) -> NotificationKey {
+        NotificationKey {
+            id: self.id,
+            generation: self.generation,
+        }
+    }
 }
 
 #[cfg(test)]

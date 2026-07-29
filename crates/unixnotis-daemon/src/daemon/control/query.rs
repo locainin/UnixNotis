@@ -70,7 +70,7 @@ impl ControlServer {
         // Admission and content must describe the same committed generation
         self.authorize_control_call(header, "GetPopupCandidate")
             .await?;
-        let store = self.state.store.lock().await;
+        let mut store = self.state.store.lock().await;
         Ok(store.popup_candidate(id).into_iter().collect())
     }
 

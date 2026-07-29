@@ -37,6 +37,29 @@ impl PopupAdmissionView {
     }
 }
 
+/// Furthest delivery stage reached by one committed popup decision
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize_repr, Deserialize_repr, Type)]
+#[repr(u8)]
+pub enum PopupDeliveryStage {
+    #[default]
+    Suppressed = 0,
+    Admitted = 1,
+    FanoutFailed = 2,
+    RendererFetched = 3,
+    Rendered = 4,
+}
+
+/// Immutable arrival decision plus later delivery progress for one generation
+#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize, Type)]
+pub struct PopupDecisionRecord {
+    pub admission_at_commit: PopupAdmissionView,
+    pub renderer_process_running_at_commit: bool,
+    pub renderer_ready_at_commit: bool,
+    pub max_visible_at_commit: u32,
+    pub decided_at_unix_ms: i64,
+    pub delivery_stage: PopupDeliveryStage,
+}
+
 /// One atomic popup payload and its current admission decision
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Type)]
 pub struct PopupCandidate {

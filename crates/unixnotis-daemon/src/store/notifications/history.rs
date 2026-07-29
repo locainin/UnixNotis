@@ -6,7 +6,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Weak};
 
-use unixnotis_core::{Notification, NotificationView};
+use unixnotis_core::{Notification, NotificationKey, NotificationView, PopupDecisionRecord};
 
 struct HistoryEntry {
     notification: Arc<Notification>,
@@ -44,14 +44,27 @@ impl HistoryStore {
         self.order.clear();
     }
 
-    pub(in crate::store) fn list_views(&self) -> Vec<NotificationView> {
+    pub(in crate::store) fn list_views(
+        &self,
+        popup_decisions: &HashMap<NotificationKey, PopupDecisionRecord>,
+    ) -> Vec<NotificationView> {
         let mut views = Vec::with_capacity(self.entries.len());
         for id in self.order.iter().rev() {
             if let Some(entry) = self.entries.get(id) {
-                views.push(entry.notification.to_list_view());
+                let mut view = entry.notification.to_list_view();
+                if let Some(decision) = popup_decisions.get(&entry.notification.key()) {
+                    view.popup_decision.clone_from(decision);
+                }
+                views.push(view);
             }
         }
         views
+    }
+
+    pub(in crate::store) fn contains_generation(&self, key: NotificationKey) -> bool {
+        self.entries
+            .get(&key.id)
+            .is_some_and(|entry| entry.notification.generation == key.generation)
     }
 
     pub(in crate::store) fn remove(&mut self, id: &u32) -> Option<Arc<Notification>> {
@@ -61,6 +74,18 @@ impl HistoryStore {
             self.order.retain(|entry| entry != id);
         }
         removed
+    }
+
+    pub(in crate::store) fn remove_generation(
+        &mut self,
+        key: NotificationKey,
+    ) -> Option<Arc<Notification>> {
+        // Numeric IDs can be reused, so history removal must compare the committed generation
+        let generation_matches = self
+            .entries
+            .get(&key.id)
+            .is_some_and(|entry| entry.notification.generation == key.generation);
+        generation_matches.then(|| self.remove(&key.id)).flatten()
     }
 
     pub(in crate::store) fn insert(&mut self, notification: Arc<Notification>) {

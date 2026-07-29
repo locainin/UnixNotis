@@ -5,7 +5,7 @@ use zbus::zvariant::Type;
 
 use crate::AttributionDiagnostics;
 
-use super::PopupAdmissionView;
+use super::{PopupAdmissionView, PopupDeliveryStage};
 
 /// One active notification and the state that controls its popup rendering
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -18,4 +18,6 @@ pub struct NotificationDiagnosticsView {
     pub renderer_process_running: bool,
     pub renderer_ready: bool,
     pub configured_max_visible: u32,
+    pub decided_at_unix_ms: i64,
+    pub delivery_stage: PopupDeliveryStage,
 }

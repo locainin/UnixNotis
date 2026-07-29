@@ -66,3 +66,27 @@ fn clear_history_removes_archived_notifications() {
     assert_eq!(store.history_len(), 0);
     assert!(store.list_history().is_empty());
 }
+
+#[test]
+fn history_generation_checks_and_removal_require_the_exact_commit_key() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store.insert(make_notification("archived"), 0).notification;
+    let current = notification.key();
+    let stale = unixnotis_core::NotificationKey {
+        id: current.id,
+        generation: current.generation.saturating_add(1),
+    };
+    store.close(current.id, CloseReason::Expired);
+
+    assert!(store.history.contains_generation(current));
+    assert!(!store.history.contains_generation(stale));
+    assert!(store.history.remove_generation(stale).is_none());
+    assert!(store.history.contains_generation(current));
+
+    let removed = store
+        .history
+        .remove_generation(current)
+        .expect("current generation should be removable");
+    assert_eq!(removed.key(), current);
+    assert!(!store.history.contains_generation(current));
+}

@@ -5,7 +5,7 @@ use std::fmt::Write;
 use anyhow::Result;
 use unixnotis_core::{
     CommandLineQualityView, LaunchAuthorityView, LaunchVerificationView,
-    NotificationDiagnosticsView, PopupAdmissionView, RecordTrust,
+    NotificationDiagnosticsView, PopupAdmissionView, PopupDeliveryStage, RecordTrust,
 };
 
 use super::write_stdout;
@@ -89,7 +89,27 @@ pub fn print_notification_diagnostics(view: &NotificationDiagnosticsView) -> Res
         "Configured max visible: {}",
         view.configured_max_visible
     )?;
+    writeln!(
+        output,
+        "Decision time (Unix ms): {}",
+        view.decided_at_unix_ms
+    )?;
+    writeln!(
+        output,
+        "Delivery stage: {}",
+        popup_delivery_stage(view.delivery_stage)
+    )?;
     write_stdout(&output)
+}
+
+const fn popup_delivery_stage(value: PopupDeliveryStage) -> &'static str {
+    match value {
+        PopupDeliveryStage::Suppressed => "suppressed",
+        PopupDeliveryStage::Admitted => "admitted",
+        PopupDeliveryStage::FanoutFailed => "fanout failed",
+        PopupDeliveryStage::RendererFetched => "renderer fetched",
+        PopupDeliveryStage::Rendered => "rendered",
+    }
 }
 
 fn value_or_none(value: &str) -> &str {
