@@ -31,17 +31,11 @@ fn executable_mode(_metadata: &std::fs::Metadata) -> bool {
 }
 
 fn fake_tool_bin_is_set() -> bool {
-    fake_tool_bin()
-        .lock()
-        .expect("fake tool bin lock")
-        .is_some()
+    lock_fake_tool_bin().is_some()
 }
 
 fn fake_program_path(program: &str) -> Option<PathBuf> {
-    let configured_bin = fake_tool_bin()
-        .lock()
-        .expect("fake tool bin lock")
-        .clone()?;
+    let configured_bin = lock_fake_tool_bin().clone()?;
     let candidate = configured_bin.join(program);
     executable_file(&candidate).then_some(candidate)
 }
@@ -53,15 +47,16 @@ pub struct FakeToolBinGuard {
 
 impl Drop for FakeToolBinGuard {
     fn drop(&mut self) {
-        *fake_tool_bin().lock().expect("fake tool bin lock") = self.previous.take();
+        *lock_fake_tool_bin() = self.previous.take();
     }
 }
 
 pub fn use_fake_tool_bin(path: &Path) -> FakeToolBinGuard {
+    // Recovering a poisoned fixture lock preserves isolation after another test unwinds
     let lock = fake_tool_bin_test_lock()
         .lock()
-        .expect("fake tool bin test lock");
-    let mut fake_bin = fake_tool_bin().lock().expect("fake tool bin lock");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut fake_bin = lock_fake_tool_bin();
     let previous = fake_bin.replace(path.to_path_buf());
     FakeToolBinGuard {
         _lock: lock,
@@ -72,6 +67,12 @@ pub fn use_fake_tool_bin(path: &Path) -> FakeToolBinGuard {
 fn fake_tool_bin() -> &'static Mutex<Option<PathBuf>> {
     static FAKE_TOOL_BIN: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
     FAKE_TOOL_BIN.get_or_init(|| Mutex::new(None))
+}
+
+fn lock_fake_tool_bin() -> MutexGuard<'static, Option<PathBuf>> {
+    fake_tool_bin()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn fake_tool_bin_test_lock() -> &'static Mutex<()> {

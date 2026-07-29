@@ -66,6 +66,22 @@ fn trusted_command_rejects_program_names_with_path_separators() {
 }
 
 #[test]
+fn production_lookup_returns_the_core_resolved_trusted_program() {
+    let expected = unixnotis_core::util::trusted_system_program_path("sh")
+        .expect("find sh in a trusted system directory");
+
+    assert_eq!(
+        super::super::lookup::trusted_program_path("sh"),
+        Some(expected)
+    );
+    let path_like_name = format!("bin{}sh", std::path::MAIN_SEPARATOR);
+    assert_eq!(
+        super::super::lookup::trusted_program_path(&path_like_name),
+        None
+    );
+}
+
+#[test]
 fn typed_command_preserves_literal_arguments_and_environment() {
     let root = TempDirGuard::new("typed");
     root.write_executable("printf", "#!/bin/sh\nexit 0\n");
