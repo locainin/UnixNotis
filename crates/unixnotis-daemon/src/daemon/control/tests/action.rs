@@ -76,12 +76,12 @@ async fn action_signal_reaches_owner_but_not_unrelated_observer() {
 async fn validated_action_rejects_missing_and_stale_action_generations() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
-    let id = {
+    let (id, notification) = {
         let mut store = state.store.lock().await;
-        store
+        let notification = store
             .insert(action_notification(&sender, "open"), 0)
-            .notification
-            .id
+            .notification;
+        (notification.id, notification.key())
     };
     let server = ControlServer::new(state.clone());
 
@@ -92,13 +92,45 @@ async fn validated_action_rejects_missing_and_stale_action_generations() {
     let replacement_state = state.clone();
     let replacement_sender = sender.clone();
     server
-        .invoke_validated_action_with_pre_emit(id, "open", move || async move {
-            let replacement = action_notification(&replacement_sender, "different");
-            let outcome = replacement_state.store.lock().await.insert(replacement, id);
-            assert!(outcome.replaced);
-        })
+        .invoke_validated_action_generation_with_pre_emit(
+            notification,
+            "open",
+            move || async move {
+                let replacement = action_notification(&replacement_sender, "different");
+                let outcome = replacement_state.store.lock().await.insert(replacement, id);
+                assert!(outcome.replaced);
+            },
+        )
         .await
         .expect_err("stale action generation must fail");
+}
+
+#[tokio::test]
+async fn stale_action_does_not_target_same_id_replacement() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let (stale_key, replacement_key) = {
+        let mut store = state.store.lock().await;
+        let first = store
+            .insert(action_notification(&sender, "delete"), 0)
+            .notification;
+        let stale_key = first.key();
+        let second = store
+            .insert(action_notification(&sender, "delete"), first.id)
+            .notification;
+        (stale_key, second.key())
+    };
+
+    ControlServer::new(state.clone())
+        .invoke_validated_action_generation(stale_key, "delete")
+        .await
+        .expect_err("a delayed action must not target a same-ID replacement");
+
+    let store = state.store.lock().await;
+    let replacement = store
+        .active_notification_view(replacement_key.id)
+        .expect("replacement should remain active");
+    assert_eq!(replacement.key(), replacement_key);
 }
 
 #[tokio::test]

@@ -79,6 +79,27 @@ fn generation_safe_reply_dismissal_keeps_same_id_replacement() {
 }
 
 #[test]
+fn stale_panel_dismissal_keeps_same_id_replacement() {
+    let mut store = make_store_with_limits(12, 20);
+    let original = store.insert(make_notification("original"), 0).notification;
+    let stale_key = original.key();
+    let replacement = store
+        .insert(make_notification("replacement"), original.id)
+        .notification;
+
+    let outcome = store.dismiss_generation(stale_key);
+
+    assert!(!outcome.removed_any());
+    assert_eq!(
+        store
+            .active_notification_view(replacement.id)
+            .expect("replacement should remain active")
+            .key(),
+        replacement.key()
+    );
+}
+
+#[test]
 fn replied_generation_is_removed_after_sender_archives_it() {
     let mut store = make_store_with_limits(12, 20);
     let original = store.insert(make_notification("original"), 0).notification;
