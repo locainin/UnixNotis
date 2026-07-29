@@ -3,7 +3,7 @@
 use super::super::*;
 
 #[test]
-fn sender_metadata_timeout_is_recognized_not_conflict() {
+fn sender_metadata_timeout_is_unresolved_not_conflict() {
     let protected_identity = identity(39, 390, 0);
     let index = DesktopIdentityIndex::from_records(
         vec![system_record(
@@ -26,9 +26,10 @@ fn sender_metadata_timeout_is_recognized_not_conflict() {
 
     assert_eq!(
         resolution.attribution.status,
-        AttributionStatus::Recognized,
-        "a timed-out sender lookup cannot prove impersonation"
+        AttributionStatus::Unresolved,
+        "a timed-out sender lookup cannot prove application association"
     );
+    assert_eq!(resolution.attribution.display_name, "Unknown application");
 }
 
 #[test]
@@ -95,7 +96,8 @@ fn user_desktop_mismatch_cannot_manufacture_a_conflict() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
+    assert_eq!(resolution.attribution.display_name, "Unknown application");
     assert_ne!(resolution.attribution.status, AttributionStatus::Conflict);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
@@ -176,7 +178,7 @@ fn ambiguous_protected_records_are_unresolved_not_conflicting() {
 }
 
 #[test]
-fn visually_confusable_system_brand_without_contradictory_owner_is_recognized() {
+fn visually_confusable_system_brand_without_association_is_unresolved() {
     let signal_identity = identity(40, 400, 0);
     let hostile_identity = identity(41, 410, 1000);
     let index = DesktopIdentityIndex::from_records(
@@ -199,13 +201,14 @@ fn visually_confusable_system_brand_without_contradictory_owner_is_recognized() 
             &index,
         );
 
-        assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+        assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
+        assert_eq!(resolution.attribution.display_name, "Unknown application");
         assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     }
 }
 
 #[test]
-fn basename_spoof_without_immutable_owner_is_recognized_without_actions() {
+fn basename_spoof_without_immutable_owner_is_unresolved_without_actions() {
     let signal_identity = identity(1, 10, 0);
     let hostile_identity = identity(7, 70, 1000);
     let index = DesktopIdentityIndex::from_records(
@@ -227,7 +230,12 @@ fn basename_spoof_without_immutable_owner_is_recognized_without_actions() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
+    assert_eq!(resolution.attribution.display_name, "Unknown application");
+    assert_eq!(
+        resolution.attribution.badge_icon,
+        "application-x-executable-symbolic"
+    );
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     assert_eq!(
         resolution.diagnostics.verification,
@@ -240,7 +248,7 @@ fn basename_spoof_without_immutable_owner_is_recognized_without_actions() {
 }
 
 #[test]
-fn exact_protected_name_without_contradictory_owner_stays_recognized() {
+fn exact_protected_name_without_positive_association_stays_unresolved() {
     let keepass_identity = identity(2, 20, 0);
     let hostile_identity = identity(8, 80, 1000);
     let index = DesktopIdentityIndex::from_records(
@@ -262,7 +270,8 @@ fn exact_protected_name_without_contradictory_owner_stays_recognized() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
+    assert_eq!(resolution.attribution.display_name, "Unknown application");
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
@@ -296,7 +305,7 @@ fn exact_system_notify_send_identity_is_a_non_replying_relay() {
 }
 
 #[test]
-fn trusted_relay_claiming_a_system_app_stays_relay_without_conflict() {
+fn trusted_relay_uses_command_line_identity() {
     let signal_identity = identity(1, 10, 0);
     let relay_identity = identity(3, 30, 0);
     let index = DesktopIdentityIndex::from_records(
@@ -319,6 +328,15 @@ fn trusted_relay_claiming_a_system_app_stays_relay_without_conflict() {
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Relay);
+    assert_eq!(
+        resolution.attribution.display_name,
+        "Command-line notification"
+    );
+    assert_eq!(resolution.attribution.claimed_name, "Signal");
+    assert_eq!(
+        resolution.attribution.badge_icon,
+        "utilities-terminal-symbolic"
+    );
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     assert_ne!(resolution.attribution.status, AttributionStatus::Conflict);
     assert_ne!(
@@ -371,7 +389,8 @@ fn owned_dbus_application_name_without_executable_evidence_remains_unverified() 
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
+    assert_eq!(resolution.attribution.display_name, "Unknown application");
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     assert!(resolution
         .attribution

@@ -144,6 +144,36 @@ fn unknown_claim_stays_secondary_and_unverified() {
 }
 
 #[test]
+fn unresolved_claim_has_no_application_actions_or_reply() {
+    let mut view = notification();
+    view.attribution = NotificationAttribution::unresolved(
+        "Signal",
+        AttributionReason::NoDesktopCandidate,
+        "sender has no positive application association",
+        "unresolved:random-script:signal".to_string(),
+    );
+    view.inline_reply.available = true;
+    view.actions = vec![
+        Action {
+            key: "inline-reply".to_string(),
+            label: "Reply".to_string(),
+        },
+        Action {
+            key: "default".to_string(),
+            label: "Open".to_string(),
+        },
+    ];
+
+    let presentation = NotificationPresentation::from_view_at(&view, 1_000);
+
+    assert_eq!(presentation.trust.level, TrustLevel::Unresolved);
+    assert_eq!(presentation.trust.reply, ReplyPresentation::Unavailable);
+    assert!(presentation.actions.default_key.is_none());
+    assert!(presentation.actions.primary.is_empty());
+    assert!(presentation.actions.overflow.is_empty());
+}
+
+#[test]
 fn communication_layout_is_preserved_for_unverified_sender() {
     let mut view = notification();
     view.category = "im.received".to_string();

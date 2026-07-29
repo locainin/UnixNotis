@@ -70,7 +70,8 @@ fn stale_ancestor_identity_does_not_create_a_lineage_association() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
+    assert_eq!(resolution.attribution.display_name, "Unknown application");
     assert!(!resolution
         .attribution
         .diagnostic_detail
@@ -105,7 +106,7 @@ fn lineage_rejects_a_candidate_with_a_different_indexed_executable() {
 }
 
 #[test]
-fn helper_without_lineage_is_recognized_when_no_contradictory_owner_is_known() {
+fn unknown_executable_cannot_borrow_installed_app_identity() {
     let (app_path, app_identity) = installed_system_executable();
     let index = DesktopIdentityIndex::from_records(
         vec![system_record(
@@ -116,7 +117,7 @@ fn helper_without_lineage_is_recognized_when_no_contradictory_owner_is_known() {
         )],
         Vec::new(),
     );
-    let helper = sender("/opt/example/helper", identity(89, 890, 1_000));
+    let helper = sender("/tmp/random-script", identity(89, 890, 1_000));
 
     let resolution = resolve_with_evidence(
         AppClaim {
@@ -127,17 +128,19 @@ fn helper_without_lineage_is_recognized_when_no_contradictory_owner_is_known() {
         &index,
     );
 
+    assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
+    assert_eq!(resolution.attribution.display_name, "Unknown application");
+    assert_eq!(resolution.attribution.claimed_name, "Example App");
+    assert!(resolution.attribution.desktop_id.is_empty());
     assert_eq!(
-        resolution.attribution.status,
-        AttributionStatus::Recognized,
-        "missing lineage cannot prove that a helper belongs to another application"
+        resolution.attribution.badge_icon,
+        "application-x-executable-symbolic"
     );
-    assert_eq!(resolution.attribution.display_name, "Example App");
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
 #[test]
-fn verified_and_recognized_senders_never_share_an_application_group() {
+fn verified_and_unresolved_senders_never_share_an_application_group() {
     let (app_path, app_identity) = installed_system_executable();
     let index = DesktopIdentityIndex::from_records(
         vec![system_record(
@@ -156,7 +159,7 @@ fn verified_and_recognized_senders_never_share_an_application_group() {
         &sender(&app_path, app_identity),
         &index,
     );
-    let recognized = resolve_with_evidence(
+    let unresolved = resolve_with_evidence(
         AppClaim {
             reported_name: "Example App",
             desktop_entry: Some("org.example.True"),
@@ -166,15 +169,15 @@ fn verified_and_recognized_senders_never_share_an_application_group() {
     );
 
     assert_eq!(verified.attribution.status, AttributionStatus::Verified);
-    assert_eq!(recognized.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(unresolved.attribution.status, AttributionStatus::Unresolved);
     assert_ne!(
-        verified.attribution.group_key, recognized.attribution.group_key,
+        verified.attribution.group_key, unresolved.attribution.group_key,
         "different trust domains must remain separate even for one canonical application"
     );
 }
 
 #[test]
-fn package_owned_helper_for_the_claimed_application_is_recognized() {
+fn same_package_helper_is_recognized() {
     let (app_path, app_identity) = installed_system_executable();
     let index = DesktopIdentityIndex::from_records(
         vec![system_record(
@@ -215,7 +218,7 @@ fn package_owned_helper_for_the_claimed_application_is_recognized() {
 }
 
 #[test]
-fn separately_packaged_helper_is_recognized_without_becoming_suspicious() {
+fn different_package_cannot_borrow_installed_app_identity() {
     let (app_path, app_identity) = installed_system_executable();
     let index = DesktopIdentityIndex::from_records(
         vec![system_record(
@@ -238,7 +241,14 @@ fn separately_packaged_helper_is_recognized_without_becoming_suspicious() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
+    assert_eq!(resolution.attribution.display_name, "Unknown application");
+    assert_eq!(resolution.attribution.claimed_name, "Example App");
+    assert!(resolution.attribution.desktop_id.is_empty());
+    assert_eq!(
+        resolution.attribution.badge_icon,
+        "application-x-executable-symbolic"
+    );
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     assert_eq!(
         resolution.diagnostics.verification,
@@ -254,14 +264,10 @@ fn separately_packaged_helper_is_recognized_without_becoming_suspicious() {
         sender_claim_relation(&different_package, &index, claimed_record),
         SenderClaimRelation::DifferentInstalledPackage
     );
-    assert!(resolution
-        .attribution
-        .diagnostic_detail
-        .contains("separate installed package"));
 }
 
 #[test]
-fn sender_owned_by_another_indexed_system_application_is_a_concrete_conflict() {
+fn verified_different_application_is_conflict() {
     let (app_path, app_identity) = installed_system_executable();
     let other_identity = identity(93, 930, 0);
     let index = DesktopIdentityIndex::from_records(
