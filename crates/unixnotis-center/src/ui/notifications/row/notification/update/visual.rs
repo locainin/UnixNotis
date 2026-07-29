@@ -26,7 +26,7 @@ pub(super) fn apply_visual_state(
         (TrustLevel::Verified, "verified"),
         (TrustLevel::Unverified, "unverified"),
         (TrustLevel::Suspicious, "suspicious"),
-        (TrustLevel::System, "system"),
+        (TrustLevel::CommandLine, "command-line"),
     ] {
         set_class_state(card, class_name, presentation.trust.level == level);
     }
@@ -37,6 +37,8 @@ pub(super) fn apply_visual_state(
     set_class_state(card, hooks::panel_card::GROUPED, grouped);
     set_class_state(card, hooks::panel_card::GROUP_COLLAPSED, data.stacked);
     set_class_state(card, hooks::panel_card::GROUP_EXPANDED, data.expanded);
+    set_class_state(card, hooks::panel_card::GROUP_FIRST, data.group_first);
+    set_class_state(card, hooks::panel_card::GROUP_LAST, data.group_last);
 
     set_class_state(
         card,

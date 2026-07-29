@@ -44,7 +44,7 @@ pub(super) fn update_actions(
     {
         let cached = row.action_cache.borrow();
         let reply_cached = row.reply_cache.borrow();
-        if row.action_cache_id.get() == notification.id
+        if row.action_cache_key.get() == notification.key()
             && cached.len() == safe_actions.len()
             && cached
                 .iter()
@@ -66,7 +66,7 @@ pub(super) fn update_actions(
         for action in &safe_actions {
             cached.push((action.key.clone(), action.label.clone()));
         }
-        row.action_cache_id.set(notification.id);
+        row.action_cache_key.set(notification.key());
         *row.reply_cache.borrow_mut() = (
             notification.inline_reply.clone(),
             notification.inline_reply_policy,
@@ -103,31 +103,72 @@ pub(super) fn update_actions(
         row.actions_box.append(&button);
     }
 
-    for action in safe_actions {
-        // Bound action text before GTK measures the button
-        let button = gtk::Button::with_label(clamp_action_label_text(&action.label).as_ref());
-        button.add_css_class("unixnotis-panel-action");
-        button.add_css_class("unixnotis-notification-action");
-        let action_key = action.key.clone();
-        let tx = command_tx.clone();
-        let id = notification.id;
-        let action_gate = ClickCooldown::new(Duration::from_millis(ACTION_BUTTON_GUARD_MS));
-        button.connect_clicked(move |_| {
-            if !action_gate.try_start() {
-                return;
-            }
-            debug!(id, action = %action_key, "action invoked");
-            // The closure keeps its own key copy so the button can outlive the loop frame
-            try_send_command(
-                &tx,
-                UiCommand::InvokeAction {
-                    id,
-                    action_key: action_key.clone(),
-                },
-            );
-        });
+    for action in &presentation.actions.primary {
+        let button = build_action_button(command_tx, notification.key(), action);
         row.actions_box.append(&button);
     }
+    if !presentation.actions.overflow.is_empty() {
+        row.actions_box.append(&build_overflow_menu(
+            command_tx,
+            notification.key(),
+            &presentation.actions.overflow,
+        ));
+    }
+}
+
+fn build_action_button(
+    command_tx: &mpsc::Sender<UiCommand>,
+    notification: unixnotis_core::NotificationKey,
+    action: &unixnotis_ui::presentation::ActionView,
+) -> gtk::Button {
+    // Bound action text before GTK measures the button
+    let button = gtk::Button::with_label(clamp_action_label_text(&action.label).as_ref());
+    button.add_css_class("unixnotis-panel-action");
+    button.add_css_class("unixnotis-notification-action");
+    let action_key = action.key.clone();
+    let tx = command_tx.clone();
+    let action_gate = ClickCooldown::new(Duration::from_millis(ACTION_BUTTON_GUARD_MS));
+    button.connect_clicked(move |_| {
+        if !action_gate.try_start() {
+            return;
+        }
+        debug!(
+            id = notification.id,
+            generation = notification.generation,
+            action = %action_key,
+            "action invoked"
+        );
+        // The closure keeps its own key copy so the button can outlive the loop frame
+        try_send_command(
+            &tx,
+            UiCommand::InvokeAction {
+                notification,
+                action_key: action_key.clone(),
+            },
+        );
+    });
+    button
+}
+
+fn build_overflow_menu(
+    command_tx: &mpsc::Sender<UiCommand>,
+    notification: unixnotis_core::NotificationKey,
+    actions: &[unixnotis_ui::presentation::ActionView],
+) -> gtk::MenuButton {
+    let menu = gtk::MenuButton::new();
+    menu.set_icon_name("view-more-symbolic");
+    menu.set_tooltip_text(Some("More actions"));
+    menu.add_css_class("unixnotis-panel-action-overflow");
+
+    let popover = gtk::Popover::new();
+    let list = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    list.add_css_class("unixnotis-panel-action-overflow-list");
+    for action in actions {
+        list.append(&build_action_button(command_tx, notification, action));
+    }
+    popover.set_child(Some(&list));
+    menu.set_popover(Some(&popover));
+    menu
 }
 
 pub(super) fn visible_action_count(notification: &NotificationView, is_active: bool) -> usize {

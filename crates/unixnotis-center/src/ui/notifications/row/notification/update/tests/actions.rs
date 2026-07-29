@@ -186,8 +186,12 @@ fn update_notification_row_action_button_sends_command_once_per_click_window() {
     button.emit_clicked();
 
     match command_rx.try_recv().expect("action command") {
-        UiCommand::InvokeAction { id, action_key } => {
-            assert_eq!(id, 1);
+        UiCommand::InvokeAction {
+            notification,
+            action_key,
+        } => {
+            assert_eq!(notification.id, 1);
+            assert_eq!(notification.generation, 1);
             assert_eq!(action_key, "open");
         }
         command => panic!("expected action command, got {command:?}"),
@@ -198,7 +202,7 @@ fn update_notification_row_action_button_sends_command_once_per_click_window() {
 }
 
 #[gtk::test]
-fn recycled_action_button_targets_the_new_notification_id() {
+fn recycled_action_button_targets_the_new_notification_generation() {
     let (_root, row) = notification_row();
     let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(4);
     let mut first = sample_notification();
@@ -208,6 +212,7 @@ fn recycled_action_button_targets_the_new_notification_id() {
     }];
     let mut second = first.clone();
     second.id = 2;
+    second.generation = 7;
 
     update_notification_row(
         &row,
@@ -244,7 +249,10 @@ fn recycled_action_button_targets_the_new_notification_id() {
 
     assert!(matches!(
         command_rx.try_recv(),
-        Ok(UiCommand::InvokeAction { id: 2, action_key }) if action_key == "open"
+        Ok(UiCommand::InvokeAction { notification, action_key })
+            if notification.id == 2
+                && notification.generation == 7
+                && action_key == "open"
     ));
 }
 
@@ -280,6 +288,62 @@ fn inactive_reply_action_stays_hidden_beside_a_regular_action() {
         .downcast::<gtk::Button>()
         .expect("action child should be a button");
     assert_eq!(button.label().as_deref(), Some("Open"));
+}
+
+#[gtk::test]
+fn panel_keeps_two_primary_actions_and_moves_the_rest_into_more_menu() {
+    let (_root, row) = notification_row();
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(4);
+    let mut notification = sample_notification();
+    notification.actions = ["Open", "Archive", "Mute"]
+        .into_iter()
+        .map(|label| Action {
+            key: label.to_ascii_lowercase(),
+            label: label.to_string(),
+        })
+        .collect();
+
+    update_notification_row(
+        &row,
+        &row_data(
+            Rc::new(notification),
+            RowFlags {
+                is_active: true,
+                ..Default::default()
+            },
+        ),
+        &IconResolver::new(),
+        &command_tx,
+    );
+
+    assert_eq!(child_count(&row.actions_box), 3);
+    assert!(row
+        .actions_box
+        .first_child()
+        .is_some_and(|child| child.is::<gtk::Button>()));
+    assert!(row
+        .actions_box
+        .last_child()
+        .is_some_and(|child| child.is::<gtk::MenuButton>()));
+    let menu = row
+        .actions_box
+        .last_child()
+        .and_downcast::<gtk::MenuButton>()
+        .expect("overflow menu");
+    assert_eq!(menu.icon_name().as_deref(), Some("view-more-symbolic"));
+    assert_eq!(menu.tooltip_text().as_deref(), Some("More actions"));
+    assert!(menu.has_css_class("unixnotis-panel-action-overflow"));
+    let popover = menu.popover().expect("overflow popover");
+    let list = popover
+        .child()
+        .and_downcast::<gtk::Box>()
+        .expect("overflow action list");
+    assert!(list.has_css_class("unixnotis-panel-action-overflow-list"));
+    let overflow = list
+        .first_child()
+        .and_downcast::<gtk::Button>()
+        .expect("overflow action button");
+    assert_eq!(overflow.label().as_deref(), Some("Mute"));
 }
 
 #[gtk::test]

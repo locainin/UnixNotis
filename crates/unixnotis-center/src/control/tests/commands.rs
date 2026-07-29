@@ -1,12 +1,19 @@
 use super::*;
+use unixnotis_core::NotificationKey;
 
 #[test]
 fn drop_stale_offline_commands_retains_safe_actions() {
     // Mix stale id-based actions with reconnect-safe commands
     let mut offline = VecDeque::new();
-    offline.push_back(UiCommand::Dismiss(10));
+    offline.push_back(UiCommand::Dismiss(NotificationKey {
+        id: 10,
+        generation: 12,
+    }));
     offline.push_back(UiCommand::InvokeAction {
-        id: 11,
+        notification: NotificationKey {
+            id: 11,
+            generation: 13,
+        },
         action_key: "open".to_string(),
     });
     offline.push_back(UiCommand::SetDnd(true));

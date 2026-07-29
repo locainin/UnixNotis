@@ -10,16 +10,22 @@ use gtk::pango;
 use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::{css::hooks, util};
-use unixnotis_ui::presentation::{build_semantic_badge, NotificationPresentation, TrustLevel};
+use unixnotis_ui::presentation::{apply_semantic_badge, NotificationPresentation, TrustLevel};
 
 use crate::control::UiEvent;
 
 use super::super::super::icons::IconResolver;
 use super::super::item::RowData;
 
+const GROUP_AVATAR_SIZE: i32 = 26;
+const GROUP_ICON_SIZE: i32 = 18;
+
 pub(in crate::ui::notifications) struct GroupRowWidgets {
+    pub(super) avatar: gtk::Box,
     pub(super) icon: gtk::Image,
     pub(super) title: gtk::Label,
+    pub(super) secondary: gtk::Label,
+    pub(super) trust_chip: gtk::Label,
     pub(super) count: gtk::Label,
     pub(super) chevron: gtk::Image,
     pub(super) group_key: Rc<RefCell<Rc<str>>>,
@@ -41,29 +47,52 @@ pub(in crate::ui::notifications) fn build_group_row(
     button.set_tooltip_text(Some("Toggle group"));
 
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let avatar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    avatar.set_halign(gtk::Align::Center);
+    avatar.set_valign(gtk::Align::Center);
+    avatar.set_size_request(GROUP_AVATAR_SIZE, GROUP_AVATAR_SIZE);
+    avatar.add_css_class("unixnotis-group-avatar");
     let icon = gtk::Image::new();
-    icon.set_pixel_size(18);
+    icon.set_pixel_size(GROUP_ICON_SIZE);
     icon.add_css_class(hooks::group_row::ICON);
+    avatar.append(&icon);
+
+    let identity = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    identity.set_hexpand(true);
+    let identity_top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
 
     let title = gtk::Label::new(None);
     title.set_xalign(0.0);
-    title.set_hexpand(true);
     title.set_ellipsize(pango::EllipsizeMode::End);
+    title.set_single_line_mode(true);
     title.add_css_class(hooks::group_row::TITLE);
+
+    let trust_chip = gtk::Label::new(None);
+    trust_chip.set_single_line_mode(true);
+    trust_chip.add_css_class("unixnotis-group-trust-chip");
+    trust_chip.set_visible(false);
+
+    let secondary = gtk::Label::new(None);
+    secondary.set_xalign(0.0);
+    secondary.set_ellipsize(pango::EllipsizeMode::End);
+    secondary.set_single_line_mode(true);
+    secondary.add_css_class("unixnotis-group-secondary");
+    secondary.set_visible(false);
 
     let count = gtk::Label::new(Some("0"));
     count.set_xalign(0.5);
     count.add_css_class(hooks::group_row::COUNT);
 
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
-    spacer.set_hexpand(true);
-
     let chevron = gtk::Image::from_icon_name("pan-down-symbolic");
+    chevron.set_pixel_size(14);
     chevron.add_css_class(hooks::group_row::CHEVRON);
 
-    header.append(&icon);
-    header.append(&title);
-    header.append(&spacer);
+    identity_top.append(&title);
+    identity_top.append(&trust_chip);
+    identity.append(&identity_top);
+    identity.append(&secondary);
+    header.append(&avatar);
+    header.append(&identity);
     header.append(&count);
     header.append(&chevron);
     button.set_child(Some(&header));
@@ -100,8 +129,11 @@ pub(in crate::ui::notifications) fn build_group_row(
     (
         root,
         GroupRowWidgets {
+            avatar,
             icon,
             title,
+            secondary,
+            trust_chip,
             count,
             chevron,
             group_key,
@@ -115,19 +147,30 @@ pub(in crate::ui::notifications) fn update_group_row(
     data: &RowData,
     icon_resolver: &IconResolver,
 ) {
-    let display_name = data
+    let presentation = data
         .notification
         .as_ref()
-        .map(|notification| {
-            NotificationPresentation::from_view(notification)
-                .identity
-                .primary_label
-        })
+        .map(|notification| NotificationPresentation::from_view(notification));
+    let display_name = presentation
+        .as_ref()
+        .map(|view| view.identity.primary_label.as_str())
         .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| data.group_key.to_string());
+        .unwrap_or(data.group_key.as_ref());
     // Display application presentation while the daemon identity key drives grouping behavior
     // Fall back to the group key if no sample notification is available
-    set_label_text_if_changed(&group.title, &display_name);
+    set_label_text_if_changed(&group.title, display_name);
+    let secondary = presentation
+        .as_ref()
+        .and_then(|view| view.identity.secondary_claim.as_deref())
+        .unwrap_or_default();
+    set_label_text_if_changed(&group.secondary, secondary);
+    set_widget_visible_if_changed(&group.secondary, !secondary.is_empty());
+    let trust_label = presentation
+        .as_ref()
+        .and_then(|view| view.trust.short_label.as_deref())
+        .unwrap_or_default();
+    set_label_text_if_changed(&group.trust_chip, trust_label);
+    set_widget_visible_if_changed(&group.trust_chip, !trust_label.is_empty());
     let next_count = data.count.to_string();
     set_label_text_if_changed(&group.count, &next_count);
     let chevron_name = if data.expanded {
@@ -142,7 +185,10 @@ pub(in crate::ui::notifications) fn update_group_row(
     *group.group_key.borrow_mut() = data.group_key.clone();
 
     if let Some(notification) = data.notification.as_ref() {
-        let presentation = NotificationPresentation::from_view(notification);
+        let Some(presentation) = presentation else {
+            return;
+        };
+        set_widget_visible_if_changed(&group.avatar, true);
         if presentation.trust.details_label.is_none() {
             group.title.set_tooltip_text(None);
         } else if let Some(details) = presentation.trust.details_label.as_deref() {
@@ -153,17 +199,25 @@ pub(in crate::ui::notifications) fn update_group_row(
             "unixnotis-attribution-warning",
             presentation.trust.level == TrustLevel::Suspicious,
         );
-        if let Some(image) = build_semantic_badge(presentation.identity.badge, 18) {
-            group.icon.set_paintable(image.paintable().as_ref());
+        for (level, class_name) in [
+            (TrustLevel::Verified, "verified"),
+            (TrustLevel::Unverified, "unverified"),
+            (TrustLevel::Suspicious, "suspicious"),
+            (TrustLevel::CommandLine, "command-line"),
+        ] {
+            set_class_state(root, class_name, presentation.trust.level == level);
+        }
+        if apply_semantic_badge(&group.icon, presentation.identity.badge, GROUP_ICON_SIZE) {
             group.icon.set_visible(true);
         } else {
             let scale = root.scale_factor();
             // Verified groups keep authenticated application art from the shared resolver
-            icon_resolver.apply_badge(&group.icon, notification.as_ref(), 18, scale);
+            icon_resolver.apply_badge(&group.icon, notification.as_ref(), GROUP_ICON_SIZE, scale);
         }
         set_class_state(root, hooks::group_row::HAS_ICON, true);
         set_class_state(root, hooks::group_row::NO_ICON, false);
     } else {
+        set_widget_visible_if_changed(&group.avatar, false);
         set_widget_visible_if_changed(&group.icon, false);
         set_class_state(root, hooks::group_row::NO_ICON, true);
         set_class_state(root, hooks::group_row::HAS_ICON, false);

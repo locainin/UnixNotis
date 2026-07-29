@@ -88,8 +88,12 @@ impl NotificationList {
     ) -> Rc<str> {
         let id = notification.id;
         let app_key = self.intern_key(&notification.attribution.group_key);
+        let received_at_ms = notification
+            .received_at_unix_seconds
+            .checked_mul(1_000)
+            .filter(|timestamp| *timestamp > 0)
+            .unwrap_or_else(now_millis);
         let view = Rc::new(notification);
-        let received_at_ms = now_millis();
         let presentation = RowPresentation {
             received_at_ms,
             show_metadata: self.show_notification_metadata,
@@ -134,7 +138,7 @@ impl NotificationList {
 }
 
 fn now_millis() -> i64 {
-    // Local receipt time avoids adding timestamp fields to the D-Bus model
+    // Local receipt time is a fallback for legacy or malformed timestamp values
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()

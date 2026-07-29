@@ -15,26 +15,30 @@ pub(super) fn update_metadata_labels(
     data: &RowData,
     notification: &NotificationView,
 ) {
-    // Metadata visibility controls both the compact header and footer lanes
-    set_widget_visible_if_changed(&row.meta_top, data.presentation.show_metadata);
+    let metadata = data.presentation.metadata.as_ref();
+    let time_badge = relative_time_badge(data.presentation.received_at_ms, metadata);
+    // Relative time is core chronology; optional metadata controls only the extra labels
+    set_widget_visible_if_changed(
+        &row.meta_top,
+        data.presentation.show_metadata || !time_badge.is_empty(),
+    );
     set_widget_visible_if_changed(&row.footer, data.presentation.show_metadata);
     if !data.presentation.show_metadata {
-        // Disabled lanes collapse fully so compact cards retain their shape
+        // Optional labels collapse while compact per-notification chronology remains
         set_label_visible_if_changed(&row.meta_label, false);
-        set_label_visible_if_changed(&row.time_badge, false);
+        set_label_visible_if_changed(&row.time_badge, !time_badge.is_empty());
+        set_label_text_if_changed(&row.time_badge, &time_badge);
         set_label_visible_if_changed(&row.footer_left, false);
         set_label_visible_if_changed(&row.footer_right, false);
         return;
     }
 
     // Urgency copy comes from one config block so themes can rename every lane together
-    let metadata = data.presentation.metadata.as_ref();
     let meta = notification_meta_label(notification, metadata);
     set_label_visible_if_changed(&row.meta_label, !meta.is_empty());
     set_label_text_if_changed(&row.meta_label, meta);
 
     // Missing or invalid timestamps hide the badge instead of showing stale text
-    let time_badge = relative_time_badge(data.presentation.received_at_ms, metadata);
     set_label_visible_if_changed(&row.time_badge, !time_badge.is_empty());
     set_label_text_if_changed(&row.time_badge, &time_badge);
 

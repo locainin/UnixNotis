@@ -9,7 +9,7 @@ use crate::ui::icons::IconResolver;
 
 use super::super::super::state::IconSignature;
 use super::super::super::test_support::{
-    notification_row, row_data, sample_notification, RowFlags,
+    notification_row, notification_row_with_receiver, row_data, sample_notification, RowFlags,
 };
 use super::update_notification_row;
 
@@ -28,11 +28,37 @@ fn icon_signature_changes_when_trust_presentation_changes() {
 }
 
 #[gtk::test]
+fn close_control_ignores_unbound_rows_and_keeps_the_bound_generation() {
+    let (root, row, mut command_rx) = notification_row_with_receiver();
+    let close = descendant_with_class(root.upcast_ref(), "unixnotis-panel-close")
+        .and_downcast::<gtk::Button>()
+        .expect("panel close button");
+
+    close.emit_clicked();
+    assert!(
+        command_rx.try_recv().is_err(),
+        "an unbound recycled row must not dismiss notification zero"
+    );
+
+    row.notify_key.set(unixnotis_core::NotificationKey {
+        id: 7,
+        generation: 11,
+    });
+    close.emit_clicked();
+    assert!(matches!(
+        command_rx.try_recv(),
+        Ok(crate::control::UiCommand::Dismiss(notification))
+            if notification.id == 7 && notification.generation == 11
+    ));
+}
+
+#[gtk::test]
 fn update_notification_row_applies_state_classes_and_text() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();
     notification.urgency = Urgency::Critical as u8;
     let notification = Rc::new(notification);
+    let expected_key = notification.key();
     let data = row_data(
         notification,
         RowFlags {
@@ -53,12 +79,13 @@ fn update_notification_row_applies_state_classes_and_text() {
     assert!(!row.card.has_css_class(hooks::panel_card::GROUP_EXPANDED));
     assert!(!row.app_label.get_visible());
     assert!(!row.icon.get_visible());
+    assert!(!row.header.get_visible());
     assert!(row.urgency_badge.get_visible());
     assert_eq!(row.urgency_badge.text().as_str(), "Critical");
     assert_eq!(row.app_label.text().as_str(), "demo");
     assert_eq!(row.summary_label.text().as_str(), "summary");
     assert_eq!(row.body_label.text().as_str(), "body");
-    assert_eq!(row.notify_id.get(), 1);
+    assert_eq!(row.notify_key.get(), expected_key);
     assert!(row.icon_sig.borrow().is_none());
 }
 
@@ -88,7 +115,132 @@ fn single_notification_row_keeps_its_identity_visible_without_a_group_header() {
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
     assert!(row.app_label.get_visible());
+    assert!(row.header.get_visible());
     assert_eq!(row.app_label.text().as_str(), "demo");
+    assert!(row.icon_sig.borrow().is_some());
+}
+
+#[gtk::test]
+fn relay_singleton_shows_authenticated_source_and_secondary_app_label() {
+    let (_root, row) = notification_row();
+    let mut notification = sample_notification();
+    notification.attribution = unixnotis_core::NotificationAttribution::trusted_relay(
+        "Signal",
+        "Sent via /usr/bin/notify-send",
+        true,
+        "relay:notify-send:signal".to_string(),
+    );
+    let data = row_data(Rc::new(notification), RowFlags::default());
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+
+    assert_eq!(row.app_label.text().as_str(), "Command-line notification");
+    assert_eq!(row.secondary_claim.text().as_str(), "App label: Signal");
+    assert!(row.secondary_claim.get_visible());
+    assert!(!row.trust_chip.get_visible());
+    assert!(row.card.has_css_class("command-line"));
+    assert!(!row.card.has_css_class("suspicious"));
+}
+
+#[gtk::test]
+fn panel_text_limits_keep_compact_rows_content_driven() {
+    let (root, row) = notification_row();
+    let close = descendant_with_class(root.upcast_ref(), "unixnotis-panel-close")
+        .expect("panel close button");
+
+    assert_eq!(row.summary_label.lines(), 1);
+    assert_eq!(row.body_label.lines(), 3);
+    assert!(close
+        .parent()
+        .is_some_and(|parent| parent.is::<gtk::Overlay>()));
+}
+
+#[gtk::test]
+fn grouped_relay_row_hides_identity_details_owned_by_the_group_header() {
+    let (_root, row) = notification_row();
+    let mut notification = sample_notification();
+    notification.attribution = unixnotis_core::NotificationAttribution::trusted_relay(
+        "Signal",
+        "Sent via /usr/bin/notify-send",
+        true,
+        "relay:notify-send:signal".to_string(),
+    );
+    let data = row_data(
+        Rc::new(notification),
+        RowFlags {
+            stacked: true,
+            ..Default::default()
+        },
+    );
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+
+    assert!(!row.app_label.get_visible());
+    assert!(!row.secondary_claim.get_visible());
+    assert!(!row.trust_chip.get_visible());
+    assert!(!row.icon.get_visible());
+}
+
+#[gtk::test]
+fn compact_metadata_keeps_only_a_valid_relative_timestamp_lane() {
+    let (_root, row) = notification_row();
+    let notification = Rc::new(sample_notification());
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+    let current = row_data(notification.clone(), RowFlags::default());
+
+    update_notification_row(&row, &current, &IconResolver::new(), &command_tx);
+
+    assert!(row.meta_top.get_visible());
+    assert!(row.time_badge.get_visible());
+    assert!(!row.meta_label.get_visible());
+    assert!(!row.footer.get_visible());
+    assert!(!row.footer_left.get_visible());
+    assert!(!row.footer_right.get_visible());
+
+    let mut missing_time = row_data(notification, RowFlags::default());
+    missing_time.presentation.received_at_ms = 0;
+    update_notification_row(&row, &missing_time, &IconResolver::new(), &command_tx);
+
+    assert!(!row.meta_top.get_visible());
+    assert!(!row.time_badge.get_visible());
+}
+
+fn descendant_with_class(widget: &gtk::Widget, class_name: &str) -> Option<gtk::Widget> {
+    if widget.has_css_class(class_name) {
+        return Some(widget.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if let Some(found) = descendant_with_class(&current, class_name) {
+            return Some(found);
+        }
+        child = current.next_sibling();
+    }
+    None
+}
+
+#[gtk::test]
+fn popup_suppression_reason_is_rendered_from_the_committed_decision() {
+    let (_root, row) = notification_row();
+    let mut notification = sample_notification();
+    notification.popup_decision = unixnotis_core::PopupDecisionRecord {
+        admission_at_commit: unixnotis_core::PopupAdmissionView::Dnd,
+        decided_at_unix_ms: 1_000,
+        delivery_stage: unixnotis_core::PopupDeliveryStage::Suppressed,
+        ..unixnotis_core::PopupDecisionRecord::default()
+    };
+    let data = row_data(Rc::new(notification), RowFlags::default());
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+
+    assert_eq!(
+        row.popup_status.text().as_str(),
+        "Not shown — Do Not Disturb was enabled"
+    );
+    assert!(row.popup_status.get_visible());
 }
 
 #[gtk::test]

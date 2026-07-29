@@ -15,10 +15,15 @@ fn notification(app_name: &str) -> Rc<NotificationView> {
         id: 1,
         generation: 1,
         app_name: app_name.to_string(),
-        attribution: unixnotis_core::NotificationAttribution {
-            display_name: app_name.to_string(),
-            ..unixnotis_core::NotificationAttribution::default()
-        },
+        attribution: unixnotis_core::NotificationAttribution::associated(
+            app_name,
+            "org.example.App",
+            "org.example.App",
+            "",
+            unixnotis_core::AttributionClass::SystemAssociated,
+            false,
+            "system:org.example.App".to_string(),
+        ),
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: Vec::new(),
@@ -29,6 +34,7 @@ fn notification(app_name: &str) -> Rc<NotificationView> {
         is_transient: false,
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     })
 }
 
@@ -37,6 +43,16 @@ fn header_button(root: &gtk::Box) -> gtk::Button {
         .expect("group row should have button")
         .downcast::<gtk::Button>()
         .expect("group child should be button")
+}
+
+fn direct_child_count(container: &gtk::Box) -> usize {
+    let mut count = 0;
+    let mut child = container.first_child();
+    while let Some(widget) = child {
+        count += 1;
+        child = widget.next_sibling();
+    }
+    count
 }
 
 #[gtk::test]
@@ -49,6 +65,9 @@ fn update_group_row_sets_title_count_and_expanded_state() {
     update_group_row(&widgets, &root, &data, &IconResolver::new());
 
     assert_eq!(widgets.title.text().as_str(), "Terminal");
+    assert_eq!(widgets.avatar.width_request(), 26);
+    assert_eq!(widgets.avatar.height_request(), 26);
+    assert_eq!(widgets.icon.pixel_size(), 18);
     assert_eq!(widgets.count.text().as_str(), "3");
     assert_eq!(
         widgets.chevron.icon_name().as_deref(),
@@ -109,11 +128,50 @@ fn update_group_row_keeps_conflict_warning_out_of_the_title() {
         .title
         .tooltip_text()
         .is_some_and(|text| text.contains("Trusted Brand")));
-    assert!(
-        widgets.icon.paintable().is_some(),
-        "conflicting identity should use a controlled warning badge"
+    assert_eq!(
+        widgets.icon.icon_name().as_deref(),
+        Some("unixnotis-shield-warning-symbolic")
     );
+    assert_eq!(widgets.secondary.text().as_str(), "Claims “Trusted Brand”");
+    assert_eq!(widgets.trust_chip.text().as_str(), "Suspicious");
+    assert!(widgets.secondary.get_visible());
+    assert!(widgets.trust_chip.get_visible());
     assert!(root.has_css_class("unixnotis-attribution-warning"));
+}
+
+#[gtk::test]
+fn relay_group_header_keeps_claim_below_command_line_identity() {
+    support::init_gtk();
+    let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let mut relayed = notification("Signal").as_ref().clone();
+    relayed.attribution = unixnotis_core::NotificationAttribution::trusted_relay(
+        "Signal",
+        "Sent via /usr/bin/notify-send",
+        true,
+        "relay:notify-send:signal".to_string(),
+    );
+    let data = RowData::group_header(
+        Rc::from("relay:notify-send:signal"),
+        4,
+        false,
+        Rc::new(relayed),
+    );
+
+    update_group_row(&widgets, &root, &data, &IconResolver::new());
+
+    let header = header_button(&root)
+        .child()
+        .and_downcast::<gtk::Box>()
+        .expect("group header content");
+    assert_eq!(direct_child_count(&header), 4);
+    assert_eq!(header.spacing(), 8);
+    assert_eq!(widgets.title.text().as_str(), "Command-line notification");
+    assert_eq!(widgets.secondary.text().as_str(), "App label: Signal");
+    assert!(widgets.secondary.get_visible());
+    assert!(!widgets.trust_chip.get_visible());
+    assert!(root.has_css_class("command-line"));
+    assert!(!root.has_css_class("unixnotis-attribution-warning"));
 }
 
 #[gtk::test]
