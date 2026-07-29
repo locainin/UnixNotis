@@ -16,6 +16,9 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) card: gtk::Box,
     // Polygon wrapper clips both visual output and pointer hit testing
     pub(super) card_plate: unixnotis_ui::CutCorner,
+    // Shallow rear cards reproduce the stable collapsed-group depth from master
+    pub(super) stack_ghost_middle: gtk::Box,
+    pub(super) stack_ghost_back: gtk::Box,
     // Main icon shown at the top-left of the row
     pub(super) icon: gtk::Image,
     // Identity header collapses completely for rows owned by a group header
@@ -27,11 +30,13 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) trust_chip: gtk::Label,
     // Critical badge remains allocated so urgency changes only toggle visibility
     pub(super) urgency_badge: gtk::Label,
+    // Dismiss remains in the measured header and targets the exact generation
+    pub(super) close_button: gtk::Button,
     // Optional metadata rows are present for themes but hidden unless config enables them
     pub(super) meta_top: gtk::Box,
     // Optional top metadata label for category/urgency styling
     pub(super) meta_label: gtk::Label,
-    // Compact relative time badge shown on the top metadata lane
+    // Compact relative time badge shown beside the summary
     pub(super) time_badge: gtk::Label,
     // Optional large image preview for notifications with image hints
     pub(super) thumbnail: gtk::Image,

@@ -3,7 +3,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use unixnotis_core::{NotificationImage, NotificationView};
 
-use super::{build_group_row, update_group_row};
+use super::{build_group_row, group_accessible_label, update_group_row};
 use crate::control::UiEvent;
 use crate::ui::icons::IconResolver;
 use crate::ui::notifications::item::{RowData, RowKind};
@@ -15,14 +15,14 @@ fn notification(app_name: &str) -> Rc<NotificationView> {
         id: 1,
         generation: 1,
         app_name: app_name.to_string(),
-        attribution: unixnotis_core::NotificationAttribution::associated(
+        attribution: unixnotis_core::NotificationAttribution::verified(
+            app_name,
             app_name,
             "org.example.App",
-            "org.example.App",
-            "",
-            unixnotis_core::AttributionClass::SystemAssociated,
-            false,
-            "system:org.example.App".to_string(),
+            "example-app",
+            unixnotis_core::AttributionReason::ExactSystemExecutable,
+            "exact system executable",
+            "system-app:org.example.App".to_string(),
         ),
         summary: "summary".to_string(),
         body: "body".to_string(),
@@ -69,6 +69,10 @@ fn update_group_row_sets_title_count_and_expanded_state() {
     assert_eq!(widgets.avatar.height_request(), 26);
     assert_eq!(widgets.icon.pixel_size(), 18);
     assert_eq!(widgets.count.text().as_str(), "3");
+    assert!(gtk::test_accessible_has_property(
+        &widgets.button,
+        gtk::AccessibleProperty::Label
+    ));
     assert_eq!(
         widgets.chevron.icon_name().as_deref(),
         Some("pan-down-symbolic")
@@ -86,6 +90,24 @@ fn update_group_row_sets_title_count_and_expanded_state() {
     );
     assert!(!root.has_css_class("unixnotis-group-row-collapsed"));
     assert!(root.has_css_class("unixnotis-group-row-expanded"));
+}
+
+#[test]
+fn group_accessible_name_keeps_identity_trust_count_and_state() {
+    assert_eq!(
+        group_accessible_label(
+            "Unknown application",
+            "Suspicious",
+            "Claimed app: Signal",
+            4,
+            true,
+        ),
+        "Unknown application. Suspicious. Claimed app: Signal. 4 notifications. Expanded"
+    );
+    assert_eq!(
+        group_accessible_label("Signal", "", "", 1, false),
+        "Signal. 1 notification. Collapsed"
+    );
 }
 
 #[gtk::test]
@@ -116,6 +138,8 @@ fn update_group_row_keeps_conflict_warning_out_of_the_title() {
     let mut conflicting = notification("Unknown application").as_ref().clone();
     conflicting.attribution = unixnotis_core::NotificationAttribution::conflict(
         "Trusted Brand",
+        "org.example.TrustedBrand",
+        unixnotis_core::AttributionReason::ExecutableMismatch,
         "source /tmp/sender-bin",
         "executable:1:2".to_string(),
     );
@@ -127,12 +151,15 @@ fn update_group_row_keeps_conflict_warning_out_of_the_title() {
     assert!(widgets
         .title
         .tooltip_text()
-        .is_some_and(|text| text.contains("Trusted Brand")));
+        .is_some_and(|text| text.contains("/tmp/sender-bin")));
     assert_eq!(
         widgets.icon.icon_name().as_deref(),
         Some("unixnotis-shield-warning-symbolic")
     );
-    assert_eq!(widgets.secondary.text().as_str(), "Claims “Trusted Brand”");
+    assert_eq!(
+        widgets.secondary.text().as_str(),
+        "Claimed app: Trusted Brand"
+    );
     assert_eq!(widgets.trust_chip.text().as_str(), "Suspicious");
     assert!(widgets.secondary.get_visible());
     assert!(widgets.trust_chip.get_visible());
@@ -145,10 +172,9 @@ fn relay_group_header_keeps_claim_below_command_line_identity() {
     let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
     let (root, widgets) = build_group_row(event_tx);
     let mut relayed = notification("Signal").as_ref().clone();
-    relayed.attribution = unixnotis_core::NotificationAttribution::trusted_relay(
+    relayed.attribution = unixnotis_core::NotificationAttribution::relay(
         "Signal",
         "Sent via /usr/bin/notify-send",
-        true,
         "relay:notify-send:signal".to_string(),
     );
     let data = RowData::group_header(
@@ -170,7 +196,7 @@ fn relay_group_header_keeps_claim_below_command_line_identity() {
     assert_eq!(widgets.secondary.text().as_str(), "App label: Signal");
     assert!(widgets.secondary.get_visible());
     assert!(!widgets.trust_chip.get_visible());
-    assert!(root.has_css_class("command-line"));
+    assert!(root.has_css_class("relay"));
     assert!(!root.has_css_class("unixnotis-attribution-warning"));
 }
 

@@ -6,7 +6,7 @@ pub mod shared_state {
     pub const CRITICAL: &str = "critical";
     pub const EMPTY: &str = "empty";
     pub const PLAYING: &str = "playing";
-    pub const STACKED: &str = "stacked";
+    pub const COLLAPSED_GROUP_PREVIEW: &str = "collapsed-group-preview";
 }
 
 pub mod urgency {
@@ -210,11 +210,6 @@ pub mod group_row {
 pub mod empty_row {
     pub const ROOT: &str = "unixnotis-empty";
     pub const LABEL: &str = "unixnotis-empty-label";
-}
-
-pub mod ghost_row {
-    pub const ROOT: &str = "unixnotis-stack-ghost";
-    pub const DEPTH_PREFIX: &str = "unixnotis-stack-ghost-";
 }
 
 pub mod media_card {

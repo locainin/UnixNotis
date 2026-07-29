@@ -21,7 +21,7 @@ use super::state::NotificationRowWidgets;
 pub(in crate::ui::notifications) fn build_notification_row(
     command_tx: mpsc::Sender<UiCommand>,
 ) -> (gtk::Box, NotificationRowWidgets) {
-    // Root owns the full collapsed-stack shape as one ListView row
+    // Root owns the full collapsed group preview as one ListView row
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.add_css_class(hooks::panel_card::ROW);
     root.set_hexpand(true);
@@ -34,8 +34,6 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let meta_top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     meta_top.add_css_class(hooks::panel_card::META_TOP);
     meta_top.set_hexpand(true);
-    // Overlay dismiss control occupies the card's top-right corner
-    meta_top.set_margin_end(30);
     meta_top.set_visible(false);
 
     let meta_label = gtk::Label::new(None);
@@ -43,18 +41,22 @@ pub(in crate::ui::notifications) fn build_notification_row(
     meta_label.set_xalign(0.0);
     meta_label.set_single_line_mode(true);
 
-    let meta_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
-    meta_spacer.set_hexpand(true);
-
     let time_badge = gtk::Label::new(None);
     time_badge.add_css_class(hooks::panel_card::TIME_BADGE);
-    time_badge.set_xalign(0.5);
+    time_badge.set_halign(gtk::Align::End);
+    time_badge.set_xalign(1.0);
     time_badge.set_single_line_mode(true);
+    time_badge.set_visible(false);
     meta_top.append(&meta_label);
-    meta_top.append(&meta_spacer);
-    meta_top.append(&time_badge);
 
-    // Header packs the identity shown only for standalone rows
+    // The dismiss control stays in the measured header like the stable master layout
+    let close_button = gtk::Button::from_icon_name("window-close-symbolic");
+    close_button.set_halign(gtk::Align::End);
+    close_button.set_valign(gtk::Align::Center);
+    close_button.add_css_class("unixnotis-panel-close");
+    close_button.update_property(&[gtk::accessible::Property::Label("Dismiss notification")]);
+
+    // Header owns identity, chronology, and dismiss without covering message content
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     header.add_css_class(hooks::panel_card::HEADER);
     let icon = gtk::Image::new();
@@ -91,13 +93,6 @@ pub(in crate::ui::notifications) fn build_notification_row(
     urgency_badge.set_single_line_mode(true);
     urgency_badge.set_visible(false);
 
-    let close_button = gtk::Button::from_icon_name("window-close-symbolic");
-    close_button.set_halign(gtk::Align::End);
-    close_button.set_valign(gtk::Align::Start);
-    close_button.set_margin_top(6);
-    close_button.set_margin_end(6);
-    close_button.add_css_class("unixnotis-panel-close");
-
     identity_top.append(&app_label);
     identity_top.append(&trust_chip);
     identity_top.append(&urgency_badge);
@@ -105,6 +100,8 @@ pub(in crate::ui::notifications) fn build_notification_row(
     identity.append(&secondary_claim);
     header.append(&icon);
     header.append(&identity);
+    header.append(&time_badge);
+    header.append(&close_button);
 
     let body_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     body_row.set_hexpand(true);
@@ -115,13 +112,14 @@ pub(in crate::ui::notifications) fn build_notification_row(
     thumbnail.set_size_request(56, 56);
     thumbnail.set_visible(false);
 
-    let text_stack = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let text_stack = gtk::Box::new(gtk::Orientation::Vertical, 2);
     text_stack.add_css_class(hooks::panel_card::TEXT);
     text_stack.set_hexpand(true);
 
     // Summary is optional, so the update path decides later if the row should exist
     let summary_label = gtk::Label::new(None);
     summary_label.set_xalign(0.0);
+    summary_label.set_hexpand(true);
     // One title line keeps short grouped rows compact
     summary_label.set_wrap(true);
     summary_label.set_wrap_mode(WrapMode::WordChar);
@@ -192,37 +190,21 @@ pub(in crate::ui::notifications) fn build_notification_row(
 
     // The wrapper clips the complete styled card while the inner box keeps all CSS hooks
     let card_plate = CutCorner::new(&card, unixnotis_core::CutCorners::default());
+    card_plate.add_css_class("unixnotis-panel-card-foreground");
 
-    // Overlay controls never change the card's natural height
-    let card_overlay = gtk::Overlay::new();
-    card_overlay.add_css_class("unixnotis-panel-card-overlay");
-    card_overlay.set_child(Some(&card_plate));
-    card_overlay.add_overlay(&close_button);
-
-    // One content card keeps grouped rows calm without decorative fake stack layers
-    root.append(&card_overlay);
+    // Rear layers follow master's paint order so the readable card always stays on top
+    let stack_ghost_back = build_stack_ghost(2);
+    let stack_ghost_middle = build_stack_ghost(1);
+    root.append(&stack_ghost_back);
+    root.append(&stack_ghost_middle);
+    root.append(&card_plate);
 
     let notify_key = Rc::new(Cell::new(NotificationKey {
         id: 0,
         generation: 0,
     }));
-    // Close click always targets the exact generation assigned to this recycled row
-    let close_tx = command_tx;
-    let notify_key_clone = notify_key.clone();
-    close_button.connect_clicked(move |_| {
-        let notification = notify_key_clone.get();
-        if notification.id == 0 {
-            // Ignore clicks before first binding
-            return;
-        }
-        debug!(
-            id = notification.id,
-            generation = notification.generation,
-            "dismiss clicked"
-        );
-        // Non-blocking enqueue avoids GTK stalls during D-Bus backpressure
-        try_send_command(&close_tx, UiCommand::Dismiss(notification));
-    });
+    // Recycled rows retain the exact generation rather than targeting a reused numeric id
+    connect_dismiss_button(&close_button, command_tx, notify_key.clone());
 
     // The reusable widget bundle is returned with the root so the list factory
     // can keep the GTK tree and the cached row state together
@@ -231,12 +213,15 @@ pub(in crate::ui::notifications) fn build_notification_row(
         NotificationRowWidgets {
             card,
             card_plate,
+            stack_ghost_middle,
+            stack_ghost_back,
             icon,
             header,
             app_label,
             secondary_claim,
             trust_chip,
             urgency_badge,
+            close_button,
             meta_top,
             meta_label,
             time_badge,
@@ -263,4 +248,36 @@ pub(in crate::ui::notifications) fn build_notification_row(
             icon_sig: RefCell::new(None),
         },
     )
+}
+
+fn build_stack_ghost(depth: u8) -> gtk::Box {
+    let ghost = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    // Rear cards deliberately contain no content or controls
+    ghost.add_css_class("unixnotis-panel-card");
+    ghost.add_css_class("unixnotis-stack-ghost");
+    ghost.add_css_class(&format!("unixnotis-stack-ghost-{depth}"));
+    ghost.set_hexpand(true);
+    ghost.set_visible(false);
+    ghost
+}
+
+fn connect_dismiss_button(
+    button: &gtk::Button,
+    command_tx: mpsc::Sender<UiCommand>,
+    notify_key: Rc<Cell<NotificationKey>>,
+) {
+    button.connect_clicked(move |_| {
+        let notification = notify_key.get();
+        if notification.id == 0 {
+            // Ignore clicks before first binding
+            return;
+        }
+        debug!(
+            id = notification.id,
+            generation = notification.generation,
+            "dismiss clicked"
+        );
+        // Non-blocking enqueue avoids GTK stalls during D-Bus backpressure
+        try_send_command(&command_tx, UiCommand::Dismiss(notification));
+    });
 }

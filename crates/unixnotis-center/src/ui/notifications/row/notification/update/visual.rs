@@ -1,10 +1,11 @@
-//! Card classes, stack depth, and widget visibility
+//! Card state classes and widget visibility
 
 use gtk::prelude::*;
 use unixnotis_core::{hooks, NotificationView, Urgency};
 use unixnotis_ui::presentation::{NotificationPresentation, TrustLevel};
 
 use super::super::super::super::item::RowData;
+use super::super::stack::layer_visibility;
 use super::super::state::NotificationRowWidgets;
 use super::labels::has_visible_text;
 
@@ -24,21 +25,44 @@ pub(super) fn apply_visual_state(
     set_class_state(card, hooks::shared_state::CRITICAL, is_critical);
     for (level, class_name) in [
         (TrustLevel::Verified, "verified"),
-        (TrustLevel::Unverified, "unverified"),
-        (TrustLevel::Suspicious, "suspicious"),
-        (TrustLevel::CommandLine, "command-line"),
+        (TrustLevel::Recognized, "recognized"),
+        (TrustLevel::Unresolved, "unresolved"),
+        (TrustLevel::Conflict, "conflict"),
+        (TrustLevel::Relay, "relay"),
     ] {
         set_class_state(card, class_name, presentation.trust.level == level);
     }
     set_widget_visible_if_changed(&row.urgency_badge, is_critical);
     set_class_state(card, hooks::shared_state::ACTIVE, data.is_active);
-    set_class_state(card, hooks::shared_state::STACKED, data.stacked);
-    let grouped = data.stacked || data.expanded;
+    set_class_state(
+        card,
+        hooks::shared_state::COLLAPSED_GROUP_PREVIEW,
+        data.collapsed_group_preview,
+    );
+    let grouped = data.collapsed_group_preview || data.expanded;
     set_class_state(card, hooks::panel_card::GROUPED, grouped);
-    set_class_state(card, hooks::panel_card::GROUP_COLLAPSED, data.stacked);
+    set_class_state(
+        card,
+        hooks::panel_card::GROUP_COLLAPSED,
+        data.collapsed_group_preview,
+    );
     set_class_state(card, hooks::panel_card::GROUP_EXPANDED, data.expanded);
     set_class_state(card, hooks::panel_card::GROUP_FIRST, data.group_first);
     set_class_state(card, hooks::panel_card::GROUP_LAST, data.group_last);
+    set_class_state(&row.card_plate, hooks::panel_card::GROUPED, grouped);
+    set_class_state(
+        &row.card_plate,
+        hooks::panel_card::GROUP_COLLAPSED,
+        data.collapsed_group_preview,
+    );
+    set_class_state(
+        &row.card_plate,
+        hooks::panel_card::GROUP_EXPANDED,
+        data.expanded,
+    );
+    let layers = layer_visibility(data.stack_depth);
+    set_widget_visible_if_changed(&row.stack_ghost_middle, layers.middle);
+    set_widget_visible_if_changed(&row.stack_ghost_back, layers.back);
 
     set_class_state(
         card,
@@ -56,7 +80,7 @@ pub(super) fn apply_visual_state(
     set_class_state(card, hooks::panel_card::NO_THUMBNAIL, !has_thumbnail);
 }
 
-fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {
+fn set_class_state<W: IsA<gtk::Widget>>(root: &W, class_name: &str, enabled: bool) {
     // Guard CSS churn so GTK does not reprocess matching classes
     if enabled {
         if !root.has_css_class(class_name) {

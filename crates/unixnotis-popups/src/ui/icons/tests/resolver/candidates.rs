@@ -39,7 +39,7 @@ fn collect_icon_candidates_does_not_treat_content_icon_as_application_badge() {
 #[test]
 fn collect_icon_candidates_does_not_fallback_to_unresolved_brand_claim() {
     let mut notification = notification("Trusted Brand", "dialog-warning-symbolic");
-    notification.attribution.class = unixnotis_core::AttributionClass::Unknown;
+    notification.attribution.status = unixnotis_core::AttributionStatus::Unresolved;
     notification.attribution.desktop_id.clear();
 
     let candidates = collect_icon_candidates(&notification);

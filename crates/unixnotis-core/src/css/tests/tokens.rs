@@ -48,11 +48,11 @@ fn modern_theme_custom_properties_stay_additive() {
     assert!(overrides.contains(":root {"));
     assert!(overrides.contains("--unixnotis-border-width: 2px;"));
     assert!(overrides.contains("--unixnotis-card-radius: 12px;"));
-    assert!(overrides.contains("--unixnotis-panel-card-padding-y: 10px;"));
+    assert!(overrides.contains("--unixnotis-panel-card-padding-y: 9px;"));
     assert!(overrides.contains("--unixnotis-popup-reveal-duration: 200ms;"));
     assert!(overrides.contains("--unixnotis-media-card-radius: 18px;"));
     assert!(overrides.contains("--unixnotis-media-title-font-size: 13px;"));
-    assert!(overrides.contains("--unixnotis-ui-font-family: \"Manrope\", \"SF Pro Text\","));
+    assert!(overrides.contains("--unixnotis-ui-font-family: \"Inter\", \"SF Pro Text\","));
     assert!(
         overrides.contains("--unixnotis-monospace-font-family: \"CaskaydiaCove Nerd Font Mono\",")
     );

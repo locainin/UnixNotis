@@ -21,7 +21,7 @@ impl NotificationList {
         &self,
         key: &'a str,
     ) -> Cow<'a, str> {
-        // Trim outer whitespace to avoid duplicate stacks from padded app names
+        // Trim outer whitespace to avoid duplicate groups from padded app names
         let trimmed = key.trim();
         if trimmed.is_empty() {
             return Cow::Borrowed("");
@@ -152,7 +152,8 @@ impl NotificationList {
             return true;
         };
         contains_casefold(&view.attribution.display_name, query)
-            || contains_casefold(&view.attribution.source_label, query)
+            || contains_casefold(&view.attribution.claimed_name, query)
+            || contains_casefold(&view.attribution.diagnostic_detail, query)
             || contains_casefold(&view.summary, query)
             || contains_casefold(&view.body, query)
     }

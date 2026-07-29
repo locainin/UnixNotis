@@ -20,12 +20,16 @@ pub(super) fn build_identity_avatar(
     notification: &NotificationView,
     view: &PopupEntryViewModel,
     size: i32,
-) -> Option<IdentityAvatar> {
+) -> IdentityAvatar {
     let icon_size = (size - 14).max(18);
     let icon = build_semantic_badge(view.badge, icon_size)
-        .or_else(|| state.build_app_icon_widget(notification, icon_size))?;
+        .or_else(|| state.build_app_icon_widget(notification, icon_size))
+        .unwrap_or_else(|| gtk::Image::from_icon_name("application-x-executable-symbolic"));
+    icon.set_pixel_size(icon_size);
+    icon.set_size_request(icon_size, icon_size);
     icon.set_valign(Align::Center);
     icon.set_halign(Align::Center);
+    icon.set_accessible_role(gtk::AccessibleRole::Presentation);
     icon.add_css_class("unixnotis-popup-icon");
 
     let avatar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -35,16 +39,24 @@ pub(super) fn build_identity_avatar(
     avatar.add_css_class("unixnotis-identity-avatar");
     avatar.add_css_class(view.trust.level.css_class());
     avatar.append(&icon);
-    Some(IdentityAvatar { widget: avatar })
+    IdentityAvatar { widget: avatar }
 }
 
-pub(super) fn build_identity_header(view: &PopupEntryViewModel) -> gtk::Box {
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    header.add_css_class("unixnotis-popup-header-row");
-    header.set_margin_end(30);
+pub(super) struct IdentityHeader {
+    pub(super) identity: gtk::Box,
+    pub(super) trailing: gtk::Box,
+}
+
+pub(super) fn build_identity_header(view: &PopupEntryViewModel) -> IdentityHeader {
+    let identity = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    identity.add_css_class("unixnotis-popup-identity-row");
+    identity.set_hexpand(true);
+    identity.set_halign(Align::Fill);
 
     let app = gtk::Label::new(Some(&view.app_label));
     app.set_xalign(0.0);
+    app.set_hexpand(true);
+    app.set_halign(Align::Fill);
     app.set_single_line_mode(true);
     app.set_ellipsize(EllipsizeMode::End);
     app.add_css_class("unixnotis-popup-app-name");
@@ -52,20 +64,28 @@ pub(super) fn build_identity_header(view: &PopupEntryViewModel) -> gtk::Box {
         // Raw paths remain available on demand without entering normal card content
         app.set_tooltip_text(Some(details));
     }
-    header.append(&app);
+    identity.append(&app);
 
     if let Some(chip) = build_trust_chip(&view.trust) {
-        header.append(&chip);
+        identity.append(&chip);
     }
 
-    header.append(&build_header_spacer());
-    header.append(&build_urgency_badge(view.critical));
+    let trailing = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    trailing.add_css_class("unixnotis-popup-trailing");
+    trailing.set_halign(Align::End);
+    trailing.set_valign(Align::Start);
+    trailing.set_margin_end(26);
 
     let time = gtk::Label::new(Some(&view.timestamp_label));
     time.set_single_line_mode(true);
+    time.set_halign(Align::End);
     time.add_css_class("unixnotis-popup-time");
-    header.append(&time);
-    header
+    trailing.append(&time);
+
+    let urgency = build_urgency_badge(view.critical);
+    urgency.set_halign(Align::End);
+    trailing.append(&urgency);
+    IdentityHeader { identity, trailing }
 }
 
 pub(super) fn build_title_label(view: &PopupEntryViewModel) -> Option<gtk::Label> {
@@ -110,8 +130,9 @@ pub(super) fn build_secondary_claim(view: &PopupEntryViewModel) -> Option<gtk::L
     let text = view.secondary_claim.as_deref()?;
     let label = gtk::Label::new(Some(text));
     label.set_xalign(0.0);
-    label.set_wrap(true);
-    label.set_wrap_mode(WrapMode::WordChar);
+    // Provenance context stays one quiet metadata line instead of changing card height
+    label.set_single_line_mode(true);
+    label.set_ellipsize(EllipsizeMode::End);
     label.add_css_class("unixnotis-popup-secondary-claim");
     Some(label)
 }
@@ -198,10 +219,12 @@ fn build_overflow_menu(
 }
 
 fn build_urgency_badge(is_critical: bool) -> gtk::Label {
-    let badge = gtk::Label::new(Some("Critical"));
+    let badge = gtk::Label::new(Some("!"));
     // The stable node keeps header spacing predictable across urgency changes
     badge.add_css_class(hooks::urgency::BADGE);
     badge.set_single_line_mode(true);
+    badge.set_tooltip_text(Some("Critical notification"));
+    badge.update_property(&[gtk::accessible::Property::Label("Critical notification")]);
     badge.set_visible(is_critical);
     badge
 }
@@ -217,13 +240,6 @@ fn build_trust_chip(trust: &PopupTrustPresentation) -> Option<gtk::Label> {
         chip.set_tooltip_text(Some(details));
     }
     Some(chip)
-}
-
-fn build_header_spacer() -> gtk::Box {
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 1);
-    // The expanding spacer anchors time and close controls to the trailing edge
-    spacer.set_hexpand(true);
-    spacer
 }
 
 #[cfg(test)]

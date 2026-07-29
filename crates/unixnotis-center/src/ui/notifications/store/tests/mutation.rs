@@ -71,11 +71,19 @@ fn active_move_policy_covers_history_new_and_non_front_rows() {
 }
 
 #[test]
-fn collapsed_group_stacked_policy_requires_collapsed_group_with_multiple_rows() {
-    assert!(!collapsed_group_is_stacked(false, 0));
-    assert!(!collapsed_group_is_stacked(false, 1));
-    assert!(collapsed_group_is_stacked(false, 2));
-    assert!(!collapsed_group_is_stacked(true, 2));
+fn collapsed_group_preview_requires_a_collapsed_group_with_multiple_rows() {
+    assert!(!is_collapsed_group_preview(false, 0));
+    assert!(!is_collapsed_group_preview(false, 1));
+    assert!(is_collapsed_group_preview(false, 2));
+    assert!(!is_collapsed_group_preview(true, 2));
+}
+
+#[test]
+fn collapsed_group_depth_matches_master_and_caps_at_two_layers() {
+    assert_eq!(super::super::blocks::collapsed_stack_depth(1, false), 0);
+    assert_eq!(super::super::blocks::collapsed_stack_depth(2, false), 1);
+    assert_eq!(super::super::blocks::collapsed_stack_depth(4, false), 2);
+    assert_eq!(super::super::blocks::collapsed_stack_depth(4, true), 0);
 }
 
 #[test]

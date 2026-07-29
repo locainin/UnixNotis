@@ -29,7 +29,7 @@ pub(in crate::ui::notifications) fn update_notification_row(
     };
     let notification = notification_snapshot.as_ref();
     let presentation = NotificationPresentation::from_view(notification);
-    let show_identity = !data.stacked && !data.expanded;
+    let show_identity = !data.collapsed_group_preview && !data.expanded;
     let has_actions = visible_action_count(notification, data.is_active) > 0;
     let has_thumbnail =
         data.presentation.show_thumbnail && notification_has_thumbnail(notification);
@@ -92,7 +92,9 @@ pub(in crate::ui::notifications) fn update_notification_row(
     }
     set_widget_visible_if_changed(&row.icon, show_identity);
     set_widget_visible_if_changed(&row.app_label, show_identity);
-    set_widget_visible_if_changed(&row.header, show_identity);
+    // Group rows keep the measured top lane so dismiss never covers message text
+    set_widget_visible_if_changed(&row.header, true);
+    set_widget_visible_if_changed(&row.close_button, true);
     if has_thumbnail {
         // Reapply visible thumbnails so config reloads cannot leave stale previews
         let scale = row.card.scale_factor();

@@ -1,10 +1,11 @@
 use super::{
-    build_action_row, build_body_label, build_close_button, build_header_spacer,
-    build_identity_avatar, build_reply_note, build_title_label, build_urgency_badge,
+    build_action_row, build_body_label, build_close_button, build_identity_avatar,
+    build_identity_header, build_reply_note, build_secondary_claim, build_title_label,
+    build_urgency_badge,
 };
 use gtk::prelude::*;
 use unixnotis_core::{
-    Action, AttributionClass, InlineReply, InlineReplyPolicy, NotificationAttribution,
+    Action, AttributionReason, InlineReply, InlineReplyPolicy, NotificationAttribution,
     NotificationImage, NotificationView,
 };
 
@@ -20,7 +21,11 @@ fn popup_critical_badge_uses_shared_hook_and_visibility() {
     let normal = build_urgency_badge(false);
 
     assert!(critical.has_css_class(unixnotis_core::hooks::urgency::BADGE));
-    assert_eq!(critical.text().as_str(), "Critical");
+    assert_eq!(critical.text().as_str(), "!");
+    assert_eq!(
+        critical.tooltip_text().as_deref(),
+        Some("Critical notification")
+    );
     assert!(critical.get_visible());
     assert!(!normal.get_visible());
 }
@@ -46,6 +51,19 @@ fn title_and_body_builders_keep_text_classes_and_line_limits() {
 }
 
 #[gtk::test]
+fn secondary_claim_stays_on_one_compact_metadata_line() {
+    let mut view = view_model();
+    view.secondary_claim = Some("Claimed app: Signal".to_string());
+
+    let claim = build_secondary_claim(&view).expect("secondary claim");
+
+    assert_eq!(claim.text().as_str(), "Claimed app: Signal");
+    assert!(claim.is_single_line_mode());
+    assert_eq!(claim.ellipsize(), gtk::pango::EllipsizeMode::End);
+    assert!(!claim.wraps());
+}
+
+#[gtk::test]
 fn reply_note_exists_only_when_the_policy_explanation_is_needed() {
     let mut view = view_model();
     assert!(build_reply_note(&view).is_none());
@@ -58,16 +76,26 @@ fn reply_note_exists_only_when_the_policy_explanation_is_needed() {
 }
 
 #[gtk::test]
-fn close_button_and_header_spacer_keep_their_interaction_contracts() {
+fn close_button_and_identity_header_keep_their_interaction_contracts() {
     let close = build_close_button();
-    let spacer = build_header_spacer();
+    let header = build_identity_header(&view_model());
 
     assert!(close.has_css_class("unixnotis-popup-close"));
     assert_eq!(
         close.tooltip_text().as_deref(),
         Some("Dismiss notification")
     );
-    assert!(spacer.hexpands());
+    assert!(header.identity.hexpands());
+    assert_eq!(header.trailing.margin_end(), 26);
+    assert_eq!(header.trailing.orientation(), gtk::Orientation::Vertical);
+    assert!(header
+        .trailing
+        .first_child()
+        .is_some_and(|child| child.has_css_class("unixnotis-popup-time")));
+    assert!(header
+        .trailing
+        .last_child()
+        .is_some_and(|child| { child.has_css_class(unixnotis_core::hooks::urgency::BADGE) }));
 }
 
 #[gtk::test]
@@ -145,16 +173,14 @@ fn identity_avatar_scales_the_symbolic_glyph_inside_its_fixed_slot() {
     let css = CssManager::new_popup(theme_paths(&root), config.theme.clone());
     let mut state = UiState::new(&app, config, root.join("config.toml"), command_tx, css);
     let mut notification = notification();
-    notification.attribution = NotificationAttribution::trusted_relay(
+    notification.attribution = NotificationAttribution::relay(
         "Signal",
         "Sent via /usr/bin/notify-send",
-        false,
         "relay:notify-send:signal".to_string(),
     );
     let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
 
-    let avatar = build_identity_avatar(&mut state, &notification, &view, 36)
-        .expect("relay avatar should use a semantic badge");
+    let avatar = build_identity_avatar(&mut state, &notification, &view, 36);
     let icon = avatar
         .widget
         .first_child()
@@ -184,14 +210,14 @@ fn notification() -> NotificationView {
         id: 41,
         generation: 3,
         app_name: "Example".to_string(),
-        attribution: NotificationAttribution::associated(
+        attribution: NotificationAttribution::verified(
+            "Example",
             "Example",
             "org.example.App",
-            "org.example.App",
-            "",
-            AttributionClass::SystemAssociated,
-            false,
-            "system-desktop:org.example.App".to_string(),
+            "example-app",
+            AttributionReason::ExactSystemExecutable,
+            "exact system executable",
+            "system-app:org.example.App".to_string(),
         ),
         summary: "Primary title".to_string(),
         body: "Supporting body".to_string(),

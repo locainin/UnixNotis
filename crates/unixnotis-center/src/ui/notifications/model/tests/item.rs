@@ -54,7 +54,6 @@ fn row_data_notification_sets_expected_fields() {
         Rc::from("terminal"),
         view.clone(),
         true,
-        2,
         false,
         true,
         presentation.clone(),
@@ -62,8 +61,7 @@ fn row_data_notification_sets_expected_fields() {
 
     assert_eq!(data.kind, RowKind::Notification);
     assert_eq!(data.id, 42);
-    assert!(data.stacked);
-    assert_eq!(data.stack_depth, 2);
+    assert!(data.collapsed_group_preview);
     assert!(data.is_active);
     assert_eq!(data.presentation, presentation);
     assert!(Rc::ptr_eq(data.notification.as_ref().expect("view"), &view));
@@ -75,7 +73,6 @@ fn row_item_update_emits_only_for_changed_data() {
         Rc::from("terminal"),
         notification(1),
         false,
-        0,
         false,
         true,
         RowPresentation::default(),
@@ -95,7 +92,6 @@ fn row_item_update_emits_only_for_changed_data() {
         Rc::from("terminal"),
         notification(2),
         false,
-        0,
         false,
         true,
         RowPresentation::default(),
@@ -111,7 +107,6 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
         group.clone(),
         view.clone(),
         false,
-        0,
         false,
         true,
         RowPresentation {
@@ -145,11 +140,7 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
     assert!(!base.is_equivalent(&changed));
 
     let mut changed = base.clone();
-    changed.stacked = true;
-    assert!(!base.is_equivalent(&changed));
-
-    let mut changed = base.clone();
-    changed.stack_depth = 2;
+    changed.collapsed_group_preview = true;
     assert!(!base.is_equivalent(&changed));
 
     let mut changed = base.clone();
@@ -170,7 +161,6 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
         group,
         view,
         false,
-        0,
         false,
         true,
         RowPresentation {

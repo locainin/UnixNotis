@@ -21,6 +21,7 @@ const GROUP_AVATAR_SIZE: i32 = 26;
 const GROUP_ICON_SIZE: i32 = 18;
 
 pub(in crate::ui::notifications) struct GroupRowWidgets {
+    pub(super) button: gtk::Button,
     pub(super) avatar: gtk::Box,
     pub(super) icon: gtk::Image,
     pub(super) title: gtk::Label,
@@ -129,6 +130,7 @@ pub(in crate::ui::notifications) fn build_group_row(
     (
         root,
         GroupRowWidgets {
+            button,
             avatar,
             icon,
             title,
@@ -173,6 +175,16 @@ pub(in crate::ui::notifications) fn update_group_row(
     set_widget_visible_if_changed(&group.trust_chip, !trust_label.is_empty());
     let next_count = data.count.to_string();
     set_label_text_if_changed(&group.count, &next_count);
+    let accessible_label = group_accessible_label(
+        display_name,
+        trust_label,
+        secondary,
+        data.count,
+        data.expanded,
+    );
+    group
+        .button
+        .update_property(&[gtk::accessible::Property::Label(&accessible_label)]);
     let chevron_name = if data.expanded {
         "pan-up-symbolic"
     } else {
@@ -197,13 +209,14 @@ pub(in crate::ui::notifications) fn update_group_row(
         set_class_state(
             root,
             "unixnotis-attribution-warning",
-            presentation.trust.level == TrustLevel::Suspicious,
+            presentation.trust.level == TrustLevel::Conflict,
         );
         for (level, class_name) in [
             (TrustLevel::Verified, "verified"),
-            (TrustLevel::Unverified, "unverified"),
-            (TrustLevel::Suspicious, "suspicious"),
-            (TrustLevel::CommandLine, "command-line"),
+            (TrustLevel::Recognized, "recognized"),
+            (TrustLevel::Unresolved, "unresolved"),
+            (TrustLevel::Conflict, "conflict"),
+            (TrustLevel::Relay, "relay"),
         ] {
             set_class_state(root, class_name, presentation.trust.level == level);
         }
@@ -222,6 +235,30 @@ pub(in crate::ui::notifications) fn update_group_row(
         set_class_state(root, hooks::group_row::NO_ICON, true);
         set_class_state(root, hooks::group_row::HAS_ICON, false);
     }
+}
+
+fn group_accessible_label(
+    display_name: &str,
+    trust_label: &str,
+    secondary: &str,
+    count: u32,
+    expanded: bool,
+) -> String {
+    let mut parts = vec![display_name.trim().to_string()];
+    if !trust_label.trim().is_empty() {
+        parts.push(trust_label.trim().to_string());
+    }
+    if !secondary.trim().is_empty() {
+        parts.push(secondary.trim().to_string());
+    }
+    let count_label = if count == 1 {
+        "1 notification".to_string()
+    } else {
+        format!("{count} notifications")
+    };
+    parts.push(count_label);
+    parts.push(if expanded { "Expanded" } else { "Collapsed" }.to_string());
+    parts.join(". ")
 }
 
 fn set_label_text_if_changed(label: &gtk::Label, text: &str) {

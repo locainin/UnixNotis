@@ -118,7 +118,6 @@ fn critical_alert_assets_define_composed_popup_and_panel_states() {
         ".unixnotis-popup-card.critical",
         ".unixnotis-popup-card.critical .unixnotis-popup-icon",
         ".unixnotis-panel-card.critical,\n.unixnotis-panel-card.active.critical",
-        ".unixnotis-panel-card.stacked.critical,\n.unixnotis-panel-card.stacked.active.critical",
         ".unixnotis-panel-card.critical .unixnotis-panel-icon",
     ] {
         let css = if selector.contains("popup") {
@@ -140,9 +139,10 @@ fn popup_theme_keeps_kind_trust_and_compact_media_hooks() {
         ".unixnotis-popup-card.utility",
         ".unixnotis-popup-communication-content",
         ".unixnotis-popup-utility-content",
-        ".unixnotis-popup-warning-content",
-        ".unixnotis-popup-trust-chip.unverified",
-        ".unixnotis-popup-trust-chip.suspicious",
+        ".unixnotis-popup-trust-chip.recognized",
+        ".unixnotis-popup-trust-chip.unresolved",
+        ".unixnotis-popup-trust-chip.relay",
+        ".unixnotis-popup-trust-chip.conflict",
         ".unixnotis-popup-time",
     ] {
         assert!(
@@ -153,7 +153,7 @@ fn popup_theme_keeps_kind_trust_and_compact_media_hooks() {
 
     // Default popups must not restore the old raw provenance body row
     assert!(!DEFAULT_POPUP_CSS.contains(".unixnotis-popup-source"));
-    assert!(DEFAULT_POPUP_CSS.contains("min-width: 36px"));
-    assert!(DEFAULT_POPUP_CSS.contains("min-width: 44px"));
-    assert!(DEFAULT_POPUP_CSS.contains("min-width: 48px"));
+    assert!(DEFAULT_POPUP_CSS.contains("min-width: 38px"));
+    assert!(DEFAULT_POPUP_CSS.contains("min-width: 64px"));
+    assert!(!DEFAULT_POPUP_CSS.contains("popup-warning-content"));
 }

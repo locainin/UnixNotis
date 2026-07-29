@@ -2,7 +2,7 @@
 
 use gtk::prelude::*;
 use gtk::Align;
-use unixnotis_core::{hooks, NotificationView};
+use unixnotis_core::{hooks, NotificationKey, NotificationView};
 use unixnotis_ui::CutCorner;
 
 use super::super::window::refresh_popup_input_region;
@@ -12,6 +12,7 @@ use super::builders::{
 };
 use super::commands::try_send_command;
 use super::presentation::PopupEntryViewModel;
+use super::PopupVisibilityBinding;
 use crate::dbus::UiCommand;
 
 pub(in crate::ui) struct PopupEntry {
@@ -20,6 +21,7 @@ pub(in crate::ui) struct PopupEntry {
     // Hidden backlog rows stay lightweight until they enter the visible slice
     pub(in crate::ui) revealer: Option<gtk::Revealer>,
     pub(in crate::ui) root: Option<gtk::Box>,
+    pub(in crate::ui) visibility: Option<PopupVisibilityBinding>,
 }
 
 impl PopupEntry {
@@ -29,6 +31,7 @@ impl PopupEntry {
             notification,
             revealer: None,
             root: None,
+            visibility: None,
         }
     }
 
@@ -45,19 +48,20 @@ impl UiState {
     ) -> PopupEntry {
         // Build the GTK row first so the revealer always wraps a ready child
         let root = self.build_popup_root(notification);
-        let revealer = self.build_popup_revealer(&root);
+        let (revealer, visibility) = self.build_popup_revealer(&root, notification.key());
 
         PopupEntry {
             // Store the payload used to build this row so later seeds can compare safely
             notification: notification.clone(),
             revealer: Some(revealer),
             root: Some(root),
+            visibility: Some(visibility),
         }
     }
 
     pub(in crate::ui) fn build_popup_root(&mut self, notification: &NotificationView) -> gtk::Box {
         let view = PopupEntryViewModel::for_notification(notification);
-        let root = build_card_root(self, &view);
+        let root = build_card_root(&view);
         let close = build_close_button();
         let rendered = build_popup_content(self, notification, &view);
         let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
@@ -91,7 +95,11 @@ impl UiState {
         root
     }
 
-    fn build_popup_revealer(&self, root: &gtk::Box) -> gtk::Revealer {
+    fn build_popup_revealer(
+        &self,
+        root: &gtk::Box,
+        key: NotificationKey,
+    ) -> (gtk::Revealer, PopupVisibilityBinding) {
         // Revealers keep entry animations out of the popup list bookkeeping
         let revealer = gtk::Revealer::new();
         revealer.add_css_class("unixnotis-popup-revealer");
@@ -118,30 +126,40 @@ impl UiState {
         let popup_window = self.popup_window.clone();
         let popup_stack = self.popup_stack.clone();
         let popup_input_region = self.popup_input_region.clone();
-        revealer.connect_notify_local(Some("child-revealed"), move |_, _| {
-            // Refresh after reveal so action rows never inherit an earlier empty input region
-            refresh_popup_input_region(&popup_window, &popup_stack, &popup_input_region);
+        let command_tx = self.command_tx.clone();
+        let visibility = PopupVisibilityBinding::new(key);
+        revealer.connect_notify_local(Some("child-revealed"), {
+            let reveal_window = popup_window.clone();
+            let reveal_command_tx = command_tx.clone();
+            let reveal_visibility = visibility.clone();
+            move |revealer, _| {
+                // Refresh after reveal so actions never inherit an earlier empty input region
+                refresh_popup_input_region(&reveal_window, &popup_stack, &popup_input_region);
+                reveal_visibility.report_if_visible(revealer, &reveal_window, &reveal_command_tx);
+            }
+        });
+        revealer.connect_map({
+            let visibility = visibility.clone();
+            move |revealer| {
+                // Reduced-motion rows may finish revealing before their surface maps
+                visibility.report_if_visible(revealer, &popup_window, &command_tx);
+            }
         });
 
-        revealer
+        (revealer, visibility)
     }
 }
 
-fn build_card_root(state: &UiState, view: &PopupEntryViewModel) -> gtk::Box {
+fn build_card_root(view: &PopupEntryViewModel) -> gtk::Box {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
     root.add_css_class("unixnotis-popup-card");
     root.add_css_class(view.kind.css_class());
     root.add_css_class(view.trust.level.css_class());
 
-    // Use the live stack width when a row is built or rebuilt
-    let popup_width = state
-        .popup_stack
-        .width()
-        .max(state.popup_stack.width_request())
-        .max(1);
-    root.set_size_request(popup_width, -1);
+    // The stack owns the outer width and its CSS padding
+    // Cards fill the remaining allocation without requesting the outer width again
     root.set_halign(Align::Fill);
-    root.set_hexpand(false);
+    root.set_hexpand(true);
     // New roots stay hidden until visibility logic decides otherwise
     root.set_visible(false);
 
