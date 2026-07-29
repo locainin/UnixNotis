@@ -5,23 +5,20 @@
 pub enum NotificationKind {
     Communication,
     Utility,
-    Warning,
+    Media,
 }
 
 impl NotificationKind {
     #[must_use]
-    pub fn for_notification(
-        notification: &unixnotis_core::NotificationView,
-        trust_level: TrustLevel,
-    ) -> Self {
-        super::build::notification_kind(notification, trust_level)
+    pub fn for_notification(notification: &unixnotis_core::NotificationView) -> Self {
+        super::build::notification_kind(notification)
     }
 
     #[must_use]
     pub const fn action_limit(self) -> usize {
         // Two visible actions preserve room for content; remaining actions use overflow
         match self {
-            Self::Communication | Self::Utility | Self::Warning => 2,
+            Self::Communication | Self::Utility | Self::Media => 2,
         }
     }
 
@@ -30,7 +27,7 @@ impl NotificationKind {
         match self {
             Self::Communication => "communication",
             Self::Utility => "utility",
-            Self::Warning => "warning",
+            Self::Media => "media",
         }
     }
 }
@@ -39,9 +36,10 @@ impl NotificationKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrustLevel {
     Verified,
-    Unverified,
-    Suspicious,
-    CommandLine,
+    Recognized,
+    Unresolved,
+    Conflict,
+    Relay,
 }
 
 impl TrustLevel {
@@ -49,9 +47,10 @@ impl TrustLevel {
     pub const fn css_class(self) -> &'static str {
         match self {
             Self::Verified => "verified",
-            Self::Unverified => "unverified",
-            Self::Suspicious => "suspicious",
-            Self::CommandLine => "command-line",
+            Self::Recognized => "recognized",
+            Self::Unresolved => "unresolved",
+            Self::Conflict => "conflict",
+            Self::Relay => "relay",
         }
     }
 }
@@ -60,6 +59,7 @@ impl TrustLevel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BadgePresentation {
     AuthenticatedApplication,
+    RecognizedApplication,
     UnknownApplication,
     SuspiciousApplication,
     CommandLine,

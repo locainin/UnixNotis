@@ -45,7 +45,9 @@ pub fn apply_semantic_badge(image: &gtk::Image, badge: BadgePresentation, size: 
     icon_theme.add_resource_path(RESOURCE_ROOT);
     let icon_name = match badge {
         // Verified applications retain the authenticated desktop badge
-        BadgePresentation::AuthenticatedApplication => return false,
+        BadgePresentation::AuthenticatedApplication | BadgePresentation::RecognizedApplication => {
+            return false
+        }
         BadgePresentation::UnknownApplication => "unixnotis-app-unknown-symbolic",
         BadgePresentation::SuspiciousApplication => "unixnotis-shield-warning-symbolic",
         BadgePresentation::CommandLine => "unixnotis-terminal-symbolic",

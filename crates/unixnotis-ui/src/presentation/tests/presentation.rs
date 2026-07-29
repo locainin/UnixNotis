@@ -1,5 +1,6 @@
 use unixnotis_core::{
-    Action, AttributionClass, ImageData, InlineReplyPolicy, NotificationAttribution, Urgency,
+    Action, AttributionReason, AttributionStatus, ImageData, InlineReplyPolicy,
+    NotificationAttribution, Urgency,
 };
 
 use super::super::{
@@ -50,6 +51,8 @@ fn shared_model_downgrades_conflicts_and_denies_application_interaction() {
     let mut view = notification();
     view.attribution = NotificationAttribution::conflict(
         "Known application",
+        "org.example.Known",
+        AttributionReason::ExecutableMismatch,
         "sender executable differs",
         "conflict:known".to_string(),
     );
@@ -60,15 +63,15 @@ fn shared_model_downgrades_conflicts_and_denies_application_interaction() {
 
     let presentation = NotificationPresentation::from_view_at(&view, 1_000);
 
-    assert_eq!(presentation.kind, NotificationKind::Warning);
-    assert_eq!(presentation.trust.level, TrustLevel::Suspicious);
+    assert_eq!(presentation.kind, NotificationKind::Utility);
+    assert_eq!(presentation.trust.level, TrustLevel::Conflict);
     assert_eq!(
         presentation.identity.badge,
         BadgePresentation::SuspiciousApplication
     );
     assert_eq!(
         presentation.identity.secondary_claim.as_deref(),
-        Some("Claims “Known application”")
+        Some("Claimed app: Known application")
     );
     assert!(presentation.actions.primary.is_empty());
     assert!(presentation.actions.overflow.is_empty());
@@ -78,18 +81,17 @@ fn shared_model_downgrades_conflicts_and_denies_application_interaction() {
 fn trusted_relay_claim_never_becomes_the_primary_application_identity() {
     let mut view = notification();
     view.category = "im.received".to_string();
-    view.attribution = NotificationAttribution::trusted_relay(
+    view.attribution = NotificationAttribution::relay(
         "Signal",
         "Sent via /usr/bin/notify-send",
-        true,
         "relay:notify-send:signal".to_string(),
     );
     view.image.icon_name = "signal-desktop".to_string();
 
     let presentation = NotificationPresentation::from_view_at(&view, 1_000);
 
-    assert_eq!(presentation.kind, NotificationKind::Utility);
-    assert_eq!(presentation.trust.level, TrustLevel::CommandLine);
+    assert_eq!(presentation.kind, NotificationKind::Communication);
+    assert_eq!(presentation.trust.level, TrustLevel::Relay);
     assert!(presentation.trust.short_label.is_none());
     assert_eq!(
         presentation.identity.primary_label,
@@ -106,15 +108,16 @@ fn trusted_relay_claim_never_becomes_the_primary_application_identity() {
 #[test]
 fn unknown_claim_stays_secondary_and_unverified() {
     let mut view = notification();
-    view.attribution = NotificationAttribution::unknown(
+    view.attribution = NotificationAttribution::unresolved(
         "Local helper",
+        AttributionReason::NoDesktopCandidate,
         "Source: /tmp/local-helper",
         "unknown:local-helper".to_string(),
     );
 
     let presentation = NotificationPresentation::from_view_at(&view, 1_000);
 
-    assert_eq!(presentation.trust.level, TrustLevel::Unverified);
+    assert_eq!(presentation.trust.level, TrustLevel::Unresolved);
     assert_eq!(presentation.identity.primary_label, "Unknown application");
     assert_eq!(
         presentation.identity.secondary_claim.as_deref(),
@@ -123,12 +126,32 @@ fn unknown_claim_stays_secondary_and_unverified() {
 }
 
 #[test]
+fn communication_layout_is_preserved_for_unverified_sender() {
+    let mut view = notification();
+    view.category = "im.received".to_string();
+    view.attribution = NotificationAttribution::unresolved(
+        "Local chat",
+        AttributionReason::MissingSenderEvidence,
+        "sender evidence unavailable",
+        "unknown:local-chat".to_string(),
+    );
+
+    let presentation = NotificationPresentation::from_view_at(&view, 1_000);
+
+    assert_eq!(
+        presentation.kind,
+        NotificationKind::Communication,
+        "attribution uncertainty must not erase message semantics"
+    );
+    assert_eq!(presentation.trust.level, TrustLevel::Unresolved);
+}
+
+#[test]
 fn untrusted_non_media_notification_cannot_render_content_art() {
     let mut view = notification();
-    view.attribution = NotificationAttribution::trusted_relay(
+    view.attribution = NotificationAttribution::relay(
         "Signal",
         "Sent via /usr/bin/notify-send",
-        false,
         "relay:notify-send:signal".to_string(),
     );
     view.image.image_path = "/tmp/signal-logo.png".to_string();
@@ -173,9 +196,9 @@ fn popup_status_uses_the_committed_reason_instead_of_current_state() {
 fn popup_status_distinguishes_renderer_recovery_and_delivery_failure() {
     for (stage, admission, expected) in [
         (
-            unixnotis_core::PopupDeliveryStage::Rendered,
+            unixnotis_core::PopupDeliveryStage::Visible,
             unixnotis_core::PopupAdmissionView::RendererUnavailable,
-            Some("Shown after popup renderer recovered"),
+            None,
         ),
         (
             unixnotis_core::PopupDeliveryStage::RendererFetched,
@@ -185,10 +208,10 @@ fn popup_status_distinguishes_renderer_recovery_and_delivery_failure() {
         (
             unixnotis_core::PopupDeliveryStage::FanoutFailed,
             unixnotis_core::PopupAdmissionView::Show,
-            Some("Not shown — notification delivery failed"),
+            Some("Not shown — live notification delivery failed"),
         ),
         (
-            unixnotis_core::PopupDeliveryStage::Rendered,
+            unixnotis_core::PopupDeliveryStage::Visible,
             unixnotis_core::PopupAdmissionView::Show,
             None,
         ),
@@ -212,13 +235,46 @@ fn popup_status_distinguishes_renderer_recovery_and_delivery_failure() {
 }
 
 #[test]
+fn suppression_reason_survives_a_later_fanout_failure() {
+    for (admission, expected) in [
+        (
+            unixnotis_core::PopupAdmissionView::Dnd,
+            "Not shown — Do Not Disturb was enabled",
+        ),
+        (
+            unixnotis_core::PopupAdmissionView::Rule,
+            "Not shown — matched a notification rule",
+        ),
+        (
+            unixnotis_core::PopupAdmissionView::Inhibitor,
+            "Not shown — notifications were inhibited",
+        ),
+    ] {
+        let mut view = notification();
+        view.popup_decision = unixnotis_core::PopupDecisionRecord {
+            admission_at_commit: admission,
+            decided_at_unix_ms: 1_000,
+            delivery_stage: unixnotis_core::PopupDeliveryStage::FanoutFailed,
+            ..unixnotis_core::PopupDecisionRecord::default()
+        };
+
+        assert_eq!(
+            NotificationPresentation::from_view_at(&view, 1_000)
+                .popup_status
+                .as_deref(),
+            Some(expected),
+            "the arrival decision must outrank later delivery state"
+        );
+    }
+}
+
+#[test]
 fn empty_and_generic_claims_never_create_secondary_identity_copy() {
     for claim in ["", "Unknown application"] {
         let mut view = notification();
-        view.attribution = NotificationAttribution::trusted_relay(
+        view.attribution = NotificationAttribution::relay(
             claim,
             "Sent via /usr/bin/notify-send",
-            false,
             format!("relay:notify-send:{claim}"),
         );
 
@@ -254,13 +310,13 @@ fn verified_media_category_or_pixel_data_can_override_duplicate_badge_suppressio
 #[test]
 fn shared_model_keeps_user_association_unverified_and_noninteractive() {
     let mut view = notification();
-    view.attribution = NotificationAttribution::associated(
+    view.attribution = NotificationAttribution::recognized(
+        "Local application",
         "Local application",
         "org.example.Local",
         "org.example.Local",
-        "",
-        AttributionClass::UserAssociated,
-        false,
+        AttributionReason::ExactUserExecutable,
+        "user-local desktop association",
         "user:local".to_string(),
     );
     view.actions.push(Action {
@@ -270,10 +326,10 @@ fn shared_model_keeps_user_association_unverified_and_noninteractive() {
 
     let presentation = NotificationPresentation::from_view_at(&view, 1_000);
 
-    assert_eq!(presentation.trust.level, TrustLevel::Unverified);
+    assert_eq!(presentation.trust.level, TrustLevel::Recognized);
     assert_eq!(
         presentation.identity.badge,
-        BadgePresentation::UnknownApplication
+        BadgePresentation::RecognizedApplication
     );
     assert!(presentation.actions.primary.is_empty());
 }
@@ -324,12 +380,12 @@ fn shared_model_requires_verified_identity_and_exact_critical_urgency() {
         label: "Reply".to_string(),
     });
 
-    view.attribution.class = AttributionClass::UserAssociated;
+    view.attribution.status = AttributionStatus::Recognized;
     let unverified = NotificationPresentation::from_view_at(&view, 1_000);
     assert_eq!(unverified.trust.reply, ReplyPresentation::Unavailable);
     assert!(!unverified.critical);
 
-    view.attribution.class = AttributionClass::SystemAssociated;
+    view.attribution.status = AttributionStatus::Verified;
     view.urgency = Urgency::Critical as u8;
     let critical = NotificationPresentation::from_view_at(&view, 1_000);
     assert_eq!(critical.trust.reply, ReplyPresentation::Available);
