@@ -5,7 +5,7 @@ mod build;
 mod text;
 mod types;
 
-pub use badges::{build_semantic_badge, register_semantic_badges};
+pub use badges::{apply_semantic_badge, build_semantic_badge, register_semantic_badges};
 pub use build::NotificationPresentation;
 pub use text::{
     clamp_label_text, has_visible_text, ACTION_LABEL_MAX_CHARS, APP_LABEL_MAX_CHARS,

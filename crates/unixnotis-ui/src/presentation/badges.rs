@@ -27,20 +27,36 @@ pub fn register_semantic_badges() -> Result<(), String> {
 /// Builds a daemon-controlled badge when authenticated application art is not allowed
 #[must_use]
 pub fn build_semantic_badge(badge: BadgePresentation, size: i32) -> Option<gtk::Image> {
-    register_semantic_badges().ok()?;
-    let file = match badge {
-        // Verified applications retain the authenticated desktop badge
-        BadgePresentation::AuthenticatedApplication => return None,
-        BadgePresentation::UnknownApplication => "unixnotis-app-unknown-symbolic.svg",
-        BadgePresentation::SuspiciousApplication => "unixnotis-shield-warning-symbolic.svg",
-        BadgePresentation::CommandLine => "unixnotis-terminal-symbolic.svg",
-        BadgePresentation::System => "unixnotis-system-symbolic.svg",
+    let image = gtk::Image::new();
+    apply_semantic_badge(&image, badge, size).then_some(image)
+}
+
+/// Applies one daemon-controlled symbolic icon to an existing reusable image widget
+#[must_use]
+pub fn apply_semantic_badge(image: &gtk::Image, badge: BadgePresentation, size: i32) -> bool {
+    if register_semantic_badges().is_err() {
+        return false;
+    }
+    let Some(display) = gtk::gdk::Display::default() else {
+        return false;
     };
-    let image = gtk::Image::from_resource(&format!("{RESOURCE_ROOT}/{file}"));
+    let icon_theme = gtk::IconTheme::for_display(&display);
+    // Named symbolic icons use GTK's recoloring path instead of raw resource paintables
+    icon_theme.add_resource_path(RESOURCE_ROOT);
+    let icon_name = match badge {
+        // Verified applications retain the authenticated desktop badge
+        BadgePresentation::AuthenticatedApplication => return false,
+        BadgePresentation::UnknownApplication => "unixnotis-app-unknown-symbolic",
+        BadgePresentation::SuspiciousApplication => "unixnotis-shield-warning-symbolic",
+        BadgePresentation::CommandLine => "unixnotis-terminal-symbolic",
+        BadgePresentation::System => "unixnotis-system-symbolic",
+    };
     let size = size.max(1);
+    image.set_paintable(None::<&gtk::gdk::Paintable>);
+    image.set_icon_name(Some(icon_name));
     image.set_pixel_size(size);
     image.set_size_request(size, size);
-    Some(image)
+    true
 }
 
 #[cfg(test)]

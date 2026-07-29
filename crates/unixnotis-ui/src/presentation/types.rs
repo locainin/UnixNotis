@@ -19,9 +19,9 @@ impl NotificationKind {
 
     #[must_use]
     pub const fn action_limit(self) -> usize {
+        // Two visible actions preserve room for content; remaining actions use overflow
         match self {
-            Self::Communication => 3,
-            Self::Utility | Self::Warning => 1,
+            Self::Communication | Self::Utility | Self::Warning => 2,
         }
     }
 
@@ -41,7 +41,7 @@ pub enum TrustLevel {
     Verified,
     Unverified,
     Suspicious,
-    System,
+    CommandLine,
 }
 
 impl TrustLevel {
@@ -51,7 +51,7 @@ impl TrustLevel {
             Self::Verified => "verified",
             Self::Unverified => "unverified",
             Self::Suspicious => "suspicious",
-            Self::System => "system",
+            Self::CommandLine => "command-line",
         }
     }
 }
