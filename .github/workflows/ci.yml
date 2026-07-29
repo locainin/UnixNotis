@@ -44,6 +44,7 @@ jobs:
             ca-certificates \
             curl \
             dbus \
+            dbus-broker \
             git \
             jq \
             libgtk-4-dev \
