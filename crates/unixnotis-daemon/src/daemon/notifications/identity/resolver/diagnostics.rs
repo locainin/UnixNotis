@@ -1,8 +1,8 @@
 //! Conversion from daemon launch evidence into stable diagnostic wire values
 
 use unixnotis_core::{
-    AttributionDiagnostics, CommandLineQualityView, LaunchAuthorityView, LaunchVerificationView,
-    RecordTrust,
+    AttributionDiagnostics, AttributionStatus, CommandLineQualityView, LaunchAuthorityView,
+    LaunchVerificationView, RecordTrust,
 };
 
 use super::{
@@ -29,13 +29,18 @@ pub(super) fn with_diagnostics(
             LaunchAuthorityView::ProtectedPayload,
             "verified by executable and protected payload identity",
         ),
-        LaunchVerification::InsufficientEvidence(failure) => (
+        LaunchVerification::DefinitiveMismatch(failure)
+            if resolution.attribution.status == AttributionStatus::Conflict =>
+        {
+            (
+                LaunchVerificationView::DefinitiveMismatch,
+                launch_authority_for_failure(failure),
+                launch_failure_label(failure),
+            )
+        }
+        LaunchVerification::InsufficientEvidence(failure)
+        | LaunchVerification::DefinitiveMismatch(failure) => (
             LaunchVerificationView::InsufficientEvidence,
-            launch_authority_for_failure(failure),
-            launch_failure_label(failure),
-        ),
-        LaunchVerification::DefinitiveMismatch(failure) => (
-            LaunchVerificationView::DefinitiveMismatch,
             launch_authority_for_failure(failure),
             launch_failure_label(failure),
         ),
@@ -62,6 +67,7 @@ pub(super) fn with_diagnostics(
 
 pub(super) const fn launch_failure_label(reason: LaunchFailure) -> &'static str {
     match reason {
+        LaunchFailure::MissingSenderEvidence => "missing sender process evidence",
         LaunchFailure::MissingCommandLine => "missing command-line evidence",
         LaunchFailure::UnstructuredCommandLine => "unstructured command-line evidence",
         LaunchFailure::UnsupportedWrapper => "unsupported launch wrapper",
@@ -71,6 +77,7 @@ pub(super) const fn launch_failure_label(reason: LaunchFailure) -> &'static str 
         LaunchFailure::ProtectedPayloadMismatch => "protected application payload mismatch",
         LaunchFailure::RequiredArgumentMismatch => "required launch argument mismatch",
         LaunchFailure::DesktopClaimMismatch => "desktop claim mismatch",
+        LaunchFailure::NoDesktopCandidate => "no desktop application candidate",
     }
 }
 
@@ -81,7 +88,9 @@ const fn launch_authority_for_failure(failure: LaunchFailure) -> LaunchAuthority
         LaunchFailure::ProtectedPayloadMismatch
         | LaunchFailure::MissingCommandLine
         | LaunchFailure::UnstructuredCommandLine => LaunchAuthorityView::ProtectedPayload,
-        LaunchFailure::ExecutableMismatch
+        LaunchFailure::MissingSenderEvidence
+        | LaunchFailure::NoDesktopCandidate
+        | LaunchFailure::ExecutableMismatch
         | LaunchFailure::RequiredArgumentMismatch
         | LaunchFailure::DesktopClaimMismatch
         | LaunchFailure::UnsupportedWrapper => LaunchAuthorityView::None,
