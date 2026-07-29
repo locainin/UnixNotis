@@ -1,4 +1,5 @@
 use tokio::sync::mpsc;
+use unixnotis_core::NotificationKey;
 
 use super::drain_offline_commands;
 use crate::dbus::UiCommand;
@@ -6,10 +7,16 @@ use crate::dbus::UiCommand;
 #[test]
 fn drain_offline_commands_removes_all_queued_commands() {
     let (tx, mut rx) = mpsc::channel(4);
-    tx.try_send(UiCommand::Dismiss(10))
-        .expect("dismiss command should queue");
+    tx.try_send(UiCommand::Dismiss(NotificationKey {
+        id: 10,
+        generation: 12,
+    }))
+    .expect("dismiss command should queue");
     tx.try_send(UiCommand::InvokeAction {
-        id: 11,
+        notification: NotificationKey {
+            id: 11,
+            generation: 13,
+        },
         action_key: "default".to_string(),
     })
     .expect("action command should queue");
@@ -48,7 +55,7 @@ fn drain_offline_commands_returns_shutdown_acknowledgement() {
 #[test]
 fn drain_offline_commands_reports_reply_delivery_failure() {
     let (tx, mut rx) = mpsc::channel(1);
-    let (outcome, result) = tokio::sync::oneshot::channel();
+    let (outcome, mut result) = tokio::sync::oneshot::channel();
     tx.try_send(UiCommand::Reply {
         id: 10,
         generation: 12,
@@ -59,7 +66,7 @@ fn drain_offline_commands_reports_reply_delivery_failure() {
 
     assert!(drain_offline_commands(&mut rx).is_none());
     assert_eq!(
-        result.blocking_recv().expect("reply result"),
+        result.try_recv().expect("reply result should be ready"),
         Err("notification service is unavailable".to_string())
     );
 }

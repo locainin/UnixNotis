@@ -45,6 +45,7 @@ fn popup_entry_uses_the_configured_cut_corner_primitive() {
         is_transient: false,
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     };
 
     let entry = state.build_popup_entry(&notification);
@@ -93,6 +94,7 @@ fn default_popup_entry_uses_the_native_rounded_card_without_a_clipper() {
         is_transient: false,
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     };
 
     let entry = state.build_popup_entry(&notification);
@@ -164,6 +166,7 @@ fn critical_popup_probe_builds_the_root_class_and_badge() {
         is_transient: false,
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     };
 
     let root = state.build_popup_root(&notification);
@@ -222,6 +225,7 @@ fn unknown_attribution_uses_a_short_chip_without_showing_raw_provenance() {
         is_transient: false,
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     };
 
     let root = state.build_popup_root(&notification);
@@ -273,6 +277,7 @@ fn conflicting_attribution_uses_the_warning_layout_and_suspicious_chip() {
         is_transient: false,
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     };
 
     let root = state.build_popup_root(&notification);
@@ -280,10 +285,85 @@ fn conflicting_attribution_uses_the_warning_layout_and_suspicious_chip() {
     assert!(root.has_css_class("warning"));
     assert!(root.has_css_class("suspicious"));
     assert!(visible_descendant_has_text(root.upcast_ref(), "Suspicious"));
+    assert!(visible_descendant_has_text(
+        root.upcast_ref(),
+        "Claims “Signal”"
+    ));
     assert!(!visible_descendant_has_text(
         root.upcast_ref(),
         "application claim mismatch; source /tmp/fake"
     ));
+}
+
+#[gtk::test]
+fn notify_send_claim_uses_one_command_line_avatar_without_signal_branding() {
+    let app = gtk::Application::builder()
+        .application_id("org.unixnotis.PopupRelayProbe")
+        .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    app.register(None::<&gtk::gio::Cancellable>)
+        .expect("register popup relay probe application");
+    let config = Config::default();
+    let config_root = std::env::temp_dir().join("unixnotis-popup-relay-probe");
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let css = CssManager::new_popup(theme_paths(&config_root), config.theme.clone());
+    let mut state = UiState::new(
+        &app,
+        config,
+        config_root.join("config.toml"),
+        command_tx,
+        css,
+    );
+    let mut notification = NotificationView {
+        id: 5,
+        generation: 5,
+        app_name: "Signal".to_string(),
+        attribution: unixnotis_core::NotificationAttribution::trusted_relay(
+            "Signal",
+            "Sent via /usr/bin/notify-send",
+            true,
+            "relay:notify-send:signal".to_string(),
+        ),
+        summary: "John Doe".to_string(),
+        body: String::new(),
+        actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+        urgency: Urgency::Normal as u8,
+        category: "im.received".to_string(),
+        is_transient: false,
+        received_at_unix_seconds: 0,
+        image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+    };
+    notification.image.icon_name = "signal-desktop".to_string();
+
+    let root = state.build_popup_root(&notification);
+
+    assert!(root.has_css_class("command-line"));
+    assert!(root.has_css_class("utility"));
+    assert!(!root.has_css_class("suspicious"));
+    assert!(visible_descendant_has_text(
+        root.upcast_ref(),
+        "Command-line notification"
+    ));
+    assert!(visible_descendant_has_text(
+        root.upcast_ref(),
+        "App label: Signal"
+    ));
+    assert_eq!(
+        visible_descendant_class_count(root.upcast_ref(), "unixnotis-identity-avatar"),
+        1
+    );
+    assert!(!visible_descendant_has_class(
+        root.upcast_ref(),
+        "unixnotis-popup-content-image"
+    ));
+    let close = descendant_with_class(root.upcast_ref(), "unixnotis-popup-close")
+        .expect("overlay close control");
+    assert!(close
+        .parent()
+        .is_some_and(|parent| parent.is::<gtk::Overlay>()));
 }
 
 fn visible_descendant_has_class(widget: &gtk::Widget, class_name: &str) -> bool {
@@ -315,4 +395,31 @@ fn visible_descendant_has_text(widget: &gtk::Widget, expected: &str) -> bool {
         child = current.next_sibling();
     }
     false
+}
+
+fn visible_descendant_class_count(widget: &gtk::Widget, class_name: &str) -> usize {
+    let mut count = 0;
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if current.get_visible() && current.has_css_class(class_name) {
+            count += 1;
+        }
+        count += visible_descendant_class_count(&current, class_name);
+        child = current.next_sibling();
+    }
+    count
+}
+
+fn descendant_with_class(widget: &gtk::Widget, class_name: &str) -> Option<gtk::Widget> {
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if current.has_css_class(class_name) {
+            return Some(current);
+        }
+        if let Some(found) = descendant_with_class(&current, class_name) {
+            return Some(found);
+        }
+        child = current.next_sibling();
+    }
+    None
 }

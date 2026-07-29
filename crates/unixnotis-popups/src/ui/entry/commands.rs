@@ -8,7 +8,7 @@ use tracing::debug;
 
 use crate::dbus::UiCommand;
 
-pub(super) fn try_send_command(tx: &Sender<UiCommand>, command: UiCommand) {
+pub(in crate::ui) fn try_send_command(tx: &Sender<UiCommand>, command: UiCommand) {
     // GTK click handlers must stay non-blocking even when the runtime queue is saturated
     match tx.try_send(command) {
         // Fast path for normal queue availability
