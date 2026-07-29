@@ -5,10 +5,11 @@ use std::path::Path;
 
 use gio::prelude::AppInfoExt;
 
-use super::super::executable::{executable_evidence_for_path, FileIdentity};
+use super::super::executable::executable_evidence_for_path;
 use super::launch::build_launch_spec;
 use super::model::{DesktopIdentityIndex, DesktopRecord};
 use super::names::{normalize_desktop_id, normalize_name};
+use super::provenance::InstallProvenance;
 
 impl DesktopIdentityIndex {
     pub(super) fn add_desktop_file(&mut self, path: &Path, system_origin: bool) {
@@ -39,25 +40,23 @@ impl DesktopIdentityIndex {
         // Every association needs a complete Exec contract instead of a runtime-name exception
         let association_eligible = launch_spec.is_some();
         // System association requires protected metadata and a reproducible launch specification
-        let system_association = association_eligible
-            && system_origin
-            && desktop_identity.is_some_and(FileIdentity::is_system_managed)
-            && executable_identity.is_some_and(FileIdentity::is_system_managed)
-            && launch_spec
-                .as_ref()
-                .is_some_and(|spec| spec.literal_files_are_system_managed);
+        // Package ownership is attached in one bounded batch after scanning finishes
+        let system_association = false;
         let badge_icon = desktop
             .string("Icon")
             .map_or_else(|| id.clone(), |value| value.to_string());
-        let names = association_aliases(&desktop, &id, &display_name, executable_path.as_deref());
+        let names = association_aliases(&desktop, &id, &display_name);
 
         self.index_record(DesktopRecord {
             id,
             display_name,
             badge_icon,
+            desktop_path: Some(path.to_path_buf()),
             executable_path,
             executable_identity,
             desktop_identity,
+            desktop_provenance: InstallProvenance::Unknown,
+            executable_provenance: InstallProvenance::Unknown,
             system_origin,
             system_association,
             association_eligible,
@@ -66,15 +65,63 @@ impl DesktopIdentityIndex {
             names,
         });
     }
+
+    pub(super) fn finalize_install_provenance(&mut self) {
+        let paths = self
+            .records
+            .iter()
+            .filter(|record| record.system_origin)
+            .flat_map(|record| {
+                record
+                    .desktop_path
+                    .iter()
+                    .chain(record.executable_path.iter())
+                    .cloned()
+            })
+            .collect::<Vec<_>>();
+        let ownership = self.package_ownership.resolve_many(paths);
+
+        for record in &mut self.records {
+            if !record.system_origin {
+                continue;
+            }
+            record.desktop_provenance = record
+                .desktop_path
+                .as_ref()
+                .and_then(|path| ownership.get(path))
+                .cloned()
+                .unwrap_or(InstallProvenance::Unknown);
+            record.executable_provenance = record
+                .executable_path
+                .as_ref()
+                .and_then(|path| ownership.get(path))
+                .cloned()
+                .unwrap_or(InstallProvenance::Unknown);
+            record.system_association = record.association_eligible
+                && record
+                    .desktop_identity
+                    .is_some_and(super::super::executable::FileIdentity::is_system_managed)
+                && record
+                    .executable_identity
+                    .is_some_and(super::super::executable::FileIdentity::is_system_managed)
+                && record
+                    .launch_spec
+                    .as_ref()
+                    .is_some_and(|spec| spec.literal_files_are_system_managed)
+                && record
+                    .desktop_provenance
+                    .same_application_source(&record.executable_provenance);
+        }
+        self.rebuild_application_families();
+    }
 }
 
 fn association_aliases(
     desktop: &gio::DesktopAppInfo,
     id: &str,
     display_name: &str,
-    executable_path: Option<&Path>,
 ) -> HashSet<String> {
-    // These aliases are considered only after executable identity already agrees
+    // Desktop metadata supplies claim aliases while executable naming stays separate
     let mut names = HashSet::from([
         normalize_name(display_name),
         normalize_name(desktop.name().as_str()),
@@ -85,12 +132,6 @@ fn association_aliases(
     }
     if let Some(wm_class) = desktop.startup_wm_class() {
         names.insert(normalize_name(wm_class.as_str()));
-    }
-    if let Some(executable) = executable_path
-        .and_then(Path::file_name)
-        .and_then(|name| name.to_str())
-    {
-        names.insert(normalize_name(executable));
     }
     names.retain(|name| !name.is_empty());
     names

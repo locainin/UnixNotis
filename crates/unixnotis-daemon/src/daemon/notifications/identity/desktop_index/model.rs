@@ -2,9 +2,11 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::super::executable::FileIdentity;
 use super::names::normalize_name;
+use super::provenance::{InstallProvenance, PackageOwnershipCache};
 
 #[derive(Debug, Clone)]
 pub(in crate::daemon::notifications::identity) struct LaunchSpec {
@@ -61,6 +63,7 @@ pub(in crate::daemon::notifications::identity) enum VerifiedLaunch {
 /// Stable reason for a launch decision that cannot authenticate the claim
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(in crate::daemon::notifications::identity) enum LaunchFailure {
+    MissingSenderEvidence,
     MissingCommandLine,
     UnstructuredCommandLine,
     UnsupportedWrapper,
@@ -70,6 +73,7 @@ pub(in crate::daemon::notifications::identity) enum LaunchFailure {
     ProtectedPayloadMismatch,
     RequiredArgumentMismatch,
     DesktopClaimMismatch,
+    NoDesktopCandidate,
 }
 
 /// Three-way launch result keeps missing evidence distinct from contradiction
@@ -85,9 +89,12 @@ pub(in crate::daemon::notifications::identity) struct DesktopRecord {
     pub(in crate::daemon::notifications::identity) id: String,
     pub(in crate::daemon::notifications::identity) display_name: String,
     pub(in crate::daemon::notifications::identity) badge_icon: String,
+    pub(in crate::daemon::notifications::identity) desktop_path: Option<PathBuf>,
     pub(in crate::daemon::notifications::identity) executable_path: Option<PathBuf>,
     pub(in crate::daemon::notifications::identity) executable_identity: Option<FileIdentity>,
     pub(in crate::daemon::notifications::identity) desktop_identity: Option<FileIdentity>,
+    pub(in crate::daemon::notifications::identity) desktop_provenance: InstallProvenance,
+    pub(in crate::daemon::notifications::identity) executable_provenance: InstallProvenance,
     pub(in crate::daemon::notifications::identity) system_origin: bool,
     pub(in crate::daemon::notifications::identity) system_association: bool,
     pub(in crate::daemon::notifications::identity) association_eligible: bool,
@@ -103,14 +110,31 @@ impl DesktopRecord {
     }
 }
 
+/// Canonical identity shared by equivalent desktop-entry aliases
+#[derive(Debug, Clone)]
+pub(in crate::daemon::notifications::identity) struct DesktopApplicationFamily {
+    pub(in crate::daemon::notifications::identity) canonical_id: String,
+    pub(in crate::daemon::notifications::identity) executable_identity: FileIdentity,
+    pub(in crate::daemon::notifications::identity) records: Vec<usize>,
+    pub(in crate::daemon::notifications::identity) names: HashSet<String>,
+    pub(in crate::daemon::notifications::identity) system_origin: bool,
+    pub(in crate::daemon::notifications::identity) system_association: bool,
+    pub(in crate::daemon::notifications::identity) install_provenance: InstallProvenance,
+    pub(in crate::daemon::notifications::identity) protected_payloads: Vec<(usize, u64, u64)>,
+}
+
 #[derive(Debug, Default)]
 pub struct DesktopIdentityIndex {
     pub(super) records: Vec<DesktopRecord>,
+    pub(super) families: Vec<DesktopApplicationFamily>,
+    pub(super) family_by_record: Vec<Option<usize>>,
     pub(super) by_id: HashMap<String, Vec<usize>>,
     pub(super) by_identity: HashMap<(u64, u64), Vec<usize>>,
+    pub(super) by_name: HashMap<String, Vec<usize>>,
     pub(super) system_brand_names: HashSet<String>,
     pub(in crate::daemon::notifications::identity) trusted_relays: Vec<ExecutableIdentity>,
     pub(in crate::daemon::notifications::identity) trusted_portals: Vec<ExecutableIdentity>,
+    pub(super) package_ownership: Arc<PackageOwnershipCache>,
 }
 
 #[derive(Debug, Clone)]

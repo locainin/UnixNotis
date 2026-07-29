@@ -98,6 +98,8 @@ impl DesktopIdentityIndex {
                 );
             }
         }
+        // One ownership batch ties protected desktop and executable files to one install source
+        index.finalize_install_provenance();
         // Relay trust is tied to the installed file identity instead of its basename
         index.index_trusted_relay(Path::new("/usr/bin/notify-send"));
         index.index_trusted_relay(Path::new("/usr/local/bin/notify-send"));

@@ -3,16 +3,25 @@ use std::path::Path;
 
 use super::{
     classify_launch_authority, executable_contract_is_dedicated, field_value_matches,
-    is_dynamic_or_option, is_protected_payload, literal_file_identities_are_current,
-    literal_file_matches, match_ordered_dedicated_contract, match_ordered_exec_contract,
-    verify_dedicated, verify_protected_payload, verify_record_launch, MAX_PROCESS_ARGUMENTS,
+    is_protected_payload, literal_file_identities_are_current, literal_file_matches,
+    match_ordered_dedicated_contract, match_ordered_exec_contract, verify_dedicated,
+    verify_protected_payload, verify_record_launch, MAX_PROCESS_ARGUMENTS,
 };
 use crate::daemon::notifications::identity::desktop_index::model::{
     DesktopIdentityIndex, DesktopRecord, FieldCode, LaunchArgument, LaunchAuthority, LaunchFailure,
     LaunchSpec, LaunchVerification, LaunchWrapper, LiteralArgument, VerifiedLaunch,
 };
+use crate::daemon::notifications::identity::desktop_index::provenance::PackageProvider;
+use crate::daemon::notifications::identity::desktop_index::InstallProvenance;
 use crate::daemon::notifications::identity::executable::executable_evidence_for_path;
 use crate::daemon::notifications::identity::sender::{CommandLineEvidence, CommandLineQuality};
+
+fn is_dynamic_or_option(argument: &LaunchArgument) -> bool {
+    match argument {
+        LaunchArgument::FieldCode(_) | LaunchArgument::OptionalIcon { .. } => true,
+        LaunchArgument::Literal(literal) => literal.value.starts_with(b"-"),
+    }
+}
 
 #[test]
 fn authority_helpers_distinguish_dynamic_values_options_and_payloads() {
@@ -116,6 +125,42 @@ fn trusted_payload_cannot_be_used_as_a_decoy_argument() {
         verify_protected_payload(&sender, &spec),
         LaunchVerification::DefinitiveMismatch(LaunchFailure::ProtectedPayloadMismatch),
         "a protected file after the active payload must not authenticate the runtime"
+    );
+}
+
+#[test]
+fn variable_width_field_before_protected_payload_does_not_create_false_conflict() {
+    let payload =
+        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("protected payload");
+    let spec = LaunchSpec {
+        executable: payload.identity,
+        arguments: vec![
+            LaunchArgument::FieldCode(FieldCode::Files),
+            LaunchArgument::Literal(LiteralArgument {
+                value: b"/usr/bin/true".to_vec(),
+                file: Some((Path::new("/usr/bin/true").to_path_buf(), payload.identity)),
+            }),
+            LaunchArgument::Literal(LiteralArgument {
+                value: b"--fixed".to_vec(),
+                file: None,
+            }),
+        ],
+        environment: Vec::new(),
+        wrappers: Vec::new(),
+        literal_files_are_system_managed: true,
+    };
+    let sender = structured_command(&[
+        "/usr/bin/true",
+        "/tmp/one.txt",
+        "/tmp/two.txt",
+        "/usr/bin/true",
+        "--unexpected",
+    ]);
+
+    assert_eq!(
+        verify_protected_payload(&sender, &spec),
+        LaunchVerification::InsufficientEvidence(LaunchFailure::RequiredArgumentMismatch),
+        "a matched protected payload must not become contradictory because a later option differs"
     );
 }
 
@@ -229,6 +274,34 @@ fn dedicated_contract_does_not_accept_reordered_fixed_options() {
 }
 
 #[test]
+fn empty_dedicated_contract_accepts_application_owned_cli_arguments() {
+    let executable =
+        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
+    let spec = LaunchSpec {
+        executable: executable.identity,
+        arguments: Vec::new(),
+        environment: Vec::new(),
+        wrappers: Vec::new(),
+        literal_files_are_system_managed: true,
+    };
+
+    assert_eq!(
+        verify_dedicated(
+            &structured_command(&[
+                "/usr/bin/true",
+                "--title",
+                "Native application",
+                "--passive-popup",
+                "Message body",
+                "30",
+            ]),
+            &spec,
+        ),
+        LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable)
+    );
+}
+
+#[test]
 fn single_record_dynamic_file_and_url_contracts_are_not_dedicated() {
     for field_code in [FieldCode::Files, FieldCode::Urls] {
         let executable =
@@ -244,9 +317,12 @@ fn single_record_dynamic_file_and_url_contracts_are_not_dedicated() {
             id: "org.example.Runtime".to_string(),
             display_name: "Runtime application".to_string(),
             badge_icon: "runtime".to_string(),
+            desktop_path: Some("/usr/share/applications/org.example.Runtime.desktop".into()),
             executable_path: Some("/usr/bin/true".into()),
             executable_identity: Some(executable.identity),
             desktop_identity: None,
+            desktop_provenance: test_package("runtime-desktop"),
+            executable_provenance: test_package("runtime"),
             system_origin: true,
             system_association: true,
             association_eligible: true,
@@ -268,6 +344,127 @@ fn single_record_dynamic_file_and_url_contracts_are_not_dedicated() {
             "a single dynamic record must remain non-authoritative for {field_code:?}"
         );
     }
+}
+
+#[test]
+fn dedicated_system_application_accepts_dynamic_url_field() {
+    let executable =
+        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
+    let spec = LaunchSpec {
+        executable: executable.identity,
+        arguments: vec![
+            LaunchArgument::Literal(LiteralArgument {
+                value: b"--".to_vec(),
+                file: None,
+            }),
+            LaunchArgument::FieldCode(FieldCode::Url),
+        ],
+        environment: Vec::new(),
+        wrappers: Vec::new(),
+        literal_files_are_system_managed: true,
+    };
+    let record = DesktopRecord {
+        id: "org.example.True".to_string(),
+        display_name: "True".to_string(),
+        badge_icon: "true".to_string(),
+        desktop_path: Some("/usr/share/applications/org.example.True.desktop".into()),
+        executable_path: Some("/usr/bin/true".into()),
+        executable_identity: Some(executable.identity),
+        desktop_identity: Some(executable.identity),
+        desktop_provenance: test_package("true"),
+        executable_provenance: test_package("true"),
+        system_origin: true,
+        system_association: true,
+        association_eligible: true,
+        dbus_activatable: false,
+        launch_spec: Some(spec.clone()),
+        names: HashSet::from(["true".to_string()]),
+    };
+    let mut index = DesktopIdentityIndex::default();
+    index.index_record(record);
+    let indexed = index
+        .records_for_id("org.example.True")
+        .into_iter()
+        .next()
+        .expect("dedicated application record");
+
+    assert_eq!(
+        classify_launch_authority(indexed, &index, &spec),
+        LaunchAuthority::DedicatedExecutable,
+        "normal URL arguments must not erase dedicated executable authority"
+    );
+}
+
+#[test]
+fn dynamic_runtime_requires_matching_immutable_installation_provenance() {
+    let executable =
+        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
+    let spec = LaunchSpec {
+        executable: executable.identity,
+        arguments: vec![LaunchArgument::FieldCode(FieldCode::Files)],
+        environment: Vec::new(),
+        wrappers: Vec::new(),
+        literal_files_are_system_managed: true,
+    };
+    let record = DesktopRecord {
+        id: "org.example.Runtime".to_string(),
+        display_name: "True".to_string(),
+        badge_icon: "runtime".to_string(),
+        desktop_path: Some("/usr/share/applications/org.example.Runtime.desktop".into()),
+        executable_path: Some("/usr/bin/true".into()),
+        executable_identity: Some(executable.identity),
+        desktop_identity: Some(executable.identity),
+        desktop_provenance: test_package("runtime-frontend"),
+        executable_provenance: test_package("shared-runtime"),
+        system_origin: true,
+        system_association: true,
+        association_eligible: true,
+        dbus_activatable: false,
+        launch_spec: Some(spec.clone()),
+        names: HashSet::from(["true".to_string()]),
+    };
+    let mut index = DesktopIdentityIndex::default();
+    index.index_record(record);
+    let indexed = index
+        .records_for_id("org.example.Runtime")
+        .into_iter()
+        .next()
+        .expect("runtime application record");
+
+    assert_eq!(
+        classify_launch_authority(indexed, &index, &spec),
+        LaunchAuthority::DynamicOnly,
+        "a package-owned shared runtime must not inherit desktop application authority"
+    );
+}
+
+#[test]
+fn same_package_dynamic_file_runtime_is_not_dedicated() {
+    let executable =
+        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
+    let spec = LaunchSpec {
+        executable: executable.identity,
+        arguments: vec![LaunchArgument::FieldCode(FieldCode::Files)],
+        environment: Vec::new(),
+        wrappers: Vec::new(),
+        literal_files_are_system_managed: true,
+    };
+    let mut record = record_for_spec("org.example.Runtime", &spec);
+    record.desktop_provenance = test_package("runtime");
+    record.executable_provenance = test_package("runtime");
+    let mut index = DesktopIdentityIndex::default();
+    index.index_record(record);
+    let indexed = index
+        .records_for_id("org.example.Runtime")
+        .into_iter()
+        .next()
+        .expect("runtime application record");
+
+    assert_eq!(
+        classify_launch_authority(indexed, &index, &spec),
+        LaunchAuthority::DynamicOnly,
+        "package ownership cannot prove whether a file field is a document or active program"
+    );
 }
 
 #[test]
@@ -305,12 +502,15 @@ fn launch_verification_enforces_wrapper_and_environment_limits_at_the_boundary()
             literal_files_are_system_managed: true,
         };
         let record = DesktopRecord {
-            id: "org.example.Boundary".to_string(),
+            id: "org.example.True".to_string(),
             display_name: "Boundary".to_string(),
             badge_icon: "boundary".to_string(),
+            desktop_path: Some("/usr/share/applications/org.example.True.desktop".into()),
             executable_path: Some("/usr/bin/true".into()),
             executable_identity: Some(executable.identity),
             desktop_identity: None,
+            desktop_provenance: test_package("true"),
+            executable_provenance: test_package("true"),
             system_origin: true,
             system_association: true,
             association_eligible: true,
@@ -321,7 +521,7 @@ fn launch_verification_enforces_wrapper_and_environment_limits_at_the_boundary()
         let mut index = DesktopIdentityIndex::default();
         index.index_record(record);
         let indexed = index
-            .records_for_id("org.example.Boundary")
+            .records_for_id("org.example.True")
             .into_iter()
             .next()
             .expect("indexed boundary record");
@@ -340,11 +540,12 @@ fn launch_verification_enforces_wrapper_and_environment_limits_at_the_boundary()
 }
 
 #[test]
-fn dedicated_authority_rejects_each_open_ended_positional_contract() {
+fn dedicated_authority_accepts_url_fields_but_rejects_ambiguous_file_fields_and_payloads() {
     let executable =
         executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
     for (arguments, expected) in [
         (Vec::new(), true),
+        (vec![LaunchArgument::FieldCode(FieldCode::Url)], true),
         (vec![LaunchArgument::FieldCode(FieldCode::File)], false),
         (
             vec![LaunchArgument::Literal(LiteralArgument {
@@ -362,9 +563,9 @@ fn dedicated_authority_rejects_each_open_ended_positional_contract() {
             literal_files_are_system_managed: true,
         };
         let mut index = DesktopIdentityIndex::default();
-        index.index_record(record_for_spec("org.example.DedicatedBoundary", &spec));
+        index.index_record(record_for_spec("org.example.True", &spec));
         let record = index
-            .records_for_id("org.example.DedicatedBoundary")
+            .records_for_id("org.example.True")
             .into_iter()
             .next()
             .expect("indexed dedicated boundary record");
@@ -494,15 +695,25 @@ fn record_for_spec(id: &str, spec: &LaunchSpec) -> DesktopRecord {
         id: id.to_string(),
         display_name: "Contract application".to_string(),
         badge_icon: "contract".to_string(),
+        desktop_path: Some(format!("/usr/share/applications/{id}.desktop").into()),
         executable_path: Some("/usr/bin/true".into()),
         executable_identity: Some(spec.executable),
         desktop_identity: None,
+        desktop_provenance: test_package(id),
+        executable_provenance: test_package(id),
         system_origin: true,
         system_association: true,
         association_eligible: true,
         dbus_activatable: false,
         launch_spec: Some(spec.clone()),
         names: HashSet::new(),
+    }
+}
+
+fn test_package(package_id: &str) -> InstallProvenance {
+    InstallProvenance::Package {
+        provider: PackageProvider::Pacman,
+        package_id: package_id.to_string(),
     }
 }
 
