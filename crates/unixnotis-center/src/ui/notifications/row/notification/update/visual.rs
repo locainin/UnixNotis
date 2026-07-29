@@ -5,6 +5,7 @@ use unixnotis_core::{hooks, NotificationView, Urgency};
 use unixnotis_ui::presentation::{NotificationPresentation, TrustLevel};
 
 use super::super::super::super::item::RowData;
+use super::super::stack::stack_layer_visibility;
 use super::super::state::NotificationRowWidgets;
 use super::labels::has_visible_text;
 
@@ -38,21 +39,17 @@ pub(super) fn apply_visual_state(
         hooks::shared_state::COLLAPSED_GROUP_PREVIEW,
         data.collapsed_group_preview,
     );
+    set_class_state(
+        &row.card_plate,
+        hooks::shared_state::COLLAPSED_GROUP_PREVIEW,
+        data.collapsed_group_preview,
+    );
+    let layers = stack_layer_visibility(data.stack_depth);
+    set_widget_visible_if_changed(&row.stack_middle, layers.middle);
+    set_widget_visible_if_changed(&row.stack_back, layers.back);
     let grouped = data.collapsed_group_preview || data.expanded;
     set_class_state(card, hooks::panel_card::GROUPED, grouped);
-    set_class_state(card, hooks::panel_card::GROUP_FIRST, data.group_first);
-    set_class_state(card, hooks::panel_card::GROUP_LAST, data.group_last);
     set_class_state(&row.card_plate, hooks::panel_card::GROUPED, grouped);
-    set_class_state(
-        &row.card_plate,
-        hooks::panel_card::GROUP_FIRST,
-        data.group_first,
-    );
-    set_class_state(
-        &row.card_plate,
-        hooks::panel_card::GROUP_LAST,
-        data.group_last,
-    );
     set_class_state(
         card,
         hooks::panel_card::HAS_SUMMARY,
@@ -70,26 +67,8 @@ pub(super) fn apply_visual_state(
 }
 
 const fn card_corners_for_row(data: &RowData) -> unixnotis_core::CutCorners {
-    let grouped = data.collapsed_group_preview || data.expanded;
-    if !grouped {
-        return data.presentation.card_corners;
-    }
-
-    // The group header owns the top edge while only the final child owns bottom corners
-    unixnotis_core::CutCorners {
-        top_left: 0,
-        top_right: 0,
-        bottom_right: if data.group_last {
-            data.presentation.card_corners.bottom_right
-        } else {
-            0
-        },
-        bottom_left: if data.group_last {
-            data.presentation.card_corners.bottom_left
-        } else {
-            0
-        },
-    }
+    // Every separated foreground card keeps the configured complete silhouette
+    data.presentation.card_corners
 }
 
 fn set_class_state<W: IsA<gtk::Widget>>(root: &W, class_name: &str, enabled: bool) {

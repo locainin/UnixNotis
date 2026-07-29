@@ -106,6 +106,7 @@ impl NotificationList {
             app_key.clone(),
             view.clone(),
             false,
+            0,
             false,
             is_active,
             presentation,

@@ -63,11 +63,10 @@ pub struct RowData {
     pub group_key: Rc<str>,
     pub count: u32,
     pub expanded: bool,
-    // Position flags let CSS form one continuous grouped surface
-    pub group_first: bool,
-    pub group_last: bool,
     // True when this notification previews a collapsed multi-item group
     pub collapsed_group_preview: bool,
+    // Rear silhouettes cap at two layers while the count keeps the exact total
+    pub stack_depth: u8,
     pub is_active: bool,
     pub presentation: RowPresentation,
     pub notification: Option<Rc<NotificationView>>,
@@ -82,9 +81,8 @@ impl Default for RowData {
             group_key: Rc::from(""),
             count: 0,
             expanded: false,
-            group_first: false,
-            group_last: false,
             collapsed_group_preview: false,
+            stack_depth: 0,
             is_active: false,
             presentation: RowPresentation::default(),
             notification: None,
@@ -106,9 +104,8 @@ impl RowData {
             group_key,
             count: count as u32,
             expanded,
-            group_first: false,
-            group_last: false,
             collapsed_group_preview: false,
+            stack_depth: 0,
             is_active: false,
             presentation: RowPresentation::default(),
             notification: Some(sample),
@@ -119,6 +116,7 @@ impl RowData {
         group_key: Rc<str>,
         notification: Rc<NotificationView>,
         collapsed_group_preview: bool,
+        stack_depth: u8,
         expanded: bool,
         is_active: bool,
         presentation: RowPresentation,
@@ -130,9 +128,8 @@ impl RowData {
             group_key,
             count: 0,
             expanded,
-            group_first: false,
-            group_last: false,
             collapsed_group_preview,
+            stack_depth,
             is_active,
             presentation,
             notification: Some(notification),
@@ -146,9 +143,8 @@ impl RowData {
             && Rc::ptr_eq(&self.group_key, &other.group_key)
             && self.count == other.count
             && self.expanded == other.expanded
-            && self.group_first == other.group_first
-            && self.group_last == other.group_last
             && self.collapsed_group_preview == other.collapsed_group_preview
+            && self.stack_depth == other.stack_depth
             && self.is_active == other.is_active
             && self.presentation == other.presentation
             && Self::same_notification(&self.notification, &other.notification)

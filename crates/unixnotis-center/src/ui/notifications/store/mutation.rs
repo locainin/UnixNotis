@@ -91,6 +91,7 @@ impl NotificationList {
                     .unwrap_or(false);
                 let group_len = self.grouped_cache.get(&entry.app_key).map_or(0, Vec::len);
                 let collapsed_group_preview = is_collapsed_group_preview(expanded, group_len);
+                let stack_depth = super::blocks::collapsed_stack_depth(group_len, expanded);
                 let presentation = super::item::RowPresentation {
                     received_at_ms: entry.received_at_ms,
                     show_metadata: self.show_notification_metadata,
@@ -104,6 +105,7 @@ impl NotificationList {
                     entry.app_key.clone(),
                     entry.view.clone(),
                     collapsed_group_preview,
+                    stack_depth,
                     expanded,
                     entry.is_active,
                     presentation,

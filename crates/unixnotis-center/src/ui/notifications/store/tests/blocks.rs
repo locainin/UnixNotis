@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use gio::prelude::ListModelExt;
 
-use super::common_prefix_suffix;
+use super::{collapsed_stack_depth, common_prefix_suffix};
 use crate::ui::notifications::item::{RowData, RowItem};
 use crate::ui::notifications::model::types::{GroupRange, RowKey};
 use crate::ui::notifications::test_support as support;
@@ -76,9 +76,8 @@ fn build_group_block_collapses_group_to_header_and_top_notification() {
     assert!(!header.expanded);
     let visible = items[1].data();
     assert!(visible.collapsed_group_preview);
+    assert_eq!(visible.stack_depth, 2);
     assert!(!visible.expanded);
-    assert!(visible.group_first);
-    assert!(visible.group_last);
 }
 
 #[gtk::test]
@@ -93,8 +92,7 @@ fn build_group_block_keeps_single_notification_outside_collapsed_group_preview()
     assert_eq!(items.len(), 1);
     let visible = items[0].data();
     assert!(!visible.collapsed_group_preview);
-    assert!(!visible.group_first);
-    assert!(!visible.group_last);
+    assert_eq!(visible.stack_depth, 0);
 }
 
 #[gtk::test]
@@ -129,16 +127,16 @@ fn build_group_block_expands_group_to_all_notifications() {
         let data = item.data();
         assert!(!data.collapsed_group_preview);
         assert!(data.expanded);
+        assert_eq!(data.stack_depth, 0);
     }
-    let first = items[1].data();
-    let middle = items[2].data();
-    let last = items[3].data();
-    assert!(first.group_first);
-    assert!(!first.group_last);
-    assert!(!middle.group_first);
-    assert!(!middle.group_last);
-    assert!(!last.group_first);
-    assert!(last.group_last);
+}
+
+#[test]
+fn collapsed_stack_depth_caps_at_two_and_clears_when_expanded() {
+    assert_eq!(collapsed_stack_depth(1, false), 0);
+    assert_eq!(collapsed_stack_depth(2, false), 1);
+    assert_eq!(collapsed_stack_depth(4, false), 2);
+    assert_eq!(collapsed_stack_depth(4, true), 0);
 }
 
 #[gtk::test]

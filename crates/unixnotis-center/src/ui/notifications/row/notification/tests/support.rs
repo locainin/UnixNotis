@@ -73,6 +73,7 @@ pub(super) fn row_data(notification: Rc<NotificationView>, flags: RowFlags) -> R
         Rc::from(notification.app_name.to_ascii_lowercase()),
         notification,
         flags.collapsed_group_preview,
+        u8::from(flags.collapsed_group_preview),
         false,
         flags.is_active,
         RowPresentation {

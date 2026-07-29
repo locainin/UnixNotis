@@ -44,6 +44,7 @@ impl NotificationList {
 
         // Collapsed groups render the newest content row under their shared header
         let collapsed_group_preview = !expanded && ids.len() > 1;
+        let stack_depth = collapsed_stack_depth(ids.len(), expanded);
         for (index, id) in ids.iter().enumerate() {
             if !expanded && index > 0 {
                 break;
@@ -59,18 +60,15 @@ impl NotificationList {
                 metadata: self.notification_metadata.clone(),
                 card_corners: self.notification_corners,
             };
-            let mut row = RowData::notification(
+            let row = RowData::notification(
                 entry.app_key.clone(),
                 entry.view.clone(),
                 collapsed_group_preview,
+                stack_depth,
                 expanded,
                 entry.is_active,
                 presentation,
             );
-            if ids.len() > 1 {
-                row.group_first = index == 0;
-                row.group_last = !expanded || index + 1 == ids.len();
-            }
             entry.item.update(row);
             items.push(entry.item.clone());
             keys.push(RowKey::Notification { id: *id });
@@ -151,6 +149,14 @@ impl NotificationList {
             }
         }
     }
+}
+
+pub(in crate::ui::notifications) fn collapsed_stack_depth(count: usize, expanded: bool) -> u8 {
+    if expanded {
+        return 0;
+    }
+    // One hidden item adds one layer and larger groups cap at two quiet silhouettes
+    count.saturating_sub(1).min(2) as u8
 }
 
 pub(in crate::ui::notifications) fn common_prefix_suffix(
