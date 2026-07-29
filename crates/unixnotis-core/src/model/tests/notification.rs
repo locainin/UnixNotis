@@ -4,8 +4,8 @@ use zbus::zvariant::{serialized::Context, to_bytes, Value, LE};
 
 use super::{Notification, NotificationImage};
 use crate::{
-    Action, AttributionClass, ImageData, InlineReply, InlineReplyPolicy, NotificationAttribution,
-    Urgency,
+    Action, AttributionReason, AttributionStatus, ImageData, InlineReply, InlineReplyPolicy,
+    NotificationAttribution, Urgency,
 };
 
 fn notification_with_image(image: NotificationImage) -> Notification {
@@ -20,14 +20,14 @@ fn notification_with_image(image: NotificationImage) -> Notification {
         generation: 11,
         app_name: "Mail".to_string(),
         app_icon: "mail".to_string(),
-        attribution: NotificationAttribution::associated(
+        attribution: NotificationAttribution::verified(
+            "Mail",
             "Mail",
             "org.example.Mail",
             "mail",
-            "/usr/bin/mail",
-            AttributionClass::SystemAssociated,
-            false,
-            "desktop:org.example.Mail".to_string(),
+            AttributionReason::ExactSystemExecutable,
+            "exact system executable",
+            "system-app:org.example.Mail".to_string(),
         ),
         attribution_diagnostics: crate::AttributionDiagnostics::default(),
         summary: "Subject".to_string(),
@@ -82,7 +82,7 @@ fn notification_view_keeps_ui_fields_and_transient_policy_flag() {
     // Live popup views keep enough information for UI actions and close policy
     assert_eq!(view.id, 42);
     assert_eq!(view.app_name, "Mail");
-    assert_eq!(view.attribution.class, AttributionClass::SystemAssociated);
+    assert_eq!(view.attribution.status, AttributionStatus::Verified);
     assert_eq!(view.attribution.badge_icon, "mail");
     assert_eq!(view.summary, "Subject");
     assert_eq!(view.body, "Body");
@@ -97,17 +97,16 @@ fn notification_view_keeps_ui_fields_and_transient_policy_flag() {
 fn notification_view_round_trips_every_attribution_and_reply_policy_pair() {
     let context = Context::new_dbus(LE, 0);
     let cases = [
-        (AttributionClass::SystemAssociated, InlineReplyPolicy::Allow),
-        (AttributionClass::PortalAssociated, InlineReplyPolicy::Allow),
-        (AttributionClass::UserAssociated, InlineReplyPolicy::Deny),
-        (AttributionClass::TrustedRelay, InlineReplyPolicy::Deny),
-        (AttributionClass::Unknown, InlineReplyPolicy::Deny),
-        (AttributionClass::Conflict, InlineReplyPolicy::Deny),
+        (AttributionStatus::Verified, InlineReplyPolicy::Allow),
+        (AttributionStatus::Recognized, InlineReplyPolicy::Deny),
+        (AttributionStatus::Relay, InlineReplyPolicy::Deny),
+        (AttributionStatus::Unresolved, InlineReplyPolicy::Deny),
+        (AttributionStatus::Conflict, InlineReplyPolicy::Deny),
     ];
 
-    for (class, policy) in cases {
+    for (status, policy) in cases {
         let mut view = notification_with_image(image_with_raw_bytes()).to_view();
-        view.attribution.class = class;
+        view.attribution.status = status;
         view.inline_reply_policy = policy;
 
         // This nested payload matches GetActiveNotification and exercises both wire enums
@@ -127,6 +126,8 @@ fn notification_view_keeps_conflict_warning_separate_from_primary_name() {
     notification.sender_executable = Some("/usr/bin/unknown-client".to_string());
     notification.attribution = NotificationAttribution::conflict(
         "Password Manager",
+        "org.example.PasswordManager",
+        AttributionReason::ExecutableMismatch,
         "source /usr/bin/unknown-client",
         "executable:1:2".to_string(),
     );
@@ -134,8 +135,12 @@ fn notification_view_keeps_conflict_warning_separate_from_primary_name() {
     let view = notification.to_view();
 
     assert_eq!(view.app_name, "Unknown application");
-    assert_eq!(view.attribution.class, AttributionClass::Conflict);
-    assert!(view.attribution.source_label.contains("Password Manager"));
+    assert_eq!(view.attribution.status, AttributionStatus::Conflict);
+    assert_eq!(view.attribution.claimed_name, "Password Manager");
+    assert_eq!(
+        view.attribution.reason,
+        AttributionReason::ExecutableMismatch
+    );
     assert!(!view.app_name.contains("unverified claim"));
 }
 
