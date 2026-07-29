@@ -274,7 +274,7 @@ fn dedicated_contract_does_not_accept_reordered_fixed_options() {
 }
 
 #[test]
-fn empty_dedicated_contract_accepts_application_owned_cli_arguments() {
+fn empty_dedicated_contract_rejects_positional_payload() {
     let executable =
         executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
     let spec = LaunchSpec {
@@ -287,22 +287,78 @@ fn empty_dedicated_contract_accepts_application_owned_cli_arguments() {
 
     assert_eq!(
         verify_dedicated(
-            &structured_command(&[
-                "/usr/bin/true",
-                "--title",
-                "Native application",
-                "--passive-popup",
-                "Message body",
-                "30",
-            ]),
+            &structured_command(&["/usr/bin/true", "/tmp/attacker-payload"]),
             &spec,
         ),
-        LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable)
+        LaunchVerification::InsufficientEvidence(LaunchFailure::RequiredArgumentMismatch)
     );
 }
 
 #[test]
-fn single_record_dynamic_file_and_url_contracts_are_not_dedicated() {
+fn empty_contract_with_unstructured_argv_is_not_verified() {
+    let executable =
+        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
+    let spec = LaunchSpec {
+        executable: executable.identity,
+        arguments: Vec::new(),
+        environment: Vec::new(),
+        wrappers: Vec::new(),
+        literal_files_are_system_managed: true,
+    };
+
+    for quality in [
+        CommandLineQuality::RewrittenProcessTitle,
+        CommandLineQuality::Truncated,
+        CommandLineQuality::Unavailable,
+    ] {
+        let command_line = CommandLineEvidence {
+            argv: Vec::new(),
+            quality,
+        };
+
+        assert_eq!(
+            verify_dedicated(&command_line, &spec),
+            LaunchVerification::InsufficientEvidence(LaunchFailure::EmptyContractNeedsCommandLine),
+            "an empty contract with {quality:?} argv must stay non-authoritative"
+        );
+    }
+}
+
+#[test]
+fn empty_contract_accepts_only_non_positional_switches() {
+    let executable =
+        executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
+    let spec = LaunchSpec {
+        executable: executable.identity,
+        arguments: Vec::new(),
+        environment: Vec::new(),
+        wrappers: Vec::new(),
+        literal_files_are_system_managed: true,
+    };
+
+    for arguments in [
+        vec!["/usr/bin/true"],
+        vec!["/usr/bin/true", "--verbose"],
+        vec!["/usr/bin/true", "--display=x11", "-q"],
+    ] {
+        assert_eq!(
+            verify_dedicated(&structured_command(&arguments), &spec),
+            LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable),
+            "standalone switches should remain compatible: {arguments:?}"
+        );
+    }
+    assert_eq!(
+        verify_dedicated(
+            &structured_command(&["/usr/bin/true", "--title", "untrusted-value"]),
+            &spec,
+        ),
+        LaunchVerification::InsufficientEvidence(LaunchFailure::RequiredArgumentMismatch),
+        "a separate option value is positional without an ordered contract"
+    );
+}
+
+#[test]
+fn dynamic_contract_without_shared_provenance_is_not_dedicated() {
     for field_code in [FieldCode::Files, FieldCode::Urls] {
         let executable =
             executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
@@ -326,7 +382,6 @@ fn single_record_dynamic_file_and_url_contracts_are_not_dedicated() {
             system_origin: true,
             system_association: true,
             association_eligible: true,
-            dbus_activatable: false,
             launch_spec: Some(spec.clone()),
             names: HashSet::new(),
         };
@@ -376,7 +431,6 @@ fn dedicated_system_application_accepts_dynamic_url_field() {
         system_origin: true,
         system_association: true,
         association_eligible: true,
-        dbus_activatable: false,
         launch_spec: Some(spec.clone()),
         names: HashSet::from(["true".to_string()]),
     };
@@ -419,7 +473,6 @@ fn dynamic_runtime_requires_matching_immutable_installation_provenance() {
         system_origin: true,
         system_association: true,
         association_eligible: true,
-        dbus_activatable: false,
         launch_spec: Some(spec.clone()),
         names: HashSet::from(["true".to_string()]),
     };
@@ -439,32 +492,50 @@ fn dynamic_runtime_requires_matching_immutable_installation_provenance() {
 }
 
 #[test]
-fn same_package_dynamic_file_runtime_is_not_dedicated() {
+fn package_backed_file_applications_verify_percent_f_and_percent_capital_f() {
     let executable =
         executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
-    let spec = LaunchSpec {
-        executable: executable.identity,
-        arguments: vec![LaunchArgument::FieldCode(FieldCode::Files)],
-        environment: Vec::new(),
-        wrappers: Vec::new(),
-        literal_files_are_system_managed: true,
-    };
-    let mut record = record_for_spec("org.example.Runtime", &spec);
-    record.desktop_provenance = test_package("runtime");
-    record.executable_provenance = test_package("runtime");
-    let mut index = DesktopIdentityIndex::default();
-    index.index_record(record);
-    let indexed = index
-        .records_for_id("org.example.Runtime")
-        .into_iter()
-        .next()
-        .expect("runtime application record");
+    for (field_code, actual) in [
+        (FieldCode::File, vec!["/usr/bin/true", "/tmp/image.png"]),
+        (
+            FieldCode::Files,
+            vec!["/usr/bin/true", "/tmp/first.png", "/tmp/second.png"],
+        ),
+    ] {
+        let spec = LaunchSpec {
+            executable: executable.identity,
+            arguments: vec![LaunchArgument::FieldCode(field_code)],
+            environment: Vec::new(),
+            wrappers: Vec::new(),
+            literal_files_are_system_managed: true,
+        };
+        let mut record = record_for_spec("org.example.Viewer", &spec);
+        record.desktop_provenance = test_package("example-viewer");
+        record.executable_provenance = test_package("example-viewer");
+        let mut index = DesktopIdentityIndex::default();
+        index.index_record(record);
+        let indexed = index
+            .records_for_id("org.example.Viewer")
+            .into_iter()
+            .next()
+            .expect("file application record");
 
-    assert_eq!(
-        classify_launch_authority(indexed, &index, &spec),
-        LaunchAuthority::DynamicOnly,
-        "package ownership cannot prove whether a file field is a document or active program"
-    );
+        assert_eq!(
+            classify_launch_authority(indexed, &index, &spec),
+            LaunchAuthority::DedicatedExecutable,
+            "immutable application ownership should support {field_code:?}"
+        );
+        assert_eq!(
+            verify_record_launch(
+                indexed,
+                &index,
+                executable.identity,
+                &structured_command(&actual),
+            ),
+            LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable),
+            "the ordered {field_code:?} contract should accept matching document arguments"
+        );
+    }
 }
 
 #[test]
@@ -514,7 +585,6 @@ fn launch_verification_enforces_wrapper_and_environment_limits_at_the_boundary()
             system_origin: true,
             system_association: true,
             association_eligible: true,
-            dbus_activatable: false,
             launch_spec: Some(spec),
             names: HashSet::new(),
         };
@@ -540,13 +610,13 @@ fn launch_verification_enforces_wrapper_and_environment_limits_at_the_boundary()
 }
 
 #[test]
-fn dedicated_authority_accepts_url_fields_but_rejects_ambiguous_file_fields_and_payloads() {
+fn dedicated_authority_accepts_document_fields_but_rejects_unprotected_fixed_payloads() {
     let executable =
         executable_evidence_for_path(Path::new("/usr/bin/true")).expect("system executable");
     for (arguments, expected) in [
         (Vec::new(), true),
         (vec![LaunchArgument::FieldCode(FieldCode::Url)], true),
-        (vec![LaunchArgument::FieldCode(FieldCode::File)], false),
+        (vec![LaunchArgument::FieldCode(FieldCode::File)], true),
         (
             vec![LaunchArgument::Literal(LiteralArgument {
                 value: b"runtime-selected-payload".to_vec(),
@@ -704,7 +774,6 @@ fn record_for_spec(id: &str, spec: &LaunchSpec) -> DesktopRecord {
         system_origin: true,
         system_association: true,
         association_eligible: true,
-        dbus_activatable: false,
         launch_spec: Some(spec.clone()),
         names: HashSet::new(),
     }

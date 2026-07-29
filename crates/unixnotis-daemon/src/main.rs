@@ -10,7 +10,6 @@
     clippy::option_if_let_else,
     clippy::ref_option,
     clippy::significant_drop_tightening,
-    clippy::struct_excessive_bools,
     clippy::trivially_copy_pass_by_ref,
     clippy::unnecessary_wraps,
     clippy::unused_async,

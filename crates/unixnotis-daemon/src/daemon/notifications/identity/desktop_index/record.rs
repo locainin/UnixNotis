@@ -60,7 +60,6 @@ impl DesktopIdentityIndex {
             system_origin,
             system_association,
             association_eligible,
-            dbus_activatable: desktop.boolean("DBusActivatable"),
             launch_spec,
             names,
         });

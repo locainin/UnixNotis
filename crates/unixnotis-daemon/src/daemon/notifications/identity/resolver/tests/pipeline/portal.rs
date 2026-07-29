@@ -1,4 +1,6 @@
-use super::*;
+//! Trusted portal attribution regressions
+
+use super::super::*;
 
 #[test]
 fn unmediated_flatpak_process_cannot_become_portal_associated() {
@@ -20,7 +22,6 @@ fn unmediated_flatpak_process_cannot_become_portal_associated() {
         },
         &sender("/usr/bin/flatpak", flatpak_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
@@ -48,7 +49,6 @@ fn an_empty_app_name_does_not_turn_an_untrusted_relay_into_a_portal() {
         },
         &sender("/usr/lib/untrusted-relay", relay_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
@@ -78,12 +78,69 @@ fn portal_mediated_flatpak_uses_broker_verified_desktop_identity() {
         },
         &sender(&portal_path, portal_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
     assert_eq!(resolution.attribution.display_name, "Flatpak App");
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+}
+
+#[test]
+fn trusted_portal_accepts_a_matching_nonempty_application_name() {
+    let flatpak_identity = identity(26, 260, 0);
+    let (portal_path, portal_identity) = installed_system_executable();
+    let mut record = system_record(
+        "org.example.FlatpakApp",
+        "Flatpak App",
+        "/usr/bin/flatpak",
+        flatpak_identity,
+    );
+    record.association_eligible = false;
+    record.system_association = false;
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new())
+        .with_trusted_portal(PathBuf::from(&portal_path), portal_identity);
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Flatpak App",
+            desktop_entry: Some("org.example.FlatpakApp"),
+        },
+        &sender(&portal_path, portal_identity),
+        &index,
+    );
+
+    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
+    assert_eq!(resolution.attribution.display_name, "Flatpak App");
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+}
+
+#[test]
+fn trusted_portal_reports_a_name_that_contradicts_its_verified_application_id() {
+    let flatpak_identity = identity(27, 270, 0);
+    let (portal_path, portal_identity) = installed_system_executable();
+    let mut record = system_record(
+        "org.example.FlatpakApp",
+        "Flatpak App",
+        "/usr/bin/flatpak",
+        flatpak_identity,
+    );
+    record.association_eligible = false;
+    record.system_association = false;
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new())
+        .with_trusted_portal(PathBuf::from(&portal_path), portal_identity);
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Different App",
+            desktop_entry: Some("org.example.FlatpakApp"),
+        },
+        &sender(&portal_path, portal_identity),
+        &index,
+    );
+
+    assert_eq!(resolution.attribution.status, AttributionStatus::Conflict);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    assert_eq!(resolution.diagnostics.record_trust, RecordTrust::Portal);
 }
 
 #[test]

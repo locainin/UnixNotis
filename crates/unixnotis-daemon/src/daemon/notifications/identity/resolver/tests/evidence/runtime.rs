@@ -1,4 +1,6 @@
-use super::*;
+//! Shared runtime and protected-payload regressions
+
+use super::super::*;
 
 #[test]
 fn python_desktop_entry_cannot_trust_an_unrelated_python_process() {
@@ -20,7 +22,6 @@ fn python_desktop_entry_cannot_trust_an_unrelated_python_process() {
         },
         &sender("/usr/bin/python3", python_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
@@ -61,7 +62,6 @@ fn unlisted_runtimes_cannot_associate_a_different_application_payload() {
             },
             &sender_with_arguments(executable, runtime_identity, &[actual]),
             &index,
-            &HashSet::new(),
         );
 
         assert_ne!(
@@ -92,7 +92,6 @@ fn java_cannot_associate_a_different_jar() {
         },
         &sender_with_arguments("/usr/bin/java", java_identity, &["-jar", "/tmp/fake.jar"]),
         &index,
-        &HashSet::new(),
     );
 
     assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
@@ -120,7 +119,6 @@ fn matching_fixed_system_application_argument_allows_association() {
         },
         &sender_with_arguments(&runtime_path, runtime_identity, &[&payload_path]),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
@@ -150,7 +148,6 @@ fn arbitrary_executable_name_still_requires_its_fixed_application_payload() {
             &["/tmp/attacker-controlled.bin"],
         ),
         &index,
-        &HashSet::new(),
     );
 
     assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
@@ -158,7 +155,7 @@ fn arbitrary_executable_name_still_requires_its_fixed_application_payload() {
 }
 
 #[test]
-fn dedicated_executable_remains_verified_when_command_line_is_unavailable() {
+fn empty_dedicated_contract_is_recognized_when_command_line_is_unavailable() {
     let (launcher_path, launcher_identity) = installed_system_executable();
     let record = system_record(
         "org.example.True",
@@ -177,7 +174,33 @@ fn dedicated_executable_remains_verified_when_command_line_is_unavailable() {
         },
         &missing_command_line,
         &index,
-        &HashSet::new(),
+    );
+
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+}
+
+#[test]
+fn nonempty_dedicated_contract_can_rely_on_exact_executable_evidence() {
+    let (launcher_path, launcher_identity) = installed_system_executable();
+    let record = system_record(
+        "org.example.True",
+        "Command Line App",
+        &launcher_path,
+        launcher_identity,
+    )
+    .with_launch_literals(&["--background"]);
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+    let mut missing_command_line = sender(&launcher_path, launcher_identity);
+    missing_command_line.command_line = CommandLineEvidence::default();
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Command Line App",
+            desktop_entry: Some("org.example.True"),
+        },
+        &missing_command_line,
+        &index,
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
@@ -245,7 +268,6 @@ fn no_hint_shared_runtimes_with_wrong_payloads_are_denied() {
             },
             &sender_with_arguments(executable, runtime_identity, &sender_arguments),
             &index,
-            &HashSet::new(),
         );
 
         assert_ne!(
@@ -278,7 +300,6 @@ fn no_hint_shared_runtime_with_matching_protected_payload_is_allowed() {
         },
         &sender_with_arguments(&runtime_path, runtime_identity, &[&payload_path]),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
@@ -304,7 +325,6 @@ fn no_hint_wrong_payload_with_unrelated_claim_remains_unknown() {
         },
         &sender_with_arguments("/usr/bin/python3", runtime_identity, &["/tmp/local.py"]),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
@@ -340,7 +360,6 @@ fn dynamic_only_contract_is_unverified_instead_of_suspicious() {
         },
         &sender_with_arguments(&runtime_path, runtime_identity, &["/tmp/payload"]),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);

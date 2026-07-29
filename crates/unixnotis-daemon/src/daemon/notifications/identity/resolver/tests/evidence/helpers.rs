@@ -1,16 +1,16 @@
-use super::super::super::evidence::sender_claim_relation;
+//! Helper-process and process-lineage association cases
+
+use super::super::super::evidence::{lineage_association, sender_claim_relation};
 use super::super::*;
 
 #[test]
 fn helper_process_lineage_is_recognized_without_becoming_suspicious() {
     let (app_path, app_identity) = installed_system_executable();
     let index = DesktopIdentityIndex::from_records(
-        vec![system_record(
-            "org.example.True",
-            "Example App",
-            &app_path,
-            app_identity,
-        )],
+        vec![
+            system_record("org.example.True", "Example App", &app_path, app_identity)
+                .with_launch_literals(&["--application-mode"]),
+        ],
         Vec::new(),
     );
     let helper_identity = identity(88, 880, 0);
@@ -30,13 +30,78 @@ fn helper_process_lineage_is_recognized_without_becoming_suspicious() {
         },
         &helper,
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
     assert_eq!(resolution.attribution.display_name, "Example App");
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     assert_ne!(resolution.attribution.status, AttributionStatus::Conflict);
+    assert!(resolution
+        .attribution
+        .diagnostic_detail
+        .contains("Same-user ancestor"));
+}
+
+#[test]
+fn stale_ancestor_identity_does_not_create_a_lineage_association() {
+    let (app_path, live_identity) = installed_system_executable();
+    let stale_identity = FileIdentity {
+        inode: live_identity.inode.saturating_add(1),
+        ..live_identity
+    };
+    let record = system_record("org.example.True", "Example App", &app_path, stale_identity)
+        .with_launch_literals(&["--application-mode"]);
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+    let mut helper = sender("/usr/libexec/example-helper", identity(204, 2_040, 0));
+    helper.ancestors.push(ProcessLineageEvidence {
+        pid: 8_081,
+        start_time: 7_071,
+        uid: 0,
+        executable: app_path,
+        executable_identity: stale_identity,
+    });
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Example App",
+            desktop_entry: Some("org.example.True"),
+        },
+        &helper,
+        &index,
+    );
+
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert!(!resolution
+        .attribution
+        .diagnostic_detail
+        .contains("Same-user ancestor"));
+}
+
+#[test]
+fn lineage_rejects_a_candidate_with_a_different_indexed_executable() {
+    let (app_path, live_identity) = installed_system_executable();
+    let indexed = system_record("org.example.True", "Example App", &app_path, live_identity)
+        .with_launch_literals(&["--application-mode"]);
+    let index = DesktopIdentityIndex::from_records(vec![indexed.clone()], Vec::new());
+    let mut mismatched = indexed;
+    mismatched.executable_identity = Some(FileIdentity {
+        inode: live_identity.inode.saturating_add(1),
+        ..live_identity
+    });
+    let result = CandidateVerification {
+        record: &mismatched,
+        verification: LaunchVerification::DefinitiveMismatch(LaunchFailure::ExecutableMismatch),
+    };
+    let mut helper = sender("/usr/libexec/example-helper", identity(206, 2_060, 0));
+    helper.ancestors.push(ProcessLineageEvidence {
+        pid: 8_082,
+        start_time: 7_072,
+        uid: 0,
+        executable: app_path,
+        executable_identity: live_identity,
+    });
+
+    assert!(lineage_association(&helper, &index, &[&result]).is_none());
 }
 
 #[test]
@@ -60,7 +125,6 @@ fn helper_without_lineage_is_recognized_when_no_contradictory_owner_is_known() {
         },
         &helper,
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(
@@ -91,7 +155,6 @@ fn verified_and_recognized_senders_never_share_an_application_group() {
         },
         &sender(&app_path, app_identity),
         &index,
-        &HashSet::new(),
     );
     let recognized = resolve_with_evidence(
         AppClaim {
@@ -100,7 +163,6 @@ fn verified_and_recognized_senders_never_share_an_application_group() {
         },
         &sender("/opt/example/helper", identity(90, 900, 1_000)),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(verified.attribution.status, AttributionStatus::Verified);
@@ -133,15 +195,27 @@ fn package_owned_helper_for_the_claimed_application_is_recognized() {
         },
         &helper,
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    let claimed_record = index
+        .records_for_id("org.example.True")
+        .into_iter()
+        .next()
+        .expect("claimed record should be indexed");
+    assert_eq!(
+        sender_claim_relation(&helper, &index, claimed_record),
+        SenderClaimRelation::SamePackageHelper
+    );
+    assert!(resolution
+        .attribution
+        .diagnostic_detail
+        .contains("same installed application package"));
 }
 
 #[test]
-fn different_verified_package_is_concrete_conflict_evidence() {
+fn separately_packaged_helper_is_recognized_without_becoming_suspicious() {
     let (app_path, app_identity) = installed_system_executable();
     let index = DesktopIdentityIndex::from_records(
         vec![system_record(
@@ -152,25 +226,71 @@ fn different_verified_package_is_concrete_conflict_evidence() {
         )],
         Vec::new(),
     );
-    let mut different = sender("/usr/bin/different-app", identity(92, 920, 0));
-    different.install_provenance = package("org.example.Different");
+    let mut different_package = sender("/usr/libexec/example-helper", identity(92, 920, 0));
+    different_package.install_provenance = package("org.example.Integration");
 
     let resolution = resolve_with_evidence(
         AppClaim {
             reported_name: "Example App",
             desktop_entry: Some("org.example.True"),
         },
-        &different,
+        &different_package,
         &index,
-        &HashSet::new(),
+    );
+
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    assert_eq!(
+        resolution.diagnostics.verification,
+        LaunchVerificationView::InsufficientEvidence,
+        "the launch mismatch remains diagnostic evidence without proving impersonation"
+    );
+    let claimed_record = index
+        .records_for_id("org.example.True")
+        .into_iter()
+        .next()
+        .expect("claimed record should be indexed");
+    assert_eq!(
+        sender_claim_relation(&different_package, &index, claimed_record),
+        SenderClaimRelation::DifferentInstalledPackage
+    );
+    assert!(resolution
+        .attribution
+        .diagnostic_detail
+        .contains("separate installed package"));
+}
+
+#[test]
+fn sender_owned_by_another_indexed_system_application_is_a_concrete_conflict() {
+    let (app_path, app_identity) = installed_system_executable();
+    let other_identity = identity(93, 930, 0);
+    let index = DesktopIdentityIndex::from_records(
+        vec![
+            system_record("org.example.True", "Example App", &app_path, app_identity),
+            system_record(
+                "org.example.Other",
+                "Other App",
+                "/usr/bin/other-app",
+                other_identity,
+            ),
+        ],
+        Vec::new(),
+    );
+
+    let resolution = resolve_with_evidence(
+        AppClaim {
+            reported_name: "Example App",
+            desktop_entry: Some("org.example.True"),
+        },
+        &sender("/usr/bin/other-app", other_identity),
+        &index,
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Conflict);
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     assert_eq!(
         resolution.diagnostics.verification,
-        LaunchVerificationView::DefinitiveMismatch,
-        "only the concrete different-package relation should remain a definitive mismatch"
+        LaunchVerificationView::DefinitiveMismatch
     );
 }
 
@@ -189,7 +309,6 @@ fn user_record_owning_sender_executable_cannot_prove_a_conflict() {
         "Local App",
         "/home/user/bin/local",
         user_identity,
-        false,
         false,
     );
     let index = DesktopIdentityIndex::from_records(vec![claimed, user], Vec::new());

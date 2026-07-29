@@ -1,32 +1,14 @@
-use std::collections::HashSet;
-use std::path::PathBuf;
-
-use unixnotis_core::{
-    AttributionStatus, CommandLineQualityView, InlineReplyPolicy, LaunchAuthorityView,
-    LaunchVerificationView, RecordTrust,
-};
+//! Shared resolver fixtures and synthetic process-evidence builders
 
 use super::*;
-use crate::daemon::notifications::identity::desktop_index::model::{
-    ExecutableIdentity, FieldCode, LaunchArgument, LaunchSpec, LiteralArgument,
-};
-use crate::daemon::notifications::identity::desktop_index::provenance::PackageProvider;
-use crate::daemon::notifications::identity::desktop_index::{
-    DesktopIdentityIndex, DesktopRecord, InstallProvenance,
-};
-use crate::daemon::notifications::identity::sender::{
-    CommandLineEvidence, CommandLineQuality, ProcessLineageEvidence,
-};
-use crate::daemon::notifications::identity::FileIdentity;
 
-trait DesktopRecordFixture {
+pub(super) trait DesktopRecordFixture {
     fn fixture(
         id: &str,
         display_name: &str,
         executable_path: &str,
         identity: FileIdentity,
         system_entry: bool,
-        dbus_activatable: bool,
     ) -> Self;
 
     fn with_launch_literals(self, arguments: &[&str]) -> Self;
@@ -41,7 +23,6 @@ impl DesktopRecordFixture for DesktopRecord {
         executable_path: &str,
         identity: FileIdentity,
         system_entry: bool,
-        dbus_activatable: bool,
     ) -> Self {
         Self {
             id: id.to_string(),
@@ -72,7 +53,6 @@ impl DesktopRecordFixture for DesktopRecord {
             system_origin: system_entry,
             system_association: system_entry,
             association_eligible: true,
-            dbus_activatable,
             launch_spec: Some(LaunchSpec {
                 executable: identity,
                 arguments: Vec::new(),
@@ -126,7 +106,7 @@ impl DesktopRecordFixture for DesktopRecord {
     }
 }
 
-trait DesktopIdentityIndexFixture {
+pub(super) trait DesktopIdentityIndexFixture {
     fn from_records(
         records: Vec<DesktopRecord>,
         trusted_relays: Vec<(PathBuf, FileIdentity)>,
@@ -163,7 +143,7 @@ fn index_trusted_portal(index: &mut DesktopIdentityIndex, path: PathBuf, identit
         .push(ExecutableIdentity { path, identity });
 }
 
-fn identity(device: u64, inode: u64, uid: u32) -> FileIdentity {
+pub(super) fn identity(device: u64, inode: u64, uid: u32) -> FileIdentity {
     FileIdentity {
         device,
         inode,
@@ -172,14 +152,14 @@ fn identity(device: u64, inode: u64, uid: u32) -> FileIdentity {
     }
 }
 
-fn package(package_id: &str) -> InstallProvenance {
+pub(super) fn package(package_id: &str) -> InstallProvenance {
     InstallProvenance::Package {
         provider: PackageProvider::Pacman,
         package_id: package_id.to_string(),
     }
 }
 
-fn sender(path: &str, identity: FileIdentity) -> SenderMetadata {
+pub(super) fn sender(path: &str, identity: FileIdentity) -> SenderMetadata {
     SenderMetadata {
         sender_name: Some(":1.42".to_string()),
         sender_executable: Some(path.to_string()),
@@ -192,7 +172,11 @@ fn sender(path: &str, identity: FileIdentity) -> SenderMetadata {
     }
 }
 
-fn sender_with_arguments(path: &str, identity: FileIdentity, arguments: &[&str]) -> SenderMetadata {
+pub(super) fn sender_with_arguments(
+    path: &str,
+    identity: FileIdentity,
+    arguments: &[&str],
+) -> SenderMetadata {
     let mut metadata = sender(path, identity);
     metadata.command_line = CommandLineEvidence {
         argv: std::iter::once(path)
@@ -204,20 +188,31 @@ fn sender_with_arguments(path: &str, identity: FileIdentity, arguments: &[&str])
     metadata
 }
 
-fn system_record(id: &str, name: &str, path: &str, identity: FileIdentity) -> DesktopRecord {
-    DesktopRecord::fixture(id, name, path, identity, true, false)
+pub(super) fn system_record(
+    id: &str,
+    name: &str,
+    path: &str,
+    identity: FileIdentity,
+) -> DesktopRecord {
+    DesktopRecord::fixture(id, name, path, identity, true)
 }
 
-fn installed_system_executable() -> (String, FileIdentity) {
+pub(super) fn installed_system_executable() -> (String, FileIdentity) {
     let path = unixnotis_core::util::trusted_system_program_path("true")
         .expect("find a protected system executable");
     let evidence = executable_evidence_for_path(&path).expect("read system executable evidence");
-    assert!(evidence.identity.is_system_managed());
-    assert!(evidence.identity.is_executable_regular());
+    assert!(
+        evidence.identity.is_system_managed(),
+        "fixture executable should be system managed"
+    );
+    assert!(
+        evidence.identity.is_executable_regular(),
+        "fixture executable should be a regular executable"
+    );
     (path.display().to_string(), evidence.identity)
 }
 
-fn verified_executable_record<'record>(
+pub(super) fn verified_executable_record<'record>(
     records: &[&'record DesktopRecord],
     reported_name: &str,
     sender: &SenderMetadata,
@@ -232,12 +227,3 @@ fn verified_executable_record<'record>(
         .collect::<Vec<_>>();
     strongest_verified_result(&results, reported_name, index)
 }
-
-#[path = "resolver/association.rs"]
-mod association;
-#[path = "resolver/portal.rs"]
-mod portal;
-#[path = "resolver/runtime.rs"]
-mod runtime;
-#[path = "resolver/spoof.rs"]
-mod spoof;

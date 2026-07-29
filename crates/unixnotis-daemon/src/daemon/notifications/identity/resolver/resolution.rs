@@ -4,12 +4,39 @@ use unixnotis_core::{
     AttributionDiagnostics, AttributionReason, AttributionStatus, NotificationAttribution,
 };
 
-use super::diagnostics::{launch_failure_label, with_diagnostics};
-use super::{
-    inline_reply_policy, normalize_name, AppClaim, AttributionResolution, DesktopIdentityIndex,
-    DesktopRecord, LaunchFailure, LaunchVerification, SenderMetadata, VerifiedDesktopRecord,
+use super::super::desktop_index::{
+    normalize_name, DesktopIdentityIndex, DesktopRecord, LaunchFailure, LaunchVerification,
     VerifiedLaunch,
 };
+use super::super::policy::inline_reply_policy;
+use super::super::sender::SenderMetadata;
+use super::diagnostics::{launch_failure_label, with_diagnostics};
+use super::model::VerifiedDesktopRecord;
+use super::{AppClaim, AttributionResolution};
+
+pub(in crate::daemon) fn unknown_reply_denied(
+    claim: AppClaim<'_>,
+    sender: &SenderMetadata,
+    reason: &str,
+) -> AttributionResolution {
+    let detail = sender.sender_executable.as_deref().map_or_else(
+        || reason.to_string(),
+        |path| format!("{reason}; source {path}"),
+    );
+    let resolution = policy_resolution(NotificationAttribution::unresolved(
+        claim.reported_name,
+        AttributionReason::MissingSenderEvidence,
+        &detail,
+        sender_claim_group_key(AttributionStatus::Unresolved, claim.reported_name, sender),
+    ));
+    with_diagnostics(
+        resolution,
+        claim,
+        sender,
+        None,
+        LaunchVerification::InsufficientEvidence(LaunchFailure::MissingSenderEvidence),
+    )
+}
 
 pub(super) fn resolution_for_portal_record(
     record: &DesktopRecord,
@@ -190,9 +217,9 @@ pub(super) fn policy_resolution(attribution: NotificationAttribution) -> Attribu
 const fn attribution_reason_for_failure(failure: LaunchFailure) -> AttributionReason {
     match failure {
         LaunchFailure::MissingSenderEvidence => AttributionReason::MissingSenderEvidence,
-        LaunchFailure::MissingCommandLine | LaunchFailure::UnstructuredCommandLine => {
-            AttributionReason::MissingCommandLine
-        }
+        LaunchFailure::MissingCommandLine
+        | LaunchFailure::UnstructuredCommandLine
+        | LaunchFailure::EmptyContractNeedsCommandLine => AttributionReason::MissingCommandLine,
         LaunchFailure::UnsupportedWrapper => AttributionReason::UnsupportedWrapper,
         LaunchFailure::AmbiguousDesktopAssociation | LaunchFailure::RequiredArgumentMismatch => {
             AttributionReason::AmbiguousDesktopRecords

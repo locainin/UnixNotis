@@ -66,6 +66,7 @@ pub(in crate::daemon::notifications::identity) enum LaunchFailure {
     MissingSenderEvidence,
     MissingCommandLine,
     UnstructuredCommandLine,
+    EmptyContractNeedsCommandLine,
     UnsupportedWrapper,
     AmbiguousDesktopAssociation,
     DynamicOnlyContract,
@@ -98,7 +99,6 @@ pub(in crate::daemon::notifications::identity) struct DesktopRecord {
     pub(in crate::daemon::notifications::identity) system_origin: bool,
     pub(in crate::daemon::notifications::identity) system_association: bool,
     pub(in crate::daemon::notifications::identity) association_eligible: bool,
-    pub(in crate::daemon::notifications::identity) dbus_activatable: bool,
     pub(in crate::daemon::notifications::identity) launch_spec: Option<LaunchSpec>,
     pub(in crate::daemon::notifications::identity) names: HashSet<String>,
 }
