@@ -34,6 +34,7 @@ serde_ignored = "0.1"
 sha2 = "0.10"
 tar = "0.4"
 toml = "0.8"
+toml_edit = "0.22.27"
 thiserror = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "process", "io-util" ] }
 tracing = "0.1"

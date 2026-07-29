@@ -110,7 +110,7 @@ impl UiState {
                 debug!(app = %key, "group toggled");
                 self.log_debug(PanelDebugLevel::Verbose, || format!("group toggled: {key}"));
                 self.list.toggle_group(&key);
-                // Toggling can change stacked visibility; counts reflect total entries
+                // Toggling can change grouped visibility; counts reflect total entries
                 self.refresh_counts();
             }
             UiEvent::MediaUpdated(infos) => {
@@ -206,17 +206,13 @@ impl UiState {
                     }
                 }
             }
-            UiEvent::ThemeMigrationPreview => {
-                debug!("stock theme preview requested");
-                self.preview_stock_theme_migration();
+            UiEvent::UseStockTheme => {
+                debug!("embedded stock theme requested");
+                self.use_stock_theme();
             }
-            UiEvent::ThemeMigrationApply => {
-                debug!("stock theme apply requested");
-                self.apply_stock_theme_migration();
-            }
-            UiEvent::ThemeMigrationKeepCurrent => {
-                debug!("stock theme retention requested");
-                self.keep_current_stock_theme();
+            UiEvent::OpenThemeFolder => {
+                debug!("theme folder requested");
+                self.open_theme_folder();
             }
         }
     }

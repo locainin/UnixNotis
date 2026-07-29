@@ -6,7 +6,8 @@ use unixnotis_core::{
 };
 
 use super::super::super::loader::{
-    load_provider_with_overrides, CssFileLoadResult, CssFileLoadSource,
+    load_embedded_provider_with_overrides, load_provider_with_overrides, CssFileLoadResult,
+    CssFileLoadSource,
 };
 use super::super::super::overrides::{
     build_base_overrides, build_panel_overrides, build_popup_overrides, build_widgets_overrides,
@@ -36,13 +37,15 @@ where
 {
     pub(super) fn reload(&self, fallback: &str) -> CssReloadReport {
         let mut loaded = Vec::new();
+        let custom_theme_allowed = self.theme_contract().custom_theme_allowed();
         // Structural fallbacks always load below every user-controlled layer
         self.internal_structure
             .load_css_data(INTERNAL_STRUCTURE_CSS);
 
         // Base variables load before every surface-specific provider
         let base_overrides = build_base_overrides(&self.theme_config);
-        let result = load_provider_with_overrides(
+        let result = load_provider(
+            custom_theme_allowed,
             |data| self.base.load_css_data(data),
             &self.theme_paths.base_css,
             fallback,
@@ -58,7 +61,8 @@ where
         // Optional providers distinguish panel and popup process layouts
         if let Some(panel) = self.panel.as_ref() {
             let panel_overrides = build_panel_overrides(&self.theme_config);
-            let result = load_provider_with_overrides(
+            let result = load_provider(
+                custom_theme_allowed,
                 |data| panel.load_css_data(data),
                 &self.theme_paths.panel_css,
                 DEFAULT_PANEL_CSS,
@@ -75,7 +79,8 @@ where
         // Widget overrides remain isolated from panel structural rules
         if let Some(widgets) = self.widgets.as_ref() {
             let widgets_overrides = build_widgets_overrides(&self.theme_config);
-            let result = load_provider_with_overrides(
+            let result = load_provider(
+                custom_theme_allowed,
                 |data| widgets.load_css_data(data),
                 &self.theme_paths.widgets_css,
                 DEFAULT_WIDGETS_CSS,
@@ -91,7 +96,8 @@ where
 
         // Media has no generated override layer and remains fully theme controlled
         if let Some(media) = self.media.as_ref() {
-            let result = load_provider_with_overrides(
+            let result = load_provider(
+                custom_theme_allowed,
                 |data| media.load_css_data(data),
                 &self.theme_paths.media_css,
                 DEFAULT_MEDIA_CSS,
@@ -108,7 +114,8 @@ where
         // Popup geometry tokens apply only when the popup provider exists
         if let Some(popup) = self.popup.as_ref() {
             let popup_overrides = build_popup_overrides(&self.theme_config);
-            let result = load_provider_with_overrides(
+            let result = load_provider(
+                custom_theme_allowed,
                 |data| popup.load_css_data(data),
                 &self.theme_paths.popup_css,
                 DEFAULT_POPUP_CSS,
@@ -138,6 +145,27 @@ where
     }
 }
 
+fn load_provider(
+    custom_theme_allowed: bool,
+    load_css_data: impl Fn(&str),
+    path: &std::path::Path,
+    fallback: &str,
+    overrides: &str,
+    inject_base_tokens: bool,
+) -> CssFileLoadResult {
+    if custom_theme_allowed {
+        load_provider_with_overrides(load_css_data, path, fallback, overrides, inject_base_tokens)
+    } else {
+        load_embedded_provider_with_overrides(
+            load_css_data,
+            path,
+            fallback,
+            overrides,
+            inject_base_tokens,
+        )
+    }
+}
+
 fn layer_reload(
     layer: CssProviderLayer,
     path: std::path::PathBuf,
@@ -145,6 +173,7 @@ fn layer_reload(
 ) -> CssLayerReload {
     // Loader sources map into the stable public report vocabulary
     let source = match result.source {
+        CssFileLoadSource::EmbeddedStock => CssLayerSource::EmbeddedStock,
         CssFileLoadSource::Custom => CssLayerSource::Custom,
         CssFileLoadSource::EmptyFallback => CssLayerSource::EmptyFallback,
         CssFileLoadSource::ReadFailureFallback => CssLayerSource::ReadFailureFallback,

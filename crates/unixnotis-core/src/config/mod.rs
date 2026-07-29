@@ -26,8 +26,8 @@ pub use icon_assets::{
     DEFAULT_ICON_ASSET_MAX_HEIGHT, DEFAULT_ICON_ASSET_MAX_PIXELS, DEFAULT_ICON_ASSET_MAX_WIDTH,
 };
 pub use io::{
-    apply_stock_theme_migration, detect_stock_theme_migration, keep_current_stock_theme,
-    ConfigError, StockThemeApplyReport, StockThemeMigration, ThemePaths, MAX_CONFIG_BYTES,
+    persist_theme_mode, ConfigError, ThemeContractState, ThemeIncompatibility, ThemeManifest,
+    ThemeModeWriteError, ThemePaths, MAX_CONFIG_BYTES, THEME_API_VERSION,
 };
 pub use layout::*;
 pub(in crate::config) use loading::{diagnostics, io};

@@ -23,6 +23,7 @@ pub fn run() -> Result<()> {
             crate::css_check::run,
             crate::preset::run_preset,
             crate::session_environment::sync,
+            crate::theme::run,
         )?;
         return Ok(());
     }

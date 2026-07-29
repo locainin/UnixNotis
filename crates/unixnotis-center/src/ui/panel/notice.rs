@@ -11,13 +11,12 @@ pub(in crate::ui) struct ReloadNoticeWidgets {
     pub(in crate::ui) label: gtk::Label,
     pub(in crate::ui) close: gtk::Button,
     pub(in crate::ui) actions: gtk::Box,
-    pub(in crate::ui) preview_button: gtk::Button,
-    pub(in crate::ui) apply_button: gtk::Button,
-    pub(in crate::ui) keep_button: gtk::Button,
+    pub(in crate::ui) use_stock_button: gtk::Button,
+    pub(in crate::ui) open_theme_folder_button: gtk::Button,
 }
 
 pub(in crate::ui) fn build_reload_notice() -> ReloadNoticeWidgets {
-    // The outer column keeps migration choices below the compact status message
+    // The outer column keeps compatibility choices below the compact status message
     let shell = gtk::Box::new(gtk::Orientation::Vertical, 0);
     shell.add_css_class(hooks::panel_shell::RELOAD_NOTICE);
     shell.set_hexpand(true);
@@ -43,19 +42,18 @@ pub(in crate::ui) fn build_reload_notice() -> ReloadNoticeWidgets {
     content.append(&close);
     shell.append(&content);
 
-    // Theme migration remains an explicit three-way choice
+    // Theme compatibility offers a safe fallback and access to the untouched files
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.add_css_class(hooks::panel_shell::RELOAD_NOTICE_ACTIONS);
     actions.set_homogeneous(true);
     actions.set_visible(false);
 
-    let preview_button = notice_action("Preview", "Preview the staged stock panel theme");
-    let apply_button = notice_action("Apply", "Back up and apply the staged stock theme");
-    apply_button.add_css_class(hooks::panel_shell::RELOAD_NOTICE_ACTION_PRIMARY);
-    let keep_button = notice_action("Keep Current", "Keep the current theme for this release");
-    actions.append(&preview_button);
-    actions.append(&apply_button);
-    actions.append(&keep_button);
+    let use_stock_button = notice_action("Use stock theme", "Use bundled UnixNotis styling");
+    use_stock_button.add_css_class(hooks::panel_shell::RELOAD_NOTICE_ACTION_PRIMARY);
+    let open_theme_folder_button =
+        notice_action("Open theme folder", "Open the configured theme folder");
+    actions.append(&use_stock_button);
+    actions.append(&open_theme_folder_button);
     shell.append(&actions);
 
     // A short vertical transition keeps the header position stable
@@ -74,9 +72,8 @@ pub(in crate::ui) fn build_reload_notice() -> ReloadNoticeWidgets {
         label,
         close,
         actions,
-        preview_button,
-        apply_button,
-        keep_button,
+        use_stock_button,
+        open_theme_folder_button,
     }
 }
 

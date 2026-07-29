@@ -10,6 +10,28 @@ use super::model::CssFileLoadResult;
 use super::tokens::ensure_base_tokens;
 use super::urls::rebase_relative_css_asset_urls;
 
+/// Load the embedded layer without consulting a configured stylesheet
+pub fn load_embedded_provider_with_overrides(
+    load_css_data: impl Fn(&str),
+    path: &Path,
+    fallback: &str,
+    overrides: &str,
+    inject_base_tokens: bool,
+) -> CssFileLoadResult {
+    let fallback = if inject_base_tokens {
+        ensure_base_tokens(fallback, path)
+    } else {
+        fallback.to_string()
+    };
+    let merged = if overrides.trim().is_empty() {
+        fallback
+    } else {
+        format!("{fallback}\n{overrides}")
+    };
+    load_css_data(&rebase_relative_css_asset_urls(&merged, path));
+    CssFileLoadResult::embedded_stock()
+}
+
 /// Load CSS into a provider, applying overrides and falling back to defaults
 pub fn load_provider_with_overrides(
     load_css_data: impl Fn(&str),

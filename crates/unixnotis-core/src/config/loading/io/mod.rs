@@ -5,17 +5,16 @@ mod load;
 mod paths;
 mod script_migrations;
 mod scripts;
-mod theme_files;
-mod theme_stock;
-mod write;
+mod theme_contract;
+mod theme_mode;
 
 pub use error::ConfigError;
 pub use load::MAX_CONFIG_BYTES;
 pub use paths::ThemePaths;
-pub use theme_stock::{
-    apply_stock_theme_migration, detect_stock_theme_migration, keep_current_stock_theme,
-    StockThemeApplyReport, StockThemeMigration,
+pub use theme_contract::{
+    ThemeContractState, ThemeIncompatibility, ThemeManifest, THEME_API_VERSION,
 };
+pub use theme_mode::{persist_theme_mode, ThemeModeWriteError};
 
 #[cfg(test)]
 mod tests;

@@ -105,3 +105,12 @@ pub enum PresetCommand {
         input: String,
     },
 }
+
+#[derive(Subcommand, Debug)]
+pub enum ThemeCommand {
+    // Export editable copies of the embedded stock theme into a new directory
+    ExportStock {
+        #[arg(long, value_name = "DIRECTORY")]
+        output: Option<std::path::PathBuf>,
+    },
+}

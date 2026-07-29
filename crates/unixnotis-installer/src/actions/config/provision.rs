@@ -41,38 +41,8 @@ pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
     ensure_installer_config(ctx, &config_dir)?;
     ensure_default_scripts(ctx, &config_dir)?;
 
-    let theme_paths = config
-        .resolve_theme_paths()
-        .map_err(|err| anyhow!(err.to_string()))?;
-    let theme_entries = [
-        ("base.css", &theme_paths.base_css),
-        ("panel.css", &theme_paths.panel_css),
-        ("popup.css", &theme_paths.popup_css),
-        ("widgets.css", &theme_paths.widgets_css),
-        ("media.css", &theme_paths.media_css),
-    ];
-
-    let pre_existing = theme_entries
-        .iter()
-        .map(|(_, path)| path.exists())
-        .collect::<Vec<_>>();
-
-    config
-        .ensure_theme_files(&theme_paths)
-        .map_err(|err| anyhow!(err.to_string()))?;
-
-    for ((name, path), existed) in theme_entries.iter().zip(pre_existing.iter()) {
-        let status = if *existed { "present" } else { "created" };
-        log_line(
-            ctx,
-            format!(
-                "Theme file {}: {} ({})",
-                name,
-                status,
-                format_with_home(path)
-            ),
-        );
-    }
+    // New installations use embedded stock CSS until a versioned custom theme is installed
+    log_line(ctx, "Theme source: embedded stock".to_string());
 
     Ok(())
 }
@@ -136,43 +106,22 @@ pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
         "media.css",
         backup_dir.as_deref(),
     )?;
+    backup_existing_file(
+        ctx,
+        &theme_paths.manifest_path(),
+        "theme.toml",
+        backup_dir.as_deref(),
+    )?;
     backup_default_scripts(ctx, &config_dir, backup_dir.as_deref())?;
 
-    write_file_atomic(
-        &theme_paths.base_css,
-        unixnotis_core::DEFAULT_BASE_CSS.as_bytes(),
-        0o644,
-    )
-    .with_context(|| "failed to write base.css")?;
-    write_file_atomic(
-        &theme_paths.panel_css,
-        unixnotis_core::DEFAULT_PANEL_CSS.as_bytes(),
-        0o644,
-    )
-    .with_context(|| "failed to write panel.css")?;
-    write_file_atomic(
-        &theme_paths.popup_css,
-        unixnotis_core::DEFAULT_POPUP_CSS.as_bytes(),
-        0o644,
-    )
-    .with_context(|| "failed to write popup.css")?;
-    write_file_atomic(
-        &theme_paths.widgets_css,
-        unixnotis_core::DEFAULT_WIDGETS_CSS.as_bytes(),
-        0o644,
-    )
-    .with_context(|| "failed to write widgets.css")?;
-    write_file_atomic(
-        &theme_paths.media_css,
-        unixnotis_core::DEFAULT_MEDIA_CSS.as_bytes(),
-        0o644,
-    )
-    .with_context(|| "failed to write media.css")?;
     write_default_scripts(&config_dir)?;
 
     log_line(
         ctx,
-        format!("Reset theme files in {}", format_with_home(&config_dir)),
+        format!(
+            "Theme source reset to embedded stock; custom files preserved in {}",
+            format_with_home(&config_dir)
+        ),
     );
     Ok(())
 }
