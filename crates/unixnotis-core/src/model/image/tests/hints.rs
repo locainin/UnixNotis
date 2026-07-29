@@ -22,7 +22,7 @@ fn from_hints_prefers_valid_image_data_over_image_path_and_icon() {
 }
 
 #[test]
-fn from_hints_falls_back_from_invalid_image_data_to_app_icon_path() {
+fn from_hints_never_promotes_an_app_icon_path_to_content_media() {
     let mut hints = HashMap::new();
     hints.insert(
         "image-data".to_string(),
@@ -32,8 +32,17 @@ fn from_hints_falls_back_from_invalid_image_data_to_app_icon_path() {
     let image = NotificationImage::from_hints("App", "/tmp/app-icon.png", &hints);
 
     assert!(!image.has_image_data);
-    assert_eq!(image.image_path, "/tmp/app-icon.png");
+    assert!(image.image_path.is_empty());
     assert!(image.icon_name.is_empty());
+}
+
+#[test]
+fn from_hints_never_promotes_an_app_icon_name_to_content_media() {
+    let image = NotificationImage::from_hints("Signal", "signal-desktop", &HashMap::new());
+
+    assert!(!image.has_image_data);
+    assert!(image.image_path.is_empty());
+    assert_eq!(image.icon_name, "signal-desktop");
 }
 
 #[test]

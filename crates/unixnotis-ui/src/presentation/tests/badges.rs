@@ -10,7 +10,13 @@ fn uncertain_identity_badges_load_from_controlled_resources() {
     ] {
         let image = build_semantic_badge(badge, 20).expect("semantic badge should exist");
 
-        assert!(image.paintable().is_some(), "bundled badge should load");
+        let icon_name = image.icon_name().expect("named badge icon");
+        assert!(icon_name.starts_with("unixnotis-"));
+        let display = gtk::gdk::Display::default().expect("GTK display");
+        assert!(
+            gtk::IconTheme::for_display(&display).has_icon(&icon_name),
+            "badge should resolve through the named symbolic icon theme"
+        );
         assert_eq!(image.pixel_size(), 20);
     }
 }
