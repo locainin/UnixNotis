@@ -5,7 +5,10 @@ use std::os::unix::fs::symlink;
 
 use unixnotis_core::{ThemeManifest, DEFAULT_BASE_CSS, THEME_API_VERSION};
 
-use super::super::export::{default_export_directory_for_config, export_stock_theme};
+use super::super::export::{
+    default_export_directory_for_config, export_parent, export_stock_theme,
+    export_stock_theme_files,
+};
 
 fn test_root(name: &str) -> std::path::PathBuf {
     let serial = std::time::SystemTime::now()
@@ -82,6 +85,64 @@ fn stock_export_rejects_a_symlinked_destination_parent() {
     assert!(
         !outside.join("stock").exists(),
         "symlink rejection must not create files outside the selected tree"
+    );
+    fs::remove_dir_all(root).expect("test root should be removable");
+}
+
+#[test]
+fn failed_stock_export_removes_staging_without_publishing_a_partial_directory() {
+    let root = test_root("theme-export-partial-failure");
+    fs::create_dir_all(&root).expect("test root should be created");
+    let destination = root.join("stock");
+
+    export_stock_theme_files(
+        &destination,
+        &[("base.css", "first"), ("base.css", "collision")],
+    )
+    .expect_err("a staged file collision should abort publication");
+
+    assert!(
+        !destination.exists(),
+        "a failed export must not publish an incomplete destination"
+    );
+    assert_eq!(
+        fs::read_dir(&root)
+            .expect("test root should remain readable")
+            .count(),
+        0,
+        "failed export staging should be removed"
+    );
+    fs::remove_dir_all(root).expect("test root should be removable");
+}
+
+#[test]
+fn stock_export_stages_beside_the_selected_destination() {
+    let destination = std::path::Path::new("example-parent/stock");
+
+    assert_eq!(
+        export_parent(destination),
+        std::path::Path::new("example-parent")
+    );
+    assert_eq!(
+        export_parent(std::path::Path::new("stock")),
+        std::path::Path::new(".")
+    );
+}
+
+#[test]
+fn stock_export_reports_destination_inspection_failure_before_staging() {
+    let root = test_root("theme-export-invalid-parent");
+    fs::create_dir_all(&root).expect("test root should be created");
+    let parent_file = root.join("not-a-directory");
+    fs::write(&parent_file, "content").expect("parent fixture should be written");
+    let destination = parent_file.join("stock");
+
+    let error = export_stock_theme(&destination)
+        .expect_err("an unreadable destination path should fail before staging");
+
+    assert!(
+        format!("{error:#}").contains("inspect stock theme export destination"),
+        "destination inspection errors should retain their precise context"
     );
     fs::remove_dir_all(root).expect("test root should be removable");
 }
