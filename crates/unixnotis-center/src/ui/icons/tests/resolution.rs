@@ -88,6 +88,7 @@ fn file_icon_resolution_enqueues_decodes_and_applies_the_worker_result() {
             image_path: path.to_string_lossy().into_owned(),
             ..NotificationImage::default()
         },
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     };
 
     let resolution = resolver

@@ -251,6 +251,23 @@ fn insert_entry_records_recent_local_timestamp() {
     assert!(entry.received_at_ms <= after);
 }
 
+#[gtk::test]
+fn insert_entry_preserves_original_notification_timestamp_for_history_chronology() {
+    let mut list = support::make_list();
+    let mut notification = support::notification(9, "Terminal");
+    notification.received_at_unix_seconds = 1_700_000_123;
+
+    list.insert_entry(notification, false);
+
+    assert_eq!(
+        list.entries
+            .get(&9)
+            .expect("history entry should be stored")
+            .received_at_ms,
+        1_700_000_123_000
+    );
+}
+
 #[test]
 fn now_millis_tracks_current_unix_time() {
     let system_ms = SystemTime::now()

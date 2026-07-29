@@ -78,6 +78,8 @@ fn build_group_block_collapses_group_to_header_and_top_notification() {
     assert!(visible.stacked);
     assert_eq!(visible.stack_depth, 0);
     assert!(!visible.expanded);
+    assert!(visible.group_first);
+    assert!(visible.group_last);
 }
 
 #[gtk::test]
@@ -93,6 +95,8 @@ fn build_group_block_keeps_single_collapsed_notification_unstacked() {
     let visible = items[0].data();
     assert!(!visible.stacked);
     assert_eq!(visible.stack_depth, 0);
+    assert!(!visible.group_first);
+    assert!(!visible.group_last);
 }
 
 #[gtk::test]
@@ -129,6 +133,15 @@ fn build_group_block_expands_group_to_all_notifications() {
         assert_eq!(data.stack_depth, 0);
         assert!(data.expanded);
     }
+    let first = items[1].data();
+    let middle = items[2].data();
+    let last = items[3].data();
+    assert!(first.group_first);
+    assert!(!first.group_last);
+    assert!(!middle.group_first);
+    assert!(!middle.group_last);
+    assert!(!last.group_first);
+    assert!(last.group_last);
 }
 
 #[gtk::test]

@@ -34,6 +34,7 @@ pub(super) fn sample_notification() -> NotificationView {
         is_transient: false,
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     }
 }
 
@@ -41,6 +42,17 @@ pub(super) fn notification_row() -> (gtk::Box, NotificationRowWidgets) {
     support::init_gtk();
     let (command_tx, _rx) = tokio::sync::mpsc::channel(4);
     build_notification_row(command_tx)
+}
+
+pub(super) fn notification_row_with_receiver() -> (
+    gtk::Box,
+    NotificationRowWidgets,
+    tokio::sync::mpsc::Receiver<crate::control::UiCommand>,
+) {
+    support::init_gtk();
+    let (command_tx, command_rx) = tokio::sync::mpsc::channel(4);
+    let (root, row) = build_notification_row(command_tx);
+    (root, row, command_rx)
 }
 
 #[derive(Default)]
