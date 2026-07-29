@@ -283,7 +283,7 @@ impl DesktopIdentityIndex {
         }
         // Only records with a reproducible launch contract become executable evidence
         if record.association_eligible {
-            if let Some(identity) = record.executable_identity {
+            if let Some(identity) = record.runtime_executable_identity {
                 self.by_identity
                     .entry((identity.device, identity.inode))
                     .or_default()
@@ -292,6 +292,21 @@ impl DesktopIdentityIndex {
         }
         self.records.push(record);
         self.index_application_family(record_index);
+    }
+
+    pub(super) fn rebuild_executable_index(&mut self) {
+        self.by_identity.clear();
+        for (record_index, record) in self.records.iter().enumerate() {
+            if !record.association_eligible {
+                continue;
+            }
+            if let Some(identity) = record.runtime_executable_identity {
+                self.by_identity
+                    .entry((identity.device, identity.inode))
+                    .or_default()
+                    .push(record_index);
+            }
+        }
     }
 
     pub(super) fn rebuild_application_families(&mut self) {
@@ -307,7 +322,7 @@ impl DesktopIdentityIndex {
             self.family_by_record.push(None);
             return;
         };
-        let Some(executable_identity) = record.executable_identity else {
+        let Some(executable_identity) = record.runtime_executable_identity else {
             self.family_by_record.push(None);
             return;
         };
@@ -318,7 +333,7 @@ impl DesktopIdentityIndex {
                 && family.system_association == record.system_association
                 && family
                     .install_provenance
-                    .same_application_source(&record.executable_provenance)
+                    .same_application_source(&record.runtime_executable_provenance)
                 && family.protected_payloads == protected_payloads
                 && family_names_are_compatible(family, record)
         });
@@ -342,7 +357,7 @@ impl DesktopIdentityIndex {
             names: record.names.clone(),
             system_origin: record.system_origin,
             system_association: record.system_association,
-            install_provenance: record.executable_provenance.clone(),
+            install_provenance: record.runtime_executable_provenance.clone(),
             protected_payloads,
         });
         self.family_by_record.push(Some(family_index));
@@ -407,3 +422,7 @@ fn trusted_system_executable_path(path: &Path) -> bool {
 
     path.is_absolute() && ROOTS.iter().any(|root| path.starts_with(root))
 }
+
+#[cfg(test)]
+#[path = "tests/index.rs"]
+mod tests;

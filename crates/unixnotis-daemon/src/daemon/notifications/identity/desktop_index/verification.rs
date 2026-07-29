@@ -5,6 +5,7 @@ use std::path::Path;
 
 use super::super::executable::{executable_evidence_for_path, FileIdentity};
 use super::super::sender::{CommandLineEvidence, CommandLineQuality};
+use super::launcher::launcher_binding_is_current;
 use super::model::{
     DesktopIdentityIndex, DesktopRecord, FieldCode, LaunchArgument, LaunchAuthority, LaunchFailure,
     LaunchSpec, LaunchVerification, LiteralArgument, VerifiedLaunch,
@@ -18,14 +19,37 @@ pub(super) fn verify_record_launch(
     sender_identity: FileIdentity,
     command_line: &CommandLineEvidence,
 ) -> LaunchVerification {
+    verify_record_launch_with(
+        record,
+        index,
+        sender_identity,
+        command_line,
+        launcher_binding_is_current,
+    )
+}
+
+fn verify_record_launch_with(
+    record: &DesktopRecord,
+    index: &DesktopIdentityIndex,
+    sender_identity: FileIdentity,
+    command_line: &CommandLineEvidence,
+    binding_is_current: impl FnOnce(&super::model::PackageLauncherBinding) -> bool,
+) -> LaunchVerification {
     let Some(spec) = record.launch_spec.as_ref() else {
         return LaunchVerification::InsufficientEvidence(LaunchFailure::UnsupportedWrapper);
     };
     if spec.wrappers.len() > 16 || spec.environment.len() > 128 {
         return LaunchVerification::InsufficientEvidence(LaunchFailure::UnsupportedWrapper);
     }
-    if !spec.executable.same_file(sender_identity) {
+    if !spec.runtime_executable.same_file(sender_identity) {
         return LaunchVerification::DefinitiveMismatch(LaunchFailure::ExecutableMismatch);
+    }
+    if spec
+        .package_launcher
+        .as_ref()
+        .is_some_and(|binding| !binding_is_current(binding))
+    {
+        return LaunchVerification::InsufficientEvidence(LaunchFailure::LauncherBindingChanged);
     }
     if !literal_file_identities_are_current(spec) {
         return LaunchVerification::InsufficientEvidence(LaunchFailure::ProtectedPayloadMismatch);
@@ -71,17 +95,35 @@ fn executable_contract_is_dedicated(
 ) -> bool {
     record.system_origin
         && record.system_association
-        && spec.executable.is_system_managed()
-        && spec.executable.is_executable_regular()
+        && spec.declared_executable.is_system_managed()
+        && spec.declared_executable.is_executable_regular()
+        && spec.runtime_executable.is_system_managed()
+        && spec.runtime_executable.is_executable_regular()
         && record
             .desktop_provenance
-            .same_application_source(&record.executable_provenance)
-        && index.records_form_one_application_family(spec.executable, record.system_origin)
+            .same_application_source(&record.declared_executable_provenance)
+        && record
+            .desktop_provenance
+            .same_application_source(&record.runtime_executable_provenance)
+        && index.records_form_one_application_family(spec.runtime_executable, record.system_origin)
         && !spec.arguments.iter().any(is_unprotected_fixed_payload)
 }
 
 fn verify_dedicated(command_line: &CommandLineEvidence, spec: &LaunchSpec) -> LaunchVerification {
+    let verified_launch = if spec.package_launcher.is_some() {
+        VerifiedLaunch::PackageLauncherTarget
+    } else {
+        VerifiedLaunch::DedicatedExecutable
+    };
     match command_line.quality {
+        // Launcher targets require the original desktop contract to match observed runtime argv
+        CommandLineQuality::RewrittenProcessTitle
+        | CommandLineQuality::Truncated
+        | CommandLineQuality::Unavailable
+            if spec.package_launcher.is_some() =>
+        {
+            LaunchVerification::InsufficientEvidence(LaunchFailure::MissingCommandLine)
+        }
         // An empty contract cannot distinguish an ordinary switch from an active payload
         CommandLineQuality::RewrittenProcessTitle
         | CommandLineQuality::Truncated
@@ -93,15 +135,13 @@ fn verify_dedicated(command_line: &CommandLineEvidence, spec: &LaunchSpec) -> La
         // A nonempty package-backed contract still contributes identity when argv was rewritten
         CommandLineQuality::RewrittenProcessTitle
         | CommandLineQuality::Truncated
-        | CommandLineQuality::Unavailable => {
-            LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable)
-        }
+        | CommandLineQuality::Unavailable => LaunchVerification::Verified(verified_launch),
         CommandLineQuality::Structured => {
             let actual = command_line.argv.get(1..).unwrap_or_default();
             if actual.len() <= MAX_PROCESS_ARGUMENTS
                 && match_ordered_dedicated_contract(spec, actual)
             {
-                LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable)
+                LaunchVerification::Verified(verified_launch)
             } else {
                 LaunchVerification::InsufficientEvidence(LaunchFailure::RequiredArgumentMismatch)
             }

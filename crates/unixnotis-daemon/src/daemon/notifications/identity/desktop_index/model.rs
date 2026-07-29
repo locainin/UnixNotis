@@ -10,11 +10,25 @@ use super::provenance::{InstallProvenance, PackageOwnershipCache};
 
 #[derive(Debug, Clone)]
 pub(in crate::daemon::notifications::identity) struct LaunchSpec {
-    pub(in crate::daemon::notifications::identity) executable: FileIdentity,
+    /// Program named directly by the desktop entry after wrapper normalization
+    pub(in crate::daemon::notifications::identity) declared_executable: FileIdentity,
+    /// Program expected to remain after a validated package launcher exits through `exec`
+    pub(in crate::daemon::notifications::identity) runtime_executable: FileIdentity,
     pub(in crate::daemon::notifications::identity) arguments: Vec<LaunchArgument>,
     pub(in crate::daemon::notifications::identity) environment: Vec<(Vec<u8>, Vec<u8>)>,
     pub(in crate::daemon::notifications::identity) wrappers: Vec<LaunchWrapper>,
+    pub(in crate::daemon::notifications::identity) package_launcher: Option<PackageLauncherBinding>,
     pub(in crate::daemon::notifications::identity) literal_files_are_system_managed: bool,
+}
+
+/// Immutable relationship between a protected launcher and its literal runtime target
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::daemon::notifications::identity) struct PackageLauncherBinding {
+    pub(in crate::daemon::notifications::identity) launcher_path: PathBuf,
+    pub(in crate::daemon::notifications::identity) launcher_identity: FileIdentity,
+    pub(in crate::daemon::notifications::identity) launcher_digest: [u8; 32],
+    pub(in crate::daemon::notifications::identity) target_path: PathBuf,
+    pub(in crate::daemon::notifications::identity) target_identity: FileIdentity,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +71,7 @@ pub(in crate::daemon::notifications::identity) enum LaunchAuthority {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(in crate::daemon::notifications::identity) enum VerifiedLaunch {
     DedicatedExecutable,
+    PackageLauncherTarget,
     ProtectedPayload,
 }
 
@@ -68,6 +83,7 @@ pub(in crate::daemon::notifications::identity) enum LaunchFailure {
     UnstructuredCommandLine,
     EmptyContractNeedsCommandLine,
     UnsupportedWrapper,
+    LauncherBindingChanged,
     AmbiguousDesktopAssociation,
     DynamicOnlyContract,
     ExecutableMismatch,
@@ -91,11 +107,17 @@ pub(in crate::daemon::notifications::identity) struct DesktopRecord {
     pub(in crate::daemon::notifications::identity) display_name: String,
     pub(in crate::daemon::notifications::identity) badge_icon: String,
     pub(in crate::daemon::notifications::identity) desktop_path: Option<PathBuf>,
-    pub(in crate::daemon::notifications::identity) executable_path: Option<PathBuf>,
-    pub(in crate::daemon::notifications::identity) executable_identity: Option<FileIdentity>,
+    pub(in crate::daemon::notifications::identity) declared_executable_path: Option<PathBuf>,
+    pub(in crate::daemon::notifications::identity) declared_executable_identity:
+        Option<FileIdentity>,
+    pub(in crate::daemon::notifications::identity) runtime_executable_path: Option<PathBuf>,
+    pub(in crate::daemon::notifications::identity) runtime_executable_identity:
+        Option<FileIdentity>,
     pub(in crate::daemon::notifications::identity) desktop_identity: Option<FileIdentity>,
     pub(in crate::daemon::notifications::identity) desktop_provenance: InstallProvenance,
-    pub(in crate::daemon::notifications::identity) executable_provenance: InstallProvenance,
+    pub(in crate::daemon::notifications::identity) declared_executable_provenance:
+        InstallProvenance,
+    pub(in crate::daemon::notifications::identity) runtime_executable_provenance: InstallProvenance,
     pub(in crate::daemon::notifications::identity) system_origin: bool,
     pub(in crate::daemon::notifications::identity) system_association: bool,
     pub(in crate::daemon::notifications::identity) association_eligible: bool,
