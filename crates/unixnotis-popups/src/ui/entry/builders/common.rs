@@ -11,35 +11,37 @@ use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation, Re
 use crate::dbus::UiCommand;
 use crate::ui::UiState;
 
-pub(super) struct IdentityHeader {
+pub(super) struct IdentityAvatar {
     pub(super) widget: gtk::Box,
-    pub(super) has_icon: bool,
 }
 
-pub(super) fn build_identity_header(
+pub(super) fn build_identity_avatar(
     state: &mut UiState,
     notification: &NotificationView,
     view: &PopupEntryViewModel,
-    close: &gtk::Button,
-    app_icon_size: Option<i32>,
-) -> IdentityHeader {
+    size: i32,
+) -> Option<IdentityAvatar> {
+    let icon_size = (size - 14).max(18);
+    let icon = build_semantic_badge(view.badge, icon_size)
+        .or_else(|| state.build_app_icon_widget(notification, icon_size))?;
+    icon.set_valign(Align::Center);
+    icon.set_halign(Align::Center);
+    icon.add_css_class("unixnotis-popup-icon");
+
+    let avatar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    avatar.set_size_request(size, size);
+    avatar.set_halign(Align::Start);
+    avatar.set_valign(Align::Start);
+    avatar.add_css_class("unixnotis-identity-avatar");
+    avatar.add_css_class(view.trust.level.css_class());
+    avatar.append(&icon);
+    Some(IdentityAvatar { widget: avatar })
+}
+
+pub(super) fn build_identity_header(view: &PopupEntryViewModel) -> gtk::Box {
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     header.add_css_class("unixnotis-popup-header-row");
-
-    let mut has_icon = false;
-    if let Some(size) = app_icon_size {
-        let icon = build_semantic_badge(view.badge, size)
-            .or_else(|| state.build_app_icon_widget(notification, size));
-        if let Some(icon) = icon {
-            // Only daemon-associated badge inputs reach the quiet identity header
-            icon.set_valign(Align::Center);
-            icon.set_halign(Align::Start);
-            icon.add_css_class("unixnotis-popup-icon");
-            icon.add_css_class("unixnotis-popup-app-icon");
-            header.append(&icon);
-            has_icon = true;
-        }
-    }
+    header.set_margin_end(30);
 
     let app = gtk::Label::new(Some(&view.app_label));
     app.set_xalign(0.0);
@@ -63,12 +65,7 @@ pub(super) fn build_identity_header(
     time.set_single_line_mode(true);
     time.add_css_class("unixnotis-popup-time");
     header.append(&time);
-    header.append(close);
-
-    IdentityHeader {
-        widget: header,
-        has_icon,
-    }
+    header
 }
 
 pub(super) fn build_title_label(view: &PopupEntryViewModel) -> Option<gtk::Label> {
@@ -129,7 +126,7 @@ pub(in crate::ui::entry) fn build_close_button() -> gtk::Button {
 
 pub(in crate::ui::entry) fn build_action_row(
     command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
-    notification_id: u32,
+    notification: unixnotis_core::NotificationKey,
     view: &PopupEntryViewModel,
 ) -> Option<gtk::Box> {
     if view.primary_actions.is_empty() && view.overflow_actions.is_empty() {
@@ -139,22 +136,17 @@ pub(in crate::ui::entry) fn build_action_row(
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     actions.add_css_class("unixnotis-popup-actions");
     for action in &view.primary_actions {
-        actions.append(&build_action_button(
-            command_tx,
-            notification_id,
-            action,
-            None,
-        ));
+        actions.append(&build_action_button(command_tx, notification, action, None));
     }
     if !view.overflow_actions.is_empty() {
-        actions.append(&build_overflow_menu(command_tx, notification_id, view));
+        actions.append(&build_overflow_menu(command_tx, notification, view));
     }
     Some(actions)
 }
 
 fn build_action_button(
     command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
-    notification_id: u32,
+    notification: unixnotis_core::NotificationKey,
     action: &super::super::presentation::ActionViewModel,
     popover: Option<&gtk::Popover>,
 ) -> gtk::Button {
@@ -171,7 +163,7 @@ fn build_action_button(
         try_send_command(
             &tx,
             UiCommand::InvokeAction {
-                id: notification_id,
+                notification,
                 action_key: action_key.clone(),
             },
         );
@@ -181,7 +173,7 @@ fn build_action_button(
 
 fn build_overflow_menu(
     command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
-    notification_id: u32,
+    notification: unixnotis_core::NotificationKey,
     view: &PopupEntryViewModel,
 ) -> gtk::MenuButton {
     let menu = gtk::MenuButton::new();
@@ -195,7 +187,7 @@ fn build_overflow_menu(
     for action in &view.overflow_actions {
         list.append(&build_action_button(
             command_tx,
-            notification_id,
+            notification,
             action,
             Some(&popover),
         ));

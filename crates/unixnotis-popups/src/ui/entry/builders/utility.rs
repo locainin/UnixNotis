@@ -1,44 +1,37 @@
 //! Compact utility popup for device, transfer, clipboard, and generic events
 
 use gtk::prelude::*;
-use gtk::Align;
 use unixnotis_core::NotificationView;
-use unixnotis_ui::presentation::build_semantic_badge;
 
-use super::common::{build_body_label, build_identity_header, build_title_label};
+use super::common::{
+    build_body_label, build_identity_avatar, build_identity_header, build_secondary_claim,
+    build_title_label,
+};
 use super::{append_thumbnail, RenderedPopup};
 use crate::ui::entry::presentation::PopupEntryViewModel;
 use crate::ui::UiState;
 
-const UTILITY_ICON_SIZE: i32 = 24;
+const UTILITY_AVATAR_SIZE: i32 = 36;
 
 pub(super) fn build_utility_popup(
     state: &mut UiState,
     notification: &NotificationView,
     view: &PopupEntryViewModel,
-    close: &gtk::Button,
 ) -> RenderedPopup {
-    let main = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let main = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     main.add_css_class("unixnotis-popup-utility-content");
 
-    let icon = build_semantic_badge(view.badge, UTILITY_ICON_SIZE)
-        .or_else(|| state.build_app_icon_widget(notification, UTILITY_ICON_SIZE));
-    let has_icon = if let Some(icon) = icon {
-        // Utility symbols support scanning without becoming the card's dominant object
-        icon.set_halign(Align::Start);
-        icon.set_valign(Align::Start);
-        icon.add_css_class("unixnotis-popup-icon");
-        icon.add_css_class("unixnotis-popup-utility-icon");
-        main.append(&icon);
-        true
-    } else {
-        false
-    };
+    let avatar = build_identity_avatar(state, notification, view, UTILITY_AVATAR_SIZE);
+    if let Some(avatar) = avatar.as_ref() {
+        main.append(&avatar.widget);
+    }
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
     content.set_hexpand(true);
-    let header = build_identity_header(state, notification, view, close, None);
-    content.append(&header.widget);
+    content.append(&build_identity_header(view));
+    if let Some(claim) = build_secondary_claim(view) {
+        content.append(&claim);
+    }
     if let Some(title) = build_title_label(view) {
         content.append(&title);
     }
@@ -50,7 +43,7 @@ pub(super) fn build_utility_popup(
 
     RenderedPopup {
         widget: main,
-        has_icon,
+        has_icon: avatar.is_some(),
         has_image,
     }
 }

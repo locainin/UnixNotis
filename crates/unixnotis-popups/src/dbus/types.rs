@@ -25,9 +25,9 @@ pub enum UiEvent {
 
 /// Commands sent from GTK handlers to the D-Bus runtime
 pub enum UiCommand {
-    Dismiss(u32),
+    Dismiss(NotificationKey),
     InvokeAction {
-        id: u32,
+        notification: NotificationKey,
         action_key: String,
     },
     Reply {
@@ -36,6 +36,7 @@ pub enum UiCommand {
         text: String,
         outcome: tokio::sync::oneshot::Sender<Result<(), String>>,
     },
+    Rendered(NotificationKey),
     // A synchronous acknowledgement lets GTK wait for MarkPopupsNotReady before process exit
     Shutdown(std::sync::mpsc::SyncSender<()>),
 }
@@ -43,10 +44,16 @@ pub enum UiCommand {
 impl std::fmt::Debug for UiCommand {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Dismiss(id) => formatter.debug_tuple("Dismiss").field(id).finish(),
-            Self::InvokeAction { id, action_key } => formatter
+            Self::Dismiss(notification) => formatter
+                .debug_tuple("Dismiss")
+                .field(notification)
+                .finish(),
+            Self::InvokeAction {
+                notification,
+                action_key,
+            } => formatter
                 .debug_struct("InvokeAction")
-                .field("id", id)
+                .field("notification", notification)
                 .field("action_key", action_key)
                 .finish(),
             Self::Reply { id, generation, .. } => formatter
@@ -56,6 +63,10 @@ impl std::fmt::Debug for UiCommand {
                 // Reply text is private message content and must never enter debug logs
                 .field("text", &"<redacted>")
                 .finish_non_exhaustive(),
+            Self::Rendered(notification) => formatter
+                .debug_tuple("Rendered")
+                .field(notification)
+                .finish(),
             Self::Shutdown(_) => formatter.write_str("Shutdown(..)"),
         }
     }

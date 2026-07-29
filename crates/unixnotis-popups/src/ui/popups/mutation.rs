@@ -5,9 +5,10 @@ use tracing::debug;
 use unixnotis_core::{NotificationKey, NotificationView};
 use unixnotis_ui::CutCorner;
 
-use super::super::entry::PopupEntry;
+use super::super::entry::{try_send_command, PopupEntry};
 use super::super::window::refresh_popup_input_region;
 use super::super::UiState;
+use crate::dbus::UiCommand;
 
 pub(super) struct ReconcilePlan {
     // Local rows missing from the daemon snapshot
@@ -197,6 +198,7 @@ impl UiState {
         if let Some(entry) = self.popups.get_mut(&id) {
             entry.root = Some(new_root);
         }
+        try_send_command(&self.command_tx, UiCommand::Rendered(notification.key()));
         rebuilt_visible_row
     }
 
@@ -213,6 +215,7 @@ impl UiState {
         // Swap in the fresh GTK nodes while keeping the cached payload untouched
         entry.revealer = built.revealer;
         entry.root = built.root;
+        try_send_command(&self.command_tx, UiCommand::Rendered(notification.key()));
     }
 
     pub(super) fn dematerialize_popup(&mut self, id: u32) {

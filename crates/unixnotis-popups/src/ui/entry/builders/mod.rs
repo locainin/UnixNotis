@@ -26,15 +26,14 @@ pub(super) fn build_popup_content(
     state: &mut UiState,
     notification: &NotificationView,
     view: &PopupEntryViewModel,
-    close: &gtk::Button,
 ) -> RenderedPopup {
     // Each layout owns its structure so future changes do not grow one conditional builder
     match view.kind {
         PopupKind::Communication => {
-            communication::build_communication_popup(state, notification, view, close)
+            communication::build_communication_popup(state, notification, view)
         }
-        PopupKind::Utility => utility::build_utility_popup(state, notification, view, close),
-        PopupKind::Warning => warning::build_warning_popup(state, notification, view, close),
+        PopupKind::Utility => utility::build_utility_popup(state, notification, view),
+        PopupKind::Warning => warning::build_warning_popup(state, notification, view),
     }
 }
 

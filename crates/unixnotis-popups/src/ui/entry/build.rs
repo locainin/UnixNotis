@@ -59,23 +59,35 @@ impl UiState {
         let view = PopupEntryViewModel::for_notification(notification);
         let root = build_card_root(self, &view);
         let close = build_close_button();
-        let rendered = build_popup_content(self, notification, &view, &close);
+        let rendered = build_popup_content(self, notification, &view);
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        content.set_hexpand(true);
 
         // Builder results feed stable state classes used by user themes
         set_class_state(&root, hooks::popup_card::HAS_ICON, rendered.has_icon);
         set_class_state(&root, hooks::popup_card::NO_ICON, !rendered.has_icon);
         set_class_state(&root, hooks::popup_card::HAS_IMAGE, rendered.has_image);
-        root.append(&rendered.widget);
+        content.append(&rendered.widget);
 
         if let Some(reply) = build_inline_reply(notification, &view, &self.command_tx) {
-            root.append(&reply);
+            content.append(&reply);
         }
-        if let Some(actions) = build_action_row(&self.command_tx, notification.id, &view) {
-            root.append(&actions);
+        if let Some(actions) = build_action_row(&self.command_tx, notification.key(), &view) {
+            content.append(&actions);
         }
 
-        connect_close_action(&close, notification.id, &self.command_tx);
-        connect_default_action(&root, notification.id, &view, &self.command_tx);
+        // The close control floats above content and never consumes metadata width
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&content));
+        close.set_halign(gtk::Align::End);
+        close.set_valign(gtk::Align::Start);
+        close.set_margin_top(2);
+        close.set_margin_end(2);
+        overlay.add_overlay(&close);
+        root.append(&overlay);
+
+        connect_close_action(&close, notification.key(), &self.command_tx);
+        connect_default_action(&root, notification.key(), &view, &self.command_tx);
         root
     }
 
@@ -154,19 +166,19 @@ fn build_card_root(state: &UiState, view: &PopupEntryViewModel) -> gtk::Box {
 
 fn connect_close_action(
     close: &gtk::Button,
-    notification_id: u32,
+    notification: unixnotis_core::NotificationKey,
     command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
 ) {
     let command_tx = command_tx.clone();
     close.connect_clicked(move |_| {
         // Dismissal remains independent from application-owned action policy
-        try_send_command(&command_tx, UiCommand::Dismiss(notification_id));
+        try_send_command(&command_tx, UiCommand::Dismiss(notification));
     });
 }
 
 fn connect_default_action(
     root: &gtk::Box,
-    notification_id: u32,
+    notification: unixnotis_core::NotificationKey,
     view: &PopupEntryViewModel,
     command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
 ) {
@@ -196,7 +208,7 @@ fn connect_default_action(
         try_send_command(
             &tx,
             UiCommand::InvokeAction {
-                id: notification_id,
+                notification,
                 action_key: action_key.clone(),
             },
         );
