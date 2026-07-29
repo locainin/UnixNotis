@@ -1,5 +1,6 @@
 //! Popup row construction and bounded label handling
 
+mod activation;
 mod build;
 mod builders;
 mod commands;

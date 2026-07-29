@@ -190,6 +190,8 @@ fn identity_avatar_scales_the_symbolic_glyph_inside_its_fixed_slot() {
     assert_eq!(avatar.widget.width_request(), 36);
     assert_eq!(avatar.widget.height_request(), 36);
     assert_eq!(icon.pixel_size(), 22);
+    assert!(icon.hexpands());
+    assert!(icon.vexpands());
 }
 
 fn view_model() -> PopupEntryViewModel {

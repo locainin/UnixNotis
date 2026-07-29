@@ -10,6 +10,7 @@ use super::lifecycle::{
     bounded_reply_text, cancel_reply, submit_reply, ReplySubmission, MAX_REPLY_CHARS,
 };
 use crate::dbus::UiCommand;
+use crate::ui::entry::activation::mark_interactive;
 use crate::ui::entry::presentation::{PopupEntryViewModel, PopupKind, ReplyPresentation};
 
 pub(in crate::ui::entry) fn build_inline_reply(
@@ -23,6 +24,7 @@ pub(in crate::ui::entry) fn build_inline_reply(
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 4);
     root.add_css_class("unixnotis-popup-inline-reply");
+    mark_interactive(&root);
     let reveal = gtk::Button::with_label(reply_label(notification));
     reveal.add_css_class("unixnotis-popup-action");
     root.append(&reveal);

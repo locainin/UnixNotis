@@ -153,7 +153,7 @@ fn popup_widget_tree_keeps_one_identity_grid_and_overlay_close_control() {
 
     assert!(grid.has_css_class("unixnotis-popup-content-grid"));
     assert_eq!(grid.column_spacing(), 10);
-    assert_eq!(grid.row_spacing(), 2);
+    assert_eq!(grid.row_spacing(), 4);
     assert_eq!(
         grid.property::<gtk::AccessibleRole>("accessible-role"),
         gtk::AccessibleRole::Group

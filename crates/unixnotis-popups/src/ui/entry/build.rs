@@ -7,6 +7,7 @@ use unixnotis_ui::CutCorner;
 
 use super::super::window::refresh_popup_input_region;
 use super::super::UiState;
+use super::activation::connect_default_action;
 use super::builders::{
     build_action_row, build_close_button, build_inline_reply, build_popup_content,
 };
@@ -192,55 +193,6 @@ fn connect_close_action(
         // Dismissal remains independent from application-owned action policy
         try_send_command(&command_tx, UiCommand::Dismiss(notification));
     });
-}
-
-fn connect_default_action(
-    root: &gtk::Box,
-    notification: unixnotis_core::NotificationKey,
-    view: &PopupEntryViewModel,
-    command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
-) {
-    let Some(action_key) = view.default_action_key.clone() else {
-        return;
-    };
-
-    let gesture = gtk::GestureClick::new();
-    // Default card actions only belong to plain card clicks
-    gesture.set_button(1);
-    let root_weak = root.downgrade();
-    let tx = command_tx.clone();
-    gesture.connect_released(move |_, _, x, y| {
-        let Some(root) = root_weak.upgrade() else {
-            return;
-        };
-        if picked_widget_blocks_default_action(root.pick(x, y, gtk::PickFlags::DEFAULT)) {
-            return;
-        }
-        // The presentation model already removed actions with weak provenance
-        try_send_command(
-            &tx,
-            UiCommand::InvokeAction {
-                notification,
-                action_key: action_key.clone(),
-            },
-        );
-    });
-    root.add_controller(gesture);
-}
-
-fn picked_widget_blocks_default_action(mut widget: Option<gtk::Widget>) -> bool {
-    while let Some(current) = widget {
-        if widget_type_blocks_default_action(current.type_()) {
-            return true;
-        }
-        widget = current.parent();
-    }
-    false
-}
-
-fn widget_type_blocks_default_action(widget_type: gtk::glib::Type) -> bool {
-    // Button clicks should always stay owned by the button widget subtree
-    widget_type.is_a(gtk::Button::static_type())
 }
 
 fn set_class_state(root: &gtk::Box, class_name: &str, enabled: bool) {
