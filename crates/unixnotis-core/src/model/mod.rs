@@ -10,7 +10,8 @@ mod types;
 
 // Re-export the public surface so callers continue to import from unixnotis_core::model.
 pub use attribution::{
-    ApplicationActionPolicy, AttributionClass, InlineReplyPolicy, NotificationAttribution,
+    ApplicationActionPolicy, AttributionReason, AttributionStatus, InlineReplyPolicy,
+    NotificationAttribution,
 };
 pub use diagnostics::{
     AttributionDiagnostics, CommandLineQualityView, LaunchAuthorityView, LaunchVerificationView,
