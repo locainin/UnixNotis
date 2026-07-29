@@ -10,6 +10,7 @@ fn root_help_lists_the_supported_command_groups() {
     assert!(help.contains("css-check"));
     assert!(help.contains("doctor"));
     assert!(help.contains("preset"));
+    assert!(help.contains("theme"));
 }
 
 #[test]
@@ -26,6 +27,10 @@ fn command_help_lists_output_debug_and_preset_controls() {
         (
             vec!["noticenterctl", "preset", "--help"],
             vec!["export", "import", "inspect"],
+        ),
+        (
+            vec!["noticenterctl", "theme", "--help"],
+            vec!["export-stock"],
         ),
     ] {
         let error = Args::try_parse_from(arguments).expect_err("help should stop parsing");
