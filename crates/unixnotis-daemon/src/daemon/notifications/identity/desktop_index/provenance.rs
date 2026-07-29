@@ -6,8 +6,9 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
-use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use rustix::process::{kill_process_group, Pid, Signal};
 
@@ -20,6 +21,12 @@ const MAX_COMMAND_PATHS: usize = 4_096;
 const MAX_OWNERSHIP_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
 const MAX_PACKAGE_ID_BYTES: usize = 256;
 const PACKAGE_QUERY_TIMEOUT: Duration = Duration::from_secs(1);
+const PACKAGE_PIPE_DRAIN_TIMEOUT: Duration = Duration::from_millis(50);
+const TRANSIENT_NEGATIVE_TTL: Duration = Duration::from_secs(30);
+const NOT_OWNED_NEGATIVE_TTL: Duration = Duration::from_mins(5);
+const MAX_RPM_QUERY_PATHS: usize = 4_096;
+const MAX_RPM_QUERY_WORKERS: usize = 8;
+const RPM_TOTAL_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// System database that established package ownership
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
@@ -92,10 +99,75 @@ impl InstallProvenance {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum NegativeCause {
+    NotOwned,
+    Timeout,
+    ProviderFailure,
+    MalformedOutput,
+    ProcessTermination,
+}
+
+#[derive(Debug, Clone)]
+enum CachedProvenance {
+    Known(InstallProvenance),
+    Negative {
+        retry_after: Instant,
+        cause: NegativeCause,
+    },
+}
+
+impl CachedProvenance {
+    fn from_lookup(lookup: OwnershipLookup, now: Instant) -> Self {
+        match lookup {
+            OwnershipLookup::Known(provenance) => Self::Known(provenance),
+            OwnershipLookup::Negative(cause) => Self::Negative {
+                retry_after: now.checked_add(negative_ttl(cause)).unwrap_or(now),
+                cause,
+            },
+        }
+    }
+
+    fn needs_refresh(&self, now: Instant) -> bool {
+        let Self::Negative { retry_after, cause } = self else {
+            return false;
+        };
+        // Keeping the cause live preserves the distinction used to select retry windows
+        debug_assert!(
+            !negative_ttl(*cause).is_zero(),
+            "negative package-provenance results must remain retryable"
+        );
+        now >= *retry_after
+    }
+
+    fn provenance(&self) -> InstallProvenance {
+        match self {
+            Self::Known(provenance) => provenance.clone(),
+            Self::Negative { .. } => InstallProvenance::Unknown,
+        }
+    }
+}
+
+const fn negative_ttl(cause: NegativeCause) -> Duration {
+    match cause {
+        NegativeCause::NotOwned => NOT_OWNED_NEGATIVE_TTL,
+        NegativeCause::Timeout
+        | NegativeCause::ProviderFailure
+        | NegativeCause::MalformedOutput
+        | NegativeCause::ProcessTermination => TRANSIENT_NEGATIVE_TTL,
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum OwnershipLookup {
+    Known(InstallProvenance),
+    Negative(NegativeCause),
+}
+
 #[derive(Debug, Default)]
 pub(super) struct PackageOwnershipCache {
     provider: OnceLock<Option<PackageProviderCommand>>,
-    entries: Mutex<HashMap<PathBuf, InstallProvenance>>,
+    entries: Mutex<HashMap<PathBuf, CachedProvenance>>,
 }
 
 impl PackageOwnershipCache {
@@ -108,12 +180,17 @@ impl PackageOwnershipCache {
             .into_iter()
             .take(MAX_OWNERSHIP_PATHS)
             .collect::<HashSet<_>>();
+        let now = Instant::now();
         let missing = self.entries.lock().map_or_else(
             |_| paths.iter().cloned().collect::<Vec<_>>(),
             |entries| {
                 paths
                     .iter()
-                    .filter(|path| !entries.contains_key(*path))
+                    .filter(|path| {
+                        entries
+                            .get(*path)
+                            .is_none_or(|entry| entry.needs_refresh(now))
+                    })
                     .cloned()
                     .collect::<Vec<_>>()
             },
@@ -124,18 +201,29 @@ impl PackageOwnershipCache {
                 .provider
                 .get_or_init(detect_package_provider)
                 .as_ref()
-                .map_or_else(HashMap::new, |provider| {
-                    query_package_ownership(provider, &missing)
-                });
+                .map_or_else(
+                    || {
+                        missing
+                            .iter()
+                            .cloned()
+                            .map(|path| {
+                                (
+                                    path,
+                                    OwnershipLookup::Negative(NegativeCause::ProviderFailure),
+                                )
+                            })
+                            .collect()
+                    },
+                    |provider| query_package_ownership(provider, &missing),
+                );
+            let resolved_at = Instant::now();
             if let Ok(mut entries) = self.entries.lock() {
                 for path in missing {
-                    entries.insert(
-                        path.clone(),
-                        resolved
-                            .get(&path)
-                            .cloned()
-                            .unwrap_or(InstallProvenance::Unknown),
-                    );
+                    let lookup = resolved
+                        .get(&path)
+                        .cloned()
+                        .unwrap_or(OwnershipLookup::Negative(NegativeCause::ProviderFailure));
+                    entries.insert(path, CachedProvenance::from_lookup(lookup, resolved_at));
                 }
             }
         }
@@ -148,8 +236,7 @@ impl PackageOwnershipCache {
                     .map(|path| {
                         let provenance = entries
                             .get(&path)
-                            .cloned()
-                            .unwrap_or(InstallProvenance::Unknown);
+                            .map_or(InstallProvenance::Unknown, CachedProvenance::provenance);
                         (path, provenance)
                     })
                     .collect()
@@ -186,21 +273,12 @@ fn detect_package_provider() -> Option<PackageProviderCommand> {
 fn query_package_ownership(
     provider: &PackageProviderCommand,
     paths: &[PathBuf],
-) -> HashMap<PathBuf, InstallProvenance> {
+) -> HashMap<PathBuf, OwnershipLookup> {
     match provider.provider {
         PackageProvider::Pacman => query_in_chunks(provider, paths, &["-Qo"], parse_pacman_output),
         PackageProvider::Dpkg => query_in_chunks(provider, paths, &["--search"], parse_dpkg_output),
-        PackageProvider::Rpm => {
-            // RPM does not retain the queried path in batch output
-            // Single-path lookups remain safe while bulk indexing fails closed
-            if paths.len() == 1 {
-                query_rpm_owner(provider, &paths[0])
-                    .map(|owner| HashMap::from([(paths[0].clone(), owner)]))
-                    .unwrap_or_default()
-            } else {
-                HashMap::new()
-            }
-        }
+        // RPM output does not retain each selector, so bounded workers query paths separately
+        PackageProvider::Rpm => query_rpm_ownership(provider, paths),
     }
 }
 
@@ -209,33 +287,66 @@ fn query_in_chunks(
     paths: &[PathBuf],
     arguments: &[&str],
     parser: OwnershipOutputParser,
-) -> HashMap<PathBuf, InstallProvenance> {
+) -> HashMap<PathBuf, OwnershipLookup> {
     let mut resolved = HashMap::new();
-    let mut start = 0;
-    while start < paths.len() {
-        let mut bytes = 0_usize;
-        let mut end = start;
-        while end < paths.len() && end.saturating_sub(start) < MAX_COMMAND_PATHS {
-            let next = paths[end].as_os_str().as_bytes().len().saturating_add(1);
-            if end > start && bytes.saturating_add(next) > MAX_COMMAND_ARGUMENT_BYTES {
-                break;
-            }
-            bytes = bytes.saturating_add(next);
-            end = end.saturating_add(1);
-        }
-        let chunk = &paths[start..end];
+    let mut remaining = paths;
+    while remaining.split_first().is_some() {
+        // A one-path floor preserves progress even if a future chunk policy returns zero
+        let chunk_len = ownership_chunk_len(remaining).max(1).min(remaining.len());
+        let (chunk, next) = remaining.split_at(chunk_len);
         let mut command = Command::new(&provider.executable);
         command
             .args(arguments)
             .args(chunk)
             .env_clear()
             .env("LC_ALL", "C");
-        if let Some(output) = run_package_query(&mut command, MAX_OWNERSHIP_OUTPUT_BYTES) {
-            resolved.extend(parser(&output.stdout, chunk, provider.provider));
+        match run_package_query(&mut command, MAX_OWNERSHIP_OUTPUT_BYTES) {
+            Ok(output) => {
+                let parsed = parser(&output.stdout, chunk, provider.provider);
+                for path in chunk {
+                    let lookup = parsed.get(path).cloned().map_or_else(
+                        || {
+                            if output.status.success() && output.stdout.is_empty() {
+                                OwnershipLookup::Negative(NegativeCause::NotOwned)
+                            } else if output.status.success() {
+                                OwnershipLookup::Negative(NegativeCause::MalformedOutput)
+                            } else {
+                                OwnershipLookup::Negative(NegativeCause::ProviderFailure)
+                            }
+                        },
+                        OwnershipLookup::Known,
+                    );
+                    resolved.insert(path.clone(), lookup);
+                }
+            }
+            Err(error) => {
+                let cause = error.negative_cause();
+                resolved.extend(
+                    chunk
+                        .iter()
+                        .cloned()
+                        .map(|path| (path, OwnershipLookup::Negative(cause))),
+                );
+            }
         }
-        start = end;
+        remaining = next;
     }
     resolved
+}
+
+fn ownership_chunk_len(paths: &[PathBuf]) -> usize {
+    let mut bytes = 0_usize;
+    let mut end = 0_usize;
+    while end < paths.len() && end < MAX_COMMAND_PATHS {
+        let next = paths[end].as_os_str().as_bytes().len().saturating_add(1);
+        // The first path always advances so even an oversized selector cannot stall the scan
+        if end > 0 && bytes.saturating_add(next) > MAX_COMMAND_ARGUMENT_BYTES {
+            break;
+        }
+        bytes = bytes.saturating_add(next);
+        end = end.saturating_add(1);
+    }
+    end
 }
 
 type OwnershipOutputParser =
@@ -285,20 +396,92 @@ fn parse_dpkg_output(
         .collect()
 }
 
-fn query_rpm_owner(provider: &PackageProviderCommand, path: &Path) -> Option<InstallProvenance> {
+fn query_rpm_ownership(
+    provider: &PackageProviderCommand,
+    paths: &[PathBuf],
+) -> HashMap<PathBuf, OwnershipLookup> {
+    query_rpm_ownership_with(paths, RPM_TOTAL_QUERY_TIMEOUT, &|path, timeout| {
+        query_rpm_owner(provider, path, timeout)
+    })
+}
+
+fn query_rpm_ownership_with<Query>(
+    paths: &[PathBuf],
+    total_timeout: Duration,
+    query: &Query,
+) -> HashMap<PathBuf, OwnershipLookup>
+where
+    Query: Fn(&Path, Duration) -> OwnershipLookup + Sync,
+{
+    let bounded_len = paths.len().min(MAX_RPM_QUERY_PATHS);
+    let bounded = &paths[..bounded_len];
+    let next = AtomicUsize::new(0);
+    let results = Mutex::new(HashMap::with_capacity(bounded_len));
+    let deadline = Instant::now()
+        .checked_add(total_timeout)
+        .unwrap_or_else(Instant::now);
+    let worker_count = bounded_len.min(MAX_RPM_QUERY_WORKERS);
+
+    std::thread::scope(|scope| {
+        let mut workers = Vec::with_capacity(worker_count);
+        for worker in 0..worker_count {
+            let spawn = std::thread::Builder::new()
+                .name(format!("unixnotis-rpm-owner-{worker}"))
+                .spawn_scoped(scope, || loop {
+                    let path_index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(path) = bounded.get(path_index) else {
+                        break;
+                    };
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        break;
+                    }
+                    let lookup = query(path, remaining.min(PACKAGE_QUERY_TIMEOUT));
+                    if let Ok(mut results) = results.lock() {
+                        results.insert(path.clone(), lookup);
+                    }
+                });
+            if let Ok(worker) = spawn {
+                workers.push(worker);
+            }
+        }
+        for worker in workers {
+            let _worker_result = worker.join();
+        }
+    });
+
+    results.into_inner().unwrap_or_default()
+}
+
+fn query_rpm_owner(
+    provider: &PackageProviderCommand,
+    path: &Path,
+    timeout: Duration,
+) -> OwnershipLookup {
     let mut command = Command::new(&provider.executable);
     command
         .args(["-qf", "--queryformat", "%{NAME}\n"])
         .arg(path)
         .env_clear()
         .env("LC_ALL", "C");
-    let output = run_package_query(&mut command, MAX_PACKAGE_ID_BYTES.saturating_add(1))?;
-    if !output.status.success() || output.stdout.len() > MAX_PACKAGE_ID_BYTES.saturating_add(1) {
-        return None;
+    let output = match run_package_query_with_timeout(
+        &mut command,
+        MAX_PACKAGE_ID_BYTES.saturating_add(1),
+        timeout,
+    ) {
+        Ok(output) => output,
+        Err(error) => return OwnershipLookup::Negative(error.negative_cause()),
+    };
+    if !output.status.success() {
+        return OwnershipLookup::Negative(NegativeCause::ProviderFailure);
     }
-    package_provenance(
-        provider.provider,
-        output.stdout.strip_suffix(b"\n").unwrap_or(&output.stdout),
+    let package = output.stdout.strip_suffix(b"\n").unwrap_or(&output.stdout);
+    if package.is_empty() {
+        return OwnershipLookup::Negative(NegativeCause::NotOwned);
+    }
+    package_provenance(provider.provider, package).map_or(
+        OwnershipLookup::Negative(NegativeCause::MalformedOutput),
+        OwnershipLookup::Known,
     )
 }
 
@@ -323,7 +506,30 @@ struct PackageQueryOutput {
     stdout: Vec<u8>,
 }
 
-fn run_package_query(command: &mut Command, output_limit: usize) -> Option<PackageQueryOutput> {
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum PackageQueryFailure {
+    Spawn,
+    Wait,
+    Timeout,
+    Reader,
+    PipeDrainTimeout,
+    OutputLimit,
+}
+
+impl PackageQueryFailure {
+    const fn negative_cause(self) -> NegativeCause {
+        match self {
+            Self::Timeout | Self::PipeDrainTimeout => NegativeCause::Timeout,
+            Self::OutputLimit => NegativeCause::MalformedOutput,
+            Self::Spawn | Self::Wait | Self::Reader => NegativeCause::ProcessTermination,
+        }
+    }
+}
+
+fn run_package_query(
+    command: &mut Command,
+    output_limit: usize,
+) -> Result<PackageQueryOutput, PackageQueryFailure> {
     run_package_query_with_timeout(command, output_limit, PACKAGE_QUERY_TIMEOUT)
 }
 
@@ -331,7 +537,7 @@ fn run_package_query_with_timeout(
     command: &mut Command,
     output_limit: usize,
     timeout: Duration,
-) -> Option<PackageQueryOutput> {
+) -> Result<PackageQueryOutput, PackageQueryFailure> {
     // A provider may launch helpers that keep the output pipe open after its leader exits
     command.process_group(0);
     let mut child = command
@@ -339,35 +545,68 @@ fn run_package_query_with_timeout(
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .ok()?;
+        .map_err(|_error| PackageQueryFailure::Spawn)?;
     // The child is its new process-group leader because process_group received zero
     let process_group = Pid::from_child(&child);
-    let stdout = child.stdout.take()?;
-    let reader = std::thread::spawn(move || {
-        let limit = u64::try_from(output_limit)
-            .unwrap_or(u64::MAX)
-            .saturating_add(1);
-        let mut output = Vec::new();
-        stdout.take(limit).read_to_end(&mut output).ok()?;
-        Some(output)
-    });
-
-    let status = if let Some(status) = child.wait_timeout(timeout).ok()? {
-        status
-    } else {
-        // Kill descendants before joining the reader so inherited pipe handles cannot stall it
-        if kill_process_group(process_group, Signal::KILL).is_err() {
-            let _kill_result = child.kill();
-        }
-        let _wait_result = child.wait();
-        let _reader_result = reader.join();
-        return None;
+    let Some(stdout) = child.stdout.take() else {
+        terminate_package_query(&mut child, process_group);
+        return Err(PackageQueryFailure::Reader);
     };
-    let stdout = reader.join().ok()??;
+    let (reader_tx, reader_rx) = mpsc::sync_channel(1);
+    let reader = std::thread::Builder::new()
+        .name("unixnotis-package-output".to_string())
+        .spawn(move || {
+            let limit = u64::try_from(output_limit)
+                .unwrap_or(u64::MAX)
+                .saturating_add(1);
+            let mut output = Vec::new();
+            let read_result = stdout.take(limit).read_to_end(&mut output);
+            let _send_result = reader_tx.send(read_result.map(|_bytes| output));
+        })
+        .map_err(|_error| {
+            terminate_package_query(&mut child, process_group);
+            PackageQueryFailure::Reader
+        })?;
+    // The result channel owns completion; dropping the handle avoids every unbounded join path
+    drop(reader);
+
+    let started = Instant::now();
+    let status = match child.wait_timeout(timeout) {
+        Ok(Some(status)) => status,
+        Ok(None) => {
+            terminate_package_query(&mut child, process_group);
+            return Err(PackageQueryFailure::Timeout);
+        }
+        Err(_error) => {
+            terminate_package_query(&mut child, process_group);
+            return Err(PackageQueryFailure::Wait);
+        }
+    };
+    let remaining = timeout.saturating_sub(started.elapsed());
+    let drain_timeout = remaining.min(PACKAGE_PIPE_DRAIN_TIMEOUT);
+    let stdout = match reader_rx.recv_timeout(drain_timeout) {
+        Ok(Ok(stdout)) => stdout,
+        Ok(Err(_)) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+            return Err(PackageQueryFailure::Reader);
+        }
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            // The leader exited, so only inherited pipe holders remain in its process group
+            let _kill_result = kill_process_group(process_group, Signal::KILL);
+            return Err(PackageQueryFailure::PipeDrainTimeout);
+        }
+    };
     if stdout.len() > output_limit {
-        return None;
+        return Err(PackageQueryFailure::OutputLimit);
     }
-    Some(PackageQueryOutput { status, stdout })
+    Ok(PackageQueryOutput { status, stdout })
+}
+
+fn terminate_package_query(child: &mut std::process::Child, process_group: Pid) {
+    // Group termination closes ordinary inherited pipes while the bounded reap avoids startup hangs
+    if kill_process_group(process_group, Signal::KILL).is_err() {
+        let _kill_result = child.kill();
+    }
+    let _wait_result = child.wait_timeout(PACKAGE_PIPE_DRAIN_TIMEOUT);
 }
 
 #[cfg(test)]
