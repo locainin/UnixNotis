@@ -192,10 +192,17 @@ impl NotificationServer {
         replaces_id: u32,
     ) -> StoredNotification {
         // Store mutation and scheduler delivery share one serialized lock scope
+        let ui_health = self.state.ui_health();
         let outcome = {
             let mut store = self.state.store.lock().await;
             let outcome = store.insert(notification, replaces_id);
             if !outcome.dropped {
+                // Commit-time renderer state is retained before it can change again
+                store.record_popup_commit_environment(
+                    outcome.notification.key(),
+                    outcome.popup_admission,
+                    &ui_health,
+                );
                 // Resolve timeout after insertion so rule-mapped fields are already final
                 let expiration = resolve_expiration(store.config(), &outcome.notification);
                 store.set_expiration(&outcome.notification, expiration);
@@ -271,6 +278,10 @@ impl NotificationServer {
         let id = outcome.notification.id;
         if let Err(error) = self.emit_notification_change(&outcome).await {
             warn!(?error, id, "notification committed but live fanout failed");
+            self.state.store.lock().await.record_popup_delivery_stage(
+                outcome.notification.key(),
+                unixnotis_core::PopupDeliveryStage::FanoutFailed,
+            );
             // Snapshot invalidation gives connected clients one best-effort recovery route
             let _ = self.state.publish_snapshot_invalidated().await;
         }

@@ -14,6 +14,7 @@ impl NotificationStore {
             // Closed rows and panel rows should follow the same archive rule
             self.push_history(notification, reason);
         }
+        self.prune_popup_decisions();
         removed
     }
 
@@ -29,10 +30,41 @@ impl NotificationStore {
             .remove(&id)
             .map(|notification| notification.key());
 
-        DismissOutcome {
+        let outcome = DismissOutcome {
             removed_active: removed_active.map(|notification| notification.key()),
             removed_history,
-        }
+        };
+        self.prune_popup_decisions();
+        outcome
+    }
+
+    pub fn dismiss_generation(&mut self, key: NotificationKey) -> DismissOutcome {
+        // Validate the generation before mutating either active or retained history state
+        let active_matches = self
+            .active
+            .get(&key.id)
+            .is_some_and(|notification| notification.generation == key.generation);
+        let removed_active = if active_matches {
+            let removed = self.active.shift_remove(&key.id);
+            self.expirations.remove(&key.id);
+            removed.map(|notification| notification.key())
+        } else {
+            None
+        };
+        let removed_history = if removed_active.is_some() {
+            None
+        } else {
+            self.history
+                .remove_generation(key)
+                .map(|notification| notification.key())
+        };
+
+        let outcome = DismissOutcome {
+            removed_active,
+            removed_history,
+        };
+        self.prune_popup_decisions();
+        outcome
     }
 
     pub fn dismiss_active_if_current(&mut self, id: u32, expected: &Arc<Notification>) -> bool {
@@ -71,10 +103,12 @@ impl NotificationStore {
                 .remove_if_source(id, expected)
                 .map(|notification| notification.key())
         };
-        DismissOutcome {
+        let outcome = DismissOutcome {
             removed_active,
             removed_history,
-        }
+        };
+        self.prune_popup_decisions();
+        outcome
     }
 
     pub fn drain_active_keys(&mut self) -> Vec<NotificationKey> {
@@ -87,6 +121,7 @@ impl NotificationStore {
             .collect();
         self.active.clear();
         self.expirations.clear();
+        self.prune_popup_decisions();
         keys
     }
 
@@ -124,6 +159,7 @@ impl NotificationStore {
         let removed = self.active.shift_remove(&ticket.id)?;
         self.expirations.remove(&ticket.id);
         self.push_history(removed.clone(), CloseReason::Expired);
+        self.prune_popup_decisions();
         Some(removed)
     }
 }

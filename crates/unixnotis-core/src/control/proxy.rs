@@ -62,8 +62,17 @@ trait Control {
     fn list_inhibitors(&self) -> zbus::Result<Vec<InhibitorInfo>>;
     /// Remove a notification by identifier
     fn dismiss(&self, id: u32) -> zbus::Result<()>;
+    /// Remove only the exact notification generation represented by a UI row
+    fn dismiss_generation(&self, id: u32, generation: u64) -> zbus::Result<()>;
     /// Invoke an action key for a notification
     fn invoke_action(&self, id: u32, action_key: &str) -> zbus::Result<()>;
+    /// Invoke an action only for the exact notification generation represented by a UI row
+    fn invoke_action_generation(
+        &self,
+        id: u32,
+        generation: u64,
+        action_key: &str,
+    ) -> zbus::Result<()>;
     /// Submit text for an explicitly advertised inline-reply action
     fn reply_notification(&self, id: u32, generation: u64, reply_text: &str) -> zbus::Result<()>;
     /// Clear active notifications and saved history
@@ -82,6 +91,8 @@ trait Control {
     /// Clear popup readiness during orderly shutdown without activating the daemon
     #[zbus(no_autostart)]
     fn mark_popups_not_ready(&self) -> zbus::Result<()>;
+    /// Confirm that the popup renderer materialized one exact generation
+    fn mark_popup_rendered(&self, id: u32, generation: u64) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn notification_added(&self, id: u32, generation: u64) -> zbus::Result<()>;

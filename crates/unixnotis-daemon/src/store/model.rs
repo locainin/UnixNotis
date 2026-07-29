@@ -3,7 +3,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use indexmap::IndexMap;
-use unixnotis_core::{Config, Notification, NotificationKey, PopupAdmissionView};
+use unixnotis_core::{
+    Config, Notification, NotificationKey, PopupAdmissionView, PopupDecisionRecord,
+};
 
 use super::dnd::DndStateStore;
 use super::inhibitors::Inhibitor;
@@ -21,6 +23,8 @@ pub struct NotificationStore {
     pub(super) active: IndexMap<u32, Arc<Notification>>,
     // Archived notifications with bounded retention
     pub(super) history: HistoryStore,
+    // Arrival-time popup decisions outlive active state while history retains the generation
+    pub(super) popup_decisions: HashMap<NotificationKey, PopupDecisionRecord>,
     // Exact expiration identity per active notification generation
     pub(super) expirations: HashMap<u32, ExpirationTicket>,
     // Effective DND switch after loading persisted state

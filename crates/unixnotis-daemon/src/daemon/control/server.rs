@@ -204,6 +204,20 @@ impl ControlServer {
             .map_err(to_fdo_error)
     }
 
+    pub(super) async fn dismiss_generation(
+        &self,
+        id: u32,
+        generation: u64,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "DismissGeneration")
+            .await?;
+        self.state
+            .dismiss_generation(NotificationKey { id, generation })
+            .await
+            .map_err(to_fdo_error)
+    }
+
     pub(super) async fn invoke_action(
         &self,
         id: u32,
@@ -212,6 +226,19 @@ impl ControlServer {
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "InvokeAction").await?;
         self.invoke_validated_action(id, action_key).await
+    }
+
+    pub(super) async fn invoke_action_generation(
+        &self,
+        id: u32,
+        generation: u64,
+        action_key: &str,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "InvokeActionGeneration")
+            .await?;
+        self.invoke_validated_action_generation(NotificationKey { id, generation }, action_key)
+            .await
     }
 
     pub(super) async fn reply_notification(
@@ -280,6 +307,16 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
         self.set_popups_ready_state(&header, "MarkPopupsNotReady", false)
+            .await
+    }
+
+    async fn mark_popup_rendered(
+        &self,
+        id: u32,
+        generation: u64,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.mark_popup_generation_rendered(NotificationKey { id, generation }, &header)
             .await
     }
 

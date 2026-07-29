@@ -58,6 +58,8 @@ impl NotificationStore {
         self.active.shift_remove(&assigned_id);
         self.history.remove(&assigned_id);
         self.expirations.remove(&assigned_id);
+        self.popup_decisions
+            .retain(|key, _decision| key.id != assigned_id);
 
         let notification = Arc::new(notification);
         // Active map keeps insertion order so oldest eviction is deterministic
@@ -65,8 +67,14 @@ impl NotificationStore {
         // Enforce active cap immediately so UI never sees oversized active sets
         let evicted = self.enforce_active_limit();
 
+        let popup_admission = self.popup_admission(&notification);
+        self.record_popup_commit_environment(
+            notification.key(),
+            popup_admission,
+            &unixnotis_core::UiHealth::default(),
+        );
         InsertOutcome {
-            popup_admission: self.popup_admission(&notification),
+            popup_admission,
             allow_sound: self.should_play_sound(&notification),
             notification,
             replaced,

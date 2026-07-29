@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use tracing::warn;
-use unixnotis_core::{CloseReason, Notification};
+use unixnotis_core::{CloseReason, Notification, NotificationKey};
 
 use super::DaemonState;
 
@@ -59,6 +59,41 @@ impl DaemonState {
             warn!(
                 ?err,
                 id, "panel dismiss committed but one or more D-Bus signals failed"
+            );
+        }
+        Ok(())
+    }
+
+    pub async fn dismiss_generation(&self, key: NotificationKey) -> zbus::Result<()> {
+        let outcome = {
+            let mut store = self.store.lock().await;
+            let outcome = store.dismiss_generation(key);
+            if let Some(removed) = outcome.removed_active {
+                self.cancel_expiration(removed);
+            }
+            outcome
+        };
+
+        if !outcome.removed_any() {
+            return Err(zbus::Error::Failure(
+                "notification generation is no longer current".to_string(),
+            ));
+        }
+
+        let removed_active = outcome.removed_active.is_some();
+        let removed = outcome
+            .removed_active
+            .or(outcome.removed_history)
+            .expect("a removed generation must retain its exact key");
+        if let Err(err) = self
+            .publish_notification_dismissed(removed, removed_active)
+            .await
+        {
+            warn!(
+                ?err,
+                id = key.id,
+                generation = key.generation,
+                "generation-safe dismiss committed but one or more D-Bus signals failed"
             );
         }
         Ok(())

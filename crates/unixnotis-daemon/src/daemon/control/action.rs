@@ -2,6 +2,7 @@
 
 use std::future::Future;
 
+use unixnotis_core::NotificationKey;
 use zbus::fdo::DBusProxy;
 use zbus::SignalContext;
 
@@ -15,13 +16,32 @@ impl ControlServer {
         id: u32,
         action_key: &str,
     ) -> zbus::fdo::Result<()> {
-        self.invoke_validated_action_with_pre_emit(id, action_key, || std::future::ready(()))
+        let target = {
+            let store = self.state.store.lock().await;
+            store.active_action_target(id, action_key).ok_or_else(|| {
+                zbus::fdo::Error::InvalidArgs(
+                    "notification is not live or does not advertise this action".to_string(),
+                )
+            })?
+        };
+        self.invoke_validated_action_generation(target.key(), action_key)
             .await
     }
 
-    pub(super) async fn invoke_validated_action_with_pre_emit<F, Fut>(
+    pub(super) async fn invoke_validated_action_generation(
         &self,
-        id: u32,
+        notification: NotificationKey,
+        action_key: &str,
+    ) -> zbus::fdo::Result<()> {
+        self.invoke_validated_action_generation_with_pre_emit(notification, action_key, || {
+            std::future::ready(())
+        })
+        .await
+    }
+
+    pub(super) async fn invoke_validated_action_generation_with_pre_emit<F, Fut>(
+        &self,
+        notification: NotificationKey,
         action_key: &str,
         pre_emit: F,
     ) -> zbus::fdo::Result<()>
@@ -32,11 +52,13 @@ impl ControlServer {
         let target = {
             // Capture one concrete generation while validating the stored action identity
             let store = self.state.store.lock().await;
-            store.active_action_target(id, action_key).ok_or_else(|| {
-                zbus::fdo::Error::InvalidArgs(
-                    "notification is not live or does not advertise this action".to_string(),
-                )
-            })?
+            store
+                .active_action_target_generation(notification, action_key)
+                .ok_or_else(|| {
+                    zbus::fdo::Error::InvalidArgs(
+                        "notification is not live or does not advertise this action".to_string(),
+                    )
+                })?
         };
         let sender = target
             .sender_name
@@ -62,7 +84,7 @@ impl ControlServer {
             .store
             .lock()
             .await
-            .is_active_notification_generation(id, &target);
+            .is_active_notification_generation(notification.id, &target);
         if !is_current {
             return Err(zbus::fdo::Error::InvalidArgs(
                 "notification changed before its action could be invoked".to_string(),
@@ -73,7 +95,7 @@ impl ControlServer {
         let context = SignalContext::new(self.state.connection(), NOTIFICATIONS_OBJECT_PATH)
             .map_err(to_fdo_error)?
             .set_destination(bus_name.to_owned());
-        NotificationServer::action_invoked(&context, id, action_key)
+        NotificationServer::action_invoked(&context, notification.id, action_key)
             .await
             .map_err(to_fdo_error)
     }

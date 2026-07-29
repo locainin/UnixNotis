@@ -5,7 +5,8 @@ use indexmap::IndexMap;
 use tracing::{debug, warn};
 use unixnotis_core::{
     ApplicationActionPolicy, Config, ControlState, Notification, NotificationDiagnosticsView,
-    NotificationView, PopupAdmissionView, PopupCandidate, UiHealth,
+    NotificationKey, NotificationView, PopupAdmissionView, PopupCandidate, PopupDecisionRecord,
+    PopupDeliveryStage, UiHealth,
 };
 
 use super::dnd::{DndStateStore, DND_STATE_VERSION};
@@ -72,6 +73,7 @@ impl NotificationStore {
             config,
             active: IndexMap::new(),
             history: HistoryStore::new(),
+            popup_decisions: HashMap::new(),
             expirations: HashMap::new(),
             dnd_state_store,
             next_inhibitor_id: 1,
@@ -109,13 +111,13 @@ impl NotificationStore {
         self.active
             .values()
             .rev()
-            .map(|notification| notification.to_list_view())
+            .map(|notification| self.list_view_with_popup_decision(notification))
             .collect()
     }
 
     pub fn list_history(&self) -> Vec<NotificationView> {
         // HistoryStore already returns newest first
-        self.history.list_views()
+        self.history.list_views(&self.popup_decisions)
     }
 
     pub fn list_popup_candidates(&self) -> Vec<NotificationView> {
@@ -123,8 +125,19 @@ impl NotificationStore {
         self.active
             .values()
             .rev()
-            .filter(|notification| !notification.suppress_popup)
-            .map(|notification| notification.to_list_view())
+            .filter(|notification| {
+                !notification.suppress_popup
+                    && self
+                        .popup_decisions
+                        .get(&notification.key())
+                        .is_some_and(|decision| {
+                            matches!(
+                                decision.admission_at_commit,
+                                PopupAdmissionView::Show | PopupAdmissionView::RendererUnavailable
+                            )
+                        })
+            })
+            .map(|notification| self.list_view_with_popup_decision(notification))
             .collect()
     }
 
@@ -133,44 +146,115 @@ impl NotificationStore {
         // are consumed by trusted UIs that may need current image payloads
         self.active
             .get(&id)
-            .map(|notification| notification.to_view())
+            .map(|notification| self.view_with_popup_decision(notification))
     }
 
-    pub fn popup_candidate(&self, id: u32) -> Option<PopupCandidate> {
-        // Payload and live gate policy are read from one immutable lock snapshot
+    pub fn popup_candidate(&mut self, id: u32) -> Option<PopupCandidate> {
+        // Payload and its arrival-time policy are read from one store-lock snapshot
         let notification = self.active.get(&id)?;
+        let key = notification.key();
+        let admission = self.popup_decisions.get(&key)?.admission_at_commit;
+        let view = self.view_with_popup_decision(notification);
+        if admission.should_show() {
+            self.record_popup_delivery_stage(key, PopupDeliveryStage::RendererFetched);
+        }
         Some(PopupCandidate {
-            notification: notification.to_view(),
-            admission: self.popup_admission(notification).to_view(),
+            notification: view,
+            admission,
         })
     }
 
     pub fn notification_diagnostics(
         &self,
         id: u32,
-        ui_health: &UiHealth,
+        _ui_health: &UiHealth,
     ) -> Option<NotificationDiagnosticsView> {
-        let notification = self.active.get(&id)?;
-        let stored_admission = self.popup_admission(notification).to_view();
-        let popup_admission = if stored_admission != PopupAdmissionView::Show {
-            stored_admission
-        } else if ui_health.popups_process_running && ui_health.popups_ready {
-            PopupAdmissionView::Show
-        } else {
-            PopupAdmissionView::RendererUnavailable
-        };
+        let notification = self.active.get(&id).or_else(|| self.history.get(&id))?;
+        let decision = self.popup_decisions.get(&notification.key())?;
 
         Some(NotificationDiagnosticsView {
             id,
             generation: notification.generation,
             stored: true,
             attribution: notification.attribution_diagnostics.clone(),
-            popup_admission,
-            renderer_process_running: ui_health.popups_process_running,
-            renderer_ready: ui_health.popups_ready,
-            configured_max_visible: u32::try_from(self.config.popups.max_visible)
-                .unwrap_or(u32::MAX),
+            popup_admission: decision.admission_at_commit,
+            renderer_process_running: decision.renderer_process_running_at_commit,
+            renderer_ready: decision.renderer_ready_at_commit,
+            configured_max_visible: decision.max_visible_at_commit,
+            decided_at_unix_ms: decision.decided_at_unix_ms,
+            delivery_stage: decision.delivery_stage,
         })
+    }
+
+    pub(crate) fn record_popup_commit_environment(
+        &mut self,
+        key: NotificationKey,
+        admission: super::PopupAdmission,
+        ui_health: &UiHealth,
+    ) {
+        let max_visible = u32::try_from(self.config.popups.max_visible).unwrap_or(u32::MAX);
+        let effective_admission = if !admission.should_show() {
+            admission.to_view()
+        } else if max_visible == 0 {
+            PopupAdmissionView::RendererDisabled
+        } else if ui_health.popups_process_running && ui_health.popups_ready {
+            PopupAdmissionView::Show
+        } else {
+            PopupAdmissionView::RendererUnavailable
+        };
+        let delivery_stage = if effective_admission.should_show() {
+            PopupDeliveryStage::Admitted
+        } else {
+            PopupDeliveryStage::Suppressed
+        };
+        self.popup_decisions.insert(
+            key,
+            PopupDecisionRecord {
+                admission_at_commit: effective_admission,
+                renderer_process_running_at_commit: ui_health.popups_process_running,
+                renderer_ready_at_commit: ui_health.popups_ready,
+                max_visible_at_commit: max_visible,
+                decided_at_unix_ms: chrono::Utc::now().timestamp_millis(),
+                delivery_stage,
+            },
+        );
+    }
+
+    pub fn record_popup_delivery_stage(
+        &mut self,
+        key: NotificationKey,
+        stage: PopupDeliveryStage,
+    ) -> bool {
+        let Some(decision) = self.popup_decisions.get_mut(&key) else {
+            return false;
+        };
+        decision.delivery_stage = stage;
+        true
+    }
+
+    pub(super) fn prune_popup_decisions(&mut self) {
+        self.popup_decisions.retain(|key, _decision| {
+            self.active
+                .get(&key.id)
+                .is_some_and(|notification| notification.generation == key.generation)
+                || self.history.contains_generation(*key)
+        });
+    }
+
+    fn view_with_popup_decision(&self, notification: &Notification) -> NotificationView {
+        let mut view = notification.to_view();
+        if let Some(decision) = self.popup_decisions.get(&notification.key()) {
+            view.popup_decision.clone_from(decision);
+        }
+        view
+    }
+
+    fn list_view_with_popup_decision(&self, notification: &Notification) -> NotificationView {
+        let mut view = notification.to_list_view();
+        if let Some(decision) = self.popup_decisions.get(&notification.key()) {
+            view.popup_decision.clone_from(decision);
+        }
+        view
     }
 
     pub fn active_inline_reply_target(
@@ -192,7 +276,22 @@ impl NotificationStore {
     }
 
     pub fn active_action_target(&self, id: u32, action_key: &str) -> Option<Arc<Notification>> {
-        let notification = self.active.get(&id)?;
+        let generation = self.active.get(&id)?.generation;
+        self.active_action_target_generation(
+            unixnotis_core::NotificationKey { id, generation },
+            action_key,
+        )
+    }
+
+    pub fn active_action_target_generation(
+        &self,
+        key: unixnotis_core::NotificationKey,
+        action_key: &str,
+    ) -> Option<Arc<Notification>> {
+        let notification = self.active.get(&key.id)?;
+        if notification.generation != key.generation {
+            return None;
+        }
         // Weak or conflicting provenance must not gain an application-directed signal
         if notification.attribution.application_action_policy() != ApplicationActionPolicy::Allow {
             return None;
@@ -220,6 +319,7 @@ impl NotificationStore {
     pub fn clear_history(&mut self) {
         // Explicit history wipe used by CLI and control commands
         self.history.clear();
+        self.prune_popup_decisions();
     }
 }
 
