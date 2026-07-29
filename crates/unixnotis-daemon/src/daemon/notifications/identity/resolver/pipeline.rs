@@ -28,13 +28,29 @@ pub(in crate::daemon) async fn resolve_attribution(
     // Cached process data is refreshed before it affects attribution
     let mut sender = refresh_sender_security_evidence(sender);
     let initial = resolve_with_evidence(claim, &sender, index);
-    if initial.attribution.status != AttributionStatus::Recognized {
+    if initial.attribution.status != AttributionStatus::Recognized
+        && !(initial.attribution.status == AttributionStatus::Unresolved
+            && claim_has_index_candidate(claim, index))
+    {
         return initial;
     }
 
     // Ownership is needed only to distinguish a probable helper from a different installed app
     enrich_sender_install_provenance(&mut sender, index).await;
     resolve_with_evidence(claim, &sender, index)
+}
+
+fn claim_has_index_candidate(claim: AppClaim<'_>, index: &DesktopIdentityIndex) -> bool {
+    if !claim.reported_name.trim().is_empty()
+        && !index.records_for_claim(claim.reported_name).is_empty()
+    {
+        return true;
+    }
+
+    claim
+        .desktop_entry
+        .and_then(validate_desktop_id)
+        .is_some_and(|desktop_id| !index.records_for_id(&desktop_id).is_empty())
 }
 
 pub(super) fn resolve_with_evidence(

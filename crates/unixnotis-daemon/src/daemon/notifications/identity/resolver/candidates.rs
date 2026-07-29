@@ -103,47 +103,105 @@ pub(super) fn resolve_unverified_candidates(
         return resolution;
     }
 
-    // A known application with incomplete evidence remains useful but non-authoritative
+    // Application branding requires evidence that connects the sender to the candidate
     if let Some(candidate) = matching_results
         .iter()
         .max_by_key(|result| record_trust_rank(result.record))
     {
-        let failure = candidate.failure();
-        let detail = recognized_candidate_detail(sender, index, candidate.record, failure);
-        return with_diagnostics(
-            recognized_resolution(claim, sender, candidate.record, index, failure, &detail),
-            claim,
-            sender,
-            Some(candidate.record),
-            candidate.verification,
-        );
+        return resolve_matching_candidate(claim, sender, index, candidate);
     }
 
     unresolved_candidate_resolution(claim, sender, index)
 }
 
-fn recognized_candidate_detail(
+fn resolve_matching_candidate(
+    claim: AppClaim<'_>,
     sender: &SenderMetadata,
     index: &DesktopIdentityIndex,
-    record: &DesktopRecord,
-    failure: LaunchFailure,
-) -> String {
-    match sender_claim_relation(sender, index, record) {
-        SenderClaimRelation::SamePackageHelper => {
-            "Sender belongs to the same installed application package but was not strongly bound"
-                .to_string()
+    candidate: &CandidateVerification<'_>,
+) -> AttributionResolution {
+    let failure = candidate.failure();
+    match sender_claim_relation(sender, index, candidate.record) {
+        SenderClaimRelation::ClaimedApplication => recognized_candidate_resolution(
+            claim,
+            sender,
+            index,
+            candidate,
+            launch_failure_label(failure),
+        ),
+        SenderClaimRelation::SamePackageHelper => recognized_candidate_resolution(
+            claim,
+            sender,
+            index,
+            candidate,
+            "Sender belongs to the same installed application package but was not strongly bound",
+        ),
+        SenderClaimRelation::DifferentInstalledPackage => unresolved_claim_resolution(
+            claim,
+            sender,
+            candidate,
+            "Sender belongs to a separate installed package without a positive application association",
+        ),
+        SenderClaimRelation::UnknownExecutable => unresolved_claim_resolution(
+            claim,
+            sender,
+            candidate,
+            "No positive sender association with the claimed application was established",
+        ),
+        SenderClaimRelation::DifferentVerifiedApplication => {
+            conflict_from_candidate(claim, sender, index, candidate.record, failure)
         }
-        SenderClaimRelation::DifferentInstalledPackage => {
-            "Sender belongs to a separate installed package without a conflicting application identity"
-                .to_string()
-        }
-        SenderClaimRelation::ClaimedApplication
-        | SenderClaimRelation::DifferentVerifiedApplication
-        | SenderClaimRelation::UnknownExecutable
-        | SenderClaimRelation::TrustedRelay => {
-            launch_failure_label(failure).to_string()
-        }
+        SenderClaimRelation::TrustedRelay => trusted_relay_resolution(claim, sender, index)
+            .unwrap_or_else(|| {
+                unresolved_claim_resolution(
+                    claim,
+                    sender,
+                    candidate,
+                    "The relay executable could not be revalidated",
+                )
+            }),
     }
+}
+
+fn recognized_candidate_resolution(
+    claim: AppClaim<'_>,
+    sender: &SenderMetadata,
+    index: &DesktopIdentityIndex,
+    candidate: &CandidateVerification<'_>,
+    detail: &str,
+) -> AttributionResolution {
+    let failure = candidate.failure();
+    with_diagnostics(
+        recognized_resolution(claim, sender, candidate.record, index, failure, detail),
+        claim,
+        sender,
+        Some(candidate.record),
+        candidate.verification,
+    )
+}
+
+fn unresolved_claim_resolution(
+    claim: AppClaim<'_>,
+    sender: &SenderMetadata,
+    candidate: &CandidateVerification<'_>,
+    detail: &str,
+) -> AttributionResolution {
+    let detail = sender.sender_executable.as_deref().map_or_else(
+        || detail.to_string(),
+        |path| format!("{detail}; source {path}"),
+    );
+    with_diagnostics(
+        policy_resolution(NotificationAttribution::unresolved(
+            claim.reported_name,
+            AttributionReason::NoDesktopCandidate,
+            &detail,
+            sender_claim_group_key(AttributionStatus::Unresolved, claim.reported_name, sender),
+        )),
+        claim,
+        sender,
+        Some(candidate.record),
+        candidate.verification,
+    )
 }
 
 fn ambiguous_protected_family_resolution(
