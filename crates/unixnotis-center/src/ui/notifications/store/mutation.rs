@@ -76,7 +76,7 @@ impl NotificationList {
             if let Some(entry) = self.entries.get(&id) {
                 if !self.group_span_matches_visible_shape(&entry.app_key) {
                     // Span changes still need the rebuild path
-                    // Header count and card depth must move as one visible update
+                    // Header count and collapsed preview state must move as one visible update
                     self.dirty_groups.insert(entry.app_key.clone());
                     self.request_rebuild();
                     debug!(id, active = is_active, "notification group shape changed");
@@ -100,7 +100,7 @@ impl NotificationList {
                     card_corners: self.notification_corners,
                 };
                 // Update the row object in-place when the visible span stays identical
-                let mut row = super::item::RowData::notification(
+                let row = super::item::RowData::notification(
                     entry.app_key.clone(),
                     entry.view.clone(),
                     collapsed_group_preview,
@@ -108,7 +108,6 @@ impl NotificationList {
                     entry.is_active,
                     presentation,
                 );
-                row.stack_depth = super::blocks::collapsed_stack_depth(group_len, expanded);
                 entry.item.update(row);
                 if let Some(ids) = self.grouped_cache.get(&entry.app_key) {
                     if ids.first().copied() == Some(id) {

@@ -76,7 +76,6 @@ fn build_group_block_collapses_group_to_header_and_top_notification() {
     assert!(!header.expanded);
     let visible = items[1].data();
     assert!(visible.collapsed_group_preview);
-    assert_eq!(visible.stack_depth, 2);
     assert!(!visible.expanded);
     assert!(visible.group_first);
     assert!(visible.group_last);
@@ -94,7 +93,6 @@ fn build_group_block_keeps_single_notification_outside_collapsed_group_preview()
     assert_eq!(items.len(), 1);
     let visible = items[0].data();
     assert!(!visible.collapsed_group_preview);
-    assert_eq!(visible.stack_depth, 0);
     assert!(!visible.group_first);
     assert!(!visible.group_last);
 }
@@ -130,7 +128,6 @@ fn build_group_block_expands_group_to_all_notifications() {
     for item in items.iter().skip(1) {
         let data = item.data();
         assert!(!data.collapsed_group_preview);
-        assert_eq!(data.stack_depth, 0);
         assert!(data.expanded);
     }
     let first = items[1].data();

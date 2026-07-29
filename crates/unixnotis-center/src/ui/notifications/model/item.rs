@@ -68,8 +68,6 @@ pub struct RowData {
     pub group_last: bool,
     // True when this notification previews a collapsed multi-item group
     pub collapsed_group_preview: bool,
-    // Collapsed groups render at most two shallow rear cards
-    pub stack_depth: u8,
     pub is_active: bool,
     pub presentation: RowPresentation,
     pub notification: Option<Rc<NotificationView>>,
@@ -87,7 +85,6 @@ impl Default for RowData {
             group_first: false,
             group_last: false,
             collapsed_group_preview: false,
-            stack_depth: 0,
             is_active: false,
             presentation: RowPresentation::default(),
             notification: None,
@@ -112,7 +109,6 @@ impl RowData {
             group_first: false,
             group_last: false,
             collapsed_group_preview: false,
-            stack_depth: 0,
             is_active: false,
             presentation: RowPresentation::default(),
             notification: Some(sample),
@@ -137,7 +133,6 @@ impl RowData {
             group_first: false,
             group_last: false,
             collapsed_group_preview,
-            stack_depth: 0,
             is_active,
             presentation,
             notification: Some(notification),
@@ -154,7 +149,6 @@ impl RowData {
             && self.group_first == other.group_first
             && self.group_last == other.group_last
             && self.collapsed_group_preview == other.collapsed_group_preview
-            && self.stack_depth == other.stack_depth
             && self.is_active == other.is_active
             && self.presentation == other.presentation
             && Self::same_notification(&self.notification, &other.notification)

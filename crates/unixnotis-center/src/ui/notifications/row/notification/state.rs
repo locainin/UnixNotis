@@ -16,9 +16,6 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) card: gtk::Box,
     // Polygon wrapper clips both visual output and pointer hit testing
     pub(super) card_plate: unixnotis_ui::CutCorner,
-    // Shallow rear cards reproduce the stable collapsed-group depth from master
-    pub(super) stack_ghost_middle: gtk::Box,
-    pub(super) stack_ghost_back: gtk::Box,
     // Main icon shown at the top-left of the row
     pub(super) icon: gtk::Image,
     // Identity header collapses completely for rows owned by a group header

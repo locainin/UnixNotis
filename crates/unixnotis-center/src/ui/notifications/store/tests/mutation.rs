@@ -79,14 +79,6 @@ fn collapsed_group_preview_requires_a_collapsed_group_with_multiple_rows() {
 }
 
 #[test]
-fn collapsed_group_depth_matches_master_and_caps_at_two_layers() {
-    assert_eq!(super::super::blocks::collapsed_stack_depth(1, false), 0);
-    assert_eq!(super::super::blocks::collapsed_stack_depth(2, false), 1);
-    assert_eq!(super::super::blocks::collapsed_stack_depth(4, false), 2);
-    assert_eq!(super::super::blocks::collapsed_stack_depth(4, true), 0);
-}
-
-#[test]
 fn transient_rows_follow_config_when_closed() {
     assert!(!should_archive_entry(
         &make_view(true),

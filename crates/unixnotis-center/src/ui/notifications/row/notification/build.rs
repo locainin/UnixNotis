@@ -192,11 +192,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let card_plate = CutCorner::new(&card, unixnotis_core::CutCorners::default());
     card_plate.add_css_class("unixnotis-panel-card-foreground");
 
-    // Rear layers follow master's paint order so the readable card always stays on top
-    let stack_ghost_back = build_stack_ghost(2);
-    let stack_ghost_middle = build_stack_ghost(1);
-    root.append(&stack_ghost_back);
-    root.append(&stack_ghost_middle);
+    // One readable surface carries the preview while the group count conveys hidden entries
     root.append(&card_plate);
 
     let notify_key = Rc::new(Cell::new(NotificationKey {
@@ -213,8 +209,6 @@ pub(in crate::ui::notifications) fn build_notification_row(
         NotificationRowWidgets {
             card,
             card_plate,
-            stack_ghost_middle,
-            stack_ghost_back,
             icon,
             header,
             app_label,
@@ -248,17 +242,6 @@ pub(in crate::ui::notifications) fn build_notification_row(
             icon_sig: RefCell::new(None),
         },
     )
-}
-
-fn build_stack_ghost(depth: u8) -> gtk::Box {
-    let ghost = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    // Rear cards deliberately contain no content or controls
-    ghost.add_css_class("unixnotis-panel-card");
-    ghost.add_css_class("unixnotis-stack-ghost");
-    ghost.add_css_class(&format!("unixnotis-stack-ghost-{depth}"));
-    ghost.set_hexpand(true);
-    ghost.set_visible(false);
-    ghost
 }
 
 fn connect_dismiss_button(
