@@ -15,7 +15,7 @@
   min-height: var(--unixnotis-popup-close-size);
   box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
   color: alpha(#ffffff, 0.70);
-  opacity: 0;
+  opacity: 0.62;
   transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
@@ -94,7 +94,7 @@
 }
 
 .unixnotis-popup-trust-chip.unverified,
-.unixnotis-popup-trust-chip.system {
+.unixnotis-popup-trust-chip.command-line {
   background: alpha(#fbbf24, 0.10);
   color: alpha(#fde68a, 0.84);
   border: 1px solid alpha(#fbbf24, 0.20);
@@ -112,25 +112,33 @@
   margin-top: 1px;
 }
 
-.unixnotis-popup-app-icon {
-  min-width: 20px;
-  min-height: 20px;
-}
-
 .unixnotis-popup-icon {
   color: inherit;
 }
 
-.unixnotis-popup-utility-icon {
-  min-width: 24px;
-  min-height: 24px;
-  margin-top: 1px;
+.unixnotis-identity-avatar {
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 11px;
+  background: alpha(#ffffff, 0.07);
+  color: alpha(#ffffff, 0.92);
 }
 
-.unixnotis-popup-warning-icon {
-  min-width: 20px;
-  min-height: 20px;
-  margin-top: 1px;
+.unixnotis-identity-avatar.verified {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 13px;
+}
+
+.unixnotis-identity-avatar.command-line,
+.unixnotis-identity-avatar.unverified {
+  background: alpha(#fbbf24, 0.08);
+  color: alpha(#fde68a, 0.90);
+}
+
+.unixnotis-identity-avatar.suspicious {
+  background: alpha(#fb7185, 0.12);
+  color: #fecdd3;
 }
 
 .unixnotis-popup-body {
@@ -147,8 +155,9 @@
 }
 
 .unixnotis-popup-secondary-claim {
-  color: alpha(#fbbf24, 0.82);
+  color: alpha(#ffffff, 0.58);
   font-size: 12px;
+  font-weight: 400;
   margin-top: 1px;
 }
 
@@ -160,14 +169,16 @@
 }
 
 .unixnotis-popup-card.unverified {
-  border-color: alpha(#fbbf24, 0.24);
+  border-color: alpha(#ffffff, 0.10);
+}
+
+.unixnotis-popup-card.command-line {
+  border-color: alpha(#ffffff, 0.12);
 }
 
 .unixnotis-popup-card.suspicious {
-  border-color: alpha(#fb7185, 0.48);
-  box-shadow:
-    0 12px 32px -12px alpha(#000000, 0.58),
-    inset 2px 0 alpha(#fb7185, 0.58);
+  border-color: alpha(#fb7185, 0.42);
+  box-shadow: 0 12px 32px -12px alpha(#000000, 0.58);
 }
 
 .unixnotis-popup-actions {
@@ -258,9 +269,7 @@
   color: @unixnotis-critical-text;
 }
 
-.unixnotis-popup-card.critical .unixnotis-popup-app-icon,
-.unixnotis-popup-card.critical .unixnotis-popup-utility-icon,
-.unixnotis-popup-card.critical .unixnotis-popup-warning-icon,
+.unixnotis-popup-card.critical .unixnotis-identity-avatar,
 .unixnotis-popup-card.critical .unixnotis-popup-icon {
   color: @unixnotis-critical-icon;
 }
