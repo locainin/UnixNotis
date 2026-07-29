@@ -85,7 +85,7 @@ fn lineage_rejects_a_candidate_with_a_different_indexed_executable() {
         .with_launch_literals(&["--application-mode"]);
     let index = DesktopIdentityIndex::from_records(vec![indexed.clone()], Vec::new());
     let mut mismatched = indexed;
-    mismatched.executable_identity = Some(FileIdentity {
+    mismatched.runtime_executable_identity = Some(FileIdentity {
         inode: live_identity.inode.saturating_add(1),
         ..live_identity
     });
@@ -103,6 +103,38 @@ fn lineage_rejects_a_candidate_with_a_different_indexed_executable() {
     });
 
     assert!(lineage_association(&helper, &index, &[&result]).is_none());
+}
+
+#[test]
+fn direct_protected_payload_without_command_line_is_not_lineage_evidence() {
+    let (app_path, app_identity) = installed_system_executable();
+    let (payload_path, payload_identity) = installed_system_executable();
+    let indexed = system_record("org.example.True", "Example App", &app_path, app_identity)
+        .with_launch_literals(&[&payload_path])
+        .with_protected_launch_file(&payload_path, payload_identity);
+    let index = DesktopIdentityIndex::from_records(vec![indexed], Vec::new());
+    let record = index
+        .records_for_id("org.example.True")
+        .into_iter()
+        .next()
+        .expect("protected-payload record should be indexed");
+    let result = CandidateVerification {
+        record,
+        verification: LaunchVerification::InsufficientEvidence(LaunchFailure::MissingCommandLine),
+    };
+    let mut helper = sender("/usr/libexec/example-helper", identity(207, 2_070, 0));
+    helper.ancestors.push(ProcessLineageEvidence {
+        pid: 8_083,
+        start_time: 7_073,
+        uid: 0,
+        executable: app_path,
+        executable_identity: app_identity,
+    });
+
+    assert!(
+        lineage_association(&helper, &index, &[&result]).is_none(),
+        "missing command-line evidence is accepted only for a validated package launcher"
+    );
 }
 
 #[test]

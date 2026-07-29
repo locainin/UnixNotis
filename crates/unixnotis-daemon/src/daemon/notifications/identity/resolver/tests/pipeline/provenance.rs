@@ -29,7 +29,8 @@ async fn recognized_helper_is_reresolved_with_live_package_provenance() {
         app_evidence.identity,
     );
     record.desktop_provenance = app_provenance.clone();
-    record.executable_provenance = app_provenance;
+    record.declared_executable_provenance = app_provenance.clone();
+    record.runtime_executable_provenance = app_provenance;
     let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
     let resolution = resolve_attribution(
         AppClaim {

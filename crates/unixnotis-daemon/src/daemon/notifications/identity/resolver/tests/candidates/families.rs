@@ -15,9 +15,11 @@ fn equivalent_desktop_aliases_use_one_canonical_application_identity() {
     );
     alias.badge_icon = "example-app-new-window".to_string();
     canonical.desktop_provenance = package("example-app");
-    canonical.executable_provenance = package("example-app");
+    canonical.declared_executable_provenance = package("example-app");
+    canonical.runtime_executable_provenance = package("example-app");
     alias.desktop_provenance = package("example-app");
-    alias.executable_provenance = package("example-app");
+    alias.declared_executable_provenance = package("example-app");
+    alias.runtime_executable_provenance = package("example-app");
 
     let resolve_alias = |records| {
         let index = DesktopIdentityIndex::from_records(records, Vec::new());
@@ -65,7 +67,8 @@ fn fuzzy_name_substrings_do_not_merge_distinct_application_families() {
     );
     for record in [&mut first, &mut second] {
         record.desktop_provenance = package("example-suite");
-        record.executable_provenance = package("example-suite");
+        record.declared_executable_provenance = package("example-suite");
+        record.runtime_executable_provenance = package("example-suite");
     }
     let index = DesktopIdentityIndex::from_records(vec![first, second], Vec::new());
     let records = index.records_for_executable(executable);
@@ -158,7 +161,8 @@ fn strongest_verified_family_selects_its_canonical_record() {
     );
     for record in [&mut canonical, &mut alias] {
         record.desktop_provenance = package("example-app");
-        record.executable_provenance = package("example-app");
+        record.declared_executable_provenance = package("example-app");
+        record.runtime_executable_provenance = package("example-app");
     }
     let index = DesktopIdentityIndex::from_records(vec![alias, canonical], Vec::new());
     let records = index.records_for_executable(executable);

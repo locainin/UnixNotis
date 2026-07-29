@@ -58,7 +58,8 @@ fn canonical_conflict_candidate_supplies_the_stable_failure_reason() {
     );
     for record in [&mut canonical, &mut alias] {
         record.desktop_provenance = package("example-app");
-        record.executable_provenance = package("example-app");
+        record.declared_executable_provenance = package("example-app");
+        record.runtime_executable_provenance = package("example-app");
     }
     let different_identity = identity(103, 1_030, 0);
     let different_record = system_record(
