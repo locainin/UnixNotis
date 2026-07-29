@@ -7,5 +7,4 @@ mod script_migrations;
 mod scripts;
 mod support;
 mod theme_files;
-mod theme_stock;
 mod write;
