@@ -39,15 +39,7 @@ fn dismissed_reload_notice_stays_hidden_until_failure_fingerprint_changes() {
     let _outcome = state.reload_config();
     assert!(state.panel.reload_notice.revealer.reveals_child());
 
-    let close = state
-        .panel
-        .reload_notice
-        .shell
-        .last_child()
-        .expect("reload notice close button")
-        .downcast::<gtk::Button>()
-        .expect("reload notice close widget");
-    close.emit_clicked();
+    state.panel.reload_notice.close.emit_clicked();
     assert!(!state.panel.reload_notice.revealer.reveals_child());
 
     let _same_outcome = state.reload_config();
@@ -65,15 +57,7 @@ fn changed_css_failure_reopens_after_the_previous_failure_was_dismissed() {
     assert!(first_report.read_failures().count() > 1);
     assert!(state.panel.reload_notice.revealer.reveals_child());
 
-    let close = state
-        .panel
-        .reload_notice
-        .shell
-        .last_child()
-        .expect("reload notice close button")
-        .downcast::<gtk::Button>()
-        .expect("reload notice close widget");
-    close.emit_clicked();
+    state.panel.reload_notice.close.emit_clicked();
     assert!(!state.panel.reload_notice.revealer.reveals_child());
 
     let same_report = state.reload_css();
@@ -154,4 +138,24 @@ fn css_reload_notice_summarizes_multiple_unreadable_layers() {
         .reload_notice
         .shell
         .has_css_class(unixnotis_core::css::hooks::panel_shell::RELOAD_NOTICE_WARNING));
+}
+
+#[gtk::test]
+fn migration_notice_requires_an_explicit_action_instead_of_generic_dismissal() {
+    let mut state = state();
+    state.set_reload_notice(
+        crate::ui::reload::ReloadNoticeKind::ThemeMigration,
+        "Stock theme update available",
+        false,
+        "migration-a",
+    );
+
+    assert!(state.panel.reload_notice.revealer.reveals_child());
+    assert!(state.panel.reload_notice.actions.get_visible());
+    assert!(!state.panel.reload_notice.close.get_visible());
+
+    state.capture_notice_dismissal();
+
+    assert!(state.panel.reload_notice.revealer.reveals_child());
+    assert!(state.panel.reload_notice.actions.get_visible());
 }
