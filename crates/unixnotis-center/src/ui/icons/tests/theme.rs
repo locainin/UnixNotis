@@ -38,9 +38,11 @@ fn badge_candidates_exclude_caller_content_icon() {
         "sender-bin",
         unixnotis_core::NotificationAttribution {
             display_name: "Unknown application".to_string(),
+            claimed_name: "Claimed Brand".to_string(),
             badge_icon: "sender-bin".to_string(),
-            source_label: "Claims to be Claimed Brand".to_string(),
-            class: unixnotis_core::AttributionClass::Conflict,
+            status: unixnotis_core::AttributionStatus::Conflict,
+            reason: unixnotis_core::AttributionReason::ExecutableMismatch,
+            diagnostic_detail: "sender executable mismatch".to_string(),
             group_key: "executable:1:2".to_string(),
             ..unixnotis_core::NotificationAttribution::default()
         },

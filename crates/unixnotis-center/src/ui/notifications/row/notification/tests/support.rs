@@ -19,8 +19,10 @@ pub(super) fn sample_notification() -> NotificationView {
         app_name: "demo".to_string(),
         attribution: unixnotis_core::NotificationAttribution {
             display_name: "demo".to_string(),
+            claimed_name: "demo".to_string(),
             badge_icon: "demo".to_string(),
-            class: unixnotis_core::AttributionClass::SystemAssociated,
+            status: unixnotis_core::AttributionStatus::Verified,
+            reason: unixnotis_core::AttributionReason::ExactSystemExecutable,
             group_key: "test:demo".to_string(),
             ..unixnotis_core::NotificationAttribution::default()
         },
@@ -58,7 +60,7 @@ pub(super) fn notification_row_with_receiver() -> (
 #[derive(Default)]
 pub(super) struct RowFlags {
     pub(super) is_active: bool,
-    pub(super) stacked: bool,
+    pub(super) collapsed_group_preview: bool,
     pub(super) stack_depth: u8,
     pub(super) show_metadata: bool,
     pub(super) show_thumbnail: bool,
@@ -68,11 +70,10 @@ pub(super) struct RowFlags {
 }
 
 pub(super) fn row_data(notification: Rc<NotificationView>, flags: RowFlags) -> RowData {
-    RowData::notification(
+    let mut row = RowData::notification(
         Rc::from(notification.app_name.to_ascii_lowercase()),
         notification,
-        flags.stacked,
-        flags.stack_depth,
+        flags.collapsed_group_preview,
         false,
         flags.is_active,
         RowPresentation {
@@ -83,7 +84,9 @@ pub(super) fn row_data(notification: Rc<NotificationView>, flags: RowFlags) -> R
             metadata: Rc::new(flags.metadata.unwrap_or_default()),
             card_corners: flags.card_corners,
         },
-    )
+    );
+    row.stack_depth = flags.stack_depth;
+    row
 }
 
 pub(super) fn current_millis() -> i64 {

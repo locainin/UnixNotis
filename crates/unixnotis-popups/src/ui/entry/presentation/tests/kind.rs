@@ -1,6 +1,6 @@
-use unixnotis_core::{Action, AttributionClass, NotificationAttribution};
+use unixnotis_core::{Action, AttributionReason, NotificationAttribution};
 
-use super::super::{PopupKind, PopupTrustPresentation};
+use super::super::PopupKind;
 use super::support::notification;
 
 #[test]
@@ -13,10 +13,8 @@ fn standard_communication_category_classes_select_the_communication_layout() {
     ] {
         let mut view = notification();
         view.category = category.to_string();
-        let trust = PopupTrustPresentation::for_notification(&view);
-
         assert_eq!(
-            PopupKind::for_notification(&view, trust.level),
+            PopupKind::for_notification(&view),
             PopupKind::Communication,
             "{category} should use the communication layout"
         );
@@ -28,10 +26,8 @@ fn utility_categories_and_missing_categories_select_the_compact_layout() {
     for category in ["", "device.added", "network.connected", "transfer.complete"] {
         let mut view = notification();
         view.category = category.to_string();
-        let trust = PopupTrustPresentation::for_notification(&view);
-
         assert_eq!(
-            PopupKind::for_notification(&view, trust.level),
+            PopupKind::for_notification(&view),
             PopupKind::Utility,
             "{category:?} should use the utility layout"
         );
@@ -39,33 +35,26 @@ fn utility_categories_and_missing_categories_select_the_compact_layout() {
 }
 
 #[test]
-fn suspicious_provenance_overrides_a_communication_category() {
+fn suspicious_provenance_preserves_the_communication_category() {
     let mut view = notification();
     view.category = "im.received".to_string();
-    view.attribution = NotificationAttribution::associated(
-        "Unknown application",
-        "",
-        "dialog-warning-symbolic",
-        "Claims to be Signal; source /tmp/fake",
-        AttributionClass::Conflict,
-        true,
+    view.attribution = NotificationAttribution::conflict(
+        "Signal",
+        "org.signal.Signal",
+        AttributionReason::ExecutableMismatch,
+        "source /tmp/fake",
         "conflict:signal".to_string(),
     );
-    let trust = PopupTrustPresentation::for_notification(&view);
 
-    assert_eq!(
-        PopupKind::for_notification(&view, trust.level),
-        PopupKind::Warning
-    );
+    assert_eq!(PopupKind::for_notification(&view), PopupKind::Communication);
 }
 
 #[test]
 fn either_reply_contract_selects_the_communication_layout() {
     let mut metadata_reply = notification();
     metadata_reply.inline_reply.available = true;
-    let trust = PopupTrustPresentation::for_notification(&metadata_reply);
     assert_eq!(
-        PopupKind::for_notification(&metadata_reply, trust.level),
+        PopupKind::for_notification(&metadata_reply),
         PopupKind::Communication
     );
 
@@ -74,9 +63,8 @@ fn either_reply_contract_selects_the_communication_layout() {
         key: "inline-reply".to_string(),
         label: "Reply".to_string(),
     });
-    let trust = PopupTrustPresentation::for_notification(&action_reply);
     assert_eq!(
-        PopupKind::for_notification(&action_reply, trust.level),
+        PopupKind::for_notification(&action_reply),
         PopupKind::Communication
     );
 }
@@ -85,5 +73,5 @@ fn either_reply_contract_selects_the_communication_layout() {
 fn each_popup_kind_keeps_its_intended_action_budget() {
     assert_eq!(PopupKind::Communication.action_limit(), 2);
     assert_eq!(PopupKind::Utility.action_limit(), 2);
-    assert_eq!(PopupKind::Warning.action_limit(), 2);
+    assert_eq!(PopupKind::Media.action_limit(), 2);
 }

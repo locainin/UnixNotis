@@ -1,4 +1,4 @@
-use unixnotis_core::{Action, AttributionClass, ImageData, NotificationAttribution};
+use unixnotis_core::{Action, AttributionReason, ImageData, NotificationAttribution};
 
 use super::super::{PopupEntryViewModel, PopupKind, ThumbnailKind};
 use super::support::notification;
@@ -67,8 +67,9 @@ fn utility_layout_moves_extra_safe_actions_into_overflow() {
 #[test]
 fn weak_attribution_hides_every_application_directed_action() {
     let mut view = notification();
-    view.attribution = NotificationAttribution::unknown(
+    view.attribution = NotificationAttribution::unresolved(
         "Signal",
+        AttributionReason::NoDesktopCandidate,
         "source /tmp/fake",
         "unknown:signal".to_string(),
     );
@@ -86,13 +87,13 @@ fn weak_attribution_hides_every_application_directed_action() {
 #[test]
 fn user_associated_attribution_hides_application_directed_actions() {
     let mut view = notification();
-    view.attribution = NotificationAttribution::associated(
+    view.attribution = NotificationAttribution::recognized(
+        "User application",
         "User application",
         "org.example.UserApplication",
-        "org.example.UserApplication",
-        "",
-        AttributionClass::UserAssociated,
-        false,
+        "user-application",
+        AttributionReason::ExactUserExecutable,
+        "user desktop association",
         "user-desktop:org.example.UserApplication".to_string(),
     );
     view.actions.push(Action {
@@ -206,16 +207,14 @@ fn square_path_content_is_not_mistaken_for_embedded_icon_data() {
 }
 
 #[test]
-fn conflicting_claim_uses_warning_layout_and_drops_actions() {
+fn conflicting_claim_keeps_communication_layout_and_drops_actions() {
     let mut view = notification();
     view.category = "im.received".to_string();
-    view.attribution = NotificationAttribution::associated(
-        "Unknown application",
-        "",
-        "dialog-warning-symbolic",
-        "Claims to be Signal",
-        AttributionClass::Conflict,
-        true,
+    view.attribution = NotificationAttribution::conflict(
+        "Signal",
+        "org.signal.Signal",
+        AttributionReason::ExecutableMismatch,
+        "source /tmp/fake",
         "conflict:signal".to_string(),
     );
     view.actions.push(Action {
@@ -225,8 +224,11 @@ fn conflicting_claim_uses_warning_layout_and_drops_actions() {
 
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
-    assert_eq!(model.kind, PopupKind::Warning);
-    assert_eq!(model.secondary_claim.as_deref(), Some("Claims “Signal”"));
+    assert_eq!(model.kind, PopupKind::Communication);
+    assert_eq!(
+        model.secondary_claim.as_deref(),
+        Some("Claimed app: Signal")
+    );
     assert!(model.primary_actions.is_empty());
     assert!(model.overflow_actions.is_empty());
 }

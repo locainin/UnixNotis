@@ -95,8 +95,9 @@ fn update_notification_row_rebuilds_actions_only_when_signature_changes() {
 fn unverified_panel_row_hides_application_actions_like_the_popup() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();
-    notification.attribution = unixnotis_core::NotificationAttribution::unknown(
+    notification.attribution = unixnotis_core::NotificationAttribution::unresolved(
         "Claimed application",
+        unixnotis_core::AttributionReason::MissingSenderEvidence,
         "unverified sender",
         "unknown:claimed".to_string(),
     );
@@ -116,7 +117,7 @@ fn unverified_panel_row_hides_application_actions_like_the_popup() {
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
     assert_eq!(child_count(&row.actions_box), 0);
-    assert!(row.card.has_css_class("unverified"));
+    assert!(row.card.has_css_class("unresolved"));
 }
 
 #[gtk::test]

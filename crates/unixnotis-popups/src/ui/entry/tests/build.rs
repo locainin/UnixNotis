@@ -2,7 +2,7 @@ use super::{connect_close_action, connect_default_action, widget_type_blocks_def
 use gtk::glib::prelude::StaticType;
 use gtk::prelude::*;
 use unixnotis_core::{
-    Action, AttributionClass, InlineReply, InlineReplyPolicy, NotificationAttribution,
+    Action, AttributionReason, InlineReply, InlineReplyPolicy, NotificationAttribution,
     NotificationImage, NotificationView,
 };
 
@@ -73,14 +73,14 @@ fn notification() -> NotificationView {
         id: 31,
         generation: 1,
         app_name: "Example".to_string(),
-        attribution: NotificationAttribution::associated(
+        attribution: NotificationAttribution::verified(
+            "Example",
             "Example",
             "org.example.App",
-            "org.example.App",
-            "",
-            AttributionClass::SystemAssociated,
-            false,
-            "system-desktop:org.example.App".to_string(),
+            "example-app",
+            AttributionReason::ExactSystemExecutable,
+            "exact system executable",
+            "system-app:org.example.App".to_string(),
         ),
         summary: "Example".to_string(),
         body: String::new(),

@@ -127,6 +127,15 @@ fn constructor_keeps_config_path_and_starts_with_empty_runtime_collections() {
     assert!(state.popups.is_empty());
     assert!(state.popup_order.is_empty());
     assert!(state.visible_popups.is_empty());
+    assert!(
+        state.popup_window.is_resizable(),
+        "the layer window must accept content-driven height changes"
+    );
+    assert_eq!(
+        state.popup_window.default_size().1,
+        -1,
+        "popup height must use the current stack's natural request"
+    );
 }
 
 #[gtk::test]
@@ -179,7 +188,9 @@ fn critical_popup_probe_builds_the_root_class_and_badge() {
         root.has_css_class(hooks::popup_card::HAS_ICON),
         root.has_css_class(hooks::popup_card::NO_ICON)
     );
+    assert_eq!(root.width_request(), -1);
     assert_eq!(root.height_request(), -1);
+    assert!(root.hexpands());
     assert!(visible_descendant_has_class(
         root.upcast_ref(),
         hooks::urgency::BADGE
@@ -209,12 +220,12 @@ fn unknown_attribution_uses_a_short_chip_without_showing_raw_provenance() {
         id: 3,
         generation: 3,
         app_name: "Signal".to_string(),
-        attribution: unixnotis_core::NotificationAttribution {
-            display_name: "Unverified application".to_string(),
-            source_label: "Claims to be Signal".to_string(),
-            class: unixnotis_core::AttributionClass::Unknown,
-            ..unixnotis_core::NotificationAttribution::default()
-        },
+        attribution: unixnotis_core::NotificationAttribution::unresolved(
+            "Signal",
+            unixnotis_core::AttributionReason::MissingSenderEvidence,
+            "sender evidence unavailable",
+            "unknown:signal".to_string(),
+        ),
         summary: "John Doe".to_string(),
         body: "Are you free later?".to_string(),
         actions: Vec::new(),
@@ -230,17 +241,21 @@ fn unknown_attribution_uses_a_short_chip_without_showing_raw_provenance() {
 
     let root = state.build_popup_root(&notification);
 
-    assert!(root.has_css_class("unverified"));
+    assert!(root.has_css_class("unresolved"));
     assert!(root.has_css_class("utility"));
     assert!(visible_descendant_has_text(root.upcast_ref(), "Unverified"));
     assert!(!visible_descendant_has_text(
         root.upcast_ref(),
-        "Claims to be Signal"
+        "sender evidence unavailable"
+    ));
+    assert!(visible_descendant_has_text(
+        root.upcast_ref(),
+        "App label: Signal"
     ));
 }
 
 #[gtk::test]
-fn conflicting_attribution_uses_the_warning_layout_and_suspicious_chip() {
+fn conflicting_attribution_keeps_message_layout_and_uses_suspicious_chip() {
     let app = gtk::Application::builder()
         .application_id("org.unixnotis.PopupSuspiciousProbe")
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
@@ -264,6 +279,8 @@ fn conflicting_attribution_uses_the_warning_layout_and_suspicious_chip() {
         app_name: "Signal".to_string(),
         attribution: unixnotis_core::NotificationAttribution::conflict(
             "Signal",
+            "org.signal.Signal",
+            unixnotis_core::AttributionReason::ExecutableMismatch,
             "application claim mismatch; source /tmp/fake",
             "conflict:signal".to_string(),
         ),
@@ -282,12 +299,12 @@ fn conflicting_attribution_uses_the_warning_layout_and_suspicious_chip() {
 
     let root = state.build_popup_root(&notification);
 
-    assert!(root.has_css_class("warning"));
-    assert!(root.has_css_class("suspicious"));
+    assert!(root.has_css_class("communication"));
+    assert!(root.has_css_class("conflict"));
     assert!(visible_descendant_has_text(root.upcast_ref(), "Suspicious"));
     assert!(visible_descendant_has_text(
         root.upcast_ref(),
-        "Claims “Signal”"
+        "Claimed app: Signal"
     ));
     assert!(!visible_descendant_has_text(
         root.upcast_ref(),
@@ -318,10 +335,9 @@ fn notify_send_claim_uses_one_command_line_avatar_without_signal_branding() {
         id: 5,
         generation: 5,
         app_name: "Signal".to_string(),
-        attribution: unixnotis_core::NotificationAttribution::trusted_relay(
+        attribution: unixnotis_core::NotificationAttribution::relay(
             "Signal",
             "Sent via /usr/bin/notify-send",
-            true,
             "relay:notify-send:signal".to_string(),
         ),
         summary: "John Doe".to_string(),
@@ -340,9 +356,9 @@ fn notify_send_claim_uses_one_command_line_avatar_without_signal_branding() {
 
     let root = state.build_popup_root(&notification);
 
-    assert!(root.has_css_class("command-line"));
-    assert!(root.has_css_class("utility"));
-    assert!(!root.has_css_class("suspicious"));
+    assert!(root.has_css_class("relay"));
+    assert!(root.has_css_class("communication"));
+    assert!(!root.has_css_class("conflict"));
     assert!(visible_descendant_has_text(
         root.upcast_ref(),
         "Command-line notification"

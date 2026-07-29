@@ -2,9 +2,9 @@
 
 mod common;
 mod communication;
+mod layout;
 mod reply;
 mod utility;
-mod warning;
 
 use gtk::prelude::*;
 use unixnotis_core::NotificationView;
@@ -17,7 +17,7 @@ pub(in crate::ui::entry) use reply::build_inline_reply;
 
 /// Result of building one kind-specific card body
 pub(super) struct RenderedPopup {
-    pub(super) widget: gtk::Box,
+    pub(super) widget: gtk::Grid,
     pub(super) has_icon: bool,
     pub(super) has_image: bool,
 }
@@ -32,8 +32,9 @@ pub(super) fn build_popup_content(
         PopupKind::Communication => {
             communication::build_communication_popup(state, notification, view)
         }
-        PopupKind::Utility => utility::build_utility_popup(state, notification, view),
-        PopupKind::Warning => warning::build_warning_popup(state, notification, view),
+        PopupKind::Utility | PopupKind::Media => {
+            utility::build_utility_popup(state, notification, view)
+        }
     }
 }
 

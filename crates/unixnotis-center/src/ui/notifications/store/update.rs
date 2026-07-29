@@ -253,7 +253,7 @@ impl NotificationList {
             })
             .count();
         if range_count_mismatch(self.group_ranges.len(), expected_ranges) {
-            // Missing ranges leave later stack edits dependent on a full expand/collapse rebuild
+            // Missing ranges leave later group edits dependent on a full expand/collapse rebuild
             debug!(
                 expected_ranges,
                 actual_ranges = self.group_ranges.len(),

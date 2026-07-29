@@ -79,18 +79,18 @@ impl NotificationList {
                     // Header count and card depth must move as one visible update
                     self.dirty_groups.insert(entry.app_key.clone());
                     self.request_rebuild();
-                    debug!(id, active = is_active, "notification stack shape changed");
+                    debug!(id, active = is_active, "notification group shape changed");
                     return;
                 }
 
-                // Compute stack state from cached grouping instead of rebuilding the store
+                // Compute preview state from cached grouping instead of rebuilding the store
                 let expanded = self
                     .group_expanded
                     .get(&entry.app_key)
                     .copied()
                     .unwrap_or(false);
                 let group_len = self.grouped_cache.get(&entry.app_key).map_or(0, Vec::len);
-                let stacked = collapsed_group_is_stacked(expanded, group_len);
+                let collapsed_group_preview = is_collapsed_group_preview(expanded, group_len);
                 let presentation = super::item::RowPresentation {
                     received_at_ms: entry.received_at_ms,
                     show_metadata: self.show_notification_metadata,
@@ -100,15 +100,16 @@ impl NotificationList {
                     card_corners: self.notification_corners,
                 };
                 // Update the row object in-place when the visible span stays identical
-                entry.item.update(super::item::RowData::notification(
+                let mut row = super::item::RowData::notification(
                     entry.app_key.clone(),
                     entry.view.clone(),
-                    stacked,
-                    0,
+                    collapsed_group_preview,
                     expanded,
                     entry.is_active,
                     presentation,
-                ));
+                );
+                row.stack_depth = super::blocks::collapsed_stack_depth(group_len, expanded);
+                entry.item.update(row);
                 if let Some(ids) = self.grouped_cache.get(&entry.app_key) {
                     if ids.first().copied() == Some(id) {
                         let expanded = self
@@ -256,7 +257,7 @@ const fn should_move_active_to_front(
     was_in_history || !was_in_active || !was_front
 }
 
-const fn collapsed_group_is_stacked(expanded: bool, group_len: usize) -> bool {
+const fn is_collapsed_group_preview(expanded: bool, group_len: usize) -> bool {
     !expanded && group_len > 1
 }
 

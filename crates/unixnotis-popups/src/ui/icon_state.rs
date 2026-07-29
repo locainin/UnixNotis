@@ -22,7 +22,7 @@ const ICON_CACHE_MAX_ENTRIES: usize = 256;
 // Skip caching decoded textures above this size to avoid holding large buffers
 const ICON_TEXTURE_CACHE_MAX_BYTES: usize = 1_048_576;
 // Content stays visibly separate from the daemon-associated application badge
-const POPUP_CONTENT_THUMBNAIL_SIZE: i32 = 48;
+const POPUP_CONTENT_THUMBNAIL_SIZE: i32 = 64;
 // Missing icons are retried soon so package and theme installs heal without a process restart
 const NEGATIVE_ICON_CACHE_TTL: Duration = Duration::from_secs(15);
 

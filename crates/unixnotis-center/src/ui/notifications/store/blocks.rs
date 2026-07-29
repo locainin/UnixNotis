@@ -43,7 +43,8 @@ impl NotificationList {
         }
 
         // Collapsed groups render the newest content row under their shared header
-        let stacked = !expanded && ids.len() > 1;
+        let collapsed_group_preview = !expanded && ids.len() > 1;
+        let stack_depth = collapsed_stack_depth(ids.len(), expanded);
         for (index, id) in ids.iter().enumerate() {
             if !expanded && index > 0 {
                 break;
@@ -62,8 +63,7 @@ impl NotificationList {
             let mut row = RowData::notification(
                 entry.app_key.clone(),
                 entry.view.clone(),
-                stacked,
-                0,
+                collapsed_group_preview,
                 expanded,
                 entry.is_active,
                 presentation,
@@ -72,6 +72,7 @@ impl NotificationList {
                 row.group_first = index == 0;
                 row.group_last = !expanded || index + 1 == ids.len();
             }
+            row.stack_depth = stack_depth;
             entry.item.update(row);
             items.push(entry.item.clone());
             keys.push(RowKey::Notification { id: *id });
@@ -151,6 +152,21 @@ impl NotificationList {
                 range.start = (range.start as isize + delta) as usize;
             }
         }
+    }
+}
+
+pub(in crate::ui::notifications) const fn collapsed_stack_depth(
+    count: usize,
+    expanded: bool,
+) -> u8 {
+    if expanded {
+        return 0;
+    }
+    // One rear card represents the second item while larger groups cap at two
+    if count >= 3 {
+        2
+    } else {
+        count.saturating_sub(1) as u8
     }
 }
 

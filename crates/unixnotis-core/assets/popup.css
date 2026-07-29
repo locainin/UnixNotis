@@ -2,7 +2,7 @@
 
 /* Shared close button styling for popup surfaces */
 .unixnotis-popup-close {
-  background: alpha(#ffffff, 0.045);
+  background: alpha(#ffffff, 0.055);
   border-radius: 999px;
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
@@ -15,12 +15,12 @@
   min-height: var(--unixnotis-popup-close-size);
   box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
   color: alpha(#ffffff, 0.70);
-  opacity: 0.62;
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out, box-shadow 0.15s ease-out;
+  opacity: 0;
+  transition: opacity 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
 .unixnotis-popup-card:hover .unixnotis-popup-close,
-.unixnotis-popup-close:focus {
+.unixnotis-popup-close:focus-visible {
   opacity: 1;
 }
 
@@ -46,16 +46,15 @@
 }
 
 .unixnotis-popup-card {
-  background-image: linear-gradient(135deg, alpha(#141d30, 0.94), alpha(#0a0e1a, 0.98));
-  color: #ffffff;
-  border-radius: 20px;
+  background-image: linear-gradient(165deg, alpha(@unixnotis-popup-bg-2, 0.94), alpha(@unixnotis-popup-bg-1, 0.98));
+  color: @unixnotis-text;
   border-radius: var(--unixnotis-popup-card-radius);
-  padding: 14px;
   padding: var(--unixnotis-popup-card-padding-y) var(--unixnotis-popup-card-padding-x);
-  border: 1px solid alpha(#ffffff, 0.10);
+  border: 1px solid alpha(@unixnotis-card-border, 0.90);
+  font-family: "Inter", "Noto Sans", sans-serif;
   box-shadow:
-    0 12px 32px -12px alpha(#000000, 0.56),
-    0 2px 8px -4px alpha(#000000, 0.36);
+    0 14px 34px -18px @unixnotis-shadow-strong,
+    inset 0 1px 0 alpha(#ffffff, 0.035);
 }
 
 .unixnotis-popup-card.utility {
@@ -64,24 +63,27 @@
 }
 
 .unixnotis-popup-communication-content,
-.unixnotis-popup-utility-content,
-.unixnotis-popup-warning-content {
+.unixnotis-popup-utility-content {
   background: transparent;
 }
 
-.unixnotis-popup-header-row {
-  min-height: 20px;
-  margin-bottom: 1px;
+.unixnotis-popup-content-grid {
+  min-width: 0;
+}
+
+.unixnotis-popup-identity-row,
+.unixnotis-popup-message {
+  min-width: 0;
 }
 
 .unixnotis-popup-app-name {
-  color: alpha(#ffffff, 0.76);
+  color: alpha(@unixnotis-text, 0.78);
   font-weight: 600;
   font-size: 12px;
 }
 
 .unixnotis-popup-time {
-  color: alpha(#ffffff, 0.56);
+  color: alpha(@unixnotis-text, 0.52);
   font-weight: 400;
   font-size: 11px;
 }
@@ -93,22 +95,23 @@
   font-weight: 600;
 }
 
-.unixnotis-popup-trust-chip.unverified,
-.unixnotis-popup-trust-chip.command-line {
+.unixnotis-popup-trust-chip.recognized,
+.unixnotis-popup-trust-chip.unresolved,
+.unixnotis-popup-trust-chip.relay {
   background: alpha(#fbbf24, 0.10);
   color: alpha(#fde68a, 0.84);
   border: 1px solid alpha(#fbbf24, 0.20);
 }
 
-.unixnotis-popup-trust-chip.suspicious {
+.unixnotis-popup-trust-chip.conflict {
   background: alpha(#fb7185, 0.13);
   color: #fecdd3;
   border: 1px solid alpha(#fb7185, 0.34);
 }
 
 .unixnotis-popup-summary {
-  font-weight: 700;
-  font-size: 16px;
+  font-weight: 650;
+  font-size: 15px;
   margin-top: 1px;
 }
 
@@ -117,34 +120,36 @@
 }
 
 .unixnotis-identity-avatar {
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 38px;
+  min-height: 38px;
   border-radius: 11px;
   background: alpha(#ffffff, 0.07);
   color: alpha(#ffffff, 0.92);
 }
 
-.unixnotis-identity-avatar.verified {
-  min-width: 44px;
-  min-height: 44px;
-  border-radius: 13px;
+.unixnotis-identity-avatar.recognized {
+  border: 1px solid alpha(#ffffff, 0.10);
 }
 
-.unixnotis-identity-avatar.command-line,
-.unixnotis-identity-avatar.unverified {
+.unixnotis-identity-avatar.relay {
   background: alpha(#fbbf24, 0.08);
   color: alpha(#fde68a, 0.90);
 }
 
-.unixnotis-identity-avatar.suspicious {
+.unixnotis-identity-avatar.unresolved {
+  background: alpha(#ffffff, 0.065);
+  color: alpha(#ffffff, 0.82);
+}
+
+.unixnotis-identity-avatar.conflict {
   background: alpha(#fb7185, 0.12);
   color: #fecdd3;
 }
 
 .unixnotis-popup-body {
-  color: #cbd5e1;
+  color: @unixnotis-muted;
   font-weight: 400;
-  font-size: 14px;
+  font-size: 13px;
   margin-top: 2px;
 }
 
@@ -155,30 +160,31 @@
 }
 
 .unixnotis-popup-secondary-claim {
-  color: alpha(#ffffff, 0.58);
+  color: alpha(@unixnotis-text, 0.58);
   font-size: 12px;
   font-weight: 400;
   margin-top: 1px;
 }
 
 .unixnotis-popup-content-image {
-  min-width: 48px;
-  min-height: 48px;
+  min-width: 64px;
+  min-height: 64px;
   margin-top: 6px;
   border-radius: 9px;
 }
 
-.unixnotis-popup-card.unverified {
-  border-color: alpha(#ffffff, 0.10);
+.unixnotis-popup-card.recognized,
+.unixnotis-popup-card.unresolved {
+  border-color: alpha(@unixnotis-card-border, 0.90);
 }
 
-.unixnotis-popup-card.command-line {
-  border-color: alpha(#ffffff, 0.12);
+.unixnotis-popup-card.relay {
+  border-color: alpha(@unixnotis-card-border, 0.96);
 }
 
-.unixnotis-popup-card.suspicious {
-  border-color: alpha(#fb7185, 0.42);
-  box-shadow: 0 12px 32px -12px alpha(#000000, 0.58);
+.unixnotis-popup-card.conflict {
+  border-color: alpha(@unixnotis-critical-border, 0.48);
+  box-shadow: 0 14px 34px -18px @unixnotis-shadow-strong;
 }
 
 .unixnotis-popup-actions {

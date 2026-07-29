@@ -18,7 +18,7 @@ fn icon_signature_changes_when_trust_presentation_changes() {
     let verified = sample_notification();
     let mut suspicious = verified.clone();
     // Keep resolver inputs unchanged to isolate the trust-state regression
-    suspicious.attribution.warning = true;
+    suspicious.attribution.status = unixnotis_core::AttributionStatus::Conflict;
 
     assert_ne!(
         IconSignature::from(&verified),
@@ -29,22 +29,19 @@ fn icon_signature_changes_when_trust_presentation_changes() {
 
 #[gtk::test]
 fn close_control_ignores_unbound_rows_and_keeps_the_bound_generation() {
-    let (root, row, mut command_rx) = notification_row_with_receiver();
-    let close = descendant_with_class(root.upcast_ref(), "unixnotis-panel-close")
-        .and_downcast::<gtk::Button>()
-        .expect("panel close button");
+    let (_root, row, mut command_rx) = notification_row_with_receiver();
 
-    close.emit_clicked();
+    row.close_button.emit_clicked();
     assert!(
         command_rx.try_recv().is_err(),
-        "an unbound recycled row must not dismiss notification zero"
+        "an unbound recycled control must not dismiss notification zero"
     );
 
     row.notify_key.set(unixnotis_core::NotificationKey {
         id: 7,
         generation: 11,
     });
-    close.emit_clicked();
+    row.close_button.emit_clicked();
     assert!(matches!(
         command_rx.try_recv(),
         Ok(crate::control::UiCommand::Dismiss(notification))
@@ -63,8 +60,7 @@ fn update_notification_row_applies_state_classes_and_text() {
         notification,
         RowFlags {
             is_active: true,
-            stacked: true,
-            stack_depth: 2,
+            collapsed_group_preview: true,
             ..Default::default()
         },
     );
@@ -74,12 +70,14 @@ fn update_notification_row_applies_state_classes_and_text() {
 
     assert!(row.card.has_css_class(hooks::shared_state::CRITICAL));
     assert!(row.card.has_css_class(hooks::shared_state::ACTIVE));
-    assert!(row.card.has_css_class(hooks::shared_state::STACKED));
+    assert!(row
+        .card
+        .has_css_class(hooks::shared_state::COLLAPSED_GROUP_PREVIEW));
     assert!(row.card.has_css_class(hooks::panel_card::GROUP_COLLAPSED));
     assert!(!row.card.has_css_class(hooks::panel_card::GROUP_EXPANDED));
     assert!(!row.app_label.get_visible());
     assert!(!row.icon.get_visible());
-    assert!(!row.header.get_visible());
+    assert!(row.header.get_visible());
     assert!(row.urgency_badge.get_visible());
     assert_eq!(row.urgency_badge.text().as_str(), "Critical");
     assert_eq!(row.app_label.text().as_str(), "demo");
@@ -116,6 +114,7 @@ fn single_notification_row_keeps_its_identity_visible_without_a_group_header() {
 
     assert!(row.app_label.get_visible());
     assert!(row.header.get_visible());
+    assert!(row.close_button.get_visible());
     assert_eq!(row.app_label.text().as_str(), "demo");
     assert!(row.icon_sig.borrow().is_some());
 }
@@ -124,10 +123,9 @@ fn single_notification_row_keeps_its_identity_visible_without_a_group_header() {
 fn relay_singleton_shows_authenticated_source_and_secondary_app_label() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();
-    notification.attribution = unixnotis_core::NotificationAttribution::trusted_relay(
+    notification.attribution = unixnotis_core::NotificationAttribution::relay(
         "Signal",
         "Sent via /usr/bin/notify-send",
-        true,
         "relay:notify-send:signal".to_string(),
     );
     let data = row_data(Rc::new(notification), RowFlags::default());
@@ -139,8 +137,8 @@ fn relay_singleton_shows_authenticated_source_and_secondary_app_label() {
     assert_eq!(row.secondary_claim.text().as_str(), "App label: Signal");
     assert!(row.secondary_claim.get_visible());
     assert!(!row.trust_chip.get_visible());
-    assert!(row.card.has_css_class("command-line"));
-    assert!(!row.card.has_css_class("suspicious"));
+    assert!(row.card.has_css_class("relay"));
+    assert!(!row.card.has_css_class("conflict"));
 }
 
 #[gtk::test]
@@ -151,25 +149,22 @@ fn panel_text_limits_keep_compact_rows_content_driven() {
 
     assert_eq!(row.summary_label.lines(), 1);
     assert_eq!(row.body_label.lines(), 3);
-    assert!(close
-        .parent()
-        .is_some_and(|parent| parent.is::<gtk::Overlay>()));
+    assert_eq!(close.parent().as_ref(), Some(row.header.upcast_ref()));
 }
 
 #[gtk::test]
 fn grouped_relay_row_hides_identity_details_owned_by_the_group_header() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();
-    notification.attribution = unixnotis_core::NotificationAttribution::trusted_relay(
+    notification.attribution = unixnotis_core::NotificationAttribution::relay(
         "Signal",
         "Sent via /usr/bin/notify-send",
-        true,
         "relay:notify-send:signal".to_string(),
     );
     let data = row_data(
         Rc::new(notification),
         RowFlags {
-            stacked: true,
+            collapsed_group_preview: true,
             ..Default::default()
         },
     );
@@ -181,10 +176,58 @@ fn grouped_relay_row_hides_identity_details_owned_by_the_group_header() {
     assert!(!row.secondary_claim.get_visible());
     assert!(!row.trust_chip.get_visible());
     assert!(!row.icon.get_visible());
+    assert!(row.header.get_visible());
+    assert!(row.close_button.get_visible());
 }
 
 #[gtk::test]
-fn compact_metadata_keeps_only_a_valid_relative_timestamp_lane() {
+fn collapsed_group_preview_shows_master_style_rear_layers() {
+    let (_root, row) = notification_row();
+    let data = row_data(
+        Rc::new(sample_notification()),
+        RowFlags {
+            collapsed_group_preview: true,
+            stack_depth: 2,
+            ..Default::default()
+        },
+    );
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+
+    assert!(row.stack_ghost_middle.get_visible());
+    assert!(row.stack_ghost_back.get_visible());
+}
+
+#[gtk::test]
+fn recycled_standalone_row_clears_identity_cache_when_it_becomes_grouped() {
+    let (_root, row) = notification_row();
+    let notification = Rc::new(sample_notification());
+    let standalone = row_data(notification.clone(), RowFlags::default());
+    let grouped = row_data(
+        notification,
+        RowFlags {
+            collapsed_group_preview: true,
+            ..Default::default()
+        },
+    );
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &standalone, &IconResolver::new(), &command_tx);
+    assert!(
+        row.icon_sig.borrow().is_some(),
+        "standalone rows should cache their resolved identity icon"
+    );
+
+    update_notification_row(&row, &grouped, &IconResolver::new(), &command_tx);
+    assert!(
+        row.icon_sig.borrow().is_none(),
+        "grouped rows must release identity state owned by their group header"
+    );
+}
+
+#[gtk::test]
+fn compact_rows_place_relative_time_in_the_non_overlapping_header_lane() {
     let (_root, row) = notification_row();
     let notification = Rc::new(sample_notification());
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
@@ -192,7 +235,7 @@ fn compact_metadata_keeps_only_a_valid_relative_timestamp_lane() {
 
     update_notification_row(&row, &current, &IconResolver::new(), &command_tx);
 
-    assert!(row.meta_top.get_visible());
+    assert!(!row.meta_top.get_visible());
     assert!(row.time_badge.get_visible());
     assert!(!row.meta_label.get_visible());
     assert!(!row.footer.get_visible());

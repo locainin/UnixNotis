@@ -3,9 +3,8 @@
 use std::collections::HashSet;
 
 use super::{
-    cut_corner, dnd_menu, empty_row, ghost_row, group_row, info_card, media_card, media_shell,
-    panel_action, panel_card, panel_shell, popup_card, shared_state, slider, stat_card,
-    toggle_card, urgency,
+    cut_corner, dnd_menu, empty_row, group_row, info_card, media_card, media_shell, panel_action,
+    panel_card, panel_shell, popup_card, shared_state, slider, stat_card, toggle_card, urgency,
 };
 
 #[test]
@@ -27,7 +26,7 @@ fn hook_names_stay_unique() {
         shared_state::CRITICAL,
         shared_state::EMPTY,
         shared_state::PLAYING,
-        shared_state::STACKED,
+        shared_state::COLLAPSED_GROUP_PREVIEW,
         urgency::BADGE,
         panel_action::FOCUS,
         panel_action::PRIMARY,
@@ -180,8 +179,6 @@ fn hook_names_stay_unique() {
         group_row::NO_ICON,
         empty_row::ROOT,
         empty_row::LABEL,
-        ghost_row::ROOT,
-        ghost_row::DEPTH_PREFIX,
         media_card::EMPTY_ARTIST,
         media_card::HAS_ART,
         media_card::HAS_ARTIST,
@@ -252,11 +249,11 @@ fn stock_panel_css_targets_real_group_card_hooks() {
     assert!(css.contains(&format!(".{}", panel_card::GROUP_COLLAPSED)));
     assert!(css.contains(&format!(".{}", panel_card::GROUP_EXPANDED)));
     assert!(css.contains(&format!(
-        ".unixnotis-panel-card.{}",
+        ".unixnotis-panel-card-foreground.{}",
         panel_card::GROUP_COLLAPSED
     )));
     assert!(css.contains(&format!(
-        ".unixnotis-panel-card.{}",
+        ".unixnotis-panel-card-foreground.{}",
         panel_card::GROUP_EXPANDED
     )));
 
@@ -279,19 +276,26 @@ fn stock_group_count_stays_neutral_during_header_hover() {
 }
 
 #[test]
-fn stock_panel_css_avoids_decorative_stack_ghosts_and_negative_overlap() {
+fn stock_panel_css_preserves_master_style_collapsed_stack_layers() {
     let css = crate::theme::DEFAULT_PANEL_CSS;
 
-    assert!(!css.contains(".unixnotis-stack-ghost"));
-    assert!(!css.contains("margin-top: -58px;"));
+    // Rear silhouettes make a collapsed group visibly different from one card
+    assert!(css.contains(".unixnotis-stack-ghost {"));
+    assert!(css.contains(".unixnotis-stack-ghost-1 {"));
+    assert!(css.contains(".unixnotis-stack-ghost-2 {"));
+
+    // Only the foreground overlaps the rear layers
+    assert!(css.contains(
+        ".unixnotis-panel-card-foreground.unixnotis-panel-card-group-collapsed {\n  margin-top: -58px;"
+    ));
 }
 
 #[test]
-fn stock_panel_close_control_stays_quiet_until_hover_or_focus() {
+fn stock_panel_close_control_remains_available_without_hover() {
     let css = crate::theme::DEFAULT_PANEL_CSS;
 
     assert!(css.contains(".unixnotis-panel-close {\n"));
-    assert!(css.contains("opacity: 0;"));
-    assert!(css.contains(".unixnotis-panel-card-overlay:hover .unixnotis-panel-close"));
-    assert!(css.contains(".unixnotis-panel-close:focus"));
+    assert!(!css.contains(".unixnotis-panel-card-overlay:hover .unixnotis-panel-close"));
+    assert!(css.contains(".unixnotis-panel-close:hover"));
+    assert!(css.contains(".unixnotis-panel-close:focus-visible"));
 }

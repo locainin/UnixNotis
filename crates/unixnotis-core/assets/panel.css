@@ -361,18 +361,19 @@ entry selection {
   min-height: 28px;
   min-height: var(--unixnotis-panel-close-size);
   box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
-  opacity: 0;
-  transition: opacity 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
 
-.unixnotis-panel-card-overlay:hover .unixnotis-panel-close,
-.unixnotis-panel-close:focus,
 .unixnotis-panel-close:hover {
-  opacity: 1;
   background: alpha(#fb7185, 0.16);
   border-color: alpha(#fb7185, 0.45);
   color: #fb7185;
   box-shadow: 0 0 8px alpha(#fb7185, 0.35);
+}
+
+.unixnotis-panel-close:focus-visible {
+  border-color: alpha(@unixnotis-accent, 0.45);
+  outline: none;
 }
 
 .unixnotis-panel-list {
@@ -390,30 +391,23 @@ entry selection {
  */
 .unixnotis-group {
   background: transparent;
-  margin-top: 12px;
-  margin-bottom: 0;
+  margin-top: 14px;
+  margin-bottom: 8px;
 }
 
 .unixnotis-group-header {
-  background: alpha(#ffffff, 0.035);
+  background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
   color: @unixnotis-text;
-  border-radius: 14px 14px 0 0;
-  padding: 7px 8px;
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.03);
-  border-bottom: 1px solid alpha(#ffffff, 0.01);
+  border-radius: 999px;
+  padding: 6px 12px;
+  border: 1px solid @unixnotis-card-border;
   box-shadow: none;
   outline: none;
   transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 .unixnotis-group-header:hover {
-  background: alpha(#ffffff, 0.05);
-  border-top-color: alpha(#ffffff, 0.14);
-  border-left-color: alpha(#ffffff, 0.10);
-  border-right-color: alpha(#ffffff, 0.05);
-  border-bottom-color: alpha(#ffffff, 0.02);
+  border-color: alpha(@unixnotis-accent, 0.22);
 }
 
 .unixnotis-group-header:focus,
@@ -446,13 +440,21 @@ entry selection {
   color: alpha(#ffffff, 0.9);
 }
 
-.unixnotis-group.command-line .unixnotis-group-avatar,
-.unixnotis-group.unverified .unixnotis-group-avatar {
+.unixnotis-group.relay .unixnotis-group-avatar {
   background: alpha(#fbbf24, 0.08);
   color: alpha(#fde68a, 0.90);
 }
 
-.unixnotis-group.suspicious .unixnotis-group-avatar {
+.unixnotis-group.unresolved .unixnotis-group-avatar {
+  background: alpha(#ffffff, 0.065);
+  color: alpha(#ffffff, 0.82);
+}
+
+.unixnotis-group.recognized .unixnotis-group-avatar {
+  border: 1px solid alpha(#ffffff, 0.10);
+}
+
+.unixnotis-group.conflict .unixnotis-group-avatar {
   background: alpha(#fb7185, 0.11);
   color: #fecdd3;
 }
@@ -472,7 +474,7 @@ entry selection {
   border: 1px solid alpha(#fbbf24, 0.18);
 }
 
-.unixnotis-group.suspicious .unixnotis-group-trust-chip {
+.unixnotis-group.conflict .unixnotis-group-trust-chip {
   background: alpha(#fb7185, 0.12);
   color: #fecdd3;
   border-color: alpha(#fb7185, 0.30);
@@ -512,64 +514,70 @@ entry selection {
 }
 
 .unixnotis-panel-card {
-  background-image: linear-gradient(135deg, alpha(#17253f, 0.90), alpha(#12182c, 0.96));
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
-  border-bottom: 1px solid alpha(#ffffff, 0.02);
-  border-radius: 16px;
-  padding: 10px 12px;
+  background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
+  border: 1px solid @unixnotis-card-border;
+  border-radius: var(--unixnotis-notification-card-radius);
   padding: var(--unixnotis-panel-card-padding-y) var(--unixnotis-panel-card-padding-x);
-  margin-top: 12px;
+  margin: 0;
+  box-shadow:
+    0 12px 26px -20px @unixnotis-shadow-strong,
+    inset 0 0 0 1px alpha(#ffffff, 0.04);
+  transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.unixnotis-panel-card.collapsed-group-preview {
+  box-shadow:
+    0 12px 24px -20px @unixnotis-shadow-strong,
+    inset 0 0 0 1px alpha(#ffffff, 0.04);
+}
+
+.unixnotis-panel-card-foreground {
+  margin-bottom: 8px;
+}
+
+.unixnotis-panel-card-foreground.unixnotis-panel-card-grouped {
+  margin-left: 8px;
+}
+
+.unixnotis-panel-card-foreground.unixnotis-panel-card-group-collapsed {
+  margin-top: -58px;
+}
+
+.unixnotis-panel-card-foreground.unixnotis-panel-card-group-expanded {
+  margin-bottom: var(--unixnotis-panel-card-gap);
+}
+
+.unixnotis-stack-ghost {
+  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.10);
+  border-radius: 18px;
+  padding: 0;
+  min-height: 68px;
+  margin-right: 10px;
   margin-bottom: 0;
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.02), 0 4px 12px -8px alpha(#000000, 0.7);
-  transition: border-color 0.15s ease-out;
+  margin-left: 10px;
+  border: 1px solid alpha(@unixnotis-card-border, 0.62);
+  box-shadow:
+    0 -2px 10px -8px alpha(@unixnotis-accent, 0.22),
+    0 8px 14px -14px @unixnotis-shadow-soft;
 }
 
-.unixnotis-panel-card.stacked {
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.02), 0 4px 12px -8px alpha(#000000, 0.7);
+.unixnotis-stack-ghost-1 {
+  margin-top: -58px;
 }
 
-.unixnotis-panel-card.unixnotis-panel-card-group-collapsed {
+.unixnotis-stack-ghost-2 {
+  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.06);
   margin-top: 0;
-  margin-bottom: 12px;
-  border-radius: 0 0 14px 14px;
-  padding-top: 9px;
-  padding-bottom: 9px;
-  box-shadow: none;
-}
-
-.unixnotis-panel-card.unixnotis-panel-card-group-expanded {
-  margin-top: 0;
-  margin-bottom: 0;
-  border-radius: 0;
-  padding-top: 9px;
-  padding-bottom: 9px;
-  border-top-color: alpha(#ffffff, 0.065);
-  box-shadow: none;
-}
-
-.unixnotis-panel-card.unixnotis-panel-card-group-last {
-  border-radius: 0 0 14px 14px;
-  margin-bottom: 12px;
-}
-
-.unixnotis-panel-card.unixnotis-panel-card-group-first {
-  border-top-color: alpha(#ffffff, 0.07);
+  margin-right: 20px;
+  margin-left: 20px;
+  border-color: alpha(@unixnotis-card-border, 0.42);
+  box-shadow:
+    0 -2px 10px -9px alpha(@unixnotis-accent, 0.14),
+    0 10px 16px -15px @unixnotis-shadow-soft;
 }
 
 .unixnotis-panel-card.active {
-  background-image: linear-gradient(135deg, alpha(#1a2e50, 0.93), alpha(#111627, 0.96));
-  border-top: 1px solid alpha(#ffffff, 0.12);
-  border-left: 1px solid alpha(#ffffff, 0.09);
-  border-right: 1px solid alpha(#ffffff, 0.06);
-  border-bottom: 1px solid alpha(#ffffff, 0.03);
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.03), 0 6px 16px -8px alpha(#000000, 0.8);
-}
-
-.unixnotis-panel-card.stacked.active {
-  /* Active state should not erase the collapsed-stack shadow */
-  box-shadow: 0 12px 24px -20px alpha(#000000, 0.78);
+  border-color: alpha(@unixnotis-card-border, 0.95);
 }
 
 /* Critical state composes after the ordinary active and stack rules */
@@ -601,23 +609,6 @@ entry selection {
 
 .unixnotis-panel-card.critical .unixnotis-panel-summary {
   color: #ffffff;
-}
-
-.unixnotis-panel-card.stacked.critical,
-.unixnotis-panel-card.stacked.active.critical {
-  /* Urgent stacks keep the same depth while using the critical border color */
-  background-image: linear-gradient(
-    145deg,
-    alpha(@unixnotis-critical-surface, 0.82),
-    alpha(#12182c, 0.97)
-  );
-  border-color: alpha(@unixnotis-critical-border, 0.48);
-  box-shadow:
-    0 8px 0 -4px alpha(@unixnotis-critical-border, 0.18),
-    0 16px 0 -8px alpha(@unixnotis-critical-border, 0.12),
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 20px -16px alpha(@unixnotis-critical-border, 0.32),
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
 .unixnotis-panel-card-has-actions .unixnotis-notification-actions {
@@ -659,11 +650,11 @@ entry selection {
 }
 
 .unixnotis-panel-app {
-  font-weight: 700;
-  color: #a3b3cc;
-  font-size: 10px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  color: alpha(@unixnotis-text, 0.78);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .unixnotis-panel-secondary-claim {
@@ -681,7 +672,7 @@ entry selection {
   border: 1px solid alpha(#fbbf24, 0.18);
 }
 
-.unixnotis-panel-card.suspicious .unixnotis-panel-trust-chip {
+.unixnotis-panel-card.conflict .unixnotis-panel-trust-chip {
   background: alpha(#fb7185, 0.12);
   color: #fecdd3;
   border-color: alpha(#fb7185, 0.30);
@@ -689,12 +680,12 @@ entry selection {
 
 .unixnotis-panel-summary {
   font-size: 13px;
-  color: #ffffff;
-  font-weight: 700;
+  color: @unixnotis-text;
+  font-weight: 650;
 }
 
 .unixnotis-panel-body {
-  color: #cbd5e1;
+  color: @unixnotis-muted;
   font-size: 12px;
 }
 
@@ -714,13 +705,21 @@ entry selection {
   color: alpha(#ffffff, 0.90);
 }
 
-.unixnotis-panel-card.command-line .unixnotis-panel-icon,
-.unixnotis-panel-card.unverified .unixnotis-panel-icon {
+.unixnotis-panel-card.relay .unixnotis-panel-icon {
   background: alpha(#fbbf24, 0.08);
   color: alpha(#fde68a, 0.90);
 }
 
-.unixnotis-panel-card.suspicious .unixnotis-panel-icon {
+.unixnotis-panel-card.unresolved .unixnotis-panel-icon {
+  background: alpha(#ffffff, 0.065);
+  color: alpha(#ffffff, 0.82);
+}
+
+.unixnotis-panel-card.recognized .unixnotis-panel-icon {
+  border: 1px solid alpha(#ffffff, 0.10);
+}
+
+.unixnotis-panel-card.conflict .unixnotis-panel-icon {
   background: alpha(#fb7185, 0.11);
   color: #fecdd3;
 }
@@ -781,21 +780,17 @@ entry selection {
 }
 
 .unixnotis-panel-card:hover {
-  background-image: linear-gradient(135deg, alpha(#21355a, 0.92), alpha(#161e38, 0.97));
-  border-top: 1px solid alpha(#ffffff, 0.14);
-  border-left: 1px solid alpha(#ffffff, 0.10);
-  border-right: 1px solid alpha(#ffffff, 0.06);
-  border-bottom: 1px solid alpha(#ffffff, 0.03);
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.04), 0 10px 24px -16px alpha(#000000, 0.85);
+  border-color: alpha(@unixnotis-accent, 0.22);
+  box-shadow:
+    0 14px 28px -20px @unixnotis-shadow-strong,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
 .unixnotis-panel-card.active:hover {
-  background-image: linear-gradient(135deg, alpha(#264375, 0.95), alpha(#151b32, 0.97));
-  border-top: 1px solid alpha(#ffffff, 0.18);
-  border-left: 1px solid alpha(#ffffff, 0.14);
-  border-right: 1px solid alpha(#ffffff, 0.08);
-  border-bottom: 1px solid alpha(#ffffff, 0.04);
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.05), 0 12px 28px -14px alpha(#000000, 0.9);
+  border-color: alpha(@unixnotis-accent, 0.28);
+  box-shadow:
+    0 14px 28px -20px @unixnotis-shadow-strong,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
 /*

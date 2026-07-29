@@ -66,9 +66,9 @@ pub struct RowData {
     // Position flags let CSS form one continuous grouped surface
     pub group_first: bool,
     pub group_last: bool,
-    // True when this notification is the visible card for a collapsed group
-    pub stacked: bool,
-    // Number of internal ghost cards shown under the visible notification card
+    // True when this notification previews a collapsed multi-item group
+    pub collapsed_group_preview: bool,
+    // Collapsed groups render at most two shallow rear cards
     pub stack_depth: u8,
     pub is_active: bool,
     pub presentation: RowPresentation,
@@ -86,7 +86,7 @@ impl Default for RowData {
             expanded: false,
             group_first: false,
             group_last: false,
-            stacked: false,
+            collapsed_group_preview: false,
             stack_depth: 0,
             is_active: false,
             presentation: RowPresentation::default(),
@@ -111,7 +111,7 @@ impl RowData {
             expanded,
             group_first: false,
             group_last: false,
-            stacked: false,
+            collapsed_group_preview: false,
             stack_depth: 0,
             is_active: false,
             presentation: RowPresentation::default(),
@@ -122,8 +122,7 @@ impl RowData {
     pub fn notification(
         group_key: Rc<str>,
         notification: Rc<NotificationView>,
-        stacked: bool,
-        stack_depth: u8,
+        collapsed_group_preview: bool,
         expanded: bool,
         is_active: bool,
         presentation: RowPresentation,
@@ -137,8 +136,8 @@ impl RowData {
             expanded,
             group_first: false,
             group_last: false,
-            stacked,
-            stack_depth,
+            collapsed_group_preview,
+            stack_depth: 0,
             is_active,
             presentation,
             notification: Some(notification),
@@ -154,7 +153,7 @@ impl RowData {
             && self.expanded == other.expanded
             && self.group_first == other.group_first
             && self.group_last == other.group_last
-            && self.stacked == other.stacked
+            && self.collapsed_group_preview == other.collapsed_group_preview
             && self.stack_depth == other.stack_depth
             && self.is_active == other.is_active
             && self.presentation == other.presentation
