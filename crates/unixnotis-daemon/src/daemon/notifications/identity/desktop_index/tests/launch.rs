@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use super::super::launch::{
@@ -183,6 +184,9 @@ fn user_writable_literal_payload_cannot_support_a_system_association() {
     let root = TempRoot::new("launch-spec-user-payload");
     let payload = root.join("application-script");
     fs::write(&payload, "exit 0\n").expect("write user payload");
+    // Make the fixture mutable even when the test runner itself uses uid zero
+    fs::set_permissions(&payload, fs::Permissions::from_mode(0o666))
+        .expect("make payload user writable");
     let desktop_path = root.join("org.example.UserPayload.desktop");
     fs::write(
         &desktop_path,

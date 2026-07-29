@@ -13,7 +13,8 @@ use crate::expire::ExpirationScheduler;
 use crate::test_support::daemon_state_for_test;
 
 const NOTIFICATIONS_INTERFACE: &str = "org.freedesktop.Notifications";
-const TEST_NOTIFY_TIMEOUT: Duration = Duration::from_secs(2);
+// Four-megabyte D-Bus fixtures need headroom when the full test binary runs in parallel
+const TEST_NOTIFY_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[test]
 fn notify_wire_limit_applies_only_to_oversized_notify_calls() {
