@@ -1,5 +1,5 @@
 use unixnotis_core::{
-    AttributionClass, InlineReply, InlineReplyPolicy, NotificationAttribution, NotificationImage,
+    AttributionReason, InlineReply, InlineReplyPolicy, NotificationAttribution, NotificationImage,
     NotificationView,
 };
 
@@ -8,14 +8,14 @@ pub(super) fn notification() -> NotificationView {
         id: 7,
         generation: 11,
         app_name: "Example".to_string(),
-        attribution: NotificationAttribution::associated(
+        attribution: NotificationAttribution::verified(
+            "Example",
             "Example",
             "org.example.App",
-            "org.example.App",
-            "",
-            AttributionClass::SystemAssociated,
-            false,
-            "system-desktop:org.example.App".to_string(),
+            "example-app",
+            AttributionReason::ExactSystemExecutable,
+            "exact system executable",
+            "system-app:org.example.App".to_string(),
         ),
         summary: "New message".to_string(),
         body: "Are you coming?".to_string(),
