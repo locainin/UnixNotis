@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use unixnotis_core::{
-    util, Action, AttributionDiagnostics, Config, InlineReply, InlineReplyPolicy, Notification,
-    NotificationAttribution, NotificationImage, Urgency,
+    util, Action, AttributionDiagnostics, Config, ImageData, InlineReply, InlineReplyPolicy,
+    Notification, NotificationAttribution, NotificationImage, Urgency,
 };
 use zbus::zvariant::{OwnedValue, Value};
 
@@ -26,6 +26,7 @@ pub(in crate::daemon::notifications) struct NotificationInput {
     pub(in crate::daemon::notifications) body: String,
     pub(in crate::daemon::notifications) actions: Vec<String>,
     pub(in crate::daemon::notifications) hints: HashMap<String, OwnedValue>,
+    pub(in crate::daemon::notifications) image_data: Option<ImageData>,
     pub(in crate::daemon::notifications) sender: SenderMetadata,
     pub(in crate::daemon::notifications) attribution: NotificationAttribution,
     pub(in crate::daemon::notifications) attribution_diagnostics: AttributionDiagnostics,
@@ -43,6 +44,7 @@ pub(in crate::daemon::notifications) fn build_notification(
         body,
         actions,
         hints,
+        image_data,
         sender,
         attribution,
         attribution_diagnostics,
@@ -70,7 +72,12 @@ pub(in crate::daemon::notifications) fn build_notification(
         .get("resident")
         .and_then(|value| bool::try_from(value).ok())
         .unwrap_or(false);
-    let image = NotificationImage::from_hints(&app_name, &app_icon, &hints);
+    let mut image = NotificationImage::from_hints(&app_name, &app_icon, &hints);
+    if let Some(image_data) = image_data {
+        // The wire decoder already normalized this bounded image without dynamic byte expansion
+        image.has_image_data = true;
+        image.image_data = image_data;
+    }
     let actions = parse_actions(actions);
     // Protocol metadata is parsed independently from the daemon's interaction decision
     let inline_reply = parse_inline_reply(&actions, &hints);

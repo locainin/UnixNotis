@@ -4,8 +4,8 @@ use crate::daemon::notifications::ingress::limits::MAX_HINT_STRING_BYTES;
 
 use super::cursor::Cursor;
 use super::limits::{
-    PreflightError, StringBudget, MAX_IMAGE_BYTES, MAX_NESTED_CONTAINER_ELEMENTS,
-    MAX_NON_IMAGE_ARRAY_BYTES, MAX_SIGNATURE_DEPTH,
+    PreflightError, StringBudget, MAX_NESTED_CONTAINER_ELEMENTS, MAX_NON_IMAGE_ARRAY_BYTES,
+    MAX_NOTIFY_WIRE_IMAGE_BYTES, MAX_SIGNATURE_DEPTH,
 };
 use super::signature::{SignatureParser, SignatureType};
 
@@ -49,7 +49,7 @@ impl Cursor<'_> {
                     // Raw bytes are skipped in place without constructing a vector
                     let length = self.remaining_to(end)?;
                     let limit = if image_hint {
-                        MAX_IMAGE_BYTES
+                        MAX_NOTIFY_WIRE_IMAGE_BYTES
                     } else {
                         MAX_NON_IMAGE_ARRAY_BYTES
                     };

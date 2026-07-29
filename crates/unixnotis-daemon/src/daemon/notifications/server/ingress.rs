@@ -8,11 +8,8 @@ use zbus::object_server::{DispatchResult, Interface, SignalContext};
 use zbus::zvariant::{OwnedValue, Value};
 use zbus::{Connection, Message, ObjectServer};
 
-use super::notify_body::{preflight_notify, PreflightError};
+use super::notify_body::{preflight_notify, PreflightError, MAX_NOTIFY_WIRE_BODY_BYTES};
 use super::NotificationServer;
-
-// This leaves room for one maximum image plus bounded text, actions, hints, and wire overhead
-pub(super) const MAX_NOTIFY_WIRE_BODY_BYTES: usize = 384 * 1024;
 
 /// Object-server adapter that rejects oversized Notify bodies before typed allocation
 pub struct NotificationIngress {

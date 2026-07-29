@@ -12,6 +12,7 @@ use unixnotis_core::{
     CloseReason, Config, Notification, NotificationImage, Urgency, CONTROL_OBJECT_PATH,
 };
 use zbus::message::Type;
+use zbus::zvariant::{OwnedValue, Value};
 use zbus::{Connection, MatchRule, Message, MessageStream};
 
 use crate::daemon::{DaemonState, NotificationServer};
@@ -176,6 +177,8 @@ async fn ingest_notify_stores_notifications_and_returns_assigned_ids() {
     let server = NotificationServer::new(state.clone(), scheduler);
     let message = notify_header_message();
     let header = message.header();
+    let category = OwnedValue::try_from(Value::from("im.received")).expect("category hint");
+    let hints = HashMap::from([("category".to_string(), category)]);
 
     let id = server
         .ingest_notify(
@@ -185,7 +188,7 @@ async fn ingest_notify_stores_notifications_and_returns_assigned_ids() {
             "summary".to_string(),
             "body".to_string(),
             Vec::new(),
-            HashMap::new(),
+            hints.into(),
             &header,
             0,
         )
@@ -199,7 +202,7 @@ async fn ingest_notify_stores_notifications_and_returns_assigned_ids() {
             "next".to_string(),
             "body".to_string(),
             Vec::new(),
-            HashMap::new(),
+            HashMap::new().into(),
             &header,
             0,
         )
@@ -212,6 +215,7 @@ async fn ingest_notify_stores_notifications_and_returns_assigned_ids() {
     assert_eq!(second_id, 2);
     assert_eq!(active.id, id);
     assert_eq!(active.summary, "summary");
+    assert_eq!(active.category, "im.received");
 }
 
 #[tokio::test]
@@ -230,7 +234,7 @@ async fn ingest_notify_schedules_expiration_for_positive_timeout() {
             "expires".to_string(),
             "body".to_string(),
             Vec::new(),
-            HashMap::new(),
+            HashMap::new().into(),
             &header,
             25,
         )
@@ -270,7 +274,7 @@ async fn ingest_notify_emits_notification_added_signal() {
             "summary".to_string(),
             "body".to_string(),
             Vec::new(),
-            HashMap::new(),
+            HashMap::new().into(),
             &header,
             0,
         )
@@ -314,7 +318,7 @@ async fn ingest_notify_emits_control_close_for_evicted_active_notification() {
             "first".to_string(),
             "body".to_string(),
             Vec::new(),
-            HashMap::new(),
+            HashMap::new().into(),
             &header,
             0,
         )
@@ -328,7 +332,7 @@ async fn ingest_notify_emits_control_close_for_evicted_active_notification() {
             "second".to_string(),
             "body".to_string(),
             Vec::new(),
-            HashMap::new(),
+            HashMap::new().into(),
             &header,
             0,
         )
