@@ -70,18 +70,16 @@ pub(super) async fn run_daemon(
         .await?;
 
     // The standard notification name is the first externally visible readiness gate
-    let reply = request_well_known_name(connection, args.trial).await?;
+    let reply = match request_well_known_name(connection, args.trial).await {
+        Ok(reply) => reply,
+        Err(zbus::Error::NameTaken) => {
+            return Err(anyhow!(
+                "org.freedesktop.Notifications is already owned and unavailable to this process"
+            ));
+        }
+        Err(error) => return Err(error.into()),
+    };
     log_name_reply(&reply);
-    if !args.trial
-        && !matches!(
-            reply,
-            zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner
-        )
-    {
-        return Err(anyhow!(
-            "org.freedesktop.Notifications is already owned; retry with --trial"
-        ));
-    }
     verify_name_owner(dbus_proxy, connection, NOTIFICATIONS_BUS_NAME).await?;
 
     // The private control name is published last and means the daemon is ready

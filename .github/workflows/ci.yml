@@ -44,7 +44,6 @@ jobs:
             ca-certificates \
             curl \
             dbus \
-            dbus-broker \
             git \
             jq \
             libgtk-4-dev \
@@ -52,7 +51,6 @@ jobs:
             pkg-config \
             ripgrep \
             shellcheck \
-            socat \
             xauth \
             xvfb \
             zstd
@@ -124,35 +122,7 @@ jobs:
       - name: Run workspace tests
         run: |
           set -euo pipefail
-          ci_runtime_dir="${RUNNER_TEMP:?}/unixnotis-runtime"
-          ci_journal_socket="/run/systemd/journal/socket"
-          ci_journal_sink_pid=""
-
-          cleanup_journal_sink() {
-            if [[ -n "${ci_journal_sink_pid}" ]]; then
-              kill "${ci_journal_sink_pid}" 2>/dev/null || true
-              wait "${ci_journal_sink_pid}" 2>/dev/null || true
-            fi
-          }
-          trap cleanup_journal_sink EXIT
-
-          install -d -m 0700 "${ci_runtime_dir}"
-          if [[ ! -S "${ci_journal_socket}" ]]; then
-            install -d -m 0755 "$(dirname "${ci_journal_socket}")"
-            socat \
-              "UNIX-RECVFROM:${ci_journal_socket},fork,mode=0666" \
-              OPEN:/dev/null &
-            ci_journal_sink_pid=$!
-            for ((attempt = 0; attempt < 200; attempt++)); do
-              [[ -S "${ci_journal_socket}" ]] && break
-              kill -0 "${ci_journal_sink_pid}"
-              sleep 0.01
-            done
-            [[ -S "${ci_journal_socket}" ]]
-          fi
-
-          XDG_RUNTIME_DIR="${ci_runtime_dir}" \
-            xvfb-run -a dbus-run-session -- \
+          xvfb-run -a dbus-run-session -- \
             cargo test --workspace --all-targets --all-features
 
       - name: Run dependency audit
