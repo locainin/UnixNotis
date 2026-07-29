@@ -326,9 +326,12 @@ async fn competing_notification_owner_prevents_control_publication() {
         .await
         .expect("competing owner should fail startup promptly")
         .expect("join daemon task");
+    let error = result.expect_err("competing notification owner must fail startup");
     assert!(
-        result.is_err(),
-        "competing notification owner must fail startup"
+        error
+            .to_string()
+            .contains("already owned and unavailable to this process"),
+        "unexpected competing-owner error: {error:#}"
     );
     let dbus = DBusProxy::new(&observer)
         .await
