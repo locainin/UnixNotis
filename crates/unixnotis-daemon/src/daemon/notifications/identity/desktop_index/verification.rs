@@ -6,10 +6,12 @@ use std::path::Path;
 use super::super::executable::{executable_evidence_for_path, FileIdentity};
 use super::super::sender::{CommandLineEvidence, CommandLineQuality};
 use super::model::{
-    DesktopIdentityIndex, DesktopRecord, LaunchArgument, LaunchAuthority, LaunchFailure,
+    DesktopIdentityIndex, DesktopRecord, FieldCode, LaunchArgument, LaunchAuthority, LaunchFailure,
     LaunchSpec, LaunchVerification, LiteralArgument, VerifiedLaunch,
 };
 use super::names::normalize_desktop_id;
+
+const MAX_PROCESS_ARGUMENTS: usize = 256;
 
 pub(super) fn verify_record_launch(
     record: &DesktopRecord,
@@ -51,21 +53,45 @@ fn classify_launch_authority(
         return LaunchAuthority::ProtectedPayload;
     }
 
+    // A caller-selected file or URL can change what a shared runtime executes
+    // Uniqueness in the desktop index cannot turn that open-ended selector into app identity
+    if !spec.arguments.is_empty() && spec.arguments.iter().all(is_dynamic_or_option) {
+        return LaunchAuthority::DynamicOnly;
+    }
+
+    if executable_contract_is_dedicated(record, index, spec) {
+        return LaunchAuthority::DedicatedExecutable;
+    }
+
+    LaunchAuthority::Ambiguous
+}
+
+fn executable_contract_is_dedicated(
+    record: &DesktopRecord,
+    index: &DesktopIdentityIndex,
+    spec: &LaunchSpec,
+) -> bool {
     let distinct_ids = index
         .records_for_executable(spec.executable)
         .into_iter()
         .filter(|candidate| !record.system_origin || candidate.system_origin)
         .map(|candidate| normalize_desktop_id(&candidate.id))
         .collect::<HashSet<_>>();
-    if distinct_ids.len() == 1 {
-        return LaunchAuthority::DedicatedExecutable;
-    }
 
-    if spec.arguments.iter().all(is_dynamic_or_option) {
-        LaunchAuthority::DynamicOnly
-    } else {
-        LaunchAuthority::Ambiguous
-    }
+    // A dedicated executable contract has no unresolved positional selector
+    // Fixed positional values on a shared runtime could select code just like a file field
+    distinct_ids.len() == 1
+        && !spec
+            .arguments
+            .iter()
+            .any(|argument| matches!(argument, LaunchArgument::FieldCode(_)))
+        && !spec.arguments.iter().any(|argument| {
+            matches!(
+                argument,
+                LaunchArgument::Literal(literal)
+                    if !literal.value.starts_with(b"-") && literal.file.is_none()
+            )
+        })
 }
 
 fn verify_dedicated(command_line: &CommandLineEvidence, spec: &LaunchSpec) -> LaunchVerification {
@@ -77,7 +103,10 @@ fn verify_dedicated(command_line: &CommandLineEvidence, spec: &LaunchSpec) -> La
             LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable)
         }
         CommandLineQuality::Structured => {
-            if required_fixed_arguments_present(spec, &command_line.argv) {
+            let actual = command_line.argv.get(1..).unwrap_or_default();
+            if actual.len() <= MAX_PROCESS_ARGUMENTS
+                && match_ordered_dedicated_contract(spec, actual)
+            {
                 LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable)
             } else {
                 LaunchVerification::InsufficientEvidence(LaunchFailure::RequiredArgumentMismatch)
@@ -103,39 +132,223 @@ fn verify_protected_payload(
     }
 
     let actual = command_line.argv.get(1..).unwrap_or_default();
-    for argument in &spec.arguments {
-        let LaunchArgument::Literal(literal) = argument else {
-            continue;
-        };
-        if literal.file.is_some()
-            && !actual
-                .iter()
-                .any(|value| literal_file_matches(literal, value))
-        {
-            return LaunchVerification::DefinitiveMismatch(LaunchFailure::ProtectedPayloadMismatch);
-        }
+    if actual.len() > MAX_PROCESS_ARGUMENTS {
+        return LaunchVerification::InsufficientEvidence(LaunchFailure::UnstructuredCommandLine);
     }
-    if !required_fixed_arguments_present(spec, &command_line.argv) {
-        return LaunchVerification::InsufficientEvidence(LaunchFailure::RequiredArgumentMismatch);
+    if match_ordered_exec_contract(spec, actual) {
+        return LaunchVerification::Verified(VerifiedLaunch::ProtectedPayload);
     }
 
-    LaunchVerification::Verified(VerifiedLaunch::ProtectedPayload)
+    // A protected file in another argv slot is a decoy, not supporting evidence
+    // Missing or replaced protected files are equally definitive for structured argv
+    if protected_payload_position_mismatch(spec, actual) {
+        return LaunchVerification::DefinitiveMismatch(LaunchFailure::ProtectedPayloadMismatch);
+    }
+
+    LaunchVerification::InsufficientEvidence(LaunchFailure::RequiredArgumentMismatch)
 }
 
-fn required_fixed_arguments_present(spec: &LaunchSpec, argv: &[Vec<u8>]) -> bool {
-    let actual = argv.get(1..).unwrap_or_default();
-    spec.arguments.iter().all(|argument| {
-        let LaunchArgument::Literal(literal) = argument else {
-            return true;
-        };
-        if literal.file.is_some() {
+fn match_ordered_dedicated_contract(spec: &LaunchSpec, actual: &[Vec<u8>]) -> bool {
+    let mut visited = HashSet::new();
+    match_dedicated_arguments(&spec.arguments, actual, 0, 0, &mut visited)
+}
+
+fn match_dedicated_arguments(
+    template: &[LaunchArgument],
+    actual: &[Vec<u8>],
+    template_index: usize,
+    actual_index: usize,
+    visited: &mut HashSet<(usize, usize)>,
+) -> bool {
+    if !visited.insert((template_index, actual_index)) {
+        return false;
+    }
+    let Some(argument) = template.get(template_index) else {
+        // Only standalone runtime switches are non-authoritative after the fixed contract
+        return actual[actual_index..]
+            .iter()
+            .all(|value| value.starts_with(b"-"));
+    };
+    let next_template = template_index.saturating_add(1);
+    let matches_expected = match argument {
+        LaunchArgument::Literal(literal) => {
             actual
-                .iter()
-                .any(|value| literal_file_matches(literal, value))
-        } else {
-            actual.iter().any(|value| value == &literal.value)
+                .get(actual_index)
+                .is_some_and(|value| value == &literal.value)
+                && match_dedicated_arguments(
+                    template,
+                    actual,
+                    next_template,
+                    actual_index.saturating_add(1),
+                    visited,
+                )
         }
-    })
+        LaunchArgument::OptionalIcon { name } => {
+            match_dedicated_arguments(template, actual, next_template, actual_index, visited)
+                || (actual
+                    .get(actual_index)
+                    .is_some_and(|value| value == b"--icon")
+                    && actual
+                        .get(actual_index.saturating_add(1))
+                        .is_some_and(|value| value == name.as_bytes())
+                    && match_dedicated_arguments(
+                        template,
+                        actual,
+                        next_template,
+                        actual_index.saturating_add(2),
+                        visited,
+                    ))
+        }
+        // Dynamic selectors prevent dedicated classification before matching begins
+        LaunchArgument::FieldCode(_) => false,
+    };
+    if matches_expected {
+        return true;
+    }
+
+    // Unknown positional values can select content, so only skip one self-contained option
+    actual
+        .get(actual_index)
+        .is_some_and(|value| value.starts_with(b"-") && value != b"--icon")
+        && match_dedicated_arguments(
+            template,
+            actual,
+            template_index,
+            actual_index.saturating_add(1),
+            visited,
+        )
+}
+
+fn match_ordered_exec_contract(spec: &LaunchSpec, actual: &[Vec<u8>]) -> bool {
+    let mut visited = HashSet::new();
+    match_arguments(&spec.arguments, actual, 0, 0, &mut visited)
+}
+
+fn match_arguments(
+    template: &[LaunchArgument],
+    actual: &[Vec<u8>],
+    template_index: usize,
+    actual_index: usize,
+    visited: &mut HashSet<(usize, usize)>,
+) -> bool {
+    if !visited.insert((template_index, actual_index)) {
+        return false;
+    }
+    let Some(argument) = template.get(template_index) else {
+        return actual_index == actual.len();
+    };
+    match argument {
+        LaunchArgument::Literal(literal) => {
+            let matches = if literal.file.is_some() {
+                actual
+                    .get(actual_index)
+                    .is_some_and(|value| literal_file_matches(literal, value))
+            } else {
+                actual.get(actual_index) == Some(&literal.value)
+            };
+            matches
+                && match_arguments(
+                    template,
+                    actual,
+                    template_index.saturating_add(1),
+                    actual_index.saturating_add(1),
+                    visited,
+                )
+        }
+        LaunchArgument::OptionalIcon { name } => {
+            match_arguments(
+                template,
+                actual,
+                template_index.saturating_add(1),
+                actual_index,
+                visited,
+            ) || (actual
+                .get(actual_index)
+                .is_some_and(|value| value == b"--icon")
+                && actual
+                    .get(actual_index.saturating_add(1))
+                    .is_some_and(|value| value == name.as_bytes())
+                && match_arguments(
+                    template,
+                    actual,
+                    template_index.saturating_add(1),
+                    actual_index.saturating_add(2),
+                    visited,
+                ))
+        }
+        LaunchArgument::FieldCode(code) => match_field_code(
+            *code,
+            template,
+            actual,
+            template_index,
+            actual_index,
+            visited,
+        ),
+    }
+}
+
+fn match_field_code(
+    code: FieldCode,
+    template: &[LaunchArgument],
+    actual: &[Vec<u8>],
+    template_index: usize,
+    actual_index: usize,
+    visited: &mut HashSet<(usize, usize)>,
+) -> bool {
+    let maximum = match code {
+        FieldCode::File | FieldCode::Url => 1,
+        FieldCode::Files | FieldCode::Urls => actual.len().saturating_sub(actual_index),
+    };
+    for count in 0..=maximum {
+        let Some(end) = actual_index.checked_add(count) else {
+            break;
+        };
+        let Some(values) = actual.get(actual_index..end) else {
+            break;
+        };
+        if !values.iter().all(|value| field_value_matches(code, value)) {
+            break;
+        }
+        if match_arguments(
+            template,
+            actual,
+            template_index.saturating_add(1),
+            end,
+            visited,
+        ) {
+            return true;
+        }
+    }
+    false
+}
+
+fn field_value_matches(code: FieldCode, value: &[u8]) -> bool {
+    if value.is_empty() || value.starts_with(b"-") {
+        return false;
+    }
+    match code {
+        FieldCode::File | FieldCode::Files => true,
+        FieldCode::Url | FieldCode::Urls => std::str::from_utf8(value)
+            .ok()
+            .is_some_and(|value| url::Url::parse(value).is_ok()),
+    }
+}
+
+fn protected_payload_position_mismatch(spec: &LaunchSpec, actual: &[Vec<u8>]) -> bool {
+    spec.arguments
+        .iter()
+        .enumerate()
+        .filter_map(|(index, argument)| {
+            let LaunchArgument::Literal(literal) = argument else {
+                return None;
+            };
+            is_protected_payload(argument).then_some((index, literal))
+        })
+        .any(|(index, literal)| {
+            !actual
+                .get(index)
+                .is_some_and(|value| literal_file_matches(literal, value))
+        })
 }
 
 fn literal_file_matches(literal: &LiteralArgument, actual: &[u8]) -> bool {
