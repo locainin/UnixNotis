@@ -3,7 +3,10 @@
 use std::fs;
 use std::os::unix::fs::symlink;
 
-use super::{classify_rename_attempt, rename_regular_file_no_replace, RenameRegularFileOutcome};
+use super::{
+    classify_directory_rename_attempt, classify_rename_attempt, rename_directory_no_replace,
+    rename_regular_file_no_replace, RenameDirectoryOutcome, RenameRegularFileOutcome,
+};
 use crate::test_support::unique_temp_path;
 
 #[test]
@@ -178,4 +181,90 @@ fn regular_file_rename_rejects_a_directory_source() {
     assert!(source.is_dir());
     assert!(!destination.exists());
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn directory_rename_publishes_a_complete_tree_without_replacing_a_destination() {
+    let root = unique_temp_path("rename-directory");
+    let source = root.join(".stock.staging");
+    let destination = root.join("stock");
+    fs::create_dir_all(&source).expect("create staged directory");
+    fs::write(source.join("theme.toml"), "api_version = 2").expect("write staged manifest");
+
+    let outcome =
+        rename_directory_no_replace(&source, &destination).expect("publish staged directory");
+
+    assert_eq!(outcome, RenameDirectoryOutcome::Renamed);
+    assert!(!source.exists());
+    assert_eq!(
+        fs::read_to_string(destination.join("theme.toml")).expect("read published manifest"),
+        "api_version = 2"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn directory_rename_preserves_an_existing_destination_and_staged_source() {
+    let root = unique_temp_path("rename-directory-collision");
+    let source = root.join(".stock.staging");
+    let destination = root.join("stock");
+    fs::create_dir_all(&source).expect("create staged directory");
+    fs::create_dir_all(&destination).expect("create destination directory");
+    fs::write(source.join("staged.css"), "staged").expect("write staged file");
+    fs::write(destination.join("personal.css"), "personal").expect("write personal file");
+
+    let outcome =
+        rename_directory_no_replace(&source, &destination).expect("classify destination collision");
+
+    assert_eq!(outcome, RenameDirectoryOutcome::DestinationExists);
+    assert_eq!(
+        fs::read_to_string(source.join("staged.css")).expect("read retained staged file"),
+        "staged"
+    );
+    assert_eq!(
+        fs::read_to_string(destination.join("personal.css")).expect("read personal file"),
+        "personal"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn directory_rename_rejects_a_symlink_source() {
+    let root = unique_temp_path("rename-directory-symlink");
+    let actual = root.join("actual");
+    let source = root.join(".stock.staging");
+    let destination = root.join("stock");
+    fs::create_dir_all(&actual).expect("create actual directory");
+    symlink(&actual, &source).expect("create staged directory link");
+
+    rename_directory_no_replace(&source, &destination)
+        .expect_err("a staged directory link must be rejected");
+
+    assert!(actual.is_dir());
+    assert!(!destination.exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn directory_rename_reports_a_missing_staged_source_without_creating_a_destination() {
+    let root = unique_temp_path("rename-directory-missing-source");
+    let source = root.join(".stock.staging");
+    let destination = root.join("stock");
+    fs::create_dir_all(&root).expect("create rename test root");
+
+    let outcome = rename_directory_no_replace(&source, &destination)
+        .expect("a missing staged directory should be a normal classified outcome");
+
+    assert_eq!(outcome, RenameDirectoryOutcome::SourceMissing);
+    assert!(!destination.exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn directory_rename_classifies_source_disappearance_at_the_rename_boundary() {
+    let outcome =
+        classify_directory_rename_attempt(Err(std::io::Error::from(std::io::ErrorKind::NotFound)))
+            .expect("rename-time source disappearance should be classified");
+
+    assert_eq!(outcome, RenameDirectoryOutcome::SourceMissing);
 }

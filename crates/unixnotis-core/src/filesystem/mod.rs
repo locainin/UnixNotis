@@ -28,7 +28,10 @@ pub use remove::{
     remove_regular_file, remove_regular_file_pair_if_contents, remove_symlink,
     remove_symlink_if_target, RemoveExactFileOutcome, RemoveSymlinkOutcome,
 };
-pub use rename::{rename_regular_file_no_replace, RenameRegularFileOutcome};
+pub use rename::{
+    rename_directory_no_replace, rename_regular_file_no_replace, RenameDirectoryOutcome,
+    RenameRegularFileOutcome,
+};
 pub use symlink::{
     create_symlink_if_missing, read_symlink, replace_symlink_atomic, CreateSymlinkOutcome,
 };
