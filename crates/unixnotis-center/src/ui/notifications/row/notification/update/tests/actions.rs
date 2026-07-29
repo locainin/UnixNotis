@@ -258,7 +258,7 @@ fn recycled_action_button_targets_the_new_notification_generation() {
 }
 
 #[gtk::test]
-fn inactive_reply_action_stays_hidden_beside_a_regular_action() {
+fn inactive_history_row_hides_every_application_action() {
     let (_root, row) = notification_row();
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(4);
     let mut notification = sample_notification();
@@ -281,14 +281,102 @@ fn inactive_reply_action_stays_hidden_beside_a_regular_action() {
         &command_tx,
     );
 
+    assert_eq!(child_count(&row.actions_box), 0);
+    assert!(row.card.has_css_class(hooks::panel_card::NO_ACTIONS));
+}
+
+#[gtk::test]
+fn active_blank_default_action_builds_accessible_open_control() {
+    let (_root, row) = notification_row();
+    let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(2);
+    let mut notification = sample_notification();
+    notification.actions = vec![Action {
+        key: "default".to_string(),
+        label: String::new(),
+    }];
+
+    update_notification_row(
+        &row,
+        &row_data(
+            Rc::new(notification),
+            RowFlags {
+                is_active: true,
+                ..Default::default()
+            },
+        ),
+        &IconResolver::new(),
+        &command_tx,
+    );
+
+    let button = row
+        .actions_box
+        .first_child()
+        .and_downcast::<gtk::Button>()
+        .expect("blank default action control");
+    assert!(button.has_css_class("unixnotis-panel-default-action"));
+    assert_eq!(button.tooltip_text().as_deref(), Some("Open notification"));
+    button.emit_clicked();
+    assert!(matches!(
+        command_rx.try_recv(),
+        Ok(UiCommand::InvokeAction { notification, action_key })
+            if notification.id == 1
+                && notification.generation == 1
+                && action_key == "default"
+    ));
+}
+
+#[gtk::test]
+fn labeled_default_action_does_not_build_a_duplicate_open_control() {
+    let (_root, row) = notification_row();
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+    let mut notification = sample_notification();
+    notification.actions = vec![Action {
+        key: "default".to_string(),
+        label: "Open conversation".to_string(),
+    }];
+
+    update_notification_row(
+        &row,
+        &row_data(
+            Rc::new(notification),
+            RowFlags {
+                is_active: true,
+                ..Default::default()
+            },
+        ),
+        &IconResolver::new(),
+        &command_tx,
+    );
+
     assert_eq!(child_count(&row.actions_box), 1);
     let button = row
         .actions_box
         .first_child()
-        .expect("regular action")
-        .downcast::<gtk::Button>()
-        .expect("action child should be a button");
-    assert_eq!(button.label().as_deref(), Some("Open"));
+        .and_downcast::<gtk::Button>()
+        .expect("labeled default action button");
+    assert_eq!(button.label().as_deref(), Some("Open conversation"));
+    assert!(!button.has_css_class("unixnotis-panel-default-action"));
+}
+
+#[gtk::test]
+fn historical_blank_default_action_has_no_control_or_activation() {
+    let (_root, row) = notification_row();
+    let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(2);
+    let mut notification = sample_notification();
+    notification.actions = vec![Action {
+        key: "default".to_string(),
+        label: String::new(),
+    }];
+
+    update_notification_row(
+        &row,
+        &row_data(Rc::new(notification), RowFlags::default()),
+        &IconResolver::new(),
+        &command_tx,
+    );
+
+    assert_eq!(child_count(&row.actions_box), 0);
+    assert!(command_rx.try_recv().is_err());
 }
 
 #[gtk::test]
@@ -407,7 +495,7 @@ fn visible_action_count_requires_a_live_available_explicit_reply() {
             label: "Dismiss".to_string(),
         },
     ];
-    assert_eq!(visible_action_count(&notification, false), 2);
+    assert_eq!(visible_action_count(&notification, false), 0);
 
     notification.actions.push(Action {
         key: "inline-reply".to_string(),
@@ -415,8 +503,23 @@ fn visible_action_count_requires_a_live_available_explicit_reply() {
     });
     assert_eq!(visible_action_count(&notification, true), 2);
     notification.inline_reply.available = true;
-    assert_eq!(visible_action_count(&notification, false), 2);
+    assert_eq!(visible_action_count(&notification, false), 0);
     assert_eq!(visible_action_count(&notification, true), 3);
     notification.inline_reply_policy = unixnotis_core::InlineReplyPolicy::Deny;
     assert_eq!(visible_action_count(&notification, true), 2);
+}
+
+#[test]
+fn visible_action_count_includes_primary_and_overflow_actions() {
+    let mut notification = sample_notification();
+    notification.actions = ["Open", "Archive", "Mute"]
+        .into_iter()
+        .map(|label| Action {
+            key: label.to_ascii_lowercase(),
+            label: label.to_string(),
+        })
+        .collect();
+
+    assert_eq!(visible_action_count(&notification, true), 3);
+    assert_eq!(visible_action_count(&notification, false), 0);
 }
