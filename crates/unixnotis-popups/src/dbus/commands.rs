@@ -35,8 +35,12 @@ pub async fn handle_command(proxy: &ControlProxy<'_>, command: UiCommand) -> Zbu
             let _ = outcome.send(reply_result);
             result
         }
-        UiCommand::Rendered(notification) => {
-            timed_dbus_call(proxy.mark_popup_rendered(notification.id, notification.generation))
+        UiCommand::Materialized(notification) => {
+            timed_dbus_call(proxy.mark_popup_materialized(notification.id, notification.generation))
+                .await
+        }
+        UiCommand::Visible(notification) => {
+            timed_dbus_call(proxy.mark_popup_visible(notification.id, notification.generation))
                 .await
         }
         UiCommand::Shutdown(_) => Ok(()),
@@ -52,7 +56,10 @@ pub fn drain_offline_commands(
             UiCommand::Reply { outcome, .. } => {
                 let _ = outcome.send(Err("notification service is unavailable".to_string()));
             }
-            UiCommand::Dismiss(_) | UiCommand::InvokeAction { .. } | UiCommand::Rendered(_) => {}
+            UiCommand::Dismiss(_)
+            | UiCommand::InvokeAction { .. }
+            | UiCommand::Materialized(_)
+            | UiCommand::Visible(_) => {}
         }
         // Popups only reflect live state, so stale button actions are dropped while offline
         warn!("dropping control command while interface is unavailable");

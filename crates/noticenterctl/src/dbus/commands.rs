@@ -129,6 +129,7 @@ pub(super) async fn handle_command_with_debug_logs(
         Command::CssCheck { .. }
         | Command::Doctor { .. }
         | Command::Preset { .. }
+        | Command::Theme { .. }
         | Command::SyncSessionEnvironment { .. } => {}
     }
 

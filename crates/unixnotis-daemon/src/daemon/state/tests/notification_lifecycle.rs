@@ -52,46 +52,22 @@ async fn next_cancel_id(
 }
 
 #[tokio::test]
-async fn dismiss_from_panel_removes_active_notification_and_cancels_timer() {
+async fn generation_dismiss_removes_matching_history_without_canceling_timer() {
     let state = daemon_state_for_test(false).await;
     let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();
     state.set_scheduler(scheduler);
-    let id = {
-        let mut store = state.store.lock().await;
-        store.insert(notification("active"), 0).notification.id
-    };
-
-    state
-        .dismiss_from_panel(id)
-        .await
-        .expect("panel dismiss should succeed");
-
-    assert_eq!(next_cancel_id(&mut receiver).await, id);
-    assert!(state
-        .store
-        .lock()
-        .await
-        .active_notification_view(id)
-        .is_none());
-}
-
-#[tokio::test]
-async fn dismiss_from_panel_removes_history_without_canceling_timer() {
-    let state = daemon_state_for_test(false).await;
-    let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();
-    state.set_scheduler(scheduler);
-    let id = {
+    let key = {
         let mut store = state.store.lock().await;
         let inserted = store.insert(notification("history"), 0);
-        let id = inserted.notification.id;
-        store.close(id, CloseReason::DismissedByUser);
-        id
+        let key = inserted.notification.key();
+        store.close(key.id, CloseReason::Expired);
+        key
     };
 
     state
-        .dismiss_from_panel(id)
+        .dismiss_generation(key)
         .await
-        .expect("history dismiss should succeed");
+        .expect("matching history generation dismiss should succeed");
 
     assert!(receiver.try_recv().is_err());
     assert!(state
@@ -100,19 +76,22 @@ async fn dismiss_from_panel_removes_history_without_canceling_timer() {
         .await
         .list_history()
         .into_iter()
-        .all(|view| view.id != id));
+        .all(|view| view.key() != key));
 }
 
 #[tokio::test]
-async fn dismiss_from_panel_missing_id_is_noop() {
+async fn generation_dismiss_rejects_a_missing_notification() {
     let state = daemon_state_for_test(false).await;
     let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();
     state.set_scheduler(scheduler);
 
     state
-        .dismiss_from_panel(999)
+        .dismiss_generation(unixnotis_core::NotificationKey {
+            id: 999,
+            generation: 1,
+        })
         .await
-        .expect("missing dismiss should succeed");
+        .expect_err("missing generation dismiss should fail");
 
     assert!(receiver.try_recv().is_err());
 }

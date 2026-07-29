@@ -7,7 +7,8 @@ use std::time::Duration;
 use futures_util::{Stream, StreamExt};
 use tokio::sync::mpsc;
 use unixnotis_core::{
-    log_session_bus_identity, ControlProxy, CONTROL_BUS_NAME, INTERNAL_DBUS_CALL_TIMEOUT,
+    ensure_control_api_version, log_session_bus_identity, ControlProxy, CONTROL_BUS_NAME,
+    INTERNAL_DBUS_CALL_TIMEOUT,
 };
 use zbus::fdo::DBusProxy;
 use zbus::names::{BusName, UniqueName};
@@ -71,6 +72,12 @@ pub(super) async fn run_control_loop(
                 continue;
             }
         };
+        if let Err(err) = ensure_control_api_version(&proxy).await {
+            connect_log.warn_or_debug(&err, "control API version mismatch, retrying");
+            stash_offline_commands(&mut command_rx, &mut offline_commands);
+            tokio::time::sleep(connect_backoff.next_sleep()).await;
+            continue;
+        }
         let mut owner_changes = match proxy.inner().receive_owner_changed().await {
             Ok(stream) => stream,
             Err(err) => {

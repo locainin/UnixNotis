@@ -11,23 +11,6 @@ use crate::daemon::{to_fdo_error, NotificationServer, NOTIFICATIONS_OBJECT_PATH}
 use super::ControlServer;
 
 impl ControlServer {
-    pub(super) async fn invoke_validated_action(
-        &self,
-        id: u32,
-        action_key: &str,
-    ) -> zbus::fdo::Result<()> {
-        let target = {
-            let store = self.state.store.lock().await;
-            store.active_action_target(id, action_key).ok_or_else(|| {
-                zbus::fdo::Error::InvalidArgs(
-                    "notification is not live or does not advertise this action".to_string(),
-                )
-            })?
-        };
-        self.invoke_validated_action_generation(target.key(), action_key)
-            .await
-    }
-
     pub(super) async fn invoke_validated_action_generation(
         &self,
         notification: NotificationKey,

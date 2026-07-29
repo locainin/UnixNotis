@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use unixnotis_core::{
-    Action, AttributionClass, CloseReason, Config, InlineReply, InlineReplyPolicy,
+    Action, AttributionReason, CloseReason, Config, InlineReply, InlineReplyPolicy,
     NotificationAttribution, PopupAdmissionView,
 };
 
@@ -205,16 +205,89 @@ fn popup_delivery_stage_advances_for_fetch_and_render_acknowledgement() {
         unixnotis_core::PopupDeliveryStage::RendererFetched
     );
 
-    assert!(store.record_popup_delivery_stage(
-        notification.key(),
-        unixnotis_core::PopupDeliveryStage::Rendered,
-    ));
+    assert_eq!(
+        store.record_popup_delivery_stage(
+            notification.key(),
+            unixnotis_core::PopupDeliveryStage::Visible,
+        ),
+        crate::store::DeliveryStageUpdate::Advanced
+    );
     assert_eq!(
         store
             .notification_diagnostics(notification.id, &ready)
             .expect("rendered diagnostics")
             .delivery_stage,
-        unixnotis_core::PopupDeliveryStage::Rendered
+        unixnotis_core::PopupDeliveryStage::Visible
+    );
+}
+
+#[test]
+fn delivery_stage_never_moves_backward() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store.insert(make_notification("delivery"), 0).notification;
+
+    assert_eq!(
+        store.record_popup_delivery_stage(
+            notification.key(),
+            unixnotis_core::PopupDeliveryStage::Visible,
+        ),
+        crate::store::DeliveryStageUpdate::Advanced
+    );
+    assert_eq!(
+        store.record_popup_delivery_stage(
+            notification.key(),
+            unixnotis_core::PopupDeliveryStage::RendererFetched,
+        ),
+        crate::store::DeliveryStageUpdate::AlreadyAtOrBeyond
+    );
+
+    assert_eq!(
+        store
+            .notification_diagnostics(notification.id, &unixnotis_core::UiHealth::default())
+            .expect("delivery diagnostics")
+            .delivery_stage,
+        unixnotis_core::PopupDeliveryStage::Visible,
+        "later duplicate fetches must not regress delivery history"
+    );
+}
+
+#[test]
+fn duplicate_popup_stage_acknowledgement_is_idempotent() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store.insert(make_notification("delivery"), 0).notification;
+
+    assert_eq!(
+        store.record_popup_delivery_stage(
+            notification.key(),
+            unixnotis_core::PopupDeliveryStage::Visible,
+        ),
+        crate::store::DeliveryStageUpdate::Advanced
+    );
+    assert_eq!(
+        store.record_popup_delivery_stage(
+            notification.key(),
+            unixnotis_core::PopupDeliveryStage::Visible,
+        ),
+        crate::store::DeliveryStageUpdate::AlreadyAtOrBeyond,
+        "a retained generation must accept a duplicate renderer callback"
+    );
+}
+
+#[test]
+fn popup_stage_acknowledgement_rejects_a_missing_generation() {
+    let mut store = make_store_with_limits(10, 10);
+    let original = store.insert(make_notification("original"), 0).notification;
+    let _replacement = store
+        .insert(make_notification("replacement"), original.id)
+        .notification;
+
+    assert_eq!(
+        store.record_popup_delivery_stage(
+            original.key(),
+            unixnotis_core::PopupDeliveryStage::Visible,
+        ),
+        crate::store::DeliveryStageUpdate::MissingGeneration,
+        "a stale generation must remain distinct from an idempotent current callback"
     );
 }
 
@@ -303,14 +376,14 @@ fn active_inline_reply_target_requires_a_live_explicit_reply_action() {
 fn active_action_target_requires_an_exact_action_on_the_live_generation() {
     let mut store = make_store_with_limits(12, 20);
     let mut notification = make_notification("action");
-    notification.attribution = NotificationAttribution::associated(
+    notification.attribution = NotificationAttribution::verified(
+        "Action source",
         "Action source",
         "org.example.ActionSource",
-        "org.example.ActionSource",
         "",
-        AttributionClass::SystemAssociated,
-        false,
-        "system-desktop:org.example.ActionSource".to_string(),
+        AttributionReason::ExactSystemExecutable,
+        "exact system executable",
+        "system-app:org.example.ActionSource".to_string(),
     );
     notification.actions.push(Action {
         key: "open".to_string(),
@@ -318,41 +391,52 @@ fn active_action_target_requires_an_exact_action_on_the_live_generation() {
     });
     let original = store.insert(notification, 0).notification;
     let id = original.id;
+    let key = original.key();
 
     let target = store
-        .active_action_target(id, "open")
+        .active_action_target_generation(key, "open")
         .expect("stored action should resolve");
     assert!(Arc::ptr_eq(&target, &original));
-    assert!(store.active_action_target(id, "missing").is_none());
+    assert!(store
+        .active_action_target_generation(key, "missing")
+        .is_none());
     assert!(store.is_active_notification_generation(id, &original));
 
     let replacement = store.insert(make_notification("replacement"), id);
     assert!(replacement.replaced);
     assert!(!store.is_active_notification_generation(id, &original));
-    assert!(store.active_action_target(id, "open").is_none());
+    assert!(store.active_action_target_generation(key, "open").is_none());
 }
 
 #[test]
 fn active_action_target_denies_every_unverified_sender_class() {
     for attribution in [
-        NotificationAttribution::associated(
+        NotificationAttribution::recognized(
+            "User application",
             "User application",
             "org.example.UserApplication",
-            "org.example.UserApplication",
             "",
-            AttributionClass::UserAssociated,
-            false,
-            "user-desktop:org.example.UserApplication".to_string(),
+            AttributionReason::ExactUserExecutable,
+            "exact user executable",
+            "user-app:org.example.UserApplication".to_string(),
         ),
-        NotificationAttribution::unknown(
+        NotificationAttribution::unresolved(
             "Signal",
+            AttributionReason::NoDesktopCandidate,
             "source /tmp/fake",
             "unknown:signal".to_string(),
         ),
         NotificationAttribution::conflict(
             "Signal",
+            "org.signal.Signal",
+            AttributionReason::ExecutableMismatch,
             "source /tmp/fake",
             "conflict:signal".to_string(),
+        ),
+        NotificationAttribution::relay(
+            "Signal",
+            "trusted relay /usr/bin/notify-send",
+            "relay:notify-send:signal".to_string(),
         ),
     ] {
         let mut store = make_store_with_limits(12, 20);
@@ -362,10 +446,12 @@ fn active_action_target_denies_every_unverified_sender_class() {
             key: "default".to_string(),
             label: "Open".to_string(),
         });
-        let id = store.insert(notification, 0).notification.id;
+        let key = store.insert(notification, 0).notification.key();
 
         assert!(
-            store.active_action_target(id, "default").is_none(),
+            store
+                .active_action_target_generation(key, "default")
+                .is_none(),
             "weak attribution should not expose application actions"
         );
     }

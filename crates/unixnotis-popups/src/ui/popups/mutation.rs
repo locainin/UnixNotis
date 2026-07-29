@@ -170,6 +170,10 @@ impl UiState {
         let Some(old_root) = self.popups.get(&id).and_then(|entry| entry.root.clone()) else {
             return false;
         };
+        let visibility = self
+            .popups
+            .get(&id)
+            .and_then(|entry| entry.visibility.clone());
 
         // Reuse the current revealer so one id still has one stack row
         let new_root = self.build_popup_root(notification);
@@ -198,7 +202,15 @@ impl UiState {
         if let Some(entry) = self.popups.get_mut(&id) {
             entry.root = Some(new_root);
         }
-        try_send_command(&self.command_tx, UiCommand::Rendered(notification.key()));
+        try_send_command(
+            &self.command_tx,
+            UiCommand::Materialized(notification.key()),
+        );
+        if let Some(visibility) = visibility {
+            // Replacements reuse one revealer but never reuse its generation identity
+            visibility.bind_generation(notification.key());
+            visibility.report_if_visible(&revealer, &self.popup_window, &self.command_tx);
+        }
         rebuilt_visible_row
     }
 
@@ -215,7 +227,7 @@ impl UiState {
         // Swap in the fresh GTK nodes while keeping the cached payload untouched
         entry.revealer = built.revealer;
         entry.root = built.root;
-        try_send_command(&self.command_tx, UiCommand::Rendered(notification.key()));
+        entry.visibility = built.visibility;
     }
 
     pub(super) fn dematerialize_popup(&mut self, id: u32) {
@@ -225,11 +237,14 @@ impl UiState {
         };
         let Some(root) = entry.root.take() else {
             entry.revealer = None;
+            entry.visibility = None;
             return;
         };
         let Some(revealer) = entry.revealer.take() else {
+            entry.visibility = None;
             return;
         };
+        entry.visibility = None;
         // Hidden overflow rows should not retain GTK trees or CSS state
         root.remove_css_class("unixnotis-popup-visible");
         root.set_visible(false);

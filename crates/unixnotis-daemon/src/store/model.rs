@@ -98,6 +98,13 @@ pub enum PopupSuppressionReason {
     DropAllInhibitor,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DeliveryStageUpdate {
+    Advanced,
+    AlreadyAtOrBeyond,
+    MissingGeneration,
+}
+
 pub struct DndWrite {
     // True when the in-memory DND value changed
     pub(crate) changed: bool,

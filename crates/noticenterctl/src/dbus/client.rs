@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use unixnotis_core::{
     ControlProxy, InhibitorInfo, NotificationDiagnosticsView, NotificationView, PanelDebugLevel,
 };
@@ -108,8 +108,20 @@ impl ControlClient for ControlProxy<'_> {
     }
 
     fn dismiss(&self, id: u32) -> ControlFuture<'_, ()> {
-        // Send the id so the daemon knows exactly which notification to remove
-        Box::pin(run_control_call(ControlProxy::dismiss(self, id)))
+        Box::pin(async move {
+            // Resolve one exact active generation before issuing the mutating call
+            let mut candidates =
+                run_control_call(ControlProxy::get_active_notification(self, id)).await?;
+            let notification = candidates
+                .pop()
+                .ok_or_else(|| anyhow!("notification {id} is not active"))?;
+            run_control_call(ControlProxy::dismiss_generation(
+                self,
+                notification.id,
+                notification.generation,
+            ))
+            .await
+        })
     }
 
     fn notification_diagnostics(

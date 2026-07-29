@@ -36,7 +36,8 @@ pub enum UiCommand {
         text: String,
         outcome: tokio::sync::oneshot::Sender<Result<(), String>>,
     },
-    Rendered(NotificationKey),
+    Materialized(NotificationKey),
+    Visible(NotificationKey),
     // A synchronous acknowledgement lets GTK wait for MarkPopupsNotReady before process exit
     Shutdown(std::sync::mpsc::SyncSender<()>),
 }
@@ -63,8 +64,12 @@ impl std::fmt::Debug for UiCommand {
                 // Reply text is private message content and must never enter debug logs
                 .field("text", &"<redacted>")
                 .finish_non_exhaustive(),
-            Self::Rendered(notification) => formatter
-                .debug_tuple("Rendered")
+            Self::Materialized(notification) => formatter
+                .debug_tuple("Materialized")
+                .field(notification)
+                .finish(),
+            Self::Visible(notification) => formatter
+                .debug_tuple("Visible")
                 .field(notification)
                 .finish(),
             Self::Shutdown(_) => formatter.write_str("Shutdown(..)"),

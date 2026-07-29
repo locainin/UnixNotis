@@ -193,18 +193,6 @@ async fn clear_history_rejects_unauthorized_sender_before_mutating_state() {
 }
 
 #[tokio::test]
-async fn invoke_action_rejects_unauthorized_sender_before_signal_emit() {
-    let state = daemon_state_for_test(false).await;
-    let server = ControlServer::new(state);
-    let message = control_header_message("InvokeAction");
-
-    server
-        .invoke_action(7, "default", message.header())
-        .await
-        .expect_err("unauthorized action should fail");
-}
-
-#[tokio::test]
 async fn generation_dismiss_rejects_unauthorized_sender_before_mutating_state() {
     let state = daemon_state_for_test(false).await;
     let key = state
@@ -257,12 +245,17 @@ async fn popup_render_acknowledgement_rejects_unauthorized_sender() {
         .notification
         .key();
     let server = ControlServer::new(state.clone());
-    let message = control_header_message("MarkPopupRendered");
+    let message = control_header_message("MarkPopupVisible");
 
     server
-        .mark_popup_generation_rendered(key, &message.header())
+        .mark_popup_generation_stage(
+            key,
+            unixnotis_core::PopupDeliveryStage::Visible,
+            "MarkPopupVisible",
+            &message.header(),
+        )
         .await
-        .expect_err("unauthorized render acknowledgement should fail");
+        .expect_err("unauthorized visibility acknowledgement should fail");
 
     assert_ne!(
         state
@@ -272,7 +265,7 @@ async fn popup_render_acknowledgement_rejects_unauthorized_sender() {
             .notification_diagnostics(key.id, &unixnotis_core::UiHealth::default())
             .expect("notification diagnostics should remain available")
             .delivery_stage,
-        unixnotis_core::PopupDeliveryStage::Rendered
+        unixnotis_core::PopupDeliveryStage::Visible
     );
 }
 

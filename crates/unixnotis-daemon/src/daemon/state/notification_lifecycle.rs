@@ -33,37 +33,6 @@ impl DaemonState {
         Ok(())
     }
 
-    pub async fn dismiss_from_panel(&self, id: u32) -> zbus::Result<()> {
-        let outcome = {
-            let mut store = self.store.lock().await;
-            let outcome = store.dismiss_from_panel(id);
-            if let Some(key) = outcome.removed_active {
-                self.cancel_expiration(key);
-            }
-            outcome
-        };
-
-        if !outcome.removed_any() {
-            return Ok(());
-        }
-
-        let removed_active = outcome.removed_active.is_some();
-        let key = outcome
-            .removed_active
-            .or(outcome.removed_history)
-            .expect("a removed notification must retain its generation");
-        if let Err(err) = self
-            .publish_notification_dismissed(key, removed_active)
-            .await
-        {
-            warn!(
-                ?err,
-                id, "panel dismiss committed but one or more D-Bus signals failed"
-            );
-        }
-        Ok(())
-    }
-
     pub async fn dismiss_generation(&self, key: NotificationKey) -> zbus::Result<()> {
         let outcome = {
             let mut store = self.store.lock().await;

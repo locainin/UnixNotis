@@ -22,24 +22,28 @@ impl ControlServer {
         Ok(())
     }
 
-    pub(super) async fn mark_popup_generation_rendered(
+    pub(super) async fn mark_popup_generation_stage(
         &self,
         key: NotificationKey,
+        stage: PopupDeliveryStage,
+        method: &'static str,
         header: &Header<'_>,
     ) -> zbus::fdo::Result<()> {
-        auth::authorize_popup_readiness_call(&self.state, header, "MarkPopupRendered").await?;
-        let recorded = self
+        auth::authorize_popup_readiness_call(&self.state, header, method).await?;
+        let update = self
             .state
             .store
             .lock()
             .await
-            .record_popup_delivery_stage(key, PopupDeliveryStage::Rendered);
-        if recorded {
-            Ok(())
-        } else {
-            Err(zbus::fdo::Error::InvalidArgs(
-                "notification generation is no longer retained".to_string(),
-            ))
+            .record_popup_delivery_stage(key, stage);
+        match update {
+            crate::store::DeliveryStageUpdate::Advanced
+            | crate::store::DeliveryStageUpdate::AlreadyAtOrBeyond => Ok(()),
+            crate::store::DeliveryStageUpdate::MissingGeneration => {
+                Err(zbus::fdo::Error::InvalidArgs(
+                    "notification generation is no longer retained".to_string(),
+                ))
+            }
         }
     }
 }
