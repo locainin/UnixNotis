@@ -25,6 +25,8 @@ trait DesktopRecordFixture {
     ) -> Self;
 
     fn with_launch_literals(self, arguments: &[&str]) -> Self;
+
+    fn with_protected_launch_file(self, path: &str, identity: FileIdentity) -> Self;
 }
 
 impl DesktopRecordFixture for DesktopRecord {
@@ -77,6 +79,25 @@ impl DesktopRecordFixture for DesktopRecord {
             wrappers: Vec::new(),
             literal_files_are_system_managed: true,
         });
+        self
+    }
+
+    fn with_protected_launch_file(mut self, path: &str, identity: FileIdentity) -> Self {
+        let spec = self
+            .launch_spec
+            .as_mut()
+            .expect("launch fixture needs a launch specification");
+        let literal = spec
+            .arguments
+            .iter_mut()
+            .find_map(|argument| match argument {
+                LaunchArgument::Literal(literal) if literal.value == path.as_bytes() => {
+                    Some(literal)
+                }
+                _ => None,
+            })
+            .expect("protected launch path must exist in the fixture contract");
+        literal.file = Some((PathBuf::from(path), identity));
         self
     }
 }

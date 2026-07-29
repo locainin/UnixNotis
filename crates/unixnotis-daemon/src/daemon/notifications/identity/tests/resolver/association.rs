@@ -68,8 +68,7 @@ fn dedicated_system_binary_rejects_runtime_added_flags_outside_the_exec_contract
 #[test]
 fn dedicated_executable_accepts_extra_non_identity_runtime_flags() {
     let (app_path, app_identity) = installed_system_executable();
-    let record = system_record("org.example.App", "Example App", &app_path, app_identity)
-        .with_launch_literals(&["--fixed"]);
+    let record = system_record("org.example.App", "Example App", &app_path, app_identity);
     let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
 
     let resolution = resolve_with_evidence(
@@ -80,7 +79,7 @@ fn dedicated_executable_accepts_extra_non_identity_runtime_flags() {
         &sender_with_arguments(
             &app_path,
             app_identity,
-            &["--display-backend=x11", "--fixed", "--tray"],
+            &["--display-backend=x11", "--tray"],
         ),
         &index,
         &HashSet::new(),
