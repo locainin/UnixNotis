@@ -392,13 +392,13 @@ entry selection {
 .unixnotis-group {
   background: transparent;
   margin-top: 14px;
-  margin-bottom: 0;
+  margin-bottom: 8px;
 }
 
 .unixnotis-group-header {
   background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
   color: @unixnotis-text;
-  border-radius: var(--unixnotis-notification-card-radius) var(--unixnotis-notification-card-radius) 0 0;
+  border-radius: var(--unixnotis-notification-card-radius);
   padding: 6px 12px;
   border: 1px solid @unixnotis-card-border;
   box-shadow: none;
@@ -536,21 +536,37 @@ entry selection {
 }
 
 .unixnotis-panel-card-foreground.unixnotis-panel-card-grouped {
-  margin-bottom: 0;
+  margin-left: 8px;
+  margin-right: 8px;
+  margin-bottom: var(--unixnotis-panel-card-gap);
 }
 
 .unixnotis-panel-card.unixnotis-panel-card-grouped {
-  border-top-width: 0;
-  border-radius: 0;
-  box-shadow: inset 0 0 0 1px alpha(#ffffff, 0.025);
+  border-radius: var(--unixnotis-notification-card-radius);
 }
 
-.unixnotis-panel-card.unixnotis-panel-card-group-last {
-  border-radius: 0 0 var(--unixnotis-notification-card-radius) var(--unixnotis-notification-card-radius);
+.unixnotis-panel-card-foreground.collapsed-group-preview {
+  margin-top: -58px;
+  margin-bottom: 10px;
 }
 
-.unixnotis-panel-card-foreground.unixnotis-panel-card-group-last {
-  margin-bottom: var(--unixnotis-panel-card-gap);
+.unixnotis-stack-layer {
+  min-height: 68px;
+  padding: 0;
+  border: 1px solid alpha(@unixnotis-card-border, 0.58);
+  border-radius: var(--unixnotis-notification-card-radius);
+  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.09);
+  box-shadow: 0 8px 16px -15px @unixnotis-shadow-soft;
+}
+
+.unixnotis-stack-layer-back {
+  margin: 0 20px;
+  opacity: 0.72;
+}
+
+.unixnotis-stack-layer-middle {
+  margin: -58px 14px 0;
+  opacity: 0.86;
 }
 
 .unixnotis-panel-card.active {
@@ -709,6 +725,12 @@ entry selection {
   min-width: 32px;
   padding-left: 7px;
   padding-right: 7px;
+}
+
+.unixnotis-panel-default-action {
+  min-width: 32px;
+  min-height: 28px;
+  padding: 3px 8px;
 }
 
 .unixnotis-panel-action-overflow-list {

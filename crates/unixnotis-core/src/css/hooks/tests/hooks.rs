@@ -103,8 +103,6 @@ fn hook_names_stay_unique() {
         panel_card::FOOTER_RIGHT,
         panel_card::THUMBNAIL,
         panel_card::GROUPED,
-        panel_card::GROUP_FIRST,
-        panel_card::GROUP_LAST,
         panel_card::HAS_ACTIONS,
         panel_card::HAS_BODY,
         panel_card::HAS_SUMMARY,
@@ -243,7 +241,7 @@ fn stock_panel_css_targets_real_group_card_hooks() {
     let css = crate::theme::DEFAULT_PANEL_CSS;
 
     // Group headers and notification cards are sibling ListView rows, not nested widgets
-    // One grouped-card hook joins both collapsed previews and expanded children to the header
+    // Grouped cards stay separate while collapsed previews own their internal depth layers
     assert!(css.contains(&format!(".unixnotis-panel-card.{}", panel_card::GROUPED)));
     assert!(css.contains(&format!(
         ".unixnotis-panel-card-foreground.{}",
@@ -253,6 +251,8 @@ fn stock_panel_css_targets_real_group_card_hooks() {
         ".unixnotis-panel-card.{}",
         shared_state::COLLAPSED_GROUP_PREVIEW
     )));
+    assert!(css.contains(".unixnotis-stack-layer-back"));
+    assert!(css.contains(".unixnotis-stack-layer-middle"));
 
     // These selectors belonged to an older nested-card idea and do not match the real tree
     assert!(!css.contains("unixnotis-group-cards"));
@@ -273,15 +273,15 @@ fn stock_group_count_stays_neutral_during_header_hover() {
 }
 
 #[test]
-fn stock_panel_css_uses_one_continuous_group_surface_without_ghost_layers() {
+fn stock_panel_css_uses_separated_rows_and_bounded_depth_layers() {
     let css = crate::theme::DEFAULT_PANEL_CSS;
 
+    // The discarded legacy names stay absent while the new layers remain explicit
     assert!(!css.contains("unixnotis-stack-ghost"));
-    assert!(!css.contains("margin-top: -58px"));
-    assert!(css
-        .contains(".unixnotis-panel-card.unixnotis-panel-card-grouped {\n  border-top-width: 0;"));
-    assert!(css
-        .contains(".unixnotis-panel-card.unixnotis-panel-card-group-last {\n  border-radius: 0 0"));
+    assert!(css.contains(".unixnotis-stack-layer-back"));
+    assert!(css.contains(".unixnotis-stack-layer-middle"));
+    assert!(css.contains("margin: -58px 14px 0"));
+    assert!(css.contains(".unixnotis-panel-card.unixnotis-panel-card-grouped {\n  border-radius:"));
 }
 
 #[test]

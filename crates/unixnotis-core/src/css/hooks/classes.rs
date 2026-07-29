@@ -113,8 +113,6 @@ pub mod panel_card {
     pub const FOOTER_RIGHT: &str = "unixnotis-panel-card-footer-right";
     pub const THUMBNAIL: &str = "unixnotis-panel-card-thumbnail";
     pub const GROUPED: &str = "unixnotis-panel-card-grouped";
-    pub const GROUP_FIRST: &str = "unixnotis-panel-card-group-first";
-    pub const GROUP_LAST: &str = "unixnotis-panel-card-group-last";
     pub const HAS_ACTIONS: &str = "unixnotis-panel-card-has-actions";
     pub const HAS_BODY: &str = "unixnotis-panel-card-has-body";
     pub const HAS_SUMMARY: &str = "unixnotis-panel-card-has-summary";

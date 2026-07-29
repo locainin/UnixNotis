@@ -181,20 +181,23 @@ fn grouped_relay_row_hides_identity_details_owned_by_the_group_header() {
 }
 
 #[gtk::test]
-fn collapsed_group_preview_uses_one_content_surface() {
+fn collapsed_group_preview_uses_one_readable_card_above_depth_layers() {
     let (root, row) = notification_row();
-    let data = row_data(
+    let mut data = row_data(
         Rc::new(sample_notification()),
         RowFlags {
             collapsed_group_preview: true,
             ..Default::default()
         },
     );
+    data.stack_depth = 2;
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
-    assert_eq!(child_count(&root), 1);
+    assert_eq!(child_count(&root), 3);
+    assert!(row.stack_middle.get_visible());
+    assert!(row.stack_back.get_visible());
     assert!(
         row.card
             .has_css_class(hooks::shared_state::COLLAPSED_GROUP_PREVIEW),
@@ -301,6 +304,7 @@ fn update_notification_row_shows_metadata_lanes_and_footer_state() {
     let data = row_data(
         Rc::new(notification),
         RowFlags {
+            is_active: true,
             show_metadata: true,
             show_thumbnail: true,
             ..Default::default()
@@ -360,12 +364,13 @@ fn update_notification_row_applies_custom_metadata_and_corner_geometry() {
 
     assert_eq!(row.meta_label.text().as_str(), "INFO");
     assert_eq!(row.footer_left.text().as_str(), "ARCHIVE");
-    assert_eq!(row.footer_right.text().as_str(), "2 OPTIONS");
+    assert!(!row.footer_right.get_visible());
+    assert!(row.footer_right.text().is_empty());
     assert_eq!(row.card_plate.corners(), corners);
 }
 
 #[gtk::test]
-fn grouped_rows_keep_cut_corners_only_on_the_outer_bottom_edge() {
+fn separated_group_rows_keep_complete_configured_cut_corners() {
     let (_root, row) = notification_row();
     let corners = CutCorners {
         top_left: 8,
@@ -384,19 +389,7 @@ fn grouped_rows_keep_cut_corners_only_on_the_outer_bottom_edge() {
     let (command_tx, _rx) = tokio::sync::mpsc::channel(1);
 
     update_notification_row(&row, &middle, &IconResolver::new(), &command_tx);
-    assert_eq!(row.card_plate.corners(), CutCorners::default());
-
-    let mut last = middle;
-    last.group_last = true;
-    update_notification_row(&row, &last, &IconResolver::new(), &command_tx);
-    assert_eq!(
-        row.card_plate.corners(),
-        CutCorners {
-            bottom_right: 10,
-            bottom_left: 11,
-            ..CutCorners::default()
-        }
-    );
+    assert_eq!(row.card_plate.corners(), corners);
 }
 
 #[gtk::test]

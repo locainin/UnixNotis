@@ -16,6 +16,7 @@ use crate::control::UiCommand;
 use crate::ui::try_send_command;
 
 use super::reply::build_inline_reply;
+use super::stack::append_stack_layers;
 use super::state::NotificationRowWidgets;
 
 pub(in crate::ui::notifications) fn build_notification_row(
@@ -192,8 +193,8 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let card_plate = CutCorner::new(&card, unixnotis_core::CutCorners::default());
     card_plate.add_css_class("unixnotis-panel-card-foreground");
 
-    // One readable surface carries the preview while the group count conveys hidden entries
-    root.append(&card_plate);
+    // Rear layers and the readable foreground remain one virtualized ListView row
+    let (stack_middle, stack_back) = append_stack_layers(&root, &card_plate);
 
     let notify_key = Rc::new(Cell::new(NotificationKey {
         id: 0,
@@ -209,6 +210,8 @@ pub(in crate::ui::notifications) fn build_notification_row(
         NotificationRowWidgets {
             card,
             card_plate,
+            stack_middle,
+            stack_back,
             icon,
             header,
             app_label,
