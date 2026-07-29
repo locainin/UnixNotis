@@ -1,10 +1,12 @@
 //! Sender, lineage, and contradiction evidence evaluation
 
-use super::{
-    executable_evidence_for_path, verify_record_launch, CandidateVerification, CommandLineEvidence,
-    DesktopIdentityIndex, DesktopRecord, FileIdentity, InstallProvenance, LaunchFailure,
-    LaunchVerification, SenderClaimRelation, SenderMetadata, VerifiedLaunch,
+use super::super::desktop_index::{
+    verify_record_launch, DesktopIdentityIndex, DesktopRecord, LaunchFailure, LaunchVerification,
+    VerifiedLaunch,
 };
+use super::super::executable::{executable_evidence_for_path, FileIdentity};
+use super::super::sender::{CommandLineEvidence, SenderMetadata};
+use super::model::{CandidateVerification, SenderClaimRelation};
 
 pub(super) fn lineage_association<'record>(
     sender: &SenderMetadata,
@@ -110,6 +112,7 @@ pub(super) fn candidate_proves_conflict(
         LaunchFailure::MissingSenderEvidence
         | LaunchFailure::MissingCommandLine
         | LaunchFailure::UnstructuredCommandLine
+        | LaunchFailure::EmptyContractNeedsCommandLine
         | LaunchFailure::UnsupportedWrapper
         | LaunchFailure::AmbiguousDesktopAssociation
         | LaunchFailure::DynamicOnlyContract
@@ -144,18 +147,17 @@ pub(super) fn sender_claim_relation(
         return SenderClaimRelation::DifferentVerifiedApplication;
     }
 
-    let sender_provenance = sender_install_provenance(sender);
-    if sender_provenance.same_application_source(&claimed_record.executable_provenance) {
+    if sender
+        .install_provenance
+        .same_application_source(&claimed_record.executable_provenance)
+    {
         return SenderClaimRelation::SamePackageHelper;
     }
-    if sender_provenance.is_known() && claimed_record.executable_provenance.is_known() {
-        return SenderClaimRelation::DifferentVerifiedApplication;
+    if sender.install_provenance.is_known() && claimed_record.executable_provenance.is_known() {
+        // Package inequality rules out a same-package helper but does not identify another app
+        return SenderClaimRelation::DifferentInstalledPackage;
     }
     SenderClaimRelation::UnknownExecutable
-}
-
-fn sender_install_provenance(sender: &SenderMetadata) -> InstallProvenance {
-    sender.install_provenance.clone()
 }
 
 pub(super) const fn current_system_identity_matches_sender(

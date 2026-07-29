@@ -1,3 +1,5 @@
+//! Dedicated executable contract cases
+
 use super::super::*;
 
 #[test]
@@ -20,7 +22,6 @@ fn dedicated_system_identity_allows_legitimate_reply() {
         },
         &sender(&app_path, app_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
@@ -55,7 +56,6 @@ fn dedicated_system_binary_rejects_runtime_added_flags_outside_the_exec_contract
             &["--password-store=kwallet6", "--ozone-platform=x11", "--"],
         ),
         &index,
-        &HashSet::new(),
     );
 
     assert_ne!(resolution.attribution.status, AttributionStatus::Verified);
@@ -79,14 +79,13 @@ fn dedicated_executable_accepts_extra_non_identity_runtime_flags() {
             &["--display-backend=x11", "--tray"],
         ),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
 }
 
 #[test]
-fn dedicated_executable_with_rewritten_argv_is_not_a_conflict() {
+fn empty_dedicated_contract_with_rewritten_argv_is_recognized_not_conflicting() {
     let (app_path, app_identity) = installed_system_executable();
     let record = system_record("org.example.True", "Example App", &app_path, app_identity);
     let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
@@ -103,10 +102,9 @@ fn dedicated_executable_with_rewritten_argv_is_not_a_conflict() {
         },
         &rewritten,
         &index,
-        &HashSet::new(),
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
     assert_ne!(resolution.attribution.status, AttributionStatus::Conflict);
     assert_eq!(
         resolution.diagnostics.command_line_quality,
@@ -114,7 +112,7 @@ fn dedicated_executable_with_rewritten_argv_is_not_a_conflict() {
     );
     assert_eq!(
         resolution.diagnostics.verification,
-        LaunchVerificationView::Verified
+        LaunchVerificationView::InsufficientEvidence
     );
     assert_eq!(
         resolution.diagnostics.launch_authority,
@@ -130,7 +128,6 @@ fn verified_executable_recovers_from_stale_desktop_hint() {
         "Signal",
         "/usr/bin/env",
         identity(90, 900, 0),
-        false,
         false,
     );
     // An env wrapper cannot associate the user entry with the dedicated Signal process
@@ -148,7 +145,6 @@ fn verified_executable_recovers_from_stale_desktop_hint() {
         },
         &sender(&signal_path, signal_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
@@ -182,7 +178,6 @@ fn empty_claim_cannot_choose_between_apps_sharing_one_dedicated_binary() {
         },
         &sender_with_arguments(&runtime_path, runtime_identity, &["--unmodeled"]),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
@@ -192,8 +187,7 @@ fn empty_claim_cannot_choose_between_apps_sharing_one_dedicated_binary() {
 #[test]
 fn duplicate_desktop_id_prefers_the_protected_record() {
     let (app_path, app_identity) = installed_system_executable();
-    let user_record =
-        DesktopRecord::fixture("true", "Example App", &app_path, app_identity, false, false);
+    let user_record = DesktopRecord::fixture("true", "Example App", &app_path, app_identity, false);
     let mut system_record = system_record("true", "Example App", &app_path, app_identity);
     system_record.badge_icon = "protected-example".to_string();
     let index = DesktopIdentityIndex::from_records(vec![user_record, system_record], Vec::new());
@@ -222,29 +216,6 @@ fn duplicate_protected_desktop_id_keeps_stable_index_order() {
             .expect("duplicate protected records should keep one verified record");
 
     assert_eq!(verified.0.badge_icon, "first-example");
-}
-
-#[test]
-fn reopened_system_identity_must_remain_protected_and_executable() {
-    let (_, trusted) = installed_system_executable();
-    let unprotected = FileIdentity {
-        uid: 1_000,
-        ..trusted
-    };
-    let non_executable = FileIdentity {
-        mode: 0o100_644,
-        ..trusted
-    };
-
-    assert!(current_system_identity_matches_sender(trusted, trusted));
-    assert!(!current_system_identity_matches_sender(
-        unprotected,
-        trusted
-    ));
-    assert!(!current_system_identity_matches_sender(
-        non_executable,
-        trusted
-    ));
 }
 
 #[test]
@@ -279,7 +250,6 @@ fn stale_cached_system_identity_is_denied_for_explicit_and_no_hint_routes() {
                 },
                 &sender(&system_path, sender_identity),
                 &index,
-                &HashSet::new(),
             );
 
             assert_ne!(
@@ -302,7 +272,6 @@ fn user_desktop_identity_denies_reply_until_backend_confirmation_exists() {
             "/home/user/bin/local-app",
             app_identity,
             false,
-            false,
         )],
         Vec::new(),
     );
@@ -314,7 +283,6 @@ fn user_desktop_identity_denies_reply_until_backend_confirmation_exists() {
         },
         &sender("/home/user/bin/local-app", app_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);

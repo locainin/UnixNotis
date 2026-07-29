@@ -138,12 +138,7 @@ impl NotificationServer {
         };
         let resolution = if let Ok(resolution) = tokio::time::timeout(
             ATTRIBUTION_TIMEOUT,
-            resolve_attribution(
-                claim,
-                &sender,
-                &desktop_identity_index,
-                self.state.connection(),
-            ),
+            resolve_attribution(claim, &sender, &desktop_identity_index),
         )
         .await
         {

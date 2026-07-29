@@ -1,3 +1,5 @@
+//! Canonical desktop application-family cases
+
 use super::super::*;
 
 #[test]
@@ -26,7 +28,6 @@ fn equivalent_desktop_aliases_use_one_canonical_application_identity() {
             },
             &sender(&app_path, app_identity),
             &index,
-            &HashSet::new(),
         )
     };
     let canonical_first = resolve_alias(vec![canonical.clone(), alias.clone()]);
@@ -110,14 +111,12 @@ fn stronger_verified_family_wins_after_weaker_families_are_ambiguous() {
         "/home/user/one",
         identity(96, 960, 1_000),
         false,
-        false,
     );
     let second = DesktopRecord::fixture(
         "org.example.UserTwo",
         "Shared App",
         "/home/user/two",
         identity(97, 970, 1_000),
-        false,
         false,
     );
     let system = system_record(

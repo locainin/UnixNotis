@@ -77,15 +77,20 @@ fn executable_contract_is_dedicated(
             .desktop_provenance
             .same_application_source(&record.executable_provenance)
         && index.records_form_one_application_family(spec.executable, record.system_origin)
-        // A file in argv[1] can be either a document or an interpreter's active program
-        // Static desktop metadata cannot distinguish those roles without a protected payload
-        && !spec.arguments.iter().any(is_dynamic_file_field)
         && !spec.arguments.iter().any(is_unprotected_fixed_payload)
 }
 
 fn verify_dedicated(command_line: &CommandLineEvidence, spec: &LaunchSpec) -> LaunchVerification {
     match command_line.quality {
-        // The live executable remains authoritative when argv memory is absent or rewritten
+        // An empty contract cannot distinguish an ordinary switch from an active payload
+        CommandLineQuality::RewrittenProcessTitle
+        | CommandLineQuality::Truncated
+        | CommandLineQuality::Unavailable
+            if spec.arguments.is_empty() =>
+        {
+            LaunchVerification::InsufficientEvidence(LaunchFailure::EmptyContractNeedsCommandLine)
+        }
+        // A nonempty package-backed contract still contributes identity when argv was rewritten
         CommandLineQuality::RewrittenProcessTitle
         | CommandLineQuality::Truncated
         | CommandLineQuality::Unavailable => {
@@ -94,7 +99,7 @@ fn verify_dedicated(command_line: &CommandLineEvidence, spec: &LaunchSpec) -> La
         CommandLineQuality::Structured => {
             let actual = command_line.argv.get(1..).unwrap_or_default();
             if actual.len() <= MAX_PROCESS_ARGUMENTS
-                && (spec.arguments.is_empty() || match_ordered_dedicated_contract(spec, actual))
+                && match_ordered_dedicated_contract(spec, actual)
             {
                 LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable)
             } else {
@@ -426,13 +431,6 @@ fn is_protected_payload(argument: &LaunchArgument) -> bool {
 
 const fn is_dynamic_document_field(argument: &LaunchArgument) -> bool {
     matches!(argument, LaunchArgument::FieldCode(_))
-}
-
-const fn is_dynamic_file_field(argument: &LaunchArgument) -> bool {
-    matches!(
-        argument,
-        LaunchArgument::FieldCode(FieldCode::File | FieldCode::Files)
-    )
 }
 
 fn is_unprotected_fixed_payload(argument: &LaunchArgument) -> bool {

@@ -4,16 +4,18 @@ use std::collections::HashSet;
 
 use unixnotis_core::{AttributionReason, AttributionStatus, NotificationAttribution};
 
+use super::super::desktop_index::{
+    normalize_desktop_id, normalize_name, DesktopIdentityIndex, DesktopRecord, LaunchFailure,
+    LaunchVerification, VerifiedLaunch,
+};
+use super::super::sender::SenderMetadata;
 use super::diagnostics::{launch_failure_label, with_diagnostics};
-use super::evidence::{candidate_proves_conflict, lineage_association};
+use super::evidence::{candidate_proves_conflict, lineage_association, sender_claim_relation};
+use super::model::{CandidateVerification, SenderClaimRelation, VerifiedDesktopRecord};
 use super::resolution::{
     conflict_from_candidate, policy_resolution, recognized_resolution, sender_claim_group_key,
 };
-use super::{
-    normalize_desktop_id, normalize_name, AppClaim, AttributionResolution, CandidateVerification,
-    DesktopIdentityIndex, DesktopRecord, LaunchFailure, LaunchVerification, SenderMetadata,
-    VerifiedDesktopRecord, VerifiedLaunch,
-};
+use super::{AppClaim, AttributionResolution};
 
 pub(super) fn resolve_unverified_candidates(
     claim: AppClaim<'_>,
@@ -107,15 +109,9 @@ pub(super) fn resolve_unverified_candidates(
         .max_by_key(|result| record_trust_rank(result.record))
     {
         let failure = candidate.failure();
+        let detail = recognized_candidate_detail(sender, index, candidate.record, failure);
         return with_diagnostics(
-            recognized_resolution(
-                claim,
-                sender,
-                candidate.record,
-                index,
-                failure,
-                launch_failure_label(failure),
-            ),
+            recognized_resolution(claim, sender, candidate.record, index, failure, &detail),
             claim,
             sender,
             Some(candidate.record),
@@ -124,6 +120,30 @@ pub(super) fn resolve_unverified_candidates(
     }
 
     unresolved_candidate_resolution(claim, sender, index)
+}
+
+fn recognized_candidate_detail(
+    sender: &SenderMetadata,
+    index: &DesktopIdentityIndex,
+    record: &DesktopRecord,
+    failure: LaunchFailure,
+) -> String {
+    match sender_claim_relation(sender, index, record) {
+        SenderClaimRelation::SamePackageHelper => {
+            "Sender belongs to the same installed application package but was not strongly bound"
+                .to_string()
+        }
+        SenderClaimRelation::DifferentInstalledPackage => {
+            "Sender belongs to a separate installed package without a conflicting application identity"
+                .to_string()
+        }
+        SenderClaimRelation::ClaimedApplication
+        | SenderClaimRelation::DifferentVerifiedApplication
+        | SenderClaimRelation::UnknownExecutable
+        | SenderClaimRelation::TrustedRelay => {
+            launch_failure_label(failure).to_string()
+        }
+    }
 }
 
 fn ambiguous_protected_family_resolution(

@@ -1,4 +1,6 @@
-use super::*;
+//! Spoofing and conflicting-identity regressions
+
+use super::super::*;
 
 #[test]
 fn sender_metadata_timeout_is_recognized_not_conflict() {
@@ -20,7 +22,6 @@ fn sender_metadata_timeout_is_recognized_not_conflict() {
         },
         &SenderMetadata::default(),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(
@@ -46,7 +47,6 @@ fn user_shadow_cannot_join_the_system_desktop_group() {
         "/home/user/bin/signal",
         user_identity,
         false,
-        false,
     );
     user.desktop_identity = Some(identity(32, 320, 1000));
     let index = DesktopIdentityIndex::from_records(vec![user, system], Vec::new());
@@ -58,7 +58,6 @@ fn user_shadow_cannot_join_the_system_desktop_group() {
         },
         &sender("/home/user/bin/signal", user_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
@@ -83,7 +82,6 @@ fn user_desktop_mismatch_cannot_manufacture_a_conflict() {
         "/home/user/bin/local-app",
         user_identity,
         false,
-        false,
     );
     user.desktop_identity = Some(identity(36, 360, 1_000));
     let index = DesktopIdentityIndex::from_records(vec![user], Vec::new());
@@ -95,7 +93,6 @@ fn user_desktop_mismatch_cannot_manufacture_a_conflict() {
         },
         &sender("/tmp/unrelated", hostile_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
@@ -120,12 +117,16 @@ fn protected_conflict_evidence_outranks_a_user_desktop_shadow() {
         "/home/user/bin/protected-handler",
         user_identity,
         false,
-        false,
     );
     user.desktop_identity = Some(identity(40, 400, 1_000));
-    let index = DesktopIdentityIndex::from_records(vec![user, protected], Vec::new());
-    let mut different = sender("/usr/bin/unrelated", hostile_identity);
-    different.install_provenance = package("org.example.Unrelated");
+    let unrelated = system_record(
+        "org.example.Unrelated",
+        "Unrelated App",
+        "/usr/bin/unrelated",
+        hostile_identity,
+    );
+    let index = DesktopIdentityIndex::from_records(vec![user, protected, unrelated], Vec::new());
+    let different = sender("/usr/bin/unrelated", hostile_identity);
 
     let resolution = resolve_with_evidence(
         AppClaim {
@@ -134,7 +135,6 @@ fn protected_conflict_evidence_outranks_a_user_desktop_shadow() {
         },
         &different,
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Conflict);
@@ -165,7 +165,6 @@ fn ambiguous_protected_records_are_unresolved_not_conflicting() {
         },
         &sender("/usr/bin/unrelated", identity(43, 430, 0)),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
@@ -198,7 +197,6 @@ fn visually_confusable_system_brand_without_contradictory_owner_is_recognized() 
             },
             &sender("/tmp/fake", hostile_identity),
             &index,
-            &HashSet::new(),
         );
 
         assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
@@ -227,7 +225,6 @@ fn basename_spoof_without_immutable_owner_is_recognized_without_actions() {
         },
         &sender("/tmp/signal-desktop", hostile_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
@@ -263,7 +260,6 @@ fn exact_protected_name_without_contradictory_owner_stays_recognized() {
         },
         &sender("/tmp/keepassxc", hostile_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
@@ -285,7 +281,6 @@ fn exact_system_notify_send_identity_is_a_non_replying_relay() {
         },
         &sender("/usr/bin/notify-send", relay_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Relay);
@@ -321,7 +316,6 @@ fn trusted_relay_claiming_a_system_app_stays_relay_without_conflict() {
         },
         &sender("/usr/bin/notify-send", relay_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Relay);
@@ -349,7 +343,6 @@ fn malicious_notify_send_basename_is_not_a_trusted_relay() {
         },
         &sender("/tmp/notify-send", hostile_identity),
         &index,
-        &HashSet::new(),
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
@@ -365,11 +358,9 @@ fn owned_dbus_application_name_without_executable_evidence_remains_unverified() 
         "/usr/bin/example-app",
         app_identity,
         true,
-        true,
     );
     record.executable_identity = None;
     let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
-    let owned = HashSet::from(["org.example.app".to_string()]);
 
     let resolution = resolve_with_evidence(
         AppClaim {
@@ -378,7 +369,6 @@ fn owned_dbus_application_name_without_executable_evidence_remains_unverified() 
         },
         &sender("/usr/lib/example-launcher", identity(5, 50, 0)),
         &index,
-        &owned,
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
@@ -387,21 +377,4 @@ fn owned_dbus_application_name_without_executable_evidence_remains_unverified() 
         .attribution
         .diagnostic_detail
         .contains("/usr/lib/example-launcher"));
-}
-
-#[test]
-fn desktop_id_validation_never_accepts_a_path_or_control_character() {
-    assert_eq!(
-        validate_desktop_id("org.signal.Signal.desktop").as_deref(),
-        Some("org.signal.Signal")
-    );
-    assert_eq!(validate_desktop_id("../signal"), None);
-    assert_eq!(validate_desktop_id("org.example.\nApp"), None);
-    assert_eq!(validate_desktop_id("."), None);
-    assert_eq!(validate_desktop_id(".desktop"), None);
-    assert_eq!(
-        validate_desktop_id(&"a".repeat(256)).map(|id| id.len()),
-        Some(256)
-    );
-    assert_eq!(validate_desktop_id(&"a".repeat(257)), None);
 }

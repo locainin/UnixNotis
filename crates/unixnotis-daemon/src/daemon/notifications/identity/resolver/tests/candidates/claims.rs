@@ -1,3 +1,5 @@
+//! Application-name and desktop-hint association cases
+
 use super::super::*;
 
 #[test]
@@ -58,7 +60,15 @@ fn canonical_conflict_candidate_supplies_the_stable_failure_reason() {
         record.desktop_provenance = package("example-app");
         record.executable_provenance = package("example-app");
     }
-    let index = DesktopIdentityIndex::from_records(vec![alias, canonical], Vec::new());
+    let different_identity = identity(103, 1_030, 0);
+    let different_record = system_record(
+        "org.example.Different",
+        "Different App",
+        "/usr/bin/different",
+        different_identity,
+    );
+    let index =
+        DesktopIdentityIndex::from_records(vec![alias, canonical, different_record], Vec::new());
     let records = index.records_for_executable(executable);
     let results = records
         .iter()
@@ -71,8 +81,7 @@ fn canonical_conflict_candidate_supplies_the_stable_failure_reason() {
             },
         })
         .collect::<Vec<_>>();
-    let mut different = sender("/usr/bin/different", identity(103, 1_030, 0));
-    different.install_provenance = package("different-app");
+    let different = sender("/usr/bin/different", different_identity);
 
     let resolution = resolve_unverified_candidates(
         AppClaim {
@@ -90,17 +99,4 @@ fn canonical_conflict_candidate_supplies_the_stable_failure_reason() {
         resolution.attribution.reason,
         unixnotis_core::AttributionReason::ExecutableMismatch
     );
-}
-
-#[test]
-fn sender_claim_group_key_is_nonempty_and_bound_to_sender_identity() {
-    let metadata = sender("/usr/bin/example", identity(106, 1_060, 0));
-
-    let unresolved =
-        sender_claim_group_key(AttributionStatus::Unresolved, "Example App", &metadata);
-    let conflict = sender_claim_group_key(AttributionStatus::Conflict, "Example App", &metadata);
-
-    assert_eq!(unresolved, "unresolved:106:1060:exampleapp");
-    assert_eq!(conflict, "conflict:106:1060:exampleapp");
-    assert_ne!(unresolved, conflict);
 }

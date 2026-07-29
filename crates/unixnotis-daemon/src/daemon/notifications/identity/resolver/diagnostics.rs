@@ -5,11 +5,11 @@ use unixnotis_core::{
     LaunchVerificationView, RecordTrust,
 };
 
-use super::{
-    AppClaim, AttributionResolution, DesktopRecord, LaunchFailure, LaunchVerification,
-    SenderMetadata, VerifiedLaunch,
+use super::super::desktop_index::{
+    DesktopRecord, LaunchFailure, LaunchVerification, VerifiedLaunch,
 };
-use crate::daemon::notifications::identity::sender::CommandLineQuality;
+use super::super::sender::{CommandLineQuality, SenderMetadata};
+use super::{AppClaim, AttributionResolution};
 
 pub(super) fn with_diagnostics(
     mut resolution: AttributionResolution,
@@ -70,6 +70,9 @@ pub(super) const fn launch_failure_label(reason: LaunchFailure) -> &'static str 
         LaunchFailure::MissingSenderEvidence => "missing sender process evidence",
         LaunchFailure::MissingCommandLine => "missing command-line evidence",
         LaunchFailure::UnstructuredCommandLine => "unstructured command-line evidence",
+        LaunchFailure::EmptyContractNeedsCommandLine => {
+            "empty launch contract requires structured command-line evidence"
+        }
         LaunchFailure::UnsupportedWrapper => "unsupported launch wrapper",
         LaunchFailure::AmbiguousDesktopAssociation => "ambiguous desktop association",
         LaunchFailure::DynamicOnlyContract => "dynamic-only launch contract",
@@ -85,6 +88,7 @@ const fn launch_authority_for_failure(failure: LaunchFailure) -> LaunchAuthority
     match failure {
         LaunchFailure::DynamicOnlyContract => LaunchAuthorityView::DynamicOnly,
         LaunchFailure::AmbiguousDesktopAssociation => LaunchAuthorityView::Ambiguous,
+        LaunchFailure::EmptyContractNeedsCommandLine => LaunchAuthorityView::DedicatedExecutable,
         LaunchFailure::ProtectedPayloadMismatch
         | LaunchFailure::MissingCommandLine
         | LaunchFailure::UnstructuredCommandLine => LaunchAuthorityView::ProtectedPayload,
