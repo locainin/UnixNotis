@@ -1,8 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 use futures_util::StreamExt;
@@ -16,100 +13,10 @@ use super::super::{run_with_builder, run_with_builder_inner};
 use crate::cli::Args;
 use unixnotis_core::Config;
 
-static NEXT_BROKER: AtomicUsize = AtomicUsize::new(0);
+#[path = "dbus_lifecycle/private_bus.rs"]
+mod private_bus;
 
-struct PrivateBroker {
-    child: Child,
-    socket: PathBuf,
-    address: String,
-}
-
-impl PrivateBroker {
-    fn start() -> Self {
-        let socket = broker_socket();
-        let address = format!("unix:path={}", socket.display());
-        let socket_activate =
-            unixnotis_core::util::trusted_system_program_path("systemd-socket-activate")
-                .expect("find trusted systemd-socket-activate");
-        let broker = unixnotis_core::util::trusted_system_program_path("dbus-broker-launch")
-            .expect("find trusted dbus-broker-launch");
-        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-            .expect("private dbus-broker tests require XDG_RUNTIME_DIR");
-        let mut command = Command::new(socket_activate);
-        command
-            .arg("--now")
-            .arg("--setenv")
-            .arg(format!("XDG_RUNTIME_DIR={runtime_dir}"));
-        if let Ok(bus_address) = std::env::var("DBUS_SESSION_BUS_ADDRESS") {
-            // The launcher uses the existing user bus only for systemd activation control
-            command
-                .arg("--setenv")
-                .arg(format!("DBUS_SESSION_BUS_ADDRESS={bus_address}"));
-        }
-        let mut child = command
-            .arg("--listen")
-            .arg(&socket)
-            .arg("--fdname=dbus.socket")
-            .arg(broker)
-            .args(["--scope", "user"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("start private dbus-broker");
-
-        // Socket activation creates the isolated listener before clients are allowed to connect
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while !socket.exists() && Instant::now() < deadline {
-            assert!(
-                child
-                    .try_wait()
-                    .expect("query private broker process")
-                    .is_none(),
-                "private dbus-broker exited before creating its socket"
-            );
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        assert!(
-            socket.exists(),
-            "private dbus-broker must create its isolated socket"
-        );
-        Self {
-            child,
-            socket,
-            address,
-        }
-    }
-
-    fn terminate(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-impl Drop for PrivateBroker {
-    fn drop(&mut self) {
-        self.terminate();
-        let _ = std::fs::remove_file(&self.socket);
-        if let Some(parent) = self.socket.parent() {
-            let _ = std::fs::remove_dir(parent);
-        }
-    }
-}
-
-fn broker_socket() -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock must be after the Unix epoch")
-        .as_nanos();
-    let serial = NEXT_BROKER.fetch_add(1, Ordering::Relaxed);
-    let root = std::env::temp_dir().join(format!(
-        "unixnotis-runtime-dbus-{}-{stamp}-{serial}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&root).expect("create private broker directory");
-    root.join("bus.sock")
-}
+use private_bus::PrivateBus;
 
 async fn connect(address: &str) -> Connection {
     ConnectionBuilder::address(address)
@@ -186,9 +93,9 @@ async fn wait_for_both_owners(connection: &Connection) -> (String, String) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn startup_publishes_both_names_with_one_ready_owner() {
-    let broker = PrivateBroker::start();
-    let client = connect(&broker.address).await;
-    let daemon = spawn_daemon(broker.address.clone(), 1);
+    let bus = PrivateBus::start();
+    let client = connect(&bus.address).await;
+    let daemon = spawn_daemon(bus.address.clone(), 1);
 
     let (notifications_owner, control_owner) = wait_for_both_owners(&client).await;
     assert_eq!(
@@ -278,14 +185,14 @@ async fn startup_publishes_both_names_with_one_ready_owner() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn strict_broker_accepts_full_notification_view_after_added_signal() {
-    let broker = PrivateBroker::start();
-    let client = connect(&broker.address).await;
+async fn private_session_bus_accepts_full_notification_view_after_added_signal() {
+    let bus = PrivateBus::start();
+    let client = connect(&bus.address).await;
     let trusted_sender = client
         .unique_name()
-        .expect("private broker assigns a unique client name")
+        .expect("private session bus assigns a unique client name")
         .to_string();
-    let daemon = spawn_daemon_with_trusted_sender(broker.address.clone(), 3, trusted_sender);
+    let daemon = spawn_daemon_with_trusted_sender(bus.address.clone(), 3, trusted_sender);
     let owners_before = wait_for_both_owners(&client).await;
     let control = ControlProxy::new(&client)
         .await
@@ -300,11 +207,11 @@ async fn strict_broker_accepts_full_notification_view_after_added_signal() {
 
     let id = notifications
         .notify(
-            "Strict broker wire test",
+            "Private bus wire test",
             0,
             "",
             "Complete notification view",
-            "The strict broker must accept the nested enum payload",
+            "The private bus must accept the nested enum payload",
             Vec::new(),
             HashMap::from([("urgency".to_string(), OwnedValue::from(2_u8))]),
             2_000,
@@ -318,7 +225,7 @@ async fn strict_broker_accepts_full_notification_view_after_added_signal() {
     let signal_args = signal.args().expect("decode NotificationAdded arguments");
     assert_eq!(*signal_args.id(), id);
 
-    // This is the exact authorized pull that previously made dbus-broker reject the body
+    // This is the exact authorized pull that previously exposed an invalid D-Bus body
     let views = control
         .get_active_notification(id)
         .await
@@ -346,25 +253,28 @@ async fn strict_broker_accepts_full_notification_view_after_added_signal() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn broker_loss_makes_the_daemon_exit_with_failure() {
-    let mut broker = PrivateBroker::start();
-    let client = connect(&broker.address).await;
-    let daemon = spawn_daemon(broker.address.clone(), 30);
+async fn session_bus_loss_makes_the_daemon_exit_with_failure() {
+    let mut bus = PrivateBus::start();
+    let client = connect(&bus.address).await;
+    let daemon = spawn_daemon(bus.address.clone(), 30);
     let _owners = wait_for_both_owners(&client).await;
 
-    broker.terminate();
+    bus.terminate();
     let result = tokio::time::timeout(Duration::from_secs(8), daemon)
         .await
-        .expect("daemon must notice broker loss")
+        .expect("daemon must notice session bus loss")
         .expect("join daemon task");
-    assert!(result.is_err(), "broker loss must return a daemon failure");
+    assert!(
+        result.is_err(),
+        "session bus loss must return a daemon failure"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn notification_during_health_probing_keeps_daemon_generation_alive() {
-    let broker = PrivateBroker::start();
-    let client = connect(&broker.address).await;
-    let daemon = spawn_daemon(broker.address.clone(), 4);
+    let bus = PrivateBus::start();
+    let client = connect(&bus.address).await;
+    let daemon = spawn_daemon(bus.address.clone(), 4);
     let owners_before = wait_for_both_owners(&client).await;
     let notifications = NotificationsProxy::new(&client)
         .await
@@ -403,14 +313,14 @@ async fn notification_during_health_probing_keeps_daemon_generation_alive() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn competing_notification_owner_prevents_control_publication() {
-    let broker = PrivateBroker::start();
-    let competitor = connect(&broker.address).await;
+    let bus = PrivateBus::start();
+    let competitor = connect(&bus.address).await;
     competitor
         .request_name(NOTIFICATIONS_BUS_NAME)
         .await
         .expect("competitor owns notification name");
-    let observer = connect(&broker.address).await;
-    let daemon = spawn_daemon(broker.address.clone(), 5);
+    let observer = connect(&bus.address).await;
+    let daemon = spawn_daemon(bus.address.clone(), 5);
 
     let result = tokio::time::timeout(Duration::from_secs(10), daemon)
         .await
