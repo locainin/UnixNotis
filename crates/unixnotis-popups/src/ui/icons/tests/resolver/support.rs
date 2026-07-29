@@ -23,5 +23,6 @@ pub(super) fn notification(app_name: &str, icon_name: &str) -> NotificationView 
             icon_name: icon_name.to_string(),
             ..NotificationImage::default()
         },
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     }
 }

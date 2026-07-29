@@ -128,6 +128,53 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
     assert!(state.build_app_icon_widget(&missing_content, 20).is_some());
 }
 
+#[gtk::test]
+fn visible_popup_materialization_and_rebuild_replace_the_exact_widget_generation() {
+    let (mut state, mut command_rx) =
+        popup_state_with_commands("org.unixnotis.PopupMaterialization", 1);
+    let original = notification(21, 1, "original");
+
+    state.add_popup(original.clone());
+    let original_entry = state
+        .popups
+        .get(&original.id)
+        .expect("visible popup should be stored");
+    assert!(original_entry.is_materialized());
+    assert_eq!(state.visible_popups, vec![original.id]);
+    let original_root = original_entry
+        .root
+        .clone()
+        .expect("visible popup should have a root");
+    assert!(original_root.is_visible());
+    assert_rendered_command(&mut command_rx, original.key());
+
+    let replacement = notification(21, 2, "replacement");
+    state.update_popup(replacement.clone(), true);
+    let replacement_root = state
+        .popups
+        .get(&replacement.id)
+        .and_then(|entry| entry.root.clone())
+        .expect("replacement popup should have a root");
+    assert_ne!(original_root, replacement_root);
+    assert!(descendant_has_text(
+        replacement_root.upcast_ref(),
+        "replacement"
+    ));
+    assert_rendered_command(&mut command_rx, replacement.key());
+}
+
+fn assert_rendered_command(
+    command_rx: &mut tokio::sync::mpsc::Receiver<crate::dbus::UiCommand>,
+    expected: NotificationKey,
+) {
+    match command_rx.try_recv().expect("render acknowledgement") {
+        crate::dbus::UiCommand::Rendered(notification) => {
+            assert_eq!(notification, expected);
+        }
+        command => panic!("unexpected command: {command:?}"),
+    }
+}
+
 fn descendant_has_class(widget: &gtk::Widget, class_name: &str) -> bool {
     let mut child = widget.first_child();
     while let Some(current) = child {
@@ -139,7 +186,31 @@ fn descendant_has_class(widget: &gtk::Widget, class_name: &str) -> bool {
     false
 }
 
+fn descendant_has_text(widget: &gtk::Widget, expected: &str) -> bool {
+    if widget
+        .downcast_ref::<gtk::Label>()
+        .is_some_and(|label| label.text().as_str() == expected)
+    {
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if descendant_has_text(&current, expected) {
+            return true;
+        }
+        child = current.next_sibling();
+    }
+    false
+}
+
 fn popup_state(application_id: &str) -> UiState {
+    popup_state_with_commands(application_id, 0).0
+}
+
+fn popup_state_with_commands(
+    application_id: &str,
+    max_visible: usize,
+) -> (UiState, tokio::sync::mpsc::Receiver<crate::dbus::UiCommand>) {
     let app = gtk::Application::builder()
         .application_id(application_id)
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
@@ -147,13 +218,15 @@ fn popup_state(application_id: &str) -> UiState {
     app.register(None::<&gtk::gio::Cancellable>)
         .expect("register popup mutation application");
     let mut config = Config::default();
-    // Queued-only rows keep the state test independent of compositor animation timing
-    config.popups.max_visible = 0;
+    config.popups.max_visible = max_visible;
     let root = std::env::temp_dir().join("unixnotis-popup-mutation");
-    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let (command_tx, command_rx) = tokio::sync::mpsc::channel(4);
     let css = CssManager::new_popup(theme_paths(&root), config.theme.clone());
 
-    UiState::new(&app, config, root.join("config.toml"), command_tx, css)
+    (
+        UiState::new(&app, config, root.join("config.toml"), command_tx, css),
+        command_rx,
+    )
 }
 
 fn notification(id: u32, generation: u64, summary: &str) -> NotificationView {
@@ -172,5 +245,6 @@ fn notification(id: u32, generation: u64, summary: &str) -> NotificationView {
         is_transient: false,
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     }
 }

@@ -83,7 +83,7 @@ fn either_reply_contract_selects_the_communication_layout() {
 
 #[test]
 fn each_popup_kind_keeps_its_intended_action_budget() {
-    assert_eq!(PopupKind::Communication.action_limit(), 3);
-    assert_eq!(PopupKind::Utility.action_limit(), 1);
-    assert_eq!(PopupKind::Warning.action_limit(), 1);
+    assert_eq!(PopupKind::Communication.action_limit(), 2);
+    assert_eq!(PopupKind::Utility.action_limit(), 2);
+    assert_eq!(PopupKind::Warning.action_limit(), 2);
 }

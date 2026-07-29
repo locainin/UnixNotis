@@ -49,15 +49,19 @@ fn utility_layout_moves_extra_safe_actions_into_overflow() {
             key: "folder".to_string(),
             label: "Open folder".to_string(),
         },
+        Action {
+            key: "archive".to_string(),
+            label: "Archive".to_string(),
+        },
     ];
 
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
     assert_eq!(model.kind, PopupKind::Utility);
-    assert_eq!(model.primary_actions.len(), 1);
+    assert_eq!(model.primary_actions.len(), 2);
     assert_eq!(model.primary_actions[0].key, "default");
     assert_eq!(model.overflow_actions.len(), 1);
-    assert_eq!(model.overflow_actions[0].key, "folder");
+    assert_eq!(model.overflow_actions[0].key, "archive");
 }
 
 #[test]
@@ -135,7 +139,7 @@ fn thumbnail_requires_real_image_data_or_a_nonempty_path() {
 }
 
 #[test]
-fn either_badge_source_match_suppresses_duplicate_decoration() {
+fn app_icon_name_never_suppresses_real_content_image_data() {
     let mut icon_match = notification();
     icon_match.attribution.badge_icon = "example".to_string();
     icon_match.image.has_image_data = true;
@@ -147,11 +151,11 @@ fn either_badge_source_match_suppresses_duplicate_decoration() {
     };
     assert_eq!(
         PopupEntryViewModel::for_notification_at(&icon_match, 1_000).thumbnail,
-        ThumbnailKind::None
+        ThumbnailKind::Content
     );
 
-    let mut path_match = icon_match;
-    path_match.image.icon_name = "different".to_string();
+    let mut path_match = notification();
+    path_match.attribution.badge_icon = "example".to_string();
     path_match.image.image_path = "example".to_string();
     assert_eq!(
         PopupEntryViewModel::for_notification_at(&path_match, 1_000).thumbnail,
@@ -222,10 +226,7 @@ fn conflicting_claim_uses_warning_layout_and_drops_actions() {
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
     assert_eq!(model.kind, PopupKind::Warning);
-    assert_eq!(
-        model.secondary_claim.as_deref(),
-        Some("Claims to be Signal")
-    );
+    assert_eq!(model.secondary_claim.as_deref(), Some("Claims “Signal”"));
     assert!(model.primary_actions.is_empty());
     assert!(model.overflow_actions.is_empty());
 }

@@ -20,6 +20,7 @@ fn candidate(generation: u64, admission: PopupAdmissionView) -> PopupCandidate {
             is_transient: false,
             received_at_unix_seconds: 0,
             image: NotificationImage::default(),
+            popup_decision: unixnotis_core::PopupDecisionRecord::default(),
         },
         admission,
     }

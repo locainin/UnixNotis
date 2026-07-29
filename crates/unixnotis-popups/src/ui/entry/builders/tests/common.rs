@@ -1,6 +1,6 @@
 use super::{
-    build_action_row, build_body_label, build_close_button, build_header_spacer, build_reply_note,
-    build_title_label, build_urgency_badge,
+    build_action_row, build_body_label, build_close_button, build_header_spacer,
+    build_identity_avatar, build_reply_note, build_title_label, build_urgency_badge,
 };
 use gtk::prelude::*;
 use unixnotis_core::{
@@ -10,6 +10,9 @@ use unixnotis_core::{
 
 use crate::dbus::UiCommand;
 use crate::ui::entry::presentation::{PopupEntryViewModel, ReplyPresentation};
+use crate::ui::UiState;
+use unixnotis_core::{Config, ThemePaths};
+use unixnotis_ui::css::CssManager;
 
 #[gtk::test]
 fn popup_critical_badge_uses_shared_hook_and_visibility() {
@@ -71,7 +74,8 @@ fn close_button_and_header_spacer_keep_their_interaction_contracts() {
 fn action_row_dispatches_the_prepared_action_identity() {
     let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(1);
     let view = view_model_with_action();
-    let row = build_action_row(&command_tx, 41, &view).expect("action row");
+    let notification = notification();
+    let row = build_action_row(&command_tx, notification.key(), &view).expect("action row");
     let button = row
         .first_child()
         .and_downcast::<gtk::Button>()
@@ -80,8 +84,12 @@ fn action_row_dispatches_the_prepared_action_identity() {
     button.emit_clicked();
 
     match command_rx.try_recv().expect("queued action command") {
-        UiCommand::InvokeAction { id, action_key } => {
-            assert_eq!(id, 41);
+        UiCommand::InvokeAction {
+            notification,
+            action_key,
+        } => {
+            assert_eq!(notification.id, 41);
+            assert_eq!(notification.generation, 3);
             assert_eq!(action_key, "default");
         }
         command => panic!("unexpected command: {command:?}"),
@@ -101,9 +109,13 @@ fn extra_safe_action_builds_a_compact_overflow_menu() {
             key: "folder".to_string(),
             label: "Open folder".to_string(),
         },
+        Action {
+            key: "archive".to_string(),
+            label: "Archive".to_string(),
+        },
     ];
     let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
-    let row = build_action_row(&command_tx, 41, &view).expect("action row");
+    let row = build_action_row(&command_tx, notification.key(), &view).expect("action row");
     let menu = row
         .last_child()
         .and_downcast::<gtk::MenuButton>()
@@ -116,7 +128,42 @@ fn extra_safe_action_builds_a_compact_overflow_menu() {
 #[gtk::test]
 fn empty_action_model_does_not_build_an_action_row() {
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
-    assert!(build_action_row(&command_tx, 41, &view_model()).is_none());
+    assert!(build_action_row(&command_tx, notification().key(), &view_model()).is_none());
+}
+
+#[gtk::test]
+fn identity_avatar_scales_the_symbolic_glyph_inside_its_fixed_slot() {
+    let app = gtk::Application::builder()
+        .application_id("org.unixnotis.PopupAvatarSizing")
+        .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    app.register(None::<&gtk::gio::Cancellable>)
+        .expect("register avatar sizing application");
+    let config = Config::default();
+    let root = std::env::temp_dir().join("unixnotis-popup-avatar-sizing");
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let css = CssManager::new_popup(theme_paths(&root), config.theme.clone());
+    let mut state = UiState::new(&app, config, root.join("config.toml"), command_tx, css);
+    let mut notification = notification();
+    notification.attribution = NotificationAttribution::trusted_relay(
+        "Signal",
+        "Sent via /usr/bin/notify-send",
+        false,
+        "relay:notify-send:signal".to_string(),
+    );
+    let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
+
+    let avatar = build_identity_avatar(&mut state, &notification, &view, 36)
+        .expect("relay avatar should use a semantic badge");
+    let icon = avatar
+        .widget
+        .first_child()
+        .and_downcast::<gtk::Image>()
+        .expect("avatar should contain one image");
+
+    assert_eq!(avatar.widget.width_request(), 36);
+    assert_eq!(avatar.widget.height_request(), 36);
+    assert_eq!(icon.pixel_size(), 22);
 }
 
 fn view_model() -> PopupEntryViewModel {
@@ -156,5 +203,17 @@ fn notification() -> NotificationView {
         is_transient: false,
         received_at_unix_seconds: 1_000,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+    }
+}
+
+fn theme_paths(root: &std::path::Path) -> ThemePaths {
+    ThemePaths {
+        base_dir: root.to_path_buf(),
+        base_css: root.join("base.css"),
+        popup_css: root.join("popup.css"),
+        panel_css: root.join("panel.css"),
+        widgets_css: root.join("widgets.css"),
+        media_css: root.join("media.css"),
     }
 }

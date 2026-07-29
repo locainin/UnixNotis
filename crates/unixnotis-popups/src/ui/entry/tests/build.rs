@@ -25,12 +25,13 @@ fn default_card_action_is_allowed_for_plain_content_widgets() {
 fn close_button_dispatches_only_the_notification_dismissal() {
     let close = gtk::Button::new();
     let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(1);
-    connect_close_action(&close, 31, &command_tx);
+    let notification = notification();
+    connect_close_action(&close, notification.key(), &command_tx);
 
     close.emit_clicked();
 
     match command_rx.try_recv().expect("queued dismiss command") {
-        UiCommand::Dismiss(id) => assert_eq!(id, 31),
+        UiCommand::Dismiss(key) => assert_eq!(key, notification.key()),
         command => panic!("unexpected command: {command:?}"),
     }
 }
@@ -46,7 +47,7 @@ fn exact_default_action_adds_card_click_handling() {
     });
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
-    connect_default_action(&root, view.id, &model, &command_tx);
+    connect_default_action(&root, view.key(), &model, &command_tx);
 
     assert_eq!(root.observe_controllers().n_items(), 1);
 }
@@ -62,7 +63,7 @@ fn nondefault_action_does_not_make_the_whole_card_clickable() {
     });
     let model = PopupEntryViewModel::for_notification_at(&view, 1_000);
 
-    connect_default_action(&root, view.id, &model, &command_tx);
+    connect_default_action(&root, view.key(), &model, &command_tx);
 
     assert_eq!(root.observe_controllers().n_items(), 0);
 }
@@ -91,5 +92,6 @@ fn notification() -> NotificationView {
         is_transient: false,
         received_at_unix_seconds: 1_000,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     }
 }

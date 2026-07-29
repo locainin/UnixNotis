@@ -1,8 +1,17 @@
 use super::{UiCommand, UiEvent};
+use unixnotis_core::NotificationKey;
 
 #[test]
-fn dismiss_command_preserves_notification_id() {
-    assert!(matches!(UiCommand::Dismiss(17), UiCommand::Dismiss(17)));
+fn dismiss_command_preserves_notification_generation() {
+    let notification = NotificationKey {
+        id: 17,
+        generation: 23,
+    };
+
+    assert!(matches!(
+        UiCommand::Dismiss(notification),
+        UiCommand::Dismiss(key) if key == notification
+    ));
 }
 
 #[test]

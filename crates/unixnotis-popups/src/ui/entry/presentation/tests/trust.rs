@@ -33,8 +33,8 @@ fn trusted_relay_uses_human_source_text_and_keeps_raw_path_in_details() {
 
     let trust = PopupTrustPresentation::for_notification(&view);
 
-    assert_eq!(trust.level, TrustLevel::System);
-    assert_eq!(trust.short_label.as_deref(), Some("Command-line tool"));
+    assert_eq!(trust.level, TrustLevel::CommandLine);
+    assert!(trust.short_label.is_none());
     assert_eq!(
         trust.details_label.as_deref(),
         Some("Sent via /usr/bin/notify-send")
