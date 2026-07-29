@@ -34,22 +34,13 @@ pub(super) fn update_actions(
 ) {
     let presentation = NotificationPresentation::from_view(notification);
     configure_inline_reply(&row.inline_reply, notification, is_active);
-    let safe_actions = presentation
-        .actions
-        .primary
-        .iter()
-        .chain(&presentation.actions.overflow)
-        .collect::<Vec<_>>();
+    let action_signature = action_signature(&presentation, is_active);
     // Fast path skips button rebuilding when the action set is unchanged
     {
         let cached = row.action_cache.borrow();
         let reply_cached = row.reply_cache.borrow();
         if row.action_cache_key.get() == notification.key()
-            && cached.len() == safe_actions.len()
-            && cached
-                .iter()
-                .zip(&safe_actions)
-                .all(|((key, label), action)| key == &action.key && label == &action.label)
+            && cached.as_slice() == action_signature.as_slice()
             && reply_cached.0 == notification.inline_reply
             && reply_cached.1 == notification.inline_reply_policy
             && reply_cached.2 == is_active
@@ -62,10 +53,7 @@ pub(super) fn update_actions(
         // Cache the current action signature for the next update cycle
         let mut cached = row.action_cache.borrow_mut();
         cached.clear();
-        cached.reserve(safe_actions.len());
-        for action in &safe_actions {
-            cached.push((action.key.clone(), action.label.clone()));
-        }
+        cached.extend(action_signature);
         row.action_cache_key.set(notification.key());
         *row.reply_cache.borrow_mut() = (
             notification.inline_reply.clone(),
@@ -77,6 +65,10 @@ pub(super) fn update_actions(
     // Old buttons leave before rebuilding the current action set
     while let Some(child) = row.actions_box.first_child() {
         row.actions_box.remove(&child);
+    }
+    // Archived notifications cannot be valid daemon action targets
+    if !is_active {
+        return;
     }
     if visible_action_count_from(&presentation, is_active) == 0 {
         return;
@@ -114,6 +106,74 @@ pub(super) fn update_actions(
             &presentation.actions.overflow,
         ));
     }
+    if let Some(default_key) = blank_default_action_key(&presentation) {
+        row.actions_box.append(&build_default_action_button(
+            command_tx,
+            notification.key(),
+            default_key,
+        ));
+    }
+}
+
+fn action_signature(
+    presentation: &NotificationPresentation,
+    is_active: bool,
+) -> Vec<(String, String)> {
+    if !is_active {
+        return Vec::new();
+    }
+    let mut signature = presentation
+        .actions
+        .primary
+        .iter()
+        .chain(&presentation.actions.overflow)
+        .map(|action| (action.key.clone(), action.label.clone()))
+        .collect::<Vec<_>>();
+    if let Some(default_key) = blank_default_action_key(presentation) {
+        // The empty label distinguishes the compact icon-only default control
+        signature.push((default_key.to_string(), String::new()));
+    }
+    signature
+}
+
+fn blank_default_action_key(presentation: &NotificationPresentation) -> Option<&str> {
+    let default_key = presentation.actions.default_key.as_deref()?;
+    let already_visible = presentation
+        .actions
+        .primary
+        .iter()
+        .chain(&presentation.actions.overflow)
+        .any(|action| action.key == default_key);
+    (!already_visible).then_some(default_key)
+}
+
+fn build_default_action_button(
+    command_tx: &mpsc::Sender<UiCommand>,
+    notification: unixnotis_core::NotificationKey,
+    action_key: &str,
+) -> gtk::Button {
+    let button = gtk::Button::from_icon_name("document-open-symbolic");
+    button.add_css_class("unixnotis-panel-action");
+    button.add_css_class("unixnotis-notification-action");
+    button.add_css_class("unixnotis-panel-default-action");
+    button.set_tooltip_text(Some("Open notification"));
+    button.update_property(&[gtk::accessible::Property::Label("Open notification")]);
+    let action_key = action_key.to_string();
+    let tx = command_tx.clone();
+    let action_gate = ClickCooldown::new(Duration::from_millis(ACTION_BUTTON_GUARD_MS));
+    button.connect_clicked(move |_| {
+        if !action_gate.try_start() {
+            return;
+        }
+        try_send_command(
+            &tx,
+            UiCommand::InvokeAction {
+                notification,
+                action_key: action_key.clone(),
+            },
+        );
+    });
+    button
 }
 
 fn build_action_button(
@@ -179,7 +239,11 @@ pub(super) fn visible_action_count(notification: &NotificationView, is_active: b
 }
 
 fn visible_action_count_from(presentation: &NotificationPresentation, is_active: bool) -> usize {
+    if !is_active {
+        return 0;
+    }
     let regular = presentation.actions.primary.len() + presentation.actions.overflow.len();
-    let reply = is_active && presentation.trust.reply == ReplyPresentation::Available;
-    regular + usize::from(reply)
+    let reply = presentation.trust.reply == ReplyPresentation::Available;
+    let blank_default = blank_default_action_key(presentation).is_some();
+    regular + usize::from(reply) + usize::from(blank_default)
 }
