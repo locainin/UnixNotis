@@ -29,6 +29,8 @@ fn motion_policy_disables_theme_motion_under_the_runtime_class() {
 #[test]
 fn internal_structure_css_contains_only_required_fallback_structure() {
     assert!(INTERNAL_STRUCTURE_CSS.contains(".unixnotis-reload-notice"));
+    assert!(INTERNAL_STRUCTURE_CSS.contains(".unixnotis-reload-notice-actions"));
+    assert!(INTERNAL_STRUCTURE_CSS.contains(".unixnotis-reload-notice-action"));
     assert!(INTERNAL_STRUCTURE_CSS.contains(".unixnotis-panel-search-owned-icons"));
     assert!(!INTERNAL_STRUCTURE_CSS.contains("@define-color"));
 }
@@ -151,7 +153,7 @@ fn popup_theme_keeps_kind_trust_and_compact_media_hooks() {
 
     // Default popups must not restore the old raw provenance body row
     assert!(!DEFAULT_POPUP_CSS.contains(".unixnotis-popup-source"));
-    assert!(DEFAULT_POPUP_CSS.contains("min-width: 20px"));
-    assert!(DEFAULT_POPUP_CSS.contains("min-width: 24px"));
+    assert!(DEFAULT_POPUP_CSS.contains("min-width: 36px"));
+    assert!(DEFAULT_POPUP_CSS.contains("min-width: 44px"));
     assert!(DEFAULT_POPUP_CSS.contains("min-width: 48px"));
 }

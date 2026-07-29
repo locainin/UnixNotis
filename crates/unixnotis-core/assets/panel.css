@@ -63,6 +63,38 @@
   padding: 0;
 }
 
+.unixnotis-reload-notice-actions {
+  margin-top: 8px;
+}
+
+.unixnotis-reload-notice-action {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 9px;
+  border: 1px solid alpha(#ffffff, 0.10);
+  background: alpha(#ffffff, 0.055);
+  color: alpha(#ffffff, 0.84);
+  box-shadow: none;
+}
+
+.unixnotis-reload-notice-action:hover,
+.unixnotis-reload-notice-action:focus-visible {
+  background: alpha(#ffffff, 0.10);
+  border-color: alpha(#ffffff, 0.18);
+}
+
+.unixnotis-reload-notice-action-primary {
+  background: alpha(@unixnotis-accent, 0.20);
+  border-color: alpha(@unixnotis-accent, 0.38);
+  color: #d8fffb;
+}
+
+.unixnotis-reload-notice-action-primary:hover,
+.unixnotis-reload-notice-action-primary:focus-visible {
+  background: alpha(@unixnotis-accent, 0.28);
+  border-color: alpha(@unixnotis-accent, 0.52);
+}
+
 .unixnotis-panel-title-stack {
   min-width: 0;
 }
@@ -333,7 +365,7 @@ entry selection {
   transition: opacity 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
 
-.unixnotis-panel-card:hover .unixnotis-panel-close,
+.unixnotis-panel-card-overlay:hover .unixnotis-panel-close,
 .unixnotis-panel-close:focus,
 .unixnotis-panel-close:hover {
   opacity: 1;
@@ -358,14 +390,15 @@ entry selection {
  */
 .unixnotis-group {
   background: transparent;
-  margin-bottom: 8px;
+  margin-top: 12px;
+  margin-bottom: 0;
 }
 
 .unixnotis-group-header {
-  background: alpha(#ffffff, 0.025);
+  background: alpha(#ffffff, 0.035);
   color: @unixnotis-text;
-  border-radius: 999px;
-  padding: 6px 12px;
+  border-radius: 14px 14px 0 0;
+  padding: 7px 8px;
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
   border-right: 1px solid alpha(#ffffff, 0.03);
@@ -402,19 +435,59 @@ entry selection {
 .unixnotis-group-title {
   font-weight: 600;
   font-size: 12px;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
+}
+
+.unixnotis-group-avatar {
+  min-width: 26px;
+  min-height: 26px;
+  border-radius: 9px;
+  background: alpha(#ffffff, 0.065);
+  color: alpha(#ffffff, 0.9);
+}
+
+.unixnotis-group.command-line .unixnotis-group-avatar,
+.unixnotis-group.unverified .unixnotis-group-avatar {
+  background: alpha(#fbbf24, 0.08);
+  color: alpha(#fde68a, 0.90);
+}
+
+.unixnotis-group.suspicious .unixnotis-group-avatar {
+  background: alpha(#fb7185, 0.11);
+  color: #fecdd3;
+}
+
+.unixnotis-group-secondary {
+  color: alpha(#ffffff, 0.54);
+  font-size: 11px;
+}
+
+.unixnotis-group-trust-chip {
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  background: alpha(#fbbf24, 0.09);
+  color: alpha(#fde68a, 0.86);
+  border: 1px solid alpha(#fbbf24, 0.18);
+}
+
+.unixnotis-group.suspicious .unixnotis-group-trust-chip {
+  background: alpha(#fb7185, 0.12);
+  color: #fecdd3;
+  border-color: alpha(#fb7185, 0.30);
 }
 
 .unixnotis-group-count {
-  background: alpha(@unixnotis-accent, 0.12);
-  color: #bffaf5;
+  background: alpha(#ffffff, 0.06);
+  color: alpha(#ffffff, 0.72);
   border-radius: 999px;
-  padding: 2px 8px;
+  padding: 1px 6px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  border: 1px solid alpha(@unixnotis-accent, 0.28);
-  min-width: 22px;
+  border: 1px solid alpha(#ffffff, 0.10);
+  min-width: 18px;
   box-shadow: none;
 }
 
@@ -423,7 +496,7 @@ entry selection {
 }
 
 .unixnotis-group-row-collapsed .unixnotis-group-count {
-  border-color: alpha(@unixnotis-accent-2, 0.3);
+  border-color: alpha(#ffffff, 0.10);
 }
 
 .unixnotis-group-row-no-icon .unixnotis-group-title {
@@ -447,7 +520,8 @@ entry selection {
   border-radius: 16px;
   padding: 10px 12px;
   padding: var(--unixnotis-panel-card-padding-y) var(--unixnotis-panel-card-padding-x);
-  margin-bottom: 8px;
+  margin-top: 12px;
+  margin-bottom: 0;
   box-shadow: inset 0 1px 0 alpha(#ffffff, 0.02), 0 4px 12px -8px alpha(#000000, 0.7);
   transition: border-color 0.15s ease-out;
 }
@@ -456,12 +530,32 @@ entry selection {
   box-shadow: inset 0 1px 0 alpha(#ffffff, 0.02), 0 4px 12px -8px alpha(#000000, 0.7);
 }
 
-.unixnotis-panel-card-group-collapsed {
-  margin-bottom: 8px;
+.unixnotis-panel-card.unixnotis-panel-card-group-collapsed {
+  margin-top: 0;
+  margin-bottom: 12px;
+  border-radius: 0 0 14px 14px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  box-shadow: none;
 }
 
-.unixnotis-panel-card-group-expanded {
-  margin-bottom: var(--unixnotis-panel-card-gap);
+.unixnotis-panel-card.unixnotis-panel-card-group-expanded {
+  margin-top: 0;
+  margin-bottom: 0;
+  border-radius: 0;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  border-top-color: alpha(#ffffff, 0.065);
+  box-shadow: none;
+}
+
+.unixnotis-panel-card.unixnotis-panel-card-group-last {
+  border-radius: 0 0 14px 14px;
+  margin-bottom: 12px;
+}
+
+.unixnotis-panel-card.unixnotis-panel-card-group-first {
+  border-top-color: alpha(#ffffff, 0.07);
 }
 
 .unixnotis-panel-card.active {
@@ -572,6 +666,27 @@ entry selection {
   text-transform: uppercase;
 }
 
+.unixnotis-panel-secondary-claim {
+  color: alpha(#ffffff, 0.54);
+  font-size: 11px;
+}
+
+.unixnotis-panel-trust-chip {
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  background: alpha(#fbbf24, 0.09);
+  color: alpha(#fde68a, 0.86);
+  border: 1px solid alpha(#fbbf24, 0.18);
+}
+
+.unixnotis-panel-card.suspicious .unixnotis-panel-trust-chip {
+  background: alpha(#fb7185, 0.12);
+  color: #fecdd3;
+  border-color: alpha(#fb7185, 0.30);
+}
+
 .unixnotis-panel-summary {
   font-size: 13px;
   color: #ffffff;
@@ -583,12 +698,45 @@ entry selection {
   font-size: 12px;
 }
 
+.unixnotis-popup-status {
+  color: alpha(#ffffff, 0.52);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
 .unixnotis-panel-icon {
-  margin-right: 8px;
+  min-width: 30px;
+  min-height: 30px;
+  margin-right: 2px;
+  border-radius: 10px;
+  padding: 5px;
+  background: alpha(#ffffff, 0.065);
+  color: alpha(#ffffff, 0.90);
+}
+
+.unixnotis-panel-card.command-line .unixnotis-panel-icon,
+.unixnotis-panel-card.unverified .unixnotis-panel-icon {
+  background: alpha(#fbbf24, 0.08);
+  color: alpha(#fde68a, 0.90);
+}
+
+.unixnotis-panel-card.suspicious .unixnotis-panel-icon {
+  background: alpha(#fb7185, 0.11);
+  color: #fecdd3;
 }
 
 .unixnotis-notification-actions {
   margin-top: 2px;
+}
+
+.unixnotis-panel-action-overflow {
+  min-width: 32px;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+.unixnotis-panel-action-overflow-list {
+  padding: 6px;
 }
 
 .unixnotis-notification-action {
@@ -627,9 +775,9 @@ entry selection {
 
 /* Interactive refinements follow the canonical base rules */
 .unixnotis-group-header:hover .unixnotis-group-count {
-  background: alpha(@unixnotis-accent, 0.22);
-  color: #ffffff;
-  border-color: alpha(@unixnotis-accent, 0.45);
+  background: alpha(#ffffff, 0.09);
+  color: alpha(#ffffff, 0.82);
+  border-color: alpha(#ffffff, 0.14);
 }
 
 .unixnotis-panel-card:hover {
