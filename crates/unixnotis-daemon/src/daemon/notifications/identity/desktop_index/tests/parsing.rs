@@ -16,7 +16,7 @@ fn dbus_activated_desktop_entry_without_exec_has_no_executable() {
     let mut index = DesktopIdentityIndex::default();
     index.add_desktop_file(&path, true);
     assert_eq!(index.records.len(), 1);
-    assert!(index.records[0].executable_path.is_none());
+    assert!(index.records[0].runtime_executable_path.is_none());
     assert!(!index.records[0].system_association);
 }
 
@@ -34,7 +34,7 @@ fn desktop_entry_exec_is_resolved_to_its_application_program() {
 
     assert_eq!(
         index.records[0]
-            .executable_path
+            .runtime_executable_path
             .as_deref()
             .and_then(std::path::Path::file_name),
         Some(std::ffi::OsStr::new("true"))
@@ -57,7 +57,7 @@ fn env_wrapped_desktop_entry_indexes_the_wrapped_application() {
     let record = &index.records[0];
     assert_eq!(
         record
-            .executable_path
+            .runtime_executable_path
             .as_deref()
             .and_then(std::path::Path::file_name),
         Some(std::ffi::OsStr::new("true"))
