@@ -1,6 +1,6 @@
 //! Player allowlist, denylist, and browser-name admission
 
-use unixnotis_core::{MediaConfig, MediaRemoteArtPolicy};
+use unixnotis_core::{MediaConfig, MediaLocalArtPolicy, MediaRemoteArtPolicy};
 
 pub(super) fn detect_browser_family(
     identity: &str,
@@ -46,15 +46,39 @@ pub(super) fn remote_art_allowed(
 pub(super) fn local_art_allowed(
     browser_family: Option<&str>,
     owner_executable: Option<&str>,
+    policy: MediaLocalArtPolicy,
+    allowlist: &[String],
 ) -> bool {
     // A missing owner executable means the bus owner is not concrete enough to trust
     let has_owner = owner_executable.is_some_and(|value| !value.trim().is_empty());
     if !has_owner {
         return false;
     }
-    // Browser bridges can direct the renderer to arbitrary host files via mpris:artUrl.
-    // Only native players (non-browser) may name host files for local artwork.
-    browser_family.is_none()
+    match policy {
+        MediaLocalArtPolicy::Disabled => false,
+        MediaLocalArtPolicy::ExactExecutableOnly => {
+            // Browser bridges can direct the renderer to arbitrary host files via mpris:artUrl.
+            // Only native players (non-browser) with an allowlist-matched executable may name host files.
+            browser_family.is_none() && is_executable_allowed(owner_executable.unwrap_or(""), allowlist)
+        }
+        MediaLocalArtPolicy::AllAdmitted => {
+            // Browser bridges can direct the renderer to arbitrary host files via mpris:artUrl.
+            // Only native players (non-browser) may name host files for local artwork.
+            browser_family.is_none()
+        }
+    }
+}
+
+fn is_executable_allowed(executable: &str, allowlist: &[String]) -> bool {
+    if allowlist.is_empty() {
+        return false;
+    }
+    // Check if the executable basename matches any allowlist entry
+    let basename = std::path::Path::new(executable)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    allowlist.iter().any(|entry| basename == entry)
 }
 
 pub(in crate::media) fn is_allowed_player(name: &str, config: &MediaConfig) -> bool {
