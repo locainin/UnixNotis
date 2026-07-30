@@ -1,7 +1,10 @@
 //! Shared small primitives used by every popup kind
 
 use std::cell::Cell;
+use std::rc::Rc;
+use std::time::Instant;
 
+use gtk::glib;
 use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use gtk::Align;
@@ -13,6 +16,11 @@ use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation, Re
 use crate::dbus::UiCommand;
 use crate::ui::entry::activation::mark_interactive;
 use crate::ui::UiState;
+
+// Clicks inside this window after arming are treated as accidental double-taps
+const MIN_CONFIRM_INTERVAL_MS: u64 = 350;
+// Armed state expires after this long and the button goes back to normal
+const MAX_CONFIRM_TIMEOUT_MS: u64 = 5000;
 
 pub(super) struct IdentityAvatar {
     pub(super) widget: gtk::Box,
@@ -186,20 +194,95 @@ fn build_action_button(
     let policy = action.policy;
     let tx = command_tx.clone();
     let popover = popover.cloned();
-    let confirmation_armed = Cell::new(false);
+    // Single shared state: None = not armed, Some(instant) = armed at that time
+    // Using Rc<Cell<>> so both the click handler and the timeout callback read and
+    // write the same cell. The timeout captures `now` at arm time and only resets
+    // the button if that exact timestamp is still current — this prevents a stale
+    // timer from the first cycle from wiping the visual state of a newer cycle.
+    let armed_at = Rc::new(Cell::new(None::<Instant>));
     button.connect_clicked(move |button| {
-        let confirmed = match action_activation(policy, confirmation_armed.get()) {
+        let confirmed = match action_activation(policy, armed_at.get().is_some()) {
             ActionActivation::Denied => return,
             ActionActivation::ArmConfirmation => {
-                confirmation_armed.set(true);
+                let now = Instant::now();
+                armed_at.set(Some(now));
                 let confirmation_label = format!("Confirm {original_label}");
                 button.set_label(&confirmation_label);
                 button.set_tooltip_text(Some("Activate again to confirm"));
                 button.update_property(&[gtk::accessible::Property::Label(&confirmation_label)]);
+                // Clean up the armed state after a timeout so the button does not stay in
+                // confirm mode forever
+                let expire_button = button.clone();
+                let expire_label = original_label.clone();
+                let expire_armed_at = Rc::clone(&armed_at);
+                glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(MAX_CONFIRM_TIMEOUT_MS),
+                    move || {
+                        if expire_armed_at.get() == Some(now) {
+                            expire_armed_at.set(None);
+                            expire_button.set_label(&expire_label);
+                            expire_button.set_tooltip_text(None);
+                            expire_button.update_property(&[
+                                gtk::accessible::Property::Label(&expire_label),
+                            ]);
+                        }
+                    },
+                );
                 return;
             }
-            ActionActivation::Invoke { confirmed } => confirmed,
+            ActionActivation::Invoke { confirmed } => {
+                // Only check timing when the action was actually confirmed
+                // Allow-policy actions skip this path entirely
+                if confirmed {
+                    let elapsed = armed_at.get().map(|t| t.elapsed());
+                    match elapsed {
+                        // No arm time recorded means something went wrong
+                        // Clean up instead of dispatching
+                        None => {
+                            armed_at.set(None);
+                            button.set_label(&original_label);
+                            button.set_tooltip_text(None);
+                            button.update_property(&[
+                                gtk::accessible::Property::Label(&original_label),
+                            ]);
+                            return;
+                        }
+                        // Click came too fast after arming
+                        // Probably an accidental double-tap, stay armed so the next click
+                        // can still go through
+                        Some(d)
+                            if d
+                                < std::time::Duration::from_millis(MIN_CONFIRM_INTERVAL_MS) =>
+                        {
+                            return;
+                        }
+                        // Confirmation took too long
+                        // Reset the button and make the person re-arm
+                        Some(d)
+                            if d
+                                > std::time::Duration::from_millis(MAX_CONFIRM_TIMEOUT_MS) =>
+                        {
+                            armed_at.set(None);
+                            button.set_label(&original_label);
+                            button.set_tooltip_text(None);
+                            button.update_property(&[
+                                gtk::accessible::Property::Label(&original_label),
+                            ]);
+                            return;
+                        }
+                        // Right amount of time passed, dispatch the action
+                        _ => {}
+                    }
+                }
+                confirmed
+            }
         };
+        // Reset everything after a successful dispatch
+        // The next click will start a fresh confirmation cycle instead of invoking again
+        armed_at.set(None);
+        button.set_label(&original_label);
+        button.set_tooltip_text(None);
+        button.update_property(&[gtk::accessible::Property::Label(&original_label)]);
         // Menus close only after an action passes its confirmation policy
         if let Some(popover) = &popover {
             popover.popdown();

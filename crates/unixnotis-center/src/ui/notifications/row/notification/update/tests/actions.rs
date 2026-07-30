@@ -410,7 +410,7 @@ fn confirmable_panel_action_requires_two_clicks_before_dispatch() {
         "first click must not invoke a confirmable action"
     );
 
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    std::thread::sleep(std::time::Duration::from_millis(400));
     let context = gtk::glib::MainContext::default();
     while context.pending() {
         context.iteration(false);
@@ -426,6 +426,116 @@ fn confirmable_panel_action_requires_two_clicks_before_dispatch() {
             && notification.generation == 1
             && action_key == "archive"
     ));
+
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let context = gtk::glib::MainContext::default();
+    while context.pending() {
+        context.iteration(false);
+    }
+    button.emit_clicked();
+    assert_eq!(button.label().as_deref(), Some("Confirm Archive"));
+    assert!(
+        command_rx.try_recv().is_err(),
+        "third click must re-arm rather than dispatching"
+    );
+}
+
+#[gtk::test]
+fn confirmable_panel_action_stale_timer_does_not_disarm_newer_cycle() {
+    let (_root, row) = notification_row();
+    let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(4);
+    let mut notification = sample_notification();
+    notification.attribution = unixnotis_core::NotificationAttribution::associated(
+        "Example Chat",
+        "Example Chat",
+        "org.example.Chat",
+        "org.example.Chat",
+        unixnotis_core::IdentityAssurance::SystemAssociated,
+        unixnotis_core::InteractionPolicies::NATIVE_COMPATIBILITY,
+        unixnotis_core::AttributionReason::ExactSystemExecutable,
+        "protected executable association",
+        "associated:system-app:org.example.Chat".to_string(),
+    );
+    notification.actions = vec![Action {
+        key: "archive".to_string(),
+        label: "Archive".to_string(),
+    }];
+
+    update_notification_row(
+        &row,
+        &row_data(
+            Rc::new(notification),
+            RowFlags {
+                is_active: true,
+                ..Default::default()
+            },
+        ),
+        &IconResolver::new(),
+        &command_tx,
+    );
+
+    let button = row
+        .actions_box
+        .first_child()
+        .and_downcast::<gtk::Button>()
+        .expect("confirmable action button");
+    let context = gtk::glib::MainContext::default();
+
+    button.emit_clicked();
+    assert_eq!(button.label().as_deref(), Some("Confirm Archive"));
+    assert!(command_rx.try_recv().is_err());
+
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    while context.pending() {
+        context.iteration(false);
+    }
+
+    button.emit_clicked();
+    assert!(matches!(
+        command_rx.try_recv(),
+        Ok(UiCommand::InvokeAction {
+            notification,
+            action_key,
+            confirmed: true,
+        }) if notification.id == 1 && notification.generation == 1 && action_key == "archive"
+    ));
+
+    // Wait for click cooldown before re-arming.
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    while context.pending() {
+        context.iteration(false);
+    }
+
+    button.emit_clicked();
+    assert_eq!(button.label().as_deref(), Some("Confirm Archive"));
+    assert!(command_rx.try_recv().is_err());
+
+    // Timer A (from first arm at t=0) fires at t=5000. We are at t=600 now.
+    // Sleep 4400ms -> t=5000. Process timer A. It should NOT clear cycle B.
+    std::thread::sleep(std::time::Duration::from_millis(4400));
+    while context.pending() {
+        context.iteration(false);
+    }
+    assert_eq!(button.label().as_deref(), Some("Confirm Archive"));
+    assert!(command_rx.try_recv().is_err());
+
+    // Timer B (from second arm at t=600) fires at t=5600. We are at t=5000.
+    // Sleep 600ms -> t=5600. Process timer B. It SHOULD clear cycle B.
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    while context.pending() {
+        context.iteration(false);
+    }
+    assert_eq!(button.label().as_deref(), Some("Archive"));
+    assert!(command_rx.try_recv().is_err());
+
+    // Next click re-arms rather than invokes.
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    while context.pending() {
+        context.iteration(false);
+    }
+    button.emit_clicked();
+    assert_eq!(button.label().as_deref(), Some("Confirm Archive"));
+    assert!(command_rx.try_recv().is_err());
 }
 
 #[gtk::test]

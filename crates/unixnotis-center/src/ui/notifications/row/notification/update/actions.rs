@@ -3,7 +3,9 @@
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use gtk::glib;
 
 use gtk::prelude::*;
 use tokio::sync::mpsc;
@@ -22,6 +24,10 @@ use super::super::state::{NotificationRowWidgets, MAX_ACTION_LABEL_CHARS};
 use super::labels::clamp_label_text;
 
 const ACTION_BUTTON_GUARD_MS: u64 = 180;
+// Clicks inside this window after arming are treated as accidental double-taps
+const MIN_CONFIRM_INTERVAL_MS: u64 = 350;
+// Armed state expires after this long and the button goes back to normal
+const MAX_CONFIRM_TIMEOUT_MS: u64 = 5000;
 
 pub(super) fn clamp_action_label_text(text: &str) -> Cow<'_, str> {
     // Action text uses the same clamp rule every time so row width stays stable
@@ -191,24 +197,93 @@ fn build_action_button(
     let original_label = clamp_action_label_text(&action.label).into_owned();
     let policy = action.policy;
     let tx = command_tx.clone();
-    let confirmation_armed = Cell::new(false);
+    // Single shared state: None = not armed, Some(instant) = armed at that time
+    // Using Rc<Cell<>> so both the click handler and the timeout callback read and
+    // write the same cell. The timeout captures `now` at arm time and only resets
+    // the button if that exact timestamp is still current — this prevents a stale
+    // timer from the first cycle from wiping the visual state of a newer cycle.
+    let armed_at = Rc::new(Cell::new(None::<Instant>));
     let action_gate = ClickCooldown::new(Duration::from_millis(ACTION_BUTTON_GUARD_MS));
     button.connect_clicked(move |button| {
         if !action_gate.try_start() {
             return;
         }
-        let confirmed = match action_activation(policy, confirmation_armed.get()) {
+        let confirmed = match action_activation(policy, armed_at.get().is_some()) {
             ActionActivation::Denied => return,
             ActionActivation::ArmConfirmation => {
-                confirmation_armed.set(true);
+                let now = Instant::now();
+                armed_at.set(Some(now));
                 let confirmation_label = format!("Confirm {original_label}");
                 button.set_label(&confirmation_label);
                 button.set_tooltip_text(Some("Activate again to confirm"));
                 button.update_property(&[gtk::accessible::Property::Label(&confirmation_label)]);
+                // Clean up the armed state after a timeout so the button does not stay in
+                // confirm mode forever
+                let expire_button = button.clone();
+                let expire_label = original_label.clone();
+                let expire_armed_at = Rc::clone(&armed_at);
+                glib::timeout_add_local_once(
+                    Duration::from_millis(MAX_CONFIRM_TIMEOUT_MS),
+                    move || {
+                        if expire_armed_at.get() == Some(now) {
+                            expire_armed_at.set(None);
+                            expire_button.set_label(&expire_label);
+                            expire_button.set_tooltip_text(None);
+                            expire_button.update_property(&[
+                                gtk::accessible::Property::Label(&expire_label),
+                            ]);
+                        }
+                    },
+                );
                 return;
             }
-            ActionActivation::Invoke { confirmed } => confirmed,
+            ActionActivation::Invoke { confirmed } => {
+                // Only check timing when the action was actually confirmed
+                // Allow-policy actions skip this path entirely
+                if confirmed {
+                    let elapsed = armed_at.get().map(|t| t.elapsed());
+                    match elapsed {
+                        // No arm time recorded means something went wrong
+                        // Clean up instead of dispatching
+                        None => {
+                            armed_at.set(None);
+                            button.set_label(&original_label);
+                            button.set_tooltip_text(None);
+                            button.update_property(&[
+                                gtk::accessible::Property::Label(&original_label),
+                            ]);
+                            return;
+                        }
+                        // Click came too fast after arming
+                        // Probably an accidental double-tap, stay armed so the next click
+                        // can still go through
+                        Some(d) if d < Duration::from_millis(MIN_CONFIRM_INTERVAL_MS) => {
+                            return;
+                        }
+                        // Confirmation took too long
+                        // Reset the button and make the person re-arm
+                        Some(d) if d > Duration::from_millis(MAX_CONFIRM_TIMEOUT_MS) => {
+                            armed_at.set(None);
+                            button.set_label(&original_label);
+                            button.set_tooltip_text(None);
+                            button.update_property(&[
+                                gtk::accessible::Property::Label(&original_label),
+                            ]);
+                            return;
+                        }
+                        // Right amount of time passed, dispatch the action
+                        _ => {}
+                    }
+                }
+                confirmed
+            }
         };
+        // Reset everything after a successful dispatch
+        // The next click will start a fresh confirmation cycle instead of invoking again
+        armed_at.set(None);
+        button.set_label(&original_label);
+        button.set_tooltip_text(None);
+        button.update_property(&[gtk::accessible::Property::Label(&original_label)]);
         debug!(
             id = notification.id,
             generation = notification.generation,
