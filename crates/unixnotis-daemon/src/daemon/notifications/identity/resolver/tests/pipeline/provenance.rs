@@ -2,6 +2,81 @@
 
 use super::super::*;
 
+#[test]
+fn provenance_enrichment_is_limited_to_denied_association_candidates() {
+    for (status, policies, has_candidate, expected) in [
+        (
+            AttributionStatus::Recognized,
+            InteractionPolicies::DENY,
+            false,
+            true,
+        ),
+        (
+            AttributionStatus::Unresolved,
+            InteractionPolicies::DENY,
+            true,
+            true,
+        ),
+        (
+            AttributionStatus::Unresolved,
+            InteractionPolicies::DENY,
+            false,
+            false,
+        ),
+        (
+            AttributionStatus::Recognized,
+            InteractionPolicies::NATIVE_COMPATIBILITY,
+            true,
+            false,
+        ),
+        (
+            AttributionStatus::Conflict,
+            InteractionPolicies::DENY,
+            true,
+            false,
+        ),
+    ] {
+        assert_eq!(
+            needs_sender_provenance(status, policies, has_candidate),
+            expected,
+            "status={status:?}, policies={policies:?}, has_candidate={has_candidate}"
+        );
+    }
+}
+
+#[test]
+fn provenance_candidate_lookup_accepts_only_indexed_name_or_desktop_id() {
+    let record = system_record(
+        "org.example.App",
+        "Example App",
+        "/usr/bin/example-app",
+        identity(41, 42, 0),
+    );
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+
+    assert!(claim_has_index_candidate(
+        AppClaim {
+            reported_name: "Example App",
+            desktop_entry: None,
+        },
+        &index,
+    ));
+    assert!(claim_has_index_candidate(
+        AppClaim {
+            reported_name: "",
+            desktop_entry: Some("org.example.App"),
+        },
+        &index,
+    ));
+    assert!(!claim_has_index_candidate(
+        AppClaim {
+            reported_name: "Unknown App",
+            desktop_entry: Some("org.example.Missing"),
+        },
+        &index,
+    ));
+}
+
 #[tokio::test]
 async fn recognized_helper_is_reresolved_with_live_package_provenance() {
     let helper_path = unixnotis_core::util::trusted_system_program_path("true")

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use zbus::zvariant::Type;
 
+use super::interaction::{ApplicationActionPolicy, InteractionPolicies};
 use crate::util;
 
 const MAX_ATTRIBUTION_TEXT_BYTES: usize = 256;
@@ -22,15 +23,29 @@ pub enum AttributionStatus {
     Relay = 4,
 }
 
+/// Security boundary supporting the visible application association
+#[derive(Debug, Copy, Clone, Default, Serialize_repr, Deserialize_repr, Type, PartialEq, Eq)]
+#[repr(u8)]
+pub enum IdentityAssurance {
+    Authenticated = 0,
+    SystemAssociated = 1,
+    PortalAssociated = 2,
+    UserAssociated = 3,
+    #[default]
+    Unresolved = 4,
+    Conflict = 5,
+    Relay = 6,
+}
+
 /// Stable reason for one attribution result
 // Numeric ranges keep positive, uncertain, and contradictory evidence easy to inspect
 #[derive(Debug, Copy, Clone, Default, Serialize_repr, Deserialize_repr, Type, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AttributionReason {
     ExactSystemExecutable = 0,
-    VerifiedPortalAppId = 1,
+    PortalAppIdAssociation = 1,
     ExactUserExecutable = 2,
-    VerifiedProtectedPayload = 3,
+    ProtectedPayloadMatch = 3,
     TrustedRelayExecutable = 4,
 
     #[default]
@@ -46,24 +61,6 @@ pub enum AttributionReason {
     ApplicationClaimMismatch = 22,
 }
 
-/// Independent policy for credential-like inline text controls
-// Value one stays unused until confirmation is enforced by the daemon
-#[derive(Debug, Copy, Clone, Default, Serialize_repr, Deserialize_repr, Type, PartialEq, Eq)]
-#[repr(u8)]
-pub enum InlineReplyPolicy {
-    Allow = 0,
-    #[default]
-    Deny = 2,
-}
-
-/// Backend policy for application-owned action signals
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ApplicationActionPolicy {
-    Allow,
-    Confirm,
-    Deny,
-}
-
 /// Application identity selected from sender and desktop evidence
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 pub struct NotificationAttribution {
@@ -76,6 +73,10 @@ pub struct NotificationAttribution {
     pub badge_icon: String,
     // Status and reason carry state without parsing diagnostic text
     pub status: AttributionStatus,
+    // Assurance names the boundary independently from evidence completeness
+    pub assurance: IdentityAssurance,
+    // Interaction authority is explicit so UI code never infers it from branding
+    pub interactions: InteractionPolicies,
     pub reason: AttributionReason,
     // Human-readable detail is display-only and never interpreted by clients
     pub diagnostic_detail: String,
@@ -91,6 +92,8 @@ impl Default for NotificationAttribution {
             desktop_id: String::new(),
             badge_icon: "application-x-executable-symbolic".to_string(),
             status: AttributionStatus::Unresolved,
+            assurance: IdentityAssurance::Unresolved,
+            interactions: InteractionPolicies::DENY,
             reason: AttributionReason::MissingSenderEvidence,
             diagnostic_detail: String::new(),
             group_key: "unknown".to_string(),
@@ -116,6 +119,8 @@ impl NotificationAttribution {
             desktop_id,
             badge_icon,
             AttributionStatus::Verified,
+            IdentityAssurance::Authenticated,
+            InteractionPolicies::AUTHENTICATED,
             reason,
             diagnostic_detail,
             group_key,
@@ -139,6 +144,48 @@ impl NotificationAttribution {
             desktop_id,
             badge_icon,
             AttributionStatus::Recognized,
+            IdentityAssurance::UserAssociated,
+            InteractionPolicies::DENY,
+            reason,
+            diagnostic_detail,
+            group_key,
+        )
+    }
+
+    /// Build a canonical identity with an explicit non-authenticating boundary
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "association and interaction fields stay explicit at the trust boundary"
+    )]
+    pub fn associated(
+        display_name: &str,
+        claimed_name: &str,
+        desktop_id: &str,
+        badge_icon: &str,
+        assurance: IdentityAssurance,
+        interactions: InteractionPolicies,
+        reason: AttributionReason,
+        diagnostic_detail: &str,
+        group_key: String,
+    ) -> Self {
+        debug_assert!(
+            matches!(
+                assurance,
+                IdentityAssurance::SystemAssociated
+                    | IdentityAssurance::PortalAssociated
+                    | IdentityAssurance::UserAssociated
+            ),
+            "associated attribution requires an application association boundary"
+        );
+        Self::resolved(
+            display_name,
+            claimed_name,
+            desktop_id,
+            badge_icon,
+            AttributionStatus::Recognized,
+            assurance,
+            interactions,
             reason,
             diagnostic_detail,
             group_key,
@@ -159,6 +206,8 @@ impl NotificationAttribution {
             "",
             "application-x-executable-symbolic",
             AttributionStatus::Unresolved,
+            IdentityAssurance::Unresolved,
+            InteractionPolicies::DENY,
             reason,
             diagnostic_detail,
             group_key,
@@ -189,6 +238,8 @@ impl NotificationAttribution {
             desktop_id,
             "dialog-warning-symbolic",
             AttributionStatus::Conflict,
+            IdentityAssurance::Conflict,
+            InteractionPolicies::DENY,
             reason,
             diagnostic_detail,
             group_key,
@@ -204,6 +255,8 @@ impl NotificationAttribution {
             "",
             "utilities-terminal-symbolic",
             AttributionStatus::Relay,
+            IdentityAssurance::Relay,
+            InteractionPolicies::DENY,
             AttributionReason::TrustedRelayExecutable,
             diagnostic_detail,
             group_key,
@@ -221,6 +274,8 @@ impl NotificationAttribution {
         desktop_id: &str,
         badge_icon: &str,
         status: AttributionStatus,
+        assurance: IdentityAssurance,
+        interactions: InteractionPolicies,
         reason: AttributionReason,
         diagnostic_detail: &str,
         group_key: String,
@@ -231,19 +286,39 @@ impl NotificationAttribution {
             desktop_id: bounded_text(desktop_id),
             badge_icon: bounded_text(badge_icon),
             status,
+            assurance,
+            interactions,
             reason,
             diagnostic_detail: bounded_text(diagnostic_detail),
             group_key: bounded_group_key(&group_key),
         }
     }
 
-    /// Policy for signals that belong to the authenticated application
+    /// Policy for whole-card or advertised default activation
+    #[must_use]
+    pub const fn default_activation_policy(&self) -> ApplicationActionPolicy {
+        self.interactions.default_activation
+    }
+
+    /// Policy for non-default application action buttons
+    #[must_use]
+    pub const fn action_button_policy(&self) -> ApplicationActionPolicy {
+        self.interactions.action_buttons
+    }
+
+    /// Compatibility policy for clients that have not split action surfaces yet
     #[must_use]
     pub const fn application_action_policy(&self) -> ApplicationActionPolicy {
-        if matches!(self.status, AttributionStatus::Verified) {
-            ApplicationActionPolicy::Allow
+        self.interactions.default_activation
+    }
+
+    /// Policy for one exact advertised action key
+    #[must_use]
+    pub fn action_policy(&self, action_key: &str) -> ApplicationActionPolicy {
+        if action_key == "default" {
+            self.default_activation_policy()
         } else {
-            ApplicationActionPolicy::Deny
+            self.action_button_policy()
         }
     }
 }

@@ -56,7 +56,7 @@ fn an_empty_app_name_does_not_turn_an_untrusted_relay_into_a_portal() {
 }
 
 #[test]
-fn portal_mediated_flatpak_uses_broker_verified_desktop_identity() {
+fn portal_mediated_flatpak_uses_broker_associated_desktop_identity() {
     let flatpak_identity = identity(22, 220, 0);
     let (portal_path, portal_identity) = installed_system_executable();
     let mut record = system_record(
@@ -72,7 +72,7 @@ fn portal_mediated_flatpak_uses_broker_verified_desktop_identity() {
 
     let resolution = resolve_with_evidence(
         AppClaim {
-            // The GTK portal backend forwards an empty app name and verified desktop-entry hint
+            // The GTK portal backend forwards an empty app name and desktop-entry hint
             reported_name: "",
             desktop_entry: Some("org.example.FlatpakApp"),
         },
@@ -80,9 +80,21 @@ fn portal_mediated_flatpak_uses_broker_verified_desktop_identity() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(
+        resolution.attribution.assurance,
+        unixnotis_core::IdentityAssurance::PortalAssociated
+    );
     assert_eq!(resolution.attribution.display_name, "Flatpak App");
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    assert_eq!(
+        resolution.attribution.default_activation_policy(),
+        unixnotis_core::ApplicationActionPolicy::Confirm
+    );
+    assert_eq!(
+        resolution.attribution.action_button_policy(),
+        unixnotis_core::ApplicationActionPolicy::Confirm
+    );
 }
 
 #[test]
@@ -109,9 +121,9 @@ fn trusted_portal_accepts_a_matching_nonempty_application_name() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
     assert_eq!(resolution.attribution.display_name, "Flatpak App");
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
 #[test]

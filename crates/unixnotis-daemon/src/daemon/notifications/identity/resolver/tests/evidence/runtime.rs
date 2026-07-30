@@ -121,8 +121,8 @@ fn matching_fixed_system_application_argument_allows_association() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
 #[test]
@@ -203,8 +203,8 @@ fn nonempty_dedicated_contract_can_rely_on_exact_executable_evidence() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
 #[test]
@@ -302,8 +302,8 @@ fn no_hint_shared_runtime_with_matching_protected_payload_is_allowed() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
 }
 
 #[test]

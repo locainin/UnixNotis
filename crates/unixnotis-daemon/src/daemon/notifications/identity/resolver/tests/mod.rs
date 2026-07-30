@@ -4,14 +4,16 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use unixnotis_core::{
-    AttributionStatus, CommandLineQualityView, InlineReplyPolicy, LaunchAuthorityView,
-    LaunchVerificationView, RecordTrust,
+    AttributionStatus, CommandLineQualityView, InlineReplyPolicy, InteractionPolicies,
+    LaunchAuthorityView, LaunchVerificationView, RecordTrust,
 };
 
 use super::candidates::{resolve_unverified_candidates, strongest_verified_result};
 use super::evidence::verify_record_sender;
 use super::model::{CandidateVerification, SenderClaimRelation, VerifiedDesktopRecord};
-use super::pipeline::{resolve_attribution, resolve_with_evidence};
+use super::pipeline::{
+    claim_has_index_candidate, needs_sender_provenance, resolve_attribution, resolve_with_evidence,
+};
 use super::AppClaim;
 use crate::daemon::notifications::identity::desktop_index::model::{
     ExecutableIdentity, FieldCode, LaunchArgument, LaunchSpec, LiteralArgument,

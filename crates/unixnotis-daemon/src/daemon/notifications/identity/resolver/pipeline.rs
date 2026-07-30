@@ -1,6 +1,6 @@
 //! Ordered attribution pipeline and candidate orchestration
 
-use unixnotis_core::{AttributionStatus, RecordTrust};
+use unixnotis_core::{AttributionStatus, InteractionPolicies, RecordTrust};
 
 use super::super::desktop_index::{
     DesktopIdentityIndex, LaunchFailure, LaunchVerification, VerifiedLaunch,
@@ -28,10 +28,12 @@ pub(in crate::daemon) async fn resolve_attribution(
     // Cached process data is refreshed before it affects attribution
     let mut sender = refresh_sender_security_evidence(sender);
     let initial = resolve_with_evidence(claim, &sender, index);
-    if initial.attribution.status != AttributionStatus::Recognized
-        && !(initial.attribution.status == AttributionStatus::Unresolved
-            && claim_has_index_candidate(claim, index))
-    {
+    let needs_provenance = needs_sender_provenance(
+        initial.attribution.status,
+        initial.attribution.interactions,
+        claim_has_index_candidate(claim, index),
+    );
+    if !needs_provenance {
         return initial;
     }
 
@@ -40,7 +42,18 @@ pub(in crate::daemon) async fn resolve_attribution(
     resolve_with_evidence(claim, &sender, index)
 }
 
-fn claim_has_index_candidate(claim: AppClaim<'_>, index: &DesktopIdentityIndex) -> bool {
+pub(super) fn needs_sender_provenance(
+    status: AttributionStatus,
+    interactions: InteractionPolicies,
+    claim_has_candidate: bool,
+) -> bool {
+    // Package lookup is useful only while it can positively bind a denied helper
+    interactions == InteractionPolicies::DENY
+        && (status == AttributionStatus::Recognized
+            || (status == AttributionStatus::Unresolved && claim_has_candidate))
+}
+
+pub(super) fn claim_has_index_candidate(claim: AppClaim<'_>, index: &DesktopIdentityIndex) -> bool {
     if !claim.reported_name.trim().is_empty()
         && !index.records_for_claim(claim.reported_name).is_empty()
     {
@@ -66,12 +79,12 @@ pub(super) fn resolve_with_evidence(
         && !hint_records.is_empty()
         && trusted_portal_path(sender, index).is_some()
     {
-        // A trusted portal executable may forward its broker-owned application id
+        // A trusted portal executable associates branding but cannot authenticate the origin
         let record = preferred_record(&hint_records);
         if !claim.reported_name.trim().is_empty()
             && !index.record_matches_claim(record, claim.reported_name)
         {
-            // A protected portal id and a different caller label are affirmative contradiction
+            // A portal desktop id and a different caller label remain contradictory evidence
             let mut resolution = conflict_from_candidate(
                 claim,
                 sender,
@@ -81,7 +94,7 @@ pub(super) fn resolve_with_evidence(
             );
             resolution.diagnostics.record_trust = RecordTrust::Portal;
             resolution.diagnostics.reason =
-                "verified portal application id contradicted the reported name".to_string();
+                "portal application id contradicted the reported name".to_string();
             return resolution;
         }
         let mut resolution = with_diagnostics(
@@ -92,7 +105,7 @@ pub(super) fn resolve_with_evidence(
             LaunchVerification::Verified(VerifiedLaunch::DedicatedExecutable),
         );
         resolution.diagnostics.record_trust = RecordTrust::Portal;
-        resolution.diagnostics.reason = "verified portal application identity".to_string();
+        resolution.diagnostics.reason = "portal-mediated application association".to_string();
         return resolution;
     }
 
