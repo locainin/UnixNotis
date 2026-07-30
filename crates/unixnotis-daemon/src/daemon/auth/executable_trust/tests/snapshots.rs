@@ -1,10 +1,12 @@
-use super::super::paths::{canonicalize_best_effort, trusted_snapshot_matches_observed};
-use super::super::snapshots::build_trusted_control_snapshots;
-use crate::daemon::auth::policy::{TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES};
-use crate::daemon::auth::support::write_executable;
-use crate::test_support::TempRoot;
-use std::collections::HashMap;
-use std::path::Path;
+#[cfg(not(target_os = "linux"))]
+mod strict_snapshot_tests {
+    use super::super::paths::{canonicalize_best_effort, trusted_snapshot_matches_observed};
+    use super::super::snapshots::build_trusted_control_snapshots;
+    use crate::daemon::auth::policy::{TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES};
+    use crate::daemon::auth::support::write_executable;
+    use crate::test_support::TempRoot;
+    use std::collections::HashMap;
+    use std::path::Path;
 
 fn is_trusted_control_executable_path_in_dir(
     path: &Path,
@@ -134,4 +136,5 @@ fn strict_snapshot_rejects_group_writable_trusted_binary() {
         trusted_dir.path(),
         &snapshots,
     ));
+}
 }

@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::os::fd::OwnedFd;
 use zbus::Message;
 
 #[cfg(target_os = "linux")]
@@ -12,6 +14,12 @@ use super::executable_trust::paths::canonicalize_best_effort;
 use super::policy::TRUSTED_INTERACTION_EXECUTABLES;
 use super::support::write_executable;
 use crate::test_support::{daemon_state_for_test, env_lock, EnvVarGuard, TempRoot};
+
+fn open_test_executable(path: &std::path::Path) -> OwnedFd {
+    File::open(path)
+        .expect("open test executable")
+        .into()
+}
 
 fn message_without_bus_sender() -> Message {
     // Locally built messages have no unique bus sender, which must fail auth early
@@ -94,10 +102,12 @@ fn control_executable_error_requires_present_allowed_trusted_binary() {
     let trusted = canonicalize_best_effort(&trusted);
     let untrusted_name = canonicalize_best_effort(&untrusted_name);
 
-    assert!(control_executable_error::<std::os::fd::OwnedFd>(Some(&trusted), None, &["noticenterctl"], true).is_none());
-    assert!(control_executable_error::<std::os::fd::OwnedFd>(None, None, &["noticenterctl"], true).is_some());
-    assert!(control_executable_error::<std::os::fd::OwnedFd>(Some(&trusted), None, &["unixnotis-center"], true).is_some());
-    assert!(control_executable_error::<std::os::fd::OwnedFd>(Some(&untrusted_name), None, &["unknown"], true).is_some());
+    let trusted_fd = open_test_executable(&trusted);
+
+    assert!(control_executable_error(Some(&trusted), Some(&trusted_fd), &["noticenterctl"], true).is_none());
+    assert!(control_executable_error::<OwnedFd>(None, None::<&OwnedFd>, &["noticenterctl"], true).is_some());
+    assert!(control_executable_error(Some(&trusted), Some(&trusted_fd), &["unixnotis-center"], true).is_some());
+    assert!(control_executable_error(Some(&untrusted_name), Some(&trusted_fd), &["unknown"], true).is_some());
 }
 
 #[test]
@@ -113,17 +123,19 @@ fn interaction_executable_policy_excludes_noninteractive_control_clients() {
     let _home = EnvVarGuard::set("HOME", home.path());
 
     for trusted_ui in [&center, &popups] {
-        assert!(control_executable_error::<std::os::fd::OwnedFd>(
+        let trusted_fd = open_test_executable(trusted_ui);
+        assert!(control_executable_error::<OwnedFd>(
             Some(&canonicalize_best_effort(trusted_ui)),
-            None,
+            Some(&trusted_fd),
             &TRUSTED_INTERACTION_EXECUTABLES,
             true,
         )
         .is_none());
     }
-    assert!(control_executable_error::<std::os::fd::OwnedFd>(
+    let cli_fd = open_test_executable(&cli);
+    assert!(control_executable_error::<OwnedFd>(
         Some(&canonicalize_best_effort(&cli)),
-        None,
+        Some(&cli_fd),
         &TRUSTED_INTERACTION_EXECUTABLES,
         true,
     )

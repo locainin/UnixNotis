@@ -1,10 +1,14 @@
 //! Bounded SVG and SVGZ parsing with secondary image loading disabled
+//!
+//! Uses a subprocess renderer with a wall-clock deadline to prevent
+//! CPU exhaustion from pathological SVGs (UNX-4-005).
 
 use std::borrow::Cow;
 use std::io::Read;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use flate2::read::GzDecoder;
 
@@ -12,8 +16,8 @@ use super::file::MAX_ICON_BYTES;
 use super::model::RasterImage;
 use super::pipeline::{MAX_ICON_DIMENSION, MAX_ICON_PIXELS};
 
-// Hard wall-clock deadline for SVG parsing and rendering
-const SVG_RENDER_DEADLINE: Duration = Duration::from_millis(500);
+// Hard wall-clock deadline for the entire SVG subprocess (parse + render)
+const SVG_SUBPROCESS_DEADLINE: Duration = Duration::from_millis(500);
 
 pub(super) const fn is_gzip_payload(bytes: &[u8]) -> bool {
     // SVGZ uses the normal gzip signature regardless of its filename suffix
@@ -62,19 +66,77 @@ pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage,
     let source_height = source_height_float.ceil() as u32;
     validate_svg_dimensions(source_width, source_height)?;
 
-    // Output allocation follows the fitted dimensions rather than the source canvas
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
-        .ok_or_else(|| "could not allocate bounded SVG surface".to_string())?;
+    // Serialize the SVG data to send to the subprocess
+    let svg_data = String::from_utf8(document.to_vec()).map_err(|e| e.to_string())?;
 
-    // Enforce a wall-clock deadline on rendering to prevent CPU exhaustion (UNX-4-005)
-    let render_start = Instant::now();
-    resvg::render(
-        &tree,
-        resvg::tiny_skia::Transform::from_scale(scale, scale),
-        &mut pixmap.as_mut(),
-    );
-    if render_start.elapsed() > SVG_RENDER_DEADLINE {
+    // Find the SVG renderer binary - try CARGO_BIN_EXE first, then relative to current exe
+    let svg_renderer = std::env::var("CARGO_BIN_EXE_unixnotis-svg-renderer")
+        .ok()
+        .or_else(|| {
+            // Fallback: try to find it relative to the current executable
+            std::env::current_exe().ok().and_then(|exe| {
+                eprintln!("DEBUG: current_exe = {:?}", exe);
+                exe.parent().and_then(|dir| {
+                    eprintln!("DEBUG: parent dir = {:?}", dir);
+                    let candidate = dir.join("unixnotis-svg-renderer");
+                    eprintln!("DEBUG: checking candidate = {:?}, exists = {}", candidate, candidate.exists());
+                    if candidate.exists() {
+                        return Some(candidate.to_string_lossy().to_string());
+                    }
+                    // Try parent directory (target/debug/)
+                    dir.parent().and_then(|parent| {
+                        eprintln!("DEBUG: grandparent dir = {:?}", parent);
+                        let candidate = parent.join("unixnotis-svg-renderer");
+                        eprintln!("DEBUG: checking parent candidate = {:?}, exists = {}", candidate, candidate.exists());
+                        if candidate.exists() {
+                            Some(candidate.to_string_lossy().to_string())
+                        } else {
+                            None
+                        }
+                    })
+                })
+            })
+        })
+        .unwrap_or_else(|| {
+            eprintln!("DEBUG: CARGO_BIN_EXE_unixnotis-svg-renderer = {:?}", std::env::var("CARGO_BIN_EXE_unixnotis-svg-renderer"));
+            eprintln!("DEBUG: current_exe = {:?}", std::env::current_exe());
+            "unixnotis-svg-renderer".to_string()
+        });
+
+    // Run rendering in a subprocess with a hard deadline
+    let mut child = Command::new(svg_renderer)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("failed to spawn SVG renderer: {e}"))?;
+
+    // Write SVG data and scale to stdin
+    use std::io::Write;
+    let input_data = format!("{}\n{}\n{}", svg_data, width, scale);
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(input_data.as_bytes())
+        .map_err(|e| format!("failed to write to SVG renderer: {e}"))?;
+    drop(child.stdin.take());
+
+    // Wait with timeout
+    let wait_start = std::time::Instant::now();
+    let output = wait_with_timeout(child, SVG_SUBPROCESS_DEADLINE).map_err(|e| e.to_string())?;
+    if wait_start.elapsed() > SVG_SUBPROCESS_DEADLINE {
         return Err("SVG render exceeded time limit".to_string());
+    }
+
+    if !output.status.success() {
+        return Err("SVG renderer exited with error".to_string());
+    }
+
+    // Parse output: RGBA bytes
+    let rgba_bytes = output.stdout;
+    if rgba_bytes.len() != (width * height * 4) as usize {
+        return Err("SVG renderer returned unexpected byte count".to_string());
     }
 
     let width = i32::try_from(width).map_err(|error| error.to_string())?;
@@ -83,12 +145,61 @@ pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage,
         .checked_mul(4)
         .ok_or_else(|| "SVG row stride exceeds supported size".to_string())?;
     Ok(RasterImage {
-        bytes: pixmap.take(),
+        bytes: rgba_bytes,
         width,
         height,
         stride,
         premultiplied_alpha: true,
     })
+}
+
+fn wait_with_timeout(
+    mut child: std::process::Child,
+    timeout: Duration,
+) -> Result<std::process::Output, std::io::Error> {
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait()? {
+            Some(status) => {
+                let stdout = {
+                    let mut buf = Vec::new();
+                    use std::io::Read;
+                    if let Some(mut stdout) = child.stdout {
+                        stdout.read_to_end(&mut buf)?;
+                        buf
+                    } else {
+                        Vec::new()
+                    }
+                };
+                let stderr = {
+                    let mut buf = Vec::new();
+                    use std::io::Read;
+                    if let Some(mut stderr) = child.stderr {
+                        stderr.read_to_end(&mut buf)?;
+                        buf
+                    } else {
+                        Vec::new()
+                    }
+                };
+                return Ok(std::process::Output {
+                    status,
+                    stdout,
+                    stderr,
+                });
+            }
+            None => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "SVG subprocess timed out",
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
 }
 
 pub(super) fn fitted_svg_dimensions(

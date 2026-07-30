@@ -1,6 +1,5 @@
 //! Process metadata helpers for authorization checks
 
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
@@ -48,12 +47,12 @@ pub(in crate::daemon) fn open_process_executable_from_pidfd<Fd: AsFd>(
         return None;
     }
 
-    // Open /proc/<pid>/exe as a file descriptor. This refers directly to the
-    // kernel file object, not a pathname that could be shadowed by a mount
-    // namespace. O_NOFOLLOW prevents following a symlinked /proc entry.
+    // Open /proc/<pid>/exe as a file descriptor. This follows the procfs
+    // magic symlink to the actual executable object. The resulting descriptor
+    // refers to the kernel file object, not a pathname that could be shadowed
+    // by a mount namespace.
     let fd = std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed())
         .open(format!("/proc/{expected_pid}/exe"))
         .ok()?;
 

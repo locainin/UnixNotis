@@ -10,6 +10,7 @@ use zbus::message::Header;
 use crate::daemon::DaemonState;
 
 use super::credentials::{connection_credentials, CallerCredentials};
+#[cfg(not(target_os = "linux"))]
 use super::executable_trust::is_trusted_control_executable_path;
 #[cfg(target_os = "linux")]
 use super::executable_trust::is_trusted_control_executable_from_fd;
@@ -195,15 +196,20 @@ pub(in crate::daemon) fn control_executable_is_allowed<Fd: std::os::unix::io::As
     // On Linux, verify the executable via its file descriptor to prevent
     // mount-namespace bypass (UNX-4-001). The path is only used for the
     // name allowlist above; the actual trust check uses the kernel file object.
+    // If we cannot obtain the descriptor, fail closed.
     #[cfg(target_os = "linux")]
     {
-        if let Some(fd) = exe_fd {
-            return is_trusted_control_executable_from_fd(fd, path, relaxed);
-        }
+        let Some(fd) = exe_fd else {
+            return false;
+        };
+        is_trusted_control_executable_from_fd(fd, path, relaxed)
     }
 
-    // Fallback for non-Linux or when fd is unavailable: use path-based trust
-    is_trusted_control_executable_path(path, relaxed)
+    // Fallback for non-Linux: use path-based trust
+    #[cfg(not(target_os = "linux"))]
+    {
+        is_trusted_control_executable_path(path, relaxed)
+    }
 }
 
 pub(in crate::daemon) fn control_executable_error<Fd: std::os::unix::io::AsFd>(

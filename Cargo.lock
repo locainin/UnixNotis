@@ -3728,6 +3728,7 @@ dependencies = [
  "gtk4-layer-shell",
  "image",
  "proptest",
+ "rustix",
  "tokio",
  "tracing",
  "tracing-subscriber",
