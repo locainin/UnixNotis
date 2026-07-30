@@ -48,6 +48,7 @@ pub enum UiCommand {
     InvokeAction {
         notification: NotificationKey,
         action_key: String,
+        confirmed: bool,
     },
     Reply {
         id: u32,
@@ -71,10 +72,12 @@ impl fmt::Debug for UiCommand {
             Self::InvokeAction {
                 notification,
                 action_key,
+                confirmed,
             } => formatter
                 .debug_struct("InvokeAction")
                 .field("notification", notification)
                 .field("action_key", action_key)
+                .field("confirmed", confirmed)
                 .finish(),
             Self::Reply { id, generation, .. } => formatter
                 .debug_struct("Reply")

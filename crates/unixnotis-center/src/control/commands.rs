@@ -27,11 +27,13 @@ pub async fn handle_command(
         UiCommand::InvokeAction {
             notification,
             action_key,
+            confirmed,
         } => {
             timed_dbus_call(proxy.invoke_action_generation(
                 notification.id,
                 notification.generation,
                 &action_key,
+                confirmed,
             ))
             .await
         }

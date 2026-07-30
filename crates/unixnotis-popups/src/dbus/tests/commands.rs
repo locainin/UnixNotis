@@ -18,6 +18,7 @@ fn drain_offline_commands_removes_all_queued_commands() {
             generation: 13,
         },
         action_key: "default".to_string(),
+        confirmed: false,
     })
     .expect("action command should queue");
 

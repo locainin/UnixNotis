@@ -32,6 +32,7 @@ fn closed_command_queue_drops_action_without_panicking() {
                 generation: 9,
             },
             action_key: "open".to_string(),
+            confirmed: false,
         },
     );
 }

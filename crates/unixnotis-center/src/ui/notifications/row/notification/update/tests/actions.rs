@@ -3,7 +3,7 @@
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use unixnotis_core::{hooks, Action, InlineReply};
+use unixnotis_core::{hooks, Action, ApplicationActionPolicy, InlineReply};
 
 use crate::control::UiCommand;
 use crate::ui::icons::IconResolver;
@@ -37,7 +37,11 @@ fn update_notification_row_rebuilds_actions_only_when_signature_changes() {
     assert!(!row.card.has_css_class(hooks::panel_card::NO_ACTIONS));
     assert_eq!(
         row.action_cache.borrow().as_slice(),
-        &[("open".to_string(), "Open".to_string())]
+        &[(
+            "open".to_string(),
+            "Open".to_string(),
+            ApplicationActionPolicy::Allow,
+        )]
     );
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
@@ -190,10 +194,12 @@ fn update_notification_row_action_button_sends_command_once_per_click_window() {
         UiCommand::InvokeAction {
             notification,
             action_key,
+            confirmed,
         } => {
             assert_eq!(notification.id, 1);
             assert_eq!(notification.generation, 1);
             assert_eq!(action_key, "open");
+            assert!(!confirmed, "allowed action should not claim confirmation");
         }
         command => panic!("expected action command, got {command:?}"),
     }
@@ -250,7 +256,7 @@ fn recycled_action_button_targets_the_new_notification_generation() {
 
     assert!(matches!(
         command_rx.try_recv(),
-        Ok(UiCommand::InvokeAction { notification, action_key })
+        Ok(UiCommand::InvokeAction { notification, action_key, confirmed: false })
             if notification.id == 2
                 && notification.generation == 7
                 && action_key == "open"
@@ -318,7 +324,7 @@ fn active_blank_default_action_builds_accessible_open_control() {
     button.emit_clicked();
     assert!(matches!(
         command_rx.try_recv(),
-        Ok(UiCommand::InvokeAction { notification, action_key })
+        Ok(UiCommand::InvokeAction { notification, action_key, confirmed: false })
             if notification.id == 1
                 && notification.generation == 1
                 && action_key == "default"
@@ -326,7 +332,7 @@ fn active_blank_default_action_builds_accessible_open_control() {
 }
 
 #[gtk::test]
-fn labeled_default_action_does_not_build_a_duplicate_open_control() {
+fn labeled_default_action_uses_one_compact_accessible_open_control() {
     let (_root, row) = notification_row();
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
     let mut notification = sample_notification();
@@ -353,9 +359,73 @@ fn labeled_default_action_does_not_build_a_duplicate_open_control() {
         .actions_box
         .first_child()
         .and_downcast::<gtk::Button>()
-        .expect("labeled default action button");
-    assert_eq!(button.label().as_deref(), Some("Open conversation"));
-    assert!(!button.has_css_class("unixnotis-panel-default-action"));
+        .expect("compact default action button");
+    assert!(button.has_css_class("unixnotis-panel-default-action"));
+    assert_eq!(button.tooltip_text().as_deref(), Some("Open notification"));
+}
+
+#[gtk::test]
+fn confirmable_panel_action_requires_two_clicks_before_dispatch() {
+    let (_root, row) = notification_row();
+    let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(2);
+    let mut notification = sample_notification();
+    notification.attribution = unixnotis_core::NotificationAttribution::associated(
+        "Example Chat",
+        "Example Chat",
+        "org.example.Chat",
+        "org.example.Chat",
+        unixnotis_core::IdentityAssurance::SystemAssociated,
+        unixnotis_core::InteractionPolicies::NATIVE_COMPATIBILITY,
+        unixnotis_core::AttributionReason::ExactSystemExecutable,
+        "protected executable association",
+        "associated:system-app:org.example.Chat".to_string(),
+    );
+    notification.actions = vec![Action {
+        key: "archive".to_string(),
+        label: "Archive".to_string(),
+    }];
+
+    update_notification_row(
+        &row,
+        &row_data(
+            Rc::new(notification),
+            RowFlags {
+                is_active: true,
+                ..Default::default()
+            },
+        ),
+        &IconResolver::new(),
+        &command_tx,
+    );
+
+    let button = row
+        .actions_box
+        .first_child()
+        .and_downcast::<gtk::Button>()
+        .expect("confirmable action button");
+    button.emit_clicked();
+    assert_eq!(button.label().as_deref(), Some("Confirm Archive"));
+    assert!(
+        command_rx.try_recv().is_err(),
+        "first click must not invoke a confirmable action"
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let context = gtk::glib::MainContext::default();
+    while context.pending() {
+        context.iteration(false);
+    }
+    button.emit_clicked();
+    assert!(matches!(
+        command_rx.try_recv(),
+        Ok(UiCommand::InvokeAction {
+            notification,
+            action_key,
+            confirmed: true,
+        }) if notification.id == 1
+            && notification.generation == 1
+            && action_key == "archive"
+    ));
 }
 
 #[gtk::test]

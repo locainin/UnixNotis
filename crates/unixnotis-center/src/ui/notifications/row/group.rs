@@ -213,13 +213,22 @@ pub(in crate::ui::notifications) fn update_group_row(
         );
         for (level, class_name) in [
             (TrustLevel::Verified, "verified"),
-            (TrustLevel::Recognized, "recognized"),
             (TrustLevel::Unresolved, "unresolved"),
             (TrustLevel::Conflict, "conflict"),
             (TrustLevel::Relay, "relay"),
         ] {
             set_class_state(root, class_name, presentation.trust.level == level);
         }
+        set_class_state(
+            root,
+            "recognized",
+            matches!(
+                presentation.trust.level,
+                TrustLevel::SystemAssociated
+                    | TrustLevel::PortalAssociated
+                    | TrustLevel::UserAssociated
+            ),
+        );
         if apply_semantic_badge(&group.icon, presentation.identity.badge, GROUP_ICON_SIZE) {
             group.icon.set_visible(true);
         } else {

@@ -15,10 +15,14 @@ impl ControlServer {
         &self,
         notification: NotificationKey,
         action_key: &str,
+        confirmed: bool,
     ) -> zbus::fdo::Result<()> {
-        self.invoke_validated_action_generation_with_pre_emit(notification, action_key, || {
-            std::future::ready(())
-        })
+        self.invoke_validated_action_generation_with_pre_emit(
+            notification,
+            action_key,
+            confirmed,
+            || std::future::ready(()),
+        )
         .await
     }
 
@@ -26,6 +30,7 @@ impl ControlServer {
         &self,
         notification: NotificationKey,
         action_key: &str,
+        confirmed: bool,
         pre_emit: F,
     ) -> zbus::fdo::Result<()>
     where
@@ -36,7 +41,7 @@ impl ControlServer {
             // Capture one concrete generation while validating the stored action identity
             let store = self.state.store.lock().await;
             store
-                .active_action_target_generation(notification, action_key)
+                .active_action_target_generation(notification, action_key, confirmed)
                 .ok_or_else(|| {
                     zbus::fdo::Error::InvalidArgs(
                         "notification is not live or does not advertise this action".to_string(),

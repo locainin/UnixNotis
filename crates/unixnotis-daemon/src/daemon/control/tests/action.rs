@@ -27,7 +27,7 @@ async fn validated_action_emits_only_an_advertised_live_action() {
     };
 
     ControlServer::new(state)
-        .invoke_validated_action_generation(notification, "open")
+        .invoke_validated_action_generation(notification, "open", false)
         .await
         .expect("invoke advertised action");
 
@@ -53,7 +53,7 @@ async fn action_signal_reaches_owner_but_not_unrelated_observer() {
     };
 
     ControlServer::new(state)
-        .invoke_validated_action_generation(notification, "open")
+        .invoke_validated_action_generation(notification, "open", false)
         .await
         .expect("invoke owner action");
 
@@ -86,7 +86,7 @@ async fn validated_action_rejects_missing_and_stale_action_generations() {
     let server = ControlServer::new(state.clone());
 
     server
-        .invoke_validated_action_generation(notification, "missing")
+        .invoke_validated_action_generation(notification, "missing", false)
         .await
         .expect_err("unadvertised action must fail");
     let replacement_state = state.clone();
@@ -95,6 +95,7 @@ async fn validated_action_rejects_missing_and_stale_action_generations() {
         .invoke_validated_action_generation_with_pre_emit(
             notification,
             "open",
+            false,
             move || async move {
                 let replacement = action_notification(&replacement_sender, "different");
                 let outcome = replacement_state.store.lock().await.insert(replacement, id);
@@ -122,7 +123,7 @@ async fn stale_action_does_not_target_same_id_replacement() {
     };
 
     ControlServer::new(state.clone())
-        .invoke_validated_action_generation(stale_key, "delete")
+        .invoke_validated_action_generation(stale_key, "delete", false)
         .await
         .expect_err("a delayed action must not target a same-ID replacement");
 
@@ -156,7 +157,7 @@ async fn validated_action_rejects_a_conflicting_application_claim() {
     };
 
     ControlServer::new(state)
-        .invoke_validated_action_generation(notification, "open")
+        .invoke_validated_action_generation(notification, "open", false)
         .await
         .expect_err("conflicting attribution must not receive an action signal");
 }

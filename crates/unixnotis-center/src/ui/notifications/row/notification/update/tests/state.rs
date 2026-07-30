@@ -20,6 +20,8 @@ fn icon_signature_changes_when_trust_presentation_changes() {
     let mut suspicious = verified.clone();
     // Keep resolver inputs unchanged to isolate the trust-state regression
     suspicious.attribution.status = unixnotis_core::AttributionStatus::Conflict;
+    suspicious.attribution.assurance = unixnotis_core::IdentityAssurance::Conflict;
+    suspicious.attribution.interactions = unixnotis_core::InteractionPolicies::DENY;
 
     assert_ne!(
         IconSignature::from(&verified),

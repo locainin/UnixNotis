@@ -59,7 +59,8 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     // Recycled rows must rebuild action closures when the notification generation changes
     pub(super) action_cache_key: Cell<NotificationKey>,
     // Last rendered action signature for cheap no-op detection
-    pub(super) action_cache: RefCell<Vec<(String, String)>>,
+    pub(super) action_cache:
+        RefCell<Vec<(String, String, unixnotis_core::ApplicationActionPolicy)>>,
     // Reply metadata and live state are cached separately from ordinary actions
     pub(super) reply_cache: RefCell<(
         unixnotis_core::InlineReply,

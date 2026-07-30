@@ -1,10 +1,12 @@
 //! Shared small primitives used by every popup kind
 
+use std::cell::Cell;
+
 use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{hooks, NotificationView};
-use unixnotis_ui::presentation::build_semantic_badge;
+use unixnotis_ui::presentation::{action_activation, build_semantic_badge, ActionActivation};
 
 use super::super::commands::try_send_command;
 use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation, ReplyPresentation};
@@ -180,10 +182,25 @@ fn build_action_button(
     button.add_css_class("unixnotis-popup-action");
     mark_interactive(&button);
     let action_key = action.key.clone();
+    let original_label = action.label.clone();
+    let policy = action.policy;
     let tx = command_tx.clone();
     let popover = popover.cloned();
-    button.connect_clicked(move |_| {
-        // Menus close before the exact daemon-validated action is queued
+    let confirmation_armed = Cell::new(false);
+    button.connect_clicked(move |button| {
+        let confirmed = match action_activation(policy, confirmation_armed.get()) {
+            ActionActivation::Denied => return,
+            ActionActivation::ArmConfirmation => {
+                confirmation_armed.set(true);
+                let confirmation_label = format!("Confirm {original_label}");
+                button.set_label(&confirmation_label);
+                button.set_tooltip_text(Some("Activate again to confirm"));
+                button.update_property(&[gtk::accessible::Property::Label(&confirmation_label)]);
+                return;
+            }
+            ActionActivation::Invoke { confirmed } => confirmed,
+        };
+        // Menus close only after an action passes its confirmation policy
         if let Some(popover) = &popover {
             popover.popdown();
         }
@@ -192,6 +209,7 @@ fn build_action_button(
             UiCommand::InvokeAction {
                 notification,
                 action_key: action_key.clone(),
+                confirmed,
             },
         );
     });
