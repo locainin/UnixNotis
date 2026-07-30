@@ -361,16 +361,16 @@ pub(in crate::daemon::notifications::identity) const fn portal_identity_is_trust
 pub(in crate::daemon::notifications::identity) fn portal_candidate_paths(
     directory: &Path,
 ) -> Vec<PathBuf> {
-    const MAX_DIRECTORY_ENTRIES: usize = 16_384;
     const MAX_PORTAL_CANDIDATES: usize = 256;
 
     let Ok(entries) = std::fs::read_dir(directory) else {
         return Vec::new();
     };
-    // The candidate limit applies after filtering so large /usr/lib directories cannot hide portals
+    // Walk every entry in the directory
+    // Only entries with a matching name count toward the cap
+    // Filtering first means a directory full of unrelated files cannot hide a real portal
     entries
         .flatten()
-        .take(MAX_DIRECTORY_ENTRIES)
         .filter_map(|entry| {
             let path = entry.path();
             path.file_name()
