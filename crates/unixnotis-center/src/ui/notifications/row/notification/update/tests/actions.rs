@@ -410,7 +410,7 @@ fn confirmable_panel_action_requires_two_clicks_before_dispatch() {
         "first click must not invoke a confirmable action"
     );
 
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    std::thread::sleep(std::time::Duration::from_millis(400));
     let context = gtk::glib::MainContext::default();
     while context.pending() {
         context.iteration(false);
@@ -426,6 +426,18 @@ fn confirmable_panel_action_requires_two_clicks_before_dispatch() {
             && notification.generation == 1
             && action_key == "archive"
     ));
+
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let context = gtk::glib::MainContext::default();
+    while context.pending() {
+        context.iteration(false);
+    }
+    button.emit_clicked();
+    assert_eq!(button.label().as_deref(), Some("Confirm Archive"));
+    assert!(
+        command_rx.try_recv().is_err(),
+        "third click must re-arm rather than dispatching"
+    );
 }
 
 #[gtk::test]
