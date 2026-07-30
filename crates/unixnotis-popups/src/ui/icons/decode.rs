@@ -2,11 +2,13 @@
 //!
 //! Keeps image decoding and size limits away from GTK widget code
 
-use std::fs;
+use std::fs::File;
+use std::io::{self, Read};
 use std::path::Path;
 
 use image::imageops::FilterType;
 use image::{ImageReader, Limits};
+use rustix::fs::{open, Mode, OFlags};
 
 #[derive(Clone)]
 pub struct RasterIcon {
@@ -24,39 +26,35 @@ const MAX_ICON_SOURCE_DIMENSION: u32 = 2048;
 const MAX_ICON_DECODE_ALLOC_BYTES: u64 = 16 * 1024 * 1024;
 
 pub fn decode_icon_file(path: &Path, target_size: i32) -> Result<RasterIcon, String> {
-    // Decode on a worker thread; keep I/O and CPU-bound work off the GTK main loop
-    let metadata = fs::metadata(path).map_err(|err| err.to_string())?;
-    if !metadata.is_file() {
-        // Directories and special files are rejected before image parsing starts
-        return Err("icon path is not a regular file".to_string());
-    }
-    if metadata.len() > MAX_ICON_BYTES {
-        // Oversized files are rejected early to cap decode memory use
-        return Err(format!("icon file too large ({} bytes)", metadata.len()));
-    }
+    // Single descriptor-backed read captures the complete source before decode.
+    // O_NOFOLLOW rejects last-component symlinks; O_NONBLOCK avoids blocking on
+    // FIFOs or device files. This closes the TOCTOU window where a regular file
+    // could be swapped for a FIFO between metadata and decode calls.
+    let bytes = read_icon_file_bounded(path)?;
 
-    let (width, height) = image::image_dimensions(path).map_err(|err| err.to_string())?;
-    if width > MAX_ICON_SOURCE_DIMENSION || height > MAX_ICON_SOURCE_DIMENSION {
-        // Header checks reject very large rasters before a full pixel decode happens
-        return Err(format!(
-            "icon dimensions exceed popup decode limit ({width}x{height})"
-        ));
-    }
+    // Probe format from content, not extension, so disguised files are caught
+    let _format = image::guess_format(&bytes)
+        .map_err(|err| format!("icon format probe failed: {err}"))?;
 
     let mut limits = Limits::default();
     limits.max_image_width = Some(MAX_ICON_SOURCE_DIMENSION);
     limits.max_image_height = Some(MAX_ICON_SOURCE_DIMENSION);
     limits.max_alloc = Some(MAX_ICON_DECODE_ALLOC_BYTES);
 
-    let mut reader = ImageReader::open(path).map_err(|err| err.to_string())?;
-    if reader.format().is_none() {
-        // Extension-free temp paths still need content sniffing before decode
-        reader = reader
-            .with_guessed_format()
-            .map_err(|err| err.to_string())?;
-    }
+    let mut reader = ImageReader::new(io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|err| err.to_string())?;
     reader.limits(limits);
     let mut image = reader.decode().map_err(|err| err.to_string())?;
+
+    let width = image.width();
+    let height = image.height();
+    if width > MAX_ICON_SOURCE_DIMENSION || height > MAX_ICON_SOURCE_DIMENSION {
+        // Header checks reject very large rasters before a full pixel decode happens
+        return Err(format!(
+            "icon dimensions exceed popup decode limit ({width}x{height})"
+        ));
+    }
 
     let target = target_size.max(1) as u32;
     // Normalize to the popup icon target so file-backed icons match themed icon sizing
@@ -80,6 +78,44 @@ pub fn decode_icon_file(path: &Path, target_size: i32) -> Result<RasterIcon, Str
         height,
         stride,
     })
+}
+
+fn read_icon_file_bounded(path: &Path) -> Result<Vec<u8>, String> {
+    // Open with NOFOLLOW to reject last-component symlinks and NONBLOCK to
+    // avoid hanging on FIFOs or device files
+    let descriptor = open(
+        path,
+        OFlags::CLOEXEC
+            .union(OFlags::NOFOLLOW)
+            .union(OFlags::NONBLOCK),
+        Mode::empty(),
+    )
+    .map_err(|err| err.to_string())?;
+    let file = File::from(descriptor);
+
+    // Metadata and content come from the same descriptor even if the path changes later
+    let metadata = file.metadata().map_err(|err| err.to_string())?;
+    if !metadata.is_file() {
+        return Err("icon path is not a regular file".to_string());
+    }
+    if metadata.len() > MAX_ICON_BYTES {
+        return Err(format!("icon file too large ({} bytes)", metadata.len()));
+    }
+
+    let capacity = usize::try_from(metadata.len()).unwrap_or(0);
+    let max_capacity = usize::try_from(MAX_ICON_BYTES).unwrap_or(usize::MAX);
+    let mut bytes = Vec::with_capacity(capacity.min(max_capacity));
+
+    // One extra byte detects a regular file that grew after the metadata snapshot
+    file.take(MAX_ICON_BYTES.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|err| err.to_string())?;
+    let observed = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    if observed > MAX_ICON_BYTES {
+        return Err(format!("icon file too large ({observed} bytes)"));
+    }
+
+    Ok(bytes)
 }
 
 #[cfg(test)]
