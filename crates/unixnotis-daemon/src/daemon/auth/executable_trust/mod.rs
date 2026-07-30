@@ -6,6 +6,8 @@ pub(in crate::daemon::auth) mod paths;
 mod snapshots;
 
 pub(super) use paths::is_trusted_control_executable_path;
+#[cfg(target_os = "linux")]
+pub(super) use paths::is_trusted_control_executable_from_fd;
 
 #[cfg(test)]
 mod tests;

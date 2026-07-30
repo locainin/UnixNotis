@@ -94,10 +94,10 @@ fn control_executable_error_requires_present_allowed_trusted_binary() {
     let trusted = canonicalize_best_effort(&trusted);
     let untrusted_name = canonicalize_best_effort(&untrusted_name);
 
-    assert!(control_executable_error(Some(&trusted), &["noticenterctl"], true).is_none());
-    assert!(control_executable_error(None, &["noticenterctl"], true).is_some());
-    assert!(control_executable_error(Some(&trusted), &["unixnotis-center"], true).is_some());
-    assert!(control_executable_error(Some(&untrusted_name), &["unknown"], true).is_some());
+    assert!(control_executable_error::<std::os::fd::OwnedFd>(Some(&trusted), None, &["noticenterctl"], true).is_none());
+    assert!(control_executable_error::<std::os::fd::OwnedFd>(None, None, &["noticenterctl"], true).is_some());
+    assert!(control_executable_error::<std::os::fd::OwnedFd>(Some(&trusted), None, &["unixnotis-center"], true).is_some());
+    assert!(control_executable_error::<std::os::fd::OwnedFd>(Some(&untrusted_name), None, &["unknown"], true).is_some());
 }
 
 #[test]
@@ -113,15 +113,17 @@ fn interaction_executable_policy_excludes_noninteractive_control_clients() {
     let _home = EnvVarGuard::set("HOME", home.path());
 
     for trusted_ui in [&center, &popups] {
-        assert!(control_executable_error(
+        assert!(control_executable_error::<std::os::fd::OwnedFd>(
             Some(&canonicalize_best_effort(trusted_ui)),
+            None,
             &TRUSTED_INTERACTION_EXECUTABLES,
             true,
         )
         .is_none());
     }
-    assert!(control_executable_error(
+    assert!(control_executable_error::<std::os::fd::OwnedFd>(
         Some(&canonicalize_best_effort(&cli)),
+        None,
         &TRUSTED_INTERACTION_EXECUTABLES,
         true,
     )
