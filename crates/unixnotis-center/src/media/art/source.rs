@@ -33,14 +33,17 @@ impl MediaArtSource {
 pub(in crate::media) fn normalize_art_source(
     value: &str,
     allow_remote_https: bool,
+    allow_local_file: bool,
 ) -> Option<MediaArtSource> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return None;
     }
     // Local files stay available for native players like mpv and smplayer
-    if let Some(path) = normalize_local_file(trimmed) {
-        return Some(MediaArtSource::LocalFile(path));
+    if allow_local_file {
+        if let Some(path) = normalize_local_file(trimmed) {
+            return Some(MediaArtSource::LocalFile(path));
+        }
     }
     if !allow_remote_https {
         return None;

@@ -38,13 +38,13 @@ fn local_media_art_keys_keep_distinct_non_utf8_paths() {
 
 #[test]
 fn artwork_source_normalization_keeps_local_and_allowed_https_inputs() {
-    let local = normalize_art_source("file:///tmp/track%20art.png", false);
+    let local = normalize_art_source("file:///tmp/track%20art.png", false, true);
     assert!(matches!(local, Some(MediaArtSource::LocalFile(_))));
 
-    let localhost = normalize_art_source("file://localhost/tmp/track%20art.png", false);
+    let localhost = normalize_art_source("file://localhost/tmp/track%20art.png", false, true);
     assert!(matches!(localhost, Some(MediaArtSource::LocalFile(_))));
 
-    let remote = normalize_art_source("https://example.com/art.png", true);
+    let remote = normalize_art_source("https://example.com/art.png", true, true);
     assert!(matches!(remote, Some(MediaArtSource::RemoteHttps(_))));
 }
 
@@ -60,6 +60,15 @@ fn artwork_source_normalization_rejects_disallowed_remote_targets() {
         "https://example.com:8443/art.png",
         "https://example.com/art.png#section",
     ] {
-        assert!(normalize_art_source(value, true).is_none(), "{value}");
+        assert!(normalize_art_source(value, true, true).is_none(), "{value}");
     }
+}
+
+#[test]
+fn artwork_source_normalization_rejects_local_files_when_not_allowed() {
+    let local = normalize_art_source("/tmp/art.png", false, false);
+    assert!(local.is_none());
+
+    let file_uri = normalize_art_source("file:///tmp/art.png", false, false);
+    assert!(file_uri.is_none());
 }

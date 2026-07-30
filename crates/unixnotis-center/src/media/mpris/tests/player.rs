@@ -33,6 +33,7 @@ async fn player_state_uses_live_identity_owner_and_process_details() {
     assert_eq!(state.identity, TEST_PLAYER_IDENTITY);
     assert_eq!(state.owner_pid, Some(std::process::id()));
     assert!(state.remote_art_allowed);
+    assert!(state.local_art_allowed);
     assert_eq!(
         state.unique_owner.as_deref(),
         fixture.server.unique_name().map(|name| name.as_str())

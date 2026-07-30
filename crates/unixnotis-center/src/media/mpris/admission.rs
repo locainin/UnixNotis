@@ -43,6 +43,20 @@ pub(super) fn remote_art_allowed(
     }
 }
 
+pub(super) fn local_art_allowed(
+    browser_family: Option<&str>,
+    owner_executable: Option<&str>,
+) -> bool {
+    // A missing owner executable means the bus owner is not concrete enough to trust
+    let has_owner = owner_executable.is_some_and(|value| !value.trim().is_empty());
+    if !has_owner {
+        return false;
+    }
+    // Browser bridges can direct the renderer to arbitrary host files via mpris:artUrl.
+    // Only native players (non-browser) may name host files for local artwork.
+    browser_family.is_none()
+}
+
 pub(in crate::media) fn is_allowed_player(name: &str, config: &MediaConfig) -> bool {
     let lower = name.to_lowercase();
     if config.denylist.iter().any(|entry| lower.contains(entry)) {

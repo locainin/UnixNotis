@@ -78,6 +78,13 @@ pub(in crate::daemon::notifications) fn build_notification(
         image.has_image_data = true;
         image.image_data = image_data;
     }
+
+    // Only verified senders may name host files for decoding. Untrusted,
+    // conflicting, relay, and portal-associated senders are stripped of
+    // host file paths to prevent parser delegation attacks (UNX-4-003).
+    if !attribution.is_verified() {
+        image.image_path = String::new();
+    }
     let actions = parse_actions(actions);
     // Protocol metadata is parsed independently from the daemon's interaction decision
     let inline_reply = parse_inline_reply(&actions, &hints);

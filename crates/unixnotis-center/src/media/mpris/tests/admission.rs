@@ -1,6 +1,6 @@
 use unixnotis_core::{MediaConfig, MediaRemoteArtPolicy};
 
-use super::super::admission::{detect_browser_family, remote_art_allowed};
+use super::super::admission::{detect_browser_family, local_art_allowed, remote_art_allowed};
 use super::super::is_allowed_player;
 
 #[test]
@@ -105,4 +105,11 @@ fn remote_art_admission_keeps_browsers_opt_in_and_requires_an_owner() {
         None,
         MediaRemoteArtPolicy::BrowsersToo
     ));
+}
+
+#[test]
+fn local_art_admission_rejects_browsers_and_requires_an_owner() {
+    assert!(!local_art_allowed(Some("firefox"), Some("/usr/bin/firefox")));
+    assert!(local_art_allowed(None, Some("/usr/bin/spotify")));
+    assert!(!local_art_allowed(None, None));
 }

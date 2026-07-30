@@ -313,6 +313,12 @@ impl NotificationAttribution {
         self.interactions.action_buttons
     }
 
+    /// Whether this attribution has kernel or broker-backed identity evidence
+    #[must_use]
+    pub const fn is_verified(&self) -> bool {
+        matches!(self.status, AttributionStatus::Verified)
+    }
+
     // Decide what happens when a specific action key is activated
     // "default" follows the card-level activation rules so physical gestures still work
     // "inline-reply" is always blocked here — the dedicated reply method handles that
