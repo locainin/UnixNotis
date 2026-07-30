@@ -10,6 +10,7 @@ const SUPPORTED_MANAGED_BINARIES: &[&str] = &[
     "unixnotis-daemon",
     "unixnotis-popups",
     "unixnotis-center",
+    "unixnotis-svg-renderer",
     "unixnotis-css-validate",
     "noticenterctl",
 ];

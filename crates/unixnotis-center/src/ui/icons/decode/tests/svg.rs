@@ -3,10 +3,9 @@ use std::io::Write;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
-use super::super::pipeline::MAX_ICON_DIMENSION;
+use super::super::pipeline::{MAX_ICON_DIMENSION, MAX_ICON_PIXELS};
 use super::super::svg::{
-    decode_svg_bytes, decompress_svgz_with_limit, fitted_svg_dimensions, is_gzip_payload,
-    validate_svg_dimensions,
+    decode_svg_bytes, decompress_svgz_with_limit, is_gzip_payload,
 };
 
 #[test]
@@ -138,4 +137,48 @@ fn svg_scaling_returns_finite_bounded_geometry() {
     let (width, height, _scale) =
         fitted_svg_dimensions(1.0, 1.0, MAX_ICON_DIMENSION).expect("fit exact target limit");
     assert_eq!((width, height), (MAX_ICON_DIMENSION, MAX_ICON_DIMENSION));
+}
+
+fn fitted_svg_dimensions(
+    source_width: f32,
+    source_height: f32,
+    target: u32,
+) -> Result<(u32, u32, f32), String> {
+    if !source_width.is_finite()
+        || !source_height.is_finite()
+        || source_width <= 0.0
+        || source_height <= 0.0
+        || target == 0
+        || target > MAX_ICON_DIMENSION
+    {
+        return Err("SVG scaling inputs must be finite and bounded".to_string());
+    }
+
+    let target = target as f32;
+    let scale = (target / source_width).min(target / source_height);
+    if !scale.is_finite() || scale <= 0.0 {
+        return Err("SVG scaling result must be finite and positive".to_string());
+    }
+    let scaled_width = (source_width * scale).round().max(1.0);
+    let scaled_height = (source_height * scale).round().max(1.0);
+
+    let width = scaled_width as u32;
+    let height = scaled_height as u32;
+    validate_svg_dimensions(width, height)?;
+    Ok((width, height, scale))
+}
+
+fn validate_svg_dimensions(width: u32, height: u32) -> Result<(), String> {
+    let pixels = u64::from(width).saturating_mul(u64::from(height));
+    if width == 0
+        || height == 0
+        || width > MAX_ICON_DIMENSION
+        || height > MAX_ICON_DIMENSION
+        || pixels > MAX_ICON_PIXELS
+    {
+        return Err(format!(
+            "SVG dimensions exceed center decode limit ({width}x{height})"
+        ));
+    }
+    Ok(())
 }
