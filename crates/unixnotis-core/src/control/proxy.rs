@@ -70,6 +70,7 @@ trait Control {
         id: u32,
         generation: u64,
         action_key: &str,
+        confirmed: bool,
     ) -> zbus::Result<()>;
     /// Submit text for an explicitly advertised inline-reply action
     fn reply_notification(&self, id: u32, generation: u64, reply_text: &str) -> zbus::Result<()>;

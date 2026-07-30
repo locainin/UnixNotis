@@ -27,13 +27,20 @@ pub enum AttributionStatus {
 #[derive(Debug, Copy, Clone, Default, Serialize_repr, Deserialize_repr, Type, PartialEq, Eq)]
 #[repr(u8)]
 pub enum IdentityAssurance {
+    /// Kernel, confinement, or broker evidence binds both identity and execution origin
     Authenticated = 0,
+    /// Protected installation evidence binds an app but cannot prove same-UID code integrity
     SystemAssociated = 1,
+    /// A trusted portal process supplied an app ID without unforgeable caller provenance
     PortalAssociated = 2,
+    /// A user-local desktop record associates branding without a protected boundary
     UserAssociated = 3,
     #[default]
+    /// No positive application association was established
     Unresolved = 4,
+    /// Concrete protected evidence contradicts the application claim
     Conflict = 5,
+    /// A known forwarding executable supplied an unauthenticated application label
     Relay = 6,
 }
 
@@ -304,12 +311,6 @@ impl NotificationAttribution {
     #[must_use]
     pub const fn action_button_policy(&self) -> ApplicationActionPolicy {
         self.interactions.action_buttons
-    }
-
-    /// Compatibility policy for clients that have not split action surfaces yet
-    #[must_use]
-    pub const fn application_action_policy(&self) -> ApplicationActionPolicy {
-        self.interactions.default_activation
     }
 
     /// Policy for one exact advertised action key

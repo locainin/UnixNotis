@@ -1,6 +1,7 @@
 //! Notification action button rebuilding and dispatch
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -8,7 +9,9 @@ use gtk::prelude::*;
 use tokio::sync::mpsc;
 use tracing::debug;
 use unixnotis_core::NotificationView;
-use unixnotis_ui::presentation::{NotificationPresentation, ReplyPresentation};
+use unixnotis_ui::presentation::{
+    action_activation, ActionActivation, NotificationPresentation, ReplyPresentation,
+};
 
 use crate::control::UiCommand;
 use crate::ui::panel::behavior::input::ClickCooldown;
@@ -118,7 +121,7 @@ pub(super) fn update_actions(
 fn action_signature(
     presentation: &NotificationPresentation,
     is_active: bool,
-) -> Vec<(String, String)> {
+) -> Vec<(String, String, unixnotis_core::ApplicationActionPolicy)> {
     if !is_active {
         return Vec::new();
     }
@@ -127,24 +130,22 @@ fn action_signature(
         .primary
         .iter()
         .chain(&presentation.actions.overflow)
-        .map(|action| (action.key.clone(), action.label.clone()))
+        .map(|action| (action.key.clone(), action.label.clone(), action.policy))
         .collect::<Vec<_>>();
     if let Some(default_key) = blank_default_action_key(presentation) {
         // The empty label distinguishes the compact icon-only default control
-        signature.push((default_key.to_string(), String::new()));
+        signature.push((
+            default_key.to_string(),
+            String::new(),
+            unixnotis_core::ApplicationActionPolicy::Allow,
+        ));
     }
     signature
 }
 
 fn blank_default_action_key(presentation: &NotificationPresentation) -> Option<&str> {
-    let default_key = presentation.actions.default_key.as_deref()?;
-    let already_visible = presentation
-        .actions
-        .primary
-        .iter()
-        .chain(&presentation.actions.overflow)
-        .any(|action| action.key == default_key);
-    (!already_visible).then_some(default_key)
+    // Shared presentation keeps allowed defaults out of the visible button lists
+    presentation.actions.default_key.as_deref()
 }
 
 fn build_default_action_button(
@@ -170,6 +171,7 @@ fn build_default_action_button(
             UiCommand::InvokeAction {
                 notification,
                 action_key: action_key.clone(),
+                confirmed: false,
             },
         );
     });
@@ -186,12 +188,27 @@ fn build_action_button(
     button.add_css_class("unixnotis-panel-action");
     button.add_css_class("unixnotis-notification-action");
     let action_key = action.key.clone();
+    let original_label = clamp_action_label_text(&action.label).into_owned();
+    let policy = action.policy;
     let tx = command_tx.clone();
+    let confirmation_armed = Cell::new(false);
     let action_gate = ClickCooldown::new(Duration::from_millis(ACTION_BUTTON_GUARD_MS));
-    button.connect_clicked(move |_| {
+    button.connect_clicked(move |button| {
         if !action_gate.try_start() {
             return;
         }
+        let confirmed = match action_activation(policy, confirmation_armed.get()) {
+            ActionActivation::Denied => return,
+            ActionActivation::ArmConfirmation => {
+                confirmation_armed.set(true);
+                let confirmation_label = format!("Confirm {original_label}");
+                button.set_label(&confirmation_label);
+                button.set_tooltip_text(Some("Activate again to confirm"));
+                button.update_property(&[gtk::accessible::Property::Label(&confirmation_label)]);
+                return;
+            }
+            ActionActivation::Invoke { confirmed } => confirmed,
+        };
         debug!(
             id = notification.id,
             generation = notification.generation,
@@ -204,6 +221,7 @@ fn build_action_button(
             UiCommand::InvokeAction {
                 notification,
                 action_key: action_key.clone(),
+                confirmed,
             },
         );
     });

@@ -229,7 +229,7 @@ async fn generation_action_rejects_unauthorized_sender_before_validation() {
     let message = control_header_message("InvokeActionGeneration");
 
     server
-        .invoke_action_generation(7, 11, "default", message.header())
+        .invoke_action_generation(7, 11, "default", false, message.header())
         .await
         .expect_err("unauthorized generation action should fail");
 }

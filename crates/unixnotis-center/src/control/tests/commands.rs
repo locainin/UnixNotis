@@ -15,6 +15,7 @@ fn drop_stale_offline_commands_retains_safe_actions() {
             generation: 13,
         },
         action_key: "open".to_string(),
+        confirmed: false,
     });
     offline.push_back(UiCommand::SetDnd(true));
     offline.push_back(UiCommand::ClearAll);

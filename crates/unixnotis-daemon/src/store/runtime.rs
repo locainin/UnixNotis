@@ -274,6 +274,8 @@ impl NotificationStore {
             .any(|action| action.key == "inline-reply");
         (notification.inline_reply.available
             && notification.generation == generation
+            && notification.attribution.interactions.inline_reply
+                == unixnotis_core::InlineReplyPolicy::Allow
             && notification.inline_reply_policy == unixnotis_core::InlineReplyPolicy::Allow
             && has_reply_action)
             .then(|| Arc::clone(notification))
@@ -283,13 +285,20 @@ impl NotificationStore {
         &self,
         key: unixnotis_core::NotificationKey,
         action_key: &str,
+        confirmed: bool,
     ) -> Option<Arc<Notification>> {
         let notification = self.active.get(&key.id)?;
         if notification.generation != key.generation {
             return None;
         }
-        // Weak or conflicting provenance must not gain an application-directed signal
-        if notification.attribution.application_action_policy() != ApplicationActionPolicy::Allow {
+        // Confirmation is meaningful only for actions the resolver explicitly marked confirmable
+        let policy = notification.attribution.action_policy(action_key);
+        let authorized = match policy {
+            ApplicationActionPolicy::Allow => true,
+            ApplicationActionPolicy::Confirm => confirmed,
+            ApplicationActionPolicy::Deny => false,
+        };
+        if !authorized {
             return None;
         }
         // Exact matching prevents a trusted control caller from inventing application actions

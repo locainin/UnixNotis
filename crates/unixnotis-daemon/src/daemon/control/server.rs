@@ -42,6 +42,15 @@ impl ControlServer {
         auth::authorize_panel_readiness_call(&self.state, header, method).await
     }
 
+    pub(super) async fn authorize_interaction_call(
+        &self,
+        header: &Header<'_>,
+        method: &'static str,
+    ) -> zbus::fdo::Result<()> {
+        // Noninteractive control clients cannot assert a UI confirmation result
+        auth::authorize_interaction_call(&self.state, header, method).await
+    }
+
     pub(super) fn ensure_panel_available(&self) -> zbus::fdo::Result<()> {
         // Rejecting here makes panel outages visible instead of silent
         if self.state.panel_ready() {
@@ -218,12 +227,17 @@ impl ControlServer {
         id: u32,
         generation: u64,
         action_key: &str,
+        confirmed: bool,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
-        self.authorize_control_call(&header, "InvokeActionGeneration")
+        self.authorize_interaction_call(&header, "InvokeActionGeneration")
             .await?;
-        self.invoke_validated_action_generation(NotificationKey { id, generation }, action_key)
-            .await
+        self.invoke_validated_action_generation(
+            NotificationKey { id, generation },
+            action_key,
+            confirmed,
+        )
+        .await
     }
 
     pub(super) async fn reply_notification(
@@ -233,7 +247,7 @@ impl ControlServer {
         reply_text: &str,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
-        self.authorize_control_call(&header, "ReplyNotification")
+        self.authorize_interaction_call(&header, "ReplyNotification")
             .await?;
         self.submit_inline_reply(id, generation, reply_text).await
     }

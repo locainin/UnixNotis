@@ -115,13 +115,61 @@ fn action_row_dispatches_the_prepared_action_identity() {
         UiCommand::InvokeAction {
             notification,
             action_key,
+            confirmed,
         } => {
             assert_eq!(notification.id, 41);
             assert_eq!(notification.generation, 3);
-            assert_eq!(action_key, "default");
+            assert_eq!(action_key, "open");
+            assert!(!confirmed, "allowed actions should not claim confirmation");
         }
         command => panic!("unexpected command: {command:?}"),
     }
+}
+
+#[gtk::test]
+fn confirmable_popup_action_requires_two_clicks_before_dispatch() {
+    let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(1);
+    let mut notification = notification();
+    notification.attribution = NotificationAttribution::associated(
+        "Example Chat",
+        "Example Chat",
+        "org.example.Chat",
+        "org.example.Chat",
+        unixnotis_core::IdentityAssurance::SystemAssociated,
+        unixnotis_core::InteractionPolicies::NATIVE_COMPATIBILITY,
+        AttributionReason::ExactSystemExecutable,
+        "protected executable association",
+        "associated:system-app:org.example.Chat".to_string(),
+    );
+    notification.actions.push(Action {
+        key: "archive".to_string(),
+        label: "Archive".to_string(),
+    });
+    let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
+    let row = build_action_row(&command_tx, notification.key(), &view).expect("action row");
+    let button = row
+        .first_child()
+        .and_downcast::<gtk::Button>()
+        .expect("confirmable action button");
+
+    button.emit_clicked();
+    assert_eq!(button.label().as_deref(), Some("Confirm Archive"));
+    assert!(
+        command_rx.try_recv().is_err(),
+        "first click must not invoke a confirmable action"
+    );
+
+    button.emit_clicked();
+    assert!(matches!(
+        command_rx.try_recv(),
+        Ok(UiCommand::InvokeAction {
+            notification,
+            action_key,
+            confirmed: true,
+        }) if notification.id == 41
+            && notification.generation == 3
+            && action_key == "archive"
+    ));
 }
 
 #[gtk::test]
@@ -140,6 +188,10 @@ fn extra_safe_action_builds_a_compact_overflow_menu() {
         Action {
             key: "archive".to_string(),
             label: "Archive".to_string(),
+        },
+        Action {
+            key: "mute".to_string(),
+            label: "Mute".to_string(),
         },
     ];
     let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
@@ -201,7 +253,7 @@ fn view_model() -> PopupEntryViewModel {
 fn view_model_with_action() -> PopupEntryViewModel {
     let mut notification = notification();
     notification.actions.push(Action {
-        key: "default".to_string(),
+        key: "open".to_string(),
         label: "Open".to_string(),
     });
     PopupEntryViewModel::for_notification_at(&notification, 1_000)

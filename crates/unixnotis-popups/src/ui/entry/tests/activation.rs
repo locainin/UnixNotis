@@ -143,9 +143,11 @@ fn assert_default_command(command_rx: &mut tokio::sync::mpsc::Receiver<UiCommand
         UiCommand::InvokeAction {
             notification,
             action_key,
+            confirmed,
         } => {
             assert_eq!(notification, KEY);
             assert_eq!(action_key, "default");
+            assert!(!confirmed, "card activation should not claim confirmation");
         }
         command => panic!("unexpected command: {command:?}"),
     }

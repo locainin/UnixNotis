@@ -11,6 +11,10 @@ pub(in crate::daemon) const TRUSTED_CONTROL_EXECUTABLES: [&str; 4] = [
     "unixnotis-daemon",
 ];
 
+// Only interactive renderers may assert that a user confirmed an application action
+pub(in crate::daemon) const TRUSTED_INTERACTION_EXECUTABLES: [&str; 2] =
+    ["unixnotis-center", "unixnotis-popups"];
+
 // Only the center process may publish panel readiness state
 pub(in crate::daemon) const TRUSTED_PANEL_READINESS_EXECUTABLES: [&str; 1] = ["unixnotis-center"];
 

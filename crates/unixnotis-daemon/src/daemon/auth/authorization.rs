@@ -12,8 +12,8 @@ use crate::daemon::DaemonState;
 use super::credentials::{connection_credentials, CallerCredentials};
 use super::executable_trust::is_trusted_control_executable_path;
 use super::policy::{
-    TRUSTED_CONTROL_EXECUTABLES, TRUSTED_PANEL_READINESS_EXECUTABLES,
-    TRUSTED_POPUP_READINESS_EXECUTABLES,
+    TRUSTED_CONTROL_EXECUTABLES, TRUSTED_INTERACTION_EXECUTABLES,
+    TRUSTED_PANEL_READINESS_EXECUTABLES, TRUSTED_POPUP_READINESS_EXECUTABLES,
 };
 #[cfg(not(target_os = "linux"))]
 use super::process_identity::read_process_executable_path;
@@ -41,6 +41,15 @@ pub(in crate::daemon) async fn authorize_panel_readiness_call(
         &TRUSTED_PANEL_READINESS_EXECUTABLES,
     )
     .await
+}
+
+pub(in crate::daemon) async fn authorize_interaction_call(
+    state: &Arc<DaemonState>,
+    header: &Header<'_>,
+    method: &'static str,
+) -> zbus::fdo::Result<()> {
+    authorize_control_call_for_executables(state, header, method, &TRUSTED_INTERACTION_EXECUTABLES)
+        .await
 }
 
 pub(in crate::daemon) async fn authorize_popup_readiness_call(

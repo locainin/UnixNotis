@@ -3,12 +3,13 @@ use zbus::Message;
 #[cfg(target_os = "linux")]
 use super::authorization::required_linux_process_fd;
 use super::authorization::{
-    authorize_control_call, authorize_panel_readiness_call, authorize_popup_readiness_call,
-    control_executable_error, control_owner_uid_error,
+    authorize_control_call, authorize_interaction_call, authorize_panel_readiness_call,
+    authorize_popup_readiness_call, control_executable_error, control_owner_uid_error,
 };
 #[cfg(target_os = "linux")]
 use super::credentials::CallerCredentials;
 use super::executable_trust::paths::canonicalize_best_effort;
+use super::policy::TRUSTED_INTERACTION_EXECUTABLES;
 use super::support::write_executable;
 use crate::test_support::{daemon_state_for_test, env_lock, EnvVarGuard, TempRoot};
 
@@ -42,6 +43,19 @@ async fn panel_readiness_authorization_rejects_header_without_bus_sender() {
     let err = authorize_panel_readiness_call(&state, &header, "PanelReady")
         .await
         .expect_err("missing sender must be rejected");
+
+    assert!(err.to_string().contains("missing sender"));
+}
+
+#[tokio::test]
+async fn interaction_authorization_rejects_header_without_bus_sender() {
+    let state = daemon_state_for_test(false).await;
+    let message = message_without_bus_sender();
+    let header = message.header();
+
+    let err = authorize_interaction_call(&state, &header, "InvokeAction")
+        .await
+        .expect_err("missing interaction sender must be rejected");
 
     assert!(err.to_string().contains("missing sender"));
 }
@@ -84,6 +98,34 @@ fn control_executable_error_requires_present_allowed_trusted_binary() {
     assert!(control_executable_error(None, &["noticenterctl"], true).is_some());
     assert!(control_executable_error(Some(&trusted), &["unixnotis-center"], true).is_some());
     assert!(control_executable_error(Some(&untrusted_name), &["unknown"], true).is_some());
+}
+
+#[test]
+fn interaction_executable_policy_excludes_noninteractive_control_clients() {
+    let _guard = env_lock();
+    let home = TempRoot::new("auth-interaction-executable");
+    let center = home.join(".local/bin/unixnotis-center");
+    let popups = home.join(".local/bin/unixnotis-popups");
+    let cli = home.join(".local/bin/noticenterctl");
+    write_executable(&center);
+    write_executable(&popups);
+    write_executable(&cli);
+    let _home = EnvVarGuard::set("HOME", home.path());
+
+    for trusted_ui in [&center, &popups] {
+        assert!(control_executable_error(
+            Some(&canonicalize_best_effort(trusted_ui)),
+            &TRUSTED_INTERACTION_EXECUTABLES,
+            true,
+        )
+        .is_none());
+    }
+    assert!(control_executable_error(
+        Some(&canonicalize_best_effort(&cli)),
+        &TRUSTED_INTERACTION_EXECUTABLES,
+        true,
+    )
+    .is_some());
 }
 
 #[cfg(target_os = "linux")]

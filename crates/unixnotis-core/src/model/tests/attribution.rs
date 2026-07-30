@@ -247,6 +247,16 @@ fn interaction_policies_keep_identity_and_action_authority_separate() {
         "native association should require confirmation for richer actions"
     );
     assert_eq!(
+        native.action_policy("default"),
+        ApplicationActionPolicy::Allow,
+        "the protocol default key should use default activation policy"
+    );
+    assert_eq!(
+        native.action_policy("archive"),
+        ApplicationActionPolicy::Confirm,
+        "non-default keys should use button policy"
+    );
+    assert_eq!(
         native.interactions.inline_reply,
         InlineReplyPolicy::Deny,
         "same-user native association cannot protect credential-like reply text"

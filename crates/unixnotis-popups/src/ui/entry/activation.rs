@@ -99,6 +99,7 @@ fn invoke_default_action(
         UiCommand::InvokeAction {
             notification,
             action_key: action_key.to_string(),
+            confirmed: false,
         },
     );
 }
