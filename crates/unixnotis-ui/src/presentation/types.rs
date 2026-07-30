@@ -36,7 +36,9 @@ impl NotificationKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrustLevel {
     Verified,
-    Recognized,
+    SystemAssociated,
+    PortalAssociated,
+    UserAssociated,
     Unresolved,
     Conflict,
     Relay,
@@ -47,7 +49,7 @@ impl TrustLevel {
     pub const fn css_class(self) -> &'static str {
         match self {
             Self::Verified => "verified",
-            Self::Recognized => "recognized",
+            Self::SystemAssociated | Self::PortalAssociated | Self::UserAssociated => "recognized",
             Self::Unresolved => "unresolved",
             Self::Conflict => "conflict",
             Self::Relay => "relay",
@@ -103,6 +105,7 @@ pub struct IdentityPresentation {
 pub struct ActionView {
     pub key: String,
     pub label: String,
+    pub policy: unixnotis_core::ApplicationActionPolicy,
 }
 
 /// Compact actions split without silently dropping safe overflow

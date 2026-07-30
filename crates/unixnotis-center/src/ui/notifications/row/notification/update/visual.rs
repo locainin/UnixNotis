@@ -25,13 +25,22 @@ pub(super) fn apply_visual_state(
     set_class_state(card, hooks::shared_state::CRITICAL, is_critical);
     for (level, class_name) in [
         (TrustLevel::Verified, "verified"),
-        (TrustLevel::Recognized, "recognized"),
         (TrustLevel::Unresolved, "unresolved"),
         (TrustLevel::Conflict, "conflict"),
         (TrustLevel::Relay, "relay"),
     ] {
         set_class_state(card, class_name, presentation.trust.level == level);
     }
+    set_class_state(
+        card,
+        "recognized",
+        matches!(
+            presentation.trust.level,
+            TrustLevel::SystemAssociated
+                | TrustLevel::PortalAssociated
+                | TrustLevel::UserAssociated
+        ),
+    );
     set_widget_visible_if_changed(&row.urgency_badge, is_critical);
     set_class_state(card, hooks::shared_state::ACTIVE, data.is_active);
     set_class_state(

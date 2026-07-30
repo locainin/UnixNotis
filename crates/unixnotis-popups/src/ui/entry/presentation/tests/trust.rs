@@ -76,8 +76,8 @@ fn user_writable_desktop_association_remains_unverified() {
 
     let trust = PopupTrustPresentation::for_notification(&view);
 
-    assert_eq!(trust.level, TrustLevel::Recognized);
-    assert_eq!(trust.short_label.as_deref(), Some("Unverified"));
+    assert_eq!(trust.level, TrustLevel::UserAssociated);
+    assert_eq!(trust.short_label.as_deref(), Some("Local app"));
     assert_eq!(trust.reply, ReplyPresentation::Hidden);
 }
 

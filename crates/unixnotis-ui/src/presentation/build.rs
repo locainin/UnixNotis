@@ -3,8 +3,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use unixnotis_core::{
-    Action, ApplicationActionPolicy, AttributionStatus, InlineReplyPolicy, NotificationView,
-    PopupAdmissionView, Urgency,
+    Action, ApplicationActionPolicy, AttributionStatus, IdentityAssurance, InlineReplyPolicy,
+    NotificationView, PopupAdmissionView, Urgency,
 };
 
 use super::text::{
@@ -104,7 +104,10 @@ pub(super) fn trust_presentation(notification: &NotificationView) -> TrustPresen
     let short_label = match level {
         // Verified and relay primary labels already communicate their source clearly
         TrustLevel::Verified | TrustLevel::Relay => None,
-        TrustLevel::Recognized | TrustLevel::Unresolved => Some("Unverified".to_string()),
+        TrustLevel::SystemAssociated => Some("System associated".to_string()),
+        TrustLevel::PortalAssociated => Some("Portal mediated".to_string()),
+        TrustLevel::UserAssociated => Some("Local app".to_string()),
+        TrustLevel::Unresolved => Some("Unverified".to_string()),
         TrustLevel::Conflict => Some("Suspicious".to_string()),
     };
     let details_label = nonempty_text(&notification.attribution.diagnostic_detail);
@@ -134,12 +137,14 @@ pub(super) fn trust_presentation(notification: &NotificationView) -> TrustPresen
 }
 
 const fn trust_level(notification: &NotificationView) -> TrustLevel {
-    match notification.attribution.status {
-        AttributionStatus::Verified => TrustLevel::Verified,
-        AttributionStatus::Recognized => TrustLevel::Recognized,
-        AttributionStatus::Unresolved => TrustLevel::Unresolved,
-        AttributionStatus::Conflict => TrustLevel::Conflict,
-        AttributionStatus::Relay => TrustLevel::Relay,
+    match notification.attribution.assurance {
+        IdentityAssurance::Authenticated => TrustLevel::Verified,
+        IdentityAssurance::SystemAssociated => TrustLevel::SystemAssociated,
+        IdentityAssurance::PortalAssociated => TrustLevel::PortalAssociated,
+        IdentityAssurance::UserAssociated => TrustLevel::UserAssociated,
+        IdentityAssurance::Unresolved => TrustLevel::Unresolved,
+        IdentityAssurance::Conflict => TrustLevel::Conflict,
+        IdentityAssurance::Relay => TrustLevel::Relay,
     }
 }
 
@@ -171,7 +176,9 @@ fn identity_presentation(
     };
     let badge = match level {
         TrustLevel::Verified => BadgePresentation::AuthenticatedApplication,
-        TrustLevel::Recognized => BadgePresentation::RecognizedApplication,
+        TrustLevel::SystemAssociated
+        | TrustLevel::PortalAssociated
+        | TrustLevel::UserAssociated => BadgePresentation::RecognizedApplication,
         TrustLevel::Unresolved => BadgePresentation::UnknownApplication,
         TrustLevel::Conflict => BadgePresentation::SuspiciousApplication,
         TrustLevel::Relay => BadgePresentation::CommandLine,
@@ -237,15 +244,16 @@ fn communication_category_class(category_class: &str) -> bool {
 }
 
 fn visible_actions(notification: &NotificationView, kind: NotificationKind) -> ActionPresentation {
-    if notification.attribution.application_action_policy() != ApplicationActionPolicy::Allow {
-        return ActionPresentation::default();
-    }
-    // A blank default label keeps card activation without creating an empty button
-    let default_key = notification
+    let default_policy = notification.attribution.default_activation_policy();
+    let button_policy = notification.attribution.action_button_policy();
+    // Only unconditional default activation becomes a whole-card action
+    let advertised_default = notification
         .actions
         .iter()
-        .find(|action| action.key == "default")
-        .map(|action| action.key.clone());
+        .find(|action| action.key == "default");
+    let default_key = (default_policy == ApplicationActionPolicy::Allow)
+        .then(|| advertised_default.map(|action| action.key.clone()))
+        .flatten();
     let mut actions = notification
         .actions
         .iter()
@@ -254,8 +262,28 @@ fn visible_actions(notification: &NotificationView, kind: NotificationKind) -> A
                 && !action.key.trim().is_empty()
                 && !action.label.trim().is_empty()
         })
-        .map(action_view)
+        .filter_map(|action| {
+            let policy = if action.key == "default" {
+                default_policy
+            } else {
+                button_policy
+            };
+            // Allowed defaults use card activation and never duplicate app-owned branding
+            (policy != ApplicationActionPolicy::Deny
+                && !(action.key == "default" && policy == ApplicationActionPolicy::Allow))
+                .then(|| action_view(action, policy))
+        })
         .collect::<Vec<_>>();
+    if default_policy == ApplicationActionPolicy::Confirm
+        && advertised_default.is_some_and(|action| action.label.trim().is_empty())
+    {
+        // Confirmable blank defaults need an explicit control instead of hidden card activation
+        actions.push(ActionView {
+            key: "default".to_string(),
+            label: "Open notification".to_string(),
+            policy: ApplicationActionPolicy::Confirm,
+        });
+    }
     let overflow = actions.split_off(actions.len().min(kind.action_limit()));
     ActionPresentation {
         default_key,
@@ -264,10 +292,11 @@ fn visible_actions(notification: &NotificationView, kind: NotificationKind) -> A
     }
 }
 
-fn action_view(action: &Action) -> ActionView {
+fn action_view(action: &Action, policy: ApplicationActionPolicy) -> ActionView {
     ActionView {
         key: action.key.clone(),
         label: clamp_label_text(&action.label, ACTION_LABEL_MAX_CHARS).into_owned(),
+        policy,
     }
 }
 
@@ -285,8 +314,10 @@ fn thumbnail_kind(notification: &NotificationView) -> ThumbnailKind {
             .unwrap_or_default()
             .eq_ignore_ascii_case(category)
     });
-    let identity_is_verified =
-        matches!(notification.attribution.status, AttributionStatus::Verified);
+    let identity_is_verified = matches!(
+        notification.attribution.assurance,
+        IdentityAssurance::Authenticated
+    );
     if !identity_is_verified {
         // Untrusted senders need an explicit media category before large imagery is shown
         return if category_is_media {
@@ -310,9 +341,6 @@ fn image_path_matches_authenticated_badge(notification: &NotificationView) -> bo
         return false;
     }
     let image_path = notification.image.image_path.trim();
-    if image_path.is_empty() {
-        return false;
-    }
     if image_path == badge {
         return true;
     }
