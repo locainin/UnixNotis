@@ -50,14 +50,11 @@ pub struct Margins {
 
 impl Default for Margins {
     fn default() -> Self {
-        // Default padding around the panel. Keeping it symmetric produces a balanced look by default.
-        // Users can override individual edges in config for tighter or asymmetric layouts.
-        // Right margin increased to 18 to accommodate the popup card box-shadow which
-        // extends ~17px horizontally. Without this the shadow gets clipped at the
-        // work-area boundary.
+        // Neutral default shared by panel and popup. Callers that need edge
+        // clearance for shadows should set margins explicitly.
         Self {
             top: 14,
-            right: 18,
+            right: 14,
             bottom: 14,
             left: 14,
         }
