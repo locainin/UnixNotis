@@ -218,7 +218,8 @@ fn build_action_button(
                 glib::timeout_add_local_once(
                     std::time::Duration::from_millis(MAX_CONFIRM_TIMEOUT_MS),
                     move || {
-                        if expire_armed_at.take() == Some(now) {
+                        if expire_armed_at.get() == Some(now) {
+                            expire_armed_at.set(None);
                             expire_button.set_label(&expire_label);
                             expire_button.set_tooltip_text(None);
                             expire_button.update_property(&[
