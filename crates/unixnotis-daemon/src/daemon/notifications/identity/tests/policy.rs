@@ -1,22 +1,27 @@
-use unixnotis_core::{AttributionStatus, InlineReplyPolicy};
+use unixnotis_core::{InlineReplyPolicy, InteractionPolicies};
 
 use super::inline_reply_policy;
 
 #[test]
-fn only_system_and_portal_associations_allow_inline_replies() {
-    for class in [AttributionStatus::Verified, AttributionStatus::Verified] {
-        assert_eq!(inline_reply_policy(class), InlineReplyPolicy::Allow);
-    }
+fn only_authenticated_policy_allows_inline_replies() {
+    assert_eq!(
+        inline_reply_policy(InteractionPolicies::AUTHENTICATED),
+        InlineReplyPolicy::Allow,
+        "authenticated interaction policy should retain reply authority"
+    );
 }
 
 #[test]
-fn every_unconfirmed_attribution_class_denies_inline_replies() {
-    for class in [
-        AttributionStatus::Recognized,
-        AttributionStatus::Relay,
-        AttributionStatus::Unresolved,
-        AttributionStatus::Conflict,
+fn every_same_user_association_policy_denies_inline_replies() {
+    for policies in [
+        InteractionPolicies::NATIVE_COMPATIBILITY,
+        InteractionPolicies::CONFIRM_ACTIONS,
+        InteractionPolicies::DENY,
     ] {
-        assert_eq!(inline_reply_policy(class), InlineReplyPolicy::Deny);
+        assert_eq!(
+            inline_reply_policy(policies),
+            InlineReplyPolicy::Deny,
+            "same-user execution cannot authenticate credential-like reply text"
+        );
     }
 }

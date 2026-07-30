@@ -1,7 +1,5 @@
-use super::{
-    ApplicationActionPolicy, AttributionReason, AttributionStatus, InlineReplyPolicy,
-    NotificationAttribution,
-};
+use super::{AttributionReason, AttributionStatus, IdentityAssurance, NotificationAttribution};
+use crate::model::{ApplicationActionPolicy, InlineReplyPolicy, InteractionPolicies};
 use zbus::zvariant::{serialized::Context, to_bytes, Type, LE};
 
 #[test]
@@ -27,9 +25,9 @@ fn attribution_wire_enums_use_declared_one_byte_values() {
 
     for (reason, discriminant) in [
         (AttributionReason::ExactSystemExecutable, 0_u8),
-        (AttributionReason::VerifiedPortalAppId, 1),
+        (AttributionReason::PortalAppIdAssociation, 1),
         (AttributionReason::ExactUserExecutable, 2),
-        (AttributionReason::VerifiedProtectedPayload, 3),
+        (AttributionReason::ProtectedPayloadMatch, 3),
         (AttributionReason::TrustedRelayExecutable, 4),
         (AttributionReason::MissingSenderEvidence, 10),
         (AttributionReason::MissingCommandLine, 11),
@@ -53,10 +51,35 @@ fn attribution_wire_enums_use_declared_one_byte_values() {
 
     for (policy, discriminant) in [
         (InlineReplyPolicy::Allow, 0_u8),
+        (InlineReplyPolicy::Confirm, 1),
         (InlineReplyPolicy::Deny, 2),
     ] {
         let encoded = to_bytes(context, &policy).expect("serialize inline reply policy");
         assert_eq!(InlineReplyPolicy::signature(), u8::signature());
+        assert_eq!(encoded.bytes(), &[discriminant]);
+    }
+
+    for (assurance, discriminant) in [
+        (IdentityAssurance::Authenticated, 0_u8),
+        (IdentityAssurance::SystemAssociated, 1),
+        (IdentityAssurance::PortalAssociated, 2),
+        (IdentityAssurance::UserAssociated, 3),
+        (IdentityAssurance::Unresolved, 4),
+        (IdentityAssurance::Conflict, 5),
+        (IdentityAssurance::Relay, 6),
+    ] {
+        let encoded = to_bytes(context, &assurance).expect("serialize identity assurance");
+        assert_eq!(IdentityAssurance::signature(), u8::signature());
+        assert_eq!(encoded.bytes(), &[discriminant]);
+    }
+
+    for (policy, discriminant) in [
+        (ApplicationActionPolicy::Allow, 0_u8),
+        (ApplicationActionPolicy::Confirm, 1),
+        (ApplicationActionPolicy::Deny, 2),
+    ] {
+        let encoded = to_bytes(context, &policy).expect("serialize application action policy");
+        assert_eq!(ApplicationActionPolicy::signature(), u8::signature());
         assert_eq!(encoded.bytes(), &[discriminant]);
     }
 }
@@ -69,8 +92,9 @@ fn attribution_wire_enums_reject_unknown_discriminants() {
     assert!(unknown.deserialize::<AttributionStatus>().is_err());
     assert!(unknown.deserialize::<AttributionReason>().is_err());
 
-    let unused_policy = to_bytes(context, &1_u8).expect("serialize unused policy byte");
-    assert!(unused_policy.deserialize::<InlineReplyPolicy>().is_err());
+    assert!(unknown.deserialize::<InlineReplyPolicy>().is_err());
+    assert!(unknown.deserialize::<IdentityAssurance>().is_err());
+    assert!(unknown.deserialize::<ApplicationActionPolicy>().is_err());
 }
 
 #[test]
@@ -182,7 +206,7 @@ fn relay_never_promotes_the_caller_label_to_primary_identity() {
 }
 
 #[test]
-fn only_verified_identity_allows_application_actions() {
+fn interaction_policies_keep_identity_and_action_authority_separate() {
     let verified = NotificationAttribution::verified(
         "Verified",
         "Verified",
@@ -193,8 +217,56 @@ fn only_verified_identity_allows_application_actions() {
         "system-app:verified".to_string(),
     );
     assert_eq!(
-        verified.application_action_policy(),
+        verified.action_policy("default"),
         ApplicationActionPolicy::Allow
+    );
+    assert_eq!(
+        verified.action_policy("open"),
+        ApplicationActionPolicy::Allow
+    );
+
+    let native = NotificationAttribution::associated(
+        "System app",
+        "System app",
+        "org.example.System",
+        "system",
+        IdentityAssurance::SystemAssociated,
+        InteractionPolicies::NATIVE_COMPATIBILITY,
+        AttributionReason::ExactSystemExecutable,
+        "",
+        "associated:system-app:system".to_string(),
+    );
+    assert_eq!(
+        native.default_activation_policy(),
+        ApplicationActionPolicy::Allow,
+        "native association should preserve compatible card activation"
+    );
+    assert_eq!(
+        native.action_button_policy(),
+        ApplicationActionPolicy::Confirm,
+        "native association should require confirmation for richer actions"
+    );
+    assert_eq!(
+        native.interactions.inline_reply,
+        InlineReplyPolicy::Deny,
+        "same-user native association cannot protect credential-like reply text"
+    );
+
+    let portal = NotificationAttribution::associated(
+        "Portal app",
+        "Portal app",
+        "org.example.Portal",
+        "portal",
+        IdentityAssurance::PortalAssociated,
+        InteractionPolicies::CONFIRM_ACTIONS,
+        AttributionReason::PortalAppIdAssociation,
+        "",
+        "associated:portal-app:portal".to_string(),
+    );
+    assert_eq!(
+        portal.default_activation_policy(),
+        ApplicationActionPolicy::Confirm,
+        "an app id without unforgeable provenance must not activate silently"
     );
 
     for attribution in [
@@ -223,7 +295,7 @@ fn only_verified_identity_allows_application_actions() {
         NotificationAttribution::relay("Relay", "", "relay:relay".to_string()),
     ] {
         assert_eq!(
-            attribution.application_action_policy(),
+            attribution.action_policy("default"),
             ApplicationActionPolicy::Deny,
             "status {:?} must not emit application-owned signals",
             attribution.status

@@ -1,16 +1,10 @@
 //! Interaction decisions kept independent from presentation association
 
-use unixnotis_core::{AttributionStatus, InlineReplyPolicy};
+use unixnotis_core::{InlineReplyPolicy, InteractionPolicies};
 
-pub(super) const fn inline_reply_policy(status: AttributionStatus) -> InlineReplyPolicy {
-    // Text entry stays disabled unless strong evidence identifies the application
-    match status {
-        AttributionStatus::Verified => InlineReplyPolicy::Allow,
-        AttributionStatus::Recognized
-        | AttributionStatus::Unresolved
-        | AttributionStatus::Conflict
-        | AttributionStatus::Relay => InlineReplyPolicy::Deny,
-    }
+pub(super) const fn inline_reply_policy(interactions: InteractionPolicies) -> InlineReplyPolicy {
+    // The resolver owns this policy instead of deriving text authority from branding
+    interactions.inline_reply
 }
 
 #[cfg(test)]

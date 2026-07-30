@@ -3,7 +3,7 @@
 use super::super::*;
 
 #[test]
-fn dedicated_system_identity_allows_legitimate_reply() {
+fn dedicated_system_identity_is_associated_without_inline_reply_authority() {
     let (app_path, app_identity) = installed_system_executable();
     let index = DesktopIdentityIndex::from_records(
         vec![system_record(
@@ -24,13 +24,25 @@ fn dedicated_system_identity_allows_legitimate_reply() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(
+        resolution.attribution.assurance,
+        unixnotis_core::IdentityAssurance::SystemAssociated
+    );
     assert_eq!(resolution.attribution.display_name, "True Chat");
     assert_eq!(
         resolution.attribution.group_key,
-        "verified:system-app:org.example.True"
+        "associated:system-app:org.example.True"
     );
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    assert_eq!(
+        resolution.attribution.default_activation_policy(),
+        unixnotis_core::ApplicationActionPolicy::Allow
+    );
+    assert_eq!(
+        resolution.attribution.action_button_policy(),
+        unixnotis_core::ApplicationActionPolicy::Confirm
+    );
     assert!(!resolution
         .attribution
         .diagnostic_detail
@@ -81,7 +93,7 @@ fn dedicated_executable_accepts_extra_non_identity_runtime_flags() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
 }
 
 #[test]
@@ -147,7 +159,7 @@ fn verified_executable_recovers_from_stale_desktop_hint() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
     assert_eq!(resolution.attribution.display_name, "Signal");
     assert_eq!(resolution.attribution.desktop_id, "signal-true");
 }

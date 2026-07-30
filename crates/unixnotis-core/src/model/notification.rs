@@ -6,9 +6,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::{OwnedValue, Type};
 
-use super::attribution::{InlineReplyPolicy, NotificationAttribution};
+use super::attribution::NotificationAttribution;
 use super::diagnostics::AttributionDiagnostics;
 use super::image::NotificationImage;
+use super::interaction::InlineReplyPolicy;
 use super::reply::InlineReply;
 use super::types::{Action, Urgency};
 use crate::util::{fold_text_for_layout, MAX_DISPLAY_TOKEN_WIDTH};

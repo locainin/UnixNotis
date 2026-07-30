@@ -1,7 +1,8 @@
 //! Structured attribution construction and trust-domain grouping
 
 use unixnotis_core::{
-    AttributionDiagnostics, AttributionReason, AttributionStatus, NotificationAttribution,
+    AttributionDiagnostics, AttributionReason, AttributionStatus, IdentityAssurance,
+    InteractionPolicies, NotificationAttribution,
 };
 
 use super::super::desktop_index::{
@@ -50,14 +51,16 @@ pub(super) fn resolution_for_portal_record(
     );
     let canonical = index.canonical_record_for_record(record);
     let canonical_id = index.canonical_id_for_record(record);
-    let attribution = NotificationAttribution::verified(
+    let attribution = NotificationAttribution::associated(
         &canonical.display_name,
         reported_name,
         canonical_id,
         &canonical.badge_icon,
-        AttributionReason::VerifiedPortalAppId,
+        IdentityAssurance::PortalAssociated,
+        InteractionPolicies::CONFIRM_ACTIONS,
+        AttributionReason::PortalAppIdAssociation,
         &format!("Mediated by {portal}"),
-        format!("verified:portal-app:{canonical_id}"),
+        format!("associated:portal-app:{canonical_id}"),
     );
     policy_resolution(attribution)
 }
@@ -99,16 +102,18 @@ pub(super) fn resolution_for_record(
             VerifiedLaunch::DedicatedExecutable | VerifiedLaunch::PackageLauncherTarget => {
                 AttributionReason::ExactSystemExecutable
             }
-            VerifiedLaunch::ProtectedPayload => AttributionReason::VerifiedProtectedPayload,
+            VerifiedLaunch::ProtectedPayload => AttributionReason::ProtectedPayloadMatch,
         };
-        return policy_resolution(NotificationAttribution::verified(
+        return policy_resolution(NotificationAttribution::associated(
             &canonical.display_name,
             reported_name,
             canonical_id,
             &canonical.badge_icon,
+            IdentityAssurance::SystemAssociated,
+            InteractionPolicies::NATIVE_COMPATIBILITY,
             reason,
             &source,
-            format!("verified:system-app:{canonical_id}"),
+            format!("associated:system-app:{canonical_id}"),
         ));
     }
 
@@ -116,11 +121,13 @@ pub(super) fn resolution_for_record(
         || "unknown".to_string(),
         super::super::executable::FileIdentity::group_fragment,
     );
-    policy_resolution(NotificationAttribution::recognized(
+    policy_resolution(NotificationAttribution::associated(
         &canonical.display_name,
         reported_name,
         canonical_id,
         &canonical.badge_icon,
+        IdentityAssurance::UserAssociated,
+        InteractionPolicies::CONFIRM_ACTIONS,
         AttributionReason::ExactUserExecutable,
         &source,
         format!(
@@ -159,11 +166,18 @@ pub(super) fn recognized_resolution(
             sender_identity_fragment(sender)
         )
     };
-    policy_resolution(NotificationAttribution::recognized(
+    let assurance = if record.system_origin {
+        IdentityAssurance::SystemAssociated
+    } else {
+        IdentityAssurance::UserAssociated
+    };
+    policy_resolution(NotificationAttribution::associated(
         &canonical.display_name,
         claim.reported_name,
         canonical_id,
         &canonical.badge_icon,
+        assurance,
+        InteractionPolicies::DENY,
         attribution_reason_for_failure(failure),
         &source,
         group_key,
@@ -210,7 +224,7 @@ fn conflict_resolution(
 
 pub(super) fn policy_resolution(attribution: NotificationAttribution) -> AttributionResolution {
     AttributionResolution {
-        inline_reply_policy: inline_reply_policy(attribution.status),
+        inline_reply_policy: inline_reply_policy(attribution.interactions),
         attribution,
         diagnostics: AttributionDiagnostics::default(),
     }

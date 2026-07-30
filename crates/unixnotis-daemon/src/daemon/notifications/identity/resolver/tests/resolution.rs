@@ -45,7 +45,7 @@ fn verified_record_with_a_contradictory_name_becomes_conflict() {
 }
 
 #[test]
-fn verified_package_launcher_target_receives_application_authority() {
+fn package_launcher_target_preserves_only_compatible_default_activation() {
     let record = system_record(
         "org.example.App",
         "Example App",
@@ -66,11 +66,19 @@ fn verified_package_launcher_target_receives_application_authority() {
         &index,
     );
 
-    assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
-    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Allow);
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
     assert_eq!(
-        resolution.attribution.application_action_policy(),
+        resolution.attribution.assurance,
+        unixnotis_core::IdentityAssurance::SystemAssociated
+    );
+    assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
+    assert_eq!(
+        resolution.attribution.default_activation_policy(),
         ApplicationActionPolicy::Allow
+    );
+    assert_eq!(
+        resolution.attribution.action_button_policy(),
+        ApplicationActionPolicy::Confirm
     );
 }
 

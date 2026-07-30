@@ -200,7 +200,11 @@ fn verified_and_unresolved_senders_never_share_an_application_group() {
         &index,
     );
 
-    assert_eq!(verified.attribution.status, AttributionStatus::Verified);
+    assert_eq!(verified.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(
+        verified.attribution.assurance,
+        unixnotis_core::IdentityAssurance::SystemAssociated
+    );
     assert_eq!(unresolved.attribution.status, AttributionStatus::Unresolved);
     assert_ne!(
         verified.attribution.group_key, unresolved.attribution.group_key,

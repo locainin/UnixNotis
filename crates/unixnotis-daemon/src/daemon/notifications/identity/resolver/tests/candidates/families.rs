@@ -36,12 +36,16 @@ fn equivalent_desktop_aliases_use_one_canonical_application_identity() {
     let alias_first = resolve_alias(vec![alias, canonical]);
 
     for resolution in [&canonical_first, &alias_first] {
-        assert_eq!(resolution.attribution.status, AttributionStatus::Verified);
+        assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+        assert_eq!(
+            resolution.attribution.assurance,
+            unixnotis_core::IdentityAssurance::SystemAssociated
+        );
         assert_eq!(resolution.attribution.display_name, "Example App");
         assert_eq!(resolution.attribution.badge_icon, "example-app");
         assert_eq!(
             resolution.attribution.group_key,
-            "verified:system-app:org.example.True"
+            "associated:system-app:org.example.True"
         );
     }
     assert_eq!(
