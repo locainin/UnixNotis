@@ -313,13 +313,16 @@ impl NotificationAttribution {
         self.interactions.action_buttons
     }
 
-    /// Policy for one exact advertised action key
+    // Decide what happens when a specific action key is activated
+    // "default" follows the card-level activation rules so physical gestures still work
+    // "inline-reply" is always blocked here — the dedicated reply method handles that
+    // everything else uses the normal button policy from the identity resolver
     #[must_use]
     pub fn action_policy(&self, action_key: &str) -> ApplicationActionPolicy {
-        if action_key == "default" {
-            self.default_activation_policy()
-        } else {
-            self.action_button_policy()
+        match action_key {
+            "default" => self.default_activation_policy(),
+            "inline-reply" => ApplicationActionPolicy::Deny,
+            _ => self.action_button_policy(),
         }
     }
 }
