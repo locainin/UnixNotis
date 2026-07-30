@@ -197,20 +197,22 @@ fn build_action_button(
     let original_label = clamp_action_label_text(&action.label).into_owned();
     let policy = action.policy;
     let tx = command_tx.clone();
-    // Tracks whether the first click primed the action and when it happened
-    // This is used to reject double-clicks and expire stale confirmations
-    let confirmation_armed = Cell::new(false);
-    let last_arm_time: Cell<Option<Instant>> = Cell::new(None);
+    // Single shared state: None = not armed, Some(instant) = armed at that time
+    // Using Rc<Cell<>> so both the click handler and the timeout callback read and
+    // write the same cell. The timeout captures `now` at arm time and only resets
+    // the button if that exact timestamp is still current — this prevents a stale
+    // timer from the first cycle from wiping the visual state of a newer cycle.
+    let armed_at = Rc::new(Cell::new(None::<Instant>));
     let action_gate = ClickCooldown::new(Duration::from_millis(ACTION_BUTTON_GUARD_MS));
     button.connect_clicked(move |button| {
         if !action_gate.try_start() {
             return;
         }
-        let confirmed = match action_activation(policy, confirmation_armed.get()) {
+        let confirmed = match action_activation(policy, armed_at.get().is_some()) {
             ActionActivation::Denied => return,
             ActionActivation::ArmConfirmation => {
-                confirmation_armed.set(true);
-                last_arm_time.set(Some(Instant::now()));
+                let now = Instant::now();
+                armed_at.set(Some(now));
                 let confirmation_label = format!("Confirm {original_label}");
                 button.set_label(&confirmation_label);
                 button.set_tooltip_text(Some("Activate again to confirm"));
@@ -219,11 +221,11 @@ fn build_action_button(
                 // confirm mode forever
                 let expire_button = button.clone();
                 let expire_label = original_label.clone();
-                let expire_armed = confirmation_armed.clone();
+                let expire_armed_at = Rc::clone(&armed_at);
                 glib::timeout_add_local_once(
                     Duration::from_millis(MAX_CONFIRM_TIMEOUT_MS),
                     move || {
-                        if expire_armed.replace(false) {
+                        if expire_armed_at.take() == Some(now) {
                             expire_button.set_label(&expire_label);
                             expire_button.set_tooltip_text(None);
                             expire_button.update_property(&[
@@ -238,12 +240,12 @@ fn build_action_button(
                 // Only check timing when the action was actually confirmed
                 // Allow-policy actions skip this path entirely
                 if confirmed {
-                    let elapsed = last_arm_time.get().map(|t| t.elapsed());
+                    let elapsed = armed_at.get().map(|t| t.elapsed());
                     match elapsed {
                         // No arm time recorded means something went wrong
                         // Clean up instead of dispatching
                         None => {
-                            confirmation_armed.set(false);
+                            armed_at.set(None);
                             button.set_label(&original_label);
                             button.set_tooltip_text(None);
                             button.update_property(&[
@@ -260,8 +262,7 @@ fn build_action_button(
                         // Confirmation took too long
                         // Reset the button and make the person re-arm
                         Some(d) if d > Duration::from_millis(MAX_CONFIRM_TIMEOUT_MS) => {
-                            confirmation_armed.set(false);
-                            last_arm_time.set(None);
+                            armed_at.set(None);
                             button.set_label(&original_label);
                             button.set_tooltip_text(None);
                             button.update_property(&[
@@ -278,8 +279,7 @@ fn build_action_button(
         };
         // Reset everything after a successful dispatch
         // The next click will start a fresh confirmation cycle instead of invoking again
-        confirmation_armed.set(false);
-        last_arm_time.set(None);
+        armed_at.set(None);
         button.set_label(&original_label);
         button.set_tooltip_text(None);
         button.update_property(&[gtk::accessible::Property::Label(&original_label)]);
