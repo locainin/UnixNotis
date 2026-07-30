@@ -1,5 +1,8 @@
 //! Player allowlist, denylist, and browser-name admission
 
+use std::fs;
+use std::os::unix::fs::MetadataExt;
+
 use unixnotis_core::{MediaConfig, MediaLocalArtPolicy, MediaRemoteArtPolicy};
 
 pub(super) fn detect_browser_family(
@@ -47,7 +50,8 @@ pub(super) fn local_art_allowed(
     browser_family: Option<&str>,
     owner_executable: Option<&str>,
     policy: MediaLocalArtPolicy,
-    allowlist: &[String],
+    _allowlist: &[String],
+    executable_allowlist: &[String],
 ) -> bool {
     // A missing owner executable means the bus owner is not concrete enough to trust
     let has_owner = owner_executable.is_some_and(|value| !value.trim().is_empty());
@@ -59,7 +63,8 @@ pub(super) fn local_art_allowed(
         MediaLocalArtPolicy::ExactExecutableOnly => {
             // Browser bridges can direct the renderer to arbitrary host files via mpris:artUrl.
             // Only native players (non-browser) with an allowlist-matched executable may name host files.
-            browser_family.is_none() && is_executable_allowed(owner_executable.unwrap_or(""), allowlist)
+            browser_family.is_none()
+                && is_executable_allowed(owner_executable.unwrap_or(""), executable_allowlist)
         }
         MediaLocalArtPolicy::AllAdmitted => {
             // Browser bridges can direct the renderer to arbitrary host files via mpris:artUrl.
@@ -73,12 +78,22 @@ fn is_executable_allowed(executable: &str, allowlist: &[String]) -> bool {
     if allowlist.is_empty() {
         return false;
     }
-    // Check if the executable basename matches any allowlist entry
-    let basename = std::path::Path::new(executable)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-    allowlist.iter().any(|entry| basename == entry)
+    // Compare device and inode of the owner executable against allowlisted executables
+    // This prevents impersonation via executable name spoofing
+    let owner_meta = match fs::metadata(executable) {
+        Ok(meta) => meta,
+        Err(_) => return false,
+    };
+    let owner_dev = owner_meta.dev();
+    let owner_ino = owner_meta.ino();
+
+    allowlist.iter().any(|allowed_path| {
+        let allowed_meta = match fs::metadata(allowed_path) {
+            Ok(meta) => meta,
+            Err(_) => return false,
+        };
+        allowed_meta.dev() == owner_dev && allowed_meta.ino() == owner_ino
+    })
 }
 
 pub(in crate::media) fn is_allowed_player(name: &str, config: &MediaConfig) -> bool {

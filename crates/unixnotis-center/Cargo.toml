@@ -39,3 +39,4 @@ unixnotis-ui = { path = "../unixnotis-ui" }
 [dev-dependencies]
 proptest.workspace = true
 toml.workspace = true
+tempfile = "3"

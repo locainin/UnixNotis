@@ -52,6 +52,7 @@ pub(in crate::media) async fn build_player_state(
         owner_executable.as_deref(),
         config.local_art_policy,
         &config.allowlist,
+        &config.local_art_executable_allowlist,
     );
     let player = ProxyBuilder::new(connection)
         .destination(unique_owner.clone())?
