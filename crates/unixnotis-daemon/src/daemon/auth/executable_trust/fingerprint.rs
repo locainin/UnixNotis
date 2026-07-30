@@ -84,7 +84,7 @@ pub(in crate::daemon) fn file_fingerprint_signature(
 }
 
 #[cfg(target_os = "linux")]
-fn file_fingerprint_signature_from_stat(
+pub(super) const fn file_fingerprint_signature_from_stat(
     stat: &rustix::fs::Stat,
 ) -> Option<FileFingerprintSignature> {
     Some(FileFingerprintSignature {
@@ -95,9 +95,9 @@ fn file_fingerprint_signature_from_stat(
         uid: stat.st_uid,
         gid: stat.st_gid,
         mtime: stat.st_mtime,
-        mtime_nsec: stat.st_mtime_nsec as i64,
+        mtime_nsec: stat.st_mtime_nsec.cast_signed(),
         ctime: stat.st_ctime,
-        ctime_nsec: stat.st_ctime_nsec as i64,
+        ctime_nsec: stat.st_ctime_nsec.cast_signed(),
     })
 }
 

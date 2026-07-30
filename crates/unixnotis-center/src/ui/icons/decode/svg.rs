@@ -4,12 +4,16 @@ use std::borrow::Cow;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use flate2::read::GzDecoder;
 
 use super::file::MAX_ICON_BYTES;
 use super::model::RasterImage;
 use super::pipeline::{MAX_ICON_DIMENSION, MAX_ICON_PIXELS};
+
+// Hard wall-clock deadline for SVG parsing and rendering
+const SVG_RENDER_DEADLINE: Duration = Duration::from_millis(500);
 
 pub(super) const fn is_gzip_payload(bytes: &[u8]) -> bool {
     // SVGZ uses the normal gzip signature regardless of its filename suffix
@@ -61,11 +65,17 @@ pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage,
     // Output allocation follows the fitted dimensions rather than the source canvas
     let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
         .ok_or_else(|| "could not allocate bounded SVG surface".to_string())?;
+
+    // Enforce a wall-clock deadline on rendering to prevent CPU exhaustion (UNX-4-005)
+    let render_start = Instant::now();
     resvg::render(
         &tree,
         resvg::tiny_skia::Transform::from_scale(scale, scale),
         &mut pixmap.as_mut(),
     );
+    if render_start.elapsed() > SVG_RENDER_DEADLINE {
+        return Err("SVG render exceeded time limit".to_string());
+    }
 
     let width = i32::try_from(width).map_err(|error| error.to_string())?;
     let height = i32::try_from(height).map_err(|error| error.to_string())?;

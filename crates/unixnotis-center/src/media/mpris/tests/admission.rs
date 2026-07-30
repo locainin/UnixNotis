@@ -1,6 +1,6 @@
-use unixnotis_core::{MediaConfig, MediaRemoteArtPolicy};
+use unixnotis_core::{MediaConfig, MediaLocalArtPolicy, MediaRemoteArtPolicy};
 
-use super::super::admission::{detect_browser_family, remote_art_allowed};
+use super::super::admission::{detect_browser_family, local_art_allowed, remote_art_allowed};
 use super::super::is_allowed_player;
 
 #[test]
@@ -105,4 +105,37 @@ fn remote_art_admission_keeps_browsers_opt_in_and_requires_an_owner() {
         None,
         MediaRemoteArtPolicy::BrowsersToo
     ));
+}
+
+#[test]
+fn local_art_admission_rejects_browsers_and_requires_an_owner() {
+    let empty_allowlist: Vec<String> = vec![];
+    let spotify_allowlist = vec!["spotify".to_string()];
+
+    // Browser with owner executable should be rejected
+    assert!(!local_art_allowed(
+        Some("firefox"),
+        Some("/usr/bin/firefox"),
+        MediaLocalArtPolicy::ExactExecutableOnly,
+        &empty_allowlist
+    ));
+
+    // Non-browser without allowlist match should be rejected
+    assert!(!local_art_allowed(
+        None,
+        Some("/usr/bin/spotify"),
+        MediaLocalArtPolicy::ExactExecutableOnly,
+        &empty_allowlist
+    ));
+
+    // Non-browser with allowlist match should be allowed
+    assert!(local_art_allowed(
+        None,
+        Some("/usr/bin/spotify"),
+        MediaLocalArtPolicy::ExactExecutableOnly,
+        &spotify_allowlist
+    ));
+
+    // Non-browser without owner executable should be rejected
+    assert!(!local_art_allowed(None, None, MediaLocalArtPolicy::ExactExecutableOnly, &spotify_allowlist));
 }

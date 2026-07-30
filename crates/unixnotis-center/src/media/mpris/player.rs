@@ -5,7 +5,7 @@ use unixnotis_core::MediaConfig;
 use zbus::fdo::{DBusProxy, PropertiesProxy};
 use zbus::{Connection, Proxy, ProxyBuilder};
 
-use super::admission::{detect_browser_family, remote_art_allowed};
+use super::admission::{detect_browser_family, local_art_allowed, remote_art_allowed};
 use super::constants::{MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER};
 
 #[derive(Clone)]
@@ -17,6 +17,7 @@ pub(in crate::media) struct PlayerState {
     pub(in crate::media) browser_family: Option<String>,
     pub(in crate::media) owner_pid: Option<u32>,
     pub(in crate::media) remote_art_allowed: bool,
+    pub(in crate::media) local_art_allowed: bool,
     pub(in crate::media) player: Proxy<'static>,
     pub(in crate::media) properties: PropertiesProxy<'static>,
     // Cancellation sender for the properties listener task
@@ -46,6 +47,12 @@ pub(in crate::media) async fn build_player_state(
         owner_executable.as_deref(),
         config.remote_art_policy,
     );
+    let local_art_allowed = local_art_allowed(
+        browser_family.as_deref(),
+        owner_executable.as_deref(),
+        config.local_art_policy,
+        &config.allowlist,
+    );
     let player = ProxyBuilder::new(connection)
         .destination(unique_owner.clone())?
         .path(MPRIS_PATH)?
@@ -66,6 +73,7 @@ pub(in crate::media) async fn build_player_state(
         browser_family,
         owner_pid,
         remote_art_allowed,
+        local_art_allowed,
         player,
         properties,
         listener_cancel,

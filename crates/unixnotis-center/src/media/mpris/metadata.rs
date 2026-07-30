@@ -6,6 +6,11 @@ use super::PlayerState;
 use crate::media::art::normalize_art_source;
 use crate::media::MediaInfo;
 
+// Bound MPRIS metadata fields before copying into runtime snapshots
+const MAX_TITLE_BYTES: usize = 256;
+const MAX_ARTIST_BYTES: usize = 256;
+const MAX_ART_URL_BYTES: usize = 2048;
+
 pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {
     // Missing metadata should not drop the card; fall back to identity-only.
     let metadata: HashMap<String, OwnedValue> = state
@@ -13,12 +18,17 @@ pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<Me
         .get_property("Metadata")
         .await
         .unwrap_or_default();
-    let title = metadata_string(&metadata, "xesam:title").unwrap_or_default();
-    let artist = metadata_artist(&metadata).unwrap_or_default();
+    let title = metadata_string(&metadata, "xesam:title")
+        .map(|value| bound_string(&value, MAX_TITLE_BYTES))
+        .unwrap_or_default();
+    let artist = metadata_artist(&metadata)
+        .map(|value| bound_string(&value, MAX_ARTIST_BYTES))
+        .unwrap_or_default();
     // Metadata PID wins because browser bridges publish the real browser process there
     let owner_pid = metadata_pid(&metadata).or(state.owner_pid);
     let art_source = metadata_string(&metadata, "mpris:artUrl")
-        .and_then(|value| normalize_art_source(&value, state.remote_art_allowed));
+        .filter(|value| value.len() <= MAX_ART_URL_BYTES)
+        .and_then(|value| normalize_art_source(&value, state.remote_art_allowed, state.local_art_allowed));
 
     // PlaybackStatus drives whether the player stays visible
     // If that read fails, keep the previous snapshot instead of inventing a fake stop event
@@ -55,6 +65,19 @@ pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<Me
     })
 }
 
+fn bound_string(value: &str, max_bytes: usize) -> String {
+    // Truncate at a UTF-8 boundary so the retained value stays valid
+    let trimmed = value.trim();
+    if trimmed.len() <= max_bytes {
+        return trimmed.to_string();
+    }
+    let mut end = max_bytes;
+    while !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+    trimmed[..end].to_string()
+}
+
 fn metadata_string(map: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
     let value = map.get(key)?;
     let owned = value.try_clone().ok()?;
@@ -65,7 +88,14 @@ fn metadata_artist(map: &HashMap<String, OwnedValue>) -> Option<String> {
     let value = map.get("xesam:artist")?;
     let artists_value = value.try_clone().ok()?;
     if let Ok(artists) = Vec::<String>::try_from(artists_value) {
-        return artists.into_iter().next();
+        // Bound the number of artist entries before taking the first one
+        if artists.len() > 16 {
+            return None;
+        }
+        return artists
+            .into_iter()
+            .next()
+            .filter(|artist| !artist.trim().is_empty());
     }
     let owned = value.try_clone().ok()?;
     if let Ok(artist) = String::try_from(owned) {
