@@ -206,7 +206,7 @@ fn relay_never_promotes_the_caller_label_to_primary_identity() {
 }
 
 #[test]
-fn interaction_policies_keep_identity_and_action_authority_separate() {
+fn authenticated_and_native_policies_keep_action_surfaces_separate() {
     let verified = NotificationAttribution::verified(
         "Verified",
         "Verified",
@@ -261,7 +261,10 @@ fn interaction_policies_keep_identity_and_action_authority_separate() {
         InlineReplyPolicy::Deny,
         "same-user native association cannot protect credential-like reply text"
     );
+}
 
+#[test]
+fn portal_and_unassociated_policies_never_allow_silent_actions() {
     let portal = NotificationAttribution::associated(
         "Portal app",
         "Portal app",
