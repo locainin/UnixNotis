@@ -231,24 +231,12 @@ impl DesktopIdentityIndex {
     }
 
     pub(super) fn index_trusted_portals_in(&mut self, directory: &Path) {
-        const MAX_PORTAL_CANDIDATES: usize = 256;
-
-        let Ok(entries) = std::fs::read_dir(directory) else {
-            return;
-        };
-        for entry in entries.take(MAX_PORTAL_CANDIDATES).flatten() {
-            let path = entry.path();
-            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-                continue;
-            };
-            if !name.starts_with("xdg-desktop-portal") {
-                continue;
-            }
+        for path in portal_candidate_paths(directory) {
             let Some(evidence) = executable_evidence_for_path(&path) else {
                 continue;
             };
             // Portal authority is accepted only from protected system integration binaries
-            if evidence.identity.is_system_managed() && evidence.identity.is_executable_regular() {
+            if portal_identity_is_trusted(evidence.identity) {
                 self.trusted_portals.push(ExecutableIdentity {
                     path: evidence.canonical_path,
                     identity: evidence.identity,
@@ -362,6 +350,36 @@ impl DesktopIdentityIndex {
         });
         self.family_by_record.push(Some(family_index));
     }
+}
+
+pub(in crate::daemon::notifications::identity) const fn portal_identity_is_trusted(
+    identity: FileIdentity,
+) -> bool {
+    identity.is_system_managed() && identity.is_executable_regular()
+}
+
+pub(in crate::daemon::notifications::identity) fn portal_candidate_paths(
+    directory: &Path,
+) -> Vec<PathBuf> {
+    const MAX_PORTAL_CANDIDATES: usize = 256;
+
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    // Walk every entry in the directory
+    // Only entries with a matching name count toward the cap
+    // Filtering first means a directory full of unrelated files cannot hide a real portal
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("xdg-desktop-portal"))
+                .then_some(path)
+        })
+        .take(MAX_PORTAL_CANDIDATES)
+        .collect()
 }
 
 fn protected_payload_signature(record: &DesktopRecord) -> Vec<(usize, u64, u64)> {
