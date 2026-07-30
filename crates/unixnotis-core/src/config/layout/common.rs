@@ -50,10 +50,9 @@ pub struct Margins {
 
 impl Default for Margins {
     fn default() -> Self {
-        // Default padding around the panel. Keeping it symmetric produces a balanced look by default.
-        // Users can override individual edges in config for tighter or asymmetric layouts.
+        // Neutral default shared by panel and popup. Callers that need edge
+        // clearance for shadows should set margins explicitly.
         Self {
-            // Matches the default popup stack spacing for a cohesive baseline layout.
             top: 14,
             right: 14,
             bottom: 14,

@@ -22,7 +22,12 @@ impl Default for PopupConfig {
     fn default() -> Self {
         Self {
             anchor: Anchor::TopRight,
-            margin: Margins::default(),
+            margin: Margins {
+                top: 14,
+                right: 18,
+                bottom: 14,
+                left: 18,
+            },
             width: 360,
             spacing: 12,
             max_visible: 3,
