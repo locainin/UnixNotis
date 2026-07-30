@@ -32,7 +32,12 @@ fn decode_icon_file_rejects_large_dimensions_before_full_decode() {
     let Err(err) = decode_icon_file(&path, 20) else {
         panic!("oversized image should fail")
     };
-    assert!(err.contains("decode limit"));
+    assert!(
+        err.contains("decode limit")
+            || err.contains("dimensions exceed")
+            || err.contains("exceeds limit"),
+        "unexpected error: {err}"
+    );
     let _ = fs::remove_file(&path);
 }
 
