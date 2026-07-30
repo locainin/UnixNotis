@@ -159,6 +159,12 @@ fn confirmable_popup_action_requires_two_clicks_before_dispatch() {
         "first click must not invoke a confirmable action"
     );
 
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let context = gtk::glib::MainContext::default();
+    while context.pending() {
+        context.iteration(false);
+    }
+
     button.emit_clicked();
     assert!(matches!(
         command_rx.try_recv(),
@@ -170,6 +176,13 @@ fn confirmable_popup_action_requires_two_clicks_before_dispatch() {
             && notification.generation == 3
             && action_key == "archive"
     ));
+
+    button.emit_clicked();
+    assert_eq!(button.label().as_deref(), Some("Confirm Archive"));
+    assert!(
+        command_rx.try_recv().is_err(),
+        "third click must re-arm rather than dispatching"
+    );
 }
 
 #[gtk::test]
