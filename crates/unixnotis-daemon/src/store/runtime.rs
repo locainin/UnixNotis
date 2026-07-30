@@ -293,6 +293,12 @@ impl NotificationStore {
         if notification.generation != key.generation {
             return None;
         }
+        // "inline-reply" is a fake action key used only by the reply text method
+        // Block it here even though action_policy already rejects it — that way a caller
+        // that skips the policy check still cannot reach the reply action
+        if action_key == "inline-reply" {
+            return None;
+        }
         // Confirmation is meaningful only for actions the resolver explicitly marked confirmable
         let policy = notification.attribution.action_policy(action_key);
         let authorized = match policy {

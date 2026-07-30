@@ -224,6 +224,11 @@ fn authenticated_and_native_policies_keep_action_surfaces_separate() {
         verified.action_policy("open"),
         ApplicationActionPolicy::Allow
     );
+    assert_eq!(
+        verified.action_policy("inline-reply"),
+        ApplicationActionPolicy::Deny,
+        "even fully verified attributions must reject inline-reply through action dispatch"
+    );
 
     let native = NotificationAttribution::associated(
         "System app",
@@ -250,6 +255,11 @@ fn authenticated_and_native_policies_keep_action_surfaces_separate() {
         native.action_policy("default"),
         ApplicationActionPolicy::Allow,
         "the protocol default key should use default activation policy"
+    );
+    assert_eq!(
+        native.action_policy("inline-reply"),
+        ApplicationActionPolicy::Deny,
+        "the inline-reply key must be rejected regardless of button policy"
     );
     assert_eq!(
         native.action_policy("archive"),
