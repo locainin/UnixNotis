@@ -28,10 +28,11 @@ pub(in crate::daemon) async fn resolve_attribution(
     // Cached process data is refreshed before it affects attribution
     let mut sender = refresh_sender_security_evidence(sender);
     let initial = resolve_with_evidence(claim, &sender, index);
-    let needs_provenance = initial.attribution.interactions == InteractionPolicies::DENY
-        && (initial.attribution.status == AttributionStatus::Recognized
-            || (initial.attribution.status == AttributionStatus::Unresolved
-                && claim_has_index_candidate(claim, index)));
+    let needs_provenance = needs_sender_provenance(
+        initial.attribution.status,
+        initial.attribution.interactions,
+        claim_has_index_candidate(claim, index),
+    );
     if !needs_provenance {
         return initial;
     }
@@ -41,7 +42,18 @@ pub(in crate::daemon) async fn resolve_attribution(
     resolve_with_evidence(claim, &sender, index)
 }
 
-fn claim_has_index_candidate(claim: AppClaim<'_>, index: &DesktopIdentityIndex) -> bool {
+pub(super) fn needs_sender_provenance(
+    status: AttributionStatus,
+    interactions: InteractionPolicies,
+    claim_has_candidate: bool,
+) -> bool {
+    // Package lookup is useful only while it can positively bind a denied helper
+    interactions == InteractionPolicies::DENY
+        && (status == AttributionStatus::Recognized
+            || (status == AttributionStatus::Unresolved && claim_has_candidate))
+}
+
+pub(super) fn claim_has_index_candidate(claim: AppClaim<'_>, index: &DesktopIdentityIndex) -> bool {
     if !claim.reported_name.trim().is_empty()
         && !index.records_for_claim(claim.reported_name).is_empty()
     {
