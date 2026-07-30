@@ -53,7 +53,7 @@ pub(in crate::daemon) fn open_process_executable_from_pidfd<Fd: AsFd>(
     // namespace. O_NOFOLLOW prevents following a symlinked /proc entry.
     let fd = std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
+        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed())
         .open(format!("/proc/{expected_pid}/exe"))
         .ok()?;
 
