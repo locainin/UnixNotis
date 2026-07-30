@@ -1,9 +1,10 @@
 //! Trusted executable path matching
 
+use std::os::unix::io::AsFd;
 use std::path::{Path, PathBuf};
 
 use super::super::policy::{TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES};
-use super::fingerprint::file_fingerprint;
+use super::fingerprint::{file_fingerprint, file_fingerprint_from_fd};
 use super::metadata::trusted_control_file_metadata_is_safe;
 use super::snapshots::trusted_control_snapshot;
 
@@ -123,4 +124,48 @@ pub(in crate::daemon::auth) fn trusted_snapshot_matches_observed(
 
     // Live fingerprint must still match the pinned startup snapshot
     file_fingerprint(observed).is_some_and(|fingerprint| fingerprint == snapshot.fingerprint)
+}
+
+#[cfg(target_os = "linux")]
+pub(in crate::daemon::auth) fn is_trusted_control_executable_from_fd<Fd: AsFd>(
+    fd: &Fd,
+    path: &Path,
+    relaxed: bool,
+) -> bool {
+    // Trust only known sibling binaries from the daemon install/build directory
+    let Some(trusted_dir) = trusted_control_directory() else {
+        return false;
+    };
+
+    let observed = canonicalize_best_effort(path);
+    let Some(observed_name) = observed.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    if !TRUSTED_CONTROL_EXECUTABLES.contains(&observed_name) {
+        return false;
+    }
+
+    // Fingerprint the kernel file object via the descriptor, not the pathname.
+    // This prevents the UNX-4-001 mount-namespace bypass where an attacker
+    // shadows a trusted path with a different executable in their own namespace.
+    let fingerprint = match file_fingerprint_from_fd(fd, path) {
+        Some(fingerprint) => fingerprint,
+        None => return false,
+    };
+
+    if relaxed {
+        // Relaxed mode checks the path is in a trusted location, then verifies
+        // the descriptor fingerprint matches the live file at that path
+        if !is_trusted_control_executable_path_relaxed_in_dir(&observed, &trusted_dir) {
+            return false;
+        }
+        // Verify the descriptor fingerprint matches what we'd get from the path
+        file_fingerprint(path).is_some_and(|path_fingerprint| path_fingerprint == fingerprint)
+    } else {
+        // Strict mode: the descriptor fingerprint must match the startup snapshot
+        let Some(snapshot) = trusted_control_snapshot(&trusted_dir, observed_name) else {
+            return false;
+        };
+        fingerprint == snapshot.fingerprint
+    }
 }

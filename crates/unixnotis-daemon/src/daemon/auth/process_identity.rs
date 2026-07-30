@@ -1,11 +1,12 @@
 //! Process metadata helpers for authorization checks
 
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
 use std::io::Read;
 #[cfg(target_os = "linux")]
-use std::os::fd::{AsFd, AsRawFd};
+use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 
 #[cfg(target_os = "linux")]
 const MAX_PIDFD_INFO_BYTES: u64 = 4_096;
@@ -35,6 +36,32 @@ pub(in crate::daemon) fn read_process_executable_path_from_pidfd<Fd: AsFd>(
         return None;
     }
     Some(executable)
+}
+
+#[cfg(target_os = "linux")]
+pub(in crate::daemon) fn open_process_executable_from_pidfd<Fd: AsFd>(
+    pidfd: &Fd,
+    expected_pid: u32,
+) -> Option<OwnedFd> {
+    // A ready pidfd means its process has exited and its pid must not be followed
+    if !pidfd_matches_live_process(pidfd, expected_pid) {
+        return None;
+    }
+
+    // Open /proc/<pid>/exe as a file descriptor. This refers directly to the
+    // kernel file object, not a pathname that could be shadowed by a mount
+    // namespace. O_NOFOLLOW prevents following a symlinked /proc entry.
+    let fd = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
+        .open(format!("/proc/{expected_pid}/exe"))
+        .ok()?;
+
+    // A second check closes the small window where the process exits during open
+    if !pidfd_matches_live_process(pidfd, expected_pid) {
+        return None;
+    }
+    Some(fd.into())
 }
 
 #[cfg(target_os = "linux")]

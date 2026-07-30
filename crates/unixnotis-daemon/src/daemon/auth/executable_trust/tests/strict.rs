@@ -29,18 +29,21 @@ fn strict_trust_uses_current_executable_directory_and_rejects_foreign_path() {
 
     assert!(is_trusted_control_executable_path(&trusted, false));
     assert!(!is_trusted_control_executable_path(&foreign, false));
-    assert!(control_executable_is_allowed(
-        &trusted,
+    assert!(control_executable_is_allowed::<std::os::fd::OwnedFd>(
+        Some(&trusted),
+        None,
         &["noticenterctl"],
         false
     ));
-    assert!(!control_executable_is_allowed(
-        &trusted,
+    assert!(!control_executable_is_allowed::<std::os::fd::OwnedFd>(
+        Some(&trusted),
+        None,
         &["unixnotis-center"],
         false
     ));
-    assert!(!control_executable_is_allowed(
-        &foreign,
+    assert!(!control_executable_is_allowed::<std::os::fd::OwnedFd>(
+        Some(&foreign),
+        None,
         &["noticenterctl"],
         false
     ));

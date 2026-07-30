@@ -11,6 +11,8 @@ use crate::daemon::DaemonState;
 
 use super::credentials::{connection_credentials, CallerCredentials};
 use super::executable_trust::is_trusted_control_executable_path;
+#[cfg(target_os = "linux")]
+use super::executable_trust::is_trusted_control_executable_from_fd;
 use super::policy::{
     TRUSTED_CONTROL_EXECUTABLES, TRUSTED_INTERACTION_EXECUTABLES,
     TRUSTED_PANEL_READINESS_EXECUTABLES, TRUSTED_POPUP_READINESS_EXECUTABLES,
@@ -18,7 +20,9 @@ use super::policy::{
 #[cfg(not(target_os = "linux"))]
 use super::process_identity::read_process_executable_path;
 #[cfg(target_os = "linux")]
-use super::process_identity::read_process_executable_path_from_pidfd;
+use super::process_identity::{
+    open_process_executable_from_pidfd, read_process_executable_path_from_pidfd,
+};
 
 pub(in crate::daemon) async fn authorize_control_call(
     state: &Arc<DaemonState>,
@@ -109,16 +113,23 @@ async fn authorize_control_call_for_executables(
         zbus::fdo::Error::AccessDenied("caller process id is unavailable".to_string())
     })?;
     #[cfg(target_os = "linux")]
-    let exe_path = {
+    let (exe_path, exe_fd) = {
         // Linux must use the stable process handle from the same credential snapshot
         let pidfd = required_linux_process_fd(&credentials)?;
-        read_process_executable_path_from_pidfd(pidfd, pid)
+        let exe_path = read_process_executable_path_from_pidfd(pidfd, pid);
+        // Open /proc/<pid>/exe as a descriptor to fingerprint the actual file object
+        // rather than a pathname that could be shadowed by a mount namespace
+        let exe_fd = open_process_executable_from_pidfd(pidfd, pid);
+        (exe_path, exe_fd)
     };
     #[cfg(not(target_os = "linux"))]
-    let exe_path = read_process_executable_path(pid).await;
-    if let Some(err) =
-        control_executable_error(exe_path.as_deref(), allowed_executables, state.trial_mode())
-    {
+    let (exe_path, exe_fd) = (read_process_executable_path(pid).await, None);
+    if let Some(err) = control_executable_error(
+        exe_path.as_deref(),
+        exe_fd.as_ref(),
+        allowed_executables,
+        state.trial_mode(),
+    ) {
         warn!(
             method,
             sender = %sender_name,
@@ -163,25 +174,45 @@ pub(in crate::daemon) fn control_owner_uid_error(
     ))
 }
 
-pub(in crate::daemon) fn control_executable_is_allowed(
-    path: &Path,
+pub(in crate::daemon) fn control_executable_is_allowed<Fd: std::os::unix::io::AsFd>(
+    path: Option<&Path>,
+    exe_fd: Option<&Fd>,
     allowed_executables: &[&str],
     relaxed: bool,
 ) -> bool {
-    // Name allowlist and path trust are separate checks; both must pass
+    // Name allowlist is required; path trust is a separate check that must also pass
+    let Some(path) = path else {
+        return false;
+    };
     let name_allowed = path
         .file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| allowed_executables.contains(&name));
-    name_allowed && is_trusted_control_executable_path(path, relaxed)
+    if !name_allowed {
+        return false;
+    }
+
+    // On Linux, verify the executable via its file descriptor to prevent
+    // mount-namespace bypass (UNX-4-001). The path is only used for the
+    // name allowlist above; the actual trust check uses the kernel file object.
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(fd) = exe_fd {
+            return is_trusted_control_executable_from_fd(fd, path, relaxed);
+        }
+    }
+
+    // Fallback for non-Linux or when fd is unavailable: use path-based trust
+    is_trusted_control_executable_path(path, relaxed)
 }
 
-pub(in crate::daemon) fn control_executable_error(
+pub(in crate::daemon) fn control_executable_error<Fd: std::os::unix::io::AsFd>(
     path: Option<&Path>,
+    exe_fd: Option<&Fd>,
     allowed_executables: &[&str],
     relaxed: bool,
 ) -> Option<zbus::fdo::Error> {
-    if path.is_some_and(|path| control_executable_is_allowed(path, allowed_executables, relaxed)) {
+    if control_executable_is_allowed(path, exe_fd, allowed_executables, relaxed) {
         return None;
     }
     Some(zbus::fdo::Error::AccessDenied(

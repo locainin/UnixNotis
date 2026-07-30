@@ -1,5 +1,6 @@
 //! Fingerprint cache for trusted executable files
 
+use std::os::unix::io::AsFd;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
@@ -7,6 +8,8 @@ use super::super::policy::{
     FileFingerprint, FileFingerprintSignature, FingerprintCacheEntry, FINGERPRINT_CACHE_CAPACITY,
 };
 use super::metadata::trusted_control_file_metadata_is_safe;
+#[cfg(target_os = "linux")]
+use super::metadata::trusted_control_file_metadata_is_safe_from_stat;
 
 pub(in crate::daemon) fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
     let metadata = std::fs::metadata(path).ok()?;
@@ -22,6 +25,30 @@ pub(in crate::daemon) fn file_fingerprint(path: &Path) -> Option<FileFingerprint
     }
 
     // Metadata signature is fast and still detects replacement and rewrite events
+    let fingerprint = FileFingerprint { signature };
+    store_cached_fingerprint(path, signature, fingerprint.clone());
+    Some(fingerprint)
+}
+
+pub(in crate::daemon) fn file_fingerprint_from_fd<Fd: AsFd>(
+    fd: &Fd,
+    path: &Path,
+) -> Option<FileFingerprint> {
+    // Open /proc/<pid>/exe as a descriptor and fingerprint the actual kernel
+    // file object, not a pathname that could be shadowed by a mount namespace.
+    // This prevents the UNX-4-001 mount-namespace bypass.
+    let stat = rustix::fs::fstat(fd.as_fd()).ok()?;
+    if !rustix::fs::FileType::from_raw_mode(stat.st_mode).is_file() {
+        return None;
+    }
+    if !trusted_control_file_metadata_is_safe_from_stat(&stat) {
+        return None;
+    }
+    let signature = file_fingerprint_signature_from_stat(&stat)?;
+    if let Some(cached) = load_cached_fingerprint(path, signature) {
+        return Some(cached);
+    }
+
     let fingerprint = FileFingerprint { signature };
     store_cached_fingerprint(path, signature, fingerprint.clone());
     Some(fingerprint)
@@ -54,6 +81,24 @@ pub(in crate::daemon) fn file_fingerprint_signature(
             len: metadata.len(),
         })
     }
+}
+
+#[cfg(target_os = "linux")]
+fn file_fingerprint_signature_from_stat(
+    stat: &rustix::fs::Stat,
+) -> Option<FileFingerprintSignature> {
+    Some(FileFingerprintSignature {
+        len: stat.st_size as u64,
+        dev: stat.st_dev,
+        ino: stat.st_ino,
+        mode: stat.st_mode,
+        uid: stat.st_uid,
+        gid: stat.st_gid,
+        mtime: stat.st_mtime,
+        mtime_nsec: stat.st_mtime_nsec as i64,
+        ctime: stat.st_ctime,
+        ctime_nsec: stat.st_ctime_nsec as i64,
+    })
 }
 
 pub(in crate::daemon) fn fingerprint_cache() -> &'static Mutex<Vec<FingerprintCacheEntry>> {
