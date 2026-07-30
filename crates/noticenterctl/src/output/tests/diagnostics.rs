@@ -15,7 +15,13 @@ fn diagnostics_keep_launch_verification_distinct_from_attribution_status() {
         "diagnostics should label the launch evidence detail"
     );
     assert!(
-        !output.contains("Identity result:"),
-        "launch evidence must not masquerade as the final attribution state"
+        output.contains("Identity assurance: unresolved"),
+        "final identity authority must remain distinct from the launch match"
+    );
+    assert!(
+        output.contains("Default activation: denied")
+            && output.contains("Action buttons: denied")
+            && output.contains("Inline reply: denied"),
+        "diagnostics must expose every independent interaction policy"
     );
 }

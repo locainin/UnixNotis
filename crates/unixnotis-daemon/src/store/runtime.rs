@@ -177,6 +177,8 @@ impl NotificationStore {
             generation: notification.generation,
             stored: true,
             attribution: notification.attribution_diagnostics.clone(),
+            identity_assurance: notification.attribution.assurance,
+            interaction_policies: notification.attribution.interactions,
             popup_admission: decision.admission_at_commit,
             renderer_process_running: decision.renderer_process_running_at_commit,
             renderer_ready: decision.renderer_ready_at_commit,

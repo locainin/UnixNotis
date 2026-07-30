@@ -4,8 +4,9 @@ use std::fmt::Write;
 
 use anyhow::Result;
 use unixnotis_core::{
-    CommandLineQualityView, LaunchAuthorityView, LaunchVerificationView,
-    NotificationDiagnosticsView, PopupAdmissionView, PopupDeliveryStage, RecordTrust,
+    ApplicationActionPolicy, CommandLineQualityView, IdentityAssurance, InlineReplyPolicy,
+    LaunchAuthorityView, LaunchVerificationView, NotificationDiagnosticsView, PopupAdmissionView,
+    PopupDeliveryStage, RecordTrust,
 };
 
 use super::write_stdout;
@@ -63,6 +64,26 @@ fn format_notification_diagnostics(view: &NotificationDiagnosticsView) -> Result
         "Launch detail: {}",
         value_or_none(&diagnostics.reason)
     )?;
+    writeln!(
+        output,
+        "Identity assurance: {}",
+        identity_assurance(view.identity_assurance)
+    )?;
+    writeln!(
+        output,
+        "Default activation: {}",
+        action_policy(view.interaction_policies.default_activation)
+    )?;
+    writeln!(
+        output,
+        "Action buttons: {}",
+        action_policy(view.interaction_policies.action_buttons)
+    )?;
+    writeln!(
+        output,
+        "Inline reply: {}",
+        reply_policy(view.interaction_policies.inline_reply)
+    )?;
     writeln!(output, "Stored: {}", yes_no(view.stored))?;
     writeln!(
         output,
@@ -104,6 +125,34 @@ fn format_notification_diagnostics(view: &NotificationDiagnosticsView) -> Result
         popup_delivery_stage(view.delivery_stage)
     )?;
     Ok(output)
+}
+
+const fn identity_assurance(value: IdentityAssurance) -> &'static str {
+    match value {
+        IdentityAssurance::Authenticated => "authenticated",
+        IdentityAssurance::SystemAssociated => "system associated",
+        IdentityAssurance::PortalAssociated => "portal associated",
+        IdentityAssurance::UserAssociated => "user associated",
+        IdentityAssurance::Unresolved => "unresolved",
+        IdentityAssurance::Conflict => "conflict",
+        IdentityAssurance::Relay => "relay",
+    }
+}
+
+const fn action_policy(value: ApplicationActionPolicy) -> &'static str {
+    match value {
+        ApplicationActionPolicy::Allow => "allowed",
+        ApplicationActionPolicy::Confirm => "confirmation required",
+        ApplicationActionPolicy::Deny => "denied",
+    }
+}
+
+const fn reply_policy(value: InlineReplyPolicy) -> &'static str {
+    match value {
+        InlineReplyPolicy::Allow => "allowed",
+        InlineReplyPolicy::Confirm => "confirmation required",
+        InlineReplyPolicy::Deny => "denied",
+    }
 }
 
 const fn popup_delivery_stage(value: PopupDeliveryStage) -> &'static str {

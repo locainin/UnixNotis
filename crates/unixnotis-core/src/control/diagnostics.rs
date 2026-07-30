@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::Type;
 
-use crate::AttributionDiagnostics;
+use crate::{AttributionDiagnostics, IdentityAssurance, InteractionPolicies};
 
 use super::{PopupAdmissionView, PopupDeliveryStage};
 
@@ -14,6 +14,9 @@ pub struct NotificationDiagnosticsView {
     pub generation: u64,
     pub stored: bool,
     pub attribution: AttributionDiagnostics,
+    // Final authority stays separate from the lower-level launch evidence above
+    pub identity_assurance: IdentityAssurance,
+    pub interaction_policies: InteractionPolicies,
     pub popup_admission: PopupAdmissionView,
     pub renderer_process_running: bool,
     pub renderer_ready: bool,
