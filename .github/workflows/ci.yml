@@ -21,6 +21,9 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  DEBIAN_SNAPSHOT: 20260720T000000Z
+  RUSTUP_INIT_VERSION: 1.28.2
+  RUSTUP_INIT_SHA256: 20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c
 
 defaults:
   run:
@@ -30,13 +33,29 @@ jobs:
   workspace:
     name: Workspace checks
     runs-on: ubuntu-24.04
-    container: debian:trixie-slim
+    container: debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
     timeout-minutes: 45
 
     steps:
       - name: Install system dependencies
         run: |
           set -euo pipefail
+          rm -f /etc/apt/sources.list
+          printf '%s\n' \
+            'Types: deb' \
+            "URIs: https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}" \
+            'Suites: trixie trixie-updates' \
+            'Components: main' \
+            'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+            '' \
+            'Types: deb' \
+            "URIs: https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}" \
+            'Suites: trixie-security' \
+            'Components: main' \
+            'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+            > /etc/apt/sources.list.d/debian.sources
+          printf '%s\n' 'Acquire::Check-Valid-Until "false";' \
+            > /etc/apt/apt.conf.d/99snapshot
           apt-get update
           apt-get install -y --no-install-recommends \
             bash \
@@ -64,8 +83,16 @@ jobs:
       - name: Install Rust toolchain
         run: |
           set -euo pipefail
-          curl --proto '=https' --tlsv1.2 -fsS https://sh.rustup.rs \
-            | sh -s -- -y --default-toolchain 1.96.1 --profile minimal --component rustfmt,clippy
+          rustup_init="${RUNNER_TEMP}/rustup-init"
+          curl --proto '=https' --tlsv1.2 -fsS \
+            "https://static.rust-lang.org/rustup/archive/${RUSTUP_INIT_VERSION}/x86_64-unknown-linux-gnu/rustup-init" \
+            -o "$rustup_init"
+          printf '%s  %s\n' "$RUSTUP_INIT_SHA256" "$rustup_init" \
+            | sha256sum --check --strict
+          chmod 0755 "$rustup_init"
+          "$rustup_init" -y --profile minimal --default-toolchain 1.96.1 \
+            --component rustfmt,clippy --no-modify-path
+          rm -f "$rustup_init"
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
           source "${HOME}/.cargo/env"
           rustup default 1.96.1
