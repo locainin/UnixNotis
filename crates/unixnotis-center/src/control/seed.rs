@@ -21,28 +21,15 @@ pub async fn seed_state(
     proxy: &ControlProxy<'_>,
     sender: &async_channel::Sender<UiEvent>,
 ) -> Result<(), SeedError> {
-    // GetState is the handshake and must succeed before snapshot methods are issued
-    let state = timed_dbus_call(proxy.get_state())
-        .await
-        .map_err(|error| SeedError {
-            state_error: Some(error.to_string()),
-            active_error: None,
-            history_error: None,
-            send_error: None,
-        })?;
-    let (active, history) = tokio::join!(
-        timed_dbus_call(proxy.list_active()),
-        timed_dbus_call(proxy.list_history())
-    );
-
-    match (active, history) {
-        (Ok(active), Ok(history)) => {
+    // The daemon captures state and rows under one store lock
+    match timed_dbus_call(proxy.get_snapshot()).await {
+        Ok(snapshot) => {
             // Publish only complete snapshots so the UI never mixes generations
             sender
                 .send(UiEvent::Seed {
-                    state,
-                    active,
-                    history,
+                    state: snapshot.state,
+                    active: snapshot.active,
+                    history: snapshot.history,
                 })
                 .await
                 .map_err(|error| SeedError {
@@ -53,11 +40,10 @@ pub async fn seed_state(
                 })?;
             Ok(())
         }
-        // Individual errors remain separate for useful diagnostics
-        (active, history) => Err(SeedError {
-            state_error: None,
-            active_error: active.err().map(|err| err.to_string()),
-            history_error: history.err().map(|err| err.to_string()),
+        Err(error) => Err(SeedError {
+            state_error: Some(error.to_string()),
+            active_error: None,
+            history_error: None,
             send_error: None,
         }),
     }

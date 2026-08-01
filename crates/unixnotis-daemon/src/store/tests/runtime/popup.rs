@@ -104,6 +104,26 @@ fn notification_diagnostics_require_both_renderer_process_and_readiness() {
 }
 
 #[test]
+fn popup_diagnostics_keep_the_readiness_revision_sampled_at_commit() {
+    let mut store = make_store_with_limits(10, 10);
+    let health = unixnotis_core::UiHealth {
+        popups_process_running: true,
+        popups_ready: true,
+        revision: 17,
+        ..unixnotis_core::UiHealth::default()
+    };
+    let notification = store
+        .insert_with_ui_health(make_notification("revision"), 0, &health)
+        .notification;
+
+    let diagnostics = store
+        .notification_diagnostics(notification.id, &unixnotis_core::UiHealth::default())
+        .expect("notification diagnostics");
+
+    assert_eq!(diagnostics.renderer_health_revision, 17);
+}
+
+#[test]
 fn disabled_popups_are_recorded_when_max_visible_is_zero() {
     let mut config = Config::default();
     config.popups.max_visible = 0;

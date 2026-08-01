@@ -151,16 +151,12 @@ pub async fn flush_offline_commands(
 }
 
 pub fn drop_stale_offline_commands(offline: &mut VecDeque<UiCommand>) {
-    // Drop notification-key commands after reconnect because daemon generations are process-local
-    // Commands that do not depend on old notification ids are kept
+    // Destructive notification commands cannot cross a daemon generation
     let before = offline.len();
     offline.retain(|command| {
         matches!(
             command,
-            UiCommand::ClearAll
-                | UiCommand::SetDnd(_)
-                | UiCommand::SetDndUntil(_)
-                | UiCommand::ClosePanel
+            UiCommand::SetDnd(_) | UiCommand::SetDndUntil(_) | UiCommand::ClosePanel
         )
     });
     let dropped = before.saturating_sub(offline.len());

@@ -8,7 +8,7 @@ use zbus::Message;
 
 use super::super::ControlServer;
 use crate::expire::{ExpirationCommand, ExpirationScheduler};
-use crate::test_support::daemon_state_for_test;
+use crate::test_support::{daemon_state_for_test, daemon_state_for_test_with_owner};
 
 fn notification(summary: &str) -> Notification {
     Notification {
@@ -146,6 +146,50 @@ async fn clear_all_rejects_unauthorized_sender_before_mutating_state() {
         .expect_err("unauthorized clear all should fail");
 
     assert_eq!(state.store.lock().await.list_active().len(), 1);
+}
+
+#[tokio::test]
+async fn authorized_snapshot_is_one_store_consistent_read() {
+    let state = daemon_state_for_test_with_owner(false, Some(":1.4242")).await;
+    let server = ControlServer::new(state.clone());
+    {
+        let mut store = state.store.lock().await;
+        store.insert(notification("active"), 0);
+        let history_id = store.insert(notification("history"), 0).notification.id;
+        store.close(history_id, CloseReason::Undefined);
+    }
+
+    let message = control_header_message("GetSnapshot");
+    let snapshot = server
+        .get_snapshot(message.header())
+        .await
+        .expect("pre-authorized control owner can read a snapshot");
+
+    assert_eq!(snapshot.active.len(), 1);
+    assert_eq!(snapshot.history.len(), 1);
+    assert_eq!(snapshot.state.history_count, 1);
+}
+
+#[tokio::test]
+async fn authorized_clear_all_removes_active_and_history_together() {
+    let state = daemon_state_for_test_with_owner(false, Some(":1.4242")).await;
+    let server = ControlServer::new(state.clone());
+    {
+        let mut store = state.store.lock().await;
+        store.insert(notification("active"), 0);
+        let history_id = store.insert(notification("history"), 0).notification.id;
+        store.close(history_id, CloseReason::Undefined);
+    }
+
+    let message = control_header_message("ClearAll");
+    server
+        .clear_all(message.header())
+        .await
+        .expect("pre-authorized control owner can clear all");
+
+    let store = state.store.lock().await;
+    assert!(store.list_active().is_empty());
+    assert!(store.list_history().is_empty());
 }
 
 #[tokio::test]

@@ -20,6 +20,7 @@ pub struct NotificationDiagnosticsView {
     pub popup_admission: PopupAdmissionView,
     pub renderer_process_running: bool,
     pub renderer_ready: bool,
+    pub renderer_health_revision: u64,
     pub configured_max_visible: u32,
     pub decided_at_unix_ms: i64,
     pub delivery_stage: PopupDeliveryStage,

@@ -11,8 +11,8 @@ use zbus::proxy;
 use crate::{NotificationDiagnosticsView, NotificationView, PopupCandidate};
 
 use super::{
-    CloseReason, ControlState, InhibitorInfo, PanelDebugLevel, PanelRequest, PopupGateState,
-    UiHealth,
+    CloseReason, ControlSnapshot, ControlState, InhibitorInfo, PanelDebugLevel, PanelRequest,
+    PopupGateState, UiHealth,
 };
 
 #[proxy(
@@ -25,6 +25,8 @@ trait Control {
     fn get_api_version(&self) -> zbus::Result<u32>;
     /// Current daemon state
     fn get_state(&self) -> zbus::Result<ControlState>;
+    /// Complete active/history seed captured under one store lock
+    fn get_snapshot(&self) -> zbus::Result<ControlSnapshot>;
     /// Readiness of the daemon-managed center and popup clients
     fn get_ui_health(&self) -> zbus::Result<UiHealth>;
     /// Active notifications intended for popups

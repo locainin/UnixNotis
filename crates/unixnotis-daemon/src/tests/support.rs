@@ -24,6 +24,13 @@ pub fn env_lock() -> MutexGuard<'static, ()> {
 }
 
 pub async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> {
+    daemon_state_for_test_with_owner(trial_mode, None).await
+}
+
+pub async fn daemon_state_for_test_with_owner(
+    trial_mode: bool,
+    control_owner: Option<&str>,
+) -> Arc<DaemonState> {
     // Signal-heavy daemon tests only need a session connection and default state
     let connection = Connection::session()
         .await
@@ -37,7 +44,7 @@ pub async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> {
         sound,
         trial_mode,
         Arc::new(ArcSwap::from_pointee(DesktopIdentityIndex::default())),
-        None,
+        control_owner.map(str::to_owned),
     )
 }
 

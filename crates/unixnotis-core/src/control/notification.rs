@@ -64,6 +64,8 @@ pub struct PopupDecisionRecord {
     pub admission_at_commit: PopupAdmissionView,
     pub renderer_process_running_at_commit: bool,
     pub renderer_ready_at_commit: bool,
+    /// Readiness revision observed while the notification was committed
+    pub renderer_health_revision_at_commit: u64,
     pub max_visible_at_commit: u32,
     pub decided_at_unix_ms: i64,
     pub delivery_stage: PopupDeliveryStage,

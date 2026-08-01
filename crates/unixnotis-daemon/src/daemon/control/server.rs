@@ -61,14 +61,18 @@ impl ControlServer {
         ))
     }
 
+    pub(super) async fn clear_all_notifications(&self) -> Vec<NotificationKey> {
+        let mut store = self.state.store.lock().await;
+        let keys = store.clear_all();
+        // Cancellation follows the same serialized mutation snapshot
+        self.state.cancel_expirations(&keys);
+        keys
+    }
+
     pub(super) async fn drain_active_notifications(&self) -> Vec<NotificationKey> {
-        let keys = {
-            let mut store = self.state.store.lock().await;
-            let keys = store.drain_active_keys();
-            // Cancellation is sent before same-ID replacements can commit
-            self.state.cancel_expirations(&keys);
-            keys
-        };
+        let mut store = self.state.store.lock().await;
+        let keys = store.drain_active_keys();
+        self.state.cancel_expirations(&keys);
         keys
     }
 
@@ -86,6 +90,13 @@ impl ControlServer {
 
     async fn get_state(&self) -> zbus::fdo::Result<ControlState> {
         self.query_state().await
+    }
+
+    pub(super) async fn get_snapshot(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<unixnotis_core::ControlSnapshot> {
+        self.query_snapshot(&header).await
     }
 
     async fn get_ui_health(&self) -> zbus::fdo::Result<UiHealth> {
@@ -257,8 +268,7 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ClearAll").await?;
-        let ids = self.drain_active_notifications().await;
-        self.clear_saved_history().await;
+        let ids = self.clear_all_notifications().await;
         self.state.publish_notifications_cleared(ids).await;
         Ok(())
     }
