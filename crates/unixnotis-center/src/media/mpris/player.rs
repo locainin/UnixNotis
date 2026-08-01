@@ -44,6 +44,19 @@ pub(in crate::media) async fn build_player_state(
         // Ownership changed during probing, so a later bus event should rebuild stable data
         return Ok(None);
     };
+
+    Ok(Some(
+        build_player_state_for_owner(connection, name, config, owner).await?,
+    ))
+}
+
+// Keep credential handling separate so compatibility behavior can be tested without a bus shim
+pub(super) async fn build_player_state_for_owner(
+    connection: &Connection,
+    name: &str,
+    config: &MediaConfig,
+    owner: OwnerProbe,
+) -> zbus::Result<PlayerState> {
     // Every process-bound proxy targets the verified unique owner instead of the mutable alias
     let identity = fetch_identity(connection, &owner.unique_owner)
         .await
@@ -83,7 +96,7 @@ pub(in crate::media) async fn build_player_state(
         .await?;
     let (listener_cancel, _listener_rx) = watch::channel(false);
 
-    Ok(Some(PlayerState {
+    Ok(PlayerState {
         bus_name: name.to_string(),
         unique_owner: Some(owner.unique_owner),
         identity,
@@ -94,7 +107,7 @@ pub(in crate::media) async fn build_player_state(
         player,
         properties,
         listener_cancel,
-    }))
+    })
 }
 
 pub(super) async fn fetch_identity(connection: &Connection, name: &str) -> Option<String> {
