@@ -93,7 +93,7 @@ async fn runtime_command_dispatches_and_schedules_a_targeted_refresh() {
 
     assert_eq!(fixture.next_calls(), 1);
     assert!(state.delayed_refreshes.contains_key(TEST_PLAYER_NAME));
-    for (_, task) in state.delayed_refreshes {
+    for task in state.delayed_refreshes.values_mut() {
         task.abort();
     }
 }
@@ -146,7 +146,7 @@ async fn runtime_signal_refreshes_cache_publishes_and_schedules_fallback() {
                 }]
     ));
     let _ = cancel_tx.send(true);
-    for (_, task) in state.delayed_refreshes {
+    for task in state.delayed_refreshes.values_mut() {
         task.abort();
     }
 }

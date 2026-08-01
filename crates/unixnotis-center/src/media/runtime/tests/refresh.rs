@@ -56,7 +56,7 @@ async fn full_refresh_discovers_caches_and_publishes_live_players() {
         UiEvent::MediaUpdated(infos) if infos[0].bus_name == TEST_PLAYER_NAME
     ));
     let _ = state.players[TEST_PLAYER_NAME].listener_cancel.send(true);
-    for (_, task) in state.delayed_refreshes {
+    for task in state.delayed_refreshes.values_mut() {
         task.abort();
     }
 }

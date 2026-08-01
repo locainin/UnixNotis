@@ -3,13 +3,14 @@
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 
+use futures_util::stream::{self, StreamExt};
 use tokio::sync::mpsc::Sender;
 use tracing::warn;
 use unixnotis_core::{MediaConfig, PanelDebugLevel};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
-use super::constants::MPRIS_PREFIX;
+use super::constants::{MAX_MPRIS_PLAYERS, MPRIS_PREFIX};
 use super::{build_player_state, is_allowed_player, spawn_properties_listener, PlayerState};
 use crate::diagnostics::panel_debug as debug;
 use crate::media::runtime::MediaSignal;
@@ -32,10 +33,13 @@ pub(in crate::media) async fn refresh_players(
         allowed.insert(name);
     }
 
+    let allowed = select_player_names(allowed);
+    let allowed_set = allowed.iter().map(String::as_str).collect::<HashSet<_>>();
+
     // Remove players that no longer exist on the bus to avoid stale UI cards
     let mut removed_names = Vec::new();
     for name in players.keys() {
-        if !allowed.contains(name) {
+        if !allowed_set.contains(name.as_str()) {
             removed_names.push(name.clone());
         }
     }
@@ -51,19 +55,47 @@ pub(in crate::media) async fn refresh_players(
         });
     }
 
-    for name in allowed {
-        if players.contains_key(&name) {
-            continue;
-        }
-        // New players are probed once before entering the live cache
-        let state = match build_player_state(connection, &name, config).await {
+    let mut owners = players
+        .values()
+        .filter_map(|player| player.unique_owner.clone())
+        .collect::<HashSet<_>>();
+    let names_to_probe = allowed
+        .iter()
+        .filter(|name| !players.contains_key(*name))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut probed = stream::iter(names_to_probe)
+        .map(|name| async move {
+            let result = build_player_state(connection, &name, config).await;
+            (name, result)
+        })
+        .buffer_unordered(4)
+        .collect::<Vec<_>>()
+        .await;
+    // Concurrency must not change which alias wins owner deduplication
+    probed.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+    let mut failed_probes = 0usize;
+    for (name, result) in probed {
+        // New players are probed concurrently, but admitted state is committed in name order
+        let state = match result {
             Ok(state) => state,
             Err(err) => {
-                warn!(?err, player = %name, "failed to build media player state");
+                failed_probes = failed_probes.saturating_add(1);
+                debug::log(PanelDebugLevel::Verbose, || {
+                    format!("failed to build media player state for {name}: {err}")
+                });
                 continue;
             }
         };
         if let Some(state) = state {
+            if state
+                .unique_owner
+                .as_ref()
+                .is_some_and(|owner| !owners.insert(owner.clone()))
+            {
+                // Several well-known names may point to one owner; one listener is enough
+                continue;
+            }
             // Each player gets a properties listener so updates stay event-driven
             spawn_properties_listener(
                 state.properties.clone(),
@@ -77,10 +109,30 @@ pub(in crate::media) async fn refresh_players(
             });
         }
     }
+    if failed_probes > 0 {
+        warn!(
+            failed = failed_probes,
+            "one or more MPRIS player probes failed"
+        );
+    }
 
     Ok(())
 }
 
 pub(super) fn is_discoverable_player(name: &str, config: &MediaConfig) -> bool {
     name.starts_with(MPRIS_PREFIX) && is_allowed_player(name, config)
+}
+
+pub(super) fn select_player_names(names: HashSet<String>) -> Vec<String> {
+    let mut names: Vec<String> = names.into_iter().collect();
+    names.sort_unstable();
+    if names.len() > MAX_MPRIS_PLAYERS {
+        warn!(
+            admitted = names.len(),
+            limit = MAX_MPRIS_PLAYERS,
+            "MPRIS player limit reached; retaining deterministic prefix"
+        );
+        names.truncate(MAX_MPRIS_PLAYERS);
+    }
+    names
 }

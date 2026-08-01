@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use futures_util::stream::{self, StreamExt};
+
 use super::super::mpris::{fetch_media_info, PlayerState};
 use super::super::MediaInfo;
 
@@ -18,16 +20,23 @@ pub(super) async fn refresh_cache(
     // Move the old cache out so the merge path can reuse prior snapshots
     // without cloning the whole map on every refresh
     let previous = std::mem::take(cache);
+    let results = stream::iter(players.values().cloned())
+        .map(|state| async move {
+            let info = fetch_media_info(&state).await;
+            (state.bus_name.clone(), info)
+        })
+        .buffer_unordered(4)
+        .collect::<Vec<_>>()
+        .await;
     let mut next = HashMap::with_capacity(players.len());
-    for state in players.values() {
-        // A transient DBus read error should not blank a live player card
-        // Keep the last good snapshot until a fresh read succeeds or the player disappears
+    for (bus_name, fetched) in results {
+        // A transient D-Bus read error should not blank a live player card
         if let Some(info) = merge_media_info(
-            previous.get(&state.bus_name),
-            fetch_media_info(state).await,
+            previous.get(&bus_name),
+            fetched,
             MediaCacheMergeMode::Stable,
         ) {
-            next.insert(state.bus_name.clone(), info);
+            next.insert(bus_name, info);
         }
     }
     *cache = next;

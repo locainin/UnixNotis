@@ -103,6 +103,7 @@ struct CommandCounts {
 
 struct TestMprisPlayer {
     commands: Arc<CommandCounts>,
+    metadata_bytes: usize,
 }
 
 #[zbus::interface(name = "org.mpris.MediaPlayer2.Player")]
@@ -122,7 +123,15 @@ impl TestMprisPlayer {
 
     #[zbus(property)]
     fn metadata(&self) -> HashMap<String, OwnedValue> {
-        // Empty metadata keeps the fixture focused on transport behavior
+        // The optional payload exercises the raw reply budget without a real player
+        if self.metadata_bytes > 0 {
+            let large_value = "x".repeat(self.metadata_bytes);
+            return HashMap::from([(
+                "test:large".to_string(),
+                OwnedValue::try_from(zbus::zvariant::Value::from(large_value.as_str()))
+                    .expect("build large metadata value"),
+            )]);
+        }
         HashMap::new()
     }
 
@@ -162,6 +171,10 @@ pub(in crate::media) struct MprisFixture {
 
 impl MprisFixture {
     pub(in crate::media) async fn start() -> Self {
+        Self::start_with_metadata_bytes(0).await
+    }
+
+    pub(in crate::media) async fn start_with_metadata_bytes(metadata_bytes: usize) -> Self {
         let broker = PrivateBroker::start();
         let commands = Arc::new(CommandCounts::default());
         // The service exports both MPRIS interfaces at the standard object path
@@ -175,6 +188,7 @@ impl MprisFixture {
                 MPRIS_PATH,
                 TestMprisPlayer {
                     commands: commands.clone(),
+                    metadata_bytes,
                 },
             )
             .expect("register test MPRIS player")

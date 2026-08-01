@@ -98,8 +98,7 @@ fn dedupe_key(info: &MediaInfo) -> Option<String> {
     let title = info.title.trim();
     if let Some(family) = info.browser_family.as_deref() {
         if let Some(pid) = info.owner_pid {
-            // Browser bridges can publish the same tab under different MPRIS names
-            // The source PID is the strongest signal that both cards mirror one source
+            // Only the broker-derived owner PID is safe for cross-name deduplication
             return Some(format!("browser-pid:{pid}"));
         }
         if !title.is_empty() {
