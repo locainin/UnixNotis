@@ -13,18 +13,13 @@ use gtk::IconPaintable;
 use unixnotis_core::NotificationImage;
 
 const DEFAULT_MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
+const MAX_TRACKED_IMAGE_KEYS: usize = 4096;
 
-// Thread-local storage replaces glib qdata to avoid unsafe pointer casts
-// The map key is the raw GObject pointer; entries persist for the widget lifetime
-// and stale entries are harmless because the bound IconKey values are small
+// Weak image references let destroyed images disappear on the next cache access
+// A key is retained only while its image can still be upgraded
 thread_local! {
-    static IMAGE_KEYS: RefCell<HashMap<*const (), IconKey>> = RefCell::new(HashMap::new());
-}
-
-fn glib_ptr<T: gtk::glib::prelude::ObjectType>(obj: &T) -> *const () {
-    // Extract the raw GObject pointer for use as a thread-local HashMap key
-    // This replaces glib qdata with safe Rust storage while preserving identity
-    obj.as_ptr() as *const ()
+    static IMAGE_KEYS: RefCell<Vec<(gtk::glib::WeakRef<gtk::Image>, IconKey)>> =
+        const { RefCell::new(Vec::new()) };
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -117,19 +112,33 @@ fn hash_image_data(data: &[u8]) -> [u8; 32] {
 }
 
 pub(super) fn set_image_key(image: &gtk::Image, key: IconKey) {
-    // Store the icon key in thread-local storage keyed by the GObject pointer
-    // This replaces glib::ObjectExt::set_qdata to keep the codebase free of unsafe blocks
-    IMAGE_KEYS.with(|map| {
-        map.borrow_mut().insert(glib_ptr(image), key);
+    IMAGE_KEYS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(weak, _)| weak.upgrade().is_some());
+        if let Some((_, existing)) = entries
+            .iter_mut()
+            .find(|(weak, _)| weak.upgrade().is_some_and(|current| current == *image))
+        {
+            *existing = key;
+        } else {
+            entries.push((image.downgrade(), key));
+        }
+        // A dead weak reference is normally removed on the next access. Keep a hard
+        // cap as a second line of defense when images stop being accessed entirely
+        if entries.len() > MAX_TRACKED_IMAGE_KEYS {
+            let excess = entries.len() - MAX_TRACKED_IMAGE_KEYS;
+            entries.drain(..excess);
+        }
     });
 }
 
 pub(super) fn image_key_matches(image: &gtk::Image, key: &IconKey) -> bool {
-    // Retrieve the stored icon key from thread-local storage by GObject pointer
-    // Returns false when no key was stored or the stored key differs from the request
-    IMAGE_KEYS.with(|map| {
-        let map = map.borrow();
-        map.get(&glib_ptr(image)) == Some(key)
+    IMAGE_KEYS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(weak, _)| weak.upgrade().is_some());
+        entries.iter().any(|(weak, stored)| {
+            weak.upgrade().is_some_and(|current| current == *image) && stored == key
+        })
     })
 }
 

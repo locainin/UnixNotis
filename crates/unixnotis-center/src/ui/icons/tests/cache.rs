@@ -9,7 +9,7 @@ fn key(name: &str) -> IconKey {
 }
 
 #[gtk::test]
-fn image_qdata_key_matches_only_the_stored_icon_request() {
+fn image_key_matches_only_the_stored_icon_request() {
     let image = gtk::Image::new();
     let stored = key("network-wireless");
     let different = key("audio-volume-high");
@@ -19,6 +19,29 @@ fn image_qdata_key_matches_only_the_stored_icon_request() {
 
     assert!(image_key_matches(&image, &stored));
     assert!(!image_key_matches(&image, &different));
+}
+
+#[gtk::test]
+fn image_keys_do_not_survive_the_image_object() {
+    let stored = key("network-wireless");
+    let old_image = gtk::Image::new();
+    set_image_key(&old_image, stored.clone());
+    drop(old_image);
+
+    let new_image = gtk::Image::new();
+    assert!(!image_key_matches(&new_image, &stored));
+}
+
+#[gtk::test]
+fn image_key_tracking_has_a_hard_bound_when_images_stop_being_accessed() {
+    for index in 0..=super::MAX_TRACKED_IMAGE_KEYS {
+        let image = gtk::Image::new();
+        set_image_key(&image, key(&format!("icon-{index}")));
+    }
+
+    super::IMAGE_KEYS.with(|entries| {
+        assert!(entries.borrow().len() <= super::MAX_TRACKED_IMAGE_KEYS);
+    });
 }
 
 #[test]

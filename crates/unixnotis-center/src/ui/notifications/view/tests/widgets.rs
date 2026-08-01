@@ -45,6 +45,21 @@ fn set_and_get_row_widgets_round_trips_cached_bundle() {
 }
 
 #[gtk::test]
+fn row_widget_cache_keeps_bundle_alive_after_setup_owner_is_dropped() {
+    support::init_gtk();
+    let (command_tx, event_tx) = support::channels();
+    let gtk_item = new_gtk_item();
+    let widgets = Rc::new(RowWidgets::new(RowKind::Notification, command_tx, event_tx));
+    let weak = Rc::downgrade(&widgets);
+
+    set_row_widgets(&gtk_item, widgets);
+
+    // The factory callback may drop its local Rc immediately after setup
+    assert!(weak.upgrade().is_some());
+    assert!(get_row_widgets(&gtk_item).is_some());
+}
+
+#[gtk::test]
 fn ensure_row_widgets_reuses_same_kind() {
     support::init_gtk();
     let (command_tx, event_tx) = support::channels();

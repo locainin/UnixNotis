@@ -3,8 +3,7 @@
 //! Keeps GTK widget creation and updates isolated from list state
 
 use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 use async_channel::Sender;
 use gtk::prelude::*;
@@ -31,11 +30,13 @@ pub(super) struct RowWidgets {
     command_tx: mpsc::Sender<UiCommand>,
 }
 
-// Thread-local storage replaces glib qdata to keep the codebase free of unsafe blocks
-// Weak refs let stale entries be collected without explicit destroy signal handling
-// The map key is the raw GObject pointer, scoped to the GTK main thread
+// Weak item references prevent destroyed list items from keeping entries alive
+// Strong widget bundles preserve the factory's reusable row tree between binds
+const MAX_TRACKED_ROW_WIDGETS: usize = 4096;
+
 thread_local! {
-    static ROW_WIDGETS: RefCell<HashMap<*const (), Weak<RowWidgets>>> = RefCell::new(HashMap::new());
+    static ROW_WIDGETS: RefCell<Vec<(gtk::glib::WeakRef<gtk::ListItem>, Rc<RowWidgets>)>> =
+        const { RefCell::new(Vec::new()) };
 }
 
 impl RowWidgets {
@@ -143,34 +144,34 @@ pub(super) fn set_row_widgets(item: &gtk::ListItem, widgets: Rc<RowWidgets>) {
     // Attach the actual row root whenever the cached widget bundle changes
     // Setup also uses this so GTK never keeps an empty placeholder child
     item.set_child(Some(&widgets.root));
-    // Store a weak reference in thread-local storage so get_row_widgets can retrieve
-    // the cached bundle without holding any Rc strong count from the map
-    ROW_WIDGETS.with(|map| {
-        map.borrow_mut()
-            .insert(glib_ptr(item), Rc::downgrade(&widgets));
+    ROW_WIDGETS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(weak, _)| weak.upgrade().is_some());
+        if let Some((_, existing)) = entries
+            .iter_mut()
+            .find(|(weak, _)| weak.upgrade().is_some_and(|current| current == *item))
+        {
+            *existing = widgets;
+        } else {
+            entries.push((item.downgrade(), widgets));
+        }
+        // Keep a bounded fallback for unusual list-model churn before another cache access
+        if entries.len() > MAX_TRACKED_ROW_WIDGETS {
+            let excess = entries.len() - MAX_TRACKED_ROW_WIDGETS;
+            entries.drain(..excess);
+        }
     });
 }
 
 pub(super) fn get_row_widgets(item: &gtk::ListItem) -> Option<Rc<RowWidgets>> {
-    // Look up the cached RowWidgets bundle by GObject pointer
-    // Stale weak refs (from destroyed or recycled list items) are removed on access
-    ROW_WIDGETS.with(|map| {
-        let mut map = map.borrow_mut();
-        let key = glib_ptr(item);
-        match map.get(&key) {
-            Some(weak) => weak.upgrade().or_else(|| {
-                map.remove(&key);
-                None
-            }),
-            None => None,
-        }
+    ROW_WIDGETS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(weak, _)| weak.upgrade().is_some());
+        entries
+            .iter()
+            .find(|(weak, _)| weak.upgrade().is_some_and(|current| current == *item))
+            .map(|(_, widgets)| widgets.clone())
     })
-}
-
-fn glib_ptr<T: gtk::glib::prelude::ObjectType>(obj: &T) -> *const () {
-    // Extract the raw GObject pointer for use as a thread-local HashMap key
-    // This replaces glib qdata with safe Rust storage while preserving identity
-    obj.as_ptr() as *const ()
 }
 
 #[cfg(test)]
