@@ -175,15 +175,3 @@ pub(super) fn select_player_names(
 pub(super) const fn owner_capacity_exceeded(owner_count: usize, capacity: usize) -> bool {
     owner_count > capacity
 }
-
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "capacity helper is exercised by discovery tests")
-)]
-pub(super) const fn should_skip_for_owner_capacity(
-    owner_count: usize,
-    capacity: usize,
-    owner_is_tracked: bool,
-) -> bool {
-    owner_count >= capacity && !owner_is_tracked
-}

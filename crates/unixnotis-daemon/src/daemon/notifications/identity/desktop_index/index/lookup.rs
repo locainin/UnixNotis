@@ -86,17 +86,6 @@ impl DesktopIdentityIndex {
                 .any(|candidate| std::ptr::eq(*candidate, record))
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "async wrapper remains for test seams")
-    )]
-    pub(in crate::daemon::notifications::identity) async fn install_provenance_for_path_async(
-        &self,
-        path: PathBuf,
-    ) -> super::super::provenance::InstallProvenance {
-        self.install_provenance_for_path(path)
-    }
-
     pub(in crate::daemon::notifications::identity) fn install_provenance_for_path(
         &self,
         path: PathBuf,
