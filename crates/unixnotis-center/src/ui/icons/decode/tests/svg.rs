@@ -1,12 +1,24 @@
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
+use super::super::model::RasterImage;
 use super::super::pipeline::{MAX_ICON_DIMENSION, MAX_ICON_PIXELS};
 use super::super::svg::{
-    decode_svg_bytes, decompress_svgz_with_limit, is_gzip_payload,
+    checked_rgba_len, decode_svg_bytes_with_renderer, decompress_svgz_with_limit, is_gzip_payload,
 };
+
+fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage, String> {
+    let current_exe = std::env::current_exe().expect("resolve test executable");
+    let renderer = current_exe
+        .parent()
+        .and_then(std::path::Path::parent)
+        .map(|directory| directory.join("unixnotis-svg-renderer"))
+        .expect("resolve renderer directory");
+    decode_svg_bytes_with_renderer(bytes, target, &renderer)
+}
 
 #[test]
 fn svg_decoder_renders_bounded_pixels_and_preserves_aspect_ratio() {
@@ -17,6 +29,16 @@ fn svg_decoder_renders_bounded_pixels_and_preserves_aspect_ratio() {
     assert_eq!((decoded.width, decoded.height, decoded.stride), (16, 8, 64));
     assert_eq!(decoded.bytes.len(), 16 * 8 * 4);
     assert!(decoded.premultiplied_alpha);
+}
+
+#[test]
+fn svg_protocol_accepts_multiline_documents() {
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4">
+  <path d="M0 0h8v4H0z"/>
+</svg>"#;
+
+    let decoded = decode_svg_bytes(svg, 16).expect("multiline SVG should render");
+    assert_eq!((decoded.width, decoded.height), (16, 8));
 }
 
 #[test]
@@ -137,6 +159,76 @@ fn svg_scaling_returns_finite_bounded_geometry() {
     let (width, height, _scale) =
         fitted_svg_dimensions(1.0, 1.0, MAX_ICON_DIMENSION).expect("fit exact target limit");
     assert_eq!((width, height), (MAX_ICON_DIMENSION, MAX_ICON_DIMENSION));
+}
+
+#[test]
+fn renderer_output_dimensions_are_checked_before_allocation() {
+    assert!(checked_rgba_len(0, 1).is_err());
+    assert!(checked_rgba_len(MAX_ICON_DIMENSION + 1, 1).is_err());
+    assert!(checked_rgba_len(1, MAX_ICON_DIMENSION + 1).is_err());
+    assert!(checked_rgba_len(u32::MAX, u32::MAX).is_err());
+    assert_eq!(
+        checked_rgba_len(MAX_ICON_DIMENSION, MAX_ICON_DIMENSION).expect("bounded output"),
+        usize::try_from(MAX_ICON_PIXELS).expect("usize pixels") * 4
+    );
+}
+
+#[test]
+fn malformed_renderer_dimensions_are_rejected_without_large_allocation() {
+    let directory = tempfile::tempdir().expect("create renderer fixture directory");
+    let renderer = directory.path().join("bad-renderer");
+    std::fs::write(
+        &renderer,
+        "#!/bin/sh\nprintf '\\377\\377\\377\\377\\377\\377\\377\\377'\n",
+    )
+    .expect("write renderer fixture");
+    std::fs::set_permissions(&renderer, std::fs::Permissions::from_mode(0o755))
+        .expect("make renderer executable");
+
+    let error = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
+        .expect_err("oversized child dimensions must fail");
+    assert!(error.contains("renderer returned"));
+}
+
+#[test]
+fn renderer_deadline_terminates_a_slow_child() {
+    let directory = tempfile::tempdir().expect("create renderer fixture directory");
+    let renderer = directory.path().join("slow-renderer");
+    std::fs::write(&renderer, "#!/bin/sh\nsleep 2\n").expect("write renderer fixture");
+    std::fs::set_permissions(&renderer, std::fs::Permissions::from_mode(0o755))
+        .expect("make renderer executable");
+
+    let error = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
+        .expect_err("slow renderer must be stopped");
+    assert!(error.contains("timed out"));
+}
+
+#[test]
+fn renderer_stderr_is_drained_while_stdout_is_decoded() {
+    let directory = tempfile::tempdir().expect("create renderer fixture directory");
+    let renderer = directory.path().join("chatty-renderer");
+    std::fs::write(
+        &renderer,
+        "#!/bin/sh\nhead -c 1048576 /dev/zero >&2\nprintf '\\001\\000\\000\\000\\001\\000\\000\\000\\000\\000\\000\\377'\n",
+    )
+    .expect("write renderer fixture");
+    std::fs::set_permissions(&renderer, std::fs::Permissions::from_mode(0o755))
+        .expect("make renderer executable");
+
+    let decoded = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
+        .expect("chatty renderer should not deadlock");
+    assert_eq!((decoded.width, decoded.height), (1, 1));
+}
+
+#[test]
+fn missing_sibling_renderer_is_reported() {
+    let error = decode_svg_bytes_with_renderer(
+        b"<svg/>",
+        16,
+        std::path::Path::new("/nonexistent/unixnotis-svg-renderer"),
+    )
+    .expect_err("missing renderer must fail closed");
+    assert!(error.contains("failed to spawn SVG renderer"));
 }
 
 fn fitted_svg_dimensions(

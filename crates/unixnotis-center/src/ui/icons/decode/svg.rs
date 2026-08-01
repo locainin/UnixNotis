@@ -12,29 +12,40 @@ use flate2::read::GzDecoder;
 
 use super::file::MAX_ICON_BYTES;
 use super::model::RasterImage;
-use super::pipeline::MAX_ICON_PIXELS;
+use super::pipeline::{MAX_ICON_DIMENSION, MAX_ICON_PIXELS};
 
 // Hard wall-clock deadline for the entire SVG subprocess (parse + render)
 const SVG_SUBPROCESS_DEADLINE: Duration = Duration::from_millis(500);
-const MAX_SVG_BYTES: u32 = 1_024_000;
+const MAX_SVG_BYTES: usize = 1_024_000;
 
 pub(super) const fn is_gzip_payload(bytes: &[u8]) -> bool {
     matches!(bytes, [0x1f, 0x8b, ..])
 }
 
 pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage, String> {
-    // Compressed documents are expanded under the same source byte ceiling
+    if target == 0 || target > MAX_ICON_DIMENSION {
+        return Err("SVG target dimension exceeds decode limit".to_string());
+    }
+    let svg_renderer = resolve_svg_renderer()?;
+    decode_svg_bytes_with_renderer(bytes, target, &svg_renderer)
+}
+
+pub(super) fn decode_svg_bytes_with_renderer(
+    bytes: &[u8],
+    target: u32,
+    svg_renderer: &std::path::Path,
+) -> Result<RasterImage, String> {
+    if target == 0 || target > MAX_ICON_DIMENSION {
+        return Err("SVG target dimension exceeds decode limit".to_string());
+    }
     let document = if is_gzip_payload(bytes) {
         Cow::Owned(decompress_svgz_with_limit(bytes, MAX_ICON_BYTES)?)
     } else {
         Cow::Borrowed(bytes)
     };
-
-    if document.len() > MAX_SVG_BYTES as usize {
+    if document.len() > MAX_SVG_BYTES {
         return Err("SVG exceeds maximum byte limit".to_string());
     }
-
-    let svg_renderer = resolve_svg_renderer()?;
 
     let mut child = Command::new(svg_renderer)
         .stdin(Stdio::piped())
@@ -46,11 +57,17 @@ pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage,
         .spawn()
         .map_err(|e| format!("failed to spawn SVG renderer: {e}"))?;
 
-    let mut stdin = child.stdin.take()
+    let mut stdin = child
+        .stdin
+        .take()
         .ok_or_else(|| "failed to capture child stdin".to_string())?;
-    let stdout = child.stdout.take()
+    let stdout = child
+        .stdout
+        .take()
         .ok_or_else(|| "failed to capture child stdout".to_string())?;
-    let mut stderr = child.stderr.take()
+    let mut stderr = child
+        .stderr
+        .take()
         .ok_or_else(|| "failed to capture child stderr".to_string())?;
 
     // Binary protocol: u32 target dimension (LE) + SVG bytes (remainder of stdin)
@@ -71,15 +88,21 @@ pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage,
         buf
     });
 
-
     // Wait for child with timeout
-    let exit_status = wait_with_timeout(&mut child, SVG_SUBPROCESS_DEADLINE)
-        .map_err(|e| e.to_string())?;
+    let exit_status = match wait_with_timeout(&mut child, SVG_SUBPROCESS_DEADLINE) {
+        Ok(status) => status,
+        Err(error) => {
+            let _ = read_handle.join();
+            let _ = stderr_handle.join();
+            return Err(error.to_string());
+        }
+    };
 
     // Check wall-clock timeout
     if wait_start.elapsed() > SVG_SUBPROCESS_DEADLINE {
         let _ = child.kill();
         let _ = read_handle.join();
+        let _ = stderr_handle.join();
         return Err("SVG render exceeded time limit".to_string());
     }
 
@@ -100,7 +123,8 @@ pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage,
         .map_err(|err| format!("stdout reader panicked: {err:?}"))?;
     let (width, height, rgba_data) = read_result?;
 
-    if rgba_data.len() != (width * height * 4) as usize {
+    let expected_len = checked_rgba_len(width, height)?;
+    if rgba_data.len() != expected_len {
         return Err("SVG renderer returned unexpected byte count".to_string());
     }
 
@@ -118,27 +142,9 @@ pub(super) fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage,
     })
 }
 
-// In production, resolve only the sibling binary next to the center executable.
-// Test injection is provided by set_svg_renderer_for_test.
-fn resolve_svg_renderer() -> Result<std::path::PathBuf, String> {
-    // Cargo sets CARGO_BIN_EXE_unixnotis_svg_renderer for integration tests only
-    #[cfg(test)]
-    {
-        if let Some(path) = std::env::var("CARGO_BIN_EXE_unixnotis_svg_renderer")
-            .ok()
-            .map(std::path::PathBuf::from)
-        {
-            if path.exists() {
-                return Ok(path);
-            }
-        }
-        // Manual override for integration tests that need a specific binary
-        if let Some(path) = test_renderer_override() {
-            return Ok(path);
-        }
-    }
-    let current_exe =
-        std::env::current_exe().map_err(|e| format!("current_exe failed: {e}"))?;
+// Production resolves only the sibling binary next to the center executable
+pub(super) fn resolve_svg_renderer() -> Result<std::path::PathBuf, String> {
+    let current_exe = std::env::current_exe().map_err(|e| format!("current_exe failed: {e}"))?;
     let parent = current_exe
         .parent()
         .ok_or("current executable has no parent directory")?;
@@ -146,20 +152,25 @@ fn resolve_svg_renderer() -> Result<std::path::PathBuf, String> {
     if candidate.exists() {
         return Ok(candidate);
     }
-    // During tests, the test binary is a separate executable with a hash suffix.
-    // Try walking up to the target directory.
-    if let Some(grandparent) = parent.parent() {
-        let candidate = grandparent.join("unixnotis-svg-renderer");
-        if candidate.exists() {
-            return Ok(candidate);
+    // Cargo test executables live in target/{debug,release}/deps while the
+    // sibling helper stays in the profile directory. Installed binaries do
+    // not use a `deps` parent, so this fallback is restricted to that layout
+    if parent.file_name() == Some(std::ffi::OsStr::new("deps")) {
+        if let Some(profile_dir) = parent.parent() {
+            let is_cargo_profile = matches!(
+                profile_dir.file_name().and_then(std::ffi::OsStr::to_str),
+                Some("debug" | "release")
+            );
+            let candidate = profile_dir.join("unixnotis-svg-renderer");
+            if is_cargo_profile && candidate.is_file() {
+                return Ok(candidate);
+            }
         }
     }
     Err("unixnotis-svg-renderer binary not found next to center executable".to_string())
 }
 
-fn read_stdout(
-    mut stdout: std::process::ChildStdout,
-) -> Result<(u32, u32, Vec<u8>), String> {
+fn read_stdout(mut stdout: std::process::ChildStdout) -> Result<(u32, u32, Vec<u8>), String> {
     let mut width_bytes = [0u8; 4];
     stdout
         .read_exact(&mut width_bytes)
@@ -172,16 +183,29 @@ fn read_stdout(
         .map_err(|e| e.to_string())?;
     let height = u32::from_le_bytes(height_bytes);
 
-    let expected_len = (width * height * 4) as usize;
-    if expected_len > MAX_ICON_PIXELS as usize * 4 {
-        return Err("renderer returned oversized image".to_string());
-    }
+    let expected_len = checked_rgba_len(width, height)?;
 
     let mut rgba = vec![0u8; expected_len];
-    stdout
-        .read_exact(&mut rgba)
-        .map_err(|e| e.to_string())?;
+    stdout.read_exact(&mut rgba).map_err(|e| e.to_string())?;
     Ok((width, height, rgba))
+}
+
+pub(super) fn checked_rgba_len(width: u32, height: u32) -> Result<usize, String> {
+    let pixels = u64::from(width)
+        .checked_mul(u64::from(height))
+        .ok_or_else(|| "renderer returned overflowing dimensions".to_string())?;
+    if width == 0
+        || height == 0
+        || width > MAX_ICON_DIMENSION
+        || height > MAX_ICON_DIMENSION
+        || pixels > MAX_ICON_PIXELS
+    {
+        return Err("renderer returned oversized image".to_string());
+    }
+    usize::try_from(pixels)
+        .ok()
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(|| "renderer returned oversized image".to_string())
 }
 
 fn wait_with_timeout(
@@ -216,22 +240,4 @@ pub(super) fn decompress_svgz_with_limit(bytes: &[u8], max_bytes: u64) -> Result
         return Err("decompressed SVG exceeds icon byte limit".to_string());
     }
     Ok(document)
-}
-
-#[cfg(test)]
-use test_resolver::test_renderer_override;
-
-#[cfg(test)]
-mod test_resolver {
-    use std::sync::Mutex;
-    use std::sync::OnceLock;
-
-    static TEST_RENDERER_OVERRIDE: OnceLock<Mutex<Option<std::path::PathBuf>>> = OnceLock::new();
-
-    pub(super) fn test_renderer_override() -> Option<std::path::PathBuf> {
-        TEST_RENDERER_OVERRIDE
-            .get()
-            .and_then(|lock| lock.lock().ok())
-            .and_then(|guard| guard.clone())
-    }
 }

@@ -2,7 +2,7 @@
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    reason = "checked: target_size ≤ MAX_PIXELS (4 Mi pixels) and source dimensions are finite positive floats from resvg"
+    reason = "checked: target_size ≤ MAX_DIMENSION and output dimensions ≤ MAX_PIXELS"
 )]
 
 use std::io::{self, Read, Write};
@@ -10,11 +10,12 @@ use std::io::{self, Read, Write};
 use resvg::tiny_skia::Pixmap;
 use resvg::usvg::Tree;
 
-const MAX_SVG_BYTES: u32 = 1_024_000;
-const MAX_PIXELS: u32 = 2048 * 2048;
+const MAX_SVG_BYTES: usize = 1_024_000;
+const MAX_DIMENSION: u32 = 2_048;
+const MAX_PIXELS: u64 = 2_048 * 2_048;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    sandbox_child()?;
+    apply_resource_limits()?;
 
     let mut stdin = io::stdin();
     let mut stdout = io::stdout();
@@ -26,12 +27,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Read the rest of stdin as the SVG document bytes
     let mut svg_data = Vec::new();
-    stdin.read_to_end(&mut svg_data)?;
+    stdin
+        .take(
+            u64::try_from(MAX_SVG_BYTES)
+                .unwrap_or(u64::MAX)
+                .saturating_add(1),
+        )
+        .read_to_end(&mut svg_data)?;
 
     if svg_data.is_empty()
-        || svg_data.len() > MAX_SVG_BYTES as usize
+        || svg_data.len() > MAX_SVG_BYTES
         || target_size == 0
-        || target_size > MAX_SVG_BYTES
+        || target_size > MAX_DIMENSION
     {
         eprintln!("invalid input");
         std::process::exit(1);
@@ -79,15 +86,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    let scaled_width = (source_width * scale).round().max(1.0) as u32;
-    let scaled_height = (source_height * scale).round().max(1.0) as u32;
+    let Some(scaled_width) = bounded_dimension(source_width * scale) else {
+        eprintln!("scaled dimensions exceed limits");
+        std::process::exit(1);
+    };
+    let Some(scaled_height) = bounded_dimension(source_height * scale) else {
+        eprintln!("scaled dimensions exceed limits");
+        std::process::exit(1);
+    };
 
-    if scaled_width == 0
-        || scaled_height == 0
-        || scaled_width > MAX_PIXELS
-        || scaled_height > MAX_PIXELS
-        || u64::from(scaled_width) * u64::from(scaled_height) > u64::from(MAX_PIXELS)
-    {
+    let pixels = u64::from(scaled_width).checked_mul(u64::from(scaled_height));
+    if pixels.is_none_or(|count| count > MAX_PIXELS) {
         eprintln!("scaled dimensions exceed limits");
         std::process::exit(1);
     }
@@ -108,8 +117,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn bounded_dimension(value: f32) -> Option<u32> {
+    if !value.is_finite() || value <= 0.0 || value > MAX_DIMENSION as f32 {
+        return None;
+    }
+    Some(value.round().max(1.0) as u32)
+}
+
 #[cfg(target_os = "linux")]
-fn sandbox_child() -> Result<(), Box<dyn std::error::Error>> {
+fn apply_resource_limits() -> Result<(), Box<dyn std::error::Error>> {
     use rustix::process::{setrlimit, Resource, Rlimit};
 
     // Clear all environment variables using safe API
@@ -145,13 +161,13 @@ fn sandbox_child() -> Result<(), Box<dyn std::error::Error>> {
         },
     )?;
 
-    // Isolate to root directory so file-open attempts fail predictably
+    // Keep relative paths deterministic; this is not a filesystem sandbox
     std::env::set_current_dir("/")?;
 
     Ok(())
 }
 
 #[cfg(not(target_os = "linux"))]
-fn sandbox_child() -> Result<(), Box<dyn std::error::Error>> {
+fn apply_resource_limits() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
