@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use unixnotis_core::{
-    Action, AttributionReason, IdentityAssurance, InteractionPolicies,
-    NotificationAttribution,
+    Action, AttributionReason, IdentityAssurance, InteractionPolicies, NotificationAttribution,
 };
 
 use crate::store::test_support::{make_notification, make_store_with_limits};

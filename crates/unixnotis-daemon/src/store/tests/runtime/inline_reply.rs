@@ -1,6 +1,6 @@
 use unixnotis_core::{
-    Action, AttributionReason, CloseReason, IdentityAssurance, InlineReply,
-    InlineReplyPolicy, InteractionPolicies, NotificationAttribution,
+    Action, AttributionReason, CloseReason, IdentityAssurance, InlineReply, InlineReplyPolicy,
+    InteractionPolicies, NotificationAttribution,
 };
 
 use crate::store::test_support::{make_notification, make_store_with_limits};

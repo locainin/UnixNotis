@@ -28,7 +28,9 @@ pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<Me
     let owner_pid = metadata_pid(&metadata).or(state.owner_pid);
     let art_source = metadata_string(&metadata, "mpris:artUrl")
         .filter(|value| value.len() <= MAX_ART_URL_BYTES)
-        .and_then(|value| normalize_art_source(&value, state.remote_art_allowed, state.local_art_allowed));
+        .and_then(|value| {
+            normalize_art_source(&value, state.remote_art_allowed, state.local_art_allowed)
+        });
 
     // PlaybackStatus drives whether the player stays visible
     // If that read fails, keep the previous snapshot instead of inventing a fake stop event

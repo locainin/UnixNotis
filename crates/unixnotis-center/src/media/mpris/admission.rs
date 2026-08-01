@@ -50,9 +50,8 @@ pub(super) fn remote_art_allowed(
 pub(super) fn local_art_allowed(
     browser_family: Option<&str>,
     owner_executable: Option<&str>,
-    owner_pid: Option<u32>,
+    owner_executable_is_allowed: bool,
     policy: MediaLocalArtPolicy,
-    executable_allowlist: &[String],
 ) -> bool {
     // A missing owner executable means the bus owner is not concrete enough to trust
     let has_owner = owner_executable.is_some_and(|value| !value.trim().is_empty());
@@ -64,10 +63,7 @@ pub(super) fn local_art_allowed(
         MediaLocalArtPolicy::ExactExecutableOnly => {
             // Browser bridges can direct the renderer to arbitrary host files via mpris:artUrl.
             // Only native players (non-browser) with an allowlist-matched executable may name host files.
-            browser_family.is_none()
-                && owner_pid.is_some_and(|pid| {
-                    is_executable_allowed(pid, owner_executable.unwrap_or(""), executable_allowlist)
-                })
+            browser_family.is_none() && owner_executable_is_allowed
         }
         MediaLocalArtPolicy::AllAdmitted => {
             // Browser bridges can direct the renderer to arbitrary host files via mpris:artUrl.
@@ -79,25 +75,11 @@ pub(super) fn local_art_allowed(
 
 const MAX_EXECUTABLE_FINGERPRINT_BYTES: u64 = 512 * 1024 * 1024;
 
-fn is_executable_allowed(pid: u32, executable: &str, allowlist: &[String]) -> bool {
-    if allowlist.is_empty() {
-        return false;
-    }
-    if executable.trim().is_empty() {
-        return false;
-    }
-
-    // Open the kernel-reported executable object before examining the allowlist paths
-    let owner_file = match File::open(format!("/proc/{pid}/exe")) {
-        Ok(file) => file,
-        Err(_) => return false,
-    };
+pub(super) fn executable_file_matches_allowlist(owner_file: File, allowlist: &[String]) -> bool {
     let owner_meta = match owner_file.metadata() {
         Ok(meta) => meta,
         Err(_) => return false,
     };
-    // Large system binaries only need stable descriptor identity; user-owned files
-    // also require a bounded content fingerprint to cover in-place replacement
     let needs_digest = owner_meta.uid() != 0
         || allowlist.iter().any(|path| {
             File::open(path)
@@ -105,7 +87,10 @@ fn is_executable_allowed(pid: u32, executable: &str, allowlist: &[String]) -> bo
                 .is_ok_and(|metadata| metadata.uid() != 0)
         });
     let owner_digest = if needs_digest {
-        match executable_digest(owner_file) {
+        let Some(clone) = owner_file.try_clone().ok() else {
+            return false;
+        };
+        match executable_digest(clone) {
             Some(digest) => Some(digest),
             None => return false,
         }
@@ -113,7 +98,20 @@ fn is_executable_allowed(pid: u32, executable: &str, allowlist: &[String]) -> bo
         None
     };
     let owner_identity = (owner_meta.dev(), owner_meta.ino());
+    executable_file_matches_allowlist_with_owner(
+        owner_meta,
+        owner_identity,
+        owner_digest,
+        allowlist,
+    )
+}
 
+fn executable_file_matches_allowlist_with_owner(
+    owner_meta: std::fs::Metadata,
+    owner_identity: (u64, u64),
+    owner_digest: Option<[u8; 32]>,
+    allowlist: &[String],
+) -> bool {
     allowlist.iter().any(|allowed_path| {
         let allowed_file = match File::open(allowed_path) {
             Ok(file) => file,

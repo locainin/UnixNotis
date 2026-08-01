@@ -68,7 +68,7 @@ impl UiProcessKind {
         command.stdout(Stdio::inherit());
         command.stderr(Stdio::inherit());
 
-        apply_parent_death_signal(&mut command);
+        apply_parent_death_signal(&mut command, std::process::id());
 
         if let Some(config) = args.config.as_ref() {
             // GTK re-parses argv in child apps, so custom config paths travel by env instead

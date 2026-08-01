@@ -229,9 +229,9 @@ fn build_action_button(
                             expire_armed_at.set(None);
                             expire_button.set_label(&expire_label);
                             expire_button.set_tooltip_text(None);
-                            expire_button.update_property(&[
-                                gtk::accessible::Property::Label(&expire_label),
-                            ]);
+                            expire_button.update_property(&[gtk::accessible::Property::Label(
+                                &expire_label,
+                            )]);
                         }
                     },
                 );
@@ -249,9 +249,9 @@ fn build_action_button(
                             armed_at.set(None);
                             button.set_label(&original_label);
                             button.set_tooltip_text(None);
-                            button.update_property(&[
-                                gtk::accessible::Property::Label(&original_label),
-                            ]);
+                            button.update_property(&[gtk::accessible::Property::Label(
+                                &original_label,
+                            )]);
                             return;
                         }
                         // Click came too fast after arming
@@ -266,9 +266,9 @@ fn build_action_button(
                             armed_at.set(None);
                             button.set_label(&original_label);
                             button.set_tooltip_text(None);
-                            button.update_property(&[
-                                gtk::accessible::Property::Label(&original_label),
-                            ]);
+                            button.update_property(&[gtk::accessible::Property::Label(
+                                &original_label,
+                            )]);
                             return;
                         }
                         // Right amount of time passed, dispatch the action

@@ -100,6 +100,23 @@ fn parent_death_signal_terminates_a_child_when_its_launcher_exits() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn parent_death_signal_rejects_a_changed_parent_before_exec() {
+    let _guard = env_lock();
+    let helper = std::env::current_exe().expect("current test executable");
+    let status = std::process::Command::new(helper)
+        .args([
+            "--exact",
+            "child_process::paths::tests::parent_death_signal_child_helper",
+            "--nocapture",
+        ])
+        .env("UNIXNOTIS_PDEATH_EXPECT_MISMATCH", "1")
+        .status()
+        .expect("launch parent-death race helper");
+    assert!(status.success(), "mismatch helper failed: {status}");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn parent_death_signal_child_helper() {
     let Some(marker) = std::env::var_os("UNIXNOTIS_PDEATH_MARKER") else {
         return;
@@ -110,13 +127,23 @@ fn parent_death_signal_child_helper() {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    apply_parent_death_signal(&mut command);
+    let expected_parent_pid = if std::env::var_os("UNIXNOTIS_PDEATH_EXPECT_MISMATCH").is_some() {
+        std::process::id().saturating_add(1)
+    } else {
+        std::process::id()
+    };
+    apply_parent_death_signal(&mut command, expected_parent_pid);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_io()
         .build()
         .expect("build helper runtime");
     runtime.block_on(async move {
-        let child = command.spawn().expect("spawn supervised child");
+        let child = command.spawn();
+        if std::env::var_os("UNIXNOTIS_PDEATH_EXPECT_MISMATCH").is_some() {
+            assert!(child.is_err(), "mismatched parent must fail before exec");
+            return;
+        }
+        let child = child.expect("spawn supervised child");
         std::fs::write(marker, child.id().expect("child pid").to_string())
             .expect("write child pid marker");
     });
