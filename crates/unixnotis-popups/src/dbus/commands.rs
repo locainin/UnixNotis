@@ -45,16 +45,12 @@ pub async fn handle_command(proxy: &ControlProxy<'_>, command: UiCommand) -> Zbu
             timed_dbus_call(proxy.mark_popup_visible(notification.id, notification.generation))
                 .await
         }
-        UiCommand::Shutdown(_) => Ok(()),
     }
 }
 
-pub fn drain_offline_commands(
-    command_rx: &mut mpsc::Receiver<UiCommand>,
-) -> Option<std::sync::mpsc::SyncSender<()>> {
+pub fn drain_offline_commands(command_rx: &mut mpsc::Receiver<UiCommand>) {
     while let Ok(command) = command_rx.try_recv() {
         match command {
-            UiCommand::Shutdown(acknowledgement) => return Some(acknowledgement),
             UiCommand::Reply { outcome, .. } => {
                 let _ = outcome.send(Err("notification service is unavailable".to_string()));
             }
@@ -66,7 +62,6 @@ pub fn drain_offline_commands(
         // Popups only reflect live state, so stale button actions are dropped while offline
         warn!("dropping control command while interface is unavailable");
     }
-    None
 }
 
 #[cfg(test)]

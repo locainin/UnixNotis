@@ -39,8 +39,6 @@ pub enum UiCommand {
     },
     Materialized(NotificationKey),
     Visible(NotificationKey),
-    // A synchronous acknowledgement lets GTK wait for MarkPopupsNotReady before process exit
-    Shutdown(std::sync::mpsc::SyncSender<()>),
 }
 
 impl std::fmt::Debug for UiCommand {
@@ -75,7 +73,6 @@ impl std::fmt::Debug for UiCommand {
                 .debug_tuple("Visible")
                 .field(notification)
                 .finish(),
-            Self::Shutdown(_) => formatter.write_str("Shutdown(..)"),
         }
     }
 }
