@@ -610,5 +610,4 @@ fn terminate_package_query(child: &mut std::process::Child, process_group: Pid) 
 }
 
 #[cfg(test)]
-#[path = "tests/provenance.rs"]
 mod tests;
