@@ -3,7 +3,7 @@ use unixnotis_core::MediaConfig;
 use super::super::constants::{MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PREFIX};
 use super::super::player::{
     build_player_state, build_player_state_for_owner, fetch_identity, owner_probe_is_stable,
-    read_owner_executable_path, resolve_player_owner,
+    read_owner_executable_path, resolve_player_owner, PlayerTimeoutState,
 };
 use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
 
@@ -28,6 +28,30 @@ fn player_proxy_constants_match_the_mpris_contract() {
     assert_eq!(MPRIS_PATH, "/org/mpris/MediaPlayer2");
     assert_eq!(MPRIS_PLAYER, "org.mpris.MediaPlayer2.Player");
     assert_eq!(MPRIS_APP, "org.mpris.MediaPlayer2");
+}
+
+#[test]
+fn player_timeout_state_quarantines_after_repeated_failures() {
+    let state = PlayerTimeoutState::new();
+
+    assert!(!state.is_quarantined());
+    state.record_timeout();
+    state.record_timeout();
+    assert!(!state.is_quarantined());
+    state.record_timeout();
+    assert!(state.is_quarantined());
+}
+
+#[test]
+fn player_timeout_state_clear_releases_a_quarantine() {
+    let state = PlayerTimeoutState::new();
+    for _ in 0..3 {
+        state.record_timeout();
+    }
+
+    assert!(state.is_quarantined());
+    state.clear_timeout();
+    assert!(!state.is_quarantined());
 }
 
 #[tokio::test]

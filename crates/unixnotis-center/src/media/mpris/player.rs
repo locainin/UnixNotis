@@ -1,12 +1,19 @@
 //! Construction and process-bound identity for one MPRIS player
 
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
 use tokio::sync::watch;
 use unixnotis_core::MediaConfig;
 use zbus::fdo::{DBusProxy, PropertiesProxy};
 use zbus::{Connection, Proxy, ProxyBuilder};
 
 use super::admission::{detect_browser_family, local_art_allowed, remote_art_allowed};
-use super::constants::{MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER};
+use super::constants::{
+    MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PROPERTY_TIMEOUT_MS, MPRIS_TIMEOUT_QUARANTINE_AFTER,
+    MPRIS_TIMEOUT_QUARANTINE_MS,
+};
 #[cfg(target_os = "linux")]
 use super::process::executable_allowed_from_pidfd;
 #[cfg(target_os = "linux")]
@@ -28,9 +35,63 @@ pub(in crate::media) struct PlayerState {
     pub(in crate::media) remote_art_allowed: bool,
     pub(in crate::media) local_art_allowed: bool,
     pub(in crate::media) player: Proxy<'static>,
+    // Raw property calls allow reply-size checks before dynamic deserialization
+    pub(in crate::media) property_calls: Proxy<'static>,
     pub(in crate::media) properties: PropertiesProxy<'static>,
+    // Timeout state is shared by cloned refresh jobs for this player
+    pub(super) timeout: PlayerTimeoutState,
     // Cancellation sender for the properties listener task
     pub(in crate::media) listener_cancel: watch::Sender<bool>,
+}
+
+#[derive(Clone)]
+pub(super) struct PlayerTimeoutState {
+    streak: Arc<AtomicU8>,
+    quarantined_until: Arc<Mutex<Option<Instant>>>,
+}
+
+impl PlayerTimeoutState {
+    pub(super) fn new() -> Self {
+        Self {
+            streak: Arc::new(AtomicU8::new(0)),
+            quarantined_until: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub(super) fn is_quarantined(&self) -> bool {
+        let Ok(mut until) = self.quarantined_until.lock() else {
+            return true;
+        };
+        let Some(deadline) = *until else {
+            return false;
+        };
+        if Instant::now() < deadline {
+            return true;
+        }
+        *until = None;
+        self.streak.store(0, Ordering::Release);
+        false
+    }
+
+    pub(super) fn record_timeout(&self) {
+        let streak = self.streak.fetch_add(1, Ordering::AcqRel).saturating_add(1);
+        if streak >= MPRIS_TIMEOUT_QUARANTINE_AFTER {
+            if let Ok(mut until) = self.quarantined_until.lock() {
+                *until = Some(
+                    Instant::now()
+                        .checked_add(Duration::from_millis(MPRIS_TIMEOUT_QUARANTINE_MS))
+                        .unwrap_or_else(Instant::now),
+                );
+            }
+        }
+    }
+
+    pub(super) fn clear_timeout(&self) {
+        self.streak.store(0, Ordering::Release);
+        if let Ok(mut until) = self.quarantined_until.lock() {
+            *until = None;
+        }
+    }
 }
 
 pub(in crate::media) async fn build_player_state(
@@ -39,7 +100,7 @@ pub(in crate::media) async fn build_player_state(
     config: &MediaConfig,
 ) -> zbus::Result<Option<PlayerState>> {
     // D-Bus owner data is captured once so snapshots do not need another bus round trip
-    // Browser bridges may later override this PID with a stronger metadata source PID
+    // The broker-derived PID remains authoritative even when player metadata supplies hints
     let Some(owner) = resolve_player_owner(connection, name).await else {
         // Ownership changed during probing, so a later bus event should rebuild stable data
         return Ok(None);
@@ -89,6 +150,12 @@ pub(super) async fn build_player_state_for_owner(
         .interface(MPRIS_PLAYER)?
         .build()
         .await?;
+    let property_calls = ProxyBuilder::new(connection)
+        .destination(owner.unique_owner.clone())?
+        .path(MPRIS_PATH)?
+        .interface("org.freedesktop.DBus.Properties")?
+        .build()
+        .await?;
     let properties = PropertiesProxy::builder(connection)
         .destination(owner.unique_owner.clone())?
         .path(MPRIS_PATH)?
@@ -105,7 +172,9 @@ pub(super) async fn build_player_state_for_owner(
         remote_art_allowed,
         local_art_allowed,
         player,
+        property_calls,
         properties,
+        timeout: PlayerTimeoutState::new(),
         listener_cancel,
     })
 }
@@ -121,7 +190,13 @@ pub(super) async fn fetch_identity(connection: &Connection, name: &str) -> Optio
         .build()
         .await
         .ok()?;
-    proxy.get_property("Identity").await.ok()
+    tokio::time::timeout(
+        std::time::Duration::from_millis(MPRIS_PROPERTY_TIMEOUT_MS),
+        proxy.get_property("Identity"),
+    )
+    .await
+    .ok()?
+    .ok()
 }
 
 pub(super) async fn resolve_player_owner(
@@ -135,17 +210,37 @@ pub(super) async fn resolve_player_owner(
     let Ok(proxy) = DBusProxy::new(connection).await else {
         return None;
     };
-    let unique_owner = proxy.get_name_owner(bus_name.clone()).await.ok()?;
+    let unique_owner = tokio::time::timeout(
+        std::time::Duration::from_millis(MPRIS_PROPERTY_TIMEOUT_MS),
+        proxy.get_name_owner(bus_name.clone()),
+    )
+    .await
+    .ok()?
+    .ok()?;
     #[cfg(target_os = "linux")]
-    let credentials = get_connection_credentials(connection, (&unique_owner).into()).await?;
+    let credentials = tokio::time::timeout(
+        std::time::Duration::from_millis(MPRIS_PROPERTY_TIMEOUT_MS),
+        get_connection_credentials(connection, (&unique_owner).into()),
+    )
+    .await
+    .ok()??;
     #[cfg(target_os = "linux")]
     let (pid, process_fd) = (credentials.process_id?, credentials.process_fd);
     #[cfg(not(target_os = "linux"))]
-    let pid = proxy
-        .get_connection_unix_process_id((&unique_owner).into())
-        .await
-        .ok()?;
-    let observed_owner = proxy.get_name_owner(bus_name).await.ok()?;
+    let pid = tokio::time::timeout(
+        std::time::Duration::from_millis(MPRIS_PROPERTY_TIMEOUT_MS),
+        proxy.get_connection_unix_process_id((&unique_owner).into()),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    let observed_owner = tokio::time::timeout(
+        std::time::Duration::from_millis(MPRIS_PROPERTY_TIMEOUT_MS),
+        proxy.get_name_owner(bus_name),
+    )
+    .await
+    .ok()?
+    .ok()?;
     if !owner_probe_is_stable(unique_owner.as_str(), observed_owner.as_str()) {
         return None;
     }

@@ -11,7 +11,8 @@ use super::state::MediaRuntimeState;
 use super::MediaSignal;
 use crate::control::UiEvent;
 use crate::media::mpris::{
-    build_player_state, is_allowed_player, spawn_properties_listener, MPRIS_PREFIX,
+    build_player_state, is_allowed_player, spawn_properties_listener, MAX_MPRIS_PLAYERS,
+    MPRIS_PREFIX,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -51,6 +52,11 @@ pub(super) async fn apply_owner_change(
         return Ok(OwnerChangeOutcome::Removed);
     }
 
+    if should_retry_for_capacity(state.players.contains_key(name), state.players.len()) {
+        // Full discovery will choose the deterministic prefix on the next pass
+        return Ok(OwnerChangeOutcome::RetryNeeded);
+    }
+
     if state
         .players
         .get(name)
@@ -72,6 +78,21 @@ pub(super) async fn apply_owner_change(
 
     let rebuilt = build_player_state(connection, name, config).await;
     if let Ok(Some(player_state)) = rebuilt.as_ref() {
+        let duplicate_owner = state.players.iter().any(|(existing_name, existing)| {
+            owner_is_duplicate(
+                existing_name,
+                name,
+                existing.unique_owner.as_deref(),
+                player_state.unique_owner.as_deref(),
+            )
+        });
+        if duplicate_owner {
+            if removed_previous {
+                // The old alias was removed before deduplication and still needs a UI update
+                send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
+            }
+            return Ok(OwnerChangeOutcome::Applied);
+        }
         // Start the listener before publishing state so late property traffic is retained
         spawn_properties_listener(
             player_state.properties.clone(),
@@ -132,6 +153,19 @@ pub(super) fn owner_is_unchanged(
     announced_owner: Option<&str>,
 ) -> bool {
     current_owner.is_some() && current_owner == announced_owner
+}
+
+pub(super) const fn should_retry_for_capacity(tracked: bool, player_count: usize) -> bool {
+    !tracked && player_count >= MAX_MPRIS_PLAYERS
+}
+
+pub(super) fn owner_is_duplicate(
+    existing_name: &str,
+    requested_name: &str,
+    existing_owner: Option<&str>,
+    requested_owner: Option<&str>,
+) -> bool {
+    existing_name != requested_name && existing_owner == requested_owner
 }
 
 async fn remove_player(

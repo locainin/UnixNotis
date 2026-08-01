@@ -28,3 +28,15 @@ impl MediaRuntimeState {
         }
     }
 }
+
+impl Drop for MediaRuntimeState {
+    fn drop(&mut self) {
+        // Connection teardown must cancel delayed work instead of detaching it
+        for task in self.delayed_refreshes.drain().map(|(_, task)| task) {
+            task.abort();
+        }
+        for player in self.players.values() {
+            let _ = player.listener_cancel.send(true);
+        }
+    }
+}
