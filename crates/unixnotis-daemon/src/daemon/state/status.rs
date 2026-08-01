@@ -8,79 +8,88 @@ use super::DaemonState;
 
 impl DaemonState {
     pub(crate) fn set_panel_ready(&self, owner: &str, ready: bool) {
-        let mut current_owner = self
-            .panel_ready_owner
-            .lock()
+        let mut health = self
+            .ui_health
+            .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if ready {
             // The latest successful handshake owns the active readiness lease
-            *current_owner = Some(owner.to_string());
-            self.panel_ready.store(true, Ordering::SeqCst);
-        } else if current_owner.as_deref() == Some(owner) {
+            health.panel_ready_owner = Some(owner.to_string());
+            health.center_ready = true;
+        } else if health.panel_ready_owner.as_deref() == Some(owner) {
             // Only the matching center generation can clear its lease
-            *current_owner = None;
-            self.panel_ready.store(false, Ordering::SeqCst);
+            health.panel_ready_owner = None;
+            health.center_ready = false;
         }
-        self.ui_health_revision.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn clear_panel_ready(&self) {
-        let mut current_owner = self
-            .panel_ready_owner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *current_owner = None;
-        self.panel_ready.store(false, Ordering::SeqCst);
+        health.revision = health.revision.saturating_add(1);
     }
 
     pub(crate) fn set_center_process_running(&self, running: bool) {
-        self.center_process_running.store(running, Ordering::SeqCst);
+        let mut health = self
+            .ui_health
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        health.center_process_running = running;
         // Every process generation must complete its own subscription handshake
-        self.clear_panel_ready();
-        self.ui_health_revision.fetch_add(1, Ordering::SeqCst);
+        health.panel_ready_owner = None;
+        health.center_ready = false;
+        health.revision = health.revision.saturating_add(1);
     }
 
     pub(crate) fn set_popups_process_running(&self, running: bool) {
         // Popup health is tracked for supervision and diagnostics
-        self.popups_process_running.store(running, Ordering::SeqCst);
+        let mut health = self
+            .ui_health
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        health.popups_process_running = running;
         if !running {
-            self.clear_popups_ready();
+            health.popups_ready_owner = None;
+            health.popups_ready = false;
         }
-        self.ui_health_revision.fetch_add(1, Ordering::SeqCst);
+        health.revision = health.revision.saturating_add(1);
     }
 
     pub(crate) fn set_popups_ready(&self, owner: &str, ready: bool) {
-        let mut current_owner = self
-            .popups_ready_owner
-            .lock()
+        let mut health = self
+            .ui_health
+            .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if ready {
-            *current_owner = Some(owner.to_string());
-            self.popups_ready.store(true, Ordering::SeqCst);
+            health.popups_ready_owner = Some(owner.to_string());
+            health.popups_ready = true;
             self.popups_unready_warning_emitted
                 .store(false, Ordering::SeqCst);
-        } else if current_owner.as_deref() == Some(owner) {
-            *current_owner = None;
-            self.popups_ready.store(false, Ordering::SeqCst);
+        } else if health.popups_ready_owner.as_deref() == Some(owner) {
+            health.popups_ready_owner = None;
+            health.popups_ready = false;
         }
-        self.ui_health_revision.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn clear_popups_ready(&self) {
-        let mut current_owner = self
-            .popups_ready_owner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *current_owner = None;
-        self.popups_ready.store(false, Ordering::SeqCst);
+        health.revision = health.revision.saturating_add(1);
     }
 
     pub(crate) fn panel_ready(&self) -> bool {
-        self.panel_ready.load(Ordering::SeqCst)
+        self.ui_health
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .center_ready
     }
 
     pub(crate) fn popups_ready(&self) -> bool {
-        self.popups_ready.load(Ordering::SeqCst)
+        self.ui_health
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .popups_ready
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "getter is used by child-process tests")
+    )]
+    pub(crate) fn popups_process_running(&self) -> bool {
+        self.ui_health
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .popups_process_running
     }
 
     pub(crate) fn should_warn_popups_unready(&self) -> bool {
@@ -92,31 +101,17 @@ impl DaemonState {
     }
 
     pub(crate) fn ui_health(&self) -> UiHealth {
-        // A readiness transition updates the revision after all fields change
-        // Retry when a concurrent transition would otherwise mix two snapshots
-        for _ in 0..3 {
-            let before = self.ui_health_revision.load(Ordering::Acquire);
-            let health = UiHealth {
-                center_process_running: self.center_process_running.load(Ordering::Acquire),
-                center_ready: self.panel_ready.load(Ordering::Acquire),
-                popups_process_running: self.popups_process_running.load(Ordering::Acquire),
-                popups_ready: self.popups_ready.load(Ordering::Acquire),
-                revision: before,
-            };
-            let after = self.ui_health_revision.load(Ordering::Acquire);
-            if before == after {
-                return health;
-            }
-        }
-
-        // A busy transition still returns a coherent revisioned sample after
-        // the bounded retries rather than delaying notification admission
+        // A single read lock prevents mixed fields and revision values
+        let health = self
+            .ui_health
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         UiHealth {
-            center_process_running: self.center_process_running.load(Ordering::Acquire),
-            center_ready: self.panel_ready.load(Ordering::Acquire),
-            popups_process_running: self.popups_process_running.load(Ordering::Acquire),
-            popups_ready: self.popups_ready.load(Ordering::Acquire),
-            revision: self.ui_health_revision.load(Ordering::Acquire),
+            center_process_running: health.center_process_running,
+            center_ready: health.center_ready,
+            popups_process_running: health.popups_process_running,
+            popups_ready: health.popups_ready,
+            revision: health.revision,
         }
     }
 

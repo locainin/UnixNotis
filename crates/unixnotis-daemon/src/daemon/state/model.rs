@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicBool, AtomicU64};
-use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
 
 use arc_swap::ArcSwap;
 use tokio::sync::Mutex;
@@ -16,6 +16,21 @@ use crate::daemon::notifications::identity::DesktopIdentityIndex;
 use crate::daemon::notifications::NotificationBurstState;
 use crate::daemon::notifications::SenderMetadataCache;
 
+#[derive(Clone, Default)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the control protocol exposes four independent readiness flags"
+)]
+pub(in crate::daemon::state) struct UiHealthState {
+    pub(in crate::daemon::state) center_process_running: bool,
+    pub(in crate::daemon::state) center_ready: bool,
+    pub(in crate::daemon::state) panel_ready_owner: Option<String>,
+    pub(in crate::daemon::state) popups_process_running: bool,
+    pub(in crate::daemon::state) popups_ready: bool,
+    pub(in crate::daemon::state) popups_ready_owner: Option<String>,
+    pub(in crate::daemon::state) revision: u64,
+}
+
 /// Shared daemon state guarded behind an async mutex
 pub struct DaemonState {
     pub store: Mutex<NotificationStore>,
@@ -24,17 +39,9 @@ pub struct DaemonState {
     pub(in crate::daemon::state) connection: Connection,
     // Panel control should only succeed once the center has subscribed
     // This avoids accepting requests that no live listener can receive
-    pub(in crate::daemon::state) panel_ready: AtomicBool,
-    // Unique owner prevents a delayed disconnect from clearing a newer center lease
-    pub(in crate::daemon::state) panel_ready_owner: StdMutex<Option<String>>,
-    pub(in crate::daemon::state) center_process_running: AtomicBool,
-    pub(in crate::daemon::state) popups_process_running: AtomicBool,
-    pub(in crate::daemon::state) popups_ready: AtomicBool,
-    // Changes whenever process or readiness ownership changes
-    pub(in crate::daemon::state) ui_health_revision: AtomicU64,
+    // One lock keeps process, readiness, owner, and revision values coherent
+    pub(in crate::daemon::state) ui_health: StdRwLock<UiHealthState>,
     pub(in crate::daemon::state) popups_unready_warning_emitted: AtomicBool,
-    // The unique D-Bus owner prevents an older popup generation from clearing a newer one
-    pub(in crate::daemon::state) popups_ready_owner: StdMutex<Option<String>>,
     // Scheduler is installed after state startup so close paths can cancel timers
     pub(in crate::daemon::state) scheduler: OnceLock<ExpirationScheduler>,
     // Warn once if scheduler-backed operations happen before install
@@ -93,14 +100,8 @@ impl DaemonState {
             store: Mutex::new(store),
             sound,
             connection: connection.clone(),
-            panel_ready: AtomicBool::new(false),
-            panel_ready_owner: StdMutex::new(None),
-            center_process_running: AtomicBool::new(false),
-            popups_process_running: AtomicBool::new(false),
-            popups_ready: AtomicBool::new(false),
-            ui_health_revision: AtomicU64::new(0),
+            ui_health: StdRwLock::new(UiHealthState::default()),
             popups_unready_warning_emitted: AtomicBool::new(false),
-            popups_ready_owner: StdMutex::new(None),
             scheduler: OnceLock::new(),
             scheduler_missing_warned: AtomicBool::new(false),
             dnd_scheduler: OnceLock::new(),

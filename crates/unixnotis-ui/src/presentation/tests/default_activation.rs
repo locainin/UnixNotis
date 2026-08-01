@@ -37,6 +37,31 @@ fn binding_replaces_and_clears_the_current_generation() {
     assert_eq!(binding.target.borrow().as_ref(), Some(&replacement));
     binding.set_target(None);
     assert!(binding.target.borrow().is_none());
+    assert!(!card.is_focusable());
+    assert!(!card.has_css_class("unixnotis-popup-default-action"));
+}
+
+#[gtk::test]
+fn activation_callbacks_do_not_keep_destroyed_cards_alive() {
+    let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let weak = card.downgrade();
+    let binding = connect_default_activation(&card, |_, _| {});
+
+    binding.set_target(Some(DefaultActionTarget {
+        notification: NotificationKey {
+            id: 9,
+            generation: 1,
+        },
+        action_key: "default".to_string(),
+    }));
+    drop(binding);
+    drop(card);
+
+    while gtk::glib::MainContext::default().pending() {
+        gtk::glib::MainContext::default().iteration(false);
+    }
+
+    assert!(weak.upgrade().is_none());
 }
 
 #[gtk::test]

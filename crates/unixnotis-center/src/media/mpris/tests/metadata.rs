@@ -1,9 +1,10 @@
 use super::super::constants::MAX_MPRIS_PROPERTY_REPLY_BYTES;
+use super::super::metadata::fetch_media_info;
 use super::super::metadata::{
     bound_string, metadata_artist, metadata_entry_count_allowed, metadata_string,
     property_reply_body_allowed,
 };
-use super::super::{build_player_state, fetch_media_info};
+use super::super::player::build_player_state;
 use super::support::{MprisFixture, TEST_PLAYER_NAME};
 use unixnotis_core::MediaConfig;
 use zbus::zvariant::{OwnedValue, Value};

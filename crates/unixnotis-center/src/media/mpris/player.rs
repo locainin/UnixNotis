@@ -99,6 +99,10 @@ pub(super) fn quarantine_active(now: Instant, deadline: Instant) -> bool {
     now < deadline
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "direct builder remains available for media tests")
+)]
 pub(in crate::media) async fn build_player_state(
     connection: &Connection,
     name: &str,

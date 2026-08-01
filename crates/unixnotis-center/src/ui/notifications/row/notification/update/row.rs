@@ -27,6 +27,11 @@ pub(in crate::ui::notifications) fn update_notification_row(
         .set_reduced_motion(data.presentation.reduced_motion);
     // Model changes may briefly update a recycled row without notification data
     let Some(notification_snapshot) = data.notification.as_ref() else {
+        row.default_activation.set_target(None);
+        row.notify_key.set(unixnotis_core::NotificationKey {
+            id: 0,
+            generation: 0,
+        });
         return;
     };
     let notification = notification_snapshot.as_ref();
