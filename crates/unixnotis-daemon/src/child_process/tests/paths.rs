@@ -55,3 +55,69 @@ fn resolve_sibling_binary_returns_none_when_no_sibling_exists() {
 
     assert!(resolve_sibling_binary("unixnotis-missing").is_none());
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn parent_death_signal_terminates_a_child_when_its_launcher_exits() {
+    let _guard = env_lock();
+    let marker_path = std::env::temp_dir().join(format!(
+        "unixnotis-pdeath-{}-{}.pid",
+        std::process::id(),
+        std::time::Instant::now().elapsed().as_nanos()
+    ));
+    let _ = std::fs::remove_file(&marker_path);
+    let helper = std::env::current_exe().expect("current test executable");
+    let status = std::process::Command::new(helper)
+        .args([
+            "--exact",
+            "child_process::paths::tests::parent_death_signal_child_helper",
+            "--nocapture",
+        ])
+        .env("UNIXNOTIS_PDEATH_MARKER", &marker_path)
+        .status()
+        .expect("launch parent-death helper");
+    assert!(status.success(), "helper test failed: {status}");
+
+    let pid = std::fs::read_to_string(&marker_path)
+        .expect("helper should publish the child pid")
+        .trim()
+        .parse::<u32>()
+        .expect("child pid should be numeric");
+    let proc_path = std::path::PathBuf::from(format!("/proc/{pid}"));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while proc_path.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    if proc_path.exists() {
+        // Clean up a failed mutation so the test cannot leak a long-running shell
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+    }
+    assert!(!proc_path.exists(), "child survived launcher exit");
+    let _ = std::fs::remove_file(marker_path);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn parent_death_signal_child_helper() {
+    let Some(marker) = std::env::var_os("UNIXNOTIS_PDEATH_MARKER") else {
+        return;
+    };
+    let mut command = tokio::process::Command::new("/bin/sh");
+    command
+        .args(["-c", "trap 'exit 0' TERM; while :; do sleep 1; done"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    apply_parent_death_signal(&mut command);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .build()
+        .expect("build helper runtime");
+    runtime.block_on(async move {
+        let child = command.spawn().expect("spawn supervised child");
+        std::fs::write(marker, child.id().expect("child pid").to_string())
+            .expect("write child pid marker");
+    });
+}
