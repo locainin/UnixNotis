@@ -332,7 +332,7 @@ fn active_blank_default_action_builds_accessible_open_control() {
 }
 
 #[gtk::test]
-fn labeled_default_action_uses_one_compact_accessible_open_control() {
+fn labeled_default_action_stays_a_visible_one_click_button() {
     let (_root, row) = notification_row();
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
     let mut notification = sample_notification();
@@ -359,9 +359,9 @@ fn labeled_default_action_uses_one_compact_accessible_open_control() {
         .actions_box
         .first_child()
         .and_downcast::<gtk::Button>()
-        .expect("compact default action button");
-    assert!(button.has_css_class("unixnotis-panel-default-action"));
-    assert_eq!(button.tooltip_text().as_deref(), Some("Open notification"));
+        .expect("labeled default action button");
+    assert!(!button.has_css_class("unixnotis-panel-default-action"));
+    assert_eq!(button.label().as_deref(), Some("Open conversation"));
 }
 
 #[gtk::test]

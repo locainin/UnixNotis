@@ -41,7 +41,8 @@ fn shared_model_keeps_verified_communication_content_and_actions_consistent() {
         BadgePresentation::AuthenticatedApplication
     );
     assert_eq!(presentation.media.thumbnail, ThumbnailKind::Content);
-    assert!(presentation.actions.primary.is_empty());
+    assert_eq!(presentation.actions.primary.len(), 1);
+    assert_eq!(presentation.actions.primary[0].key, "default");
     assert!(presentation.actions.overflow.is_empty());
     assert_eq!(presentation.actions.default_key.as_deref(), Some("default"));
     assert_eq!(presentation.timestamp, "2m");
@@ -82,10 +83,15 @@ fn native_association_keeps_card_activation_and_confirms_only_extra_buttons() {
 
     assert_eq!(presentation.trust.level, TrustLevel::SystemAssociated);
     assert_eq!(presentation.actions.default_key.as_deref(), Some("default"));
-    assert_eq!(presentation.actions.primary.len(), 1);
-    assert_eq!(presentation.actions.primary[0].key, "archive");
+    assert_eq!(presentation.actions.primary.len(), 2);
+    assert_eq!(presentation.actions.primary[0].key, "default");
+    assert_eq!(presentation.actions.primary[1].key, "archive");
     assert_eq!(
         presentation.actions.primary[0].policy,
+        unixnotis_core::ApplicationActionPolicy::Allow
+    );
+    assert_eq!(
+        presentation.actions.primary[1].policy,
         unixnotis_core::ApplicationActionPolicy::Confirm
     );
     assert_eq!(presentation.trust.reply, ReplyPresentation::Unavailable);

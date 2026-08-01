@@ -10,6 +10,9 @@ use gtk::prelude::*;
 use tokio::sync::mpsc;
 use tracing::debug;
 use unixnotis_core::{css::hooks, NotificationKey};
+use unixnotis_ui::presentation::default_activation::{
+    connect_default_activation, mark_interactive,
+};
 use unixnotis_ui::CutCorner;
 
 use crate::control::UiCommand;
@@ -55,6 +58,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
     close_button.set_halign(gtk::Align::End);
     close_button.set_valign(gtk::Align::Center);
     close_button.add_css_class("unixnotis-panel-close");
+    mark_interactive(&close_button);
     close_button.update_property(&[gtk::accessible::Property::Label("Dismiss notification")]);
 
     // Header owns identity, chronology, and dismiss without covering message content
@@ -178,6 +182,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let actions_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     // Action buttons are added on demand during row updates
     actions_box.add_css_class("unixnotis-notification-actions");
+    mark_interactive(&actions_box);
     let inline_reply = build_inline_reply(command_tx.clone());
 
     // Keep the card tree fully built up front
@@ -201,13 +206,26 @@ pub(in crate::ui::notifications) fn build_notification_row(
         generation: 0,
     }));
     // Recycled rows retain the exact generation rather than targeting a reused numeric id
-    connect_dismiss_button(&close_button, command_tx, notify_key.clone());
+    connect_dismiss_button(&close_button, command_tx.clone(), notify_key.clone());
+    let default_activation = connect_default_activation(&card, {
+        move |notification, action_key| {
+            try_send_command(
+                &command_tx,
+                UiCommand::InvokeAction {
+                    notification,
+                    action_key,
+                    confirmed: false,
+                },
+            );
+        }
+    });
 
     // The reusable widget bundle is returned with the root so the list factory
     // can keep the GTK tree and the cached row state together
     (
         root,
         NotificationRowWidgets {
+            default_activation,
             card,
             card_plate,
             stack_middle,

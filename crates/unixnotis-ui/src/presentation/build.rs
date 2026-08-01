@@ -268,10 +268,12 @@ fn visible_actions(notification: &NotificationView, kind: NotificationKind) -> A
             } else {
                 button_policy
             };
-            // Allowed defaults use card activation and never duplicate app-owned branding
+            // Allowed defaults keep a labeled button while blank labels use card activation
             (policy != ApplicationActionPolicy::Deny
-                && !(action.key == "default" && policy == ApplicationActionPolicy::Allow))
-                .then(|| action_view(action, policy))
+                && !(action.key == "default"
+                    && policy == ApplicationActionPolicy::Allow
+                    && action.label.trim().is_empty()))
+            .then(|| action_view(action, policy))
         })
         .collect::<Vec<_>>();
     if default_policy == ApplicationActionPolicy::Confirm

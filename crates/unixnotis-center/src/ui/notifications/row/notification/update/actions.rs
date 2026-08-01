@@ -115,7 +115,7 @@ pub(super) fn update_actions(
             &presentation.actions.overflow,
         ));
     }
-    if let Some(default_key) = blank_default_action_key(&presentation) {
+    if let Some(default_key) = hidden_default_action_key(&presentation) {
         row.actions_box.append(&build_default_action_button(
             command_tx,
             notification.key(),
@@ -138,7 +138,7 @@ fn action_signature(
         .chain(&presentation.actions.overflow)
         .map(|action| (action.key.clone(), action.label.clone(), action.policy))
         .collect::<Vec<_>>();
-    if let Some(default_key) = blank_default_action_key(presentation) {
+    if let Some(default_key) = hidden_default_action_key(presentation) {
         // The empty label distinguishes the compact icon-only default control
         signature.push((
             default_key.to_string(),
@@ -149,9 +149,17 @@ fn action_signature(
     signature
 }
 
-fn blank_default_action_key(presentation: &NotificationPresentation) -> Option<&str> {
-    // Shared presentation keeps allowed defaults out of the visible button lists
-    presentation.actions.default_key.as_deref()
+fn hidden_default_action_key(presentation: &NotificationPresentation) -> Option<&str> {
+    // A labeled default is already rendered as a normal action button
+    let visible_default = presentation
+        .actions
+        .primary
+        .iter()
+        .chain(&presentation.actions.overflow)
+        .any(|action| action.key == "default");
+    (!visible_default)
+        .then_some(presentation.actions.default_key.as_deref())
+        .flatten()
 }
 
 fn build_default_action_button(
@@ -337,6 +345,6 @@ fn visible_action_count_from(presentation: &NotificationPresentation, is_active:
     }
     let regular = presentation.actions.primary.len() + presentation.actions.overflow.len();
     let reply = presentation.trust.reply == ReplyPresentation::Available;
-    let blank_default = blank_default_action_key(presentation).is_some();
+    let blank_default = hidden_default_action_key(presentation).is_some();
     regular + usize::from(reply) + usize::from(blank_default)
 }

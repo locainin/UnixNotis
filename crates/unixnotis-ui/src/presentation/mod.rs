@@ -2,6 +2,7 @@
 
 mod badges;
 mod build;
+pub mod default_activation;
 mod interaction;
 mod text;
 mod types;
