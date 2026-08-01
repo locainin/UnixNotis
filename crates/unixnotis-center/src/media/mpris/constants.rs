@@ -13,6 +13,8 @@ pub const MPRIS_APP: &str = "org.mpris.MediaPlayer2";
 pub const MPRIS_PROPERTY_TIMEOUT_MS: u64 = 500;
 /// Reject unusually large property replies before decoding dynamic values
 pub const MAX_MPRIS_PROPERTY_REPLY_BYTES: usize = 512 * 1024;
+/// Identity is shown in the panel but is never allowed to grow without bound
+pub const MAX_MPRIS_IDENTITY_BYTES: usize = 512;
 pub const MPRIS_TIMEOUT_QUARANTINE_AFTER: u8 = 3;
 pub const MPRIS_TIMEOUT_QUARANTINE_MS: u64 = 5_000;
 

@@ -127,7 +127,7 @@ pub(super) fn resolution_for_record(
         canonical_id,
         &canonical.badge_icon,
         IdentityAssurance::UserAssociated,
-        InteractionPolicies::CONFIRM_ACTIONS,
+        InteractionPolicies::NATIVE_COMPATIBILITY,
         AttributionReason::ExactUserExecutable,
         &source,
         format!(

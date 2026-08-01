@@ -1,9 +1,11 @@
+use std::time::{Duration, Instant};
+
 use unixnotis_core::MediaConfig;
 
 use super::super::constants::{MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PREFIX};
 use super::super::player::{
     build_player_state, build_player_state_for_owner, fetch_identity, owner_probe_is_stable,
-    read_owner_executable_path, resolve_player_owner, PlayerTimeoutState,
+    quarantine_active, read_owner_executable_path, resolve_player_owner, PlayerTimeoutState,
 };
 use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
 
@@ -11,6 +13,13 @@ use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
 fn owner_probe_accepts_only_one_stable_unique_owner() {
     assert!(owner_probe_is_stable(":1.40", ":1.40"));
     assert!(!owner_probe_is_stable(":1.40", ":1.41"));
+}
+
+#[test]
+fn quarantine_deadline_is_exclusive() {
+    let now = Instant::now();
+    assert!(quarantine_active(now, now + Duration::from_millis(1)));
+    assert!(!quarantine_active(now, now));
 }
 
 #[cfg(target_os = "linux")]
