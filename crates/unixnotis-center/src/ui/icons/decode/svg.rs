@@ -17,6 +17,7 @@ use super::pipeline::{MAX_ICON_DIMENSION, MAX_ICON_PIXELS};
 // Hard wall-clock deadline for the entire SVG subprocess (parse + render)
 const SVG_SUBPROCESS_DEADLINE: Duration = Duration::from_millis(500);
 const MAX_SVG_BYTES: usize = 1_024_000;
+const MAX_RENDERER_STDERR: usize = 16 * 1024;
 
 pub(super) const fn is_gzip_payload(bytes: &[u8]) -> bool {
     matches!(bytes, [0x1f, 0x8b, ..])
@@ -65,7 +66,7 @@ pub(super) fn decode_svg_bytes_with_renderer(
         .stdout
         .take()
         .ok_or_else(|| "failed to capture child stdout".to_string())?;
-    let mut stderr = child
+    let stderr = child
         .stderr
         .take()
         .ok_or_else(|| "failed to capture child stderr".to_string())?;
@@ -83,9 +84,16 @@ pub(super) fn decode_svg_bytes_with_renderer(
     let wait_start = std::time::Instant::now();
     let read_handle = std::thread::spawn(move || read_stdout(stdout));
     let stderr_handle = std::thread::spawn(move || {
-        let mut buf = String::new();
-        let _ = stderr.read_to_string(&mut buf);
-        buf
+        let mut bytes = Vec::new();
+        let _ = stderr
+            .take(
+                u64::try_from(MAX_RENDERER_STDERR)
+                    .unwrap_or(u64::MAX)
+                    .saturating_add(1),
+            )
+            .read_to_end(&mut bytes);
+        bytes.truncate(MAX_RENDERER_STDERR);
+        String::from_utf8_lossy(&bytes).into_owned()
     });
 
     // Wait for child with timeout
@@ -121,6 +129,11 @@ pub(super) fn decode_svg_bytes_with_renderer(
     let read_result = read_handle
         .join()
         .map_err(|err| format!("stdout reader panicked: {err:?}"))?;
+    // Join the bounded diagnostics reader on success as well, so no helper thread
+    // outlives the decoder operation
+    let _ = stderr_handle
+        .join()
+        .map_err(|err| format!("stderr reader panicked: {err:?}"))?;
     let (width, height, rgba_data) = read_result?;
 
     let expected_len = checked_rgba_len(width, height)?;

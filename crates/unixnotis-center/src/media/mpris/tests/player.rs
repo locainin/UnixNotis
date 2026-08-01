@@ -52,11 +52,14 @@ async fn player_state_uses_live_identity_owner_and_process_details() {
     let owner = resolve_player_owner(&fixture.client, TEST_PLAYER_NAME)
         .await
         .expect("resolve stable test owner");
-    assert_eq!(owner.0, state.unique_owner.expect("captured unique owner"));
-    assert_eq!(owner.1, Some(std::process::id()));
+    assert_eq!(
+        owner.unique_owner.as_str(),
+        state.unique_owner.expect("captured unique owner")
+    );
+    assert_eq!(owner.pid, std::process::id());
     #[cfg(target_os = "linux")]
     assert_eq!(
-        owner.2.as_deref(),
+        owner.executable.as_deref(),
         Some(
             std::env::current_exe()
                 .expect("resolve current test executable")
@@ -65,7 +68,25 @@ async fn player_state_uses_live_identity_owner_and_process_details() {
         )
     );
     assert_eq!(
-        fetch_identity(&fixture.client, owner.0.as_str()).await,
+        fetch_identity(&fixture.client, owner.unique_owner.as_str()).await,
         Some(TEST_PLAYER_IDENTITY.to_string())
     );
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn exact_local_art_policy_uses_the_connection_process_fd() {
+    let fixture = MprisFixture::start().await;
+    let current_executable = std::env::current_exe().expect("resolve current test executable");
+    let config = MediaConfig {
+        local_art_executable_allowlist: vec![current_executable.display().to_string()],
+        ..MediaConfig::default()
+    };
+
+    let state = build_player_state(&fixture.client, TEST_PLAYER_NAME, &config)
+        .await
+        .expect("probe test MPRIS player")
+        .expect("stable test MPRIS owner");
+
+    assert!(state.local_art_allowed);
 }

@@ -16,9 +16,7 @@ use super::support::write_executable;
 use crate::test_support::{daemon_state_for_test, env_lock, EnvVarGuard, TempRoot};
 
 fn open_test_executable(path: &std::path::Path) -> OwnedFd {
-    File::open(path)
-        .expect("open test executable")
-        .into()
+    File::open(path).expect("open test executable").into()
 }
 
 fn message_without_bus_sender() -> Message {
@@ -104,10 +102,25 @@ fn control_executable_error_requires_present_allowed_trusted_binary() {
 
     let trusted_fd = open_test_executable(&trusted);
 
-    assert!(control_executable_error(Some(&trusted), Some(&trusted_fd), &["noticenterctl"], true).is_none());
-    assert!(control_executable_error::<OwnedFd>(None, None::<&OwnedFd>, &["noticenterctl"], true).is_some());
-    assert!(control_executable_error(Some(&trusted), Some(&trusted_fd), &["unixnotis-center"], true).is_some());
-    assert!(control_executable_error(Some(&untrusted_name), Some(&trusted_fd), &["unknown"], true).is_some());
+    assert!(
+        control_executable_error(Some(&trusted), Some(&trusted_fd), &["noticenterctl"], true)
+            .is_none()
+    );
+    assert!(
+        control_executable_error::<OwnedFd>(None, None::<&OwnedFd>, &["noticenterctl"], true)
+            .is_some()
+    );
+    assert!(control_executable_error(
+        Some(&trusted),
+        Some(&trusted_fd),
+        &["unixnotis-center"],
+        true
+    )
+    .is_some());
+    assert!(
+        control_executable_error(Some(&untrusted_name), Some(&trusted_fd), &["unknown"], true)
+            .is_some()
+    );
 }
 
 #[test]

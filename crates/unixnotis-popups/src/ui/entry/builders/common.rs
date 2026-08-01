@@ -222,9 +222,9 @@ fn build_action_button(
                             expire_armed_at.set(None);
                             expire_button.set_label(&expire_label);
                             expire_button.set_tooltip_text(None);
-                            expire_button.update_property(&[
-                                gtk::accessible::Property::Label(&expire_label),
-                            ]);
+                            expire_button.update_property(&[gtk::accessible::Property::Label(
+                                &expire_label,
+                            )]);
                         }
                     },
                 );
@@ -242,32 +242,28 @@ fn build_action_button(
                             armed_at.set(None);
                             button.set_label(&original_label);
                             button.set_tooltip_text(None);
-                            button.update_property(&[
-                                gtk::accessible::Property::Label(&original_label),
-                            ]);
+                            button.update_property(&[gtk::accessible::Property::Label(
+                                &original_label,
+                            )]);
                             return;
                         }
                         // Click came too fast after arming
                         // Probably an accidental double-tap, stay armed so the next click
                         // can still go through
                         Some(d)
-                            if d
-                                < std::time::Duration::from_millis(MIN_CONFIRM_INTERVAL_MS) =>
+                            if d < std::time::Duration::from_millis(MIN_CONFIRM_INTERVAL_MS) =>
                         {
                             return;
                         }
                         // Confirmation took too long
                         // Reset the button and make the person re-arm
-                        Some(d)
-                            if d
-                                > std::time::Duration::from_millis(MAX_CONFIRM_TIMEOUT_MS) =>
-                        {
+                        Some(d) if d > std::time::Duration::from_millis(MAX_CONFIRM_TIMEOUT_MS) => {
                             armed_at.set(None);
                             button.set_label(&original_label);
                             button.set_tooltip_text(None);
-                            button.update_property(&[
-                                gtk::accessible::Property::Label(&original_label),
-                            ]);
+                            button.update_property(&[gtk::accessible::Property::Label(
+                                &original_label,
+                            )]);
                             return;
                         }
                         // Right amount of time passed, dispatch the action

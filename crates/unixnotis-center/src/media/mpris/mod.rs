@@ -3,10 +3,12 @@
 mod admission;
 mod command;
 mod constants;
+mod credentials;
 mod discovery;
 mod listener;
 mod metadata;
 mod player;
+mod process;
 
 pub(in crate::media) use admission::is_allowed_player;
 pub(in crate::media) use command::handle_command;

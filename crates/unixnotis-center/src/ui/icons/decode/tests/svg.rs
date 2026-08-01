@@ -221,6 +221,23 @@ fn renderer_stderr_is_drained_while_stdout_is_decoded() {
 }
 
 #[test]
+fn renderer_stderr_is_bounded_before_error_reporting() {
+    let directory = tempfile::tempdir().expect("create renderer fixture directory");
+    let renderer = directory.path().join("noisy-failing-renderer");
+    std::fs::write(
+        &renderer,
+        "#!/bin/sh\nyes X | head -c 1048576 >&2\nexit 1\n",
+    )
+    .expect("write renderer fixture");
+    std::fs::set_permissions(&renderer, std::fs::Permissions::from_mode(0o755))
+        .expect("make renderer executable");
+
+    let error = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
+        .expect_err("failing renderer should return an error");
+    assert!(error.len() <= 17_000, "stderr exceeded diagnostic cap");
+}
+
+#[test]
 fn missing_sibling_renderer_is_reported() {
     let error = decode_svg_bytes_with_renderer(
         b"<svg/>",

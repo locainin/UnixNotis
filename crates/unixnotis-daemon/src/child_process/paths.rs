@@ -39,18 +39,28 @@ pub(super) fn resolve_center_path() -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "linux")]
-pub(super) fn apply_parent_death_signal(command: &mut Command) {
+pub(super) fn apply_parent_death_signal(command: &mut Command, expected_parent_pid: u32) {
     // The kernel clears the child relationship before the new program starts
     // SAFETY: This closure only calls prctl through rustix and returns its OS error
     unsafe {
-        command.as_std_mut().pre_exec(|| {
-            set_parent_process_death_signal(Some(Signal::TERM)).map_err(std::io::Error::from)
+        command.as_std_mut().pre_exec(move || {
+            set_parent_process_death_signal(Some(Signal::TERM)).map_err(std::io::Error::from)?;
+            let current_parent = rustix::process::getppid()
+                .map(|pid| pid.as_raw_nonzero().get())
+                .unwrap_or_default();
+            if current_parent != i32::try_from(expected_parent_pid).unwrap_or_default() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Interrupted,
+                    "parent exited before child-death supervision was armed",
+                ));
+            }
+            Ok(())
         });
     }
 }
 
 #[cfg(not(target_os = "linux"))]
-pub(super) fn apply_parent_death_signal(_command: &mut Command) {}
+pub(super) fn apply_parent_death_signal(_command: &mut Command, _expected_parent_pid: u32) {}
 
 #[cfg(test)]
 #[path = "tests/paths.rs"]

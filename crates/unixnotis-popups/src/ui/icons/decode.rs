@@ -33,8 +33,8 @@ pub fn decode_icon_file(path: &Path, target_size: i32) -> Result<RasterIcon, Str
     let bytes = read_icon_file_bounded(path)?;
 
     // Probe format from content, not extension, so disguised files are caught
-    let _format = image::guess_format(&bytes)
-        .map_err(|err| format!("icon format probe failed: {err}"))?;
+    let _format =
+        image::guess_format(&bytes).map_err(|err| format!("icon format probe failed: {err}"))?;
 
     let mut limits = Limits::default();
     limits.max_image_width = Some(MAX_ICON_SOURCE_DIMENSION);
