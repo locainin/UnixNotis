@@ -4,6 +4,7 @@ use gtk::prelude::*;
 use tokio::sync::mpsc;
 
 use crate::control::UiCommand;
+use unixnotis_ui::presentation::default_activation::mark_interactive;
 
 use super::lifecycle::{cancel_inline_reply, submit_reply, MAX_REPLY_BYTES};
 use super::presentation::{clear_reply_error, DEFAULT_PLACEHOLDER, DEFAULT_SUBMIT_LABEL};
@@ -20,6 +21,7 @@ pub(in super::super) fn build_inline_reply(
     revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
     revealer.set_transition_duration(INLINE_REPLY_TRANSITION_MS);
     revealer.set_reveal_child(false);
+    mark_interactive(&revealer);
 
     let form = gtk::Box::new(gtk::Orientation::Vertical, 4);
     form.add_css_class("unixnotis-inline-reply");
@@ -30,11 +32,13 @@ pub(in super::super) fn build_inline_reply(
     entry.set_max_length(MAX_REPLY_CHARS);
     entry.set_placeholder_text(Some(DEFAULT_PLACEHOLDER));
     entry.add_css_class("unixnotis-inline-reply-entry");
+    mark_interactive(&entry);
 
     let send_button = gtk::Button::with_label(DEFAULT_SUBMIT_LABEL);
     send_button.set_sensitive(false);
     send_button.add_css_class("unixnotis-notification-action");
     send_button.add_css_class("unixnotis-inline-reply-send");
+    mark_interactive(&send_button);
 
     let error_label = gtk::Label::new(None);
     error_label.set_xalign(0.0);

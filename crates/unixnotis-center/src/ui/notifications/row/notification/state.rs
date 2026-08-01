@@ -7,11 +7,14 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use unixnotis_core::{NotificationKey, NotificationView};
+use unixnotis_ui::presentation::default_activation::DefaultActionBinding;
 use unixnotis_ui::presentation::{BadgePresentation, NotificationPresentation};
 
 use super::reply::InlineReplyWidgets;
 
 pub(in crate::ui::notifications) struct NotificationRowWidgets {
+    // Active rows use one shared generation-bound card activation binding
+    pub(in crate::ui::notifications) default_activation: DefaultActionBinding,
     // Styled notification card inside the ListView row wrapper
     pub(super) card: gtk::Box,
     // Polygon wrapper clips both visual output and pointer hit testing

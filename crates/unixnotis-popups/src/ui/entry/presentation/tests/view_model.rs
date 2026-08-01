@@ -64,9 +64,11 @@ fn utility_layout_moves_extra_safe_actions_into_overflow() {
     assert_eq!(model.kind, PopupKind::Utility);
     assert_eq!(model.default_action_key.as_deref(), Some("default"));
     assert_eq!(model.primary_actions.len(), 2);
-    assert_eq!(model.primary_actions[0].key, "folder");
-    assert_eq!(model.overflow_actions.len(), 1);
-    assert_eq!(model.overflow_actions[0].key, "mute");
+    assert_eq!(model.primary_actions[0].key, "default");
+    assert_eq!(model.primary_actions[1].key, "folder");
+    assert_eq!(model.overflow_actions.len(), 2);
+    assert_eq!(model.overflow_actions[0].key, "archive");
+    assert_eq!(model.overflow_actions[1].key, "mute");
 }
 
 #[test]

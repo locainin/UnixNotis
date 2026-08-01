@@ -1,12 +1,12 @@
 use gtk::prelude::*;
 use unixnotis_core::NotificationKey;
 
-use super::{
-    connect_default_action, dispatch_default_action, handle_default_action_key,
-    is_default_activation_key, mark_interactive,
-};
+use super::{connect_default_action, mark_interactive};
 use crate::dbus::UiCommand;
 use crate::ui::entry::presentation::{PopupEntryViewModel, PopupKind, ReplyPresentation};
+use unixnotis_ui::presentation::default_activation::{
+    is_default_activation_key, picked_widget_blocks_default_action,
+};
 use unixnotis_ui::presentation::{BadgePresentation, ThumbnailKind, TrustLevel, TrustPresentation};
 
 const KEY: NotificationKey = NotificationKey {
@@ -50,7 +50,7 @@ fn clicking_plain_card_content_invokes_default_once() {
     root.append(&label);
     let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(2);
 
-    dispatch_default_action(
+    dispatch_default_action_for_test(
         root.upcast_ref(),
         Some(label.upcast()),
         KEY,
@@ -106,7 +106,7 @@ fn keyboard_default_action_requires_card_focus_and_enter_or_space() {
     ] {
         let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(1);
         assert_eq!(
-            handle_default_action_key(true, key, KEY, "default", &command_tx),
+            handle_default_action_for_test(true, key, KEY, "default", &command_tx),
             gtk::glib::Propagation::Stop
         );
         assert_default_command(&mut command_rx);
@@ -119,7 +119,7 @@ fn keyboard_default_action_requires_card_focus_and_enter_or_space() {
     ] {
         let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(1);
         assert_eq!(
-            handle_default_action_key(focused, key, KEY, "default", &command_tx),
+            handle_default_action_for_test(focused, key, KEY, "default", &command_tx),
             gtk::glib::Propagation::Proceed
         );
         assert!(command_rx.try_recv().is_err());
@@ -128,7 +128,7 @@ fn keyboard_default_action_requires_card_focus_and_enter_or_space() {
 
 fn assert_pick_does_not_dispatch<W: IsA<gtk::Widget>>(root: &gtk::Box, picked: &W) {
     let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(1);
-    dispatch_default_action(
+    dispatch_default_action_for_test(
         root.upcast_ref(),
         Some(picked.clone().upcast()),
         KEY,
@@ -136,6 +136,57 @@ fn assert_pick_does_not_dispatch<W: IsA<gtk::Widget>>(root: &gtk::Box, picked: &
         &command_tx,
     );
     assert!(command_rx.try_recv().is_err());
+}
+
+fn handle_default_action_for_test(
+    root_has_focus: bool,
+    key: gtk::gdk::Key,
+    notification: NotificationKey,
+    action_key: &str,
+    command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
+) -> gtk::glib::Propagation {
+    if !root_has_focus || !is_default_activation_key(key) {
+        return gtk::glib::Propagation::Proceed;
+    }
+    invoke_default_action_for_test(notification, action_key, command_tx);
+    gtk::glib::Propagation::Stop
+}
+
+fn dispatch_default_action_for_test(
+    root: &gtk::Widget,
+    picked: Option<gtk::Widget>,
+    notification: NotificationKey,
+    action_key: &str,
+    command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
+) {
+    if picked_widget_blocks_default_action(root, picked) {
+        return;
+    }
+    invoke_default_action_for_test(notification, action_key, command_tx);
+}
+
+fn invoke_default_action_for_test(
+    notification: NotificationKey,
+    action_key: &str,
+    command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
+) {
+    try_send_command_for_test(
+        command_tx,
+        UiCommand::InvokeAction {
+            notification,
+            action_key: action_key.to_string(),
+            confirmed: false,
+        },
+    );
+}
+
+fn try_send_command_for_test(
+    command_tx: &tokio::sync::mpsc::Sender<UiCommand>,
+    command: UiCommand,
+) {
+    command_tx
+        .try_send(command)
+        .expect("test command channel has capacity");
 }
 
 fn assert_default_command(command_rx: &mut tokio::sync::mpsc::Receiver<UiCommand>) {

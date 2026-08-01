@@ -94,6 +94,9 @@ impl RowWidgets {
 
     pub(super) fn unbind(&self) {
         self.disconnect();
+        if let Some(notification) = &self.notification {
+            notification.default_activation.set_target(None);
+        }
     }
 
     fn disconnect(&self) {

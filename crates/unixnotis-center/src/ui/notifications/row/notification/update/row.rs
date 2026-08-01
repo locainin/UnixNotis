@@ -2,7 +2,9 @@
 
 use gtk::prelude::*;
 use tokio::sync::mpsc;
-use unixnotis_ui::presentation::{apply_semantic_badge, NotificationPresentation};
+use unixnotis_ui::presentation::{
+    apply_semantic_badge, default_activation::DefaultActionTarget, NotificationPresentation,
+};
 
 use crate::control::UiCommand;
 use crate::ui::icons::IconResolver;
@@ -29,6 +31,22 @@ pub(in crate::ui::notifications) fn update_notification_row(
     };
     let notification = notification_snapshot.as_ref();
     let presentation = NotificationPresentation::from_view(notification);
+    let default_target = data
+        .is_active
+        .then(|| {
+            presentation
+                .actions
+                .default_key
+                .as_ref()
+                .map(|action_key| DefaultActionTarget {
+                    notification: notification.key(),
+                    action_key: action_key.clone(),
+                })
+        })
+        .flatten();
+    // Set this before action-cache early returns so recycled rows cannot retain
+    // a previous notification generation
+    row.default_activation.set_target(default_target);
     let show_identity = !data.collapsed_group_preview && !data.expanded;
     let has_actions = visible_action_count(notification, data.is_active) > 0;
     let has_thumbnail =
