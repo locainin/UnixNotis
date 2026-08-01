@@ -119,6 +119,9 @@ jobs:
       - name: Test release packaging helpers
         run: tests/package-release.sh
 
+      - name: Build SVG test helper
+        run: cargo build --package unixnotis-center --bin unixnotis-svg-renderer --all-features
+
       - name: Run workspace tests
         run: |
           set -euo pipefail
