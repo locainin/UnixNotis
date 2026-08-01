@@ -104,6 +104,19 @@ fn deleted_running_executable_has_no_trusted_identity_evidence() {
         .stderr(Stdio::null())
         .spawn()
         .expect("spawn copied executable");
+    // Wait until the child has completed exec before unlinking its file
+    // Otherwise a fast scheduler can remove the path while the child is still
+    // in the fork/exec transition and make the regression test timing-sensitive
+    let proc_executable = std::path::PathBuf::from(format!("/proc/{}/exe", child.id()));
+    let mut exec_ready = false;
+    for _ in 0..100 {
+        if std::fs::read_link(&proc_executable).is_ok_and(|path| path == executable) {
+            exec_ready = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert!(exec_ready, "child did not finish exec before unlink");
     std::fs::remove_file(&executable).expect("unlink running executable");
 
     let evidence = executable_evidence_for_pid(child.id());

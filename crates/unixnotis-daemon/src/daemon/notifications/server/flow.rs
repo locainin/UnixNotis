@@ -8,7 +8,7 @@ use zbus::zvariant::OwnedValue;
 
 use crate::daemon::notifications::identity::resolve_sender_metadata;
 use crate::daemon::notifications::identity::{
-    resolve_attribution, unknown_reply_denied, AppClaim, SenderMetadata,
+    resolve_attribution_owned, unknown_reply_denied, AppClaim, SenderMetadata,
 };
 use crate::daemon::notifications::ingress::payload::{
     build_notification, owned_to_string, resolve_expiration, NotificationInput,
@@ -132,21 +132,25 @@ impl NotificationServer {
         };
         let desktop_entry = input.hints.get("desktop-entry").and_then(owned_to_string);
         let desktop_identity_index = self.state.desktop_identity_index.load_full();
-        let claim = AppClaim {
-            reported_name: &input.app_name,
-            desktop_entry: desktop_entry.as_deref(),
-        };
-        let resolution = if let Ok(resolution) = tokio::time::timeout(
+        let resolution = tokio::time::timeout(
             ATTRIBUTION_TIMEOUT,
-            resolve_attribution(claim, &sender, &desktop_identity_index),
+            resolve_attribution_owned(
+                input.app_name.clone(),
+                desktop_entry.clone(),
+                sender.clone(),
+                desktop_identity_index,
+            ),
         )
         .await
-        {
-            resolution
-        } else {
+        .ok()
+        .unwrap_or_else(|| {
             warn!("notification attribution timed out and failed closed");
+            let claim = AppClaim {
+                reported_name: &input.app_name,
+                desktop_entry: desktop_entry.as_deref(),
+            };
             unknown_reply_denied(claim, &sender, "attribution timed out")
-        };
+        });
         if matches!(
             resolution.attribution.status,
             unixnotis_core::AttributionStatus::Conflict
@@ -195,17 +199,12 @@ impl NotificationServer {
         replaces_id: u32,
     ) -> StoredNotification {
         // Store mutation and scheduler delivery share one serialized lock scope
-        let ui_health = self.state.ui_health();
         let outcome = {
             let mut store = self.state.store.lock().await;
-            let outcome = store.insert(notification, replaces_id);
+            // Sample renderer health immediately before the serialized commit
+            let ui_health = self.state.ui_health();
+            let outcome = store.insert_with_ui_health(notification, replaces_id, &ui_health);
             if !outcome.dropped {
-                // Commit-time renderer state is retained before it can change again
-                store.record_popup_commit_environment(
-                    outcome.notification.key(),
-                    outcome.popup_admission,
-                    &ui_health,
-                );
                 // Resolve timeout after insertion so rule-mapped fields are already final
                 let expiration = resolve_expiration(store.config(), &outcome.notification);
                 store.set_expiration(&outcome.notification, expiration);

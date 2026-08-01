@@ -1,5 +1,6 @@
 //! Ordered attribution pipeline and candidate orchestration
 
+use std::sync::Arc;
 use unixnotis_core::{AttributionStatus, InteractionPolicies, RecordTrust};
 
 use super::super::desktop_index::{
@@ -15,31 +16,77 @@ use super::evidence::verify_record_sender;
 use super::model::{AppClaim, AttributionResolution, CandidateVerification};
 use super::resolution::{
     conflict_from_candidate, resolution_for_portal_record, resolution_for_record,
-    trusted_portal_path,
+    trusted_portal_path, unknown_reply_denied,
 };
 use super::sender_context::enrich_sender_install_provenance;
 use super::validation::validate_desktop_id;
 
-pub(in crate::daemon) async fn resolve_attribution(
-    claim: AppClaim<'_>,
-    sender: &SenderMetadata,
-    index: &DesktopIdentityIndex,
+/// Production entry point that moves procfs and filesystem work off Tokio workers
+pub(in crate::daemon) async fn resolve_attribution_owned(
+    reported_name: String,
+    desktop_entry: Option<String>,
+    sender: SenderMetadata,
+    index: Arc<DesktopIdentityIndex>,
 ) -> AttributionResolution {
-    // Cached process data is refreshed before it affects attribution
-    let mut sender = refresh_sender_security_evidence(sender);
-    let initial = resolve_with_evidence(claim, &sender, index);
-    let needs_provenance = needs_sender_provenance(
-        initial.attribution.status,
-        initial.attribution.interactions,
-        claim_has_index_candidate(claim, index),
-    );
-    if !needs_provenance {
+    let initial = tokio::task::spawn_blocking({
+        let reported_name = reported_name.clone();
+        let desktop_entry = desktop_entry.clone();
+        let index = Arc::clone(&index);
+        let sender = sender.clone();
+        move || {
+            let sender = refresh_sender_security_evidence(&sender);
+            let claim = AppClaim {
+                reported_name: &reported_name,
+                desktop_entry: desktop_entry.as_deref(),
+            };
+            let resolution = resolve_with_evidence(claim, &sender, &index);
+            let needs = needs_sender_provenance(
+                resolution.attribution.status,
+                resolution.attribution.interactions,
+                claim_has_index_candidate(claim, &index),
+            );
+            (sender, resolution, needs)
+        }
+    })
+    .await
+    .ok();
+    let Some((mut sender, initial, needs)) = initial else {
+        let claim = AppClaim {
+            reported_name: &reported_name,
+            desktop_entry: desktop_entry.as_deref(),
+        };
+        return unknown_reply_denied(
+            claim,
+            &SenderMetadata::default(),
+            "attribution worker stopped",
+        );
+    };
+    if should_return_initial_resolution(needs) {
         return initial;
     }
+    enrich_sender_install_provenance(&mut sender, &index).await;
+    let fallback_name = reported_name.clone();
+    let fallback_entry = desktop_entry.clone();
+    let fallback_sender = sender.clone();
+    tokio::task::spawn_blocking(move || {
+        let claim = AppClaim {
+            reported_name: &reported_name,
+            desktop_entry: desktop_entry.as_deref(),
+        };
+        resolve_with_evidence(claim, &sender, &index)
+    })
+    .await
+    .unwrap_or_else(|_| {
+        let claim = AppClaim {
+            reported_name: &fallback_name,
+            desktop_entry: fallback_entry.as_deref(),
+        };
+        unknown_reply_denied(claim, &fallback_sender, "attribution worker stopped")
+    })
+}
 
-    // Ownership is needed only to distinguish a probable helper from a different installed app
-    enrich_sender_install_provenance(&mut sender, index).await;
-    resolve_with_evidence(claim, &sender, index)
+pub(super) const fn should_return_initial_resolution(needs_provenance: bool) -> bool {
+    !needs_provenance
 }
 
 pub(super) fn needs_sender_provenance(
