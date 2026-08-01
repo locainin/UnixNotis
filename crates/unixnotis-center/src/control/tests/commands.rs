@@ -24,11 +24,11 @@ fn drop_stale_offline_commands_retains_safe_actions() {
     drop_stale_offline_commands(&mut offline);
 
     // Only commands that can survive reconnect without id drift should remain
-    assert_eq!(offline.len(), 3);
+    assert_eq!(offline.len(), 2);
     assert!(offline
         .iter()
         .any(|cmd| matches!(cmd, UiCommand::SetDnd(true))));
-    assert!(offline.iter().any(|cmd| matches!(cmd, UiCommand::ClearAll)));
+    assert!(!offline.iter().any(|cmd| matches!(cmd, UiCommand::ClearAll)));
     assert!(offline
         .iter()
         .any(|cmd| matches!(cmd, UiCommand::ClosePanel)));

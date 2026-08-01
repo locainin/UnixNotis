@@ -105,6 +105,14 @@ impl NotificationStore {
         keys
     }
 
+    /// Clear active and archived notifications at one store linearization point
+    pub fn clear_all(&mut self) -> Vec<NotificationKey> {
+        let keys = self.drain_active_keys();
+        self.clear_history();
+        self.prune_popup_decisions();
+        keys
+    }
+
     pub fn set_expiration(
         &mut self,
         notification: &Arc<Notification>,

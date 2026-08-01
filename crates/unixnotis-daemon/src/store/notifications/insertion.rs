@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use unixnotis_core::{
     popup_allowed_by_state, should_archive_closed_notification, CloseReason, ControlState,
-    Notification, NotificationKey, Urgency,
+    Notification, NotificationKey, UiHealth, Urgency,
 };
 
 use crate::store::{InsertOutcome, NotificationStore, PopupAdmission, PopupSuppressionReason};
@@ -11,7 +11,25 @@ use crate::store::{InsertOutcome, NotificationStore, PopupAdmission, PopupSuppre
 const ACTIVE_HARD_CAP: usize = 12;
 
 impl NotificationStore {
-    pub fn insert(&mut self, mut notification: Notification, replaces_id: u32) -> InsertOutcome {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "legacy in-crate test fixtures use the neutral health wrapper"
+        )
+    )]
+    pub(crate) fn insert(&mut self, notification: Notification, replaces_id: u32) -> InsertOutcome {
+        // Test and legacy in-crate callers use the neutral health snapshot
+        // Production notification ingress calls insert_with_ui_health directly
+        self.insert_with_ui_health(notification, replaces_id, &UiHealth::default())
+    }
+
+    pub fn insert_with_ui_health(
+        &mut self,
+        mut notification: Notification,
+        replaces_id: u32,
+        ui_health: &UiHealth,
+    ) -> InsertOutcome {
         // Rule transforms happen before any storage decision
         self.apply_rules(&mut notification);
         if self.should_drop_inhibited() {
@@ -68,11 +86,7 @@ impl NotificationStore {
         let evicted = self.enforce_active_limit();
 
         let popup_admission = self.popup_admission(&notification);
-        self.record_popup_commit_environment(
-            notification.key(),
-            popup_admission,
-            &unixnotis_core::UiHealth::default(),
-        );
+        self.record_popup_commit_environment(notification.key(), popup_admission, ui_health);
         InsertOutcome {
             popup_admission,
             allow_sound: self.should_play_sound(&notification),

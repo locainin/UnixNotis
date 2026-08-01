@@ -3,7 +3,8 @@
 //! Keeps read-only control methods grouped outside the main interface file
 
 use unixnotis_core::{
-    ControlState, InhibitorInfo, NotificationDiagnosticsView, NotificationView, PopupCandidate,
+    ControlSnapshot, ControlState, InhibitorInfo, NotificationDiagnosticsView, NotificationView,
+    PopupCandidate,
 };
 use zbus::message::Header;
 
@@ -15,6 +16,19 @@ impl ControlServer {
         // Single lock read keeps state snapshot internally consistent
         let store = self.state.store.lock().await;
         Ok(store.control_state())
+    }
+
+    pub(super) async fn query_snapshot(
+        &self,
+        header: &Header<'_>,
+    ) -> zbus::fdo::Result<ControlSnapshot> {
+        self.authorize_control_call(header, "GetSnapshot").await?;
+        let store = self.state.store.lock().await;
+        Ok(ControlSnapshot {
+            state: store.control_state(),
+            active: store.list_active(),
+            history: store.list_history(),
+        })
     }
 
     pub(super) async fn query_active(

@@ -92,6 +92,7 @@ impl TestControl {
             center_ready: true,
             popups_process_running: true,
             popups_ready: true,
+            revision: 0,
         })
     }
 }
