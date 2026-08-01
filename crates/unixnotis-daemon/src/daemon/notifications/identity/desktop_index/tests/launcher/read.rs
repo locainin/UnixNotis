@@ -18,7 +18,8 @@ fn user_writable_launcher_is_not_inspected() {
     let root = TempRoot::new("user-writable-launcher");
     let path = root.join("launcher");
     fs::write(&path, "#!/bin/sh\nexec /usr/bin/true \"$@\"\n").expect("write launcher fixture");
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+    // Keep the fixture user-writable even when tests run as root in CI
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o775))
         .expect("make launcher fixture executable");
     let identity = executable_evidence_for_path(&path)
         .expect("read launcher fixture identity")

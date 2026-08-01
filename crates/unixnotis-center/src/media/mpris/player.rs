@@ -44,6 +44,19 @@ pub(in crate::media) async fn build_player_state(
         // Ownership changed during probing, so a later bus event should rebuild stable data
         return Ok(None);
     };
+
+    Ok(Some(
+        build_player_state_for_owner(connection, name, config, owner).await?,
+    ))
+}
+
+// Keep credential handling separate so compatibility behavior can be tested without a bus shim
+pub(super) async fn build_player_state_for_owner(
+    connection: &Connection,
+    name: &str,
+    config: &MediaConfig,
+    owner: OwnerProbe,
+) -> zbus::Result<PlayerState> {
     // Every process-bound proxy targets the verified unique owner instead of the mutable alias
     let identity = fetch_identity(connection, &owner.unique_owner)
         .await
@@ -55,11 +68,13 @@ pub(in crate::media) async fn build_player_state(
         config.remote_art_policy,
     );
     #[cfg(target_os = "linux")]
-    let owner_executable_is_allowed = executable_allowed_from_pidfd(
-        &owner.process_fd,
-        owner.pid,
-        &config.local_art_executable_allowlist,
-    );
+    let owner_executable_is_allowed = owner.process_fd.as_ref().is_some_and(|process_fd| {
+        executable_allowed_from_pidfd(
+            process_fd,
+            owner.pid,
+            &config.local_art_executable_allowlist,
+        )
+    });
     #[cfg(not(target_os = "linux"))]
     let owner_executable_is_allowed = false;
     let local_art_allowed = local_art_allowed(
@@ -81,7 +96,7 @@ pub(in crate::media) async fn build_player_state(
         .await?;
     let (listener_cancel, _listener_rx) = watch::channel(false);
 
-    Ok(Some(PlayerState {
+    Ok(PlayerState {
         bus_name: name.to_string(),
         unique_owner: Some(owner.unique_owner),
         identity,
@@ -92,7 +107,7 @@ pub(in crate::media) async fn build_player_state(
         player,
         properties,
         listener_cancel,
-    }))
+    })
 }
 
 pub(super) async fn fetch_identity(connection: &Connection, name: &str) -> Option<String> {
@@ -124,7 +139,7 @@ pub(super) async fn resolve_player_owner(
     #[cfg(target_os = "linux")]
     let credentials = get_connection_credentials(connection, (&unique_owner).into()).await?;
     #[cfg(target_os = "linux")]
-    let (pid, process_fd) = (credentials.process_id?, credentials.process_fd?);
+    let (pid, process_fd) = (credentials.process_id?, credentials.process_fd);
     #[cfg(not(target_os = "linux"))]
     let pid = proxy
         .get_connection_unix_process_id((&unique_owner).into())
@@ -135,8 +150,8 @@ pub(super) async fn resolve_player_owner(
         return None;
     }
     #[cfg(target_os = "linux")]
-    let executable = read_process_executable_path_from_pidfd(&process_fd, pid)
-        .map(|path| path.display().to_string());
+    let executable =
+        read_owner_executable_path(pid, process_fd.as_ref()).map(|path| path.display().to_string());
     #[cfg(target_os = "linux")]
     executable.as_ref()?;
     Some(OwnerProbe {
@@ -153,7 +168,20 @@ pub(super) struct OwnerProbe {
     pub(super) pid: u32,
     pub(super) executable: Option<String>,
     #[cfg(target_os = "linux")]
-    pub(super) process_fd: OwnedFd,
+    pub(super) process_fd: Option<OwnedFd>,
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn read_owner_executable_path(
+    pid: u32,
+    process_fd: Option<&OwnedFd>,
+) -> Option<std::path::PathBuf> {
+    // A ProcessFD gives a stable object; older buses may provide only the PID
+    if let Some(process_fd) = process_fd {
+        return read_process_executable_path_from_pidfd(process_fd, pid);
+    }
+
+    std::fs::read_link(format!("/proc/{pid}/exe")).ok()
 }
 
 pub(super) fn owner_probe_is_stable(initial_owner: &str, observed_owner: &str) -> bool {

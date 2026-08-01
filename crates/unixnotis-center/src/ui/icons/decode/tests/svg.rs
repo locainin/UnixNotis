@@ -11,12 +11,13 @@ use super::super::svg::{
 };
 
 fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage, String> {
-    let current_exe = std::env::current_exe().expect("resolve test executable");
+    let current_exe =
+        std::env::current_exe().map_err(|error| format!("resolve test executable: {error}"))?;
     let renderer = current_exe
         .parent()
         .and_then(std::path::Path::parent)
         .map(|directory| directory.join("unixnotis-svg-renderer"))
-        .expect("resolve renderer directory");
+        .ok_or_else(|| "resolve renderer directory".to_string())?;
     decode_svg_bytes_with_renderer(bytes, target, &renderer)
 }
 

@@ -2,7 +2,8 @@ use unixnotis_core::MediaConfig;
 
 use super::super::constants::{MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PREFIX};
 use super::super::player::{
-    build_player_state, fetch_identity, owner_probe_is_stable, resolve_player_owner,
+    build_player_state, build_player_state_for_owner, fetch_identity, owner_probe_is_stable,
+    read_owner_executable_path, resolve_player_owner,
 };
 use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
 
@@ -10,6 +11,15 @@ use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
 fn owner_probe_accepts_only_one_stable_unique_owner() {
     assert!(owner_probe_is_stable(":1.40", ":1.40"));
     assert!(!owner_probe_is_stable(":1.40", ":1.41"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn owner_probe_keeps_metadata_when_process_fd_is_unavailable() {
+    let path = read_owner_executable_path(std::process::id(), None)
+        .expect("PID fallback should resolve the current executable");
+
+    assert!(path.is_absolute());
 }
 
 #[test]
@@ -71,6 +81,31 @@ async fn player_state_uses_live_identity_owner_and_process_details() {
         fetch_identity(&fixture.client, owner.unique_owner.as_str()).await,
         Some(TEST_PLAYER_IDENTITY.to_string())
     );
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn player_state_without_process_fd_keeps_remote_metadata_and_disables_local_art() {
+    let fixture = MprisFixture::start().await;
+    let owner = resolve_player_owner(&fixture.client, TEST_PLAYER_NAME)
+        .await
+        .expect("resolve stable test owner");
+    let owner_pid = owner.pid;
+    let mut owner_without_process_fd = owner;
+    owner_without_process_fd.process_fd = None;
+
+    let state = build_player_state_for_owner(
+        &fixture.client,
+        TEST_PLAYER_NAME,
+        &MediaConfig::default(),
+        owner_without_process_fd,
+    )
+    .await
+    .expect("build player state without ProcessFD");
+
+    assert_eq!(state.owner_pid, Some(owner_pid));
+    assert!(state.remote_art_allowed);
+    assert!(!state.local_art_allowed);
 }
 
 #[cfg(target_os = "linux")]

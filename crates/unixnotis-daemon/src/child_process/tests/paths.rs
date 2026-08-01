@@ -15,6 +15,25 @@ fn write_sibling(name: &str) -> PathBuf {
     path
 }
 
+#[cfg(target_os = "linux")]
+fn process_is_running(pid: u32) -> bool {
+    let stat_path = format!("/proc/{pid}/stat");
+    let Ok(stat) = std::fs::read_to_string(stat_path) else {
+        return false;
+    };
+
+    // The process name may contain spaces and parentheses, so parse after its final ')'
+    let Some(state) = stat
+        .rsplit_once(") ")
+        .and_then(|(_, rest)| rest.chars().next())
+    else {
+        return false;
+    };
+
+    // A zombie has exited but can remain visible until the reaper collects it
+    !matches!(state, 'Z' | 'X')
+}
+
 #[test]
 fn resolve_sibling_binary_prefers_exact_sibling_name() {
     let _guard = env_lock();
@@ -83,18 +102,21 @@ fn parent_death_signal_terminates_a_child_when_its_launcher_exits() {
         .trim()
         .parse::<u32>()
         .expect("child pid should be numeric");
-    let proc_path = std::path::PathBuf::from(format!("/proc/{pid}"));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    while proc_path.exists() && std::time::Instant::now() < deadline {
+    while process_is_running(pid) && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    if proc_path.exists() {
+    if process_is_running(pid) {
         // Clean up a failed mutation so the test cannot leak a long-running shell
         let _ = std::process::Command::new("kill")
             .args(["-TERM", &pid.to_string()])
             .status();
     }
-    assert!(!proc_path.exists(), "child survived launcher exit");
+    let cleanup_deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while process_is_running(pid) && std::time::Instant::now() < cleanup_deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(!process_is_running(pid), "child survived launcher exit");
     let _ = std::fs::remove_file(marker_path);
 }
 

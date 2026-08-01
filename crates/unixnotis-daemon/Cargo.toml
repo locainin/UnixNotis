@@ -21,6 +21,7 @@ unicode-security.workspace = true
 zbus.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
 indexmap.workspace = true
+libc.workspace = true
 notify.workspace = true
 rustix.workspace = true
 shell-words.workspace = true
