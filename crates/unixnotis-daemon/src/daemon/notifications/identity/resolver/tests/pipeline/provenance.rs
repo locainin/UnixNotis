@@ -1,5 +1,8 @@
 //! Async provenance enrichment in the resolver pipeline
 
+use std::sync::Arc;
+use std::time::Duration;
+
 use super::super::*;
 
 #[test]
@@ -124,4 +127,95 @@ async fn recognized_helper_is_reresolved_with_live_package_provenance() {
         .attribution
         .diagnostic_detail
         .contains("same installed application package"));
+}
+
+#[tokio::test]
+async fn slow_valid_provenance_is_not_cut_off_by_a_short_inner_deadline() {
+    let helper_path = unixnotis_core::util::trusted_system_program_path("true")
+        .expect("find the installed helper fixture");
+    let app_path = unixnotis_core::util::trusted_system_program_path("false")
+        .expect("find the installed application fixture");
+    let helper_evidence =
+        executable_evidence_for_path(&helper_path).expect("read helper executable evidence");
+    let app_evidence =
+        executable_evidence_for_path(&app_path).expect("read application executable evidence");
+    let ownership_index = DesktopIdentityIndex::default();
+    let app_provenance = ownership_index.install_provenance_for_path(app_path.clone());
+    assert!(app_provenance.is_known());
+
+    let mut record = system_record(
+        "org.example.App",
+        "Example App",
+        &app_path.display().to_string(),
+        app_evidence.identity,
+    );
+    record.desktop_provenance = app_provenance.clone();
+    record.declared_executable_provenance = app_provenance.clone();
+    record.runtime_executable_provenance = app_provenance.clone();
+    let index = Arc::new(DesktopIdentityIndex::from_records(vec![record], Vec::new()));
+
+    let resolution = resolve_attribution_owned_with(
+        "Example App".to_string(),
+        Some("org.example.App".to_string()),
+        sender(&helper_path.display().to_string(), helper_evidence.identity),
+        index,
+        move |sender, _| {
+            // Package ownership can exceed the old 500 ms inner deadline
+            std::thread::sleep(Duration::from_millis(650));
+            sender.install_provenance = app_provenance;
+        },
+    )
+    .await;
+
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(
+        resolution.attribution.interactions,
+        InteractionPolicies::DENY
+    );
+}
+
+#[tokio::test]
+async fn failed_provenance_keeps_the_initial_safe_resolution() {
+    let helper_path = unixnotis_core::util::trusted_system_program_path("true")
+        .expect("find the installed helper fixture");
+    let app_path = unixnotis_core::util::trusted_system_program_path("false")
+        .expect("find the installed application fixture");
+    let helper_evidence =
+        executable_evidence_for_path(&helper_path).expect("read helper executable evidence");
+    let app_evidence =
+        executable_evidence_for_path(&app_path).expect("read application executable evidence");
+    let ownership_index = DesktopIdentityIndex::default();
+    let app_provenance = ownership_index.install_provenance_for_path(app_path.clone());
+    assert!(app_provenance.is_known());
+
+    let mut record = system_record(
+        "org.example.App",
+        "Example App",
+        &app_path.display().to_string(),
+        app_evidence.identity,
+    );
+    record.desktop_provenance = app_provenance.clone();
+    record.declared_executable_provenance = app_provenance.clone();
+    record.runtime_executable_provenance = app_provenance.clone();
+    let index = Arc::new(DesktopIdentityIndex::from_records(vec![record], Vec::new()));
+    let mut sender = sender(&helper_path.display().to_string(), helper_evidence.identity);
+    sender.install_provenance = app_provenance;
+
+    let resolution = resolve_attribution_owned_with(
+        "Example App".to_string(),
+        Some("org.example.App".to_string()),
+        sender,
+        index,
+        |sender, _| {
+            // Model a provider failure without granting a stronger result
+            sender.install_provenance = InstallProvenance::Unknown;
+        },
+    )
+    .await;
+
+    assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
+    assert_eq!(
+        resolution.attribution.interactions,
+        InteractionPolicies::DENY
+    );
 }

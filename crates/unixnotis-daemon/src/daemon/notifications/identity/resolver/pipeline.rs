@@ -1,6 +1,7 @@
 //! Ordered attribution pipeline and candidate orchestration
 
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use unixnotis_core::{AttributionStatus, InteractionPolicies, RecordTrust};
 
@@ -24,6 +25,11 @@ use super::validation::validate_desktop_id;
 
 const ATTRIBUTION_WORKER_SLOTS: usize = 8;
 
+// The ingress deadline covers the one-second package query, its bounded pipe
+// drain, and the procfs/index work around that query
+pub(in crate::daemon::notifications) const ATTRIBUTION_TIMEOUT: Duration =
+    Duration::from_millis(1_500);
+
 fn attribution_worker_pool() -> Arc<Semaphore> {
     static POOL: OnceLock<Arc<Semaphore>> = OnceLock::new();
     Arc::clone(POOL.get_or_init(|| Arc::new(Semaphore::new(ATTRIBUTION_WORKER_SLOTS))))
@@ -40,6 +46,26 @@ pub(in crate::daemon) async fn resolve_attribution_owned(
     sender: SenderMetadata,
     index: Arc<DesktopIdentityIndex>,
 ) -> AttributionResolution {
+    resolve_attribution_owned_with(
+        reported_name,
+        desktop_entry,
+        sender,
+        index,
+        enrich_sender_install_provenance_blocking,
+    )
+    .await
+}
+
+pub(super) async fn resolve_attribution_owned_with<F>(
+    reported_name: String,
+    desktop_entry: Option<String>,
+    sender: SenderMetadata,
+    index: Arc<DesktopIdentityIndex>,
+    enrich: F,
+) -> AttributionResolution
+where
+    F: FnOnce(&mut SenderMetadata, &DesktopIdentityIndex) + Send + 'static,
+{
     let Some(initial_permit) = try_attribution_worker() else {
         let claim = AppClaim {
             reported_name: &reported_name,
@@ -48,55 +74,49 @@ pub(in crate::daemon) async fn resolve_attribution_owned(
         return unknown_reply_denied(claim, &sender, "attribution worker capacity exhausted");
     };
     let fallback_sender = sender.clone();
-    let result = tokio::time::timeout(
-        std::time::Duration::from_millis(500),
-        tokio::task::spawn_blocking({
-            let reported_name = reported_name.clone();
-            let desktop_entry = desktop_entry.clone();
-            let index = Arc::clone(&index);
-            let sender = sender.clone();
-            move || {
-                // The permit lives inside the blocking closure so timeout cancellation
-                // cannot release capacity while procfs work is still running
-                let _permit = initial_permit;
-                let sender = refresh_sender_security_evidence(&sender);
-                let claim = AppClaim {
-                    reported_name: &reported_name,
-                    desktop_entry: desktop_entry.as_deref(),
-                };
-                let resolution = resolve_with_evidence(claim, &sender, &index);
-                let needs = needs_sender_provenance(
-                    resolution.attribution.status,
-                    resolution.attribution.interactions,
-                    claim_has_index_candidate(claim, &index),
-                );
-                if !needs {
-                    return resolution;
-                }
-
-                let mut sender = sender;
-                enrich_sender_install_provenance_blocking(&mut sender, &index);
-                resolve_with_evidence(claim, &sender, &index)
+    // The server owns the single wall-clock deadline for this operation
+    // This layer only limits concurrent blocking attribution work
+    let result = tokio::task::spawn_blocking({
+        let reported_name = reported_name.clone();
+        let desktop_entry = desktop_entry.clone();
+        let index = Arc::clone(&index);
+        let sender = sender.clone();
+        move || {
+            // The permit stays in the closure until every blocking operation exits
+            let _permit = initial_permit;
+            let sender = refresh_sender_security_evidence(&sender);
+            let claim = AppClaim {
+                reported_name: &reported_name,
+                desktop_entry: desktop_entry.as_deref(),
+            };
+            // The first pass can decide that package ownership is unnecessary
+            let initial = resolve_with_evidence(claim, &sender, &index);
+            let needs = needs_sender_provenance(
+                initial.attribution.status,
+                initial.attribution.interactions,
+                claim_has_index_candidate(claim, &index),
+            );
+            if !needs {
+                return initial;
             }
-        }),
-    )
+
+            let mut sender = sender;
+            // Enrichment is blocking and remains inside the same worker slot
+            enrich(&mut sender, &index);
+            // Missing or failed provenance must not erase useful safe attribution
+            if !sender.install_provenance.is_known() {
+                return initial;
+            }
+            resolve_with_evidence(claim, &sender, &index)
+        }
+    })
     .await;
-    let resolution = match result {
-        Ok(Ok(resolution)) => resolution,
-        Ok(Err(_)) => {
-            let claim = AppClaim {
-                reported_name: &reported_name,
-                desktop_entry: desktop_entry.as_deref(),
-            };
-            return unknown_reply_denied(claim, &fallback_sender, "attribution worker stopped");
-        }
-        Err(_) => {
-            let claim = AppClaim {
-                reported_name: &reported_name,
-                desktop_entry: desktop_entry.as_deref(),
-            };
-            return unknown_reply_denied(claim, &fallback_sender, "attribution timed out");
-        }
+    let Ok(resolution) = result else {
+        let claim = AppClaim {
+            reported_name: &reported_name,
+            desktop_entry: desktop_entry.as_deref(),
+        };
+        return unknown_reply_denied(claim, &fallback_sender, "attribution worker stopped");
     };
     resolution
 }

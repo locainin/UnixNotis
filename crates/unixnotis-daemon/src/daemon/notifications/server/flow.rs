@@ -6,10 +6,10 @@ use unixnotis_core::{ImageData, Notification, NotificationKey};
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 
-use crate::daemon::notifications::identity::resolve_sender_metadata;
 use crate::daemon::notifications::identity::{
     resolve_attribution_owned, unknown_reply_denied, AppClaim, SenderMetadata,
 };
+use crate::daemon::notifications::identity::{resolve_sender_metadata, ATTRIBUTION_TIMEOUT};
 use crate::daemon::notifications::ingress::payload::{
     build_notification, owned_to_string, resolve_expiration, NotificationInput,
 };
@@ -35,7 +35,6 @@ struct WireNotification {
 }
 
 const SENDER_METADATA_TIMEOUT: Duration = Duration::from_millis(100);
-const ATTRIBUTION_TIMEOUT: Duration = Duration::from_millis(500);
 
 impl NotificationServer {
     #[expect(
@@ -132,6 +131,7 @@ impl NotificationServer {
         };
         let desktop_entry = input.hints.get("desktop-entry").and_then(owned_to_string);
         let desktop_identity_index = self.state.desktop_identity_index.load_full();
+        // This is the only attribution deadline, including package enrichment
         let resolution = tokio::time::timeout(
             ATTRIBUTION_TIMEOUT,
             resolve_attribution_owned(
