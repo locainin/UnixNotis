@@ -3,6 +3,14 @@
 use std::env;
 use std::path::PathBuf;
 
+use tokio::process::Command;
+
+#[cfg(target_os = "linux")]
+use std::os::unix::process::CommandExt;
+
+#[cfg(target_os = "linux")]
+use rustix::process::{set_parent_process_death_signal, Signal};
+
 fn resolve_sibling_binary(name: &str) -> Option<PathBuf> {
     let exe = env::current_exe().ok()?;
     let dir = exe.parent()?;
@@ -29,6 +37,20 @@ pub(super) fn resolve_popups_path() -> Option<PathBuf> {
 pub(super) fn resolve_center_path() -> Option<PathBuf> {
     resolve_sibling_binary("unixnotis-center")
 }
+
+#[cfg(target_os = "linux")]
+pub(super) fn apply_parent_death_signal(command: &mut Command) {
+    // The kernel clears the child relationship before the new program starts
+    // SAFETY: This closure only calls prctl through rustix and returns its OS error
+    unsafe {
+        command.as_std_mut().pre_exec(|| {
+            set_parent_process_death_signal(Some(Signal::TERM)).map_err(std::io::Error::from)
+        });
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(super) fn apply_parent_death_signal(_command: &mut Command) {}
 
 #[cfg(test)]
 #[path = "tests/paths.rs"]

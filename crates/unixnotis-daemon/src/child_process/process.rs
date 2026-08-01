@@ -15,7 +15,7 @@ use unixnotis_core::util::CONFIG_PATH_ENV;
 use crate::cli::Args;
 use crate::daemon::DaemonState;
 
-use super::paths::{resolve_center_path, resolve_popups_path};
+use super::paths::{apply_parent_death_signal, resolve_center_path, resolve_popups_path};
 use super::supervisor::supervise_process;
 
 // A short loop should not hammer respawns forever
@@ -67,6 +67,8 @@ impl UiProcessKind {
         command.stdin(Stdio::null());
         command.stdout(Stdio::inherit());
         command.stderr(Stdio::inherit());
+
+        apply_parent_death_signal(&mut command);
 
         if let Some(config) = args.config.as_ref() {
             // GTK re-parses argv in child apps, so custom config paths travel by env instead

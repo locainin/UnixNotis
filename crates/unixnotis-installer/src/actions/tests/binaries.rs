@@ -361,6 +361,7 @@ fn checked_in_workspace_resolves_against_real_cargo_targets() {
             "unixnotis-daemon".to_string(),
             "unixnotis-popups".to_string(),
             "unixnotis-center".to_string(),
+            "unixnotis-svg-renderer".to_string(),
             "unixnotis-css-validate".to_string(),
             "noticenterctl".to_string()
         ]
@@ -450,6 +451,7 @@ fn legacy_binaries_keep_full_installed_surface() {
             "unixnotis-daemon".to_string(),
             "unixnotis-popups".to_string(),
             "unixnotis-center".to_string(),
+            "unixnotis-svg-renderer".to_string(),
             "unixnotis-css-validate".to_string(),
             "noticenterctl".to_string()
         ]

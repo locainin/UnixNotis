@@ -1,7 +1,7 @@
 //! RGB-to-RGBA image expansion
 //!
 //! Uses the scalar path exclusively to keep the module free of unsafe SIMD intrinsics.
-//! Modern x86_64 compilers auto-vectorize the hot pixel loop, and notification images
+//! Modern `x86_64` compilers auto-vectorize the hot pixel loop, and notification images
 //! are small enough that any performance difference is negligible.
 
 use super::{ImageData, NotificationImage, MAX_IMAGE_BYTES};
