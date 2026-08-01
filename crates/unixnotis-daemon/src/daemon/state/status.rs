@@ -92,12 +92,31 @@ impl DaemonState {
     }
 
     pub(crate) fn ui_health(&self) -> UiHealth {
+        // A readiness transition updates the revision after all fields change
+        // Retry when a concurrent transition would otherwise mix two snapshots
+        for _ in 0..3 {
+            let before = self.ui_health_revision.load(Ordering::Acquire);
+            let health = UiHealth {
+                center_process_running: self.center_process_running.load(Ordering::Acquire),
+                center_ready: self.panel_ready.load(Ordering::Acquire),
+                popups_process_running: self.popups_process_running.load(Ordering::Acquire),
+                popups_ready: self.popups_ready.load(Ordering::Acquire),
+                revision: before,
+            };
+            let after = self.ui_health_revision.load(Ordering::Acquire);
+            if before == after {
+                return health;
+            }
+        }
+
+        // A busy transition still returns a coherent revisioned sample after
+        // the bounded retries rather than delaying notification admission
         UiHealth {
-            center_process_running: self.center_process_running.load(Ordering::SeqCst),
-            center_ready: self.panel_ready(),
-            popups_process_running: self.popups_process_running.load(Ordering::SeqCst),
-            popups_ready: self.popups_ready(),
-            revision: self.ui_health_revision.load(Ordering::SeqCst),
+            center_process_running: self.center_process_running.load(Ordering::Acquire),
+            center_ready: self.panel_ready.load(Ordering::Acquire),
+            popups_process_running: self.popups_process_running.load(Ordering::Acquire),
+            popups_ready: self.popups_ready.load(Ordering::Acquire),
+            revision: self.ui_health_revision.load(Ordering::Acquire),
         }
     }
 

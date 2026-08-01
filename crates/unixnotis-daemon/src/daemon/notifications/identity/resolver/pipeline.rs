@@ -1,6 +1,7 @@
 //! Ordered attribution pipeline and candidate orchestration
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use unixnotis_core::{AttributionStatus, InteractionPolicies, RecordTrust};
 
 use super::super::desktop_index::{
@@ -21,6 +22,17 @@ use super::resolution::{
 use super::sender_context::enrich_sender_install_provenance;
 use super::validation::validate_desktop_id;
 
+const ATTRIBUTION_WORKER_SLOTS: usize = 8;
+
+fn attribution_worker_pool() -> Arc<Semaphore> {
+    static POOL: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    Arc::clone(POOL.get_or_init(|| Arc::new(Semaphore::new(ATTRIBUTION_WORKER_SLOTS))))
+}
+
+fn try_attribution_worker() -> Option<OwnedSemaphorePermit> {
+    attribution_worker_pool().try_acquire_owned().ok()
+}
+
 /// Production entry point that moves procfs and filesystem work off Tokio workers
 pub(in crate::daemon) async fn resolve_attribution_owned(
     reported_name: String,
@@ -28,12 +40,22 @@ pub(in crate::daemon) async fn resolve_attribution_owned(
     sender: SenderMetadata,
     index: Arc<DesktopIdentityIndex>,
 ) -> AttributionResolution {
+    let Some(initial_permit) = try_attribution_worker() else {
+        let claim = AppClaim {
+            reported_name: &reported_name,
+            desktop_entry: desktop_entry.as_deref(),
+        };
+        return unknown_reply_denied(claim, &sender, "attribution worker capacity exhausted");
+    };
     let initial = tokio::task::spawn_blocking({
         let reported_name = reported_name.clone();
         let desktop_entry = desktop_entry.clone();
         let index = Arc::clone(&index);
         let sender = sender.clone();
         move || {
+            // The permit lives inside the blocking closure so timeout cancellation
+            // cannot release capacity while procfs work is still running
+            let _permit = initial_permit;
             let sender = refresh_sender_security_evidence(&sender);
             let claim = AppClaim {
                 reported_name: &reported_name,
@@ -65,10 +87,15 @@ pub(in crate::daemon) async fn resolve_attribution_owned(
         return initial;
     }
     enrich_sender_install_provenance(&mut sender, &index).await;
+    let Some(provenance_permit) = try_attribution_worker() else {
+        // The initial result is already safe and interaction-denied
+        return initial;
+    };
     let fallback_name = reported_name.clone();
     let fallback_entry = desktop_entry.clone();
     let fallback_sender = sender.clone();
     tokio::task::spawn_blocking(move || {
+        let _permit = provenance_permit;
         let claim = AppClaim {
             reported_name: &reported_name,
             desktop_entry: desktop_entry.as_deref(),
