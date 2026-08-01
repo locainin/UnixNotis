@@ -19,7 +19,8 @@ pub fn env_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
         .lock()
-        .expect("env lock should not be poisoned")
+        // A failed subprocess test must not make every later environment test fail
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 pub async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> {

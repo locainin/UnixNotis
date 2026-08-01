@@ -2,7 +2,8 @@ use unixnotis_core::MediaConfig;
 
 use super::super::constants::{MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PREFIX};
 use super::super::player::{
-    build_player_state, fetch_identity, owner_probe_is_stable, resolve_player_owner,
+    build_player_state, fetch_identity, owner_probe_is_stable, read_owner_executable_path,
+    resolve_player_owner,
 };
 use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
 
@@ -10,6 +11,15 @@ use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
 fn owner_probe_accepts_only_one_stable_unique_owner() {
     assert!(owner_probe_is_stable(":1.40", ":1.40"));
     assert!(!owner_probe_is_stable(":1.40", ":1.41"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn owner_probe_keeps_metadata_when_process_fd_is_unavailable() {
+    let path = read_owner_executable_path(std::process::id(), None)
+        .expect("PID fallback should resolve the current executable");
+
+    assert!(path.is_absolute());
 }
 
 #[test]

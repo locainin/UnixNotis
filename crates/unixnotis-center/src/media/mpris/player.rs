@@ -55,11 +55,13 @@ pub(in crate::media) async fn build_player_state(
         config.remote_art_policy,
     );
     #[cfg(target_os = "linux")]
-    let owner_executable_is_allowed = executable_allowed_from_pidfd(
-        &owner.process_fd,
-        owner.pid,
-        &config.local_art_executable_allowlist,
-    );
+    let owner_executable_is_allowed = owner.process_fd.as_ref().is_some_and(|process_fd| {
+        executable_allowed_from_pidfd(
+            process_fd,
+            owner.pid,
+            &config.local_art_executable_allowlist,
+        )
+    });
     #[cfg(not(target_os = "linux"))]
     let owner_executable_is_allowed = false;
     let local_art_allowed = local_art_allowed(
@@ -124,7 +126,7 @@ pub(super) async fn resolve_player_owner(
     #[cfg(target_os = "linux")]
     let credentials = get_connection_credentials(connection, (&unique_owner).into()).await?;
     #[cfg(target_os = "linux")]
-    let (pid, process_fd) = (credentials.process_id?, credentials.process_fd?);
+    let (pid, process_fd) = (credentials.process_id?, credentials.process_fd);
     #[cfg(not(target_os = "linux"))]
     let pid = proxy
         .get_connection_unix_process_id((&unique_owner).into())
@@ -135,8 +137,8 @@ pub(super) async fn resolve_player_owner(
         return None;
     }
     #[cfg(target_os = "linux")]
-    let executable = read_process_executable_path_from_pidfd(&process_fd, pid)
-        .map(|path| path.display().to_string());
+    let executable =
+        read_owner_executable_path(pid, process_fd.as_ref()).map(|path| path.display().to_string());
     #[cfg(target_os = "linux")]
     executable.as_ref()?;
     Some(OwnerProbe {
@@ -153,7 +155,20 @@ pub(super) struct OwnerProbe {
     pub(super) pid: u32,
     pub(super) executable: Option<String>,
     #[cfg(target_os = "linux")]
-    pub(super) process_fd: OwnedFd,
+    pub(super) process_fd: Option<OwnedFd>,
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn read_owner_executable_path(
+    pid: u32,
+    process_fd: Option<&OwnedFd>,
+) -> Option<std::path::PathBuf> {
+    // A ProcessFD gives a stable object; older buses may provide only the PID
+    if let Some(process_fd) = process_fd {
+        return read_process_executable_path_from_pidfd(process_fd, pid);
+    }
+
+    std::fs::read_link(format!("/proc/{pid}/exe")).ok()
 }
 
 pub(super) fn owner_probe_is_stable(initial_owner: &str, observed_owner: &str) -> bool {

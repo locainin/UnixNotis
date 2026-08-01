@@ -49,10 +49,8 @@ pub(super) fn apply_parent_death_signal(command: &mut Command, expected_parent_p
                 .map(|pid| pid.as_raw_nonzero().get())
                 .unwrap_or_default();
             if current_parent != i32::try_from(expected_parent_pid).unwrap_or_default() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Interrupted,
-                    "parent exited before child-death supervision was armed",
-                ));
+                // ESRCH is returned without formatting or allocating after fork
+                return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
             }
             Ok(())
         });

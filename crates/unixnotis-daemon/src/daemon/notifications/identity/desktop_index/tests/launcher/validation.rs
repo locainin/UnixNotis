@@ -40,7 +40,8 @@ fn user_owned_runtime_target_is_rejected() {
     let root = TempRoot::new("user-runtime-target");
     let path = root.join("runtime");
     fs::write(&path, "fixture").expect("write runtime target fixture");
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+    // Keep the fixture user-writable even when tests run as root in CI
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o775))
         .expect("make runtime target executable");
 
     assert!(protected_runtime_target(&path).is_none());
