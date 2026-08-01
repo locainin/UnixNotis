@@ -165,14 +165,23 @@ impl DesktopIdentityIndex {
         families.len() == 1
     }
 
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "async wrapper remains for test seams")
+    )]
     pub(in crate::daemon::notifications::identity) async fn install_provenance_for_path_async(
         &self,
         path: PathBuf,
     ) -> super::provenance::InstallProvenance {
-        let ownership = std::sync::Arc::clone(&self.package_ownership);
-        tokio::task::spawn_blocking(move || ownership.resolve_one(&path))
-            .await
-            .unwrap_or_default()
+        self.install_provenance_for_path(path)
+    }
+
+    pub(in crate::daemon::notifications::identity) fn install_provenance_for_path(
+        &self,
+        path: PathBuf,
+    ) -> super::provenance::InstallProvenance {
+        // The caller owns the attribution worker permit while this blocking lookup runs
+        self.package_ownership.resolve_one(&path)
     }
 
     pub(in crate::daemon::notifications::identity) fn claim_matches_system_app(

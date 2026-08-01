@@ -83,14 +83,16 @@ fn broker_socket() -> PathBuf {
     root.join("bus.sock")
 }
 
-struct TestMprisRoot;
+struct TestMprisRoot {
+    identity: String,
+}
 
 #[zbus::interface(name = "org.mpris.MediaPlayer2")]
 impl TestMprisRoot {
     #[zbus(property)]
-    fn identity(&self) -> &'static str {
+    fn identity(&self) -> &str {
         // A fixed identity makes player construction assertions deterministic
-        TEST_PLAYER_IDENTITY
+        &self.identity
     }
 }
 
@@ -181,26 +183,39 @@ pub(in crate::media) struct MprisFixture {
 
 impl MprisFixture {
     pub(in crate::media) async fn start() -> Self {
-        Self::start_with_metadata_bytes(0).await
+        Self::start_with_payload(0, 0, 0).await
     }
 
     pub(in crate::media) async fn start_with_metadata_bytes(metadata_bytes: usize) -> Self {
-        Self::start_with_payload(metadata_bytes, 0).await
+        Self::start_with_payload(metadata_bytes, 0, 0).await
     }
 
     pub(in crate::media) async fn start_with_art_url_bytes(art_url_bytes: usize) -> Self {
-        Self::start_with_payload(0, art_url_bytes).await
+        Self::start_with_payload(0, art_url_bytes, 0).await
     }
 
-    async fn start_with_payload(metadata_bytes: usize, art_url_bytes: usize) -> Self {
+    pub(in crate::media) async fn start_with_identity_bytes(identity_bytes: usize) -> Self {
+        Self::start_with_payload(0, 0, identity_bytes).await
+    }
+
+    async fn start_with_payload(
+        metadata_bytes: usize,
+        art_url_bytes: usize,
+        identity_bytes: usize,
+    ) -> Self {
         let broker = PrivateBroker::start();
         let commands = Arc::new(CommandCounts::default());
+        let identity = if identity_bytes == 0 {
+            TEST_PLAYER_IDENTITY.to_string()
+        } else {
+            "x".repeat(identity_bytes)
+        };
         // The service exports both MPRIS interfaces at the standard object path
         let server = ConnectionBuilder::address(broker.address.as_str())
             .expect("parse private broker address")
             .name(TEST_PLAYER_NAME)
             .expect("request test MPRIS name")
-            .serve_at(MPRIS_PATH, TestMprisRoot)
+            .serve_at(MPRIS_PATH, TestMprisRoot { identity })
             .expect("register test MPRIS root")
             .serve_at(
                 MPRIS_PATH,

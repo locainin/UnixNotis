@@ -43,6 +43,16 @@ assert_count() {
   fi
 }
 
+check_bootstrap_index_pins() {
+  local path="${1}"
+
+  # Bootstrap still uses HTTP only until the CA bundle exists, so each index is hash-pinned
+  assert_contains "$path" 'verify_snapshot_index() {'
+  assert_contains "$path" '98b25b5cd185c59d34aa6e4c3e9b5b8f01bbe9d104fe2dcfbcd30dc0a14a59ed'
+  assert_contains "$path" 'bd8aee7ca2a980563032065681fd39b1e284e511841399f3730eac279a1bd2f7'
+  assert_contains "$path" 'ea95c17e3b9d86d71e58a90831fdfc562f59a9cf6fa5f3d1e52e537a6fbe8e41'
+}
+
 # The base image and package repository both resolve to immutable inputs
 assert_contains "$workflow" 'container: debian:trixie-slim@sha256:'
 assert_contains "$workflow" "snapshot.debian.org/archive/debian/\${DEBIAN_SNAPSHOT}"
@@ -84,3 +94,7 @@ assert_contains "$workflow" 'name: unixnotis-${{ inputs.tag }}-unsigned'
 assert_count "$workflow" 1 'id-token: write'
 assert_count "$workflow" 1 'attestations: write'
 assert_count "$workflow" 1 'artifact-metadata: write'
+
+check_bootstrap_index_pins "${repo_root}/.github/workflows/ci.yml"
+check_bootstrap_index_pins "${repo_root}/.github/workflows/mutation.yml"
+check_bootstrap_index_pins "$workflow"

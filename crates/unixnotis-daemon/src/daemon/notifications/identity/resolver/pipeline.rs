@@ -19,7 +19,7 @@ use super::resolution::{
     conflict_from_candidate, resolution_for_portal_record, resolution_for_record,
     trusted_portal_path, unknown_reply_denied,
 };
-use super::sender_context::enrich_sender_install_provenance;
+use super::sender_context::enrich_sender_install_provenance_blocking;
 use super::validation::validate_desktop_id;
 
 const ATTRIBUTION_WORKER_SLOTS: usize = 8;
@@ -47,71 +47,64 @@ pub(in crate::daemon) async fn resolve_attribution_owned(
         };
         return unknown_reply_denied(claim, &sender, "attribution worker capacity exhausted");
     };
-    let initial = tokio::task::spawn_blocking({
-        let reported_name = reported_name.clone();
-        let desktop_entry = desktop_entry.clone();
-        let index = Arc::clone(&index);
-        let sender = sender.clone();
-        move || {
-            // The permit lives inside the blocking closure so timeout cancellation
-            // cannot release capacity while procfs work is still running
-            let _permit = initial_permit;
-            let sender = refresh_sender_security_evidence(&sender);
+    let fallback_sender = sender.clone();
+    let result = tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        tokio::task::spawn_blocking({
+            let reported_name = reported_name.clone();
+            let desktop_entry = desktop_entry.clone();
+            let index = Arc::clone(&index);
+            let sender = sender.clone();
+            move || {
+                // The permit lives inside the blocking closure so timeout cancellation
+                // cannot release capacity while procfs work is still running
+                let _permit = initial_permit;
+                let sender = refresh_sender_security_evidence(&sender);
+                let claim = AppClaim {
+                    reported_name: &reported_name,
+                    desktop_entry: desktop_entry.as_deref(),
+                };
+                let resolution = resolve_with_evidence(claim, &sender, &index);
+                let needs = needs_sender_provenance(
+                    resolution.attribution.status,
+                    resolution.attribution.interactions,
+                    claim_has_index_candidate(claim, &index),
+                );
+                if !needs {
+                    return resolution;
+                }
+
+                let mut sender = sender;
+                enrich_sender_install_provenance_blocking(&mut sender, &index);
+                resolve_with_evidence(claim, &sender, &index)
+            }
+        }),
+    )
+    .await;
+    let resolution = match result {
+        Ok(Ok(resolution)) => resolution,
+        Ok(Err(_)) => {
             let claim = AppClaim {
                 reported_name: &reported_name,
                 desktop_entry: desktop_entry.as_deref(),
             };
-            let resolution = resolve_with_evidence(claim, &sender, &index);
-            let needs = needs_sender_provenance(
-                resolution.attribution.status,
-                resolution.attribution.interactions,
-                claim_has_index_candidate(claim, &index),
-            );
-            (sender, resolution, needs)
+            return unknown_reply_denied(claim, &fallback_sender, "attribution worker stopped");
         }
-    })
-    .await
-    .ok();
-    let Some((mut sender, initial, needs)) = initial else {
-        let claim = AppClaim {
-            reported_name: &reported_name,
-            desktop_entry: desktop_entry.as_deref(),
-        };
-        return unknown_reply_denied(
-            claim,
-            &SenderMetadata::default(),
-            "attribution worker stopped",
-        );
+        Err(_) => {
+            let claim = AppClaim {
+                reported_name: &reported_name,
+                desktop_entry: desktop_entry.as_deref(),
+            };
+            return unknown_reply_denied(claim, &fallback_sender, "attribution timed out");
+        }
     };
-    if should_return_initial_resolution(needs) {
-        return initial;
-    }
-    enrich_sender_install_provenance(&mut sender, &index).await;
-    let Some(provenance_permit) = try_attribution_worker() else {
-        // The initial result is already safe and interaction-denied
-        return initial;
-    };
-    let fallback_name = reported_name.clone();
-    let fallback_entry = desktop_entry.clone();
-    let fallback_sender = sender.clone();
-    tokio::task::spawn_blocking(move || {
-        let _permit = provenance_permit;
-        let claim = AppClaim {
-            reported_name: &reported_name,
-            desktop_entry: desktop_entry.as_deref(),
-        };
-        resolve_with_evidence(claim, &sender, &index)
-    })
-    .await
-    .unwrap_or_else(|_| {
-        let claim = AppClaim {
-            reported_name: &fallback_name,
-            desktop_entry: fallback_entry.as_deref(),
-        };
-        unknown_reply_denied(claim, &fallback_sender, "attribution worker stopped")
-    })
+    resolution
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "helper remains as an explicit pipeline test seam")
+)]
 pub(super) const fn should_return_initial_resolution(needs_provenance: bool) -> bool {
     !needs_provenance
 }

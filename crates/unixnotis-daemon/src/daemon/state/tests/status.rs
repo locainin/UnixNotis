@@ -1,13 +1,4 @@
-use crate::test_support::daemon_state_for_test;
-use std::sync::atomic::Ordering;
-
-use super::super::DaemonState;
-
-impl DaemonState {
-    pub(crate) fn popups_process_running(&self) -> bool {
-        self.popups_process_running.load(Ordering::SeqCst)
-    }
-}
+use crate::test_support::{daemon_state_for_test, daemon_state_for_test_with_owner};
 
 #[tokio::test]
 async fn daemon_state_boolean_flags_reflect_runtime_updates() {
@@ -17,7 +8,7 @@ async fn daemon_state_boolean_flags_reflect_runtime_updates() {
     assert!(!state.panel_ready());
     assert!(!state.popups_process_running());
 
-    // These atomics gate user-visible command handling, so getters must reflect writes exactly
+    // These health flags gate user-visible command handling, so getters must reflect writes exactly
     state.set_center_process_running(true);
     state.set_panel_ready(":1.20", true);
     state.set_popups_process_running(true);
@@ -118,4 +109,27 @@ async fn daemon_state_trial_mode_can_be_disabled() {
 
     // Trial mode changes control authorization, so false must stay observable
     assert!(!state.trial_mode());
+}
+
+#[tokio::test]
+async fn popup_unready_warning_is_emitted_only_once_until_ready() {
+    let state = daemon_state_for_test(true).await;
+
+    assert!(state.should_warn_popups_unready());
+    assert!(!state.should_warn_popups_unready());
+
+    state.set_popups_process_running(true);
+    state.set_popups_ready(":1.10", true);
+    assert!(!state.should_warn_popups_unready());
+    state.set_popups_ready(":1.10", false);
+
+    assert!(state.should_warn_popups_unready());
+}
+
+#[tokio::test]
+async fn control_owner_preauthorization_matches_only_the_current_owner() {
+    let state = daemon_state_for_test_with_owner(true, Some(":1.42")).await;
+
+    assert!(state.control_owner_is_preauthorized(":1.42"));
+    assert!(!state.control_owner_is_preauthorized(":1.43"));
 }

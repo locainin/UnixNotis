@@ -15,6 +15,8 @@ pub(super) struct MediaRuntimeState {
     pub(super) last_snapshot: Vec<MediaInfo>,
     // One delayed retry plan per player
     pub(super) delayed_refreshes: DelayedRefreshTasks,
+    // Rotates bounded candidate probes so names outside the first sorted page get a turn
+    pub(super) discovery_cursor: usize,
 }
 
 impl MediaRuntimeState {
@@ -25,6 +27,7 @@ impl MediaRuntimeState {
             cache: HashMap::new(),
             last_snapshot: Vec::new(),
             delayed_refreshes: HashMap::new(),
+            discovery_cursor: 0,
         }
     }
 }

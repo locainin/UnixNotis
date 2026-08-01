@@ -5,7 +5,7 @@ use super::super::executable::executable_evidence_for_path;
 use super::super::sender::SenderMetadata;
 use super::evidence::current_system_identity_matches_sender;
 
-pub(super) async fn enrich_sender_install_provenance(
+pub(super) fn enrich_sender_install_provenance_blocking(
     sender: &mut SenderMetadata,
     index: &DesktopIdentityIndex,
 ) {
@@ -29,7 +29,16 @@ pub(super) async fn enrich_sender_install_provenance(
     if !current_system_identity_matches_sender(current.identity, sender_identity) {
         return;
     }
-    sender.install_provenance = index
-        .install_provenance_for_path_async(current.canonical_path)
-        .await;
+    sender.install_provenance = index.install_provenance_for_path(current.canonical_path);
+}
+
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "async wrapper remains for resolver tests")
+)]
+pub(super) async fn enrich_sender_install_provenance(
+    sender: &mut SenderMetadata,
+    index: &DesktopIdentityIndex,
+) {
+    enrich_sender_install_provenance_blocking(sender, index);
 }

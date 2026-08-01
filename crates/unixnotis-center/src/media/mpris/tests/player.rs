@@ -141,6 +141,19 @@ async fn player_state_without_process_fd_keeps_remote_metadata_and_disables_loca
     assert!(!state.local_art_allowed);
 }
 
+#[tokio::test]
+async fn oversized_identity_is_rejected_before_retention() {
+    let fixture = MprisFixture::start_with_identity_bytes(513).await;
+    let owner = resolve_player_owner(&fixture.client, TEST_PLAYER_NAME)
+        .await
+        .expect("resolve stable test owner");
+
+    assert_eq!(
+        fetch_identity(&fixture.client, owner.unique_owner.as_str()).await,
+        None
+    );
+}
+
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn exact_local_art_policy_uses_the_connection_process_fd() {

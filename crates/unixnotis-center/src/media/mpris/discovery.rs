@@ -10,8 +10,9 @@ use unixnotis_core::{MediaConfig, PanelDebugLevel};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
-use super::constants::{MAX_MPRIS_PLAYERS, MPRIS_PREFIX};
-use super::{build_player_state, is_allowed_player, spawn_properties_listener, PlayerState};
+use super::constants::{MAX_MPRIS_CANDIDATES_PER_PASS, MAX_MPRIS_PLAYERS, MPRIS_PREFIX};
+use super::player::{build_player_state_for_owner, resolve_player_owner, OwnerProbe};
+use super::{is_allowed_player, spawn_properties_listener, PlayerState};
 use crate::diagnostics::panel_debug as debug;
 use crate::media::runtime::MediaSignal;
 
@@ -21,6 +22,7 @@ pub(in crate::media) async fn refresh_players(
     config: &MediaConfig,
     signal_tx: &Sender<MediaSignal>,
     players: &mut HashMap<String, PlayerState>,
+    discovery_cursor: &mut usize,
 ) -> zbus::Result<()> {
     let names = dbus_proxy.list_names().await?;
     let mut allowed = HashSet::new();
@@ -33,9 +35,9 @@ pub(in crate::media) async fn refresh_players(
         allowed.insert(name);
     }
 
-    // Owner capacity is enforced after probing so aliases cannot occupy a
-    // deterministic name prefix and starve an unrelated player
-    let allowed = select_player_names(allowed);
+    // Keep active names, then rotate through the remaining sorted names
+    let tracked = players.keys().cloned().collect::<HashSet<_>>();
+    let allowed = select_player_names(allowed, &tracked, discovery_cursor);
     let allowed_set = allowed.iter().map(String::as_str).collect::<HashSet<_>>();
 
     // Remove players that no longer exist on the bus to avoid stale UI cards
@@ -66,9 +68,10 @@ pub(in crate::media) async fn refresh_players(
         .filter(|name| !players.contains_key(*name))
         .cloned()
         .collect::<Vec<_>>();
+    // Owner-only probes are bounded before any full player construction
     let mut probed = stream::iter(names_to_probe)
         .map(|name| async move {
-            let result = build_player_state(connection, &name, config).await;
+            let result = resolve_player_owner(connection, &name).await;
             (name, result)
         })
         .buffer_unordered(4)
@@ -78,9 +81,27 @@ pub(in crate::media) async fn refresh_players(
     probed.sort_unstable_by(|left, right| left.0.cmp(&right.0));
     let mut failed_probes = 0usize;
     let mut capacity_skipped = 0usize;
-    for (name, result) in probed {
-        // New players are probed concurrently, but admitted state is committed in name order
-        let state = match result {
+    let mut selected = Vec::<(String, OwnerProbe)>::new();
+    for (name, owner) in probed {
+        let Some(owner) = owner else {
+            failed_probes = failed_probes.saturating_add(1);
+            continue;
+        };
+        // Several aliases can resolve to one connection; retain one stable alias
+        if !owners.insert(owner.unique_owner.clone()) {
+            continue;
+        }
+        if owner_capacity_exceeded(owners.len(), MAX_MPRIS_PLAYERS) {
+            owners.remove(&owner.unique_owner);
+            capacity_skipped = capacity_skipped.saturating_add(1);
+            continue;
+        }
+        selected.push((name, owner));
+    }
+
+    // Full construction runs once per selected owner, never once per alias
+    for (name, owner) in selected {
+        let state = match build_player_state_for_owner(connection, &name, config, owner).await {
             Ok(state) => state,
             Err(err) => {
                 failed_probes = failed_probes.saturating_add(1);
@@ -90,36 +111,16 @@ pub(in crate::media) async fn refresh_players(
                 continue;
             }
         };
-        if let Some(state) = state {
-            let owner_is_tracked = state
-                .unique_owner
-                .as_ref()
-                .is_some_and(|owner| owners.contains(owner));
-            if should_skip_for_owner_capacity(owners.len(), MAX_MPRIS_PLAYERS, owner_is_tracked) {
-                // The owner was resolved, but the bounded state set is full
-                capacity_skipped = capacity_skipped.saturating_add(1);
-                continue;
-            }
-            if state
-                .unique_owner
-                .as_ref()
-                .is_some_and(|owner| !owners.insert(owner.clone()))
-            {
-                // Several well-known names may point to one owner; one listener is enough
-                continue;
-            }
-            // Each player gets a properties listener so updates stay event-driven
-            spawn_properties_listener(
-                state.properties.clone(),
-                name.clone(),
-                signal_tx.clone(),
-                state.listener_cancel.subscribe(),
-            );
-            players.insert(name.clone(), state);
-            debug::log(PanelDebugLevel::Info, || {
-                format!("media player added: {name}")
-            });
-        }
+        spawn_properties_listener(
+            state.properties.clone(),
+            name.clone(),
+            signal_tx.clone(),
+            state.listener_cancel.subscribe(),
+        );
+        players.insert(name.clone(), state);
+        debug::log(PanelDebugLevel::Info, || {
+            format!("media player added: {name}")
+        });
     }
     if failed_probes > 0 {
         warn!(
@@ -142,12 +143,43 @@ pub(super) fn is_discoverable_player(name: &str, config: &MediaConfig) -> bool {
     name.starts_with(MPRIS_PREFIX) && is_allowed_player(name, config)
 }
 
-pub(super) fn select_player_names(names: HashSet<String>) -> Vec<String> {
-    let mut names: Vec<String> = names.into_iter().collect();
+pub(super) fn select_player_names(
+    names: HashSet<String>,
+    tracked: &HashSet<String>,
+    cursor: &mut usize,
+) -> Vec<String> {
+    let mut names = names.into_iter().collect::<Vec<_>>();
     names.sort_unstable();
-    names
+
+    let mut selected = names
+        .iter()
+        .filter(|name| tracked.contains(*name))
+        .cloned()
+        .collect::<Vec<_>>();
+    let remaining = names
+        .into_iter()
+        .filter(|name| !tracked.contains(name))
+        .collect::<Vec<_>>();
+    let room = MAX_MPRIS_CANDIDATES_PER_PASS.saturating_sub(selected.len());
+    if room == 0 || remaining.is_empty() {
+        return selected;
+    }
+
+    let start = *cursor % remaining.len();
+    let count = room.min(remaining.len());
+    selected.extend((0..count).map(|offset| remaining[(start + offset) % remaining.len()].clone()));
+    *cursor = (start + count) % remaining.len();
+    selected
 }
 
+pub(super) const fn owner_capacity_exceeded(owner_count: usize, capacity: usize) -> bool {
+    owner_count > capacity
+}
+
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "capacity helper is exercised by discovery tests")
+)]
 pub(super) const fn should_skip_for_owner_capacity(
     owner_count: usize,
     capacity: usize,

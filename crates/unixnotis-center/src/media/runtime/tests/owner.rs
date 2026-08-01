@@ -184,3 +184,26 @@ async fn duplicate_owner_change_preserves_existing_player() {
     assert!(state.players.contains_key(TEST_PLAYER_NAME));
     assert!(event_rx.is_empty());
 }
+
+#[tokio::test]
+async fn replacement_owner_change_defers_full_probe_to_coalesced_refresh() {
+    let fixture = MprisFixture::start().await;
+    let (signal_tx, _signal_rx) = tokio::sync::mpsc::channel(4);
+    let (event_tx, _event_rx) = async_channel::bounded(4);
+    let mut state = live_runtime_state(&fixture).await;
+
+    let outcome = apply_owner_change(
+        TEST_PLAYER_NAME,
+        Some(":1.replacement"),
+        &fixture.client,
+        &MediaConfig::default(),
+        &signal_tx,
+        &mut state,
+        &event_tx,
+    )
+    .await
+    .expect("defer replacement probe");
+
+    assert_eq!(outcome, OwnerChangeOutcome::RetryNeeded);
+    assert!(state.players.is_empty());
+}

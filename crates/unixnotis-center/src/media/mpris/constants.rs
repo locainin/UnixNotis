@@ -20,6 +20,8 @@ pub const MPRIS_TIMEOUT_QUARANTINE_MS: u64 = 5_000;
 
 /// Discovery is capped so one bus connection cannot create unbounded state
 pub const MAX_MPRIS_PLAYERS: usize = 32;
+/// Candidate owner probes are bounded before any full player construction
+pub const MAX_MPRIS_CANDIDATES_PER_PASS: usize = 128;
 
 /// Metadata maps are retained only when they remain reasonably small
 pub const MAX_METADATA_ENTRIES: usize = 256;

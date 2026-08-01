@@ -17,11 +17,35 @@ pub struct DefaultActionTarget {
 #[derive(Clone)]
 pub struct DefaultActionBinding {
     target: Rc<RefCell<Option<DefaultActionTarget>>>,
+    root: gtk::glib::WeakRef<gtk::Widget>,
 }
 
 impl DefaultActionBinding {
     pub fn set_target(&self, target: Option<DefaultActionTarget>) {
+        let enabled = target.is_some();
         *self.target.borrow_mut() = target;
+
+        let Some(root) = self.root.upgrade() else {
+            return;
+        };
+
+        // Recycled rows are only keyboard controls while an active generation is bound
+        root.set_focusable(enabled);
+        root.set_accessible_role(if enabled {
+            gtk::AccessibleRole::Button
+        } else {
+            gtk::AccessibleRole::Generic
+        });
+        root.update_property(&[gtk::accessible::Property::Label(if enabled {
+            "Open notification"
+        } else {
+            ""
+        })]);
+        if enabled {
+            root.add_css_class("unixnotis-popup-default-action");
+        } else {
+            root.remove_css_class("unixnotis-popup-default-action");
+        }
     }
 }
 
@@ -36,27 +60,23 @@ where
     F: Fn(NotificationKey, String) + 'static,
 {
     let root = widget.clone().upcast::<gtk::Widget>();
-    root.set_focusable(true);
-    root.set_accessible_role(gtk::AccessibleRole::Button);
-    root.update_property(&[gtk::accessible::Property::Label("Open notification")]);
-    root.add_css_class("unixnotis-popup-default-action");
 
     let target: Rc<RefCell<Option<DefaultActionTarget>>> = Rc::new(RefCell::new(None));
     let dispatch = Rc::new(dispatch);
 
     let gesture = gtk::GestureClick::new();
     gesture.set_button(1);
-    let click_root = root.clone();
+    let click_root = root.downgrade();
     let click_target = Rc::clone(&target);
     let click_dispatch = Rc::clone(&dispatch);
     gesture.connect_released(move |_, _, x, y| {
+        let Some(root) = click_root.upgrade() else {
+            return;
+        };
         let Some(current) = click_target.borrow().clone() else {
             return;
         };
-        if picked_widget_blocks_default_action(
-            &click_root,
-            click_root.pick(x, y, gtk::PickFlags::DEFAULT),
-        ) {
+        if picked_widget_blocks_default_action(&root, root.pick(x, y, gtk::PickFlags::DEFAULT)) {
             return;
         }
         click_dispatch(current.notification, current.action_key);
@@ -64,12 +84,15 @@ where
     root.add_controller(gesture);
 
     let key_controller = gtk::EventControllerKey::new();
-    let key_root = root.clone();
+    let key_root = root.downgrade();
     let key_target = Rc::clone(&target);
     let key_dispatch = Rc::clone(&dispatch);
     key_controller.connect_key_pressed(move |_, key, _, _| {
+        let Some(root) = key_root.upgrade() else {
+            return gtk::glib::Propagation::Proceed;
+        };
         let current = key_target.borrow().clone();
-        if keyboard_activation_is_ready(key_root.has_focus(), key, current.is_some()) {
+        if keyboard_activation_is_ready(root.has_focus(), key, current.is_some()) {
             if let Some(current) = current {
                 key_dispatch(current.notification, current.action_key);
                 return gtk::glib::Propagation::Stop;
@@ -79,7 +102,12 @@ where
     });
     root.add_controller(key_controller);
 
-    DefaultActionBinding { target }
+    let binding = DefaultActionBinding {
+        target,
+        root: root.downgrade(),
+    };
+    binding.set_target(None);
+    binding
 }
 
 #[must_use]

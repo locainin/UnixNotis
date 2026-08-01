@@ -58,6 +58,24 @@ jobs:
           printf '%s\n' 'Acquire::Check-Valid-Until "false";' \
             > /etc/apt/apt.conf.d/99snapshot
           apt-get update
+          verify_snapshot_index() {
+            local expected="$1"
+            local pattern="$2"
+            local path
+            path="$(find /var/lib/apt/lists -maxdepth 1 -type f -name "$pattern" -print -quit)"
+            test -n "$path"
+            printf '%s  %s\n' "$expected" "$path" | sha256sum --check --strict
+          }
+          # Pin the bootstrap indexes so HTTP cannot replay an older signed snapshot
+          verify_snapshot_index \
+            98b25b5cd185c59d34aa6e4c3e9b5b8f01bbe9d104fe2dcfbcd30dc0a14a59ed \
+            "*snapshot.debian.org_archive_debian_${DEBIAN_SNAPSHOT}_dists_trixie_InRelease"
+          verify_snapshot_index \
+            bd8aee7ca2a980563032065681fd39b1e284e511841399f3730eac279a1bd2f7 \
+            "*snapshot.debian.org_archive_debian_${DEBIAN_SNAPSHOT}_dists_trixie-updates_InRelease"
+          verify_snapshot_index \
+            ea95c17e3b9d86d71e58a90831fdfc562f59a9cf6fa5f3d1e52e537a6fbe8e41 \
+            "*snapshot.debian.org_archive_debian-security_${DEBIAN_SNAPSHOT}_dists_trixie-security_InRelease"
           # Bootstrap the trust store over the signed snapshot index
           apt-get install -y --no-install-recommends ca-certificates
           sed -i 's#http://snapshot.debian.org#https://snapshot.debian.org#g' \
