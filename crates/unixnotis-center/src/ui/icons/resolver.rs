@@ -33,11 +33,14 @@ impl IconResolver {
             missing_names: RefCell::new(MissingIconCache::new(512)),
             worker,
         });
-        let update_target = Rc::clone(&inner);
+        let update_target = Rc::downgrade(&inner);
         glib::MainContext::default().spawn_local(async move {
             while let Ok(update) = update_rx.recv().await {
                 // GTK objects are updated only from the owning main context
-                update_target.handle_update(update);
+                let Some(inner) = update_target.upgrade() else {
+                    break;
+                };
+                inner.handle_update(update);
             }
         });
 

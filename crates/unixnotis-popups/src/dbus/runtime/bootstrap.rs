@@ -12,10 +12,12 @@ use crate::dbus::{UiCommand, UiEvent};
 pub(super) fn start_runtime(sender: async_channel::Sender<UiEvent>) -> PopupRuntime {
     let (command_tx, command_rx) = mpsc::channel(UI_COMMAND_QUEUE_CAPACITY);
     let (gtk_ready_tx, gtk_ready_rx) = watch::channel(false);
-    spawn_runtime_thread(sender, command_rx, gtk_ready_rx);
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    spawn_runtime_thread(sender, command_rx, gtk_ready_rx, shutdown_rx);
     PopupRuntime {
         command_tx,
         gtk_ready_tx,
+        shutdown_tx,
     }
 }
 
@@ -23,13 +25,14 @@ fn spawn_runtime_thread(
     sender: async_channel::Sender<UiEvent>,
     command_rx: mpsc::Receiver<UiCommand>,
     gtk_ready_rx: watch::Receiver<bool>,
+    shutdown_rx: watch::Receiver<bool>,
 ) {
     thread::spawn(move || {
         // The GTK main thread never blocks on bus calls or retry delays
         let Some(runtime) = build_runtime() else {
             return;
         };
-        runtime.block_on(run_dbus_loop(sender, command_rx, gtk_ready_rx));
+        runtime.block_on(run_dbus_loop(sender, command_rx, gtk_ready_rx, shutdown_rx));
     });
 }
 

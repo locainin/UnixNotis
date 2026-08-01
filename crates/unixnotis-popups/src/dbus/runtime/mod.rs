@@ -13,9 +13,11 @@ use super::types::{UiCommand, UiEvent};
 // A bounded queue prevents a stalled D-Bus connection from growing memory without limit
 pub(super) const UI_COMMAND_QUEUE_CAPACITY: usize = 64;
 
+#[derive(Clone)]
 pub struct PopupRuntime {
     command_tx: mpsc::Sender<UiCommand>,
     gtk_ready_tx: watch::Sender<bool>,
+    shutdown_tx: watch::Sender<bool>,
 }
 
 impl PopupRuntime {
@@ -26,6 +28,11 @@ impl PopupRuntime {
     pub fn mark_gtk_ready(&self) {
         // Readiness is published only after the GTK state owns its complete widget tree
         let _ = self.gtk_ready_tx.send(true);
+    }
+
+    pub fn request_shutdown(&self) {
+        // Shutdown has its own non-blocking channel and cannot be starved by UI events
+        let _ = self.shutdown_tx.send(true);
     }
 }
 

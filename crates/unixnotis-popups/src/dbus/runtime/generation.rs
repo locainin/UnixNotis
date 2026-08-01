@@ -17,6 +17,7 @@ use crate::dbus::seed::{seed_state, PopupSeedSource, SeedError, SeedSnapshot};
 use crate::dbus::{UiCommand, UiEvent};
 
 struct ControlProxySeedSource<'proxy, 'connection> {
+    // The proxy is borrowed for exactly one owner generation
     proxy: &'proxy ControlProxy<'connection>,
 }
 
@@ -48,6 +49,7 @@ pub(super) struct PopupGenerationContext<'context, 'stream> {
     subscribe_backoff: &'context mut Backoff,
     subscribe_log: &'context mut RetryLog,
     gtk_ready_rx: &'context mut watch::Receiver<bool>,
+    shutdown_rx: &'context mut watch::Receiver<bool>,
 }
 
 impl<'context, 'stream> PopupGenerationContext<'context, 'stream> {
@@ -58,6 +60,7 @@ impl<'context, 'stream> PopupGenerationContext<'context, 'stream> {
         subscribe_backoff: &'context mut Backoff,
         subscribe_log: &'context mut RetryLog,
         gtk_ready_rx: &'context mut watch::Receiver<bool>,
+        shutdown_rx: &'context mut watch::Receiver<bool>,
     ) -> Self {
         Self {
             owner_changes,
@@ -66,11 +69,13 @@ impl<'context, 'stream> PopupGenerationContext<'context, 'stream> {
             subscribe_backoff,
             subscribe_log,
             gtk_ready_rx,
+            shutdown_rx,
         }
     }
 }
 
 struct GenerationStreams<'proxy> {
+    // Each stream belongs to the same verified control owner
     added: NotificationAddedStream<'proxy>,
     updated: NotificationUpdatedStream<'proxy>,
     closed: NotificationClosedStream<'proxy>,
@@ -79,6 +84,7 @@ struct GenerationStreams<'proxy> {
 }
 
 struct SubscribeError {
+    // Keep the signal name next to its original D-Bus error for useful retry logs
     signal: &'static str,
     source: zbus::Error,
 }
@@ -87,6 +93,7 @@ impl GenerationStreams<'_> {
     async fn subscribe<'proxy>(
         proxy: &'proxy ControlProxy<'_>,
     ) -> Result<GenerationStreams<'proxy>, SubscribeError> {
+        // Subscribe in a fixed order so partial setup has a deterministic failure point
         let added = proxy
             .receive_notification_added()
             .await
@@ -94,6 +101,7 @@ impl GenerationStreams<'_> {
                 signal: "notification_added",
                 source,
             })?;
+        // Updates share the same generation boundary as additions
         let updated = proxy
             .receive_notification_updated()
             .await
@@ -101,6 +109,7 @@ impl GenerationStreams<'_> {
                 signal: "notification_updated",
                 source,
             })?;
+        // Close events remove rows only when their generation still matches
         let closed = proxy
             .receive_notification_closed()
             .await
@@ -108,6 +117,7 @@ impl GenerationStreams<'_> {
                 signal: "notification_closed",
                 source,
             })?;
+        // Gate changes update popup admission without rebuilding the owner connection
         let gate = proxy
             .receive_popup_gate_changed()
             .await
@@ -115,6 +125,7 @@ impl GenerationStreams<'_> {
                 signal: "popup_gate_changed",
                 source,
             })?;
+        // Invalidations request a fresh seed after a missed or coalesced change
         let invalidated = proxy
             .receive_snapshot_invalidated()
             .await
@@ -144,7 +155,9 @@ pub(super) async fn run_owner_generation(
         subscribe_backoff,
         subscribe_log,
         gtk_ready_rx,
+        shutdown_rx,
     } = context;
+    // A failed subscription cannot safely share a partial generation
     let mut streams = match GenerationStreams::subscribe(proxy).await {
         Ok(streams) => streams,
         Err(error) => {
@@ -157,14 +170,17 @@ pub(super) async fn run_owner_generation(
     };
 
     // Subscription precedes the seed so no change can fall between both phases
+    // Seed after subscriptions so buffered signals can repair any boundary race
     if let Err(error) = seed_state(&ControlProxySeedSource { proxy }, sender).await {
         subscribe_log.warn_or_debug(&error, "popup readiness handshake or seed failed");
         return GenerationExit::Retry;
     }
+    // Readiness is required before the daemon treats this owner as renderable
     if !wait_for_gtk_runtime(gtk_ready_rx).await {
         warn!("popup GTK runtime did not become ready");
         return GenerationExit::Retry;
     }
+    // The lease is cleared on every exit path after successful publication
     let mut readiness = PopupReadinessLease::new(proxy);
     if let Err(error) = readiness.publish().await {
         subscribe_log.warn_or_debug(&error, "failed to mark popup renderer ready");
@@ -174,23 +190,19 @@ pub(super) async fn run_owner_generation(
     subscribe_log.reset();
     info!(owner, "UnixNotis control service ready");
 
-    let mut shutdown_acknowledgement = None;
     let exit = loop {
         tokio::select! {
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow() {
+                    break GenerationExit::Shutdown;
+                }
+            }
             command = command_rx.recv() => {
                 let Some(command) = command else {
                     break GenerationExit::Shutdown;
                 };
-                match command {
-                    UiCommand::Shutdown(acknowledgement) => {
-                        shutdown_acknowledgement = Some(acknowledgement);
-                        break GenerationExit::Shutdown;
-                    }
-                    command => {
-                        if let Err(error) = handle_command(proxy, command).await {
-                            warn!(?error, "popup control command failed");
-                        }
-                    }
+                if let Err(error) = handle_command(proxy, command).await {
+                    warn!(?error, "popup control command failed");
                 }
             }
             signal = streams.added.next() => {
@@ -285,8 +297,5 @@ pub(super) async fn run_owner_generation(
     };
 
     readiness.clear().await;
-    if let Some(acknowledgement) = shutdown_acknowledgement {
-        let _ = acknowledgement.send(());
-    }
     exit
 }

@@ -15,23 +15,6 @@ fn dismiss_command_preserves_notification_generation() {
 }
 
 #[test]
-fn shutdown_command_preserves_the_cleanup_acknowledgement() {
-    let (acknowledgement_tx, acknowledgement_rx) = std::sync::mpsc::sync_channel(1);
-    let command = UiCommand::Shutdown(acknowledgement_tx);
-
-    if let UiCommand::Shutdown(acknowledgement) = command {
-        acknowledgement
-            .send(())
-            .expect("send shutdown acknowledgement");
-    } else {
-        panic!("shutdown command variant should remain intact");
-    }
-    acknowledgement_rx
-        .recv()
-        .expect("receive shutdown acknowledgement");
-}
-
-#[test]
 fn reply_debug_output_redacts_private_message_text() {
     let (outcome, _result) = tokio::sync::oneshot::channel();
     let command = UiCommand::Reply {

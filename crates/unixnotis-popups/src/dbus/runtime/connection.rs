@@ -25,50 +25,85 @@ pub(super) async fn run_dbus_loop(
     sender: async_channel::Sender<UiEvent>,
     mut command_rx: mpsc::Receiver<UiCommand>,
     mut gtk_ready_rx: watch::Receiver<bool>,
+    mut shutdown_rx: watch::Receiver<bool>,
 ) {
+    // Backoff state survives owner changes but resets after a healthy connection
     let mut connect_backoff = Backoff::new(BACKOFF_BASE_MS, BACKOFF_MAX_MS);
     let mut subscribe_backoff = Backoff::new(BACKOFF_BASE_MS, BACKOFF_MAX_MS);
     let mut connect_log = RetryLog::new(Duration::from_secs(RETRY_WARN_INTERVAL_SECS));
     let mut subscribe_log = RetryLog::new(Duration::from_secs(RETRY_WARN_INTERVAL_SECS));
 
     loop {
-        let connection = connect_session_bus(&mut connect_backoff, &mut connect_log).await;
-        let Some(retry_delay) = run_connection_once(
+        if *shutdown_rx.borrow() {
+            return;
+        }
+        let Some(connection) =
+            connect_session_bus(&mut connect_backoff, &mut connect_log, &mut shutdown_rx).await
+        else {
+            return;
+        };
+        let retry_delay = run_connection_once(
             &connection,
             &sender,
             &mut command_rx,
             &mut subscribe_backoff,
             &mut subscribe_log,
             &mut gtk_ready_rx,
+            &mut shutdown_rx,
         )
-        .await
-        else {
+        .await;
+        let Some(retry_delay) = retry_delay else {
             return;
         };
-        tokio::time::sleep(retry_delay).await;
+        tokio::select! {
+            () = tokio::time::sleep(retry_delay) => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow() { return; }
+            }
+        }
     }
 }
 
 async fn connect_session_bus(
     connect_backoff: &mut Backoff,
     connect_log: &mut RetryLog,
-) -> Connection {
+    shutdown_rx: &mut watch::Receiver<bool>,
+) -> Option<Connection> {
     loop {
-        match Connection::session().await {
+        let result = tokio::select! {
+            result = Connection::session() => result,
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow() { return None; }
+                continue;
+            }
+        };
+        match result {
             Ok(connection) => {
                 if let Err(error) = log_session_bus_identity(&connection, "popups").await {
                     connect_log
                         .warn_or_debug(&error, "session bus identity probe failed; retrying");
-                    tokio::time::sleep(connect_backoff.next_sleep()).await;
+                    let delay = connect_backoff.next_sleep();
+                    tokio::select! {
+                        () = tokio::time::sleep(delay) => {}
+                        changed = shutdown_rx.changed() => {
+                            if changed.is_ok() && *shutdown_rx.borrow() { return None; }
+                        }
+                    }
                     continue;
                 }
                 connect_backoff.reset();
                 connect_log.reset();
-                return connection;
+                return Some(connection);
             }
             Err(error) => {
                 connect_log.warn_or_debug(&error, "failed to connect to the session bus; retrying");
-                tokio::time::sleep(connect_backoff.next_sleep()).await;
+                let delay = connect_backoff.next_sleep();
+                tokio::select! {
+                    () = tokio::time::sleep(delay) => {}
+                    changed = shutdown_rx.changed() => {
+                        if changed.is_ok() && *shutdown_rx.borrow() { return None; }
+                    }
+                }
             }
         }
     }
@@ -81,14 +116,14 @@ async fn run_connection_once(
     subscribe_backoff: &mut Backoff,
     subscribe_log: &mut RetryLog,
     gtk_ready_rx: &mut watch::Receiver<bool>,
+    shutdown_rx: &mut watch::Receiver<bool>,
 ) -> Option<Duration> {
+    // One connection owns one stream set and one command-generation boundary
     let proxy = match ControlProxy::new(connection).await {
         Ok(proxy) => proxy,
         Err(error) => {
             subscribe_log.warn_or_debug(&error, "control interface unavailable; retrying");
-            if acknowledge_offline_shutdown(command_rx) {
-                return None;
-            }
+            drain_offline_commands(command_rx);
             return Some(subscribe_backoff.next_sleep());
         }
     };
@@ -112,12 +147,20 @@ async fn run_connection_once(
     };
 
     loop {
-        let owner =
-            match wait_for_control_owner(&dbus, &mut owner_changes, sender, command_rx).await {
-                OwnerWait::Ready(owner) => owner,
-                OwnerWait::Disconnected => return Some(subscribe_backoff.next_sleep()),
-                OwnerWait::Shutdown => return None,
-            };
+        // Wait for an owner before creating generation-scoped subscriptions
+        let owner = match wait_for_control_owner(
+            &dbus,
+            &mut owner_changes,
+            sender,
+            command_rx,
+            shutdown_rx,
+        )
+        .await
+        {
+            OwnerWait::Ready(owner) => owner,
+            OwnerWait::Disconnected => return Some(subscribe_backoff.next_sleep()),
+            OwnerWait::Shutdown => return None,
+        };
         let context = PopupGenerationContext::new(
             &mut owner_changes,
             sender,
@@ -125,13 +168,22 @@ async fn run_connection_once(
             subscribe_backoff,
             subscribe_log,
             gtk_ready_rx,
+            shutdown_rx,
         );
         match run_owner_generation(&proxy, &owner, context).await {
             GenerationExit::OwnerChanged => {}
             GenerationExit::ConnectionLost => return Some(subscribe_backoff.next_sleep()),
             GenerationExit::Shutdown => return None,
             GenerationExit::Retry => {
-                tokio::time::sleep(subscribe_backoff.next_sleep()).await;
+                let retry_delay = subscribe_backoff.next_sleep();
+                tokio::select! {
+                    () = tokio::time::sleep(retry_delay) => {}
+                    changed = shutdown_rx.changed() => {
+                        if changed.is_ok() && *shutdown_rx.borrow() {
+                            return None;
+                        }
+                    }
+                }
             }
         }
     }
@@ -148,6 +200,7 @@ async fn wait_for_control_owner(
     owner_changes: &mut OwnerChangedStream<'_>,
     sender: &async_channel::Sender<UiEvent>,
     command_rx: &mut mpsc::Receiver<UiCommand>,
+    shutdown_rx: &mut watch::Receiver<bool>,
 ) -> OwnerWait {
     let control_name =
         BusName::try_from(CONTROL_BUS_NAME).expect("static control bus name must be valid");
@@ -162,17 +215,14 @@ async fn wait_for_control_owner(
 
     // An unowned name is a quiet state and must not trigger seed or readiness calls
     let _ = sender.send(UiEvent::Disconnected).await;
-    if acknowledge_offline_shutdown(command_rx) {
-        return OwnerWait::Shutdown;
-    }
+    drain_offline_commands(command_rx);
     loop {
         tokio::select! {
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow() { return OwnerWait::Shutdown; }
+            }
             command = command_rx.recv() => {
                 match command {
-                    Some(UiCommand::Shutdown(acknowledgement)) => {
-                        let _ = acknowledgement.send(());
-                        return OwnerWait::Shutdown;
-                    }
                     Some(_) => warn!("dropping popup command while control has no owner"),
                     None => return OwnerWait::Shutdown,
                 }
@@ -185,14 +235,5 @@ async fn wait_for_control_owner(
                 }
             }
         }
-    }
-}
-
-fn acknowledge_offline_shutdown(command_rx: &mut mpsc::Receiver<UiCommand>) -> bool {
-    if let Some(acknowledgement) = drain_offline_commands(command_rx) {
-        let _ = acknowledgement.send(());
-        true
-    } else {
-        false
     }
 }

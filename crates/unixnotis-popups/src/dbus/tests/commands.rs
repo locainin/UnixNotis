@@ -22,7 +22,7 @@ fn drain_offline_commands_removes_all_queued_commands() {
     })
     .expect("action command should queue");
 
-    assert!(drain_offline_commands(&mut rx).is_none());
+    drain_offline_commands(&mut rx);
 
     // Stale commands are intentionally discarded while popups are offline
     assert!(rx.try_recv().is_err());
@@ -32,25 +32,9 @@ fn drain_offline_commands_removes_all_queued_commands() {
 fn drain_offline_commands_accepts_empty_queue() {
     let (_tx, mut rx) = mpsc::channel(1);
 
-    assert!(drain_offline_commands(&mut rx).is_none());
+    drain_offline_commands(&mut rx);
 
     assert!(rx.try_recv().is_err());
-}
-
-#[test]
-fn drain_offline_commands_returns_shutdown_acknowledgement() {
-    let (tx, mut rx) = mpsc::channel(1);
-    let (acknowledgement_tx, acknowledgement_rx) = std::sync::mpsc::sync_channel(1);
-    tx.try_send(UiCommand::Shutdown(acknowledgement_tx))
-        .expect("shutdown command should queue");
-
-    let acknowledgement =
-        drain_offline_commands(&mut rx).expect("shutdown acknowledgement should be preserved");
-    acknowledgement.send(()).expect("acknowledge shutdown");
-
-    acknowledgement_rx
-        .recv()
-        .expect("receive shutdown acknowledgement");
 }
 
 #[test]
@@ -65,7 +49,7 @@ fn drain_offline_commands_reports_reply_delivery_failure() {
     })
     .expect("reply command should queue");
 
-    assert!(drain_offline_commands(&mut rx).is_none());
+    drain_offline_commands(&mut rx);
     assert_eq!(
         result.try_recv().expect("reply result should be ready"),
         Err("notification service is unavailable".to_string())
