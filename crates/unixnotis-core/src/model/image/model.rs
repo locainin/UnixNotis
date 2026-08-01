@@ -20,10 +20,6 @@ pub struct ImageData {
 }
 
 /// Image information derived from standard hints and `app_icon`
-#[expect(
-    clippy::unsafe_derive_deserialize,
-    reason = "deserialization only fills owned fields; nested image methods validate buffers before unsafe SIMD access"
-)]
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq, Eq)]
 pub struct NotificationImage {
     pub has_image_data: bool,

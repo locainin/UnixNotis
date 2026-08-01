@@ -1,3 +1,5 @@
+use std::fs::File;
+
 use unixnotis_core::{MediaConfig, MediaLocalArtPolicy, MediaRemoteArtPolicy};
 
 use super::super::admission::{detect_browser_family, local_art_allowed, remote_art_allowed};
@@ -110,12 +112,12 @@ fn remote_art_admission_keeps_browsers_opt_in_and_requires_an_owner() {
 #[test]
 fn local_art_admission_rejects_browsers_and_requires_an_owner() {
     let empty_allowlist: Vec<String> = vec![];
-    let spotify_allowlist = vec!["spotify".to_string()];
 
     // Browser with owner executable should be rejected
     assert!(!local_art_allowed(
         Some("firefox"),
         Some("/usr/bin/firefox"),
+        None,
         MediaLocalArtPolicy::ExactExecutableOnly,
         &empty_allowlist
     ));
@@ -124,18 +126,68 @@ fn local_art_admission_rejects_browsers_and_requires_an_owner() {
     assert!(!local_art_allowed(
         None,
         Some("/usr/bin/spotify"),
+        None,
         MediaLocalArtPolicy::ExactExecutableOnly,
         &empty_allowlist
     ));
 
-    // Non-browser with allowlist match should be allowed
+    // Non-browser without owner executable should be rejected
+    assert!(!local_art_allowed(
+        None,
+        None,
+        None,
+        MediaLocalArtPolicy::ExactExecutableOnly,
+        &empty_allowlist,
+    ));
+}
+
+#[test]
+fn local_art_admission_requires_the_open_proc_executable_to_match() {
+    let current_executable = std::env::current_exe().expect("resolve current executable");
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    let fake_executable = temp_dir.path().join("fake-player");
+    File::create(&fake_executable).expect("create fake executable");
+
+    let owner_path = current_executable.to_string_lossy().to_string();
+    let allowlist = vec![owner_path.clone()];
+
+    // The descriptor opened from /proc/<pid>/exe matches the allowlisted object
     assert!(local_art_allowed(
         None,
-        Some("/usr/bin/spotify"),
+        Some(&owner_path),
+        Some(std::process::id()),
         MediaLocalArtPolicy::ExactExecutableOnly,
-        &spotify_allowlist
+        &allowlist
     ));
 
-    // Non-browser without owner executable should be rejected
-    assert!(!local_art_allowed(None, None, MediaLocalArtPolicy::ExactExecutableOnly, &spotify_allowlist));
+    // A different allowlisted object is rejected even when a caller supplies a plausible path
+    let fake_path = fake_executable.to_string_lossy().to_string();
+    let fake_allowlist = vec![fake_path.clone()];
+    assert!(!local_art_allowed(
+        None,
+        Some(&fake_path),
+        Some(std::process::id()),
+        MediaLocalArtPolicy::ExactExecutableOnly,
+        &fake_allowlist
+    ));
+
+    // Empty allowlist should reject everything
+    let empty_allowlist: Vec<String> = vec![];
+    assert!(!local_art_allowed(
+        None,
+        Some(&owner_path),
+        Some(std::process::id()),
+        MediaLocalArtPolicy::ExactExecutableOnly,
+        &empty_allowlist
+    ));
+
+    // Non-existent allowlist entry should not match
+    let bad_allowlist = vec!["/nonexistent/spotify".to_string()];
+    assert!(!local_art_allowed(
+        None,
+        Some(&owner_path),
+        Some(std::process::id()),
+        MediaLocalArtPolicy::ExactExecutableOnly,
+        &bad_allowlist
+    ));
 }

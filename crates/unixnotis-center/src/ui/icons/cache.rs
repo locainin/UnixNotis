@@ -2,10 +2,10 @@
 //!
 //! Encapsulates cache storage and keying logic used by the icon resolver
 
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::OnceLock;
 
 use gtk::gdk::{Paintable, Texture};
 use gtk::prelude::*;
@@ -13,6 +13,19 @@ use gtk::IconPaintable;
 use unixnotis_core::NotificationImage;
 
 const DEFAULT_MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
+
+// Thread-local storage replaces glib qdata to avoid unsafe pointer casts
+// The map key is the raw GObject pointer; entries persist for the widget lifetime
+// and stale entries are harmless because the bound IconKey values are small
+thread_local! {
+    static IMAGE_KEYS: RefCell<HashMap<*const (), IconKey>> = RefCell::new(HashMap::new());
+}
+
+fn glib_ptr<T: gtk::glib::prelude::ObjectType>(obj: &T) -> *const () {
+    // Extract the raw GObject pointer for use as a thread-local HashMap key
+    // This replaces glib qdata with safe Rust storage while preserving identity
+    obj.as_ptr() as *const ()
+}
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(super) enum IconKey {
@@ -104,25 +117,20 @@ fn hash_image_data(data: &[u8]) -> [u8; 32] {
 }
 
 pub(super) fn set_image_key(image: &gtk::Image, key: IconKey) {
-    unsafe {
-        // SAFETY: gtk::Image is main-thread only; the quark/type pairing is stable
-        image.set_qdata(icon_key_quark(), key);
-    }
+    // Store the icon key in thread-local storage keyed by the GObject pointer
+    // This replaces glib::ObjectExt::set_qdata to keep the codebase free of unsafe blocks
+    IMAGE_KEYS.with(|map| {
+        map.borrow_mut().insert(glib_ptr(image), key);
+    });
 }
 
 pub(super) fn image_key_matches(image: &gtk::Image, key: &IconKey) -> bool {
-    // SAFETY: The stable quark is written with IconKey values only on the GTK main thread
-    let stored = unsafe { image.qdata::<IconKey>(icon_key_quark()) };
-    let Some(stored) = stored else {
-        return false;
-    };
-    // SAFETY: Gtk owns the qdata value for at least as long as this image reference
-    unsafe { stored.as_ref() == key }
-}
-
-fn icon_key_quark() -> gtk::glib::Quark {
-    static QUARK: OnceLock<gtk::glib::Quark> = OnceLock::new();
-    *QUARK.get_or_init(|| gtk::glib::Quark::from_str("unixnotis-icon-key"))
+    // Retrieve the stored icon key from thread-local storage by GObject pointer
+    // Returns false when no key was stored or the stored key differs from the request
+    IMAGE_KEYS.with(|map| {
+        let map = map.borrow();
+        map.get(&glib_ptr(image)) == Some(key)
+    })
 }
 
 #[cfg(test)]

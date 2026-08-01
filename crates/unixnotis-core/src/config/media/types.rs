@@ -74,6 +74,9 @@ pub struct MediaConfig {
     pub remote_art_policy: MediaRemoteArtPolicy,
     /// Controls which players may use local file paths for artwork
     pub local_art_policy: MediaLocalArtPolicy,
+    /// Exact executable paths allowed for local artwork (device/inode verified)
+    #[serde(default)]
+    pub local_art_executable_allowlist: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]

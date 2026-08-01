@@ -3,7 +3,10 @@
 use std::os::unix::io::AsFd;
 use std::path::{Path, PathBuf};
 
+#[cfg(not(target_os = "linux"))]
 use super::super::policy::{TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES};
+#[cfg(target_os = "linux")]
+use super::super::policy::TRUSTED_CONTROL_EXECUTABLES;
 use super::fingerprint::{file_fingerprint, file_fingerprint_from_fd};
 use super::metadata::trusted_control_file_metadata_is_safe;
 use super::snapshots::trusted_control_snapshot;
@@ -13,6 +16,7 @@ pub(in crate::daemon) fn canonicalize_best_effort(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_error| path.to_path_buf())
 }
 
+#[cfg(not(target_os = "linux"))]
 pub(in crate::daemon) fn is_trusted_control_executable_path(path: &Path, relaxed: bool) -> bool {
     // Trust only known sibling binaries from the daemon install/build directory
     let Some(trusted_dir) = trusted_control_directory() else {
@@ -114,6 +118,7 @@ fn trusted_control_directory() -> Option<PathBuf> {
     current_exe.parent().map(Path::to_path_buf)
 }
 
+#[cfg(not(target_os = "linux"))]
 pub(in crate::daemon::auth) fn trusted_snapshot_matches_observed(
     snapshot: &TrustedExecutableSnapshot,
     observed: &Path,

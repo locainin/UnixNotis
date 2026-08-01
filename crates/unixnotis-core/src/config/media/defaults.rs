@@ -48,6 +48,7 @@ impl Default for MediaConfig {
             // Local artwork requires exact executable allowlist match to prevent
             // untrusted MPRIS services from directing the renderer to arbitrary host files
             local_art_policy: MediaLocalArtPolicy::ExactExecutableOnly,
+            local_art_executable_allowlist: Vec::new(),
         }
     }
 }

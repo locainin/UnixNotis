@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "unixnotis-svg-renderer"
+path = "src/bin/unixnotis-svg-renderer.rs"
+
 [dependencies]
 anyhow.workspace = true
 async-channel.workspace = true
@@ -35,3 +39,4 @@ unixnotis-ui = { path = "../unixnotis-ui" }
 [dev-dependencies]
 proptest.workspace = true
 toml.workspace = true
+tempfile = "3"
