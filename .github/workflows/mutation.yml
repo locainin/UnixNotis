@@ -42,15 +42,16 @@ jobs:
         run: |
           set -euo pipefail
           rm -f /etc/apt/sources.list
+          # The slim image bootstraps without a CA bundle; InRelease signatures still authenticate the immutable index
           printf '%s\n' \
             'Types: deb' \
-            "URIs: https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}" \
+            "URIs: http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}" \
             'Suites: trixie trixie-updates' \
             'Components: main' \
             'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
             '' \
             'Types: deb' \
-            "URIs: https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}" \
+            "URIs: http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}" \
             'Suites: trixie-security' \
             'Components: main' \
             'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
@@ -58,10 +59,14 @@ jobs:
           printf '%s\n' 'Acquire::Check-Valid-Until "false";' \
             > /etc/apt/apt.conf.d/99snapshot
           apt-get update
+          # Bootstrap the trust store over the signed snapshot index
+          apt-get install -y --no-install-recommends ca-certificates
+          sed -i 's#http://snapshot.debian.org#https://snapshot.debian.org#g' \
+            /etc/apt/sources.list.d/debian.sources
+          apt-get update
           apt-get install -y --no-install-recommends \
             bash \
             build-essential \
-            ca-certificates \
             curl \
             dbus \
             git \
