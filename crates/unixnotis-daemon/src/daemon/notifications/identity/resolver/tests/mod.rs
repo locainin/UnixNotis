@@ -13,7 +13,8 @@ use super::evidence::verify_record_sender;
 use super::model::{CandidateVerification, SenderClaimRelation, VerifiedDesktopRecord};
 use super::pipeline::{
     claim_has_index_candidate, needs_sender_provenance, resolve_attribution_owned_with,
-    resolve_with_evidence, should_return_initial_resolution,
+    resolve_attribution_owned_with_pool, resolve_attribution_with_deadline, resolve_with_evidence,
+    should_return_initial_resolution, ATTRIBUTION_TIMEOUT,
 };
 use super::sender_context::enrich_sender_install_provenance;
 use super::AppClaim;

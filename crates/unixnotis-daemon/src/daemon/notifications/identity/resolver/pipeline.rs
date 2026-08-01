@@ -1,8 +1,10 @@
 //! Ordered attribution pipeline and candidate orchestration
 
+use std::future::Future;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tracing::warn;
 use unixnotis_core::{AttributionStatus, InteractionPolicies, RecordTrust};
 
 use super::super::desktop_index::{
@@ -35,8 +37,8 @@ fn attribution_worker_pool() -> Arc<Semaphore> {
     Arc::clone(POOL.get_or_init(|| Arc::new(Semaphore::new(ATTRIBUTION_WORKER_SLOTS))))
 }
 
-fn try_attribution_worker() -> Option<OwnedSemaphorePermit> {
-    attribution_worker_pool().try_acquire_owned().ok()
+fn try_attribution_worker_from(pool: &Arc<Semaphore>) -> Option<OwnedSemaphorePermit> {
+    Arc::clone(pool).try_acquire_owned().ok()
 }
 
 /// Production entry point that moves procfs and filesystem work off Tokio workers
@@ -56,6 +58,28 @@ pub(in crate::daemon) async fn resolve_attribution_owned(
     .await
 }
 
+pub(in crate::daemon::notifications) async fn resolve_attribution_with_deadline<F>(
+    reported_name: String,
+    desktop_entry: Option<String>,
+    sender: &SenderMetadata,
+    resolution: F,
+) -> AttributionResolution
+where
+    F: Future<Output = AttributionResolution>,
+{
+    tokio::time::timeout(ATTRIBUTION_TIMEOUT, resolution)
+        .await
+        .ok()
+        .unwrap_or_else(|| {
+            warn!("notification attribution timed out and failed closed");
+            let claim = AppClaim {
+                reported_name: &reported_name,
+                desktop_entry: desktop_entry.as_deref(),
+            };
+            unknown_reply_denied(claim, sender, "attribution timed out")
+        })
+}
+
 pub(super) async fn resolve_attribution_owned_with<F>(
     reported_name: String,
     desktop_entry: Option<String>,
@@ -66,7 +90,29 @@ pub(super) async fn resolve_attribution_owned_with<F>(
 where
     F: FnOnce(&mut SenderMetadata, &DesktopIdentityIndex) + Send + 'static,
 {
-    let Some(initial_permit) = try_attribution_worker() else {
+    resolve_attribution_owned_with_pool(
+        reported_name,
+        desktop_entry,
+        sender,
+        index,
+        attribution_worker_pool(),
+        enrich,
+    )
+    .await
+}
+
+pub(super) async fn resolve_attribution_owned_with_pool<F>(
+    reported_name: String,
+    desktop_entry: Option<String>,
+    sender: SenderMetadata,
+    index: Arc<DesktopIdentityIndex>,
+    worker_pool: Arc<Semaphore>,
+    enrich: F,
+) -> AttributionResolution
+where
+    F: FnOnce(&mut SenderMetadata, &DesktopIdentityIndex) + Send + 'static,
+{
+    let Some(initial_permit) = try_attribution_worker_from(&worker_pool) else {
         let claim = AppClaim {
             reported_name: &reported_name,
             desktop_entry: desktop_entry.as_deref(),

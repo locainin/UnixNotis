@@ -1,6 +1,7 @@
 //! Async provenance enrichment in the resolver pipeline
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Barrier};
 use std::time::Duration;
 
 use super::super::*;
@@ -218,4 +219,150 @@ async fn failed_provenance_keeps_the_initial_safe_resolution() {
         resolution.attribution.interactions,
         InteractionPolicies::DENY
     );
+}
+
+#[tokio::test]
+async fn ingress_deadline_fails_closed_after_the_real_resolver_exceeds_budget() {
+    let (index, sender) = same_package_helper_fixture();
+    let slow_resolution = async {
+        let resolution = resolve_attribution_owned_with(
+            "Example App".to_string(),
+            Some("org.example.App".to_string()),
+            sender.clone(),
+            index,
+            move |_, _| {
+                std::thread::sleep(ATTRIBUTION_TIMEOUT + Duration::from_millis(250));
+            },
+        )
+        .await;
+        // Keep the injected production future beyond the outer ingress budget
+        tokio::time::sleep(ATTRIBUTION_TIMEOUT + Duration::from_millis(250)).await;
+        resolution
+    };
+    let resolution = resolve_attribution_with_deadline(
+        "Example App".to_string(),
+        Some("org.example.App".to_string()),
+        &sender,
+        slow_resolution,
+    )
+    .await;
+
+    assert_eq!(resolution.attribution.status, AttributionStatus::Unresolved);
+    assert_eq!(
+        resolution.attribution.interactions,
+        InteractionPolicies::DENY
+    );
+    assert!(resolution
+        .attribution
+        .diagnostic_detail
+        .contains("attribution timed out"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cancelled_attribution_keeps_worker_permits_until_blocking_jobs_exit() {
+    let (index, sender) = same_package_helper_fixture();
+    let worker_pool = Arc::new(tokio::sync::Semaphore::new(8));
+    let started = Arc::new(AtomicUsize::new(0));
+    let finished = Arc::new(AtomicUsize::new(0));
+    let release = Arc::new(Barrier::new(9));
+    let mut tasks = Vec::with_capacity(8);
+
+    for _ in 0..8 {
+        let index = Arc::clone(&index);
+        let sender = sender.clone();
+        let worker_pool = Arc::clone(&worker_pool);
+        let started = Arc::clone(&started);
+        let finished = Arc::clone(&finished);
+        let release = Arc::clone(&release);
+        tasks.push(tokio::spawn(resolve_attribution_owned_with_pool(
+            "Example App".to_string(),
+            Some("org.example.App".to_string()),
+            sender,
+            index,
+            worker_pool,
+            move |_, _| {
+                started.fetch_add(1, Ordering::AcqRel);
+                release.wait();
+                finished.fetch_add(1, Ordering::Release);
+            },
+        )));
+    }
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while started.load(Ordering::Acquire) != 8 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("all attribution workers should enter blocking enrichment");
+
+    for task in &tasks {
+        task.abort();
+    }
+
+    let blocked = resolve_attribution_owned_with_pool(
+        "Example App".to_string(),
+        Some("org.example.App".to_string()),
+        sender.clone(),
+        Arc::clone(&index),
+        Arc::clone(&worker_pool),
+        |_, _| {},
+    )
+    .await;
+    assert!(blocked
+        .attribution
+        .diagnostic_detail
+        .contains("attribution worker capacity exhausted"));
+
+    release.wait();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while finished.load(Ordering::Acquire) != 8 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("worker permits should be released after blocking jobs exit");
+
+    let available = resolve_attribution_owned_with_pool(
+        "Example App".to_string(),
+        Some("org.example.App".to_string()),
+        sender,
+        index,
+        worker_pool,
+        |_, _| {},
+    )
+    .await;
+    assert!(!available
+        .attribution
+        .diagnostic_detail
+        .contains("attribution worker capacity exhausted"));
+}
+
+fn same_package_helper_fixture() -> (Arc<DesktopIdentityIndex>, SenderMetadata) {
+    let helper_path = unixnotis_core::util::trusted_system_program_path("true")
+        .expect("find the installed helper fixture");
+    let app_path = unixnotis_core::util::trusted_system_program_path("false")
+        .expect("find the installed application fixture");
+    let helper_evidence =
+        executable_evidence_for_path(&helper_path).expect("read helper executable evidence");
+    let app_evidence =
+        executable_evidence_for_path(&app_path).expect("read application executable evidence");
+    let ownership_index = DesktopIdentityIndex::default();
+    let app_provenance = ownership_index.install_provenance_for_path(app_path.clone());
+    assert!(app_provenance.is_known());
+
+    let mut record = system_record(
+        "org.example.App",
+        "Example App",
+        &app_path.display().to_string(),
+        app_evidence.identity,
+    );
+    record.desktop_provenance = app_provenance.clone();
+    record.declared_executable_provenance = app_provenance.clone();
+    record.runtime_executable_provenance = app_provenance;
+
+    (
+        Arc::new(DesktopIdentityIndex::from_records(vec![record], Vec::new())),
+        sender(&helper_path.display().to_string(), helper_evidence.identity),
+    )
 }

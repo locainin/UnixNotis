@@ -6,10 +6,10 @@ use unixnotis_core::{ImageData, Notification, NotificationKey};
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 
+use crate::daemon::notifications::identity::resolve_sender_metadata;
 use crate::daemon::notifications::identity::{
-    resolve_attribution_owned, unknown_reply_denied, AppClaim, SenderMetadata,
+    resolve_attribution_owned, resolve_attribution_with_deadline, SenderMetadata,
 };
-use crate::daemon::notifications::identity::{resolve_sender_metadata, ATTRIBUTION_TIMEOUT};
 use crate::daemon::notifications::ingress::payload::{
     build_notification, owned_to_string, resolve_expiration, NotificationInput,
 };
@@ -132,8 +132,10 @@ impl NotificationServer {
         let desktop_entry = input.hints.get("desktop-entry").and_then(owned_to_string);
         let desktop_identity_index = self.state.desktop_identity_index.load_full();
         // This is the only attribution deadline, including package enrichment
-        let resolution = tokio::time::timeout(
-            ATTRIBUTION_TIMEOUT,
+        let resolution = resolve_attribution_with_deadline(
+            input.app_name.clone(),
+            desktop_entry.clone(),
+            &sender,
             resolve_attribution_owned(
                 input.app_name.clone(),
                 desktop_entry.clone(),
@@ -141,16 +143,7 @@ impl NotificationServer {
                 desktop_identity_index,
             ),
         )
-        .await
-        .ok()
-        .unwrap_or_else(|| {
-            warn!("notification attribution timed out and failed closed");
-            let claim = AppClaim {
-                reported_name: &input.app_name,
-                desktop_entry: desktop_entry.as_deref(),
-            };
-            unknown_reply_denied(claim, &sender, "attribution timed out")
-        });
+        .await;
         if matches!(
             resolution.attribution.status,
             unixnotis_core::AttributionStatus::Conflict
