@@ -94,12 +94,8 @@ async fn recognized_helper_is_reresolved_with_live_package_provenance() {
     let app_evidence =
         executable_evidence_for_path(&app_path).expect("read the application executable identity");
     let ownership_index = DesktopIdentityIndex::default();
-    let helper_provenance = ownership_index
-        .install_provenance_for_path_async(helper_path.clone())
-        .await;
-    let app_provenance = ownership_index
-        .install_provenance_for_path_async(app_path.clone())
-        .await;
+    let helper_provenance = ownership_index.install_provenance_for_path(helper_path.clone());
+    let app_provenance = ownership_index.install_provenance_for_path(app_path.clone());
     assert!(helper_provenance.is_known());
     assert!(helper_provenance.same_application_source(&app_provenance));
 

@@ -61,7 +61,7 @@ impl CachedProvenance {
     }
 }
 
-fn negative_ttl(cause: NegativeCause) -> Duration {
+const fn negative_ttl(cause: NegativeCause) -> Duration {
     match cause {
         NegativeCause::NotOwned => NOT_OWNED_NEGATIVE_TTL,
         NegativeCause::Timeout

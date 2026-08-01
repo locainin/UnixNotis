@@ -7,7 +7,6 @@ use zbus::fdo::DBusProxy;
 
 use super::super::discovery::{
     is_discoverable_player, owner_capacity_exceeded, refresh_players, select_player_names,
-    should_skip_for_owner_capacity,
 };
 use super::super::player::build_player_state;
 use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
@@ -135,11 +134,10 @@ fn discovery_owner_capacity_rejects_only_values_above_the_limit() {
 }
 
 #[test]
-fn discovery_capacity_keeps_aliases_but_rejects_new_owners_at_the_limit() {
-    assert!(!should_skip_for_owner_capacity(31, 32, false));
-    assert!(!should_skip_for_owner_capacity(32, 32, true));
-    assert!(should_skip_for_owner_capacity(32, 32, false));
-    assert!(should_skip_for_owner_capacity(33, 32, false));
+fn discovery_owner_capacity_applies_only_above_the_limit() {
+    assert!(!owner_capacity_exceeded(31, 32));
+    assert!(!owner_capacity_exceeded(32, 32));
+    assert!(owner_capacity_exceeded(33, 32));
 }
 
 #[tokio::test]
