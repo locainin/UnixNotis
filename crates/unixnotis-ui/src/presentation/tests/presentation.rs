@@ -372,6 +372,7 @@ fn popup_status_uses_the_committed_reason_instead_of_current_state() {
         admission_at_commit: unixnotis_core::PopupAdmissionView::RendererDisabled,
         renderer_process_running_at_commit: true,
         renderer_ready_at_commit: true,
+        renderer_health_revision_at_commit: 0,
         max_visible_at_commit: 0,
         decided_at_unix_ms: 1_000,
         delivery_stage: unixnotis_core::PopupDeliveryStage::Suppressed,

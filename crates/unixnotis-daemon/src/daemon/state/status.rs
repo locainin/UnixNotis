@@ -21,6 +21,7 @@ impl DaemonState {
             *current_owner = None;
             self.panel_ready.store(false, Ordering::SeqCst);
         }
+        self.ui_health_revision.fetch_add(1, Ordering::SeqCst);
     }
 
     fn clear_panel_ready(&self) {
@@ -36,6 +37,7 @@ impl DaemonState {
         self.center_process_running.store(running, Ordering::SeqCst);
         // Every process generation must complete its own subscription handshake
         self.clear_panel_ready();
+        self.ui_health_revision.fetch_add(1, Ordering::SeqCst);
     }
 
     pub(crate) fn set_popups_process_running(&self, running: bool) {
@@ -44,6 +46,7 @@ impl DaemonState {
         if !running {
             self.clear_popups_ready();
         }
+        self.ui_health_revision.fetch_add(1, Ordering::SeqCst);
     }
 
     pub(crate) fn set_popups_ready(&self, owner: &str, ready: bool) {
@@ -60,6 +63,7 @@ impl DaemonState {
             *current_owner = None;
             self.popups_ready.store(false, Ordering::SeqCst);
         }
+        self.ui_health_revision.fetch_add(1, Ordering::SeqCst);
     }
 
     fn clear_popups_ready(&self) {
@@ -93,6 +97,7 @@ impl DaemonState {
             center_ready: self.panel_ready(),
             popups_process_running: self.popups_process_running.load(Ordering::SeqCst),
             popups_ready: self.popups_ready(),
+            revision: self.ui_health_revision.load(Ordering::SeqCst),
         }
     }
 

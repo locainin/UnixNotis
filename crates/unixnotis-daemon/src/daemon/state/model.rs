@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 
 use arc_swap::ArcSwap;
@@ -30,6 +30,8 @@ pub struct DaemonState {
     pub(in crate::daemon::state) center_process_running: AtomicBool,
     pub(in crate::daemon::state) popups_process_running: AtomicBool,
     pub(in crate::daemon::state) popups_ready: AtomicBool,
+    // Changes whenever process or readiness ownership changes
+    pub(in crate::daemon::state) ui_health_revision: AtomicU64,
     pub(in crate::daemon::state) popups_unready_warning_emitted: AtomicBool,
     // The unique D-Bus owner prevents an older popup generation from clearing a newer one
     pub(in crate::daemon::state) popups_ready_owner: StdMutex<Option<String>>,
@@ -96,6 +98,7 @@ impl DaemonState {
             center_process_running: AtomicBool::new(false),
             popups_process_running: AtomicBool::new(false),
             popups_ready: AtomicBool::new(false),
+            ui_health_revision: AtomicU64::new(0),
             popups_unready_warning_emitted: AtomicBool::new(false),
             popups_ready_owner: StdMutex::new(None),
             scheduler: OnceLock::new(),
