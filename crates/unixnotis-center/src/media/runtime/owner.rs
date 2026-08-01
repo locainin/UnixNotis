@@ -52,11 +52,6 @@ pub(super) async fn apply_owner_change(
         return Ok(OwnerChangeOutcome::Removed);
     }
 
-    if should_retry_for_capacity(state.players.contains_key(name), state.players.len()) {
-        // Full discovery will choose the deterministic prefix on the next pass
-        return Ok(OwnerChangeOutcome::RetryNeeded);
-    }
-
     if state
         .players
         .get(name)
@@ -92,6 +87,13 @@ pub(super) async fn apply_owner_change(
                 send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
             }
             return Ok(OwnerChangeOutcome::Applied);
+        }
+        if state.players.len() >= MAX_MPRIS_PLAYERS {
+            // A distinct owner was found, but the bounded state set is full
+            if removed_previous {
+                send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
+            }
+            return Ok(OwnerChangeOutcome::RetryNeeded);
         }
         // Start the listener before publishing state so late property traffic is retained
         spawn_properties_listener(
@@ -153,10 +155,6 @@ pub(super) fn owner_is_unchanged(
     announced_owner: Option<&str>,
 ) -> bool {
     current_owner.is_some() && current_owner == announced_owner
-}
-
-pub(super) const fn should_retry_for_capacity(tracked: bool, player_count: usize) -> bool {
-    !tracked && player_count >= MAX_MPRIS_PLAYERS
 }
 
 pub(super) fn owner_is_duplicate(

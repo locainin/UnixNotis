@@ -104,6 +104,7 @@ struct CommandCounts {
 struct TestMprisPlayer {
     commands: Arc<CommandCounts>,
     metadata_bytes: usize,
+    art_url_bytes: usize,
 }
 
 #[zbus::interface(name = "org.mpris.MediaPlayer2.Player")]
@@ -124,15 +125,24 @@ impl TestMprisPlayer {
     #[zbus(property)]
     fn metadata(&self) -> HashMap<String, OwnedValue> {
         // The optional payload exercises the raw reply budget without a real player
+        let mut metadata = HashMap::new();
         if self.metadata_bytes > 0 {
             let large_value = "x".repeat(self.metadata_bytes);
-            return HashMap::from([(
+            metadata.insert(
                 "test:large".to_string(),
                 OwnedValue::try_from(zbus::zvariant::Value::from(large_value.as_str()))
                     .expect("build large metadata value"),
-            )]);
+            );
         }
-        HashMap::new()
+        if self.art_url_bytes > 0 {
+            let art_url = format!("https://example.com/{}", "x".repeat(self.art_url_bytes));
+            metadata.insert(
+                "mpris:artUrl".to_string(),
+                OwnedValue::try_from(zbus::zvariant::Value::from(art_url.as_str()))
+                    .expect("build art URL value"),
+            );
+        }
+        metadata
     }
 
     #[zbus(property)]
@@ -175,6 +185,14 @@ impl MprisFixture {
     }
 
     pub(in crate::media) async fn start_with_metadata_bytes(metadata_bytes: usize) -> Self {
+        Self::start_with_payload(metadata_bytes, 0).await
+    }
+
+    pub(in crate::media) async fn start_with_art_url_bytes(art_url_bytes: usize) -> Self {
+        Self::start_with_payload(0, art_url_bytes).await
+    }
+
+    async fn start_with_payload(metadata_bytes: usize, art_url_bytes: usize) -> Self {
         let broker = PrivateBroker::start();
         let commands = Arc::new(CommandCounts::default());
         // The service exports both MPRIS interfaces at the standard object path
@@ -189,6 +207,7 @@ impl MprisFixture {
                 TestMprisPlayer {
                     commands: commands.clone(),
                     metadata_bytes,
+                    art_url_bytes,
                 },
             )
             .expect("register test MPRIS player")

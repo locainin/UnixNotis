@@ -33,6 +33,8 @@ pub(in crate::media) async fn refresh_players(
         allowed.insert(name);
     }
 
+    // Owner capacity is enforced after probing so aliases cannot occupy a
+    // deterministic name prefix and starve an unrelated player
     let allowed = select_player_names(allowed);
     let allowed_set = allowed.iter().map(String::as_str).collect::<HashSet<_>>();
 
@@ -75,6 +77,7 @@ pub(in crate::media) async fn refresh_players(
     // Concurrency must not change which alias wins owner deduplication
     probed.sort_unstable_by(|left, right| left.0.cmp(&right.0));
     let mut failed_probes = 0usize;
+    let mut capacity_skipped = 0usize;
     for (name, result) in probed {
         // New players are probed concurrently, but admitted state is committed in name order
         let state = match result {
@@ -88,6 +91,15 @@ pub(in crate::media) async fn refresh_players(
             }
         };
         if let Some(state) = state {
+            let owner_is_tracked = state
+                .unique_owner
+                .as_ref()
+                .is_some_and(|owner| owners.contains(owner));
+            if should_skip_for_owner_capacity(owners.len(), MAX_MPRIS_PLAYERS, owner_is_tracked) {
+                // The owner was resolved, but the bounded state set is full
+                capacity_skipped = capacity_skipped.saturating_add(1);
+                continue;
+            }
             if state
                 .unique_owner
                 .as_ref()
@@ -115,6 +127,13 @@ pub(in crate::media) async fn refresh_players(
             "one or more MPRIS player probes failed"
         );
     }
+    if capacity_skipped > 0 {
+        warn!(
+            skipped = capacity_skipped,
+            limit = MAX_MPRIS_PLAYERS,
+            "MPRIS player capacity reached; additional owners were ignored"
+        );
+    }
 
     Ok(())
 }
@@ -126,13 +145,13 @@ pub(super) fn is_discoverable_player(name: &str, config: &MediaConfig) -> bool {
 pub(super) fn select_player_names(names: HashSet<String>) -> Vec<String> {
     let mut names: Vec<String> = names.into_iter().collect();
     names.sort_unstable();
-    if names.len() > MAX_MPRIS_PLAYERS {
-        warn!(
-            admitted = names.len(),
-            limit = MAX_MPRIS_PLAYERS,
-            "MPRIS player limit reached; retaining deterministic prefix"
-        );
-        names.truncate(MAX_MPRIS_PLAYERS);
-    }
     names
+}
+
+pub(super) const fn should_skip_for_owner_capacity(
+    owner_count: usize,
+    capacity: usize,
+    owner_is_tracked: bool,
+) -> bool {
+    owner_count >= capacity && !owner_is_tracked
 }

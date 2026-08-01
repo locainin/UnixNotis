@@ -1,12 +1,11 @@
 use super::super::owner::{
     apply_owner_change, owner_is_duplicate, owner_is_unchanged, owner_rebuild_outcome,
-    replacement_removal_needs_snapshot, should_retry_for_capacity, OwnerChangeOutcome,
+    replacement_removal_needs_snapshot, OwnerChangeOutcome,
 };
 use super::super::state::MediaRuntimeState;
 use super::support::receive_ui_event;
 use crate::control::UiEvent;
 use crate::media::mpris::tests::support::{MprisFixture, TEST_PLAYER_NAME};
-use crate::media::mpris::MAX_MPRIS_PLAYERS;
 use crate::media::mpris::{build_player_state, fetch_media_info};
 use unixnotis_core::MediaConfig;
 
@@ -49,14 +48,6 @@ fn stable_owner_rebuild_does_not_publish_an_empty_replacement_snapshot() {
 
     assert_eq!(outcome, OwnerChangeOutcome::Applied);
     assert!(!replacement_removal_needs_snapshot(true, outcome));
-}
-
-#[test]
-fn owner_capacity_retry_applies_only_to_new_players() {
-    assert!(should_retry_for_capacity(false, MAX_MPRIS_PLAYERS));
-    assert!(should_retry_for_capacity(false, MAX_MPRIS_PLAYERS + 1));
-    assert!(!should_retry_for_capacity(true, MAX_MPRIS_PLAYERS));
-    assert!(!should_retry_for_capacity(false, MAX_MPRIS_PLAYERS - 1));
 }
 
 #[test]

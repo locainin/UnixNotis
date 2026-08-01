@@ -5,8 +5,9 @@ use tokio::sync::mpsc;
 use unixnotis_core::MediaConfig;
 use zbus::fdo::DBusProxy;
 
-use super::super::constants::MAX_MPRIS_PLAYERS;
-use super::super::discovery::{is_discoverable_player, refresh_players, select_player_names};
+use super::super::discovery::{
+    is_discoverable_player, refresh_players, select_player_names, should_skip_for_owner_capacity,
+};
 use super::super::player::build_player_state;
 use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
 
@@ -29,30 +30,38 @@ fn discovery_requires_an_mpris_name_that_passes_admission() {
 }
 
 #[test]
-fn discovery_caps_names_deterministically() {
-    let names = (0..(MAX_MPRIS_PLAYERS + 16))
+fn discovery_orders_all_names_before_owner_capacity_is_applied() {
+    let names = (0..48)
         .map(|index| format!("org.mpris.MediaPlayer2.player-{index:03}"))
         .collect::<HashSet<_>>();
     let selected = select_player_names(names);
 
-    assert_eq!(selected.len(), MAX_MPRIS_PLAYERS);
+    assert_eq!(selected.len(), 48);
     assert_eq!(
         selected.first().map(String::as_str),
         Some("org.mpris.MediaPlayer2.player-000")
     );
     assert_eq!(
         selected.last().map(String::as_str),
-        Some("org.mpris.MediaPlayer2.player-031")
+        Some("org.mpris.MediaPlayer2.player-047")
     );
 }
 
 #[test]
-fn discovery_keeps_exactly_the_player_cap() {
-    let names = (0..MAX_MPRIS_PLAYERS)
+fn discovery_keeps_all_admitted_names_for_owner_resolution() {
+    let names = (0..32)
         .map(|index| format!("org.mpris.MediaPlayer2.player-{index:03}"))
         .collect::<HashSet<_>>();
 
-    assert_eq!(select_player_names(names).len(), MAX_MPRIS_PLAYERS);
+    assert_eq!(select_player_names(names).len(), 32);
+}
+
+#[test]
+fn discovery_capacity_keeps_aliases_but_rejects_new_owners_at_the_limit() {
+    assert!(!should_skip_for_owner_capacity(31, 32, false));
+    assert!(!should_skip_for_owner_capacity(32, 32, true));
+    assert!(should_skip_for_owner_capacity(32, 32, false));
+    assert!(should_skip_for_owner_capacity(33, 32, false));
 }
 
 #[tokio::test]

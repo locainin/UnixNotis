@@ -21,12 +21,42 @@ pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<Me
     }
     let timeout = std::time::Duration::from_millis(MPRIS_PROPERTY_TIMEOUT_MS);
     let (metadata, playback_status, can_play, can_pause, can_next, can_prev) = tokio::join!(
-        bounded_property::<HashMap<String, OwnedValue>>(&state.property_calls, "Metadata", timeout,),
-        bounded_property::<String>(&state.property_calls, "PlaybackStatus", timeout),
-        bounded_property::<bool>(&state.property_calls, "CanPlay", timeout),
-        bounded_property::<bool>(&state.property_calls, "CanPause", timeout),
-        bounded_property::<bool>(&state.property_calls, "CanGoNext", timeout),
-        bounded_property::<bool>(&state.property_calls, "CanGoPrevious", timeout),
+        bounded_property::<HashMap<String, OwnedValue>>(
+            &state.property_calls,
+            super::constants::MPRIS_PLAYER,
+            "Metadata",
+            timeout,
+        ),
+        bounded_property::<String>(
+            &state.property_calls,
+            super::constants::MPRIS_PLAYER,
+            "PlaybackStatus",
+            timeout,
+        ),
+        bounded_property::<bool>(
+            &state.property_calls,
+            super::constants::MPRIS_PLAYER,
+            "CanPlay",
+            timeout
+        ),
+        bounded_property::<bool>(
+            &state.property_calls,
+            super::constants::MPRIS_PLAYER,
+            "CanPause",
+            timeout
+        ),
+        bounded_property::<bool>(
+            &state.property_calls,
+            super::constants::MPRIS_PLAYER,
+            "CanGoNext",
+            timeout
+        ),
+        bounded_property::<bool>(
+            &state.property_calls,
+            super::constants::MPRIS_PLAYER,
+            "CanGoPrevious",
+            timeout
+        ),
     );
     let metadata = metadata
         .filter(|map| metadata_entry_count_allowed(map.len()))
@@ -74,21 +104,19 @@ pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<Me
 }
 
 /// Check the raw reply body before asking zvariant to allocate dynamic values
-async fn bounded_property<T>(
+pub(super) async fn bounded_property<T>(
     proxy: &Proxy<'static>,
+    interface: &str,
     property: &str,
     timeout: std::time::Duration,
 ) -> Option<T>
 where
     T: TryFrom<OwnedValue>,
 {
-    let reply = tokio::time::timeout(
-        timeout,
-        proxy.call_method("Get", &(super::constants::MPRIS_PLAYER, property)),
-    )
-    .await
-    .ok()?
-    .ok()?;
+    let reply = tokio::time::timeout(timeout, proxy.call_method("Get", &(interface, property)))
+        .await
+        .ok()?
+        .ok()?;
     if !property_reply_body_allowed(reply.body().len()) {
         return None;
     }
@@ -104,7 +132,7 @@ pub(super) const fn property_reply_body_allowed(body_len: usize) -> bool {
     body_len <= MAX_MPRIS_PROPERTY_REPLY_BYTES
 }
 
-fn bound_string(value: &str, max_bytes: usize) -> String {
+pub(super) fn bound_string(value: &str, max_bytes: usize) -> String {
     // Truncate at a UTF-8 boundary so the retained value stays valid
     let trimmed = value.trim();
     if trimmed.len() <= max_bytes {
@@ -117,13 +145,13 @@ fn bound_string(value: &str, max_bytes: usize) -> String {
     trimmed[..end].to_string()
 }
 
-fn metadata_string(map: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
+pub(super) fn metadata_string(map: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
     let value = map.get(key)?;
     let owned = value.try_clone().ok()?;
     String::try_from(owned).ok()
 }
 
-fn metadata_artist(map: &HashMap<String, OwnedValue>) -> Option<String> {
+pub(super) fn metadata_artist(map: &HashMap<String, OwnedValue>) -> Option<String> {
     let value = map.get("xesam:artist")?;
     let artists_value = value.try_clone().ok()?;
     if let Ok(artists) = Vec::<String>::try_from(artists_value) {

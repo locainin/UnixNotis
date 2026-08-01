@@ -11,9 +11,10 @@ use zbus::{Connection, Proxy, ProxyBuilder};
 
 use super::admission::{detect_browser_family, local_art_allowed, remote_art_allowed};
 use super::constants::{
-    MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PROPERTY_TIMEOUT_MS, MPRIS_TIMEOUT_QUARANTINE_AFTER,
-    MPRIS_TIMEOUT_QUARANTINE_MS,
+    MAX_MPRIS_IDENTITY_BYTES, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PROPERTY_TIMEOUT_MS,
+    MPRIS_TIMEOUT_QUARANTINE_AFTER, MPRIS_TIMEOUT_QUARANTINE_MS,
 };
+use super::metadata::bounded_property;
 #[cfg(target_os = "linux")]
 use super::process::executable_allowed_from_pidfd;
 #[cfg(target_os = "linux")]
@@ -65,7 +66,7 @@ impl PlayerTimeoutState {
         let Some(deadline) = *until else {
             return false;
         };
-        if Instant::now() < deadline {
+        if quarantine_active(Instant::now(), deadline) {
             return true;
         }
         *until = None;
@@ -92,6 +93,10 @@ impl PlayerTimeoutState {
             *until = None;
         }
     }
+}
+
+pub(super) fn quarantine_active(now: Instant, deadline: Instant) -> bool {
+    now < deadline
 }
 
 pub(in crate::media) async fn build_player_state(
@@ -185,18 +190,21 @@ pub(super) async fn fetch_identity(connection: &Connection, name: &str) -> Optio
         .ok()?
         .path(MPRIS_PATH)
         .ok()?
-        .interface(MPRIS_APP)
+        .interface("org.freedesktop.DBus.Properties")
         .ok()?
         .build()
         .await
         .ok()?;
-    tokio::time::timeout(
+    bounded_property::<String>(
+        &proxy,
+        super::constants::MPRIS_APP,
+        "Identity",
         std::time::Duration::from_millis(MPRIS_PROPERTY_TIMEOUT_MS),
-        proxy.get_property("Identity"),
     )
     .await
-    .ok()?
-    .ok()
+    .filter(|identity| identity.len() <= MAX_MPRIS_IDENTITY_BYTES)
+    .map(|identity| identity.trim().to_string())
+    .filter(|identity| !identity.is_empty())
 }
 
 pub(super) async fn resolve_player_owner(
