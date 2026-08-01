@@ -50,8 +50,8 @@ pub(in crate::media) async fn build_player_state(
     let local_art_allowed = local_art_allowed(
         browser_family.as_deref(),
         owner_executable.as_deref(),
+        owner_pid,
         config.local_art_policy,
-        &config.allowlist,
         &config.local_art_executable_allowlist,
     );
     let player = ProxyBuilder::new(connection)
