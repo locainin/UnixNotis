@@ -451,5 +451,4 @@ fn trusted_system_executable_path(path: &Path) -> bool {
 }
 
 #[cfg(test)]
-#[path = "tests/index.rs"]
 mod tests;

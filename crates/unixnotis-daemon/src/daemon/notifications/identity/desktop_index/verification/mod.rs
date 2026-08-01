@@ -482,5 +482,4 @@ fn is_unprotected_fixed_payload(argument: &LaunchArgument) -> bool {
 }
 
 #[cfg(test)]
-#[path = "tests/verification.rs"]
 mod tests;
