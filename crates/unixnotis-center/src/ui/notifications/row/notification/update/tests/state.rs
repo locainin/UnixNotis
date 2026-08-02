@@ -242,16 +242,15 @@ fn grouped_relay_row_hides_identity_details_owned_by_the_group_header() {
 }
 
 #[gtk::test]
-fn collapsed_group_preview_uses_one_readable_card_above_depth_layers() {
+fn collapsed_group_preview_uses_readable_surface_above_stack_layers() {
     let (root, row) = notification_row();
-    let mut data = row_data(
+    let data = row_data(
         Rc::new(sample_notification()),
         RowFlags {
             collapsed_group_preview: true,
             ..Default::default()
         },
     );
-    data.stack_depth = 2;
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
@@ -259,6 +258,7 @@ fn collapsed_group_preview_uses_one_readable_card_above_depth_layers() {
     assert_eq!(child_count(&root), 3);
     assert!(row.stack_middle.get_visible());
     assert!(row.stack_back.get_visible());
+    assert!(row.card_plate.get_visible());
     assert!(
         row.card
             .has_css_class(hooks::shared_state::COLLAPSED_GROUP_PREVIEW),

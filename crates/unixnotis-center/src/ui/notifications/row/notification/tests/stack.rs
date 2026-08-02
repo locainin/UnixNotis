@@ -3,7 +3,7 @@ use gtk::prelude::*;
 use super::{append_stack_layers, stack_layer_visibility, StackLayerVisibility};
 
 #[test]
-fn collapsed_stack_depth_maps_to_at_most_two_rear_layers() {
+fn collapsed_stack_depth_maps_to_two_rear_layers() {
     assert_eq!(stack_layer_visibility(0), StackLayerVisibility::default());
     assert_eq!(
         stack_layer_visibility(1),

@@ -19,7 +19,7 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) card: gtk::Box,
     // Polygon wrapper clips both visual output and pointer hit testing
     pub(super) card_plate: unixnotis_ui::CutCorner,
-    // Collapsed groups use at most two non-interactive rear silhouettes
+    // Collapsed groups use two non-interactive rear silhouettes
     pub(super) stack_middle: gtk::Box,
     pub(super) stack_back: gtk::Box,
     // Main icon shown at the top-left of the row

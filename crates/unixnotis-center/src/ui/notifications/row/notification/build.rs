@@ -198,7 +198,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let card_plate = CutCorner::new(&card, unixnotis_core::CutCorners::default());
     card_plate.add_css_class("unixnotis-panel-card-foreground");
 
-    // Rear layers and the readable foreground remain one virtualized ListView row
+    // Master-style silhouettes preserve the visible group depth without accepting input
     let (stack_middle, stack_back) = append_stack_layers(&root, &card_plate);
 
     let notify_key = Rc::new(Cell::new(NotificationKey {

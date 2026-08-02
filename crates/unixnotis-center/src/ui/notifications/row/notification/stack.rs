@@ -1,4 +1,4 @@
-//! Collapsed group depth layers and paint order
+//! Collapsed group paint order and bounded rear silhouettes
 
 use gtk::prelude::*;
 
@@ -25,7 +25,7 @@ pub(super) fn append_stack_layers(
     let middle = build_stack_layer("unixnotis-stack-layer-middle");
     let back = build_stack_layer("unixnotis-stack-layer-back");
 
-    // Later GTK siblings paint over earlier layers when negative margins overlap
+    // Later GTK siblings paint above earlier siblings when margins overlap
     for layer in STACK_LAYER_ORDER {
         match layer {
             StackLayer::Back => root.append(&back),
