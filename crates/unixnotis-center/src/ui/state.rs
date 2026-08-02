@@ -32,6 +32,8 @@ pub struct UiState {
     pub(super) dnd_expiration_source: Option<panel::header::dnd::DndCountdown>,
     pub(super) search_toggle_guard: Rc<Cell<bool>>,
     pub(super) panel_visible: bool,
+    // A hidden panel defers list painting, so the next open must reveal the newest complete row
+    pub(super) notifications_changed_while_hidden: bool,
     pub(super) panel_visible_flag: Arc<AtomicBool>,
     pub(super) work_area: Option<Margins>,
     // Tracks the last rendered counts to avoid redundant label updates

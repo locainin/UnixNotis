@@ -102,6 +102,10 @@ impl UiState {
             }
             // Only show the window after geometry is correct to avoid visible jitter
             self.panel.window.set_visible(true);
+            if self.notifications_changed_while_hidden {
+                crate::ui::events::reset_notification_scroll(&self.panel.sections.scroller);
+                self.notifications_changed_while_hidden = false;
+            }
             // Refresh counts after pending updates land so header stays accurate
             self.refresh_counts();
             // Run the first widget pass after the window is visible

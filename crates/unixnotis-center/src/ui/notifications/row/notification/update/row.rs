@@ -14,7 +14,10 @@ use super::super::state::{IconSignature, NotificationRowWidgets};
 use super::actions::{update_actions, visible_action_count};
 use super::labels::update_notification_text;
 use super::metadata::update_metadata_labels;
-use super::thumbnail::{notification_has_conversation_avatar, notification_has_thumbnail};
+use super::thumbnail::{
+    notification_has_conversation_avatar, notification_has_sender_visual,
+    notification_has_thumbnail,
+};
 use super::visual::{apply_visual_state, set_widget_visible_if_changed};
 
 pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRowWidgets) {
@@ -110,8 +113,9 @@ pub(in crate::ui::notifications) fn update_notification_row(
     let has_content_thumbnail = notification_has_thumbnail(notification);
     // The daemon has already assigned the visual role after attribution and safe decoding
     let has_conversation_avatar = notification_has_conversation_avatar(notification);
-    let has_thumbnail =
-        data.presentation.show_thumbnail && (has_content_thumbnail || has_conversation_avatar);
+    let has_sender_visual = notification_has_sender_visual(notification);
+    let has_thumbnail = data.presentation.show_thumbnail
+        && (has_content_thumbnail || has_conversation_avatar || has_sender_visual);
 
     apply_visual_state(row, data, notification, has_actions, has_thumbnail);
     update_notification_text(
@@ -176,12 +180,23 @@ pub(in crate::ui::notifications) fn update_notification_row(
     set_widget_visible_if_changed(&row.close_button, true);
     if has_thumbnail {
         // Reapply visible thumbnails so config reloads cannot leave stale previews
-        if has_conversation_avatar && !has_content_thumbnail {
-            icon_resolver.apply_conversation_avatar(&row.thumbnail, notification);
+        if (has_conversation_avatar || has_sender_visual) && !has_content_thumbnail {
+            icon_resolver.apply_sender_visual(&row.thumbnail, notification);
+            if has_sender_visual {
+                row.thumbnail.add_css_class("unixnotis-panel-sender-visual");
+            } else {
+                row.thumbnail
+                    .remove_css_class("unixnotis-panel-sender-visual");
+            }
         } else {
             let scale = row.card.scale_factor();
             icon_resolver.apply_icon(&row.thumbnail, notification, 56, scale);
+            row.thumbnail
+                .remove_css_class("unixnotis-panel-sender-visual");
         }
+    } else {
+        row.thumbnail
+            .remove_css_class("unixnotis-panel-sender-visual");
     }
     set_widget_visible_if_changed(&row.thumbnail, has_thumbnail);
     set_widget_visible_if_changed(&row.card_plate, true);

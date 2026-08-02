@@ -95,6 +95,7 @@ impl UiState {
             dnd_expiration_source: None,
             search_toggle_guard,
             panel_visible: false,
+            notifications_changed_while_hidden: false,
             panel_visible_flag,
             work_area: None,
             last_count: None,

@@ -3,6 +3,7 @@
 //! Centralizes `UiEvent` handling so UI state transitions remain coherent and
 //! traceable in logs
 
+use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::PanelDebugLevel;
 
@@ -17,6 +18,7 @@ impl UiState {
                 debug!("UnixNotis control service disconnected");
                 // Old rows and state must not survive into a later daemon generation
                 self.list.clear_for_disconnect();
+                self.mark_notifications_changed();
                 self.update_state(unixnotis_core::ControlState::default());
                 self.refresh_counts();
             }
@@ -32,6 +34,7 @@ impl UiState {
                 );
                 // Seed list data before applying state to keep counts aligned
                 self.list.seed(active, history);
+                self.mark_notifications_changed();
                 self.update_state(state);
                 self.refresh_counts();
             }
@@ -48,6 +51,7 @@ impl UiState {
                     )
                 });
                 self.list.add_or_update(notification, true);
+                self.mark_notifications_changed();
                 // Header count reflects the combined active + history totals
                 self.refresh_counts();
             }
@@ -64,6 +68,7 @@ impl UiState {
                     )
                 });
                 self.list.add_or_update(notification, true);
+                self.mark_notifications_changed();
                 // Updates may shift groups; refresh count even when list is stable
                 self.refresh_counts();
             }
@@ -78,6 +83,7 @@ impl UiState {
                     format!("notification closed: #{} ({reason:?})", key.id)
                 });
                 self.list.mark_closed(key, reason);
+                self.mark_notifications_changed();
                 // Marking closed can move entries between active/history buckets
                 self.refresh_counts();
             }
@@ -218,10 +224,41 @@ impl UiState {
     }
 
     pub fn flush_list_rebuild(&mut self) {
+        let snap_to_top = self.panel_visible && should_snap_to_top(&self.panel.sections.scroller);
         self.list.flush_rebuild();
+        if snap_to_top {
+            reset_notification_scroll(&self.panel.sections.scroller);
+        }
+    }
+
+    pub(in crate::ui) const fn mark_notifications_changed(&mut self) {
+        if !self.panel_visible {
+            self.notifications_changed_while_hidden = true;
+        }
     }
 
     pub const fn list_needs_rebuild(&self) -> bool {
         self.list.needs_rebuild()
     }
 }
+
+fn should_snap_to_top(scroller: &gtk::ScrolledWindow) -> bool {
+    let adjustment = scroller.vadjustment();
+    should_snap_to_top_value(adjustment.value(), adjustment.lower())
+}
+
+const fn should_snap_to_top_value(value: f64, lower: f64) -> bool {
+    value <= lower + 18.0
+}
+
+pub(in crate::ui) fn reset_notification_scroll(scroller: &gtk::ScrolledWindow) {
+    let scroller = scroller.clone();
+    gtk::glib::idle_add_local_once(move || {
+        let adjustment = scroller.vadjustment();
+        adjustment.set_value(adjustment.lower());
+    });
+}
+
+#[cfg(test)]
+#[path = "events/tests/mod.rs"]
+mod tests;
