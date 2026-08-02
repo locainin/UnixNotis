@@ -49,8 +49,6 @@ pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRow
         row.actions_box.upcast_ref::<gtk::Widget>(),
         row.thumbnail.upcast_ref::<gtk::Widget>(),
         row.popup_status.upcast_ref::<gtk::Widget>(),
-        row.stack_middle.upcast_ref::<gtk::Widget>(),
-        row.stack_back.upcast_ref::<gtk::Widget>(),
     ] {
         widget.set_visible(false);
     }

@@ -5,7 +5,6 @@
 
 mod build;
 mod reply;
-mod stack;
 mod state;
 #[cfg(test)]
 #[path = "tests/support.rs"]

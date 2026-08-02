@@ -556,27 +556,7 @@ entry selection {
 }
 
 .unixnotis-panel-card-foreground.collapsed-group-preview {
-  margin-top: -58px;
   margin-bottom: 10px;
-}
-
-.unixnotis-stack-layer {
-  min-height: 68px;
-  padding: 0;
-  border: 1px solid alpha(@unixnotis-card-border, 0.58);
-  border-radius: var(--unixnotis-notification-card-radius);
-  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.09);
-  box-shadow: 0 8px 16px -15px @unixnotis-shadow-soft;
-}
-
-.unixnotis-stack-layer-back {
-  margin: 0 20px;
-  opacity: 0.72;
-}
-
-.unixnotis-stack-layer-middle {
-  margin: -58px 14px 0;
-  opacity: 0.86;
 }
 
 .unixnotis-panel-card.active {
