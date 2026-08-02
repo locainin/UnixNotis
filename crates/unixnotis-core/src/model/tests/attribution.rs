@@ -327,3 +327,41 @@ fn portal_and_unassociated_policies_never_allow_silent_actions() {
         );
     }
 }
+
+#[test]
+fn host_visuals_require_both_positive_assurance_and_allowed_activation() {
+    let mut authenticated = NotificationAttribution::verified(
+        "Example",
+        "Example",
+        "org.example.App",
+        "example",
+        AttributionReason::ExactSystemExecutable,
+        "",
+        "verified:example".to_string(),
+    );
+    authenticated.interactions = InteractionPolicies::DENY;
+
+    assert!(!authenticated.may_read_sender_host_visual());
+}
+
+#[test]
+fn verification_status_is_not_inferred_from_display_fields() {
+    let verified = NotificationAttribution::verified(
+        "Example",
+        "Example",
+        "org.example.App",
+        "example",
+        AttributionReason::ExactSystemExecutable,
+        "",
+        "verified:example".to_string(),
+    );
+    let unresolved = NotificationAttribution::unresolved(
+        "Example",
+        AttributionReason::MissingSenderEvidence,
+        "",
+        "unknown:example".to_string(),
+    );
+
+    assert!(verified.is_verified());
+    assert!(!unresolved.is_verified());
+}

@@ -1,4 +1,4 @@
-use super::super::{ImageData, NotificationImage, NotificationVisualRole};
+use super::super::{ImageData, NotificationImage, NotificationVisualRole, MAX_IMAGE_BYTES};
 use super::{image_data_value, string_value};
 use std::collections::HashMap;
 use zbus::zvariant::{OwnedValue, Structure, Value};
@@ -50,4 +50,20 @@ fn parse_image_data_accepts_legacy_aliases() {
             data: vec![1, 2, 3, 4],
         }
     );
+}
+
+#[test]
+fn parse_image_data_enforces_the_exact_raw_byte_boundary() {
+    let accepted = image_data_value(1, 1, 4, true, 8, 4, vec![0; MAX_IMAGE_BYTES]);
+    assert!(NotificationImage::parse_image_data(&accepted).is_some());
+
+    let rejected = image_data_value(1, 1, 4, true, 8, 4, vec![0; MAX_IMAGE_BYTES + 1]);
+    assert!(NotificationImage::parse_image_data(&rejected).is_none());
+}
+
+#[test]
+fn array_to_bytes_rejects_empty_payloads() {
+    let value = Value::from(Vec::<u8>::new());
+
+    assert!(NotificationImage::array_to_bytes(&value).is_none());
 }
