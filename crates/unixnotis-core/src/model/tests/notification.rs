@@ -58,8 +58,7 @@ fn notification_with_image(image: NotificationImage) -> Notification {
 
 fn image_with_raw_bytes() -> NotificationImage {
     NotificationImage {
-        has_image_data: true,
-        image_data: ImageData {
+        content_image: ImageData {
             width: 1,
             height: 1,
             rowstride: 4,
@@ -68,10 +67,9 @@ fn image_with_raw_bytes() -> NotificationImage {
             channels: 4,
             data: vec![1, 2, 3, 4],
         },
-        visual_role: crate::NotificationVisualRole::None,
-        conversation_avatar: ImageData::default(),
-        image_path: "/tmp/icon.png".to_string(),
-        icon_name: "mail".to_string(),
+        sender_visual_role: crate::NotificationVisualRole::None,
+        sender_visual: ImageData::default(),
+        badge_icon: "mail".to_string(),
     }
 }
 
@@ -92,7 +90,7 @@ fn notification_view_keeps_ui_fields_and_transient_policy_flag() {
     assert_eq!(view.urgency, Urgency::Critical.as_u8());
     assert!(view.is_transient);
     assert_eq!(view.received_at_unix_seconds, 1_700_000_000);
-    assert!(view.image.has_image_data);
+    assert!(!view.image.content_image.data.is_empty());
 }
 
 #[test]
@@ -280,10 +278,8 @@ fn list_view_strips_raw_image_bytes_but_keeps_icon_identifiers() {
     let view = notification.to_list_view();
 
     // List rows should avoid carrying raw image buffers across D-Bus
-    assert!(!view.image.has_image_data);
-    assert!(view.image.image_data.data.is_empty());
-    assert_eq!(view.image.image_path, "/tmp/icon.png");
-    assert_eq!(view.image.icon_name, "mail");
+    assert!(!view.image.content_image.data.is_empty());
+    assert_eq!(view.image.badge_icon, "mail");
     assert!(view.is_transient);
 }
 
@@ -295,8 +291,7 @@ fn history_projection_drops_raw_hints_and_image_bytes() {
 
     // History entries should stay lightweight and avoid retaining raw D-Bus hints
     assert!(history.hints.is_empty());
-    assert!(!history.image.has_image_data);
-    assert!(history.image.image_data.data.is_empty());
+    assert!(history.image.content_image.data.is_empty());
     assert_eq!(history.sender_name.as_deref(), Some(":1.42"));
     assert_eq!(history.sender_pid, Some(1234));
     assert_eq!(history.sender_start_time, Some(9000));

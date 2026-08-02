@@ -20,7 +20,7 @@ pub(super) fn notification(app_name: &str, icon_name: &str) -> NotificationView 
         is_transient: false,
         received_at_unix_seconds: 0,
         image: NotificationImage {
-            icon_name: icon_name.to_string(),
+            badge_icon: icon_name.to_string(),
             ..NotificationImage::default()
         },
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),

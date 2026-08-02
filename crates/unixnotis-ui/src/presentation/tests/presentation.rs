@@ -24,10 +24,10 @@ fn shared_model_keeps_verified_communication_content_and_actions_consistent() {
             label: "Open".to_string(),
         },
     ];
-    view.image.has_image_data = true;
-    view.image.image_data = ImageData {
+    view.image.content_image = ImageData {
         width: 64,
         height: 64,
+        data: vec![0; 64 * 64 * 4],
         ..ImageData::default()
     };
 
@@ -191,7 +191,7 @@ fn trusted_relay_claim_never_becomes_the_primary_application_identity() {
         "Sent via /usr/bin/notify-send",
         "relay:notify-send:signal".to_string(),
     );
-    view.image.icon_name = "signal-desktop".to_string();
+    view.image.badge_icon = "signal-desktop".to_string();
 
     let presentation = NotificationPresentation::from_view_at(&view, 1_000);
 
@@ -353,7 +353,6 @@ fn untrusted_non_media_notification_cannot_render_content_art() {
         "Sent via /usr/bin/notify-send",
         "relay:notify-send:signal".to_string(),
     );
-    view.image.image_path = "/tmp/signal-logo.png".to_string();
 
     assert_eq!(
         NotificationPresentation::from_view_at(&view, 1_000)
@@ -489,12 +488,20 @@ fn empty_and_generic_claims_never_create_secondary_identity_copy() {
 }
 
 #[test]
-fn verified_media_category_or_pixel_data_can_override_duplicate_badge_suppression() {
+fn media_category_or_pixel_data_can_select_content() {
     for (has_image_data, category) in [(false, "image.received"), (true, "")] {
         let mut view = notification();
-        view.attribution.badge_icon = "same-icon".to_string();
-        view.image.image_path = "same-icon".to_string();
-        view.image.has_image_data = has_image_data;
+        if has_image_data {
+            view.image.content_image = ImageData {
+                width: 1,
+                height: 1,
+                rowstride: 4,
+                channels: 4,
+                bits_per_sample: 8,
+                data: vec![1, 2, 3, 4],
+                ..ImageData::default()
+            };
+        }
         view.category = category.to_string();
 
         assert_eq!(
@@ -505,91 +512,6 @@ fn verified_media_category_or_pixel_data_can_override_duplicate_badge_suppressio
             "has_image_data={has_image_data}, category={category:?}"
         );
     }
-}
-
-#[test]
-fn verified_plain_image_path_suppresses_only_duplicate_badging() {
-    let mut view = notification();
-    view.attribution.badge_icon = "same-icon".to_string();
-    view.image.image_path = "same-icon".to_string();
-    assert_eq!(
-        NotificationPresentation::from_view_at(&view, 1_000)
-            .media
-            .thumbnail,
-        ThumbnailKind::None,
-        "the authenticated badge must not be repeated as content"
-    );
-
-    view.image.image_path = "different-content".to_string();
-    assert_eq!(
-        NotificationPresentation::from_view_at(&view, 1_000)
-            .media
-            .thumbnail,
-        ThumbnailKind::Content,
-        "a distinct explicit content path should remain visible"
-    );
-
-    view.attribution.badge_icon.clear();
-    assert_eq!(
-        NotificationPresentation::from_view_at(&view, 1_000)
-            .media
-            .thumbnail,
-        ThumbnailKind::Content,
-        "a missing badge cannot make explicit content look duplicated"
-    );
-
-    for (badge, image_path) in [
-        ("relative-badge", "/absolute/content.png"),
-        ("/absolute/badge.png", "relative-content"),
-    ] {
-        view.attribution.badge_icon = badge.to_string();
-        view.image.image_path = image_path.to_string();
-        assert_eq!(
-            NotificationPresentation::from_view_at(&view, 1_000)
-                .media
-                .thumbnail,
-            ThumbnailKind::Content,
-            "mixed absolute and symbolic sources cannot establish duplicate identity"
-        );
-    }
-
-    let fixture = std::fs::canonicalize("Cargo.toml").expect("resolve package manifest fixture");
-    view.attribution.badge_icon = "Cargo.toml".to_string();
-    view.image.image_path = fixture.to_string_lossy().into_owned();
-    assert_eq!(
-        NotificationPresentation::from_view_at(&view, 1_000)
-            .media
-            .thumbnail,
-        ThumbnailKind::Content,
-        "a relative badge name must not alias an absolute content path"
-    );
-}
-
-#[cfg(unix)]
-#[test]
-fn verified_badge_symlink_is_suppressed_by_canonical_file_identity() {
-    use std::os::unix::fs::symlink;
-
-    let root = std::env::temp_dir().join(format!(
-        "unixnotis-presentation-badge-{}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&root).expect("create badge fixture directory");
-    let badge = root.join("badge.svg");
-    let alias = root.join("badge-alias.svg");
-    std::fs::write(&badge, b"<svg/>").expect("write badge fixture");
-    let _ = std::fs::remove_file(&alias);
-    symlink(&badge, &alias).expect("create badge alias");
-
-    let mut view = notification();
-    view.attribution.badge_icon = badge.to_string_lossy().into_owned();
-    view.image.image_path = alias.to_string_lossy().into_owned();
-    let presentation = NotificationPresentation::from_view_at(&view, 1_000);
-
-    assert_eq!(presentation.media.thumbnail, ThumbnailKind::None);
-    std::fs::remove_file(&alias).expect("remove badge alias");
-    std::fs::remove_file(&badge).expect("remove badge fixture");
-    std::fs::remove_dir(&root).expect("remove badge fixture directory");
 }
 
 #[test]

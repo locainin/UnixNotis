@@ -133,10 +133,10 @@ fn user_associated_attribution_hides_application_directed_actions() {
 fn communication_avatar_is_not_suppressed_as_decoration() {
     let mut view = notification();
     view.category = "im.received".to_string();
-    view.image.has_image_data = true;
-    view.image.image_data = ImageData {
+    view.image.content_image = ImageData {
         width: 64,
         height: 64,
+        data: vec![0; 64 * 64 * 4],
         ..ImageData::default()
     };
 
@@ -147,14 +147,22 @@ fn communication_avatar_is_not_suppressed_as_decoration() {
 }
 
 #[test]
-fn thumbnail_requires_real_image_data_or_a_nonempty_path() {
+fn thumbnail_requires_real_image_data() {
     let mut view = notification();
     assert_eq!(
         PopupEntryViewModel::for_notification_at(&view, 1_000).thumbnail,
         ThumbnailKind::None
     );
 
-    view.image.image_path = "/tmp/content.png".to_string();
+    view.image.content_image = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        channels: 4,
+        bits_per_sample: 8,
+        data: vec![1, 2, 3, 4],
+        ..ImageData::default()
+    };
     assert_eq!(
         PopupEntryViewModel::for_notification_at(&view, 1_000).thumbnail,
         ThumbnailKind::Content
@@ -165,11 +173,11 @@ fn thumbnail_requires_real_image_data_or_a_nonempty_path() {
 fn app_icon_name_never_suppresses_real_content_image_data() {
     let mut icon_match = notification();
     icon_match.attribution.badge_icon = "example".to_string();
-    icon_match.image.has_image_data = true;
-    icon_match.image.icon_name = "example".to_string();
-    icon_match.image.image_data = ImageData {
+    icon_match.image.badge_icon = "example".to_string();
+    icon_match.image.content_image = ImageData {
         width: 160,
         height: 90,
+        data: vec![0; 160 * 90 * 4],
         ..ImageData::default()
     };
     assert_eq!(
@@ -179,14 +187,22 @@ fn app_icon_name_never_suppresses_real_content_image_data() {
 
     let mut path_match = notification();
     path_match.attribution.badge_icon = "example".to_string();
-    path_match.image.image_path = "example".to_string();
+    path_match.image.content_image = ImageData::default();
     assert_eq!(
         PopupEntryViewModel::for_notification_at(&path_match, 1_000).thumbnail,
         ThumbnailKind::None
     );
 
     let mut no_match = path_match;
-    no_match.image.image_path = "different".to_string();
+    no_match.image.content_image = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        channels: 4,
+        bits_per_sample: 8,
+        data: vec![1, 2, 3, 4],
+        ..ImageData::default()
+    };
     assert_eq!(
         PopupEntryViewModel::for_notification_at(&no_match, 1_000).thumbnail,
         ThumbnailKind::Content
@@ -194,31 +210,38 @@ fn app_icon_name_never_suppresses_real_content_image_data() {
 }
 
 #[test]
-fn image_dimensions_alone_never_prove_badge_duplication() {
+fn invalid_image_dimensions_do_not_create_thumbnail_content() {
     let mut view = notification();
-    view.image.has_image_data = true;
-
     for (width, height) in [(0, 0), (64, 64), (96, 72), (128, 128), (129, 129)] {
-        view.image.image_data = ImageData {
+        view.image.content_image = ImageData {
             width,
             height,
+            data: if width > 0 && height > 0 {
+                vec![0; 4]
+            } else {
+                Vec::new()
+            },
             ..ImageData::default()
+        };
+        let expected = if width > 0 && height > 0 {
+            ThumbnailKind::Content
+        } else {
+            ThumbnailKind::None
         };
         assert_eq!(
             PopupEntryViewModel::for_notification_at(&view, 1_000).thumbnail,
-            ThumbnailKind::Content,
-            "{width}x{height} should remain real notification content"
+            expected
         );
     }
 }
 
 #[test]
-fn square_path_content_is_not_mistaken_for_embedded_icon_data() {
+fn square_content_is_rendered_as_notification_content() {
     let mut view = notification();
-    view.image.image_path = "/tmp/content.png".to_string();
-    view.image.image_data = ImageData {
+    view.image.content_image = ImageData {
         width: 64,
         height: 64,
+        data: vec![0; 64 * 64 * 4],
         ..ImageData::default()
     };
 

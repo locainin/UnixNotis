@@ -138,7 +138,7 @@ async fn native_image_above_retained_limit_keeps_the_text_notification() {
         .expect("notification should be retained");
 
     assert_eq!(active.summary, "summary");
-    assert!(!active.image.has_image_data);
+    assert!(active.image.content_image.data.is_empty());
 }
 
 #[tokio::test]
@@ -155,8 +155,8 @@ async fn native_image_within_retained_limit_reaches_the_notification_model() {
         .active_notification_view(id)
         .expect("notification should be retained");
 
-    assert!(active.image.has_image_data);
-    assert_eq!(active.image.image_data.data.len(), 128 * 128 * 4);
+    assert!(!active.image.content_image.data.is_empty());
+    assert_eq!(active.image.content_image.data.len(), 128 * 128 * 4);
 }
 
 #[tokio::test]
@@ -249,7 +249,7 @@ async fn image_hint_aliases_follow_standard_precedence_independent_of_wire_order
             .active_notification_view(standard_id)
             .expect("standard image notification")
             .image
-            .image_data
+            .content_image
             .data,
         [1, 0, 0, 255]
     );
@@ -258,7 +258,7 @@ async fn image_hint_aliases_follow_standard_precedence_independent_of_wire_order
             .active_notification_view(legacy_id)
             .expect("legacy image notification")
             .image
-            .image_data
+            .content_image
             .data,
         [2, 0, 0, 255]
     );
@@ -267,7 +267,7 @@ async fn image_hint_aliases_follow_standard_precedence_independent_of_wire_order
             .active_notification_view(icon_id)
             .expect("legacy icon notification")
             .image
-            .image_data
+            .content_image
             .data,
         [3, 0, 0, 255]
     );

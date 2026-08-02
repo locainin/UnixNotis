@@ -37,23 +37,6 @@ pub(super) fn resolve_icon_source(name: &str, size: i32, scale: i32) -> Option<I
     Some(IconSource::Paintable(paintable))
 }
 
-pub(super) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
-    // Accept raw absolute paths and file:// URIs, decoding percent escapes when present
-    if path.starts_with('/') {
-        return Some(PathBuf::from(path));
-    }
-    if path.starts_with("file://") {
-        // gio::File handles URI decoding and local filesystem resolution
-        let file = gio::File::for_uri(path);
-        // Only accept native filesystem paths to avoid non-local URIs
-        if !file.is_native() {
-            return None;
-        }
-        return file.path();
-    }
-    None
-}
-
 fn worker_decodes_theme_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -127,11 +110,11 @@ fn is_missing_icon(path: &Path) -> bool {
 
 pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Texture> {
     // Only proceed if the notification actually carried image-data (not just a name/path hint)
-    if !image.has_image_data {
+    if image.content_image.data.is_empty() {
         return None;
     }
 
-    image_data_texture_for_data(&image.image_data)
+    image_data_texture_for_data(&image.content_image)
 }
 
 pub(super) fn image_data_texture_for_data(data: &ImageData) -> Option<gdk::Texture> {

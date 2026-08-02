@@ -39,7 +39,6 @@ pub(super) fn build_popup_content(
 }
 
 pub(super) fn append_thumbnail(
-    state: &UiState,
     notification: &NotificationView,
     view: &PopupEntryViewModel,
     content: &gtk::Box,
@@ -47,7 +46,7 @@ pub(super) fn append_thumbnail(
     if view.thumbnail != super::presentation::ThumbnailKind::Content {
         return false;
     }
-    let Some(image) = state.build_content_image_widget(notification) else {
+    let Some(image) = UiState::build_content_image_widget(notification) else {
         return false;
     };
 

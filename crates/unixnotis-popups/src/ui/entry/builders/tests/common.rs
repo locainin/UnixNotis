@@ -348,8 +348,9 @@ fn communication_identity_avatar_prefers_materialized_conversation_image() {
     let mut state = UiState::new(&app, config, root.join("config.toml"), command_tx, css);
     let mut notification = notification();
     notification.inline_reply.available = true;
-    notification.image.visual_role = unixnotis_core::NotificationVisualRole::ConversationAvatar;
-    notification.image.conversation_avatar = unixnotis_core::ImageData {
+    notification.image.sender_visual_role =
+        unixnotis_core::NotificationVisualRole::ConversationAvatar;
+    notification.image.sender_visual = unixnotis_core::ImageData {
         width: 1,
         height: 1,
         rowstride: 4,

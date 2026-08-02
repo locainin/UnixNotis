@@ -11,7 +11,7 @@ use crate::daemon::notifications::identity::{
     resolve_sender_metadata, SenderMetadataStatus, SENDER_CREDENTIAL_TIMEOUT,
 };
 use crate::daemon::notifications::ingress::payload::{
-    build_notification, materialize_conversation_avatar, owned_to_string, resolve_expiration,
+    build_notification, materialize_sender_visual, owned_to_string, resolve_expiration,
     sender_visual_role, NotificationInput, SenderVisualRole, CONVERSATION_AVATAR_TIMEOUT,
 };
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
@@ -33,6 +33,7 @@ struct WireNotification {
     actions: Vec<String>,
     hints: HashMap<String, OwnedValue>,
     image_data: Option<ImageData>,
+    image_path: Option<String>,
     expire_timeout: i32,
 }
 
@@ -60,7 +61,7 @@ impl NotificationServer {
             replaces_id,
             expire_timeout,
         );
-        let (hints, image_data) = hints.into_parts();
+        let (hints, image_data, image_path) = hints.into_parts();
         let notification = self
             .notification_from_wire(
                 WireNotification {
@@ -71,6 +72,7 @@ impl NotificationServer {
                     actions,
                     hints,
                     image_data,
+                    image_path,
                     expire_timeout,
                 },
                 header,
@@ -147,25 +149,17 @@ impl NotificationServer {
             ),
         )
         .await;
-        let conversation_avatar = if matches!(
-            sender_visual_role(
-                &resolution.attribution,
-                &desktop_identity_index,
-                &input.hints,
-                &input.actions,
-            ),
-            SenderVisualRole::ConversationAvatar
-        ) {
-            let app_icon = input.app_icon.clone();
-            run_avatar_worker(
-                move || materialize_conversation_avatar(&app_icon),
-                CONVERSATION_AVATAR_TIMEOUT,
-            )
-            .await
-            .flatten()
-        } else {
-            None
-        };
+        let sender_visual_role = sender_visual_role(
+            &resolution.attribution,
+            &desktop_identity_index,
+            &input.hints,
+            &input.actions,
+            &input.app_icon,
+        );
+        let sender_visual =
+            materialize_sender_visual_for_role(sender_visual_role, input.app_icon.clone()).await;
+        let materialized_content =
+            materialize_content_visual(&resolution.attribution, input.image_path.as_deref()).await;
         if matches!(
             resolution.attribution.status,
             unixnotis_core::AttributionStatus::Conflict
@@ -199,8 +193,9 @@ impl NotificationServer {
             body: input.body,
             actions: input.actions,
             hints: input.hints,
-            image_data: input.image_data,
-            conversation_avatar,
+            image_data: input.image_data.or(materialized_content),
+            sender_visual,
+            sender_visual_role,
             sender,
             attribution: resolution.attribution,
             attribution_diagnostics: resolution.diagnostics,
@@ -327,6 +322,39 @@ impl NotificationServer {
             .await
             .map_err(to_fdo_error)
     }
+}
+
+async fn materialize_sender_visual_for_role(
+    role: SenderVisualRole,
+    app_icon: String,
+) -> Option<ImageData> {
+    if matches!(role, SenderVisualRole::None) {
+        return None;
+    }
+    run_avatar_worker(
+        move || materialize_sender_visual(&app_icon, 64),
+        CONVERSATION_AVATAR_TIMEOUT,
+    )
+    .await
+    .flatten()
+}
+
+async fn materialize_content_visual(
+    attribution: &unixnotis_core::NotificationAttribution,
+    image_path: Option<&str>,
+) -> Option<ImageData> {
+    if !crate::daemon::notifications::ingress::payload::may_read_sender_host_visual(attribution) {
+        return None;
+    }
+    let path = image_path
+        .filter(|path| !path.trim().is_empty())
+        .map(str::to_owned)?;
+    run_avatar_worker(
+        move || materialize_sender_visual(&path, 512),
+        CONVERSATION_AVATAR_TIMEOUT,
+    )
+    .await
+    .flatten()
 }
 
 #[cfg(test)]

@@ -6,11 +6,11 @@ use unixnotis_core::{ImageData, NotificationImage};
 
 pub(in crate::ui) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Texture> {
     // Content images stay separate from the authenticated application badge
-    if !image.has_image_data {
+    if image.content_image.data.is_empty() {
         return None;
     }
 
-    image_data_texture_for_data(&image.image_data)
+    image_data_texture_for_data(&image.content_image)
 }
 
 pub(in crate::ui) fn image_data_texture_for_data(data: &ImageData) -> Option<gdk::Texture> {

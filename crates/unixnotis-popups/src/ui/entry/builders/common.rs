@@ -32,7 +32,7 @@ pub(super) fn build_identity_avatar(
     view: &PopupEntryViewModel,
     size: i32,
 ) -> IdentityAvatar {
-    let has_conversation_avatar = notification.image.visual_role
+    let has_conversation_avatar = notification.image.sender_visual_role
         == unixnotis_core::NotificationVisualRole::ConversationAvatar;
     let icon_size = if has_conversation_avatar {
         size

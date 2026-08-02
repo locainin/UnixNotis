@@ -32,13 +32,15 @@ impl UiState {
         size: i32,
     ) -> Option<gtk::Image> {
         // Conversation art is safe to render here because the daemon sent pixels, not a path
-        if notification.image.visual_role
-            != unixnotis_core::NotificationVisualRole::ConversationAvatar
-        {
+        if !matches!(
+            notification.image.sender_visual_role,
+            unixnotis_core::NotificationVisualRole::ConversationAvatar
+                | unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon
+        ) {
             return None;
         }
 
-        let texture = image_data_texture_for_data(&notification.image.conversation_avatar)?;
+        let texture = image_data_texture_for_data(&notification.image.sender_visual)?;
         let widget = gtk::Image::from_paintable(Some(&texture));
         set_popup_icon_size(&widget, size);
         widget.add_css_class("unixnotis-popup-conversation-avatar");
@@ -46,7 +48,6 @@ impl UiState {
     }
 
     pub(super) fn build_content_image_widget(
-        &self,
         notification: &NotificationView,
     ) -> Option<gtk::Image> {
         if let Some(texture) = image_data_texture(&notification.image) {
@@ -55,10 +56,7 @@ impl UiState {
             return Some(widget);
         }
 
-        if notification.image.image_path.trim().is_empty() {
-            return None;
-        }
-        self.resolve_icon_widget(&notification.image.image_path, POPUP_CONTENT_THUMBNAIL_SIZE)
+        None
     }
 
     pub(super) fn build_app_icon_widget(

@@ -18,15 +18,24 @@ fn notification_thumbnail_only_uses_real_image_sources() {
     let mut notification = sample_notification();
     assert!(!notification_has_thumbnail(&notification));
 
-    notification.image.image_path = "/tmp/demo.png".to_string();
+    notification.image.content_image = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![1, 2, 3, 4],
+    };
     assert!(notification_has_thumbnail(&notification));
 }
 
 #[test]
 fn conversation_avatar_is_a_separate_thumbnail_source() {
     let mut notification = sample_notification();
-    notification.image.visual_role = unixnotis_core::NotificationVisualRole::ConversationAvatar;
-    notification.image.conversation_avatar = ImageData {
+    notification.image.sender_visual_role =
+        unixnotis_core::NotificationVisualRole::ConversationAvatar;
+    notification.image.sender_visual = ImageData {
         width: 1,
         height: 1,
         rowstride: 4,
@@ -68,7 +77,15 @@ fn update_notification_row_hides_optional_text_and_thumbnail_when_absent() {
 fn update_notification_row_shows_thumbnail_when_config_and_image_allow_it() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();
-    notification.image.image_path = "/tmp/demo.png".to_string();
+    notification.image.content_image = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![1, 2, 3, 4],
+    };
     let data = row_data(
         Rc::new(notification),
         RowFlags {

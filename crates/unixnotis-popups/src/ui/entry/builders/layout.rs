@@ -54,7 +54,7 @@ pub(super) fn build_popup_grid(
     if let Some(body) = build_body_label(view, layout.body_lines) {
         message.append(&body);
     }
-    let has_image = append_thumbnail(state, notification, view, &message);
+    let has_image = append_thumbnail(notification, view, &message);
     if layout.show_reply_note {
         if let Some(note) = build_reply_note(view) {
             message.append(&note);

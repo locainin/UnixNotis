@@ -89,8 +89,7 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
     let mut content = notification(8, 1, "content");
     content.category = "image.photo".to_string();
     content.image = NotificationImage {
-        has_image_data: true,
-        image_data: ImageData {
+        content_image: ImageData {
             width: 2,
             height: 1,
             rowstride: 8,
@@ -102,7 +101,7 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
         ..NotificationImage::default()
     };
     // Image categories retain real content even when the thumbnail is compact
-    assert!(state.build_content_image_widget(&content).is_some());
+    assert!(UiState::build_content_image_widget(&content).is_some());
     let content_root = state.build_popup_root(&content);
     assert!(content_root.has_css_class(hooks::popup_card::HAS_IMAGE));
     assert!(descendant_has_class(
@@ -114,7 +113,7 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
     missing_content.attribution.badge_icon.clear();
     missing_content.attribution.desktop_id.clear();
     // Empty content and badge sources must not create placeholder image widgets
-    assert!(state.build_content_image_widget(&missing_content).is_none());
+    assert!(UiState::build_content_image_widget(&missing_content).is_none());
     assert!(state.build_app_icon_widget(&missing_content, 20).is_none());
     let missing_root = state.build_popup_root(&missing_content);
     assert!(!missing_root.has_css_class(hooks::popup_card::HAS_IMAGE));

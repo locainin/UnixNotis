@@ -2,8 +2,7 @@ use super::*;
 
 fn image_data(channels: i32, rowstride: i32, data: Vec<u8>) -> NotificationImage {
     NotificationImage {
-        has_image_data: true,
-        image_data: ImageData {
+        content_image: ImageData {
             width: 2,
             height: 1,
             rowstride,
@@ -20,7 +19,7 @@ fn image_data(channels: i32, rowstride: i32, data: Vec<u8>) -> NotificationImage
 fn rgb_content_image_expands_to_opaque_rgba() {
     let image = image_data(3, 8, vec![1, 2, 3, 4, 5, 6, 90, 91]);
 
-    let (bytes, stride) = expand_rgb_to_rgba(&image.image_data).expect("valid RGB data");
+    let (bytes, stride) = expand_rgb_to_rgba(&image.content_image).expect("valid RGB data");
 
     assert_eq!(stride, 8);
     assert_eq!(bytes, vec![1, 2, 3, 255, 4, 5, 6, 255]);
