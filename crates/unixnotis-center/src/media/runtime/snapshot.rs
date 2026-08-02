@@ -39,7 +39,6 @@ pub(super) fn build_snapshot(cache: &HashMap<String, MediaInfo>) -> Vec<MediaInf
         .filter(|info| is_active_player(info))
         .cloned()
         .collect();
-    let original_len = infos.len();
     // Cache sort keys to avoid repeated lowercasing in the comparator
     infos.sort_by_cached_key(|info| {
         (
@@ -47,23 +46,11 @@ pub(super) fn build_snapshot(cache: &HashMap<String, MediaInfo>) -> Vec<MediaInf
             info.identity.to_lowercase(),
         )
     });
-    let deduped = dedupe_players(infos);
-    if deduped.len() != original_len {
-        debug!(
-            original = original_len,
-            deduped = deduped.len(),
-            "deduped media players"
-        );
-    }
-    deduped
+    dedupe_players(infos)
 }
 
 fn playback_rank(status: &str) -> u8 {
-    match status {
-        "Playing" => 0,
-        "Paused" => 1,
-        _ => 2,
-    }
+    u8::from(status != "Playing")
 }
 
 fn is_active_player(info: &MediaInfo) -> bool {
@@ -75,60 +62,71 @@ fn dedupe_players(infos: Vec<MediaInfo>) -> Vec<MediaInfo> {
     let mut output: Vec<MediaInfo> = Vec::with_capacity(infos.len());
     let mut seen: HashMap<String, usize> = HashMap::new();
     for info in infos {
-        let Some(key) = dedupe_key(&info) else {
+        let keys = dedupe_keys(&info);
+        if keys.is_empty() {
             output.push(info);
             continue;
-        };
-        if let Some(existing_index) = seen.get(&key).copied() {
+        }
+        if let Some(existing_index) = keys.iter().find_map(|key| seen.get(key).copied()) {
             let existing = &output[existing_index];
             // Lower score wins, so a playing player with art beats a paused
             // or artless duplicate from the same browser family or track key
             if media_score(&info) < media_score(existing) {
                 output[existing_index] = info;
             }
+            for key in keys {
+                seen.insert(key, existing_index);
+            }
             continue;
         }
-        seen.insert(key, output.len());
+        let output_index = output.len();
+        for key in keys {
+            seen.insert(key, output_index);
+        }
         output.push(info);
     }
     output
 }
 
-fn dedupe_key(info: &MediaInfo) -> Option<String> {
+fn dedupe_keys(info: &MediaInfo) -> Vec<String> {
     let title = info.title.trim();
     if let Some(family) = info.browser_family.as_deref() {
-        if let Some(pid) = info.owner_pid {
-            // Only the broker-derived owner PID is safe for cross-name deduplication
-            return Some(format!("browser-pid:{pid}"));
-        }
+        let mut keys = Vec::with_capacity(2);
         if !title.is_empty() {
-            // Browser-backed players can expose one webpage through multiple MPRIS names
-            // Track metadata is the stable key across Brave, Chromium, and browser instances
+            // Browser bridges often expose the same track under different names and PIDs
+            // Track identity is the useful cross-browser key when both title and artist exist
             let artist = info.artist.trim();
-            return Some(format!(
+            keys.push(format!(
                 "browser-track\n{}\n{}",
                 normalize_token(title),
-                normalize_token(artist)
+                normalize_token(artist),
             ));
         }
-        // Empty browser metadata is too weak for cross-browser matching
-        // Keep the old family fallback so duplicate instances still collapse
-        return Some(format!("browser:{family}"));
+        if let Some(pid) = info.owner_pid {
+            // A broker-derived PID also collapses aliases owned by one browser process
+            keys.push(format!("browser-pid:{pid}"));
+        }
+        if keys.is_empty() {
+            // Empty browser metadata is too weak for cross-browser matching
+            // Keep the family fallback so duplicate instances still collapse
+            keys.push(format!("browser:{family}"));
+        }
+        return keys;
     }
     if title.is_empty() {
         // Empty titles are too weak to build a stable cross-player key
-        return None;
+        return Vec::new();
     }
     let artist = info.artist.trim();
     let identity = info.identity.trim();
     let normalized_title = normalize_token(title);
     let normalized_artist = normalize_token(artist);
-    Some(format!(
+    vec![format!(
         "{}\n{}\n{}",
         normalize_token(identity),
         normalized_title,
         normalized_artist
-    ))
+    )]
 }
 
 fn media_score(info: &MediaInfo) -> (u8, u8) {

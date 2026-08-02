@@ -75,6 +75,37 @@ fn build_snapshot_sorts_by_status_then_identity() {
 }
 
 #[test]
+fn build_snapshot_keeps_paused_players_before_inactive_sessions() {
+    let mut cache = HashMap::new();
+    cache.insert(
+        "org.mpris.MediaPlayer2.stopped".to_string(),
+        make_info(
+            "org.mpris.MediaPlayer2.stopped",
+            "Stopped",
+            "Stopped",
+            false,
+            None,
+            None,
+        ),
+    );
+    cache.insert(
+        "org.mpris.MediaPlayer2.paused".to_string(),
+        make_info(
+            "org.mpris.MediaPlayer2.paused",
+            "Paused",
+            "Paused",
+            false,
+            None,
+            None,
+        ),
+    );
+
+    let snapshot = build_snapshot(&cache);
+    assert_eq!(snapshot.len(), 1);
+    assert_eq!(snapshot[0].identity, "Paused");
+}
+
+#[test]
 fn build_snapshot_dedupes_browser_family_by_score() {
     let mut cache = HashMap::new();
     cache.insert(
@@ -163,6 +194,63 @@ fn build_snapshot_keeps_distinct_browser_tracks() {
 
     let snapshot = build_snapshot(&cache);
     assert_eq!(snapshot.len(), 2);
+}
+
+#[test]
+fn build_snapshot_collapses_same_track_across_browser_families() {
+    let mut cache = HashMap::new();
+    let mut chromium = make_info(
+        "org.mpris.MediaPlayer2.chromium.instance",
+        "Chromium",
+        "Playing",
+        false,
+        Some("chromium"),
+        Some(11),
+    );
+    chromium.title = "The Thing 1982 - What does it mean".to_string();
+    chromium.artist = "That Scouse Dude".to_string();
+    let mut brave = make_info(
+        "org.mpris.MediaPlayer2.brave.instance",
+        "Brave",
+        "Playing",
+        true,
+        Some("brave"),
+        Some(22),
+    );
+    brave.title = chromium.title.clone();
+    brave.artist = chromium.artist.clone();
+    cache.insert(chromium.bus_name.clone(), chromium);
+    cache.insert(brave.bus_name.clone(), brave);
+
+    let snapshot = build_snapshot(&cache);
+
+    assert_eq!(snapshot.len(), 1);
+    assert_eq!(snapshot[0].identity, "Brave");
+    assert!(snapshot[0].art_source.is_some());
+}
+
+#[test]
+fn build_snapshot_keeps_the_first_equal_score_duplicate() {
+    let mut cache = HashMap::new();
+    let mut first = make_info(
+        "org.mpris.MediaPlayer2.first",
+        "First",
+        "Playing",
+        true,
+        Some("first"),
+        Some(11),
+    );
+    first.title = "shared track".to_string();
+    let mut second = first.clone();
+    second.bus_name = "org.mpris.MediaPlayer2.second".to_string();
+    second.identity = "Second".to_string();
+    second.browser_family = Some("second".to_string());
+    cache.insert(first.bus_name.clone(), first);
+    cache.insert(second.bus_name.clone(), second);
+
+    let snapshot = build_snapshot(&cache);
+    assert_eq!(snapshot.len(), 1);
+    assert_eq!(snapshot[0].identity, "First");
 }
 
 #[test]
