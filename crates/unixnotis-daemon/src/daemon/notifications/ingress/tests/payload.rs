@@ -419,14 +419,14 @@ fn avatar_downsampling_maps_horizontal_and_vertical_pixels_by_scale() {
     assert_eq!((width, height), (64, 1));
     assert_eq!(data[4], 2);
 
-    let mut vertical = vec![0_u8; 2 * 128 * 4];
+    let mut vertical = vec![0_u8; 64 * 128 * 4];
     for y in 0..128 {
-        vertical[y * 2 * 4] = u8::try_from(y).expect("vertical fixture value");
+        vertical[y * 64 * 4] = u8::try_from(y).expect("vertical fixture value");
     }
     let (width, height, data) =
-        super::downsample_avatar(2, 128, vertical).expect("vertical downsample");
-    assert_eq!((width, height), (1, 64));
-    assert_eq!(data[4], 2);
+        super::downsample_avatar(64, 128, vertical).expect("vertical downsample");
+    assert_eq!((width, height), (32, 64));
+    assert_eq!(data[32 * 4], 2);
 }
 
 #[cfg(target_os = "linux")]
