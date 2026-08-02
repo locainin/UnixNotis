@@ -17,3 +17,10 @@ pub(super) const fn notification_has_conversation_avatar(notification: &Notifica
         unixnotis_core::NotificationVisualRole::ConversationAvatar
     )
 }
+
+pub(super) const fn notification_has_sender_visual(notification: &NotificationView) -> bool {
+    matches!(
+        notification.image.sender_visual_role,
+        unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon
+    )
+}

@@ -17,22 +17,20 @@ use super::theme::{
 use super::types::{IconDecodeRequest, IconResolution};
 
 impl IconResolverInner {
-    pub(super) fn apply_conversation_avatar(
-        &self,
-        image: &gtk::Image,
-        notification: &NotificationView,
-    ) {
+    pub(super) fn apply_sender_visual(&self, image: &gtk::Image, notification: &NotificationView) {
         // The daemon has already decoded and bounded this sender-provided raster
-        if matches!(
+        if !matches!(
             notification.image.sender_visual_role,
             unixnotis_core::NotificationVisualRole::ConversationAvatar
                 | unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon
         ) {
-            if let Some(texture) = image_data_texture_for_data(&notification.image.sender_visual) {
-                image.set_paintable(Some(&texture));
-                image.set_visible(true);
-                return;
-            }
+            image.set_visible(false);
+            return;
+        }
+        if let Some(texture) = image_data_texture_for_data(&notification.image.sender_visual) {
+            image.set_paintable(Some(&texture));
+            image.set_visible(true);
+            return;
         }
         image.set_visible(false);
     }

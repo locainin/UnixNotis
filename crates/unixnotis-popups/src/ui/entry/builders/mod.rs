@@ -43,12 +43,23 @@ pub(super) fn append_thumbnail(
     view: &PopupEntryViewModel,
     content: &gtk::Box,
 ) -> bool {
-    if view.thumbnail != super::presentation::ThumbnailKind::Content {
+    let is_application_visual = notification.image.sender_visual_role
+        == unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon;
+    if view.thumbnail != super::presentation::ThumbnailKind::Content && !is_application_visual {
         return false;
     }
-    let Some(image) = UiState::build_content_image_widget(notification) else {
+    let image =
+        if is_application_visual && view.thumbnail != super::presentation::ThumbnailKind::Content {
+            UiState::build_sender_visual_widget(notification)
+        } else {
+            UiState::build_content_image_widget(notification)
+        };
+    let Some(image) = image else {
         return false;
     };
+    if image.paintable().is_none() {
+        return false;
+    }
 
     // Content images stay bounded and visually separate from the application badge
     image.set_halign(gtk::Align::Start);
