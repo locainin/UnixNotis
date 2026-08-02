@@ -14,7 +14,7 @@ use super::super::state::{IconSignature, NotificationRowWidgets};
 use super::actions::{update_actions, visible_action_count};
 use super::labels::update_notification_text;
 use super::metadata::update_metadata_labels;
-use super::thumbnail::notification_has_thumbnail;
+use super::thumbnail::{notification_has_conversation_avatar, notification_has_thumbnail};
 use super::visual::{apply_visual_state, set_widget_visible_if_changed};
 
 pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRowWidgets) {
@@ -107,8 +107,11 @@ pub(in crate::ui::notifications) fn update_notification_row(
     row.default_activation.set_target(default_target);
     let show_identity = !data.collapsed_group_preview && !data.expanded;
     let has_actions = visible_action_count(notification, data.is_active) > 0;
+    let has_content_thumbnail = notification_has_thumbnail(notification);
+    let has_conversation_avatar = notification_has_conversation_avatar(notification)
+        && presentation.kind == unixnotis_ui::presentation::NotificationKind::Communication;
     let has_thumbnail =
-        data.presentation.show_thumbnail && notification_has_thumbnail(notification);
+        data.presentation.show_thumbnail && (has_content_thumbnail || has_conversation_avatar);
 
     apply_visual_state(row, data, notification, has_actions, has_thumbnail);
     update_notification_text(
@@ -173,8 +176,12 @@ pub(in crate::ui::notifications) fn update_notification_row(
     set_widget_visible_if_changed(&row.close_button, true);
     if has_thumbnail {
         // Reapply visible thumbnails so config reloads cannot leave stale previews
-        let scale = row.card.scale_factor();
-        icon_resolver.apply_icon(&row.thumbnail, notification, 56, scale);
+        if has_conversation_avatar && !has_content_thumbnail {
+            icon_resolver.apply_conversation_avatar(&row.thumbnail, notification);
+        } else {
+            let scale = row.card.scale_factor();
+            icon_resolver.apply_icon(&row.thumbnail, notification, 56, scale);
+        }
     }
     set_widget_visible_if_changed(&row.thumbnail, has_thumbnail);
     set_widget_visible_if_changed(&row.card_plate, true);

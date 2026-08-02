@@ -12,7 +12,9 @@ use unixnotis_core::{hooks, NotificationView};
 use unixnotis_ui::presentation::{action_activation, build_semantic_badge, ActionActivation};
 
 use super::super::commands::try_send_command;
-use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation, ReplyPresentation};
+use super::super::presentation::{
+    PopupEntryViewModel, PopupKind, PopupTrustPresentation, ReplyPresentation,
+};
 use crate::dbus::UiCommand;
 use crate::ui::entry::activation::mark_interactive;
 use crate::ui::UiState;
@@ -33,9 +35,14 @@ pub(super) fn build_identity_avatar(
     size: i32,
 ) -> IdentityAvatar {
     let icon_size = (size - 14).max(18);
-    let icon = build_semantic_badge(view.badge, icon_size)
-        .or_else(|| state.build_app_icon_widget(notification, icon_size))
-        .unwrap_or_else(|| gtk::Image::from_icon_name("application-x-executable-symbolic"));
+    let icon = if view.kind == PopupKind::Communication {
+        UiState::build_conversation_avatar_widget(notification, icon_size)
+    } else {
+        None
+    }
+    .or_else(|| build_semantic_badge(view.badge, icon_size))
+    .or_else(|| state.build_app_icon_widget(notification, icon_size))
+    .unwrap_or_else(|| gtk::Image::from_icon_name("application-x-executable-symbolic"));
     icon.set_pixel_size(icon_size);
     icon.set_size_request(icon_size, icon_size);
     icon.set_valign(Align::Center);

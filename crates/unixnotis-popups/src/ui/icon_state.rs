@@ -12,8 +12,8 @@ use tracing::debug;
 use unixnotis_core::NotificationView;
 
 use super::icons::{
-    collect_icon_candidates, file_path_from_hint, image_data_texture, resolve_icon_image,
-    IconDecodePool, IconDecodeResult,
+    collect_icon_candidates, file_path_from_hint, image_data_texture, image_data_texture_for_data,
+    resolve_icon_image, IconDecodePool, IconDecodeResult,
 };
 use super::state::IconCacheEntry;
 use super::UiState;
@@ -27,6 +27,22 @@ const POPUP_CONTENT_THUMBNAIL_SIZE: i32 = 64;
 const NEGATIVE_ICON_CACHE_TTL: Duration = Duration::from_secs(15);
 
 impl UiState {
+    pub(super) fn build_conversation_avatar_widget(
+        notification: &NotificationView,
+        size: i32,
+    ) -> Option<gtk::Image> {
+        // Conversation art is safe to render here because the daemon sent pixels, not a path
+        if !notification.image.has_conversation_avatar {
+            return None;
+        }
+
+        let texture = image_data_texture_for_data(&notification.image.conversation_avatar)?;
+        let widget = gtk::Image::from_paintable(Some(&texture));
+        set_popup_icon_size(&widget, size);
+        widget.add_css_class("unixnotis-popup-conversation-avatar");
+        Some(widget)
+    }
+
     pub(super) fn build_content_image_widget(
         &self,
         notification: &NotificationView,
