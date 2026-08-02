@@ -135,9 +135,9 @@
 }
 
 .unixnotis-identity-avatar {
-  min-width: 38px;
-  min-height: 38px;
-  border-radius: 11px;
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 10px;
   background: alpha(#ffffff, 0.07);
   color: alpha(#ffffff, 0.92);
 }

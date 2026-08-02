@@ -86,7 +86,7 @@ fn close_button_and_identity_header_keep_their_interaction_contracts() {
         Some("Dismiss notification")
     );
     assert!(header.identity.hexpands());
-    assert_eq!(header.trailing.margin_end(), 24);
+    assert_eq!(header.trailing.margin_end(), 30);
     assert_eq!(header.trailing.orientation(), gtk::Orientation::Vertical);
     assert!(header
         .trailing

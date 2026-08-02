@@ -19,6 +19,7 @@ pub(super) use model::{LaunchFailure, LaunchVerification, VerifiedLaunch};
 pub(super) use names::{normalize_desktop_id, normalize_name};
 pub(super) use provenance::InstallProvenance;
 pub use refresh::spawn_desktop_index_refresh;
+pub use refresh::DesktopIndexRefreshHandle;
 pub use scan::DesktopIndexSnapshot;
 
 pub(in crate::daemon::notifications::identity) fn verify_record_launch(

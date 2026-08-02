@@ -188,7 +188,10 @@ fn malformed_renderer_dimensions_are_rejected_without_large_allocation() {
 
     let error = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
         .expect_err("oversized child dimensions must fail");
-    assert!(error.contains("renderer"));
+    assert!(
+        error.contains("renderer returned oversized image"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]

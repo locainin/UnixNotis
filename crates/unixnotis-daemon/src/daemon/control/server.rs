@@ -9,7 +9,7 @@ use unixnotis_core::{
 use zbus::message::Header;
 use zbus::{interface, SignalContext};
 
-use crate::daemon::{auth, to_fdo_error, DaemonState, DesktopIdentityIndex};
+use crate::daemon::{auth, to_fdo_error, DaemonState};
 
 /// D-Bus server for com.unixnotis.Control
 pub struct ControlServer {
@@ -159,14 +159,13 @@ impl ControlServer {
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "RefreshApplications")
             .await?;
-        // Build off the async runtime, then publish one immutable replacement snapshot
-        let snapshot = tokio::task::spawn_blocking(DesktopIdentityIndex::build_snapshot)
-            .await
-            .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?;
-        self.state
-            .desktop_identity_index
-            .store(Arc::new(snapshot.index));
-        Ok(())
+        if self.state.request_desktop_index_refresh() {
+            // The worker owns rebuild timing, watcher replacement, and publication
+            return Ok(());
+        }
+        Err(zbus::fdo::Error::Failed(
+            "desktop application refresh worker is unavailable".to_string(),
+        ))
     }
 
     async fn open_panel_debug(

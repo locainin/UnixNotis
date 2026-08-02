@@ -12,7 +12,7 @@ use crate::sound::SoundSettings;
 use crate::store::NotificationStore;
 
 use crate::daemon::events::DaemonEventPublisher;
-use crate::daemon::notifications::identity::DesktopIdentityIndex;
+use crate::daemon::notifications::identity::{DesktopIdentityIndex, DesktopIndexRefreshHandle};
 use crate::daemon::notifications::NotificationBurstState;
 use crate::daemon::notifications::SenderMetadataCache;
 
@@ -61,6 +61,8 @@ pub struct DaemonState {
     pub(in crate::daemon) sender_metadata_cache: SenderMetadataCache,
     // Readers load one immutable snapshot while filesystem refresh swaps the complete index
     pub(crate) desktop_identity_index: Arc<ArcSwap<DesktopIdentityIndex>>,
+    // The refresh worker owns watcher replacement and atomic index publication
+    pub(in crate::daemon::state) desktop_index_refresh: OnceLock<DesktopIndexRefreshHandle>,
     // Trial mode allows local rebuild loops without forcing daemon restarts for control auth
     pub(in crate::daemon::state) trial_mode: bool,
     // Normal startup supplies None; private-bus protocol tests can inject one unique owner
@@ -111,6 +113,7 @@ impl DaemonState {
             notification_signal_bursts: StdMutex::new(std::collections::HashMap::new()),
             sender_metadata_cache: SenderMetadataCache::new(),
             desktop_identity_index,
+            desktop_index_refresh: OnceLock::new(),
             trial_mode,
             preauthorized_control_owner,
         })
@@ -118,5 +121,15 @@ impl DaemonState {
 
     pub(crate) const fn connection(&self) -> &Connection {
         &self.connection
+    }
+
+    pub(crate) fn set_desktop_index_refresh(&self, handle: DesktopIndexRefreshHandle) {
+        let _ = self.desktop_index_refresh.set(handle);
+    }
+
+    pub(crate) fn request_desktop_index_refresh(&self) -> bool {
+        self.desktop_index_refresh
+            .get()
+            .is_some_and(DesktopIndexRefreshHandle::request_manual)
     }
 }
