@@ -1,4 +1,4 @@
-//! Master-style collapsed group paint order and rear silhouettes
+//! Collapsed group paint order and bounded rear silhouettes
 
 use gtk::prelude::*;
 
@@ -22,8 +22,8 @@ pub(super) fn append_stack_layers(
     root: &gtk::Box,
     foreground: &unixnotis_ui::CutCorner,
 ) -> (gtk::Box, gtk::Box) {
-    let middle = build_stack_layer("unixnotis-stack-ghost-1");
-    let back = build_stack_layer("unixnotis-stack-ghost-2");
+    let middle = build_stack_layer("unixnotis-stack-layer-middle");
+    let back = build_stack_layer("unixnotis-stack-layer-back");
 
     // Later GTK siblings paint above earlier siblings when margins overlap
     for layer in STACK_LAYER_ORDER {
@@ -45,8 +45,7 @@ pub(super) const fn stack_layer_visibility(depth: u8) -> StackLayerVisibility {
 
 fn build_stack_layer(position_class: &str) -> gtk::Box {
     let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    layer.add_css_class("unixnotis-panel-card");
-    layer.add_css_class("unixnotis-stack-ghost");
+    layer.add_css_class("unixnotis-stack-layer");
     layer.add_css_class(position_class);
     layer.set_hexpand(true);
     layer.set_can_target(false);
