@@ -11,12 +11,13 @@ use crate::daemon::notifications::identity::{
     resolve_sender_metadata, SenderMetadataStatus, SENDER_CREDENTIAL_TIMEOUT,
 };
 use crate::daemon::notifications::ingress::payload::{
-    build_notification, communication_notification_candidate, materialize_conversation_avatar,
-    owned_to_string, resolve_expiration, NotificationInput, CONVERSATION_AVATAR_TIMEOUT,
+    build_notification, materialize_conversation_avatar, owned_to_string, resolve_expiration,
+    sender_visual_role, NotificationInput, SenderVisualRole, CONVERSATION_AVATAR_TIMEOUT,
 };
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::InsertOutcome;
 
+use super::avatar::run_avatar_worker;
 use super::wire_hints::WireHints;
 use super::NotificationServer;
 
@@ -142,29 +143,29 @@ impl NotificationServer {
                 input.app_name.clone(),
                 desktop_entry.clone(),
                 sender.clone(),
-                desktop_identity_index,
+                std::sync::Arc::clone(&desktop_identity_index),
             ),
         )
         .await;
-        let conversation_avatar =
-            if matches!(
-                resolution.attribution.status,
-                unixnotis_core::AttributionStatus::Verified
-                    | unixnotis_core::AttributionStatus::Recognized
-            ) && communication_notification_candidate(&input.hints, &input.actions)
-            {
-                let app_icon = input.app_icon.clone();
-                tokio::time::timeout(
-                    CONVERSATION_AVATAR_TIMEOUT,
-                    tokio::task::spawn_blocking(move || materialize_conversation_avatar(&app_icon)),
-                )
-                .await
-                .ok()
-                .and_then(Result::ok)
-                .flatten()
-            } else {
-                None
-            };
+        let conversation_avatar = if matches!(
+            sender_visual_role(
+                &resolution.attribution,
+                &desktop_identity_index,
+                &input.hints,
+                &input.actions,
+            ),
+            SenderVisualRole::ConversationAvatar
+        ) {
+            let app_icon = input.app_icon.clone();
+            run_avatar_worker(
+                move || materialize_conversation_avatar(&app_icon),
+                CONVERSATION_AVATAR_TIMEOUT,
+            )
+            .await
+            .flatten()
+        } else {
+            None
+        };
         if matches!(
             resolution.attribution.status,
             unixnotis_core::AttributionStatus::Conflict

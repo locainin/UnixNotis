@@ -1,5 +1,6 @@
 //! Freedesktop notification D-Bus server and request handling
 
+mod avatar;
 mod capabilities;
 mod close;
 mod flow;
