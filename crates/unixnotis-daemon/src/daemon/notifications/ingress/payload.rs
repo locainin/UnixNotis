@@ -208,8 +208,8 @@ pub(in crate::daemon::notifications) fn sender_visual_role(
                     .iter()
                     .any(|marker| category.split('.').any(|part| part == *marker))
             });
-    let desktop_metadata = !attribution.desktop_id.is_empty()
-        && index.desktop_id_has_communication_role(&attribution.desktop_id);
+    // The index rejects empty and unknown IDs, so no separate string check is needed here
+    let desktop_metadata = index.desktop_id_has_communication_role(&attribution.desktop_id);
     if explicit_metadata || desktop_metadata {
         SenderVisualRole::ConversationAvatar
     } else {
