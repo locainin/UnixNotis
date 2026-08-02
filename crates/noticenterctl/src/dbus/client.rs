@@ -25,6 +25,9 @@ pub trait ControlClient {
     // Ask the panel to close
     fn close_panel(&self) -> ControlFuture<'_, ()>;
 
+    // Rebuild desktop application records without restarting the daemon
+    fn refresh_applications(&self) -> ControlFuture<'_, ()>;
+
     // Remove every notification from both active and history areas
     fn clear_all(&self) -> ControlFuture<'_, ()>;
 
@@ -90,6 +93,10 @@ impl ControlClient for ControlProxy<'_> {
     fn close_panel(&self) -> ControlFuture<'_, ()> {
         // Send the close request and let the helper deal with timeout and errors
         Box::pin(run_control_call(ControlProxy::close_panel(self)))
+    }
+
+    fn refresh_applications(&self) -> ControlFuture<'_, ()> {
+        Box::pin(run_control_call(ControlProxy::refresh_applications(self)))
     }
 
     fn clear_all(&self) -> ControlFuture<'_, ()> {

@@ -176,7 +176,7 @@ fn unbind_disconnects_row_item_update_handler() {
         RowPresentation::default(),
     ));
 
-    assert!(contains_label_text(
+    assert!(!contains_label_text(
         &widgets.root.clone().upcast::<gtk::Widget>(),
         "summary 1"
     ));

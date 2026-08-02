@@ -12,6 +12,7 @@ pub(super) enum RecordedCall {
     OpenPanel,
     OpenPanelDebug(PanelDebugLevel),
     ClosePanel,
+    RefreshApplications,
     ClearAll,
     ClearActive,
     ClearHistory,
@@ -80,6 +81,10 @@ impl ControlClient for RecordingControlClient {
 
     fn close_panel(&self) -> ControlFuture<'_, ()> {
         self.record(RecordedCall::ClosePanel, ())
+    }
+
+    fn refresh_applications(&self) -> ControlFuture<'_, ()> {
+        self.record(RecordedCall::RefreshApplications, ())
     }
 
     fn clear_all(&self) -> ControlFuture<'_, ()> {

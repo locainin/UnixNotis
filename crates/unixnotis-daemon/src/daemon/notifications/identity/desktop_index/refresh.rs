@@ -18,6 +18,7 @@ const REFRESH_DEBOUNCE: Duration = Duration::from_millis(500);
 const MIN_REBUILD_INTERVAL: Duration = Duration::from_secs(5);
 const REFRESH_SIGNAL_CAPACITY: usize = 1;
 const MAX_WATCHED_DIRECTORIES: usize = 4_096;
+const FALLBACK_REBUILD_INTERVAL: Duration = Duration::from_secs(90);
 
 pub fn spawn_desktop_index_refresh(
     index: Arc<ArcSwap<DesktopIdentityIndex>>,
@@ -30,24 +31,47 @@ pub fn spawn_desktop_index_refresh(
         })
         .context("create desktop application watcher")?;
 
-    let active_watches = add_watch_directories(
-        &mut file_monitor,
-        watched_directories
-            .into_iter()
-            .take(MAX_WATCHED_DIRECTORIES),
-    );
-    if active_watches.is_empty() {
-        warn!("no desktop application directory is available for refresh watching");
+    let requested_watches = watched_directories
+        .into_iter()
+        .take(MAX_WATCHED_DIRECTORIES)
+        .collect::<HashSet<_>>();
+    let active_watches =
+        add_watch_directories(&mut file_monitor, requested_watches.iter().cloned());
+    let mut watch_coverage_incomplete =
+        has_incomplete_watch_coverage(requested_watches.len(), active_watches.len());
+    if watch_coverage_incomplete {
+        warn!(
+            requested = requested_watches.len(),
+            active = active_watches.len(),
+            "desktop application watch coverage is incomplete; periodic rebuilds enabled"
+        );
     }
 
     Ok(tokio::spawn(async move {
         // The watcher must stay owned by this task for kernel watches to remain registered
         let mut file_monitor = file_monitor;
         let mut active_watches = active_watches;
+        let mut fallback_tick = watch_coverage_incomplete.then(|| {
+            // Missing watches include an empty set so a newly created directory is discovered
+            tokio::time::interval_at(
+                tokio::time::Instant::now() + FALLBACK_REBUILD_INTERVAL,
+                FALLBACK_REBUILD_INTERVAL,
+            )
+        });
         let mut last_rebuild = Instant::now()
             .checked_sub(MIN_REBUILD_INTERVAL)
             .unwrap_or_else(Instant::now);
-        while refresh_rx.recv().await.is_some() {
+        loop {
+            let refresh_requested = match fallback_tick.as_mut() {
+                Some(tick) => tokio::select! {
+                    signal = refresh_rx.recv() => signal,
+                    _ = tick.tick() => Some(()),
+                },
+                None => refresh_rx.recv().await,
+            };
+            if refresh_requested.is_none() {
+                break;
+            }
             tokio::time::sleep(REFRESH_DEBOUNCE).await;
             // Drain events that arrived during the debounce window before one complete rebuild
             while refresh_rx.try_recv().is_ok() {}
@@ -69,6 +93,17 @@ pub fn spawn_desktop_index_refresh(
                     remove_stale_watches(&mut file_monitor, &active_watches, &requested);
                     active_watches.retain(|directory| requested.contains(directory));
                     active_watches.extend(added);
+                    watch_coverage_incomplete =
+                        has_incomplete_watch_coverage(requested.len(), active_watches.len());
+                    if watch_coverage_incomplete && fallback_tick.is_none() {
+                        // Continue polling after a rebuild if the watcher still misses paths
+                        fallback_tick = Some(tokio::time::interval_at(
+                            tokio::time::Instant::now() + FALLBACK_REBUILD_INTERVAL,
+                            FALLBACK_REBUILD_INTERVAL,
+                        ));
+                    } else if !watch_coverage_incomplete {
+                        fallback_tick = None;
+                    }
                     last_rebuild = Instant::now();
                     debug!("desktop application identity index refreshed");
                 }
@@ -78,6 +113,11 @@ pub fn spawn_desktop_index_refresh(
             }
         }
     }))
+}
+
+const fn has_incomplete_watch_coverage(requested: usize, active: usize) -> bool {
+    // An empty watch set can become valid later when an application directory appears
+    requested == 0 || requested != active
 }
 
 const fn rebuild_delay(elapsed: Duration) -> Duration {

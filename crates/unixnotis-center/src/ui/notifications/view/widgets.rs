@@ -16,7 +16,7 @@ use crate::control::{UiCommand, UiEvent};
 use super::item::{RowData, RowItem, RowKind};
 use super::row::group::{build_group_row, update_group_row, GroupRowWidgets};
 use super::row::notification::{
-    build_notification_row, update_notification_row, NotificationRowWidgets,
+    build_notification_row, clear_notification_row, update_notification_row, NotificationRowWidgets,
 };
 use crate::ui::icons::IconResolver;
 
@@ -95,7 +95,7 @@ impl RowWidgets {
     pub(super) fn unbind(&self) {
         self.disconnect();
         if let Some(notification) = &self.notification {
-            notification.default_activation.set_target(None);
+            clear_notification_row(notification);
         }
     }
 

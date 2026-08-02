@@ -1,6 +1,7 @@
 //! Notification binding and action-button behavior for inline replies
 
 use std::rc::Rc;
+use std::rc::Weak;
 
 use gtk::prelude::*;
 use unixnotis_core::{InlineReplyPolicy, NotificationView};
@@ -66,6 +67,17 @@ fn reset_reply_form(widgets: &InlineReplyWidgets) {
     widgets.send_button.set_sensitive(false);
     clear_reply_error(&widgets.error_label);
     widgets.revealer.set_reveal_child(false);
+}
+
+impl InlineReplyWidgets {
+    pub(in super::super) fn reset_for_recycle(&self) {
+        // A row can be unbound without a replacement notification
+        invalidate_reply_attempt(&self.state);
+        self.state.bound_id.set(0);
+        self.state.bound_generation.set(0);
+        *self.bound_snapshot.borrow_mut() = Weak::new();
+        reset_reply_form(self);
+    }
 }
 
 pub(in super::super) fn connect_inline_reply_button(

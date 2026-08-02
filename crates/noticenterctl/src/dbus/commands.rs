@@ -43,6 +43,9 @@ pub(super) async fn handle_command_with_debug_logs(
             // Explicit close avoids accidental toggles when the panel is hidden
             client.close_panel().await?;
         }
+        Command::RefreshApplications => {
+            client.refresh_applications().await?;
+        }
         Command::Clear | Command::ClearAll => {
             // Clear keeps legacy behavior: remove active notifications and saved history
             client.clear_all().await?;

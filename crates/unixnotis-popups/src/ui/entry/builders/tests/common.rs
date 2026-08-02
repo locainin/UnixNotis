@@ -35,14 +35,14 @@ fn title_and_body_builders_keep_text_classes_and_line_limits() {
     let mut view = view_model();
 
     let title = build_title_label(&view).expect("visible title");
-    let body = build_body_label(&view, 3).expect("visible body");
+    let body = build_body_label(&view, 5).expect("visible body");
 
     assert_eq!(title.text().as_str(), "Primary title");
     assert!(title.has_css_class("unixnotis-popup-summary"));
     assert_eq!(title.lines(), 2);
     assert_eq!(body.text().as_str(), "Supporting body");
     assert!(body.has_css_class("unixnotis-popup-body"));
-    assert_eq!(body.lines(), 3);
+    assert_eq!(body.lines(), 5);
 
     view.title.clear();
     view.body = None;
@@ -86,7 +86,7 @@ fn close_button_and_identity_header_keep_their_interaction_contracts() {
         Some("Dismiss notification")
     );
     assert!(header.identity.hexpands());
-    assert_eq!(header.trailing.margin_end(), 26);
+    assert_eq!(header.trailing.margin_end(), 24);
     assert_eq!(header.trailing.orientation(), gtk::Orientation::Vertical);
     assert!(header
         .trailing

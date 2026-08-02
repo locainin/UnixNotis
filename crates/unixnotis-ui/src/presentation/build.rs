@@ -169,10 +169,14 @@ fn identity_presentation(
             "Unknown application".to_string(),
             visible_claim(&claimed_name).map(|claim| format!("Claimed app: {claim}")),
         ),
-        AttributionStatus::Unresolved => (
-            "Unknown application".to_string(),
-            visible_claim(&claimed_name).map(|claim| format!("App label: {claim}")),
-        ),
+        AttributionStatus::Unresolved => {
+            // A claim can help people recognize a message, but never supplies trusted branding
+            let claim = visible_claim(&claimed_name);
+            (
+                claim.unwrap_or("Unknown application").to_string(),
+                claim.map(|_| "Identity could not be verified".to_string()),
+            )
+        }
     };
     let badge = match level {
         TrustLevel::Verified => BadgePresentation::AuthenticatedApplication,

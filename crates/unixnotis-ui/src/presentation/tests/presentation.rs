@@ -211,7 +211,7 @@ fn trusted_relay_claim_never_becomes_the_primary_application_identity() {
 }
 
 #[test]
-fn unknown_claim_stays_secondary_and_unverified() {
+fn unknown_claim_is_primary_but_remains_unverified() {
     let mut view = notification();
     view.attribution = NotificationAttribution::unresolved(
         "Local helper",
@@ -223,10 +223,10 @@ fn unknown_claim_stays_secondary_and_unverified() {
     let presentation = NotificationPresentation::from_view_at(&view, 1_000);
 
     assert_eq!(presentation.trust.level, TrustLevel::Unresolved);
-    assert_eq!(presentation.identity.primary_label, "Unknown application");
+    assert_eq!(presentation.identity.primary_label, "Local helper");
     assert_eq!(
         presentation.identity.secondary_claim.as_deref(),
-        Some("App label: Local helper")
+        Some("Identity could not be verified")
     );
 }
 

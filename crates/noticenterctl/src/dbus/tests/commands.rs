@@ -32,6 +32,10 @@ async fn panel_commands_dispatch_to_matching_control_calls() {
         (Command::TogglePanel, RecordedCall::TogglePanel),
         (Command::OpenPanel { debug: None }, RecordedCall::OpenPanel),
         (Command::ClosePanel, RecordedCall::ClosePanel),
+        (
+            Command::RefreshApplications,
+            RecordedCall::RefreshApplications,
+        ),
     ];
 
     for (command, expected) in cases {

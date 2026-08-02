@@ -2,7 +2,7 @@
 //!
 //! These helpers own the base storage lifecycle so mutation code can stay focused on updates
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,6 +13,13 @@ use super::item::{RowData, RowItem, RowPresentation};
 use super::types::{NotificationEntry, NotificationList};
 
 impl NotificationList {
+    pub fn clear_for_disconnect(&mut self) {
+        // Preserve group preferences while the old daemon generation is absent
+        let previous_expansion = std::mem::take(&mut self.group_expanded);
+        self.seed(Vec::new(), Vec::new());
+        self.group_expanded = previous_expansion;
+    }
+
     pub fn apply_limits(&mut self, max_active: usize, max_entries: usize) {
         let mut changed = false;
         if self.max_active != max_active {
@@ -35,7 +42,7 @@ impl NotificationList {
         self.entries.clear();
         self.active_order.clear();
         self.history_order.clear();
-        clear_seed_group_expansion(&mut self.group_expanded);
+        let previous_expansion = std::mem::take(&mut self.group_expanded);
         self.group_headers.clear();
         self.group_order.clear();
         self.group_order_scratch.clear();
@@ -54,6 +61,15 @@ impl NotificationList {
             self.insert_entry(notification, false);
         }
         self.trim_to_limits();
+        // Preserve the user's open groups when the daemon sends a new seed
+        self.group_expanded = previous_expansion
+            .into_iter()
+            .filter(|(key, _)| {
+                self.entries
+                    .values()
+                    .any(|entry| entry.app_key.as_ref() == key.as_ref())
+            })
+            .collect();
 
         debug!(
             active = self.active_order.len(),
@@ -144,10 +160,6 @@ fn now_millis() -> i64 {
         .ok()
         .and_then(|duration| i64::try_from(duration.as_millis()).ok())
         .unwrap_or(0)
-}
-
-fn clear_seed_group_expansion(group_expanded: &mut HashMap<Rc<str>, bool>) {
-    group_expanded.clear();
 }
 
 fn drain_order_over_limit(order: &mut VecDeque<u32>, max_entries: usize) -> Vec<u32> {

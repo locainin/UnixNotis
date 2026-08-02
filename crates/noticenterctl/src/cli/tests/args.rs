@@ -19,6 +19,13 @@ fn parses_open_panel_debug_default() {
 }
 
 #[test]
+fn parses_refresh_applications() {
+    let args = Args::try_parse_from(["noticenterctl", "refresh-applications"])
+        .expect("refresh command should parse");
+    assert!(matches!(args.command, Command::RefreshApplications));
+}
+
+#[test]
 fn parses_open_panel_debug_value() {
     // Verifies explicit debug values map to the requested verbosity
     let args = Args::try_parse_from(["noticenterctl", "open-panel", "--debug", "verbose"])

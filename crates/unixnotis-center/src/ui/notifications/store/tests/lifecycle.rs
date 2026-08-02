@@ -1,43 +1,13 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::{clear_seed_group_expansion, drain_order_over_limit};
+use super::drain_order_over_limit;
 
 use crate::ui::notifications::test_support as support;
 
 fn ordered_ids(ids: &[u32]) -> VecDeque<u32> {
     ids.iter().copied().collect()
-}
-
-#[test]
-fn seed_group_state_reset_clears_expanded_groups() {
-    let mut group_expanded = HashMap::from([(Rc::<str>::from("Crash Reporting System"), true)]);
-
-    clear_seed_group_expansion(&mut group_expanded);
-
-    assert!(group_expanded.is_empty());
-}
-
-#[test]
-fn seed_group_state_reset_clears_collapsed_groups_too() {
-    let mut group_expanded = HashMap::from([
-        (Rc::<str>::from("Crash Reporting System"), false),
-        (Rc::<str>::from("notify-send"), true),
-    ]);
-
-    clear_seed_group_expansion(&mut group_expanded);
-
-    assert!(group_expanded.is_empty());
-}
-
-#[test]
-fn seed_group_state_reset_accepts_empty_state() {
-    let mut group_expanded = HashMap::new();
-
-    clear_seed_group_expansion(&mut group_expanded);
-
-    assert!(group_expanded.is_empty());
 }
 
 #[test]
@@ -91,10 +61,10 @@ fn drain_order_over_limit_zero_capacity_accepts_empty_order() {
 }
 
 #[gtk::test]
-fn seed_replaces_existing_state_and_requests_rebuild() {
+fn seed_preserves_existing_group_expansion_for_surviving_groups() {
     let mut list = support::make_list();
-    let stale_key = Rc::<str>::from("crash reporting system");
-    list.group_expanded.insert(stale_key, true);
+    list.group_expanded
+        .insert(Rc::<str>::from("test:terminal"), true);
 
     list.seed(
         vec![
@@ -104,11 +74,40 @@ fn seed_replaces_existing_state_and_requests_rebuild() {
         vec![support::notification(3, "History")],
     );
 
-    assert!(list.group_expanded.is_empty());
+    assert_eq!(list.group_expanded.get("test:terminal"), Some(&true));
     assert_eq!(list.total_count(), 3);
     assert_eq!(list.active_order, ordered_ids(&[2, 1]));
     assert_eq!(list.history_order, ordered_ids(&[3]));
     assert!(list.needs_rebuild());
+}
+
+#[gtk::test]
+fn disconnect_reset_keeps_group_expansion_until_reconnect_seed() {
+    let mut list = support::make_list();
+    list.seed(
+        vec![
+            support::notification(1, "Terminal"),
+            support::notification(2, "Terminal"),
+        ],
+        Vec::new(),
+    );
+    list.group_expanded
+        .insert(Rc::<str>::from("test:terminal"), true);
+
+    list.clear_for_disconnect();
+
+    assert!(list.entries.is_empty());
+    assert_eq!(list.group_expanded.get("test:terminal"), Some(&true));
+
+    list.seed(
+        vec![
+            support::notification(3, "Terminal"),
+            support::notification(4, "Terminal"),
+        ],
+        Vec::new(),
+    );
+
+    assert_eq!(list.group_expanded.get("test:terminal"), Some(&true));
 }
 
 #[gtk::test]

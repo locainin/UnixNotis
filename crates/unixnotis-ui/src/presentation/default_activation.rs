@@ -42,9 +42,9 @@ impl DefaultActionBinding {
             ""
         })]);
         if enabled {
-            root.add_css_class("unixnotis-popup-default-action");
+            root.add_css_class("unixnotis-default-action");
         } else {
-            root.remove_css_class("unixnotis-popup-default-action");
+            root.remove_css_class("unixnotis-default-action");
         }
     }
 }

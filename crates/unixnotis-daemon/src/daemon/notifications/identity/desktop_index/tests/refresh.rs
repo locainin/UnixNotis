@@ -5,7 +5,9 @@ use notify::{Event, EventKind};
 
 use std::time::Duration;
 
-use super::{queue_refresh_event, rebuild_delay, relevant_desktop_event};
+use super::{
+    has_incomplete_watch_coverage, queue_refresh_event, rebuild_delay, relevant_desktop_event,
+};
 use crate::test_support::TempRoot;
 
 #[test]
@@ -78,4 +80,12 @@ fn rebuild_delay_enforces_the_minimum_interval_without_oversleeping() {
     );
     assert_eq!(rebuild_delay(Duration::from_secs(5)), Duration::ZERO);
     assert_eq!(rebuild_delay(Duration::from_secs(8)), Duration::ZERO);
+}
+
+#[test]
+fn incomplete_watch_coverage_requires_periodic_rebuilds() {
+    assert!(has_incomplete_watch_coverage(2, 1));
+    assert!(has_incomplete_watch_coverage(1, 0));
+    assert!(has_incomplete_watch_coverage(0, 0));
+    assert!(!has_incomplete_watch_coverage(2, 2));
 }

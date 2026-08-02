@@ -778,14 +778,14 @@ entry selection {
   border-color: alpha(#ffffff, 0.14);
 }
 
-.unixnotis-panel-card:hover {
+.unixnotis-panel-card.unixnotis-default-action:hover {
   border-color: alpha(@unixnotis-accent, 0.22);
   box-shadow:
     0 14px 28px -20px @unixnotis-shadow-strong,
     inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
-.unixnotis-panel-card.active:hover {
+.unixnotis-panel-card.active.unixnotis-default-action:hover {
   border-color: alpha(@unixnotis-accent, 0.28);
   box-shadow:
     0 14px 28px -20px @unixnotis-shadow-strong,
@@ -795,6 +795,11 @@ entry selection {
 .unixnotis-panel-card.unixnotis-panel-card-grouped:hover,
 .unixnotis-panel-card.active.unixnotis-panel-card-grouped:hover {
   box-shadow: inset 0 0 0 1px alpha(#ffffff, 0.05);
+}
+
+.unixnotis-panel-card.unixnotis-default-action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px alpha(@unixnotis-accent, 0.25);
 }
 
 /*

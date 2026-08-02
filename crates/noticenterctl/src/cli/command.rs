@@ -17,6 +17,8 @@ pub enum Command {
     },
     // Close the panel if it is visible
     ClosePanel,
+    // Rebuild the daemon's desktop application index immediately
+    RefreshApplications,
     // Set or toggle Do Not Disturb mode
     Dnd {
         #[arg(value_enum)]

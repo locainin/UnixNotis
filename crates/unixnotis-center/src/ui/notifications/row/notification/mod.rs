@@ -16,4 +16,6 @@ mod update;
 // Re-export them here so callers do not need to know the internal file split
 pub(in crate::ui::notifications) use self::build::build_notification_row;
 pub(in crate::ui::notifications) use self::state::NotificationRowWidgets;
-pub(in crate::ui::notifications) use self::update::update_notification_row;
+pub(in crate::ui::notifications) use self::update::{
+    clear_notification_row, update_notification_row,
+};
