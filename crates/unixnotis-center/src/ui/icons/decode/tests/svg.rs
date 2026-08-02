@@ -8,16 +8,11 @@ use super::super::model::RasterImage;
 use super::super::pipeline::{MAX_ICON_DIMENSION, MAX_ICON_PIXELS};
 use super::super::svg::{
     checked_rgba_len, decode_svg_bytes_with_renderer, decompress_svgz_with_limit, is_gzip_payload,
+    resolve_svg_renderer,
 };
 
 fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage, String> {
-    let current_exe =
-        std::env::current_exe().map_err(|error| format!("resolve test executable: {error}"))?;
-    let renderer = current_exe
-        .parent()
-        .and_then(std::path::Path::parent)
-        .map(|directory| directory.join("unixnotis-svg-renderer"))
-        .ok_or_else(|| "resolve renderer directory".to_string())?;
+    let renderer = resolve_svg_renderer()?;
     decode_svg_bytes_with_renderer(bytes, target, &renderer)
 }
 
@@ -180,7 +175,7 @@ fn malformed_renderer_dimensions_are_rejected_without_large_allocation() {
     let renderer = directory.path().join("bad-renderer");
     std::fs::write(
         &renderer,
-        "#!/bin/sh\nprintf '\\377\\377\\377\\377\\377\\377\\377\\377'\n",
+        "#!/bin/sh\n# Consume the complete request before returning malformed dimensions\ndd bs=1 count=8 iflag=fullblock of=/dev/null 2>/dev/null || exit 1\ncat >/dev/null\nprintf '\\377\\377\\377\\377\\377\\377\\377\\377'\n",
     )
     .expect("write renderer fixture");
     std::fs::set_permissions(&renderer, std::fs::Permissions::from_mode(0o755))
@@ -198,7 +193,11 @@ fn malformed_renderer_dimensions_are_rejected_without_large_allocation() {
 fn renderer_deadline_terminates_a_slow_child() {
     let directory = tempfile::tempdir().expect("create renderer fixture directory");
     let renderer = directory.path().join("slow-renderer");
-    std::fs::write(&renderer, "#!/bin/sh\nsleep 2\n").expect("write renderer fixture");
+    std::fs::write(
+        &renderer,
+        "#!/bin/sh\n# Consume the request so the parent can finish writing before the timeout\ncat >/dev/null\nsleep 2\n",
+    )
+    .expect("write renderer fixture");
     std::fs::set_permissions(&renderer, std::fs::Permissions::from_mode(0o755))
         .expect("make renderer executable");
 
