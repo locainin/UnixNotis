@@ -3,7 +3,7 @@
  * Panel shell, list, and notification group styling.
  */
 .unixnotis-panel {
-  min-width: 420px;
+  min-width: 432px;
   background-image: linear-gradient(155deg, alpha(#080d18, 0.98) 0%, alpha(#10152a, 0.98) 58%, alpha(#241734, 0.97) 100%);
   color: @unixnotis-text;
   border-radius: 20px;
@@ -525,6 +525,16 @@ entry selection {
   transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
+.unixnotis-panel-card-thumbnail {
+  border-radius: 10px;
+  background: alpha(@unixnotis-surface-strong-base, 0.42);
+  box-shadow: 0 5px 14px -8px alpha(#000000, 0.78);
+}
+
+.unixnotis-panel-card-thumbnail.unixnotis-panel-sender-visual {
+  opacity: 0.92;
+}
+
 .unixnotis-panel-card.collapsed-group-preview {
   box-shadow:
     0 12px 24px -20px @unixnotis-shadow-strong,
@@ -672,7 +682,8 @@ entry selection {
 }
 
 .unixnotis-panel-summary {
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.2;
   color: @unixnotis-text;
   font-weight: 650;
 }
@@ -680,6 +691,7 @@ entry selection {
 .unixnotis-panel-body {
   color: @unixnotis-muted;
   font-size: 12px;
+  line-height: 1.34;
 }
 
 .unixnotis-popup-status {
