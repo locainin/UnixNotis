@@ -382,7 +382,7 @@ fn portal_association_cannot_start_host_avatar_materialization() {
             &attribution,
             &super::super::super::identity::DesktopIdentityIndex::default(),
             &HashMap::new(),
-            &[],
+            &["inline-reply".to_string(), "Reply".to_string()],
         ),
         SenderVisualRole::None
     );
@@ -394,6 +394,39 @@ fn large_avatar_is_downsampled_to_the_storage_bound() {
     let (width, height, data) = super::downsample_avatar(256, 128, source).expect("downsample");
     assert_eq!((width, height), (64, 32));
     assert_eq!(data.len(), 64 * 32 * 4);
+}
+
+#[test]
+fn avatar_downsampling_rejects_zero_dimensions_and_keeps_exact_size_images() {
+    assert!(super::downsample_avatar(0, 1, Vec::new()).is_none());
+    assert!(super::downsample_avatar(1, 0, Vec::new()).is_none());
+
+    let source = vec![7_u8; 64 * 64 * 4];
+    let source_ptr = source.as_ptr();
+    let (width, height, data) = super::downsample_avatar(64, 64, source).expect("exact bound");
+    assert_eq!((width, height), (64, 64));
+    assert_eq!(data.as_ptr(), source_ptr);
+}
+
+#[test]
+fn avatar_downsampling_maps_horizontal_and_vertical_pixels_by_scale() {
+    let mut horizontal = vec![0_u8; 128 * 2 * 4];
+    for x in 0..128 {
+        horizontal[x * 4] = u8::try_from(x).expect("horizontal fixture value");
+    }
+    let (width, height, data) =
+        super::downsample_avatar(128, 2, horizontal).expect("horizontal downsample");
+    assert_eq!((width, height), (64, 1));
+    assert_eq!(data[4], 2);
+
+    let mut vertical = vec![0_u8; 2 * 128 * 4];
+    for y in 0..128 {
+        vertical[y * 2 * 4] = u8::try_from(y).expect("vertical fixture value");
+    }
+    let (width, height, data) =
+        super::downsample_avatar(2, 128, vertical).expect("vertical downsample");
+    assert_eq!((width, height), (1, 64));
+    assert_eq!(data[4], 2);
 }
 
 #[cfg(target_os = "linux")]
