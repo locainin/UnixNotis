@@ -15,16 +15,17 @@
   min-height: var(--unixnotis-popup-close-size);
   box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
   color: alpha(#ffffff, 0.70);
-  opacity: 0;
+  opacity: 0.58;
   transition: opacity 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
 .unixnotis-popup-card:hover .unixnotis-popup-close,
-.unixnotis-popup-close:focus-visible {
+.unixnotis-popup-close:focus-visible,
+.unixnotis-popup-close:hover {
   opacity: 1;
 }
 
-.unixnotis-popup-close:hover {
+.unixnotis-popup-card .unixnotis-popup-close:hover {
   background: alpha(#fb7185, 0.16);
   border-color: alpha(#fb7185, 0.45);
   color: #fb7185;
@@ -57,7 +58,7 @@
     inset 0 1px 0 alpha(#ffffff, 0.035);
 }
 
-.unixnotis-popup-card.unixnotis-popup-default-action:focus-visible {
+.unixnotis-popup-card.unixnotis-default-action:focus-visible {
   border-color: alpha(@unixnotis-accent, 0.48);
   outline: none;
   box-shadow:
@@ -92,7 +93,7 @@
 .unixnotis-popup-app-name {
   color: alpha(@unixnotis-text, 0.68);
   font-weight: 600;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .unixnotis-popup-time {

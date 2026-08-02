@@ -38,7 +38,7 @@ fn binding_replaces_and_clears_the_current_generation() {
     binding.set_target(None);
     assert!(binding.target.borrow().is_none());
     assert!(!card.is_focusable());
-    assert!(!card.has_css_class("unixnotis-popup-default-action"));
+    assert!(!card.has_css_class("unixnotis-default-action"));
 }
 
 #[gtk::test]

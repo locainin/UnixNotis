@@ -18,7 +18,7 @@ pub(super) fn build_communication_popup(
         view,
         PopupLayout {
             css_class: "unixnotis-popup-communication-content",
-            body_lines: 3,
+            body_lines: 5,
             show_reply_note: true,
         },
     )

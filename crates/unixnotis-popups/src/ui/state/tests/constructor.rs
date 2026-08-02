@@ -250,7 +250,7 @@ fn unknown_attribution_uses_a_short_chip_without_showing_raw_provenance() {
     ));
     assert!(visible_descendant_has_text(
         root.upcast_ref(),
-        "App label: Signal"
+        "Identity could not be verified"
     ));
 }
 

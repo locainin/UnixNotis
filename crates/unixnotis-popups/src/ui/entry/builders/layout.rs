@@ -11,7 +11,7 @@ use super::{append_thumbnail, RenderedPopup};
 use crate::ui::entry::presentation::PopupEntryViewModel;
 use crate::ui::UiState;
 
-const POPUP_IDENTITY_SIZE: i32 = 38;
+const POPUP_IDENTITY_SIZE: i32 = 34;
 
 pub(super) struct PopupLayout {
     pub(super) css_class: &'static str,
@@ -28,7 +28,7 @@ pub(super) fn build_popup_grid(
     let grid = gtk::Grid::new();
     grid.add_css_class(layout.css_class);
     grid.add_css_class("unixnotis-popup-content-grid");
-    grid.set_column_spacing(10);
+    grid.set_column_spacing(8);
     grid.set_row_spacing(4);
     grid.set_hexpand(true);
     grid.set_accessible_role(gtk::AccessibleRole::Group);

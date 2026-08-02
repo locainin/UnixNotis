@@ -18,7 +18,7 @@ pub(super) fn build_utility_popup(
         view,
         PopupLayout {
             css_class: "unixnotis-popup-utility-content",
-            body_lines: 2,
+            body_lines: 4,
             show_reply_note: false,
         },
     )
