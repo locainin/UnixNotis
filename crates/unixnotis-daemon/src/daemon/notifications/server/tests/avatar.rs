@@ -8,7 +8,15 @@ use std::time::Duration;
 
 use tokio::sync::Semaphore;
 
-use super::super::avatar::run_avatar_worker_with_pool;
+use super::super::avatar::{run_avatar_worker, run_avatar_worker_with_pool};
+
+#[tokio::test]
+async fn public_avatar_worker_runs_a_completed_job() {
+    assert_eq!(
+        run_avatar_worker(|| 7_u8, Duration::from_secs(1)).await,
+        Some(7)
+    );
+}
 
 #[tokio::test]
 async fn avatar_worker_capacity_fails_closed_without_queueing() {
