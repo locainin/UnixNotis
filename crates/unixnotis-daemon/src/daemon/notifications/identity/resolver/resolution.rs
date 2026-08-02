@@ -10,7 +10,7 @@ use super::super::desktop_index::{
     VerifiedLaunch,
 };
 use super::super::policy::inline_reply_policy;
-use super::super::sender::SenderMetadata;
+use super::super::sender::{SenderMetadata, SenderMetadataStatus};
 use super::diagnostics::{launch_failure_label, with_diagnostics};
 use super::model::VerifiedDesktopRecord;
 use super::{AppClaim, AttributionResolution};
@@ -20,6 +20,14 @@ pub(in crate::daemon) fn unknown_reply_denied(
     sender: &SenderMetadata,
     reason: &str,
 ) -> AttributionResolution {
+    let reason = match sender.status {
+        SenderMetadataStatus::CredentialLookupTimedOut => {
+            "sender metadata: credential lookup timed out"
+        }
+        SenderMetadataStatus::CredentialLookupFailed => "sender metadata: credential lookup failed",
+        SenderMetadataStatus::MissingSenderName => "sender metadata: sender name missing",
+        SenderMetadataStatus::Complete | SenderMetadataStatus::ProcessEvidenceUnavailable => reason,
+    };
     let detail = sender.sender_executable.as_deref().map_or_else(
         || reason.to_string(),
         |path| format!("{reason}; source {path}"),

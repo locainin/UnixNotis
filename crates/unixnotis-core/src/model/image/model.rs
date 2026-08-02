@@ -24,6 +24,10 @@ pub struct ImageData {
 pub struct NotificationImage {
     pub has_image_data: bool,
     pub image_data: ImageData,
+    // Conversation avatars are decoded before leaving the daemon
+    pub has_conversation_avatar: bool,
+    pub conversation_avatar: ImageData,
+    // image_path remains reserved for message content media
     pub image_path: String,
     pub icon_name: String,
 }

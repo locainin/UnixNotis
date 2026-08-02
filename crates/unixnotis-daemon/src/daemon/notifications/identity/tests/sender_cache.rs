@@ -1,5 +1,7 @@
 use super::{SenderMetadataCache, MAX_CACHED_SENDERS};
-use crate::daemon::notifications::identity::sender::{CommandLineEvidence, SenderMetadata};
+use crate::daemon::notifications::identity::sender::{
+    CommandLineEvidence, SenderMetadata, SenderMetadataStatus,
+};
 
 fn metadata(sender: &str, pid: u32) -> SenderMetadata {
     SenderMetadata {
@@ -13,6 +15,7 @@ fn metadata(sender: &str, pid: u32) -> SenderMetadata {
             crate::daemon::notifications::identity::desktop_index::InstallProvenance::default(),
         command_line: CommandLineEvidence::default(),
         ancestors: Vec::new(),
+        status: SenderMetadataStatus::Complete,
     }
 }
 

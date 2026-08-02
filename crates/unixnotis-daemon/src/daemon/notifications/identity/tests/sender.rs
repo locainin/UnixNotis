@@ -1,5 +1,70 @@
 use super::*;
 
+#[tokio::test]
+async fn credential_reads_run_concurrently_within_the_supported_deadline() {
+    let started = std::time::Instant::now();
+    let (uid, pid) = resolve_connection_credentials(
+        async {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            Ok::<u32, zbus::Error>(1_000)
+        },
+        async {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            Ok::<u32, zbus::Error>(42)
+        },
+    )
+    .await;
+
+    assert!(started.elapsed() < std::time::Duration::from_millis(350));
+    assert_eq!((uid, pid), (Some(1_000), Some(42)));
+}
+
+#[tokio::test]
+async fn failed_credential_read_is_returned_without_process_evidence() {
+    let (uid, pid) = resolve_connection_credentials(
+        async { Err::<u32, zbus::Error>(zbus::Error::Failure("uid unavailable".into())) },
+        async { Ok::<u32, zbus::Error>(42) },
+    )
+    .await;
+
+    assert_eq!(uid, None);
+    assert_eq!(pid, Some(42));
+}
+
+#[test]
+fn credential_metadata_keeps_sender_identity_and_failure_stage() {
+    let metadata = metadata_from_credentials(Some(":1.42".to_string()), Some(42), Some(1_000));
+
+    assert_eq!(metadata.sender_name.as_deref(), Some(":1.42"));
+    assert_eq!(metadata.sender_pid, Some(42));
+    assert_eq!(metadata.sender_uid, Some(1_000));
+    assert_eq!(metadata.install_provenance, InstallProvenance::Unknown);
+    assert_eq!(
+        metadata.status,
+        SenderMetadataStatus::ProcessEvidenceUnavailable
+    );
+
+    let failed = metadata_from_credentials(Some(":1.43".to_string()), Some(43), None);
+    assert_eq!(failed.status, SenderMetadataStatus::CredentialLookupFailed);
+    assert_eq!(failed.install_provenance, InstallProvenance::Unknown);
+}
+
+#[test]
+fn status_metadata_preserves_sender_name_and_failure_status() {
+    let metadata = metadata_with_status(
+        Some(":1.99".to_string()),
+        SenderMetadataStatus::CredentialLookupTimedOut,
+    );
+
+    assert_eq!(metadata.sender_name.as_deref(), Some(":1.99"));
+    assert_eq!(
+        metadata.status,
+        SenderMetadataStatus::CredentialLookupTimedOut
+    );
+    assert!(metadata.sender_pid.is_none());
+    assert!(metadata.sender_uid.is_none());
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn parse_process_start_time_handles_spaces_in_comm() {
@@ -122,6 +187,29 @@ fn security_refresh_clears_evidence_for_a_stale_process_lifetime() {
         refreshed.command_line.quality,
         CommandLineQuality::Unavailable
     );
+    assert!(refreshed.command_line.argv.is_empty());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn security_refresh_rejects_a_sender_uid_that_changed() {
+    let pid = std::process::id();
+    let start_time = read_process_start_time(pid).expect("current process start time");
+    let uid = read_process_real_uid(pid).expect("current process uid");
+    let original = SenderMetadata {
+        sender_pid: Some(pid),
+        sender_start_time: Some(start_time),
+        sender_uid: Some(uid.wrapping_add(1)),
+        ..SenderMetadata::default()
+    };
+
+    let refreshed = refresh_sender_security_evidence(&original);
+
+    assert_eq!(
+        refreshed.status,
+        SenderMetadataStatus::ProcessEvidenceUnavailable
+    );
+    assert!(refreshed.sender_executable_identity.is_none());
     assert!(refreshed.command_line.argv.is_empty());
 }
 

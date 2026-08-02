@@ -4,6 +4,7 @@
 //! notification delivery
 
 use std::fs::File;
+use std::future::Future;
 use std::io::Read;
 
 use zbus::fdo::DBusProxy;
@@ -17,6 +18,8 @@ use crate::daemon::notifications::identity::desktop_index::InstallProvenance;
 const MAX_PROCESS_CMDLINE_BYTES: u64 = 128 * 1024;
 const MAX_PROCESS_ARGUMENTS: usize = 256;
 const MAX_PROCESS_ANCESTORS: usize = 8;
+pub(in crate::daemon) const SENDER_CREDENTIAL_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_millis(500);
 
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 pub(in crate::daemon::notifications) enum CommandLineQuality {
@@ -31,6 +34,16 @@ pub(in crate::daemon::notifications) enum CommandLineQuality {
 pub(in crate::daemon::notifications) struct CommandLineEvidence {
     pub(in crate::daemon::notifications) argv: Vec<Vec<u8>>,
     pub(in crate::daemon::notifications) quality: CommandLineQuality,
+}
+
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+pub(in crate::daemon) enum SenderMetadataStatus {
+    Complete,
+    MissingSenderName,
+    CredentialLookupFailed,
+    CredentialLookupTimedOut,
+    #[default]
+    ProcessEvidenceUnavailable,
 }
 
 /// Stable executable evidence for one same-user process ancestor
@@ -63,6 +76,38 @@ pub(in crate::daemon) struct SenderMetadata {
     pub(in crate::daemon::notifications) command_line: CommandLineEvidence,
     // Ancestors remain supporting evidence and never grant actions by themselves
     pub(in crate::daemon::notifications) ancestors: Vec<ProcessLineageEvidence>,
+    // The stage that failed remains visible to diagnostics instead of becoming generic unknown
+    pub(in crate::daemon::notifications) status: SenderMetadataStatus,
+}
+
+fn metadata_with_status(
+    sender_name: Option<String>,
+    status: SenderMetadataStatus,
+) -> SenderMetadata {
+    SenderMetadata {
+        sender_name,
+        status,
+        ..SenderMetadata::default()
+    }
+}
+
+fn metadata_from_credentials(
+    sender_name: Option<String>,
+    process_id: Option<u32>,
+    user_id: Option<u32>,
+) -> SenderMetadata {
+    let status = if user_id.is_some() && process_id.is_some() {
+        SenderMetadataStatus::ProcessEvidenceUnavailable
+    } else {
+        SenderMetadataStatus::CredentialLookupFailed
+    };
+    SenderMetadata {
+        sender_name,
+        sender_pid: process_id,
+        sender_uid: user_id,
+        status,
+        ..SenderMetadata::default()
+    }
 }
 
 pub(in crate::daemon) async fn resolve_sender_metadata(
@@ -73,17 +118,7 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
     // Sender lookup failures are non-fatal and should degrade to "unknown"
     let sender_name = header.sender().map(|sender| sender.as_str().to_string());
     let Some(sender_name_str) = sender_name.as_deref() else {
-        return SenderMetadata {
-            sender_name,
-            sender_pid: None,
-            sender_start_time: None,
-            sender_uid: None,
-            sender_executable: None,
-            sender_executable_identity: None,
-            install_provenance: InstallProvenance::Unknown,
-            command_line: CommandLineEvidence::default(),
-            ancestors: Vec::new(),
-        };
+        return metadata_with_status(sender_name, SenderMetadataStatus::MissingSenderName);
     };
 
     // Unique names are stable for one bus connection and safe cache identities
@@ -93,82 +128,62 @@ pub(in crate::daemon) async fn resolve_sender_metadata(
     let cache_key = sender_name_str.to_string();
 
     let Ok(bus_name) = zbus::names::BusName::try_from(sender_name_str) else {
-        return SenderMetadata {
-            sender_name,
-            sender_pid: None,
-            sender_start_time: None,
-            sender_uid: None,
-            sender_executable: None,
-            sender_executable_identity: None,
-            install_provenance: InstallProvenance::Unknown,
-            command_line: CommandLineEvidence::default(),
-            ancestors: Vec::new(),
-        };
+        return metadata_with_status(sender_name, SenderMetadataStatus::CredentialLookupFailed);
     };
 
     let Ok(proxy) = DBusProxy::new(connection).await else {
-        return SenderMetadata {
-            sender_name,
-            sender_pid: None,
-            sender_start_time: None,
-            sender_uid: None,
-            sender_executable: None,
-            sender_executable_identity: None,
-            install_provenance: InstallProvenance::Unknown,
-            command_line: CommandLineEvidence::default(),
-            ancestors: Vec::new(),
-        };
+        return metadata_with_status(sender_name, SenderMetadataStatus::CredentialLookupFailed);
     };
 
-    // PID and executable come from the bus owner, not caller-provided payload fields
-    let connection_user_id = proxy.get_connection_unix_user(bus_name.clone()).await.ok();
-    let connection_process_id = proxy.get_connection_unix_process_id(bus_name).await.ok();
-    let (sender_start_time, process_evidence) = connection_process_id.map_or((None, None), |pid| {
-        let start_before = read_process_start_time(pid);
-        let executable = executable_evidence_for_pid(pid);
-        let command_line = read_process_cmdline(pid, executable.as_ref());
-        let evidence = (executable, command_line);
-        let start_after = read_process_start_time(pid);
-        stable_process_evidence(start_before, Some(evidence), start_after)
-    });
-    let (executable_evidence, command_line) =
-        process_evidence.unwrap_or_else(|| (None, CommandLineEvidence::default()));
-    let sender_executable = executable_evidence
-        .as_ref()
-        .map(|evidence| evidence.canonical_path.display().to_string());
-    let sender_executable_identity = executable_evidence.map(|evidence| evidence.identity);
-    let stable_uid = connection_process_id
-        .zip(connection_user_id)
-        .and_then(|(pid, uid)| (read_process_real_uid(pid) == Some(uid)).then_some(uid));
-    let ancestors = connection_process_id
-        .zip(sender_start_time)
-        .zip(stable_uid)
-        .map_or_else(Vec::new, |((pid, _start_time), uid)| {
-            collect_process_lineage(pid, uid)
-        });
-
-    let metadata = SenderMetadata {
-        sender_name,
-        sender_pid: connection_process_id,
-        sender_start_time,
-        sender_uid: stable_uid,
-        sender_executable,
-        sender_executable_identity,
-        install_provenance: InstallProvenance::Unknown,
-        command_line,
-        ancestors,
-    };
-    // Failed lookups remain retryable instead of becoming persistent unknown identities
-    if metadata.sender_start_time.is_some() && metadata.sender_executable_identity.is_some() {
+    // Credentials are the only asynchronous pre-attribution work
+    let (connection_user_id, connection_process_id) = resolve_connection_credentials(
+        proxy.get_connection_unix_user(bus_name.clone()),
+        proxy.get_connection_unix_process_id(bus_name),
+    )
+    .await;
+    let metadata =
+        metadata_from_credentials(sender_name, connection_process_id, connection_user_id);
+    // Credentials remain cached while process evidence is refreshed inside the worker
+    if metadata.sender_pid.is_some() && metadata.sender_uid.is_some() {
         cache.insert(cache_key, metadata.clone());
     }
     metadata
 }
 
+async fn resolve_connection_credentials<U, P, EU, EP>(
+    user_id: U,
+    process_id: P,
+) -> (Option<u32>, Option<u32>)
+where
+    U: Future<Output = Result<u32, EU>>,
+    P: Future<Output = Result<u32, EP>>,
+{
+    let (user_id, process_id) = tokio::join!(user_id, process_id);
+    (user_id.ok(), process_id.ok())
+}
+
 pub(super) fn refresh_sender_security_evidence(metadata: &SenderMetadata) -> SenderMetadata {
     let mut refreshed = metadata.clone();
-    let (Some(pid), Some(expected_start)) = (metadata.sender_pid, metadata.sender_start_time)
-    else {
+    let Some(pid) = metadata.sender_pid else {
+        return refreshed;
+    };
+    if metadata.sender_uid.is_none()
+        && matches!(
+            metadata.status,
+            SenderMetadataStatus::CredentialLookupFailed
+                | SenderMetadataStatus::CredentialLookupTimedOut
+                | SenderMetadataStatus::MissingSenderName
+        )
+    {
+        refreshed.status = SenderMetadataStatus::ProcessEvidenceUnavailable;
+        return refreshed;
+    }
+    // Fresh credential metadata has no expected lifetime yet; capture it in this worker
+    let expected_start = metadata
+        .sender_start_time
+        .or_else(|| read_process_start_time(pid));
+    let Some(expected_start) = expected_start else {
+        refreshed.status = SenderMetadataStatus::ProcessEvidenceUnavailable;
         return refreshed;
     };
 
@@ -185,6 +200,7 @@ pub(super) fn refresh_sender_security_evidence(metadata: &SenderMetadata) -> Sen
         refreshed.sender_executable_identity = None;
         refreshed.command_line = CommandLineEvidence::default();
         refreshed.ancestors.clear();
+        refreshed.status = SenderMetadataStatus::ProcessEvidenceUnavailable;
         return refreshed;
     }
 
@@ -198,6 +214,7 @@ pub(super) fn refresh_sender_security_evidence(metadata: &SenderMetadata) -> Sen
         refreshed.sender_executable_identity = None;
         refreshed.command_line = CommandLineEvidence::default();
         refreshed.ancestors.clear();
+        refreshed.status = SenderMetadataStatus::ProcessEvidenceUnavailable;
         return refreshed;
     }
 
@@ -209,6 +226,12 @@ pub(super) fn refresh_sender_security_evidence(metadata: &SenderMetadata) -> Sen
     refreshed.ancestors = metadata
         .sender_uid
         .map_or_else(Vec::new, |uid| collect_process_lineage(pid, uid));
+    refreshed.sender_start_time = Some(expected_start);
+    refreshed.status = if refreshed.sender_executable_identity.is_some() {
+        SenderMetadataStatus::Complete
+    } else {
+        SenderMetadataStatus::ProcessEvidenceUnavailable
+    };
     refreshed
 }
 
@@ -370,6 +393,10 @@ fn classify_command_line(
     }
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "kept as a focused process-lifetime test seam")
+)]
 fn stable_process_evidence<T>(
     start_before: Option<u64>,
     evidence: Option<T>,

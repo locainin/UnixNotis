@@ -43,6 +43,8 @@ impl NotificationImage {
         Self {
             has_image_data: image_data.is_some(),
             image_data: image_data.unwrap_or_default(),
+            has_conversation_avatar: false,
+            conversation_avatar: ImageData::default(),
             image_path,
             icon_name,
         }

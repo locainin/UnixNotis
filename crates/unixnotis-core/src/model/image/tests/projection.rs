@@ -13,6 +13,8 @@ fn listing_projection_removes_raw_image_bytes_but_keeps_identifiers() {
             channels: 4,
             data: vec![9, 8, 7, 6],
         },
+        has_conversation_avatar: false,
+        conversation_avatar: ImageData::default(),
         image_path: "/tmp/icon.png".to_string(),
         icon_name: "icon-name".to_string(),
     };
@@ -38,6 +40,8 @@ fn history_projection_drops_raw_data_only_when_alternate_identifier_exists() {
             channels: 4,
             data: vec![1, 2, 3, 4],
         },
+        has_conversation_avatar: false,
+        conversation_avatar: ImageData::default(),
         image_path: String::new(),
         icon_name: "app-icon".to_string(),
     };
