@@ -410,12 +410,14 @@ fn avatar_downsampling_rejects_zero_dimensions_and_keeps_exact_size_images() {
 
 #[test]
 fn avatar_downsampling_maps_horizontal_and_vertical_pixels_by_scale() {
-    let mut horizontal = vec![0_u8; 128 * 2 * 4];
+    // Keep the source height unchanged after scaling so the early-return guard
+    // must compare both dimensions rather than accepting one matching value
+    let mut horizontal = vec![0_u8; 128 * 4];
     for x in 0..128 {
         horizontal[x * 4] = u8::try_from(x).expect("horizontal fixture value");
     }
     let (width, height, data) =
-        super::downsample_avatar(128, 2, horizontal).expect("horizontal downsample");
+        super::downsample_avatar(128, 1, horizontal).expect("horizontal downsample");
     assert_eq!((width, height), (64, 1));
     assert_eq!(data[4], 2);
 
