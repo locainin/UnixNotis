@@ -556,7 +556,39 @@ entry selection {
 }
 
 .unixnotis-panel-card-foreground.collapsed-group-preview {
+  margin-top: -58px;
   margin-bottom: 10px;
+}
+
+.unixnotis-stack-ghost {
+  /* Full silhouettes keep the group depth visible without carrying notification content */
+  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.10);
+  border-radius: 18px;
+  padding: 0;
+  min-height: 68px;
+  opacity: 1;
+  margin-left: 10px;
+  margin-right: 10px;
+  margin-top: -58px;
+  margin-bottom: 0;
+  border: 1px solid alpha(@unixnotis-card-border, 0.62);
+  box-shadow:
+    0 -2px 10px -8px alpha(@unixnotis-accent, 0.22),
+    0 8px 14px -14px @unixnotis-shadow-soft;
+}
+
+.unixnotis-stack-ghost-2 {
+  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.06);
+  min-height: 68px;
+  opacity: 1;
+  margin-left: 20px;
+  margin-right: 20px;
+  margin-top: 0;
+  margin-bottom: 0;
+  border-color: alpha(@unixnotis-card-border, 0.42);
+  box-shadow:
+    0 -2px 10px -9px alpha(@unixnotis-accent, 0.14),
+    0 10px 16px -15px @unixnotis-shadow-soft;
 }
 
 .unixnotis-panel-card.active {
