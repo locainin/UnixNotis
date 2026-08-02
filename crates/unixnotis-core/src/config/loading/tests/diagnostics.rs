@@ -42,6 +42,18 @@ fn current_schema_produces_no_migration_diagnostic() {
 }
 
 #[test]
+fn current_empty_exact_media_policy_emits_a_warning() {
+    let report = Config::parse_with_report(
+        "config_version = 4\n[media]\nlocal_art_policy = \"exact_executable_only\"\n",
+    )
+    .expect("current config should parse");
+    assert!(report.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "config.media.empty-exact-allowlist"
+            && diagnostic.kind == ConfigDiagnosticKind::Warning
+    }));
+}
+
+#[test]
 fn adjustment_diagnostics_report_safe_scalar_changes_and_hide_commands() {
     let mut before = Config::default();
     before.widgets.refresh_interval_ms = 1;

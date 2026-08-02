@@ -11,7 +11,8 @@ use crate::config::schema::deserialize_config_with_migrations;
 use crate::{log_config_diagnostics, Config, ConfigLoadReport};
 
 use super::super::diagnostics::{
-    adjustment_diagnostics, migrated_field_diagnostic, migration_diagnostic, unknown_key_diagnostic,
+    adjustment_diagnostics, empty_exact_media_policy_diagnostic, migrated_field_diagnostic,
+    migration_diagnostic, unknown_key_diagnostic,
 };
 use super::ConfigError;
 
@@ -62,6 +63,7 @@ impl Config {
         let mut diagnostics = migration_diagnostic(contents)
             .into_iter()
             .collect::<Vec<_>>();
+        diagnostics.extend(empty_exact_media_policy_diagnostic(contents));
         diagnostics.extend(migrated_paths.into_iter().map(migrated_field_diagnostic));
         diagnostics.extend(ignored_keys.into_iter().map(unknown_key_diagnostic));
         let before_runtime = config.clone();

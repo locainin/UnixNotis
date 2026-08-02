@@ -67,8 +67,8 @@ pub(super) fn local_art_allowed(
         }
         MediaLocalArtPolicy::AllAdmitted => {
             // Browser bridges can direct the renderer to arbitrary host files via mpris:artUrl.
-            // Only native players (non-browser) may name host files for local artwork.
-            browser_family.is_none()
+            // Only native players with a stable owner descriptor may name host files
+            browser_family.is_none() && owner_executable_is_allowed
         }
     }
 }

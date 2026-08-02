@@ -75,7 +75,7 @@ pub struct MediaConfig {
     /// Controls which players may use local file paths for artwork
     pub local_art_policy: MediaLocalArtPolicy,
     /// Exact executable paths allowed for local artwork (device/inode verified)
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub local_art_executable_allowlist: Vec<String>,
 }
 
@@ -97,9 +97,9 @@ pub enum MediaLocalArtPolicy {
     /// Disable local artwork fetches for every player
     Disabled,
     /// Allow local artwork only for players whose executable matches the allowlist
-    #[default]
     ExactExecutableOnly,
     /// Allow local artwork for all admitted players
+    #[default]
     AllAdmitted,
 }
 

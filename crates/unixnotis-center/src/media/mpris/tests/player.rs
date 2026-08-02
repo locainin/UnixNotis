@@ -67,7 +67,7 @@ fn player_timeout_state_clear_releases_a_quarantine() {
 async fn player_state_uses_live_identity_owner_and_process_details() {
     let fixture = MprisFixture::start().await;
 
-    // Test with default config (empty allowlist, ExactExecutableOnly policy)
+    // Native players use bounded local artwork by default
     let state = build_player_state(&fixture.client, TEST_PLAYER_NAME, &MediaConfig::default())
         .await
         .expect("probe test MPRIS player")
@@ -77,8 +77,7 @@ async fn player_state_uses_live_identity_owner_and_process_details() {
     assert_eq!(state.identity, TEST_PLAYER_IDENTITY);
     assert_eq!(state.owner_pid, Some(std::process::id()));
     assert!(state.remote_art_allowed);
-    // With empty allowlist and ExactExecutableOnly policy, local art should be disabled
-    assert!(!state.local_art_allowed);
+    assert!(state.local_art_allowed);
     assert_eq!(
         state.unique_owner.as_deref(),
         fixture.server.unique_name().map(|name| name.as_str())

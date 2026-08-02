@@ -45,9 +45,8 @@ impl Default for MediaConfig {
             denylist: vec!["playerctld".to_string()],
             // Browsers stay opt-in because webpage metadata can choose artwork URLs
             remote_art_policy: MediaRemoteArtPolicy::NativeOnly,
-            // Local artwork requires exact executable allowlist match to prevent
-            // untrusted MPRIS services from directing the renderer to arbitrary host files
-            local_art_policy: MediaLocalArtPolicy::ExactExecutableOnly,
+            // Native players regain the normal cover-art behavior; browser local paths remain denied
+            local_art_policy: MediaLocalArtPolicy::AllAdmitted,
             local_art_executable_allowlist: Vec::new(),
         }
     }

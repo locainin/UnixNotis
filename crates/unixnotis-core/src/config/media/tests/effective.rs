@@ -1,6 +1,22 @@
 use crate::{
-    MediaArtPosition, MediaConfig, MediaControlsPosition, MediaLayout, MediaNavigationPosition,
+    MediaArtPosition, MediaConfig, MediaControlsPosition, MediaLayout, MediaLocalArtPolicy,
+    MediaNavigationPosition,
 };
+
+#[test]
+fn native_local_art_is_enabled_by_default() {
+    assert_eq!(
+        MediaConfig::default().local_art_policy,
+        MediaLocalArtPolicy::AllAdmitted
+    );
+}
+
+#[test]
+fn stock_media_serialization_names_native_art_policy_and_omits_empty_allowlist() {
+    let serialized = toml::to_string(&MediaConfig::default()).expect("serialize media config");
+    assert!(serialized.contains("local_art_policy = \"all_admitted\""));
+    assert!(!serialized.contains("local_art_executable_allowlist"));
+}
 
 #[test]
 fn preset_defaults_stay_stable() {

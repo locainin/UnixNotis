@@ -138,13 +138,20 @@ pub(super) async fn build_player_state_for_owner(
         config.remote_art_policy,
     );
     #[cfg(target_os = "linux")]
-    let owner_executable_is_allowed = owner.process_fd.as_ref().is_some_and(|process_fd| {
-        executable_allowed_from_pidfd(
-            process_fd,
-            owner.pid,
-            &config.local_art_executable_allowlist,
-        )
-    });
+    let owner_executable_is_allowed = match config.local_art_policy {
+        unixnotis_core::MediaLocalArtPolicy::ExactExecutableOnly => {
+            owner.process_fd.as_ref().is_some_and(|process_fd| {
+                executable_allowed_from_pidfd(
+                    process_fd,
+                    owner.pid,
+                    &config.local_art_executable_allowlist,
+                )
+            })
+        }
+        // The all-admitted policy still requires a stable broker-provided process descriptor
+        unixnotis_core::MediaLocalArtPolicy::AllAdmitted => owner.process_fd.is_some(),
+        unixnotis_core::MediaLocalArtPolicy::Disabled => false,
+    };
     #[cfg(not(target_os = "linux"))]
     let owner_executable_is_allowed = false;
     let local_art_allowed = local_art_allowed(

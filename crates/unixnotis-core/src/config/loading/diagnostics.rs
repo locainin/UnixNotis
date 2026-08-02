@@ -77,6 +77,34 @@ pub(super) fn migrated_field_diagnostic(path: String) -> ConfigDiagnostic {
     }
 }
 
+pub(super) fn empty_exact_media_policy_diagnostic(contents: &str) -> Option<ConfigDiagnostic> {
+    let document = contents.parse::<Value>().ok()?;
+    let root = document.as_table()?;
+    let version = root.get("config_version").and_then(Value::as_integer)?;
+    if u32::try_from(version).ok()? != CURRENT_CONFIG_VERSION {
+        return None;
+    }
+    let media = root.get("media").and_then(Value::as_table)?;
+    let exact = media
+        .get("local_art_policy")
+        .and_then(Value::as_str)
+        .is_some_and(|value| value == "exact_executable_only");
+    let empty = media
+        .get("local_art_executable_allowlist")
+        .and_then(Value::as_array)
+        .is_none_or(Vec::is_empty);
+    (exact && empty).then(|| ConfigDiagnostic {
+        code: "config.media.empty-exact-allowlist",
+        kind: ConfigDiagnosticKind::Warning,
+        path: Some("media.local_art_policy".to_string()),
+        message:
+            "Exact local artwork policy has an empty executable allowlist; artwork is disabled"
+                .to_string(),
+        original: Some("exact_executable_only".to_string()),
+        effective: None,
+    })
+}
+
 pub(super) fn unknown_key_diagnostic(path: String) -> ConfigDiagnostic {
     ConfigDiagnostic {
         code: "config.unknown-key",

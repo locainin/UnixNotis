@@ -114,10 +114,16 @@ fn migrate_document(document: &mut toml::Value) -> Result<MigrationResult, Strin
         0 | 1 => {
             let result = migrate_legacy_layout(root);
             migrate_legacy_commands(root)?;
+            migrate_media_art_policy(root, version);
             result
         }
         2 => {
             migrate_legacy_commands(root)?;
+            migrate_media_art_policy(root, version);
+            MigrationResult::default()
+        }
+        3 => {
+            migrate_media_art_policy(root, version);
             MigrationResult::default()
         }
         CURRENT_CONFIG_VERSION => MigrationResult::default(),
@@ -128,6 +134,35 @@ fn migrate_document(document: &mut toml::Value) -> Result<MigrationResult, Strin
         toml::Value::Integer(i64::from(CURRENT_CONFIG_VERSION)),
     );
     Ok(result)
+}
+
+fn migrate_media_art_policy(root: &mut toml::Table, version: u32) {
+    let Some(media) = root.get_mut("media").and_then(toml::Value::as_table_mut) else {
+        return;
+    };
+
+    // Older generated configurations inherited the restrictive exact policy while
+    // leaving its executable list empty, which disabled every native player's art
+    let Some(policy) = media.get("local_art_policy") else {
+        media.insert(
+            "local_art_policy".to_string(),
+            toml::Value::String("all_admitted".to_string()),
+        );
+        return;
+    };
+    let is_exact = policy
+        .as_str()
+        .is_some_and(|value| value == "exact_executable_only");
+    let empty_allowlist = media
+        .get("local_art_executable_allowlist")
+        .and_then(toml::Value::as_array)
+        .is_none_or(Vec::is_empty);
+    if version < CURRENT_CONFIG_VERSION && is_exact && empty_allowlist {
+        media.insert(
+            "local_art_policy".to_string(),
+            toml::Value::String("all_admitted".to_string()),
+        );
+    }
 }
 
 fn migrate_legacy_commands(root: &mut toml::Table) -> Result<(), String> {
