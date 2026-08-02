@@ -68,8 +68,8 @@ impl IconResolver {
         self.inner.apply_badge(image, notification, size, scale);
     }
 
-    pub fn apply_conversation_avatar(&self, image: &gtk::Image, notification: &NotificationView) {
-        self.inner.apply_conversation_avatar(image, notification);
+    pub fn apply_sender_visual(&self, image: &gtk::Image, notification: &NotificationView) {
+        self.inner.apply_sender_visual(image, notification);
     }
 
     pub fn clear_missing_cache(&self) {

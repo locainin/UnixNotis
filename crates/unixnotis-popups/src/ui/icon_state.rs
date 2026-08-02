@@ -35,7 +35,6 @@ impl UiState {
         if !matches!(
             notification.image.sender_visual_role,
             unixnotis_core::NotificationVisualRole::ConversationAvatar
-                | unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon
         ) {
             return None;
         }
@@ -44,6 +43,21 @@ impl UiState {
         let widget = gtk::Image::from_paintable(Some(&texture));
         set_popup_icon_size(&widget, size);
         widget.add_css_class("unixnotis-popup-conversation-avatar");
+        Some(widget)
+    }
+
+    pub(super) fn build_sender_visual_widget(
+        notification: &NotificationView,
+    ) -> Option<gtk::Image> {
+        if notification.image.sender_visual_role
+            != unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon
+        {
+            return None;
+        }
+        let texture = image_data_texture_for_data(&notification.image.sender_visual)?;
+        let widget = gtk::Image::from_paintable(Some(&texture));
+        set_popup_icon_size(&widget, POPUP_CONTENT_THUMBNAIL_SIZE);
+        widget.add_css_class("unixnotis-popup-application-visual");
         Some(widget)
     }
 
