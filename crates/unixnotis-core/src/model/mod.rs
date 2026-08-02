@@ -17,7 +17,7 @@ pub use diagnostics::{
     AttributionDiagnostics, CommandLineQualityView, LaunchAuthorityView, LaunchVerificationView,
     RecordTrust,
 };
-pub use image::{ImageData, NotificationImage};
+pub use image::{ImageData, NotificationImage, NotificationVisualRole};
 pub use interaction::{ApplicationActionPolicy, InlineReplyPolicy, InteractionPolicies};
 pub use notification::{Notification, NotificationKey, NotificationView};
 pub use reply::InlineReply;

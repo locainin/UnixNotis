@@ -11,7 +11,7 @@ impl NotificationImage {
         Self {
             has_image_data: false,
             image_data: ImageData::default(),
-            has_conversation_avatar: self.has_conversation_avatar,
+            visual_role: self.visual_role,
             conversation_avatar: self.conversation_avatar.clone(),
             image_path: self.image_path.clone(),
             icon_name: self.icon_name.clone(),

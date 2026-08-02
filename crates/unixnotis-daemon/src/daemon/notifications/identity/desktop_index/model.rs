@@ -154,9 +154,19 @@ pub struct DesktopIdentityIndex {
     pub(super) by_identity: HashMap<(u64, u64), Vec<usize>>,
     pub(super) by_name: HashMap<String, Vec<usize>>,
     pub(super) system_brand_names: HashSet<String>,
+    pub(super) communication_desktop_ids: HashSet<String>,
     pub(in crate::daemon::notifications::identity) trusted_relays: Vec<ExecutableIdentity>,
     pub(in crate::daemon::notifications::identity) trusted_portals: Vec<ExecutableIdentity>,
     pub(super) package_ownership: Arc<PackageOwnershipCache>,
+}
+
+impl DesktopIdentityIndex {
+    pub(in crate::daemon::notifications) fn desktop_id_has_communication_role(
+        &self,
+        desktop_id: &str,
+    ) -> bool {
+        self.communication_desktop_ids.contains(desktop_id) && self.by_id.contains_key(desktop_id)
+    }
 }
 
 #[derive(Debug, Clone)]

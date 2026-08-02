@@ -88,3 +88,19 @@ fn generic_name_is_an_association_alias_but_not_a_protected_brand() {
     assert!(index.claim_matches_system_app("Example Browser"));
     assert!(!index.claim_matches_system_app("Web Browser"));
 }
+
+#[test]
+fn desktop_categories_mark_conversation_capable_applications() {
+    let root = TempRoot::new("desktop-communication-category");
+    let path = root.join("org.example.Messages.desktop");
+    fs::write(
+        &path,
+        "[Desktop Entry]\nType=Application\nName=Messages\nCategories=Network;InstantMessaging;\nExec=/usr/bin/true\n",
+    )
+    .expect("desktop entry with communication category");
+    let mut index = DesktopIdentityIndex::default();
+
+    index.add_desktop_file(&path, true);
+
+    assert!(index.desktop_id_has_communication_role("org.example.messages"));
+}

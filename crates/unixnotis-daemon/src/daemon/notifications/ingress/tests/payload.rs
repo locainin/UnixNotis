@@ -5,12 +5,14 @@ use zbus::zvariant::OwnedValue;
 
 use super::{
     avatar_buffer_size_allowed, avatar_file_size_allowed, build_notification,
-    communication_notification_candidate, materialize_conversation_avatar, owned_to_string,
-    parse_actions, parse_urgency_hint, resolve_expiration, sanitize_hints_for_storage,
-    string_to_owned_value, NotificationInput, SenderMetadata, MAX_ACTIONS, MAX_BODY_BYTES,
-    MAX_CONVERSATION_AVATAR_BYTES, MAX_SUMMARY_BYTES,
+    materialize_conversation_avatar, may_materialize_host_avatar, owned_to_string, parse_actions,
+    parse_urgency_hint, resolve_expiration, sanitize_hints_for_storage, sender_visual_role,
+    string_to_owned_value, NotificationInput, SenderMetadata, SenderVisualRole, MAX_ACTIONS,
+    MAX_BODY_BYTES, MAX_CONVERSATION_AVATAR_BYTES, MAX_SUMMARY_BYTES,
 };
-use unixnotis_core::{AttributionReason, Config, NotificationImage, Urgency};
+use unixnotis_core::{
+    AttributionReason, Config, IdentityAssurance, InteractionPolicies, NotificationImage, Urgency,
+};
 
 #[test]
 fn build_notification_clamps_summary_and_body_sizes() {
@@ -262,7 +264,10 @@ fn conversation_avatar_never_changes_badge_or_unresolved_identity() {
         notification.attribution.badge_icon,
         "application-x-executable-symbolic"
     );
-    assert!(!notification.image.has_conversation_avatar);
+    assert_eq!(
+        notification.image.visual_role,
+        unixnotis_core::NotificationVisualRole::None
+    );
 }
 
 #[test]
@@ -301,33 +306,118 @@ fn verified_sender_keeps_explicit_message_image_path() {
 }
 
 #[test]
-fn communication_candidate_accepts_inline_reply_and_message_categories() {
-    assert!(communication_notification_candidate(
-        &HashMap::new(),
-        &["inline-reply".to_string(), "Reply".to_string()]
-    ));
+fn associated_sender_role_accepts_inline_reply_and_message_categories() {
+    let attribution = unixnotis_core::NotificationAttribution::recognized(
+        "Messages",
+        "Messages",
+        "org.example.Messages",
+        "messages",
+        unixnotis_core::AttributionReason::ExactUserExecutable,
+        "associated executable",
+        "recognized:system-app:org.example.Messages:sender".to_string(),
+    );
+    let index = super::super::super::identity::DesktopIdentityIndex::default();
+
+    assert_eq!(
+        sender_visual_role(
+            &attribution,
+            &index,
+            &HashMap::new(),
+            &["inline-reply".to_string(), "Reply".to_string()],
+        ),
+        SenderVisualRole::ConversationAvatar
+    );
 
     let mut hints = HashMap::new();
     hints.insert(
         "category".to_string(),
         string_to_owned_value("im.received").expect("category value"),
     );
-    assert!(communication_notification_candidate(&hints, &[]));
+    assert_eq!(
+        sender_visual_role(&attribution, &index, &hints, &[]),
+        SenderVisualRole::ConversationAvatar
+    );
 
     let mut exact = HashMap::new();
     exact.insert(
         "category".to_string(),
         string_to_owned_value("im").expect("exact category value"),
     );
-    assert!(communication_notification_candidate(&exact, &[]));
+    assert_eq!(
+        sender_visual_role(&attribution, &index, &exact, &[]),
+        SenderVisualRole::ConversationAvatar
+    );
 
     let mut unrelated = HashMap::new();
     unrelated.insert(
         "category".to_string(),
         string_to_owned_value("other").expect("unrelated category value"),
     );
-    assert!(!communication_notification_candidate(&unrelated, &[]));
-    assert!(!communication_notification_candidate(&HashMap::new(), &[]));
+    assert_eq!(
+        sender_visual_role(&attribution, &index, &unrelated, &[]),
+        SenderVisualRole::None
+    );
+    assert_eq!(
+        sender_visual_role(&attribution, &index, &HashMap::new(), &[]),
+        SenderVisualRole::None
+    );
+}
+
+#[test]
+fn portal_association_cannot_start_host_avatar_materialization() {
+    let attribution = unixnotis_core::NotificationAttribution::associated(
+        "Portal app",
+        "Portal app",
+        "org.example.PortalApp",
+        "portal-app",
+        IdentityAssurance::PortalAssociated,
+        InteractionPolicies::CONFIRM_ACTIONS,
+        AttributionReason::PortalAppIdAssociation,
+        "portal supplied app id",
+        "recognized:portal:org.example.PortalApp".to_string(),
+    );
+    assert!(!may_materialize_host_avatar(&attribution));
+    assert_eq!(
+        sender_visual_role(
+            &attribution,
+            &super::super::super::identity::DesktopIdentityIndex::default(),
+            &HashMap::new(),
+            &[],
+        ),
+        SenderVisualRole::None
+    );
+}
+
+#[test]
+fn large_avatar_is_downsampled_to_the_storage_bound() {
+    let source = vec![255_u8; 256 * 128 * 4];
+    let (width, height, data) = super::downsample_avatar(256, 128, source).expect("downsample");
+    assert_eq!((width, height), (64, 32));
+    assert_eq!(data.len(), 64 * 32 * 4);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn fifo_avatar_path_is_rejected_without_opening_a_blocking_reader() {
+    let directory = std::env::temp_dir().join(format!(
+        "unixnotis-avatar-fifo-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos()
+    ));
+    std::fs::create_dir(&directory).expect("create temporary directory");
+    let path = directory.join("avatar.fifo");
+    let path_string = path.to_string_lossy().into_owned();
+    let status = std::process::Command::new("mkfifo")
+        .arg(&path)
+        .status()
+        .expect("mkfifo available");
+    assert!(status.success());
+    assert!(materialize_conversation_avatar(&path_string).is_none());
+    let _ = std::fs::remove_file(path);
+    let _ = std::fs::remove_dir(directory);
 }
 
 #[test]
