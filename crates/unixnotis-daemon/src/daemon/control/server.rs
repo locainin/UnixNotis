@@ -9,7 +9,7 @@ use unixnotis_core::{
 use zbus::message::Header;
 use zbus::{interface, SignalContext};
 
-use crate::daemon::{auth, to_fdo_error, DaemonState};
+use crate::daemon::{auth, to_fdo_error, DaemonState, DesktopIdentityIndex};
 
 /// D-Bus server for com.unixnotis.Control
 pub struct ControlServer {
@@ -151,6 +151,22 @@ impl ControlServer {
     async fn open_panel(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
         self.request_panel_command(&header, "OpenPanel", PanelRequest::open())
             .await
+    }
+
+    async fn refresh_applications(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "RefreshApplications")
+            .await?;
+        // Build off the async runtime, then publish one immutable replacement snapshot
+        let snapshot = tokio::task::spawn_blocking(DesktopIdentityIndex::build_snapshot)
+            .await
+            .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?;
+        self.state
+            .desktop_identity_index
+            .store(Arc::new(snapshot.index));
+        Ok(())
     }
 
     async fn open_panel_debug(

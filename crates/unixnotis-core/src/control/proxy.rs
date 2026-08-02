@@ -46,6 +46,8 @@ trait Control {
     ) -> zbus::Result<Vec<NotificationDiagnosticsView>>;
     /// Open the control center panel
     fn open_panel(&self) -> zbus::Result<()>;
+    /// Rebuild the desktop application index immediately
+    fn refresh_applications(&self) -> zbus::Result<()>;
     /// Open the control center panel with debug logging
     fn open_panel_debug(&self, level: PanelDebugLevel) -> zbus::Result<()>;
     /// Close the control center panel
