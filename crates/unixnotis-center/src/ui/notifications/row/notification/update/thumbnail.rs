@@ -12,5 +12,8 @@ pub(super) fn notification_has_thumbnail(notification: &NotificationView) -> boo
 
 pub(super) const fn notification_has_conversation_avatar(notification: &NotificationView) -> bool {
     // Avatars are presentation-only raster data and never count as message content
-    notification.image.has_conversation_avatar
+    matches!(
+        notification.image.visual_role,
+        unixnotis_core::NotificationVisualRole::ConversationAvatar
+    )
 }

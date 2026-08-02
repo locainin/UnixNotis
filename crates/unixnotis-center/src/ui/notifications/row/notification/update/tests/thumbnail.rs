@@ -25,7 +25,7 @@ fn notification_thumbnail_only_uses_real_image_sources() {
 #[test]
 fn conversation_avatar_is_a_separate_thumbnail_source() {
     let mut notification = sample_notification();
-    notification.image.has_conversation_avatar = true;
+    notification.image.visual_role = unixnotis_core::NotificationVisualRole::ConversationAvatar;
     notification.image.conversation_avatar = ImageData {
         width: 1,
         height: 1,

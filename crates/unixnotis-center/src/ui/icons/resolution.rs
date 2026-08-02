@@ -23,7 +23,10 @@ impl IconResolverInner {
         notification: &NotificationView,
     ) {
         // The daemon has already decoded and bounded this sender-provided raster
-        if notification.image.has_conversation_avatar {
+        if matches!(
+            notification.image.visual_role,
+            unixnotis_core::NotificationVisualRole::ConversationAvatar
+        ) {
             if let Some(texture) =
                 image_data_texture_for_data(&notification.image.conversation_avatar)
             {

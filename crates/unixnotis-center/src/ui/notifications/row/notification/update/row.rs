@@ -108,8 +108,8 @@ pub(in crate::ui::notifications) fn update_notification_row(
     let show_identity = !data.collapsed_group_preview && !data.expanded;
     let has_actions = visible_action_count(notification, data.is_active) > 0;
     let has_content_thumbnail = notification_has_thumbnail(notification);
-    let has_conversation_avatar = notification_has_conversation_avatar(notification)
-        && presentation.kind == unixnotis_ui::presentation::NotificationKind::Communication;
+    // The daemon has already assigned the visual role after attribution and safe decoding
+    let has_conversation_avatar = notification_has_conversation_avatar(notification);
     let has_thumbnail =
         data.presentation.show_thumbnail && (has_content_thumbnail || has_conversation_avatar);
 

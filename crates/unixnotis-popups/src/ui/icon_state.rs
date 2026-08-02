@@ -32,7 +32,9 @@ impl UiState {
         size: i32,
     ) -> Option<gtk::Image> {
         // Conversation art is safe to render here because the daemon sent pixels, not a path
-        if !notification.image.has_conversation_avatar {
+        if notification.image.visual_role
+            != unixnotis_core::NotificationVisualRole::ConversationAvatar
+        {
             return None;
         }
 

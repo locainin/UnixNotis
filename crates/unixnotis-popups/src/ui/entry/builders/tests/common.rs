@@ -348,7 +348,7 @@ fn communication_identity_avatar_prefers_materialized_conversation_image() {
     let mut state = UiState::new(&app, config, root.join("config.toml"), command_tx, css);
     let mut notification = notification();
     notification.inline_reply.available = true;
-    notification.image.has_conversation_avatar = true;
+    notification.image.visual_role = unixnotis_core::NotificationVisualRole::ConversationAvatar;
     notification.image.conversation_avatar = unixnotis_core::ImageData {
         width: 1,
         height: 1,
@@ -367,6 +367,7 @@ fn communication_identity_avatar_prefers_materialized_conversation_image() {
         .and_downcast::<gtk::Image>()
         .expect("avatar should contain one image");
 
+    assert_eq!(icon.pixel_size(), 36);
     assert!(icon.has_css_class("unixnotis-popup-conversation-avatar"));
 }
 
