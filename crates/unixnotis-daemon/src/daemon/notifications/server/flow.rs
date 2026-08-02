@@ -13,6 +13,7 @@ use crate::daemon::notifications::identity::{
 use crate::daemon::notifications::ingress::payload::{
     build_notification, materialize_sender_visual, owned_to_string, resolve_expiration,
     sender_visual_role, NotificationInput, SenderVisualRole, CONVERSATION_AVATAR_TIMEOUT,
+    MAX_STORED_CONTENT_DIMENSION,
 };
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::InsertOutcome;
@@ -350,7 +351,7 @@ async fn materialize_content_visual(
         .filter(|path| !path.trim().is_empty())
         .map(str::to_owned)?;
     run_avatar_worker(
-        move || materialize_sender_visual(&path, 512),
+        move || materialize_sender_visual(&path, MAX_STORED_CONTENT_DIMENSION),
         CONVERSATION_AVATAR_TIMEOUT,
     )
     .await
