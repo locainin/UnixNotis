@@ -5,6 +5,7 @@
 //! RGB expansion live in focused files under `model/image`
 
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use zbus::zvariant::Type;
 
 /// Raw image data payload from notification hints
@@ -19,11 +20,24 @@ pub struct ImageData {
     pub data: Vec<u8>,
 }
 
+/// Presentation role selected by the daemon after attribution and payload checks
+#[derive(Debug, Copy, Clone, Serialize_repr, Deserialize_repr, Type, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum NotificationVisualRole {
+    #[default]
+    None = 0,
+    ConversationAvatar = 1,
+}
+
 /// Image information derived from standard hints and `app_icon`
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq, Eq)]
 pub struct NotificationImage {
     pub has_image_data: bool,
     pub image_data: ImageData,
+    // Conversation avatars are decoded before leaving the daemon
+    pub visual_role: NotificationVisualRole,
+    pub conversation_avatar: ImageData,
+    // image_path remains reserved for message content media
     pub image_path: String,
     pub icon_name: String,
 }

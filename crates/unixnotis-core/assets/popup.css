@@ -134,6 +134,10 @@
   color: inherit;
 }
 
+.unixnotis-popup-conversation-avatar {
+  border-radius: 8px;
+}
+
 .unixnotis-identity-avatar {
   min-width: 34px;
   min-height: 34px;

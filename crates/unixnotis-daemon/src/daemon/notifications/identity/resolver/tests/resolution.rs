@@ -4,6 +4,7 @@ use super::super::resolution::{
     resolution_for_record, sender_claim_group_key, unknown_reply_denied,
 };
 use super::*;
+use crate::daemon::notifications::identity::sender::SenderMetadataStatus;
 use unixnotis_core::ApplicationActionPolicy;
 
 #[test]
@@ -100,4 +101,25 @@ fn missing_sender_reply_resolution_is_unresolved_and_noninteractive() {
         .attribution
         .diagnostic_detail
         .contains("sender metadata unavailable"));
+}
+
+#[test]
+fn sender_credential_timeout_is_preserved_in_diagnostics() {
+    let metadata = SenderMetadata {
+        status: SenderMetadataStatus::CredentialLookupTimedOut,
+        ..SenderMetadata::default()
+    };
+    let resolution = unknown_reply_denied(
+        AppClaim {
+            reported_name: "Signal",
+            desktop_entry: None,
+        },
+        &metadata,
+        "sender metadata unavailable",
+    );
+
+    assert!(resolution
+        .attribution
+        .diagnostic_detail
+        .contains("credential lookup timed out"));
 }

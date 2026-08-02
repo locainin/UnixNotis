@@ -1,21 +1,23 @@
 use std::collections::HashMap;
-use std::time::Duration;
-
 use tracing::{debug, warn};
 use unixnotis_core::{ImageData, Notification, NotificationKey};
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
 
-use crate::daemon::notifications::identity::resolve_sender_metadata;
 use crate::daemon::notifications::identity::{
     resolve_attribution_owned, resolve_attribution_with_deadline, SenderMetadata,
 };
+use crate::daemon::notifications::identity::{
+    resolve_sender_metadata, SenderMetadataStatus, SENDER_CREDENTIAL_TIMEOUT,
+};
 use crate::daemon::notifications::ingress::payload::{
-    build_notification, owned_to_string, resolve_expiration, NotificationInput,
+    build_notification, materialize_conversation_avatar, owned_to_string, resolve_expiration,
+    sender_visual_role, NotificationInput, SenderVisualRole, CONVERSATION_AVATAR_TIMEOUT,
 };
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::InsertOutcome;
 
+use super::avatar::run_avatar_worker;
 use super::wire_hints::WireHints;
 use super::NotificationServer;
 
@@ -33,8 +35,6 @@ struct WireNotification {
     image_data: Option<ImageData>,
     expire_timeout: i32,
 }
-
-const SENDER_METADATA_TIMEOUT: Duration = Duration::from_millis(100);
 
 impl NotificationServer {
     #[expect(
@@ -115,7 +115,7 @@ impl NotificationServer {
     ) -> Notification {
         // Sender metadata helps with ownership checks and diagnostics
         let sender = if let Ok(sender) = tokio::time::timeout(
-            SENDER_METADATA_TIMEOUT,
+            SENDER_CREDENTIAL_TIMEOUT,
             resolve_sender_metadata(
                 &self.state.sender_metadata_cache,
                 self.state.connection(),
@@ -126,8 +126,11 @@ impl NotificationServer {
         {
             sender
         } else {
-            warn!("notification sender metadata timed out and failed closed");
-            SenderMetadata::default()
+            warn!("notification sender credentials timed out and failed closed");
+            SenderMetadata {
+                status: SenderMetadataStatus::CredentialLookupTimedOut,
+                ..SenderMetadata::default()
+            }
         };
         let desktop_entry = input.hints.get("desktop-entry").and_then(owned_to_string);
         let desktop_identity_index = self.state.desktop_identity_index.load_full();
@@ -140,10 +143,29 @@ impl NotificationServer {
                 input.app_name.clone(),
                 desktop_entry.clone(),
                 sender.clone(),
-                desktop_identity_index,
+                std::sync::Arc::clone(&desktop_identity_index),
             ),
         )
         .await;
+        let conversation_avatar = if matches!(
+            sender_visual_role(
+                &resolution.attribution,
+                &desktop_identity_index,
+                &input.hints,
+                &input.actions,
+            ),
+            SenderVisualRole::ConversationAvatar
+        ) {
+            let app_icon = input.app_icon.clone();
+            run_avatar_worker(
+                move || materialize_conversation_avatar(&app_icon),
+                CONVERSATION_AVATAR_TIMEOUT,
+            )
+            .await
+            .flatten()
+        } else {
+            None
+        };
         if matches!(
             resolution.attribution.status,
             unixnotis_core::AttributionStatus::Conflict
@@ -178,6 +200,7 @@ impl NotificationServer {
             actions: input.actions,
             hints: input.hints,
             image_data: input.image_data,
+            conversation_avatar,
             sender,
             attribution: resolution.attribution,
             attribution_diagnostics: resolution.diagnostics,

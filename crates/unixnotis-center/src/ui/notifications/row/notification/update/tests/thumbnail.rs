@@ -3,13 +3,14 @@
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use unixnotis_core::hooks;
+use unixnotis_core::{hooks, ImageData};
 
 use crate::ui::icons::IconResolver;
 
 use super::super::super::test_support::{
     notification_row, row_data, sample_notification, RowFlags,
 };
+use super::super::thumbnail::notification_has_conversation_avatar;
 use super::{notification_has_thumbnail, update_notification_row};
 
 #[test]
@@ -19,6 +20,24 @@ fn notification_thumbnail_only_uses_real_image_sources() {
 
     notification.image.image_path = "/tmp/demo.png".to_string();
     assert!(notification_has_thumbnail(&notification));
+}
+
+#[test]
+fn conversation_avatar_is_a_separate_thumbnail_source() {
+    let mut notification = sample_notification();
+    notification.image.visual_role = unixnotis_core::NotificationVisualRole::ConversationAvatar;
+    notification.image.conversation_avatar = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![255, 0, 0, 255],
+    };
+
+    assert!(notification_has_conversation_avatar(&notification));
+    assert!(!notification_has_thumbnail(&notification));
 }
 
 #[gtk::test]

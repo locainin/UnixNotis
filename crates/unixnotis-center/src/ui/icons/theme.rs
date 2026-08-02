@@ -9,7 +9,7 @@ use gio::prelude::FileExt;
 use gtk::gdk;
 use gtk::prelude::*;
 use gtk::{IconLookupFlags, IconPaintable, TextDirection};
-use unixnotis_core::{NotificationImage, NotificationView};
+use unixnotis_core::{ImageData, NotificationImage, NotificationView};
 
 pub(super) enum IconSource {
     Paintable(IconPaintable),
@@ -131,8 +131,10 @@ pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Textu
         return None;
     }
 
-    let data = &image.image_data;
+    image_data_texture_for_data(&image.image_data)
+}
 
+pub(super) fn image_data_texture_for_data(data: &ImageData) -> Option<gdk::Texture> {
     // The standard image-data payload for notifications is typically 8 bits per channel
     // If it's not 8, the byte layout is ambiguous for this path, so reject it
     if data.bits_per_sample != 8 {

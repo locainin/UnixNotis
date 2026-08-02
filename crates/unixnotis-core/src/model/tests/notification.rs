@@ -68,6 +68,8 @@ fn image_with_raw_bytes() -> NotificationImage {
             channels: 4,
             data: vec![1, 2, 3, 4],
         },
+        visual_role: crate::NotificationVisualRole::None,
+        conversation_avatar: ImageData::default(),
         image_path: "/tmp/icon.png".to_string(),
         icon_name: "mail".to_string(),
     }

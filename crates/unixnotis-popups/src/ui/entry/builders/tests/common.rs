@@ -333,6 +333,44 @@ fn identity_avatar_scales_the_symbolic_glyph_inside_its_fixed_slot() {
     assert!(icon.vexpands());
 }
 
+#[gtk::test]
+fn communication_identity_avatar_prefers_materialized_conversation_image() {
+    let app = gtk::Application::builder()
+        .application_id("org.unixnotis.PopupConversationAvatar")
+        .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    app.register(None::<&gtk::gio::Cancellable>)
+        .expect("register conversation avatar application");
+    let config = Config::default();
+    let root = std::env::temp_dir().join("unixnotis-popup-conversation-avatar");
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let css = CssManager::new_popup(theme_paths(&root), config.theme.clone());
+    let mut state = UiState::new(&app, config, root.join("config.toml"), command_tx, css);
+    let mut notification = notification();
+    notification.inline_reply.available = true;
+    notification.image.visual_role = unixnotis_core::NotificationVisualRole::ConversationAvatar;
+    notification.image.conversation_avatar = unixnotis_core::ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![1, 2, 3, 255],
+    };
+    let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
+
+    let avatar = build_identity_avatar(&mut state, &notification, &view, 36);
+    let icon = avatar
+        .widget
+        .first_child()
+        .and_downcast::<gtk::Image>()
+        .expect("avatar should contain one image");
+
+    assert_eq!(icon.pixel_size(), 36);
+    assert!(icon.has_css_class("unixnotis-popup-conversation-avatar"));
+}
+
 fn view_model() -> PopupEntryViewModel {
     PopupEntryViewModel::for_notification_at(&notification(), 1_000)
 }

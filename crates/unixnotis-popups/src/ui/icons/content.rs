@@ -10,7 +10,10 @@ pub(in crate::ui) fn image_data_texture(image: &NotificationImage) -> Option<gdk
         return None;
     }
 
-    let data = &image.image_data;
+    image_data_texture_for_data(&image.image_data)
+}
+
+pub(in crate::ui) fn image_data_texture_for_data(data: &ImageData) -> Option<gdk::Texture> {
     // GTK memory textures need positive dimensions and eight-bit channels
     if data.bits_per_sample != 8 || data.rowstride < 0 || data.width <= 0 || data.height <= 0 {
         return None;

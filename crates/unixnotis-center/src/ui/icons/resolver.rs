@@ -68,6 +68,10 @@ impl IconResolver {
         self.inner.apply_badge(image, notification, size, scale);
     }
 
+    pub fn apply_conversation_avatar(&self, image: &gtk::Image, notification: &NotificationView) {
+        self.inner.apply_conversation_avatar(image, notification);
+    }
+
     pub fn clear_missing_cache(&self) {
         // Theme reloads must retry names that were previously unavailable
         self.inner.clear_missing_cache();

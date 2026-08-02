@@ -11,12 +11,33 @@ use super::cache::{
 };
 use super::resolver::IconResolverInner;
 use super::theme::{
-    collect_icon_candidates, file_path_from_hint, image_data_texture, resolve_icon_source,
-    IconSource,
+    collect_icon_candidates, file_path_from_hint, image_data_texture, image_data_texture_for_data,
+    resolve_icon_source, IconSource,
 };
 use super::types::{IconDecodeRequest, IconResolution};
 
 impl IconResolverInner {
+    pub(super) fn apply_conversation_avatar(
+        &self,
+        image: &gtk::Image,
+        notification: &NotificationView,
+    ) {
+        // The daemon has already decoded and bounded this sender-provided raster
+        if matches!(
+            notification.image.visual_role,
+            unixnotis_core::NotificationVisualRole::ConversationAvatar
+        ) {
+            if let Some(texture) =
+                image_data_texture_for_data(&notification.image.conversation_avatar)
+            {
+                image.set_paintable(Some(&texture));
+                image.set_visible(true);
+                return;
+            }
+        }
+        image.set_visible(false);
+    }
+
     pub(super) fn apply_badge(
         &self,
         image: &gtk::Image,

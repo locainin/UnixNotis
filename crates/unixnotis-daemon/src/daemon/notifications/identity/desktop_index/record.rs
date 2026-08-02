@@ -27,6 +27,9 @@ impl DesktopIdentityIndex {
             return;
         }
         let display_name = desktop.display_name().to_string();
+        if desktop_categories_are_communication(&desktop) {
+            self.communication_desktop_ids.insert(id.clone());
+        }
         // Wrapper normalization finds the application executable instead of indexing env itself
         let parsed_launch = build_launch_spec(&desktop, path);
         let declared_executable_path = parsed_launch
@@ -150,6 +153,19 @@ impl DesktopIdentityIndex {
         self.rebuild_executable_index();
         self.rebuild_application_families();
     }
+}
+
+fn desktop_categories_are_communication(desktop: &gio::DesktopAppInfo) -> bool {
+    desktop
+        .string("Categories")
+        .is_some_and(|categories| categories.split(';').any(is_communication_category))
+}
+
+fn is_communication_category(category: &str) -> bool {
+    matches!(
+        category.to_ascii_lowercase().as_str(),
+        "chat" | "instantmessaging" | "email" | "telephony"
+    )
 }
 
 fn discard_untrusted_launcher_binding(record: &mut DesktopRecord) {

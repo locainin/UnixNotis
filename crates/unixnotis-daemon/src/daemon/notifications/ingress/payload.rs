@@ -4,15 +4,21 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use rustix::fs::{openat2, Mode, OFlags, ResolveFlags, CWD};
 use unixnotis_core::{
-    util, Action, AttributionDiagnostics, Config, ImageData, InlineReply, InlineReplyPolicy,
-    Notification, NotificationAttribution, NotificationImage, Urgency,
+    decode_image_asset_contents, util, Action, AssetPolicy, AttributionDiagnostics, Config,
+    IdentityAssurance, ImageData, InlineReply, InlineReplyPolicy, Notification,
+    NotificationAttribution, NotificationImage, NotificationVisualRole, Urgency,
+    DEFAULT_ICON_ASSET_EXTENSIONS, DEFAULT_ICON_ASSET_MAX_HEIGHT, DEFAULT_ICON_ASSET_MAX_PIXELS,
+    DEFAULT_ICON_ASSET_MAX_WIDTH,
 };
 use zbus::zvariant::{OwnedValue, Value};
 
-use super::super::identity::SenderMetadata;
+use super::super::identity::{DesktopIdentityIndex, SenderMetadata};
 use super::limits::{
     MAX_ACTIONS, MAX_ACTION_KEY_BYTES, MAX_ACTION_LABEL_BYTES, MAX_APP_ICON_BYTES,
     MAX_APP_NAME_BYTES, MAX_BODY_BYTES, MAX_CATEGORY_BYTES, MAX_HINT_ENTRIES, MAX_HINT_KEY_BYTES,
@@ -27,6 +33,7 @@ pub(in crate::daemon::notifications) struct NotificationInput {
     pub(in crate::daemon::notifications) actions: Vec<String>,
     pub(in crate::daemon::notifications) hints: HashMap<String, OwnedValue>,
     pub(in crate::daemon::notifications) image_data: Option<ImageData>,
+    pub(in crate::daemon::notifications) conversation_avatar: Option<ImageData>,
     pub(in crate::daemon::notifications) sender: SenderMetadata,
     pub(in crate::daemon::notifications) attribution: NotificationAttribution,
     pub(in crate::daemon::notifications) attribution_diagnostics: AttributionDiagnostics,
@@ -45,6 +52,7 @@ pub(in crate::daemon::notifications) fn build_notification(
         actions,
         hints,
         image_data,
+        conversation_avatar,
         sender,
         attribution,
         attribution_diagnostics,
@@ -77,6 +85,14 @@ pub(in crate::daemon::notifications) fn build_notification(
         // The wire decoder already normalized this bounded image without dynamic byte expansion
         image.has_image_data = true;
         image.image_data = image_data;
+    }
+    // Only positive application association may expose a decoded sender avatar
+    if may_materialize_host_avatar(&attribution) {
+        if let Some(avatar) = conversation_avatar {
+            // The avatar is already decoded and bounded before this model is stored
+            image.visual_role = NotificationVisualRole::ConversationAvatar;
+            image.conversation_avatar = avatar;
+        }
     }
 
     // Only verified senders may name host files for decoding. Untrusted,
@@ -137,6 +153,240 @@ pub(in crate::daemon::notifications) fn build_notification(
         sender_start_time: sender.sender_start_time,
         sender_executable: sender.sender_executable,
     }
+}
+
+// Keep sender-provided avatar work separate from the normal application badge path
+const MAX_CONVERSATION_AVATAR_BYTES: u64 = 2_097_152;
+const MAX_CONVERSATION_AVATAR_DIMENSION: u32 = 256;
+const MAX_STORED_AVATAR_DIMENSION: u32 = 64;
+const MAX_STORED_AVATAR_PIXELS: usize =
+    (MAX_STORED_AVATAR_DIMENSION as usize) * (MAX_STORED_AVATAR_DIMENSION as usize);
+pub(in crate::daemon::notifications) const CONVERSATION_AVATAR_TIMEOUT: Duration =
+    Duration::from_millis(500);
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(in crate::daemon::notifications) enum SenderVisualRole {
+    None,
+    ConversationAvatar,
+}
+
+pub(in crate::daemon::notifications) const fn may_materialize_host_avatar(
+    attribution: &NotificationAttribution,
+) -> bool {
+    matches!(
+        attribution.assurance,
+        IdentityAssurance::Authenticated
+            | IdentityAssurance::SystemAssociated
+            | IdentityAssurance::UserAssociated
+    )
+}
+
+pub(in crate::daemon::notifications) fn sender_visual_role(
+    attribution: &NotificationAttribution,
+    index: &DesktopIdentityIndex,
+    hints: &HashMap<String, OwnedValue>,
+    actions: &[String],
+) -> SenderVisualRole {
+    if !may_materialize_host_avatar(attribution) {
+        return SenderVisualRole::None;
+    }
+    // Inline reply is a stronger communication signal than a caller label
+    if actions
+        .chunks_exact(2)
+        .any(|pair| pair.first().is_some_and(|key| key == "inline-reply"))
+    {
+        return SenderVisualRole::ConversationAvatar;
+    }
+    // Categories are protocol metadata and remain only a presentation hint
+    let explicit_metadata =
+        hints
+            .get("category")
+            .and_then(owned_to_string)
+            .is_some_and(|category| {
+                let category = category.to_ascii_lowercase();
+                ["im", "chat", "message", "email", "mail"]
+                    .iter()
+                    .any(|marker| category.split('.').any(|part| part == *marker))
+            });
+    // The index rejects empty and unknown IDs, so no separate string check is needed here
+    let desktop_metadata = index.desktop_id_has_communication_role(&attribution.desktop_id);
+    if explicit_metadata || desktop_metadata {
+        SenderVisualRole::ConversationAvatar
+    } else {
+        SenderVisualRole::None
+    }
+}
+
+pub(in crate::daemon::notifications) fn materialize_conversation_avatar(
+    app_icon: &str,
+) -> Option<ImageData> {
+    // Decode while the daemon still controls the file read and parser limits
+    let path = local_avatar_path(app_icon)?;
+    // Nonblocking and no-follow flags prevent special files and final-component symlinks from
+    // turning the bounded worker into a blocking host-file reader
+    let descriptor = openat2(
+        CWD,
+        &path,
+        OFlags::RDONLY
+            .union(OFlags::NONBLOCK)
+            .union(OFlags::CLOEXEC)
+            .union(OFlags::NOFOLLOW),
+        Mode::empty(),
+        ResolveFlags::NO_MAGICLINKS,
+    )
+    .ok()?;
+    let mut file = std::fs::File::from(descriptor);
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+    if !avatar_file_size_allowed(metadata.len()) {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take(MAX_CONVERSATION_AVATAR_BYTES.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if !avatar_buffer_size_allowed(bytes.len()) {
+        return None;
+    }
+    // The small policy keeps contact art from becoming an unbounded texture
+    let policy = AssetPolicy {
+        max_bytes: MAX_CONVERSATION_AVATAR_BYTES,
+        max_width: DEFAULT_ICON_ASSET_MAX_WIDTH.min(MAX_CONVERSATION_AVATAR_DIMENSION),
+        max_height: DEFAULT_ICON_ASSET_MAX_HEIGHT.min(MAX_CONVERSATION_AVATAR_DIMENSION),
+        max_pixels: DEFAULT_ICON_ASSET_MAX_PIXELS.min(65_536),
+        allowed_extensions: DEFAULT_ICON_ASSET_EXTENSIONS,
+    };
+    let decoded = decode_image_asset_contents(&path, &bytes, policy).ok()?;
+    let (width, height, rgba) = downsample_avatar(decoded.width, decoded.height, decoded.rgba)?;
+    let width = i32::try_from(width).ok()?;
+    let height = i32::try_from(height).ok()?;
+    let rowstride = width.checked_mul(4)?;
+    let expected = usize::try_from(rowstride)
+        .ok()?
+        .checked_mul(usize::try_from(height).ok()?)?;
+    if rgba.len() != expected {
+        return None;
+    }
+    Some(ImageData {
+        width,
+        height,
+        rowstride,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: rgba,
+    })
+}
+
+fn downsample_avatar(width: u32, height: u32, rgba: Vec<u8>) -> Option<(u32, u32, Vec<u8>)> {
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let source_pixels = usize::try_from(width)
+        .ok()?
+        .checked_mul(usize::try_from(height).ok()?)?;
+    let source_bytes = source_pixels.checked_mul(4)?;
+    if rgba.len() != source_bytes {
+        return None;
+    }
+
+    let (target_width, target_height) = if width >= height {
+        (
+            MAX_STORED_AVATAR_DIMENSION.min(width),
+            width_to_height(width, height, MAX_STORED_AVATAR_DIMENSION),
+        )
+    } else {
+        (
+            height_to_width(width, height, MAX_STORED_AVATAR_DIMENSION),
+            MAX_STORED_AVATAR_DIMENSION.min(height),
+        )
+    };
+    let target_pixels = usize::try_from(target_width)
+        .ok()?
+        .checked_mul(usize::try_from(target_height).ok()?)?;
+    if target_pixels > MAX_STORED_AVATAR_PIXELS {
+        return None;
+    }
+    if target_width == width && target_height == height {
+        return Some((width, height, rgba));
+    }
+
+    let mut output = vec![0u8; target_pixels.checked_mul(4)?];
+    for target_y in 0..target_height {
+        let source_y = u32::try_from(
+            usize::try_from(target_y)
+                .ok()?
+                .checked_mul(usize::try_from(height).ok()?)?
+                / usize::try_from(target_height).ok()?,
+        )
+        .ok()?;
+        for target_x in 0..target_width {
+            let source_x = u32::try_from(
+                usize::try_from(target_x)
+                    .ok()?
+                    .checked_mul(usize::try_from(width).ok()?)?
+                    / usize::try_from(target_width).ok()?,
+            )
+            .ok()?;
+            let source_index = usize::try_from(source_y)
+                .ok()?
+                .checked_mul(usize::try_from(width).ok()?)?
+                .checked_add(usize::try_from(source_x).ok()?)?
+                .checked_mul(4)?;
+            let target_index = usize::try_from(target_y)
+                .ok()?
+                .checked_mul(usize::try_from(target_width).ok()?)?
+                .checked_add(usize::try_from(target_x).ok()?)?
+                .checked_mul(4)?;
+            output[target_index..target_index + 4]
+                .copy_from_slice(&rgba[source_index..source_index + 4]);
+        }
+    }
+    Some((target_width, target_height, output))
+}
+
+fn width_to_height(width: u32, height: u32, target_width: u32) -> u32 {
+    if width <= target_width {
+        return height;
+    }
+    u64::from(height)
+        .saturating_mul(u64::from(target_width))
+        .checked_div(u64::from(width))
+        .and_then(|value| u32::try_from(value).ok())
+        .unwrap_or(1)
+        .max(1)
+}
+
+fn height_to_width(width: u32, height: u32, target_height: u32) -> u32 {
+    if height <= target_height {
+        return width;
+    }
+    u64::from(width)
+        .saturating_mul(u64::from(target_height))
+        .checked_div(u64::from(height))
+        .and_then(|value| u32::try_from(value).ok())
+        .unwrap_or(1)
+        .max(1)
+}
+
+const fn avatar_file_size_allowed(size: u64) -> bool {
+    size <= MAX_CONVERSATION_AVATAR_BYTES
+}
+
+const fn avatar_buffer_size_allowed(size: usize) -> bool {
+    size <= MAX_CONVERSATION_AVATAR_BYTES as usize
+}
+
+fn local_avatar_path(value: &str) -> Option<PathBuf> {
+    if value.starts_with('/') {
+        return Some(PathBuf::from(value));
+    }
+    let path = value.strip_prefix("file://")?;
+    let path = path.strip_prefix("localhost/").unwrap_or(path);
+    path.starts_with('/').then(|| Path::new(path).to_path_buf())
 }
 
 pub(in crate::daemon::notifications) fn resolve_expiration(
