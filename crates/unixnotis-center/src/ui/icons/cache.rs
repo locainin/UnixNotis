@@ -59,10 +59,10 @@ pub(super) fn icon_key_for_image(
     size: i32,
     scale: i32,
 ) -> Option<IconKey> {
-    if !image.has_image_data {
+    if image.content_image.data.is_empty() {
         return None;
     }
-    let data = &image.image_data;
+    let data = &image.content_image;
     if data.data.is_empty() {
         return None;
     }

@@ -352,7 +352,7 @@ fn notify_send_claim_uses_one_command_line_avatar_without_signal_branding() {
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
     };
-    notification.image.icon_name = "signal-desktop".to_string();
+    notification.image.badge_icon = "signal-desktop".to_string();
 
     let root = state.build_popup_root(&notification);
 

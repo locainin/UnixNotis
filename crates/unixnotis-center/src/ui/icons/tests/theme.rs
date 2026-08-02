@@ -47,7 +47,7 @@ fn badge_candidates_exclude_caller_content_icon() {
             ..unixnotis_core::NotificationAttribution::default()
         },
         NotificationImage {
-            icon_name: "caller-content-icon".to_string(),
+            badge_icon: "caller-content-icon".to_string(),
             ..NotificationImage::default()
         },
     );

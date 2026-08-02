@@ -11,8 +11,8 @@ use super::cache::{
 };
 use super::resolver::IconResolverInner;
 use super::theme::{
-    collect_icon_candidates, file_path_from_hint, image_data_texture, image_data_texture_for_data,
-    resolve_icon_source, IconSource,
+    collect_icon_candidates, image_data_texture, image_data_texture_for_data, resolve_icon_source,
+    IconSource,
 };
 use super::types::{IconDecodeRequest, IconResolution};
 
@@ -24,12 +24,11 @@ impl IconResolverInner {
     ) {
         // The daemon has already decoded and bounded this sender-provided raster
         if matches!(
-            notification.image.visual_role,
+            notification.image.sender_visual_role,
             unixnotis_core::NotificationVisualRole::ConversationAvatar
+                | unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon
         ) {
-            if let Some(texture) =
-                image_data_texture_for_data(&notification.image.conversation_avatar)
-            {
+            if let Some(texture) = image_data_texture_for_data(&notification.image.sender_visual) {
                 image.set_paintable(Some(&texture));
                 image.set_visible(true);
                 return;
@@ -84,27 +83,6 @@ impl IconResolverInner {
             }) {
                 return Some(IconResolution::Ready { key, paintable });
             }
-        }
-
-        if let Some(path) = file_path_from_hint(&image.image_path) {
-            // File paths use asynchronous decoding so disk I/O stays off GTK
-            if let Some(key) = icon_key_for_path(&path, size, scale) {
-                if let Some(paintable) = self.cache.borrow_mut().get(&key) {
-                    return Some(IconResolution::Ready { key, paintable });
-                }
-                return Some(IconResolution::Async {
-                    request: IconDecodeRequest {
-                        key,
-                        path,
-                        size,
-                        scale,
-                    },
-                });
-            }
-        }
-
-        if let Some(resolution) = self.resolve_icon_name(&image.icon_name, size, scale) {
-            return Some(resolution);
         }
 
         let candidates = collect_icon_candidates(notification);

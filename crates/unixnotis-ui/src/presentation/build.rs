@@ -307,11 +307,7 @@ fn action_view(action: &Action, policy: ApplicationActionPolicy) -> ActionView {
 }
 
 fn thumbnail_kind(notification: &NotificationView) -> ThumbnailKind {
-    let has_content =
-        notification.image.has_image_data || !notification.image.image_path.trim().is_empty();
-    if !has_content {
-        return ThumbnailKind::None;
-    }
+    let has_content = !notification.image.content_image.data.is_empty();
     let category_is_media = ["image", "media", "photo"].iter().any(|category| {
         notification
             .category
@@ -320,47 +316,10 @@ fn thumbnail_kind(notification: &NotificationView) -> ThumbnailKind {
             .unwrap_or_default()
             .eq_ignore_ascii_case(category)
     });
-    let identity_is_verified = matches!(
-        notification.attribution.assurance,
-        IdentityAssurance::Authenticated
-    );
-    if !identity_is_verified {
-        // Untrusted senders need an explicit media category before large imagery is shown
-        return if category_is_media {
-            ThumbnailKind::Content
-        } else {
-            ThumbnailKind::None
-        };
-    }
-    if notification.image.has_image_data
-        || category_is_media
-        || !image_path_matches_authenticated_badge(notification)
-    {
+    if category_is_media || has_content {
         return ThumbnailKind::Content;
     }
     ThumbnailKind::None
-}
-
-fn image_path_matches_authenticated_badge(notification: &NotificationView) -> bool {
-    let badge = notification.attribution.badge_icon.trim();
-    if badge.is_empty() {
-        return false;
-    }
-    let image_path = notification.image.image_path.trim();
-    if image_path == badge {
-        return true;
-    }
-
-    // Canonical identity handles symlink aliases without treating dimensions as evidence
-    let badge_path = std::path::Path::new(badge);
-    let image_path = std::path::Path::new(image_path);
-    if !badge_path.is_absolute() || !image_path.is_absolute() {
-        return false;
-    }
-    let Some(badge_path) = std::fs::canonicalize(badge_path).ok() else {
-        return false;
-    };
-    std::fs::canonicalize(image_path).is_ok_and(|path| path == badge_path)
 }
 
 fn relative_time_label(received_at: i64, now: i64) -> String {

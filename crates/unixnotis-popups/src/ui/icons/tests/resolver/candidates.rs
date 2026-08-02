@@ -26,7 +26,8 @@ fn collect_icon_candidates_dedupes_empty_and_repeated_values() {
 #[test]
 fn collect_icon_candidates_does_not_treat_content_icon_as_application_badge() {
     let mut notification = notification("authenticated-app", "trusted-badge");
-    notification.image.icon_name = "caller-controlled-content".to_string();
+    notification.image.sender_visual_role =
+        unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon;
 
     let candidates = collect_icon_candidates(&notification);
 
