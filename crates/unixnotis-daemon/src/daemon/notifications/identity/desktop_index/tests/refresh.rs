@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use super::{
     has_incomplete_watch_coverage, queue_refresh_event, rebuild_delay, relevant_desktop_event,
+    DesktopIndexRefreshHandle, RefreshTrigger,
 };
 use crate::test_support::TempRoot;
 
@@ -31,7 +32,7 @@ fn relevant_event_is_queued_for_the_async_refresh_loop() {
 
     queue_refresh_event(Ok(event), &refresh_tx);
 
-    assert_eq!(refresh_rx.try_recv(), Ok(()));
+    assert_eq!(refresh_rx.try_recv(), Ok(RefreshTrigger::Filesystem));
 }
 
 #[test]
@@ -45,6 +46,24 @@ fn unrelated_event_is_not_queued_for_the_async_refresh_loop() {
         refresh_rx.try_recv(),
         Err(tokio::sync::mpsc::error::TryRecvError::Empty)
     );
+}
+
+#[test]
+fn watcher_errors_request_fallback_refreshes() {
+    let (refresh_tx, mut refresh_rx) = tokio::sync::mpsc::channel(1);
+
+    queue_refresh_event(Err(notify::Error::generic("watcher failure")), &refresh_tx);
+
+    assert_eq!(refresh_rx.try_recv(), Ok(RefreshTrigger::WatchError));
+}
+
+#[test]
+fn manual_refresh_is_enqueued_without_running_a_second_worker() {
+    let (refresh_tx, mut refresh_rx) = tokio::sync::mpsc::channel(1);
+    let handle = DesktopIndexRefreshHandle { refresh_tx };
+
+    assert!(handle.request_manual());
+    assert_eq!(refresh_rx.try_recv(), Ok(RefreshTrigger::Manual));
 }
 
 #[test]

@@ -20,14 +20,37 @@ const REFRESH_SIGNAL_CAPACITY: usize = 1;
 const MAX_WATCHED_DIRECTORIES: usize = 4_096;
 const FALLBACK_REBUILD_INTERVAL: Duration = Duration::from_secs(90);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RefreshTrigger {
+    Filesystem,
+    Fallback,
+    Manual,
+    WatchError,
+}
+
+#[derive(Clone)]
+pub struct DesktopIndexRefreshHandle {
+    refresh_tx: mpsc::Sender<RefreshTrigger>,
+}
+
+impl DesktopIndexRefreshHandle {
+    pub(crate) fn request_manual(&self) -> bool {
+        match self.refresh_tx.try_send(RefreshTrigger::Manual) {
+            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => true,
+            Err(mpsc::error::TrySendError::Closed(_)) => false,
+        }
+    }
+}
+
 pub fn spawn_desktop_index_refresh(
     index: Arc<ArcSwap<DesktopIdentityIndex>>,
     watched_directories: Vec<PathBuf>,
-) -> Result<tokio::task::JoinHandle<()>> {
+) -> Result<DesktopIndexRefreshHandle> {
     let (refresh_tx, mut refresh_rx) = mpsc::channel(REFRESH_SIGNAL_CAPACITY);
+    let watcher_tx = refresh_tx.clone();
     let mut file_monitor =
         notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-            queue_refresh_event(event, &refresh_tx);
+            queue_refresh_event(event, &watcher_tx);
         })
         .context("create desktop application watcher")?;
 
@@ -47,7 +70,7 @@ pub fn spawn_desktop_index_refresh(
         );
     }
 
-    Ok(tokio::spawn(async move {
+    tokio::spawn(async move {
         // The watcher must stay owned by this task for kernel watches to remain registered
         let mut file_monitor = file_monitor;
         let mut active_watches = active_watches;
@@ -62,16 +85,24 @@ pub fn spawn_desktop_index_refresh(
             .checked_sub(MIN_REBUILD_INTERVAL)
             .unwrap_or_else(Instant::now);
         loop {
-            let refresh_requested = match fallback_tick.as_mut() {
+            let refresh_trigger = match fallback_tick.as_mut() {
                 Some(tick) => tokio::select! {
                     signal = refresh_rx.recv() => signal,
-                    _ = tick.tick() => Some(()),
+                    _ = tick.tick() => Some(RefreshTrigger::Fallback),
                 },
                 None => refresh_rx.recv().await,
             };
-            if refresh_requested.is_none() {
+            let Some(refresh_trigger) = refresh_trigger else {
                 break;
+            };
+            if refresh_trigger == RefreshTrigger::WatchError && fallback_tick.is_none() {
+                // A watcher error disables event coverage until a later rebuild succeeds
+                fallback_tick = Some(tokio::time::interval_at(
+                    tokio::time::Instant::now() + FALLBACK_REBUILD_INTERVAL,
+                    FALLBACK_REBUILD_INTERVAL,
+                ));
             }
+            debug!(?refresh_trigger, "desktop application refresh requested");
             tokio::time::sleep(REFRESH_DEBOUNCE).await;
             // Drain events that arrived during the debounce window before one complete rebuild
             while refresh_rx.try_recv().is_ok() {}
@@ -112,7 +143,9 @@ pub fn spawn_desktop_index_refresh(
                 }
             }
         }
-    }))
+    });
+
+    Ok(DesktopIndexRefreshHandle { refresh_tx })
 }
 
 const fn has_incomplete_watch_coverage(requested: usize, active: usize) -> bool {
@@ -124,14 +157,17 @@ const fn rebuild_delay(elapsed: Duration) -> Duration {
     MIN_REBUILD_INTERVAL.saturating_sub(elapsed)
 }
 
-fn queue_refresh_event(event: notify::Result<Event>, refresh_tx: &mpsc::Sender<()>) {
+fn queue_refresh_event(event: notify::Result<Event>, refresh_tx: &mpsc::Sender<RefreshTrigger>) {
     match event {
         Ok(event) if relevant_desktop_event(&event) => {
             // A single pending signal coalesces filesystem bursts without blocking the watcher
-            let _ = refresh_tx.try_send(());
+            let _ = refresh_tx.try_send(RefreshTrigger::Filesystem);
         }
         Ok(_) => {}
-        Err(error) => warn!(?error, "desktop application watcher reported an error"),
+        Err(error) => {
+            warn!(?error, "desktop application watcher reported an error");
+            let _ = refresh_tx.try_send(RefreshTrigger::WatchError);
+        }
     }
 }
 

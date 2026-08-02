@@ -44,11 +44,12 @@ pub(super) async fn run_daemon(
         desktop_identity_index,
         preauthorized_control_owner,
     );
-    if let Err(error) = spawn_desktop_index_refresh(
+    match spawn_desktop_index_refresh(
         state.desktop_identity_index.clone(),
         watched_desktop_directories,
     ) {
-        warn!(?error, "desktop application refresh watcher is unavailable");
+        Ok(handle) => state.set_desktop_index_refresh(handle),
+        Err(error) => warn!(?error, "desktop application refresh watcher is unavailable"),
     }
     let scheduler = ExpirationScheduler::start(state.clone());
     state.set_scheduler(scheduler.clone());
