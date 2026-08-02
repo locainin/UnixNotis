@@ -74,6 +74,44 @@ fn clearing_a_recycled_row_removes_old_content_and_controls() {
 }
 
 #[gtk::test]
+fn rebinding_after_clear_restores_wrapper_and_actions() {
+    let (_root, row) = notification_row();
+    let first = row_data(
+        Rc::new(sample_notification()),
+        RowFlags {
+            is_active: true,
+            ..Default::default()
+        },
+    );
+    let mut second_notification = sample_notification();
+    second_notification.id = 2;
+    second_notification.generation = 2;
+    second_notification.summary = "second summary".to_string();
+    second_notification.actions = vec![unixnotis_core::Action {
+        key: "open".to_string(),
+        label: "Open".to_string(),
+    }];
+    let second = row_data(
+        Rc::new(second_notification),
+        RowFlags {
+            is_active: true,
+            ..Default::default()
+        },
+    );
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(4);
+
+    update_notification_row(&row, &first, &IconResolver::new(), &command_tx);
+    clear_notification_row(&row);
+    update_notification_row(&row, &second, &IconResolver::new(), &command_tx);
+
+    assert!(row.card_plate.get_visible());
+    assert!(row.card.get_visible());
+    assert_eq!(row.summary_label.text().as_str(), "second summary");
+    assert!(row.actions_box.get_visible());
+    assert!(child_count(&row.actions_box) > 0);
+}
+
+#[gtk::test]
 fn update_notification_row_applies_state_classes_and_text() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();

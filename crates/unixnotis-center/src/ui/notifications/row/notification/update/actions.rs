@@ -43,6 +43,9 @@ pub(super) fn update_actions(
 ) {
     let presentation = NotificationPresentation::from_view(notification);
     configure_inline_reply(&row.inline_reply, notification, is_active);
+    let has_actions = visible_action_count_from(&presentation, is_active) > 0;
+    // Recycled rows may have hidden this container before the current bind
+    row.actions_box.set_visible(has_actions);
     let action_signature = action_signature(&presentation, is_active);
     // Fast path skips button rebuilding when the action set is unchanged
     {
@@ -79,7 +82,7 @@ pub(super) fn update_actions(
     if !is_active {
         return;
     }
-    if visible_action_count_from(&presentation, is_active) == 0 {
+    if !has_actions {
         return;
     }
 

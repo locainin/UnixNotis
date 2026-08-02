@@ -13,6 +13,13 @@ use super::item::{RowData, RowItem, RowPresentation};
 use super::types::{NotificationEntry, NotificationList};
 
 impl NotificationList {
+    pub fn clear_for_disconnect(&mut self) {
+        // Preserve group preferences while the old daemon generation is absent
+        let previous_expansion = std::mem::take(&mut self.group_expanded);
+        self.seed(Vec::new(), Vec::new());
+        self.group_expanded = previous_expansion;
+    }
+
     pub fn apply_limits(&mut self, max_active: usize, max_entries: usize) {
         let mut changed = false;
         if self.max_active != max_active {

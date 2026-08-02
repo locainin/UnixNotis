@@ -16,7 +16,7 @@ impl UiState {
             UiEvent::Disconnected => {
                 debug!("UnixNotis control service disconnected");
                 // Old rows and state must not survive into a later daemon generation
-                self.list.seed(Vec::new(), Vec::new());
+                self.list.clear_for_disconnect();
                 self.update_state(unixnotis_core::ControlState::default());
                 self.refresh_counts();
             }

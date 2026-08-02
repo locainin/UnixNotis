@@ -177,5 +177,6 @@ pub(in crate::ui::notifications) fn update_notification_row(
         icon_resolver.apply_icon(&row.thumbnail, notification, 56, scale);
     }
     set_widget_visible_if_changed(&row.thumbnail, has_thumbnail);
+    set_widget_visible_if_changed(&row.card_plate, true);
     set_widget_visible_if_changed(&row.card, true);
 }

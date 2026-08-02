@@ -82,6 +82,35 @@ fn seed_preserves_existing_group_expansion_for_surviving_groups() {
 }
 
 #[gtk::test]
+fn disconnect_reset_keeps_group_expansion_until_reconnect_seed() {
+    let mut list = support::make_list();
+    list.seed(
+        vec![
+            support::notification(1, "Terminal"),
+            support::notification(2, "Terminal"),
+        ],
+        Vec::new(),
+    );
+    list.group_expanded
+        .insert(Rc::<str>::from("test:terminal"), true);
+
+    list.clear_for_disconnect();
+
+    assert!(list.entries.is_empty());
+    assert_eq!(list.group_expanded.get("test:terminal"), Some(&true));
+
+    list.seed(
+        vec![
+            support::notification(3, "Terminal"),
+            support::notification(4, "Terminal"),
+        ],
+        Vec::new(),
+    );
+
+    assert_eq!(list.group_expanded.get("test:terminal"), Some(&true));
+}
+
+#[gtk::test]
 fn seed_trims_to_current_limits() {
     let mut list = support::make_list();
     list.max_active = 1;
