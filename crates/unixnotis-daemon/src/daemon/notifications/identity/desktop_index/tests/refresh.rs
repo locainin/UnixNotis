@@ -1,4 +1,5 @@
 use std::fs;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use notify::event::{CreateKind, RemoveKind};
 use notify::{Event, EventKind};
@@ -6,8 +7,8 @@ use notify::{Event, EventKind};
 use std::time::Duration;
 
 use super::{
-    has_incomplete_watch_coverage, queue_refresh_event, rebuild_delay, relevant_desktop_event,
-    DesktopIndexRefreshHandle, RefreshTrigger,
+    fallback_required, has_incomplete_watch_coverage, queue_refresh_event, rebuild_delay,
+    relevant_desktop_event, DesktopIndexRefreshHandle, RefreshTrigger,
 };
 use crate::test_support::TempRoot;
 
@@ -28,9 +29,10 @@ fn unrelated_regular_file_changes_do_not_request_an_index_refresh() {
 #[test]
 fn relevant_event_is_queued_for_the_async_refresh_loop() {
     let (refresh_tx, mut refresh_rx) = tokio::sync::mpsc::channel(1);
+    let watcher_degraded = AtomicBool::new(false);
     let event = Event::new(EventKind::Any).add_path("org.example.App.desktop".into());
 
-    queue_refresh_event(Ok(event), &refresh_tx);
+    queue_refresh_event(Ok(event), &refresh_tx, &watcher_degraded);
 
     assert_eq!(refresh_rx.try_recv(), Ok(RefreshTrigger::Filesystem));
 }
@@ -38,9 +40,10 @@ fn relevant_event_is_queued_for_the_async_refresh_loop() {
 #[test]
 fn unrelated_event_is_not_queued_for_the_async_refresh_loop() {
     let (refresh_tx, mut refresh_rx) = tokio::sync::mpsc::channel(1);
+    let watcher_degraded = AtomicBool::new(false);
     let event = Event::new(EventKind::Any).add_path("notes.txt".into());
 
-    queue_refresh_event(Ok(event), &refresh_tx);
+    queue_refresh_event(Ok(event), &refresh_tx, &watcher_degraded);
 
     assert_eq!(
         refresh_rx.try_recv(),
@@ -51,10 +54,44 @@ fn unrelated_event_is_not_queued_for_the_async_refresh_loop() {
 #[test]
 fn watcher_errors_request_fallback_refreshes() {
     let (refresh_tx, mut refresh_rx) = tokio::sync::mpsc::channel(1);
+    let watcher_degraded = AtomicBool::new(false);
 
-    queue_refresh_event(Err(notify::Error::generic("watcher failure")), &refresh_tx);
+    queue_refresh_event(
+        Err(notify::Error::generic("watcher failure")),
+        &refresh_tx,
+        &watcher_degraded,
+    );
 
     assert_eq!(refresh_rx.try_recv(), Ok(RefreshTrigger::WatchError));
+    assert!(watcher_degraded.load(Ordering::Acquire));
+}
+
+#[test]
+fn watcher_error_is_retained_when_trigger_channel_is_full() {
+    let (refresh_tx, mut refresh_rx) = tokio::sync::mpsc::channel(1);
+    let watcher_degraded = AtomicBool::new(false);
+    let filesystem_event = Event::new(EventKind::Any).add_path("org.example.App.desktop".into());
+
+    queue_refresh_event(Ok(filesystem_event), &refresh_tx, &watcher_degraded);
+    queue_refresh_event(
+        Err(notify::Error::generic("watcher failure")),
+        &refresh_tx,
+        &watcher_degraded,
+    );
+
+    assert_eq!(refresh_rx.try_recv(), Ok(RefreshTrigger::Filesystem));
+    assert_eq!(
+        refresh_rx.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    );
+    assert!(watcher_degraded.load(Ordering::Acquire));
+}
+
+#[test]
+fn degraded_watcher_keeps_fallback_after_rebuild_with_full_coverage() {
+    assert!(fallback_required(true, false));
+    assert!(fallback_required(false, true));
+    assert!(!fallback_required(false, false));
 }
 
 #[test]

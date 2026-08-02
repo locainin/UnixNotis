@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -47,10 +48,13 @@ pub fn spawn_desktop_index_refresh(
     watched_directories: Vec<PathBuf>,
 ) -> Result<DesktopIndexRefreshHandle> {
     let (refresh_tx, mut refresh_rx) = mpsc::channel(REFRESH_SIGNAL_CAPACITY);
+    // Keep degradation state outside the coalescing channel so an error cannot be dropped
+    let watcher_degraded = Arc::new(AtomicBool::new(false));
+    let callback_degraded = Arc::clone(&watcher_degraded);
     let watcher_tx = refresh_tx.clone();
     let mut file_monitor =
         notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-            queue_refresh_event(event, &watcher_tx);
+            queue_refresh_event(event, &watcher_tx, &callback_degraded);
         })
         .context("create desktop application watcher")?;
 
@@ -76,10 +80,7 @@ pub fn spawn_desktop_index_refresh(
         let mut active_watches = active_watches;
         let mut fallback_tick = watch_coverage_incomplete.then(|| {
             // Missing watches include an empty set so a newly created directory is discovered
-            tokio::time::interval_at(
-                tokio::time::Instant::now() + FALLBACK_REBUILD_INTERVAL,
-                FALLBACK_REBUILD_INTERVAL,
-            )
+            fallback_interval()
         });
         let mut last_rebuild = Instant::now()
             .checked_sub(MIN_REBUILD_INTERVAL)
@@ -95,12 +96,13 @@ pub fn spawn_desktop_index_refresh(
             let Some(refresh_trigger) = refresh_trigger else {
                 break;
             };
-            if refresh_trigger == RefreshTrigger::WatchError && fallback_tick.is_none() {
-                // A watcher error disables event coverage until a later rebuild succeeds
-                fallback_tick = Some(tokio::time::interval_at(
-                    tokio::time::Instant::now() + FALLBACK_REBUILD_INTERVAL,
-                    FALLBACK_REBUILD_INTERVAL,
-                ));
+            if fallback_required(
+                watch_coverage_incomplete,
+                watcher_degraded.load(Ordering::Acquire),
+            ) && fallback_tick.is_none()
+            {
+                // A degraded watcher keeps polling until a replacement watcher is proven healthy
+                fallback_tick = Some(fallback_interval());
             }
             debug!(?refresh_trigger, "desktop application refresh requested");
             tokio::time::sleep(REFRESH_DEBOUNCE).await;
@@ -126,13 +128,17 @@ pub fn spawn_desktop_index_refresh(
                     active_watches.extend(added);
                     watch_coverage_incomplete =
                         has_incomplete_watch_coverage(requested.len(), active_watches.len());
-                    if watch_coverage_incomplete && fallback_tick.is_none() {
+                    if fallback_required(
+                        watch_coverage_incomplete,
+                        watcher_degraded.load(Ordering::Acquire),
+                    ) && fallback_tick.is_none()
+                    {
                         // Continue polling after a rebuild if the watcher still misses paths
-                        fallback_tick = Some(tokio::time::interval_at(
-                            tokio::time::Instant::now() + FALLBACK_REBUILD_INTERVAL,
-                            FALLBACK_REBUILD_INTERVAL,
-                        ));
-                    } else if !watch_coverage_incomplete {
+                        fallback_tick = Some(fallback_interval());
+                    } else if !fallback_required(
+                        watch_coverage_incomplete,
+                        watcher_degraded.load(Ordering::Acquire),
+                    ) {
                         fallback_tick = None;
                     }
                     last_rebuild = Instant::now();
@@ -153,11 +159,26 @@ const fn has_incomplete_watch_coverage(requested: usize, active: usize) -> bool 
     requested == 0 || requested != active
 }
 
+const fn fallback_required(watch_coverage_incomplete: bool, watcher_degraded: bool) -> bool {
+    watch_coverage_incomplete || watcher_degraded
+}
+
+fn fallback_interval() -> tokio::time::Interval {
+    tokio::time::interval_at(
+        tokio::time::Instant::now() + FALLBACK_REBUILD_INTERVAL,
+        FALLBACK_REBUILD_INTERVAL,
+    )
+}
+
 const fn rebuild_delay(elapsed: Duration) -> Duration {
     MIN_REBUILD_INTERVAL.saturating_sub(elapsed)
 }
 
-fn queue_refresh_event(event: notify::Result<Event>, refresh_tx: &mpsc::Sender<RefreshTrigger>) {
+fn queue_refresh_event(
+    event: notify::Result<Event>,
+    refresh_tx: &mpsc::Sender<RefreshTrigger>,
+    watcher_degraded: &AtomicBool,
+) {
     match event {
         Ok(event) if relevant_desktop_event(&event) => {
             // A single pending signal coalesces filesystem bursts without blocking the watcher
@@ -166,6 +187,8 @@ fn queue_refresh_event(event: notify::Result<Event>, refresh_tx: &mpsc::Sender<R
         Ok(_) => {}
         Err(error) => {
             warn!(?error, "desktop application watcher reported an error");
+            // The flag survives a full channel and debounce drain
+            watcher_degraded.store(true, Ordering::Release);
             let _ = refresh_tx.try_send(RefreshTrigger::WatchError);
         }
     }
