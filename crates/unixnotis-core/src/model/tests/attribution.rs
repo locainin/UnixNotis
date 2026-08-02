@@ -271,6 +271,7 @@ fn authenticated_and_native_policies_keep_action_surfaces_separate() {
         InlineReplyPolicy::Deny,
         "same-user native association cannot protect credential-like reply text"
     );
+    assert!(native.may_read_sender_host_visual());
 }
 
 #[test]
@@ -291,6 +292,7 @@ fn portal_and_unassociated_policies_never_allow_silent_actions() {
         ApplicationActionPolicy::Confirm,
         "an app id without unforgeable provenance must not activate silently"
     );
+    assert!(!portal.may_read_sender_host_visual());
 
     for attribution in [
         NotificationAttribution::recognized(

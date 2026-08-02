@@ -11,10 +11,9 @@ use std::time::{Duration, Instant};
 use rustix::fs::{openat2, Mode, OFlags, ResolveFlags, CWD};
 use unixnotis_core::{
     decode_image_asset_contents, util, Action, AssetPolicy, AttributionDiagnostics, Config,
-    IdentityAssurance, ImageData, InlineReply, InlineReplyPolicy, Notification,
-    NotificationAttribution, NotificationImage, NotificationVisualRole, Urgency,
-    DEFAULT_ICON_ASSET_EXTENSIONS, DEFAULT_ICON_ASSET_MAX_HEIGHT, DEFAULT_ICON_ASSET_MAX_PIXELS,
-    DEFAULT_ICON_ASSET_MAX_WIDTH,
+    ImageData, InlineReply, InlineReplyPolicy, Notification, NotificationAttribution,
+    NotificationImage, NotificationVisualRole, Urgency, DEFAULT_ICON_ASSET_EXTENSIONS,
+    DEFAULT_ICON_ASSET_MAX_HEIGHT, DEFAULT_ICON_ASSET_MAX_PIXELS, DEFAULT_ICON_ASSET_MAX_WIDTH,
 };
 use zbus::zvariant::{OwnedValue, Value};
 
@@ -33,7 +32,8 @@ pub(in crate::daemon::notifications) struct NotificationInput {
     pub(in crate::daemon::notifications) actions: Vec<String>,
     pub(in crate::daemon::notifications) hints: HashMap<String, OwnedValue>,
     pub(in crate::daemon::notifications) image_data: Option<ImageData>,
-    pub(in crate::daemon::notifications) conversation_avatar: Option<ImageData>,
+    pub(in crate::daemon::notifications) sender_visual: Option<ImageData>,
+    pub(in crate::daemon::notifications) sender_visual_role: SenderVisualRole,
     pub(in crate::daemon::notifications) sender: SenderMetadata,
     pub(in crate::daemon::notifications) attribution: NotificationAttribution,
     pub(in crate::daemon::notifications) attribution_diagnostics: AttributionDiagnostics,
@@ -52,7 +52,8 @@ pub(in crate::daemon::notifications) fn build_notification(
         actions,
         hints,
         image_data,
-        conversation_avatar,
+        sender_visual,
+        sender_visual_role,
         sender,
         attribution,
         attribution_diagnostics,
@@ -81,26 +82,27 @@ pub(in crate::daemon::notifications) fn build_notification(
         .and_then(|value| bool::try_from(value).ok())
         .unwrap_or(false);
     let mut image = NotificationImage::from_hints(&app_name, &app_icon, &hints);
+    // Badge identity comes only from attribution selected by the daemon
+    image.badge_icon.clone_from(&attribution.badge_icon);
     if let Some(image_data) = image_data {
-        // The wire decoder already normalized this bounded image without dynamic byte expansion
-        image.has_image_data = true;
-        image.image_data = image_data;
+        // Embedded content pixels are already detached from the sender's filesystem
+        image.content_image = image_data;
     }
     // Only positive application association may expose a decoded sender avatar
-    if may_materialize_host_avatar(&attribution) {
-        if let Some(avatar) = conversation_avatar {
+    if may_read_sender_host_visual(&attribution) {
+        if let Some(avatar) = sender_visual {
             // The avatar is already decoded and bounded before this model is stored
-            image.visual_role = NotificationVisualRole::ConversationAvatar;
-            image.conversation_avatar = avatar;
+            image.sender_visual_role = match sender_visual_role {
+                SenderVisualRole::ConversationAvatar => NotificationVisualRole::ConversationAvatar,
+                SenderVisualRole::ApplicationProvidedIcon => {
+                    NotificationVisualRole::ApplicationProvidedIcon
+                }
+                SenderVisualRole::None => NotificationVisualRole::None,
+            };
+            image.sender_visual = avatar;
         }
     }
 
-    // Only verified senders may name host files for decoding. Untrusted,
-    // conflicting, relay, and portal-associated senders are stripped of
-    // host file paths to prevent parser delegation attacks (UNX-4-003).
-    if !attribution.is_verified() {
-        image.image_path = String::new();
-    }
     let actions = parse_actions(actions);
     // Protocol metadata is parsed independently from the daemon's interaction decision
     let inline_reply = parse_inline_reply(&actions, &hints);
@@ -119,7 +121,12 @@ pub(in crate::daemon::notifications) fn build_notification(
         } else {
             util::truncate_utf8_bytes(&app_name, MAX_APP_NAME_BYTES)
         },
-        app_icon: util::truncate_utf8_bytes(&app_icon, MAX_APP_ICON_BYTES),
+        // Absolute sender paths are materialized into pixels and never cross into clients
+        app_icon: if local_avatar_path(&app_icon).is_some() {
+            String::new()
+        } else {
+            util::truncate_utf8_bytes(&app_icon, MAX_APP_ICON_BYTES)
+        },
         attribution,
         attribution_diagnostics,
         // Truncate bytes first, then fold long contiguous runs to keep UTF-8 boundaries valid
@@ -157,10 +164,7 @@ pub(in crate::daemon::notifications) fn build_notification(
 
 // Keep sender-provided avatar work separate from the normal application badge path
 const MAX_CONVERSATION_AVATAR_BYTES: u64 = 2_097_152;
-const MAX_CONVERSATION_AVATAR_DIMENSION: u32 = 256;
 const MAX_STORED_AVATAR_DIMENSION: u32 = 64;
-const MAX_STORED_AVATAR_PIXELS: usize =
-    (MAX_STORED_AVATAR_DIMENSION as usize) * (MAX_STORED_AVATAR_DIMENSION as usize);
 pub(in crate::daemon::notifications) const CONVERSATION_AVATAR_TIMEOUT: Duration =
     Duration::from_millis(500);
 
@@ -168,17 +172,13 @@ pub(in crate::daemon::notifications) const CONVERSATION_AVATAR_TIMEOUT: Duration
 pub(in crate::daemon::notifications) enum SenderVisualRole {
     None,
     ConversationAvatar,
+    ApplicationProvidedIcon,
 }
 
-pub(in crate::daemon::notifications) const fn may_materialize_host_avatar(
+pub(in crate::daemon::notifications) const fn may_read_sender_host_visual(
     attribution: &NotificationAttribution,
 ) -> bool {
-    matches!(
-        attribution.assurance,
-        IdentityAssurance::Authenticated
-            | IdentityAssurance::SystemAssociated
-            | IdentityAssurance::UserAssociated
-    )
+    attribution.may_read_sender_host_visual()
 }
 
 pub(in crate::daemon::notifications) fn sender_visual_role(
@@ -186,8 +186,9 @@ pub(in crate::daemon::notifications) fn sender_visual_role(
     index: &DesktopIdentityIndex,
     hints: &HashMap<String, OwnedValue>,
     actions: &[String],
+    app_icon: &str,
 ) -> SenderVisualRole {
-    if !may_materialize_host_avatar(attribution) {
+    if !may_read_sender_host_visual(attribution) {
         return SenderVisualRole::None;
     }
     // Inline reply is a stronger communication signal than a caller label
@@ -212,13 +213,16 @@ pub(in crate::daemon::notifications) fn sender_visual_role(
     let desktop_metadata = index.desktop_id_has_communication_role(&attribution.desktop_id);
     if explicit_metadata || desktop_metadata {
         SenderVisualRole::ConversationAvatar
+    } else if local_avatar_path(app_icon).is_some() {
+        SenderVisualRole::ApplicationProvidedIcon
     } else {
         SenderVisualRole::None
     }
 }
 
-pub(in crate::daemon::notifications) fn materialize_conversation_avatar(
+pub(in crate::daemon::notifications) fn materialize_sender_visual(
     app_icon: &str,
+    max_dimension: u32,
 ) -> Option<ImageData> {
     // Decode while the daemon still controls the file read and parser limits
     let path = local_avatar_path(app_icon)?;
@@ -252,15 +256,18 @@ pub(in crate::daemon::notifications) fn materialize_conversation_avatar(
         return None;
     }
     // The small policy keeps contact art from becoming an unbounded texture
+    let max_dimension = max_dimension.min(MAX_STORED_AVATAR_DIMENSION * 8);
     let policy = AssetPolicy {
         max_bytes: MAX_CONVERSATION_AVATAR_BYTES,
-        max_width: DEFAULT_ICON_ASSET_MAX_WIDTH.min(MAX_CONVERSATION_AVATAR_DIMENSION),
-        max_height: DEFAULT_ICON_ASSET_MAX_HEIGHT.min(MAX_CONVERSATION_AVATAR_DIMENSION),
-        max_pixels: DEFAULT_ICON_ASSET_MAX_PIXELS.min(65_536),
+        max_width: DEFAULT_ICON_ASSET_MAX_WIDTH.min(max_dimension),
+        max_height: DEFAULT_ICON_ASSET_MAX_HEIGHT.min(max_dimension),
+        max_pixels: DEFAULT_ICON_ASSET_MAX_PIXELS
+            .min(u64::from(max_dimension).checked_mul(u64::from(max_dimension))?),
         allowed_extensions: DEFAULT_ICON_ASSET_EXTENSIONS,
     };
     let decoded = decode_image_asset_contents(&path, &bytes, policy).ok()?;
-    let (width, height, rgba) = downsample_avatar(decoded.width, decoded.height, decoded.rgba)?;
+    let (width, height, rgba) =
+        downsample_avatar(decoded.width, decoded.height, decoded.rgba, max_dimension)?;
     let width = i32::try_from(width).ok()?;
     let height = i32::try_from(height).ok()?;
     let rowstride = width.checked_mul(4)?;
@@ -281,7 +288,12 @@ pub(in crate::daemon::notifications) fn materialize_conversation_avatar(
     })
 }
 
-fn downsample_avatar(width: u32, height: u32, rgba: Vec<u8>) -> Option<(u32, u32, Vec<u8>)> {
+fn downsample_avatar(
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+    max_dimension: u32,
+) -> Option<(u32, u32, Vec<u8>)> {
     if width == 0 || height == 0 {
         return None;
     }
@@ -295,19 +307,22 @@ fn downsample_avatar(width: u32, height: u32, rgba: Vec<u8>) -> Option<(u32, u32
 
     let (target_width, target_height) = if width >= height {
         (
-            MAX_STORED_AVATAR_DIMENSION.min(width),
-            width_to_height(width, height, MAX_STORED_AVATAR_DIMENSION),
+            max_dimension.min(width),
+            width_to_height(width, height, max_dimension),
         )
     } else {
         (
-            height_to_width(width, height, MAX_STORED_AVATAR_DIMENSION),
-            MAX_STORED_AVATAR_DIMENSION.min(height),
+            height_to_width(width, height, max_dimension),
+            max_dimension.min(height),
         )
     };
     let target_pixels = usize::try_from(target_width)
         .ok()?
         .checked_mul(usize::try_from(target_height).ok()?)?;
-    if target_pixels > MAX_STORED_AVATAR_PIXELS {
+    let max_pixels = usize::try_from(max_dimension)
+        .ok()?
+        .checked_mul(usize::try_from(max_dimension).ok()?)?;
+    if target_pixels > max_pixels {
         return None;
     }
     if target_width == width && target_height == height {

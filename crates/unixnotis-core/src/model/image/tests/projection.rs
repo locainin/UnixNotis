@@ -1,37 +1,10 @@
-use super::super::{ImageData, NotificationImage};
+use super::super::{ImageData, NotificationImage, NotificationVisualRole};
 
-#[test]
-fn listing_projection_removes_raw_image_bytes_but_keeps_identifiers() {
-    let image = NotificationImage {
-        has_image_data: true,
-        image_data: ImageData {
-            width: 1,
-            height: 1,
-            rowstride: 4,
-            has_alpha: true,
-            bits_per_sample: 8,
-            channels: 4,
-            data: vec![9, 8, 7, 6],
-        },
-        visual_role: super::super::NotificationVisualRole::None,
-        conversation_avatar: ImageData::default(),
-        image_path: "/tmp/icon.png".to_string(),
-        icon_name: "icon-name".to_string(),
-    };
-
-    let listing = image.for_listing();
-
-    assert!(!listing.has_image_data);
-    assert!(listing.image_data.data.is_empty());
-    assert_eq!(listing.image_path, "/tmp/icon.png");
-    assert_eq!(listing.icon_name, "icon-name");
-}
-
-#[test]
-fn history_projection_drops_raw_data_only_when_alternate_identifier_exists() {
-    let with_icon = NotificationImage {
-        has_image_data: true,
-        image_data: ImageData {
+fn image() -> NotificationImage {
+    NotificationImage {
+        badge_icon: "mail".to_string(),
+        sender_visual_role: NotificationVisualRole::ConversationAvatar,
+        sender_visual: ImageData {
             width: 1,
             height: 1,
             rowstride: 4,
@@ -40,16 +13,27 @@ fn history_projection_drops_raw_data_only_when_alternate_identifier_exists() {
             channels: 4,
             data: vec![1, 2, 3, 4],
         },
-        visual_role: super::super::NotificationVisualRole::None,
-        conversation_avatar: ImageData::default(),
-        image_path: String::new(),
-        icon_name: "app-icon".to_string(),
-    };
-    let without_icon = NotificationImage {
-        icon_name: String::new(),
-        ..with_icon.clone()
-    };
+        content_image: ImageData {
+            width: 1,
+            height: 1,
+            rowstride: 4,
+            has_alpha: true,
+            bits_per_sample: 8,
+            channels: 4,
+            data: vec![4, 3, 2, 1],
+        },
+    }
+}
 
-    assert!(!with_icon.for_history().has_image_data);
-    assert!(without_icon.for_history().has_image_data);
+#[test]
+fn listing_projection_keeps_bounded_daemon_owned_pixels() {
+    let listing = image().for_listing();
+    assert_eq!(listing, image());
+}
+
+#[test]
+fn history_projection_keeps_safe_pixels_without_paths() {
+    let history = image().for_history();
+    assert_eq!(history.sender_visual.data, vec![1, 2, 3, 4]);
+    assert_eq!(history.content_image.data, vec![4, 3, 2, 1]);
 }

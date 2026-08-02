@@ -36,6 +36,7 @@ impl<'de> Visitor<'de> for WireHintsVisitor {
         let mut standard_image = None;
         let mut legacy_image = None;
         let mut legacy_icon = None;
+        let mut image_path = None;
 
         while let Some(key) = map.next_key::<String>()? {
             let Some(kind) = HintKind::for_key(&key) else {
@@ -46,7 +47,14 @@ impl<'de> Visitor<'de> for WireHintsVisitor {
             let decoded = map.next_value_seed(HintVariantSeed { kind })?;
             match decoded {
                 DecodedHint::Text(text) => {
-                    values.insert(key, owned_string(&text).map_err(A::Error::custom)?);
+                    let value = owned_string(&text).map_err(A::Error::custom)?;
+                    if matches!(key.as_str(), "image-path" | "image_path") {
+                        image_path = value
+                            .try_clone()
+                            .ok()
+                            .and_then(|owned| String::try_from(owned).ok());
+                    }
+                    values.insert(key, value);
                 }
                 DecodedHint::Bool(value) => {
                     values.insert(key, OwnedValue::from(value));
@@ -70,6 +78,7 @@ impl<'de> Visitor<'de> for WireHintsVisitor {
         Ok(WireHints {
             values,
             image_data: standard_image.or(legacy_image).or(legacy_icon),
+            image_path,
         })
     }
 }

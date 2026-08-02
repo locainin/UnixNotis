@@ -313,6 +313,20 @@ impl NotificationAttribution {
         self.interactions.action_buttons
     }
 
+    /// Host visuals require a positively associated executable and one-click local authority
+    #[must_use]
+    pub const fn may_read_sender_host_visual(&self) -> bool {
+        matches!(
+            self.assurance,
+            IdentityAssurance::Authenticated
+                | IdentityAssurance::SystemAssociated
+                | IdentityAssurance::UserAssociated
+        ) && matches!(
+            self.default_activation_policy(),
+            ApplicationActionPolicy::Allow
+        )
+    }
+
     /// Whether this attribution has kernel or broker-backed identity evidence
     #[must_use]
     pub const fn is_verified(&self) -> bool {

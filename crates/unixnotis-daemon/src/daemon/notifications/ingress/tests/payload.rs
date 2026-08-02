@@ -5,7 +5,7 @@ use zbus::zvariant::OwnedValue;
 
 use super::{
     avatar_buffer_size_allowed, avatar_file_size_allowed, build_notification,
-    materialize_conversation_avatar, may_materialize_host_avatar, owned_to_string, parse_actions,
+    materialize_sender_visual, may_read_sender_host_visual, owned_to_string, parse_actions,
     parse_urgency_hint, resolve_expiration, sanitize_hints_for_storage, sender_visual_role,
     string_to_owned_value, NotificationInput, SenderMetadata, SenderVisualRole, MAX_ACTIONS,
     MAX_BODY_BYTES, MAX_CONVERSATION_AVATAR_BYTES, MAX_SUMMARY_BYTES,
@@ -27,7 +27,8 @@ fn build_notification_clamps_summary_and_body_sizes() {
         actions: Vec::new(),
         hints: HashMap::<String, OwnedValue>::new(),
         image_data: None,
-        conversation_avatar: None,
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata {
             sender_name: Some(":1.test".to_string()),
             sender_pid: Some(42),
@@ -56,7 +57,8 @@ fn build_notification_strips_display_spoofing_controls() {
         actions: vec!["default".to_string(), "Open\u{202E}".to_string()],
         hints: HashMap::<String, OwnedValue>::new(),
         image_data: None,
-        conversation_avatar: None,
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata {
             sender_name: Some(":1.test".to_string()),
             sender_pid: Some(42),
@@ -101,7 +103,8 @@ fn build_notification_collects_inline_reply_action_and_kde_labels() {
         actions: vec!["inline-reply".to_string(), "Reply".to_string()],
         hints,
         image_data: None,
-        conversation_avatar: None,
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata {
             sender_executable: Some("/usr/bin/messages".to_string()),
             ..SenderMetadata::default()
@@ -137,7 +140,8 @@ fn build_notification_keeps_protocol_reply_metadata_separate_from_denied_policy(
         actions: vec!["inline-reply".to_string(), "Password".to_string()],
         hints: HashMap::new(),
         image_data: None,
-        conversation_avatar: None,
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata {
             sender_name: Some(":1.hostile".to_string()),
             sender_executable: Some("/usr/bin/unknown-client".to_string()),
@@ -178,7 +182,8 @@ fn build_notification_keeps_unknown_sender_reply_policy_denied() {
         actions: vec!["inline-reply".to_string(), "Reply".to_string()],
         hints: HashMap::new(),
         image_data: None,
-        conversation_avatar: None,
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata::default(),
         attribution: unixnotis_core::NotificationAttribution::unresolved(
             "Messages",
@@ -220,7 +225,8 @@ fn build_notification_ignores_reply_hints_without_explicit_action() {
         actions: vec!["default".to_string(), "Open".to_string()],
         hints,
         image_data: None,
-        conversation_avatar: None,
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata::default(),
         attribution: unixnotis_core::NotificationAttribution::default(),
         attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
@@ -251,7 +257,8 @@ fn conversation_avatar_never_changes_badge_or_unresolved_identity() {
         actions: Vec::new(),
         hints: HashMap::new(),
         image_data: None,
-        conversation_avatar: Some(avatar),
+        sender_visual: Some(avatar),
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata::default(),
         attribution: unixnotis_core::NotificationAttribution::default(),
         attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
@@ -265,13 +272,13 @@ fn conversation_avatar_never_changes_badge_or_unresolved_identity() {
         "application-x-executable-symbolic"
     );
     assert_eq!(
-        notification.image.visual_role,
+        notification.image.sender_visual_role,
         unixnotis_core::NotificationVisualRole::None
     );
 }
 
 #[test]
-fn verified_sender_keeps_explicit_message_image_path() {
+fn sender_image_path_is_not_retained_in_notification_model() {
     let mut hints = HashMap::new();
     hints.insert(
         "image-path".to_string(),
@@ -286,7 +293,8 @@ fn verified_sender_keeps_explicit_message_image_path() {
         actions: Vec::new(),
         hints,
         image_data: None,
-        conversation_avatar: None,
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata::default(),
         attribution: unixnotis_core::NotificationAttribution::verified(
             "Messages",
@@ -302,16 +310,19 @@ fn verified_sender_keeps_explicit_message_image_path() {
         expire_timeout: 0,
     });
 
-    assert_eq!(notification.image.image_path, "/tmp/message-image.png");
+    assert!(notification.image.content_image.data.is_empty());
+    assert!(!notification.hints.contains_key("image-path"));
 }
 
 #[test]
 fn associated_sender_role_accepts_inline_reply_and_message_categories() {
-    let attribution = unixnotis_core::NotificationAttribution::recognized(
+    let attribution = unixnotis_core::NotificationAttribution::associated(
         "Messages",
         "Messages",
         "org.example.Messages",
         "messages",
+        IdentityAssurance::SystemAssociated,
+        InteractionPolicies::NATIVE_COMPATIBILITY,
         unixnotis_core::AttributionReason::ExactUserExecutable,
         "associated executable",
         "recognized:system-app:org.example.Messages:sender".to_string(),
@@ -324,6 +335,7 @@ fn associated_sender_role_accepts_inline_reply_and_message_categories() {
             &index,
             &HashMap::new(),
             &["inline-reply".to_string(), "Reply".to_string()],
+            "",
         ),
         SenderVisualRole::ConversationAvatar
     );
@@ -334,7 +346,7 @@ fn associated_sender_role_accepts_inline_reply_and_message_categories() {
         string_to_owned_value("im.received").expect("category value"),
     );
     assert_eq!(
-        sender_visual_role(&attribution, &index, &hints, &[]),
+        sender_visual_role(&attribution, &index, &hints, &[], ""),
         SenderVisualRole::ConversationAvatar
     );
 
@@ -344,7 +356,7 @@ fn associated_sender_role_accepts_inline_reply_and_message_categories() {
         string_to_owned_value("im").expect("exact category value"),
     );
     assert_eq!(
-        sender_visual_role(&attribution, &index, &exact, &[]),
+        sender_visual_role(&attribution, &index, &exact, &[], ""),
         SenderVisualRole::ConversationAvatar
     );
 
@@ -354,13 +366,37 @@ fn associated_sender_role_accepts_inline_reply_and_message_categories() {
         string_to_owned_value("other").expect("unrelated category value"),
     );
     assert_eq!(
-        sender_visual_role(&attribution, &index, &unrelated, &[]),
+        sender_visual_role(&attribution, &index, &unrelated, &[], ""),
         SenderVisualRole::None
     );
     assert_eq!(
-        sender_visual_role(&attribution, &index, &HashMap::new(), &[]),
+        sender_visual_role(&attribution, &index, &HashMap::new(), &[], ""),
         SenderVisualRole::None
     );
+}
+
+#[test]
+fn associated_noncommunication_path_is_a_small_application_visual() {
+    let attribution = unixnotis_core::NotificationAttribution::associated(
+        "Example player",
+        "Example player",
+        "org.example.Player",
+        "example-player",
+        IdentityAssurance::SystemAssociated,
+        InteractionPolicies::NATIVE_COMPATIBILITY,
+        unixnotis_core::AttributionReason::ExactSystemExecutable,
+        "associated executable",
+        "associated:system-app:org.example.Player:sender".to_string(),
+    );
+    let role = sender_visual_role(
+        &attribution,
+        &super::super::super::identity::DesktopIdentityIndex::default(),
+        &HashMap::new(),
+        &[],
+        "/tmp/application-icon.png",
+    );
+
+    assert_eq!(role, SenderVisualRole::ApplicationProvidedIcon);
 }
 
 #[test]
@@ -376,34 +412,80 @@ fn portal_association_cannot_start_host_avatar_materialization() {
         "portal supplied app id",
         "recognized:portal:org.example.PortalApp".to_string(),
     );
-    assert!(!may_materialize_host_avatar(&attribution));
+    assert!(!may_read_sender_host_visual(&attribution));
     assert_eq!(
         sender_visual_role(
             &attribution,
             &super::super::super::identity::DesktopIdentityIndex::default(),
             &HashMap::new(),
             &["inline-reply".to_string(), "Reply".to_string()],
+            "",
         ),
         SenderVisualRole::None
     );
 }
 
 #[test]
+fn associated_noncommunication_icon_is_retained_as_a_decorative_visual() {
+    let icon = unixnotis_core::ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![1, 2, 3, 255],
+    };
+    let notification = build_notification(NotificationInput {
+        app_name: "Example player".to_string(),
+        app_icon: "example-player".to_string(),
+        summary: "Track".to_string(),
+        body: "Artist".to_string(),
+        actions: Vec::new(),
+        hints: HashMap::new(),
+        image_data: None,
+        sender_visual: Some(icon),
+        sender_visual_role: SenderVisualRole::ApplicationProvidedIcon,
+        sender: SenderMetadata::default(),
+        attribution: unixnotis_core::NotificationAttribution::associated(
+            "Example player",
+            "Example player",
+            "org.example.Player",
+            "example-player",
+            IdentityAssurance::SystemAssociated,
+            InteractionPolicies::NATIVE_COMPATIBILITY,
+            AttributionReason::ExactSystemExecutable,
+            "protected local association",
+            "associated:system-app:org.example.Player".to_string(),
+        ),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+        expire_timeout: 0,
+    });
+
+    assert_eq!(
+        notification.image.sender_visual_role,
+        unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon
+    );
+    assert_eq!(notification.image.badge_icon, "example-player");
+}
+
+#[test]
 fn large_avatar_is_downsampled_to_the_storage_bound() {
     let source = vec![255_u8; 256 * 128 * 4];
-    let (width, height, data) = super::downsample_avatar(256, 128, source).expect("downsample");
+    let (width, height, data) = super::downsample_avatar(256, 128, source, 64).expect("downsample");
     assert_eq!((width, height), (64, 32));
     assert_eq!(data.len(), 64 * 32 * 4);
 }
 
 #[test]
 fn avatar_downsampling_rejects_zero_dimensions_and_keeps_exact_size_images() {
-    assert!(super::downsample_avatar(0, 1, Vec::new()).is_none());
-    assert!(super::downsample_avatar(1, 0, Vec::new()).is_none());
+    assert!(super::downsample_avatar(0, 1, Vec::new(), 64).is_none());
+    assert!(super::downsample_avatar(1, 0, Vec::new(), 64).is_none());
 
     let source = vec![7_u8; 64 * 64 * 4];
     let source_ptr = source.as_ptr();
-    let (width, height, data) = super::downsample_avatar(64, 64, source).expect("exact bound");
+    let (width, height, data) = super::downsample_avatar(64, 64, source, 64).expect("exact bound");
     assert_eq!((width, height), (64, 64));
     assert_eq!(data.as_ptr(), source_ptr);
 }
@@ -417,7 +499,7 @@ fn avatar_downsampling_maps_horizontal_and_vertical_pixels_by_scale() {
         horizontal[x * 4] = u8::try_from(x).expect("horizontal fixture value");
     }
     let (width, height, data) =
-        super::downsample_avatar(128, 1, horizontal).expect("horizontal downsample");
+        super::downsample_avatar(128, 1, horizontal, 64).expect("horizontal downsample");
     assert_eq!((width, height), (64, 1));
     assert_eq!(data[4], 2);
 
@@ -426,7 +508,7 @@ fn avatar_downsampling_maps_horizontal_and_vertical_pixels_by_scale() {
         vertical[y * 64 * 4] = u8::try_from(y).expect("vertical fixture value");
     }
     let (width, height, data) =
-        super::downsample_avatar(64, 128, vertical).expect("vertical downsample");
+        super::downsample_avatar(64, 128, vertical, 64).expect("vertical downsample");
     assert_eq!((width, height), (32, 64));
     assert_eq!(data[32 * 4], 2);
 }
@@ -450,7 +532,7 @@ fn fifo_avatar_path_is_rejected_without_opening_a_blocking_reader() {
         .status()
         .expect("mkfifo available");
     assert!(status.success());
-    assert!(materialize_conversation_avatar(&path_string).is_none());
+    assert!(materialize_sender_visual(&path_string, 64).is_none());
     let _ = std::fs::remove_file(path);
     let _ = std::fs::remove_dir(directory);
 }
@@ -472,7 +554,7 @@ fn absolute_avatar_path_is_materialized_into_bounded_raster_data() {
     let path = std::env::temp_dir().join(format!("unixnotis-avatar-{suffix}.png"));
     std::fs::write(&path, png).expect("write avatar fixture");
 
-    let avatar = materialize_conversation_avatar(path.to_str().expect("utf8 fixture path"));
+    let avatar = materialize_sender_visual(path.to_str().expect("utf8 fixture path"), 64);
     let _ = std::fs::remove_file(&path);
 
     let avatar = avatar.expect("valid avatar should decode");
@@ -495,8 +577,8 @@ fn avatar_size_limits_accept_the_boundary_and_reject_one_byte_over() {
 
 #[test]
 fn relative_or_missing_avatar_path_is_rejected() {
-    assert!(materialize_conversation_avatar("avatar.png").is_none());
-    assert!(materialize_conversation_avatar("/path/that/does/not/exist.png").is_none());
+    assert!(materialize_sender_visual("avatar.png", 64).is_none());
+    assert!(materialize_sender_visual("/path/that/does/not/exist.png", 64).is_none());
 }
 
 #[test]

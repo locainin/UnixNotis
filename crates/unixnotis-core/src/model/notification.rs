@@ -132,10 +132,10 @@ impl Notification {
     /// Create a history entry with heavyweight hint data stripped out
     #[must_use]
     pub fn to_history(&self) -> Self {
-        // History entries should never retain raw image-data blobs
+        // History entries keep only bounded daemon-owned image roles
         let mut image = self.image.clone();
-        image.has_image_data = false;
-        image.image_data = Default::default();
+        image.content_image = Default::default();
+        image.sender_visual = Default::default();
         Self {
             id: self.id,
             generation: self.generation,
