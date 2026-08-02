@@ -152,3 +152,25 @@ fn local_art_admission_requires_verified_executable_evidence() {
         MediaLocalArtPolicy::ExactExecutableOnly,
     ));
 }
+
+#[test]
+fn all_admitted_native_art_still_requires_a_stable_owner() {
+    assert!(local_art_allowed(
+        None,
+        Some("/usr/bin/player"),
+        true,
+        MediaLocalArtPolicy::AllAdmitted,
+    ));
+    assert!(!local_art_allowed(
+        None,
+        Some("/usr/bin/player"),
+        false,
+        MediaLocalArtPolicy::AllAdmitted,
+    ));
+    assert!(!local_art_allowed(
+        Some("chromium"),
+        Some("/usr/bin/chromium"),
+        true,
+        MediaLocalArtPolicy::AllAdmitted,
+    ));
+}

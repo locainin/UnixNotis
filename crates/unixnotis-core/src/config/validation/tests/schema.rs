@@ -108,6 +108,47 @@ fn version_three_accepts_structured_direct_commands_without_inference() {
 }
 
 #[test]
+fn old_media_defaults_restore_native_artwork() {
+    let (config, _) = deserialize_config(
+        "config_version = 3\n[media]\nlocal_art_policy = \"exact_executable_only\"\n",
+    )
+    .expect("old media config should migrate");
+    assert_eq!(
+        config.media.local_art_policy,
+        crate::MediaLocalArtPolicy::AllAdmitted
+    );
+    assert!(config.media.local_art_executable_allowlist.is_empty());
+}
+
+#[test]
+fn old_explicit_allowlist_remains_exact() {
+    let (config, _) = deserialize_config(
+        "config_version = 3\n[media]\nlocal_art_policy = \"exact_executable_only\"\nlocal_art_executable_allowlist = [\"/usr/bin/player\"]\n",
+    )
+    .expect("old explicit media config should migrate");
+    assert_eq!(
+        config.media.local_art_policy,
+        crate::MediaLocalArtPolicy::ExactExecutableOnly
+    );
+    assert_eq!(
+        config.media.local_art_executable_allowlist,
+        ["/usr/bin/player"]
+    );
+}
+
+#[test]
+fn current_explicit_empty_exact_policy_is_preserved() {
+    let (config, _) = deserialize_config(
+        "config_version = 4\n[media]\nlocal_art_policy = \"exact_executable_only\"\n",
+    )
+    .expect("current media config should preserve explicit policy");
+    assert_eq!(
+        config.media.local_art_policy,
+        crate::MediaLocalArtPolicy::ExactExecutableOnly
+    );
+}
+
+#[test]
 fn future_schema_is_rejected_instead_of_guessed() {
     let error = deserialize_config("config_version = 999\n").expect_err("reject future config");
 
