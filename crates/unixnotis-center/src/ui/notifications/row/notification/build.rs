@@ -129,7 +129,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
     summary_label.set_wrap(true);
     summary_label.set_wrap_mode(WrapMode::WordChar);
     summary_label.set_ellipsize(EllipsizeMode::End);
-    summary_label.set_lines(1);
+    summary_label.set_lines(2);
     summary_label.set_max_width_chars(88);
     summary_label.add_css_class("unixnotis-panel-summary");
 
@@ -140,7 +140,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
     body_label.set_wrap(true);
     body_label.set_wrap_mode(WrapMode::WordChar);
     body_label.set_ellipsize(EllipsizeMode::End);
-    body_label.set_lines(3);
+    body_label.set_lines(5);
     body_label.set_max_width_chars(112);
     body_label.add_css_class("unixnotis-panel-body");
 

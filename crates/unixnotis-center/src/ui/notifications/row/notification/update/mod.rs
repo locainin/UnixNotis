@@ -7,7 +7,7 @@ mod row;
 mod thumbnail;
 mod visual;
 
-pub(in crate::ui::notifications) use row::update_notification_row;
+pub(in crate::ui::notifications) use row::{clear_notification_row, update_notification_row};
 
 #[cfg(test)]
 mod tests;

@@ -17,6 +17,63 @@ use super::metadata::update_metadata_labels;
 use super::thumbnail::notification_has_thumbnail;
 use super::visual::{apply_visual_state, set_widget_visible_if_changed};
 
+pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRowWidgets) {
+    // Clear every visible lane before a recycled row can be painted again
+    row.default_activation.set_target(None);
+    row.notify_key.set(unixnotis_core::NotificationKey {
+        id: 0,
+        generation: 0,
+    });
+    row.action_cache_key.set(unixnotis_core::NotificationKey {
+        id: 0,
+        generation: 0,
+    });
+    row.action_cache.borrow_mut().clear();
+    *row.reply_cache.borrow_mut() = (
+        unixnotis_core::InlineReply::default(),
+        unixnotis_core::InlineReplyPolicy::Deny,
+        false,
+    );
+    row.icon_sig.borrow_mut().take();
+    row.inline_reply.reset_for_recycle();
+
+    for widget in [
+        row.card.upcast_ref::<gtk::Widget>(),
+        row.card_plate.upcast_ref::<gtk::Widget>(),
+        row.header.upcast_ref::<gtk::Widget>(),
+        row.meta_top.upcast_ref::<gtk::Widget>(),
+        row.footer.upcast_ref::<gtk::Widget>(),
+        row.actions_box.upcast_ref::<gtk::Widget>(),
+        row.thumbnail.upcast_ref::<gtk::Widget>(),
+        row.popup_status.upcast_ref::<gtk::Widget>(),
+        row.stack_middle.upcast_ref::<gtk::Widget>(),
+        row.stack_back.upcast_ref::<gtk::Widget>(),
+    ] {
+        widget.set_visible(false);
+    }
+    row.icon.clear();
+    row.thumbnail.clear();
+    for label in [
+        &row.app_label,
+        &row.secondary_claim,
+        &row.trust_chip,
+        &row.summary_label,
+        &row.body_label,
+        &row.popup_status,
+        &row.meta_label,
+        &row.time_badge,
+        &row.footer_left,
+        &row.footer_right,
+    ] {
+        label.set_text("");
+        label.set_visible(false);
+    }
+    row.app_label.set_tooltip_text(None);
+    while let Some(child) = row.actions_box.first_child() {
+        row.actions_box.remove(&child);
+    }
+}
+
 pub(in crate::ui::notifications) fn update_notification_row(
     row: &NotificationRowWidgets,
     data: &RowData,
@@ -27,11 +84,7 @@ pub(in crate::ui::notifications) fn update_notification_row(
         .set_reduced_motion(data.presentation.reduced_motion);
     // Model changes may briefly update a recycled row without notification data
     let Some(notification_snapshot) = data.notification.as_ref() else {
-        row.default_activation.set_target(None);
-        row.notify_key.set(unixnotis_core::NotificationKey {
-            id: 0,
-            generation: 0,
-        });
+        clear_notification_row(row);
         return;
     };
     let notification = notification_snapshot.as_ref();
@@ -124,4 +177,5 @@ pub(in crate::ui::notifications) fn update_notification_row(
         icon_resolver.apply_icon(&row.thumbnail, notification, 56, scale);
     }
     set_widget_visible_if_changed(&row.thumbnail, has_thumbnail);
+    set_widget_visible_if_changed(&row.card, true);
 }

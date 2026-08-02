@@ -12,7 +12,7 @@ use super::super::super::test_support::{
     child_count, notification_row, notification_row_with_receiver, row_data, sample_notification,
     RowFlags,
 };
-use super::update_notification_row;
+use super::{clear_notification_row, update_notification_row};
 
 #[test]
 fn icon_signature_changes_when_trust_presentation_changes() {
@@ -50,6 +50,27 @@ fn close_control_ignores_unbound_rows_and_keeps_the_bound_generation() {
         Ok(crate::control::UiCommand::Dismiss(notification))
             if notification.id == 7 && notification.generation == 11
     ));
+}
+
+#[gtk::test]
+fn clearing_a_recycled_row_removes_old_content_and_controls() {
+    let (_root, row) = notification_row();
+    let data = row_data(Rc::new(sample_notification()), RowFlags::default());
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+    assert_eq!(row.summary_label.text().as_str(), "summary");
+    assert!(row.card.get_visible());
+
+    clear_notification_row(&row);
+
+    assert!(row.summary_label.text().is_empty());
+    assert!(row.body_label.text().is_empty());
+    assert!(row.app_label.text().is_empty());
+    assert!(!row.card.get_visible());
+    assert!(!row.header.get_visible());
+    assert!(row.action_cache.borrow().is_empty());
+    assert_eq!(row.notify_key.get().id, 0);
 }
 
 #[gtk::test]
@@ -149,8 +170,8 @@ fn panel_text_limits_keep_compact_rows_content_driven() {
     let close = descendant_with_class(root.upcast_ref(), "unixnotis-panel-close")
         .expect("panel close button");
 
-    assert_eq!(row.summary_label.lines(), 1);
-    assert_eq!(row.body_label.lines(), 3);
+    assert_eq!(row.summary_label.lines(), 2);
+    assert_eq!(row.body_label.lines(), 5);
     assert_eq!(close.parent().as_ref(), Some(row.header.upcast_ref()));
 }
 
