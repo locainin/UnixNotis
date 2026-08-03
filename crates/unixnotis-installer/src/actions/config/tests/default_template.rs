@@ -1,8 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use super::super::provision::{render_default_config_toml, write_default_scripts};
-use unixnotis_core::Config;
+use unixnotis_core::{render_default_config_toml, Config};
 
 #[test]
 fn default_config_template_documents_panel_height_modes() {
@@ -72,7 +71,7 @@ fn write_default_scripts_creates_executable_helpers() {
     ));
     let _ = fs::remove_dir_all(&root);
 
-    write_default_scripts(&root).expect("write default scripts");
+    Config::write_default_scripts_in(&root).expect("write default scripts");
 
     for script in unixnotis_core::DEFAULT_SCRIPTS {
         let path = root.join(script.relative_path);

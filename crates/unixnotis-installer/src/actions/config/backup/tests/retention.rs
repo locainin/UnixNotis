@@ -1,6 +1,5 @@
-use super::super::create_backup_dir;
+use super::super::retention::create_backup_dir;
 use super::super::retention::{list_backup_dirs, prune_old_backups_except};
-use super::super::settings::BackupConfig;
 use crate::app::events::UiMessage;
 use crate::detect::Detection;
 use crate::model::ActionMode;
@@ -10,6 +9,7 @@ use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
+use unixnotis_core::BackupConfig;
 
 fn prune_old_backups(
     ctx: &mut crate::actions::ActionContext,
