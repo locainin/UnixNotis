@@ -38,7 +38,7 @@ pub(super) fn run_reset_config(skip_confirmation: bool) -> Result<()> {
     }
     println!("Reset config.toml to current defaults.");
     println!("Reset bundled scripts.");
-    println!("Theme source is now embedded stock.");
+    println!("Reset theme CSS files to current defaults.");
     Ok(())
 }
 

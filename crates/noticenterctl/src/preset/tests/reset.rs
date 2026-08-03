@@ -37,6 +37,19 @@ fn yes_mode_executes_reset_and_creates_shared_settings() {
     assert!(config_dir.join("installer.toml").is_file());
     let config = fs::read_to_string(config_dir.join("config.toml")).expect("read reset config");
     toml::from_str::<unixnotis_core::Config>(&config).expect("reset config should parse");
+    for (name, expected) in [
+        ("base.css", unixnotis_core::DEFAULT_BASE_CSS),
+        ("panel.css", unixnotis_core::DEFAULT_PANEL_CSS),
+        ("popup.css", unixnotis_core::DEFAULT_POPUP_CSS),
+        ("widgets.css", unixnotis_core::DEFAULT_WIDGETS_CSS),
+        ("media.css", unixnotis_core::DEFAULT_MEDIA_CSS),
+    ] {
+        assert_eq!(
+            fs::read_to_string(config_dir.join(name)).expect("read reset stylesheet"),
+            expected,
+            "reset must restore {name}"
+        );
+    }
     assert!(fs::read_dir(&config_dir)
         .expect("read reset directory")
         .filter_map(Result::ok)

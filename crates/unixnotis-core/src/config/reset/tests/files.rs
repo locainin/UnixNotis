@@ -7,7 +7,7 @@ use super::support::temp_config_dir;
 use crate::DEFAULT_SCRIPTS;
 
 #[test]
-fn reset_backs_up_existing_files_and_writes_stock_files() {
+fn reset_backs_up_existing_files_and_writes_bundled_defaults() {
     let root = temp_config_dir("present");
     fs::write(root.join("config.toml"), "custom = true\n").expect("seed config");
     let script = root.join(DEFAULT_SCRIPTS[0].relative_path);
@@ -35,7 +35,7 @@ fn reset_backs_up_existing_files_and_writes_stock_files() {
         fs::read_to_string(backup.join("unixnotis-blue-light-lib")).expect("read script backup"),
         "custom script\n"
     );
-    assert_eq!(report.written_files.len(), 1 + DEFAULT_SCRIPTS.len());
+    assert_eq!(report.written_files.len(), 6 + DEFAULT_SCRIPTS.len());
     let _ = fs::remove_dir_all(root);
 }
 
@@ -49,6 +49,15 @@ fn reset_creates_missing_config_and_scripts_with_safe_modes() {
     .expect("reset should create missing files");
     assert!(report.backup_dir.is_none());
     assert!(root.join("config.toml").is_file());
+    for stylesheet in [
+        "base.css",
+        "panel.css",
+        "popup.css",
+        "widgets.css",
+        "media.css",
+    ] {
+        assert!(root.join(stylesheet).is_file(), "missing {stylesheet}");
+    }
     for script in DEFAULT_SCRIPTS {
         let path = root.join(script.relative_path);
         assert!(path.is_file());
@@ -66,7 +75,7 @@ fn reset_creates_missing_config_and_scripts_with_safe_modes() {
 }
 
 #[test]
-fn reset_preserves_custom_theme_files_but_backs_them_up() {
+fn reset_restores_custom_theme_files_but_backs_them_up() {
     let root = temp_config_dir("theme");
     fs::write(root.join("panel.css"), "custom panel\n").expect("seed custom CSS");
     let report = reset_config_to_defaults(&ResetConfigOptions {
@@ -75,8 +84,8 @@ fn reset_preserves_custom_theme_files_but_backs_them_up() {
     })
     .expect("reset should succeed");
     assert_eq!(
-        fs::read_to_string(root.join("panel.css")).expect("read custom CSS"),
-        "custom panel\n"
+        fs::read_to_string(root.join("panel.css")).expect("read reset CSS"),
+        crate::DEFAULT_PANEL_CSS
     );
     let backup = report.backup_dir.expect("backup directory");
     assert_eq!(
@@ -104,6 +113,55 @@ fn reset_accepts_large_existing_files_and_backs_them_up() {
         original
     );
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn reset_ignores_a_theme_manifest_directory() {
+    let root = temp_config_dir("manifest-directory");
+    let manifest = crate::Config::default()
+        .resolve_theme_paths_from(&root)
+        .expect("theme paths")
+        .manifest_path();
+    fs::create_dir(&manifest).expect("create manifest directory");
+
+    reset_config_to_defaults(&ResetConfigOptions {
+        config_dir: root.clone(),
+        backup_retention: 0,
+    })
+    .expect("manifest metadata must not block reset");
+
+    assert!(manifest.is_dir());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn reset_ignores_a_theme_manifest_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let root = temp_config_dir("manifest-symlink");
+    let outside = temp_config_dir("manifest-symlink-outside");
+    let manifest = crate::Config::default()
+        .resolve_theme_paths_from(&root)
+        .expect("theme paths")
+        .manifest_path();
+    let target = outside.join("theme.toml");
+    fs::write(&target, "external metadata\n").expect("write manifest target");
+    symlink(&target, &manifest).expect("create manifest symlink");
+
+    reset_config_to_defaults(&ResetConfigOptions {
+        config_dir: root.clone(),
+        backup_retention: 0,
+    })
+    .expect("manifest metadata must not block reset");
+
+    assert!(manifest.is_symlink());
+    assert_eq!(
+        fs::read_to_string(target).expect("read manifest target"),
+        "external metadata\n"
+    );
+    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(outside);
 }
 
 #[test]

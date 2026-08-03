@@ -11,9 +11,14 @@ use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
 use crate::test_support::env::{test_env_lock, EnvGuard};
-use unixnotis_core::{Config, ThemeMode};
+use unixnotis_core::{
+    Config, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS,
+    DEFAULT_WIDGETS_CSS,
+};
 
-use super::super::provision::{ensure_config, reset_config};
+use super::super::provision::{
+    classify_external_theme_file, ensure_config, reset_config, ThemeFileStatus,
+};
 
 fn test_paths(root: &std::path::Path) -> InstallPaths {
     InstallPaths {
@@ -37,7 +42,7 @@ fn test_context<'a>(detection: &'a Detection, paths: &'a InstallPaths) -> Action
 }
 
 #[test]
-fn ensure_config_uses_embedded_theme_and_preserves_the_live_config() {
+fn ensure_config_provisions_default_css_and_preserves_the_live_config() {
     let _lock = test_env_lock();
     let root = crate::test_support::fs::unique_temp_path("ensure-config");
     let xdg_root = root.join("xdg");
@@ -57,34 +62,286 @@ fn ensure_config_uses_embedded_theme_and_preserves_the_live_config() {
     let config_text = fs::read_to_string(&config_path).expect("read generated config");
     toml::from_str::<Config>(&config_text).expect("generated config should parse");
     assert!(config_dir.join("installer.toml").is_file());
+    for (name, expected) in [
+        ("base.css", DEFAULT_BASE_CSS),
+        ("panel.css", DEFAULT_PANEL_CSS),
+        ("popup.css", DEFAULT_POPUP_CSS),
+        ("widgets.css", DEFAULT_WIDGETS_CSS),
+        ("media.css", DEFAULT_MEDIA_CSS),
+    ] {
+        assert!(
+            config_dir.join(name).is_file(),
+            "new installs should create {name}"
+        );
+        assert_eq!(
+            fs::read_to_string(config_dir.join(name)).expect("read default theme CSS"),
+            expected,
+            "new installs should use bundled {name}"
+        );
+    }
+    assert!(!config_dir.join("theme.toml").exists());
+    for script in unixnotis_core::DEFAULT_SCRIPTS {
+        assert!(config_dir.join(script.relative_path).is_file());
+    }
+
+    fs::write(&config_path, "custom = true\n").expect("customize live config");
+    fs::write(config_dir.join("popup.css"), "/* custom popup */\n").expect("customize popup CSS");
+    ensure_config(&mut context).expect("existing config should be preserved");
+    assert_eq!(
+        fs::read_to_string(&config_path).expect("read retained config"),
+        "custom = true\n"
+    );
+    assert_eq!(
+        fs::read_to_string(config_dir.join("popup.css")).expect("read retained popup CSS"),
+        "/* custom popup */\n"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn ensure_config_provisions_the_existing_configured_theme_paths() {
+    let _lock = test_env_lock();
+    let root = crate::test_support::fs::unique_temp_path("ensure-configured-theme-paths");
+    let xdg_root = root.join("xdg");
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", xdg_root.as_os_str());
+    let _home = EnvGuard::set("HOME", root.join("home").as_os_str());
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = test_paths(&root);
+    let mut context = test_context(&detection, &paths);
+    let config_dir = xdg_root.join("unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config directory");
+    fs::write(
+        config_dir.join("config.toml"),
+        "[theme]\nbase_css = \"themes/base.css\"\npanel_css = \"themes/panel.css\"\npopup_css = \"themes/popup.css\"\nwidgets_css = \"themes/widgets.css\"\nmedia_css = \"themes/media.css\"\n",
+    )
+    .expect("write configured theme paths");
+    fs::create_dir_all(config_dir.join("themes")).expect("create configured theme directory");
+    fs::write(config_dir.join("themes/popup.css"), "/* custom popup */\n")
+        .expect("seed custom configured popup");
+
+    ensure_config(&mut context).expect("configured theme paths should be provisioned");
+
+    for (name, expected) in [
+        ("base.css", DEFAULT_BASE_CSS),
+        ("panel.css", DEFAULT_PANEL_CSS),
+        ("popup.css", "/* custom popup */\n"),
+        ("widgets.css", DEFAULT_WIDGETS_CSS),
+        ("media.css", DEFAULT_MEDIA_CSS),
+    ] {
+        assert_eq!(
+            fs::read_to_string(config_dir.join("themes").join(name))
+                .expect("read configured theme file"),
+            expected,
+            "configured theme paths must be the provisioned targets"
+        );
+        assert!(
+            !config_dir.join(name).exists(),
+            "installer must not create unrelated root-level {name}"
+        );
+    }
+    let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn ensure_config_preserves_external_theme_files_without_creating_missing_or_unsafe_targets() {
+    use std::os::unix::fs::symlink;
+
+    let _lock = test_env_lock();
+    let root = crate::test_support::fs::unique_temp_path("ensure-external-theme-paths");
+    let xdg_root = root.join("xdg");
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", xdg_root.as_os_str());
+    let _home = EnvGuard::set("HOME", root.join("home").as_os_str());
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = test_paths(&root);
+    let mut context = test_context(&detection, &paths);
+    let config_dir = xdg_root.join("unixnotis");
+    fs::create_dir_all(&config_dir).expect("create config directory");
+    let external_root = root.join("external-theme");
+    fs::create_dir_all(&external_root).expect("create external theme directory");
+    let external_base = external_root.join("base.css");
+    let external_popup = external_root.join("popup.css");
+    let external_panel = external_root.join("panel.css");
+    let external_widgets = external_root.join("widgets.css");
+    let external_media = external_root.join("media.css");
+    fs::write(&external_base, "/* external base */\n").expect("seed external base");
+    fs::write(&external_popup, "/* external popup */\n").expect("seed external popup");
+    let external_target = root.join("external-target.css");
+    fs::write(&external_target, "/* external target */\n").expect("seed external target");
+    symlink(&external_target, &external_widgets).expect("create external symlink");
+    fs::create_dir(&external_media).expect("create external special target");
+    fs::write(
+        config_dir.join("config.toml"),
+        format!(
+            "[theme]\nbase_css = {:?}\npopup_css = {:?}\npanel_css = {:?}\nwidgets_css = {:?}\nmedia_css = {:?}\n",
+            external_base.to_string_lossy(),
+            external_popup.to_string_lossy(),
+            external_panel.to_string_lossy(),
+            external_widgets.to_string_lossy(),
+            external_media.to_string_lossy(),
+        ),
+    )
+    .expect("write external theme paths");
+
+    ensure_config(&mut context).expect("external theme paths must remain compatible");
+
+    assert_eq!(
+        fs::read_to_string(&external_base).expect("read external base"),
+        "/* external base */\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&external_popup).expect("read external popup"),
+        "/* external popup */\n"
+    );
+    assert!(
+        !external_panel.exists(),
+        "missing external files must stay absent"
+    );
+    assert!(
+        external_media.is_dir(),
+        "external directories must remain intact"
+    );
+    assert_eq!(
+        fs::read_link(&external_widgets).expect("read external symlink"),
+        external_target
+    );
+    assert_eq!(
+        fs::read_to_string(&external_target).expect("read external symlink target"),
+        "/* external target */\n"
+    );
     for name in [
         "base.css",
         "panel.css",
         "popup.css",
         "widgets.css",
         "media.css",
-        "theme.toml",
     ] {
         assert!(
             !config_dir.join(name).exists(),
-            "new installs should not create custom theme file {name}"
+            "external theme paths must not create root-level {name}"
         );
     }
-    for script in unixnotis_core::DEFAULT_SCRIPTS {
-        assert!(config_dir.join(script.relative_path).is_file());
-    }
+    let _ = fs::remove_dir_all(root);
+}
 
-    fs::write(&config_path, "custom = true\n").expect("customize live config");
-    ensure_config(&mut context).expect("existing config should be preserved");
+#[cfg(unix)]
+#[test]
+fn external_theme_file_status_matches_runtime_file_safety() {
+    use std::os::unix::fs::symlink;
+
+    let root = crate::test_support::fs::unique_temp_path("external-theme-status");
+    fs::create_dir_all(&root).expect("create status fixture");
+    let missing = root.join("missing.css");
+    let regular = root.join("regular.css");
+    let directory = root.join("directory.css");
+    let symlink_path = root.join("symlink.css");
+    let target = root.join("target.css");
+    fs::write(&regular, "/* regular */\n").expect("seed regular file");
+    fs::create_dir(&directory).expect("seed directory target");
+    fs::write(&target, "/* target */\n").expect("seed symlink target");
+    symlink(&target, &symlink_path).expect("seed symlink target");
+
     assert_eq!(
-        fs::read_to_string(&config_path).expect("read retained config"),
-        "custom = true\n"
+        classify_external_theme_file(&missing),
+        ThemeFileStatus::ExternalMissing
+    );
+    assert_eq!(
+        classify_external_theme_file(&regular),
+        ThemeFileStatus::ExternalManaged
+    );
+    assert_eq!(
+        classify_external_theme_file(&directory),
+        ThemeFileStatus::ExternalUnsafe
+    );
+    assert_eq!(
+        classify_external_theme_file(&symlink_path),
+        ThemeFileStatus::ExternalUnsafe
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn ensure_config_rejects_theme_symlinks_without_touching_the_target() {
+    use std::os::unix::fs::symlink;
+
+    let _lock = test_env_lock();
+    let root = crate::test_support::fs::unique_temp_path("ensure-theme-symlink");
+    let xdg_root = root.join("xdg");
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", xdg_root.as_os_str());
+    let _home = EnvGuard::set("HOME", root.join("home").as_os_str());
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = test_paths(&root);
+    let mut context = test_context(&detection, &paths);
+    ensure_config(&mut context).expect("initial install should succeed");
+
+    let config_dir = xdg_root.join("unixnotis");
+    let target = root.join("outside-popup.css");
+    fs::write(&target, "/* outside target */\n").expect("seed outside CSS");
+    fs::remove_file(config_dir.join("popup.css")).expect("remove provisioned popup CSS");
+    symlink(&target, config_dir.join("popup.css")).expect("create popup symlink");
+
+    ensure_config(&mut context).expect_err("theme symlink should fail closed");
+
+    assert_eq!(
+        fs::read_to_string(&target).expect("read outside CSS target"),
+        "/* outside target */\n"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn ensure_config_rejects_configured_theme_symlinks_without_touching_the_target() {
+    use std::os::unix::fs::symlink;
+
+    let _lock = test_env_lock();
+    let root = crate::test_support::fs::unique_temp_path("ensure-configured-theme-symlink");
+    let xdg_root = root.join("xdg");
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", xdg_root.as_os_str());
+    let _home = EnvGuard::set("HOME", root.join("home").as_os_str());
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = test_paths(&root);
+    let mut context = test_context(&detection, &paths);
+    let config_dir = xdg_root.join("unixnotis");
+    fs::create_dir_all(config_dir.join("themes")).expect("create configured theme directory");
+    fs::write(
+        config_dir.join("config.toml"),
+        "[theme]\npopup_css = \"themes/popup.css\"\n",
+    )
+    .expect("write configured popup path");
+    let target = root.join("outside-popup.css");
+    fs::write(&target, "/* outside target */\n").expect("seed outside CSS");
+    symlink(&target, config_dir.join("themes/popup.css")).expect("create configured symlink");
+
+    ensure_config(&mut context).expect_err("configured theme symlink should fail closed");
+
+    assert_eq!(
+        fs::read_to_string(&target).expect("read outside CSS target"),
+        "/* outside target */\n"
+    );
+    assert_eq!(
+        fs::read_link(config_dir.join("themes/popup.css")).expect("read retained symlink"),
+        target
     );
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn reset_config_backs_up_custom_files_and_selects_embedded_stock() {
+fn reset_config_backs_up_custom_files_and_restores_configured_css_defaults() {
     let _lock = test_env_lock();
     let root = crate::test_support::fs::unique_temp_path("reset-config");
     let xdg_root = root.join("xdg");
@@ -109,11 +366,11 @@ fn reset_config_backs_up_custom_files_and_selects_embedded_stock() {
     let config_text = fs::read_to_string(&config_path).expect("read reset config");
     let reset = toml::from_str::<Config>(&config_text).expect("reset config should parse");
     assert_ne!(config_text, "custom = true\n");
-    assert_eq!(reset.theme.mode, ThemeMode::Stock);
+    assert_eq!(reset.theme.base_css, "base.css");
     assert_eq!(
         fs::read_to_string(config_dir.join("base.css")).expect("read reset theme"),
-        "/* custom */\n",
-        "reset must not convert embedded stock into a custom theme snapshot"
+        DEFAULT_BASE_CSS,
+        "reset must restore the active configured stylesheet"
     );
     assert!(
         !config_dir.join("theme.toml").exists(),

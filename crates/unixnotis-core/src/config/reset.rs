@@ -10,7 +10,10 @@ use crate::filesystem::{
     copy_file_atomic, create_directory_all, remove_directory_tree, remove_regular_file,
     write_file_atomic, CreateDirectoryOutcome,
 };
-use crate::{Config, DEFAULT_SCRIPTS};
+use crate::{
+    Config, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS,
+    DEFAULT_SCRIPTS, DEFAULT_WIDGETS_CSS,
+};
 
 const BACKUP_PREFIX: &str = "Backup-";
 type ResetWriter = dyn Fn(&Path, &[u8], u32) -> std::io::Result<()>;
@@ -110,16 +113,14 @@ fn reset_config_to_defaults_inner(
     let theme_paths = config
         .resolve_theme_paths_from(&options.config_dir)
         .map_err(|error| anyhow!(error.to_string()))?;
-    let manifest_path = theme_paths.manifest_path();
     let config_path = options.config_dir.join("config.toml");
     let mut paths = vec![config_path.clone()];
     paths.extend([
-        theme_paths.base_css,
-        theme_paths.panel_css,
-        theme_paths.popup_css,
-        theme_paths.widgets_css,
-        theme_paths.media_css,
-        manifest_path,
+        theme_paths.base_css.clone(),
+        theme_paths.panel_css.clone(),
+        theme_paths.popup_css.clone(),
+        theme_paths.widgets_css.clone(),
+        theme_paths.media_css.clone(),
     ]);
     for script in DEFAULT_SCRIPTS {
         paths.push(options.config_dir.join(script.relative_path));
@@ -164,6 +165,20 @@ fn reset_config_to_defaults_inner(
         contents: config_toml.into_bytes(),
         mode: 0o644,
     }];
+    // Reset every active stylesheet so file-backed loading is immediately usable
+    for (path, contents) in [
+        (theme_paths.base_css, DEFAULT_BASE_CSS),
+        (theme_paths.panel_css, DEFAULT_PANEL_CSS),
+        (theme_paths.popup_css, DEFAULT_POPUP_CSS),
+        (theme_paths.widgets_css, DEFAULT_WIDGETS_CSS),
+        (theme_paths.media_css, DEFAULT_MEDIA_CSS),
+    ] {
+        targets.push(ResetTarget {
+            path,
+            contents: contents.as_bytes().to_vec(),
+            mode: 0o644,
+        });
+    }
     for script in DEFAULT_SCRIPTS {
         let path = options.config_dir.join(script.relative_path);
         if let Some(parent) = path.parent() {
