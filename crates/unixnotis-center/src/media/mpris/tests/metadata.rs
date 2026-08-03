@@ -1,13 +1,15 @@
 use super::super::constants::MAX_MPRIS_PROPERTY_REPLY_BYTES;
 use super::super::metadata::fetch_media_info;
 use super::super::metadata::{
-    bound_string, metadata_artist, metadata_entry_count_allowed, metadata_string,
-    property_reply_body_allowed,
+    bound_string, is_plasma_browser_bridge, metadata_artist, metadata_entry_count_allowed,
+    metadata_pid, metadata_string, property_reply_body_allowed,
 };
 use super::super::player::build_player_state;
-use super::support::{MprisFixture, TEST_PLAYER_NAME};
+use super::support::{MprisFixture, TEST_BRIDGE_PLAYER_NAME, TEST_PLAYER_NAME};
 use unixnotis_core::MediaConfig;
 use zbus::zvariant::{OwnedValue, Value};
+
+const SOURCE_BROWSER_PID: u32 = 42_424;
 
 #[test]
 fn bounded_metadata_strings_trim_and_preserve_utf8_boundaries() {
@@ -31,6 +33,46 @@ fn metadata_fields_accept_expected_string_shapes() {
         Some("A title")
     );
     assert_eq!(metadata_artist(&metadata).as_deref(), Some("Artist"));
+}
+
+#[test]
+fn metadata_pid_accepts_unsigned_values_and_rejects_negative_values() {
+    let positive = std::collections::HashMap::from([(
+        "kde:pid".to_string(),
+        OwnedValue::from(SOURCE_BROWSER_PID),
+    )]);
+    let negative =
+        std::collections::HashMap::from([("kde:pid".to_string(), OwnedValue::from(-1_i32))]);
+    let zero = std::collections::HashMap::from([("kde:pid".to_string(), OwnedValue::from(0_u32))]);
+
+    assert_eq!(metadata_pid(&positive, "kde:pid"), Some(SOURCE_BROWSER_PID));
+    assert_eq!(metadata_pid(&negative, "kde:pid"), None);
+    assert_eq!(metadata_pid(&zero, "kde:pid"), None);
+}
+
+#[test]
+fn metadata_pid_accepts_positive_signed_values() {
+    let positive = std::collections::HashMap::from([(
+        "kde:pid".to_string(),
+        OwnedValue::from(i32::try_from(SOURCE_BROWSER_PID).expect("fixture PID fits")),
+    )]);
+
+    assert_eq!(metadata_pid(&positive, "kde:pid"), Some(SOURCE_BROWSER_PID));
+}
+
+#[test]
+fn source_pid_hints_are_limited_to_plasma_bridge_names() {
+    assert!(is_plasma_browser_bridge(TEST_BRIDGE_PLAYER_NAME));
+    assert!(is_plasma_browser_bridge(
+        "org.mpris.MediaPlayer2.plasma-browser-integration.instance"
+    ));
+    assert!(!is_plasma_browser_bridge(TEST_PLAYER_NAME));
+    assert!(!is_plasma_browser_bridge(
+        "org.mpris.MediaPlayer2.other-browser-bridge"
+    ));
+    assert!(!is_plasma_browser_bridge(
+        "org.mpris.MediaPlayer2.plasma-browser-integration-fake"
+    ));
 }
 
 #[test]
@@ -107,4 +149,39 @@ async fn oversized_art_url_is_not_retained() {
         .await
         .expect("playback status remains available");
     assert_eq!(info.art_source, None);
+}
+
+#[tokio::test]
+async fn browser_bridge_ingestion_keeps_owner_and_source_pids_separate() {
+    let fixture = MprisFixture::start_with_kde_pid(SOURCE_BROWSER_PID).await;
+    let player = build_player_state(
+        &fixture.client,
+        TEST_BRIDGE_PLAYER_NAME,
+        &MediaConfig::default(),
+    )
+    .await
+    .expect("build bridge player")
+    .expect("bridge owner should remain stable");
+
+    let info = fetch_media_info(&player)
+        .await
+        .expect("bridge metadata should be readable");
+
+    assert_eq!(info.owner_pid, Some(std::process::id()));
+    assert_eq!(info.source_pid_hint, Some(SOURCE_BROWSER_PID));
+    assert_eq!(
+        info.browser_family, None,
+        "the fixture keeps the bridge family unresolved so source-PID fallback is exercised"
+    );
+
+    let ordinary = MprisFixture::start().await;
+    let ordinary_player =
+        build_player_state(&ordinary.client, TEST_PLAYER_NAME, &MediaConfig::default())
+            .await
+            .expect("build ordinary player")
+            .expect("ordinary owner should remain stable");
+    let ordinary_info = fetch_media_info(&ordinary_player)
+        .await
+        .expect("ordinary metadata should be readable");
+    assert_eq!(ordinary_info.source_pid_hint, None);
 }

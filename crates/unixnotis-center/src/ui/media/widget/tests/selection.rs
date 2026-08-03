@@ -8,6 +8,7 @@ fn media_info(bus_name: &str, title: &str) -> MediaInfo {
         identity: bus_name.to_string(),
         browser_family: None,
         owner_pid: None,
+        source_pid_hint: None,
         title: title.to_string(),
         artist: String::new(),
         playback_status: "Paused".to_string(),

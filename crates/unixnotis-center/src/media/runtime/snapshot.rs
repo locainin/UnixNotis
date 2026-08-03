@@ -5,7 +5,7 @@ use tracing::debug;
 
 use crate::control::UiEvent;
 
-use crate::media::MediaInfo;
+use crate::media::{mpris::is_plasma_browser_bridge, MediaInfo};
 
 pub(super) async fn send_snapshot_if_changed(
     sender: &Sender<UiEvent>,
@@ -44,6 +44,7 @@ pub(super) fn build_snapshot(cache: &HashMap<String, MediaInfo>) -> Vec<MediaInf
         (
             playback_rank(&info.playback_status),
             info.identity.to_lowercase(),
+            info.bus_name.clone(),
         )
     });
     dedupe_players(infos)
@@ -59,60 +60,96 @@ fn is_active_player(info: &MediaInfo) -> bool {
 }
 
 fn dedupe_players(infos: Vec<MediaInfo>) -> Vec<MediaInfo> {
-    let mut output: Vec<MediaInfo> = Vec::with_capacity(infos.len());
-    let mut seen: HashMap<String, usize> = HashMap::new();
-    for info in infos {
-        let keys = dedupe_keys(&info);
-        if keys.is_empty() {
-            output.push(info);
-            continue;
-        }
-        if let Some(existing_index) = keys.iter().find_map(|key| seen.get(key).copied()) {
-            let existing = &output[existing_index];
-            // Lower score wins, so a playing player with art beats a paused
-            // or artless duplicate from the same browser family or track key
-            if media_score(&info) < media_score(existing) {
-                output[existing_index] = info;
+    // A player can share one key with one group and another key with a second
+    // group, so pairwise replacement is not enough. Build connected components
+    // first, then choose one deterministic representative per component
+    let mut parents = (0..infos.len()).collect::<Vec<_>>();
+    let mut key_owner = HashMap::<String, usize>::new();
+    for (index, info) in infos.iter().enumerate() {
+        for key in dedupe_keys(info) {
+            if let Some(previous) = key_owner.insert(key, index) {
+                union(&mut parents, previous, index);
             }
-            for key in keys {
-                seen.insert(key, existing_index);
-            }
-            continue;
         }
-        let output_index = output.len();
-        for key in keys {
-            seen.insert(key, output_index);
-        }
-        output.push(info);
     }
-    output
+
+    let mut representatives = HashMap::<usize, ComponentSelection>::new();
+    for index in 0..infos.len() {
+        let root = find(&mut parents, index);
+        representatives
+            .entry(root)
+            .and_modify(|selection| {
+                selection.first_index = selection.first_index.min(index);
+                if representative_precedes(&infos[index], &infos[selection.representative_index]) {
+                    selection.representative_index = index;
+                }
+            })
+            .or_insert(ComponentSelection {
+                first_index: index,
+                representative_index: index,
+            });
+    }
+
+    let mut selected = representatives.into_values().collect::<Vec<_>>();
+    selected.sort_unstable_by_key(|selection| selection.first_index);
+    selected
+        .into_iter()
+        .map(|selection| infos[selection.representative_index].clone())
+        .collect()
+}
+
+struct ComponentSelection {
+    // Preserve the first component position even when a later player is the best card
+    first_index: usize,
+    // Artwork and playback state choose the representative shown to the user
+    representative_index: usize,
+}
+
+fn find(parents: &mut [usize], index: usize) -> usize {
+    if parents[index] == index {
+        return index;
+    }
+    let root = find(parents, parents[index]);
+    parents[index] = root;
+    root
+}
+
+fn union(parents: &mut [usize], left: usize, right: usize) {
+    let left = find(parents, left);
+    let right = find(parents, right);
+    if left != right {
+        parents[right] = left;
+    }
+}
+
+fn representative_precedes(candidate: &MediaInfo, current: &MediaInfo) -> bool {
+    media_score(candidate) < media_score(current)
+        || (media_score(candidate) == media_score(current) && candidate.bus_name < current.bus_name)
 }
 
 fn dedupe_keys(info: &MediaInfo) -> Vec<String> {
-    let title = info.title.trim();
-    if let Some(family) = info.browser_family.as_deref() {
-        let mut keys = Vec::with_capacity(2);
-        if !title.is_empty() {
-            // Browser bridges often expose the same track under different names and PIDs
-            // Track identity is the useful cross-browser key when both title and artist exist
-            let artist = info.artist.trim();
-            keys.push(format!(
+    let has_browser_process_identity =
+        info.browser_family.is_some() || info.source_pid_hint.is_some();
+    if has_browser_process_identity {
+        // A bridge helper owns several sessions, so its PID is not the browser identity
+        if let Some(pid) = browser_process_pid(info) {
+            return vec![format!("browser-process:{pid}")];
+        }
+
+        let title = info.title.trim();
+        let artist = info.artist.trim();
+        if !title.is_empty() && !artist.is_empty() {
+            // Metadata is only a fallback when no process identity exists
+            return vec![format!(
                 "browser-track\n{}\n{}",
                 normalize_token(title),
                 normalize_token(artist),
-            ));
+            )];
         }
-        if let Some(pid) = info.owner_pid {
-            // A broker-derived PID also collapses aliases owned by one browser process
-            keys.push(format!("browser-pid:{pid}"));
-        }
-        if keys.is_empty() {
-            // Empty browser metadata is too weak for cross-browser matching
-            // Keep the family fallback so duplicate instances still collapse
-            keys.push(format!("browser:{family}"));
-        }
-        return keys;
+        // A family name alone is not a track identity
+        return Vec::new();
     }
+    let title = info.title.trim();
     if title.is_empty() {
         // Empty titles are too weak to build a stable cross-player key
         return Vec::new();
@@ -127,6 +164,18 @@ fn dedupe_keys(info: &MediaInfo) -> Vec<String> {
         normalized_title,
         normalized_artist
     )]
+}
+
+fn browser_process_pid(info: &MediaInfo) -> Option<u32> {
+    if let Some(source_pid) = info.source_pid_hint {
+        // kde:pid identifies the browser that supplied the bridge metadata
+        return Some(source_pid);
+    }
+    if is_plasma_browser_bridge(&info.bus_name) {
+        // The authenticated owner is only the shared bridge helper
+        return None;
+    }
+    info.owner_pid
 }
 
 fn media_score(info: &MediaInfo) -> (u8, u8) {

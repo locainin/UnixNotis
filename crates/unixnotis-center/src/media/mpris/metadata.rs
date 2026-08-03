@@ -14,6 +14,7 @@ use zbus::Proxy;
 const MAX_TITLE_BYTES: usize = 256;
 const MAX_ARTIST_BYTES: usize = 256;
 const MAX_ART_URL_BYTES: usize = 2048;
+const PLASMA_BRIDGE: &str = "org.mpris.MediaPlayer2.plasma-browser-integration";
 
 pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {
     if state.timeout.is_quarantined() {
@@ -72,6 +73,10 @@ pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<Me
         .and_then(|value| {
             normalize_art_source(&value, state.remote_art_allowed, state.local_art_allowed)
         });
+    // Only the Plasma bridge contract defines kde:pid as a source-browser hint
+    let source_pid_hint = is_plasma_browser_bridge(&state.bus_name)
+        .then(|| metadata_pid(&metadata, "kde:pid"))
+        .flatten();
 
     // PlaybackStatus drives whether the player stays visible
     // A missing status keeps the prior cache entry instead of inventing a stop event
@@ -90,8 +95,10 @@ pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<Me
         identity: state.identity.clone(),
         // Browser family is decided once when the player is admitted.
         browser_family: state.browser_family.clone(),
-        // Metadata PIDs are caller-controlled hints and never replace bus credentials
+        // The broker PID remains the authority for process-bound policy
         owner_pid: state.owner_pid,
+        // KDE bridge metadata is retained separately and used only for deduplication
+        source_pid_hint,
         title,
         artist,
         playback_status,
@@ -149,6 +156,25 @@ pub(super) fn metadata_string(map: &HashMap<String, OwnedValue>, key: &str) -> O
     let value = map.get(key)?;
     let owned = value.try_clone().ok()?;
     String::try_from(owned).ok()
+}
+
+pub(in crate::media) fn is_plasma_browser_bridge(bus_name: &str) -> bool {
+    // Only the known bridge name may contribute an untrusted source-PID hint
+    bus_name == PLASMA_BRIDGE
+        || bus_name
+            .strip_prefix(PLASMA_BRIDGE)
+            .is_some_and(|suffix| suffix.starts_with('.'))
+}
+
+pub(super) fn metadata_pid(map: &HashMap<String, OwnedValue>, key: &str) -> Option<u32> {
+    // Zero and negative values do not identify a live process
+    let value = map.get(key)?;
+    let owned = value.try_clone().ok()?;
+    if let Ok(pid) = i32::try_from(owned) {
+        return u32::try_from(pid).ok().filter(|pid| *pid != 0);
+    }
+    let owned = value.try_clone().ok()?;
+    u32::try_from(owned).ok().filter(|pid| *pid != 0)
 }
 
 pub(super) fn metadata_artist(map: &HashMap<String, OwnedValue>) -> Option<String> {

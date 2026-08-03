@@ -71,6 +71,7 @@ fn media_info() -> MediaInfo {
         identity: "Test Player".to_string(),
         browser_family: None,
         owner_pid: None,
+        source_pid_hint: None,
         title: "A Track".to_string(),
         artist: "An Artist".to_string(),
         playback_status: "Playing".to_string(),

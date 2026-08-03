@@ -92,6 +92,11 @@ fn preserve_transition_fields(existing: &MediaInfo, mut fetched: MediaInfo) -> M
         fetched.art_source = existing.art_source.clone();
     }
 
+    if fetched.source_pid_hint.is_none() && existing.source_pid_hint.is_some() {
+        // Bridge hints can arrive one refresh after the rest of the track metadata
+        fetched.source_pid_hint = existing.source_pid_hint;
+    }
+
     if metadata_is_blank(&fetched) && metadata_has_content(existing) {
         // A blank transition frame is worse than holding the prior text for one retry window
         fetched.title = existing.title.clone();

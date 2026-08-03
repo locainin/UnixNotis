@@ -13,6 +13,7 @@ fn make_info(
         identity: identity.to_string(),
         browser_family: browser_family.map(std::string::ToString::to_string),
         owner_pid: None,
+        source_pid_hint: None,
         title: "title".to_string(),
         artist: "artist".to_string(),
         playback_status: playback_status.to_string(),

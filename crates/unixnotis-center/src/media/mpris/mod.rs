@@ -15,7 +15,7 @@ pub(in crate::media) use command::handle_command;
 pub(in crate::media) use constants::MPRIS_PREFIX;
 pub(in crate::media) use discovery::refresh_players;
 pub(in crate::media) use listener::spawn_properties_listener;
-pub(in crate::media) use metadata::fetch_media_info;
+pub(in crate::media) use metadata::{fetch_media_info, is_plasma_browser_bridge};
 #[cfg_attr(
     not(test),
     expect(

@@ -135,6 +135,7 @@ async fn runtime_signal_refreshes_cache_publishes_and_schedules_fallback() {
                     identity: "UnixNotis Test Player".to_string(),
                     browser_family: None,
                     owner_pid: Some(std::process::id()),
+                    source_pid_hint: None,
                     title: String::new(),
                     artist: String::new(),
                     playback_status: "Playing".to_string(),

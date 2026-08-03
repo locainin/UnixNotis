@@ -65,6 +65,7 @@ fn sample_media(title: &str) -> MediaInfo {
         identity: "Test Player".to_string(),
         browser_family: None,
         owner_pid: None,
+        source_pid_hint: None,
         title: title.to_string(),
         artist: "Artist".to_string(),
         playback_status: "Playing".to_string(),

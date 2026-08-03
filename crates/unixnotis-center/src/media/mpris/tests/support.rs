@@ -12,6 +12,8 @@ use super::super::constants::MPRIS_PATH;
 use crate::test_support::broker::read_broker_address;
 
 pub(in crate::media) const TEST_PLAYER_NAME: &str = "org.mpris.MediaPlayer2.unixnotis_test";
+pub(in crate::media) const TEST_BRIDGE_PLAYER_NAME: &str =
+    "org.mpris.MediaPlayer2.plasma-browser-integration";
 pub(in crate::media) const TEST_PLAYER_IDENTITY: &str = "UnixNotis Test Player";
 
 // Parallel fixtures need distinct socket directories even inside one process
@@ -107,6 +109,7 @@ struct TestMprisPlayer {
     commands: Arc<CommandCounts>,
     metadata_bytes: usize,
     art_url_bytes: usize,
+    metadata_pid: Option<u32>,
 }
 
 #[zbus::interface(name = "org.mpris.MediaPlayer2.Player")]
@@ -143,6 +146,9 @@ impl TestMprisPlayer {
                 OwnedValue::try_from(zbus::zvariant::Value::from(art_url.as_str()))
                     .expect("build art URL value"),
             );
+        }
+        if let Some(pid) = self.metadata_pid {
+            metadata.insert("kde:pid".to_string(), OwnedValue::from(pid));
         }
         metadata
     }
@@ -194,6 +200,10 @@ impl MprisFixture {
         Self::start_with_payload(0, art_url_bytes, 0).await
     }
 
+    pub(in crate::media) async fn start_with_kde_pid(pid: u32) -> Self {
+        Self::start_with_payload_for_name(TEST_BRIDGE_PLAYER_NAME, 0, 0, 0, Some(pid)).await
+    }
+
     pub(in crate::media) async fn start_with_identity_bytes(identity_bytes: usize) -> Self {
         Self::start_with_payload(0, 0, identity_bytes).await
     }
@@ -202,6 +212,23 @@ impl MprisFixture {
         metadata_bytes: usize,
         art_url_bytes: usize,
         identity_bytes: usize,
+    ) -> Self {
+        Self::start_with_payload_for_name(
+            TEST_PLAYER_NAME,
+            metadata_bytes,
+            art_url_bytes,
+            identity_bytes,
+            None,
+        )
+        .await
+    }
+
+    async fn start_with_payload_for_name(
+        name: &str,
+        metadata_bytes: usize,
+        art_url_bytes: usize,
+        identity_bytes: usize,
+        metadata_pid: Option<u32>,
     ) -> Self {
         let broker = PrivateBroker::start();
         let commands = Arc::new(CommandCounts::default());
@@ -213,7 +240,7 @@ impl MprisFixture {
         // The service exports both MPRIS interfaces at the standard object path
         let server = ConnectionBuilder::address(broker.address.as_str())
             .expect("parse private broker address")
-            .name(TEST_PLAYER_NAME)
+            .name(name)
             .expect("request test MPRIS name")
             .serve_at(MPRIS_PATH, TestMprisRoot { identity })
             .expect("register test MPRIS root")
@@ -223,6 +250,7 @@ impl MprisFixture {
                     commands: commands.clone(),
                     metadata_bytes,
                     art_url_bytes,
+                    metadata_pid,
                 },
             )
             .expect("register test MPRIS player")
