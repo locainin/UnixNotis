@@ -13,6 +13,13 @@ use super::super::super::{log_line, ActionContext};
 
 pub(in crate::actions::config::backup) const BACKUP_PREFIX: &str = "Backup-";
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "legacy backup unit tests cover this isolated retention helper"
+    )
+)]
 pub(in crate::actions::config) fn create_backup_dir(
     ctx: &mut ActionContext,
     config_dir: &Path,

@@ -1,6 +1,7 @@
 //! Backup snapshot helpers for config and theme files
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use unixnotis_core::filesystem::copy_file_atomic;
@@ -11,6 +12,13 @@ use crate::paths::format_with_home;
 use super::super::super::{log_line, ActionContext};
 use super::retention::list_backup_dirs;
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "kept for the installer backup unit tests and future reset callers"
+    )
+)]
 pub(in crate::actions::config) fn backup_existing_file(
     ctx: &mut ActionContext,
     path: &Path,
