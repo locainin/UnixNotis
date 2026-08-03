@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use tracing::debug;
-use unixnotis_core::{popup_allowed_by_state, ControlState, NotificationView};
+use unixnotis_core::{popup_allowed_by_state, ControlState, NotificationView, PopupDeliveryStage};
 
 use super::super::UiState;
 use super::mutation::ReconcilePlan;
@@ -111,7 +111,11 @@ pub(super) fn desired_seed_popups(
     // This keeps reconnect snapshots and live signals on the same visibility rules
     active
         .into_iter()
-        .filter(|notification| popup_allowed_by_state(notification.urgency, state))
+        .filter(|notification| {
+            popup_allowed_by_state(notification.urgency, state)
+                && notification.popup_decision.delivery_stage.rank()
+                    < PopupDeliveryStage::Visible.rank()
+        })
         .collect()
 }
 

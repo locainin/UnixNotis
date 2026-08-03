@@ -23,7 +23,18 @@ fn make_view(id: u32, urgency: Urgency, summary: &str) -> NotificationView {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     }
+}
+
+#[test]
+fn visible_generations_are_not_recreated_from_a_reconnect_seed() {
+    let mut notification = make_view(10, Urgency::Normal, "already shown");
+    notification.popup_decision.delivery_stage = unixnotis_core::PopupDeliveryStage::Visible;
+
+    let desired = desired_seed_popups(vec![notification], &ControlState::default());
+
+    assert!(desired.is_empty());
 }
 
 #[test]
