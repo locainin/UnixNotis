@@ -80,10 +80,6 @@ pub(super) fn migrated_field_diagnostic(path: String) -> ConfigDiagnostic {
 pub(super) fn empty_exact_media_policy_diagnostic(contents: &str) -> Option<ConfigDiagnostic> {
     let document = contents.parse::<Value>().ok()?;
     let root = document.as_table()?;
-    let version = root.get("config_version").and_then(Value::as_integer)?;
-    if u32::try_from(version).ok()? != CURRENT_CONFIG_VERSION {
-        return None;
-    }
     let media = root.get("media").and_then(Value::as_table)?;
     let exact = media
         .get("local_art_policy")

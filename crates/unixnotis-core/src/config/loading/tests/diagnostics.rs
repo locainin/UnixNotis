@@ -54,6 +54,23 @@ fn current_empty_exact_media_policy_emits_a_warning() {
 }
 
 #[test]
+fn legacy_empty_exact_media_policy_emits_a_warning_without_widening_policy() {
+    let report = Config::parse_with_report(
+        "config_version = 3\n[media]\nlocal_art_policy = \"exact_executable_only\"\n",
+    )
+    .expect("legacy config should parse");
+
+    assert_eq!(
+        report.config.media.local_art_policy,
+        crate::MediaLocalArtPolicy::ExactExecutableOnly
+    );
+    assert!(report.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "config.media.empty-exact-allowlist"
+            && diagnostic.kind == ConfigDiagnosticKind::Warning
+    }));
+}
+
+#[test]
 fn adjustment_diagnostics_report_safe_scalar_changes_and_hide_commands() {
     let mut before = Config::default();
     before.widgets.refresh_interval_ms = 1;

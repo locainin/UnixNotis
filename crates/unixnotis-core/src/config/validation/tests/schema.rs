@@ -108,14 +108,23 @@ fn version_three_accepts_structured_direct_commands_without_inference() {
 }
 
 #[test]
-fn old_media_defaults_restore_native_artwork() {
+fn missing_local_art_policy_uses_the_current_default() {
+    let (config, _) = deserialize_config("config_version = 4\n[media]\n").expect("parse media");
+    assert_eq!(
+        config.media.local_art_policy,
+        crate::MediaLocalArtPolicy::AllAdmitted
+    );
+}
+
+#[test]
+fn old_explicit_empty_exact_policy_is_preserved() {
     let (config, _) = deserialize_config(
         "config_version = 3\n[media]\nlocal_art_policy = \"exact_executable_only\"\n",
     )
     .expect("old media config should migrate");
     assert_eq!(
         config.media.local_art_policy,
-        crate::MediaLocalArtPolicy::AllAdmitted
+        crate::MediaLocalArtPolicy::ExactExecutableOnly
     );
     assert!(config.media.local_art_executable_allowlist.is_empty());
 }
