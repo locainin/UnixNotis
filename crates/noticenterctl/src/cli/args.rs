@@ -104,6 +104,12 @@ pub enum PresetCommand {
     Inspect {
         input: String,
     },
+    // Replace the local configuration and bundled scripts with current defaults
+    ResetConfig {
+        /// Skip the interactive confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

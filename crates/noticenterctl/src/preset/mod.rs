@@ -13,6 +13,7 @@ mod import;
 mod inspect;
 mod manifest;
 mod pathing;
+mod reset;
 
 #[cfg(test)]
 mod tests;
@@ -44,5 +45,6 @@ pub fn run_preset(command: PresetCommand) -> Result<()> {
             allow_external_css,
         ),
         PresetCommand::Inspect { input } => inspect::run_inspect(Path::new(&input)),
+        PresetCommand::ResetConfig { yes } => reset::run_reset_config(yes),
     }
 }
