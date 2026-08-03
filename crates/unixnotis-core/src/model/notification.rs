@@ -138,6 +138,8 @@ impl Notification {
         let mut image = self.image.clone();
         image.content_image = Default::default();
         image.sender_visual = Default::default();
+        // A cleared raster must never retain a role that can select an image slot
+        image.sender_visual_role = crate::NotificationVisualRole::None;
         Self {
             id: self.id,
             generation: self.generation,

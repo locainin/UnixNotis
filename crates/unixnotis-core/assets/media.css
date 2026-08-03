@@ -59,56 +59,73 @@
   background: transparent;
 }
 
+/* Player switcher: glass chips that hug the card sides, with a count pill so
+ * switching players reads as an intentional control instead of bare arrows. */
 .unixnotis-media-nav {
-  background: alpha(#ffffff, 0.04);
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
-  border-bottom: 1px solid alpha(#ffffff, 0.02);
-  border-radius: var(--unixnotis-media-button-radius);
-  padding: 3px;
+  background: alpha(#ffffff, 0.07);
+  border: 1px solid alpha(#ffffff, 0.12);
+  border-radius: 12px;
+  padding: 0;
   margin: 0;
-  font-weight: 700;
-  font-size: 12px;
-  min-width: 18px;
-  min-height: 18px;
-  color: alpha(#ffffff, 0.85);
-  box-shadow: none;
-  transition: background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out;
+  min-width: 24px;
+  min-height: 44px;
+  -gtk-icon-size: 18px;
+  font-size: 18px;
+  font-weight: 600;
+  color: alpha(#ffffff, 0.92);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.10);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
 .unixnotis-media-nav:hover {
-  background: alpha(#ffffff, 0.09);
-  border-top-color: alpha(#ffffff, 0.16);
-  border-left-color: alpha(#ffffff, 0.12);
-  border-right-color: alpha(#ffffff, 0.06);
-  border-bottom-color: alpha(#ffffff, 0.03);
-  box-shadow: 0 4px 10px -5px alpha(#000000, 0.4), inset 0 1px 0 alpha(#ffffff, 0.05);
+  background: alpha(#ffffff, 0.15);
+  border-color: alpha(#ffffff, 0.22);
+  color: #ffffff;
+  box-shadow:
+    0 6px 12px -6px alpha(#000000, 0.45),
+    inset 0 1px 0 alpha(#ffffff, 0.12);
+}
+
+.unixnotis-media-nav:active {
+  background: alpha(#ffffff, 0.19);
+  border-color: alpha(#ffffff, 0.26);
   color: #ffffff;
 }
 
-.unixnotis-media-nav-prev,
+/* Point each tab at the card so it reads as a directional arrow. */
+.unixnotis-media-nav-prev {
+  border-radius: 999px 6px 6px 999px;
+}
+
 .unixnotis-media-nav-next {
-  min-width: 18px;
+  border-radius: 6px 999px 999px 6px;
 }
 
 .unixnotis-media-position {
-  color: @unixnotis-muted;
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  color: alpha(#ffffff, 0.70);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  background: alpha(#ffffff, 0.06);
+  border: 1px solid alpha(#ffffff, 0.10);
+  border-radius: 999px;
+  padding: 1px 8px;
+  box-shadow: none;
 }
 
 .unixnotis-media-card {
-  background-image: linear-gradient(145deg, alpha(@unixnotis-card-base, 0.88), alpha(@unixnotis-surface-base, 0.94));
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
+  background: alpha(#ffffff, 0.055);
+  border-top: 1px solid alpha(#ffffff, 0.10);
+  border-left: 1px solid alpha(#ffffff, 0.08);
+  border-right: 1px solid alpha(#ffffff, 0.05);
   border-bottom: 1px solid alpha(#ffffff, 0.02);
   border-radius: var(--unixnotis-media-card-radius);
   padding: var(--unixnotis-media-card-padding-y) var(--unixnotis-media-card-padding-x);
   min-height: var(--unixnotis-media-card-min-height);
-  box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
+  box-shadow:
+    0 6px 16px -10px alpha(#000000, 0.55),
+    inset 0 1px 0 alpha(#ffffff, 0.05);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
 .unixnotis-media-card-carousel {
@@ -136,14 +153,11 @@
 }
 
 .unixnotis-media-card.playing {
-  background-image: linear-gradient(145deg, alpha(@unixnotis-accent, 0.12), alpha(@unixnotis-card-base, 0.94));
-  border-top: 1px solid alpha(#ffffff, 0.16);
-  border-left: 1px solid alpha(#ffffff, 0.12);
-  border-right: 1px solid alpha(#ffffff, 0.06);
-  border-bottom: 1px solid alpha(#ffffff, 0.03);
+  background: alpha(#ffffff, 0.07);
+  border-color: alpha(@unixnotis-accent, 0.32);
   box-shadow:
-    0 16px 36px -20px alpha(#000000, 0.8),
-    inset 0 1px 0 alpha(#ffffff, 0.12);
+    0 8px 18px -12px alpha(#000000, 0.60),
+    inset 0 1px 0 alpha(#ffffff, 0.08);
 }
 
 /*
@@ -242,7 +256,7 @@
   border-radius: var(--unixnotis-media-button-radius);
   padding: var(--unixnotis-media-button-padding-y) var(--unixnotis-media-button-padding-x);
   box-shadow: none;
-  color: alpha(#ffffff, 0.85);
+  color: alpha(#ffffff, 0.92);
   transition: background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out;
 }
 
@@ -256,6 +270,15 @@
   color: #ffffff;
 }
 
+.unixnotis-media-button:disabled,
+.unixnotis-media-button:disabled:hover {
+  background: alpha(#ffffff, 0.05);
+  border: 1px solid alpha(#ffffff, 0.10);
+  color: alpha(#ffffff, 0.92);
+  -gtk-icon-filter: none;
+  box-shadow: none;
+}
+
 .unixnotis-media-button.primary {
   background: @unixnotis-text;
   border: 1px solid @unixnotis-text;
@@ -263,14 +286,16 @@
   box-shadow: 0 4px 10px -3px alpha(#000000, 0.3);
 }
 
-/* Restrained media transport */
+/* Restrained media transport: hover is a gentle lift within the panel family */
 .unixnotis-media-card:hover {
-  background-image: linear-gradient(135deg, alpha(#ffffff, 0.075), alpha(#ffffff, 0.025));
-  border-top-color: alpha(#ffffff, 0.14);
-  border-left-color: alpha(#ffffff, 0.10);
-  border-right-color: alpha(#ffffff, 0.06);
-  border-bottom-color: alpha(#ffffff, 0.03);
-  box-shadow: 0 8px 20px -10px alpha(#000000, 0.7), inset 0 1px 0 alpha(#ffffff, 0.05);
+  background: alpha(#ffffff, 0.09);
+  border-top: 1px solid alpha(#ffffff, 0.16);
+  border-left: 1px solid alpha(#ffffff, 0.12);
+  border-right: 1px solid alpha(#ffffff, 0.07);
+  border-bottom: 1px solid alpha(#ffffff, 0.03);
+  box-shadow:
+    0 10px 22px -12px alpha(#000000, 0.62),
+    inset 0 1px 0 alpha(#ffffff, 0.08);
 }
 
 .unixnotis-media-button.primary:hover {
@@ -278,6 +303,25 @@
   border-color: alpha(#ffffff, 0.90);
   color: #020617;
   box-shadow: 0 6px 14px -2px alpha(#000000, 0.45);
+}
+
+/* Transport icons stay white on every player (browser MPRIS icons can arrive
+ * dark); the primary play button keeps its dark-on-white glyph. */
+.unixnotis-media-button image,
+.unixnotis-media-button .icon,
+.unixnotis-media-button:disabled image,
+.unixnotis-media-button:disabled .icon {
+  color: #ffffff;
+  -gtk-icon-palette: success alpha(#ffffff, 0.95), warning alpha(#ffffff, 0.95), error alpha(#ffffff, 0.95);
+  -gtk-icon-filter: none;
+  -gtk-icon-shadow: 0 0 0 transparent;
+}
+
+.unixnotis-media-button.primary image,
+.unixnotis-media-button.primary .icon {
+  color: @unixnotis-surface-base;
+  -gtk-icon-palette: success @unixnotis-surface-base, warning @unixnotis-surface-base, error @unixnotis-surface-base;
+  -gtk-icon-shadow: 0 0 0 transparent;
 }
 
 .unixnotis-media-button:focus,

@@ -19,13 +19,17 @@ pub(super) fn update_metadata_labels(
 ) {
     let metadata = data.presentation.metadata.as_ref();
     let time_badge = relative_time_badge(data.presentation.received_at_ms, metadata);
-    // Relative time stays on the title lane while optional diagnostics get their own row
-    set_label_visible_if_changed(&row.time_badge, !time_badge.is_empty());
+    // Keep the stock row compact unless the optional metadata lane is enabled
+    set_label_visible_if_changed(
+        &row.time_badge,
+        data.presentation.show_metadata && !time_badge.is_empty(),
+    );
     set_label_text_if_changed(&row.time_badge, &time_badge);
     set_widget_visible_if_changed(&row.footer, data.presentation.show_metadata);
     if !data.presentation.show_metadata {
-        // Optional labels collapse while per-notification chronology remains
+        // Optional labels collapse together so ordinary rows match master spacing
         set_widget_visible_if_changed(&row.meta_top, false);
+        set_label_visible_if_changed(&row.time_badge, false);
         set_label_visible_if_changed(&row.meta_label, false);
         set_label_visible_if_changed(&row.footer_left, false);
         set_label_visible_if_changed(&row.footer_right, false);

@@ -298,3 +298,28 @@ fn history_projection_drops_raw_hints_and_image_bytes() {
     assert_eq!(history.sender_start_time, Some(9000));
     assert_eq!(history.sender_executable.as_deref(), Some("/usr/bin/mail"));
 }
+
+#[test]
+fn history_projection_clears_sender_visual_role_with_sender_pixels() {
+    let notification = notification_with_image(NotificationImage {
+        sender_visual_role: crate::NotificationVisualRole::ConversationAvatar,
+        sender_visual: ImageData {
+            width: 1,
+            height: 1,
+            rowstride: 4,
+            has_alpha: true,
+            bits_per_sample: 8,
+            channels: 4,
+            data: vec![1, 2, 3, 255],
+        },
+        ..image_with_raw_bytes()
+    });
+
+    let history = notification.to_history();
+
+    assert_eq!(
+        history.image.sender_visual_role,
+        crate::NotificationVisualRole::None
+    );
+    assert!(history.image.sender_visual.data.is_empty());
+}

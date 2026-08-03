@@ -34,10 +34,15 @@ pub(in crate::daemon::notifications) struct NotificationInput {
     pub(in crate::daemon::notifications) expire_timeout: i32,
 }
 
+// Keep message pixels and sender pixels separate until their roles are stored
 struct ImageBuildInput {
+    // Explicit message attachment pixels
     image_data: Option<ImageData>,
+    // Communication image-data promoted by the trusted daemon
     sender_visual_data: Option<ImageData>,
+    // A bounded local sender visual, when attribution allows it
     sender_visual: Option<ImageData>,
+    // The semantic role selected from attribution and communication evidence
     sender_visual_role: SenderVisualRole,
 }
 

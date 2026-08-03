@@ -10,7 +10,6 @@ use std::rc::Rc;
 use gtk::gdk::{Paintable, Texture};
 use gtk::prelude::*;
 use gtk::IconPaintable;
-use unixnotis_core::NotificationImage;
 
 const DEFAULT_MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_TRACKED_IMAGE_KEYS: usize = 4096;
@@ -24,14 +23,6 @@ thread_local! {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(super) enum IconKey {
-    ImageData {
-        hash: [u8; 32],
-        len: usize,
-        width: i32,
-        height: i32,
-        size: i32,
-        scale: i32,
-    },
     Path {
         path: PathBuf,
         size: i32,
@@ -47,34 +38,9 @@ pub(super) enum IconKey {
 impl IconKey {
     pub(super) const fn size_and_scale(&self) -> (i32, i32) {
         match self {
-            Self::ImageData { size, scale, .. }
-            | Self::Path { size, scale, .. }
-            | Self::Name { size, scale, .. } => (*size, *scale),
+            Self::Path { size, scale, .. } | Self::Name { size, scale, .. } => (*size, *scale),
         }
     }
-}
-
-pub(super) fn icon_key_for_image(
-    image: &NotificationImage,
-    size: i32,
-    scale: i32,
-) -> Option<IconKey> {
-    if image.content_image.data.is_empty() {
-        return None;
-    }
-    let data = &image.content_image;
-    if data.data.is_empty() {
-        return None;
-    }
-    let hash = hash_image_data(&data.data);
-    Some(IconKey::ImageData {
-        hash,
-        len: data.data.len(),
-        width: data.width,
-        height: data.height,
-        size,
-        scale,
-    })
 }
 
 pub(super) fn icon_key_for_path(path: &Path, size: i32, scale: i32) -> Option<IconKey> {
@@ -104,11 +70,6 @@ pub(super) fn icon_key_for_name(name: &str, size: i32, scale: i32) -> Option<Ico
         size,
         scale,
     })
-}
-
-fn hash_image_data(data: &[u8]) -> [u8; 32] {
-    // Notification image payloads are already bounded, so hashing every byte keeps cache identity exact
-    *blake3::hash(data).as_bytes()
 }
 
 pub(super) fn set_image_key(image: &gtk::Image, key: IconKey) {

@@ -199,9 +199,9 @@ fn relay_singleton_shows_authenticated_source_and_secondary_app_label() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();
     notification.attribution = unixnotis_core::NotificationAttribution::relay(
-        "Signal",
+        "Example Chat",
         "Sent via /usr/bin/notify-send",
-        "relay:notify-send:signal".to_string(),
+        "relay:notify-send:example-chat".to_string(),
     );
     let data = row_data(Rc::new(notification), RowFlags::default());
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
@@ -209,7 +209,10 @@ fn relay_singleton_shows_authenticated_source_and_secondary_app_label() {
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
     assert_eq!(row.app_label.text().as_str(), "Command-line notification");
-    assert_eq!(row.secondary_claim.text().as_str(), "App label: Signal");
+    assert_eq!(
+        row.secondary_claim.text().as_str(),
+        "App label: Example Chat"
+    );
     assert!(row.secondary_claim.get_visible());
     assert!(!row.trust_chip.get_visible());
     assert!(row.card.has_css_class("relay"));
@@ -232,9 +235,9 @@ fn grouped_relay_row_hides_identity_details_owned_by_the_group_header() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();
     notification.attribution = unixnotis_core::NotificationAttribution::relay(
-        "Signal",
+        "Example Chat",
         "Sent via /usr/bin/notify-send",
-        "relay:notify-send:signal".to_string(),
+        "relay:notify-send:example-chat".to_string(),
     );
     let data = row_data(
         Rc::new(notification),
@@ -256,7 +259,7 @@ fn grouped_relay_row_hides_identity_details_owned_by_the_group_header() {
 }
 
 #[gtk::test]
-fn expanded_group_rows_keep_the_message_first_compact_lane() {
+fn expanded_group_rows_retain_master_identity_lane() {
     let (_root, row) = notification_row();
     let data = row_data(
         Rc::new(sample_notification()),
@@ -271,9 +274,9 @@ fn expanded_group_rows_keep_the_message_first_compact_lane() {
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
-    assert!(!row.app_label.get_visible());
-    assert!(row.card.has_css_class("group-owned-identity"));
-    assert_eq!(row.card.spacing(), 2);
+    assert!(row.app_label.get_visible());
+    assert!(!row.card.has_css_class("group-owned-identity"));
+    assert_eq!(row.card.spacing(), 6);
 }
 
 #[gtk::test]
@@ -337,7 +340,7 @@ fn recycled_standalone_row_clears_identity_cache_when_it_becomes_grouped() {
 }
 
 #[gtk::test]
-fn compact_rows_place_relative_time_in_the_non_overlapping_header_lane() {
+fn compact_rows_hide_optional_time_until_metadata_is_enabled() {
     let (_root, row) = notification_row();
     let notification = Rc::new(sample_notification());
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
@@ -346,7 +349,7 @@ fn compact_rows_place_relative_time_in_the_non_overlapping_header_lane() {
     update_notification_row(&row, &current, &IconResolver::new(), &command_tx);
 
     assert!(!row.meta_top.get_visible());
-    assert!(row.time_badge.get_visible());
+    assert!(!row.time_badge.get_visible());
     assert!(!row.meta_label.get_visible());
     assert!(!row.footer.get_visible());
     assert!(!row.footer_left.get_visible());

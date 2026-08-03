@@ -10,6 +10,11 @@ use super::{
     PanelClearButtonPlacement, PanelSection, PanelWidgetSection,
 };
 
+// Conversation photos are useful context and stay enabled unless explicitly hidden
+const fn default_notification_avatars_visible() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct PanelConfig {
@@ -53,6 +58,9 @@ pub struct PanelConfig {
     pub notification_metadata: NotificationMetadataConfig,
     /// Show optional notification image thumbnails in panel rows
     pub notification_thumbnails_visible: bool,
+    /// Show bounded conversation avatars in the master-style row image slot
+    #[serde(default = "default_notification_avatars_visible")]
+    pub notification_avatars_visible: bool,
     /// Where the "clear all" action is rendered
     pub clear_button_placement: PanelClearButtonPlacement,
     /// Heading shown above toggle-style quick actions
@@ -128,6 +136,7 @@ impl Default for PanelConfig {
             notification_metadata_visible: false,
             notification_metadata: NotificationMetadataConfig::default(),
             notification_thumbnails_visible: false,
+            notification_avatars_visible: true,
             clear_button_placement: PanelClearButtonPlacement::ActionRow,
             quick_actions_label: "Quick settings".to_string(),
             system_status_label: "System health".to_string(),

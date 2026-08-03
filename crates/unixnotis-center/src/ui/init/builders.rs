@@ -19,6 +19,7 @@ pub(super) fn build_notification_list(
         notification_metadata: init.config.panel.notification_metadata.clone(),
         notification_corners: init.config.theme.notification_corners,
         show_notification_thumbnails: init.config.panel.notification_thumbnails_visible,
+        show_notification_avatars: init.config.panel.notification_avatars_visible,
         reduced_motion: init.config.panel.reduced_motion,
         empty_text: init.config.panel.empty_text.clone(),
         no_matching_text: init.config.panel.no_matching_text.clone(),

@@ -278,7 +278,7 @@ fn stock_panel_css_uses_separated_rows_and_bounded_depth_layers() {
     assert!(css.contains(".unixnotis-stack-layer-back"));
     assert!(css.contains(".unixnotis-stack-layer-middle"));
     assert!(css.contains("margin: 6px 14px 0"));
-    assert!(css.contains("margin: 12px 8px 10px"));
+    assert!(css.contains("margin: 12px 8px 8px"));
     assert!(!css.contains("margin: -58px 14px 0"));
     assert!(css.contains("margin: 0 20px"));
     assert!(css.contains(".unixnotis-panel-card.unixnotis-panel-card-grouped {\n  border-radius:"));

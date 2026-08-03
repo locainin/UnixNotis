@@ -328,15 +328,21 @@ fn thumbnail_kind(notification: &NotificationView) -> ThumbnailKind {
 
 const fn visual_presentation(notification: &NotificationView) -> VisualPresentation {
     // The daemon has already materialized safe pixels; clients only select a slot
-    let sender = match notification.image.sender_visual_role {
-        unixnotis_core::NotificationVisualRole::ConversationAvatar => {
-            SenderVisualPresentation::ConversationAvatar
+    let sender = if notification.image.sender_visual.data.is_empty() {
+        SenderVisualPresentation::None
+    } else {
+        match notification.image.sender_visual_role {
+            unixnotis_core::NotificationVisualRole::ConversationAvatar => {
+                SenderVisualPresentation::ConversationAvatar
+            }
+            unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon => {
+                SenderVisualPresentation::ApplicationProvidedIcon
+            }
+            unixnotis_core::NotificationVisualRole::None
+            | unixnotis_core::NotificationVisualRole::ContentImage => {
+                SenderVisualPresentation::None
+            }
         }
-        unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon => {
-            SenderVisualPresentation::ApplicationProvidedIcon
-        }
-        unixnotis_core::NotificationVisualRole::None
-        | unixnotis_core::NotificationVisualRole::ContentImage => SenderVisualPresentation::None,
     };
     VisualPresentation {
         sender,

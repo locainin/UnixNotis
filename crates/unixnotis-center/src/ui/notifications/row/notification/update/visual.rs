@@ -19,8 +19,9 @@ pub(super) fn apply_visual_state(
 ) {
     let card = &row.card;
     let is_critical = notification.urgency == Urgency::Critical as u8;
-    // Expanded children also sit below the group header, so they use the same compact lane
-    let group_owns_identity = data.collapsed_group_preview || data.expanded;
+    // Only collapsed previews move identity into the shared group header
+    // Expanded children retain the normal master-style card composition
+    let group_owns_identity = data.collapsed_group_preview;
     // Removing the hidden identity row also removes its old inter-row breathing room
     card.set_spacing(if group_owns_identity { 2 } else { 6 });
     // Theme changes update recycled rows without rebuilding the GTK child tree

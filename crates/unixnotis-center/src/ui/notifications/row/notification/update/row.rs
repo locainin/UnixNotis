@@ -2,6 +2,7 @@
 
 use gtk::prelude::*;
 use tokio::sync::mpsc;
+use unixnotis_core::hooks;
 use unixnotis_ui::presentation::{
     apply_semantic_badge, default_activation::DefaultActionTarget, NotificationPresentation,
 };
@@ -14,7 +15,7 @@ use super::super::state::{IconSignature, NotificationRowWidgets};
 use super::actions::{update_actions, visible_action_count_from};
 use super::labels::update_notification_text;
 use super::metadata::update_metadata_labels;
-use super::thumbnail::{has_content_thumbnail, has_conversation_avatar, has_sender_visual};
+use super::thumbnail::{panel_lead_visual, PanelLeadVisual};
 use super::visual::{apply_visual_state, set_widget_visible_if_changed};
 
 pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRowWidgets) {
@@ -36,6 +37,10 @@ pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRow
     );
     row.icon_sig.borrow_mut().take();
     row.inline_reply.reset_for_recycle();
+    row.thumbnail
+        .remove_css_class(hooks::panel_card::CONTENT_IMAGE);
+    row.thumbnail
+        .remove_css_class(hooks::panel_card::SENDER_VISUAL);
 
     for widget in [
         row.card.upcast_ref::<gtk::Widget>(),
@@ -105,14 +110,17 @@ pub(in crate::ui::notifications) fn update_notification_row(
     // Set this before action-cache early returns so recycled rows cannot retain
     // a previous notification generation
     row.default_activation.set_target(default_target);
-    let show_identity = !data.collapsed_group_preview && !data.expanded;
+    // Only the collapsed preview delegates identity to the group header
+    // Expanded groups retain the master-style identity lane on each child
+    let show_identity = !data.collapsed_group_preview;
     let has_actions = visible_action_count_from(&presentation, data.is_active) > 0;
-    let has_content_thumbnail = has_content_thumbnail(&presentation);
     // The daemon has already assigned the visual role after attribution and safe decoding
-    let has_conversation_avatar = has_conversation_avatar(&presentation);
-    let has_sender_visual = has_sender_visual(&presentation);
-    let has_thumbnail = data.presentation.show_thumbnail
-        && (has_content_thumbnail || has_conversation_avatar || has_sender_visual);
+    let lead_visual = panel_lead_visual(
+        &presentation,
+        data.presentation.show_avatar,
+        data.presentation.show_thumbnail,
+    );
+    let has_thumbnail = lead_visual != PanelLeadVisual::None;
 
     apply_visual_state(
         row,
@@ -188,27 +196,33 @@ pub(in crate::ui::notifications) fn update_notification_row(
     // Group rows keep the measured top lane so dismiss never covers message text
     set_widget_visible_if_changed(&row.header, true);
     set_widget_visible_if_changed(&row.close_button, true);
-    if has_thumbnail {
-        // Reapply visible thumbnails so config reloads cannot leave stale previews
-        if (has_conversation_avatar || has_sender_visual) && !has_content_thumbnail {
+    // Clear paintable state before selecting a new role on a recycled row
+    row.thumbnail.clear();
+    row.thumbnail
+        .remove_css_class(hooks::panel_card::CONTENT_IMAGE);
+    row.thumbnail
+        .remove_css_class(hooks::panel_card::SENDER_VISUAL);
+    match lead_visual {
+        PanelLeadVisual::ConversationAvatar => {
             icon_resolver.apply_sender_visual(&row.thumbnail, notification);
-            if has_sender_visual {
-                row.thumbnail.add_css_class("unixnotis-panel-sender-visual");
-            } else {
-                row.thumbnail
-                    .remove_css_class("unixnotis-panel-sender-visual");
-            }
-        } else {
-            let scale = row.card.scale_factor();
-            icon_resolver.apply_icon(&row.thumbnail, notification, 56, scale);
-            row.thumbnail
-                .remove_css_class("unixnotis-panel-sender-visual");
         }
-    } else {
-        row.thumbnail
-            .remove_css_class("unixnotis-panel-sender-visual");
+        PanelLeadVisual::ContentImage => {
+            row.thumbnail
+                .add_css_class(hooks::panel_card::CONTENT_IMAGE);
+            icon_resolver.apply_content_visual(&row.thumbnail, notification);
+        }
+        PanelLeadVisual::DecorativeSenderVisual => {
+            icon_resolver.apply_sender_visual(&row.thumbnail, notification);
+            row.thumbnail
+                .add_css_class(hooks::panel_card::SENDER_VISUAL);
+        }
+        PanelLeadVisual::None => {}
     }
-    set_widget_visible_if_changed(&row.thumbnail, has_thumbnail);
+    // A role alone cannot make an empty or malformed image paintable
+    set_widget_visible_if_changed(
+        &row.thumbnail,
+        has_thumbnail && row.thumbnail.paintable().is_some(),
+    );
     set_widget_visible_if_changed(&row.card_plate, true);
     set_widget_visible_if_changed(&row.card, true);
 }

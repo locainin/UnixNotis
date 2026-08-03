@@ -159,6 +159,8 @@ fn popup_theme_keeps_kind_trust_and_compact_media_hooks() {
 
 #[test]
 fn notification_surfaces_keep_compact_master_geometry() {
+    assert!(DEFAULT_PANEL_CSS.contains("min-width: 420px"));
+    assert!(DEFAULT_PANEL_CSS.contains("var(--unixnotis-panel-radius)"));
     assert!(DEFAULT_PANEL_CSS.contains("var(--unixnotis-notification-card-radius)"));
     assert!(DEFAULT_PANEL_CSS.contains("var(--unixnotis-panel-card-padding-y)"));
     assert!(DEFAULT_PANEL_CSS.contains("var(--unixnotis-panel-card-padding-x)"));
@@ -166,9 +168,56 @@ fn notification_surfaces_keep_compact_master_geometry() {
     assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-padding-y)"));
     assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-padding-x)"));
     assert!(DEFAULT_PANEL_CSS.contains("margin: 6px 14px 0"));
-    assert!(DEFAULT_PANEL_CSS.contains("margin: 12px 8px 10px"));
+    assert!(DEFAULT_PANEL_CSS.contains("margin: 12px 8px 8px"));
     assert!(!DEFAULT_PANEL_CSS.contains("margin: -58px 14px 0"));
     assert!(DEFAULT_PANEL_CSS.contains("margin: 0 20px"));
+}
+
+#[test]
+fn panel_group_headers_keep_master_pill_geometry() {
+    let header = DEFAULT_PANEL_CSS
+        .split(".unixnotis-group-header {")
+        .nth(1)
+        .and_then(|rules| rules.split('}').next())
+        .expect("group header rules should be present");
+    let count = DEFAULT_PANEL_CSS
+        .split(".unixnotis-group-count {")
+        .nth(1)
+        .and_then(|rules| rules.split('}').next())
+        .expect("group count rules should be present");
+
+    assert!(header.contains("border-radius: 999px"));
+    assert!(header.contains("padding: 6px 12px"));
+    assert!(count.contains("padding: 2px 8px"));
+    assert!(count.contains("min-width: 22px"));
+}
+
+#[test]
+fn panel_avatar_slot_is_plain_but_content_visuals_keep_their_tile() {
+    let thumbnail = DEFAULT_PANEL_CSS
+        .split(".unixnotis-panel-card-thumbnail {")
+        .nth(1)
+        .and_then(|rules| rules.split('}').next())
+        .expect("thumbnail rules should be present");
+
+    assert!(thumbnail.contains("background: transparent"));
+    assert!(thumbnail.contains("border: 0"));
+    assert!(thumbnail.contains("border-radius: 0"));
+    assert!(thumbnail.contains("box-shadow: none"));
+    assert!(DEFAULT_PANEL_CSS
+        .contains(".unixnotis-panel-card-thumbnail.unixnotis-panel-content-image,"));
+    assert!(
+        DEFAULT_PANEL_CSS.contains(".unixnotis-panel-card-thumbnail.unixnotis-panel-sender-visual")
+    );
+}
+
+#[test]
+fn bundled_media_defaults_match_the_active_player_surface() {
+    assert!(DEFAULT_MEDIA_CSS.contains("min-height: 44px"));
+    assert!(DEFAULT_MEDIA_CSS.contains(".unixnotis-media-nav-prev"));
+    assert!(DEFAULT_MEDIA_CSS.contains(".unixnotis-media-button:disabled"));
+    assert!(DEFAULT_MEDIA_CSS.contains(".unixnotis-media-card.playing"));
+    assert!(DEFAULT_MEDIA_CSS.contains("--unixnotis-media-art-size: 56px"));
 }
 
 #[test]

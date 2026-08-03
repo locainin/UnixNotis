@@ -109,6 +109,8 @@ pub mod panel_card {
     pub const FOOTER_LEFT: &str = "unixnotis-panel-card-footer-left";
     pub const FOOTER_RIGHT: &str = "unixnotis-panel-card-footer-right";
     pub const THUMBNAIL: &str = "unixnotis-panel-card-thumbnail";
+    pub const CONTENT_IMAGE: &str = "unixnotis-panel-content-image";
+    pub const SENDER_VISUAL: &str = "unixnotis-panel-sender-visual";
     pub const GROUPED: &str = "unixnotis-panel-card-grouped";
     pub const HAS_ACTIONS: &str = "unixnotis-panel-card-has-actions";
     pub const HAS_BODY: &str = "unixnotis-panel-card-has-body";

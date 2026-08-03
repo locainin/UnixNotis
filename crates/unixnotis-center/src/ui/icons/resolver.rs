@@ -47,16 +47,6 @@ impl IconResolver {
         Self { inner }
     }
 
-    pub fn apply_icon(
-        &self,
-        image: &gtk::Image,
-        notification: &NotificationView,
-        size: i32,
-        scale: i32,
-    ) {
-        self.inner.apply_icon(image, notification, size, scale);
-    }
-
     pub fn apply_badge(
         &self,
         image: &gtk::Image,
@@ -70,6 +60,10 @@ impl IconResolver {
 
     pub fn apply_sender_visual(&self, image: &gtk::Image, notification: &NotificationView) {
         self.inner.apply_sender_visual(image, notification);
+    }
+
+    pub fn apply_content_visual(&self, image: &gtk::Image, notification: &NotificationView) {
+        self.inner.apply_content_visual(image, notification);
     }
 
     pub fn clear_missing_cache(&self) {

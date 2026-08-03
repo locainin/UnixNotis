@@ -24,7 +24,7 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) stack_back: gtk::Box,
     // Main icon shown at the top-left of the row
     pub(super) icon: gtk::Image,
-    // Identity header collapses completely for rows owned by a group header
+    // Identity header compacts only for collapsed rows owned by a group header
     pub(super) header: gtk::Box,
     // App name text shown beside the icon
     pub(super) app_label: gtk::Label,
@@ -39,7 +39,7 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) meta_top: gtk::Box,
     // Optional top metadata label for category/urgency styling
     pub(super) meta_label: gtk::Label,
-    // Compact relative time badge shown beside the summary
+    // Optional relative time badge shown when metadata is enabled
     pub(super) time_badge: gtk::Label,
     // Optional large image preview for notifications with image hints
     pub(super) thumbnail: gtk::Image,

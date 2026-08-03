@@ -47,6 +47,17 @@ fn shared_notification_visual_contract_covers_client_surface_matrix() {
                 ..ImageData::default()
             };
         }
+        if role == NotificationVisualRole::ApplicationProvidedIcon {
+            view.image.sender_visual = ImageData {
+                width: 1,
+                height: 1,
+                rowstride: 4,
+                bits_per_sample: 8,
+                channels: 4,
+                data: vec![9, 8, 7, 255],
+                ..ImageData::default()
+            };
+        }
         if role == NotificationVisualRole::ContentImage {
             view.image.content_image = ImageData {
                 width: 1,

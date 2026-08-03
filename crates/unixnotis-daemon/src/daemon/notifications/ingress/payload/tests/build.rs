@@ -272,7 +272,7 @@ fn conversation_avatar_never_changes_badge_or_unresolved_identity() {
         data: vec![1, 2, 3, 255],
     };
     let notification = build_notification(NotificationInput {
-        app_name: "Signal".to_string(),
+        app_name: "Example Chat".to_string(),
         app_icon: "/tmp/contact.png".to_string(),
         summary: "New message".to_string(),
         body: "Hello".to_string(),
@@ -386,6 +386,15 @@ fn associated_communication_image_data_becomes_a_bounded_conversation_avatar() {
     assert_eq!(notification.image.sender_visual.width, 64);
     assert_eq!(notification.image.sender_visual.height, 64);
     assert!(notification.image.sender_visual.data.len() <= 64 * 64 * 4);
+
+    // The production view keeps the bounded avatar role and leaves message content empty
+    let view = notification.to_view();
+    assert_eq!(
+        view.image.sender_visual_role,
+        unixnotis_core::NotificationVisualRole::ConversationAvatar
+    );
+    assert!(!view.image.sender_visual.data.is_empty());
+    assert!(view.image.content_image.data.is_empty());
 }
 
 #[test]

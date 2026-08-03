@@ -3,10 +3,11 @@
  * Panel shell, list, and notification group styling.
  */
 .unixnotis-panel {
-  min-width: 432px;
+  min-width: 420px;
   background-image: linear-gradient(155deg, alpha(#080d18, 0.98) 0%, alpha(#10152a, 0.98) 58%, alpha(#241734, 0.97) 100%);
   color: @unixnotis-text;
-  border-radius: 20px;
+  border-radius: 30px;
+  border-radius: var(--unixnotis-panel-radius);
   padding: 16px;
   padding: var(--unixnotis-panel-padding);
   border: 1px solid alpha(#9bb8e8, 0.16);
@@ -21,14 +22,14 @@
   margin-bottom: 12px;
   padding: 12px;
   padding: var(--unixnotis-panel-header-padding);
-  padding-left: 2px;
-  padding-right: 2px;
-  padding-bottom: 12px;
-  border: 0;
-  border-bottom: 1px solid alpha(#9bb8e8, 0.12);
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  border-radius: 18px;
+  border-radius: var(--unixnotis-panel-header-radius);
+  background-image: linear-gradient(160deg, alpha(@unixnotis-surface-soft, 0.7), alpha(@unixnotis-surface, 0.9));
+  border: 1px solid alpha(@unixnotis-accent, 0.16);
+  box-shadow:
+    0 10px 24px -18px @unixnotis-shadow-soft,
+    0 0 22px -18px @unixnotis-glow-cyan,
+    inset 0 0 0 1px alpha(#ffffff, 0.03);
 }
 
 .unixnotis-panel-header-top {
@@ -359,14 +360,14 @@ entry selection {
  */
 .unixnotis-group {
   background: transparent;
-  margin-top: 14px;
+  margin-top: 0;
   margin-bottom: 8px;
 }
 
 .unixnotis-group-header {
   background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
   color: @unixnotis-text;
-  border-radius: var(--unixnotis-notification-card-radius);
+  border-radius: 999px;
   padding: 6px 12px;
   border: 1px solid @unixnotis-card-border;
   box-shadow: none;
@@ -452,12 +453,12 @@ entry selection {
   background: alpha(#ffffff, 0.06);
   color: alpha(#ffffff, 0.72);
   border-radius: 999px;
-  padding: 1px 6px;
+  padding: 2px 8px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
   border: 1px solid alpha(#ffffff, 0.10);
-  min-width: 18px;
+  min-width: 22px;
   box-shadow: none;
 }
 
@@ -482,14 +483,22 @@ entry selection {
 }
 
 .unixnotis-panel-card {
-  background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
-  border: 1px solid @unixnotis-card-border;
+  background-image: linear-gradient(
+    180deg,
+    alpha(#2c3762, 0.82) 0%,
+    alpha(#1a2242, 0.88) 55%,
+    alpha(#121834, 0.93) 100%
+  );
+  border: 1px solid alpha(#ffffff, 0.10);
   border-radius: var(--unixnotis-notification-card-radius);
   padding: var(--unixnotis-panel-card-padding-y) var(--unixnotis-panel-card-padding-x);
   margin: 0;
   box-shadow:
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+    inset 0 1px 0 alpha(#ffffff, 0.09),
+    inset 0 2px 0 alpha(#ffffff, 0.03),
+    inset 0 -1px 0 alpha(#000000, 0.20),
+    0 1px 2px -1px alpha(#000000, 0.40),
+    0 16px 32px -18px alpha(#000000, 0.65);
   transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
@@ -509,19 +518,31 @@ entry selection {
 }
 
 .unixnotis-panel-card-thumbnail {
-  border-radius: 10px;
-  background: alpha(@unixnotis-surface-strong-base, 0.42);
-  box-shadow: 0 5px 14px -8px alpha(#000000, 0.78);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 1;
 }
 
+.unixnotis-panel-card-thumbnail.unixnotis-panel-content-image,
 .unixnotis-panel-card-thumbnail.unixnotis-panel-sender-visual {
+  border-radius: 10px;
+  background: alpha(#0a0f1f, 0.40);
+  border: 1px solid alpha(#ffffff, 0.10);
+  box-shadow:
+    inset 0 1px 2px alpha(#000000, 0.25),
+    inset 0 0 0 1px alpha(#ffffff, 0.03);
   opacity: 0.92;
 }
 
 .unixnotis-panel-card.collapsed-group-preview {
   box-shadow:
-    0 12px 24px -20px @unixnotis-shadow-strong,
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+    inset 0 1px 0 alpha(#ffffff, 0.11),
+    inset 0 2px 0 alpha(#ffffff, 0.04),
+    inset 0 -1px 0 alpha(#000000, 0.20),
+    0 1px 2px -1px alpha(#000000, 0.45),
+    0 20px 40px -24px alpha(#000000, 0.75);
 }
 
 .unixnotis-panel-card-foreground {
@@ -539,45 +560,82 @@ entry selection {
 }
 
 .unixnotis-panel-card-foreground.collapsed-group-preview {
-  margin: 12px 8px 10px;
+  margin: 12px 8px 8px;
 }
 
 .unixnotis-stack-layer {
   min-height: 68px;
   padding: 0;
-  border: 1px solid alpha(@unixnotis-card-border, 0.58);
+  border: 1px solid alpha(#ffffff, 0.10);
   border-radius: var(--unixnotis-notification-card-radius);
-  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.09);
-  box-shadow: 0 8px 16px -15px @unixnotis-shadow-soft;
+  background-image:
+    linear-gradient(135deg, alpha(#ffffff, 0.10) 0%, alpha(#ffffff, 0) 28%),
+    linear-gradient(
+      180deg,
+      alpha(#2c3762, 0.85) 0%,
+      alpha(#1a2242, 0.90) 55%,
+      alpha(#121834, 0.94) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 alpha(#ffffff, 0.10),
+    inset 0 2px 0 alpha(#ffffff, 0.04),
+    0 6px 10px -10px alpha(#000000, 0.30);
 }
 
 .unixnotis-stack-layer-back {
   margin: 0 20px;
-  opacity: 0.72;
+  opacity: 0.80;
+  border-color: alpha(#ffffff, 0.07);
+  background-image:
+    linear-gradient(135deg, alpha(#ffffff, 0.06) 0%, alpha(#ffffff, 0) 28%),
+    linear-gradient(
+      180deg,
+      alpha(#232c50, 0.82) 0%,
+      alpha(#151d3a, 0.88) 55%,
+      alpha(#0e122b, 0.92) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 alpha(#ffffff, 0.06),
+    0 6px 10px -10px alpha(#000000, 0.24);
 }
 
 .unixnotis-stack-layer-middle {
   margin: 6px 14px 0;
-  opacity: 0.86;
+  opacity: 0.92;
+  border-color: alpha(#ffffff, 0.09);
+  background-image:
+    linear-gradient(135deg, alpha(#ffffff, 0.08) 0%, alpha(#ffffff, 0) 28%),
+    linear-gradient(
+      180deg,
+      alpha(#29325c, 0.84) 0%,
+      alpha(#19213f, 0.90) 55%,
+      alpha(#101531, 0.94) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 alpha(#ffffff, 0.08),
+    inset 0 2px 0 alpha(#ffffff, 0.03),
+    0 6px 10px -10px alpha(#000000, 0.26);
 }
 
 .unixnotis-panel-card.active {
-  border-color: alpha(@unixnotis-card-border, 0.95);
+  border-color: alpha(#ffffff, 0.14);
 }
 
 /* Critical state composes after the ordinary active and stack rules */
 .unixnotis-panel-card.critical,
 .unixnotis-panel-card.active.critical {
   background-image: linear-gradient(
-    145deg,
-    alpha(@unixnotis-critical-surface, 0.82),
-    alpha(#12182c, 0.97)
+    180deg,
+    alpha(#3a2430, 0.88) 0%,
+    alpha(#23161f, 0.92) 100%
   );
-  border-color: alpha(@unixnotis-critical-border, 0.48);
+  border-color: alpha(@unixnotis-critical-border, 0.42);
   box-shadow:
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 20px -16px alpha(@unixnotis-critical-border, 0.32),
-    inset 0 1px 0 alpha(#ffffff, 0.05);
+    inset 0 1px 0 alpha(#ffffff, 0.08),
+    inset 0 2px 0 alpha(#ffffff, 0.03),
+    inset 0 -1px 0 alpha(#000000, 0.22),
+    0 1px 2px -1px alpha(#000000, 0.40),
+    0 16px 32px -18px alpha(#000000, 0.65);
 }
 
 .unixnotis-panel-card.critical .unixnotis-panel-app {

@@ -22,6 +22,7 @@ pub struct RowPresentation {
     // Optional lanes are disabled by default to preserve the compact stock card
     pub show_metadata: bool,
     pub show_thumbnail: bool,
+    pub show_avatar: bool,
     // Runtime motion policy keeps recycled row revealers in sync with panel settings
     pub reduced_motion: bool,
     // Shared config avoids cloning every metadata string into every row snapshot
@@ -36,6 +37,7 @@ impl Default for RowPresentation {
             received_at_ms: 0,
             show_metadata: false,
             show_thumbnail: false,
+            show_avatar: true,
             reduced_motion: false,
             metadata: Rc::new(NotificationMetadataConfig::default()),
             card_corners: CutCorners::default(),
@@ -48,6 +50,7 @@ impl PartialEq for RowPresentation {
         self.received_at_ms == other.received_at_ms
             && self.show_metadata == other.show_metadata
             && self.show_thumbnail == other.show_thumbnail
+            && self.show_avatar == other.show_avatar
             && self.reduced_motion == other.reduced_motion
             && Rc::ptr_eq(&self.metadata, &other.metadata)
             && self.card_corners == other.card_corners

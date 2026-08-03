@@ -1,4 +1,8 @@
-use super::{hash_image_data, icon_key_for_path, image_key_matches, set_image_key, IconKey};
+use super::{icon_key_for_path, image_key_matches, set_image_key, IconKey};
+
+fn hash_image_data(data: &[u8]) -> [u8; 32] {
+    *blake3::hash(data).as_bytes()
+}
 
 fn key(name: &str) -> IconKey {
     IconKey::Name {

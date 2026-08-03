@@ -58,15 +58,30 @@ pub(super) fn notification_row_with_receiver() -> (
     (root, row, command_rx)
 }
 
-#[derive(Default)]
 pub(super) struct RowFlags {
     pub(super) is_active: bool,
     pub(super) collapsed_group_preview: bool,
     pub(super) show_metadata: bool,
     pub(super) show_thumbnail: bool,
+    pub(super) show_avatar: bool,
     pub(super) reduced_motion: bool,
     pub(super) metadata: Option<unixnotis_core::NotificationMetadataConfig>,
     pub(super) card_corners: unixnotis_core::CutCorners,
+}
+
+impl Default for RowFlags {
+    fn default() -> Self {
+        Self {
+            is_active: false,
+            collapsed_group_preview: false,
+            show_metadata: false,
+            show_thumbnail: false,
+            show_avatar: true,
+            reduced_motion: false,
+            metadata: None,
+            card_corners: unixnotis_core::CutCorners::default(),
+        }
+    }
 }
 
 pub(super) fn row_data(notification: Rc<NotificationView>, flags: RowFlags) -> RowData {
@@ -81,6 +96,7 @@ pub(super) fn row_data(notification: Rc<NotificationView>, flags: RowFlags) -> R
             received_at_ms: current_millis(),
             show_metadata: flags.show_metadata,
             show_thumbnail: flags.show_thumbnail,
+            show_avatar: flags.show_avatar,
             reduced_motion: flags.reduced_motion,
             metadata: Rc::new(flags.metadata.unwrap_or_default()),
             card_corners: flags.card_corners,

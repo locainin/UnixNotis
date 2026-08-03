@@ -52,6 +52,15 @@ fn shared_model_keeps_verified_communication_content_and_actions_consistent() {
 fn shared_visual_roles_are_consistent_for_popup_and_panel_clients() {
     let mut view = notification();
     view.image.sender_visual_role = NotificationVisualRole::ConversationAvatar;
+    view.image.sender_visual = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        channels: 4,
+        bits_per_sample: 8,
+        data: vec![1, 2, 3, 255],
+        ..ImageData::default()
+    };
     let avatar = NotificationPresentation::from_view_at(&view, 1_000);
     assert_eq!(
         avatar.visuals.sender,
@@ -79,6 +88,25 @@ fn shared_visual_roles_are_consistent_for_popup_and_panel_clients() {
     let content = NotificationPresentation::from_view_at(&view, 1_000);
     assert_eq!(content.visuals.sender, SenderVisualPresentation::None);
     assert!(content.visuals.content_image);
+}
+
+#[test]
+fn empty_sender_pixels_cannot_select_a_sender_visual_role() {
+    for role in [
+        NotificationVisualRole::ConversationAvatar,
+        NotificationVisualRole::ApplicationProvidedIcon,
+    ] {
+        let mut view = notification();
+        view.image.sender_visual_role = role;
+
+        let presentation = NotificationPresentation::from_view_at(&view, 1_000);
+
+        assert_eq!(
+            presentation.visuals.sender,
+            SenderVisualPresentation::None,
+            "role={role:?}"
+        );
+    }
 }
 
 #[test]
@@ -220,11 +248,11 @@ fn trusted_relay_claim_never_becomes_the_primary_application_identity() {
     let mut view = notification();
     view.category = "im.received".to_string();
     view.attribution = NotificationAttribution::relay(
-        "Signal",
+        "Example Chat",
         "Sent via /usr/bin/notify-send",
-        "relay:notify-send:signal".to_string(),
+        "relay:notify-send:example-chat".to_string(),
     );
-    view.image.badge_icon = "signal-desktop".to_string();
+    view.image.badge_icon = "example-chat".to_string();
 
     let presentation = NotificationPresentation::from_view_at(&view, 1_000);
 
@@ -237,7 +265,7 @@ fn trusted_relay_claim_never_becomes_the_primary_application_identity() {
     );
     assert_eq!(
         presentation.identity.secondary_claim.as_deref(),
-        Some("App label: Signal")
+        Some("App label: Example Chat")
     );
     assert_eq!(presentation.identity.badge, BadgePresentation::CommandLine);
     assert_eq!(presentation.media.thumbnail, ThumbnailKind::None);
@@ -297,10 +325,10 @@ fn associated_identity_discloses_a_different_caller_label_only() {
 fn unresolved_claim_has_no_application_actions_or_reply() {
     let mut view = notification();
     view.attribution = NotificationAttribution::unresolved(
-        "Signal",
+        "Example Chat",
         AttributionReason::NoDesktopCandidate,
         "sender has no positive application association",
-        "unresolved:random-script:signal".to_string(),
+        "unresolved:random-script:example-chat".to_string(),
     );
     view.inline_reply.available = true;
     view.actions = vec![
@@ -382,9 +410,9 @@ fn media_category_selects_media_layout_without_image_content() {
 fn untrusted_non_media_notification_cannot_render_content_art() {
     let mut view = notification();
     view.attribution = NotificationAttribution::relay(
-        "Signal",
+        "Example Chat",
         "Sent via /usr/bin/notify-send",
-        "relay:notify-send:signal".to_string(),
+        "relay:notify-send:example-chat".to_string(),
     );
 
     assert_eq!(

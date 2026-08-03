@@ -26,6 +26,7 @@ pub(super) fn list_config() -> NotificationListConfig {
         notification_metadata: unixnotis_core::NotificationMetadataConfig::default(),
         notification_corners: unixnotis_core::CutCorners::default(),
         show_notification_thumbnails: false,
+        show_notification_avatars: true,
         reduced_motion: false,
         empty_text: "No notifications".to_string(),
         no_matching_text: "No matching notifications".to_string(),
