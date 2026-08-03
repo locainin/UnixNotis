@@ -220,12 +220,14 @@ async fn ingest_notify_stores_notifications_and_returns_assigned_ids() {
 }
 
 #[tokio::test]
-async fn ingest_notify_schedules_expiration_for_positive_timeout() {
+async fn ingest_notify_schedules_expiration_for_positive_transient_timeout() {
     let state = daemon_state_for_test(false).await;
     let scheduler = ExpirationScheduler::start(state.clone());
     let server = NotificationServer::new(state.clone(), scheduler);
     let message = notify_header_message();
     let header = message.header();
+    let mut hints = HashMap::new();
+    hints.insert("transient".to_string(), OwnedValue::from(true));
 
     let id = server
         .ingest_notify(
@@ -235,7 +237,7 @@ async fn ingest_notify_schedules_expiration_for_positive_timeout() {
             "expires".to_string(),
             "body".to_string(),
             Vec::new(),
-            HashMap::new().into(),
+            hints.into(),
             &header,
             25,
         )
@@ -264,6 +266,40 @@ async fn ingest_notify_schedules_expiration_for_positive_timeout() {
     }
 
     panic!("notification should expire after scheduled timeout");
+}
+
+#[tokio::test]
+async fn ingest_notify_keeps_ordinary_positive_timeout_active() {
+    let state = daemon_state_for_test(false).await;
+    let scheduler = ExpirationScheduler::start(state.clone());
+    let server = NotificationServer::new(state.clone(), scheduler);
+    let message = notify_header_message();
+    let header = message.header();
+
+    let id = server
+        .ingest_notify(
+            "app".to_string(),
+            0,
+            String::new(),
+            "persistent action".to_string(),
+            "body".to_string(),
+            vec!["default".to_string(), "View".to_string()],
+            HashMap::new().into(),
+            &header,
+            25,
+        )
+        .await
+        .expect("notify should store");
+
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    let active = state
+        .store
+        .lock()
+        .await
+        .active_notification_view(id)
+        .expect("ordinary positive timeout must keep the active record");
+    assert_eq!(active.popup_hide_after_ms, 25);
+    assert_eq!(active.actions.len(), 1);
 }
 
 #[tokio::test]

@@ -29,12 +29,13 @@ pub(super) fn resolve_timeout_policy(
             popup_hide_after_ms: 0,
             active_close_after: None,
         },
-        // Positive values are an application-owned lifetime and banner duration
+        // Positive values control the banner; only transient notifications close
+        // automatically so ordinary panel actions remain available
         timeout if timeout > 0 => {
             let timeout_ms = timeout as u64;
             ResolvedTimeoutPolicy {
                 popup_hide_after_ms: timeout_ms,
-                active_close_after: (!notification.is_resident)
+                active_close_after: (notification.is_transient && !notification.is_resident)
                     .then(|| Duration::from_millis(timeout_ms)),
             }
         }

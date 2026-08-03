@@ -29,6 +29,22 @@ fn positive_protocol_timeout_controls_popup_and_active_lifetime() {
         resolve_timeout_policy(&config, &notification),
         super::super::timeout::ResolvedTimeoutPolicy {
             popup_hide_after_ms: 30_000,
+            active_close_after: None,
+        }
+    );
+}
+
+#[test]
+fn positive_protocol_timeout_closes_transient_notifications() {
+    let config = Config::default();
+    let mut notification = make_notification("transient-bounded");
+    notification.expire_timeout = 30_000;
+    notification.is_transient = true;
+
+    assert_eq!(
+        resolve_timeout_policy(&config, &notification),
+        super::super::timeout::ResolvedTimeoutPolicy {
+            popup_hide_after_ms: 30_000,
             active_close_after: Some(Duration::from_secs(30)),
         }
     );
