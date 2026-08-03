@@ -3,7 +3,8 @@
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use unixnotis_core::{hooks, Action, ApplicationActionPolicy, InlineReply};
+use unixnotis_core::{hooks, Action, ApplicationActionPolicy, InlineReply, NotificationView};
+use unixnotis_ui::presentation::NotificationPresentation;
 
 use crate::control::UiCommand;
 use crate::ui::icons::IconResolver;
@@ -11,7 +12,15 @@ use crate::ui::icons::IconResolver;
 use super::super::super::test_support::{
     child_count, notification_row, row_data, sample_notification, RowFlags,
 };
-use super::{update_notification_row, visible_action_count};
+use super::update_notification_row;
+
+fn visible_action_count(notification: &NotificationView, is_active: bool) -> usize {
+    // Test the same presentation-derived count used by the production row update
+    super::super::actions::visible_action_count_from(
+        &NotificationPresentation::from_view(notification),
+        is_active,
+    )
+}
 
 #[gtk::test]
 fn update_notification_row_rebuilds_actions_only_when_signature_changes() {

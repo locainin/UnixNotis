@@ -24,22 +24,3 @@ pub(super) const fn has_sender_visual(presentation: &NotificationPresentation) -
         SenderVisualPresentation::ApplicationProvidedIcon
     )
 }
-
-#[cfg(test)]
-pub(super) fn notification_has_thumbnail(notification: &unixnotis_core::NotificationView) -> bool {
-    has_content_thumbnail(&NotificationPresentation::from_view(notification))
-}
-
-#[cfg(test)]
-pub(super) fn notification_has_conversation_avatar(
-    notification: &unixnotis_core::NotificationView,
-) -> bool {
-    has_conversation_avatar(&NotificationPresentation::from_view(notification))
-}
-
-#[cfg(test)]
-pub(super) fn notification_has_sender_visual(
-    notification: &unixnotis_core::NotificationView,
-) -> bool {
-    has_sender_visual(&NotificationPresentation::from_view(notification))
-}

@@ -4,16 +4,28 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use unixnotis_core::{hooks, ImageData};
+use unixnotis_ui::presentation::NotificationPresentation;
 
 use crate::ui::icons::IconResolver;
 
 use super::super::super::test_support::{
     notification_row, row_data, sample_notification, RowFlags,
 };
-use super::super::thumbnail::{
-    notification_has_conversation_avatar, notification_has_sender_visual,
-};
-use super::{notification_has_thumbnail, update_notification_row};
+use super::super::thumbnail::{has_content_thumbnail, has_conversation_avatar, has_sender_visual};
+use super::update_notification_row;
+
+fn notification_has_thumbnail(notification: &unixnotis_core::NotificationView) -> bool {
+    // Keep presentation construction in the mirrored test helper, not production code
+    has_content_thumbnail(&NotificationPresentation::from_view(notification))
+}
+
+fn notification_has_conversation_avatar(notification: &unixnotis_core::NotificationView) -> bool {
+    has_conversation_avatar(&NotificationPresentation::from_view(notification))
+}
+
+fn notification_has_sender_visual(notification: &unixnotis_core::NotificationView) -> bool {
+    has_sender_visual(&NotificationPresentation::from_view(notification))
+}
 
 #[test]
 fn notification_thumbnail_only_uses_real_image_sources() {

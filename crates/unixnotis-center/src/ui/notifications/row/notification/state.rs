@@ -108,12 +108,4 @@ impl IconSignature {
             presentation: presentation.identity.badge,
         }
     }
-
-    #[cfg(test)]
-    pub(super) fn from(notification: &NotificationView) -> Self {
-        Self::from_presentation(
-            notification,
-            &NotificationPresentation::from_view(notification),
-        )
-    }
 }

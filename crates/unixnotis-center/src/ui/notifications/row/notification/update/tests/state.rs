@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use unixnotis_core::{hooks, Action, CutCorners, NotificationMetadataConfig, Urgency};
+use unixnotis_ui::presentation::NotificationPresentation;
 
 use crate::ui::icons::IconResolver;
 
@@ -13,6 +14,14 @@ use super::super::super::test_support::{
     RowFlags,
 };
 use super::{clear_notification_row, update_notification_row};
+
+fn icon_signature(notification: &unixnotis_core::NotificationView) -> IconSignature {
+    // Test-only construction stays beside the tests while production consumes a shared presentation
+    IconSignature::from_presentation(
+        notification,
+        &NotificationPresentation::from_view(notification),
+    )
+}
 
 #[test]
 fn icon_signature_changes_when_trust_presentation_changes() {
@@ -24,8 +33,8 @@ fn icon_signature_changes_when_trust_presentation_changes() {
     suspicious.attribution.interactions = unixnotis_core::InteractionPolicies::DENY;
 
     assert_ne!(
-        IconSignature::from(&verified),
-        IconSignature::from(&suspicious),
+        icon_signature(&verified),
+        icon_signature(&suspicious),
         "trust changes must refresh a recycled row badge"
     );
 }
@@ -142,6 +151,8 @@ fn update_notification_row_applies_state_classes_and_text() {
     assert!(row.header.get_visible());
     assert!(row.urgency_badge.get_visible());
     assert_eq!(row.urgency_badge.text().as_str(), "Critical");
+    assert!(!row.card.has_css_class(hooks::panel_card::HAS_THUMBNAIL));
+    assert!(row.card.has_css_class(hooks::panel_card::NO_THUMBNAIL));
     assert_eq!(row.app_label.text().as_str(), "demo");
     assert_eq!(row.summary_label.text().as_str(), "summary");
     assert_eq!(row.body_label.text().as_str(), "body");

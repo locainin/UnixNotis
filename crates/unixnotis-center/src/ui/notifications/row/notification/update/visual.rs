@@ -13,11 +13,11 @@ pub(super) fn apply_visual_state(
     row: &NotificationRowWidgets,
     data: &RowData,
     notification: &NotificationView,
+    presentation: &NotificationPresentation,
     has_actions: bool,
     has_thumbnail: bool,
 ) {
     let card = &row.card;
-    let presentation = NotificationPresentation::from_view(notification);
     let is_critical = notification.urgency == Urgency::Critical as u8;
     // Theme changes update recycled rows without rebuilding the GTK child tree
     row.card_plate.set_corners(card_corners_for_row(data));

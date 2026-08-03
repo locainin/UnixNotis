@@ -335,14 +335,6 @@ fn build_overflow_menu(
     menu
 }
 
-#[cfg(test)]
-pub(super) fn visible_action_count(notification: &NotificationView, is_active: bool) -> usize {
-    visible_action_count_from(
-        &NotificationPresentation::from_view(notification),
-        is_active,
-    )
-}
-
 pub(super) fn visible_action_count_from(
     presentation: &NotificationPresentation,
     is_active: bool,

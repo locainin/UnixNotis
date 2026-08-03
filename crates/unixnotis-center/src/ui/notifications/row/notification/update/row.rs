@@ -114,7 +114,14 @@ pub(in crate::ui::notifications) fn update_notification_row(
     let has_thumbnail = data.presentation.show_thumbnail
         && (has_content_thumbnail || has_conversation_avatar || has_sender_visual);
 
-    apply_visual_state(row, data, notification, has_actions, has_thumbnail);
+    apply_visual_state(
+        row,
+        data,
+        notification,
+        &presentation,
+        has_actions,
+        has_thumbnail,
+    );
     update_notification_text(
         row,
         &presentation.identity.primary_label,
