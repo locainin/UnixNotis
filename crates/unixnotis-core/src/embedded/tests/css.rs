@@ -212,9 +212,29 @@ fn panel_avatar_slot_is_plain_but_content_visuals_keep_their_tile() {
 }
 
 #[test]
+fn notification_action_hover_matches_panel_glass_controls() {
+    let action = DEFAULT_PANEL_CSS
+        .split(".unixnotis-notification-action {")
+        .nth(1)
+        .and_then(|rules| rules.split('}').next())
+        .expect("notification action rules should be present");
+    let hover = DEFAULT_PANEL_CSS
+        .split(".unixnotis-notification-action:hover {")
+        .nth(1)
+        .and_then(|rules| rules.split('}').next())
+        .expect("notification action hover rules should be present");
+
+    assert!(action.contains("background: alpha(#ffffff, 0.045)"));
+    assert!(action.contains("border-top: 1px solid alpha(#ffffff, 0.08)"));
+    assert!(hover.contains("background: alpha(#ffffff, 0.08)"));
+    assert!(hover.contains("color: #ffffff"));
+    assert!(!hover.contains("linear-gradient"));
+}
+
+#[test]
 fn bundled_media_defaults_match_the_active_player_surface() {
-    assert!(DEFAULT_MEDIA_CSS.contains("min-height: 44px"));
-    assert!(DEFAULT_MEDIA_CSS.contains(".unixnotis-media-nav-prev"));
+    assert!(DEFAULT_MEDIA_CSS.contains("min-height: 52px"));
+    assert!(DEFAULT_MEDIA_CSS.contains(".unixnotis-media-nav:hover"));
     assert!(DEFAULT_MEDIA_CSS.contains(".unixnotis-media-button:disabled"));
     assert!(DEFAULT_MEDIA_CSS.contains(".unixnotis-media-card.playing"));
     assert!(DEFAULT_MEDIA_CSS.contains("--unixnotis-media-art-size: 56px"));

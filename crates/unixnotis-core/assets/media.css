@@ -7,14 +7,14 @@
 :root {
   --unixnotis-media-card-radius: 18px;
   --unixnotis-media-card-min-height: 82px;
-  --unixnotis-media-card-padding-x: 10px;
+  --unixnotis-media-card-padding-x: 8px;
   --unixnotis-media-card-padding-y: 8px;
-  --unixnotis-media-card-padding-inline-x: 10px;
+  --unixnotis-media-card-padding-inline-x: 8px;
   --unixnotis-media-card-padding-inline-y: 8px;
   --unixnotis-media-card-padding-stacked: 8px;
-  --unixnotis-media-card-padding-showcase-x: 10px;
+  --unixnotis-media-card-padding-showcase-x: 8px;
   --unixnotis-media-card-padding-showcase-y: 8px;
-  --unixnotis-media-button-padding-x: 6px;
+  --unixnotis-media-button-padding-x: 5px;
   --unixnotis-media-button-padding-y: 4px;
   --unixnotis-media-art-size: 56px;
   --unixnotis-media-art-radius: 12px;
@@ -59,71 +59,84 @@
   background: transparent;
 }
 
-/* Player switcher: glass chips that hug the card sides, with a count pill so
- * switching players reads as an intentional control instead of bare arrows. */
+/* Player switcher: symmetric chevron docks flanking the card. Quiet glass so
+ * they never compete with the notification list. */
 .unixnotis-media-nav {
-  background: alpha(#ffffff, 0.07);
-  border: 1px solid alpha(#ffffff, 0.12);
-  border-radius: 12px;
+  background: alpha(#ffffff, 0.05);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 999px;
   padding: 0;
   margin: 0;
   min-width: 24px;
-  min-height: 44px;
-  -gtk-icon-size: 18px;
-  font-size: 18px;
-  font-weight: 600;
-  color: alpha(#ffffff, 0.92);
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.10);
+  min-height: 52px;
+  -gtk-icon-size: 16px;
+  font-size: 16px;
+  font-weight: 700;
+  color: alpha(#ffffff, 0.80);
+  box-shadow:
+    inset 0 1px 0 alpha(#ffffff, 0.06),
+    0 2px 6px -4px alpha(#000000, 0.4);
   transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
 .unixnotis-media-nav:hover {
-  background: alpha(#ffffff, 0.15);
-  border-color: alpha(#ffffff, 0.22);
+  background: alpha(#ffffff, 0.10);
+  border-top-color: alpha(#ffffff, 0.14);
+  border-left-color: alpha(#ffffff, 0.10);
+  border-right-color: alpha(#ffffff, 0.06);
+  border-bottom-color: alpha(#ffffff, 0.03);
   color: #ffffff;
   box-shadow:
-    0 6px 12px -6px alpha(#000000, 0.45),
-    inset 0 1px 0 alpha(#ffffff, 0.12);
+    0 8px 16px -10px alpha(#000000, 0.5),
+    inset 0 1px 0 alpha(#ffffff, 0.10);
 }
 
 .unixnotis-media-nav:active {
-  background: alpha(#ffffff, 0.19);
-  border-color: alpha(#ffffff, 0.26);
+  background: alpha(#ffffff, 0.14);
   color: #ffffff;
 }
 
-/* Point each tab at the card so it reads as a directional arrow. */
-.unixnotis-media-nav-prev {
-  border-radius: 999px 6px 6px 999px;
+.unixnotis-media-nav:backdrop {
+  background: alpha(#ffffff, 0.035);
+  border-color: alpha(#ffffff, 0.05);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.04);
 }
 
-.unixnotis-media-nav-next {
-  border-radius: 6px 999px 999px 6px;
+/* Keep the arrows clear of the rounded chip edges so the glyph never clips. */
+.unixnotis-media-nav image,
+.unixnotis-media-nav .icon {
+  color: inherit;
 }
 
 .unixnotis-media-position {
-  color: alpha(#ffffff, 0.70);
+  color: alpha(#ffffff, 0.60);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.12em;
-  background: alpha(#ffffff, 0.06);
-  border: 1px solid alpha(#ffffff, 0.10);
+  background: alpha(#ffffff, 0.05);
+  border: 1px solid alpha(#ffffff, 0.08);
   border-radius: 999px;
   padding: 1px 8px;
   box-shadow: none;
 }
 
+/* Glass card: translucent with a soft top sheen, so it reads as a pane of
+ * frosted glass rather than a solid panel. Deliberately low-contrast so the
+ * notification feed stays the visual center. */
 .unixnotis-media-card {
-  background: alpha(#ffffff, 0.055);
+  background-image: linear-gradient(165deg, alpha(#ffffff, 0.07) 0%, alpha(#ffffff, 0.02) 100%);
   border-top: 1px solid alpha(#ffffff, 0.10);
-  border-left: 1px solid alpha(#ffffff, 0.08);
-  border-right: 1px solid alpha(#ffffff, 0.05);
+  border-left: 1px solid alpha(#ffffff, 0.07);
+  border-right: 1px solid alpha(#ffffff, 0.04);
   border-bottom: 1px solid alpha(#ffffff, 0.02);
   border-radius: var(--unixnotis-media-card-radius);
   padding: var(--unixnotis-media-card-padding-y) var(--unixnotis-media-card-padding-x);
   min-height: var(--unixnotis-media-card-min-height);
   box-shadow:
-    0 6px 16px -10px alpha(#000000, 0.55),
+    0 4px 12px -8px alpha(#000000, 0.4),
     inset 0 1px 0 alpha(#ffffff, 0.05);
   transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
@@ -152,12 +165,40 @@
   padding: var(--unixnotis-media-card-padding-showcase-y) var(--unixnotis-media-card-padding-showcase-x);
 }
 
+/* Playing is a gentle glass brightening, not a colored outline. */
 .unixnotis-media-card.playing {
-  background: alpha(#ffffff, 0.07);
-  border-color: alpha(@unixnotis-accent, 0.32);
+  background-image: linear-gradient(165deg, alpha(#ffffff, 0.09) 0%, alpha(#ffffff, 0.03) 100%);
+  border-top-color: alpha(#ffffff, 0.14);
+  border-left-color: alpha(#ffffff, 0.10);
+  border-right-color: alpha(#ffffff, 0.05);
+  border-bottom-color: alpha(#ffffff, 0.02);
   box-shadow:
-    0 8px 18px -12px alpha(#000000, 0.60),
-    inset 0 1px 0 alpha(#ffffff, 0.08);
+    0 8px 16px -12px alpha(#000000, 0.5),
+    inset 0 1px 0 alpha(#ffffff, 0.07);
+}
+
+.unixnotis-media-card:hover {
+  background-image: linear-gradient(165deg, alpha(#ffffff, 0.09) 0%, alpha(#ffffff, 0.03) 100%);
+  border-top: 1px solid alpha(#ffffff, 0.13);
+  border-left: 1px solid alpha(#ffffff, 0.10);
+  border-right: 1px solid alpha(#ffffff, 0.05);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  box-shadow:
+    0 8px 16px -12px alpha(#000000, 0.5),
+    inset 0 1px 0 alpha(#ffffff, 0.07);
+}
+
+/* Keep depth visible when the panel is unfocused, matching the widget family. */
+.unixnotis-media-card:backdrop {
+  border-top-color: alpha(#ffffff, 0.07);
+  border-left-color: alpha(#ffffff, 0.05);
+  border-right-color: alpha(#ffffff, 0.03);
+  border-bottom-color: alpha(#ffffff, 0.02);
+  box-shadow:
+    0 12px 24px -22px alpha(#000000, 0.35),
+    0 0 0 1px alpha(#ffffff, 0.04),
+    inset 0 1px 0 alpha(#ffffff, 0.04),
+    inset 0 -2px 6px -5px alpha(#000000, 0.35);
 }
 
 /*
@@ -211,7 +252,7 @@
 }
 
 .unixnotis-media-source {
-  color: alpha(@unixnotis-accent, 0.75);
+  color: alpha(@unixnotis-accent, 0.65);
   font-weight: 700;
   font-size: 10px;
   letter-spacing: 0.12em;
@@ -220,7 +261,7 @@
 
 .unixnotis-media-title {
   color: #ffffff;
-  font-weight: 800;
+  font-weight: 750;
   font-size: var(--unixnotis-media-title-font-size);
   letter-spacing: -0.01em;
   line-height: 1.2;
@@ -233,7 +274,7 @@
 }
 
 .unixnotis-media-artist {
-  color: #cbd5e1;
+  color: alpha(#cbd5e1, 0.85);
   font-weight: 500;
   font-size: 12px;
   line-height: 1.25;
@@ -247,6 +288,7 @@
   background: transparent;
 }
 
+/* Transport buttons share the toggle/action glass. */
 .unixnotis-media-button {
   background: alpha(#ffffff, 0.04);
   border-top: 1px solid alpha(#ffffff, 0.08);
@@ -256,7 +298,7 @@
   border-radius: var(--unixnotis-media-button-radius);
   padding: var(--unixnotis-media-button-padding-y) var(--unixnotis-media-button-padding-x);
   box-shadow: none;
-  color: alpha(#ffffff, 0.92);
+  color: alpha(#ffffff, 0.78);
   transition: background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out;
 }
 
@@ -272,30 +314,20 @@
 
 .unixnotis-media-button:disabled,
 .unixnotis-media-button:disabled:hover {
-  background: alpha(#ffffff, 0.05);
-  border: 1px solid alpha(#ffffff, 0.10);
-  color: alpha(#ffffff, 0.92);
+  background: alpha(#ffffff, 0.04);
+  border: 1px solid alpha(#ffffff, 0.08);
+  color: alpha(#ffffff, 0.50);
   -gtk-icon-filter: none;
   box-shadow: none;
 }
 
+/* Primary play: a clean white pill so it reads as the main control without
+ * borrowing the accent hue. */
 .unixnotis-media-button.primary {
   background: @unixnotis-text;
   border: 1px solid @unixnotis-text;
   color: @unixnotis-surface-base;
   box-shadow: 0 4px 10px -3px alpha(#000000, 0.3);
-}
-
-/* Restrained media transport: hover is a gentle lift within the panel family */
-.unixnotis-media-card:hover {
-  background: alpha(#ffffff, 0.09);
-  border-top: 1px solid alpha(#ffffff, 0.16);
-  border-left: 1px solid alpha(#ffffff, 0.12);
-  border-right: 1px solid alpha(#ffffff, 0.07);
-  border-bottom: 1px solid alpha(#ffffff, 0.03);
-  box-shadow:
-    0 10px 22px -12px alpha(#000000, 0.62),
-    inset 0 1px 0 alpha(#ffffff, 0.08);
 }
 
 .unixnotis-media-button.primary:hover {
@@ -305,14 +337,14 @@
   box-shadow: 0 6px 14px -2px alpha(#000000, 0.45);
 }
 
-/* Transport icons stay white on every player (browser MPRIS icons can arrive
- * dark); the primary play button keeps its dark-on-white glyph. */
+/* Transport icons stay legible on every player (browser MPRIS icons can arrive
+ * dark); the primary play button keeps its dark glyph. */
 .unixnotis-media-button image,
 .unixnotis-media-button .icon,
 .unixnotis-media-button:disabled image,
 .unixnotis-media-button:disabled .icon {
-  color: #ffffff;
-  -gtk-icon-palette: success alpha(#ffffff, 0.95), warning alpha(#ffffff, 0.95), error alpha(#ffffff, 0.95);
+  color: alpha(#ffffff, 0.90);
+  -gtk-icon-palette: success alpha(#ffffff, 0.90), warning alpha(#ffffff, 0.90), error alpha(#ffffff, 0.90);
   -gtk-icon-filter: none;
   -gtk-icon-shadow: 0 0 0 transparent;
 }
@@ -322,6 +354,11 @@
   color: @unixnotis-surface-base;
   -gtk-icon-palette: success @unixnotis-surface-base, warning @unixnotis-surface-base, error @unixnotis-surface-base;
   -gtk-icon-shadow: 0 0 0 transparent;
+}
+
+.unixnotis-media-button.primary:hover image,
+.unixnotis-media-button.primary:hover .icon {
+  color: #020617;
 }
 
 .unixnotis-media-button:focus,
