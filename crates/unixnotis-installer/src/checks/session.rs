@@ -107,6 +107,9 @@ impl Checks {
                             .to_string(),
                     );
                 }
+                if self.gtk4_css_features.state == CheckState::Fail {
+                    return Err("GTK 4.18 or newer is required".to_string());
+                }
             }
             ActionMode::Install => {
                 // Install adds the writable path requirement on top of the runtime checks
@@ -124,6 +127,9 @@ impl Checks {
                         "gtk4-layer-shell is required; is the gtk4-layer-shell package installed?"
                             .to_string(),
                     );
+                }
+                if self.gtk4_css_features.state == CheckState::Fail {
+                    return Err("GTK 4.18 or newer is required".to_string());
                 }
                 if self.install_paths.state == CheckState::Fail {
                     return Err("install paths are not writable".to_string());

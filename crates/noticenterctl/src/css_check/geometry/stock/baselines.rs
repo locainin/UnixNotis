@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use unixnotis_core::{
-    build_modern_theme_custom_properties, gtk_css_features_for_version, Config, DEFAULT_BASE_CSS,
-    DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
+    build_modern_theme_custom_properties, Config, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS,
+    DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
 };
 
 use super::super::super::parse::{
@@ -48,10 +48,7 @@ pub(in crate::css_check) fn stock_geometry_model() -> &'static GeometryModel {
     static MODEL: OnceLock<GeometryModel> = OnceLock::new();
     MODEL.get_or_init(|| {
         let mut model = GeometryModel::default();
-        let generated_tokens = build_modern_theme_custom_properties(
-            &stock_config().theme,
-            gtk_css_features_for_version(4, 16),
-        );
+        let generated_tokens = build_modern_theme_custom_properties(&stock_config().theme);
         let shared_custom_properties = collect_custom_property_scopes(
             &std::iter::once(generated_tokens.as_str())
                 .chain([

@@ -228,7 +228,6 @@
 .unixnotis-media-art {
   min-width: var(--unixnotis-media-art-size);
   min-height: var(--unixnotis-media-art-size);
-  border-radius: 10px;
   border-radius: var(--unixnotis-media-art-radius);
   background: alpha(#000000, 0.12);
 }
@@ -236,7 +235,6 @@
 .unixnotis-media-art-frame {
   min-width: var(--unixnotis-media-art-frame-size);
   min-height: var(--unixnotis-media-art-frame-size);
-  border-radius: 12px;
   border-radius: var(--unixnotis-media-art-frame-radius);
   background: alpha(@unixnotis-surface-strong-base, 0.44);
   border-top: 1px solid alpha(#ffffff, 0.10);

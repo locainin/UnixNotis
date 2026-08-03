@@ -89,10 +89,7 @@ fn shipped_css_assets_are_lint_clean() {
         unixnotis_core::DEFAULT_MEDIA_CSS,
     ];
     let config = unixnotis_core::Config::default();
-    let generated = unixnotis_core::build_modern_theme_custom_properties(
-        &config.theme,
-        unixnotis_core::gtk_css_features_for_version(4, 16),
-    );
+    let generated = unixnotis_core::build_modern_theme_custom_properties(&config.theme);
     let combined = std::iter::once(generated.as_str())
         .chain(assets)
         .collect::<Vec<_>>()

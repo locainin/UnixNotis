@@ -1,40 +1,36 @@
 //! GTK capability checks
 
-use unixnotis_core::{
-    gtk_css_features_from_version_string, GTK_CSS_CUSTOM_PROPERTIES_MIN_VERSION_LABEL,
-};
+use unixnotis_core::{gtk_css_features_from_version_string, GTK_MIN_VERSION_LABEL};
 
 use super::system::pkg_config_version;
 use super::{CheckItem, CheckState};
 
 pub(super) fn gtk4_css_features_check(pkg_config: &CheckItem) -> CheckItem {
-    // Modern CSS support is additive, so older GTK builds should warn instead of fail
+    // The shipped CSS contract requires the common GTK 4.18 baseline
     match pkg_config_version("gtk4") {
         Ok(Some(version)) => match gtk_css_features_from_version_string(&version) {
             Some(features) if features.custom_properties => CheckItem::ok(
-                "GTK4 CSS features",
-                &format!("found {version}; modern css variables and var() are available"),
+                "GTK4 (4.18+)",
+                &format!("found {version}; custom properties and var() are available"),
             ),
-            Some(_) => CheckItem::warn(
-                "GTK4 CSS features",
-                &format!(
-                    "found {version}; legacy theming still works, but modern css variables need {GTK_CSS_CUSTOM_PROPERTIES_MIN_VERSION_LABEL}"
-                ),
+            Some(_) => CheckItem::fail(
+                "GTK4 (4.18+)",
+                &format!("found {version}; {GTK_MIN_VERSION_LABEL} is required"),
             ),
-            None => CheckItem::warn(
-                "GTK4 CSS features",
-                &format!("found {version}; css feature level could not be parsed"),
+            None => CheckItem::fail(
+                "GTK4 (4.18+)",
+                &format!("found {version}; GTK version could not be parsed"),
             ),
         },
-        Ok(None) if pkg_config.state == CheckState::Fail => CheckItem::warn(
-            "GTK4 CSS features",
-            "pkg-config missing; cannot probe GTK4 css feature level",
+        Ok(None) if pkg_config.state == CheckState::Fail => CheckItem::fail(
+            "GTK4 (4.18+)",
+            "pkg-config missing; GTK 4.18 or newer is required",
         ),
-        Ok(None) => CheckItem::warn(
-            "GTK4 CSS features",
-            "pkg-config gtk4 not found; modern css feature support is unknown",
+        Ok(None) => CheckItem::fail(
+            "GTK4 (4.18+)",
+            "pkg-config gtk4 not found; GTK 4.18 or newer is required",
         ),
-        Err(err) => CheckItem::warn("GTK4 CSS features", &format!("check failed: {err}")),
+        Err(err) => CheckItem::fail("GTK4 (4.18+)", &format!("check failed: {err}")),
     }
 }
 

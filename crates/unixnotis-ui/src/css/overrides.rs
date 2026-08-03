@@ -1,21 +1,15 @@
 //! Theme-driven CSS overrides used by the UI CSS manager
 
-use gtk::{major_version, minor_version};
 use unixnotis_core::{
     build_legacy_theme_color_overrides, build_modern_theme_custom_properties,
-    gtk_css_features_for_version, theme_card_style_values, GtkCssFeatures, ThemeConfig,
+    theme_card_style_values, ThemeConfig,
 };
 
 pub fn build_base_overrides(theme: &ThemeConfig) -> String {
-    // Runtime gating keeps older GTK builds on the legacy-safe token path
-    build_base_overrides_for_runtime(theme, current_gtk_css_features())
-}
-
-fn build_base_overrides_for_runtime(theme: &ThemeConfig, features: GtkCssFeatures) -> String {
-    // Legacy colors stay first so older GTK still has the same theme path
+    // Legacy color aliases remain first so every generated token has a stable source
     let mut overrides = build_legacy_theme_color_overrides(theme);
-    // Modern tokens are additive and only show up on runtimes that can parse them
-    overrides.push_str(&build_modern_theme_custom_properties(theme, features));
+    // GTK 4.18 is the supported baseline for the custom-property theme contract
+    overrides.push_str(&build_modern_theme_custom_properties(theme));
     overrides
 }
 
@@ -64,11 +58,6 @@ pub fn build_popup_overrides(theme: &ThemeConfig) -> String {
 ",
         card_style.border_width_px, card_style.card_radius_px,
     )
-}
-
-fn current_gtk_css_features() -> GtkCssFeatures {
-    // Runtime GTK version decides whether custom properties can be emitted safely
-    gtk_css_features_for_version(major_version(), minor_version())
 }
 
 #[cfg(test)]

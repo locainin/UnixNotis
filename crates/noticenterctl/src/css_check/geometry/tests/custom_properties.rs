@@ -2,7 +2,7 @@ use super::super::collect_custom_property_scopes;
 use super::super::model::GeometryModel;
 use super::super::parse::collect_geometry_from_contents_with_properties;
 use super::super::test_support::collect_geometry_from_contents;
-use unixnotis_core::{build_modern_theme_custom_properties, gtk_css_features_for_version, Config};
+use unixnotis_core::{build_modern_theme_custom_properties, Config};
 
 #[test]
 fn geometry_can_follow_custom_property_lengths() {
@@ -87,10 +87,7 @@ fn geometry_can_follow_generated_modern_theme_tokens() {
     // Generated override tokens need to behave the same way as tokens declared in files
     let css = format!(
         "{}\n.unixnotis-panel {{ padding: var(--unixnotis-panel-padding); }}\n.unixnotis-toggle {{ min-width: var(--unixnotis-toggle-min-width); padding: 10px calc(var(--unixnotis-panel-action-gap) * 2); border: 1px solid red; }}",
-        build_modern_theme_custom_properties(
-            &Config::default().theme,
-            gtk_css_features_for_version(4, 16),
-        )
+        build_modern_theme_custom_properties(&Config::default().theme)
     );
 
     let mut model = GeometryModel::default();

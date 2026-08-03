@@ -14,9 +14,7 @@
   border-radius: 999px;
   border: 1px solid alpha(#ffffff, 0.10);
   padding: 3px;
-  min-width: 26px;
   min-width: var(--unixnotis-popup-close-size);
-  min-height: 26px;
   min-height: var(--unixnotis-popup-close-size);
   color: alpha(#ffffff, 0.75);
   /* Touch and keyboard users need a visible resting target */
@@ -49,9 +47,7 @@
 
 /* Popup stack */
 .unixnotis-popup-stack {
-  padding: 8px;
   padding: var(--unixnotis-popup-stack-padding);
-  border-radius: 16px;
   border-radius: calc(var(--unixnotis-popup-card-radius) - 4px);
   background: transparent;
 }
@@ -245,7 +241,6 @@
 
 /* Actions: hairline separator and quiet minimal buttons */
 .unixnotis-popup-actions {
-  margin-top: 8px;
   margin-top: var(--unixnotis-popup-actions-gap);
 }
 

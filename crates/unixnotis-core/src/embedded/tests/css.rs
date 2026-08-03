@@ -54,9 +54,7 @@ fn panel_css_leaves_stack_offsets_and_row_gaps_to_gtk_layout() {
     assert!(DEFAULT_PANEL_CSS.contains(".unixnotis-panel-card-row {\n  margin: 0;"));
     assert!(!DEFAULT_PANEL_CSS.contains("margin: 6px 14px 0"));
     assert!(!DEFAULT_PANEL_CSS.contains("margin: 12px 8px 0"));
-    assert!(DEFAULT_PANEL_CSS.contains(
-        "border-radius: 18px;\n  border-radius: var(--unixnotis-notification-card-radius);"
-    ));
+    assert!(DEFAULT_PANEL_CSS.contains("border-radius: var(--unixnotis-notification-card-radius);"));
 }
 
 #[test]

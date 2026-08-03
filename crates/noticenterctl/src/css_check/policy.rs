@@ -1,6 +1,6 @@
 //! Shared css-check policy for GTK CSS support and geometry rules
 
-use unixnotis_core::GTK_CSS_CUSTOM_PROPERTIES_MIN_VERSION_LABEL;
+use unixnotis_core::GTK_MIN_VERSION_LABEL;
 
 pub(super) fn is_horizontal_size_property(name: &str) -> bool {
     // Only width-driving properties belong here
@@ -64,7 +64,7 @@ pub(super) fn parsing_error_hint(line_text: &str) -> Option<String> {
     if trimmed.contains("var(") {
         // The minimum version note lives in one shared place so installer and checker stay aligned
         return Some(format!(
-            "custom properties need {GTK_CSS_CUSTOM_PROPERTIES_MIN_VERSION_LABEL}, and the referenced token still has to expand to a valid value here"
+            "custom properties need {GTK_MIN_VERSION_LABEL}, and the referenced token still has to expand to a valid value here"
         ));
     }
     None

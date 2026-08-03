@@ -18,7 +18,6 @@
 .unixnotis-quick-slider-volume,
 .unixnotis-quick-slider-brightness {
   background: transparent;
-  border-radius: 18px;
   border-radius: var(--unixnotis-quick-slider-radius);
   padding: 4px 6px;
   border: none;
@@ -39,9 +38,7 @@
   border-radius: 999px;
   border: 0;
   padding: 4px;
-  min-width: 32px;
   min-width: var(--unixnotis-quick-slider-icon-size);
-  min-height: 32px;
   min-height: var(--unixnotis-quick-slider-icon-size);
   box-shadow: none;
   color: alpha(#ffffff, 0.65);
@@ -108,16 +105,12 @@
 .unixnotis-toggle.unixnotis-toggle-kind-airplane,
 .unixnotis-toggle.unixnotis-toggle-kind-night {
   background: alpha(#ffffff, 0.045);
-  border-radius: 14px;
-  padding: 10px 12px;
   padding: var(--unixnotis-toggle-padding-y) var(--unixnotis-toggle-padding-x);
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
   border-right: 1px solid alpha(#ffffff, 0.04);
   border-bottom: 1px solid alpha(#ffffff, 0.02);
-  min-height: 56px;
   min-height: var(--unixnotis-toggle-min-height);
-  min-width: 104px;
   min-width: var(--unixnotis-toggle-min-width);
   box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
   color: alpha(#ffffff, 0.7);
@@ -247,14 +240,11 @@
 
 .unixnotis-stat-card {
   background: alpha(#ffffff, 0.035);
-  border-radius: 14px;
-  padding: 10px 12px;
   padding: var(--unixnotis-stat-card-padding-y) var(--unixnotis-stat-card-padding-x);
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
   border-right: 1px solid alpha(#ffffff, 0.04);
   border-bottom: 1px solid alpha(#ffffff, 0.02);
-  min-height: 56px;
   min-height: var(--unixnotis-stat-card-min-height);
   box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
   transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
@@ -315,14 +305,11 @@
 .unixnotis-info-card,
 .unixnotis-info-card-weather {
   background: alpha(#ffffff, 0.035);
-  border-radius: 16px;
-  padding: 12px;
   padding: var(--unixnotis-info-card-padding);
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
   border-right: 1px solid alpha(#ffffff, 0.04);
   border-bottom: 1px solid alpha(#ffffff, 0.02);
-  min-height: 56px;
   min-height: var(--unixnotis-info-card-min-height);
   box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
   transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
@@ -360,7 +347,6 @@
 }
 
 .unixnotis-info-card-mono .unixnotis-info-body {
-  font-family: "CaskaydiaCove Nerd Font Mono", "JetBrains Mono", monospace;
   font-family: var(--unixnotis-monospace-font-family);
 }
 
@@ -377,7 +363,6 @@
   background: alpha(#ffffff, 0.02);
   border: 1px solid alpha(#ffffff, 0.06);
   border-radius: 12px;
-  padding: 10px 12px;
   padding: var(--unixnotis-info-card-padding);
   color: @unixnotis-text;
   box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);

@@ -109,6 +109,13 @@ fn ready_for_trial_requires_wayland_cargo_and_layer_shell_only() {
     );
 
     checks = passing_checks();
+    checks.gtk4_css_features = item("GTK4 (4.18+)", CheckState::Fail);
+    assert_eq!(
+        checks.ready_for(ActionMode::Test),
+        Err("GTK 4.18 or newer is required".to_string())
+    );
+
+    checks = passing_checks();
     checks.gtk4_layer_shell = item("gtk4-layer-shell", CheckState::Fail);
     assert_eq!(
         checks.ready_for(ActionMode::Test),
@@ -137,6 +144,13 @@ fn ready_for_install_requires_runtime_service_manager_and_writable_paths() {
     assert_eq!(
         checks.ready_for(ActionMode::Install),
         Err("cargo is required for installation".to_string())
+    );
+
+    checks = passing_checks();
+    checks.gtk4_css_features = item("GTK4 (4.18+)", CheckState::Fail);
+    assert_eq!(
+        checks.ready_for(ActionMode::Install),
+        Err("GTK 4.18 or newer is required".to_string())
     );
 
     checks = passing_checks();

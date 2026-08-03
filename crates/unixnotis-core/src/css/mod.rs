@@ -15,7 +15,7 @@ mod limits;
 
 pub use self::features::{
     gtk_css_features_for_version, gtk_css_features_from_version_string, GtkCssFeatures,
-    GTK_CSS_CUSTOM_PROPERTIES_MIN_VERSION_LABEL,
+    GTK_MIN_VERSION_LABEL,
 };
 pub use self::limits::MAX_CSS_FILE_BYTES;
 pub use self::references::{

@@ -6,9 +6,7 @@
   min-width: 420px;
   background-image: linear-gradient(155deg, alpha(#080d18, 0.98) 0%, alpha(#10152a, 0.98) 58%, alpha(#241734, 0.97) 100%);
   color: @unixnotis-text;
-  border-radius: 30px;
   border-radius: var(--unixnotis-panel-radius);
-  padding: 16px;
   padding: var(--unixnotis-panel-padding);
   border: 1px solid alpha(#9bb8e8, 0.16);
   font-family: "Inter", "Manrope", "Noto Sans", sans-serif;
@@ -20,9 +18,7 @@
 
 .unixnotis-panel-header {
   margin-bottom: 12px;
-  padding: 12px;
   padding: var(--unixnotis-panel-header-padding);
-  border-radius: 18px;
   border-radius: var(--unixnotis-panel-header-radius);
   background-image: linear-gradient(160deg, alpha(@unixnotis-surface-soft, 0.7), alpha(@unixnotis-surface, 0.9));
   border: 1px solid alpha(@unixnotis-accent, 0.16);
@@ -105,7 +101,6 @@
   background: alpha(#ffffff, 0.045);
   color: alpha(#ffffff, 0.75);
   border-radius: 10px;
-  padding: 6px 10px;
   padding: var(--unixnotis-panel-action-gap) calc(var(--unixnotis-panel-action-gap) + 4px);
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
@@ -279,7 +274,6 @@
 }
 
 .unixnotis-panel-search {
-  min-height: 34px;
   min-height: var(--unixnotis-panel-search-min-height);
   border-radius: 12px;
   background: alpha(#000000, 0.4);
@@ -287,7 +281,6 @@
   border-left: 1px solid alpha(#ffffff, 0.04);
   border-right: 1px solid alpha(#ffffff, 0.02);
   border-bottom: 1px solid alpha(#ffffff, 0.01);
-  padding: 0 10px;
   padding: 0 var(--unixnotis-panel-search-padding-x);
   box-shadow: inset 0 1px 3px alpha(#000000, 0.5);
   transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
@@ -325,9 +318,7 @@ entry selection {
   border-right: 1px solid alpha(#ffffff, 0.04);
   border-bottom: 1px solid alpha(#ffffff, 0.02);
   padding: 2px;
-  min-width: 28px;
   min-width: var(--unixnotis-panel-close-size);
-  min-height: 28px;
   min-height: var(--unixnotis-panel-close-size);
   box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
   transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
@@ -489,9 +480,7 @@ entry selection {
     alpha(#121834, 0.93) 100%
   );
   border: 1px solid alpha(#ffffff, 0.10);
-  border-radius: 18px;
   border-radius: var(--unixnotis-notification-card-radius);
-  padding: 9px 11px;
   padding: var(--unixnotis-panel-card-padding-y) var(--unixnotis-panel-card-padding-x);
   margin: 0;
   box-shadow:
@@ -545,12 +534,10 @@ entry selection {
 }
 
 .unixnotis-panel-card.unixnotis-panel-card-grouped {
-  border-radius: 22px;
   border-radius: var(--unixnotis-notification-card-radius);
 }
 
 .unixnotis-panel-card-foreground.unixnotis-panel-card-grouped {
-  border-radius: 22px;
   border-radius: var(--unixnotis-notification-card-radius);
 }
 
@@ -558,7 +545,6 @@ entry selection {
   min-height: 68px;
   padding: 0;
   border: 1px solid alpha(#ffffff, 0.10);
-  border-radius: 22px;
   border-radius: var(--unixnotis-notification-card-radius);
   background-image:
     linear-gradient(135deg, alpha(#ffffff, 0.10) 0%, alpha(#ffffff, 0) 28%),
@@ -783,7 +769,6 @@ entry selection {
   background: alpha(#ffffff, 0.045);
   color: alpha(#ffffff, 0.75);
   border-radius: 10px;
-  padding: 4px 10px;
   padding: var(--unixnotis-notification-action-padding-y) var(--unixnotis-notification-action-padding-x);
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);

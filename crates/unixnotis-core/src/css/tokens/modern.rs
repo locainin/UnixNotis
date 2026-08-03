@@ -2,21 +2,12 @@
 
 use crate::config::ThemeConfig;
 
-use super::super::features::GtkCssFeatures;
 use super::layout::layout_tokens;
 use super::model::{clamp_alpha, theme_card_style_values};
 use super::palette::color_alias_tokens;
 
 #[must_use]
-pub fn build_modern_theme_custom_properties(
-    theme: &ThemeConfig,
-    features: GtkCssFeatures,
-) -> String {
-    // Older GTK builds should see no custom-property output
-    if !features.supports_modern_theme_tokens() {
-        return String::new();
-    }
-
+pub fn build_modern_theme_custom_properties(theme: &ThemeConfig) -> String {
     let surface_alpha = clamp_alpha(theme.surface_alpha);
     let surface_strong_alpha = clamp_alpha(theme.surface_strong_alpha);
     let card_alpha = clamp_alpha(theme.card_alpha);

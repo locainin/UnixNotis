@@ -105,7 +105,6 @@
 .unixnotis-panel-window,
 .unixnotis-popup-window {
   background: transparent;
-  font-family: "Inter", "SF Pro Text", "Noto Sans", sans-serif;
   font-family: var(--unixnotis-ui-font-family);
 }
 
