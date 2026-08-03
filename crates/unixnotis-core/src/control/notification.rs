@@ -69,6 +69,8 @@ pub struct PopupDecisionRecord {
     pub max_visible_at_commit: u32,
     pub decided_at_unix_ms: i64,
     pub delivery_stage: PopupDeliveryStage,
+    /// Sanitized banner visibility duration fixed for this notification generation
+    pub popup_hide_after_ms: u64,
 }
 
 /// One atomic popup payload and its current admission decision

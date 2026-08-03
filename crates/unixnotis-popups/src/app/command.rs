@@ -96,6 +96,7 @@ pub fn run(args: Args) -> Result<()> {
             command_tx,
             css_manager,
         )));
+        ui.borrow_mut().set_popup_event_sender(event_tx.clone());
         // Composite readiness now means GTK state exists as well as D-Bus seeding succeeding
         dbus_runtime.mark_gtk_ready();
 

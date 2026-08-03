@@ -24,5 +24,6 @@ pub(super) fn notification(app_name: &str, icon_name: &str) -> NotificationView 
             ..NotificationImage::default()
         },
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     }
 }

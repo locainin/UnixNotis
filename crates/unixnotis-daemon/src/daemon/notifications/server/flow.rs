@@ -12,8 +12,8 @@ use crate::daemon::notifications::identity::{
 };
 use crate::daemon::notifications::ingress::payload::{
     build_notification, materialize_sender_visual, may_materialize_content_image, owned_to_string,
-    resolve_expiration, sender_visual_role, NotificationInput, SenderVisualRole,
-    CONVERSATION_AVATAR_TIMEOUT, MAX_STORED_CONTENT_DIMENSION,
+    sender_visual_role, NotificationInput, SenderVisualRole, CONVERSATION_AVATAR_TIMEOUT,
+    MAX_STORED_CONTENT_DIMENSION,
 };
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::InsertOutcome;
@@ -217,8 +217,8 @@ impl NotificationServer {
             let ui_health = self.state.ui_health();
             let outcome = store.insert_with_ui_health(notification, replaces_id, &ui_health);
             if !outcome.dropped {
-                // Resolve timeout after insertion so rule-mapped fields are already final
-                let expiration = resolve_expiration(store.config(), &outcome.notification);
+                // The store resolved both clocks after applying rules and committing the generation
+                let expiration = outcome.expiration;
                 store.set_expiration(&outcome.notification, expiration);
                 // Unbounded send is synchronous, so commit order is preserved without an await
                 self.scheduler.schedule(

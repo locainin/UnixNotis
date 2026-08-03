@@ -83,10 +83,6 @@ impl NotificationStore {
         }
     }
 
-    pub const fn config(&self) -> &Config {
-        &self.config
-    }
-
     pub const fn inhibited(&self) -> bool {
         self.inhibited
     }
@@ -134,7 +130,7 @@ impl NotificationStore {
                             matches!(
                                 decision.admission_at_commit,
                                 PopupAdmissionView::Show | PopupAdmissionView::RendererUnavailable
-                            )
+                            ) && decision.delivery_stage.rank() < PopupDeliveryStage::Visible.rank()
                         })
             })
             .map(|notification| self.list_view_with_popup_decision(notification))
@@ -153,7 +149,13 @@ impl NotificationStore {
         // Payload and its arrival-time policy are read from one store-lock snapshot
         let notification = self.active.get(&id)?;
         let key = notification.key();
-        let admission = self.popup_decisions.get(&key)?.admission_at_commit;
+        let decision = self.popup_decisions.get(&key)?;
+        // A generation that was already rendered must not be fetched again after
+        // a delayed signal or renderer reconnect
+        if decision.delivery_stage.rank() >= PopupDeliveryStage::Visible.rank() {
+            return None;
+        }
+        let admission = decision.admission_at_commit;
         let view = self.view_with_popup_decision(notification);
         if admission.should_show() {
             self.record_popup_delivery_stage(key, PopupDeliveryStage::RendererFetched);
@@ -194,6 +196,7 @@ impl NotificationStore {
         key: NotificationKey,
         admission: super::PopupAdmission,
         ui_health: &UiHealth,
+        popup_hide_after_ms: u64,
     ) {
         let max_visible = u32::try_from(self.config.popups.max_visible).unwrap_or(u32::MAX);
         let effective_admission = if !admission.should_show() {
@@ -220,6 +223,7 @@ impl NotificationStore {
                 max_visible_at_commit: max_visible,
                 decided_at_unix_ms: chrono::Utc::now().timestamp_millis(),
                 delivery_stage,
+                popup_hide_after_ms,
             },
         );
     }
@@ -253,6 +257,7 @@ impl NotificationStore {
         let mut view = notification.to_view();
         if let Some(decision) = self.popup_decisions.get(&notification.key()) {
             view.popup_decision.clone_from(decision);
+            view.popup_hide_after_ms = decision.popup_hide_after_ms;
         }
         view
     }
@@ -261,6 +266,7 @@ impl NotificationStore {
         let mut view = notification.to_list_view();
         if let Some(decision) = self.popup_decisions.get(&notification.key()) {
             view.popup_decision.clone_from(decision);
+            view.popup_hide_after_ms = decision.popup_hide_after_ms;
         }
         view
     }

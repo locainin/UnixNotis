@@ -57,6 +57,8 @@ pub struct InsertOutcome {
     pub evicted: Vec<NotificationKey>,
     // True when payload was intentionally dropped by inhibit mode
     pub dropped: bool,
+    // Commit-time daemon deadline for this exact generation
+    pub expiration: Option<Instant>,
 }
 
 /// Exact identity required to expire one committed notification

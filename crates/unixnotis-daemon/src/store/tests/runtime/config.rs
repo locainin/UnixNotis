@@ -10,8 +10,8 @@ fn config_accessor_returns_runtime_config_snapshot() {
     config.history.max_active = 3;
     let store = NotificationStore::new(config);
 
-    assert_eq!(store.config().history.max_entries, 77);
-    assert_eq!(store.config().history.max_active, 3);
+    assert_eq!(store.config.history.max_entries, 77);
+    assert_eq!(store.config.history.max_active, 3);
 }
 
 #[test]

@@ -42,11 +42,13 @@ impl UiState {
             config_path,
             css,
             command_tx,
+            popup_event_tx: None,
             popup_window,
             popup_stack,
             popup_input_region,
             popups: HashMap::new(),
             popup_order: VecDeque::new(),
+            hidden_popups: std::collections::HashSet::new(),
             visible_popups: Vec::new(),
             // Startup remains permissive until the daemon seed arrives
             control_state: ControlState::default(),
@@ -58,5 +60,13 @@ impl UiState {
             icon_cache_order: VecDeque::new(),
             icon_texture_cache: Rc::new(RefCell::new(TextureCache::new_for_popups())),
         }
+    }
+
+    pub(crate) fn set_popup_event_sender(
+        &mut self,
+        sender: async_channel::Sender<crate::dbus::UiEvent>,
+    ) {
+        // The production event loop owns this sender; tests can leave it unset
+        self.popup_event_tx = Some(sender);
     }
 }

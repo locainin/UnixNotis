@@ -200,6 +200,58 @@ fn popup_widget_tree_keeps_one_identity_grid_and_overlay_close_control() {
 }
 
 #[gtk::test]
+fn popup_display_timeout_hides_only_the_local_banner_generation() {
+    let (mut state, _command_rx) = popup_state_with_commands("org.unixnotis.PopupLocalHide", 1);
+    state.config.popups.default_timeout_ms = 1;
+    let (event_tx, event_rx) = async_channel::bounded(2);
+    state.set_popup_event_sender(event_tx);
+    let mut first = notification(31, 1, "active action");
+    first.popup_hide_after_ms = 1;
+
+    state.handle_event(UiEvent::NotificationAdded(first.clone(), true));
+    assert!(state.popups.contains_key(&first.id));
+
+    std::thread::sleep(std::time::Duration::from_millis(15));
+    while gtk::glib::MainContext::default().pending() {
+        gtk::glib::MainContext::default().iteration(false);
+    }
+
+    let hidden = event_rx
+        .try_recv()
+        .expect("display timeout should emit a local hide event");
+    assert!(matches!(hidden, UiEvent::PopupHidden(key) if key == first.key()));
+    state.handle_event(hidden);
+
+    assert!(!state.popups.contains_key(&first.id));
+    assert!(state.hidden_popups.contains(&first.key()));
+
+    // An update for the same live generation must not resurrect its banner
+    state.handle_event(UiEvent::NotificationUpdated(first.clone(), true));
+    assert!(!state.popups.contains_key(&first.id));
+
+    // Closing the active record also releases the local hidden-banner marker
+    state.handle_event(UiEvent::NotificationClosed(
+        first.key(),
+        unixnotis_core::CloseReason::DismissedByUser,
+    ));
+    assert!(!state.hidden_popups.contains(&first.key()));
+
+    // A replacement generation is a new notification lifecycle
+    let replacement = notification(31, 2, "replacement action");
+    state.handle_event(UiEvent::NotificationUpdated(replacement.clone(), true));
+    assert!(state.popups.contains_key(&replacement.id));
+    assert_eq!(
+        state
+            .popups
+            .get(&replacement.id)
+            .expect("replacement popup")
+            .notification
+            .generation,
+        replacement.generation
+    );
+}
+
+#[gtk::test]
 fn visible_popup_materialization_and_rebuild_replace_the_exact_widget_generation() {
     let (mut state, mut command_rx) =
         popup_state_with_commands("org.unixnotis.PopupMaterialization", 1);
@@ -398,5 +450,6 @@ fn notification(id: u32, generation: u64, summary: &str) -> NotificationView {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     }
 }

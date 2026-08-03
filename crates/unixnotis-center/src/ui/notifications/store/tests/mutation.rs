@@ -27,6 +27,7 @@ fn make_view(is_transient: bool) -> NotificationView {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     }
 }
 
@@ -51,6 +52,7 @@ fn view(id: u32, app_name: &str, is_transient: bool) -> NotificationView {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     }
 }
 

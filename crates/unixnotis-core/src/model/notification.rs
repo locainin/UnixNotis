@@ -99,6 +99,7 @@ impl Notification {
             // UIs only need the text, actions, and image payload used for rendering
             image: self.image.clone(),
             popup_decision: PopupDecisionRecord::default(),
+            popup_hide_after_ms: 0,
             // Protocol flags and sender metadata stay daemon-side to keep D-Bus payloads small
         }
     }
@@ -125,6 +126,7 @@ impl Notification {
             // List rows should avoid carrying raw image buffers across D-Bus
             image: self.image.for_listing(),
             popup_decision: PopupDecisionRecord::default(),
+            popup_hide_after_ms: 0,
             // Protocol flags and sender metadata stay daemon-side to keep D-Bus payloads small
         }
     }
@@ -346,6 +348,8 @@ pub struct NotificationView {
     pub image: NotificationImage,
     // Arrival-time popup reasoning stays stable while DND and renderer state change later
     pub popup_decision: PopupDecisionRecord,
+    // Sanitized banner duration resolved by the daemon for this generation
+    pub popup_hide_after_ms: u64,
 }
 
 impl NotificationView {

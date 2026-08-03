@@ -17,6 +17,8 @@ pub enum UiEvent {
     NotificationAdded(NotificationView, bool),
     NotificationUpdated(NotificationView, bool),
     NotificationClosed(NotificationKey, CloseReason),
+    // Hiding a banner is local UI state and must not close the daemon record
+    PopupHidden(NotificationKey),
     // Popup gate is split out so panel-only state changes do not wake the popup UI
     PopupGateChanged(PopupGateState),
     CssReload,

@@ -7,6 +7,8 @@ use unixnotis_core::{
 
 use crate::store::{InsertOutcome, NotificationStore, PopupAdmission, PopupSuppressionReason};
 
+use super::timeout::resolve_timeout_policy;
+
 // Hard ceiling for concurrently active notifications to protect panel/popups stability
 const ACTIVE_HARD_CAP: usize = 12;
 
@@ -32,6 +34,7 @@ impl NotificationStore {
     ) -> InsertOutcome {
         // Rule transforms happen before any storage decision
         self.apply_rules(&mut notification);
+        let timeout_policy = resolve_timeout_policy(&self.config, &notification);
         if self.should_drop_inhibited() {
             // DropAll mode still assigns an ID so call sites can log consistent metadata
             let assigned_id = self.next_id();
@@ -46,6 +49,7 @@ impl NotificationStore {
                 replaced: false,
                 evicted: Vec::new(),
                 dropped: true,
+                expiration: None,
             };
         }
 
@@ -79,6 +83,9 @@ impl NotificationStore {
         self.popup_decisions
             .retain(|key, _decision| key.id != assigned_id);
 
+        let expiration = timeout_policy
+            .active_close_after
+            .map(|duration| std::time::Instant::now() + duration);
         let notification = Arc::new(notification);
         // Active map keeps insertion order so oldest eviction is deterministic
         self.active.insert(assigned_id, notification.clone());
@@ -86,7 +93,12 @@ impl NotificationStore {
         let evicted = self.enforce_active_limit();
 
         let popup_admission = self.popup_admission(&notification);
-        self.record_popup_commit_environment(notification.key(), popup_admission, ui_health);
+        self.record_popup_commit_environment(
+            notification.key(),
+            popup_admission,
+            ui_health,
+            timeout_policy.popup_hide_after_ms,
+        );
         InsertOutcome {
             popup_admission,
             allow_sound: self.should_play_sound(&notification),
@@ -94,6 +106,7 @@ impl NotificationStore {
             replaced,
             evicted,
             dropped: false,
+            expiration,
         }
     }
 

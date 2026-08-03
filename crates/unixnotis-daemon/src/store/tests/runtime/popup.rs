@@ -91,6 +91,7 @@ fn notification_diagnostics_require_both_renderer_process_and_readiness() {
             visible.key(),
             crate::store::PopupAdmission::Show,
             &health,
+            0,
         );
         let diagnostics = store
             .notification_diagnostics(visible.id, &unixnotis_core::UiHealth::default())
@@ -138,6 +139,7 @@ fn disabled_popups_are_recorded_when_max_visible_is_zero() {
         notification.key(),
         crate::store::PopupAdmission::Show,
         &ready,
+        0,
     );
 
     let diagnostics = store
@@ -182,6 +184,7 @@ fn popup_delivery_stage_advances_for_fetch_and_render_acknowledgement() {
         notification.key(),
         crate::store::PopupAdmission::Show,
         &ready,
+        0,
     );
 
     let candidate = store
@@ -209,6 +212,27 @@ fn popup_delivery_stage_advances_for_fetch_and_render_acknowledgement() {
             .expect("rendered diagnostics")
             .delivery_stage,
         unixnotis_core::PopupDeliveryStage::Visible
+    );
+}
+
+#[test]
+fn visible_popup_candidate_cannot_be_fetched_again_after_reconnect() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store
+        .insert(make_notification("visible once"), 0)
+        .notification;
+
+    assert!(store.popup_candidate(notification.id).is_some());
+    assert_eq!(
+        store.record_popup_delivery_stage(
+            notification.key(),
+            unixnotis_core::PopupDeliveryStage::Visible,
+        ),
+        crate::store::DeliveryStageUpdate::Advanced
+    );
+    assert!(
+        store.popup_candidate(notification.id).is_none(),
+        "visible generations stay active for panel actions but cannot re-enter popups"
     );
 }
 
@@ -298,6 +322,7 @@ fn popup_candidate_list_requires_policy_and_arrival_decision_to_allow_rendering(
         rule_suppressed.key(),
         crate::store::PopupAdmission::Show,
         &ready,
+        0,
     );
 
     let arrival_suppressed = store
@@ -307,6 +332,7 @@ fn popup_candidate_list_requires_policy_and_arrival_decision_to_allow_rendering(
         arrival_suppressed.key(),
         crate::store::PopupAdmission::Suppressed(crate::store::PopupSuppressionReason::Rule),
         &ready,
+        0,
     );
 
     let admitted = store.insert(make_notification("admitted"), 0).notification;
@@ -314,11 +340,49 @@ fn popup_candidate_list_requires_policy_and_arrival_decision_to_allow_rendering(
         admitted.key(),
         crate::store::PopupAdmission::Show,
         &ready,
+        0,
     );
 
     let candidates = store.list_popup_candidates();
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].key(), admitted.key());
+}
+
+#[test]
+fn visible_popup_generations_are_not_seeded_after_renderer_reconnect() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store
+        .insert(make_notification("already visible"), 0)
+        .notification;
+
+    assert_eq!(store.list_popup_candidates().len(), 1);
+    assert_eq!(
+        store.record_popup_delivery_stage(
+            notification.key(),
+            unixnotis_core::PopupDeliveryStage::Visible,
+        ),
+        crate::store::DeliveryStageUpdate::Advanced
+    );
+
+    // The active panel row remains available, but a restarted popup renderer
+    // must not receive a generation that already reached the visible stage
+    assert_eq!(store.list_popup_candidates().len(), 0);
+    assert_eq!(store.list_active().len(), 1);
+}
+
+#[test]
+fn materialized_but_not_visible_popup_remains_eligible_for_reconnect_seed() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store.insert(make_notification("overflow"), 0).notification;
+
+    assert_eq!(
+        store.record_popup_delivery_stage(
+            notification.key(),
+            unixnotis_core::PopupDeliveryStage::Materialized,
+        ),
+        crate::store::DeliveryStageUpdate::Advanced
+    );
+    assert_eq!(store.list_popup_candidates().len(), 1);
 }
 
 #[test]

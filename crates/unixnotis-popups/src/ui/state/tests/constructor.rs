@@ -46,6 +46,7 @@ fn popup_entry_uses_the_configured_cut_corner_primitive() {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     };
 
     let entry = state.build_popup_entry(&notification);
@@ -95,6 +96,7 @@ fn default_popup_entry_uses_the_native_rounded_card_without_a_clipper() {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     };
 
     let entry = state.build_popup_entry(&notification);
@@ -176,6 +178,7 @@ fn critical_popup_probe_builds_the_root_class_and_badge() {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     };
 
     let root = state.build_popup_root(&notification);
@@ -237,6 +240,7 @@ fn unknown_attribution_uses_a_short_chip_without_showing_raw_provenance() {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     };
 
     let root = state.build_popup_root(&notification);
@@ -295,6 +299,7 @@ fn conflicting_attribution_keeps_message_layout_and_uses_suspicious_chip() {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     };
 
     let root = state.build_popup_root(&notification);
@@ -351,6 +356,7 @@ fn notify_send_claim_uses_one_command_line_avatar_without_signal_branding() {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     };
     notification.image.badge_icon = "signal-desktop".to_string();
 

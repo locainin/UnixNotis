@@ -37,6 +37,7 @@ pub(super) fn sample_notification() -> NotificationView {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     }
 }
 

@@ -15,6 +15,7 @@ impl UiState {
             UiEvent::Disconnected => {
                 debug!("UnixNotis control service disconnected");
                 self.control_state = ControlState::default();
+                self.hidden_popups.clear();
                 self.reconcile_seed(Vec::new());
             }
             UiEvent::Seed { state, active } => {
@@ -43,6 +44,14 @@ impl UiState {
             UiEvent::NotificationClosed(key, _reason) => {
                 debug!(id = key.id, generation = key.generation, "popup closed");
                 self.remove_popup_if_generation(key);
+            }
+            UiEvent::PopupHidden(key) => {
+                debug!(
+                    id = key.id,
+                    generation = key.generation,
+                    "popup banner hidden"
+                );
+                self.hide_popup_if_generation(key);
             }
             UiEvent::PopupGateChanged(gate) => {
                 // Gate updates change only policy fields and preserve unrelated daemon state

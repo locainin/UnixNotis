@@ -414,6 +414,7 @@ fn popup_status_uses_the_committed_reason_instead_of_current_state() {
         max_visible_at_commit: 0,
         decided_at_unix_ms: 1_000,
         delivery_stage: unixnotis_core::PopupDeliveryStage::Suppressed,
+        popup_hide_after_ms: 0,
     };
 
     assert_eq!(

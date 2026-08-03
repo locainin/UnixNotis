@@ -10,7 +10,10 @@ use super::mutation::ReconcilePlan;
 impl UiState {
     pub(in super::super) fn reconcile_seed(&mut self, active: Vec<NotificationView>) {
         // Seed is a full snapshot, so desired popups come only from this list
-        let desired = desired_seed_popups(active, &self.control_state);
+        let desired = desired_seed_popups(active, &self.control_state)
+            .into_iter()
+            .filter(|notification| !self.hidden_popups.contains(&notification.key()))
+            .collect::<Vec<_>>();
         // Compare only the portable notification payload so seed logic stays deterministic
         let local = self
             .popups

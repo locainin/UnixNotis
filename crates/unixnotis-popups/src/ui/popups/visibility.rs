@@ -109,6 +109,7 @@ impl UiState {
         let restack_ids = visible_popup_restack_ids(&previous_visible, &desired_visible);
         let mut update = VisiblePopupUpdate::default();
         let mut applied_visible = Vec::with_capacity(desired_visible.len());
+        let mut newly_materialized = Vec::new();
         for id in &previous_visible {
             if desired_visible_set.contains(id) {
                 // Rows that stay visible keep their current widgets
@@ -155,6 +156,7 @@ impl UiState {
                     &self.command_tx,
                     UiCommand::Materialized(entry.notification.key()),
                 );
+                newly_materialized.push(entry.notification.key());
             }
             applied_visible.push(*id);
         }
@@ -182,6 +184,9 @@ impl UiState {
         }
 
         self.visible_popups = applied_visible;
+        for key in newly_materialized {
+            self.schedule_popup_hide(key);
+        }
         update
     }
 }

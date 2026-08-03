@@ -63,6 +63,7 @@ fn insert_outcome(id: u32, dropped: bool) -> InsertOutcome {
         allow_sound: !dropped,
         evicted: Vec::new(),
         dropped,
+        expiration: None,
     }
 }
 
@@ -241,6 +242,14 @@ async fn ingest_notify_schedules_expiration_for_positive_timeout() {
         .await
         .expect("notify should store");
 
+    let view = state
+        .store
+        .lock()
+        .await
+        .active_notification_view(id)
+        .expect("positive-timeout notification should be active initially");
+    assert_eq!(view.popup_hide_after_ms, 25);
+
     for _ in 0..30 {
         if state
             .store
@@ -255,6 +264,42 @@ async fn ingest_notify_schedules_expiration_for_positive_timeout() {
     }
 
     panic!("notification should expire after scheduled timeout");
+}
+
+#[tokio::test]
+async fn default_popup_display_timeout_does_not_archive_the_active_notification() {
+    let state = daemon_state_for_test(false).await;
+    let scheduler = ExpirationScheduler::start(state.clone());
+    let server = NotificationServer::new(state.clone(), scheduler);
+    let message = notify_header_message();
+    let header = message.header();
+
+    let id = server
+        .ingest_notify(
+            "app".to_string(),
+            0,
+            String::new(),
+            "keeps actions live".to_string(),
+            "body".to_string(),
+            vec!["default".to_string(), "View".to_string()],
+            HashMap::new().into(),
+            &header,
+            -1,
+        )
+        .await
+        .expect("notify should store");
+
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    let store = state.store.lock().await;
+    let active = store
+        .active_notification_view(id)
+        .expect("default popup timeout must not close active storage");
+    assert_eq!(active.summary, "keeps actions live");
+    assert_eq!(active.actions.len(), 1);
+    assert_eq!(
+        active.popup_hide_after_ms,
+        Config::default().popups.default_timeout_ms
+    );
 }
 
 #[tokio::test]

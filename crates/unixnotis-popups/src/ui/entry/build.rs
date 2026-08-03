@@ -1,5 +1,8 @@
 //! Popup entry lifecycle and high-level card assembly
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{hooks, NotificationKey, NotificationView};
@@ -23,6 +26,10 @@ pub(in crate::ui) struct PopupEntry {
     pub(in crate::ui) revealer: Option<gtk::Revealer>,
     pub(in crate::ui) root: Option<gtk::Box>,
     pub(in crate::ui) visibility: Option<PopupVisibilityBinding>,
+    // The display timer hides only this popup row and never closes the daemon record
+    pub(in crate::ui) hide_timer: Option<glib::SourceId>,
+    // GLib has already removed a source when its one-shot callback starts
+    pub(in crate::ui) hide_timer_fired: Option<Rc<Cell<bool>>>,
 }
 
 impl PopupEntry {
@@ -33,12 +40,25 @@ impl PopupEntry {
             revealer: None,
             root: None,
             visibility: None,
+            hide_timer: None,
+            hide_timer_fired: None,
         }
     }
 
     pub(in crate::ui) const fn is_materialized(&self) -> bool {
         // Both widgets must exist before stack operations can touch this row safely
         self.revealer.is_some() && self.root.is_some()
+    }
+    pub(in crate::ui) fn cancel_hide_timer(&mut self) {
+        let fired = self
+            .hide_timer_fired
+            .take()
+            .is_some_and(|state| state.get());
+        if let Some(timer) = self.hide_timer.take() {
+            if !fired {
+                timer.remove();
+            }
+        }
     }
 }
 
@@ -57,6 +77,8 @@ impl UiState {
             revealer: Some(revealer),
             root: Some(root),
             visibility: Some(visibility),
+            hide_timer: None,
+            hide_timer_fired: None,
         }
     }
 

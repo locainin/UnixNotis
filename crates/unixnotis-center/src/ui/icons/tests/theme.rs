@@ -29,6 +29,7 @@ fn notification_view(
         received_at_unix_seconds: 0,
         image,
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     }
 }
 

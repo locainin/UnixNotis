@@ -53,6 +53,7 @@ fn sender_paths_are_not_resolved_by_client_icon_lookup() {
         received_at_unix_seconds: 0,
         image: NotificationImage::default(),
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     };
 
     assert!(resolver.resolve_icon(&notification, 16, 1).is_none());

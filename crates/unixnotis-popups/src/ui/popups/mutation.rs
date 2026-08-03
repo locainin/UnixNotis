@@ -45,6 +45,11 @@ impl UiState {
         refresh_visibility: bool,
     ) {
         let id = notification.id;
+        let key = notification.key();
+        if self.hidden_popups.contains(&key) {
+            // A local display timeout suppresses duplicate banner updates for this generation
+            return;
+        }
         if let Some(existing) = self.popups.get(&id) {
             // A later generation always dominates an old or duplicated add event
             if existing.notification.generation >= notification.generation {
@@ -54,6 +59,9 @@ impl UiState {
             self.update_popup_internal(notification, true, refresh_visibility);
             return;
         }
+
+        // A replacement generation starts a fresh popup display lifecycle
+        self.hidden_popups.retain(|hidden| hidden.id != id);
 
         // Hidden overflow rows stay as plain data until they can actually be shown
         self.popups.insert(id, PopupEntry::queued(notification));
@@ -80,6 +88,7 @@ impl UiState {
             .popups
             .get(&id)
             .map(|entry| entry.notification.generation);
+        let new_generation = existing_generation != Some(notification.generation);
         if incoming_generation_is_stale(existing_generation, notification.generation) {
             // Reordered older updates cannot roll a popup back
             debug!(
@@ -87,6 +96,16 @@ impl UiState {
                 generation = notification.generation,
                 "stale popup update skipped"
             );
+            return false;
+        }
+        let key = notification.key();
+        self.hidden_popups
+            .retain(|hidden| hidden.id != id || hidden.generation >= key.generation);
+        if self.hidden_popups.contains(&key) {
+            // Keep the payload current without reviving a banner the user already saw
+            if let Some(entry) = self.popups.get_mut(&id) {
+                entry.notification = notification;
+            }
             return false;
         }
         if !show_popup {
@@ -119,6 +138,10 @@ impl UiState {
         if refresh_visibility {
             self.update_popup_visibility(rebuilt_visible_row);
         }
+        if rebuilt_visible_row && new_generation {
+            // A replacement generation starts a fresh local banner timeout
+            self.schedule_popup_hide(key);
+        }
         debug!(id, "popup updated");
         rebuilt_visible_row
     }
@@ -128,13 +151,24 @@ impl UiState {
             .popups
             .get(&key.id)
             .map(|entry| entry.notification.generation);
+        // A hidden banner may already be absent from the widget map
+        // Remove its exact-generation marker when the daemon closes it
+        let hidden_marker_removed = self.hidden_popups.remove(&key);
         if generation_matches(existing_generation, key.generation) {
             self.remove_popup_internal(key.id, true);
+        } else if hidden_marker_removed {
+            debug!(
+                id = key.id,
+                generation = key.generation,
+                "cleared hidden popup marker after close"
+            );
         }
     }
 
     pub(super) fn remove_popup_internal(&mut self, id: u32, refresh_visibility: bool) {
         if let Some(entry) = self.popups.remove(&id) {
+            let mut entry = entry;
+            entry.cancel_hide_timer();
             if let Some(revealer) = entry.revealer {
                 // Visible rows animate out before leaving the stack
                 revealer.set_reveal_child(false);
@@ -156,6 +190,19 @@ impl UiState {
             self.update_popup_visibility(false);
         }
         debug!(id, total = self.popup_order.len(), "popup removed");
+    }
+
+    pub(in crate::ui) fn hide_popup_if_generation(&mut self, key: NotificationKey) {
+        let matches = self
+            .popups
+            .get(&key.id)
+            .is_some_and(|entry| entry.notification.key() == key);
+        if !matches {
+            return;
+        }
+        // Keep this marker until the generation closes or is replaced
+        self.hidden_popups.insert(key);
+        self.remove_popup_internal(key.id, true);
     }
 
     fn rebuild_materialized_popup(&mut self, notification: &NotificationView) -> bool {

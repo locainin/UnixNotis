@@ -1,7 +1,7 @@
 //! Popup UI state owned by the GTK main thread
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -10,7 +10,7 @@ use unixnotis_core::{Config, ControlState};
 use unixnotis_ui::css::CssManager;
 use unixnotis_ui::icons::DesktopIconIndex;
 
-use crate::dbus::UiCommand;
+use crate::dbus::{UiCommand, UiEvent};
 
 use super::super::entry::PopupEntry;
 use super::super::icons::TextureCache;
@@ -22,12 +22,16 @@ pub struct UiState {
     pub(in crate::ui) config_path: std::path::PathBuf,
     pub(in crate::ui) css: CssManager,
     pub(in crate::ui) command_tx: Sender<UiCommand>,
+    // Popup-only events let local banner timers avoid mutating daemon state
+    pub(in crate::ui) popup_event_tx: Option<async_channel::Sender<UiEvent>>,
     pub(in crate::ui) popup_window: gtk::ApplicationWindow,
     pub(in crate::ui) popup_stack: gtk::Box,
     // Shared popup input shaping state for config and runtime updates
     pub(in crate::ui) popup_input_region: PopupInputRegionState,
     pub(in crate::ui) popups: HashMap<u32, PopupEntry>,
     pub(in crate::ui) popup_order: VecDeque<u32>,
+    // A hidden banner stays hidden for its exact generation until it is replaced
+    pub(in crate::ui) hidden_popups: HashSet<unixnotis_core::NotificationKey>,
     // Only visible ids need repeated GTK updates during backlog churn
     pub(in crate::ui) visible_popups: Vec<u32>,
     // Latest daemon gate state used to keep visible popups in policy
