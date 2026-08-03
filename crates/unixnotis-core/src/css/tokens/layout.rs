@@ -22,7 +22,6 @@ pub(super) const fn layout_tokens() -> &'static [(&'static str, &'static str)] {
         ("--unixnotis-panel-close-size", "28px"),
         ("--unixnotis-panel-search-min-height", "34px"),
         ("--unixnotis-panel-search-padding-x", "10px"),
-        ("--unixnotis-notification-card-radius", "14px"),
         ("--unixnotis-notification-action-padding-y", "4px"),
         ("--unixnotis-notification-action-padding-x", "10px"),
         ("--unixnotis-popup-stack-padding", "8px"),

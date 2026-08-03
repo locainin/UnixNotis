@@ -99,7 +99,7 @@
 }
 
 .unixnotis-media-card {
-  background: alpha(#ffffff, 0.035);
+  background-image: linear-gradient(145deg, alpha(@unixnotis-card-base, 0.88), alpha(@unixnotis-surface-base, 0.94));
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
   border-right: 1px solid alpha(#ffffff, 0.04);
@@ -136,7 +136,7 @@
 }
 
 .unixnotis-media-card.playing {
-  background-image: linear-gradient(135deg, alpha(#ffffff, 0.075), alpha(#ffffff, 0.025));
+  background-image: linear-gradient(145deg, alpha(@unixnotis-accent, 0.12), alpha(@unixnotis-card-base, 0.94));
   border-top: 1px solid alpha(#ffffff, 0.16);
   border-left: 1px solid alpha(#ffffff, 0.12);
   border-right: 1px solid alpha(#ffffff, 0.06);
@@ -209,6 +209,7 @@
   font-weight: 800;
   font-size: var(--unixnotis-media-title-font-size);
   letter-spacing: -0.01em;
+  line-height: 1.2;
 }
 
 .unixnotis-marquee {
@@ -221,6 +222,7 @@
   color: #cbd5e1;
   font-weight: 500;
   font-size: 12px;
+  line-height: 1.25;
 }
 
 .unixnotis-media-artist.empty {
@@ -255,9 +257,9 @@
 }
 
 .unixnotis-media-button.primary {
-  background: #ffffff;
-  border: 1px solid #ffffff;
-  color: #0f172a;
+  background: @unixnotis-text;
+  border: 1px solid @unixnotis-text;
+  color: @unixnotis-surface-base;
   box-shadow: 0 4px 10px -3px alpha(#000000, 0.3);
 }
 

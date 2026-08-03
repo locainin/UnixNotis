@@ -36,6 +36,12 @@ pub fn build_modern_theme_custom_properties(
         "--unixnotis-card-radius",
         card_style.card_radius_px,
     );
+    // Stack shells use the same dynamic radius as foreground notification cards
+    push_px_token(
+        &mut block,
+        "--unixnotis-notification-card-radius",
+        card_style.card_radius_px,
+    );
     push_alpha_token(&mut block, "--unixnotis-surface-alpha", surface_alpha);
     push_alpha_token(
         &mut block,

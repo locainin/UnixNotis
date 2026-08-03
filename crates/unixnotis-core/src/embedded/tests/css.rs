@@ -157,3 +157,23 @@ fn popup_theme_keeps_kind_trust_and_compact_media_hooks() {
     assert!(DEFAULT_POPUP_CSS.contains("min-width: 64px"));
     assert!(!DEFAULT_POPUP_CSS.contains("popup-warning-content"));
 }
+
+#[test]
+fn notification_surfaces_keep_compact_master_geometry() {
+    assert!(DEFAULT_PANEL_CSS.contains("var(--unixnotis-notification-card-radius)"));
+    assert!(DEFAULT_PANEL_CSS.contains("var(--unixnotis-panel-card-padding-y)"));
+    assert!(DEFAULT_PANEL_CSS.contains("var(--unixnotis-panel-card-padding-x)"));
+    assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-radius)"));
+    assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-padding-y)"));
+    assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-padding-x)"));
+    assert!(DEFAULT_PANEL_CSS.contains("margin: -58px 14px 0"));
+    assert!(DEFAULT_PANEL_CSS.contains("margin: 0 20px"));
+}
+
+#[test]
+fn media_cards_keep_art_and_transport_as_separate_visual_lanes() {
+    assert!(DEFAULT_MEDIA_CSS.contains(".unixnotis-media-art-frame"));
+    assert!(DEFAULT_MEDIA_CSS.contains(".unixnotis-media-control-strip"));
+    assert!(DEFAULT_MEDIA_CSS.contains(".unixnotis-media-card.playing"));
+    assert!(DEFAULT_MEDIA_CSS.contains("--unixnotis-media-art-size"));
+}
