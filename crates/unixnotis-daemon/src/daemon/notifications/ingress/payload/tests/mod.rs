@@ -13,13 +13,14 @@ pub(super) use super::sanitize::{
 };
 pub(super) use super::visuals::{
     avatar_buffer_size_allowed, avatar_file_size_allowed, bounded_decode_dimension,
-    materialize_sender_visual, may_read_sender_host_visual, sender_visual_file_allowed,
+    materialize_sender_visual, may_materialize_application_icon, sender_visual_file_allowed,
     MAX_SENDER_VISUAL_BYTES,
 };
 pub(super) use super::visuals::{sender_visual_role, SenderVisualRole};
 
 pub(super) use unixnotis_core::{
-    AttributionReason, Config, IdentityAssurance, InteractionPolicies, NotificationImage, Urgency,
+    ApplicationActionPolicy, AttributionReason, Config, IdentityAssurance, InteractionPolicies,
+    NotificationImage, Urgency,
 };
 
 mod build;

@@ -313,18 +313,21 @@ impl NotificationAttribution {
         self.interactions.action_buttons
     }
 
-    /// Host visuals require a positively associated executable and one-click local authority
+    /// Application-provided decorative visuals require a positive local association
     #[must_use]
-    pub const fn may_read_sender_host_visual(&self) -> bool {
+    pub const fn may_materialize_application_icon(&self) -> bool {
         matches!(
             self.assurance,
             IdentityAssurance::Authenticated
                 | IdentityAssurance::SystemAssociated
                 | IdentityAssurance::UserAssociated
-        ) && matches!(
-            self.default_activation_policy(),
-            ApplicationActionPolicy::Allow
         )
+    }
+
+    /// Message content can be decoded without granting any application action
+    #[must_use]
+    pub const fn may_materialize_content_image(&self) -> bool {
+        self.may_materialize_application_icon()
     }
 
     /// Whether this attribution has kernel or broker-backed identity evidence

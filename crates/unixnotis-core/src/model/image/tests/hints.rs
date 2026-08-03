@@ -28,6 +28,23 @@ fn app_icon_and_image_path_never_become_retained_host_paths() {
 }
 
 #[test]
+fn app_icon_theme_names_are_retained_only_as_bounded_lookup_hints() {
+    let image = NotificationImage::from_hints("App", "example-player", &HashMap::new());
+    assert_eq!(image.claimed_theme_icon, "example-player");
+
+    for value in [
+        "/tmp/icon.png",
+        "file:///tmp/icon.png",
+        "../icon",
+        "icon name",
+        "icon:remote",
+    ] {
+        let image = NotificationImage::from_hints("App", value, &HashMap::new());
+        assert!(image.claimed_theme_icon.is_empty(), "unsafe hint: {value}");
+    }
+}
+
+#[test]
 fn parse_image_data_rejects_wrong_structure() {
     let wrong = Structure::from((1_i32, 1_i32));
     let wrong: OwnedValue = Value::from(wrong).try_into().expect("structure conversion");

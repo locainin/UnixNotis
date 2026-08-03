@@ -271,7 +271,7 @@ fn authenticated_and_native_policies_keep_action_surfaces_separate() {
         InlineReplyPolicy::Deny,
         "same-user native association cannot protect credential-like reply text"
     );
-    assert!(native.may_read_sender_host_visual());
+    assert!(native.may_materialize_application_icon());
 }
 
 #[test]
@@ -292,7 +292,7 @@ fn portal_and_unassociated_policies_never_allow_silent_actions() {
         ApplicationActionPolicy::Confirm,
         "an app id without unforgeable provenance must not activate silently"
     );
-    assert!(!portal.may_read_sender_host_visual());
+    assert!(!portal.may_materialize_application_icon());
 
     for attribution in [
         NotificationAttribution::recognized(
@@ -329,7 +329,7 @@ fn portal_and_unassociated_policies_never_allow_silent_actions() {
 }
 
 #[test]
-fn host_visuals_require_both_positive_assurance_and_allowed_activation() {
+fn host_visuals_do_not_require_action_authority() {
     let mut authenticated = NotificationAttribution::verified(
         "Example",
         "Example",
@@ -341,7 +341,7 @@ fn host_visuals_require_both_positive_assurance_and_allowed_activation() {
     );
     authenticated.interactions = InteractionPolicies::DENY;
 
-    assert!(!authenticated.may_read_sender_host_visual());
+    assert!(authenticated.may_materialize_application_icon());
 }
 
 #[test]

@@ -11,9 +11,9 @@ use crate::daemon::notifications::identity::{
     resolve_sender_metadata, SenderMetadataStatus, SENDER_CREDENTIAL_TIMEOUT,
 };
 use crate::daemon::notifications::ingress::payload::{
-    build_notification, materialize_sender_visual, owned_to_string, resolve_expiration,
-    sender_visual_role, NotificationInput, SenderVisualRole, CONVERSATION_AVATAR_TIMEOUT,
-    MAX_STORED_CONTENT_DIMENSION,
+    build_notification, materialize_sender_visual, may_materialize_content_image, owned_to_string,
+    resolve_expiration, sender_visual_role, NotificationInput, SenderVisualRole,
+    CONVERSATION_AVATAR_TIMEOUT, MAX_STORED_CONTENT_DIMENSION,
 };
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::InsertOutcome;
@@ -344,7 +344,7 @@ async fn materialize_content_visual(
     attribution: &unixnotis_core::NotificationAttribution,
     image_path: Option<&str>,
 ) -> Option<ImageData> {
-    if !crate::daemon::notifications::ingress::payload::may_read_sender_host_visual(attribution) {
+    if !may_materialize_content_image(attribution) {
         return None;
     }
     let path = image_path

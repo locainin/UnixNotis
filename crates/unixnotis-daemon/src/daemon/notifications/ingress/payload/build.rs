@@ -13,7 +13,7 @@ use super::super::limits::{
     MAX_APP_ICON_BYTES, MAX_APP_NAME_BYTES, MAX_BODY_BYTES, MAX_CATEGORY_BYTES, MAX_SUMMARY_BYTES,
 };
 use super::sanitize::parse_actions;
-use super::visuals::{may_read_sender_host_visual, SenderVisualRole};
+use super::visuals::{may_materialize_application_icon, SenderVisualRole};
 use super::{owned_to_string, sanitize_hints_for_storage};
 
 pub(in crate::daemon::notifications) struct NotificationInput {
@@ -145,7 +145,7 @@ fn build_image(
     if let Some(image_data) = image_data.and_then(NotificationImage::normalize_image_data) {
         image.content_image = image_data;
     }
-    if may_read_sender_host_visual(attribution) {
+    if may_materialize_application_icon(attribution) {
         if let Some(visual) = sender_visual.and_then(NotificationImage::normalize_image_data) {
             image.sender_visual_role = match sender_visual_role {
                 SenderVisualRole::ConversationAvatar => NotificationVisualRole::ConversationAvatar,

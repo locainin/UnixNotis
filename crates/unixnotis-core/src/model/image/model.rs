@@ -36,6 +36,9 @@ pub enum NotificationVisualRole {
 pub struct NotificationImage {
     /// Desktop-index-selected identity icon
     pub badge_icon: String,
+    /// Sender-supplied theme name retained only as a decorative lookup hint
+    #[serde(default)]
+    pub claimed_theme_icon: String,
     /// Safely decoded sender-provided visual
     pub sender_visual_role: NotificationVisualRole,
     pub sender_visual: ImageData,

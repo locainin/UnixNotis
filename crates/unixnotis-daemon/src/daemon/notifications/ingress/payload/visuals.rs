@@ -36,10 +36,16 @@ pub(in crate::daemon::notifications) enum SenderVisualRole {
     ApplicationProvidedIcon,
 }
 
-pub(in crate::daemon::notifications) const fn may_read_sender_host_visual(
+pub(in crate::daemon::notifications) const fn may_materialize_application_icon(
     attribution: &NotificationAttribution,
 ) -> bool {
-    attribution.may_read_sender_host_visual()
+    attribution.may_materialize_application_icon()
+}
+
+pub(in crate::daemon::notifications) const fn may_materialize_content_image(
+    attribution: &NotificationAttribution,
+) -> bool {
+    attribution.may_materialize_content_image()
 }
 
 pub(in crate::daemon::notifications) fn sender_visual_role(
@@ -50,7 +56,7 @@ pub(in crate::daemon::notifications) fn sender_visual_role(
     app_icon: &str,
 ) -> SenderVisualRole {
     // Sender paths are never opened until attribution grants positive local evidence
-    if !may_read_sender_host_visual(attribution) {
+    if !may_materialize_application_icon(attribution) {
         return SenderVisualRole::None;
     }
 

@@ -100,7 +100,7 @@ fn portal_association_cannot_start_host_avatar_materialization() {
         "portal supplied app id",
         "recognized:portal:org.example.PortalApp".to_string(),
     );
-    assert!(!may_read_sender_host_visual(&attribution));
+    assert!(!may_materialize_application_icon(&attribution));
     assert_eq!(
         sender_visual_role(
             &attribution,
@@ -156,6 +156,28 @@ fn associated_noncommunication_icon_is_retained_as_a_decorative_visual() {
         unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon
     );
     assert_eq!(notification.image.badge_icon, "example-player");
+}
+
+#[test]
+fn decorative_visual_materialization_is_independent_of_click_authority() {
+    let attribution = unixnotis_core::NotificationAttribution::associated(
+        "Example",
+        "Example",
+        "org.example.App",
+        "example",
+        IdentityAssurance::SystemAssociated,
+        InteractionPolicies::DENY,
+        unixnotis_core::AttributionReason::ExactSystemExecutable,
+        "associated executable",
+        "associated:system-app:org.example.App:sender".to_string(),
+    );
+
+    assert!(may_materialize_application_icon(&attribution));
+    assert!(attribution.may_materialize_content_image());
+    assert_eq!(
+        attribution.default_activation_policy(),
+        ApplicationActionPolicy::Deny
+    );
 }
 
 #[test]

@@ -70,6 +70,7 @@ fn image_with_raw_bytes() -> NotificationImage {
         sender_visual_role: crate::NotificationVisualRole::None,
         sender_visual: ImageData::default(),
         badge_icon: "mail".to_string(),
+        claimed_theme_icon: String::new(),
     }
 }
 
