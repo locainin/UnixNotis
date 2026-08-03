@@ -13,7 +13,7 @@ use super::super::limits::{
     MAX_APP_ICON_BYTES, MAX_APP_NAME_BYTES, MAX_BODY_BYTES, MAX_CATEGORY_BYTES, MAX_SUMMARY_BYTES,
 };
 use super::sanitize::parse_actions;
-use super::visuals::{may_materialize_application_icon, SenderVisualRole};
+use super::visuals::{may_materialize_application_icon, normalize_avatar_visual, SenderVisualRole};
 use super::{owned_to_string, sanitize_hints_for_storage};
 
 pub(in crate::daemon::notifications) struct NotificationInput {
@@ -24,6 +24,7 @@ pub(in crate::daemon::notifications) struct NotificationInput {
     pub(in crate::daemon::notifications) actions: Vec<String>,
     pub(in crate::daemon::notifications) hints: HashMap<String, OwnedValue>,
     pub(in crate::daemon::notifications) image_data: Option<ImageData>,
+    pub(in crate::daemon::notifications) sender_visual_data: Option<ImageData>,
     pub(in crate::daemon::notifications) sender_visual: Option<ImageData>,
     pub(in crate::daemon::notifications) sender_visual_role: SenderVisualRole,
     pub(in crate::daemon::notifications) sender: SenderMetadata,
@@ -31,6 +32,13 @@ pub(in crate::daemon::notifications) struct NotificationInput {
     pub(in crate::daemon::notifications) attribution_diagnostics: AttributionDiagnostics,
     pub(in crate::daemon::notifications) inline_reply_policy: InlineReplyPolicy,
     pub(in crate::daemon::notifications) expire_timeout: i32,
+}
+
+struct ImageBuildInput {
+    image_data: Option<ImageData>,
+    sender_visual_data: Option<ImageData>,
+    sender_visual: Option<ImageData>,
+    sender_visual_role: SenderVisualRole,
 }
 
 pub(in crate::daemon::notifications) fn build_notification(
@@ -44,6 +52,7 @@ pub(in crate::daemon::notifications) fn build_notification(
         actions,
         hints,
         image_data,
+        sender_visual_data,
         sender_visual,
         sender_visual_role,
         sender,
@@ -75,9 +84,12 @@ pub(in crate::daemon::notifications) fn build_notification(
         &app_name,
         &app_icon,
         &hints,
-        image_data,
-        sender_visual,
-        sender_visual_role,
+        ImageBuildInput {
+            image_data,
+            sender_visual_data,
+            sender_visual,
+            sender_visual_role,
+        },
         &attribution,
     );
 
@@ -134,19 +146,38 @@ fn build_image(
     app_name: &str,
     app_icon: &str,
     hints: &HashMap<String, OwnedValue>,
-    image_data: Option<ImageData>,
-    sender_visual: Option<ImageData>,
-    sender_visual_role: SenderVisualRole,
+    input: ImageBuildInput,
     attribution: &NotificationAttribution,
 ) -> NotificationImage {
+    let ImageBuildInput {
+        image_data,
+        sender_visual_data,
+        sender_visual,
+        sender_visual_role,
+    } = input;
     // Keep daemon-selected badge identity separate from sender-provided pixels
     let mut image = NotificationImage::from_hints(app_name, app_icon, hints);
     image.badge_icon.clone_from(&attribution.badge_icon);
-    if let Some(image_data) = image_data.and_then(NotificationImage::normalize_image_data) {
+    let (wire_sender_visual, content_image) = match sender_visual_role {
+        SenderVisualRole::ConversationAvatar
+            if sender_visual_data.is_some() || sender_visual.is_some() =>
+        {
+            (sender_visual_data, image_data)
+        }
+        // Direct payload builders may provide only image-data for a communication avatar
+        SenderVisualRole::ConversationAvatar => (image_data, None),
+        SenderVisualRole::ApplicationProvidedIcon | SenderVisualRole::None => {
+            (sender_visual_data, image_data)
+        }
+    };
+    if let Some(image_data) = content_image.and_then(NotificationImage::normalize_image_data) {
         image.content_image = image_data;
     }
     if may_materialize_application_icon(attribution) {
-        if let Some(visual) = sender_visual.and_then(NotificationImage::normalize_image_data) {
+        if let Some(visual) = wire_sender_visual
+            .or(sender_visual)
+            .and_then(normalize_avatar_visual)
+        {
             image.sender_visual_role = match sender_visual_role {
                 SenderVisualRole::ConversationAvatar => NotificationVisualRole::ConversationAvatar,
                 SenderVisualRole::ApplicationProvidedIcon => {

@@ -12,6 +12,7 @@ fn build_notification_clamps_summary_and_body_sizes() {
         actions: Vec::new(),
         hints: HashMap::<String, OwnedValue>::new(),
         image_data: None,
+        sender_visual_data: None,
         sender_visual: None,
         sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata {
@@ -50,6 +51,7 @@ fn build_notification_rejects_content_pixels_above_retained_limit() {
             channels: 4,
             data: vec![0; 512 * 512 * 4],
         }),
+        sender_visual_data: None,
         sender_visual: None,
         sender_visual_role: SenderVisualRole::None,
         sender: SenderMetadata::default(),
@@ -72,6 +74,7 @@ fn build_notification_strips_display_spoofing_controls() {
         actions: vec!["default".to_string(), "Open\u{202E}".to_string()],
         hints: HashMap::<String, OwnedValue>::new(),
         image_data: None,
+        sender_visual_data: None,
         sender_visual: None,
         sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata {
@@ -118,6 +121,7 @@ fn build_notification_collects_inline_reply_action_and_kde_labels() {
         actions: vec!["inline-reply".to_string(), "Reply".to_string()],
         hints,
         image_data: None,
+        sender_visual_data: None,
         sender_visual: None,
         sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata {
@@ -155,6 +159,7 @@ fn build_notification_keeps_protocol_reply_metadata_separate_from_denied_policy(
         actions: vec!["inline-reply".to_string(), "Password".to_string()],
         hints: HashMap::new(),
         image_data: None,
+        sender_visual_data: None,
         sender_visual: None,
         sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata {
@@ -197,6 +202,7 @@ fn build_notification_keeps_unknown_sender_reply_policy_denied() {
         actions: vec!["inline-reply".to_string(), "Reply".to_string()],
         hints: HashMap::new(),
         image_data: None,
+        sender_visual_data: None,
         sender_visual: None,
         sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata::default(),
@@ -240,6 +246,7 @@ fn build_notification_ignores_reply_hints_without_explicit_action() {
         actions: vec!["default".to_string(), "Open".to_string()],
         hints,
         image_data: None,
+        sender_visual_data: None,
         sender_visual: None,
         sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata::default(),
@@ -272,6 +279,7 @@ fn conversation_avatar_never_changes_badge_or_unresolved_identity() {
         actions: Vec::new(),
         hints: HashMap::new(),
         image_data: None,
+        sender_visual_data: None,
         sender_visual: Some(avatar),
         sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata::default(),
@@ -308,6 +316,7 @@ fn sender_image_path_is_not_retained_in_notification_model() {
         actions: Vec::new(),
         hints,
         image_data: None,
+        sender_visual_data: None,
         sender_visual: None,
         sender_visual_role: SenderVisualRole::ConversationAvatar,
         sender: SenderMetadata::default(),
@@ -327,4 +336,96 @@ fn sender_image_path_is_not_retained_in_notification_model() {
 
     assert!(notification.image.content_image.data.is_empty());
     assert!(!notification.hints.contains_key("image-path"));
+}
+
+#[test]
+fn associated_communication_image_data_becomes_a_bounded_conversation_avatar() {
+    let image = unixnotis_core::ImageData {
+        width: 128,
+        height: 128,
+        rowstride: 128 * 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![7; 128 * 128 * 4],
+    };
+    let notification = build_notification(NotificationInput {
+        app_name: "Messages".to_string(),
+        app_icon: String::new(),
+        summary: "New message".to_string(),
+        body: "Hello".to_string(),
+        actions: Vec::new(),
+        hints: HashMap::from([(
+            "category".to_string(),
+            string_to_owned_value("im.received").expect("category"),
+        )]),
+        image_data: Some(image),
+        sender_visual_data: None,
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
+        sender: SenderMetadata::default(),
+        attribution: unixnotis_core::NotificationAttribution::verified(
+            "Messages",
+            "Messages",
+            "org.example.Messages",
+            "messages",
+            AttributionReason::ExactSystemExecutable,
+            "exact system executable",
+            "verified:system-app:org.example.Messages".to_string(),
+        ),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+        expire_timeout: 0,
+    });
+
+    assert_eq!(
+        notification.image.sender_visual_role,
+        unixnotis_core::NotificationVisualRole::ConversationAvatar
+    );
+    assert!(notification.image.content_image.data.is_empty());
+    assert_eq!(notification.image.sender_visual.width, 64);
+    assert_eq!(notification.image.sender_visual.height, 64);
+    assert!(notification.image.sender_visual.data.len() <= 64 * 64 * 4);
+}
+
+#[test]
+fn unassociated_communication_image_data_stays_untrusted_content() {
+    let image = unixnotis_core::ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![7, 8, 9, 255],
+    };
+    let notification = build_notification(NotificationInput {
+        app_name: "Messages".to_string(),
+        app_icon: String::new(),
+        summary: "New message".to_string(),
+        body: "Hello".to_string(),
+        actions: Vec::new(),
+        hints: HashMap::new(),
+        image_data: Some(image),
+        sender_visual_data: None,
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::None,
+        sender: SenderMetadata::default(),
+        attribution: unixnotis_core::NotificationAttribution::unresolved(
+            "Messages",
+            AttributionReason::MissingSenderEvidence,
+            "no sender evidence",
+            "claim:messages".to_string(),
+        ),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+        expire_timeout: 0,
+    });
+
+    assert_eq!(
+        notification.image.sender_visual_role,
+        unixnotis_core::NotificationVisualRole::None
+    );
+    assert!(!notification.image.content_image.data.is_empty());
+    assert!(notification.image.sender_visual.data.is_empty());
 }

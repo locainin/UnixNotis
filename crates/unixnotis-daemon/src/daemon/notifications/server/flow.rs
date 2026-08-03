@@ -161,6 +161,13 @@ impl NotificationServer {
             materialize_sender_visual_for_role(sender_visual_role, input.app_icon.clone()).await;
         let materialized_content =
             materialize_content_visual(&resolution.attribution, input.image_path.as_deref()).await;
+        // Communication image-data is a bounded conversation visual, not a message attachment
+        let (image_data, wire_sender_visual) =
+            if matches!(sender_visual_role, SenderVisualRole::ConversationAvatar) {
+                (materialized_content, input.image_data)
+            } else {
+                (input.image_data.or(materialized_content), None)
+            };
         if matches!(
             resolution.attribution.status,
             unixnotis_core::AttributionStatus::Conflict
@@ -194,7 +201,8 @@ impl NotificationServer {
             body: input.body,
             actions: input.actions,
             hints: input.hints,
-            image_data: input.image_data.or(materialized_content),
+            image_data,
+            sender_visual_data: wire_sender_visual,
             sender_visual,
             sender_visual_role,
             sender,

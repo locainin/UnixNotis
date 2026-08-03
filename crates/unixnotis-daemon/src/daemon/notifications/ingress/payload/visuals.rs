@@ -220,6 +220,47 @@ pub(in crate::daemon::notifications::ingress) fn downsample_avatar(
     Some((target_width, target_height, output))
 }
 
+pub(in crate::daemon::notifications) fn normalize_avatar_visual(
+    image: ImageData,
+) -> Option<ImageData> {
+    // Wire images use the shared validator before entering this final avatar boundary
+    let image = unixnotis_core::NotificationImage::normalize_image_data(image)?;
+    let width = u32::try_from(image.width).ok()?;
+    let height = u32::try_from(image.height).ok()?;
+    let row_bytes = usize::try_from(width).ok()?.checked_mul(4)?;
+    let source_stride = usize::try_from(image.rowstride).ok()?;
+    if image.channels != 4 || source_stride < row_bytes {
+        return None;
+    }
+    let required = source_stride.checked_mul(usize::try_from(height).ok()?)?;
+    if image.data.len() < required {
+        return None;
+    }
+
+    // Strip protocol row padding before the bounded downsampler runs
+    let mut rgba = vec![0_u8; row_bytes.checked_mul(usize::try_from(height).ok()?)?];
+    for row in 0..usize::try_from(height).ok()? {
+        let source_start = row.checked_mul(source_stride)?;
+        let target_start = row.checked_mul(row_bytes)?;
+        rgba[target_start..target_start + row_bytes]
+            .copy_from_slice(&image.data[source_start..source_start + row_bytes]);
+    }
+    let (width, height, rgba) =
+        downsample_avatar(width, height, rgba, MAX_STORED_AVATAR_DIMENSION)?;
+    let width = i32::try_from(width).ok()?;
+    let height = i32::try_from(height).ok()?;
+    let rowstride = width.checked_mul(4)?;
+    Some(ImageData {
+        width,
+        height,
+        rowstride,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: rgba,
+    })
+}
+
 fn width_to_height(width: u32, height: u32, target_width: u32) -> u32 {
     if width <= target_width {
         return height;

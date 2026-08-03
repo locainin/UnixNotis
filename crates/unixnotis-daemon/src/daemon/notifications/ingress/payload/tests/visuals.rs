@@ -132,6 +132,7 @@ fn associated_noncommunication_icon_is_retained_as_a_decorative_visual() {
         actions: Vec::new(),
         hints: HashMap::new(),
         image_data: None,
+        sender_visual_data: None,
         sender_visual: Some(icon),
         sender_visual_role: SenderVisualRole::ApplicationProvidedIcon,
         sender: SenderMetadata::default(),
