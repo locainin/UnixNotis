@@ -9,7 +9,7 @@ fn read_failures_excludes_custom_and_intentional_empty_fallbacks() {
             CssLayerReload {
                 layer: CssProviderLayer::Popup,
                 path: PathBuf::from("popup.css"),
-                source: CssLayerSource::EmbeddedStock,
+                source: CssLayerSource::Custom,
                 error: None,
             },
             CssLayerReload {

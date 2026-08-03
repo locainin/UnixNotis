@@ -7,4 +7,3 @@ mod script_migrations;
 mod scripts;
 mod support;
 mod theme_contract;
-mod theme_mode;

@@ -7,8 +7,6 @@ use super::layers::CssProviderLayer;
 /// Source used for one active CSS layer
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssLayerSource {
-    /// Embedded stock selected before any custom stylesheet was read
-    EmbeddedStock,
     /// Non-empty configured file
     Custom,
     /// Embedded defaults selected by an intentionally empty file

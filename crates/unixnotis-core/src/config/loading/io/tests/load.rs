@@ -70,6 +70,26 @@ fn parse_returns_the_config_produced_by_the_report_pipeline() {
 }
 
 #[test]
+fn legacy_theme_mode_is_ignored_and_default_rendering_omits_it() {
+    let report = Config::parse_with_report(
+        r#"
+        [theme]
+        mode = "stock"
+        popup_css = "popup.css"
+        "#,
+    )
+    .expect("legacy theme mode should be ignored");
+
+    assert_eq!(report.config.theme.popup_css, "popup.css");
+    assert!(!report.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "config.unknown-key" && diagnostic.path.as_deref() == Some("theme.mode")
+    }));
+    let rendered = toml::to_string_pretty(&Config::default()).expect("default config renders");
+    assert!(!rendered.contains("mode = \"stock\""));
+    assert!(!rendered.contains("mode = \"custom\""));
+}
+
+#[test]
 fn sound_file_hints_require_explicit_configuration() {
     let defaults = Config::parse("").expect("default config should parse");
     let enabled = Config::parse(

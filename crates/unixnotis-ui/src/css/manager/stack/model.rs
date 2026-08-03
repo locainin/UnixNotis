@@ -1,7 +1,7 @@
 //! CSS stack state and surface-specific construction
 
 use gtk::CssProvider;
-use unixnotis_core::{ThemeConfig, ThemeContractState, ThemeMode, ThemePaths};
+use unixnotis_core::{ThemeConfig, ThemePaths};
 
 use super::super::provider::CssProviderBackend;
 
@@ -40,12 +40,6 @@ impl CssManager {
     #[must_use]
     pub const fn theme_paths(&self) -> &ThemePaths {
         &self.inner.theme_paths
-    }
-
-    /// Return the source contract selected for the next reload
-    #[must_use]
-    pub fn theme_contract(&self) -> ThemeContractState {
-        self.inner.theme_contract()
     }
 }
 
@@ -96,18 +90,6 @@ impl CssManagerInner<CssProvider> {
             media: None,
             motion_policy: None,
             popup: Some(CssProvider::new()),
-        }
-    }
-}
-
-impl<P> CssManagerInner<P>
-where
-    P: CssProviderBackend,
-{
-    pub(super) fn theme_contract(&self) -> ThemeContractState {
-        match self.theme_config.mode {
-            ThemeMode::Stock => ThemeContractState::EmbeddedStock,
-            ThemeMode::Custom => self.theme_paths.inspect_theme_contract(),
         }
     }
 }

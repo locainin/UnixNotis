@@ -32,8 +32,8 @@ pub use installer_settings::{
     InstallerConfig, DEFAULT_BACKUP_RETENTION, INSTALLER_CONFIG_FILE,
 };
 pub use io::{
-    persist_theme_mode, ConfigError, ThemeContractState, ThemeIncompatibility, ThemeManifest,
-    ThemeModeWriteError, ThemePaths, MAX_CONFIG_BYTES, THEME_API_VERSION,
+    ConfigError, ThemeContractState, ThemeIncompatibility, ThemeManifest, ThemePaths,
+    MAX_CONFIG_BYTES, THEME_API_VERSION,
 };
 pub use layout::*;
 pub(in crate::config) use loading::{diagnostics, io};

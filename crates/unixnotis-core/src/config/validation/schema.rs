@@ -32,7 +32,11 @@ pub(in crate::config) fn deserialize_config_with_migrations(
     let deserializer = document.into_deserializer();
     // Unknown fields are collected without weakening normal serde type validation
     let mut config: Config = serde_ignored::deserialize(deserializer, |path| {
-        ignored_keys.push(path.to_string());
+        // V7 wrote a runtime-only mode that is intentionally obsolete now
+        let path = path.to_string();
+        if path != "theme.mode" {
+            ignored_keys.push(path);
+        }
     })
     .map_err(|err| err.to_string())?;
 

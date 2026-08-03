@@ -4,29 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use super::corners::CutCorners;
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ThemeMode {
-    #[default]
-    Stock,
-    Custom,
-}
-
-impl ThemeMode {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Stock => "stock",
-            Self::Custom => "custom",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ThemeConfig {
-    /// Embedded stock or explicitly enabled versioned custom CSS
-    pub mode: ThemeMode,
     #[serde(alias = "style_css")]
     pub base_css: String,
     pub popup_css: String,
@@ -59,7 +39,6 @@ mod tests;
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
-            mode: ThemeMode::Stock,
             base_css: "base.css".to_string(),
             popup_css: "popup.css".to_string(),
             panel_css: "panel.css".to_string(),
