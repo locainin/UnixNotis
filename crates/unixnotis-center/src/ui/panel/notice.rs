@@ -10,13 +10,10 @@ pub(in crate::ui) struct ReloadNoticeWidgets {
     pub(in crate::ui) shell: gtk::Box,
     pub(in crate::ui) label: gtk::Label,
     pub(in crate::ui) close: gtk::Button,
-    pub(in crate::ui) actions: gtk::Box,
-    pub(in crate::ui) use_stock_button: gtk::Button,
-    pub(in crate::ui) open_theme_folder_button: gtk::Button,
 }
 
 pub(in crate::ui) fn build_reload_notice() -> ReloadNoticeWidgets {
-    // The outer column keeps compatibility choices below the compact status message
+    // The outer column keeps the status message independent from the panel contents
     let shell = gtk::Box::new(gtk::Orientation::Vertical, 0);
     shell.add_css_class(hooks::panel_shell::RELOAD_NOTICE);
     shell.set_hexpand(true);
@@ -42,20 +39,6 @@ pub(in crate::ui) fn build_reload_notice() -> ReloadNoticeWidgets {
     content.append(&close);
     shell.append(&content);
 
-    // Theme compatibility offers a safe fallback and access to the untouched files
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    actions.add_css_class(hooks::panel_shell::RELOAD_NOTICE_ACTIONS);
-    actions.set_homogeneous(true);
-    actions.set_visible(false);
-
-    let use_stock_button = notice_action("Use stock theme", "Use bundled UnixNotis styling");
-    use_stock_button.add_css_class(hooks::panel_shell::RELOAD_NOTICE_ACTION_PRIMARY);
-    let open_theme_folder_button =
-        notice_action("Open theme folder", "Open the configured theme folder");
-    actions.append(&use_stock_button);
-    actions.append(&open_theme_folder_button);
-    shell.append(&actions);
-
     // A short vertical transition keeps the header position stable
     let revealer = gtk::Revealer::new();
     revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
@@ -71,17 +54,7 @@ pub(in crate::ui) fn build_reload_notice() -> ReloadNoticeWidgets {
         shell,
         label,
         close,
-        actions,
-        use_stock_button,
-        open_theme_folder_button,
     }
-}
-
-fn notice_action(label: &str, tooltip: &str) -> gtk::Button {
-    let button = gtk::Button::with_label(label);
-    button.add_css_class(hooks::panel_shell::RELOAD_NOTICE_ACTION);
-    button.set_tooltip_text(Some(tooltip));
-    button
 }
 
 #[cfg(test)]

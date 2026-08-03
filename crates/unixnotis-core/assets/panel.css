@@ -63,38 +63,6 @@
   padding: 0;
 }
 
-.unixnotis-reload-notice-actions {
-  margin-top: 8px;
-}
-
-.unixnotis-reload-notice-action {
-  min-height: 32px;
-  padding: 4px 10px;
-  border-radius: 9px;
-  border: 1px solid alpha(#ffffff, 0.10);
-  background: alpha(#ffffff, 0.055);
-  color: alpha(#ffffff, 0.84);
-  box-shadow: none;
-}
-
-.unixnotis-reload-notice-action:hover,
-.unixnotis-reload-notice-action:focus-visible {
-  background: alpha(#ffffff, 0.10);
-  border-color: alpha(#ffffff, 0.18);
-}
-
-.unixnotis-reload-notice-action-primary {
-  background: alpha(@unixnotis-accent, 0.20);
-  border-color: alpha(@unixnotis-accent, 0.38);
-  color: #d8fffb;
-}
-
-.unixnotis-reload-notice-action-primary:hover,
-.unixnotis-reload-notice-action-primary:focus-visible {
-  background: alpha(@unixnotis-accent, 0.28);
-  border-color: alpha(@unixnotis-accent, 0.52);
-}
-
 .unixnotis-panel-title-stack {
   min-width: 0;
 }

@@ -6,11 +6,10 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use rustix::fs::{open, Mode, OFlags};
+use unixnotis_core::MAX_CSS_FILE_BYTES;
 
 use super::super::config_root::PresetFileSource;
 use super::super::pathing::normalize_lexical_path;
-
-const MAX_CSS_FILE_BYTES: u64 = 16_777_216;
 
 pub(in crate::preset) fn has_css_extension(path: &Path) -> bool {
     // CSS-only filtering keeps later URL parsing away from binary assets and config files

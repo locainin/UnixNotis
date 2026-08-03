@@ -18,15 +18,6 @@
   padding: 0;
 }
 
-.unixnotis-reload-notice-actions {
-  margin-top: 8px;
-}
-
-.unixnotis-reload-notice-action {
-  min-height: 32px;
-  padding: 4px 10px;
-}
-
 /* GtkSearchEntry has no public icon child, so the native glyphs yield to owned controls */
 .unixnotis-panel-search-owned-icons {
   -gtk-icon-source: none;

@@ -4,7 +4,6 @@
 pub(in crate::ui) enum ReloadNoticeKind {
     Config,
     Css,
-    ThemeCompatibility,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,7 +23,6 @@ pub(super) struct ReloadNotice {
 pub(in crate::ui) struct ReloadNoticeState {
     config: Option<ReloadNotice>,
     css: Option<ReloadNotice>,
-    theme_compatibility: Option<ReloadNotice>,
     dismissed_config: Option<ReloadNoticeFingerprint>,
     dismissed_css: Option<ReloadNoticeFingerprint>,
 }
@@ -40,10 +38,6 @@ impl ReloadNoticeState {
                 // Duplicate watcher events retain dismissal for the same failure
                 Self::replace_notice(&mut self.css, &mut self.dismissed_css, notice);
             }
-            ReloadNoticeKind::ThemeCompatibility => {
-                // Compatibility requires an explicit stock selection or a corrected manifest
-                self.theme_compatibility = Some(notice);
-            }
         }
     }
 
@@ -58,7 +52,6 @@ impl ReloadNoticeState {
                 self.css = None;
                 self.dismissed_css = None;
             }
-            ReloadNoticeKind::ThemeCompatibility => self.theme_compatibility = None,
         }
     }
 
@@ -86,7 +79,6 @@ impl ReloadNoticeState {
             // Each class remembers dismissal independently across priority changes
             ReloadNoticeKind::Config => self.dismissed_config = Some(notice.fingerprint),
             ReloadNoticeKind::Css => self.dismissed_css = Some(notice.fingerprint),
-            ReloadNoticeKind::ThemeCompatibility => {}
         }
     }
 
@@ -101,7 +93,6 @@ impl ReloadNoticeState {
                     .as_ref()
                     .filter(|notice| self.dismissed_css.as_ref() != Some(&notice.fingerprint))
             })
-            .or(self.theme_compatibility.as_ref())
     }
 }
 

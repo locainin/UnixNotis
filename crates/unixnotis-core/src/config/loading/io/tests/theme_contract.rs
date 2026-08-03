@@ -18,7 +18,7 @@ fn theme_paths(root: &std::path::Path) -> crate::ThemePaths {
 }
 
 #[test]
-fn custom_mode_without_a_manifest_is_incompatible_without_creating_files() {
+fn missing_manifest_is_incompatible_for_export_review_without_creating_files() {
     let root = theme_root("theme-contract-stock");
     let paths = theme_paths(&root);
 

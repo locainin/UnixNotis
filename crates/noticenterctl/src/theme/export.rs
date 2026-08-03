@@ -1,4 +1,4 @@
-//! Safe export of editable embedded stock theme files
+//! Safe export of editable bundled theme files
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -26,7 +26,7 @@ pub(super) fn run(output: Option<PathBuf>) -> Result<()> {
     };
     export_stock_theme(&destination)?;
     crate::output::write_stdout(&format!(
-        "Exported editable stock theme to {}\nThe active theme mode was not changed.\n",
+        "Exported editable bundled theme to {}\nRuntime CSS loading remains automatic.\n",
         destination.display()
     ))
 }

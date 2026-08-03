@@ -38,8 +38,6 @@ pub enum UiEvent {
     WidgetsCollapsed(bool),
     CssReload,
     ConfigReload,
-    UseStockTheme,
-    OpenThemeFolder,
 }
 
 /// Commands sent from GTK handlers to the D-Bus runtime.

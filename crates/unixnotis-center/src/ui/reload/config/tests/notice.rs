@@ -3,9 +3,7 @@ use std::fs;
 use gtk::prelude::*;
 
 use super::super::outcome::ConfigReloadOutcome;
-use super::support::{
-    enable_missing_panel_layer_fixture, state, write_compatible_theme_manifest, write_config,
-};
+use super::support::{enable_missing_panel_layer_fixture, state, write_config};
 
 #[gtk::test]
 fn accepted_reload_clears_rejected_config_notice() {
@@ -27,7 +25,6 @@ fn accepted_reload_clears_rejected_config_notice() {
     ] {
         fs::write(path, "/* intentionally valid */").expect("theme css");
     }
-    write_compatible_theme_manifest(&state);
 
     let outcome = state.reload_config();
 
@@ -94,7 +91,6 @@ fn successful_css_only_reload_does_not_clear_config_rejection_notice() {
     ] {
         fs::write(path, "/* valid reload css */").expect("theme css");
     }
-    write_compatible_theme_manifest(&state);
     fs::write(&state.config_path, "[panel\ntitle = broken").expect("broken config");
     let _outcome = state.reload_config();
     let rejection = state.panel.reload_notice.label.text();
@@ -145,24 +141,4 @@ fn css_reload_notice_summarizes_multiple_unreadable_layers() {
         .reload_notice
         .shell
         .has_css_class(unixnotis_core::css::hooks::panel_shell::RELOAD_NOTICE_WARNING));
-}
-
-#[gtk::test]
-fn theme_compatibility_notice_requires_an_explicit_action() {
-    let mut state = state();
-    state.set_reload_notice(
-        crate::ui::reload::ReloadNoticeKind::ThemeCompatibility,
-        "Theme is incompatible",
-        false,
-        "compatibility-a",
-    );
-
-    assert!(state.panel.reload_notice.revealer.reveals_child());
-    assert!(state.panel.reload_notice.actions.get_visible());
-    assert!(!state.panel.reload_notice.close.get_visible());
-
-    state.capture_notice_dismissal();
-
-    assert!(state.panel.reload_notice.revealer.reveals_child());
-    assert!(state.panel.reload_notice.actions.get_visible());
 }

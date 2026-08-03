@@ -73,9 +73,6 @@ pub mod panel_shell {
     pub const RELOAD_NOTICE_CONTENT: &str = "unixnotis-reload-notice-content";
     pub const RELOAD_NOTICE_TEXT: &str = "unixnotis-reload-notice-text";
     pub const RELOAD_NOTICE_CLOSE: &str = "unixnotis-reload-notice-close";
-    pub const RELOAD_NOTICE_ACTIONS: &str = "unixnotis-reload-notice-actions";
-    pub const RELOAD_NOTICE_ACTION: &str = "unixnotis-reload-notice-action";
-    pub const RELOAD_NOTICE_ACTION_PRIMARY: &str = "unixnotis-reload-notice-action-primary";
     pub const BODY_STACK: &str = "unixnotis-panel-body-stack";
     pub const EDGE_TOP: &str = "unixnotis-panel-edge-top";
     pub const EDGE_BOTTOM: &str = "unixnotis-panel-edge-bottom";

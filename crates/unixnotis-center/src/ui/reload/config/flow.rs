@@ -42,7 +42,6 @@ impl UiState {
         // Any accepted config replaces a prior rejection before CSS reports its own result
         self.clear_reload_notice(ReloadNoticeKind::Config);
         self.apply_css_reload_notice(&css);
-        self.refresh_theme_compatibility_notice();
         ConfigReloadOutcome::Applied {
             diagnostics: reload.diagnostics,
             css,
@@ -84,7 +83,6 @@ impl UiState {
         self.capture_notice_dismissal();
         let report = self.css.reload(unixnotis_ui::css::DEFAULT_CSS);
         self.apply_css_reload_notice(&report);
-        self.refresh_theme_compatibility_notice();
         report
     }
 }

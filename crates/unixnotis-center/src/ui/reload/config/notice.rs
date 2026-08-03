@@ -90,16 +90,7 @@ impl UiState {
             } else {
                 hooks::panel_shell::RELOAD_NOTICE_WARNING
             });
-        let shows_theme_actions = notice.fingerprint.kind == ReloadNoticeKind::ThemeCompatibility;
-        // Action notices cannot be dismissed without recording an explicit policy choice
-        self.panel
-            .reload_notice
-            .close
-            .set_visible(!shows_theme_actions);
-        self.panel
-            .reload_notice
-            .actions
-            .set_visible(shows_theme_actions);
+        self.panel.reload_notice.close.set_visible(true);
         self.panel.reload_notice.revealer.set_reveal_child(true);
     }
 

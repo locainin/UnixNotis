@@ -70,7 +70,7 @@ fn main() -> Result<()> {
     let theme_paths = config
         .resolve_theme_paths_from(&theme_base)
         .context("resolve theme paths")?;
-    // Theme discovery is read-only; missing files intentionally select embedded stock CSS
+    // Theme paths are read-only at startup; missing files use the embedded layer fallback
     // Built-in defaults can run without the installer, so helper scripts are owned here too
     Config::ensure_default_scripts_in(&theme_base).context("ensure default scripts")?;
 

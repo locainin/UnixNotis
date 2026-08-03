@@ -214,14 +214,6 @@ impl UiState {
                     }
                 }
             }
-            UiEvent::UseStockTheme => {
-                debug!("embedded stock theme requested");
-                self.use_stock_theme();
-            }
-            UiEvent::OpenThemeFolder => {
-                debug!("theme folder requested");
-                self.open_theme_folder();
-            }
         }
     }
 

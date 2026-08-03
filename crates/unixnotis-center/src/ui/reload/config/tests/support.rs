@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use gtk::prelude::*;
-use unixnotis_core::{Config, ThemeMode, THEME_API_VERSION};
+use unixnotis_core::Config;
 use unixnotis_ui::css::CssManager;
 
 use crate::control::{UiCommand, UiEvent};
@@ -65,22 +65,11 @@ pub(super) fn write_config(path: &Path, config: &Config) {
     fs::write(path, text).expect("test config should be written");
 }
 
-pub(super) fn write_compatible_theme_manifest(state: &UiState) {
-    let manifest = state.css.theme_paths().manifest_path();
-    fs::write(
-        manifest,
-        format!("api_version = {THEME_API_VERSION}\nname = \"Test theme\"\n"),
-    )
-    .expect("compatible theme manifest should be written");
-}
-
 pub(super) fn enable_missing_panel_layer_fixture(state: &mut UiState) {
-    state.config.theme.mode = ThemeMode::Custom;
     state
         .css
         .update_theme(state.css.theme_paths().clone(), state.config.theme.clone());
-    // A popup-only custom layer makes the contract active while panel layers stay absent
+    // A popup-only custom layer makes the panel fallback path observable
     fs::write(&state.css.theme_paths().popup_css, "/* popup only */")
         .expect("popup theme fixture should be written");
-    write_compatible_theme_manifest(state);
 }

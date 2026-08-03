@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use unixnotis_core::{Config, PanelDebugLevel};
 
-use super::super::{hyprland, icons, panel, theme_compatibility, widgets, UiState, UiStateInit};
+use super::super::{hyprland, icons, panel, widgets, UiState, UiStateInit};
 use super::builders::{
     build_media_widget, build_notification_list, build_widget_sections, has_visible_widget_section,
     icon_resolver_for_widgets,
@@ -54,7 +54,6 @@ impl UiState {
             init.command_tx.clone(),
         );
         panel::header::actions::connect_close_button(&panel, init.command_tx.clone());
-        theme_compatibility::connect_notice_actions(&panel.reload_notice, init.event_tx.clone());
         panel::header::search::connect_widget_collapse_toggle(
             &panel.header.actions.focus_toggle,
             &panel.sections.widget_revealer,
@@ -82,7 +81,7 @@ impl UiState {
         }
 
         // Long-lived state owns every channel, guard, and optional widget built above
-        let mut state = Self {
+        Self {
             config: init.config,
             config_path: init.config_path,
             css: init.css,
@@ -118,8 +117,6 @@ impl UiState {
             // Reload notices preserve independent config and CSS failure identities
             reload_notices: super::super::reload::ReloadNoticeState::default(),
             _runtime: init.runtime,
-        };
-        state.initialize_theme_compatibility();
-        state
+        }
     }
 }

@@ -114,7 +114,7 @@ pub enum PresetCommand {
 
 #[derive(Subcommand, Debug)]
 pub enum ThemeCommand {
-    // Export editable copies of the embedded stock theme into a new directory
+    // Export editable copies of the bundled theme into a new directory
     ExportStock {
         #[arg(long, value_name = "DIRECTORY")]
         output: Option<std::path::PathBuf>,

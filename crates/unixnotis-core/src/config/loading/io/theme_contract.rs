@@ -1,4 +1,4 @@
-//! Read-only custom theme compatibility contract
+//! Read-only metadata contract for exported theme directories
 
 use std::io::ErrorKind;
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ const THEME_MANIFEST_FILE: &str = "theme.toml";
 const MAX_THEME_MANIFEST_BYTES: u64 = 64 * 1024;
 const MAX_THEME_NAME_CHARS: usize = 128;
 
-/// Manifest required before user-controlled CSS can be loaded
+/// Manifest written beside an exported theme directory
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeManifest {
@@ -24,7 +24,7 @@ pub struct ThemeManifest {
     pub name: String,
 }
 
-/// Reason an existing custom theme could not be enabled safely
+/// Reason an exported theme directory is not self-describing
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ThemeIncompatibility {
     MissingManifest,
@@ -34,22 +34,15 @@ pub enum ThemeIncompatibility {
     InvalidName,
 }
 
-/// Active source selected without changing user files
+/// Result of inspecting exported theme directory metadata
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ThemeContractState {
-    EmbeddedStock,
     Compatible(ThemeManifest),
     Incompatible(ThemeIncompatibility),
 }
 
 impl ThemeContractState {
-    /// Return whether configured CSS may be loaded
-    #[must_use]
-    pub const fn custom_theme_allowed(&self) -> bool {
-        matches!(self, Self::Compatible(_))
-    }
-
-    /// Return whether the panel should explain the stock fallback
+    /// Return whether the exported directory metadata is incompatible
     #[must_use]
     pub const fn is_incompatible(&self) -> bool {
         matches!(self, Self::Incompatible(_))
@@ -57,13 +50,13 @@ impl ThemeContractState {
 }
 
 impl ThemePaths {
-    /// Return the manifest anchored beside the active configuration
+    /// Return the manifest anchored beside exported theme files
     #[must_use]
     pub fn manifest_path(&self) -> PathBuf {
         self.base_dir.join(THEME_MANIFEST_FILE)
     }
 
-    /// Select custom or embedded CSS without creating or changing files
+    /// Inspect exported theme metadata without creating or changing files
     #[must_use]
     pub fn inspect_theme_contract(&self) -> ThemeContractState {
         let manifest_path = self.manifest_path();

@@ -14,7 +14,6 @@ mod motion;
 mod notifications;
 mod panel;
 mod state;
-mod theme_compatibility;
 
 mod widget_builders;
 mod widgets;

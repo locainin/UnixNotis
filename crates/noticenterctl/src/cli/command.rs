@@ -92,7 +92,7 @@ pub enum Command {
         #[command(subcommand)]
         command: PresetCommand,
     },
-    // Export editable stock theme files without changing the active theme mode
+    // Export editable bundled theme files without changing the active configuration
     Theme {
         #[command(subcommand)]
         command: ThemeCommand,

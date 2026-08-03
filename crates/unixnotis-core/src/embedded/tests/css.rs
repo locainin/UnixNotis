@@ -29,8 +29,6 @@ fn motion_policy_disables_theme_motion_under_the_runtime_class() {
 #[test]
 fn internal_structure_css_contains_only_required_fallback_structure() {
     assert!(INTERNAL_STRUCTURE_CSS.contains(".unixnotis-reload-notice"));
-    assert!(INTERNAL_STRUCTURE_CSS.contains(".unixnotis-reload-notice-actions"));
-    assert!(INTERNAL_STRUCTURE_CSS.contains(".unixnotis-reload-notice-action"));
     assert!(INTERNAL_STRUCTURE_CSS.contains(".unixnotis-panel-search-owned-icons"));
     assert!(!INTERNAL_STRUCTURE_CSS.contains("@define-color"));
 }
