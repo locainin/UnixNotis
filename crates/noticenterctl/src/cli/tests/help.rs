@@ -26,7 +26,7 @@ fn command_help_lists_output_debug_and_preset_controls() {
         ),
         (
             vec!["noticenterctl", "preset", "--help"],
-            vec!["export", "import", "inspect"],
+            vec!["export", "import", "inspect", "reset-config"],
         ),
         (
             vec!["noticenterctl", "theme", "--help"],

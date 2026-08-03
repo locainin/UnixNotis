@@ -264,3 +264,44 @@ fn reset_rejects_invalid_installer_settings_without_changes() {
     );
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn reset_rejects_non_file_installer_settings_without_changes() {
+    let _lock = test_env_lock();
+    let root = crate::test_support::fs::unique_temp_path("reset-directory-settings");
+    let xdg_root = root.join("xdg");
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", xdg_root.as_os_str());
+    let _home = EnvGuard::set("HOME", root.join("home").as_os_str());
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = test_paths(&root);
+    let mut context = test_context(&detection, &paths);
+    ensure_config(&mut context).expect("seed reset fixture");
+
+    let config_dir = xdg_root.join("unixnotis");
+    let config_path = config_dir.join("config.toml");
+    fs::write(&config_path, "custom config\n").expect("customize config");
+    fs::remove_file(config_dir.join("installer.toml")).expect("remove settings file");
+    fs::create_dir(config_dir.join("installer.toml")).expect("create settings directory");
+    let before_config = fs::read(&config_path).expect("read config before reset");
+
+    let error = reset_config(&mut context).expect_err("directory settings must abort reset");
+
+    assert!(error.to_string().contains("installer settings"));
+    assert_eq!(
+        fs::read(&config_path).expect("read config after reset"),
+        before_config
+    );
+    assert_eq!(
+        fs::read_dir(&config_dir)
+            .expect("read reset directory")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("Backup-"))
+            .count(),
+        0,
+        "non-file settings must not create a backup"
+    );
+    let _ = fs::remove_dir_all(root);
+}

@@ -244,6 +244,18 @@ fn parses_preset_inspect() {
 }
 
 #[test]
+fn parses_preset_reset_config_confirmation_flag() {
+    let args = Args::try_parse_from(["noticenterctl", "preset", "reset-config", "--yes"])
+        .expect("parse reset-config");
+    assert!(matches!(
+        args.command,
+        Command::Preset {
+            command: PresetCommand::ResetConfig { yes: true }
+        }
+    ));
+}
+
+#[test]
 fn parses_doctor_output_and_service_manager_options() {
     let args = Args::try_parse_from([
         "noticenterctl",
