@@ -81,10 +81,14 @@ impl UiState {
                     widget.update(&infos);
                 }
             }
+            // Capture hidden mutations before flushing so one rebuild owns one idle callback
+            let rebuild_was_deferred = self.list_needs_rebuild();
+            let hidden_mutation = self.notifications_changed_while_hidden;
+            self.notifications_changed_while_hidden = false;
             // Flush deferred list rebuilds once to avoid repeated background work
-            if self.list_needs_rebuild() {
+            if rebuild_was_deferred {
                 // Apply any deferred list rebuilds once the panel becomes visible
-                self.list.flush_rebuild();
+                self.flush_list_rebuild_with_policy(crate::ui::events::ScrollResetPolicy::Force);
             }
             // Resolve work-area margins before showing the window to avoid a layout shift
             // This prevents a first-frame resize when Hyprland publishes margins after open
@@ -102,9 +106,13 @@ impl UiState {
             }
             // Only show the window after geometry is correct to avoid visible jitter
             self.panel.window.set_visible(true);
-            if self.notifications_changed_while_hidden {
-                crate::ui::events::reset_notification_scroll(&self.panel.sections.scroller);
-                self.notifications_changed_while_hidden = false;
+            if hidden_mutation && !rebuild_was_deferred {
+                crate::ui::events::reset_notification_scroll(
+                    &self.panel.sections.scroller,
+                    self.notification_rebuild_generation.clone(),
+                    self.notification_rebuild_generation.get(),
+                    crate::ui::events::ScrollResetPolicy::Force,
+                );
             }
             // Refresh counts after pending updates land so header stays accurate
             self.refresh_counts();

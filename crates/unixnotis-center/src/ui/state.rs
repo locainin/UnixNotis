@@ -34,6 +34,8 @@ pub struct UiState {
     pub(super) panel_visible: bool,
     // A hidden panel defers list painting, so the next open must reveal the newest complete row
     pub(super) notifications_changed_while_hidden: bool,
+    // Each list rebuild invalidates older idle scroll callbacks
+    pub(super) notification_rebuild_generation: Rc<Cell<u64>>,
     pub(super) panel_visible_flag: Arc<AtomicBool>,
     pub(super) work_area: Option<Margins>,
     // Tracks the last rendered counts to avoid redundant label updates

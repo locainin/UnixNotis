@@ -116,6 +116,7 @@ impl UiState {
                 debug!(app = %key, "group toggled");
                 self.log_debug(PanelDebugLevel::Verbose, || format!("group toggled: {key}"));
                 self.list.toggle_group(&key);
+                self.mark_notifications_changed();
                 // Toggling can change grouped visibility; counts reflect total entries
                 self.refresh_counts();
             }
@@ -182,6 +183,7 @@ impl UiState {
             }
             UiEvent::FilterChanged(query) => {
                 if self.list.set_filter_query(&query) {
+                    self.mark_notifications_changed();
                     self.log_debug(PanelDebugLevel::Verbose, || {
                         format!("notification filter updated: '{query}'")
                     });
@@ -224,10 +226,21 @@ impl UiState {
     }
 
     pub fn flush_list_rebuild(&mut self) {
+        self.flush_list_rebuild_with_policy(ScrollResetPolicy::NearTopOnly);
+    }
+
+    pub(in crate::ui) fn flush_list_rebuild_with_policy(&mut self, policy: ScrollResetPolicy) {
         let snap_to_top = self.panel_visible && should_snap_to_top(&self.panel.sections.scroller);
+        let generation = self.notification_rebuild_generation.get().wrapping_add(1);
+        self.notification_rebuild_generation.set(generation);
         self.list.flush_rebuild();
-        if snap_to_top {
-            reset_notification_scroll(&self.panel.sections.scroller);
+        if matches!(policy, ScrollResetPolicy::Force) || snap_to_top {
+            reset_notification_scroll(
+                &self.panel.sections.scroller,
+                self.notification_rebuild_generation.clone(),
+                generation,
+                policy,
+            );
         }
     }
 
@@ -251,12 +264,48 @@ const fn should_snap_to_top_value(value: f64, lower: f64) -> bool {
     value <= lower + 18.0
 }
 
-pub(in crate::ui) fn reset_notification_scroll(scroller: &gtk::ScrolledWindow) {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::ui) enum ScrollResetPolicy {
+    // Live updates preserve a meaningful position once the user scrolls away
+    NearTopOnly,
+    // Hidden reseeds invalidate the old position and must show the first row
+    Force,
+}
+
+pub(in crate::ui) fn reset_notification_scroll(
+    scroller: &gtk::ScrolledWindow,
+    rebuild_generation: std::rc::Rc<std::cell::Cell<u64>>,
+    expected_generation: u64,
+    policy: ScrollResetPolicy,
+) {
     let scroller = scroller.clone();
     gtk::glib::idle_add_local_once(move || {
-        let adjustment = scroller.vadjustment();
-        adjustment.set_value(adjustment.lower());
+        // Layout work can yield to a real user scroll before this callback runs
+        // Recheck both the rebuild and scroll state so stale work cannot win
+        if should_apply_scroll_reset(
+            rebuild_generation.get(),
+            expected_generation,
+            &scroller,
+            policy,
+        ) {
+            let adjustment = scroller.vadjustment();
+            adjustment.set_value(adjustment.lower());
+        }
     });
+}
+
+fn should_apply_scroll_reset(
+    current_generation: u64,
+    expected_generation: u64,
+    scroller: &gtk::ScrolledWindow,
+    policy: ScrollResetPolicy,
+) -> bool {
+    scroll_reset_generation_is_current(current_generation, expected_generation)
+        && (matches!(policy, ScrollResetPolicy::Force) || should_snap_to_top(scroller))
+}
+
+const fn scroll_reset_generation_is_current(current: u64, expected: u64) -> bool {
+    current == expected
 }
 
 #[cfg(test)]

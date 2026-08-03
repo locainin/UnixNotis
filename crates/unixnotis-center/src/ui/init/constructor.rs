@@ -96,6 +96,7 @@ impl UiState {
             search_toggle_guard,
             panel_visible: false,
             notifications_changed_while_hidden: false,
+            notification_rebuild_generation: Rc::new(Cell::new(0)),
             panel_visible_flag,
             work_area: None,
             last_count: None,
