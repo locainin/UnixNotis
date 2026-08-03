@@ -62,9 +62,13 @@ pub(super) fn append_thumbnail(
         return false;
     }
 
-    // Content images stay bounded and visually separate from the application badge
+    // Keep decorative sender art compact while content media gets the larger image treatment
     image.set_halign(gtk::Align::Start);
-    image.add_css_class("unixnotis-popup-content-image");
+    if is_application_visual {
+        image.add_css_class("unixnotis-popup-sender-visual");
+    } else {
+        image.add_css_class("unixnotis-popup-content-image");
+    }
     content.append(&image);
     true
 }

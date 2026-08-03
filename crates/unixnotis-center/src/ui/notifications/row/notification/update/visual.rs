@@ -19,6 +19,10 @@ pub(super) fn apply_visual_state(
 ) {
     let card = &row.card;
     let is_critical = notification.urgency == Urgency::Critical as u8;
+    // Expanded children also sit below the group header, so they use the same compact lane
+    let group_owns_identity = data.collapsed_group_preview || data.expanded;
+    // Removing the hidden identity row also removes its old inter-row breathing room
+    card.set_spacing(if group_owns_identity { 2 } else { 6 });
     // Theme changes update recycled rows without rebuilding the GTK child tree
     row.card_plate.set_corners(card_corners_for_row(data));
     // Explicit state updates prevent recycled rows from retaining stale classes
@@ -60,12 +64,8 @@ pub(super) fn apply_visual_state(
     set_class_state(card, hooks::panel_card::GROUPED, grouped);
     set_class_state(&row.card_plate, hooks::panel_card::GROUPED, grouped);
     // Group headers own identity details while child rows stay message-first
-    set_class_state(card, "group-owned-identity", grouped && !data.expanded);
-    set_class_state(
-        &row.card_plate,
-        "group-owned-identity",
-        grouped && !data.expanded,
-    );
+    set_class_state(card, "group-owned-identity", group_owns_identity);
+    set_class_state(&row.card_plate, "group-owned-identity", group_owns_identity);
     set_class_state(
         card,
         hooks::panel_card::HAS_SUMMARY,

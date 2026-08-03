@@ -125,6 +125,28 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
     // A daemon-selected badge remains independent from caller image content
     missing_content.attribution.badge_icon = "dialog-information".to_string();
     assert!(state.build_app_icon_widget(&missing_content, 20).is_some());
+
+    let mut decorative = notification(10, 1, "decorative");
+    decorative.image.sender_visual_role =
+        unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon;
+    decorative.image.sender_visual = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![255, 32, 32, 255],
+    };
+    let decorative_root = state.build_popup_root(&decorative);
+    assert!(descendant_has_class(
+        decorative_root.upcast_ref(),
+        "unixnotis-popup-sender-visual"
+    ));
+    assert!(!descendant_has_class(
+        decorative_root.upcast_ref(),
+        "unixnotis-popup-content-image"
+    ));
 }
 
 #[gtk::test]

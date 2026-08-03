@@ -149,6 +149,7 @@ fn update_notification_row_applies_state_classes_and_text() {
     assert!(!row.app_label.get_visible());
     assert!(!row.icon.get_visible());
     assert!(row.header.get_visible());
+    assert_eq!(row.card.spacing(), 2);
     assert!(row.urgency_badge.get_visible());
     assert_eq!(row.urgency_badge.text().as_str(), "Critical");
     assert!(!row.card.has_css_class(hooks::panel_card::HAS_THUMBNAIL));
@@ -188,6 +189,7 @@ fn single_notification_row_keeps_its_identity_visible_without_a_group_header() {
     assert!(row.app_label.get_visible());
     assert!(row.header.get_visible());
     assert!(row.close_button.get_visible());
+    assert_eq!(row.card.spacing(), 6);
     assert_eq!(row.app_label.text().as_str(), "demo");
     assert!(row.icon_sig.borrow().is_some());
 }
@@ -251,6 +253,27 @@ fn grouped_relay_row_hides_identity_details_owned_by_the_group_header() {
     assert!(!row.icon.get_visible());
     assert!(row.header.get_visible());
     assert!(row.close_button.get_visible());
+}
+
+#[gtk::test]
+fn expanded_group_rows_keep_the_message_first_compact_lane() {
+    let (_root, row) = notification_row();
+    let data = row_data(
+        Rc::new(sample_notification()),
+        RowFlags {
+            collapsed_group_preview: false,
+            ..Default::default()
+        },
+    );
+    let mut data = data;
+    data.expanded = true;
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+
+    assert!(!row.app_label.get_visible());
+    assert!(row.card.has_css_class("group-owned-identity"));
+    assert_eq!(row.card.spacing(), 2);
 }
 
 #[gtk::test]

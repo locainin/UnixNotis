@@ -141,9 +141,18 @@
 }
 
 .unixnotis-popup-application-visual {
-  border-radius: 10px;
+  border-radius: 9px;
   opacity: 0.92;
   box-shadow: 0 5px 14px -8px alpha(#000000, 0.8);
+}
+
+/* Decorative sender art stays subordinate to the message and trusted badge */
+.unixnotis-popup-sender-visual {
+  min-width: 38px;
+  min-height: 38px;
+  margin-top: 4px;
+  border-radius: 9px;
+  background: alpha(#000000, 0.10);
 }
 
 .unixnotis-identity-avatar {

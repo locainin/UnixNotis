@@ -97,6 +97,8 @@ pub(super) fn build_identity_header(view: &PopupEntryViewModel) -> IdentityHeade
     trailing.add_css_class("unixnotis-popup-trailing");
     trailing.set_halign(Align::End);
     trailing.set_valign(Align::Start);
+    // Reserve one measured lane for time and urgency beside the overlaid close control
+    trailing.set_size_request(42, -1);
     trailing.set_margin_end(30);
 
     let time = gtk::Label::new(Some(&view.timestamp_label));

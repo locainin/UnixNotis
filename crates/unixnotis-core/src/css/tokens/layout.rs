@@ -26,7 +26,7 @@ pub(super) const fn layout_tokens() -> &'static [(&'static str, &'static str)] {
         ("--unixnotis-notification-action-padding-x", "10px"),
         ("--unixnotis-popup-stack-padding", "8px"),
         ("--unixnotis-popup-card-radius", "18px"),
-        ("--unixnotis-popup-card-padding-y", "12px"),
+        ("--unixnotis-popup-card-padding-y", "10px"),
         ("--unixnotis-popup-card-padding-x", "14px"),
         ("--unixnotis-popup-actions-gap", "6px"),
         ("--unixnotis-popup-close-size", "24px"),

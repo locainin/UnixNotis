@@ -19,6 +19,7 @@ fn modern_theme_custom_properties_stay_additive() {
         "--unixnotis-card-radius: 12px;",
         "--unixnotis-notification-card-radius: 12px;",
         "--unixnotis-panel-card-padding-y: 9px;",
+        "--unixnotis-popup-card-padding-y: 10px;",
         "--unixnotis-popup-reveal-duration: 200ms;",
         "--unixnotis-media-card-radius: 18px;",
         "--unixnotis-media-title-font-size: 13px;",

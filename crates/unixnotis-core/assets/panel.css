@@ -525,6 +525,21 @@ entry selection {
   transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
+/* Group headers already carry identity, so child cards use a compact metadata lane */
+.unixnotis-panel-card.group-owned-identity {
+  padding-top: 6px;
+  padding-bottom: 8px;
+}
+
+.unixnotis-panel-card.group-owned-identity .unixnotis-panel-card-header {
+  margin-bottom: -6px;
+}
+
+.unixnotis-panel-card.group-owned-identity .unixnotis-panel-close {
+  min-width: 24px;
+  min-height: 24px;
+}
+
 .unixnotis-panel-card-thumbnail {
   border-radius: 10px;
   background: alpha(@unixnotis-surface-strong-base, 0.42);

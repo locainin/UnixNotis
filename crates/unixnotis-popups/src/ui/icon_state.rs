@@ -23,6 +23,8 @@ const ICON_CACHE_MAX_ENTRIES: usize = 256;
 const ICON_TEXTURE_CACHE_MAX_BYTES: usize = 1_048_576;
 // Content stays visibly separate from the daemon-associated application badge
 const POPUP_CONTENT_THUMBNAIL_SIZE: i32 = 64;
+// Decorative sender art is a small context cue, not the notification identity
+const POPUP_APPLICATION_VISUAL_SIZE: i32 = 38;
 // Missing icons are retried soon so package and theme installs heal without a process restart
 const NEGATIVE_ICON_CACHE_TTL: Duration = Duration::from_secs(15);
 
@@ -56,7 +58,7 @@ impl UiState {
         }
         let texture = image_data_texture_for_data(&notification.image.sender_visual)?;
         let widget = gtk::Image::from_paintable(Some(&texture));
-        set_popup_icon_size(&widget, POPUP_CONTENT_THUMBNAIL_SIZE);
+        set_popup_icon_size(&widget, POPUP_APPLICATION_VISUAL_SIZE);
         widget.add_css_class("unixnotis-popup-application-visual");
         Some(widget)
     }
