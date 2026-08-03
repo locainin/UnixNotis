@@ -19,7 +19,6 @@ use super::super::item::RowData;
 
 const GROUP_AVATAR_SIZE: i32 = 26;
 const GROUP_ICON_SIZE: i32 = 18;
-
 pub(in crate::ui::notifications) struct GroupRowWidgets {
     pub(super) button: gtk::Button,
     pub(super) avatar: gtk::Box,
@@ -40,14 +39,22 @@ pub(in crate::ui::notifications) fn build_group_row(
     root.add_css_class(hooks::group_row::ROOT);
     root.add_css_class(hooks::group_row::CONTAINER);
     root.add_css_class(hooks::group_row::EXPANDED);
+    root.set_hexpand(true);
+    root.set_halign(gtk::Align::Fill);
+    root.set_vexpand(false);
+    root.set_margin_bottom(super::layout::NOTIFICATION_LIST_ROW_GAP);
 
     let button = gtk::Button::new();
     button.add_css_class(hooks::group_row::HEADER);
     button.set_has_frame(false);
     button.set_focusable(true);
     button.set_tooltip_text(Some("Toggle group"));
+    button.set_hexpand(true);
+    button.set_halign(gtk::Align::Fill);
 
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    header.set_hexpand(true);
+    header.set_halign(gtk::Align::Fill);
     let avatar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     avatar.set_halign(gtk::Align::Center);
     avatar.set_valign(gtk::Align::Center);
@@ -198,6 +205,7 @@ pub(in crate::ui::notifications) fn update_group_row(
 
     if let Some(notification) = data.notification.as_ref() {
         let Some(presentation) = presentation else {
+            root.queue_resize();
             return;
         };
         set_widget_visible_if_changed(&group.avatar, true);
@@ -244,6 +252,8 @@ pub(in crate::ui::notifications) fn update_group_row(
         set_class_state(root, hooks::group_row::NO_ICON, true);
         set_class_state(root, hooks::group_row::HAS_ICON, false);
     }
+    // Group identity changes can alter the natural row height when rows are recycled
+    root.queue_resize();
 }
 
 fn group_accessible_label(

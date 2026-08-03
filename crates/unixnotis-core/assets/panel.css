@@ -347,6 +347,7 @@ entry selection {
 
 .unixnotis-panel-list {
   background: transparent;
+  padding-bottom: 20px;
 }
 
 .unixnotis-panel-list row {
@@ -360,8 +361,6 @@ entry selection {
  */
 .unixnotis-group {
   background: transparent;
-  margin-top: 0;
-  margin-bottom: 8px;
 }
 
 .unixnotis-group-header {
@@ -490,15 +489,16 @@ entry selection {
     alpha(#121834, 0.93) 100%
   );
   border: 1px solid alpha(#ffffff, 0.10);
+  border-radius: 18px;
   border-radius: var(--unixnotis-notification-card-radius);
+  padding: 9px 11px;
   padding: var(--unixnotis-panel-card-padding-y) var(--unixnotis-panel-card-padding-x);
   margin: 0;
   box-shadow:
     inset 0 1px 0 alpha(#ffffff, 0.09),
     inset 0 2px 0 alpha(#ffffff, 0.03),
     inset 0 -1px 0 alpha(#000000, 0.20),
-    0 1px 2px -1px alpha(#000000, 0.40),
-    0 16px 32px -18px alpha(#000000, 0.65);
+    0 4px 12px -8px alpha(#000000, 0.65);
   transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
@@ -541,32 +541,24 @@ entry selection {
     inset 0 1px 0 alpha(#ffffff, 0.11),
     inset 0 2px 0 alpha(#ffffff, 0.04),
     inset 0 -1px 0 alpha(#000000, 0.20),
-    0 1px 2px -1px alpha(#000000, 0.45),
-    0 20px 40px -24px alpha(#000000, 0.75);
-}
-
-.unixnotis-panel-card-foreground {
-  margin-bottom: 8px;
-}
-
-.unixnotis-panel-card-foreground.unixnotis-panel-card-grouped {
-  margin-left: 8px;
-  margin-right: 8px;
-  margin-bottom: var(--unixnotis-panel-card-gap);
+    0 6px 14px -10px alpha(#000000, 0.72);
 }
 
 .unixnotis-panel-card.unixnotis-panel-card-grouped {
+  border-radius: 22px;
   border-radius: var(--unixnotis-notification-card-radius);
 }
 
-.unixnotis-panel-card-foreground.collapsed-group-preview {
-  margin: 12px 8px 8px;
+.unixnotis-panel-card-foreground.unixnotis-panel-card-grouped {
+  border-radius: 22px;
+  border-radius: var(--unixnotis-notification-card-radius);
 }
 
 .unixnotis-stack-layer {
   min-height: 68px;
   padding: 0;
   border: 1px solid alpha(#ffffff, 0.10);
+  border-radius: 22px;
   border-radius: var(--unixnotis-notification-card-radius);
   background-image:
     linear-gradient(135deg, alpha(#ffffff, 0.10) 0%, alpha(#ffffff, 0) 28%),
@@ -583,7 +575,6 @@ entry selection {
 }
 
 .unixnotis-stack-layer-back {
-  margin: 0 20px;
   opacity: 0.80;
   border-color: alpha(#ffffff, 0.07);
   background-image:
@@ -600,7 +591,6 @@ entry selection {
 }
 
 .unixnotis-stack-layer-middle {
-  margin: 6px 14px 0;
   opacity: 0.92;
   border-color: alpha(#ffffff, 0.09);
   background-image:
@@ -634,8 +624,7 @@ entry selection {
     inset 0 1px 0 alpha(#ffffff, 0.08),
     inset 0 2px 0 alpha(#ffffff, 0.03),
     inset 0 -1px 0 alpha(#000000, 0.22),
-    0 1px 2px -1px alpha(#000000, 0.40),
-    0 16px 32px -18px alpha(#000000, 0.65);
+    0 4px 12px -8px alpha(#000000, 0.68);
 }
 
 .unixnotis-panel-card.critical .unixnotis-panel-app {
@@ -655,6 +644,7 @@ entry selection {
 }
 
 .unixnotis-panel-card-has-actions .unixnotis-notification-actions {
+  margin-top: 2px;
   margin-top: calc(var(--unixnotis-panel-action-gap) - 4px);
 }
 

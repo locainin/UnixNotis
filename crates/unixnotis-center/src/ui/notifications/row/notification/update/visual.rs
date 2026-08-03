@@ -5,7 +5,7 @@ use unixnotis_core::{hooks, NotificationView, Urgency};
 use unixnotis_ui::presentation::{NotificationPresentation, TrustLevel};
 
 use super::super::super::super::item::RowData;
-use super::super::stack::stack_layer_visibility;
+use super::super::stack::{set_stack_layer_margins, stack_layer_visibility};
 use super::super::state::NotificationRowWidgets;
 use super::labels::has_visible_text;
 
@@ -59,6 +59,13 @@ pub(super) fn apply_visual_state(
         data.collapsed_group_preview,
     );
     let layers = stack_layer_visibility(data.stack_depth);
+    set_stack_layer_margins(
+        &row.card_plate,
+        &row.stack_middle,
+        &row.stack_back,
+        data.collapsed_group_preview,
+        data.collapsed_group_preview || data.expanded,
+    );
     set_widget_visible_if_changed(&row.stack_middle, layers.middle);
     set_widget_visible_if_changed(&row.stack_back, layers.back);
     let grouped = data.collapsed_group_preview || data.expanded;

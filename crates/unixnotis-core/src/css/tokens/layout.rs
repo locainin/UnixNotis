@@ -17,7 +17,6 @@ pub(super) const fn layout_tokens() -> &'static [(&'static str, &'static str)] {
         ("--unixnotis-panel-header-padding", "12px"),
         ("--unixnotis-panel-card-padding-y", "9px"),
         ("--unixnotis-panel-card-padding-x", "11px"),
-        ("--unixnotis-panel-card-gap", "8px"),
         ("--unixnotis-panel-action-gap", "6px"),
         ("--unixnotis-panel-close-size", "28px"),
         ("--unixnotis-panel-search-min-height", "34px"),

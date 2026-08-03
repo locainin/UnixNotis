@@ -61,6 +61,7 @@ fn update_group_row_sets_title_count_and_expanded_state() {
     support::init_gtk();
     let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
     let (root, widgets) = build_group_row(event_tx);
+    assert_eq!(root.margin_bottom(), 8);
     let data = RowData::group_header(Rc::from("terminal"), 3, false, notification("Terminal"));
 
     update_group_row(&widgets, &root, &data, &IconResolver::new());

@@ -29,15 +29,21 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.add_css_class(hooks::panel_card::ROW);
     root.set_hexpand(true);
+    root.set_halign(gtk::Align::Fill);
+    root.set_vexpand(false);
+    root.set_margin_bottom(super::super::layout::NOTIFICATION_LIST_ROW_GAP);
 
     // Card uses vertical layout: header, summary, body, then actions
     let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
     card.add_css_class("unixnotis-panel-card");
     card.set_hexpand(true);
+    card.set_halign(gtk::Align::Fill);
+    card.set_vexpand(false);
 
     let meta_top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     meta_top.add_css_class(hooks::panel_card::META_TOP);
     meta_top.set_hexpand(true);
+    meta_top.set_halign(gtk::Align::Fill);
     meta_top.set_visible(false);
 
     let meta_label = gtk::Label::new(None);
@@ -64,6 +70,8 @@ pub(in crate::ui::notifications) fn build_notification_row(
     // Header owns identity, chronology, and dismiss without covering message content
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     header.add_css_class(hooks::panel_card::HEADER);
+    header.set_hexpand(true);
+    header.set_halign(gtk::Align::Fill);
     let icon = gtk::Image::new();
     icon.set_pixel_size(20);
     icon.add_css_class("unixnotis-panel-icon");
@@ -110,6 +118,8 @@ pub(in crate::ui::notifications) fn build_notification_row(
 
     let body_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     body_row.set_hexpand(true);
+    body_row.set_halign(gtk::Align::Fill);
+    body_row.set_vexpand(false);
 
     let thumbnail = gtk::Image::new();
     thumbnail.add_css_class(hooks::panel_card::THUMBNAIL);
@@ -120,6 +130,8 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let text_stack = gtk::Box::new(gtk::Orientation::Vertical, 2);
     text_stack.add_css_class(hooks::panel_card::TEXT);
     text_stack.set_hexpand(true);
+    text_stack.set_halign(gtk::Align::Fill);
+    text_stack.set_vexpand(false);
 
     // Summary is optional, so the update path decides later if the row should exist
     let summary_label = gtk::Label::new(None);
@@ -197,9 +209,12 @@ pub(in crate::ui::notifications) fn build_notification_row(
     // The wrapper clips the complete styled card while the inner box keeps all CSS hooks
     let card_plate = CutCorner::new(&card, unixnotis_core::CutCorners::default());
     card_plate.add_css_class("unixnotis-panel-card-foreground");
+    card_plate.set_hexpand(true);
+    card_plate.set_halign(gtk::Align::Fill);
+    card_plate.set_vexpand(false);
 
-    // One overlay cell keeps positive stack offsets inside the measured row bounds
-    let stack = gtk::Overlay::new();
+    // One grid cell keeps every positive stack offset inside the measured row bounds
+    let stack = gtk::Grid::new();
     stack.add_css_class("unixnotis-panel-notification-stack");
     stack.set_hexpand(true);
     root.append(&stack);
@@ -227,10 +242,13 @@ pub(in crate::ui::notifications) fn build_notification_row(
 
     // The reusable widget bundle is returned with the root so the list factory
     // can keep the GTK tree and the cached row state together
+    let row_root = root.clone();
     (
         root,
         NotificationRowWidgets {
             default_activation,
+            root: row_root,
+            stack,
             card,
             card_plate,
             stack_middle,

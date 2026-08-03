@@ -77,6 +77,7 @@ pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRow
     while let Some(child) = row.actions_box.first_child() {
         row.actions_box.remove(&child);
     }
+    queue_row_resize(row);
 }
 
 pub(in crate::ui::notifications) fn update_notification_row(
@@ -225,4 +226,13 @@ pub(in crate::ui::notifications) fn update_notification_row(
     );
     set_widget_visible_if_changed(&row.card_plate, true);
     set_widget_visible_if_changed(&row.card, true);
+    queue_row_resize(row);
+}
+
+fn queue_row_resize(row: &NotificationRowWidgets) {
+    // Recycled rows can change natural height when text, media, or stack depth changes
+    row.card.queue_resize();
+    row.card_plate.queue_resize();
+    row.stack.queue_resize();
+    row.root.queue_resize();
 }

@@ -15,6 +15,10 @@ use super::reply::InlineReplyWidgets;
 pub(in crate::ui::notifications) struct NotificationRowWidgets {
     // Active rows use one shared generation-bound card activation binding
     pub(in crate::ui::notifications) default_activation: DefaultActionBinding,
+    // The real ListView child owns vertical spacing and recycled-row geometry
+    pub(super) root: gtk::Box,
+    // Same-cell grid measures every visible stack layer as one row
+    pub(super) stack: gtk::Grid,
     // Styled notification card inside the ListView row wrapper
     pub(super) card: gtk::Box,
     // Polygon wrapper clips both visual output and pointer hit testing

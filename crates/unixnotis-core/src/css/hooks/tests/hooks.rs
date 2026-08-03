@@ -277,10 +277,18 @@ fn stock_panel_css_uses_separated_rows_and_bounded_depth_layers() {
     assert!(!css.contains("unixnotis-stack-ghost"));
     assert!(css.contains(".unixnotis-stack-layer-back"));
     assert!(css.contains(".unixnotis-stack-layer-middle"));
-    assert!(css.contains("margin: 6px 14px 0"));
-    assert!(css.contains("margin: 12px 8px 8px"));
+    assert!(!css.contains("margin: 6px 14px 0"));
+    assert!(!css.contains("margin: 12px 8px 0"));
+    assert!(css.contains(".unixnotis-panel-card-row {\n  margin: 0;"));
+    assert!(css
+        .contains(".unixnotis-panel-list {\n  background: transparent;\n  padding-bottom: 20px;"));
+    assert!(css.contains(
+        "border-radius: 18px;\n  border-radius: var(--unixnotis-notification-card-radius);"
+    ));
+    assert!(css.contains("padding: 9px 11px;\n  padding: var(--unixnotis-panel-card-padding-y)"));
+    assert!(!css.contains("0 16px 32px -18px"));
     assert!(!css.contains("margin: -58px 14px 0"));
-    assert!(css.contains("margin: 0 20px"));
+    assert!(!css.contains("margin: 0 20px"));
     assert!(css.contains(".unixnotis-panel-card.unixnotis-panel-card-grouped {\n  border-radius:"));
 }
 

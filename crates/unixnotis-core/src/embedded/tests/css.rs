@@ -50,6 +50,16 @@ fn panel_css_keeps_the_dnd_menu_visual_hooks() {
 }
 
 #[test]
+fn panel_css_leaves_stack_offsets_and_row_gaps_to_gtk_layout() {
+    assert!(DEFAULT_PANEL_CSS.contains(".unixnotis-panel-card-row {\n  margin: 0;"));
+    assert!(!DEFAULT_PANEL_CSS.contains("margin: 6px 14px 0"));
+    assert!(!DEFAULT_PANEL_CSS.contains("margin: 12px 8px 0"));
+    assert!(DEFAULT_PANEL_CSS.contains(
+        "border-radius: 18px;\n  border-radius: var(--unixnotis-notification-card-radius);"
+    ));
+}
+
+#[test]
 fn dnd_menu_hover_and_keyboard_focus_share_one_visual_rule() {
     let shared_selector = ".unixnotis-dnd-menu .unixnotis-dnd-menu-choice:hover,\n\
 .unixnotis-dnd-menu .unixnotis-dnd-menu-choice:focus-visible";
@@ -167,10 +177,10 @@ fn notification_surfaces_keep_compact_master_geometry() {
     assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-radius)"));
     assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-padding-y)"));
     assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-padding-x)"));
-    assert!(DEFAULT_PANEL_CSS.contains("margin: 6px 14px 0"));
-    assert!(DEFAULT_PANEL_CSS.contains("margin: 12px 8px 8px"));
+    assert!(!DEFAULT_PANEL_CSS.contains("margin: 6px 14px 0"));
+    assert!(!DEFAULT_PANEL_CSS.contains("margin: 12px 8px 0"));
     assert!(!DEFAULT_PANEL_CSS.contains("margin: -58px 14px 0"));
-    assert!(DEFAULT_PANEL_CSS.contains("margin: 0 20px"));
+    assert!(!DEFAULT_PANEL_CSS.contains("margin: 0 20px"));
 }
 
 #[test]

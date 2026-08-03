@@ -297,8 +297,8 @@ fn collapsed_group_preview_uses_readable_surface_above_stack_layers() {
 
     let stack = root
         .first_child()
-        .and_downcast::<gtk::Overlay>()
-        .expect("notification row should use one measured stack overlay");
+        .and_downcast::<gtk::Grid>()
+        .expect("notification row should use one measured stack grid");
     let stack_child_count =
         std::iter::successors(stack.first_child(), gtk::prelude::WidgetExt::next_sibling).count();
     assert_eq!(stack_child_count, 3);
