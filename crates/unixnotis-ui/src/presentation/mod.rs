@@ -16,7 +16,8 @@ pub use text::{
 };
 pub use types::{
     ActionPresentation, ActionView, BadgePresentation, IdentityPresentation, MediaPresentation,
-    NotificationKind, ReplyPresentation, ThumbnailKind, TrustLevel, TrustPresentation,
+    NotificationKind, ReplyPresentation, SenderVisualPresentation, ThumbnailKind, TrustLevel,
+    TrustPresentation, VisualPresentation,
 };
 
 #[cfg(test)]

@@ -1,6 +1,9 @@
 use super::popup_accessible_label;
 use crate::ui::entry::presentation::{PopupEntryViewModel, PopupKind, ReplyPresentation};
-use unixnotis_ui::presentation::{BadgePresentation, ThumbnailKind, TrustLevel, TrustPresentation};
+use unixnotis_ui::presentation::{
+    BadgePresentation, SenderVisualPresentation, ThumbnailKind, TrustLevel, TrustPresentation,
+    VisualPresentation,
+};
 
 #[test]
 fn popup_accessible_name_keeps_identity_and_message_context() {
@@ -45,6 +48,10 @@ fn view_model() -> PopupEntryViewModel {
         title: "Build finished".to_string(),
         body: None,
         thumbnail: ThumbnailKind::None,
+        visuals: VisualPresentation {
+            sender: SenderVisualPresentation::None,
+            content_image: false,
+        },
         default_action_key: None,
         primary_actions: Vec::new(),
         overflow_actions: Vec::new(),

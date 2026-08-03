@@ -9,7 +9,9 @@ use gtk::pango::{EllipsizeMode, WrapMode};
 use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::{hooks, NotificationView};
-use unixnotis_ui::presentation::{action_activation, build_semantic_badge, ActionActivation};
+use unixnotis_ui::presentation::{
+    action_activation, build_semantic_badge, ActionActivation, SenderVisualPresentation,
+};
 
 use super::super::commands::try_send_command;
 use super::super::presentation::{PopupEntryViewModel, PopupTrustPresentation, ReplyPresentation};
@@ -32,8 +34,8 @@ pub(super) fn build_identity_avatar(
     view: &PopupEntryViewModel,
     size: i32,
 ) -> IdentityAvatar {
-    let has_conversation_avatar = notification.image.sender_visual_role
-        == unixnotis_core::NotificationVisualRole::ConversationAvatar;
+    let has_conversation_avatar =
+        view.visuals.sender == SenderVisualPresentation::ConversationAvatar;
     let icon_size = if has_conversation_avatar {
         size
     } else {

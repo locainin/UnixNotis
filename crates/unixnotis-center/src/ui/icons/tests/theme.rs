@@ -83,6 +83,26 @@ fn badge_candidates_exclude_unresolved_application_claim() {
 }
 
 #[test]
+fn unresolved_notifications_keep_only_bounded_decorative_theme_hints() {
+    let attribution = unixnotis_core::NotificationAttribution {
+        claimed_name: "Example Player".to_string(),
+        ..unixnotis_core::NotificationAttribution::default()
+    };
+    let image = NotificationImage {
+        claimed_theme_icon: "example-player".to_string(),
+        ..NotificationImage::default()
+    };
+
+    let notification = notification_view("Unknown", attribution, image);
+    let candidates = collect_icon_candidates(&notification);
+
+    assert!(candidates
+        .iter()
+        .any(|candidate| candidate == "example-player"));
+    assert!(candidates.iter().all(|candidate| !candidate.contains('/')));
+}
+
+#[test]
 fn expand_rgb_to_rgba_appends_alpha() {
     let data = ImageData {
         width: 2,

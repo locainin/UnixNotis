@@ -39,14 +39,14 @@ pub(super) fn update_actions(
     row: &NotificationRowWidgets,
     command_tx: &mpsc::Sender<UiCommand>,
     notification: &Rc<NotificationView>,
+    presentation: &NotificationPresentation,
     is_active: bool,
 ) {
-    let presentation = NotificationPresentation::from_view(notification);
     configure_inline_reply(&row.inline_reply, notification, is_active);
-    let has_actions = visible_action_count_from(&presentation, is_active) > 0;
+    let has_actions = visible_action_count_from(presentation, is_active) > 0;
     // Recycled rows may have hidden this container before the current bind
     row.actions_box.set_visible(has_actions);
-    let action_signature = action_signature(&presentation, is_active);
+    let action_signature = action_signature(presentation, is_active);
     // Fast path skips button rebuilding when the action set is unchanged
     {
         let cached = row.action_cache.borrow();
@@ -118,7 +118,7 @@ pub(super) fn update_actions(
             &presentation.actions.overflow,
         ));
     }
-    if let Some(default_key) = hidden_default_action_key(&presentation) {
+    if let Some(default_key) = hidden_default_action_key(presentation) {
         row.actions_box.append(&build_default_action_button(
             command_tx,
             notification.key(),
@@ -335,6 +335,7 @@ fn build_overflow_menu(
     menu
 }
 
+#[cfg(test)]
 pub(super) fn visible_action_count(notification: &NotificationView, is_active: bool) -> usize {
     visible_action_count_from(
         &NotificationPresentation::from_view(notification),
@@ -342,7 +343,10 @@ pub(super) fn visible_action_count(notification: &NotificationView, is_active: b
     )
 }
 
-fn visible_action_count_from(presentation: &NotificationPresentation, is_active: bool) -> usize {
+pub(super) fn visible_action_count_from(
+    presentation: &NotificationPresentation,
+    is_active: bool,
+) -> usize {
     if !is_active {
         return 0;
     }

@@ -38,15 +38,18 @@ fn collect_icon_candidates_does_not_treat_content_icon_as_application_badge() {
 }
 
 #[test]
-fn collect_icon_candidates_does_not_fallback_to_unresolved_brand_claim() {
+fn collect_icon_candidates_keeps_a_bounded_unresolved_theme_hint_decorative() {
     let mut notification = notification("Trusted Brand", "dialog-warning-symbolic");
     notification.attribution.status = unixnotis_core::AttributionStatus::Unresolved;
     notification.attribution.desktop_id.clear();
+    notification.attribution.claimed_name = "Trusted Brand".to_string();
+    notification.image.claimed_theme_icon = "trusted-brand".to_string();
 
     let candidates = collect_icon_candidates(&notification);
 
     assert!(candidates
         .iter()
         .any(|value| value == "dialog-warning-symbolic"));
-    assert!(!candidates.iter().any(|value| value == "Trusted Brand"));
+    assert!(candidates.iter().any(|value| value == "trusted-brand"));
+    assert!(candidates.iter().all(|value| !value.contains('/')));
 }

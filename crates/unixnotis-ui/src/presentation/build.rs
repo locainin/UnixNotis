@@ -13,7 +13,8 @@ use super::text::{
 };
 use super::types::{
     ActionPresentation, ActionView, BadgePresentation, IdentityPresentation, MediaPresentation,
-    NotificationKind, ReplyPresentation, ThumbnailKind, TrustLevel, TrustPresentation,
+    NotificationKind, ReplyPresentation, SenderVisualPresentation, ThumbnailKind, TrustLevel,
+    TrustPresentation, VisualPresentation,
 };
 
 /// Complete non-GTK notification presentation shared by popup and panel adapters
@@ -27,6 +28,8 @@ pub struct NotificationPresentation {
     pub timestamp: String,
     pub popup_status: Option<String>,
     pub media: MediaPresentation,
+    /// Sender and content visual roles shared by every GTK adapter
+    pub visuals: VisualPresentation,
     pub actions: ActionPresentation,
     pub critical: bool,
 }
@@ -60,6 +63,7 @@ impl NotificationPresentation {
             media: MediaPresentation {
                 thumbnail: thumbnail_kind(notification),
             },
+            visuals: visual_presentation(notification),
             actions: visible_actions(notification, kind),
             critical: notification.urgency == Urgency::Critical as u8,
         }
@@ -320,6 +324,24 @@ fn thumbnail_kind(notification: &NotificationView) -> ThumbnailKind {
         return ThumbnailKind::Content;
     }
     ThumbnailKind::None
+}
+
+const fn visual_presentation(notification: &NotificationView) -> VisualPresentation {
+    // The daemon has already materialized safe pixels; clients only select a slot
+    let sender = match notification.image.sender_visual_role {
+        unixnotis_core::NotificationVisualRole::ConversationAvatar => {
+            SenderVisualPresentation::ConversationAvatar
+        }
+        unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon => {
+            SenderVisualPresentation::ApplicationProvidedIcon
+        }
+        unixnotis_core::NotificationVisualRole::None
+        | unixnotis_core::NotificationVisualRole::ContentImage => SenderVisualPresentation::None,
+    };
+    VisualPresentation {
+        sender,
+        content_image: !notification.image.content_image.data.is_empty(),
+    }
 }
 
 fn relative_time_label(received_at: i64, now: i64) -> String {

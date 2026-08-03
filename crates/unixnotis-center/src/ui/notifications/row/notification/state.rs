@@ -96,15 +96,24 @@ pub(in crate::ui::notifications) struct IconSignature {
 }
 
 impl IconSignature {
-    pub(super) fn from(notification: &NotificationView) -> Self {
+    pub(super) fn from_presentation(
+        notification: &NotificationView,
+        presentation: &NotificationPresentation,
+    ) -> Self {
         // Signature includes all fields that can change icon resolution output
-        // This keeps row refreshes cheap when only text or actions changed
+        // Reuse the row presentation so icon checks do not rebuild all labels and actions
         Self {
             badge_icon: notification.attribution.badge_icon.clone(),
             desktop_id: notification.attribution.desktop_id.clone(),
-            presentation: NotificationPresentation::from_view(notification)
-                .identity
-                .badge,
+            presentation: presentation.identity.badge,
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn from(notification: &NotificationView) -> Self {
+        Self::from_presentation(
+            notification,
+            &NotificationPresentation::from_view(notification),
+        )
     }
 }

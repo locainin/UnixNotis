@@ -3,7 +3,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use unixnotis_core::NotificationView;
-use unixnotis_ui::presentation::NotificationPresentation;
+use unixnotis_ui::presentation::{NotificationPresentation, VisualPresentation};
 
 use super::{PopupKind, PopupTrustPresentation};
 
@@ -22,6 +22,8 @@ pub(in crate::ui::entry) struct PopupEntryViewModel {
     pub(in crate::ui::entry) title: String,
     pub(in crate::ui::entry) body: Option<String>,
     pub(in crate::ui::entry) thumbnail: ThumbnailKind,
+    // Carry the shared visual decision so GTK builders do not derive it again
+    pub(in crate::ui::entry) visuals: VisualPresentation,
     pub(in crate::ui::entry) default_action_key: Option<String>,
     pub(in crate::ui::entry) primary_actions: Vec<ActionViewModel>,
     pub(in crate::ui::entry) overflow_actions: Vec<ActionViewModel>,
@@ -56,6 +58,7 @@ impl PopupEntryViewModel {
             title: shared.title,
             body: shared.body,
             thumbnail: shared.media.thumbnail,
+            visuals: shared.visuals,
             default_action_key: shared.actions.default_key,
             primary_actions: shared.actions.primary,
             overflow_actions: shared.actions.overflow,

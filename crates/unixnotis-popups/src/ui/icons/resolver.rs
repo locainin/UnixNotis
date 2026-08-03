@@ -74,12 +74,29 @@ pub(in crate::ui) fn collect_icon_candidates(notification: &NotificationView) ->
         candidates.push(notification.attribution.desktop_id.clone());
         candidates.push(notification.attribution.desktop_id.to_lowercase());
     }
-
+    if is_safe_theme_name(&notification.image.claimed_theme_icon) {
+        // Sender input is only a bounded theme lookup hint, never identity evidence
+        candidates.push(notification.image.claimed_theme_icon.clone());
+        candidates.push(notification.image.claimed_theme_icon.to_lowercase());
+    }
     let mut seen = HashSet::new();
     candidates
         .into_iter()
         .filter(|candidate| !candidate.is_empty() && seen.insert(candidate.clone()))
         .collect()
+}
+
+fn is_safe_theme_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && !value.starts_with('.')
+        && !value.contains('/')
+        && !value.contains('\\')
+        && !value.contains(':')
+        && !value.chars().any(char::is_whitespace)
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
+        })
 }
 
 fn is_missing_icon(path: &Path) -> bool {

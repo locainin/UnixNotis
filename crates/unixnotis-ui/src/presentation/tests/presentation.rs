@@ -1,11 +1,11 @@
 use unixnotis_core::{
     Action, AttributionReason, AttributionStatus, IdentityAssurance, ImageData, InlineReplyPolicy,
-    InteractionPolicies, NotificationAttribution, Urgency,
+    InteractionPolicies, NotificationAttribution, NotificationVisualRole, Urgency,
 };
 
 use super::super::{
     BadgePresentation, NotificationKind, NotificationPresentation, ReplyPresentation,
-    ThumbnailKind, TrustLevel,
+    SenderVisualPresentation, ThumbnailKind, TrustLevel,
 };
 use super::support::notification;
 
@@ -46,6 +46,39 @@ fn shared_model_keeps_verified_communication_content_and_actions_consistent() {
     assert!(presentation.actions.overflow.is_empty());
     assert_eq!(presentation.actions.default_key.as_deref(), Some("default"));
     assert_eq!(presentation.timestamp, "2m");
+}
+
+#[test]
+fn shared_visual_roles_are_consistent_for_popup_and_panel_clients() {
+    let mut view = notification();
+    view.image.sender_visual_role = NotificationVisualRole::ConversationAvatar;
+    let avatar = NotificationPresentation::from_view_at(&view, 1_000);
+    assert_eq!(
+        avatar.visuals.sender,
+        SenderVisualPresentation::ConversationAvatar
+    );
+    assert!(!avatar.visuals.content_image);
+
+    view.image.sender_visual_role = NotificationVisualRole::ApplicationProvidedIcon;
+    let decorative = NotificationPresentation::from_view_at(&view, 1_000);
+    assert_eq!(
+        decorative.visuals.sender,
+        SenderVisualPresentation::ApplicationProvidedIcon
+    );
+
+    view.image.sender_visual_role = NotificationVisualRole::ContentImage;
+    view.image.content_image = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        channels: 4,
+        bits_per_sample: 8,
+        data: vec![1, 2, 3, 4],
+        ..ImageData::default()
+    };
+    let content = NotificationPresentation::from_view_at(&view, 1_000);
+    assert_eq!(content.visuals.sender, SenderVisualPresentation::None);
+    assert!(content.visuals.content_image);
 }
 
 #[test]

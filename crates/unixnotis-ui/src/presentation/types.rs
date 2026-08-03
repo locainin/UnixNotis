@@ -128,3 +128,18 @@ pub enum ThumbnailKind {
 pub struct MediaPresentation {
     pub thumbnail: ThumbnailKind,
 }
+
+/// Sender visual role selected once for every client surface
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SenderVisualPresentation {
+    None,
+    ConversationAvatar,
+    ApplicationProvidedIcon,
+}
+
+/// Safe visual roles shared by popup and panel adapters
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VisualPresentation {
+    pub sender: SenderVisualPresentation,
+    pub content_image: bool,
+}

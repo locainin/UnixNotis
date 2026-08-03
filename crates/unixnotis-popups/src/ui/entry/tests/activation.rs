@@ -7,7 +7,10 @@ use crate::ui::entry::presentation::{PopupEntryViewModel, PopupKind, ReplyPresen
 use unixnotis_ui::presentation::default_activation::{
     is_default_activation_key, picked_widget_blocks_default_action,
 };
-use unixnotis_ui::presentation::{BadgePresentation, ThumbnailKind, TrustLevel, TrustPresentation};
+use unixnotis_ui::presentation::{
+    BadgePresentation, SenderVisualPresentation, ThumbnailKind, TrustLevel, TrustPresentation,
+    VisualPresentation,
+};
 
 const KEY: NotificationKey = NotificationKey {
     id: 41,
@@ -75,6 +78,10 @@ fn default_action_card_is_focusable_and_keyboard_activatable() {
         title: "Update complete".to_string(),
         body: None,
         thumbnail: ThumbnailKind::None,
+        visuals: VisualPresentation {
+            sender: SenderVisualPresentation::None,
+            content_image: false,
+        },
         default_action_key: Some("default".to_string()),
         primary_actions: Vec::new(),
         overflow_actions: Vec::new(),

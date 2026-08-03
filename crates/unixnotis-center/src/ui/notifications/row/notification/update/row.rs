@@ -11,13 +11,10 @@ use crate::ui::icons::IconResolver;
 
 use super::super::super::super::item::RowData;
 use super::super::state::{IconSignature, NotificationRowWidgets};
-use super::actions::{update_actions, visible_action_count};
+use super::actions::{update_actions, visible_action_count_from};
 use super::labels::update_notification_text;
 use super::metadata::update_metadata_labels;
-use super::thumbnail::{
-    notification_has_conversation_avatar, notification_has_sender_visual,
-    notification_has_thumbnail,
-};
+use super::thumbnail::{has_content_thumbnail, has_conversation_avatar, has_sender_visual};
 use super::visual::{apply_visual_state, set_widget_visible_if_changed};
 
 pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRowWidgets) {
@@ -109,11 +106,11 @@ pub(in crate::ui::notifications) fn update_notification_row(
     // a previous notification generation
     row.default_activation.set_target(default_target);
     let show_identity = !data.collapsed_group_preview && !data.expanded;
-    let has_actions = visible_action_count(notification, data.is_active) > 0;
-    let has_content_thumbnail = notification_has_thumbnail(notification);
+    let has_actions = visible_action_count_from(&presentation, data.is_active) > 0;
+    let has_content_thumbnail = has_content_thumbnail(&presentation);
     // The daemon has already assigned the visual role after attribution and safe decoding
-    let has_conversation_avatar = notification_has_conversation_avatar(notification);
-    let has_sender_visual = notification_has_sender_visual(notification);
+    let has_conversation_avatar = has_conversation_avatar(&presentation);
+    let has_sender_visual = has_sender_visual(&presentation);
     let has_thumbnail = data.presentation.show_thumbnail
         && (has_content_thumbnail || has_conversation_avatar || has_sender_visual);
 
@@ -154,12 +151,18 @@ pub(in crate::ui::notifications) fn update_notification_row(
         &row.trust_chip,
         show_identity && presentation.trust.short_label.is_some(),
     );
-    update_metadata_labels(row, data, notification);
+    update_metadata_labels(row, data, notification, &presentation);
     row.notify_key.set(notification.key());
-    update_actions(row, command_tx, notification_snapshot, data.is_active);
+    update_actions(
+        row,
+        command_tx,
+        notification_snapshot,
+        &presentation,
+        data.is_active,
+    );
 
     // Text and action changes must not restart an unchanged icon pipeline
-    let next_sig = IconSignature::from(notification);
+    let next_sig = IconSignature::from_presentation(notification, &presentation);
     let mut sig_guard = row.icon_sig.borrow_mut();
     if show_identity && sig_guard.as_ref() != Some(&next_sig) {
         if apply_semantic_badge(&row.icon, presentation.identity.badge, 20) {

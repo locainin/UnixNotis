@@ -11,6 +11,7 @@ use unixnotis_core::NotificationView;
 
 use super::presentation::{PopupEntryViewModel, PopupKind};
 use crate::ui::UiState;
+use unixnotis_ui::presentation::SenderVisualPresentation;
 
 pub(super) use common::{build_action_row, build_close_button};
 pub(in crate::ui::entry) use reply::build_inline_reply;
@@ -43,8 +44,8 @@ pub(super) fn append_thumbnail(
     view: &PopupEntryViewModel,
     content: &gtk::Box,
 ) -> bool {
-    let is_application_visual = notification.image.sender_visual_role
-        == unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon;
+    let sender_visual = view.visuals.sender;
+    let is_application_visual = sender_visual == SenderVisualPresentation::ApplicationProvidedIcon;
     if view.thumbnail != super::presentation::ThumbnailKind::Content && !is_application_visual {
         return false;
     }

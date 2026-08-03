@@ -3,10 +3,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use unixnotis_core::{NotificationMetadataConfig, NotificationView, Urgency};
+use unixnotis_ui::presentation::NotificationPresentation;
 
 use super::super::super::super::item::RowData;
 use super::super::state::NotificationRowWidgets;
-use super::actions::visible_action_count;
+use super::actions::visible_action_count_from;
 use super::labels::{set_label_text_if_changed, set_label_visible_if_changed};
 use super::visual::set_widget_visible_if_changed;
 
@@ -14,6 +15,7 @@ pub(super) fn update_metadata_labels(
     row: &NotificationRowWidgets,
     data: &RowData,
     notification: &NotificationView,
+    presentation: &NotificationPresentation,
 ) {
     let metadata = data.presentation.metadata.as_ref();
     let time_badge = relative_time_badge(data.presentation.received_at_ms, metadata);
@@ -48,7 +50,7 @@ pub(super) fn update_metadata_labels(
     set_label_text_if_changed(&row.footer_left, footer_left);
 
     // Hidden reply actions are excluded from the displayed action count
-    let action_count = visible_action_count(notification, data.is_active);
+    let action_count = visible_action_count_from(presentation, data.is_active);
     let footer_right = if action_count == 0 {
         String::new()
     } else if action_count == 1 {

@@ -136,6 +136,7 @@ fn update_notification_row_applies_state_classes_and_text() {
         .card
         .has_css_class(hooks::shared_state::COLLAPSED_GROUP_PREVIEW));
     assert!(row.card.has_css_class(hooks::panel_card::GROUPED));
+    assert!(row.card.has_css_class("group-owned-identity"));
     assert!(!row.app_label.get_visible());
     assert!(!row.icon.get_visible());
     assert!(row.header.get_visible());

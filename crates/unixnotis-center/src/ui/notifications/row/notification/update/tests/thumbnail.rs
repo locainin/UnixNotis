@@ -10,7 +10,9 @@ use crate::ui::icons::IconResolver;
 use super::super::super::test_support::{
     notification_row, row_data, sample_notification, RowFlags,
 };
-use super::super::thumbnail::notification_has_conversation_avatar;
+use super::super::thumbnail::{
+    notification_has_conversation_avatar, notification_has_sender_visual,
+};
 use super::{notification_has_thumbnail, update_notification_row};
 
 #[test]
@@ -46,6 +48,26 @@ fn conversation_avatar_is_a_separate_thumbnail_source() {
     };
 
     assert!(notification_has_conversation_avatar(&notification));
+    assert!(!notification_has_thumbnail(&notification));
+}
+
+#[test]
+fn application_visual_is_a_decorative_thumbnail_source() {
+    let mut notification = sample_notification();
+    notification.image.sender_visual_role =
+        unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon;
+    notification.image.sender_visual = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![0, 255, 0, 255],
+    };
+
+    assert!(notification_has_sender_visual(&notification));
+    assert!(!notification_has_conversation_avatar(&notification));
     assert!(!notification_has_thumbnail(&notification));
 }
 

@@ -59,6 +59,13 @@ pub(super) fn apply_visual_state(
     let grouped = data.collapsed_group_preview || data.expanded;
     set_class_state(card, hooks::panel_card::GROUPED, grouped);
     set_class_state(&row.card_plate, hooks::panel_card::GROUPED, grouped);
+    // Group headers own identity details while child rows stay message-first
+    set_class_state(card, "group-owned-identity", grouped && !data.expanded);
+    set_class_state(
+        &row.card_plate,
+        "group-owned-identity",
+        grouped && !data.expanded,
+    );
     set_class_state(
         card,
         hooks::panel_card::HAS_SUMMARY,
