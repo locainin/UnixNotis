@@ -3701,7 +3701,6 @@ name = "unixnotis-installer"
 version = "1.2.0"
 dependencies = [
  "anyhow",
- "chrono",
  "crossterm",
  "ratatui",
  "rustix",

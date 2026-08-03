@@ -10,7 +10,7 @@ use unixnotis_core::Config;
 use crate::paths::format_with_home;
 
 use super::super::super::{log_line, ActionContext};
-use super::retention::BACKUP_PREFIX;
+use super::listing::BACKUP_PREFIX;
 
 pub fn restore_config(ctx: &mut ActionContext) -> Result<()> {
     let Some(backup_dir) = ctx.restore_backup.clone() else {

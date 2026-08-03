@@ -42,7 +42,7 @@ pub(super) fn run_reset_config(skip_confirmation: bool) -> Result<()> {
     Ok(())
 }
 
-fn confirm_reset(input: &mut impl BufRead, interactive: bool) -> Result<bool> {
+pub(super) fn confirm_reset(input: &mut impl BufRead, interactive: bool) -> Result<bool> {
     if !interactive {
         return Err(anyhow::anyhow!(
             "reset-config requires --yes when standard input is not interactive"

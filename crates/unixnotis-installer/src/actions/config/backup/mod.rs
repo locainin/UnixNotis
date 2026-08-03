@@ -1,7 +1,7 @@
 //! Config backup entry points
 
+mod listing;
 mod restore;
-mod retention;
 mod settings;
 mod snapshot;
 
