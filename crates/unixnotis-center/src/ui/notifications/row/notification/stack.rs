@@ -2,16 +2,6 @@
 
 use gtk::prelude::*;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum StackLayer {
-    Back,
-    Middle,
-    Foreground,
-}
-
-const STACK_LAYER_ORDER: [StackLayer; 3] =
-    [StackLayer::Back, StackLayer::Middle, StackLayer::Foreground];
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct StackLayerVisibility {
     pub(super) middle: bool,
@@ -19,20 +9,20 @@ pub(super) struct StackLayerVisibility {
 }
 
 pub(super) fn append_stack_layers(
-    root: &gtk::Box,
+    root: &gtk::Overlay,
     foreground: &unixnotis_ui::CutCorner,
 ) -> (gtk::Box, gtk::Box) {
     let middle = build_stack_layer("unixnotis-stack-layer-middle");
     let back = build_stack_layer("unixnotis-stack-layer-back");
 
-    // Later GTK siblings paint above earlier siblings when margins overlap
-    for layer in STACK_LAYER_ORDER {
-        match layer {
-            StackLayer::Back => root.append(&back),
-            StackLayer::Middle => root.append(&middle),
-            StackLayer::Foreground => root.append(foreground),
-        }
-    }
+    // One overlay allocation keeps all three layers in the same measured cell
+    root.set_child(Some(&back));
+    root.add_overlay(&middle);
+    root.add_overlay(foreground);
+
+    // Rear shells never determine row height; the readable card does
+    root.set_measure_overlay(&middle, false);
+    root.set_measure_overlay(foreground, true);
     (middle, back)
 }
 

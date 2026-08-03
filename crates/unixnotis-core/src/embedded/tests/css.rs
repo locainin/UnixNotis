@@ -165,7 +165,9 @@ fn notification_surfaces_keep_compact_master_geometry() {
     assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-radius)"));
     assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-padding-y)"));
     assert!(DEFAULT_POPUP_CSS.contains("var(--unixnotis-popup-card-padding-x)"));
-    assert!(DEFAULT_PANEL_CSS.contains("margin: -58px 14px 0"));
+    assert!(DEFAULT_PANEL_CSS.contains("margin: 6px 14px 0"));
+    assert!(DEFAULT_PANEL_CSS.contains("margin: 12px 8px 10px"));
+    assert!(!DEFAULT_PANEL_CSS.contains("margin: -58px 14px 0"));
     assert!(DEFAULT_PANEL_CSS.contains("margin: 0 20px"));
 }
 

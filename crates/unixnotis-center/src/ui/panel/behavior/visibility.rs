@@ -111,6 +111,8 @@ impl UiState {
                     &self.panel.sections.scroller,
                     self.notification_rebuild_generation.clone(),
                     self.notification_rebuild_generation.get(),
+                    self.scroll_user_generation.clone(),
+                    self.scroll_user_generation.get(),
                     crate::ui::events::ScrollResetPolicy::Force,
                 );
             }

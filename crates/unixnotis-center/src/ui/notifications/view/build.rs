@@ -18,6 +18,9 @@ use super::types::{NotificationList, NotificationListConfig};
 use super::widgets::{bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets};
 use crate::ui::icons::IconResolver;
 
+// Leave a complete-card breathing room at the end of the nested notification viewport
+const NOTIFICATION_LIST_BOTTOM_BREATHING_ROOM: i32 = 16;
+
 impl NotificationList {
     pub fn new(
         scroller: gtk::ScrolledWindow,
@@ -34,6 +37,7 @@ impl NotificationList {
         list_view.add_css_class("unixnotis-panel-list");
         list_view.set_hexpand(true);
         list_view.set_vexpand(true);
+        list_view.set_margin_bottom(NOTIFICATION_LIST_BOTTOM_BREATHING_ROOM);
 
         let overlay = gtk::Overlay::new();
         overlay.add_css_class("unixnotis-panel-list-overlay");

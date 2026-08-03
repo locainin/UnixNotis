@@ -292,7 +292,13 @@ fn collapsed_group_preview_uses_readable_surface_above_stack_layers() {
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
-    assert_eq!(child_count(&root), 3);
+    let stack = root
+        .first_child()
+        .and_downcast::<gtk::Overlay>()
+        .expect("notification row should use one measured stack overlay");
+    let stack_child_count =
+        std::iter::successors(stack.first_child(), gtk::prelude::WidgetExt::next_sibling).count();
+    assert_eq!(stack_child_count, 3);
     assert!(row.stack_middle.get_visible());
     assert!(row.stack_back.get_visible());
     assert!(row.card_plate.get_visible());

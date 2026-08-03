@@ -24,18 +24,20 @@ fn collapsed_stack_depth_maps_to_two_rear_layers() {
 
 #[gtk::test]
 fn stack_layers_paint_behind_foreground_and_never_accept_input() {
-    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let root = gtk::Overlay::new();
     let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let foreground = unixnotis_ui::CutCorner::new(&card, unixnotis_core::CutCorners::default());
 
     let (middle, back) = append_stack_layers(&root, &foreground);
 
-    assert_eq!(root.first_child().as_ref(), Some(back.upcast_ref()));
+    assert_eq!(root.child().as_ref(), Some(back.upcast_ref()));
     assert_eq!(back.next_sibling().as_ref(), Some(middle.upcast_ref()));
     assert_eq!(
         middle.next_sibling().as_ref(),
         Some(foreground.upcast_ref())
     );
+    assert!(!root.is_measure_overlay(&middle));
+    assert!(root.is_measure_overlay(&foreground));
     assert!(!middle.can_target());
     assert!(!back.can_target());
 }

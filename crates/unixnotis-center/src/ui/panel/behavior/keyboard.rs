@@ -1,5 +1,8 @@
 //! Keyboard shortcut wiring for the panel
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use gtk::gdk;
 use gtk::prelude::*;
 
@@ -75,6 +78,7 @@ pub(super) fn keyboard_action_for(
 pub(in crate::ui) fn connect_keyboard_shortcuts(
     panel: &PanelWidgets,
     command_tx: tokio::sync::mpsc::Sender<UiCommand>,
+    scroll_user_generation: Rc<Cell<u64>>,
 ) {
     let focus_toggle = panel.header.actions.focus_toggle.clone();
     let search_toggle = panel.header.actions.search_toggle.clone();
@@ -114,10 +118,12 @@ pub(in crate::ui) fn connect_keyboard_shortcuts(
                 gtk::glib::Propagation::Stop
             }
             KeyboardPanelAction::ScrollDown => {
+                scroll_user_generation.set(scroll_user_generation.get().wrapping_add(1));
                 nudge_scroller(&scroller, 72.0);
                 gtk::glib::Propagation::Stop
             }
             KeyboardPanelAction::ScrollUp => {
+                scroll_user_generation.set(scroll_user_generation.get().wrapping_add(1));
                 nudge_scroller(&scroller, -72.0);
                 gtk::glib::Propagation::Stop
             }

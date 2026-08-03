@@ -198,8 +198,13 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let card_plate = CutCorner::new(&card, unixnotis_core::CutCorners::default());
     card_plate.add_css_class("unixnotis-panel-card-foreground");
 
+    // One overlay cell keeps positive stack offsets inside the measured row bounds
+    let stack = gtk::Overlay::new();
+    stack.add_css_class("unixnotis-panel-notification-stack");
+    stack.set_hexpand(true);
+    root.append(&stack);
     // Master-style silhouettes preserve the visible group depth without accepting input
-    let (stack_middle, stack_back) = append_stack_layers(&root, &card_plate);
+    let (stack_middle, stack_back) = append_stack_layers(&stack, &card_plate);
 
     let notify_key = Rc::new(Cell::new(NotificationKey {
         id: 0,

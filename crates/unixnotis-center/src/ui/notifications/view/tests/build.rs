@@ -1,8 +1,10 @@
-use gtk::prelude::WidgetExt;
+use gtk::prelude::*;
 use gtk::Align;
 use unixnotis_core::EmptyStateAlignment;
 
 use crate::ui::notifications::test_support as support;
+
+use super::NOTIFICATION_LIST_BOTTOM_BREATHING_ROOM;
 
 #[gtk::test]
 fn new_list_attaches_overlay_to_scroller() {
@@ -19,6 +21,22 @@ fn new_list_attaches_overlay_to_scroller() {
     );
 
     assert!(scroller.child().is_some());
+    let viewport = scroller
+        .child()
+        .and_downcast::<gtk::Viewport>()
+        .expect("scroller should wrap the notification list in a viewport");
+    let overlay = viewport
+        .child()
+        .and_downcast::<gtk::Overlay>()
+        .expect("viewport should contain the notification-list overlay");
+    let list_view = overlay
+        .child()
+        .and_downcast::<gtk::ListView>()
+        .expect("overlay should keep the virtualized list as its main child");
+    assert_eq!(
+        list_view.margin_bottom(),
+        NOTIFICATION_LIST_BOTTOM_BREATHING_ROOM
+    );
     assert_eq!(list.empty_text, "No notifications");
     assert_eq!(list.no_matching_text, "No matching notifications");
     assert_eq!(list.empty_offset_top, 24);

@@ -36,6 +36,8 @@ pub struct UiState {
     pub(super) notifications_changed_while_hidden: bool,
     // Each list rebuild invalidates older idle scroll callbacks
     pub(super) notification_rebuild_generation: Rc<Cell<u64>>,
+    // Pointer and touch scrolling invalidate deferred forced resets explicitly
+    pub(super) scroll_user_generation: Rc<Cell<u64>>,
     pub(super) panel_visible_flag: Arc<AtomicBool>,
     pub(super) work_area: Option<Margins>,
     // Tracks the last rendered counts to avoid redundant label updates

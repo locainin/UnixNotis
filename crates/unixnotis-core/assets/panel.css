@@ -539,8 +539,7 @@ entry selection {
 }
 
 .unixnotis-panel-card-foreground.collapsed-group-preview {
-  margin-top: -58px;
-  margin-bottom: 10px;
+  margin: 12px 8px 10px;
 }
 
 .unixnotis-stack-layer {
@@ -558,7 +557,7 @@ entry selection {
 }
 
 .unixnotis-stack-layer-middle {
-  margin: -58px 14px 0;
+  margin: 6px 14px 0;
   opacity: 0.86;
 }
 

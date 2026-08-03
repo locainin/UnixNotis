@@ -37,28 +37,70 @@ fn scroll_reset_requires_current_generation_and_near_top_position() {
     assert!(should_apply_scroll_reset(
         4,
         4,
+        2,
+        2,
         &scroller,
-        ScrollResetPolicy::NearTopOnly
+        ScrollResetPolicy::NearTopOnly,
     ));
     assert!(!should_apply_scroll_reset(
         3,
         4,
+        2,
+        2,
         &scroller,
-        ScrollResetPolicy::NearTopOnly
+        ScrollResetPolicy::NearTopOnly,
     ));
 
     adjustment.set_value(130.0);
     assert!(!should_apply_scroll_reset(
         4,
         4,
+        2,
+        2,
         &scroller,
-        ScrollResetPolicy::NearTopOnly
+        ScrollResetPolicy::NearTopOnly,
     ));
     assert!(should_apply_scroll_reset(
         4,
         4,
+        2,
+        2,
         &scroller,
-        ScrollResetPolicy::Force
+        ScrollResetPolicy::Force,
+    ));
+}
+
+#[gtk::test]
+fn force_scroll_reset_rejects_a_new_user_scroll_generation() {
+    let scroller = gtk::ScrolledWindow::new();
+    let adjustment = gtk::Adjustment::new(100.0, 100.0, 300.0, 1.0, 10.0, 10.0);
+    scroller.set_vadjustment(Some(&adjustment));
+
+    // Adjustment movement alone may come from layout, so only the explicit
+    // interaction generation identifies a real user scroll
+    assert!(!should_apply_scroll_reset(
+        4,
+        4,
+        3,
+        2,
+        &scroller,
+        ScrollResetPolicy::Force,
+    ));
+}
+
+#[gtk::test]
+fn force_scroll_reset_accepts_layout_adjustment_changes_without_user_input() {
+    let scroller = gtk::ScrolledWindow::new();
+    let adjustment = gtk::Adjustment::new(130.0, 100.0, 300.0, 1.0, 10.0, 10.0);
+    scroller.set_vadjustment(Some(&adjustment));
+
+    assert!(should_apply_scroll_reset(
+        4,
+        4,
+        2,
+        2,
+        &scroller,
+        ScrollResetPolicy::Force,
     ));
 }
 
@@ -70,7 +112,15 @@ fn deferred_scroll_reset_updates_the_adjustment_after_idle() {
     adjustment.set_value(108.0);
     let generation = Rc::new(Cell::new(7));
 
-    reset_notification_scroll(&scroller, generation, 7, ScrollResetPolicy::NearTopOnly);
+    let user_generation = Rc::new(Cell::new(3));
+    reset_notification_scroll(
+        &scroller,
+        generation,
+        7,
+        user_generation,
+        3,
+        ScrollResetPolicy::NearTopOnly,
+    );
     while gtk::glib::MainContext::default().pending() {
         gtk::glib::MainContext::default().iteration(false);
     }

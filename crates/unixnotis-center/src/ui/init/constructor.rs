@@ -23,6 +23,11 @@ impl UiState {
 
         // Build the panel widget tree first so child widgets can be attached safely
         let panel = panel::build::build_panel_widgets(&init.app, &init.config);
+        let scroll_user_generation = Rc::new(Cell::new(0));
+        super::super::events::connect_user_scroll_tracking(
+            &panel.sections.scroller,
+            scroll_user_generation.clone(),
+        );
         let icon_resolver = Rc::new(icons::IconResolver::new());
         debug::set_level(PanelDebugLevel::Off);
         let list = build_notification_list(&panel, &init, icon_resolver.clone());
@@ -70,7 +75,11 @@ impl UiState {
             search_toggle_guard.clone(),
         );
         panel::behavior::autoclose::connect_auto_close(&panel, &init, panel_visible_flag.clone());
-        panel::behavior::keyboard::connect_keyboard_shortcuts(&panel, init.command_tx.clone());
+        panel::behavior::keyboard::connect_keyboard_shortcuts(
+            &panel,
+            init.command_tx.clone(),
+            scroll_user_generation.clone(),
+        );
 
         if init.config.panel.respect_work_area {
             // Work area is refreshed early to ensure the panel anchors correctly
@@ -96,6 +105,7 @@ impl UiState {
             panel_visible: false,
             notifications_changed_while_hidden: false,
             notification_rebuild_generation: Rc::new(Cell::new(0)),
+            scroll_user_generation,
             panel_visible_flag,
             work_area: None,
             last_count: None,
