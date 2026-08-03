@@ -45,11 +45,11 @@ fn trusted_relay_uses_human_source_text_and_keeps_raw_path_in_details() {
 fn conflicting_claim_is_suspicious_and_cannot_enable_reply() {
     let mut view = notification();
     view.attribution = NotificationAttribution::conflict(
-        "Signal",
-        "org.signal.Signal",
+        "Example Chat",
+        "org.example.Chat",
         AttributionReason::ExecutableMismatch,
         "source /tmp/fake",
-        "conflict:signal".to_string(),
+        "conflict:example-chat".to_string(),
     );
     view.inline_reply.available = true;
     view.inline_reply_policy = InlineReplyPolicy::Deny;

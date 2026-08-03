@@ -111,7 +111,7 @@ fn sender_credential_timeout_is_preserved_in_diagnostics() {
     };
     let resolution = unknown_reply_denied(
         AppClaim {
-            reported_name: "Signal",
+            reported_name: "Example Chat",
             desktop_entry: None,
         },
         &metadata,

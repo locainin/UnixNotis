@@ -53,11 +53,11 @@ fn title_and_body_builders_keep_text_classes_and_line_limits() {
 #[gtk::test]
 fn secondary_claim_stays_on_one_compact_metadata_line() {
     let mut view = view_model();
-    view.secondary_claim = Some("Claimed app: Signal".to_string());
+    view.secondary_claim = Some("Claimed app: Example Chat".to_string());
 
     let claim = build_secondary_claim(&view).expect("secondary claim");
 
-    assert_eq!(claim.text().as_str(), "Claimed app: Signal");
+    assert_eq!(claim.text().as_str(), "Claimed app: Example Chat");
     assert!(claim.is_single_line_mode());
     assert_eq!(claim.ellipsize(), gtk::pango::EllipsizeMode::End);
     assert!(!claim.wraps());
@@ -313,9 +313,9 @@ fn identity_avatar_scales_the_symbolic_glyph_inside_its_fixed_slot() {
     let mut state = UiState::new(&app, config, root.join("config.toml"), command_tx, css);
     let mut notification = notification();
     notification.attribution = NotificationAttribution::relay(
-        "Signal",
+        "Example Chat",
         "Sent via /usr/bin/notify-send",
-        "relay:notify-send:signal".to_string(),
+        "relay:notify-send:example-chat".to_string(),
     );
     let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
 

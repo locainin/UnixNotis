@@ -39,11 +39,11 @@ fn suspicious_provenance_preserves_the_communication_category() {
     let mut view = notification();
     view.category = "im.received".to_string();
     view.attribution = NotificationAttribution::conflict(
-        "Signal",
-        "org.signal.Signal",
+        "Example Chat",
+        "org.example.Chat",
         AttributionReason::ExecutableMismatch,
         "source /tmp/fake",
-        "conflict:signal".to_string(),
+        "conflict:example-chat".to_string(),
     );
 
     assert_eq!(PopupKind::for_notification(&view), PopupKind::Communication);

@@ -51,20 +51,20 @@ fn dedicated_system_identity_is_associated_without_inline_reply_authority() {
 
 #[test]
 fn dedicated_system_binary_rejects_runtime_added_flags_outside_the_exec_contract() {
-    let (signal_path, signal_identity) = installed_system_executable();
-    let record = system_record("signal", "Signal", &signal_path, signal_identity)
-        .with_launch_literals(&["--", "sgnl://expected"]);
+    let (app_path, app_identity) = installed_system_executable();
+    let record = system_record("example-chat", "Example Chat", &app_path, app_identity)
+        .with_launch_literals(&["--", "example-chat://expected"]);
     let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
 
     let resolution = resolve_with_evidence(
         AppClaim {
-            // Signal sends an empty app name and adds Electron flags after desktop activation
+            // Some Electron applications send an empty name and add runtime flags after activation
             reported_name: "",
             desktop_entry: None,
         },
         &sender_with_arguments(
-            &signal_path,
-            signal_identity,
+            &app_path,
+            app_identity,
             &["--password-store=kwallet6", "--ozone-platform=x11", "--"],
         ),
         &index,
@@ -134,34 +134,34 @@ fn empty_dedicated_contract_with_rewritten_argv_is_recognized_not_conflicting() 
 
 #[test]
 fn verified_executable_recovers_from_stale_desktop_hint() {
-    let (signal_path, signal_identity) = installed_system_executable();
+    let (app_path, app_identity) = installed_system_executable();
     let mut stale_user_entry = DesktopRecord::fixture(
-        "signal-desktop",
-        "Signal",
+        "example-chat",
+        "Example Chat",
         "/usr/bin/env",
         identity(90, 900, 0),
         false,
     );
-    // An env wrapper cannot associate the user entry with the dedicated Signal process
+    // An env wrapper cannot associate the user entry with the dedicated application process
     stale_user_entry.association_eligible = false;
     stale_user_entry.system_association = false;
-    let system_entry = system_record("signal-true", "Signal", &signal_path, signal_identity);
+    let system_entry = system_record("example-chat-true", "Example Chat", &app_path, app_identity);
     let index =
         DesktopIdentityIndex::from_records(vec![stale_user_entry, system_entry], Vec::new());
 
     let resolution = resolve_with_evidence(
         AppClaim {
-            reported_name: "Signal",
-            // Electron derives this hint from a differently named local desktop file
-            desktop_entry: Some("signal-desktop"),
+            reported_name: "Example Chat",
+            // Electron can derive this hint from a differently named local desktop file
+            desktop_entry: Some("example-chat"),
         },
-        &sender(&signal_path, signal_identity),
+        &sender(&app_path, app_identity),
         &index,
     );
 
     assert_eq!(resolution.attribution.status, AttributionStatus::Recognized);
-    assert_eq!(resolution.attribution.display_name, "Signal");
-    assert_eq!(resolution.attribution.desktop_id, "signal-true");
+    assert_eq!(resolution.attribution.display_name, "Example Chat");
+    assert_eq!(resolution.attribution.desktop_id, "example-chat-true");
 }
 
 #[test]

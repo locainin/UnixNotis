@@ -25,7 +25,7 @@ fn popup_accessible_name_keeps_identity_and_message_context() {
 fn conflict_accessible_name_includes_trust_claim_and_body() {
     let mut view = view_model();
     view.app_label = "Unknown application".to_string();
-    view.secondary_claim = Some("Claimed app: Signal".to_string());
+    view.secondary_claim = Some("Claimed app: Example Chat".to_string());
     view.badge = BadgePresentation::SuspiciousApplication;
     view.body = Some("Hey, did this go through?".to_string());
     view.trust.level = TrustLevel::Conflict;
@@ -33,7 +33,7 @@ fn conflict_accessible_name_includes_trust_claim_and_body() {
 
     assert_eq!(
         popup_accessible_label(&view),
-        "Unknown application. Suspicious. Claimed app: Signal. Build finished. \
+        "Unknown application. Suspicious. Claimed app: Example Chat. Build finished. \
          Hey, did this go through?"
     );
 }

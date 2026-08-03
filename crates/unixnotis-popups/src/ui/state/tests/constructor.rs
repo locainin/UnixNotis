@@ -222,12 +222,12 @@ fn unknown_attribution_uses_a_short_chip_without_showing_raw_provenance() {
     let notification = NotificationView {
         id: 3,
         generation: 3,
-        app_name: "Signal".to_string(),
+        app_name: "Example Chat".to_string(),
         attribution: unixnotis_core::NotificationAttribution::unresolved(
-            "Signal",
+            "Example Chat",
             unixnotis_core::AttributionReason::MissingSenderEvidence,
             "sender evidence unavailable",
-            "unknown:signal".to_string(),
+            "unknown:example-chat".to_string(),
         ),
         summary: "John Doe".to_string(),
         body: "Are you free later?".to_string(),
@@ -280,13 +280,13 @@ fn conflicting_attribution_keeps_message_layout_and_uses_suspicious_chip() {
     let notification = NotificationView {
         id: 4,
         generation: 4,
-        app_name: "Signal".to_string(),
+        app_name: "Example Chat".to_string(),
         attribution: unixnotis_core::NotificationAttribution::conflict(
-            "Signal",
-            "org.signal.Signal",
+            "Example Chat",
+            "org.example.Chat",
             unixnotis_core::AttributionReason::ExecutableMismatch,
             "application claim mismatch; source /tmp/fake",
-            "conflict:signal".to_string(),
+            "conflict:example-chat".to_string(),
         ),
         summary: "John Doe".to_string(),
         body: "Are you free later?".to_string(),
@@ -309,7 +309,7 @@ fn conflicting_attribution_keeps_message_layout_and_uses_suspicious_chip() {
     assert!(visible_descendant_has_text(root.upcast_ref(), "Suspicious"));
     assert!(visible_descendant_has_text(
         root.upcast_ref(),
-        "Claimed app: Signal"
+        "Claimed app: Example Chat"
     ));
     assert!(!visible_descendant_has_text(
         root.upcast_ref(),
@@ -318,7 +318,7 @@ fn conflicting_attribution_keeps_message_layout_and_uses_suspicious_chip() {
 }
 
 #[gtk::test]
-fn notify_send_claim_uses_one_command_line_avatar_without_signal_branding() {
+fn notify_send_claim_uses_one_command_line_avatar_without_app_branding() {
     let app = gtk::Application::builder()
         .application_id("org.unixnotis.PopupRelayProbe")
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
@@ -339,11 +339,11 @@ fn notify_send_claim_uses_one_command_line_avatar_without_signal_branding() {
     let mut notification = NotificationView {
         id: 5,
         generation: 5,
-        app_name: "Signal".to_string(),
+        app_name: "Example Chat".to_string(),
         attribution: unixnotis_core::NotificationAttribution::relay(
-            "Signal",
+            "Example Chat",
             "Sent via /usr/bin/notify-send",
-            "relay:notify-send:signal".to_string(),
+            "relay:notify-send:example-chat".to_string(),
         ),
         summary: "John Doe".to_string(),
         body: String::new(),
@@ -358,7 +358,7 @@ fn notify_send_claim_uses_one_command_line_avatar_without_signal_branding() {
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
         popup_hide_after_ms: 0,
     };
-    notification.image.badge_icon = "signal-desktop".to_string();
+    notification.image.badge_icon = "example-chat".to_string();
 
     let root = state.build_popup_root(&notification);
 
@@ -371,7 +371,7 @@ fn notify_send_claim_uses_one_command_line_avatar_without_signal_branding() {
     ));
     assert!(visible_descendant_has_text(
         root.upcast_ref(),
-        "App label: Signal"
+        "App label: Example Chat"
     ));
     assert_eq!(
         visible_descendant_class_count(root.upcast_ref(), "unixnotis-identity-avatar"),

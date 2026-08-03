@@ -2,9 +2,9 @@ use super::support::*;
 
 #[test]
 fn contains_ci_matches_ascii() {
-    assert!(contains_ci("Signal-Desktop", "signal"));
-    assert!(contains_ci("signal-desktop", "Signal"));
-    assert!(!contains_ci("signal-desktop", "brave"));
+    assert!(contains_ci("Example-Chat", "example"));
+    assert!(contains_ci("example-chat", "Example"));
+    assert!(!contains_ci("example-chat", "brave"));
     assert!(contains_ci("mixedCase", "case"));
     assert!(contains_ci("mixedCase", ""));
     assert!(contains_ci("same", "same"));

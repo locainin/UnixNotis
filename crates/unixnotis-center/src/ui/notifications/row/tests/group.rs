@@ -99,15 +99,15 @@ fn group_accessible_name_keeps_identity_trust_count_and_state() {
         group_accessible_label(
             "Unknown application",
             "Suspicious",
-            "Claimed app: Signal",
+            "Claimed app: Example Chat",
             4,
             true,
         ),
-        "Unknown application. Suspicious. Claimed app: Signal. 4 notifications. Expanded"
+        "Unknown application. Suspicious. Claimed app: Example Chat. 4 notifications. Expanded"
     );
     assert_eq!(
-        group_accessible_label("Signal", "", "", 1, false),
-        "Signal. 1 notification. Collapsed"
+        group_accessible_label("Example Chat", "", "", 1, false),
+        "Example Chat. 1 notification. Collapsed"
     );
 }
 
@@ -172,14 +172,14 @@ fn relay_group_header_keeps_claim_below_command_line_identity() {
     support::init_gtk();
     let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
     let (root, widgets) = build_group_row(event_tx);
-    let mut relayed = notification("Signal").as_ref().clone();
+    let mut relayed = notification("Example Chat").as_ref().clone();
     relayed.attribution = unixnotis_core::NotificationAttribution::relay(
-        "Signal",
+        "Example Chat",
         "Sent via /usr/bin/notify-send",
-        "relay:notify-send:signal".to_string(),
+        "relay:notify-send:example-chat".to_string(),
     );
     let data = RowData::group_header(
-        Rc::from("relay:notify-send:signal"),
+        Rc::from("relay:notify-send:example-chat"),
         4,
         false,
         Rc::new(relayed),
@@ -194,7 +194,7 @@ fn relay_group_header_keeps_claim_below_command_line_identity() {
     assert_eq!(direct_child_count(&header), 4);
     assert_eq!(header.spacing(), 8);
     assert_eq!(widgets.title.text().as_str(), "Command-line notification");
-    assert_eq!(widgets.secondary.text().as_str(), "App label: Signal");
+    assert_eq!(widgets.secondary.text().as_str(), "App label: Example Chat");
     assert!(widgets.secondary.get_visible());
     assert!(!widgets.trust_chip.get_visible());
     assert!(root.has_css_class("relay"));

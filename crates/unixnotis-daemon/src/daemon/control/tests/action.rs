@@ -141,11 +141,11 @@ async fn validated_action_rejects_a_conflicting_application_claim() {
     let notification = {
         let mut notification = action_notification(&sender, "open");
         notification.attribution = NotificationAttribution::conflict(
-            "Signal",
-            "org.signal.Signal",
+            "Example Chat",
+            "org.example.Chat",
             AttributionReason::ApplicationClaimMismatch,
             "application claim mismatch; source /tmp/fake",
-            "conflict:signal".to_string(),
+            "conflict:example-chat".to_string(),
         );
         state
             .store

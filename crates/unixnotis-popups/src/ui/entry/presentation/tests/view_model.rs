@@ -90,10 +90,10 @@ fn blank_default_action_is_clickable_without_becoming_a_visible_control() {
 fn weak_attribution_hides_every_application_directed_action() {
     let mut view = notification();
     view.attribution = NotificationAttribution::unresolved(
-        "Signal",
+        "Example Chat",
         AttributionReason::NoDesktopCandidate,
         "source /tmp/fake",
-        "unknown:signal".to_string(),
+        "unknown:example-chat".to_string(),
     );
     view.actions.push(Action {
         key: "default".to_string(),
@@ -256,11 +256,11 @@ fn conflicting_claim_keeps_communication_layout_and_drops_actions() {
     let mut view = notification();
     view.category = "im.received".to_string();
     view.attribution = NotificationAttribution::conflict(
-        "Signal",
-        "org.signal.Signal",
+        "Example Chat",
+        "org.example.Chat",
         AttributionReason::ExecutableMismatch,
         "source /tmp/fake",
-        "conflict:signal".to_string(),
+        "conflict:example-chat".to_string(),
     );
     view.actions.push(Action {
         key: "default".to_string(),
@@ -272,7 +272,7 @@ fn conflicting_claim_keeps_communication_layout_and_drops_actions() {
     assert_eq!(model.kind, PopupKind::Communication);
     assert_eq!(
         model.secondary_claim.as_deref(),
-        Some("Claimed app: Signal")
+        Some("Claimed app: Example Chat")
     );
     assert!(model.primary_actions.is_empty());
     assert!(model.overflow_actions.is_empty());

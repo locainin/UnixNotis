@@ -37,15 +37,15 @@ fn user_shadow_cannot_join_the_system_desktop_group() {
     let system_identity = identity(30, 300, 0);
     let user_identity = identity(31, 310, 1000);
     let system = system_record(
-        "org.signal.Signal",
-        "Signal",
-        "/usr/bin/signal-desktop",
+        "org.example.Chat",
+        "Example Chat",
+        "/usr/bin/example-chat",
         system_identity,
     );
     let mut user = DesktopRecord::fixture(
-        "org.signal.Signal",
-        "Signal",
-        "/home/user/bin/signal",
+        "org.example.Chat",
+        "Example Chat",
+        "/home/user/bin/example-chat",
         user_identity,
         false,
     );
@@ -54,10 +54,10 @@ fn user_shadow_cannot_join_the_system_desktop_group() {
 
     let resolution = resolve_with_evidence(
         AppClaim {
-            reported_name: "Signal",
-            desktop_entry: Some("org.signal.Signal"),
+            reported_name: "Example Chat",
+            desktop_entry: Some("org.example.Chat"),
         },
-        &sender("/home/user/bin/signal", user_identity),
+        &sender("/home/user/bin/example-chat", user_identity),
         &index,
     );
 
@@ -69,7 +69,7 @@ fn user_shadow_cannot_join_the_system_desktop_group() {
         .starts_with("recognized:user-app:"));
     assert_ne!(
         resolution.attribution.group_key,
-        "verified:system-app:org.signal.Signal"
+        "verified:system-app:org.example.Chat"
     );
 }
 
@@ -179,14 +179,14 @@ fn ambiguous_protected_records_are_unresolved_not_conflicting() {
 
 #[test]
 fn visually_confusable_system_brand_without_association_is_unresolved() {
-    let signal_identity = identity(40, 400, 0);
+    let app_identity = identity(40, 400, 0);
     let hostile_identity = identity(41, 410, 1000);
     let index = DesktopIdentityIndex::from_records(
         vec![system_record(
-            "org.signal.Signal",
-            "Signal",
-            "/usr/bin/signal-desktop",
-            signal_identity,
+            "org.example.Chat",
+            "Example Chat",
+            "/usr/bin/example-chat",
+            app_identity,
         )],
         Vec::new(),
     );
@@ -209,24 +209,24 @@ fn visually_confusable_system_brand_without_association_is_unresolved() {
 
 #[test]
 fn basename_spoof_without_immutable_owner_is_unresolved_without_actions() {
-    let signal_identity = identity(1, 10, 0);
+    let app_identity = identity(1, 10, 0);
     let hostile_identity = identity(7, 70, 1000);
     let index = DesktopIdentityIndex::from_records(
         vec![system_record(
-            "org.signal.Signal",
-            "Signal",
-            "/usr/bin/signal-desktop",
-            signal_identity,
+            "org.example.Chat",
+            "Example Chat",
+            "/usr/bin/example-chat",
+            app_identity,
         )],
         Vec::new(),
     );
 
     let resolution = resolve_with_evidence(
         AppClaim {
-            reported_name: "Signal",
+            reported_name: "Example Chat",
             desktop_entry: None,
         },
-        &sender("/tmp/signal-desktop", hostile_identity),
+        &sender("/tmp/example-chat", hostile_identity),
         &index,
     );
 
@@ -241,10 +241,7 @@ fn basename_spoof_without_immutable_owner_is_unresolved_without_actions() {
         resolution.diagnostics.verification,
         LaunchVerificationView::InsufficientEvidence
     );
-    assert_ne!(
-        resolution.attribution.group_key,
-        "desktop:org.signal.Signal"
-    );
+    assert_ne!(resolution.attribution.group_key, "desktop:org.example.Chat");
 }
 
 #[test]
@@ -306,21 +303,21 @@ fn exact_system_notify_send_identity_is_a_non_replying_relay() {
 
 #[test]
 fn trusted_relay_uses_command_line_identity() {
-    let signal_identity = identity(1, 10, 0);
+    let app_identity = identity(1, 10, 0);
     let relay_identity = identity(3, 30, 0);
     let index = DesktopIdentityIndex::from_records(
         vec![system_record(
-            "org.signal.Signal",
-            "Signal",
-            "/usr/bin/signal-desktop",
-            signal_identity,
+            "org.example.Chat",
+            "Example Chat",
+            "/usr/bin/example-chat",
+            app_identity,
         )],
         vec![(PathBuf::from("/usr/bin/notify-send"), relay_identity)],
     );
 
     let resolution = resolve_with_evidence(
         AppClaim {
-            reported_name: "Signal",
+            reported_name: "Example Chat",
             desktop_entry: None,
         },
         &sender("/usr/bin/notify-send", relay_identity),
@@ -332,17 +329,14 @@ fn trusted_relay_uses_command_line_identity() {
         resolution.attribution.display_name,
         "Command-line notification"
     );
-    assert_eq!(resolution.attribution.claimed_name, "Signal");
+    assert_eq!(resolution.attribution.claimed_name, "Example Chat");
     assert_eq!(
         resolution.attribution.badge_icon,
         "utilities-terminal-symbolic"
     );
     assert_eq!(resolution.inline_reply_policy, InlineReplyPolicy::Deny);
     assert_ne!(resolution.attribution.status, AttributionStatus::Conflict);
-    assert_ne!(
-        resolution.attribution.group_key,
-        "desktop:org.signal.Signal"
-    );
+    assert_ne!(resolution.attribution.group_key, "desktop:org.example.Chat");
 }
 
 #[test]

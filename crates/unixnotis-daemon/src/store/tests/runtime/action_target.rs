@@ -57,22 +57,22 @@ fn active_action_target_denies_every_unverified_sender_class() {
             "user-app:org.example.UserApplication".to_string(),
         ),
         NotificationAttribution::unresolved(
-            "Signal",
+            "Example Chat",
             AttributionReason::NoDesktopCandidate,
             "source /tmp/fake",
-            "unknown:signal".to_string(),
+            "unknown:example-chat".to_string(),
         ),
         NotificationAttribution::conflict(
-            "Signal",
-            "org.signal.Signal",
+            "Example Chat",
+            "org.example.Chat",
             AttributionReason::ExecutableMismatch,
             "source /tmp/fake",
-            "conflict:signal".to_string(),
+            "conflict:example-chat".to_string(),
         ),
         NotificationAttribution::relay(
-            "Signal",
+            "Example Chat",
             "trusted relay /usr/bin/notify-send",
-            "relay:notify-send:signal".to_string(),
+            "relay:notify-send:example-chat".to_string(),
         ),
     ] {
         let mut store = make_store_with_limits(12, 20);
