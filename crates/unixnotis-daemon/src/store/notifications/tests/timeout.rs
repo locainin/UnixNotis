@@ -20,7 +20,7 @@ fn zero_protocol_timeout_disables_both_clocks() {
 }
 
 #[test]
-fn positive_protocol_timeout_controls_popup_and_active_lifetime() {
+fn positive_protocol_timeout_closes_nonresident_notifications() {
     let config = Config::default();
     let mut notification = make_notification("bounded");
     notification.expire_timeout = 30_000;
@@ -29,7 +29,7 @@ fn positive_protocol_timeout_controls_popup_and_active_lifetime() {
         resolve_timeout_policy(&config, &notification),
         super::super::timeout::ResolvedTimeoutPolicy {
             popup_hide_after_ms: 30_000,
-            active_close_after: None,
+            active_close_after: Some(Duration::from_secs(30)),
         }
     );
 }
