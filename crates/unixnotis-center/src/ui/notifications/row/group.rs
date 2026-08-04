@@ -109,7 +109,11 @@ pub(in crate::ui::notifications) fn build_group_row(
     let group_key: Rc<RefCell<Rc<str>>> = Rc::new(RefCell::new(Rc::from("")));
     let event_tx_clone = event_tx;
     let group_key_clone = group_key.clone();
-    button.connect_clicked(move |_| {
+    button.connect_clicked(move |button| {
+        if !button.is_sensitive() {
+            // Programmatic signal emission must respect the same singleton guard
+            return;
+        }
         let group = group_key_clone.borrow().clone();
         if group.is_empty() {
             return;
@@ -182,6 +186,14 @@ pub(in crate::ui::notifications) fn update_group_row(
     set_widget_visible_if_changed(&group.trust_chip, !trust_label.is_empty());
     let next_count = data.count.to_string();
     set_label_text_if_changed(&group.count, &next_count);
+    let has_multiple = data.count > 1;
+    set_widget_visible_if_changed(&group.count, has_multiple);
+    set_widget_visible_if_changed(&group.chevron, has_multiple);
+    group.button.set_focusable(has_multiple);
+    group.button.set_sensitive(has_multiple);
+    group
+        .button
+        .set_tooltip_text(has_multiple.then_some("Toggle notification group"));
     let accessible_label = group_accessible_label(
         display_name,
         trust_label,
@@ -197,7 +209,9 @@ pub(in crate::ui::notifications) fn update_group_row(
     } else {
         "pan-down-symbolic"
     };
-    set_icon_name_if_changed(&group.chevron, chevron_name);
+    if has_multiple {
+        set_icon_name_if_changed(&group.chevron, chevron_name);
+    }
     set_class_state(root, hooks::group_row::COLLAPSED, !data.expanded);
     set_class_state(root, hooks::group_row::EXPANDED, data.expanded);
 
@@ -270,13 +284,14 @@ fn group_accessible_label(
     if !secondary.trim().is_empty() {
         parts.push(secondary.trim().to_string());
     }
-    let count_label = if count == 1 {
+    parts.push(if count == 1 {
         "1 notification".to_string()
     } else {
         format!("{count} notifications")
-    };
-    parts.push(count_label);
-    parts.push(if expanded { "Expanded" } else { "Collapsed" }.to_string());
+    });
+    if count > 1 {
+        parts.push(if expanded { "Expanded" } else { "Collapsed" }.to_string());
+    }
     parts.join(". ")
 }
 

@@ -72,14 +72,14 @@ fn expected_list_len_tracks_collapsed_expanded_and_filtered_groups() {
     list.flush_rebuild();
     let terminal = list.entries.get(&2).expect("terminal").app_key.clone();
 
-    assert_eq!(list.expected_list_len(), 3);
+    assert_eq!(list.expected_list_len(), 4);
 
     list.group_expanded.insert(terminal, true);
-    assert_eq!(list.expected_list_len(), 4);
+    assert_eq!(list.expected_list_len(), 5);
 
     assert!(list.set_filter_query("browser"));
     list.flush_rebuild();
-    assert_eq!(list.expected_list_len(), 1);
+    assert_eq!(list.expected_list_len(), 2);
 }
 
 #[gtk::test]

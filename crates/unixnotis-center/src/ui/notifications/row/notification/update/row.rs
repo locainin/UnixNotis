@@ -77,7 +77,12 @@ pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRow
     while let Some(child) = row.actions_box.first_child() {
         row.actions_box.remove(&child);
     }
-    queue_row_resize(row);
+    // A cleared recycled row must release its previous natural height
+    row.text_stack.queue_resize();
+    row.card.queue_resize();
+    row.card_plate.queue_resize();
+    row.stack.queue_resize();
+    row.root.queue_resize();
 }
 
 pub(in crate::ui::notifications) fn update_notification_row(
@@ -111,9 +116,8 @@ pub(in crate::ui::notifications) fn update_notification_row(
     // Set this before action-cache early returns so recycled rows cannot retain
     // a previous notification generation
     row.default_activation.set_target(default_target);
-    // Only the collapsed preview delegates identity to the group header
-    // Expanded groups retain the master-style identity lane on each child
-    let show_identity = !data.collapsed_group_preview;
+    // Identity visibility follows block assembly, not stack depth
+    let show_identity = !data.app_header_present;
     let has_actions = visible_action_count_from(&presentation, data.is_active) > 0;
     // The daemon has already assigned the visual role after attribution and safe decoding
     let lead_visual = panel_lead_visual(
@@ -226,11 +230,8 @@ pub(in crate::ui::notifications) fn update_notification_row(
     );
     set_widget_visible_if_changed(&row.card_plate, true);
     set_widget_visible_if_changed(&row.card, true);
-    queue_row_resize(row);
-}
-
-fn queue_row_resize(row: &NotificationRowWidgets) {
     // Recycled rows can change natural height when text, media, or stack depth changes
+    row.text_stack.queue_resize();
     row.card.queue_resize();
     row.card_plate.queue_resize();
     row.stack.queue_resize();

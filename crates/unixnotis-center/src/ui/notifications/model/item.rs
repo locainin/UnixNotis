@@ -66,6 +66,8 @@ pub struct RowData {
     pub group_key: Rc<str>,
     pub count: u32,
     pub expanded: bool,
+    // Every notification block has a separate application identity header
+    pub app_header_present: bool,
     // True when this notification previews a collapsed multi-item group
     pub collapsed_group_preview: bool,
     // Rear silhouettes cap at two layers while the count keeps the exact total
@@ -84,6 +86,7 @@ impl Default for RowData {
             group_key: Rc::from(""),
             count: 0,
             expanded: false,
+            app_header_present: false,
             collapsed_group_preview: false,
             stack_depth: 0,
             is_active: false,
@@ -107,6 +110,7 @@ impl RowData {
             group_key,
             count: count as u32,
             expanded,
+            app_header_present: false,
             collapsed_group_preview: false,
             stack_depth: 0,
             is_active: false,
@@ -131,6 +135,7 @@ impl RowData {
             group_key,
             count: 0,
             expanded,
+            app_header_present: true,
             collapsed_group_preview,
             stack_depth,
             is_active,
@@ -146,6 +151,7 @@ impl RowData {
             && Rc::ptr_eq(&self.group_key, &other.group_key)
             && self.count == other.count
             && self.expanded == other.expanded
+            && self.app_header_present == other.app_header_present
             && self.collapsed_group_preview == other.collapsed_group_preview
             && self.stack_depth == other.stack_depth
             && self.is_active == other.is_active

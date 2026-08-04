@@ -22,25 +22,23 @@ impl NotificationList {
 
         let mut items = Vec::new();
         let mut keys = Vec::new();
-        if ids.len() > 1 {
-            // Multi-item groups own one shared application identity header
-            let header = self.group_headers.entry(key.clone()).or_insert_with(|| {
-                RowItem::new(RowData::group_header(
-                    key.clone(),
-                    ids.len(),
-                    expanded,
-                    first_entry.view.clone(),
-                ))
-            });
-            header.update(RowData::group_header(
+        // Every application block owns one shared identity header
+        let header = self.group_headers.entry(key.clone()).or_insert_with(|| {
+            RowItem::new(RowData::group_header(
                 key.clone(),
                 ids.len(),
                 expanded,
                 first_entry.view.clone(),
-            ));
-            items.push(header.clone());
-            keys.push(RowKey::GroupHeader { group: key.clone() });
-        }
+            ))
+        });
+        header.update(RowData::group_header(
+            key.clone(),
+            ids.len(),
+            expanded,
+            first_entry.view.clone(),
+        ));
+        items.push(header.clone());
+        keys.push(RowKey::GroupHeader { group: key.clone() });
 
         // Collapsed groups render the newest content row under their shared header
         let collapsed_group_preview = !expanded && ids.len() > 1;
@@ -84,8 +82,8 @@ impl NotificationList {
         ids: &[u32],
     ) -> usize {
         let expanded = self.group_expanded.get(key).copied().unwrap_or(false);
-        if ids.len() <= 1 {
-            return usize::from(!ids.is_empty());
+        if ids.is_empty() {
+            return 0;
         }
         let mut len = 1; // shared header
         if expanded {

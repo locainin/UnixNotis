@@ -108,8 +108,25 @@ fn group_accessible_name_keeps_identity_trust_count_and_state() {
     );
     assert_eq!(
         group_accessible_label("Example Chat", "", "", 1, false),
-        "Example Chat. 1 notification. Collapsed"
+        "Example Chat. 1 notification"
     );
+}
+
+#[gtk::test]
+fn singleton_group_header_hides_group_controls_and_is_not_interactive() {
+    support::init_gtk();
+    let (event_tx, event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let data = RowData::group_header(Rc::from("terminal"), 1, false, notification("Terminal"));
+
+    update_group_row(&widgets, &root, &data, &IconResolver::new());
+
+    assert!(!widgets.count.get_visible());
+    assert!(!widgets.chevron.get_visible());
+    assert!(!widgets.button.is_sensitive());
+    assert!(!widgets.button.is_focusable());
+    header_button(&root).emit_clicked();
+    assert!(event_rx.try_recv().is_err());
 }
 
 #[gtk::test]

@@ -87,10 +87,18 @@ fn build_group_block_keeps_single_notification_outside_collapsed_group_preview()
     let key = list.entries.get(&1).expect("entry").app_key.clone();
     let ids = list.grouped_cache.get(&key).expect("group ids").clone();
 
-    let (items, _keys) = list.build_group_block(&key, &ids);
+    let (items, keys) = list.build_group_block(&key, &ids);
 
-    assert_eq!(items.len(), 1);
-    let visible = items[0].data();
+    assert_eq!(items.len(), 2);
+    assert_eq!(
+        keys,
+        vec![
+            RowKey::GroupHeader { group: key.clone() },
+            RowKey::Notification { id: 1 },
+        ]
+    );
+    assert_eq!(items[0].data().count, 1);
+    let visible = items[1].data();
     assert!(!visible.collapsed_group_preview);
     assert_eq!(visible.stack_depth, 0);
 }

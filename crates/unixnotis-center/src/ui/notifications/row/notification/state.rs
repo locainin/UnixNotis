@@ -32,7 +32,7 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) header: gtk::Box,
     // App name text shown beside the icon
     pub(super) app_label: gtk::Label,
-    // Headerless singleton rows retain the caller label and trust state visibly
+    // Application identity is rendered by the shared block header
     pub(super) secondary_claim: gtk::Label,
     pub(super) trust_chip: gtk::Label,
     // Critical badge remains allocated so urgency changes only toggle visibility
@@ -47,6 +47,8 @@ pub(in crate::ui::notifications) struct NotificationRowWidgets {
     pub(super) time_badge: gtk::Label,
     // Optional large image preview for notifications with image hints
     pub(super) thumbnail: gtk::Image,
+    // Message column keeps text and actions beside a lead visual
+    pub(super) text_stack: gtk::Box,
     // Summary line with stronger visual weight
     pub(super) summary_label: gtk::Label,
     // Body text section that can span multiple lines

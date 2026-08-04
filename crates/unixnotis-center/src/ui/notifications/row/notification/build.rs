@@ -33,7 +33,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
     root.set_vexpand(false);
     root.set_margin_bottom(super::super::layout::NOTIFICATION_LIST_ROW_GAP);
 
-    // Card uses vertical layout: header, summary, body, then actions
+    // Card keeps its header and message column in one measured composition
     let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
     card.add_css_class("unixnotis-panel-card");
     card.set_hexpand(true);
@@ -194,6 +194,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
     let actions_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     // Action buttons are added on demand during row updates
     actions_box.add_css_class("unixnotis-notification-actions");
+    actions_box.set_visible(false);
     mark_interactive(&actions_box);
     let inline_reply = build_inline_reply(command_tx.clone());
 
@@ -203,10 +204,11 @@ pub(in crate::ui::notifications) fn build_notification_row(
     card.append(&header);
     card.append(&body_row);
     card.append(&footer);
-    card.append(&actions_box);
     card.append(&inline_reply.revealer);
+    // Actions share the message column with the avatar instead of adding a second full row
+    text_stack.append(&actions_box);
 
-    // The wrapper clips the complete styled card while the inner box keeps all CSS hooks
+    // The wrapper owns the configured corner cut while the inner box keeps all CSS hooks
     let card_plate = CutCorner::new(&card, unixnotis_core::CutCorners::default());
     card_plate.add_css_class("unixnotis-panel-card-foreground");
     card_plate.set_hexpand(true);
@@ -264,6 +266,7 @@ pub(in crate::ui::notifications) fn build_notification_row(
             meta_label,
             time_badge,
             thumbnail,
+            text_stack,
             summary_label,
             body_label,
             popup_status,

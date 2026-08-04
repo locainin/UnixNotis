@@ -162,6 +162,33 @@ fn update_notification_row_applies_state_classes_and_text() {
 }
 
 #[gtk::test]
+fn notification_actions_live_inside_the_message_column() {
+    let (_root, row) = notification_row();
+    let mut notification = sample_notification();
+    notification.actions.push(Action {
+        key: "open".to_string(),
+        label: "View".to_string(),
+    });
+    let data = row_data(
+        Rc::new(notification),
+        RowFlags {
+            is_active: true,
+            ..Default::default()
+        },
+    );
+    let (command_tx, _rx) = tokio::sync::mpsc::channel(4);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+
+    let parent = row
+        .actions_box
+        .parent()
+        .expect("actions should have a parent");
+    assert!(parent == row.text_stack.clone().upcast::<gtk::Widget>());
+    assert!(row.actions_box.get_visible());
+}
+
+#[gtk::test]
 fn recycled_panel_row_hides_critical_badge_after_urgency_returns_to_normal() {
     let (_root, row) = notification_row();
     let mut critical = sample_notification();
@@ -179,23 +206,23 @@ fn recycled_panel_row_hides_critical_badge_after_urgency_returns_to_normal() {
 }
 
 #[gtk::test]
-fn single_notification_row_keeps_its_identity_visible_without_a_group_header() {
+fn singleton_notification_row_keeps_identity_in_the_shared_header() {
     let (_root, row) = notification_row();
     let data = row_data(Rc::new(sample_notification()), RowFlags::default());
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
-    assert!(row.app_label.get_visible());
+    assert!(!row.app_label.get_visible());
     assert!(row.header.get_visible());
     assert!(row.close_button.get_visible());
-    assert_eq!(row.card.spacing(), 6);
+    assert_eq!(row.card.spacing(), 2);
     assert_eq!(row.app_label.text().as_str(), "demo");
-    assert!(row.icon_sig.borrow().is_some());
+    assert!(row.icon_sig.borrow().is_none());
 }
 
 #[gtk::test]
-fn relay_singleton_shows_authenticated_source_and_secondary_app_label() {
+fn relay_singleton_card_hides_identity_owned_by_its_shared_header() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();
     notification.attribution = unixnotis_core::NotificationAttribution::relay(
@@ -213,7 +240,7 @@ fn relay_singleton_shows_authenticated_source_and_secondary_app_label() {
         row.secondary_claim.text().as_str(),
         "App label: Example Chat"
     );
-    assert!(row.secondary_claim.get_visible());
+    assert!(!row.secondary_claim.get_visible());
     assert!(!row.trust_chip.get_visible());
     assert!(row.card.has_css_class("relay"));
     assert!(!row.card.has_css_class("conflict"));
@@ -259,7 +286,7 @@ fn grouped_relay_row_hides_identity_details_owned_by_the_group_header() {
 }
 
 #[gtk::test]
-fn expanded_group_rows_retain_master_identity_lane() {
+fn expanded_group_rows_keep_identity_in_the_shared_header() {
     let (_root, row) = notification_row();
     let data = row_data(
         Rc::new(sample_notification()),
@@ -274,9 +301,9 @@ fn expanded_group_rows_retain_master_identity_lane() {
 
     update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
 
-    assert!(row.app_label.get_visible());
-    assert!(!row.card.has_css_class("group-owned-identity"));
-    assert_eq!(row.card.spacing(), 6);
+    assert!(!row.app_label.get_visible());
+    assert!(row.card.has_css_class("group-owned-identity"));
+    assert_eq!(row.card.spacing(), 2);
 }
 
 #[gtk::test]
@@ -328,8 +355,8 @@ fn recycled_standalone_row_clears_identity_cache_when_it_becomes_grouped() {
 
     update_notification_row(&row, &standalone, &IconResolver::new(), &command_tx);
     assert!(
-        row.icon_sig.borrow().is_some(),
-        "standalone rows should cache their resolved identity icon"
+        row.icon_sig.borrow().is_none(),
+        "application identity belongs to the shared header"
     );
 
     update_notification_row(&row, &grouped, &IconResolver::new(), &command_tx);

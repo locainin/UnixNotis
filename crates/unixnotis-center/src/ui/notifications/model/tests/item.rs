@@ -146,6 +146,10 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
     assert!(!base.is_equivalent(&changed));
 
     let mut changed = base.clone();
+    changed.app_header_present = false;
+    assert!(!base.is_equivalent(&changed));
+
+    let mut changed = base.clone();
     changed.collapsed_group_preview = true;
     assert!(!base.is_equivalent(&changed));
 
