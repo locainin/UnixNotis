@@ -1,11 +1,12 @@
 //! Backup restore helpers and path guards
 
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
-use unixnotis_core::filesystem::write_file_atomic;
-use unixnotis_core::Config;
+use unixnotis_core::filesystem::{create_directory_all, open_regular_file, write_file_atomic};
+use unixnotis_core::{Config, DEFAULT_SCRIPTS};
 
 use crate::paths::format_with_home;
 
@@ -113,7 +114,65 @@ pub fn restore_config(ctx: &mut ActionContext) -> Result<()> {
         );
     }
 
+    // Script backups use their basename because reset stores them directly in the backup root
+    for script in DEFAULT_SCRIPTS {
+        let script_name = Path::new(script.relative_path)
+            .file_name()
+            .ok_or_else(|| anyhow!("script path has no file name"))?;
+        let source = backup_dir.join(script_name);
+        if !source.exists() {
+            log_line(
+                ctx,
+                format!(
+                    "Warning: backup missing {}; leaving current file unchanged",
+                    script.relative_path
+                ),
+            );
+            continue;
+        }
+
+        let target = config_dir.join(script.relative_path);
+        if !is_restore_target_allowed(&config_dir, &target) {
+            log_line(
+                ctx,
+                format!(
+                    "Warning: skipped restoring {} because target escapes config dir ({})",
+                    script.relative_path,
+                    format_with_home(&target)
+                ),
+            );
+            continue;
+        }
+
+        if let Some(parent) = target.parent() {
+            create_directory_all(parent, 0o700)
+                .with_context(|| format!("create script restore directory {}", parent.display()))?;
+        }
+        let contents = read_backup_file(&source)
+            .with_context(|| format!("failed to read backup {}", script.relative_path))?;
+        write_file_atomic(&target, &contents, 0o755)
+            .with_context(|| format!("failed to restore {}", script.relative_path))?;
+        log_line(
+            ctx,
+            format!(
+                "Restored {} -> {}",
+                script.relative_path,
+                format_with_home(&target)
+            ),
+        );
+    }
+
     Ok(())
+}
+
+fn read_backup_file(path: &Path) -> Result<Vec<u8>> {
+    // Pin the backup object and reject links or special files before reading it
+    let mut file =
+        open_regular_file(path).with_context(|| format!("open backup file {}", path.display()))?;
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents)
+        .with_context(|| format!("read backup file {}", path.display()))?;
+    Ok(contents)
 }
 
 pub(in crate::actions::config::backup) fn is_restore_target_allowed(

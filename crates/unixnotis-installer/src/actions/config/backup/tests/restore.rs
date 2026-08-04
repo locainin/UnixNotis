@@ -4,9 +4,11 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
+use unixnotis_core::{reset_config_to_defaults, ResetConfigOptions, DEFAULT_SCRIPTS};
 
 #[test]
 fn restore_config_uses_restored_theme_paths() {
@@ -140,5 +142,68 @@ fn restore_config_skips_absolute_theme_targets() {
     assert!(config_dir.join("media.css").exists());
 
     let _ = fs::remove_file(&escaped_target);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn restore_config_restores_all_bundled_scripts_and_executable_modes() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = PathBuf::from("target").join(format!(
+        "unixnotis-installer-script-restore-test-{}",
+        std::process::id()
+    ));
+    let config_dir = root.join("unixnotis");
+    fs::create_dir_all(config_dir.join("scripts")).expect("create script directory");
+    fs::write(config_dir.join("config.toml"), "custom = true\n").expect("write config");
+
+    // Seed every bundled script with distinct user content and non-default permissions
+    for (index, script) in DEFAULT_SCRIPTS.iter().enumerate() {
+        let path = config_dir.join(script.relative_path);
+        fs::write(&path, format!("custom script {index}\n")).expect("write custom script");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700))
+            .expect("set custom script mode");
+    }
+
+    let report = reset_config_to_defaults(&ResetConfigOptions {
+        config_dir: config_dir.clone(),
+        backup_retention: 1,
+    })
+    .expect("reset should create a restorable script backup");
+    let backup_dir = report.backup_dir.expect("reset backup directory");
+
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
+    let (tx, _rx) = mpsc::sync_channel::<UiMessage>(16);
+    let mut ctx = crate::actions::ActionContext {
+        detection: &detection,
+        paths: &paths,
+        install_state: None,
+        log_tx: tx,
+        action_mode: ActionMode::Install,
+        restore_backup: Some(backup_dir),
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
+
+    restore_config(&mut ctx).expect("restore should restore bundled scripts");
+
+    for (index, script) in DEFAULT_SCRIPTS.iter().enumerate() {
+        let path = config_dir.join(script.relative_path);
+        assert_eq!(
+            fs::read_to_string(&path).expect("read restored script"),
+            format!("custom script {index}\n")
+        );
+        assert_eq!(
+            fs::metadata(&path)
+                .expect("restored script metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+    }
+
     let _ = fs::remove_dir_all(&root);
 }
