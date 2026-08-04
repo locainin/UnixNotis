@@ -60,6 +60,8 @@ impl NotificationStore {
 
         self.active.shift_remove(&id);
         self.expirations.remove(&id);
+        // Action cleanup must not leave a replayable popup decision behind
+        self.prune_popup_decisions();
         true
     }
 

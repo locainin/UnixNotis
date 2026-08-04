@@ -102,4 +102,39 @@ impl DaemonState {
         }
         Ok(true)
     }
+
+    pub async fn dismiss_actioned_if_current(
+        &self,
+        id: u32,
+        expected: &Arc<Notification>,
+    ) -> zbus::Result<bool> {
+        let removed = {
+            // Action completion removes only the exact active generation
+            let mut store = self.store.lock().await;
+            let removed = store.dismiss_active_if_current(id, expected);
+            if removed {
+                self.cancel_expiration(expected.key());
+            }
+            removed
+        };
+
+        if !removed {
+            // A replacement or concurrent close already won the store race
+            return Ok(false);
+        }
+
+        // Actioned notifications are dismissed, not archived as expired history
+        if let Err(error) = self
+            .publish_notification_dismissed(expected.key(), true)
+            .await
+        {
+            warn!(
+                ?error,
+                id,
+                generation = expected.generation,
+                "actioned notification was removed but close publication failed"
+            );
+        }
+        Ok(true)
+    }
 }

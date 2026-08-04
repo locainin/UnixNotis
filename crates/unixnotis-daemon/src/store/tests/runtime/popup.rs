@@ -397,3 +397,13 @@ fn popup_decisions_are_pruned_after_their_active_and_history_generations_are_rem
     store.clear_history();
     assert!(store.popup_decisions.is_empty());
 }
+
+#[test]
+fn action_dismissal_prunes_the_removed_generation_popup_decision() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store.insert(make_notification("actioned"), 0).notification;
+
+    assert!(store.popup_decisions.contains_key(&notification.key()));
+    assert!(store.dismiss_active_if_current(notification.id, &notification));
+    assert!(store.popup_decisions.is_empty());
+}

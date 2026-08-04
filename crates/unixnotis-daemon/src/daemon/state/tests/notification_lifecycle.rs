@@ -186,6 +186,58 @@ async fn generation_safe_panel_dismiss_removes_and_cancels_the_current_generatio
 }
 
 #[tokio::test]
+async fn action_dismissal_removes_only_the_current_active_generation() {
+    let state = daemon_state_for_test(false).await;
+    let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();
+    state.set_scheduler(scheduler);
+    let target = state
+        .store
+        .lock()
+        .await
+        .insert(notification("action"), 0)
+        .notification;
+
+    assert!(state
+        .dismiss_actioned_if_current(target.id, &target)
+        .await
+        .expect("action dismissal should succeed"));
+    assert_eq!(next_cancel_id(&mut receiver).await, target.id);
+    let store = state.store.lock().await;
+    assert!(store.active_notification_view(target.id).is_none());
+    assert!(store.list_history().is_empty());
+}
+
+#[tokio::test]
+async fn action_dismissal_keeps_a_same_id_replacement() {
+    let state = daemon_state_for_test(false).await;
+    let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();
+    state.set_scheduler(scheduler);
+    let (id, original) = {
+        let mut store = state.store.lock().await;
+        let original = store.insert(notification("original"), 0).notification;
+        let replacement = store.insert(notification("replacement"), original.id);
+        assert!(replacement.replaced);
+        (original.id, original)
+    };
+
+    assert!(!state
+        .dismiss_actioned_if_current(id, &original)
+        .await
+        .expect("stale action dismissal should be a no-op"));
+    assert!(receiver.try_recv().is_err());
+    assert_eq!(
+        state
+            .store
+            .lock()
+            .await
+            .active_notification_view(id)
+            .expect("replacement should remain active")
+            .summary,
+        "replacement"
+    );
+}
+
+#[tokio::test]
 async fn close_notification_removes_active_notification_and_cancels_timer() {
     let state = daemon_state_for_test(false).await;
     let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();

@@ -1,10 +1,12 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use chrono::Utc;
 use futures_util::TryStreamExt;
 use unixnotis_core::{
     Action, AttributionReason, Notification, NotificationAttribution, NotificationImage, Urgency,
 };
+use zbus::fdo::DBusProxy;
 use zbus::message::Type;
 use zbus::zvariant::OwnedValue;
 use zbus::{Connection, MatchRule, MessageStream};
@@ -26,7 +28,7 @@ async fn validated_action_emits_only_an_advertised_live_action() {
             .key()
     };
 
-    ControlServer::new(state)
+    ControlServer::new(state.clone())
         .invoke_validated_action_generation(notification, "open", false)
         .await
         .expect("invoke advertised action");
@@ -35,6 +37,33 @@ async fn validated_action_emits_only_an_advertised_live_action() {
         next_action_signal(&mut stream).await,
         (notification.id, "open".to_string())
     );
+    let store = state.store.lock().await;
+    assert!(store.active_notification_view(notification.id).is_none());
+    assert!(store.list_history().is_empty());
+}
+
+#[tokio::test]
+async fn successful_action_keeps_a_resident_notification_active() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let mut resident = action_notification(&sender, "open");
+    resident.is_resident = true;
+    let notification = {
+        let mut store = state.store.lock().await;
+        store.insert(resident, 0).notification.key()
+    };
+
+    ControlServer::new(state.clone())
+        .invoke_validated_action_generation(notification, "open", false)
+        .await
+        .expect("resident action should be delivered");
+
+    assert!(state
+        .store
+        .lock()
+        .await
+        .active_notification_view(notification.id)
+        .is_some());
 }
 
 #[tokio::test]
@@ -70,6 +99,72 @@ async fn action_signal_reaches_owner_but_not_unrelated_observer() {
         .is_err(),
         "unrelated observer must not receive action signal"
     );
+}
+
+#[tokio::test]
+async fn action_keeps_notification_when_the_owner_disappears() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let notification = {
+        let mut store = state.store.lock().await;
+        store
+            .insert(action_notification(&sender, "open"), 0)
+            .notification
+            .key()
+    };
+    let sender_name = sender.unique_name().expect("sender unique name").clone();
+    sender.close().await.expect("close sender connection");
+    let proxy = DBusProxy::new(state.connection())
+        .await
+        .expect("create bus proxy");
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if !proxy
+                .name_has_owner(sender_name.clone().into())
+                .await
+                .expect("query sender ownership")
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("bus should release the closed sender name");
+
+    ControlServer::new(state.clone())
+        .invoke_validated_action_generation(notification, "open", false)
+        .await
+        .expect_err("closed sender must reject the action");
+    assert!(state
+        .store
+        .lock()
+        .await
+        .active_notification_view(notification.id)
+        .is_some());
+}
+
+#[tokio::test]
+async fn unconfirmed_action_does_not_emit_or_dismiss() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let mut notification = action_notification(&sender, "open");
+    notification.attribution.interactions = unixnotis_core::InteractionPolicies::CONFIRM_ACTIONS;
+    let key = {
+        let mut store = state.store.lock().await;
+        store.insert(notification, 0).notification.key()
+    };
+
+    ControlServer::new(state.clone())
+        .invoke_validated_action_generation(key, "open", false)
+        .await
+        .expect_err("confirmation-required action must not run without confirmation");
+    assert!(state
+        .store
+        .lock()
+        .await
+        .active_notification_view(key.id)
+        .is_some());
 }
 
 #[tokio::test]

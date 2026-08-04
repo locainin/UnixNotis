@@ -85,7 +85,16 @@ impl ControlServer {
             .set_destination(bus_name.to_owned());
         NotificationServer::action_invoked(&context, notification.id, action_key)
             .await
-            .map_err(to_fdo_error)
+            .map_err(to_fdo_error)?;
+
+        // A successful action consumes an ordinary notification after delivery
+        if !target.is_resident {
+            self.state
+                .dismiss_actioned_if_current(notification.id, &target)
+                .await
+                .map_err(to_fdo_error)?;
+        }
+        Ok(())
     }
 }
 
