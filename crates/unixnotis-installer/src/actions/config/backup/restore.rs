@@ -39,129 +39,175 @@ pub fn restore_config(ctx: &mut ActionContext) -> Result<()> {
     );
 
     // Restore config.toml first so restored theme paths drive the rest of the write targets
-    let config_backup = backup_dir.join("config.toml");
-    if config_backup.exists() {
-        let contents = fs::read_to_string(&config_backup)
-            .with_context(|| "failed to read backup config.toml")?;
-        write_file_atomic(&config_path, contents.as_bytes(), 0o644)
-            .with_context(|| "failed to restore config.toml")?;
-        log_line(
-            ctx,
-            format!("Restored config.toml -> {}", format_with_home(&config_path)),
-        );
-    } else {
-        log_line(
-            ctx,
-            "Warning: backup missing config.toml; leaving current file unchanged".to_string(),
-        );
-    }
-
-    let config = if config_path.exists() {
-        match Config::load_from_path(&config_path) {
-            Ok(config) => config,
-            Err(err) => {
-                log_line(
-                    ctx,
-                    format!(
-                        "Warning: failed to parse restored config.toml ({err:?}); using defaults"
-                    ),
-                );
-                Config::default()
-            }
-        }
-    } else {
-        Config::default()
-    };
+    restore_config_file(ctx, &backup_dir, &config_path)?;
+    let config = load_restored_config(ctx, &config_path);
     let theme_paths = config
         .resolve_theme_paths_from(&config_dir)
         .map_err(|err| anyhow!(err.to_string()))?;
 
-    let theme_targets = [
-        ("base.css", theme_paths.base_css),
-        ("panel.css", theme_paths.panel_css),
-        ("popup.css", theme_paths.popup_css),
-        ("widgets.css", theme_paths.widgets_css),
-        ("media.css", theme_paths.media_css),
-    ];
+    restore_theme_files(ctx, &backup_dir, &config_dir, &theme_paths)?;
+    restore_bundled_scripts(ctx, &backup_dir, &config_dir)?;
 
-    for (name, target) in theme_targets {
-        let source = backup_dir.join(name);
-        if !source.exists() {
-            log_line(
-                ctx,
-                format!("Warning: backup missing {name}; leaving current file unchanged"),
-            );
-            continue;
-        }
-        if !is_restore_target_allowed(&config_dir, &target) {
-            log_line(
-                ctx,
-                format!(
-                    "Warning: skipped restoring {} because target escapes config dir ({})",
-                    name,
-                    format_with_home(&target)
-                ),
-            );
-            continue;
-        }
-        let contents =
-            fs::read_to_string(&source).with_context(|| format!("failed to read backup {name}"))?;
-        write_file_atomic(&target, contents.as_bytes(), 0o644)
-            .with_context(|| format!("failed to restore {name}"))?;
+    Ok(())
+}
+
+fn restore_config_file(
+    ctx: &mut ActionContext,
+    backup_dir: &Path,
+    config_path: &Path,
+) -> Result<()> {
+    let source = backup_dir.join("config.toml");
+    if !source.exists() {
         log_line(
             ctx,
-            format!("Restored {} -> {}", name, format_with_home(&target)),
+            "Warning: backup missing config.toml; leaving current file unchanged".to_string(),
         );
+        return Ok(());
     }
 
-    // Script backups use their basename because reset stores them directly in the backup root
-    for script in DEFAULT_SCRIPTS {
-        let script_name = Path::new(script.relative_path)
-            .file_name()
-            .ok_or_else(|| anyhow!("script path has no file name"))?;
-        let source = backup_dir.join(script_name);
-        if !source.exists() {
+    let contents =
+        fs::read_to_string(&source).with_context(|| "failed to read backup config.toml")?;
+    write_file_atomic(config_path, contents.as_bytes(), 0o644)
+        .with_context(|| "failed to restore config.toml")?;
+    log_line(
+        ctx,
+        format!("Restored config.toml -> {}", format_with_home(config_path)),
+    );
+    Ok(())
+}
+
+fn load_restored_config(ctx: &mut ActionContext, config_path: &Path) -> Config {
+    if !config_path.exists() {
+        return Config::default();
+    }
+    match Config::load_from_path(config_path) {
+        Ok(config) => config,
+        Err(err) => {
             log_line(
                 ctx,
-                format!(
-                    "Warning: backup missing {}; leaving current file unchanged",
-                    script.relative_path
-                ),
+                format!("Warning: failed to parse restored config.toml ({err:?}); using defaults"),
             );
-            continue;
+            Config::default()
         }
+    }
+}
 
-        let target = config_dir.join(script.relative_path);
-        if !is_restore_target_allowed(&config_dir, &target) {
-            log_line(
-                ctx,
-                format!(
-                    "Warning: skipped restoring {} because target escapes config dir ({})",
-                    script.relative_path,
-                    format_with_home(&target)
-                ),
-            );
-            continue;
-        }
+fn restore_theme_files(
+    ctx: &mut ActionContext,
+    backup_dir: &Path,
+    config_dir: &Path,
+    theme_paths: &unixnotis_core::ThemePaths,
+) -> Result<()> {
+    let theme_targets = [
+        ("base.css", &theme_paths.base_css),
+        ("panel.css", &theme_paths.panel_css),
+        ("popup.css", &theme_paths.popup_css),
+        ("widgets.css", &theme_paths.widgets_css),
+        ("media.css", &theme_paths.media_css),
+    ];
+    for (name, target) in theme_targets {
+        restore_theme_file(ctx, backup_dir, config_dir, name, target)?;
+    }
+    Ok(())
+}
 
-        if let Some(parent) = target.parent() {
-            create_directory_all(parent, 0o700)
-                .with_context(|| format!("create script restore directory {}", parent.display()))?;
-        }
-        let contents = read_backup_file(&source)
-            .with_context(|| format!("failed to read backup {}", script.relative_path))?;
-        write_file_atomic(&target, &contents, 0o755)
-            .with_context(|| format!("failed to restore {}", script.relative_path))?;
+fn restore_theme_file(
+    ctx: &mut ActionContext,
+    backup_dir: &Path,
+    config_dir: &Path,
+    name: &str,
+    target: &Path,
+) -> Result<()> {
+    let source = backup_dir.join(name);
+    if !source.exists() {
+        log_line(
+            ctx,
+            format!("Warning: backup missing {name}; leaving current file unchanged"),
+        );
+        return Ok(());
+    }
+    if !is_restore_target_allowed(config_dir, target) {
         log_line(
             ctx,
             format!(
-                "Restored {} -> {}",
+                "Warning: skipped restoring {name} because target escapes config dir ({})",
+                format_with_home(target)
+            ),
+        );
+        return Ok(());
+    }
+    let contents =
+        fs::read_to_string(&source).with_context(|| format!("failed to read backup {name}"))?;
+    write_file_atomic(target, contents.as_bytes(), 0o644)
+        .with_context(|| format!("failed to restore {name}"))?;
+    log_line(
+        ctx,
+        format!("Restored {name} -> {}", format_with_home(target)),
+    );
+    Ok(())
+}
+
+fn restore_bundled_scripts(
+    ctx: &mut ActionContext,
+    backup_dir: &Path,
+    config_dir: &Path,
+) -> Result<()> {
+    // Script backups use their basename because reset stores them directly in the backup root
+    for script in DEFAULT_SCRIPTS {
+        restore_bundled_script(ctx, backup_dir, config_dir, script)?;
+    }
+    Ok(())
+}
+
+fn restore_bundled_script(
+    ctx: &mut ActionContext,
+    backup_dir: &Path,
+    config_dir: &Path,
+    script: &unixnotis_core::DefaultScript,
+) -> Result<()> {
+    let script_name = Path::new(script.relative_path)
+        .file_name()
+        .ok_or_else(|| anyhow!("script path has no file name"))?;
+    let source = backup_dir.join(script_name);
+    if !source.exists() {
+        log_line(
+            ctx,
+            format!(
+                "Warning: backup missing {}; leaving current file unchanged",
+                script.relative_path
+            ),
+        );
+        return Ok(());
+    }
+
+    let target = config_dir.join(script.relative_path);
+    if !is_restore_target_allowed(config_dir, &target) {
+        log_line(
+            ctx,
+            format!(
+                "Warning: skipped restoring {} because target escapes config dir ({})",
                 script.relative_path,
                 format_with_home(&target)
             ),
         );
+        return Ok(());
     }
-
+    if let Some(parent) = target.parent() {
+        create_directory_all(parent, 0o700)
+            .with_context(|| format!("create script restore directory {}", parent.display()))?;
+    }
+    let contents = read_backup_file(&source)
+        .with_context(|| format!("failed to read backup {}", script.relative_path))?;
+    write_file_atomic(&target, &contents, 0o755)
+        .with_context(|| format!("failed to restore {}", script.relative_path))?;
+    log_line(
+        ctx,
+        format!(
+            "Restored {} -> {}",
+            script.relative_path,
+            format_with_home(&target)
+        ),
+    );
     Ok(())
 }
 
