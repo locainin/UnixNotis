@@ -87,6 +87,40 @@ fn stock_panel_hover_styles_avoid_transform_and_geometry_animation() {
 }
 
 #[test]
+fn stock_quick_slider_hover_targets_only_changed_widgets() {
+    // Composite slider hover rules restyle descendants even when no pixels change on the parent
+    for selector in [
+        ".unixnotis-quick-slider:hover",
+        ".unixnotis-quick-slider-volume:hover",
+        ".unixnotis-quick-slider-brightness:hover",
+        ".unixnotis-quick-slider-volume:hover slider",
+        ".unixnotis-quick-slider-brightness:hover slider",
+        ".unixnotis-quick-slider-volume:hover .unixnotis-quick-slider-value",
+        ".unixnotis-quick-slider-brightness:hover .unixnotis-quick-slider-value",
+        ".unixnotis-quick-slider-volume:hover .unixnotis-quick-slider-sublabel",
+        ".unixnotis-quick-slider-brightness:hover .unixnotis-quick-slider-sublabel",
+    ] {
+        assert!(
+            !DEFAULT_WIDGETS_CSS.contains(selector),
+            "quick-slider CSS must not broadcast ancestor hover through {selector}"
+        );
+    }
+
+    // Thumb and icon feedback remain attached to the widgets that actually change appearance
+    for selector in [
+        ".unixnotis-quick-slider-volume .unixnotis-quick-slider-scale slider:hover",
+        ".unixnotis-quick-slider-brightness .unixnotis-quick-slider-scale slider:hover",
+        ".unixnotis-quick-slider-volume .unixnotis-quick-slider-icon:hover",
+        ".unixnotis-quick-slider-brightness .unixnotis-quick-slider-icon:hover",
+    ] {
+        assert!(
+            DEFAULT_WIDGETS_CSS.contains(selector),
+            "quick-slider CSS should keep direct hover feedback on {selector}"
+        );
+    }
+}
+
+#[test]
 fn stock_scrollbar_keeps_master_sizing_without_geometry_animation() {
     assert!(DEFAULT_PANEL_CSS.contains(
         "scrollbar slider {\n  background: alpha(#ffffff, 0.16);\n  border-radius: 999px;\n  border: none;\n  min-width: 4px;"

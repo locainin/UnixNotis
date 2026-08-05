@@ -25,14 +25,6 @@
   margin: 0;
 }
 
-.unixnotis-quick-slider:hover,
-.unixnotis-quick-slider-volume:hover,
-.unixnotis-quick-slider-brightness:hover {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-
 .unixnotis-quick-slider-icon {
   background: transparent;
   border-radius: 999px;
@@ -546,7 +538,7 @@
   color: alpha(#ffffff, 0.65);
 }
 
-.unixnotis-quick-slider-volume:hover .unixnotis-quick-slider-icon {
+.unixnotis-quick-slider-volume .unixnotis-quick-slider-icon:hover {
   color: #00f2fe;
 }
 
@@ -554,16 +546,8 @@
   color: alpha(#ffffff, 0.65);
 }
 
-.unixnotis-quick-slider-brightness:hover .unixnotis-quick-slider-icon {
+.unixnotis-quick-slider-brightness .unixnotis-quick-slider-icon:hover {
   color: #ffb86b;
-}
-
-.unixnotis-quick-slider-volume:hover .unixnotis-quick-slider-value {
-  color: #ffffff;
-}
-
-.unixnotis-quick-slider-brightness:hover .unixnotis-quick-slider-value {
-  color: #ffffff;
 }
 
 .unixnotis-quick-slider-volume .unixnotis-quick-slider-scale highlight {
@@ -582,12 +566,12 @@
   border-color: alpha(#ff9f0a, 0.6);
 }
 
-.unixnotis-quick-slider-volume:hover slider {
+.unixnotis-quick-slider-volume .unixnotis-quick-slider-scale slider:hover {
   border-color: #00a2ff;
   box-shadow: 0 0 6px alpha(#00a2ff, 0.5), 0 1.5px 3.5px alpha(#000000, 0.40);
 }
 
-.unixnotis-quick-slider-brightness:hover slider {
+.unixnotis-quick-slider-brightness .unixnotis-quick-slider-scale slider:hover {
   border-color: #ff9f0a;
   box-shadow: 0 0 6px alpha(#ff9f0a, 0.5), 0 1.5px 3.5px alpha(#000000, 0.40);
 }
@@ -644,16 +628,6 @@
   text-transform: uppercase;
   letter-spacing: 0.15em;
   transition: color 0.15s ease-out;
-}
-
-.unixnotis-quick-slider-volume:hover .unixnotis-quick-slider-sublabel-min,
-.unixnotis-quick-slider-volume:hover .unixnotis-quick-slider-sublabel-max {
-  color: alpha(#00a2ff, 0.7);
-}
-
-.unixnotis-quick-slider-brightness:hover .unixnotis-quick-slider-sublabel-min,
-.unixnotis-quick-slider-brightness:hover .unixnotis-quick-slider-sublabel-max {
-  color: alpha(#ff9f0a, 0.7);
 }
 
 .unixnotis-toggle.unixnotis-toggle-kind-wifi:checked {
