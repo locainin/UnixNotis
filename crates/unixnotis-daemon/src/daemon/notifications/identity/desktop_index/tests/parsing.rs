@@ -103,4 +103,18 @@ fn desktop_categories_mark_conversation_capable_applications() {
     index.add_desktop_file(&path, true);
 
     assert!(index.desktop_id_has_communication_role("org.example.messages"));
+
+    // A communication marker without an indexed desktop record is not enough evidence
+    let mut role_only = DesktopIdentityIndex::default();
+    role_only
+        .communication_desktop_ids
+        .insert("org.example.role-only".to_string());
+    assert!(!role_only.desktop_id_has_communication_role("org.example.role-only"));
+
+    // An indexed record without a communication category must not gain the role
+    let mut record_only = DesktopIdentityIndex::default();
+    record_only
+        .by_id
+        .insert("org.example.record-only".to_string(), vec![0]);
+    assert!(!record_only.desktop_id_has_communication_role("org.example.record-only"));
 }

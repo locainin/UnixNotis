@@ -14,7 +14,11 @@ impl DesktopIdentityIndex {
             for brand in [&record.display_name, &record.id] {
                 let brand = normalize_brand_name(brand);
                 if !brand.is_empty() {
-                    self.system_brand_names.insert(brand);
+                    self.system_brand_names.insert(brand.clone());
+                    self.system_brand_records
+                        .entry(brand)
+                        .or_default()
+                        .push(record_index);
                 }
             }
         }

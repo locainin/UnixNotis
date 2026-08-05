@@ -50,16 +50,11 @@ impl DesktopIdentityIndex {
         let protected = normalize_brand_name(claim);
         if !protected.is_empty() {
             indices.extend(
-                self.records
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, record)| {
-                        (record.system_origin
-                            && [&record.display_name, &record.id]
-                                .iter()
-                                .any(|name| normalize_brand_name(name) == protected))
-                        .then_some(index)
-                    }),
+                self.system_brand_records
+                    .get(&protected)
+                    .into_iter()
+                    .flatten()
+                    .copied(),
             );
         }
         indices.sort_unstable();

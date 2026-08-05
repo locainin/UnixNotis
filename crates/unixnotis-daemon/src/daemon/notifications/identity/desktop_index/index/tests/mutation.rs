@@ -25,6 +25,26 @@ fn executable_index_rebuild_replaces_stale_runtime_identity() {
     assert_eq!(index.records_for_executable(new).len(), 1);
 }
 
+#[test]
+fn protected_brand_lookup_uses_the_indexed_normalized_record() {
+    let mut index = DesktopIdentityIndex::default();
+    let mut record = record(identity(72));
+    record.system_origin = true;
+    record.display_name = "Example Brand".to_string();
+    record.id = "org.example.Brand".to_string();
+    index.index_record(record);
+
+    let matched = index.records_for_claim("Example Brand");
+
+    assert_eq!(matched.len(), 1);
+    assert_eq!(matched[0].id, "org.example.Brand");
+    assert!(index.system_brand_records.values().all(|indices| {
+        indices
+            .iter()
+            .all(|record_index| *record_index < index.records.len())
+    }));
+}
+
 fn record(runtime: FileIdentity) -> DesktopRecord {
     DesktopRecord {
         id: "org.example.App".to_string(),

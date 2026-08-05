@@ -154,6 +154,8 @@ pub struct DesktopIdentityIndex {
     pub(super) by_identity: HashMap<(u64, u64), Vec<usize>>,
     pub(super) by_name: HashMap<String, Vec<usize>>,
     pub(super) system_brand_names: HashSet<String>,
+    // Protected brand keys point directly to records instead of rescanning all desktop entries
+    pub(super) system_brand_records: HashMap<String, Vec<usize>>,
     pub(super) communication_desktop_ids: HashSet<String>,
     pub(in crate::daemon::notifications::identity) trusted_relays: Vec<ExecutableIdentity>,
     pub(in crate::daemon::notifications::identity) trusted_portals: Vec<ExecutableIdentity>,
