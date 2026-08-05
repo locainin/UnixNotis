@@ -269,7 +269,7 @@ async fn ingest_notify_schedules_expiration_for_positive_transient_timeout() {
 }
 
 #[tokio::test]
-async fn ingest_notify_keeps_ordinary_positive_timeout_active() {
+async fn ingest_notify_expires_ordinary_positive_timeout() {
     let state = daemon_state_for_test(false).await;
     let scheduler = ExpirationScheduler::start(state.clone());
     let server = NotificationServer::new(state.clone(), scheduler);
@@ -291,15 +291,23 @@ async fn ingest_notify_keeps_ordinary_positive_timeout_active() {
         .await
         .expect("notify should store");
 
-    tokio::time::sleep(Duration::from_millis(40)).await;
-    let active = state
-        .store
-        .lock()
-        .await
-        .active_notification_view(id)
-        .expect("ordinary positive timeout must keep the active record");
-    assert_eq!(active.popup_hide_after_ms, 25);
-    assert_eq!(active.actions.len(), 1);
+    for _ in 0..30 {
+        let store = state.store.lock().await;
+        if store.active_notification_view(id).is_none() {
+            let history = store.list_history();
+            let archived = history
+                .iter()
+                .find(|notification| notification.id == id)
+                .expect("expired notification should be archived");
+            assert_eq!(archived.popup_hide_after_ms, 0);
+            assert_eq!(archived.actions.len(), 1);
+            return;
+        }
+        drop(store);
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    panic!("ordinary positive timeout should expire the active record");
 }
 
 #[tokio::test]
