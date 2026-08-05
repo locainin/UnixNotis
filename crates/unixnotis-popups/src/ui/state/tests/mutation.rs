@@ -244,13 +244,13 @@ fn identical_update_rebuilds_a_row_after_icon_source_invalidation() {
         "Example",
         "",
         "",
-        "eventual-icon",
+        "",
         unixnotis_core::AttributionReason::ExactSystemExecutable,
         "",
         "test:icon-source-generation".to_string(),
     );
 
-    // Start with a deterministic miss so the test models a package or theme icon appearing later
+    // Keep the miss independent of the host icon theme by providing no lookup candidates
     assert!(state.build_app_icon_widget(&notification, 20).is_none());
     let cache_key = IconResolutionKey {
         app_name: notification.app_name.clone(),

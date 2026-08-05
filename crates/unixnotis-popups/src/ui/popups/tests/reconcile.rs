@@ -168,8 +168,8 @@ fn reconcile_seed_refreshes_visible_rows_once_and_advances_queued_rows() {
     let visible = make_view(40, Urgency::Normal, "visible");
     let queued = make_view(41, Urgency::Normal, "queued");
 
-    state.add_popup(visible.clone());
-    state.add_popup(queued.clone());
+    state.add_popup(visible);
+    state.add_popup(queued);
 
     let visible_id = state
         .popups

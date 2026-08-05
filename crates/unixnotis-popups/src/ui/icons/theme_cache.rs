@@ -98,19 +98,6 @@ impl<T: Clone> ThemeIconCacheMap<T> {
         self.order.clear();
     }
 
-    #[cfg(test)]
-    fn entry_count(&self) -> usize {
-        self.entries.values().map(HashMap::len).sum()
-    }
-
-    #[cfg(test)]
-    fn contains(&self, name: &str, size: i32, scale: i32) -> bool {
-        let size_key = ThemeIconSizeKey::new(size.max(1), scale.max(1));
-        self.entries
-            .get(&size_key)
-            .is_some_and(|bucket| bucket.contains_key(name))
-    }
-
     fn bump(&mut self, name: &str, size: i32, scale: i32) {
         if let Some(position) = self
             .order

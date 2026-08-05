@@ -1,6 +1,22 @@
 use super::super::ThemeIconCache;
 use super::{ThemeIconCacheMap, ThemeIconKey};
 
+fn entry_count<T>(cache: &ThemeIconCacheMap<T>) -> usize {
+    cache
+        .entries
+        .values()
+        .map(std::collections::HashMap::len)
+        .sum()
+}
+
+fn contains<T>(cache: &ThemeIconCacheMap<T>, name: &str, size: i32, scale: i32) -> bool {
+    let size_key = super::ThemeIconSizeKey::new(size.max(1), scale.max(1));
+    cache
+        .entries
+        .get(&size_key)
+        .is_some_and(|bucket| bucket.contains_key(name))
+}
+
 #[test]
 fn successful_theme_icon_lookup_is_reused_without_re_resolving() {
     let mut cache = ThemeIconCacheMap::new(128);
@@ -22,7 +38,7 @@ fn successful_theme_icon_lookup_is_reused_without_re_resolving() {
     );
 
     assert_eq!(resolves, 1);
-    assert_eq!(cache.entry_count(), 1);
+    assert_eq!(entry_count(&cache), 1);
 }
 
 #[test]
@@ -37,7 +53,7 @@ fn a_miss_is_not_cached_and_can_be_retried_successfully() {
         }),
         None
     );
-    assert!(!cache.contains("eventual-icon", 24, 1));
+    assert!(!contains(&cache, "eventual-icon", 24, 1));
 
     assert_eq!(
         cache.get_or_resolve_with("eventual-icon", 24, 1, |_, _, _| {
@@ -48,7 +64,7 @@ fn a_miss_is_not_cached_and_can_be_retried_successfully() {
     );
 
     assert_eq!(resolves, 2);
-    assert_eq!(cache.entry_count(), 1);
+    assert_eq!(entry_count(&cache), 1);
 }
 
 #[test]
@@ -64,21 +80,21 @@ fn scale_variants_have_independent_successful_entries() {
         Some(2)
     );
 
-    assert!(cache.contains("folder", 24, 1));
-    assert!(cache.contains("folder", 24, 2));
-    assert_eq!(cache.entry_count(), 2);
+    assert!(contains(&cache, "folder", 24, 1));
+    assert!(contains(&cache, "folder", 24, 2));
+    assert_eq!(entry_count(&cache), 2);
 }
 
 #[test]
 fn invalidation_discards_successful_paintables() {
     let mut cache = ThemeIconCacheMap::new(128);
     cache.get_or_resolve_with("folder", 24, 1, |_, _, _| Some(1_u8));
-    assert_eq!(cache.entry_count(), 1);
+    assert_eq!(entry_count(&cache), 1);
 
     cache.clear();
 
-    assert_eq!(cache.entry_count(), 0);
-    assert!(!cache.contains("folder", 24, 1));
+    assert_eq!(entry_count(&cache), 0);
+    assert!(!contains(&cache, "folder", 24, 1));
 }
 
 #[test]
@@ -95,10 +111,10 @@ fn lru_promotion_keeps_the_recent_success_when_the_limit_is_reached() {
     );
     cache.get_or_resolve_with("third", 24, 1, |_, _, _| Some(3_u8));
 
-    assert!(cache.contains("first", 24, 1));
-    assert!(!cache.contains("second", 24, 1));
-    assert!(cache.contains("third", 24, 1));
-    assert_eq!(cache.entry_count(), 2);
+    assert!(contains(&cache, "first", 24, 1));
+    assert!(!contains(&cache, "second", 24, 1));
+    assert!(contains(&cache, "third", 24, 1));
+    assert_eq!(entry_count(&cache), 2);
 }
 
 #[test]
@@ -108,9 +124,9 @@ fn failed_lookups_do_not_consume_lru_capacity() {
     cache.get_or_resolve_with("missing", 24, 1, |_, _, _| None::<u8>);
     cache.get_or_resolve_with("present", 24, 1, |_, _, _| Some(1_u8));
 
-    assert!(!cache.contains("missing", 24, 1));
-    assert!(cache.contains("present", 24, 1));
-    assert_eq!(cache.entry_count(), 1);
+    assert!(!contains(&cache, "missing", 24, 1));
+    assert!(contains(&cache, "present", 24, 1));
+    assert_eq!(entry_count(&cache), 1);
 }
 
 #[test]
@@ -130,9 +146,9 @@ fn production_theme_cache_clear_removes_successful_entries() {
         return;
     };
 
-    assert_eq!(cache.entries.entry_count(), 1);
+    assert_eq!(entry_count(&cache.entries), 1);
     cache.clear();
-    assert_eq!(cache.entries.entry_count(), 0);
+    assert_eq!(entry_count(&cache.entries), 0);
 }
 
 #[gtk::test]
