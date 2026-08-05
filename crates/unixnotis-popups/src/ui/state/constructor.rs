@@ -11,7 +11,7 @@ use unixnotis_ui::icons::DesktopIconIndex;
 
 use crate::dbus::UiCommand;
 
-use super::super::icons::TextureCache;
+use super::super::icons::{TextureCache, ThemeIconCache};
 use super::super::window::build_popup_window;
 use super::model::UiState;
 
@@ -54,11 +54,13 @@ impl UiState {
             control_state: ControlState::default(),
             desktop_icons: DesktopIconIndex::new(),
             icon_sources_dirty,
+            icon_source_generation: 0,
             _app_info_monitor: app_info_monitor,
             _icon_theme: icon_theme,
             icon_cache: HashMap::new(),
             icon_cache_order: VecDeque::new(),
             icon_texture_cache: Rc::new(RefCell::new(TextureCache::new_for_popups())),
+            theme_icon_cache: ThemeIconCache::new_for_popups(),
         }
     }
 

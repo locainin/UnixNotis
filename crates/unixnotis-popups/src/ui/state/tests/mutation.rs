@@ -4,7 +4,7 @@ use unixnotis_core::{
 };
 use unixnotis_ui::css::CssManager;
 
-use super::super::UiState;
+use super::super::{IconCacheEntry, IconResolutionKey, UiState};
 use super::support::theme_paths;
 use crate::dbus::UiEvent;
 
@@ -84,6 +84,79 @@ fn popup_events_preserve_newest_generation_and_exact_close_identity() {
 }
 
 #[gtk::test]
+fn identical_generation_updates_keep_the_existing_widget() {
+    let (mut state, mut command_rx) =
+        popup_state_with_commands("org.unixnotis.PopupDuplicateUpdate", 1);
+    let original = notification(11, 1, "unchanged");
+
+    state.add_popup(original.clone());
+    assert_materialized_and_visible_commands(&mut command_rx, original.key());
+    let original_root = state
+        .popups
+        .get(&original.id)
+        .and_then(|entry| entry.root.clone())
+        .expect("original popup root");
+
+    let original_key = original.key();
+    state.update_popup(original, true);
+
+    let current_root = state
+        .popups
+        .get(&11)
+        .and_then(|entry| entry.root.clone())
+        .expect("unchanged popup root");
+    assert_eq!(current_root, original_root);
+    match command_rx
+        .try_recv()
+        .expect("duplicate update should repair materialization acknowledgement")
+    {
+        crate::dbus::UiCommand::Materialized(key) => assert_eq!(key, original_key),
+        command => panic!("unexpected duplicate-update command: {command:?}"),
+    }
+    assert!(command_rx.try_recv().is_err());
+}
+
+#[gtk::test]
+fn queued_duplicate_update_can_materialize_without_rebuilding_payload() {
+    let (mut state, mut command_rx) =
+        popup_state_with_commands("org.unixnotis.PopupQueuedDuplicate", 0);
+    let original = notification(12, 1, "queued");
+
+    state.add_popup(original.clone());
+    assert!(state
+        .popups
+        .get(&original.id)
+        .is_some_and(|entry| !entry.is_materialized()));
+    assert!(command_rx.try_recv().is_err());
+
+    // A later visibility change makes the existing queued payload eligible
+    state.config.popups.max_visible = 1;
+    state.update_popup(original.clone(), true);
+
+    assert!(state
+        .popups
+        .get(&original.id)
+        .is_some_and(super::super::super::entry::PopupEntry::is_materialized));
+    assert_materialized_and_visible_commands(&mut command_rx, original.key());
+}
+
+#[gtk::test]
+fn popup_visibility_tracks_the_materialized_visible_slice() {
+    let (mut state, mut command_rx) =
+        popup_state_with_commands("org.unixnotis.PopupVisibilityState", 1);
+    state.update_popup_visibility(false);
+    assert!(!state.popup_window.is_visible());
+
+    let notification = notification(13, 1, "visible");
+    state.add_popup(notification.clone());
+    assert_materialized_and_visible_commands(&mut command_rx, notification.key());
+    assert!(state.popup_window.is_visible());
+
+    state.remove_popup_if_generation(notification.key());
+    assert!(!state.popup_window.is_visible());
+}
+
+#[gtk::test]
 fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
     let mut state = popup_state("org.unixnotis.PopupMutationImages");
     let mut content = notification(8, 1, "content");
@@ -124,7 +197,10 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
 
     // A daemon-selected badge remains independent from caller image content
     missing_content.attribution.badge_icon = "dialog-information".to_string();
-    assert!(state.build_app_icon_widget(&missing_content, 20).is_some());
+    let badge = state
+        .build_app_icon_widget(&missing_content, 20)
+        .expect("known themed badge");
+    assert!(badge.paintable().is_some());
 
     let mut decorative = notification(10, 1, "decorative");
     decorative.image.sender_visual_role =
@@ -147,6 +223,74 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
         decorative_root.upcast_ref(),
         "unixnotis-popup-content-image"
     ));
+}
+
+#[gtk::test]
+fn icon_source_invalidation_clears_the_dirty_marker() {
+    let mut state = popup_state("org.unixnotis.PopupIconInvalidation");
+    state.icon_sources_dirty.set(true);
+
+    state.invalidate_icon_sources();
+
+    assert!(!state.icon_sources_dirty.get());
+}
+
+#[gtk::test]
+fn identical_update_rebuilds_a_row_after_icon_source_invalidation() {
+    let (mut state, _command_rx) =
+        popup_state_with_commands("org.unixnotis.PopupIconSourceGeneration", 1);
+    let mut notification = notification(32, 1, "icon source changed");
+    notification.attribution = unixnotis_core::NotificationAttribution::verified(
+        "Example",
+        "",
+        "",
+        "eventual-icon",
+        unixnotis_core::AttributionReason::ExactSystemExecutable,
+        "",
+        "test:icon-source-generation".to_string(),
+    );
+
+    // Start with a deterministic miss so the test models a package or theme icon appearing later
+    assert!(state.build_app_icon_widget(&notification, 20).is_none());
+    let cache_key = IconResolutionKey {
+        app_name: notification.app_name.clone(),
+        badge_icon: notification.attribution.badge_icon.clone(),
+        desktop_id: notification.attribution.desktop_id.clone(),
+        claimed_theme_icon: notification.image.claimed_theme_icon.clone(),
+    };
+    assert!(state
+        .icon_cache
+        .get(&cache_key)
+        .is_some_and(|entry| entry.resolved.is_none()));
+
+    state.add_popup(notification.clone());
+    let old_root = state
+        .popups
+        .get(&notification.id)
+        .and_then(|entry| entry.root.clone())
+        .expect("initial popup root");
+
+    // Simulate the icon monitor seeing the newly installed themed icon
+    state.icon_cache.insert(
+        cache_key.clone(),
+        IconCacheEntry {
+            resolved: Some("dialog-information".to_string()),
+            cached_at: std::time::Instant::now(),
+        },
+    );
+    state.icon_sources_dirty.set(true);
+    state.update_popup(notification.clone(), true);
+
+    let entry = state
+        .popups
+        .get(&notification.id)
+        .expect("popup should remain active");
+    assert_ne!(entry.root.as_ref(), Some(&old_root));
+    assert_eq!(entry.icon_source_generation, 1);
+    assert!(state
+        .icon_cache
+        .get(&cache_key)
+        .is_some_and(|cached| { cached.resolved.is_none() }));
 }
 
 #[gtk::test]
@@ -201,7 +345,7 @@ fn popup_widget_tree_keeps_one_identity_grid_and_overlay_close_control() {
 
 #[gtk::test]
 fn popup_display_timeout_hides_only_the_local_banner_generation() {
-    let (mut state, _command_rx) = popup_state_with_commands("org.unixnotis.PopupLocalHide", 1);
+    let (mut state, mut command_rx) = popup_state_with_commands("org.unixnotis.PopupLocalHide", 1);
     state.config.popups.default_timeout_ms = 1;
     let (event_tx, event_rx) = async_channel::bounded(2);
     state.set_popup_event_sender(event_tx);
@@ -210,6 +354,7 @@ fn popup_display_timeout_hides_only_the_local_banner_generation() {
 
     state.handle_event(UiEvent::NotificationAdded(first.clone(), true));
     assert!(state.popups.contains_key(&first.id));
+    assert_materialized_and_visible_commands(&mut command_rx, first.key());
 
     std::thread::sleep(std::time::Duration::from_millis(15));
     while gtk::glib::MainContext::default().pending() {
@@ -228,6 +373,10 @@ fn popup_display_timeout_hides_only_the_local_banner_generation() {
     // An update for the same live generation must not resurrect its banner
     state.handle_event(UiEvent::NotificationUpdated(first.clone(), true));
     assert!(!state.popups.contains_key(&first.id));
+    assert!(
+        command_rx.try_recv().is_err(),
+        "hidden generations must not send a fresh materialization acknowledgement"
+    );
 
     // Closing the active record also releases the local hidden-banner marker
     state.handle_event(UiEvent::NotificationClosed(

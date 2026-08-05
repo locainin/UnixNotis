@@ -3,6 +3,7 @@
 //! Keeps icon decoding, caching, and texture reuse isolated from UI state handling
 
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gtk::glib::object::Cast;
@@ -11,12 +12,12 @@ use gtk::{gdk, glib};
 use tracing::debug;
 use unixnotis_core::NotificationView;
 
-use super::icons::{
+use super::super::state::{IconCacheEntry, IconResolutionKey};
+use super::super::UiState;
+use super::{
     collect_icon_candidates, file_path_from_hint, image_data_texture, image_data_texture_for_data,
-    resolve_icon_image, IconDecodePool, IconDecodeResult,
+    IconDecodePool, IconDecodeResult, TextureCache, ThemeIconCache,
 };
-use super::state::IconCacheEntry;
-use super::UiState;
 
 const ICON_CACHE_MAX_ENTRIES: usize = 256;
 // Skip caching decoded textures above this size to avoid holding large buffers
@@ -29,7 +30,7 @@ const POPUP_APPLICATION_VISUAL_SIZE: i32 = 38;
 const NEGATIVE_ICON_CACHE_TTL: Duration = Duration::from_secs(15);
 
 impl UiState {
-    pub(super) fn build_conversation_avatar_widget(
+    pub(in crate::ui) fn build_conversation_avatar_widget(
         notification: &NotificationView,
         size: i32,
     ) -> Option<gtk::Image> {
@@ -48,7 +49,7 @@ impl UiState {
         Some(widget)
     }
 
-    pub(super) fn build_sender_visual_widget(
+    pub(in crate::ui) fn build_sender_visual_widget(
         notification: &NotificationView,
     ) -> Option<gtk::Image> {
         if notification.image.sender_visual_role
@@ -63,7 +64,7 @@ impl UiState {
         Some(widget)
     }
 
-    pub(super) fn build_content_image_widget(
+    pub(in crate::ui) fn build_content_image_widget(
         notification: &NotificationView,
     ) -> Option<gtk::Image> {
         if let Some(texture) = image_data_texture(&notification.image) {
@@ -75,20 +76,27 @@ impl UiState {
         None
     }
 
-    pub(super) fn build_app_icon_widget(
+    pub(in crate::ui) fn build_app_icon_widget(
         &mut self,
         notification: &NotificationView,
         size: i32,
     ) -> Option<gtk::Image> {
         self.refresh_icon_sources_if_needed();
         // Caller image hints are content, so the header resolves only authenticated badge inputs
-        let cache_key = format!(
-            "{}|{}",
-            notification.app_name, notification.attribution.badge_icon
-        );
+        let cache_key = IconResolutionKey {
+            app_name: notification.app_name.clone(),
+            badge_icon: notification.attribution.badge_icon.clone(),
+            desktop_id: notification.attribution.desktop_id.clone(),
+            claimed_theme_icon: notification.image.claimed_theme_icon.clone(),
+        };
         if let Some(cached) = self.icon_cache.get(&cache_key) {
-            if let Some(icon_name) = &cached.resolved {
-                return self.resolve_icon_widget(icon_name, size);
+            if let Some(icon_name) = cached.resolved.as_deref() {
+                return resolve_icon_widget(
+                    &mut self.theme_icon_cache,
+                    &self.icon_texture_cache,
+                    icon_name,
+                    size,
+                );
             }
             if negative_cache_is_fresh(cached.cached_at, Instant::now()) {
                 return None;
@@ -105,7 +113,12 @@ impl UiState {
         for candidate in &candidates {
             if let Some(icon_names) = self.desktop_icons.icons_for(candidate) {
                 for icon_name in icon_names {
-                    if let Some(widget) = self.resolve_icon_widget(icon_name.as_str(), size) {
+                    if let Some(widget) = resolve_icon_widget(
+                        &mut self.theme_icon_cache,
+                        &self.icon_texture_cache,
+                        icon_name.as_str(),
+                        size,
+                    ) {
                         resolved = Some((icon_name, widget));
                         break;
                     }
@@ -118,7 +131,12 @@ impl UiState {
 
         if resolved.is_none() {
             for candidate in candidates {
-                if let Some(widget) = self.resolve_icon_widget(&candidate, size) {
+                if let Some(widget) = resolve_icon_widget(
+                    &mut self.theme_icon_cache,
+                    &self.icon_texture_cache,
+                    &candidate,
+                    size,
+                ) {
                     resolved = Some((candidate, widget));
                     break;
                 }
@@ -134,7 +152,11 @@ impl UiState {
         }
     }
 
-    fn cache_icon(&mut self, cache_key: String, resolved: Option<String>) {
+    pub(in crate::ui) fn cache_icon(
+        &mut self,
+        cache_key: IconResolutionKey,
+        resolved: Option<String>,
+    ) {
         let cached = IconCacheEntry {
             resolved,
             cached_at: Instant::now(),
@@ -151,88 +173,105 @@ impl UiState {
                 self.icon_cache_order.push_back(key);
             }
         }
-        while self.icon_cache_order.len() > ICON_CACHE_MAX_ENTRIES {
+        let excess_entries = self
+            .icon_cache_order
+            .len()
+            .saturating_sub(ICON_CACHE_MAX_ENTRIES);
+        for _ in 0..excess_entries {
             if let Some(evicted) = self.icon_cache_order.pop_front() {
                 self.icon_cache.remove(&evicted);
             }
         }
     }
 
-    pub(super) fn invalidate_icon_sources(&mut self) {
-        // Positive names remain useful while misses must be retried against the rebuilt index
+    pub(in crate::ui) fn invalidate_icon_sources(&mut self) {
+        // Rebuild both lookup layers so changed desktop entries are resolved again
+        self.icon_source_generation = self.icon_source_generation.wrapping_add(1);
         self.desktop_icons.rebuild();
-        self.icon_cache.retain(|_, entry| entry.resolved.is_some());
-        self.icon_cache_order
-            .retain(|key| self.icon_cache.contains_key(key));
+        self.icon_cache.clear();
+        self.icon_cache_order.clear();
+        self.theme_icon_cache.clear();
+        self.icon_texture_cache.borrow_mut().clear();
         self.icon_sources_dirty.set(false);
     }
 
-    fn refresh_icon_sources_if_needed(&mut self) {
+    pub(in crate::ui) fn refresh_icon_sources_if_needed(&mut self) {
         if self.icon_sources_dirty.replace(false) {
             self.invalidate_icon_sources();
         }
     }
+}
 
-    fn resolve_icon_widget(&self, name: &str, size: i32) -> Option<gtk::Image> {
-        if let Some(file_path) = file_path_from_hint(name) {
-            // Decoded file:// paths allow loading icon files with escaped characters
-            if file_path.is_file() {
-                // Reuse a cached texture when available to avoid repeated decode work
-                if let Some(texture) = self.icon_texture_cache.borrow_mut().get(&file_path, size) {
-                    let widget = gtk::Image::new();
-                    widget.set_paintable(Some(&texture));
-                    set_popup_icon_size(&widget, size);
-                    return Some(widget);
+fn resolve_icon_widget(
+    theme_icon_cache: &mut ThemeIconCache,
+    icon_texture_cache: &Rc<std::cell::RefCell<TextureCache>>,
+    name: &str,
+    size: i32,
+) -> Option<gtk::Image> {
+    if let Some(file_path) = file_path_from_hint(name) {
+        // Decoded file:// paths allow loading icon files with escaped characters
+        if file_path.is_file() {
+            // Reuse a cached texture when available to avoid repeated decode work
+            if let Some(texture) = icon_texture_cache.borrow_mut().get(&file_path, size) {
+                let widget = gtk::Image::new();
+                widget.set_paintable(Some(&texture));
+                set_popup_icon_size(&widget, size);
+                return Some(widget);
+            }
+            return Some(spawn_file_icon(icon_texture_cache, file_path, size));
+        }
+    }
+    // Keep the existing lookup scale so caching does not change rendered icon selection
+    let paintable = theme_icon_cache.get_or_resolve(name, size, 1)?;
+    let widget = gtk::Image::from_paintable(Some(&paintable));
+    set_popup_icon_size(&widget, size);
+    Some(widget)
+}
+
+fn spawn_file_icon(
+    icon_texture_cache: &Rc<std::cell::RefCell<TextureCache>>,
+    path: PathBuf,
+    size: i32,
+) -> gtk::Image {
+    let widget = gtk::Image::new();
+    set_popup_icon_size(&widget, size);
+    let (tx, rx) = async_channel::bounded::<IconDecodeResult>(1);
+    let widget_clone = widget.clone();
+    let cache = Rc::clone(icon_texture_cache);
+    let path_clone = path.clone();
+    let target_size = size.max(1);
+    // Apply the texture on the main loop to avoid GTK thread violations
+    glib::MainContext::default().spawn_local(async move {
+        if let Ok(result) = rx.recv().await {
+            match result {
+                Ok(icon) => {
+                    let bytes = glib::Bytes::from(&icon.bytes);
+                    let texture = gdk::MemoryTexture::new(
+                        icon.width,
+                        icon.height,
+                        gdk::MemoryFormat::R8g8b8a8,
+                        &bytes,
+                        icon.stride as usize,
+                    )
+                    .upcast::<gdk::Texture>();
+                    widget_clone.set_paintable(Some(&texture));
+                    set_popup_icon_size(&widget_clone, target_size);
+                    // Cache only modestly sized textures to limit resident memory
+                    if icon.bytes.len() <= ICON_TEXTURE_CACHE_MAX_BYTES {
+                        cache.borrow_mut().insert(path_clone, target_size, texture);
+                    }
                 }
-                return Some(self.spawn_file_icon(file_path, size));
+                Err(err) => {
+                    debug!(?err, "popup icon decode failed");
+                }
             }
         }
-        let widget = resolve_icon_image(name, size)?;
-        set_popup_icon_size(&widget, size);
-        Some(widget)
-    }
+    });
 
-    fn spawn_file_icon(&self, path: PathBuf, size: i32) -> gtk::Image {
-        let widget = gtk::Image::new();
-        set_popup_icon_size(&widget, size);
-        let (tx, rx) = async_channel::bounded::<IconDecodeResult>(1);
-        let widget_clone = widget.clone();
-        let cache = self.icon_texture_cache.clone();
-        let path_clone = path.clone();
-        let target_size = size.max(1);
-        // Apply the texture on the main loop to avoid GTK thread violations
-        glib::MainContext::default().spawn_local(async move {
-            if let Ok(result) = rx.recv().await {
-                match result {
-                    Ok(icon) => {
-                        let bytes = glib::Bytes::from(&icon.bytes);
-                        let texture = gdk::MemoryTexture::new(
-                            icon.width,
-                            icon.height,
-                            gdk::MemoryFormat::R8g8b8a8,
-                            &bytes,
-                            icon.stride as usize,
-                        )
-                        .upcast::<gdk::Texture>();
-                        widget_clone.set_paintable(Some(&texture));
-                        set_popup_icon_size(&widget_clone, target_size);
-                        // Cache only modestly sized textures to limit resident memory
-                        if icon.bytes.len() <= ICON_TEXTURE_CACHE_MAX_BYTES {
-                            cache.borrow_mut().insert(path_clone, target_size, texture);
-                        }
-                    }
-                    Err(err) => {
-                        debug!(?err, "popup icon decode failed");
-                    }
-                }
-            }
-        });
+    // Decode on a background worker pool to avoid spawning unbounded threads
+    IconDecodePool::global().submit(path, target_size, tx);
 
-        // Decode on a background worker pool to avoid spawning unbounded threads
-        IconDecodePool::global().submit(path, target_size, tx);
-
-        widget
-    }
+    widget
 }
 
 fn negative_cache_is_fresh(cached_at: Instant, now: Instant) -> bool {
@@ -240,7 +279,7 @@ fn negative_cache_is_fresh(cached_at: Instant, now: Instant) -> bool {
 }
 
 #[cfg(test)]
-#[path = "tests/icon_state.rs"]
+#[path = "tests/state.rs"]
 mod tests;
 
 fn set_popup_icon_size(widget: &gtk::Image, size: i32) {

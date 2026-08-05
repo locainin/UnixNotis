@@ -18,9 +18,13 @@ impl UiState {
         // Max-visible of zero disables popups entirely
         if max_visible == 0 {
             let update = self.apply_visible_popups(Vec::new());
-            self.popup_window.set_visible(false);
+            let window_changed = set_window_visible_if_changed(&self.popup_window, false);
             // Keep input region empty when popups are disabled
-            if force_region_refresh || update.stack_changed {
+            if needs_input_region_refresh(
+                force_region_refresh,
+                update.stack_changed,
+                window_changed,
+            ) {
                 refresh_popup_input_region(
                     &self.popup_window,
                     &self.popup_stack,
@@ -41,9 +45,9 @@ impl UiState {
         let update = self.apply_visible_popups(desired_visible);
         // Window visibility follows the rows GTK actually represents, not just the
         // logical popup order that was requested upstream
-        self.popup_window
-            .set_visible(!self.visible_popups.is_empty());
-        if force_region_refresh || update.stack_changed {
+        let window_changed =
+            set_window_visible_if_changed(&self.popup_window, !self.visible_popups.is_empty());
+        if needs_input_region_refresh(force_region_refresh, update.stack_changed, window_changed) {
             refresh_popup_input_region(
                 &self.popup_window,
                 &self.popup_stack,
@@ -189,6 +193,22 @@ impl UiState {
         }
         update
     }
+}
+
+fn set_window_visible_if_changed(window: &gtk::ApplicationWindow, visible: bool) -> bool {
+    if window.is_visible() == visible {
+        return false;
+    }
+    window.set_visible(visible);
+    true
+}
+
+pub(super) const fn needs_input_region_refresh(
+    force_region_refresh: bool,
+    stack_changed: bool,
+    window_changed: bool,
+) -> bool {
+    force_region_refresh || stack_changed || window_changed
 }
 
 pub(super) fn visible_popup_target(total_popups: usize, max_visible: usize) -> usize {

@@ -13,7 +13,7 @@ use unixnotis_ui::icons::DesktopIconIndex;
 use crate::dbus::{UiCommand, UiEvent};
 
 use super::super::entry::PopupEntry;
-use super::super::icons::TextureCache;
+use super::super::icons::{TextureCache, ThemeIconCache};
 use super::super::window::PopupInputRegionState;
 
 /// Popup-only GTK state for notification toasts
@@ -40,14 +40,27 @@ pub struct UiState {
     pub(in crate::ui) desktop_icons: DesktopIconIndex,
     // Monitors mark lookup state dirty without rebuilding inside callbacks
     pub(in crate::ui) icon_sources_dirty: Rc<Cell<bool>>,
+    // Each source invalidation advances the generation used by duplicate-update checks
+    pub(in crate::ui) icon_source_generation: u64,
     pub(in crate::ui) _app_info_monitor: gtk::gio::AppInfoMonitor,
     pub(in crate::ui) _icon_theme: Option<gtk::IconTheme>,
     // Cache resolved icon names per app to reduce repeated theme lookups
-    pub(in crate::ui) icon_cache: HashMap<String, IconCacheEntry>,
+    pub(in crate::ui) icon_cache: HashMap<IconResolutionKey, IconCacheEntry>,
     // FIFO order used to cap icon cache growth
-    pub(in crate::ui) icon_cache_order: VecDeque<String>,
+    pub(in crate::ui) icon_cache_order: VecDeque<IconResolutionKey>,
     // Small LRU for decoded textures to avoid repeated PNG decode work
     pub(in crate::ui) icon_texture_cache: Rc<RefCell<TextureCache>>,
+    // Themed paintables stay on the GTK thread and are reused by repeated rows
+    pub(in crate::ui) theme_icon_cache: ThemeIconCache,
+}
+
+/// Inputs that affect desktop and theme icon candidate resolution
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(in crate::ui) struct IconResolutionKey {
+    pub(in crate::ui) app_name: String,
+    pub(in crate::ui) badge_icon: String,
+    pub(in crate::ui) desktop_id: String,
+    pub(in crate::ui) claimed_theme_icon: String,
 }
 
 pub(in crate::ui) struct IconCacheEntry {

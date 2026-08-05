@@ -2,7 +2,6 @@
 //!
 //! Separates icon lookup and image decoding from UI state management.
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use gio::prelude::FileExt;
@@ -28,7 +27,11 @@ pub(in crate::ui) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
 }
 
 // Resolve themed icon names while filtering out the missing-icon placeholder.
-fn resolve_icon_paintable(name: &str, size: i32) -> Option<IconPaintable> {
+pub(in crate::ui) fn resolve_icon_paintable_with_scale(
+    name: &str,
+    size: i32,
+    scale: i32,
+) -> Option<IconPaintable> {
     if name.is_empty() {
         return None;
     }
@@ -38,7 +41,7 @@ fn resolve_icon_paintable(name: &str, size: i32) -> Option<IconPaintable> {
         name,
         &[],
         size,
-        1,
+        scale.max(1),
         TextDirection::Ltr,
         IconLookupFlags::empty(),
     );
@@ -52,38 +55,40 @@ fn resolve_icon_paintable(name: &str, size: i32) -> Option<IconPaintable> {
     Some(paintable)
 }
 
-pub(in crate::ui) fn resolve_icon_image(name: &str, size: i32) -> Option<gtk::Image> {
-    // File-path icons are resolved asynchronously in the UI layer to avoid blocking the GTK thread.
-    let paintable = resolve_icon_paintable(name, size)?;
-    let widget = gtk::Image::from_paintable(Some(&paintable));
-    widget.set_pixel_size(size);
-    Some(widget)
+pub(in crate::ui) fn collect_icon_candidates(notification: &NotificationView) -> Vec<String> {
+    // Candidate lists stay small, so ordered linear deduplication avoids a hash allocation
+    let mut candidates = Vec::with_capacity(7);
+    let badge_icon = notification.attribution.badge_icon.as_str();
+    if !badge_icon.is_empty() {
+        push_candidate(&mut candidates, badge_icon);
+        if let Some(stripped) = badge_icon.strip_suffix(".desktop") {
+            push_candidate(&mut candidates, stripped);
+        }
+        let lowercase = badge_icon.to_lowercase();
+        push_candidate(&mut candidates, &lowercase);
+    }
+    let desktop_id = notification.attribution.desktop_id.as_str();
+    if !desktop_id.is_empty() {
+        // Desktop ids are daemon-associated metadata and safe badge lookup candidates
+        push_candidate(&mut candidates, desktop_id);
+        let lowercase = desktop_id.to_lowercase();
+        push_candidate(&mut candidates, &lowercase);
+    }
+    let claimed_theme_icon = notification.image.claimed_theme_icon.as_str();
+    if is_safe_theme_name(claimed_theme_icon) {
+        // Sender input is only a bounded theme lookup hint, never identity evidence
+        push_candidate(&mut candidates, claimed_theme_icon);
+        let lowercase = claimed_theme_icon.to_lowercase();
+        push_candidate(&mut candidates, &lowercase);
+    }
+    candidates
 }
 
-pub(in crate::ui) fn collect_icon_candidates(notification: &NotificationView) -> Vec<String> {
-    let mut candidates = Vec::new();
-    if !notification.attribution.badge_icon.is_empty() {
-        candidates.push(notification.attribution.badge_icon.clone());
-        if let Some(stripped) = notification.attribution.badge_icon.strip_suffix(".desktop") {
-            candidates.push(stripped.to_string());
-        }
-        candidates.push(notification.attribution.badge_icon.to_lowercase());
+fn push_candidate(candidates: &mut Vec<String>, candidate: &str) {
+    if candidate.is_empty() || candidates.iter().any(|existing| existing == candidate) {
+        return;
     }
-    if !notification.attribution.desktop_id.is_empty() {
-        // Desktop ids are daemon-associated metadata and safe badge lookup candidates
-        candidates.push(notification.attribution.desktop_id.clone());
-        candidates.push(notification.attribution.desktop_id.to_lowercase());
-    }
-    if is_safe_theme_name(&notification.image.claimed_theme_icon) {
-        // Sender input is only a bounded theme lookup hint, never identity evidence
-        candidates.push(notification.image.claimed_theme_icon.clone());
-        candidates.push(notification.image.claimed_theme_icon.to_lowercase());
-    }
-    let mut seen = HashSet::new();
-    candidates
-        .into_iter()
-        .filter(|candidate| !candidate.is_empty() && seen.insert(candidate.clone()))
-        .collect()
+    candidates.push(candidate.to_owned());
 }
 
 fn is_safe_theme_name(value: &str) -> bool {

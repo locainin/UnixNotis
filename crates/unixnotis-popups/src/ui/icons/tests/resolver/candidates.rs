@@ -17,6 +17,23 @@ fn collect_icon_candidates_uses_only_daemon_associated_badge_variants() {
 }
 
 #[test]
+fn collect_icon_candidates_includes_a_distinct_desktop_id() {
+    let mut input = notification("UnixNotis Center", "trusted-badge");
+    input.attribution.desktop_id = "org.demo.App.desktop".to_string();
+
+    let candidates = collect_icon_candidates(&input);
+
+    assert_eq!(
+        candidates,
+        vec![
+            "trusted-badge",
+            "org.demo.App.desktop",
+            "org.demo.app.desktop",
+        ]
+    );
+}
+
+#[test]
 fn collect_icon_candidates_dedupes_empty_and_repeated_values() {
     let candidates = collect_icon_candidates(&notification("App", "app"));
 

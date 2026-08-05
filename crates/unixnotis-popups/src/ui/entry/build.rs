@@ -22,6 +22,8 @@ use crate::dbus::UiCommand;
 pub(in crate::ui) struct PopupEntry {
     // Keep the last payload so seed reconcile can detect real content changes
     pub(in crate::ui) notification: NotificationView,
+    // Rows built before an icon-source change must be rebuilt on the next update
+    pub(in crate::ui) icon_source_generation: u64,
     // Hidden backlog rows stay lightweight until they enter the visible slice
     pub(in crate::ui) revealer: Option<gtk::Revealer>,
     pub(in crate::ui) root: Option<gtk::Box>,
@@ -33,10 +35,14 @@ pub(in crate::ui) struct PopupEntry {
 }
 
 impl PopupEntry {
-    pub(in crate::ui) const fn queued(notification: NotificationView) -> Self {
+    pub(in crate::ui) const fn queued(
+        notification: NotificationView,
+        icon_source_generation: u64,
+    ) -> Self {
         // Backlog rows start as plain data and only grow GTK nodes when they become visible
         Self {
             notification,
+            icon_source_generation,
             revealer: None,
             root: None,
             visibility: None,
@@ -74,6 +80,7 @@ impl UiState {
         PopupEntry {
             // Store the payload used to build this row so later seeds can compare safely
             notification: notification.clone(),
+            icon_source_generation: self.icon_source_generation,
             revealer: Some(revealer),
             root: Some(root),
             visibility: Some(visibility),

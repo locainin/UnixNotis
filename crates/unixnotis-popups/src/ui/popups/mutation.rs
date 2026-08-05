@@ -27,6 +27,13 @@ pub(super) fn generation_matches(existing: Option<u64>, expected: u64) -> bool {
     existing.is_some_and(|generation| generation == expected)
 }
 
+pub(super) fn popup_payload_is_unchanged(
+    existing: &NotificationView,
+    incoming: &NotificationView,
+) -> bool {
+    existing == incoming
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) struct VisiblePopupUpdate {
     // True when stack order, materialization, or reveal state changed
@@ -64,7 +71,10 @@ impl UiState {
         self.hidden_popups.retain(|hidden| hidden.id != id);
 
         // Hidden overflow rows stay as plain data until they can actually be shown
-        self.popups.insert(id, PopupEntry::queued(notification));
+        self.popups.insert(
+            id,
+            PopupEntry::queued(notification, self.icon_source_generation),
+        );
         self.popup_order.push_front(id);
         if refresh_visibility {
             self.update_popup_visibility(false);
@@ -114,6 +124,40 @@ impl UiState {
             return false;
         }
 
+        if self.popups.get(&id).is_some_and(|entry| {
+            popup_can_skip_rebuild(
+                &entry.notification,
+                &notification,
+                entry.icon_source_generation,
+                self.icon_source_generation,
+                self.icon_sources_dirty.get(),
+            )
+        }) {
+            // Duplicate payloads do not rebuild a GTK row, but they still repair
+            // the daemon acknowledgement if an earlier command was lost
+            let is_materialized = self
+                .popups
+                .get(&id)
+                .is_some_and(PopupEntry::is_materialized);
+            if is_materialized {
+                try_send_command(
+                    &self.command_tx,
+                    UiCommand::Materialized(notification.key()),
+                );
+            }
+            if refresh_visibility {
+                // A queued duplicate may now enter the visible slice
+                self.update_popup_visibility(false);
+            }
+            debug!(
+                id,
+                generation = notification.generation,
+                materialized = is_materialized,
+                "unchanged popup update skipped with acknowledgement repair"
+            );
+            return false;
+        }
+
         if !self.popups.contains_key(&id) {
             // Same helper handles late updates for ids that were not present locally
             self.add_popup_internal(notification, refresh_visibility);
@@ -133,6 +177,9 @@ impl UiState {
         if let Some(entry) = self.popups.get_mut(&id) {
             // Cached payload stays in sync with the rebuilt or queued row
             entry.notification = notification;
+            if !entry.is_materialized() {
+                entry.icon_source_generation = self.icon_source_generation;
+            }
         }
 
         if refresh_visibility {
@@ -248,6 +295,7 @@ impl UiState {
 
         if let Some(entry) = self.popups.get_mut(&id) {
             entry.root = Some(new_root);
+            entry.icon_source_generation = self.icon_source_generation;
         }
         try_send_command(
             &self.command_tx,
@@ -275,6 +323,7 @@ impl UiState {
         entry.revealer = built.revealer;
         entry.root = built.root;
         entry.visibility = built.visibility;
+        entry.icon_source_generation = built.icon_source_generation;
     }
 
     pub(super) fn dematerialize_popup(&mut self, id: u32) {
@@ -300,6 +349,18 @@ impl UiState {
             self.popup_stack.remove(&revealer);
         }
     }
+}
+
+pub(super) fn popup_can_skip_rebuild(
+    existing: &NotificationView,
+    incoming: &NotificationView,
+    entry_icon_source_generation: u64,
+    icon_source_generation: u64,
+    icon_sources_dirty: bool,
+) -> bool {
+    popup_payload_is_unchanged(existing, incoming)
+        && entry_icon_source_generation == icon_source_generation
+        && !icon_sources_dirty
 }
 
 #[cfg(test)]

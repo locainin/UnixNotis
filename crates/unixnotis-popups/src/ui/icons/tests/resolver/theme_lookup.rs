@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use gtk::gdk;
 use gtk::prelude::FileExt;
 
-use super::super::{is_missing_icon, resolve_icon_image, resolve_icon_paintable};
+use super::super::{is_missing_icon, resolve_icon_paintable_with_scale};
 
 fn available_theme_icon() -> Option<&'static str> {
     // The GTK test runtime initializes the display on its dedicated thread
@@ -30,8 +30,7 @@ fn is_missing_icon_detects_theme_placeholder_stems_only() {
 
 #[test]
 fn resolve_icon_helpers_reject_empty_icon_names() {
-    assert!(resolve_icon_paintable("", 24).is_none());
-    assert!(resolve_icon_image("", 24).is_none());
+    assert!(resolve_icon_paintable_with_scale("", 24, 1).is_none());
 }
 
 #[gtk::test]
@@ -41,7 +40,8 @@ fn resolve_icon_image_uses_theme_icon_and_sets_requested_size() {
         return;
     };
 
-    let paintable = resolve_icon_paintable(icon_name, 24).expect("theme icon paintable");
+    let paintable =
+        resolve_icon_paintable_with_scale(icon_name, 24, 1).expect("theme icon paintable");
     assert!(!is_missing_icon(
         &paintable
             .file()
@@ -49,7 +49,8 @@ fn resolve_icon_image_uses_theme_icon_and_sets_requested_size() {
             .unwrap_or_else(|| PathBuf::from(icon_name))
     ));
 
-    let image = resolve_icon_image(icon_name, 24).expect("theme icon image");
+    let image = gtk::Image::from_paintable(Some(&paintable));
+    image.set_pixel_size(24);
 
     assert_eq!(image.pixel_size(), 24);
 }

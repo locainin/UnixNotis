@@ -9,6 +9,8 @@ use super::mutation::ReconcilePlan;
 
 impl UiState {
     pub(in super::super) fn reconcile_seed(&mut self, active: Vec<NotificationView>) {
+        // Refresh source indexes before deciding which materialized rows need rebuilding
+        self.refresh_icon_sources_if_needed();
         // Seed is a full snapshot, so desired popups come only from this list
         let desired = desired_seed_popups(active, &self.control_state)
             .into_iter()
@@ -20,7 +22,27 @@ impl UiState {
             .iter()
             .map(|(id, entry)| (*id, &entry.notification))
             .collect();
-        let plan = build_reconcile_plan(&local, &self.popup_order, &desired);
+        let refresh_icons = desired.iter().any(|notification| {
+            self.popups.get(&notification.id).is_some_and(|entry| {
+                entry.is_materialized()
+                    && entry.icon_source_generation != self.icon_source_generation
+            })
+        });
+        let plan = build_reconcile_plan_with_icon_refresh(
+            &local,
+            &self.popup_order,
+            &desired,
+            refresh_icons,
+        );
+
+        // Queued rows have no GTK tree to rebuild, so advance them to the current source generation
+        for notification in &desired {
+            if let Some(entry) = self.popups.get_mut(&notification.id) {
+                if !entry.is_materialized() {
+                    entry.icon_source_generation = self.icon_source_generation;
+                }
+            }
+        }
 
         // Remove old ids first so inserts and updates work on the final set
         for id in plan.stale_ids {
@@ -59,10 +81,11 @@ impl UiState {
     }
 }
 
-pub(super) fn build_reconcile_plan<T>(
+fn build_reconcile_plan_with_icon_refresh<T>(
     local: &HashMap<u32, T>,
     local_order: &VecDeque<u32>,
     desired: &[NotificationView],
+    refresh_icons: bool,
 ) -> ReconcilePlan
 where
     T: Borrow<NotificationView>,
@@ -88,7 +111,7 @@ where
         .iter()
         .filter(|notification| match local.get(&notification.id) {
             // Identical rows can stay as they are while visibility fixes order later
-            Some(existing) => existing.borrow() != *notification,
+            Some(existing) => refresh_icons || existing.borrow() != *notification,
             // Missing rows must be inserted from seed
             None => true,
         })

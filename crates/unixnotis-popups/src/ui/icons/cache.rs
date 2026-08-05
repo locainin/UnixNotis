@@ -186,6 +186,12 @@ impl TextureCache {
         self.enforce_limit();
     }
 
+    pub(crate) fn clear(&mut self) {
+        // Source changes can replace file contents at the same path
+        self.entries.clear();
+        self.order.clear();
+    }
+
     fn bump(&mut self, key: &IconRequestKey) {
         // Move the key to the back to reflect recent use
         if let Some(pos) = self.order.iter().position(|entry| entry == key) {
