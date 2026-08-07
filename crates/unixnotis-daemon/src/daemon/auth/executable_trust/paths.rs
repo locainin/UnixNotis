@@ -1,15 +1,12 @@
 //! Trusted executable path matching
 
+use std::collections::HashMap;
 use std::os::unix::io::AsFd;
 use std::path::{Path, PathBuf};
 
-#[cfg(target_os = "linux")]
-use super::super::policy::TRUSTED_CONTROL_EXECUTABLES;
-#[cfg(not(target_os = "linux"))]
 use super::super::policy::{TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES};
 use super::fingerprint::{file_fingerprint, file_fingerprint_from_fd};
 use super::metadata::trusted_control_file_metadata_is_safe;
-use super::snapshots::trusted_control_snapshot;
 
 pub(in crate::daemon) fn canonicalize_best_effort(path: &Path) -> PathBuf {
     // Missing paths remain raw so later trust comparisons fail as ordinary mismatches
@@ -17,7 +14,11 @@ pub(in crate::daemon) fn canonicalize_best_effort(path: &Path) -> PathBuf {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub(in crate::daemon) fn is_trusted_control_executable_path(path: &Path, relaxed: bool) -> bool {
+pub(in crate::daemon) fn is_trusted_control_executable_path(
+    path: &Path,
+    relaxed: bool,
+    trusted_snapshots: &HashMap<String, TrustedExecutableSnapshot>,
+) -> bool {
     // Trust only known sibling binaries from the daemon install/build directory
     let Some(trusted_dir) = trusted_control_directory() else {
         return false;
@@ -35,7 +36,7 @@ pub(in crate::daemon) fn is_trusted_control_executable_path(path: &Path, relaxed
         return is_trusted_control_executable_path_relaxed_in_dir(&observed, &trusted_dir);
     }
 
-    let Some(snapshot) = trusted_control_snapshot(&trusted_dir, observed_name) else {
+    let Some(snapshot) = trusted_snapshots.get(observed_name) else {
         return false;
     };
     trusted_snapshot_matches_observed(&snapshot, &observed)
@@ -111,7 +112,7 @@ pub(in crate::daemon) fn trusted_local_bin_matches_executable(
     canonicalize_best_effort(&candidate) == observed
 }
 
-fn trusted_control_directory() -> Option<PathBuf> {
+pub(in crate::daemon::auth) fn trusted_control_directory() -> Option<PathBuf> {
     // The daemon trusts binaries installed next to the running daemon executable
     let current_exe = std::env::current_exe().ok()?;
     let current_exe = canonicalize_best_effort(&current_exe);
@@ -136,6 +137,7 @@ pub(in crate::daemon::auth) fn is_trusted_control_executable_from_fd<Fd: AsFd>(
     fd: &Fd,
     path: &Path,
     relaxed: bool,
+    trusted_snapshots: &HashMap<String, TrustedExecutableSnapshot>,
 ) -> bool {
     // Trust only known sibling binaries from the daemon install/build directory
     let Some(trusted_dir) = trusted_control_directory() else {
@@ -168,7 +170,7 @@ pub(in crate::daemon::auth) fn is_trusted_control_executable_from_fd<Fd: AsFd>(
         file_fingerprint(path).is_some_and(|path_fingerprint| path_fingerprint == fingerprint)
     } else {
         // Strict mode: the descriptor fingerprint must match the startup snapshot
-        let Some(snapshot) = trusted_control_snapshot(&trusted_dir, observed_name) else {
+        let Some(snapshot) = trusted_snapshots.get(observed_name) else {
             return false;
         };
         fingerprint == snapshot.fingerprint

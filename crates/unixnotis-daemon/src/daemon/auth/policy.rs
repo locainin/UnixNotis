@@ -1,6 +1,5 @@
 //! Shared authorization policy constants and small data records
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 // Only these sibling binaries may call privileged control methods
@@ -21,9 +20,8 @@ pub(in crate::daemon) const TRUSTED_PANEL_READINESS_EXECUTABLES: [&str; 1] = ["u
 // Only the popup renderer may publish its composite D-Bus and GTK readiness
 pub(in crate::daemon) const TRUSTED_POPUP_READINESS_EXECUTABLES: [&str; 1] = ["unixnotis-popups"];
 
-// Small bounded caches avoid unbounded growth from repeated forged callers
+// Small bounded cache avoids unbounded growth from repeated fingerprint lookups
 pub(in crate::daemon) const FINGERPRINT_CACHE_CAPACITY: usize = 32;
-pub(in crate::daemon) const TRUSTED_SNAPSHOT_CACHE_CAPACITY: usize = 32;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::daemon) struct TrustedExecutableSnapshot {
@@ -68,10 +66,4 @@ pub(in crate::daemon) struct FingerprintCacheEntry {
     pub(in crate::daemon) path: PathBuf,
     pub(in crate::daemon) signature: FileFingerprintSignature,
     pub(in crate::daemon) fingerprint: FileFingerprint,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::daemon) struct TrustedSnapshotCacheEntry {
-    pub(in crate::daemon) trusted_dir: PathBuf,
-    pub(in crate::daemon) snapshots: HashMap<String, TrustedExecutableSnapshot>,
 }

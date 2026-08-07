@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
 
@@ -6,6 +7,9 @@ use tokio::sync::Mutex;
 use unixnotis_core::Config;
 use zbus::Connection;
 
+use crate::daemon::auth::{
+    build_trusted_control_snapshots_for_current_executable, TrustedExecutableSnapshot,
+};
 use crate::dnd_expiration::DndExpirationScheduler;
 use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
@@ -34,6 +38,8 @@ pub(in crate::daemon::state) struct UiHealthState {
 /// Shared daemon state guarded behind an async mutex
 pub struct DaemonState {
     pub store: Mutex<NotificationStore>,
+    // This map is built before the control object is exported and never rebuilt from callers
+    pub(in crate::daemon) trusted_executables: Arc<HashMap<String, TrustedExecutableSnapshot>>,
     /// Immutable sound settings resolved at startup
     pub sound: SoundSettings,
     pub(in crate::daemon::state) connection: Connection,
@@ -98,8 +104,11 @@ impl DaemonState {
         preauthorized_control_owner: Option<String>,
     ) -> Arc<Self> {
         // One construction path keeps scheduler, signal cache, and popup state in sync
+        let trusted_executables =
+            Arc::new(build_trusted_control_snapshots_for_current_executable());
         Arc::new(Self {
             store: Mutex::new(store),
+            trusted_executables,
             sound,
             connection: connection.clone(),
             ui_health: StdRwLock::new(UiHealthState::default()),
@@ -121,6 +130,12 @@ impl DaemonState {
 
     pub(crate) const fn connection(&self) -> &Connection {
         &self.connection
+    }
+
+    pub(in crate::daemon) fn trusted_executables(
+        &self,
+    ) -> &HashMap<String, TrustedExecutableSnapshot> {
+        &self.trusted_executables
     }
 
     pub(crate) fn set_desktop_index_refresh(&self, handle: DesktopIndexRefreshHandle) {

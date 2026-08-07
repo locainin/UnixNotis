@@ -2,7 +2,7 @@
 mod strict_path_tests {
     use super::super::fingerprint::fingerprint_cache;
     use super::super::paths::is_trusted_control_executable_path;
-    use super::super::snapshots::trusted_snapshot_cache;
+    use super::super::snapshots::build_trusted_control_snapshots;
     use crate::daemon::auth::authorization::control_executable_is_allowed;
     use crate::daemon::auth::support::write_executable;
     use crate::test_support::{env_lock, TempRoot};
@@ -26,37 +26,41 @@ mod strict_path_tests {
         let foreign = root.join("noticenterctl");
         write_executable(&trusted);
         write_executable(&foreign);
-        trusted_snapshot_cache()
-            .lock()
-            .expect("snapshot cache lock")
-            .clear();
         fingerprint_cache()
             .lock()
             .expect("fingerprint cache lock")
             .clear();
+        let snapshots = build_trusted_control_snapshots(&trusted_dir);
 
-        assert!(is_trusted_control_executable_path(&trusted, false));
-        assert!(!is_trusted_control_executable_path(&foreign, false));
+        assert!(is_trusted_control_executable_path(
+            &trusted, false, &snapshots
+        ));
+        assert!(!is_trusted_control_executable_path(
+            &foreign, false, &snapshots
+        ));
         let trusted_fd = open_test_executable(&trusted);
         let foreign_fd = open_test_executable(&foreign);
         assert!(control_executable_is_allowed::<OwnedFd>(
             Some(&trusted),
             Some(&trusted_fd),
             &["noticenterctl"],
-            false
+            false,
+            &snapshots,
         ));
         assert!(!control_executable_is_allowed::<OwnedFd>(
             Some(&trusted),
             Some(&trusted_fd),
             &["unixnotis-center"],
-            false
+            false,
+            &snapshots,
         ));
         // Foreign path must be checked with its own fd to verify it's a different executable
         assert!(!control_executable_is_allowed::<OwnedFd>(
             Some(&foreign),
             Some(&foreign_fd),
             &["noticenterctl"],
-            false
+            false,
+            &snapshots,
         ));
 
         let _ = std::fs::remove_file(trusted);

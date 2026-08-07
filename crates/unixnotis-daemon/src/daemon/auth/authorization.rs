@@ -1,5 +1,6 @@
 //! Caller authorization flow for control operations
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -15,7 +16,7 @@ use super::executable_trust::is_trusted_control_executable_from_fd;
 #[cfg(not(target_os = "linux"))]
 use super::executable_trust::is_trusted_control_executable_path;
 use super::policy::{
-    TRUSTED_CONTROL_EXECUTABLES, TRUSTED_INTERACTION_EXECUTABLES,
+    TrustedExecutableSnapshot, TRUSTED_CONTROL_EXECUTABLES, TRUSTED_INTERACTION_EXECUTABLES,
     TRUSTED_PANEL_READINESS_EXECUTABLES, TRUSTED_POPUP_READINESS_EXECUTABLES,
 };
 #[cfg(not(target_os = "linux"))]
@@ -130,6 +131,7 @@ async fn authorize_control_call_for_executables(
         exe_fd.as_ref(),
         allowed_executables,
         state.trial_mode(),
+        state.trusted_executables(),
     ) {
         warn!(
             method,
@@ -180,6 +182,7 @@ pub(in crate::daemon) fn control_executable_is_allowed<Fd: std::os::unix::io::As
     exe_fd: Option<&Fd>,
     allowed_executables: &[&str],
     relaxed: bool,
+    trusted_snapshots: &HashMap<String, TrustedExecutableSnapshot>,
 ) -> bool {
     // Name allowlist is required; path trust is a separate check that must also pass
     let Some(path) = path else {
@@ -202,13 +205,13 @@ pub(in crate::daemon) fn control_executable_is_allowed<Fd: std::os::unix::io::As
         let Some(fd) = exe_fd else {
             return false;
         };
-        is_trusted_control_executable_from_fd(fd, path, relaxed)
+        is_trusted_control_executable_from_fd(fd, path, relaxed, trusted_snapshots)
     }
 
     // Fallback for non-Linux: use path-based trust
     #[cfg(not(target_os = "linux"))]
     {
-        is_trusted_control_executable_path(path, relaxed)
+        is_trusted_control_executable_path(path, relaxed, trusted_snapshots)
     }
 }
 
@@ -217,8 +220,15 @@ pub(in crate::daemon) fn control_executable_error<Fd: std::os::unix::io::AsFd>(
     exe_fd: Option<&Fd>,
     allowed_executables: &[&str],
     relaxed: bool,
+    trusted_snapshots: &HashMap<String, TrustedExecutableSnapshot>,
 ) -> Option<zbus::fdo::Error> {
-    if control_executable_is_allowed(path, exe_fd, allowed_executables, relaxed) {
+    if control_executable_is_allowed(
+        path,
+        exe_fd,
+        allowed_executables,
+        relaxed,
+        trusted_snapshots,
+    ) {
         return None;
     }
     Some(zbus::fdo::Error::AccessDenied(

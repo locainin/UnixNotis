@@ -22,6 +22,8 @@ pub(super) use authorization::{
     authorize_control_call, authorize_interaction_call, authorize_panel_readiness_call,
     authorize_popup_readiness_call,
 };
+pub(in crate::daemon) use executable_trust::build_trusted_control_snapshots_for_current_executable;
+pub(in crate::daemon) use policy::TrustedExecutableSnapshot;
 
 #[cfg(test)]
 #[path = "tests/authorization.rs"]

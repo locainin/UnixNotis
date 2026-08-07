@@ -1,3 +1,63 @@
+#[cfg(target_os = "linux")]
+#[test]
+fn startup_snapshot_does_not_adopt_a_sibling_replaced_before_first_authorization() {
+    use super::super::fingerprint::file_fingerprint;
+    use super::super::snapshots::build_trusted_control_snapshots;
+    use crate::daemon::auth::support::write_executable;
+    use crate::test_support::TempRoot;
+
+    let trusted_dir = TempRoot::new("auth-startup-snapshot-replacement");
+    let trusted = trusted_dir.join("noticenterctl");
+    write_executable(&trusted);
+    let snapshots = build_trusted_control_snapshots(trusted_dir.path());
+    let startup_snapshot = snapshots
+        .get("noticenterctl")
+        .expect("trusted sibling should be captured at startup")
+        .clone();
+
+    std::fs::remove_file(&trusted).expect("remove original sibling");
+    write_executable(&trusted);
+    let replacement = file_fingerprint(&trusted).expect("replacement should be fingerprinted");
+
+    // A later authorization reads the immutable startup map instead of adopting this replacement
+    assert_ne!(startup_snapshot.fingerprint, replacement);
+    assert_eq!(
+        snapshots
+            .get("noticenterctl")
+            .expect("startup snapshot remains present"),
+        &startup_snapshot
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn concurrent_authorization_reads_share_one_startup_snapshot() {
+    use std::sync::Arc;
+
+    use super::super::snapshots::build_trusted_control_snapshots;
+    use crate::daemon::auth::support::write_executable;
+    use crate::test_support::TempRoot;
+
+    let trusted_dir = TempRoot::new("auth-concurrent-startup-snapshot");
+    let trusted = trusted_dir.join("noticenterctl");
+    write_executable(&trusted);
+    let snapshots = Arc::new(build_trusted_control_snapshots(trusted_dir.path()));
+    let expected = snapshots
+        .get("noticenterctl")
+        .expect("trusted sibling should be captured once")
+        .clone();
+
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            let snapshots = Arc::clone(&snapshots);
+            let expected = expected.clone();
+            scope.spawn(move || {
+                assert_eq!(snapshots.get("noticenterctl"), Some(&expected));
+            });
+        }
+    });
+}
+
 #[cfg(not(target_os = "linux"))]
 mod strict_snapshot_tests {
     use super::super::paths::{canonicalize_best_effort, trusted_snapshot_matches_observed};

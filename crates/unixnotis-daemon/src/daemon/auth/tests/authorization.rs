@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::os::fd::OwnedFd;
 use zbus::Message;
@@ -102,25 +103,38 @@ fn control_executable_error_requires_present_allowed_trusted_binary() {
 
     let trusted_fd = open_test_executable(&trusted);
 
-    assert!(
-        control_executable_error(Some(&trusted), Some(&trusted_fd), &["noticenterctl"], true)
-            .is_none()
-    );
-    assert!(
-        control_executable_error::<OwnedFd>(None, None::<&OwnedFd>, &["noticenterctl"], true)
-            .is_some()
-    );
+    assert!(control_executable_error(
+        Some(&trusted),
+        Some(&trusted_fd),
+        &["noticenterctl"],
+        true,
+        &HashMap::new(),
+    )
+    .is_none());
+    assert!(control_executable_error::<OwnedFd>(
+        None,
+        None::<&OwnedFd>,
+        &["noticenterctl"],
+        true,
+        &HashMap::new(),
+    )
+    .is_some());
     assert!(control_executable_error(
         Some(&trusted),
         Some(&trusted_fd),
         &["unixnotis-center"],
-        true
+        true,
+        &HashMap::new(),
     )
     .is_some());
-    assert!(
-        control_executable_error(Some(&untrusted_name), Some(&trusted_fd), &["unknown"], true)
-            .is_some()
-    );
+    assert!(control_executable_error(
+        Some(&untrusted_name),
+        Some(&trusted_fd),
+        &["unknown"],
+        true,
+        &HashMap::new(),
+    )
+    .is_some());
 }
 
 #[test]
@@ -142,6 +156,7 @@ fn interaction_executable_policy_excludes_noninteractive_control_clients() {
             Some(&trusted_fd),
             &TRUSTED_INTERACTION_EXECUTABLES,
             true,
+            &HashMap::new(),
         )
         .is_none());
     }
@@ -151,6 +166,7 @@ fn interaction_executable_policy_excludes_noninteractive_control_clients() {
         Some(&cli_fd),
         &TRUSTED_INTERACTION_EXECUTABLES,
         true,
+        &HashMap::new(),
     )
     .is_some());
 }
