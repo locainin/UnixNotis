@@ -1,15 +1,20 @@
-//! Descriptor-relative removal for regular files and symbolic links
+//! Descriptor-relative removal through a private same-filesystem quarantine
+//!
+//! Each removal first claims the requested basename with an atomic rename. Validation then uses
+//! the retained object descriptor inside the quarantine instead of reopening the visible path
+//!
+//! The final unlink remains pathname-based because Linux has no unlink-by-file-descriptor API.
+//! The quarantine directory must therefore be inaccessible to hostile same-UID writers when the
+//! caller needs protection beyond the normal other-UID filesystem boundary
 
 use std::ffi::OsString;
 use std::io;
-use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 
-use rustix::fs::{fstat, statat, unlinkat, AtFlags};
-
-use super::descriptor::{open_parent_existing, sync_directory};
-use super::regular::{file_contents_equal, open_regular_file_at, validate_existing_target};
-use super::symlink::read_symlink_at;
+use super::descriptor::open_parent_existing;
+use super::quarantine::{Quarantine, QuarantinedEntry};
+use super::regular::{file_contents_equal, open_regular_file_at, revalidate_file_identity};
+use super::symlink::{open_symlink_at, read_symlink_at, revalidate_symlink_identity};
 
 /// Result of removing a symbolic link with an expected target
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,37 +40,50 @@ pub enum RemoveExactFileOutcome {
 
 /// Remove a regular file without following links in its path
 ///
+/// The source basename is first moved into a private mode-0700 directory on the same filesystem.
+/// Identity checks and physical unlinking then use the retained quarantine directory descriptor
+/// rather than a visible claim pathname
+///
 /// # Errors
 ///
-/// Returns an error when a path component is unsafe, the target is not a regular file, or the
-/// unlink or parent-directory synchronization fails
+/// Returns an error when a path component is unsafe, the target changes during quarantine, the
+/// target is not a regular file, or quarantine cleanup cannot complete
 pub fn remove_regular_file(path: &Path) -> io::Result<bool> {
-    // Missing parents mean the requested file is already absent
     let Some((parent_fd, file_name)) = existing_parent(path)? else {
         return Ok(false);
     };
-    // Final validation distinguishes regular files from links and special objects
-    match validate_existing_target(&parent_fd, &file_name) {
-        Ok(()) => {}
+    let file = match open_regular_file_at(&parent_fd, &file_name) {
+        Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(error),
-    }
+    };
+    let quarantine = Quarantine::create(&parent_fd)?;
+    let entry = match quarantine.move_entry(&parent_fd, &file_name) {
+        Ok(entry) => entry,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let _ = quarantine.cleanup(&parent_fd);
+            return Ok(false);
+        }
+        Err(error) => {
+            let _ = quarantine.cleanup(&parent_fd);
+            return Err(error);
+        }
+    };
 
-    // Unlink and directory sync use the same retained parent descriptor
-    unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
-    sync_directory(&parent_fd)?;
-    Ok(true)
+    let result =
+        unlink_regular_entry(&quarantine, &entry, &parent_fd, &file_name, &file).map(|()| true);
+    finish_quarantine(quarantine, &parent_fd, result)
 }
 
 /// Remove two same-directory regular files only when both retained payloads match
 ///
-/// This is intended for a shared artifact and its ownership marker. Both files are opened and
-/// preflighted through one parent descriptor before either name is unlinked
+/// Both names are quarantined before either entry is physically unlinked. A mismatch leaves the
+/// quarantined entry in place or restores it without deleting a replacement basename
 ///
 /// # Errors
 ///
 /// Returns an error when paths have different parents, path traversal is unsafe, either target is
-/// not a regular file, retained identities change, or durable unlinking fails
+/// not a regular file, retained identities change, or durable quarantine cleanup fails
 pub fn remove_regular_file_pair_if_contents(
     path: &Path,
     expected_contents: &[u8],
@@ -103,43 +121,102 @@ pub fn remove_regular_file_pair_if_contents(
         return Ok(RemoveExactFileOutcome::ContentsMismatch);
     }
 
-    // The marker is removed first so a target-name race fails closed with the shared file intact
-    revalidate_file_identity(&parent_fd, &marker_name, &marker)?;
-    unlinkat(&parent_fd, &marker_name, AtFlags::empty())?;
-    revalidate_file_identity(&parent_fd, &file_name, &file)?;
-    unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
-    sync_directory(&parent_fd)?;
-    Ok(RemoveExactFileOutcome::Removed)
+    let quarantine = Quarantine::create(&parent_fd)?;
+    let marker_entry = match quarantine.move_entry(&parent_fd, &marker_name) {
+        Ok(entry) => entry,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let _ = quarantine.cleanup(&parent_fd);
+            return Ok(RemoveExactFileOutcome::Missing);
+        }
+        Err(error) => {
+            let _ = quarantine.cleanup(&parent_fd);
+            return Err(error);
+        }
+    };
+    if let Err(error) = revalidate_file_identity(quarantine.fd(), marker_entry.name(), &marker) {
+        let error =
+            restore_entry_or_error(&quarantine, &marker_entry, &parent_fd, &marker_name, error);
+        return finish_quarantine(quarantine, &parent_fd, Err(error));
+    }
+
+    let file_entry = match quarantine.move_entry(&parent_fd, &file_name) {
+        Ok(entry) => entry,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let result = match quarantine.restore(&marker_entry, &parent_fd, &marker_name) {
+                Ok(()) => Ok(RemoveExactFileOutcome::Missing),
+                Err(restore_error) => {
+                    Err(combine_operation_and_restore_error(&error, &restore_error))
+                }
+            };
+            return finish_quarantine(quarantine, &parent_fd, result);
+        }
+        Err(error) => {
+            let error =
+                restore_entry_or_error(&quarantine, &marker_entry, &parent_fd, &marker_name, error);
+            return finish_quarantine(quarantine, &parent_fd, Err(error));
+        }
+    };
+    if let Err(error) = revalidate_file_identity(quarantine.fd(), file_entry.name(), &file) {
+        let error = restore_entry_or_error(&quarantine, &file_entry, &parent_fd, &file_name, error);
+        let error =
+            restore_entry_or_error(&quarantine, &marker_entry, &parent_fd, &marker_name, error);
+        return finish_quarantine(quarantine, &parent_fd, Err(error));
+    }
+
+    // The marker is removed first to preserve the existing ownership protocol
+    if let Err(error) = unlink_regular_entry(
+        &quarantine,
+        &marker_entry,
+        &parent_fd,
+        &marker_name,
+        &marker,
+    ) {
+        let error = restore_entry_or_error(&quarantine, &file_entry, &parent_fd, &file_name, error);
+        return finish_quarantine(quarantine, &parent_fd, Err(error));
+    }
+    let result = unlink_regular_entry(&quarantine, &file_entry, &parent_fd, &file_name, &file)
+        .map(|()| RemoveExactFileOutcome::Removed);
+    finish_quarantine(quarantine, &parent_fd, result)
 }
 
 /// Remove a symbolic link without requiring a specific target
 ///
 /// # Errors
 ///
-/// Returns an error when a path component is unsafe, the target is not a symbolic link, or the
-/// unlink or parent-directory synchronization fails
+/// Returns an error when a path component is unsafe, the target is not a symbolic link, the
+/// quarantined identity changes, or quarantine cleanup fails
 pub fn remove_symlink(path: &Path) -> io::Result<bool> {
     let Some((parent_fd, file_name)) = existing_parent(path)? else {
         return Ok(false);
     };
-    // Reading the stored target proves the final entry is a link without following it
-    match read_symlink_at(&parent_fd, &file_name) {
-        Ok(_target) => {}
+    let link = match open_symlink_at(&parent_fd, &file_name) {
+        Ok(link) => link,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(error),
-    }
-
-    unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
-    sync_directory(&parent_fd)?;
-    Ok(true)
+    };
+    let quarantine = Quarantine::create(&parent_fd)?;
+    let entry = match quarantine.move_entry(&parent_fd, &file_name) {
+        Ok(entry) => entry,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let _ = quarantine.cleanup(&parent_fd);
+            return Ok(false);
+        }
+        Err(error) => {
+            let _ = quarantine.cleanup(&parent_fd);
+            return Err(error);
+        }
+    };
+    let result =
+        unlink_symlink_entry(&quarantine, &entry, &parent_fd, &file_name, &link).map(|()| true);
+    finish_quarantine(quarantine, &parent_fd, result)
 }
 
 /// Remove a symbolic link only when its stored target matches exactly
 ///
 /// # Errors
 ///
-/// Returns an error when a path component is unsafe, the target is not a symbolic link, or the
-/// unlink or parent-directory synchronization fails
+/// Returns an error when a path component is unsafe, the target is not a symbolic link, the
+/// quarantined identity changes, or quarantine cleanup fails
 pub fn remove_symlink_if_target(
     path: &Path,
     expected_target: &Path,
@@ -147,7 +224,13 @@ pub fn remove_symlink_if_target(
     let Some((parent_fd, file_name)) = existing_parent(path)? else {
         return Ok(RemoveSymlinkOutcome::Missing);
     };
-    // Capture the exact stored bytes before comparing ownership expectations
+    let link = match open_symlink_at(&parent_fd, &file_name) {
+        Ok(link) => link,
+        Err(error) => match error.kind() {
+            io::ErrorKind::NotFound => return Ok(RemoveSymlinkOutcome::Missing),
+            _ => return Err(error),
+        },
+    };
     let actual_target = match read_symlink_at(&parent_fd, &file_name) {
         Ok(target) => target,
         Err(error) => match error.kind() {
@@ -156,14 +239,123 @@ pub fn remove_symlink_if_target(
         },
     };
     if actual_target != expected_target {
-        // Mismatched links are user state and remain untouched
         return Ok(RemoveSymlinkOutcome::TargetMismatch(actual_target));
     }
 
-    // Only an exact target match reaches the unlink boundary
-    unlinkat(&parent_fd, &file_name, AtFlags::empty())?;
-    sync_directory(&parent_fd)?;
-    Ok(RemoveSymlinkOutcome::Removed)
+    let quarantine = Quarantine::create(&parent_fd)?;
+    let entry = match quarantine.move_entry(&parent_fd, &file_name) {
+        Ok(entry) => entry,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let _ = quarantine.cleanup(&parent_fd);
+            return Ok(RemoveSymlinkOutcome::Missing);
+        }
+        Err(error) => {
+            let _ = quarantine.cleanup(&parent_fd);
+            return Err(error);
+        }
+    };
+    let quarantined_target = match read_symlink_at(quarantine.fd(), entry.name()) {
+        Ok(target) => target,
+        Err(error) => {
+            let error = restore_entry_or_error(&quarantine, &entry, &parent_fd, &file_name, error);
+            return finish_quarantine(quarantine, &parent_fd, Err(error));
+        }
+    };
+    if quarantined_target != expected_target {
+        let mismatch_error = io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "symbolic-link target changed during quarantine",
+        );
+        let result = match quarantine.restore(&entry, &parent_fd, &file_name) {
+            Ok(()) => Ok(RemoveSymlinkOutcome::TargetMismatch(quarantined_target)),
+            Err(restore_error) => Err(combine_operation_and_restore_error(
+                &mismatch_error,
+                &restore_error,
+            )),
+        };
+        return finish_quarantine(quarantine, &parent_fd, result);
+    }
+
+    let result = unlink_symlink_entry(&quarantine, &entry, &parent_fd, &file_name, &link)
+        .map(|()| RemoveSymlinkOutcome::Removed);
+    finish_quarantine(quarantine, &parent_fd, result)
+}
+
+fn unlink_regular_entry(
+    quarantine: &Quarantine,
+    entry: &QuarantinedEntry,
+    source_parent: &std::os::fd::OwnedFd,
+    source_name: &OsString,
+    file: &std::fs::File,
+) -> io::Result<()> {
+    // Revalidate the object after the atomic claim so a failed claim never authorizes a new file
+    revalidate_file_identity(quarantine.fd(), entry.name(), file).map_err(|error| {
+        restore_entry_or_error(quarantine, entry, source_parent, source_name, error)
+    })?;
+    // The retained quarantine descriptor pins the parent; the final basename is still resolved
+    // by unlinkat, so a hostile writer must not control this private directory
+    quarantine.unlink(entry).map_err(|error| {
+        restore_entry_or_error(quarantine, entry, source_parent, source_name, error)
+    })
+}
+
+fn unlink_symlink_entry(
+    quarantine: &Quarantine,
+    entry: &QuarantinedEntry,
+    source_parent: &std::os::fd::OwnedFd,
+    source_name: &OsString,
+    link: &std::os::fd::OwnedFd,
+) -> io::Result<()> {
+    // Symlink identity is checked without following the stored target
+    revalidate_symlink_identity(quarantine.fd(), entry.name(), link).map_err(|error| {
+        restore_entry_or_error(quarantine, entry, source_parent, source_name, error)
+    })?;
+    // As with regular files, unlinkat protects the parent directory but not a hostile same-UID
+    // replacement of the final quarantine basename between validation and the syscall
+    quarantine.unlink(entry).map_err(|error| {
+        restore_entry_or_error(quarantine, entry, source_parent, source_name, error)
+    })
+}
+
+fn restore_entry_or_error(
+    quarantine: &Quarantine,
+    entry: &QuarantinedEntry,
+    source_parent: &std::os::fd::OwnedFd,
+    source_name: &OsString,
+    operation_error: io::Error,
+) -> io::Error {
+    match quarantine.restore(entry, source_parent, source_name) {
+        Ok(()) => operation_error,
+        Err(restore_error) => combine_operation_and_restore_error(&operation_error, &restore_error),
+    }
+}
+
+fn finish_quarantine<T>(
+    quarantine: Quarantine,
+    parent_fd: &std::os::fd::OwnedFd,
+    result: io::Result<T>,
+) -> io::Result<T> {
+    let cleanup = quarantine.cleanup(parent_fd);
+    match result {
+        Ok(value) => {
+            cleanup?;
+            Ok(value)
+        }
+        Err(error) => match cleanup {
+            Ok(()) => Err(error),
+            Err(cleanup_error) => Err(combine_operation_and_restore_error(&error, &cleanup_error)),
+        },
+    }
+}
+
+fn combine_operation_and_restore_error(
+    operation_error: &io::Error,
+    restore_error: &io::Error,
+) -> io::Error {
+    io::Error::new(
+        operation_error.kind(),
+        format!("{operation_error}; failed to restore quarantine entry: {restore_error}"),
+    )
 }
 
 fn existing_parent(path: &Path) -> io::Result<Option<(std::os::fd::OwnedFd, OsString)>> {
@@ -173,22 +365,6 @@ fn existing_parent(path: &Path) -> io::Result<Option<(std::os::fd::OwnedFd, OsSt
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error),
     }
-}
-
-fn revalidate_file_identity(
-    parent_fd: &OwnedFd,
-    file_name: &OsString,
-    file: &std::fs::File,
-) -> io::Result<()> {
-    let retained = fstat(file)?;
-    let visible = statat(parent_fd, file_name, AtFlags::SYMLINK_NOFOLLOW)?;
-    if retained.st_dev == visible.st_dev && retained.st_ino == visible.st_ino {
-        return Ok(());
-    }
-    Err(io::Error::new(
-        io::ErrorKind::InvalidInput,
-        "regular file changed during guarded removal",
-    ))
 }
 
 fn file_lookup_is_missing(error: &io::Error) -> bool {

@@ -8,10 +8,10 @@ use rustix::fs::{mkfifoat, Mode, CWD};
 use super::{
     existing_parent, file_lookup_is_missing, remove_regular_file,
     remove_regular_file_pair_if_contents, remove_symlink, remove_symlink_if_target,
-    revalidate_file_identity, RemoveExactFileOutcome, RemoveSymlinkOutcome,
+    RemoveExactFileOutcome, RemoveSymlinkOutcome,
 };
-use crate::filesystem::regular::open_regular_file_at;
-use crate::filesystem::symlink::read_symlink;
+use crate::filesystem::regular::{open_regular_file_at, revalidate_file_identity};
+use crate::filesystem::symlink::{open_symlink_at, read_symlink, revalidate_symlink_identity};
 use crate::test_support::unique_temp_path;
 
 #[test]
@@ -43,6 +43,29 @@ fn retained_file_identity_rejects_a_same_directory_replacement() {
     fs::write(&target, "replacement").expect("write replacement");
 
     revalidate_file_identity(&parent_fd, &file_name, &retained)
+        .expect_err("replacement identity must fail");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn retained_symlink_identity_rejects_a_same_name_regular_replacement() {
+    let root = unique_temp_path("remove-symlink-identity");
+    fs::create_dir_all(&root).expect("create root");
+    let target = root.join("enabled");
+    let moved = root.join("original-link");
+    symlink("service", &target).expect("write original link");
+    let (parent_fd, file_name) = existing_parent(&target)
+        .expect("open parent")
+        .expect("parent exists");
+    let retained = open_symlink_at(&parent_fd, &file_name).expect("open retained link");
+
+    revalidate_symlink_identity(&parent_fd, &file_name, &retained)
+        .expect("unchanged link should pass");
+    fs::rename(&target, &moved).expect("move original link");
+    fs::write(&target, "replacement").expect("write replacement file");
+
+    revalidate_symlink_identity(&parent_fd, &file_name, &retained)
         .expect_err("replacement identity must fail");
 
     let _ = fs::remove_dir_all(root);

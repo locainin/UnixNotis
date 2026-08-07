@@ -1,12 +1,14 @@
 //! No-replace regular-file rename tests
 
 use std::fs;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
 
 use super::{
     classify_directory_rename_attempt, classify_rename_attempt, rename_directory_no_replace,
     rename_regular_file_no_replace, RenameDirectoryOutcome, RenameRegularFileOutcome,
 };
+use crate::filesystem::descriptor::open_parent_existing;
+use crate::filesystem::regular::{open_regular_file_at, revalidate_file_identity};
 use crate::test_support::unique_temp_path;
 
 #[test]
@@ -16,15 +18,42 @@ fn regular_file_rename_moves_source_to_an_unused_destination() {
     let destination = root.join("style.css.bak");
     fs::create_dir_all(&root).expect("create root");
     fs::write(&source, "legacy theme").expect("write source");
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o640)).expect("set source mode");
+    let source_metadata = fs::metadata(&source).expect("read source metadata");
 
     let outcome = rename_regular_file_no_replace(&source, &destination).expect("rename file");
 
     assert_eq!(outcome, RenameRegularFileOutcome::Renamed);
     assert!(!source.exists());
+    let destination_metadata = fs::metadata(&destination).expect("read destination metadata");
+    assert_eq!(destination_metadata.dev(), source_metadata.dev());
+    assert_eq!(destination_metadata.ino(), source_metadata.ino());
+    assert_eq!(destination_metadata.permissions().mode() & 0o777, 0o640);
     assert_eq!(
         fs::read_to_string(destination).expect("read destination"),
         "legacy theme"
     );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn retained_rename_source_identity_rejects_a_same_name_replacement() {
+    let root = unique_temp_path("rename-source-identity");
+    let source = root.join("style.css");
+    let moved = root.join("original.css");
+    fs::create_dir_all(&root).expect("create root");
+    fs::write(&source, "original").expect("write original source");
+    let (parent_fd, file_name) = open_parent_existing(&source).expect("open source parent");
+    let retained = open_regular_file_at(&parent_fd, &file_name).expect("open retained source");
+
+    revalidate_file_identity(&parent_fd, &file_name, &retained)
+        .expect("unchanged source should pass");
+    fs::rename(&source, &moved).expect("move original source");
+    fs::write(&source, "replacement").expect("write replacement source");
+
+    revalidate_file_identity(&parent_fd, &file_name, &retained)
+        .expect_err("replacement identity must fail before rename");
+
     let _ = fs::remove_dir_all(root);
 }
 

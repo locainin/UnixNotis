@@ -6,7 +6,8 @@ use std::path::Path;
 use rustix::fs::{renameat_with, RenameFlags};
 
 use super::descriptor::{open_parent_existing, open_target_directory, sync_directory};
-use super::regular::validate_existing_target;
+use super::quarantine::{Quarantine, QuarantinedEntry};
+use super::regular::{open_regular_file_at, revalidate_file_identity};
 use super::tree::revalidate_directory_identity;
 
 /// Result of moving a regular file without replacing another filesystem entry
@@ -48,34 +49,89 @@ pub fn rename_regular_file_no_replace(
             _ => return Err(error),
         },
     };
-    // Final-component validation rejects source links, directories, and special files
-    match validate_existing_target(&source_parent, &source_name) {
-        Ok(()) => {}
+    // Retain the validated source so a replacement basename cannot be claimed
+    let source_file = match open_regular_file_at(&source_parent, &source_name) {
+        Ok(file) => file,
         Err(error) => match error.kind() {
             io::ErrorKind::NotFound => return Ok(RenameRegularFileOutcome::SourceMissing),
             _ => return Err(error),
         },
-    }
+    };
 
     let (destination_parent, destination_name) = open_parent_existing(destination)?;
-    // Kernel no-replace semantics close the check-then-rename destination race
+    // Claim the source basename before publication so no later operation uses a watched source
+    // name to identify the object being moved
+    let quarantine = Quarantine::create(&source_parent)?;
+    let entry = match quarantine.move_entry(&source_parent, &source_name) {
+        Ok(entry) => entry,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let _ = quarantine.cleanup(&source_parent);
+            return Ok(RenameRegularFileOutcome::SourceMissing);
+        }
+        Err(error) => {
+            let _ = quarantine.cleanup(&source_parent);
+            return Err(error);
+        }
+    };
+    if let Err(error) = revalidate_file_identity(quarantine.fd(), entry.name(), &source_file) {
+        let error = restore_quarantined_entry_or_error(
+            &quarantine,
+            &entry,
+            &source_parent,
+            &source_name,
+            error,
+        );
+        return finish_quarantine(quarantine, &source_parent, Err(error));
+    }
+
+    // Rename the quarantined entry itself so sparse data, metadata, ACLs, timestamps, and hard
+    // links survive without copy-delete behavior
+    // The quarantine descriptor pins the parent, while the entry name still relies on the private
+    // directory boundary described by the quarantine module
+    // The directory descriptor pins the quarantine parent; the final entry name remains a path
+    // and therefore uses the same private-directory trust boundary
     let rename_result = renameat_with(
-        &source_parent,
-        &source_name,
+        quarantine.fd(),
+        entry.name(),
         &destination_parent,
         &destination_name,
         RenameFlags::NOREPLACE,
     )
     .map_err(Into::into);
-    match classify_rename_attempt(rename_result)? {
-        RenameRegularFileOutcome::Renamed => {}
-        outcome => return Ok(outcome),
+    let outcome = match classify_rename_attempt(rename_result) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let error = restore_quarantined_entry_or_error(
+                &quarantine,
+                &entry,
+                &source_parent,
+                &source_name,
+                error,
+            );
+            return finish_quarantine(quarantine, &source_parent, Err(error));
+        }
+    };
+    if outcome != RenameRegularFileOutcome::Renamed {
+        let result = quarantine
+            .restore(&entry, &source_parent, &source_name)
+            .map(|()| outcome)
+            .map_err(|error| {
+                restore_quarantined_entry_or_error(
+                    &quarantine,
+                    &entry,
+                    &source_parent,
+                    &source_name,
+                    error,
+                )
+            });
+        return finish_quarantine(quarantine, &source_parent, result);
     }
 
-    // Both directory entries must reach durable storage even when parents differ
-    sync_directory(&destination_parent)?;
-    sync_directory(&source_parent)?;
-    Ok(RenameRegularFileOutcome::Renamed)
+    // Both final directory entries must reach durable storage
+    let result = sync_directory(&destination_parent)
+        .and(sync_directory(&source_parent))
+        .map(|()| RenameRegularFileOutcome::Renamed);
+    finish_quarantine(quarantine, &source_parent, result)
 }
 
 /// Move a directory without following links or replacing the destination
@@ -93,25 +149,110 @@ pub fn rename_directory_no_replace(
         return Ok(RenameDirectoryOutcome::SourceMissing);
     };
     let (destination_parent, destination_name) = open_parent_existing(destination)?;
-    // The retained descriptor ensures the visible source name still identifies the staged tree
-    revalidate_directory_identity(&source_parent, &source_name, &source_directory)?;
+    // Claim the staged directory basename before publication for the same reason as regular files
+    let quarantine = Quarantine::create(&source_parent)?;
+    let entry = match quarantine.move_entry(&source_parent, &source_name) {
+        Ok(entry) => entry,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let _ = quarantine.cleanup(&source_parent);
+            return Ok(RenameDirectoryOutcome::SourceMissing);
+        }
+        Err(error) => {
+            let _ = quarantine.cleanup(&source_parent);
+            return Err(error);
+        }
+    };
+    if let Err(error) =
+        revalidate_directory_identity(quarantine.fd(), entry.name(), &source_directory)
+    {
+        let error = restore_quarantined_entry_or_error(
+            &quarantine,
+            &entry,
+            &source_parent,
+            &source_name,
+            error,
+        );
+        return finish_quarantine(quarantine, &source_parent, Err(error));
+    }
 
     let rename_result = renameat_with(
-        &source_parent,
-        &source_name,
+        quarantine.fd(),
+        entry.name(),
         &destination_parent,
         &destination_name,
         RenameFlags::NOREPLACE,
     )
     .map_err(Into::into);
-    let outcome = classify_directory_rename_attempt(rename_result)?;
+    let outcome = match classify_directory_rename_attempt(rename_result) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let error = restore_quarantined_entry_or_error(
+                &quarantine,
+                &entry,
+                &source_parent,
+                &source_name,
+                error,
+            );
+            return finish_quarantine(quarantine, &source_parent, Err(error));
+        }
+    };
     if outcome != RenameDirectoryOutcome::Renamed {
-        return Ok(outcome);
+        let result = quarantine
+            .restore(&entry, &source_parent, &source_name)
+            .map(|()| outcome)
+            .map_err(|error| {
+                restore_quarantined_entry_or_error(
+                    &quarantine,
+                    &entry,
+                    &source_parent,
+                    &source_name,
+                    error,
+                )
+            });
+        return finish_quarantine(quarantine, &source_parent, result);
     }
 
-    sync_directory(&destination_parent)?;
-    sync_directory(&source_parent)?;
-    Ok(RenameDirectoryOutcome::Renamed)
+    let result = sync_directory(&destination_parent)
+        .and(sync_directory(&source_parent))
+        .map(|()| RenameDirectoryOutcome::Renamed);
+    finish_quarantine(quarantine, &source_parent, result)
+}
+
+fn restore_quarantined_entry_or_error(
+    quarantine: &Quarantine,
+    entry: &QuarantinedEntry,
+    parent_fd: &std::os::fd::OwnedFd,
+    claimed_name: &std::ffi::OsString,
+    operation_error: io::Error,
+) -> io::Error {
+    match quarantine.restore(entry, parent_fd, claimed_name) {
+        Ok(()) => operation_error,
+        Err(restore_error) => io::Error::new(
+            operation_error.kind(),
+            format!("{operation_error}; failed to restore quarantine entry: {restore_error}"),
+        ),
+    }
+}
+
+fn finish_quarantine<T>(
+    quarantine: Quarantine,
+    parent_fd: &std::os::fd::OwnedFd,
+    result: io::Result<T>,
+) -> io::Result<T> {
+    let cleanup = quarantine.cleanup(parent_fd);
+    match result {
+        Ok(value) => {
+            cleanup?;
+            Ok(value)
+        }
+        Err(error) => match cleanup {
+            Ok(()) => Err(error),
+            Err(cleanup_error) => Err(io::Error::new(
+                error.kind(),
+                format!("{error}; failed to clean up quarantine: {cleanup_error}"),
+            )),
+        },
+    }
 }
 
 fn classify_rename_attempt(result: io::Result<()>) -> io::Result<RenameRegularFileOutcome> {

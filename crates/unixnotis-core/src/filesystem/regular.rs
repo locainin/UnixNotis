@@ -7,7 +7,7 @@ use std::os::fd::OwnedFd;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use rustix::fs::{openat2, Mode, OFlags};
+use rustix::fs::{fstat, openat2, statat, AtFlags, Mode, OFlags};
 
 use super::descriptor::{contained_resolve_flags, open_parent_existing};
 
@@ -125,6 +125,23 @@ pub(super) fn open_regular_file_at(
         return Err(unsafe_target_error());
     }
     Ok(file)
+}
+
+pub(super) fn revalidate_file_identity(
+    parent_fd: &OwnedFd,
+    file_name: &OsString,
+    file: &fs::File,
+) -> io::Result<()> {
+    // The retained descriptor identifies the object that passed the earlier validation
+    let retained = fstat(file)?;
+    let visible = statat(parent_fd, file_name, AtFlags::SYMLINK_NOFOLLOW)?;
+    if retained.st_dev == visible.st_dev && retained.st_ino == visible.st_ino {
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "regular file changed before the filesystem operation",
+    ))
 }
 
 pub(super) fn file_contents_equal(file: &mut fs::File, expected: &[u8]) -> io::Result<bool> {

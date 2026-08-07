@@ -6,6 +6,7 @@ mod directory;
 mod exact;
 mod install;
 mod path;
+mod quarantine;
 mod regular;
 mod remove;
 mod rename;

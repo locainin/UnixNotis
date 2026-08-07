@@ -6,10 +6,15 @@ use std::os::fd::OwnedFd;
 use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 
-use rustix::fs::{readlinkat, renameat, symlinkat, unlinkat, AtFlags};
+use rustix::fs::{
+    fstat, openat2, readlinkat, renameat, statat, symlinkat, unlinkat, AtFlags, FileType, Mode,
+    OFlags,
+};
 
 use super::atomic::temp_candidates;
-use super::descriptor::{open_parent, open_parent_existing, sync_directory};
+use super::descriptor::{
+    contained_resolve_flags, open_parent, open_parent_existing, sync_directory,
+};
 
 /// Result of creating a symbolic link without replacing an existing path
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,6 +140,49 @@ pub fn read_symlink(path: &Path) -> io::Result<Option<PathBuf>> {
 pub(super) fn read_symlink_at(parent_fd: &OwnedFd, file_name: &OsStr) -> io::Result<PathBuf> {
     let target = readlinkat(parent_fd, file_name, Vec::new())?;
     Ok(PathBuf::from(OsString::from_vec(target.into_bytes())))
+}
+
+pub(super) fn open_symlink_at(parent_fd: &OwnedFd, file_name: &OsString) -> io::Result<OwnedFd> {
+    // O_PATH plus NOFOLLOW retains the link itself instead of opening its target
+    let fd = openat2(
+        parent_fd,
+        file_name,
+        OFlags::PATH.union(OFlags::CLOEXEC).union(OFlags::NOFOLLOW),
+        Mode::empty(),
+        contained_resolve_flags(),
+    )?;
+    let stat = fstat(&fd)?;
+    if FileType::from_raw_mode(stat.st_mode).is_symlink() {
+        return Ok(fd);
+    }
+    Err(not_symlink_error())
+}
+
+pub(super) fn revalidate_symlink_identity(
+    parent_fd: &OwnedFd,
+    file_name: &OsString,
+    link: &OwnedFd,
+) -> io::Result<()> {
+    // Compare the retained link object with the visible basename immediately before unlinking
+    let retained = fstat(link)?;
+    let visible = statat(parent_fd, file_name, AtFlags::SYMLINK_NOFOLLOW)?;
+    if retained.st_dev == visible.st_dev
+        && retained.st_ino == visible.st_ino
+        && FileType::from_raw_mode(visible.st_mode).is_symlink()
+    {
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "symbolic link changed before removal",
+    ))
+}
+
+fn not_symlink_error() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "refusing to operate on a non-symbolic-link target",
+    )
 }
 
 fn reserve_temp_symlink(
