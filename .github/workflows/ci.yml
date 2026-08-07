@@ -120,7 +120,6 @@ jobs:
           export CARGO_HOME="$account_home/.cargo"
           export RUSTUP_HOME="$account_home/.rustup"
           printf '%s\n' \
-            "HOME=$HOME" \
             "CARGO_HOME=$CARGO_HOME" \
             "RUSTUP_HOME=$RUSTUP_HOME" \
             >> "$GITHUB_ENV"
