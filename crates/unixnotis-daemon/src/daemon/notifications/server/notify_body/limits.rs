@@ -3,6 +3,8 @@
 // Common native clients send decoded 1024x1024 RGBA application or contact images
 pub(in crate::daemon::notifications::server) const MAX_NOTIFY_WIRE_IMAGE_BYTES: usize =
     4 * 1024 * 1024;
+// Keep the wire geometry bound explicit even when a sparse row layout uses fewer bytes
+pub(in crate::daemon::notifications::server) const MAX_NOTIFY_WIRE_IMAGE_DIMENSION: u32 = 1024;
 // The image allowance plus bounded strings, actions, hints, and D-Bus alignment
 pub(in crate::daemon::notifications::server) const MAX_NOTIFY_WIRE_BODY_BYTES: usize =
     MAX_NOTIFY_WIRE_IMAGE_BYTES + 128 * 1024;

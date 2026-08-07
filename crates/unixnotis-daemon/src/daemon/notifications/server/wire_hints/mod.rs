@@ -5,14 +5,15 @@ mod image_bytes;
 
 use std::collections::HashMap;
 
-use unixnotis_core::ImageData;
 use zbus::zvariant::{OwnedValue, Signature, Type};
+
+pub(super) use self::image_bytes::WireImageData;
 
 /// Hints decoded without expanding large byte arrays into per-byte dynamic values
 #[derive(Debug, Default)]
 pub(super) struct WireHints {
     values: HashMap<String, OwnedValue>,
-    image_data: Option<ImageData>,
+    wire_image_data: Option<WireImageData>,
     image_path: Option<String>,
 }
 
@@ -21,10 +22,10 @@ impl WireHints {
         self,
     ) -> (
         HashMap<String, OwnedValue>,
-        Option<ImageData>,
+        Option<WireImageData>,
         Option<String>,
     ) {
-        (self.values, self.image_data, self.image_path)
+        (self.values, self.wire_image_data, self.image_path)
     }
 }
 
@@ -38,7 +39,7 @@ impl From<HashMap<String, OwnedValue>> for WireHints {
             .and_then(|value| String::try_from(value).ok());
         Self {
             values,
-            image_data: None,
+            wire_image_data: None,
             image_path,
         }
     }

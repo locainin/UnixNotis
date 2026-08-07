@@ -21,7 +21,7 @@ use crate::daemon::notifications::identity::DesktopIdentityIndex;
 use super::owned_to_string;
 
 pub(in crate::daemon::notifications::ingress) const MAX_SENDER_VISUAL_BYTES: u64 = 2_097_152;
-const MAX_STORED_AVATAR_DIMENSION: u32 = 64;
+pub(in crate::daemon::notifications) const MAX_STORED_AVATAR_DIMENSION: u32 = 64;
 pub(in crate::daemon::notifications::ingress) const MAX_DECODE_DIMENSION: u32 =
     MAX_STORED_AVATAR_DIMENSION * 8;
 pub(in crate::daemon::notifications) const MAX_STORED_CONTENT_DIMENSION: u32 = 256;
@@ -124,18 +124,25 @@ pub(in crate::daemon::notifications) fn materialize_sender_visual(
     }
 
     // Keep the decoder bound independent from the UI-requested size
-    let max_dimension = bounded_decode_dimension(max_dimension);
+    let target_dimension = bounded_decode_dimension(max_dimension);
+    let decode_dimension = MAX_DECODE_DIMENSION;
+    // Encoded and decoded source limits remain fixed while the final target stays role-specific
+    let decode_pixels = u64::from(decode_dimension).checked_mul(u64::from(decode_dimension))?;
     let policy = AssetPolicy {
         max_bytes: MAX_SENDER_VISUAL_BYTES,
-        max_width: DEFAULT_ICON_ASSET_MAX_WIDTH.min(max_dimension),
-        max_height: DEFAULT_ICON_ASSET_MAX_HEIGHT.min(max_dimension),
-        max_pixels: DEFAULT_ICON_ASSET_MAX_PIXELS
-            .min(u64::from(max_dimension).checked_mul(u64::from(max_dimension))?),
+        max_width: DEFAULT_ICON_ASSET_MAX_WIDTH.min(decode_dimension),
+        max_height: DEFAULT_ICON_ASSET_MAX_HEIGHT.min(decode_dimension),
+        max_pixels: DEFAULT_ICON_ASSET_MAX_PIXELS.min(decode_pixels),
         allowed_extensions: DEFAULT_ICON_ASSET_EXTENSIONS,
     };
+    // Downsample only after the source has passed the independent decode policy
     let decoded = decode_image_asset_contents(&path, &bytes, policy).ok()?;
-    let (width, height, rgba) =
-        downsample_avatar(decoded.width, decoded.height, decoded.rgba, max_dimension)?;
+    let (width, height, rgba) = downsample_avatar(
+        decoded.width,
+        decoded.height,
+        decoded.rgba,
+        target_dimension,
+    )?;
     let width = i32::try_from(width).ok()?;
     let height = i32::try_from(height).ok()?;
     let rowstride = width.checked_mul(4)?;

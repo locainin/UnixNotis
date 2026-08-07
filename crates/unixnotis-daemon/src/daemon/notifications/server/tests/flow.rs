@@ -15,6 +15,10 @@ use zbus::message::Type;
 use zbus::zvariant::{OwnedValue, Value};
 use zbus::{Connection, MatchRule, Message, MessageStream};
 
+use crate::daemon::notifications::identity::SenderMetadata;
+use crate::daemon::notifications::ingress::payload::{
+    build_notification, NotificationInput, SenderVisualRole,
+};
 use crate::daemon::{DaemonState, NotificationServer};
 use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
@@ -169,6 +173,66 @@ fn log_received_notification_reports_true_when_debug_is_enabled() {
     });
 
     assert!(logged);
+}
+
+#[test]
+fn conversation_avatar_wire_image_is_stored_with_the_avatar_role_and_bound() {
+    // Model the validated wire object immediately before notification flow routing
+    let wire_image = super::super::wire_hints::WireImageData::from_parts(
+        320,
+        320,
+        320 * 4,
+        true,
+        8,
+        4,
+        vec![19_u8; 320 * 320 * 4],
+    )
+    .expect("320x320 communication image should pass wire validation");
+    // The communication role must send the wire image down the sender-visual branch
+    let (content_image, sender_visual_data) = super::normalize_wire_image_for_role(
+        SenderVisualRole::ConversationAvatar,
+        Some(wire_image),
+        None,
+    );
+    let notification = build_notification(NotificationInput {
+        app_name: "Messages".to_string(),
+        app_icon: String::new(),
+        summary: "New message".to_string(),
+        body: "Hello".to_string(),
+        actions: Vec::new(),
+        hints: HashMap::new(),
+        image_data: content_image,
+        sender_visual_data,
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
+        sender: SenderMetadata::default(),
+        attribution: unixnotis_core::NotificationAttribution::verified(
+            "Messages",
+            "Messages",
+            "org.example.Messages",
+            "messages",
+            unixnotis_core::AttributionReason::ExactSystemExecutable,
+            "exact system executable",
+            "verified:system-app:org.example.Messages".to_string(),
+        ),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+        expire_timeout: 0,
+    });
+
+    assert_eq!(
+        notification.image.sender_visual_role,
+        unixnotis_core::NotificationVisualRole::ConversationAvatar
+    );
+    assert_eq!(
+        (
+            notification.image.sender_visual.width,
+            notification.image.sender_visual.height
+        ),
+        (64, 64)
+    );
+    assert_eq!(notification.image.sender_visual.data.len(), 64 * 64 * 4);
+    assert!(notification.image.content_image.data.is_empty());
 }
 
 #[tokio::test]

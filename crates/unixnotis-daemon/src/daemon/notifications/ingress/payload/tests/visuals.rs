@@ -2,6 +2,8 @@ use super::super::visuals::{
     downsample_avatar, local_avatar_path, valid_percent_escapes, MAX_DECODE_DIMENSION,
 };
 use super::*;
+use image::codecs::png::PngEncoder;
+use image::{ExtendedColorType, ImageEncoder};
 #[test]
 fn associated_sender_role_accepts_inline_reply_and_message_categories() {
     let attribution = unixnotis_core::NotificationAttribution::associated(
@@ -272,6 +274,28 @@ fn absolute_avatar_path_is_materialized_into_bounded_raster_data() {
     assert_eq!((avatar.width, avatar.height), (1, 1));
     assert_eq!(avatar.channels, 4);
     assert_eq!(avatar.data.len(), 4);
+}
+
+#[test]
+fn large_file_visual_is_decoded_before_avatar_downsampling() {
+    let pixels = vec![128_u8; 256 * 256 * 4];
+    let mut png = Vec::new();
+    PngEncoder::new(&mut png)
+        .write_image(&pixels, 256, 256, ExtendedColorType::Rgba8)
+        .expect("encode large avatar fixture");
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("unixnotis-large-avatar-{suffix}.png"));
+    std::fs::write(&path, png).expect("write large avatar fixture");
+
+    let avatar = materialize_sender_visual(path.to_str().expect("utf8 fixture path"), 64);
+    let _ = std::fs::remove_file(&path);
+
+    let avatar = avatar.expect("large source should be decoded before downsampling");
+    assert_eq!((avatar.width, avatar.height), (64, 64));
+    assert_eq!(avatar.data.len(), 64 * 64 * 4);
 }
 
 #[test]

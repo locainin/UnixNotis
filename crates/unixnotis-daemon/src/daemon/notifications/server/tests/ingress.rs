@@ -5,6 +5,7 @@ use std::time::Duration;
 use zbus::zvariant::{OwnedValue, SerializeValue, Structure, Value};
 use zbus::{Connection, Message};
 
+use super::super::notify_body::MAX_NOTIFY_WIRE_IMAGE_BYTES;
 use super::{
     notify_body_is_oversized, notify_has_unix_fds, NotificationIngress, MAX_NOTIFY_WIRE_BODY_BYTES,
 };
@@ -112,7 +113,7 @@ async fn oversized_hint_map_is_rejected_before_notify_deserialization() {
 #[tokio::test]
 async fn oversized_image_array_is_rejected_before_notify_deserialization() {
     let (state, client) = notification_ingress().await;
-    let error = send_image_notification(&state, &client, 1, 1, 4, MAX_NOTIFY_WIRE_BODY_BYTES + 1)
+    let error = send_image_notification(&state, &client, 1, 1, 4, MAX_NOTIFY_WIRE_IMAGE_BYTES + 1)
         .await
         .expect_err("image above the wire limit must fail");
 
@@ -124,7 +125,7 @@ async fn oversized_image_array_is_rejected_before_notify_deserialization() {
 }
 
 #[tokio::test]
-async fn native_image_above_retained_limit_keeps_the_text_notification() {
+async fn native_image_above_retained_limit_is_downsampled_before_storage() {
     let (state, client) = notification_ingress().await;
     let reply = send_image_notification(&state, &client, 1_024, 1_024, 4_096, 1_024 * 1_024 * 4)
         .await
@@ -138,7 +139,14 @@ async fn native_image_above_retained_limit_keeps_the_text_notification() {
         .expect("notification should be retained");
 
     assert_eq!(active.summary, "summary");
-    assert!(active.image.content_image.data.is_empty());
+    assert_eq!(
+        (
+            active.image.content_image.width,
+            active.image.content_image.height
+        ),
+        (256, 256)
+    );
+    assert_eq!(active.image.content_image.data.len(), 256 * 256 * 4);
 }
 
 #[tokio::test]

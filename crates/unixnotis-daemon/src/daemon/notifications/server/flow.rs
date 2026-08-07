@@ -13,7 +13,7 @@ use crate::daemon::notifications::identity::{
 use crate::daemon::notifications::ingress::payload::{
     build_notification, materialize_sender_visual, may_materialize_content_image, owned_to_string,
     sender_visual_role, NotificationInput, SenderVisualRole, CONVERSATION_AVATAR_TIMEOUT,
-    MAX_STORED_CONTENT_DIMENSION,
+    MAX_STORED_AVATAR_DIMENSION, MAX_STORED_CONTENT_DIMENSION,
 };
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::InsertOutcome;
@@ -33,7 +33,7 @@ struct WireNotification {
     body: String,
     actions: Vec<String>,
     hints: HashMap<String, OwnedValue>,
-    image_data: Option<ImageData>,
+    wire_image_data: Option<super::wire_hints::WireImageData>,
     image_path: Option<String>,
     expire_timeout: i32,
 }
@@ -62,7 +62,7 @@ impl NotificationServer {
             replaces_id,
             expire_timeout,
         );
-        let (hints, image_data, image_path) = hints.into_parts();
+        let (hints, wire_image_data, image_path) = hints.into_parts();
         let notification = self
             .notification_from_wire(
                 WireNotification {
@@ -72,7 +72,7 @@ impl NotificationServer {
                     body,
                     actions,
                     hints,
-                    image_data,
+                    wire_image_data,
                     image_path,
                     expire_timeout,
                 },
@@ -161,13 +161,11 @@ impl NotificationServer {
             materialize_sender_visual_for_role(sender_visual_role, input.app_icon.clone()).await;
         let materialized_content =
             materialize_content_visual(&resolution.attribution, input.image_path.as_deref()).await;
-        // Communication image-data is a bounded conversation visual, not a message attachment
-        let (image_data, wire_sender_visual) =
-            if matches!(sender_visual_role, SenderVisualRole::ConversationAvatar) {
-                (materialized_content, input.image_data)
-            } else {
-                (input.image_data.or(materialized_content), None)
-            };
+        let (image_data, wire_sender_visual) = normalize_wire_image_for_role(
+            sender_visual_role,
+            input.wire_image_data,
+            materialized_content,
+        );
         if matches!(
             resolution.attribution.status,
             unixnotis_core::AttributionStatus::Conflict
@@ -330,6 +328,28 @@ impl NotificationServer {
             .publish_evicted_notifications(&evicted)
             .await
             .map_err(to_fdo_error)
+    }
+}
+
+fn normalize_wire_image_for_role(
+    role: SenderVisualRole,
+    wire_image_data: Option<super::wire_hints::WireImageData>,
+    materialized_content: Option<ImageData>,
+) -> (Option<ImageData>, Option<ImageData>) {
+    match role {
+        SenderVisualRole::ConversationAvatar => {
+            // Communication artwork becomes a small sender visual before model storage
+            let sender_visual = wire_image_data
+                .and_then(|image| image.into_storage_image(MAX_STORED_AVATAR_DIMENSION));
+            (materialized_content, sender_visual)
+        }
+        // Non-communication artwork uses the larger content-image storage bound
+        SenderVisualRole::ApplicationProvidedIcon | SenderVisualRole::None => {
+            let content_image = wire_image_data
+                .and_then(|image| image.into_storage_image(MAX_STORED_CONTENT_DIMENSION))
+                .or(materialized_content);
+            (content_image, None)
+        }
     }
 }
 

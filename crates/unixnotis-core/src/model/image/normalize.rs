@@ -9,6 +9,12 @@ impl NotificationImage {
         MAX_IMAGE_BYTES
     }
 
+    /// Returns the maximum dimension retained by the notification model
+    #[must_use]
+    pub const fn retained_dimension_limit() -> i32 {
+        MAX_IMAGE_DIMENSION
+    }
+
     pub(super) fn is_image_data_usable(data: &ImageData) -> bool {
         // Hard dimension caps keep texture creation and D-Bus payloads predictable
         if data.width > MAX_IMAGE_DIMENSION || data.height > MAX_IMAGE_DIMENSION {

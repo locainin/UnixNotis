@@ -4,10 +4,9 @@ use std::collections::HashMap;
 
 use serde::de::{DeserializeSeed, Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
-use unixnotis_core::ImageData;
 use zbus::zvariant::{OwnedValue, Signature, Value};
 
-use super::image_bytes::BoundedImageBytes;
+use super::image_bytes::{BoundedImageBytes, WireImageData};
 use super::WireHints;
 
 impl<'de> Deserialize<'de> for WireHints {
@@ -77,7 +76,7 @@ impl<'de> Visitor<'de> for WireHintsVisitor {
 
         Ok(WireHints {
             values,
-            image_data: standard_image.or(legacy_image).or(legacy_icon),
+            wire_image_data: standard_image.or(legacy_image).or(legacy_icon),
             image_path,
         })
     }
@@ -115,7 +114,7 @@ enum DecodedHint {
     Text(String),
     Bool(bool),
     Urgency(u32),
-    Image(Option<ImageData>),
+    Image(Option<WireImageData>),
 }
 
 struct HintVariantSeed {
@@ -182,7 +181,7 @@ impl<'de> Visitor<'de> for HintVariantVisitor {
                     .ok_or_else(|| A::Error::invalid_length(1, &self))?;
                 let image = raw
                     .6
-                    .into_image_data(raw.0, raw.1, raw.2, raw.3, raw.4, raw.5);
+                    .into_wire_image(raw.0, raw.1, raw.2, raw.3, raw.4, raw.5);
                 Ok(DecodedHint::Image(image))
             }
             HintKind::Text | HintKind::Bool | HintKind::Urgency | HintKind::Image => Err(
