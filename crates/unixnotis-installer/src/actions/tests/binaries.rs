@@ -1,16 +1,16 @@
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
     discover_installed_binaries, extract_bins_from_metadata, legacy_binaries,
     parse_install_binaries_metadata, parse_release_manifest_binaries, resolve_install_binaries,
-    resolve_install_binaries_best_effort, resolve_target_directory, CargoMetadata,
+    resolve_install_binaries_best_effort, resolve_install_binaries_with_cargo,
+    resolve_target_directory, resolve_target_directory_with_cargo, CargoMetadata,
 };
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
-use crate::test_support::env::EnvGuard;
-use crate::test_support::fs::write_executable;
 
 #[test]
 fn parse_install_binaries_metadata_reads_entries() {
@@ -118,11 +118,10 @@ fn release_resolution_does_not_compare_archive_names_with_cargo_metadata() {
     let root = test_root("release-resolution");
     let paths = test_paths(&root);
     write_release_manifest(&paths, &["noticenterctl"]);
-    let fake_bin = write_fake_cargo(
+    let _fake_bin = write_fake_cargo(
         &root,
         r#"{"target_directory":"target","packages":[{"targets":[{"name":"unixnotis-daemon","kind":["bin"]}]}]}"#,
     );
-    let _path = EnvGuard::set("PATH", &fake_bin);
 
     let binaries =
         resolve_install_binaries(&paths).expect("release manifest should be authoritative");
@@ -138,9 +137,8 @@ fn workspace_resolution_rejects_declared_names_when_cargo_has_no_binary_targets(
     let paths = test_paths(&root);
     write_workspace_manifest(&paths, Some(&["noticenterctl"]));
     let fake_bin = write_fake_cargo(&root, r#"{"target_directory":"target","packages":[]}"#);
-    let _path = EnvGuard::set("PATH", &fake_bin);
 
-    let error = resolve_install_binaries(&paths)
+    let error = resolve_install_binaries_with_cargo(&paths, Some(&fake_bin.join("cargo")))
         .expect_err("an empty Cargo inventory must not widen declared names");
 
     assert!(error.to_string().contains("managed binary list"));
@@ -157,9 +155,9 @@ fn workspace_resolution_accepts_declared_names_present_in_cargo_metadata() {
         &root,
         r#"{"target_directory":"target","packages":[{"targets":[{"name":"noticenterctl","kind":["bin"]}]}]}"#,
     );
-    let _path = EnvGuard::set("PATH", &fake_bin);
 
-    let binaries = resolve_install_binaries(&paths).expect("matching target should be accepted");
+    let binaries = resolve_install_binaries_with_cargo(&paths, Some(&fake_bin.join("cargo")))
+        .expect("matching target should be accepted");
 
     assert_eq!(binaries, vec!["noticenterctl".to_string()]);
     let _ = fs::remove_dir_all(root);
@@ -175,10 +173,9 @@ fn workspace_resolution_ignores_internal_binary_targets() {
         &root,
         r#"{"target_directory":"target","packages":[{"targets":[{"name":"css-check","kind":["bin"]},{"name":"unixnotis-center","kind":["bin"]}]}]}"#,
     );
-    let _path = EnvGuard::set("PATH", &fake_bin);
 
-    let binaries =
-        resolve_install_binaries(&paths).expect("internal tools must not block source installs");
+    let binaries = resolve_install_binaries_with_cargo(&paths, Some(&fake_bin.join("cargo")))
+        .expect("internal tools must not block source installs");
 
     assert_eq!(binaries, vec!["unixnotis-center".to_string()]);
     let _ = fs::remove_dir_all(root);
@@ -194,9 +191,9 @@ fn workspace_resolution_rejects_declared_names_missing_from_cargo_metadata() {
         &root,
         r#"{"target_directory":"target","packages":[{"targets":[{"name":"unixnotis-daemon","kind":["bin"]}]}]}"#,
     );
-    let _path = EnvGuard::set("PATH", &fake_bin);
 
-    let error = resolve_install_binaries(&paths).expect_err("missing target should be rejected");
+    let error = resolve_install_binaries_with_cargo(&paths, Some(&fake_bin.join("cargo")))
+        .expect_err("missing target should be rejected");
 
     assert!(error.to_string().contains("noticenterctl"));
     let _ = fs::remove_dir_all(root);
@@ -209,9 +206,9 @@ fn workspace_resolution_rejects_an_empty_declared_and_discovered_set() {
     let paths = test_paths(&root);
     write_workspace_manifest(&paths, None);
     let fake_bin = write_fake_cargo(&root, r#"{"target_directory":"target","packages":[]}"#);
-    let _path = EnvGuard::set("PATH", &fake_bin);
 
-    let error = resolve_install_binaries(&paths).expect_err("empty discovery must fail closed");
+    let error = resolve_install_binaries_with_cargo(&paths, Some(&fake_bin.join("cargo")))
+        .expect_err("empty discovery must fail closed");
 
     assert!(error.to_string().contains("no installable binaries"));
     let _ = fs::remove_dir_all(root);
@@ -227,13 +224,14 @@ fn workspace_resolution_uses_cargo_targets_when_the_declared_list_is_missing() {
         &root,
         r#"{"target_directory":"build-output","packages":[{"targets":[{"name":"noticenterctl","kind":["bin"]}]}]}"#,
     );
-    let _path = EnvGuard::set("PATH", &fake_bin);
 
-    let binaries = resolve_install_binaries(&paths).expect("cargo targets should provide fallback");
+    let binaries = resolve_install_binaries_with_cargo(&paths, Some(&fake_bin.join("cargo")))
+        .expect("cargo targets should provide fallback");
 
     assert_eq!(binaries, vec!["noticenterctl".to_string()]);
     assert_eq!(
-        resolve_target_directory(&paths).expect("cargo target directory"),
+        resolve_target_directory_with_cargo(&paths, &fake_bin.join("cargo"))
+            .expect("cargo target directory"),
         PathBuf::from("build-output")
     );
     let _ = fs::remove_dir_all(root);
@@ -506,11 +504,11 @@ fn write_release_manifest(paths: &InstallPaths, binaries: &[&str]) {
 }
 
 fn write_fake_cargo(root: &std::path::Path, metadata: &str) -> PathBuf {
-    let fake_bin = root.join("fake-bin");
+    let fake_bin = root.join("home").join(".cargo").join("bin");
     fs::create_dir_all(&fake_bin).expect("fake cargo directory");
-    write_executable(
-        &fake_bin.join("cargo"),
-        &format!("#!/bin/sh\nprintf '%s\\n' '{metadata}'\n"),
-    );
+    let cargo = fake_bin.join("cargo");
+    fs::write(&cargo, format!("#!/bin/sh\nprintf '%s\\n' '{metadata}'\n"))
+        .expect("write fake cargo");
+    fs::set_permissions(&cargo, fs::Permissions::from_mode(0o755)).expect("set fake cargo mode");
     fake_bin
 }

@@ -6,8 +6,8 @@ use std::path::Path;
 use crate::paths::{InstallPaths, ServiceManagerChoice};
 use crate::service_manager::{CommandSpec, ReadinessIssue, ServiceManager};
 use crate::system_tools;
+use crate::toolchain::resolve_cargo;
 use unixnotis_core::filesystem::{remove_regular_file, write_file_if_missing};
-use unixnotis_core::program_in_path;
 
 use super::CheckItem;
 
@@ -113,10 +113,9 @@ pub(super) fn cargo_check(release_archive: bool) -> CheckItem {
         return CheckItem::ok("cargo", "not required for release archive");
     }
 
-    if program_in_path("cargo") {
-        CheckItem::ok("cargo", "available")
-    } else {
-        CheckItem::fail("cargo", "not installed")
+    match resolve_cargo() {
+        Ok(_) => CheckItem::ok("cargo", "available"),
+        Err(_) => CheckItem::fail("cargo", "not installed in approved toolchain locations"),
     }
 }
 

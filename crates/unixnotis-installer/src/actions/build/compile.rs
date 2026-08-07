@@ -2,7 +2,11 @@
 
 use anyhow::{anyhow, Result};
 
-use super::super::{binaries::resolve_install_binaries, log_line, run_command, ActionContext};
+use crate::toolchain::{cargo_command, resolve_cargo};
+
+use super::super::{
+    binaries::resolve_install_binaries_with_cargo, log_line, run_command, ActionContext,
+};
 
 pub fn run_build(ctx: &mut ActionContext) -> Result<()> {
     if ctx.paths.is_release_archive() {
@@ -13,15 +17,18 @@ pub fn run_build(ctx: &mut ActionContext) -> Result<()> {
     // Build release artifacts before copying them into the user bin directory
     log_line(ctx, "Building release binaries");
 
+    // Resolve once so metadata discovery and the build use the same executable
+    let cargo = resolve_cargo()?;
+
     // Resolve the managed binary list from installer metadata instead of guessing package names
-    let binaries = resolve_install_binaries(ctx.paths)?;
+    let binaries = resolve_install_binaries_with_cargo(ctx.paths, Some(&cargo))?;
     if binaries.is_empty() {
         return Err(anyhow!("no installable binaries discovered for build"));
     }
 
     // Installer metadata stores executable names because the same list drives copy and removal
     // Cargo needs those values as binary targets since a binary can differ from its package name
-    let mut build = std::process::Command::new("cargo");
+    let mut build = cargo_command(&cargo)?;
     build.args(["build", "--release"]);
     add_binary_targets(&mut build, &binaries);
 
@@ -45,7 +52,7 @@ fn verify_release_binaries(ctx: &mut ActionContext) -> Result<()> {
     log_line(ctx, "Using bundled release binaries");
 
     // The same resolver feeds build, install, and uninstall so the managed set cannot drift
-    let binaries = resolve_install_binaries(ctx.paths)?;
+    let binaries = super::super::binaries::resolve_install_binaries(ctx.paths)?;
     if binaries.is_empty() {
         return Err(anyhow!(
             "release manifest did not list installable binaries"

@@ -16,6 +16,7 @@ mod terminal;
 #[cfg(test)]
 #[path = "tests/support/mod.rs"]
 mod test_support;
+pub(crate) mod toolchain;
 mod trial;
 mod ui;
 mod write_target;
