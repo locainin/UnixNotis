@@ -62,9 +62,18 @@ impl SoundSettings {
         }
     }
 
-    /// Return true when sound playback is enabled and a backend is available
-    pub fn supports_sound(&self) -> bool {
+    /// Return true when internal notification playback can use a configured backend
+    pub fn has_playback_backend(&self) -> bool {
         self.enabled && self.backend != SoundBackend::None
+    }
+
+    /// Return true when sender-requested freedesktop sound semantics are available
+    pub fn supports_fdo_sound_capability(&self) -> bool {
+        // The specification requires `sound-file` and `suppress-sound` support when
+        // advertising `sound`, so an empty or disabled file policy must fail closed
+        self.has_playback_backend()
+            && self.allow_file_hints
+            && !self.allowed_file_hint_dirs.is_empty()
     }
 
     /// Resolve a sound source from hints or defaults and play if allowed
@@ -77,18 +86,13 @@ impl SoundSettings {
         if hint_bool(hints, "suppress-sound").unwrap_or(false) {
             return false;
         }
-        // Small cooldown avoids noisy bursts when apps spam fast updates
-        if !self.should_play_now() {
-            return false;
-        }
-
         // Hint source wins, then fallback source from config
         let source = resolve_hint_sound(hints, self.allow_file_hints, &self.allowed_file_hint_dirs)
             .or_else(|| self.default_source());
-        if let Some(source) = source {
-            return self.play(source);
-        }
-        false
+        let Some(source) = source else {
+            return false;
+        };
+        self.play_with_cooldown(source, Instant::now())
     }
 
     fn should_warn_missing_backend(sound_enabled: bool, backend: SoundBackend) -> bool {
@@ -108,30 +112,18 @@ impl SoundSettings {
     fn play(&self, source: SoundSource) -> bool {
         // Backend-specific launcher keeps this method tiny and testable
         match self.backend {
-            SoundBackend::Canberra => {
-                play_with_canberra(source);
-                true
-            }
-            SoundBackend::PwPlay => {
-                play_with_pw_play(source);
-                true
-            }
-            SoundBackend::PaPlay => {
-                play_with_paplay(source);
-                true
-            }
+            SoundBackend::Canberra => play_with_canberra(source),
+            SoundBackend::PwPlay => play_with_pw_play(source),
+            SoundBackend::PaPlay => play_with_paplay(source),
             SoundBackend::None => false,
         }
     }
 
-    fn should_play_now(&self) -> bool {
-        self.should_play_at(Instant::now())
-    }
-
-    fn should_play_at(&self, now: Instant) -> bool {
-        let Ok(mut guard) = self.last_played.lock() else {
-            // A poisoned lock should not disable alerts forever
-            return true;
+    fn play_with_cooldown(&self, source: SoundSource, now: Instant) -> bool {
+        let mut guard = match self.last_played.lock() {
+            Ok(guard) => guard,
+            // Recover the timestamp so a prior panic cannot disable alerts forever
+            Err(poisoned) => poisoned.into_inner(),
         };
         if let Some(last) = *guard {
             // Skip playback if requests are too close together
@@ -139,7 +131,12 @@ impl SoundSettings {
                 return false;
             }
         }
-        // Record now only when the request is accepted
+        // Cooldown measures accepted playback, not notification attempts
+        // Missing, unsupported, concurrency-rejected, and spawn-failed sources must
+        // not suppress the next legitimate sound
+        if !self.play(source) {
+            return false;
+        }
         *guard = Some(now);
         true
     }

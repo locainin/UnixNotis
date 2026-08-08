@@ -104,6 +104,8 @@ fn metadata_from_credentials(
     SenderMetadata {
         sender_name,
         sender_pid: process_id,
+        // Process start time turns the reusable pid into one lifetime identity
+        sender_start_time: process_id.and_then(read_process_start_time),
         sender_uid: user_id,
         status,
         ..SenderMetadata::default()
@@ -244,7 +246,7 @@ fn process_lifetime_matches(
 }
 
 #[cfg(target_os = "linux")]
-fn read_process_start_time(pid: u32) -> Option<u64> {
+pub(in crate::daemon) fn read_process_start_time(pid: u32) -> Option<u64> {
     // /proc/<pid>/stat keeps the process lifetime tick count in field 22
     let path = format!("/proc/{pid}/stat");
     let contents = std::fs::read_to_string(path).ok()?;
@@ -350,7 +352,7 @@ fn parse_process_cmdline(mut bytes: Vec<u8>) -> Option<Vec<Vec<u8>>> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn read_process_start_time(_pid: u32) -> Option<u64> {
+pub(in crate::daemon) fn read_process_start_time(_pid: u32) -> Option<u64> {
     // Non-Linux builds fall back to bus-name ownership only
     None
 }

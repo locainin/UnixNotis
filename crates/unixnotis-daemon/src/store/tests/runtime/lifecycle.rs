@@ -5,8 +5,12 @@ use crate::store::test_support::{make_notification, make_store_with_limits};
 #[test]
 fn clear_all_removes_active_history_and_expiration_state_together() {
     let mut store = make_store_with_limits(10, 10);
-    let active = store.insert(make_notification("active"), 0).notification;
-    let archived = store.insert(make_notification("archived"), 0).notification;
+    let active = store
+        .insert(make_notification("active"), 0)
+        .active_notification();
+    let archived = store
+        .insert(make_notification("archived"), 0)
+        .active_notification();
     store.close(archived.id, CloseReason::Expired);
     store.set_expiration(&active, Some(std::time::Instant::now()));
 

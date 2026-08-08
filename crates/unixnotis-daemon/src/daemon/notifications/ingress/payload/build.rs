@@ -130,7 +130,7 @@ pub(in crate::daemon::notifications) fn build_notification(
         actions,
         inline_reply,
         inline_reply_policy,
-        hints: sanitize_hints_for_storage(hints),
+        hints: sanitize_hints_for_storage(hints, urgency),
         urgency,
         category,
         is_transient,

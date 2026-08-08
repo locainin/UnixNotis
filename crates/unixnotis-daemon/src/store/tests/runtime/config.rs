@@ -20,9 +20,9 @@ fn active_notification_view_returns_current_active_payload() {
     let outcome = store.insert(make_notification("visible"), 0);
 
     let view = store
-        .active_notification_view(outcome.notification.id)
+        .active_notification_view(outcome.active_notification().id)
         .expect("active notification should be visible");
 
-    assert_eq!(view.id, outcome.notification.id);
+    assert_eq!(view.id, outcome.active_notification().id);
     assert_eq!(view.summary, "visible");
 }

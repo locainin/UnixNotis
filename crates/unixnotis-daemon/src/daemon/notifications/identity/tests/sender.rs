@@ -49,6 +49,19 @@ fn credential_metadata_keeps_sender_identity_and_failure_stage() {
     assert_eq!(failed.install_provenance, InstallProvenance::Unknown);
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn credential_metadata_captures_the_complete_current_process_lifetime() {
+    let pid = std::process::id();
+    let expected_start =
+        read_process_start_time(pid).expect("current process start time should exist");
+
+    let metadata = metadata_from_credentials(Some(":1.44".to_string()), Some(pid), Some(1_000));
+
+    assert_eq!(metadata.sender_pid, Some(pid));
+    assert_eq!(metadata.sender_start_time, Some(expected_start));
+}
+
 #[test]
 fn status_metadata_preserves_sender_name_and_failure_status() {
     let metadata = metadata_with_status(

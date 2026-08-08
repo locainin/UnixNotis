@@ -12,16 +12,19 @@ fn drain_active_keys_returns_newest_first_and_clears_expirations() {
     let first = store.insert(make_notification("first"), 0);
     let second = store.insert(make_notification("second"), 0);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    store.set_expiration(&first.notification, Some(deadline));
+    store.set_expiration(&first.active_notification(), Some(deadline));
 
     let keys = store.drain_active_keys();
 
     assert_eq!(
         keys,
-        vec![second.notification.key(), first.notification.key()]
+        vec![
+            second.active_notification().key(),
+            first.active_notification().key()
+        ]
     );
     assert!(store.list_active().is_empty());
-    assert_eq!(expiration_for(&store, first.notification.id), None);
+    assert_eq!(expiration_for(&store, first.active_notification().id), None);
 }
 
 #[test]
@@ -32,23 +35,26 @@ fn expiration_bookkeeping_sets_replaces_and_removes_deadlines() {
     let second = std::time::Instant::now() + std::time::Duration::from_secs(2);
 
     let first_ticket = store
-        .set_expiration(&outcome.notification, Some(first))
+        .set_expiration(&outcome.active_notification(), Some(first))
         .expect("positive deadline should create a ticket");
     assert_eq!(
-        expiration_for(&store, outcome.notification.id),
+        expiration_for(&store, outcome.active_notification().id),
         Some(first_ticket)
     );
 
     let second_ticket = store
-        .set_expiration(&outcome.notification, Some(second))
+        .set_expiration(&outcome.active_notification(), Some(second))
         .expect("replacement deadline should create a ticket");
     assert_eq!(
-        expiration_for(&store, outcome.notification.id),
+        expiration_for(&store, outcome.active_notification().id),
         Some(second_ticket)
     );
 
-    store.set_expiration(&outcome.notification, None);
-    assert_eq!(expiration_for(&store, outcome.notification.id), None);
+    store.set_expiration(&outcome.active_notification(), None);
+    assert_eq!(
+        expiration_for(&store, outcome.active_notification().id),
+        None
+    );
 }
 
 #[test]
@@ -60,7 +66,7 @@ fn generation_safe_reply_dismissal_keeps_same_id_replacement() {
         key: "inline-reply".to_string(),
         label: "Reply".to_string(),
     });
-    let original = store.insert(original, 0).notification;
+    let original = store.insert(original, 0).active_notification();
     let id = original.id;
 
     let replacement = store.insert(make_notification("replacement"), id);
@@ -74,18 +80,20 @@ fn generation_safe_reply_dismissal_keeps_same_id_replacement() {
             .summary,
         "replacement"
     );
-    assert!(store.dismiss_active_if_current(id, &replacement.notification));
+    assert!(store.dismiss_active_if_current(id, &replacement.active_notification()));
     assert!(store.active_notification_view(id).is_none());
 }
 
 #[test]
 fn stale_panel_dismissal_keeps_same_id_replacement() {
     let mut store = make_store_with_limits(12, 20);
-    let original = store.insert(make_notification("original"), 0).notification;
+    let original = store
+        .insert(make_notification("original"), 0)
+        .active_notification();
     let stale_key = original.key();
     let replacement = store
         .insert(make_notification("replacement"), original.id)
-        .notification;
+        .active_notification();
 
     let outcome = store.dismiss_generation(stale_key);
 
@@ -102,7 +110,9 @@ fn stale_panel_dismissal_keeps_same_id_replacement() {
 #[test]
 fn replied_generation_is_removed_after_sender_archives_it() {
     let mut store = make_store_with_limits(12, 20);
-    let original = store.insert(make_notification("original"), 0).notification;
+    let original = store
+        .insert(make_notification("original"), 0)
+        .active_notification();
     let id = original.id;
     store.close(id, CloseReason::ClosedByCall);
     assert_eq!(store.list_history().len(), 1);
@@ -117,7 +127,9 @@ fn replied_generation_is_removed_after_sender_archives_it() {
 #[test]
 fn replied_generation_cleanup_keeps_archived_same_id_replacement() {
     let mut store = make_store_with_limits(12, 20);
-    let original = store.insert(make_notification("original"), 0).notification;
+    let original = store
+        .insert(make_notification("original"), 0)
+        .active_notification();
     let id = original.id;
     let replacement = store.insert(make_notification("replacement"), id);
     assert!(replacement.replaced);

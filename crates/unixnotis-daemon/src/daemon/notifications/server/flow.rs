@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Instant;
 use tracing::{debug, warn};
 use unixnotis_core::{ImageData, Notification, NotificationKey};
 use zbus::message::Header;
@@ -10,15 +12,17 @@ use crate::daemon::notifications::identity::{
 use crate::daemon::notifications::identity::{
     resolve_sender_metadata, SenderMetadataStatus, SENDER_CREDENTIAL_TIMEOUT,
 };
+use crate::daemon::notifications::ingress::metrics::RejectedRequest;
 use crate::daemon::notifications::ingress::payload::{
     build_notification, materialize_sender_visual, may_materialize_content_image, owned_to_string,
     sender_visual_role, NotificationInput, SenderVisualRole, CONVERSATION_AVATAR_TIMEOUT,
     MAX_STORED_AVATAR_DIMENSION, MAX_STORED_CONTENT_DIMENSION,
 };
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
-use crate::store::InsertOutcome;
+use crate::store::{CommitDisposition, InsertOutcome, SuppressedNotification};
 
 use super::avatar::run_avatar_worker;
+use super::reply_lifecycle::NotifyCompletion;
 use super::wire_hints::WireHints;
 use super::NotificationServer;
 
@@ -43,7 +47,7 @@ impl NotificationServer {
         clippy::too_many_arguments,
         reason = "the freedesktop notification method defines this wire-level argument list"
     )]
-    pub(super) async fn ingest_notify(
+    pub(super) async fn ingest_notify_deferred(
         &self,
         app_name: String,
         replaces_id: u32,
@@ -54,7 +58,7 @@ impl NotificationServer {
         hints: WireHints,
         header: &Header<'_>,
         expire_timeout: i32,
-    ) -> zbus::fdo::Result<u32> {
+    ) -> zbus::fdo::Result<NotifyCompletion> {
         let _ = Self::log_received_notification(
             &app_name,
             &summary,
@@ -62,6 +66,19 @@ impl NotificationServer {
             replaces_id,
             expire_timeout,
         );
+        let sender = self.resolve_sender(header).await;
+        if !self
+            .notify_quota
+            .admit_principal(super::quota_principal(&sender), Instant::now())
+        {
+            let rejected = self
+                .ingress_metrics
+                .record_rejection(RejectedRequest::NotifyQuota);
+            debug!(rejected, "notification request rejected by principal quota");
+            return Err(zbus::fdo::Error::LimitsExceeded(
+                "notification ingress quota exceeded".to_string(),
+            ));
+        }
         let (hints, wire_image_data, image_path) = hints.into_parts();
         let notification = self
             .notification_from_wire(
@@ -76,7 +93,7 @@ impl NotificationServer {
                     image_path,
                     expire_timeout,
                 },
-                header,
+                sender,
             )
             .await;
         let stored = self.store_notification(notification, replaces_id).await;
@@ -111,13 +128,9 @@ impl NotificationServer {
         true
     }
 
-    async fn notification_from_wire(
-        &self,
-        input: WireNotification,
-        header: &Header<'_>,
-    ) -> Notification {
+    async fn resolve_sender(&self, header: &Header<'_>) -> SenderMetadata {
         // Sender metadata helps with ownership checks and diagnostics
-        let sender = if let Ok(sender) = tokio::time::timeout(
+        if let Ok(sender) = tokio::time::timeout(
             SENDER_CREDENTIAL_TIMEOUT,
             resolve_sender_metadata(
                 &self.state.sender_metadata_cache,
@@ -134,7 +147,14 @@ impl NotificationServer {
                 status: SenderMetadataStatus::CredentialLookupTimedOut,
                 ..SenderMetadata::default()
             }
-        };
+        }
+    }
+
+    async fn notification_from_wire(
+        &self,
+        input: WireNotification,
+        sender: SenderMetadata,
+    ) -> Notification {
         let desktop_entry = input.hints.get("desktop-entry").and_then(owned_to_string);
         let desktop_identity_index = self.state.desktop_identity_index.load_full();
         // This is the only attribution deadline, including package enrichment
@@ -222,16 +242,13 @@ impl NotificationServer {
             // Sample renderer health immediately before the serialized commit
             let ui_health = self.state.ui_health();
             let outcome = store.insert_with_ui_health(notification, replaces_id, &ui_health);
-            if !outcome.dropped {
+            if let CommitDisposition::Active(notification) = &outcome.disposition {
                 // The store resolved both clocks after applying rules and committing the generation
                 let expiration = outcome.expiration;
-                store.set_expiration(&outcome.notification, expiration);
+                store.set_expiration(notification, expiration);
                 // Unbounded send is synchronous, so commit order is preserved without an await
-                self.scheduler.schedule(
-                    outcome.notification.id,
-                    outcome.notification.generation,
-                    expiration,
-                );
+                self.scheduler
+                    .schedule(notification.id, notification.generation, expiration);
             }
             // Eviction cancellation is committed in the same order as the insertion
             for key in &outcome.evicted {
@@ -242,66 +259,84 @@ impl NotificationServer {
         StoredNotification { outcome }
     }
 
-    fn handle_dropped_notification(outcome: &InsertOutcome) -> Option<u32> {
-        if !outcome.dropped {
-            return None;
-        }
+    fn suppressed_notification(outcome: &InsertOutcome) -> Option<SuppressedNotification> {
+        let suppressed = outcome.suppressed()?;
         debug!(
-            id = outcome.notification.id,
-            app = %outcome.notification.app_name,
-            "notification dropped due to active inhibitor"
+            id = suppressed.id,
+            generation = suppressed.generation,
+            owner_pid = suppressed.owner.map(|owner| owner.pid),
+            "notification content dropped due to active inhibitor"
         );
-        Some(outcome.notification.id)
+        Some(suppressed)
     }
 
-    fn play_sound(&self, outcome: &InsertOutcome) {
+    fn play_sound(&self, notification: &Notification, allow_sound: bool) -> bool {
         // Sound is best-effort and decided by rules and per-notification hints
         self.state
             .sound
-            .play_from_hints(&outcome.notification.hints, outcome.allow_sound);
+            .play_from_hints(&notification.hints, allow_sound)
     }
 
-    async fn emit_notification_change(&self, outcome: &InsertOutcome) -> zbus::fdo::Result<()> {
+    async fn emit_notification_change(
+        &self,
+        notification: &Notification,
+        replaced: bool,
+    ) -> zbus::fdo::Result<()> {
         let mode = self
             .state
-            .notification_signal_mode(outcome.notification.sender_name.as_deref());
+            .notification_signal_mode(notification.sender_name.as_deref());
         if mode == NotificationSignalMode::SnapshotOnly {
             debug!(
-                id = outcome.notification.id,
-                sender = outcome.notification.sender_name.as_deref().unwrap_or("unknown"),
+                id = notification.id,
+                sender = notification.sender_name.as_deref().unwrap_or("unknown"),
                 "notification burst detected; using snapshot invalidation instead of per-row signal"
             );
         }
         self.state
-            .publish_notification_change(mode, outcome.notification.key(), outcome.replaced)
+            .publish_notification_change(mode, notification.key(), replaced)
             .await
             .map_err(to_fdo_error)
     }
 
-    async fn finish_notification_change(&self, outcome: InsertOutcome) -> zbus::fdo::Result<u32> {
-        if let Some(id) = Self::handle_dropped_notification(&outcome) {
-            return Ok(id);
-        }
-
-        self.play_sound(&outcome);
+    async fn finish_notification_change(
+        &self,
+        outcome: InsertOutcome,
+    ) -> zbus::fdo::Result<NotifyCompletion> {
+        let notification = match &outcome.disposition {
+            CommitDisposition::Active(notification) => Arc::clone(notification),
+            CommitDisposition::SuppressedDropAll(suppressed) => {
+                let suppressed = *suppressed;
+                let _ = Self::suppressed_notification(&outcome);
+                return Ok(NotifyCompletion {
+                    id: suppressed.id,
+                    suppressed: Some(suppressed),
+                });
+            }
+        };
+        let _sound_accepted = self.play_sound(&notification, outcome.allow_sound);
         debug!(
-            id = outcome.notification.id,
+            id = notification.id,
             decision = ?outcome.popup_admission,
             "notification popup admission decided"
         );
         if outcome.popup_admission.should_show() && self.state.should_warn_popups_unready() {
             warn!(
-                id = outcome.notification.id,
+                id = notification.id,
                 "popup admitted while popup renderer is not ready"
             );
         }
-        let id = outcome.notification.id;
-        if let Err(error) = self.emit_notification_change(&outcome).await {
+        let id = notification.id;
+        let key = notification.key();
+        if let Err(error) = self
+            .emit_notification_change(&notification, outcome.replaced)
+            .await
+        {
             warn!(?error, id, "notification committed but live fanout failed");
-            self.state.store.lock().await.record_popup_delivery_stage(
-                outcome.notification.key(),
-                unixnotis_core::PopupDeliveryStage::FanoutFailed,
-            );
+            self.state
+                .store
+                .lock()
+                .await
+                .record_popup_delivery_stage(key, unixnotis_core::PopupDeliveryStage::FanoutFailed);
             // Snapshot invalidation gives connected clients one best-effort recovery route
             let _ = self.state.publish_snapshot_invalidated().await;
         }
@@ -316,7 +351,29 @@ impl NotificationServer {
             warn!(?error, id, "notification committed but state fanout failed");
         }
 
-        Ok(id)
+        Ok(NotifyCompletion {
+            id,
+            suppressed: None,
+        })
+    }
+
+    pub(super) async fn publish_suppressed_close(&self, suppressed: SuppressedNotification) {
+        let key = NotificationKey {
+            id: suppressed.id,
+            generation: suppressed.generation,
+        };
+        if let Err(error) = self
+            .state
+            .publish_notification_closed(key, unixnotis_core::CloseReason::Undefined)
+            .await
+        {
+            warn!(
+                ?error,
+                id = suppressed.id,
+                generation = suppressed.generation,
+                "suppressed notification close fanout failed"
+            );
+        }
     }
 
     async fn handle_evicted(&self, evicted: Vec<NotificationKey>) -> zbus::fdo::Result<()> {

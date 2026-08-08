@@ -197,8 +197,8 @@ async fn scheduler_closes_notification_at_scheduled_deadline() {
     let key = {
         let mut store = state.store.lock().await;
         let outcome = store.insert(make_notification("expires"), 0);
-        let key = outcome.notification.key();
-        store.set_expiration(&outcome.notification, Some(deadline));
+        let key = outcome.active_notification().key();
+        store.set_expiration(&outcome.active_notification(), Some(deadline));
         key
     };
 
@@ -236,14 +236,16 @@ async fn old_timer_never_closes_or_signals_for_same_id_replacement() {
 
     // Holding the store lock forces the expired worker to wait at its commit point
     let mut store = state.store.lock().await;
-    let original = store.insert(make_notification("original"), 0).notification;
+    let original = store
+        .insert(make_notification("original"), 0)
+        .active_notification();
     store.set_expiration(&original, Some(old_deadline));
     scheduler.schedule(original.id, original.generation, Some(old_deadline));
     tokio::time::sleep(Duration::from_millis(80)).await;
 
     let replacement = store
         .insert(make_notification("replacement"), original.id)
-        .notification;
+        .active_notification();
     let replacement_deadline = Instant::now() + Duration::from_millis(250);
     store.set_expiration(&replacement, Some(replacement_deadline));
     scheduler.schedule(

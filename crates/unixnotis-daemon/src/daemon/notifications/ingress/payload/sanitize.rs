@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use unixnotis_core::util;
+use unixnotis_core::{util, Urgency};
 use zbus::zvariant::{OwnedValue, Value};
 
 use super::super::limits::{
@@ -12,6 +12,7 @@ use super::super::limits::{
 
 pub(in crate::daemon::notifications) fn sanitize_hints_for_storage(
     hints: HashMap<String, OwnedValue>,
+    canonical_urgency: Urgency,
 ) -> HashMap<String, OwnedValue> {
     let mut sanitized = HashMap::with_capacity(hints.len().min(MAX_HINT_ENTRIES));
 
@@ -35,7 +36,9 @@ pub(in crate::daemon::notifications) fn sanitize_hints_for_storage(
             "transient" | "resident" | "suppress-sound" => {
                 bool::try_from(&value).ok().map(OwnedValue::from)
             }
-            "urgency" => parse_urgency_hint(&value).map(OwnedValue::from),
+            // `Notification::urgency` is the single source of truth. The retained wire
+            // hint is reconstructed from that canonical value so policy cannot diverge
+            "urgency" => Some(OwnedValue::from(canonical_urgency.as_u32())),
             _ => None,
         };
 
@@ -50,16 +53,6 @@ pub(in crate::daemon::notifications) fn sanitize_hints_for_storage(
 
 pub(in crate::daemon::notifications) fn string_to_owned_value(value: &str) -> Option<OwnedValue> {
     OwnedValue::try_from(Value::from(value)).ok()
-}
-
-pub(in crate::daemon::notifications) fn parse_urgency_hint(value: &OwnedValue) -> Option<u32> {
-    if let Ok(raw) = u8::try_from(value) {
-        return Some(u32::from(raw).min(2));
-    }
-    if let Ok(raw) = u32::try_from(value) {
-        return Some(raw.min(2));
-    }
-    None
 }
 
 pub(in crate::daemon::notifications) fn owned_to_string(value: &OwnedValue) -> Option<String> {

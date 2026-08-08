@@ -67,6 +67,18 @@ fn padded_rgb_wire_rows_are_tightly_packed_as_rgba() {
 }
 
 #[test]
+fn alpha_flag_and_channel_count_must_describe_the_same_layout() {
+    assert!(WireImageData::from_parts(1, 1, 4, false, 8, 4, vec![0; 4]).is_none());
+    assert!(WireImageData::from_parts(1, 1, 3, true, 8, 3, vec![0; 3]).is_none());
+}
+
+#[test]
+fn final_wire_row_does_not_require_trailing_stride_padding() {
+    assert!(WireImageData::from_parts(1, 2, 4, false, 8, 3, vec![0; 7]).is_some());
+    assert!(WireImageData::from_parts(1, 2, 4, false, 8, 3, vec![0; 6]).is_none());
+}
+
+#[test]
 fn wire_image_metadata_and_bounds_fail_closed() {
     let valid_data = vec![0_u8; 4];
     assert!(WireImageData::from_parts(0, 1, 4, true, 8, 4, valid_data.clone()).is_none());

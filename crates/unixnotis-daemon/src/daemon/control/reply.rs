@@ -3,10 +3,10 @@
 use std::future::Future;
 
 use unixnotis_core::Notification;
-use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
 use zbus::SignalContext;
 
+use crate::daemon::notifications::identity::resolve_callback_destination;
 use crate::daemon::{to_fdo_error, NotificationServer, NOTIFICATIONS_OBJECT_PATH};
 
 use super::ControlServer;
@@ -79,26 +79,15 @@ impl ControlServer {
         &self,
         target: &Notification,
     ) -> zbus::fdo::Result<BusName<'static>> {
-        let sender = target
-            .sender_name
-            .as_deref()
-            .ok_or_else(application_unavailable_error)?;
-        let bus_name = BusName::try_from(sender).map_err(|error| {
-            // Stored sender names should always be unique D-Bus names from message headers
-            tracing::debug!(?error, "inline reply target has an invalid sender name");
-            application_unavailable_error()
-        })?;
-        let proxy = DBusProxy::new(self.state.connection())
-            .await
-            .map_err(to_fdo_error)?;
-        let has_owner = proxy
-            .name_has_owner(bus_name.clone())
-            .await
-            .map_err(|err| zbus::fdo::Error::Failed(err.to_string()))?;
-        if !has_owner {
-            return Err(application_unavailable_error());
-        }
-        Ok(bus_name.to_owned())
+        resolve_callback_destination(
+            &self.state.sender_metadata_cache,
+            self.state.connection(),
+            target.sender_name.as_deref(),
+            target.sender_pid,
+            target.sender_start_time,
+        )
+        .await
+        .ok_or_else(application_unavailable_error)
     }
 }
 

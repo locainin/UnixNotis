@@ -1,21 +1,42 @@
+use std::sync::Arc;
 use tracing::warn;
-use unixnotis_core::Notification;
 
-use crate::store::NotificationStore;
+use unixnotis_core::{CloseReason, Notification};
+
+use crate::store::{CloseAuthorization, NotificationStore};
 
 impl NotificationStore {
-    pub fn is_notification_owned_by(
+    pub fn close_authorization(
         &self,
         id: u32,
-        sender: &str,
+        sender: Option<&str>,
         sender_pid: Option<u32>,
         sender_start_time: Option<u64>,
-    ) -> bool {
-        // Ownership checks are valid only against active notifications
+    ) -> CloseAuthorization {
         let Some(notification) = self.active.get(&id) else {
-            return false;
+            return CloseAuthorization::NotClosable;
         };
-        notification_is_owned_by(notification, Some(sender), sender_pid, sender_start_time)
+        if notification_is_owned_by(notification, sender, sender_pid, sender_start_time) {
+            CloseAuthorization::OwnedActive(notification.key())
+        } else {
+            CloseAuthorization::NotClosable
+        }
+    }
+
+    pub fn close_owned_active(
+        &mut self,
+        id: u32,
+        sender: Option<&str>,
+        sender_pid: Option<u32>,
+        sender_start_time: Option<u64>,
+        reason: CloseReason,
+    ) -> Option<Arc<Notification>> {
+        // SECURITY: missing and foreign-owned IDs collapse before leaving the store
+        // CloseNotification therefore cannot become a notification-existence oracle
+        match self.close_authorization(id, sender, sender_pid, sender_start_time) {
+            CloseAuthorization::OwnedActive(_key) => self.close(id, reason),
+            CloseAuthorization::NotClosable => None,
+        }
     }
 
     pub(super) fn next_id(&mut self) -> u32 {
@@ -57,8 +78,9 @@ impl NotificationStore {
         sender_pid: Option<u32>,
         sender_start_time: Option<u64>,
     ) -> bool {
-        // Replacement is allowed only for the sender that owns the original notification
-        let Some(existing) = self.active.get(&id).or_else(|| self.history.get(&id)) else {
+        // Protocol replacement authority ends when an ID leaves `active`
+        // History is presentation-only state and cannot resurrect a closed object
+        let Some(existing) = self.active.get(&id) else {
             return false;
         };
         notification_is_owned_by(existing, sender, sender_pid, sender_start_time)

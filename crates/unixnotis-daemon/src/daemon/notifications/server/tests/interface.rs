@@ -27,7 +27,7 @@ async fn get_capabilities_returns_freedesktop_capability_contract() {
 
     assert!(capabilities.contains(&"actions".to_string()));
     assert!(capabilities.contains(&"body".to_string()));
-    assert!(capabilities.contains(&"body-markup".to_string()));
+    assert!(!capabilities.contains(&"body-markup".to_string()));
     assert!(capabilities.contains(&"icon-static".to_string()));
     assert!(!capabilities.contains(&"xyzzy".to_string()));
 }

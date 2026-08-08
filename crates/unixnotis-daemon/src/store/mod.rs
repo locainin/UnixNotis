@@ -7,11 +7,12 @@ mod notifications;
 mod runtime;
 
 pub use model::{
-    DeliveryStageUpdate, DismissOutcome, DndWrite, ExpirationTicket, InsertOutcome,
-    NotificationStore, PopupAdmission, PopupSuppressionReason,
+    CloseAuthorization, CommitDisposition, DeliveryStageUpdate, DismissOutcome, DndWrite,
+    ExpirationTicket, InsertOutcome, NotificationStore, PopupAdmission, PopupSuppressionReason,
+    StableProcessIdentity, SuppressedNotification,
 };
 
 #[cfg(test)]
-mod test_support;
+pub mod test_support;
 #[cfg(test)]
 mod tests;

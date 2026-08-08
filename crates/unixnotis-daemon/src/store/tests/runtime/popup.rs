@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use unixnotis_core::{CloseReason, Config, PopupAdmissionView};
 
 use crate::store::test_support::{make_notification, make_store_with_limits};
@@ -6,10 +8,12 @@ use crate::store::NotificationStore;
 #[test]
 fn popup_candidate_pairs_rule_suppression_with_replacement_generation() {
     let mut store = make_store_with_limits(10, 10);
-    let original = store.insert(make_notification("allowed"), 0).notification;
+    let original = store
+        .insert(make_notification("allowed"), 0)
+        .active_notification();
     let mut suppressed = make_notification("rule suppressed");
     suppressed.suppress_popup = true;
-    let replacement = store.insert(suppressed, original.id).notification;
+    let replacement = store.insert(suppressed, original.id).active_notification();
 
     let candidate = store
         .popup_candidate(original.id)
@@ -23,11 +27,13 @@ fn popup_candidate_pairs_rule_suppression_with_replacement_generation() {
 #[test]
 fn popup_candidate_pairs_dnd_suppression_with_replacement_generation() {
     let mut store = make_store_with_limits(10, 10);
-    let original = store.insert(make_notification("allowed"), 0).notification;
+    let original = store
+        .insert(make_notification("allowed"), 0)
+        .active_notification();
     store.set_dnd(true);
     let replacement = store
         .insert(make_notification("dnd suppressed"), original.id)
-        .notification;
+        .active_notification();
 
     let candidate = store
         .popup_candidate(original.id)
@@ -41,7 +47,9 @@ fn popup_candidate_pairs_dnd_suppression_with_replacement_generation() {
 #[test]
 fn notification_diagnostics_preserve_arrival_state_after_runtime_state_changes() {
     let mut store = make_store_with_limits(10, 10);
-    let visible = store.insert(make_notification("visible"), 0).notification;
+    let visible = store
+        .insert(make_notification("visible"), 0)
+        .active_notification();
     let unavailable = store
         .notification_diagnostics(visible.id, &unixnotis_core::UiHealth::default())
         .expect("active notification diagnostics");
@@ -56,7 +64,7 @@ fn notification_diagnostics_preserve_arrival_state_after_runtime_state_changes()
     store.set_dnd(true);
     let dnd_suppressed = store
         .insert(make_notification("DND suppressed"), 0)
-        .notification;
+        .active_notification();
     store.set_dnd(false);
     let ready = unixnotis_core::UiHealth {
         popups_process_running: true,
@@ -86,7 +94,9 @@ fn notification_diagnostics_require_both_renderer_process_and_readiness() {
             popups_ready: ready,
             ..unixnotis_core::UiHealth::default()
         };
-        let visible = store.insert(make_notification("visible"), 0).notification;
+        let visible = store
+            .insert(make_notification("visible"), 0)
+            .active_notification();
         store.record_popup_commit_environment(
             visible.key(),
             crate::store::PopupAdmission::Show,
@@ -115,7 +125,7 @@ fn popup_diagnostics_keep_the_readiness_revision_sampled_at_commit() {
     };
     let notification = store
         .insert_with_ui_health(make_notification("revision"), 0, &health)
-        .notification;
+        .active_notification();
 
     let diagnostics = store
         .notification_diagnostics(notification.id, &unixnotis_core::UiHealth::default())
@@ -129,7 +139,9 @@ fn disabled_popups_are_recorded_when_max_visible_is_zero() {
     let mut config = Config::default();
     config.popups.max_visible = 0;
     let mut store = NotificationStore::new(config);
-    let notification = store.insert(make_notification("disabled"), 0).notification;
+    let notification = store
+        .insert(make_notification("disabled"), 0)
+        .active_notification();
     let ready = unixnotis_core::UiHealth {
         popups_process_running: true,
         popups_ready: true,
@@ -159,7 +171,7 @@ fn archived_notification_keeps_its_arrival_popup_explanation() {
     store.set_dnd(true);
     let notification = store
         .insert(make_notification("archived DND"), 0)
-        .notification;
+        .active_notification();
     store.close(notification.id, CloseReason::Expired);
     store.set_dnd(false);
 
@@ -174,7 +186,9 @@ fn archived_notification_keeps_its_arrival_popup_explanation() {
 #[test]
 fn popup_delivery_stage_advances_for_fetch_and_render_acknowledgement() {
     let mut store = make_store_with_limits(10, 10);
-    let notification = store.insert(make_notification("delivery"), 0).notification;
+    let notification = store
+        .insert(make_notification("delivery"), 0)
+        .active_notification();
     let ready = unixnotis_core::UiHealth {
         popups_process_running: true,
         popups_ready: true,
@@ -220,7 +234,7 @@ fn visible_popup_candidate_cannot_be_fetched_again_after_reconnect() {
     let mut store = make_store_with_limits(10, 10);
     let notification = store
         .insert(make_notification("visible once"), 0)
-        .notification;
+        .active_notification();
 
     assert!(store.popup_candidate(notification.id).is_some());
     assert_eq!(
@@ -239,7 +253,9 @@ fn visible_popup_candidate_cannot_be_fetched_again_after_reconnect() {
 #[test]
 fn delivery_stage_never_moves_backward() {
     let mut store = make_store_with_limits(10, 10);
-    let notification = store.insert(make_notification("delivery"), 0).notification;
+    let notification = store
+        .insert(make_notification("delivery"), 0)
+        .active_notification();
 
     assert_eq!(
         store.record_popup_delivery_stage(
@@ -269,7 +285,9 @@ fn delivery_stage_never_moves_backward() {
 #[test]
 fn duplicate_popup_stage_acknowledgement_is_idempotent() {
     let mut store = make_store_with_limits(10, 10);
-    let notification = store.insert(make_notification("delivery"), 0).notification;
+    let notification = store
+        .insert(make_notification("delivery"), 0)
+        .active_notification();
 
     assert_eq!(
         store.record_popup_delivery_stage(
@@ -291,10 +309,12 @@ fn duplicate_popup_stage_acknowledgement_is_idempotent() {
 #[test]
 fn popup_stage_acknowledgement_rejects_a_missing_generation() {
     let mut store = make_store_with_limits(10, 10);
-    let original = store.insert(make_notification("original"), 0).notification;
+    let original = store
+        .insert(make_notification("original"), 0)
+        .active_notification();
     let _replacement = store
         .insert(make_notification("replacement"), original.id)
-        .notification;
+        .active_notification();
 
     assert_eq!(
         store.record_popup_delivery_stage(
@@ -317,7 +337,7 @@ fn popup_candidate_list_requires_policy_and_arrival_decision_to_allow_rendering(
 
     let mut rule_suppressed = make_notification("persistent suppression");
     rule_suppressed.suppress_popup = true;
-    let rule_suppressed = store.insert(rule_suppressed, 0).notification;
+    let rule_suppressed = store.insert(rule_suppressed, 0).active_notification();
     store.record_popup_commit_environment(
         rule_suppressed.key(),
         crate::store::PopupAdmission::Show,
@@ -327,7 +347,7 @@ fn popup_candidate_list_requires_policy_and_arrival_decision_to_allow_rendering(
 
     let arrival_suppressed = store
         .insert(make_notification("arrival suppression"), 0)
-        .notification;
+        .active_notification();
     store.record_popup_commit_environment(
         arrival_suppressed.key(),
         crate::store::PopupAdmission::Suppressed(crate::store::PopupSuppressionReason::Rule),
@@ -335,7 +355,9 @@ fn popup_candidate_list_requires_policy_and_arrival_decision_to_allow_rendering(
         0,
     );
 
-    let admitted = store.insert(make_notification("admitted"), 0).notification;
+    let admitted = store
+        .insert(make_notification("admitted"), 0)
+        .active_notification();
     store.record_popup_commit_environment(
         admitted.key(),
         crate::store::PopupAdmission::Show,
@@ -353,7 +375,7 @@ fn visible_popup_generations_are_not_seeded_after_renderer_reconnect() {
     let mut store = make_store_with_limits(10, 10);
     let notification = store
         .insert(make_notification("already visible"), 0)
-        .notification;
+        .active_notification();
 
     assert_eq!(store.list_popup_candidates().len(), 1);
     assert_eq!(
@@ -373,7 +395,9 @@ fn visible_popup_generations_are_not_seeded_after_renderer_reconnect() {
 #[test]
 fn materialized_but_not_visible_popup_remains_eligible_for_reconnect_seed() {
     let mut store = make_store_with_limits(10, 10);
-    let notification = store.insert(make_notification("overflow"), 0).notification;
+    let notification = store
+        .insert(make_notification("overflow"), 0)
+        .active_notification();
 
     assert_eq!(
         store.record_popup_delivery_stage(
@@ -386,24 +410,169 @@ fn materialized_but_not_visible_popup_remains_eligible_for_reconnect_seed() {
 }
 
 #[test]
+fn popup_renderer_outage_does_not_restart_an_expired_admission_deadline() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store
+        .insert(make_notification("renderer unavailable"), 0)
+        .active_notification();
+    let unavailable = unixnotis_core::UiHealth::default();
+    let admitted_at = Instant::now()
+        .checked_sub(Duration::from_millis(51))
+        .expect("test admission instant should be representable");
+    store.record_popup_commit_environment_at(
+        notification.key(),
+        crate::store::PopupAdmission::Show,
+        &unavailable,
+        50,
+        admitted_at,
+    );
+
+    assert!(
+        store.list_popup_candidates().is_empty(),
+        "an expired popup must not be seeded after renderer recovery"
+    );
+    assert!(
+        store.popup_candidate(notification.id).is_none(),
+        "an expired popup must not receive a fresh timeout"
+    );
+    assert_eq!(
+        store.list_active().len(),
+        1,
+        "popup expiration must not destroy the active notification"
+    );
+}
+
+#[test]
+fn popup_materialization_returns_only_the_remaining_admission_time() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store
+        .insert(make_notification("remaining deadline"), 0)
+        .active_notification();
+    let admitted_at = Instant::now()
+        .checked_sub(Duration::from_millis(25))
+        .expect("test admission instant should be representable");
+    store.record_popup_commit_environment_at(
+        notification.key(),
+        crate::store::PopupAdmission::Show,
+        &unixnotis_core::UiHealth::default(),
+        100,
+        admitted_at,
+    );
+
+    let candidate = store
+        .popup_candidate(notification.id)
+        .expect("unexpired popup candidate");
+    assert!(
+        (1..=75).contains(&candidate.notification.popup_hide_after_ms),
+        "materialization must return the remaining timeout"
+    );
+}
+
+#[test]
+fn popup_deadline_is_expired_at_the_exact_admission_boundary() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store
+        .insert(make_notification("exact deadline"), 0)
+        .active_notification();
+    let deadline = Instant::now();
+    store.popup_timings.insert(
+        notification.key(),
+        crate::store::model::PopupTiming {
+            deadline: Some(deadline),
+        },
+    );
+
+    assert!(!store.popup_deadline_is_current(notification.key(), deadline));
+}
+
+#[test]
+fn popup_materialization_keeps_zero_as_the_no_automatic_hide_value() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store
+        .insert(make_notification("no automatic hide"), 0)
+        .active_notification();
+    store.record_popup_commit_environment_at(
+        notification.key(),
+        crate::store::PopupAdmission::Show,
+        &unixnotis_core::UiHealth::default(),
+        0,
+        Instant::now(),
+    );
+
+    let candidate = store
+        .popup_candidate(notification.id)
+        .expect("indefinite popup should remain eligible");
+    assert_eq!(candidate.notification.popup_hide_after_ms, 0);
+}
+
+#[test]
 fn popup_decisions_are_pruned_after_their_active_and_history_generations_are_removed() {
     let mut store = make_store_with_limits(10, 10);
-    let notification = store.insert(make_notification("retained"), 0).notification;
+    let notification = store
+        .insert(make_notification("retained"), 0)
+        .active_notification();
 
     assert!(store.popup_decisions.contains_key(&notification.key()));
+    assert!(store.popup_timings.contains_key(&notification.key()));
     store.close(notification.id, CloseReason::Expired);
     assert!(store.popup_decisions.contains_key(&notification.key()));
+    assert!(store.popup_timings.contains_key(&notification.key()));
 
     store.clear_history();
     assert!(store.popup_decisions.is_empty());
+    assert!(store.popup_timings.is_empty());
 }
 
 #[test]
 fn action_dismissal_prunes_the_removed_generation_popup_decision() {
     let mut store = make_store_with_limits(10, 10);
-    let notification = store.insert(make_notification("actioned"), 0).notification;
+    let notification = store
+        .insert(make_notification("actioned"), 0)
+        .active_notification();
 
     assert!(store.popup_decisions.contains_key(&notification.key()));
+    assert!(store.popup_timings.contains_key(&notification.key()));
     assert!(store.dismiss_active_if_current(notification.id, &notification));
     assert!(store.popup_decisions.is_empty());
+    assert!(store.popup_timings.is_empty());
+}
+
+#[test]
+fn popup_pruning_removes_a_stale_timing_for_a_same_id_replacement() {
+    let mut store = make_store_with_limits(10, 10);
+    let original = store
+        .insert(make_notification("original"), 0)
+        .active_notification();
+    let replacement = store
+        .insert(make_notification("replacement"), original.id)
+        .active_notification();
+    store.popup_timings.insert(
+        original.key(),
+        crate::store::model::PopupTiming { deadline: None },
+    );
+
+    store.prune_popup_decisions();
+
+    assert!(!store.popup_timings.contains_key(&original.key()));
+    assert!(store.popup_timings.contains_key(&replacement.key()));
+}
+
+#[test]
+fn popup_replacement_discards_the_prior_generation_timing_at_commit() {
+    let mut store = make_store_with_limits(10, 10);
+    let original = store
+        .insert(make_notification("original"), 0)
+        .active_notification();
+    let replacement = store
+        .insert(make_notification("replacement"), original.id)
+        .active_notification();
+
+    let retained_for_id = store
+        .popup_timings
+        .keys()
+        .filter(|key| key.id == original.id)
+        .copied()
+        .collect::<Vec<_>>();
+    assert_eq!(retained_for_id, [replacement.key()]);
+    assert!(!store.popup_timings.contains_key(&original.key()));
 }

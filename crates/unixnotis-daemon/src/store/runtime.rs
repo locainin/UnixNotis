@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
 use tracing::{debug, warn};
@@ -10,7 +11,7 @@ use unixnotis_core::{
 };
 
 use super::dnd::{DndStateStore, DND_STATE_VERSION};
-use super::model::{DeliveryStageUpdate, NotificationStore};
+use super::model::{DeliveryStageUpdate, NotificationStore, PopupTiming};
 use super::notifications::HistoryStore;
 
 impl NotificationStore {
@@ -74,6 +75,7 @@ impl NotificationStore {
             active: IndexMap::new(),
             history: HistoryStore::new(),
             popup_decisions: HashMap::new(),
+            popup_timings: HashMap::new(),
             expirations: HashMap::new(),
             dnd_state_store,
             next_inhibitor_id: 1,
@@ -117,6 +119,7 @@ impl NotificationStore {
     }
 
     pub fn list_popup_candidates(&self) -> Vec<NotificationView> {
+        let now = Instant::now();
         // Newest-first ordering matches ListActive while excluding persistent no-popup rules
         self.active
             .values()
@@ -131,9 +134,10 @@ impl NotificationStore {
                                 decision.admission_at_commit,
                                 PopupAdmissionView::Show | PopupAdmissionView::RendererUnavailable
                             ) && decision.delivery_stage.rank() < PopupDeliveryStage::Visible.rank()
+                                && self.popup_deadline_is_current(notification.key(), now)
                         })
             })
-            .map(|notification| self.list_view_with_popup_decision(notification))
+            .map(|notification| self.list_view_with_popup_timing(notification, now))
             .collect()
     }
 
@@ -146,6 +150,7 @@ impl NotificationStore {
     }
 
     pub fn popup_candidate(&mut self, id: u32) -> Option<PopupCandidate> {
+        let now = Instant::now();
         // Payload and its arrival-time policy are read from one store-lock snapshot
         let notification = self.active.get(&id)?;
         let key = notification.key();
@@ -155,8 +160,13 @@ impl NotificationStore {
         if decision.delivery_stage.rank() >= PopupDeliveryStage::Visible.rank() {
             return None;
         }
+        // Popup lifetime begins at daemon admission, not renderer availability
+        // Renderer downtime must never make stale content a fresh full-duration popup
+        if !self.popup_deadline_is_current(key, now) {
+            return None;
+        }
         let admission = decision.admission_at_commit;
-        let view = self.view_with_popup_decision(notification);
+        let view = self.view_with_popup_timing(notification, now);
         if admission.should_show() {
             self.record_popup_delivery_stage(key, PopupDeliveryStage::RendererFetched);
         }
@@ -191,12 +201,13 @@ impl NotificationStore {
         })
     }
 
-    pub(crate) fn record_popup_commit_environment(
+    pub(super) fn record_popup_commit_environment_at(
         &mut self,
         key: NotificationKey,
         admission: super::PopupAdmission,
         ui_health: &UiHealth,
         popup_hide_after_ms: u64,
+        admitted_at: Instant,
     ) {
         let max_visible = u32::try_from(self.config.popups.max_visible).unwrap_or(u32::MAX);
         let effective_admission = if !admission.should_show() {
@@ -226,6 +237,16 @@ impl NotificationStore {
                 popup_hide_after_ms,
             },
         );
+        let deadline = if popup_hide_after_ms == 0 {
+            None
+        } else {
+            Some(
+                admitted_at
+                    .checked_add(Duration::from_millis(popup_hide_after_ms))
+                    .unwrap_or(admitted_at),
+            )
+        };
+        self.popup_timings.insert(key, PopupTiming { deadline });
     }
 
     pub fn record_popup_delivery_stage(
@@ -251,6 +272,12 @@ impl NotificationStore {
                 .is_some_and(|notification| notification.generation == key.generation)
                 || self.history.contains_generation(*key)
         });
+        self.popup_timings.retain(|key, _timing| {
+            self.active
+                .get(&key.id)
+                .is_some_and(|notification| notification.generation == key.generation)
+                || self.history.contains_generation(*key)
+        });
     }
 
     fn view_with_popup_decision(&self, notification: &Notification) -> NotificationView {
@@ -269,6 +296,46 @@ impl NotificationStore {
             view.popup_hide_after_ms = decision.popup_hide_after_ms;
         }
         view
+    }
+
+    pub(super) fn popup_deadline_is_current(&self, key: NotificationKey, now: Instant) -> bool {
+        self.popup_timings
+            .get(&key)
+            .is_some_and(|timing| timing.deadline.is_none_or(|deadline| now < deadline))
+    }
+
+    fn view_with_popup_timing(
+        &self,
+        notification: &Notification,
+        now: Instant,
+    ) -> NotificationView {
+        let mut view = self.view_with_popup_decision(notification);
+        view.popup_hide_after_ms = self.remaining_popup_ms(notification.key(), now);
+        view
+    }
+
+    fn list_view_with_popup_timing(
+        &self,
+        notification: &Notification,
+        now: Instant,
+    ) -> NotificationView {
+        let mut view = self.list_view_with_popup_decision(notification);
+        view.popup_hide_after_ms = self.remaining_popup_ms(notification.key(), now);
+        view
+    }
+
+    fn remaining_popup_ms(&self, key: NotificationKey, now: Instant) -> u64 {
+        let Some(timing) = self.popup_timings.get(&key) else {
+            return 0;
+        };
+        let Some(deadline) = timing.deadline else {
+            return 0;
+        };
+        let remaining = deadline.saturating_duration_since(now);
+        // Sub-millisecond positive durations must not become the renderer's no-timeout sentinel
+        u64::try_from(remaining.as_millis())
+            .unwrap_or(u64::MAX)
+            .max(1)
     }
 
     pub fn active_inline_reply_target(

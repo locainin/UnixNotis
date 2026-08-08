@@ -64,7 +64,7 @@ async fn submit_inline_reply_emits_text_and_removes_nonresident_notification() {
         let mut store = state.store.lock().await;
         let notification = store
             .insert(reply_notification(false, &sender), 0)
-            .notification;
+            .active_notification();
         (notification.id, notification.generation)
     };
 
@@ -89,7 +89,7 @@ async fn submit_inline_reply_keeps_resident_notification_live() {
         let mut store = state.store.lock().await;
         let notification = store
             .insert(reply_notification(true, &sender), 0)
-            .notification;
+            .active_notification();
         (notification.id, notification.generation)
     };
 
@@ -112,10 +112,10 @@ async fn stale_reply_generation_cannot_target_a_same_id_replacement() {
         let mut store = state.store.lock().await;
         let original = store
             .insert(reply_notification(false, &sender), 0)
-            .notification;
+            .active_notification();
         let replacement = store
             .insert(reply_notification(false, &sender), original.id)
-            .notification;
+            .active_notification();
         (original.id, original.generation, replacement.generation)
     };
 
@@ -152,7 +152,7 @@ async fn submit_inline_reply_round_trips_unicode_and_exact_byte_limit() {
             let mut store = state.store.lock().await;
             let notification = store
                 .insert(reply_notification(true, &sender), 0)
-                .notification;
+                .active_notification();
             (notification.id, notification.generation)
         };
 
@@ -176,7 +176,7 @@ async fn reply_listener_replacement_survives_generation_safe_dismissal() {
         let mut store = state.store.lock().await;
         let notification = store
             .insert(reply_notification(false, &sender), 0)
-            .notification;
+            .active_notification();
         (notification.id, notification.generation)
     };
     let replacement_state = state.clone();
@@ -213,7 +213,7 @@ async fn reply_listener_close_removes_replied_notification_without_history() {
         let mut store = state.store.lock().await;
         let notification = store
             .insert(reply_notification(false, &sender), 0)
-            .notification;
+            .active_notification();
         (notification.id, notification.generation)
     };
     let closing_state = state.clone();
@@ -243,7 +243,7 @@ async fn submit_inline_reply_rejects_sender_that_no_longer_owns_bus_name() {
         let mut store = state.store.lock().await;
         let notification = store
             .insert(reply_notification(false, &sender), 0)
-            .notification;
+            .active_notification();
         (notification.id, notification.generation)
     };
     let sender_name = sender.unique_name().expect("sender unique name").clone();
@@ -293,7 +293,7 @@ async fn inline_reply_signal_reaches_owner_but_not_unrelated_observer() {
         let mut store = state.store.lock().await;
         let notification = store
             .insert(reply_notification(true, &owner), 0)
-            .notification;
+            .active_notification();
         (notification.id, notification.generation)
     };
 
@@ -353,8 +353,11 @@ fn reply_notification(is_resident: bool, sender: &Connection) -> Notification {
                 .expect("sender connection unique name")
                 .to_string(),
         ),
-        sender_pid: Some(1234),
-        sender_start_time: Some(555),
+        sender_pid: Some(std::process::id()),
+        sender_start_time: Some(
+            crate::daemon::notifications::identity::read_process_start_time(std::process::id())
+                .expect("test process should expose a start time"),
+        ),
         sender_executable: Some("/usr/bin/test-app".to_string()),
     }
 }

@@ -52,3 +52,37 @@ fn sender_cache_evicts_least_recently_used_entry_at_capacity() {
     assert!(cache.get(":1.0").is_some());
     assert!(cache.get(":1.replacement").is_some());
 }
+
+#[test]
+fn sender_candidates_require_both_pid_and_process_start_time() {
+    let cache = SenderMetadataCache::new();
+    cache.insert(":1.exact".to_string(), metadata(":1.exact", 42));
+    let mut wrong_start = metadata(":1.wrong-start", 42);
+    wrong_start.sender_start_time = Some(43);
+    cache.insert(":1.wrong-start".to_string(), wrong_start);
+    let mut wrong_pid = metadata(":1.wrong-pid", 99);
+    wrong_pid.sender_start_time = Some(42);
+    cache.insert(":1.wrong-pid".to_string(), wrong_pid);
+
+    assert_eq!(
+        cache.sender_candidates_for_process(42, 42, None),
+        [":1.exact"]
+    );
+}
+
+#[test]
+fn sender_candidates_exclude_the_retained_address_and_are_newest_first() {
+    let cache = SenderMetadataCache::new();
+    cache.insert(":1.stale".to_string(), metadata(":1.stale", 42));
+    cache.insert(":1.current".to_string(), metadata(":1.current", 42));
+    cache.insert(":1.newest".to_string(), metadata(":1.newest", 42));
+
+    assert_eq!(
+        cache.sender_candidates_for_process(42, 42, Some(":1.stale")),
+        [":1.newest", ":1.current"]
+    );
+    assert_eq!(
+        cache.sender_candidates_for_process(42, 42, Some(":1.newest")),
+        [":1.current", ":1.stale"]
+    );
+}

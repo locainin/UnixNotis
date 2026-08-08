@@ -24,7 +24,7 @@ async fn validated_action_emits_only_an_advertised_live_action() {
         let mut store = state.store.lock().await;
         store
             .insert(action_notification(&sender, "open"), 0)
-            .notification
+            .active_notification()
             .key()
     };
 
@@ -50,7 +50,7 @@ async fn successful_action_keeps_a_resident_notification_active() {
     resident.is_resident = true;
     let notification = {
         let mut store = state.store.lock().await;
-        store.insert(resident, 0).notification.key()
+        store.insert(resident, 0).active_notification().key()
     };
 
     ControlServer::new(state.clone())
@@ -77,7 +77,7 @@ async fn action_signal_reaches_owner_but_not_unrelated_observer() {
         let mut store = state.store.lock().await;
         store
             .insert(action_notification(&owner, "open"), 0)
-            .notification
+            .active_notification()
             .key()
     };
 
@@ -109,7 +109,7 @@ async fn action_keeps_notification_when_the_owner_disappears() {
         let mut store = state.store.lock().await;
         store
             .insert(action_notification(&sender, "open"), 0)
-            .notification
+            .active_notification()
             .key()
     };
     let sender_name = sender.unique_name().expect("sender unique name").clone();
@@ -152,7 +152,7 @@ async fn unconfirmed_action_does_not_emit_or_dismiss() {
     notification.attribution.interactions = unixnotis_core::InteractionPolicies::CONFIRM_ACTIONS;
     let key = {
         let mut store = state.store.lock().await;
-        store.insert(notification, 0).notification.key()
+        store.insert(notification, 0).active_notification().key()
     };
 
     ControlServer::new(state.clone())
@@ -175,7 +175,7 @@ async fn validated_action_rejects_missing_and_stale_action_generations() {
         let mut store = state.store.lock().await;
         let notification = store
             .insert(action_notification(&sender, "open"), 0)
-            .notification;
+            .active_notification();
         (notification.id, notification.key())
     };
     let server = ControlServer::new(state.clone());
@@ -209,11 +209,11 @@ async fn stale_action_does_not_target_same_id_replacement() {
         let mut store = state.store.lock().await;
         let first = store
             .insert(action_notification(&sender, "delete"), 0)
-            .notification;
+            .active_notification();
         let stale_key = first.key();
         let second = store
             .insert(action_notification(&sender, "delete"), first.id)
-            .notification;
+            .active_notification();
         (stale_key, second.key())
     };
 
@@ -247,7 +247,7 @@ async fn validated_action_rejects_a_conflicting_application_claim() {
             .lock()
             .await
             .insert(notification, 0)
-            .notification
+            .active_notification()
             .key()
     };
 
@@ -292,8 +292,11 @@ fn action_notification(sender: &Connection, key: &str) -> Notification {
         expire_timeout: 0,
         received_at: Utc::now(),
         sender_name: sender.unique_name().map(ToString::to_string),
-        sender_pid: None,
-        sender_start_time: None,
+        sender_pid: Some(std::process::id()),
+        sender_start_time: Some(
+            crate::daemon::notifications::identity::read_process_start_time(std::process::id())
+                .expect("test process should expose a start time"),
+        ),
         sender_executable: None,
     }
 }

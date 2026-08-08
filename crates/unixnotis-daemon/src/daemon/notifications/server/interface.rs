@@ -11,6 +11,7 @@ use zbus::{interface, SignalContext};
 use crate::expire::ExpirationScheduler;
 
 use super::capabilities::notification_capabilities;
+use super::reply_lifecycle::{PostReplyKey, PostReplyLifecycle, RetainError};
 use super::wire_hints::WireHints;
 use crate::daemon::notifications::ingress::metrics::{IngressMetrics, RejectedRequest};
 use crate::daemon::notifications::ingress::quota::NotificationQuota;
@@ -25,13 +26,15 @@ pub struct NotificationServer {
     // Scheduler handles expiration deadlines without blocking D-Bus handlers
     pub(super) scheduler: ExpirationScheduler,
     // Shared token buckets reject sustained sender and process-wide floods
-    notify_quota: NotificationQuota,
+    pub(super) notify_quota: NotificationQuota,
     // Close requests are cheaper but still trigger sender identity and store work
-    close_quota: NotificationQuota,
+    pub(super) close_quota: NotificationQuota,
     // Expensive sender and payload work has a fixed concurrency ceiling
     notify_slots: Semaphore,
     // Counters expose pressure without retaining attacker-controlled labels
-    ingress_metrics: IngressMetrics,
+    pub(super) ingress_metrics: IngressMetrics,
+    // DropAll lifecycle records wait here until the matching reply is sent
+    pub(super) post_reply_lifecycle: PostReplyLifecycle,
 }
 
 impl NotificationServer {
@@ -44,6 +47,7 @@ impl NotificationServer {
             close_quota: NotificationQuota::new_close(),
             notify_slots: Semaphore::const_new(MAX_CONCURRENT_NOTIFY_HANDLERS),
             ingress_metrics: IngressMetrics::new(),
+            post_reply_lifecycle: PostReplyLifecycle::default(),
         }
     }
 }
@@ -51,8 +55,8 @@ impl NotificationServer {
 #[interface(name = "org.freedesktop.Notifications")]
 impl NotificationServer {
     pub(super) async fn get_capabilities(&self) -> Vec<String> {
-        // Advertise sound support only when the configured backend can deliver it
-        notification_capabilities(self.state.sound.supports_sound())
+        // Advertise sender sound support only when every promised hint is implemented
+        notification_capabilities(self.state.sound.supports_fdo_sound_capability())
     }
 
     #[expect(
@@ -71,8 +75,7 @@ impl NotificationServer {
         #[zbus(header)] header: Header<'_>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
-        let sender = header.sender().map(zbus::names::UniqueName::as_str);
-        if !self.notify_quota.admit(sender, Instant::now()) {
+        if !self.notify_quota.admit_global(Instant::now()) {
             let rejected = self
                 .ingress_metrics
                 .record_rejection(RejectedRequest::NotifyQuota);
@@ -95,18 +98,34 @@ impl NotificationServer {
         })?;
         let _activity = self.ingress_metrics.enter_handler();
         // The interface adapter forwards the authenticated header with the exact wire payload
-        self.ingest_notify(
-            app_name,
-            replaces_id,
-            app_icon,
-            summary,
-            body,
-            actions,
-            hints,
-            &header,
-            expire_timeout,
-        )
-        .await
+        let completion = self
+            .ingest_notify_deferred(
+                app_name,
+                replaces_id,
+                app_icon,
+                summary,
+                body,
+                actions,
+                hints,
+                &header,
+                expire_timeout,
+            )
+            .await?;
+        if let Some(suppressed) = completion.suppressed {
+            let request = PostReplyKey::from_header(&header);
+            self.post_reply_lifecycle
+                .retain(request, suppressed)
+                .await
+                .map_err(|error| match error {
+                    RetainError::CapacityExceeded => zbus::fdo::Error::LimitsExceeded(
+                        "notification lifecycle queue is full".to_string(),
+                    ),
+                    RetainError::DuplicateSerial => zbus::fdo::Error::Failed(
+                        "notification lifecycle request collision".to_string(),
+                    ),
+                })?;
+        }
+        Ok(completion.id)
     }
 
     pub(super) async fn close_notification(
@@ -114,8 +133,7 @@ impl NotificationServer {
         id: u32,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
-        let sender = header.sender().map(zbus::names::UniqueName::as_str);
-        if !self.close_quota.admit(sender, Instant::now()) {
+        if !self.close_quota.admit_global(Instant::now()) {
             let rejected = self
                 .ingress_metrics
                 .record_rejection(RejectedRequest::CloseQuota);

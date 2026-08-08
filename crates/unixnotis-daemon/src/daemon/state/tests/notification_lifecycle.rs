@@ -59,7 +59,7 @@ async fn generation_dismiss_removes_matching_history_without_canceling_timer() {
     let key = {
         let mut store = state.store.lock().await;
         let inserted = store.insert(notification("history"), 0);
-        let key = inserted.notification.key();
+        let key = inserted.active_notification().key();
         store.close(key.id, CloseReason::Expired);
         key
     };
@@ -103,7 +103,9 @@ async fn generation_safe_dismiss_keeps_replacement_and_its_timer() {
     state.set_scheduler(scheduler);
     let (id, original) = {
         let mut store = state.store.lock().await;
-        let original = store.insert(notification("original"), 0).notification;
+        let original = store
+            .insert(notification("original"), 0)
+            .active_notification();
         let id = original.id;
         let replacement = store.insert(notification("replacement"), id);
         assert!(replacement.replaced);
@@ -133,10 +135,12 @@ async fn generation_safe_panel_dismiss_rejects_a_stale_same_id_generation() {
     state.set_scheduler(scheduler);
     let (stale_key, replacement_key) = {
         let mut store = state.store.lock().await;
-        let original = store.insert(notification("original"), 0).notification;
+        let original = store
+            .insert(notification("original"), 0)
+            .active_notification();
         let replacement = store
             .insert(notification("replacement"), original.id)
-            .notification;
+            .active_notification();
         (original.key(), replacement.key())
     };
 
@@ -168,7 +172,7 @@ async fn generation_safe_panel_dismiss_removes_and_cancels_the_current_generatio
         .lock()
         .await
         .insert(notification("current"), 0)
-        .notification
+        .active_notification()
         .key();
 
     state
@@ -195,7 +199,7 @@ async fn action_dismissal_removes_only_the_current_active_generation() {
         .lock()
         .await
         .insert(notification("action"), 0)
-        .notification;
+        .active_notification();
 
     assert!(state
         .dismiss_actioned_if_current(target.id, &target)
@@ -214,7 +218,9 @@ async fn action_dismissal_keeps_a_same_id_replacement() {
     state.set_scheduler(scheduler);
     let (id, original) = {
         let mut store = state.store.lock().await;
-        let original = store.insert(notification("original"), 0).notification;
+        let original = store
+            .insert(notification("original"), 0)
+            .active_notification();
         let replacement = store.insert(notification("replacement"), original.id);
         assert!(replacement.replaced);
         (original.id, original)
@@ -244,7 +250,10 @@ async fn close_notification_removes_active_notification_and_cancels_timer() {
     state.set_scheduler(scheduler);
     let id = {
         let mut store = state.store.lock().await;
-        store.insert(notification("close"), 0).notification.id
+        store
+            .insert(notification("close"), 0)
+            .active_notification()
+            .id
     };
 
     state

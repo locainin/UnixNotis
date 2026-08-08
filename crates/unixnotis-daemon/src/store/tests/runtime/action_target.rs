@@ -23,7 +23,7 @@ fn active_action_target_requires_an_exact_action_on_the_live_generation() {
         key: "open".to_string(),
         label: "Open".to_string(),
     });
-    let original = store.insert(notification, 0).notification;
+    let original = store.insert(notification, 0).active_notification();
     let id = original.id;
     let key = original.key();
 
@@ -82,7 +82,7 @@ fn active_action_target_denies_every_unverified_sender_class() {
             key: "default".to_string(),
             label: "Open".to_string(),
         });
-        let key = store.insert(notification, 0).notification.key();
+        let key = store.insert(notification, 0).active_notification().key();
 
         assert!(
             store
@@ -118,7 +118,7 @@ fn native_association_allows_default_but_requires_confirmation_for_buttons() {
             label: "Archive".to_string(),
         },
     ];
-    let key = store.insert(notification, 0).notification.key();
+    let key = store.insert(notification, 0).active_notification().key();
 
     assert!(
         store
@@ -165,7 +165,7 @@ fn portal_association_requires_confirmation_for_default_and_buttons() {
             label: "Open".to_string(),
         },
     ];
-    let key = store.insert(notification, 0).notification.key();
+    let key = store.insert(notification, 0).active_notification().key();
 
     for action_key in ["default", "open"] {
         assert!(
@@ -204,7 +204,7 @@ fn active_action_target_rejects_inline_reply_even_when_confirmed() {
         key: "open".to_string(),
         label: "Open".to_string(),
     });
-    let key = store.insert(notification, 0).notification.key();
+    let key = store.insert(notification, 0).active_notification().key();
 
     assert!(
         store

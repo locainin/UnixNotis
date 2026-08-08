@@ -40,7 +40,7 @@ impl SenderMetadataCache {
         Some(entry.metadata.clone())
     }
 
-    pub(super) fn insert(&self, sender: String, metadata: SenderMetadata) {
+    pub(in crate::daemon) fn insert(&self, sender: String, metadata: SenderMetadata) {
         let Ok(mut state) = self.state.lock() else {
             return;
         };
@@ -62,6 +62,36 @@ impl SenderMetadataCache {
         if let Ok(mut state) = self.state.lock() {
             state.entries.remove(sender);
         }
+    }
+
+    pub(in crate::daemon) fn sender_candidates_for_process(
+        &self,
+        pid: u32,
+        start_time: u64,
+        excluded: Option<&str>,
+    ) -> Vec<String> {
+        let Ok(state) = self.state.lock() else {
+            return Vec::new();
+        };
+        // Try every matching address because a newer cache entry may already be stale
+        let mut candidates = state
+            .entries
+            .iter()
+            .filter(|(sender, entry)| {
+                excluded != Some(sender.as_str())
+                    && entry.metadata.sender_pid == Some(pid)
+                    && entry.metadata.sender_start_time == Some(start_time)
+            })
+            .map(|(sender, entry)| (entry.last_used, sender.clone()))
+            .collect::<Vec<_>>();
+        // Newest-first lookup prefers reconnects while retaining older valid fallbacks
+        candidates.sort_unstable_by(|left, right| {
+            right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1))
+        });
+        candidates
+            .into_iter()
+            .map(|(_last_used, sender)| sender)
+            .collect()
     }
 }
 

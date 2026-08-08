@@ -28,7 +28,7 @@ impl WireImageData {
         width: i32,
         height: i32,
         rowstride: i32,
-        _has_alpha: bool,
+        has_alpha: bool,
         bits_per_sample: i32,
         channels: i32,
         data: Vec<u8>,
@@ -47,23 +47,30 @@ impl WireImageData {
             return None;
         }
         let channels = u8::try_from(channels).ok()?;
-        if !matches!(channels, 3 | 4) {
+        // The protocol's alpha flag and channel count describe the same pixel layout
+        // Reject contradictory metadata rather than guessing how to reinterpret it
+        let expected_channels = if has_alpha { 4 } else { 3 };
+        if channels != expected_channels {
             return None;
         }
         if data.is_empty() || data.len() > MAX_NOTIFY_WIRE_IMAGE_BYTES {
             return None;
         }
 
-        // The stride must cover every visible pixel in every row
+        // The stride must cover every visible pixel in each non-final row
         let width_usize = usize::try_from(width).ok()?;
         let height_usize = usize::try_from(height).ok()?;
         let channels_usize = usize::from(channels);
-        let minimum_rowstride = width_usize.checked_mul(channels_usize)?;
+        let row_bytes = width_usize.checked_mul(channels_usize)?;
         let rowstride = usize::try_from(rowstride).ok()?;
-        if rowstride < minimum_rowstride {
+        if rowstride < row_bytes {
             return None;
         }
-        let required_bytes = rowstride.checked_mul(height_usize)?;
+        // `rowstride` is the distance between consecutive row starts. Padding after
+        // the final visible row is not required, so validate through its last pixel
+        let required_bytes = (height_usize - 1)
+            .checked_mul(rowstride)?
+            .checked_add(row_bytes)?;
         if data.len() < required_bytes {
             return None;
         }

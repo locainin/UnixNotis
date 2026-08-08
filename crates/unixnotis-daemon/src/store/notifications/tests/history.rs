@@ -5,7 +5,7 @@ fn max_entries_zero_drops_history_on_close() {
     let mut store = make_store_with_limits(10, 0);
     let outcome = store.insert(make_notification("first"), 0);
 
-    store.close(outcome.notification.id, CloseReason::Expired);
+    store.close(outcome.active_notification().id, CloseReason::Expired);
 
     assert_eq!(store.history_len(), 0);
 }
@@ -29,13 +29,13 @@ fn history_reinsert_replaces_existing_order_entry() {
     let mut store = make_store_with_limits(0, 10);
     let first = store.insert(make_notification("first"), 0);
     let mut replacement = make_notification("replacement");
-    replacement.id = first.notification.id;
+    replacement.id = first.active_notification().id;
 
     store.history.insert(Arc::new(replacement));
 
     let history = store.list_history();
     assert_eq!(history.len(), 1);
-    assert_eq!(history[0].id, first.notification.id);
+    assert_eq!(history[0].id, first.active_notification().id);
     assert_eq!(history[0].summary, "replacement");
 }
 
@@ -49,7 +49,7 @@ fn transient_close_obeys_the_history_policy() {
         notification.is_transient = true;
         let outcome = store.insert(notification, 0);
 
-        store.close(outcome.notification.id, CloseReason::Expired);
+        store.close(outcome.active_notification().id, CloseReason::Expired);
 
         assert_eq!(store.history_len(), expected);
     }
@@ -59,7 +59,7 @@ fn transient_close_obeys_the_history_policy() {
 fn clear_history_removes_archived_notifications() {
     let mut store = make_store_with_limits(10, 10);
     let first = store.insert(make_notification("first"), 0);
-    store.close(first.notification.id, CloseReason::Expired);
+    store.close(first.active_notification().id, CloseReason::Expired);
 
     store.clear_history();
 
@@ -70,7 +70,9 @@ fn clear_history_removes_archived_notifications() {
 #[test]
 fn history_generation_checks_and_removal_require_the_exact_commit_key() {
     let mut store = make_store_with_limits(10, 10);
-    let notification = store.insert(make_notification("archived"), 0).notification;
+    let notification = store
+        .insert(make_notification("archived"), 0)
+        .active_notification();
     let current = notification.key();
     let stale = unixnotis_core::NotificationKey {
         id: current.id,

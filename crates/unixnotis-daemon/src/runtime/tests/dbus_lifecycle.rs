@@ -5,9 +5,10 @@ use clap::Parser;
 use futures_util::StreamExt;
 use unixnotis_core::{ControlProxy, NotificationsProxy, CONTROL_BUS_NAME, NOTIFICATIONS_BUS_NAME};
 use zbus::fdo::DBusProxy;
+use zbus::message::Type;
 use zbus::names::BusName;
 use zbus::zvariant::OwnedValue;
-use zbus::{Connection, ConnectionBuilder};
+use zbus::{Connection, ConnectionBuilder, MatchRule, MessageStream};
 
 use super::super::{run_with_builder, run_with_builder_inner};
 use crate::cli::Args;
@@ -57,6 +58,31 @@ fn spawn_daemon_with_trusted_sender(
         Box::pin(run_with_builder_inner(
             &args,
             Config::default(),
+            builder,
+            Some(trusted_sender),
+        ))
+        .await
+    })
+}
+
+fn spawn_daemon_with_config_and_trusted_sender(
+    address: String,
+    run_seconds: u64,
+    config: Config,
+    trusted_sender: String,
+) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    tokio::spawn(async move {
+        let args = Args::try_parse_from([
+            "unixnotis-daemon",
+            "--run-seconds",
+            &run_seconds.to_string(),
+        ])
+        .expect("parse bounded daemon command");
+        let builder = zbus::connection::Builder::address(address.as_str())
+            .expect("parse daemon broker address");
+        Box::pin(run_with_builder_inner(
+            &args,
+            config,
             builder,
             Some(trusted_sender),
         ))
@@ -245,6 +271,86 @@ async fn private_session_bus_accepts_full_notification_view_after_added_signal()
         "serializing NotificationView must not disconnect the daemon"
     );
     assert_eq!(wait_for_both_owners(&client).await, owners_before);
+
+    daemon
+        .await
+        .expect("join daemon task")
+        .expect("bounded daemon run");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn drop_all_notify_reply_precedes_its_notification_closed_signal_on_the_bus() {
+    let bus = PrivateBus::start();
+    let client = connect(&bus.address).await;
+    let trusted_sender = client
+        .unique_name()
+        .expect("private session bus assigns a unique client name")
+        .to_string();
+    let mut config = Config::default();
+    config.inhibit.mode = unixnotis_core::InhibitMode::DropAll;
+    let daemon =
+        spawn_daemon_with_config_and_trusted_sender(bus.address.clone(), 3, config, trusted_sender);
+    let (notifications_owner, _control_owner) = wait_for_both_owners(&client).await;
+    let control = ControlProxy::new(&client)
+        .await
+        .expect("create control proxy");
+    control
+        .inhibit("DropAll ordering test", 0)
+        .await
+        .expect("activate DropAll inhibitor");
+
+    let close_rule = MatchRule::builder()
+        .msg_type(Type::Signal)
+        .sender(notifications_owner.as_str())
+        .expect("notification daemon sender")
+        .path("/org/freedesktop/Notifications")
+        .expect("notification object path")
+        .interface("org.freedesktop.Notifications")
+        .expect("notification interface")
+        .member("NotificationClosed")
+        .expect("notification close member")
+        .build();
+    let mut closed = MessageStream::for_match_rule(close_rule, &client, Some(4))
+        .await
+        .expect("subscribe to freedesktop close signals before Notify");
+    let payload = (
+        "DropAll wire test",
+        0_u32,
+        "",
+        "discarded summary",
+        "discarded body",
+        Vec::<String>::new(),
+        HashMap::<String, OwnedValue>::new(),
+        0_i32,
+    );
+
+    let reply = client
+        .call_method(
+            Some(NOTIFICATIONS_BUS_NAME),
+            "/org/freedesktop/Notifications",
+            Some("org.freedesktop.Notifications"),
+            "Notify",
+            &payload,
+        )
+        .await
+        .expect("DropAll Notify should return a method reply");
+    let id = reply.body().deserialize::<u32>().expect("notification id");
+    let close = tokio::time::timeout(Duration::from_secs(2), closed.next())
+        .await
+        .expect("NotificationClosed should arrive promptly")
+        .expect("NotificationClosed stream should remain open")
+        .expect("NotificationClosed message should decode");
+    let (closed_id, reason) = close
+        .body()
+        .deserialize::<(u32, u32)>()
+        .expect("freedesktop close arguments");
+
+    assert_eq!(closed_id, id);
+    assert_eq!(reason, unixnotis_core::CloseReason::Undefined as u32);
+    assert!(
+        reply.recv_position() < close.recv_position(),
+        "Notify reply must cross the bus before NotificationClosed"
+    );
 
     daemon
         .await

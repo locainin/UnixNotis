@@ -11,7 +11,7 @@ use tracing_subscriber::filter::LevelFilter;
 use unixnotis_core::{
     CloseReason, Config, Notification, NotificationImage, Urgency, CONTROL_OBJECT_PATH,
 };
-use zbus::message::Type;
+use zbus::message::{Header, Type};
 use zbus::zvariant::{OwnedValue, Value};
 use zbus::{Connection, MatchRule, Message, MessageStream};
 
@@ -22,8 +22,48 @@ use crate::daemon::notifications::ingress::payload::{
 use crate::daemon::{DaemonState, NotificationServer};
 use crate::expire::ExpirationScheduler;
 use crate::sound::SoundSettings;
-use crate::store::{InsertOutcome, NotificationStore, PopupAdmission, PopupSuppressionReason};
+use crate::store::{
+    CommitDisposition, InsertOutcome, NotificationStore, PopupAdmission, PopupSuppressionReason,
+    StableProcessIdentity, SuppressedNotification,
+};
 use crate::test_support::daemon_state_for_test;
+
+impl NotificationServer {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the freedesktop notification method defines this wire-level argument list"
+    )]
+    async fn ingest_notify(
+        &self,
+        app_name: String,
+        replaces_id: u32,
+        app_icon: String,
+        summary: String,
+        body: String,
+        actions: Vec<String>,
+        hints: super::super::wire_hints::WireHints,
+        header: &Header<'_>,
+        expire_timeout: i32,
+    ) -> zbus::fdo::Result<u32> {
+        let completion = self
+            .ingest_notify_deferred(
+                app_name,
+                replaces_id,
+                app_icon,
+                summary,
+                body,
+                actions,
+                hints,
+                header,
+                expire_timeout,
+            )
+            .await?;
+        if let Some(suppressed) = completion.suppressed {
+            self.publish_suppressed_close(suppressed).await;
+        }
+        Ok(completion.id)
+    }
+}
 
 fn notification_with_id(id: u32) -> Arc<Notification> {
     Arc::new(Notification {
@@ -56,8 +96,20 @@ fn notification_with_id(id: u32) -> Arc<Notification> {
 }
 
 fn insert_outcome(id: u32, dropped: bool) -> InsertOutcome {
+    let disposition = if dropped {
+        CommitDisposition::SuppressedDropAll(SuppressedNotification {
+            id,
+            generation: 1,
+            owner: Some(StableProcessIdentity {
+                pid: 42,
+                start_time: 77,
+            }),
+        })
+    } else {
+        CommitDisposition::Active(notification_with_id(id))
+    };
     InsertOutcome {
-        notification: notification_with_id(id),
+        disposition,
         replaced: false,
         popup_admission: if dropped {
             PopupAdmission::Suppressed(PopupSuppressionReason::DropAllInhibitor)
@@ -66,7 +118,6 @@ fn insert_outcome(id: u32, dropped: bool) -> InsertOutcome {
         },
         allow_sound: !dropped,
         evicted: Vec::new(),
-        dropped,
         expiration: None,
     }
 }
@@ -98,6 +149,34 @@ async fn daemon_state_with_config(config: Config) -> Arc<DaemonState> {
         Arc::new(ArcSwap::from_pointee(DesktopIdentityIndex::default())),
         None,
     )
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn notification_server_sound_dispatch_reports_accepted_and_blocked_outcomes() {
+    use std::os::unix::fs::PermissionsExt;
+
+    use crate::system_tools::routing::use_fake_tool_bin;
+    use crate::test_support::TempRoot;
+
+    let root = TempRoot::new("notification-flow-sound");
+    let player = root.join("canberra-gtk-play");
+    std::fs::write(&player, "#!/bin/sh\nexit 0\n").expect("write fake sound player");
+    let mut permissions = std::fs::metadata(&player)
+        .expect("fake sound player metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(player, permissions).expect("make fake sound player executable");
+    let _tools = use_fake_tool_bin(root.path());
+    let mut config = Config::default();
+    config.sound.enabled = true;
+    config.sound.default_name = Some("message-new".to_string());
+    let state = daemon_state_with_config(config).await;
+    let scheduler = ExpirationScheduler::start(state.clone());
+    let server = NotificationServer::new(state, scheduler);
+    let notification = notification_with_id(9);
+
+    assert!(server.play_sound(&notification, true));
+    assert!(!server.play_sound(&notification, false));
 }
 
 async fn control_signal_stream(state: &DaemonState, member: &str) -> MessageStream {
@@ -132,21 +211,27 @@ async fn next_signal(stream: &mut MessageStream) -> Message {
 }
 
 #[test]
-fn handle_dropped_notification_returns_id_for_dropped_payload() {
+fn suppressed_notification_returns_content_free_lifecycle_for_dropped_payload() {
     let outcome = insert_outcome(9, true);
 
-    let id = NotificationServer::handle_dropped_notification(&outcome);
+    let suppressed = NotificationServer::suppressed_notification(&outcome)
+        .expect("DropAll outcome should retain lifecycle identity");
 
-    assert_eq!(id, Some(9));
+    assert_eq!(suppressed.id, 9);
+    assert_eq!(suppressed.generation, 1);
+    assert!(matches!(
+        outcome.disposition,
+        CommitDisposition::SuppressedDropAll(_)
+    ));
 }
 
 #[test]
-fn handle_dropped_notification_returns_none_for_stored_payload() {
+fn suppressed_notification_returns_none_for_stored_payload() {
     let outcome = insert_outcome(9, false);
 
-    let id = NotificationServer::handle_dropped_notification(&outcome);
+    let suppressed = NotificationServer::suppressed_notification(&outcome);
 
-    assert_eq!(id, None);
+    assert_eq!(suppressed, None);
 }
 
 #[test]
@@ -281,6 +366,52 @@ async fn ingest_notify_stores_notifications_and_returns_assigned_ids() {
     assert_eq!(active.id, id);
     assert_eq!(active.summary, "summary");
     assert_eq!(active.category, "im.received");
+}
+
+#[tokio::test]
+async fn drop_all_returns_an_id_then_emits_one_content_free_close_lifecycle() {
+    let mut config = Config::default();
+    config.inhibit.mode = unixnotis_core::InhibitMode::DropAll;
+    let state = daemon_state_with_config(config).await;
+    state
+        .store
+        .lock()
+        .await
+        .add_inhibitor("test-owner".to_string(), "privacy".to_string(), 0);
+    let scheduler = ExpirationScheduler::start(state.clone());
+    let server = NotificationServer::new(state.clone(), scheduler);
+    let message = notify_header_message();
+    let header = message.header();
+    let mut stream = control_signal_stream(&state, "NotificationClosed").await;
+
+    let id = server
+        .ingest_notify(
+            "sensitive app".to_string(),
+            0,
+            String::new(),
+            "secret summary".to_string(),
+            "secret body".to_string(),
+            Vec::new(),
+            HashMap::new().into(),
+            &header,
+            0,
+        )
+        .await
+        .expect("DropAll Notify should return its lifecycle ID");
+
+    {
+        let store = state.store.lock().await;
+        assert!(store.list_active().is_empty());
+        assert!(store.list_history().is_empty());
+    }
+    let signal = next_signal(&mut stream).await;
+    let (closed_id, generation, reason) = signal
+        .body()
+        .deserialize::<(u32, u64, CloseReason)>()
+        .expect("content-free close body");
+    assert_eq!(closed_id, id);
+    assert_ne!(generation, 0);
+    assert_eq!(reason, CloseReason::Undefined);
 }
 
 #[tokio::test]

@@ -5,7 +5,10 @@ use unixnotis_core::{
     Notification, NotificationKey, UiHealth, Urgency,
 };
 
-use crate::store::{InsertOutcome, NotificationStore, PopupAdmission, PopupSuppressionReason};
+use crate::store::{
+    CommitDisposition, InsertOutcome, NotificationStore, PopupAdmission, PopupSuppressionReason,
+    StableProcessIdentity, SuppressedNotification,
+};
 
 use super::timeout::resolve_timeout_policy;
 
@@ -13,19 +16,6 @@ use super::timeout::resolve_timeout_policy;
 const ACTIVE_HARD_CAP: usize = 12;
 
 impl NotificationStore {
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "legacy in-crate test fixtures use the neutral health wrapper"
-        )
-    )]
-    pub(crate) fn insert(&mut self, notification: Notification, replaces_id: u32) -> InsertOutcome {
-        // Test and legacy in-crate callers use the neutral health snapshot
-        // Production notification ingress calls insert_with_ui_health directly
-        self.insert_with_ui_health(notification, replaces_id, &UiHealth::default())
-    }
-
     pub fn insert_with_ui_health(
         &mut self,
         mut notification: Notification,
@@ -36,19 +26,30 @@ impl NotificationStore {
         self.apply_rules(&mut notification);
         let timeout_policy = resolve_timeout_policy(&self.config, &notification);
         if self.should_drop_inhibited() {
-            // DropAll mode still assigns an ID so call sites can log consistent metadata
+            // DropAll discards notification content, not protocol lifecycle
+            // Only process-lifetime identity survives long enough to close the returned ID
             let assigned_id = self.next_id();
-            notification.id = assigned_id;
-            let notification = Arc::new(notification);
+            let generation = self.next_generation;
+            self.next_generation = self
+                .next_generation
+                .checked_add(1)
+                .expect("notification generation space must not be exhausted");
+            let owner = notification
+                .sender_pid
+                .zip(notification.sender_start_time)
+                .map(|(pid, start_time)| StableProcessIdentity { pid, start_time });
             return InsertOutcome {
                 popup_admission: PopupAdmission::Suppressed(
                     PopupSuppressionReason::DropAllInhibitor,
                 ),
                 allow_sound: false,
-                notification,
+                disposition: CommitDisposition::SuppressedDropAll(SuppressedNotification {
+                    id: assigned_id,
+                    generation,
+                    owner,
+                }),
                 replaced: false,
                 evicted: Vec::new(),
-                dropped: true,
                 expiration: None,
             };
         }
@@ -82,10 +83,13 @@ impl NotificationStore {
         self.expirations.remove(&assigned_id);
         self.popup_decisions
             .retain(|key, _decision| key.id != assigned_id);
+        self.popup_timings
+            .retain(|key, _timing| key.id != assigned_id);
 
+        let admitted_at = std::time::Instant::now();
         let expiration = timeout_policy
             .active_close_after
-            .map(|duration| std::time::Instant::now() + duration);
+            .map(|duration| admitted_at.checked_add(duration).unwrap_or(admitted_at));
         let notification = Arc::new(notification);
         // Active map keeps insertion order so oldest eviction is deterministic
         self.active.insert(assigned_id, notification.clone());
@@ -93,19 +97,19 @@ impl NotificationStore {
         let evicted = self.enforce_active_limit();
 
         let popup_admission = self.popup_admission(&notification);
-        self.record_popup_commit_environment(
+        self.record_popup_commit_environment_at(
             notification.key(),
             popup_admission,
             ui_health,
             timeout_policy.popup_hide_after_ms,
+            admitted_at,
         );
         InsertOutcome {
             popup_admission,
             allow_sound: self.should_play_sound(&notification),
-            notification,
+            disposition: CommitDisposition::Active(notification),
             replaced,
             evicted,
-            dropped: false,
             expiration,
         }
     }

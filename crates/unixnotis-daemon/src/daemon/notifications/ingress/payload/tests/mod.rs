@@ -7,8 +7,7 @@ pub(super) use super::super::super::identity::SenderMetadata;
 pub(super) use super::super::limits::{MAX_ACTIONS, MAX_BODY_BYTES, MAX_SUMMARY_BYTES};
 pub(super) use super::build::{build_notification, NotificationInput};
 pub(super) use super::sanitize::{
-    owned_to_string, parse_actions, parse_urgency_hint, sanitize_hints_for_storage,
-    string_to_owned_value,
+    owned_to_string, parse_actions, sanitize_hints_for_storage, string_to_owned_value,
 };
 pub(super) use super::visuals::{
     avatar_buffer_size_allowed, avatar_file_size_allowed, bounded_decode_dimension,

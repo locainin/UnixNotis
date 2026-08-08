@@ -9,6 +9,7 @@ use zbus::zvariant::{OwnedValue, Value};
 use zbus::{Connection, Message, ObjectServer};
 
 use super::notify_body::{preflight_notify, PreflightError, MAX_NOTIFY_WIRE_BODY_BYTES};
+use super::reply_lifecycle::PostReplyKey;
 use super::NotificationServer;
 
 /// Object-server adapter that rejects oversized Notify bodies before typed allocation
@@ -96,7 +97,28 @@ impl Interface for NotificationIngress {
                 });
             }
         }
-        self.inner.call(server, connection, message, name)
+        let is_notify = name.as_bytes() == b"Notify";
+        let dispatch = self.inner.call(server, connection, message, name);
+        if !is_notify {
+            return dispatch;
+        }
+
+        let request = PostReplyKey::from_header(&message.header());
+        match dispatch {
+            DispatchResult::Async(future) => DispatchResult::Async(Box::pin(async move {
+                // The generated handler sends the method reply before this future completes
+                let reply_result = future.await;
+                let suppressed = self.inner.post_reply_lifecycle.take(&request).await;
+                if reply_result.is_ok() {
+                    if let Some(suppressed) = suppressed {
+                        // The signal now enters the connection after the successful reply
+                        self.inner.publish_suppressed_close(suppressed).await;
+                    }
+                }
+                reply_result
+            })),
+            other => other,
+        }
     }
 
     fn call_mut<'call>(

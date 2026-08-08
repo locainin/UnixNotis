@@ -25,6 +25,8 @@ pub struct NotificationStore {
     pub(super) history: HistoryStore,
     // Arrival-time popup decisions outlive active state while history retains the generation
     pub(super) popup_decisions: HashMap<NotificationKey, PopupDecisionRecord>,
+    // Monotonic popup deadlines stay daemon-local and are never serialized
+    pub(super) popup_timings: HashMap<NotificationKey, PopupTiming>,
     // Exact expiration identity per active notification generation
     pub(super) expirations: HashMap<u32, ExpirationTicket>,
     // Effective DND switch after loading persisted state
@@ -45,8 +47,8 @@ pub struct NotificationStore {
 }
 
 pub struct InsertOutcome {
-    // Stored notification instance returned to callers
-    pub notification: Arc<Notification>,
+    // Commit kind keeps content-bearing and content-free lifecycles structurally distinct
+    pub disposition: CommitDisposition,
     // True when insertion replaced an existing id
     pub replaced: bool,
     // Structured popup policy keeps suppression causes available to diagnostics
@@ -55,10 +57,55 @@ pub struct InsertOutcome {
     pub allow_sound: bool,
     // Active ids evicted because max_active was exceeded
     pub evicted: Vec<NotificationKey>,
-    // True when payload was intentionally dropped by inhibit mode
-    pub dropped: bool,
     // Commit-time daemon deadline for this exact generation
     pub expiration: Option<Instant>,
+}
+
+/// Result of committing one protocol notification request
+pub enum CommitDisposition {
+    // Ordinary notifications retain their normalized content in active storage
+    Active(Arc<Notification>),
+    // DropAll retains no sender-controlled presentation content
+    SuppressedDropAll(SuppressedNotification),
+}
+
+/// Content-free lifecycle identity for a `DropAll` notification
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SuppressedNotification {
+    pub id: u32,
+    pub generation: u64,
+    // Stable process identity is retained only when both components are established
+    pub owner: Option<StableProcessIdentity>,
+}
+
+/// Process-lifetime ownership principal independent of a D-Bus unique name
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct StableProcessIdentity {
+    pub pid: u32,
+    pub start_time: u64,
+}
+
+/// Deliberately collapsed result of authorizing a protocol close request
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CloseAuthorization {
+    OwnedActive(NotificationKey),
+    NotClosable,
+}
+
+impl InsertOutcome {
+    pub const fn suppressed(&self) -> Option<SuppressedNotification> {
+        match &self.disposition {
+            CommitDisposition::Active(_) => None,
+            CommitDisposition::SuppressedDropAll(suppressed) => Some(*suppressed),
+        }
+    }
+}
+
+/// Daemon-only popup lifetime for one committed generation
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct PopupTiming {
+    // None keeps the popup eligible until delivery because zero disables automatic hiding
+    pub(super) deadline: Option<Instant>,
 }
 
 /// Exact identity required to expire one committed notification

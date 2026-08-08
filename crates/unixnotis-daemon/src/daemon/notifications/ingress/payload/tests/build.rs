@@ -1,4 +1,41 @@
 use super::*;
+
+#[test]
+fn retained_urgency_hint_always_matches_canonical_notification_urgency() {
+    for raw in 0..=u8::MAX {
+        let notification = build_notification(NotificationInput {
+            app_name: "app".to_string(),
+            app_icon: String::new(),
+            summary: "summary".to_string(),
+            body: String::new(),
+            actions: Vec::new(),
+            hints: HashMap::from([("urgency".to_string(), OwnedValue::from(raw))]),
+            image_data: None,
+            sender_visual_data: None,
+            sender_visual: None,
+            sender_visual_role: SenderVisualRole::None,
+            sender: SenderMetadata::default(),
+            attribution: unixnotis_core::NotificationAttribution::default(),
+            attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
+            inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+            expire_timeout: 0,
+        });
+        let stored = u32::try_from(
+            notification
+                .hints
+                .get("urgency")
+                .expect("canonical urgency hint should be retained"),
+        )
+        .expect("canonical urgency hint should use an unsigned integer");
+
+        assert_eq!(
+            stored,
+            notification.urgency.as_u32(),
+            "raw urgency {raw} must not diverge from the canonical field"
+        );
+    }
+}
+
 #[test]
 fn build_notification_clamps_summary_and_body_sizes() {
     let summary = "S".repeat(MAX_SUMMARY_BYTES + 128);

@@ -56,7 +56,7 @@ pub(in crate::store) fn make_notification(summary: &str) -> Notification {
     }
 }
 
-pub(in crate::store) fn make_notification_with_sender(
+pub fn make_notification_with_sender(
     summary: &str,
     sender: &str,
     pid: u32,

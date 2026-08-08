@@ -53,13 +53,13 @@ fn sanitize_hints_drops_untrusted_and_bounds_strings() {
         string_to_owned_value("custom").expect("custom"),
     );
 
-    let sanitized = sanitize_hints_for_storage(hints);
+    let sanitized = sanitize_hints_for_storage(hints, unixnotis_core::Urgency::Normal);
     assert_eq!(sanitized.len(), 3);
     assert!(sanitized.contains_key("transient"));
     assert!(sanitized.contains_key("sound-name"));
     assert_eq!(
         u32::try_from(sanitized.get("urgency").expect("urgency")),
-        Ok(2)
+        Ok(1)
     );
 
     let sound_name = owned_to_string(
@@ -69,17 +69,6 @@ fn sanitize_hints_drops_untrusted_and_bounds_strings() {
     )
     .expect("sound-name should be string");
     assert!(sound_name.len() <= 2048);
-}
-
-#[test]
-fn parse_urgency_hint_accepts_byte_and_integer_values_with_cap() {
-    assert_eq!(parse_urgency_hint(&OwnedValue::from(0u8)), Some(0));
-    assert_eq!(parse_urgency_hint(&OwnedValue::from(1u32)), Some(1));
-    assert_eq!(parse_urgency_hint(&OwnedValue::from(99u32)), Some(2));
-    assert_eq!(
-        parse_urgency_hint(&string_to_owned_value("high").expect("string")),
-        None
-    );
 }
 
 #[test]

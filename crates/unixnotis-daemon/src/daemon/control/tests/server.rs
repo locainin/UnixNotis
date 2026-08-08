@@ -72,8 +72,14 @@ async fn drain_active_notifications_returns_ids_and_cancels_expirations() {
     let server = ControlServer::new(state.clone());
     let keys = {
         let mut store = state.store.lock().await;
-        let first = store.insert(notification("first"), 0).notification.key();
-        let second = store.insert(notification("second"), 0).notification.key();
+        let first = store
+            .insert(notification("first"), 0)
+            .active_notification()
+            .key();
+        let second = store
+            .insert(notification("second"), 0)
+            .active_notification()
+            .key();
         vec![second, first]
     };
 
@@ -91,7 +97,10 @@ async fn clear_saved_history_removes_archived_notifications() {
     let server = ControlServer::new(state.clone());
     let id = {
         let mut store = state.store.lock().await;
-        let id = store.insert(notification("history"), 0).notification.id;
+        let id = store
+            .insert(notification("history"), 0)
+            .active_notification()
+            .id;
         store.close(id, CloseReason::Undefined);
         id
     };
@@ -155,7 +164,10 @@ async fn authorized_snapshot_is_one_store_consistent_read() {
     {
         let mut store = state.store.lock().await;
         store.insert(notification("active"), 0);
-        let history_id = store.insert(notification("history"), 0).notification.id;
+        let history_id = store
+            .insert(notification("history"), 0)
+            .active_notification()
+            .id;
         store.close(history_id, CloseReason::Undefined);
     }
 
@@ -177,7 +189,10 @@ async fn authorized_clear_all_removes_active_and_history_together() {
     {
         let mut store = state.store.lock().await;
         store.insert(notification("active"), 0);
-        let history_id = store.insert(notification("history"), 0).notification.id;
+        let history_id = store
+            .insert(notification("history"), 0)
+            .active_notification()
+            .id;
         store.close(history_id, CloseReason::Undefined);
     }
 
@@ -216,7 +231,10 @@ async fn clear_history_rejects_unauthorized_sender_before_mutating_state() {
     let server = ControlServer::new(state.clone());
     let id = {
         let mut store = state.store.lock().await;
-        let id = store.insert(notification("history"), 0).notification.id;
+        let id = store
+            .insert(notification("history"), 0)
+            .active_notification()
+            .id;
         store.close(id, CloseReason::Undefined);
         id
     };
@@ -244,7 +262,7 @@ async fn generation_dismiss_rejects_unauthorized_sender_before_mutating_state() 
         .lock()
         .await
         .insert(notification("protected generation"), 0)
-        .notification
+        .active_notification()
         .key();
     let server = ControlServer::new(state.clone());
     let message = control_header_message("DismissGeneration");
@@ -286,7 +304,7 @@ async fn popup_render_acknowledgement_rejects_unauthorized_sender() {
         .lock()
         .await
         .insert(notification("render acknowledgement"), 0)
-        .notification
+        .active_notification()
         .key();
     let server = ControlServer::new(state.clone());
     let message = control_header_message("MarkPopupVisible");

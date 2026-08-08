@@ -29,19 +29,23 @@ pub(super) fn resolve_timeout_policy(
             popup_hide_after_ms: 0,
             active_close_after: None,
         },
-        // Positive protocol values close every non-resident notification
+        // Positive protocol values close normal notifications regardless of resident state
         timeout if timeout > 0 => {
             let timeout_ms = timeout as u64;
             ResolvedTimeoutPolicy {
                 popup_hide_after_ms: timeout_ms,
-                active_close_after: (!notification.is_resident)
+                // `resident` controls post-action dismissal. It does not override the
+                // notification's explicit expiration timeout
+                active_close_after: (notification.urgency != Urgency::Critical)
                     .then(|| Duration::from_millis(timeout_ms)),
             }
         }
         // The default protocol value uses UnixNotis display policy
         _ => {
-            let active_close_after = if notification.is_transient
-                && !notification.is_resident
+            // Critical popup visibility and active-notification lifetime are separate
+            // Critical alerts may leave the screen, but stay active until explicitly closed
+            let active_close_after = if notification.urgency != Urgency::Critical
+                && notification.is_transient
                 && configured_popup_ms > 0
             {
                 Some(Duration::from_millis(configured_popup_ms))

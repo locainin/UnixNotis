@@ -11,6 +11,7 @@ use super::{
 };
 use crate::daemon::{NotificationServer, NOTIFICATIONS_OBJECT_PATH};
 use crate::expire::ExpirationScheduler;
+use crate::store::test_support::make_notification_with_sender;
 use crate::test_support::daemon_state_for_test;
 
 const NOTIFICATIONS_INTERFACE: &str = "org.freedesktop.Notifications";
@@ -374,6 +375,68 @@ async fn notification_ingress() -> (std::sync::Arc<crate::daemon::DaemonState>, 
         .expect("register guarded notification interface");
     let client = Connection::session().await.expect("notification client");
     (state, client)
+}
+
+#[tokio::test]
+async fn close_errors_hide_missing_foreign_and_history_only_id_existence() {
+    let (state, client) = notification_ingress().await;
+    let (foreign_id, history_id) = {
+        let mut store = state.store.lock().await;
+        let foreign = store
+            .insert(
+                make_notification_with_sender("foreign", ":1.foreign", 999_998, 41),
+                0,
+            )
+            .active_notification();
+        let history = store
+            .insert(
+                make_notification_with_sender("history", ":1.foreign", 999_999, 42),
+                0,
+            )
+            .active_notification();
+        store.close(history.id, unixnotis_core::CloseReason::Expired);
+        (foreign.id, history.id)
+    };
+
+    let missing = close_method_error(&state, &client, u32::MAX).await;
+    let foreign = close_method_error(&state, &client, foreign_id).await;
+    let history = close_method_error(&state, &client, history_id).await;
+
+    assert_eq!(missing, foreign);
+    assert_eq!(foreign, history);
+    assert_eq!(
+        missing,
+        (
+            "org.freedesktop.DBus.Error.Failed".to_string(),
+            Some(String::new())
+        )
+    );
+}
+
+async fn close_method_error(
+    state: &crate::daemon::DaemonState,
+    client: &Connection,
+    id: u32,
+) -> (String, Option<String>) {
+    let destination = state
+        .connection()
+        .unique_name()
+        .expect("daemon unique name")
+        .clone();
+    let error = client
+        .call_method(
+            Some(destination),
+            NOTIFICATIONS_OBJECT_PATH,
+            Some(NOTIFICATIONS_INTERFACE),
+            "CloseNotification",
+            &id,
+        )
+        .await
+        .expect_err("non-closable notification should return a D-Bus error");
+    match error {
+        zbus::Error::MethodError(name, message, _reply) => (name.to_string(), message),
+        other => panic!("expected a D-Bus method error, got {other:?}"),
+    }
 }
 
 async fn send_image_notification(

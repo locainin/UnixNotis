@@ -1,38 +1,11 @@
 use std::sync::Arc;
 
 use tracing::warn;
-use unixnotis_core::{CloseReason, Notification, NotificationKey};
+use unixnotis_core::{Notification, NotificationKey};
 
 use super::DaemonState;
 
 impl DaemonState {
-    pub async fn close_notification(&self, id: u32, reason: CloseReason) -> zbus::Result<()> {
-        let removed = {
-            let mut store = self.store.lock().await;
-            let removed = store.close(id, reason);
-            if let Some(notification) = removed.as_ref() {
-                // Cancellation is ordered before a replacement can acquire the store lock
-                self.cancel_expiration(notification.key());
-            }
-            removed
-        };
-        let Some(removed) = removed else {
-            return Ok(());
-        };
-        if let Err(err) = self
-            .publish_notification_closed(removed.key(), reason)
-            .await
-        {
-            warn!(
-                ?err,
-                id,
-                reason = reason as u32,
-                "notification close committed but one or more D-Bus signals failed"
-            );
-        }
-        Ok(())
-    }
-
     pub async fn dismiss_generation(&self, key: NotificationKey) -> zbus::Result<()> {
         let outcome = {
             let mut store = self.store.lock().await;

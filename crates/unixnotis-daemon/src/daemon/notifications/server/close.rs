@@ -1,11 +1,11 @@
+use std::time::Instant;
 use tracing::debug;
 use unixnotis_core::CloseReason;
 use zbus::message::Header;
 
-use crate::daemon::to_fdo_error;
-
 use super::NotificationServer;
 use crate::daemon::notifications::identity::resolve_sender_metadata;
+use crate::daemon::notifications::ingress::metrics::RejectedRequest;
 
 impl NotificationServer {
     pub(super) async fn close_notification_if_owned(
@@ -22,33 +22,49 @@ impl NotificationServer {
             header,
         )
         .await;
-        let Some(sender_name) = sender.sender_name.as_deref() else {
-            return Ok(());
-        };
-
-        let owned = {
-            let store = self.state.store.lock().await;
-            // Ownership check allows reconnect-safe close by same sender pid
-            store.is_notification_owned_by(
+        if !self
+            .close_quota
+            .admit_principal(super::quota_principal(&sender), Instant::now())
+        {
+            let rejected = self
+                .ingress_metrics
+                .record_rejection(RejectedRequest::CloseQuota);
+            debug!(rejected, "close request rejected by principal quota");
+            return Err(zbus::fdo::Error::LimitsExceeded(
+                "notification close quota exceeded".to_string(),
+            ));
+        }
+        let removed = {
+            let mut store = self.state.store.lock().await;
+            // Ownership and removal share one lock so a same-ID replacement cannot race the close
+            store.close_owned_active(
                 id,
-                sender_name,
+                sender.sender_name.as_deref(),
                 sender.sender_pid,
                 sender.sender_start_time,
+                CloseReason::ClosedByCall,
             )
         };
-        if !owned {
+        let Some(removed) = removed else {
             debug!(
                 id,
-                sender = sender_name,
+                sender = sender.sender_name.as_deref().unwrap_or("unknown"),
                 sender_pid = sender.sender_pid,
-                "ignoring close for unowned notification"
+                "notification close target is not closable"
             );
-            return Ok(());
-        }
+            // Missing, foreign, historical, and otherwise non-closable IDs are indistinguishable
+            return Err(generic_close_error());
+        };
 
+        self.state.cancel_expiration(removed.key());
         self.state
-            .close_notification(id, CloseReason::ClosedByCall)
+            .publish_notification_closed(removed.key(), CloseReason::ClosedByCall)
             .await
-            .map_err(to_fdo_error)
+            .map_err(crate::daemon::to_fdo_error)
     }
+}
+
+const fn generic_close_error() -> zbus::fdo::Error {
+    // One empty generic failure prevents existence and ownership disclosure
+    zbus::fdo::Error::Failed(String::new())
 }

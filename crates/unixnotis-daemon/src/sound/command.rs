@@ -18,7 +18,7 @@ const SOUND_COMMAND_TIMEOUT: Duration = Duration::from_secs(3);
 // Small cap prevents unbounded process fanout during notification bursts
 const SOUND_MAX_CONCURRENT: usize = 2;
 
-pub(super) fn play_with_canberra(source: SoundSource) {
+pub(super) fn play_with_canberra(source: SoundSource) -> bool {
     // canberra supports both symbolic names and direct files
     let mut args = Vec::new();
     let mut display_args = Vec::new();
@@ -43,14 +43,14 @@ pub(super) fn play_with_canberra(source: SoundSource) {
         &args,
         &display_args,
         keepalive,
-    );
+    )
 }
 
-pub(super) fn play_with_pw_play(source: SoundSource) {
+pub(super) fn play_with_pw_play(source: SoundSource) -> bool {
     // pw-play accepts only direct file playback
     let SoundSource::File(file) = source else {
         warn!("pw-play backend does not support sound-name hints");
-        return;
+        return false;
     };
     let args = vec![file.playback_path().into_os_string()];
     let display_args = vec![file.path().as_os_str().to_os_string()];
@@ -60,14 +60,14 @@ pub(super) fn play_with_pw_play(source: SoundSource) {
         &args,
         &display_args,
         Some(file.keepalive()),
-    );
+    )
 }
 
-pub(super) fn play_with_paplay(source: SoundSource) {
+pub(super) fn play_with_paplay(source: SoundSource) -> bool {
     // paplay accepts only direct file playback
     let SoundSource::File(file) = source else {
         warn!("paplay backend does not support sound-name hints");
-        return;
+        return false;
     };
     let args = vec![file.playback_path().into_os_string()];
     let display_args = vec![file.path().as_os_str().to_os_string()];
@@ -77,7 +77,7 @@ pub(super) fn play_with_paplay(source: SoundSource) {
         &args,
         &display_args,
         Some(file.keepalive()),
-    );
+    )
 }
 
 fn sound_semaphore() -> &'static Arc<Semaphore> {
@@ -92,14 +92,14 @@ fn spawn_sound_command(
     args: &[OsString],
     display_args: &[OsString],
     keepalive: Option<Arc<File>>,
-) {
+) -> bool {
     let limiter = sound_semaphore().clone();
     // try_acquire keeps this call non-blocking on hot paths
     let permit = if let Ok(permit) = limiter.try_acquire_owned() {
         permit
     } else {
         debug!(backend, "sound command skipped (concurrency limit reached)");
-        return;
+        return false;
     };
     let command_str = sound_command_display(program, display_args);
     let command_snip = util::log_snippet(&command_str);
@@ -112,7 +112,7 @@ fn spawn_sound_command(
                 ?err,
                 "trusted sound backend is unavailable"
             );
-            return;
+            return false;
         }
     };
     match command.spawn() {
@@ -131,6 +131,7 @@ fn spawn_sound_command(
                 let _keepalive = keepalive;
                 reap_sound_child(backend, command_snip, pid, child).await;
             });
+            true
         }
         Err(err) => {
             warn!(
@@ -139,6 +140,7 @@ fn spawn_sound_command(
                 ?err,
                 "failed to spawn sound command"
             );
+            false
         }
     }
 }
