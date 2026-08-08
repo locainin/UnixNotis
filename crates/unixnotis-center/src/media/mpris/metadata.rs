@@ -16,6 +16,28 @@ const MAX_ARTIST_BYTES: usize = 256;
 const MAX_ART_URL_BYTES: usize = 2048;
 const PLASMA_BRIDGE: &str = "org.mpris.MediaPlayer2.plasma-browser-integration";
 
+#[derive(Debug)]
+pub(super) enum PropertyRead<T> {
+    Value(T),
+    Timeout,
+    Oversize,
+    Invalid,
+    BusError,
+}
+
+impl<T> PropertyRead<T> {
+    pub(super) const fn is_timeout(&self) -> bool {
+        matches!(self, Self::Timeout)
+    }
+
+    pub(super) fn into_value(self) -> Option<T> {
+        match self {
+            Self::Value(value) => Some(value),
+            Self::Timeout | Self::Oversize | Self::Invalid | Self::BusError => None,
+        }
+    }
+}
+
 pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<MediaInfo> {
     if state.timeout.is_quarantined() {
         return None;
@@ -59,7 +81,18 @@ pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<Me
             timeout
         ),
     );
+    // Timeout quarantine is a refresh-batch invariant. A fast PlaybackStatus
+    // response must not erase timeouts from other calls in the same refresh
+    let any_timeout = metadata.is_timeout()
+        || playback_status.is_timeout()
+        || can_play.is_timeout()
+        || can_pause.is_timeout()
+        || can_next.is_timeout()
+        || can_prev.is_timeout();
+    state.timeout.record_refresh_batch(any_timeout);
+
     let metadata = metadata
+        .into_value()
         .filter(|map| metadata_entry_count_allowed(map.len()))
         .unwrap_or_default();
     let title = metadata_string(&metadata, "xesam:title")
@@ -80,15 +113,11 @@ pub(in crate::media) async fn fetch_media_info(state: &PlayerState) -> Option<Me
 
     // PlaybackStatus drives whether the player stays visible
     // A missing status keeps the prior cache entry instead of inventing a stop event
-    let Some(playback_status) = playback_status else {
-        state.timeout.record_timeout();
-        return None;
-    };
-    state.timeout.clear_timeout();
-    let can_play = can_play.unwrap_or(false);
-    let can_pause = can_pause.unwrap_or(false);
-    let can_next = can_next.unwrap_or(false);
-    let can_prev = can_prev.unwrap_or(false);
+    let playback_status = playback_status.into_value()?;
+    let can_play = can_play.into_value().unwrap_or(false);
+    let can_pause = can_pause.into_value().unwrap_or(false);
+    let can_next = can_next.into_value().unwrap_or(false);
+    let can_prev = can_prev.into_value().unwrap_or(false);
 
     Some(MediaInfo {
         bus_name: state.bus_name.clone(),
@@ -116,19 +145,27 @@ pub(super) async fn bounded_property<T>(
     interface: &str,
     property: &str,
     timeout: std::time::Duration,
-) -> Option<T>
+) -> PropertyRead<T>
 where
     T: TryFrom<OwnedValue>,
 {
-    let reply = tokio::time::timeout(timeout, proxy.call_method("Get", &(interface, property)))
-        .await
-        .ok()?
-        .ok()?;
+    let reply =
+        match tokio::time::timeout(timeout, proxy.call_method("Get", &(interface, property))).await
+        {
+            Err(_elapsed) => return PropertyRead::Timeout,
+            Ok(Err(_error)) => return PropertyRead::BusError,
+            Ok(Ok(reply)) => reply,
+        };
     if !property_reply_body_allowed(reply.body().len()) {
-        return None;
+        return PropertyRead::Oversize;
     }
-    let value: OwnedValue = reply.body().deserialize().ok()?;
-    T::try_from(value).ok()
+    let Ok(value) = reply.body().deserialize::<OwnedValue>() else {
+        return PropertyRead::Invalid;
+    };
+    match T::try_from(value) {
+        Ok(value) => PropertyRead::Value(value),
+        Err(_error) => PropertyRead::Invalid,
+    }
 }
 
 pub(super) const fn metadata_entry_count_allowed(count: usize) -> bool {

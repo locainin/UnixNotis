@@ -14,4 +14,7 @@ pub(in crate::media) enum MediaSignal {
         bus_name: String,
         origin: MediaRefreshOrigin,
     },
+    FairnessLeaseExpired {
+        generation: u64,
+    },
 }

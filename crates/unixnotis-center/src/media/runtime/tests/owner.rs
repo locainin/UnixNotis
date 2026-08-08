@@ -5,8 +5,8 @@ use super::super::owner::{
 use super::super::state::MediaRuntimeState;
 use super::support::receive_ui_event;
 use crate::control::UiEvent;
-use crate::media::mpris::tests::support::{MprisFixture, TEST_PLAYER_NAME};
-use crate::media::mpris::{build_player_state, fetch_media_info};
+use crate::media::mpris::fetch_media_info;
+use crate::media::mpris::tests::support::{build_player_state, MprisFixture, TEST_PLAYER_NAME};
 use unixnotis_core::MediaConfig;
 
 async fn live_runtime_state(fixture: &MprisFixture) -> MediaRuntimeState {

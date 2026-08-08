@@ -9,12 +9,32 @@ use zbus::zvariant::OwnedValue;
 use zbus::{Connection, ConnectionBuilder};
 
 use super::super::constants::MPRIS_PATH;
+use super::super::player::{build_player_state_for_owner, resolve_player_owner, PlayerState};
 use crate::test_support::broker::read_broker_address;
+use unixnotis_core::MediaConfig;
 
 pub(in crate::media) const TEST_PLAYER_NAME: &str = "org.mpris.MediaPlayer2.unixnotis_test";
 pub(in crate::media) const TEST_BRIDGE_PLAYER_NAME: &str =
     "org.mpris.MediaPlayer2.plasma-browser-integration";
 pub(in crate::media) const TEST_PLAYER_IDENTITY: &str = "UnixNotis Test Player";
+
+pub(in crate::media) async fn build_player_state(
+    connection: &Connection,
+    name: &str,
+    config: &MediaConfig,
+) -> zbus::Result<Option<PlayerState>> {
+    // Resolve one stable owner before constructing proxies bound to that owner
+    let Some(owner) = resolve_player_owner(connection, name).await else {
+        return Ok(None);
+    };
+    Ok(Some(
+        build_player_state_for_owner(connection, name, config, owner).await?,
+    ))
+}
+
+pub(in crate::media) fn fleet_player_name(index: usize) -> String {
+    format!("org.mpris.MediaPlayer2.unixnotis_fleet_{index:03}")
+}
 
 // Parallel fixtures need distinct socket directories even inside one process
 static NEXT_BROKER: AtomicUsize = AtomicUsize::new(0);
@@ -110,6 +130,13 @@ struct TestMprisPlayer {
     metadata_bytes: usize,
     art_url_bytes: usize,
     metadata_pid: Option<u32>,
+    slow_non_status: bool,
+}
+
+async fn delay_non_status_property(slow: bool) {
+    if slow {
+        tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+    }
 }
 
 #[zbus::interface(name = "org.mpris.MediaPlayer2.Player")]
@@ -128,7 +155,8 @@ impl TestMprisPlayer {
     }
 
     #[zbus(property)]
-    fn metadata(&self) -> HashMap<String, OwnedValue> {
+    async fn metadata(&self) -> HashMap<String, OwnedValue> {
+        delay_non_status_property(self.slow_non_status).await;
         // The optional payload exercises the raw reply budget without a real player
         let mut metadata = HashMap::new();
         if self.metadata_bytes > 0 {
@@ -159,22 +187,26 @@ impl TestMprisPlayer {
     }
 
     #[zbus(property)]
-    fn can_play(&self) -> bool {
+    async fn can_play(&self) -> bool {
+        delay_non_status_property(self.slow_non_status).await;
         true
     }
 
     #[zbus(property)]
-    fn can_pause(&self) -> bool {
+    async fn can_pause(&self) -> bool {
+        delay_non_status_property(self.slow_non_status).await;
         true
     }
 
     #[zbus(property)]
-    fn can_go_next(&self) -> bool {
+    async fn can_go_next(&self) -> bool {
+        delay_non_status_property(self.slow_non_status).await;
         true
     }
 
     #[zbus(property)]
-    fn can_go_previous(&self) -> bool {
+    async fn can_go_previous(&self) -> bool {
+        delay_non_status_property(self.slow_non_status).await;
         true
     }
 }
@@ -201,11 +233,15 @@ impl MprisFixture {
     }
 
     pub(in crate::media) async fn start_with_kde_pid(pid: u32) -> Self {
-        Self::start_with_payload_for_name(TEST_BRIDGE_PLAYER_NAME, 0, 0, 0, Some(pid)).await
+        Self::start_with_payload_for_name(TEST_BRIDGE_PLAYER_NAME, 0, 0, 0, Some(pid), false).await
     }
 
     pub(in crate::media) async fn start_with_identity_bytes(identity_bytes: usize) -> Self {
         Self::start_with_payload(0, 0, identity_bytes).await
+    }
+
+    pub(in crate::media) async fn start_with_slow_non_status_properties() -> Self {
+        Self::start_with_payload_for_name(TEST_PLAYER_NAME, 0, 0, 0, None, true).await
     }
 
     async fn start_with_payload(
@@ -219,6 +255,7 @@ impl MprisFixture {
             art_url_bytes,
             identity_bytes,
             None,
+            false,
         )
         .await
     }
@@ -229,34 +266,24 @@ impl MprisFixture {
         art_url_bytes: usize,
         identity_bytes: usize,
         metadata_pid: Option<u32>,
+        slow_non_status: bool,
     ) -> Self {
         let broker = PrivateBroker::start();
-        let commands = Arc::new(CommandCounts::default());
         let identity = if identity_bytes == 0 {
             TEST_PLAYER_IDENTITY.to_string()
         } else {
             "x".repeat(identity_bytes)
         };
-        // The service exports both MPRIS interfaces at the standard object path
-        let server = ConnectionBuilder::address(broker.address.as_str())
-            .expect("parse private broker address")
-            .name(name)
-            .expect("request test MPRIS name")
-            .serve_at(MPRIS_PATH, TestMprisRoot { identity })
-            .expect("register test MPRIS root")
-            .serve_at(
-                MPRIS_PATH,
-                TestMprisPlayer {
-                    commands: commands.clone(),
-                    metadata_bytes,
-                    art_url_bytes,
-                    metadata_pid,
-                },
-            )
-            .expect("register test MPRIS player")
-            .build()
-            .await
-            .expect("connect test MPRIS service");
+        let (server, commands) = build_test_player_service(
+            &broker.address,
+            name,
+            identity,
+            metadata_bytes,
+            art_url_bytes,
+            metadata_pid,
+            slow_non_status,
+        )
+        .await;
         // A separate client connection exercises normal bus routing and owner lookup
         let client = ConnectionBuilder::address(broker.address.as_str())
             .expect("parse private broker address")
@@ -291,4 +318,74 @@ impl MprisFixture {
             .await
             .expect("emit playback status change");
     }
+}
+
+pub(in crate::media) struct MprisFleetFixture {
+    pub(in crate::media) client: Connection,
+    servers: Vec<Connection>,
+    broker: PrivateBroker,
+}
+
+impl MprisFleetFixture {
+    pub(in crate::media) async fn start(player_count: usize) -> Self {
+        let broker = PrivateBroker::start();
+        let client = ConnectionBuilder::address(broker.address.as_str())
+            .expect("parse private broker address")
+            .build()
+            .await
+            .expect("connect fleet test client");
+        let mut fixture = Self {
+            client,
+            servers: Vec::with_capacity(player_count.saturating_add(1)),
+            broker,
+        };
+        for index in 0..player_count {
+            fixture.add_player(index).await;
+        }
+        fixture
+    }
+
+    pub(in crate::media) async fn add_player(&mut self, index: usize) {
+        let name = fleet_player_name(index);
+        let identity = format!("UnixNotis Fleet Player {index:03}");
+        let (server, _commands) =
+            build_test_player_service(&self.broker.address, &name, identity, 0, 0, None, false)
+                .await;
+        // Keeping the connection alive preserves the unique owner and all exported interfaces
+        self.servers.push(server);
+    }
+}
+
+async fn build_test_player_service(
+    address: &str,
+    name: &str,
+    identity: String,
+    metadata_bytes: usize,
+    art_url_bytes: usize,
+    metadata_pid: Option<u32>,
+    slow_non_status: bool,
+) -> (Connection, Arc<CommandCounts>) {
+    let commands = Arc::new(CommandCounts::default());
+    // The service exports both MPRIS interfaces at the standard object path
+    let server = ConnectionBuilder::address(address)
+        .expect("parse private broker address")
+        .name(name)
+        .expect("request test MPRIS name")
+        .serve_at(MPRIS_PATH, TestMprisRoot { identity })
+        .expect("register test MPRIS root")
+        .serve_at(
+            MPRIS_PATH,
+            TestMprisPlayer {
+                commands: commands.clone(),
+                metadata_bytes,
+                art_url_bytes,
+                metadata_pid,
+                slow_non_status,
+            },
+        )
+        .expect("register test MPRIS player")
+        .build()
+        .await
+        .expect("connect test MPRIS service");
+    (server, commands)
 }

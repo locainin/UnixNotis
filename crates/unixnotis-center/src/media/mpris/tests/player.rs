@@ -4,10 +4,10 @@ use unixnotis_core::MediaConfig;
 
 use super::super::constants::{MPRIS_APP, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PREFIX};
 use super::super::player::{
-    build_player_state, build_player_state_for_owner, fetch_identity, owner_probe_is_stable,
-    quarantine_active, read_owner_executable_path, resolve_player_owner, PlayerTimeoutState,
+    build_player_state_for_owner, fetch_identity, owner_probe_is_stable, quarantine_active,
+    read_owner_executable_path, resolve_player_owner, PlayerTimeoutState,
 };
-use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
+use super::support::{build_player_state, MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
 
 #[test]
 fn owner_probe_accepts_only_one_stable_unique_owner() {
@@ -61,6 +61,18 @@ fn player_timeout_state_clear_releases_a_quarantine() {
     assert!(state.is_quarantined());
     state.clear_timeout();
     assert!(!state.is_quarantined());
+}
+
+#[test]
+fn refresh_batch_with_fast_status_and_other_timeouts_reaches_quarantine() {
+    let state = PlayerTimeoutState::new();
+
+    // PlaybackStatus succeeded in each modeled batch, while five sibling calls timed out
+    for _ in 0..3 {
+        state.record_refresh_batch(true);
+    }
+
+    assert!(state.is_quarantined());
 }
 
 #[tokio::test]

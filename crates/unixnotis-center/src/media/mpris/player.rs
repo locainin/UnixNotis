@@ -87,6 +87,14 @@ impl PlayerTimeoutState {
         }
     }
 
+    pub(super) fn record_refresh_batch(&self, any_timeout: bool) {
+        if any_timeout {
+            self.record_timeout();
+        } else {
+            self.clear_timeout();
+        }
+    }
+
     pub(super) fn clear_timeout(&self) {
         self.streak.store(0, Ordering::Release);
         if let Ok(mut until) = self.quarantined_until.lock() {
@@ -97,27 +105,6 @@ impl PlayerTimeoutState {
 
 pub(super) fn quarantine_active(now: Instant, deadline: Instant) -> bool {
     now < deadline
-}
-
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "direct builder remains available for media tests")
-)]
-pub(in crate::media) async fn build_player_state(
-    connection: &Connection,
-    name: &str,
-    config: &MediaConfig,
-) -> zbus::Result<Option<PlayerState>> {
-    // D-Bus owner data is captured once so snapshots do not need another bus round trip
-    // The broker-derived PID remains authoritative even when player metadata supplies hints
-    let Some(owner) = resolve_player_owner(connection, name).await else {
-        // Ownership changed during probing, so a later bus event should rebuild stable data
-        return Ok(None);
-    };
-
-    Ok(Some(
-        build_player_state_for_owner(connection, name, config, owner).await?,
-    ))
 }
 
 // Keep credential handling separate so compatibility behavior can be tested without a bus shim
@@ -213,6 +200,7 @@ pub(super) async fn fetch_identity(connection: &Connection, name: &str) -> Optio
         std::time::Duration::from_millis(MPRIS_PROPERTY_TIMEOUT_MS),
     )
     .await
+    .into_value()
     .filter(|identity| identity.len() <= MAX_MPRIS_IDENTITY_BYTES)
     .map(|identity| identity.trim().to_string())
     .filter(|identity| !identity.is_empty())

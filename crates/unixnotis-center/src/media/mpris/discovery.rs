@@ -5,16 +5,29 @@ use std::num::NonZeroUsize;
 
 use futures_util::stream::{self, StreamExt};
 use tokio::sync::mpsc::Sender;
+use tokio::time::Instant;
 use tracing::warn;
 use unixnotis_core::{MediaConfig, PanelDebugLevel};
 use zbus::fdo::DBusProxy;
 use zbus::Connection;
 
-use super::constants::{MAX_MPRIS_CANDIDATES_PER_PASS, MAX_MPRIS_PLAYERS, MPRIS_PREFIX};
-use super::player::{build_player_state_for_owner, resolve_player_owner, OwnerProbe};
-use super::{is_allowed_player, spawn_properties_listener, PlayerState};
+use super::constants::MAX_MPRIS_PLAYERS;
+use super::fairness::MprisFairnessState;
+use super::inventory::{
+    admit_fairness_candidate, build_dbus_player_state, insert_player_state, FairnessAdmission,
+    PlayerStateBuilder,
+};
+use super::player::{resolve_player_owner, OwnerProbe};
+use super::selection::{is_discoverable_player, select_player_names};
+use super::PlayerState;
 use crate::diagnostics::panel_debug as debug;
 use crate::media::runtime::MediaSignal;
+
+pub(super) struct DiscoveryState<'a> {
+    pub players: &'a mut HashMap<String, PlayerState>,
+    pub discovery_cursor: &'a mut usize,
+    pub fairness: &'a mut MprisFairnessState,
+}
 
 pub(in crate::media) async fn refresh_players(
     connection: &Connection,
@@ -23,7 +36,36 @@ pub(in crate::media) async fn refresh_players(
     signal_tx: &Sender<MediaSignal>,
     players: &mut HashMap<String, PlayerState>,
     discovery_cursor: &mut usize,
+    fairness: &mut MprisFairnessState,
 ) -> zbus::Result<()> {
+    refresh_players_with_builder(
+        connection,
+        dbus_proxy,
+        config,
+        signal_tx,
+        DiscoveryState {
+            players,
+            discovery_cursor,
+            fairness,
+        },
+        build_dbus_player_state,
+    )
+    .await
+}
+
+pub(in crate::media) async fn refresh_players_with_builder(
+    connection: &Connection,
+    dbus_proxy: &DBusProxy<'_>,
+    config: &MediaConfig,
+    signal_tx: &Sender<MediaSignal>,
+    state: DiscoveryState<'_>,
+    build_player: PlayerStateBuilder,
+) -> zbus::Result<()> {
+    let DiscoveryState {
+        players,
+        discovery_cursor,
+        fairness,
+    } = state;
     let names = dbus_proxy.list_names().await?;
     let mut allowed = HashSet::new();
     for name in names {
@@ -81,27 +123,26 @@ pub(in crate::media) async fn refresh_players(
     probed.sort_unstable_by(|left, right| left.0.cmp(&right.0));
     let mut failed_probes = 0usize;
     let mut capacity_skipped = 0usize;
-    let mut selected = Vec::<(String, OwnerProbe)>::new();
+    let mut eligible = Vec::<(String, OwnerProbe)>::new();
+    let mut candidate_owners = HashSet::new();
     for (name, owner) in probed {
         let Some(owner) = owner else {
             failed_probes = failed_probes.saturating_add(1);
             continue;
         };
         // Several aliases can resolve to one connection; retain one stable alias
-        if !owners.insert(owner.unique_owner.clone()) {
+        if owners.contains(&owner.unique_owner)
+            || !candidate_owners.insert(owner.unique_owner.clone())
+        {
             continue;
         }
-        if owner_capacity_exceeded(owners.len(), MAX_MPRIS_PLAYERS) {
-            owners.remove(&owner.unique_owner);
-            capacity_skipped = capacity_skipped.saturating_add(1);
-            continue;
-        }
-        selected.push((name, owner));
+        eligible.push((name, owner));
     }
 
-    // Full construction runs once per selected owner, never once per alias
-    for (name, owner) in selected {
-        let state = match build_player_state_for_owner(connection, &name, config, owner).await {
+    // Build ordinary admissions until successful states fill the owner capacity
+    while owners.len() < MAX_MPRIS_PLAYERS && !eligible.is_empty() {
+        let (name, owner) = eligible.remove(0);
+        let state = match build_player(connection, &name, config, owner).await {
             Ok(state) => state,
             Err(err) => {
                 failed_probes = failed_probes.saturating_add(1);
@@ -111,17 +152,59 @@ pub(in crate::media) async fn refresh_players(
                 continue;
             }
         };
-        spawn_properties_listener(
-            state.properties.clone(),
-            name.clone(),
-            signal_tx.clone(),
-            state.listener_cancel.subscribe(),
-        );
-        players.insert(name.clone(), state);
-        debug::log(PanelDebugLevel::Info, || {
-            format!("media player added: {name}")
-        });
+        owners.extend(state.unique_owner.iter().cloned());
+        insert_player_state(players, signal_tx, name, state);
     }
+
+    // Starting the lease after normal admission also covers over-capacity startup inventories
+    let fairness_rotation_due = fairness.rotation_due(
+        owners.len() >= MAX_MPRIS_PLAYERS,
+        !eligible.is_empty(),
+        Instant::now(),
+        signal_tx,
+    );
+    if fairness_rotation_due && !eligible.is_empty() {
+        match admit_fairness_candidate(
+            connection,
+            config,
+            signal_tx,
+            players,
+            fairness,
+            eligible.remove(0),
+            build_player,
+        )
+        .await
+        {
+            FairnessAdmission::Admitted {
+                victim_name,
+                candidate_name,
+            } => {
+                // Successful admission starts the next bounded opportunity
+                fairness.complete_rotation(Instant::now(), true, signal_tx);
+                debug::log(PanelDebugLevel::Info, || {
+                    format!("media player lease rotated: {victim_name} -> {candidate_name}")
+                });
+            }
+            FairnessAdmission::BuildFailed {
+                candidate_name,
+                error,
+            } => {
+                failed_probes = failed_probes.saturating_add(1);
+                // A failed candidate leaves every healthy incumbent untouched
+                fairness.retry_failed_rotation(Instant::now(), signal_tx);
+                debug::log(PanelDebugLevel::Verbose, || {
+                    format!(
+                        "failed to build fairness media player state for {candidate_name}: {error}"
+                    )
+                });
+            }
+            FairnessAdmission::NoVictim => {
+                capacity_skipped = capacity_skipped.saturating_add(1);
+                fairness.retry_failed_rotation(Instant::now(), signal_tx);
+            }
+        }
+    }
+    capacity_skipped = capacity_skipped.saturating_add(eligible.len());
     if failed_probes > 0 {
         warn!(
             failed = failed_probes,
@@ -137,41 +220,4 @@ pub(in crate::media) async fn refresh_players(
     }
 
     Ok(())
-}
-
-pub(super) fn is_discoverable_player(name: &str, config: &MediaConfig) -> bool {
-    name.starts_with(MPRIS_PREFIX) && is_allowed_player(name, config)
-}
-
-pub(super) fn select_player_names(
-    names: HashSet<String>,
-    tracked: &HashSet<String>,
-    cursor: &mut usize,
-) -> Vec<String> {
-    let mut names = names.into_iter().collect::<Vec<_>>();
-    names.sort_unstable();
-
-    let mut selected = names
-        .iter()
-        .filter(|name| tracked.contains(*name))
-        .cloned()
-        .collect::<Vec<_>>();
-    let remaining = names
-        .into_iter()
-        .filter(|name| !tracked.contains(name))
-        .collect::<Vec<_>>();
-    let room = MAX_MPRIS_CANDIDATES_PER_PASS.saturating_sub(selected.len());
-    if room == 0 || remaining.is_empty() {
-        return selected;
-    }
-
-    let start = *cursor % remaining.len();
-    let count = room.min(remaining.len());
-    selected.extend((0..count).map(|offset| remaining[(start + offset) % remaining.len()].clone()));
-    *cursor = (start + count) % remaining.len();
-    selected
-}
-
-pub(super) const fn owner_capacity_exceeded(owner_count: usize, capacity: usize) -> bool {
-    owner_count > capacity
 }

@@ -4,8 +4,7 @@ use super::super::metadata::{
     bound_string, is_plasma_browser_bridge, metadata_artist, metadata_entry_count_allowed,
     metadata_pid, metadata_string, property_reply_body_allowed,
 };
-use super::super::player::build_player_state;
-use super::support::{MprisFixture, TEST_BRIDGE_PLAYER_NAME, TEST_PLAYER_NAME};
+use super::support::{build_player_state, MprisFixture, TEST_BRIDGE_PLAYER_NAME, TEST_PLAYER_NAME};
 use unixnotis_core::MediaConfig;
 use zbus::zvariant::{OwnedValue, Value};
 
@@ -135,6 +134,29 @@ async fn oversized_metadata_reply_is_rejected_before_dynamic_decode() {
         .expect("required playback status remains available");
     assert!(info.title.is_empty());
     assert!(info.artist.is_empty());
+}
+
+#[tokio::test]
+async fn fast_playback_status_cannot_clear_five_sibling_property_timeouts() {
+    let fixture = MprisFixture::start_with_slow_non_status_properties().await;
+    let player = build_player_state(&fixture.client, TEST_PLAYER_NAME, &MediaConfig::default())
+        .await
+        .expect("build slow-property fixture player")
+        .expect("fixture owner should remain stable");
+
+    for _ in 0..3 {
+        let info = fetch_media_info(&player)
+            .await
+            .expect("fast PlaybackStatus should still construct a partial snapshot");
+        assert_eq!(info.playback_status, "Playing");
+        assert!(!info.can_play);
+        assert!(!info.can_pause);
+        assert!(!info.can_next);
+        assert!(!info.can_prev);
+    }
+
+    assert!(player.timeout.is_quarantined());
+    assert_eq!(fetch_media_info(&player).await, None);
 }
 
 #[tokio::test]
