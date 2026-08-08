@@ -1,4 +1,4 @@
-//! Notification rule validation and explicit schema migration
+//! Notification rule and current schema validation
 
 pub(in crate::config) mod rules;
 pub(in crate::config) mod schema;

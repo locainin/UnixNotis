@@ -1,5 +1,4 @@
-use super::super::validate_command_paths_in_config_bytes;
-use super::support::temp_root;
+use super::support::{temp_root, validate_command_paths_in_config_bytes};
 
 #[test]
 fn validation_rejects_ld_preload_path_that_leaves_root() {

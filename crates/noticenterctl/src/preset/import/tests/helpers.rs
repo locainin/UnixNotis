@@ -7,6 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 
+use crate::test_support::fixture_file_contents;
+
 pub(in crate::preset::import) use crate::preset::archive::write_bundle;
 pub(in crate::preset::import) use crate::preset::config_root::{
     CollectedConfigFiles, PresetFileSource,
@@ -46,7 +48,11 @@ impl TempDirGuard {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).expect("create parent dirs");
         }
-        fs::write(path, contents).expect("write test file");
+        fs::write(
+            path,
+            fixture_file_contents(relative_path, contents).as_bytes(),
+        )
+        .expect("write test file");
     }
 }
 

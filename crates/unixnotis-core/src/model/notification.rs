@@ -77,6 +77,16 @@ impl Notification {
         }
     }
 
+    /// Update canonical urgency and any retained protocol projection together
+    pub fn set_urgency(&mut self, urgency: Urgency) {
+        self.urgency = urgency;
+        // Retained hints are projections of the model and never independent policy inputs
+        if self.hints.contains_key("urgency") {
+            self.hints
+                .insert("urgency".to_string(), OwnedValue::from(urgency.as_u32()));
+        }
+    }
+
     /// Convert to a lightweight view for UI consumption
     #[must_use]
     pub fn to_view(&self) -> NotificationView {

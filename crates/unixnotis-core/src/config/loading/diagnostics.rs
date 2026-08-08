@@ -6,7 +6,7 @@ use serde::Serialize;
 use toml::Value;
 use tracing::{info, warn};
 
-use super::super::{Config, CURRENT_CONFIG_VERSION};
+use super::super::Config;
 
 /// Classification used by configuration diagnostics and doctor output
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -44,37 +44,6 @@ pub struct ConfigLoadReport {
     pub config: Config,
     /// Stable diagnostics produced while accepting the input
     pub diagnostics: Vec<ConfigDiagnostic>,
-}
-
-pub(super) fn migration_diagnostic(contents: &str) -> Option<ConfigDiagnostic> {
-    // Diagnostics inspect a separate value tree so deserialization behavior stays unchanged
-    let document = contents.parse::<Value>().ok()?;
-    // Unversioned files are schema zero and follow the explicit legacy migration path
-    let version = document
-        .as_table()
-        .and_then(|root| root.get("config_version"))
-        .and_then(Value::as_integer)
-        .and_then(|value| u32::try_from(value).ok())
-        .unwrap_or(0);
-    (version < CURRENT_CONFIG_VERSION).then(|| ConfigDiagnostic {
-        code: "config.schema.migrated",
-        kind: ConfigDiagnosticKind::Note,
-        path: Some("config_version".to_string()),
-        message: "Configuration was migrated to the current schema".to_string(),
-        original: Some(version.to_string()),
-        effective: Some(CURRENT_CONFIG_VERSION.to_string()),
-    })
-}
-
-pub(super) fn migrated_field_diagnostic(path: String) -> ConfigDiagnostic {
-    ConfigDiagnostic {
-        code: "config.schema.field-migrated",
-        kind: ConfigDiagnosticKind::Note,
-        path: Some(path),
-        message: "Missing legacy field received its schema-compatible value".to_string(),
-        original: None,
-        effective: None,
-    }
 }
 
 pub(super) fn empty_exact_media_policy_diagnostic(contents: &str) -> Option<ConfigDiagnostic> {

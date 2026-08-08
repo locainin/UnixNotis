@@ -3,7 +3,7 @@
 use std::fs;
 use std::io::Cursor;
 
-use crate::{Config, ConfigError, MAX_CONFIG_BYTES};
+use crate::{Config, ConfigError, CURRENT_CONFIG_VERSION, MAX_CONFIG_BYTES};
 
 use super::super::load::read_config_contents;
 use super::support::{env_lock, test_root, EnvGuard};
@@ -20,14 +20,17 @@ fn load_from_path_reads_toml_and_applies_runtime_defaults() {
     // Deliberately use too-small refresh intervals to prove load sanitization still runs
     fs::write(
         &path,
-        r#"
+        format!(
+            r#"
+        config_version = {CURRENT_CONFIG_VERSION}
         [panel]
         title = "Loaded Title"
 
         [widgets]
         refresh_interval_ms = 1
         refresh_interval_slow_ms = 50
-        "#,
+        "#
+        ),
     )
     .expect("config file");
 
@@ -58,27 +61,29 @@ fn load_from_path_returns_parse_error_for_invalid_toml() {
 
 #[test]
 fn parse_returns_the_config_produced_by_the_report_pipeline() {
-    let config = Config::parse(
+    let config = Config::parse(&format!(
         r#"
+        config_version = {CURRENT_CONFIG_VERSION}
         [panel]
         title = "Parsed Title"
-        "#,
-    )
+        "#
+    ))
     .expect("valid config text should parse");
 
     assert_eq!(config.panel.title, "Parsed Title");
 }
 
 #[test]
-fn legacy_theme_mode_is_ignored_and_default_rendering_omits_it() {
-    let report = Config::parse_with_report(
+fn obsolete_theme_mode_is_ignored_and_default_rendering_omits_it() {
+    let report = Config::parse_with_report(&format!(
         r#"
+        config_version = {CURRENT_CONFIG_VERSION}
         [theme]
         mode = "stock"
         popup_css = "popup.css"
-        "#,
-    )
-    .expect("legacy theme mode should be ignored");
+        "#
+    ))
+    .expect("obsolete theme mode should be ignored");
 
     assert_eq!(report.config.theme.popup_css, "popup.css");
     assert!(!report.diagnostics.iter().any(|diagnostic| {
@@ -91,14 +96,16 @@ fn legacy_theme_mode_is_ignored_and_default_rendering_omits_it() {
 
 #[test]
 fn sound_file_hints_require_explicit_configuration() {
-    let defaults = Config::parse("").expect("default config should parse");
-    let enabled = Config::parse(
+    let defaults = Config::parse(&format!("config_version = {CURRENT_CONFIG_VERSION}\n"))
+        .expect("default current config should parse");
+    let enabled = Config::parse(&format!(
         r#"
+        config_version = {CURRENT_CONFIG_VERSION}
         [sound]
         allow_file_hints = true
         allowed_file_hint_dirs = ["sounds", "/srv/notification-sounds"]
-        "#,
-    )
+        "#
+    ))
     .expect("sound hint policy should parse");
 
     assert!(!defaults.sound.allow_file_hints);
@@ -195,10 +202,13 @@ fn load_default_reads_config_when_default_file_exists() {
     fs::create_dir_all(&config_dir).expect("config dir");
     fs::write(
         config_dir.join("config.toml"),
-        r#"
+        format!(
+            r#"
+        config_version = {CURRENT_CONFIG_VERSION}
         [panel]
         title = "Default Path Title"
-        "#,
+        "#
+        ),
     )
     .expect("default config file");
 

@@ -8,11 +8,14 @@ use crate::preset::import::transaction::apply::{
 };
 use crate::preset::import::transaction::commit::commit_import_plan;
 use crate::preset::import::transaction::plan::build_import_plan;
+use crate::test_support::{current_config_text, fixture_file_contents};
 
 fn bundle_file(relative_path: &str, contents: &str) -> BundleFile {
     BundleFile {
         relative_path: PathBuf::from(relative_path),
-        contents: contents.as_bytes().to_vec(),
+        contents: fixture_file_contents(relative_path, contents)
+            .as_bytes()
+            .to_vec(),
         mode: 0o644,
     }
 }
@@ -43,7 +46,7 @@ fn commit_import_plan_writes_files_runs_css_check_and_returns_backup() {
     assert!(css_result.is_ok());
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read imported config"),
-        "[panel]\nwidth = 444\n"
+        current_config_text("[panel]\nwidth = 444\n")
     );
     assert_eq!(
         fs::read_to_string(import_root.path.join("theme/base.css")).expect("read imported css"),
@@ -52,7 +55,7 @@ fn commit_import_plan_writes_files_runs_css_check_and_returns_backup() {
     let backup_dir = backup_dir.expect("overwritten config should create backup");
     assert_eq!(
         fs::read_to_string(backup_dir.join("config.toml")).expect("read backup config"),
-        "[panel]\nwidth = 320\n"
+        current_config_text("[panel]\nwidth = 320\n")
     );
 }
 
@@ -79,7 +82,7 @@ fn commit_import_plan_rolls_back_when_imported_config_cannot_load() {
     assert_eq!(css_calls.load(Ordering::Relaxed), 0);
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read restored config"),
-        "[panel]\nwidth = 320\n"
+        current_config_text("[panel]\nwidth = 320\n")
     );
 }
 
@@ -104,7 +107,7 @@ fn apply_failure_on_later_file_rolls_back_earlier_publication() {
 
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read restored config"),
-        "[panel]\nwidth = 320\n"
+        current_config_text("[panel]\nwidth = 320\n")
     );
 }
 
@@ -140,7 +143,7 @@ fn commit_import_plan_rolls_back_when_imported_config_points_outside_root() {
     assert_eq!(css_calls.load(Ordering::Relaxed), 0);
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read restored config"),
-        "[panel]\nwidth = 320\n"
+        current_config_text("[panel]\nwidth = 320\n")
     );
     assert!(!outside_theme.exists());
 }
@@ -178,7 +181,7 @@ fn commit_import_plan_rolls_back_when_imported_command_points_outside_root() {
     assert_eq!(css_calls.load(Ordering::Relaxed), 0);
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read restored config"),
-        "[panel]\nwidth = 320\n"
+        current_config_text("[panel]\nwidth = 320\n")
     );
     assert!(!import_root.path.join("scripts/probe.sh").exists());
     assert!(!outside_command.exists());
@@ -216,7 +219,7 @@ fn commit_import_plan_cleans_partial_backup_and_rolls_back_when_backup_write_fai
     assert_eq!(writes.load(Ordering::Relaxed), 2);
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read restored config"),
-        "[panel]\nwidth = 320\n"
+        current_config_text("[panel]\nwidth = 320\n")
     );
     assert_eq!(
         fs::read_to_string(import_root.path.join("theme/base.css")).expect("read restored css"),
@@ -254,6 +257,6 @@ fn commit_import_plan_keeps_import_committed_when_css_check_fails() {
         .contains("css-check failed for test"));
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read committed config"),
-        "[panel]\nwidth = 444\n"
+        current_config_text("[panel]\nwidth = 444\n")
     );
 }

@@ -7,12 +7,11 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::config::runtime::{apply_brightness_backend, apply_volume_backend, sanitize_config};
-use crate::config::schema::deserialize_config_with_migrations;
+use crate::config::schema::deserialize_current_config;
 use crate::{log_config_diagnostics, Config, ConfigLoadReport};
 
 use super::super::diagnostics::{
-    adjustment_diagnostics, empty_exact_media_policy_diagnostic, migrated_field_diagnostic,
-    migration_diagnostic, unknown_key_diagnostic,
+    adjustment_diagnostics, empty_exact_media_policy_diagnostic, unknown_key_diagnostic,
 };
 use super::ConfigError;
 
@@ -41,7 +40,7 @@ impl Config {
         Self::parse_with_report(&contents)
     }
 
-    /// Parse and migrate configuration text without reading the filesystem
+    /// Parse current-schema configuration text without reading the filesystem
     ///
     /// # Errors
     ///
@@ -52,19 +51,16 @@ impl Config {
         Ok(report.config)
     }
 
-    /// Parse and migrate configuration text with structured diagnostics
+    /// Parse current-schema configuration text with structured diagnostics
     ///
     /// # Errors
     ///
     /// Returns an error for invalid TOML or unsupported schema versions
     pub fn parse_with_report(contents: &str) -> Result<ConfigLoadReport, ConfigError> {
-        let (mut config, ignored_keys, migrated_paths) =
-            deserialize_config_with_migrations(contents).map_err(ConfigError::ParseFailed)?;
-        let mut diagnostics = migration_diagnostic(contents)
-            .into_iter()
-            .collect::<Vec<_>>();
+        let (mut config, ignored_keys) =
+            deserialize_current_config(contents).map_err(ConfigError::ParseFailed)?;
+        let mut diagnostics = Vec::new();
         diagnostics.extend(empty_exact_media_policy_diagnostic(contents));
-        diagnostics.extend(migrated_paths.into_iter().map(migrated_field_diagnostic));
         diagnostics.extend(ignored_keys.into_iter().map(unknown_key_diagnostic));
         let before_runtime = config.clone();
         config.apply_runtime_defaults();

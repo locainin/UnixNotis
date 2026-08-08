@@ -12,7 +12,7 @@ use super::rules::RuleConfig;
 use super::theme::ThemeConfig;
 use super::widgets::WidgetsConfig;
 
-pub const CURRENT_CONFIG_VERSION: u32 = 4;
+pub const CURRENT_CONFIG_VERSION: u32 = 5;
 
 /// Top-level configuration loaded from config.toml
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -8,6 +8,8 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use tar::{Builder, Header};
 
+use crate::test_support::fixture_file_contents;
+
 use super::super::export::flow::export_preset_from;
 use super::super::inspect::inspect_preset_at;
 use super::super::manifest::{PresetManifest, PresetManifestFile};
@@ -38,7 +40,11 @@ impl TempDirGuard {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).expect("create parent dirs");
         }
-        fs::write(path, contents).expect("write file");
+        fs::write(
+            path,
+            fixture_file_contents(relative_path, contents).as_bytes(),
+        )
+        .expect("write file");
     }
 }
 
@@ -165,6 +171,10 @@ fn inspect_reports_theme_paths_that_leave_config_root() {
 
 fn write_bundle_with_files(bundle_path: &PathBuf, bundle_name: &str, files: &[(&str, &str)]) {
     // Raw bundle writing lets inspect tests model presets that export would reject
+    let normalized_files = files
+        .iter()
+        .map(|(path, contents)| (*path, fixture_file_contents(path, contents)))
+        .collect::<Vec<_>>();
     let output = fs::File::create(bundle_path).expect("create test bundle");
     let encoder = GzEncoder::new(output, Compression::default());
     let mut archive = Builder::new(encoder);
@@ -172,7 +182,7 @@ fn write_bundle_with_files(bundle_path: &PathBuf, bundle_name: &str, files: &[(&
         bundle_name.to_string(),
         "2026-01-01T00:00:00Z".to_string(),
         "test".to_string(),
-        files
+        normalized_files
             .iter()
             .map(|(path, contents)| PresetManifestFile {
                 path: (*path).to_string(),
@@ -183,7 +193,7 @@ fn write_bundle_with_files(bundle_path: &PathBuf, bundle_name: &str, files: &[(&
     let manifest_text = manifest.encode().expect("encode manifest");
 
     append_text_file(&mut archive, "manifest.toml", &manifest_text);
-    for (path, contents) in files {
+    for (path, contents) in &normalized_files {
         append_text_file(&mut archive, &format!("payload/{path}"), contents);
     }
     archive.finish().expect("finish archive");

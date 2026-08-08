@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::test_support::current_config_bytes;
+
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn temp_root(name: &str) -> PathBuf {
@@ -28,8 +30,9 @@ fn imported_theme_checks_reject_parent_traversal_targets() {
     let config_dir = temp_root("relative-escape");
     let config = b"[theme]\nbase_css = \"../escaped-base.css\"\npanel_css = \"panel.css\"\npopup_css = \"popup.css\"\nwidgets_css = \"widgets.css\"\nmedia_css = \"media.css\"\n";
 
-    let error = validate_imported_theme_paths_stay_in_root(&config_dir, config)
-        .expect_err("reject relative theme escape");
+    let error =
+        validate_imported_theme_paths_stay_in_root(&config_dir, &current_config_bytes(config))
+            .expect_err("reject relative theme escape");
 
     assert!(error
         .to_string()
@@ -42,8 +45,9 @@ fn imported_command_checks_reject_absolute_plugin_command() {
     let config_dir = temp_root("outside-command");
     let config = b"[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\n[widgets.stats.plugin]\napi_version = 1\ncommand = \"/tmp/outside-plugin\"\n";
 
-    let error = validate_imported_command_paths_stay_in_root(&config_dir, config)
-        .expect_err("reject outside command path");
+    let error =
+        validate_imported_command_paths_stay_in_root(&config_dir, &current_config_bytes(config))
+            .expect_err("reject outside command path");
 
     assert!(error
         .to_string()
@@ -166,7 +170,8 @@ label = "Probe"
 cmd = "scripts/check.sh"
 "#;
 
-    let content = collect_imported_exec_content(config, &[]).expect("collect exec content");
+    let content = collect_imported_exec_content(&current_config_bytes(config), &[])
+        .expect("collect exec content");
 
     assert_eq!(content.commands.len(), 1);
     assert_eq!(content.commands[0].slot, "widgets.stats[0].cmd");
@@ -175,13 +180,13 @@ cmd = "scripts/check.sh"
 
 #[test]
 fn imported_exec_collection_ignores_unknown_command_keys_and_keeps_real_command() {
-    let mut config = String::from("config_version = 2\n");
+    let mut config = String::new();
     for index in 0..64 {
         config.push_str(&format!("[aaa{index:02}]\ncmd = \"true\"\n"));
     }
     config.push_str("[[widgets.stats]]\nlabel = \"Probe\"\ncmd = \"sh assets/payload.dat\"\n");
 
-    let content = collect_imported_exec_content(config.as_bytes(), &[])
+    let content = collect_imported_exec_content(&current_config_bytes(config.as_bytes()), &[])
         .expect("collect only typed command fields");
 
     assert_eq!(content.commands.len(), 1);
@@ -192,8 +197,6 @@ fn imported_exec_collection_ignores_unknown_command_keys_and_keeps_real_command(
 #[test]
 fn imported_exec_collection_covers_every_known_explicit_command_field() {
     let config = br#"
-config_version = 2
-
 [widgets.volume]
 get_cmd = "volume-get"
 set_cmd = "volume-set"
@@ -226,7 +229,8 @@ api_version = 1
 command = "card-plugin"
 "#;
 
-    let content = collect_imported_exec_content(config, &[]).expect("collect known commands");
+    let content = collect_imported_exec_content(&current_config_bytes(config), &[])
+        .expect("collect known commands");
     let slots = content
         .commands
         .iter()
@@ -259,7 +263,7 @@ command = "card-plugin"
 
 #[test]
 fn imported_exec_collection_does_not_include_runtime_defaults() {
-    let content = collect_imported_exec_content(b"config_version = 2\n", &[])
+    let content = collect_imported_exec_content(&current_config_bytes(b""), &[])
         .expect("parse data-only config");
 
     assert!(content.commands.is_empty());
@@ -285,8 +289,8 @@ base_css = "base.css"
         },
     ];
 
-    let content =
-        collect_imported_exec_content(config, &bundle_files).expect("collect script payload");
+    let content = collect_imported_exec_content(&current_config_bytes(config), &bundle_files)
+        .expect("collect script payload");
 
     assert!(content.commands.is_empty());
     assert_eq!(content.files.len(), 2);
@@ -327,8 +331,8 @@ cmd = "scripts/check.sh"
         },
     ];
 
-    let content =
-        collect_imported_exec_content(config, &bundle_files).expect("collect trusted exec");
+    let content = collect_imported_exec_content(&current_config_bytes(config), &bundle_files)
+        .expect("collect trusted exec");
 
     assert_eq!(content.commands.len(), 1);
     assert_eq!(content.files.len(), 3);
@@ -351,17 +355,16 @@ fn imported_exec_collection_inventories_plain_payloads_for_each_command_form() {
     ];
 
     for (command, payload_path) in cases {
-        let config = format!(
-            "config_version = 2\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {command:?}\n"
-        );
+        let config = format!("[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {command:?}\n");
         let files = [BundleFile {
             relative_path: PathBuf::from(payload_path),
             contents: b"plain file payload\n".to_vec(),
             mode: 0o644,
         }];
 
-        let content = collect_imported_exec_content(config.as_bytes(), &files)
-            .expect("collect command-backed plain payload");
+        let content =
+            collect_imported_exec_content(&current_config_bytes(config.as_bytes()), &files)
+                .expect("collect command-backed plain payload");
 
         assert_eq!(content.commands.len(), 1);
         assert_eq!(content.files.len(), 1);
@@ -377,7 +380,7 @@ fn imported_exec_collection_ignores_plain_assets_without_commands() {
         mode: 0o644,
     }];
 
-    let content = collect_imported_exec_content(b"config_version = 2\n", &files)
+    let content = collect_imported_exec_content(&current_config_bytes(b""), &files)
         .expect("collect data-only bundle");
 
     assert!(content.commands.is_empty());

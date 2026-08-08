@@ -4,6 +4,7 @@ use crate::preset::import::transaction::apply::{
     apply_import_plan, finalize_import_transaction, rollback_import_transaction,
 };
 use crate::preset::import::transaction::plan::build_import_plan;
+use crate::test_support::current_config_text;
 
 #[test]
 fn applied_import_can_restore_the_exact_previous_file() {
@@ -29,7 +30,7 @@ fn applied_import_can_restore_the_exact_previous_file() {
     rollback_import_transaction(transaction).expect("rollback import");
     assert_eq!(
         fs::read_to_string(root.path.join("config.toml")).expect("read restored file"),
-        "before"
+        current_config_text("before")
     );
 }
 
@@ -87,7 +88,7 @@ fn transaction_rejects_a_replaced_live_root_before_finalize() {
 
     assert_eq!(
         fs::read_to_string(moved.join("config.toml")).expect("read rolled-back old root"),
-        "before"
+        current_config_text("before")
     );
     fs::remove_dir_all(&root.path).expect("remove replacement root");
     fs::rename(&moved, &root.path).expect("restore imported config root");
@@ -119,7 +120,7 @@ fn root_drift_check_rolls_back_files_through_the_pinned_descriptor() {
 
     assert_eq!(
         fs::read_to_string(moved.join("config.toml")).expect("read descriptor-root config"),
-        "before"
+        current_config_text("before")
     );
     fs::remove_dir_all(&root.path).expect("remove replacement root");
     fs::rename(&moved, &root.path).expect("restore rolled-back config root");

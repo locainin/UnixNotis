@@ -41,6 +41,11 @@ impl Urgency {
     pub const fn as_u8(self) -> u8 {
         self as u8
     }
+
+    #[must_use]
+    pub const fn as_u32(self) -> u32 {
+        self as u32
+    }
 }
 
 /// Action pair in the notification protocol

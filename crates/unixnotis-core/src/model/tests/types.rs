@@ -62,3 +62,10 @@ fn urgency_as_u8_matches_freedesktop_values() {
     assert_eq!(Urgency::Normal.as_u8(), 1);
     assert_eq!(Urgency::Critical.as_u8(), 2);
 }
+
+#[test]
+fn urgency_as_u32_matches_freedesktop_values() {
+    assert_eq!(Urgency::Low.as_u32(), 0);
+    assert_eq!(Urgency::Normal.as_u32(), 1);
+    assert_eq!(Urgency::Critical.as_u32(), 2);
+}

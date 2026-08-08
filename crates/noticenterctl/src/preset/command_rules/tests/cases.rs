@@ -1,15 +1,14 @@
-use unixnotis_core::{CommandSpec, Config};
+use unixnotis_core::CommandSpec;
 
 use super::super::{
     collect_command_references_from_config, collect_host_specific_command_paths,
     collect_outside_command_paths, rewrite_host_specific_command_paths,
-    validate_command_paths_in_config_bytes,
 };
-use super::support::temp_root;
+use super::support::{parse_current_config, temp_root, validate_command_paths_in_config_bytes};
 
 #[test]
 fn collects_widget_command_references() {
-    let config = Config::parse(
+    let config = parse_current_config(
         "\
 [theme]\nbase_css = \"base.css\"\n\
 [[widgets.toggles]]\nlabel = \"Action\"\nicon = \"applications-system-symbolic\"\ntoggle_cmd = \"scripts/action.sh\"\n\
@@ -36,7 +35,7 @@ fn outside_command_paths_include_absolute_plugin_command() {
 [[widgets.stats]]\nlabel = \"Probe\"\n\
 [widgets.stats.plugin]\napi_version = 1\ncommand = \"/tmp/outside-plugin\"\n";
 
-    let parsed = Config::parse(config).expect("parse config");
+    let parsed = parse_current_config(config).expect("parse config");
     let outside = collect_outside_command_paths(&config_dir, &parsed);
 
     assert_eq!(outside.len(), 1);
@@ -99,7 +98,7 @@ fn host_specific_command_paths_include_absolute_path_inside_root() {
         script_path.display().to_string()
     );
 
-    let parsed = Config::parse(&config).expect("parse config");
+    let parsed = parse_current_config(&config).expect("parse config");
     let leaks = collect_host_specific_command_paths(&config_dir, &parsed);
 
     assert_eq!(leaks.len(), 1);
@@ -118,7 +117,7 @@ fn rewrite_host_specific_command_paths_makes_commands_config_relative() {
         format!("{} --json", script_path.display())
     );
 
-    let mut parsed = Config::parse(&config).expect("parse config");
+    let mut parsed = parse_current_config(&config).expect("parse config");
     let rewritten = rewrite_host_specific_command_paths(&config_dir, &mut parsed);
 
     assert_eq!(rewritten.len(), 1);
@@ -140,7 +139,7 @@ fn rewrite_host_specific_command_inside_env_wrapper_preserves_assignments() {
         "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {:?}\n",
         format!("env MODE='two words' '{}' --json", script_path.display())
     );
-    let mut parsed = Config::parse(&config).expect("parse config");
+    let mut parsed = parse_current_config(&config).expect("parse config");
 
     let rewritten = rewrite_host_specific_command_paths(&config_dir, &mut parsed);
 
@@ -162,7 +161,7 @@ fn rewrite_host_specific_command_inside_env_wrapper_preserves_options() {
         "[theme]\nbase_css = \"base.css\"\n[[widgets.stats]]\nlabel = \"Probe\"\ncmd = {:?}\n",
         format!("env -u HOME MODE=safe {} --json", script_path.display())
     );
-    let mut parsed = Config::parse(&config).expect("parse config");
+    let mut parsed = parse_current_config(&config).expect("parse config");
 
     let rewritten = rewrite_host_specific_command_paths(&config_dir, &mut parsed);
 
@@ -187,7 +186,7 @@ fn rewrite_host_specific_toggle_command_paths_makes_commands_config_relative() {
         format!("{} --json", script_path.display())
     );
 
-    let mut parsed = Config::parse(&config).expect("parse config");
+    let mut parsed = parse_current_config(&config).expect("parse config");
     let rewritten = rewrite_host_specific_command_paths(&config_dir, &mut parsed);
 
     assert_eq!(rewritten.len(), 1);
@@ -211,7 +210,7 @@ fn host_specific_command_paths_include_toggle_command() {
         script_path.display().to_string()
     );
 
-    let parsed = Config::parse(&config).expect("parse config");
+    let parsed = parse_current_config(&config).expect("parse config");
     let leaks = collect_host_specific_command_paths(&config_dir, &parsed);
 
     assert_eq!(leaks.len(), 1);

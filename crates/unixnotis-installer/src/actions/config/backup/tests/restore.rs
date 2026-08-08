@@ -3,6 +3,7 @@ use crate::app::events::UiMessage;
 use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
+use crate::test_support::current_config_text;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -31,7 +32,11 @@ popup_css = "themes/custom/popup.css"
 widgets_css = "themes/custom/widgets.css"
 media_css = "themes/custom/media.css"
 "#;
-    fs::write(backup_dir.join("config.toml"), config_toml).expect("write config");
+    fs::write(
+        backup_dir.join("config.toml"),
+        current_config_text(config_toml),
+    )
+    .expect("write config");
     fs::write(backup_dir.join("base.css"), "base").expect("write base");
     fs::write(backup_dir.join("panel.css"), "panel").expect("write panel");
     fs::write(backup_dir.join("popup.css"), "popup").expect("write popup");
@@ -106,7 +111,11 @@ fn restore_config_skips_absolute_theme_targets() {
         "[theme]\nbase_css = \"{}\"\npanel_css = \"panel.css\"\npopup_css = \"popup.css\"\nwidgets_css = \"widgets.css\"\nmedia_css = \"media.css\"\n",
         escaped_target.display()
     );
-    fs::write(backup_dir.join("config.toml"), config_toml).expect("write config");
+    fs::write(
+        backup_dir.join("config.toml"),
+        current_config_text(&config_toml),
+    )
+    .expect("write config");
     fs::write(backup_dir.join("base.css"), "base").expect("write base");
     fs::write(backup_dir.join("panel.css"), "panel").expect("write panel");
     fs::write(backup_dir.join("popup.css"), "popup").expect("write popup");

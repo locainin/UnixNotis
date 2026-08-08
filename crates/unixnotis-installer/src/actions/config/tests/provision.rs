@@ -10,6 +10,7 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
+use crate::test_support::current_config_text;
 use crate::test_support::env::{test_env_lock, EnvGuard};
 use unixnotis_core::{
     Config, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS,
@@ -84,12 +85,12 @@ fn ensure_config_provisions_default_css_and_preserves_the_live_config() {
         assert!(config_dir.join(script.relative_path).is_file());
     }
 
-    fs::write(&config_path, "custom = true\n").expect("customize live config");
+    fs::write(&config_path, current_config_text("custom = true\n")).expect("customize live config");
     fs::write(config_dir.join("popup.css"), "/* custom popup */\n").expect("customize popup CSS");
     ensure_config(&mut context).expect("existing config should be preserved");
     assert_eq!(
         fs::read_to_string(&config_path).expect("read retained config"),
-        "custom = true\n"
+        current_config_text("custom = true\n")
     );
     assert_eq!(
         fs::read_to_string(config_dir.join("popup.css")).expect("read retained popup CSS"),
@@ -115,7 +116,9 @@ fn ensure_config_provisions_the_existing_configured_theme_paths() {
     fs::create_dir_all(&config_dir).expect("create config directory");
     fs::write(
         config_dir.join("config.toml"),
-        "[theme]\nbase_css = \"themes/base.css\"\npanel_css = \"themes/panel.css\"\npopup_css = \"themes/popup.css\"\nwidgets_css = \"themes/widgets.css\"\nmedia_css = \"themes/media.css\"\n",
+        current_config_text(
+            "[theme]\nbase_css = \"themes/base.css\"\npanel_css = \"themes/panel.css\"\npopup_css = \"themes/popup.css\"\nwidgets_css = \"themes/widgets.css\"\nmedia_css = \"themes/media.css\"\n",
+        ),
     )
     .expect("write configured theme paths");
     fs::create_dir_all(config_dir.join("themes")).expect("create configured theme directory");
@@ -178,14 +181,14 @@ fn ensure_config_preserves_external_theme_files_without_creating_missing_or_unsa
     fs::create_dir(&external_media).expect("create external special target");
     fs::write(
         config_dir.join("config.toml"),
-        format!(
+        current_config_text(&format!(
             "[theme]\nbase_css = {:?}\npopup_css = {:?}\npanel_css = {:?}\nwidgets_css = {:?}\nmedia_css = {:?}\n",
             external_base.to_string_lossy(),
             external_popup.to_string_lossy(),
             external_panel.to_string_lossy(),
             external_widgets.to_string_lossy(),
             external_media.to_string_lossy(),
-        ),
+        )),
     )
     .expect("write external theme paths");
 
@@ -320,7 +323,7 @@ fn ensure_config_rejects_configured_theme_symlinks_without_touching_the_target()
     fs::create_dir_all(config_dir.join("themes")).expect("create configured theme directory");
     fs::write(
         config_dir.join("config.toml"),
-        "[theme]\npopup_css = \"themes/popup.css\"\n",
+        current_config_text("[theme]\npopup_css = \"themes/popup.css\"\n"),
     )
     .expect("write configured popup path");
     let target = root.join("outside-popup.css");

@@ -1,8 +1,7 @@
 use super::super::tokens::{
     first_command_token, split_env_assignment, validate_env_command_layout,
 };
-use super::super::validate_command_paths_in_config_bytes;
-use super::support::{parsed_command, temp_root};
+use super::support::{parsed_command, temp_root, validate_command_paths_in_config_bytes};
 use unixnotis_core::parse_legacy_command as parse_command;
 
 #[test]

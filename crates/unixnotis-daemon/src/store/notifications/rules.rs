@@ -1,4 +1,4 @@
-use unixnotis_core::{Notification, RuleConfig, Urgency};
+use unixnotis_core::{IdentityAssurance, Notification, RuleConfig, Urgency};
 
 use crate::store::NotificationStore;
 
@@ -17,7 +17,21 @@ impl NotificationStore {
 fn rule_matches(rule: &RuleConfig, notification: &Notification) -> bool {
     // Every configured filter is ANDed together
     if let Some(app) = rule.app.as_ref() {
-        if !contains_ci(&notification.app_name, app) {
+        // SECURITY: `Notification::app_name` is sender-controlled protocol metadata
+        // `app` rules use daemon-resolved attribution only. Matching the raw claim is
+        // intentionally opt-in through `claimed_app`
+        let attribution = &notification.attribution;
+        if !assurance_allows_app_rule(attribution.assurance) {
+            return false;
+        }
+        let matches_display = contains_ci(&attribution.display_name, app);
+        let matches_desktop = contains_ci(&attribution.desktop_id, app);
+        if !matches_display && !matches_desktop {
+            return false;
+        }
+    }
+    if let Some(claimed_app) = rule.claimed_app.as_ref() {
+        if !contains_ci(&notification.app_name, claimed_app) {
             return false;
         }
     }
@@ -46,6 +60,17 @@ fn rule_matches(rule: &RuleConfig, notification: &Notification) -> bool {
     true
 }
 
+pub(super) const fn assurance_allows_app_rule(assurance: IdentityAssurance) -> bool {
+    // Positive enumeration makes new assurance variants fail closed by default
+    matches!(
+        assurance,
+        IdentityAssurance::Authenticated
+            | IdentityAssurance::SystemAssociated
+            | IdentityAssurance::PortalAssociated
+            | IdentityAssurance::UserAssociated
+    )
+}
+
 fn apply_rule(rule: &RuleConfig, notification: &mut Notification) {
     // Optional fields mutate only when set in the matching rule
     if let Some(no_popup) = rule.no_popup {
@@ -55,7 +80,7 @@ fn apply_rule(rule: &RuleConfig, notification: &mut Notification) {
         notification.suppress_sound = silent;
     }
     if let Some(force_urgency) = rule.force_urgency {
-        notification.urgency = Urgency::from(force_urgency);
+        notification.set_urgency(Urgency::from(force_urgency));
     }
     if let Some(expire_timeout_ms) = rule.expire_timeout_ms {
         // Clamp protects against large config values that overflow i32 timeout fields
