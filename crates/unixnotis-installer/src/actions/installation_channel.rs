@@ -1,5 +1,7 @@
 //! Active systemd unit channel classification for source-install safety
 
+use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -18,35 +20,75 @@ enum InstallationChannel {
     Unknown,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum ActiveUnitMetadata {
+    // No loaded unit leaves the home-local channel available
+    Absent,
+    // Session-only masks are safe to clear during an explicit installation
+    RuntimeMasked,
+    // Persistent masks reflect a user decision and must remain untouched
+    PersistentMasked,
+    // Loaded units retain both paths so mixed channels cannot pass unnoticed
+    Paths {
+        fragment: PathBuf,
+        executable: PathBuf,
+    },
+}
+
 pub(super) fn reject_conflicting_installation_channel(ctx: &mut ActionContext) -> Result<()> {
     if !ctx.paths.service.is_systemd() {
         return Ok(());
     }
-    let Some((fragment, executable)) = active_unit_paths()? else {
-        return Ok(());
+    let metadata = active_unit_metadata()?;
+    let paths = match metadata {
+        ActiveUnitMetadata::Absent => return Ok(()),
+        ActiveUnitMetadata::RuntimeMasked => {
+            // A temporary mask can hide a package unit, so inspect its fixed artifacts first
+            let Some(paths) = installed_system_package_paths_at(
+                Path::new(SYSTEM_UNIT_ROOT),
+                Path::new(SYSTEM_BINARY_ROOT),
+            )?
+            else {
+                return Ok(());
+            };
+            paths
+        }
+        ActiveUnitMetadata::PersistentMasked => {
+            bail!(
+                "UnixNotis systemd unit is persistently masked; run `systemctl --user unmask unixnotis-daemon.service` before installing"
+            )
+        }
+        ActiveUnitMetadata::Paths {
+            fragment,
+            executable,
+        } => (fragment, executable),
     };
+    reject_channel(ctx, &paths.0, &paths.1)
+}
+
+fn reject_channel(ctx: &mut ActionContext, fragment: &Path, executable: &Path) -> Result<()> {
     let channel = classify_installation_channel(
-        &fragment,
-        &executable,
+        fragment,
+        executable,
         ctx.paths.service.artifact_root(),
         &ctx.paths.bin_dir,
     );
     match channel {
         InstallationChannel::HomeLocal => Ok(()),
         InstallationChannel::SystemPackage => {
-            log_channel_conflict(ctx, "system package", &fragment, &executable);
+            log_channel_conflict(ctx, "system package", fragment, executable);
             bail!(
                 "the system-package UnixNotis installation must be removed with its package manager before a home-local install"
             )
         }
         InstallationChannel::Mixed => {
-            log_channel_conflict(ctx, "mixed", &fragment, &executable);
+            log_channel_conflict(ctx, "mixed", fragment, executable);
             bail!(
                 "mixed UnixNotis installation channels detected; repair the unit and executable paths before installing"
             )
         }
         InstallationChannel::Unknown => {
-            log_channel_conflict(ctx, "unrecognized", &fragment, &executable);
+            log_channel_conflict(ctx, "unrecognized", fragment, executable);
             bail!(
                 "the active UnixNotis unit uses an unrecognized installation channel; automatic replacement is unsafe"
             )
@@ -54,12 +96,14 @@ pub(super) fn reject_conflicting_installation_channel(ctx: &mut ActionContext) -
     }
 }
 
-fn active_unit_paths() -> Result<Option<(PathBuf, PathBuf)>> {
+fn active_unit_metadata() -> Result<ActiveUnitMetadata> {
     let mut command = crate::system_tools::command("systemctl")?;
     command.args([
         "--user",
         "show",
         "unixnotis-daemon.service",
+        "--property=LoadState",
+        "--property=UnitFileState",
         "--property=FragmentPath",
         "--property=ExecStart",
         "--no-pager",
@@ -68,22 +112,67 @@ fn active_unit_paths() -> Result<Option<(PathBuf, PathBuf)>> {
         .output()
         .context("inspect active UnixNotis systemd unit")?;
     if !output.status.success() {
-        return Ok(None);
+        return Ok(ActiveUnitMetadata::Absent);
     }
     if output.stdout.len() > MAX_SYSTEMCTL_OUTPUT_BYTES {
         bail!("systemctl unit metadata exceeded the safe output limit");
     }
     let text = String::from_utf8(output.stdout).context("systemctl unit metadata was not UTF-8")?;
-    let fragment = property_value(&text, "FragmentPath").map(PathBuf::from);
-    let executable = property_value(&text, "ExecStart")
+    parse_active_unit_metadata(&text)
+}
+
+fn parse_active_unit_metadata(text: &str) -> Result<ActiveUnitMetadata> {
+    match property_value(text, "LoadState") {
+        Some("not-found") => return Ok(ActiveUnitMetadata::Absent),
+        Some("masked") => {
+            return if property_value(text, "UnitFileState") == Some("masked-runtime") {
+                Ok(ActiveUnitMetadata::RuntimeMasked)
+            } else {
+                Ok(ActiveUnitMetadata::PersistentMasked)
+            };
+        }
+        Some("loaded") => {}
+        Some(state) => bail!("systemctl reported unusable UnixNotis unit load state {state}"),
+        None => bail!("systemctl omitted UnixNotis unit load state metadata"),
+    }
+
+    let fragment = property_value(text, "FragmentPath").map(PathBuf::from);
+    let executable = property_value(text, "ExecStart")
         .and_then(parse_exec_start_path)
         .map(PathBuf::from);
     match (fragment, executable) {
-        (Some(fragment), Some(executable)) if !fragment.as_os_str().is_empty() => {
-            Ok(Some((fragment, executable)))
-        }
-        (None, None) => Ok(None),
+        (Some(fragment), Some(executable)) => Ok(ActiveUnitMetadata::Paths {
+            fragment,
+            executable,
+        }),
         _ => bail!("systemctl returned incomplete UnixNotis unit path metadata"),
+    }
+}
+
+fn installed_system_package_paths_at(
+    unit_root: &Path,
+    binary_root: &Path,
+) -> Result<Option<(PathBuf, PathBuf)>> {
+    // Fixed package locations remain visible even when systemd reports only a runtime mask
+    let fragment = unit_root.join("unixnotis-daemon.service");
+    let executable = binary_root.join("unixnotis-daemon");
+    let fragment_exists = path_entry_exists(&fragment)?;
+    let executable_exists = path_entry_exists(&executable)?;
+    match (fragment_exists, executable_exists) {
+        (false, false) => Ok(None),
+        (true, true) => Ok(Some((fragment, executable))),
+        _ => bail!(
+            "incomplete system-package UnixNotis artifacts detected; repair or remove the package before installing"
+        ),
+    }
+}
+
+fn path_entry_exists(path: &Path) -> Result<bool> {
+    // Metadata on the directory entry detects dangling links without following them
+    match fs::symlink_metadata(path) {
+        Ok(_metadata) => Ok(true),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| format!("inspect {}", path.display())),
     }
 }
 

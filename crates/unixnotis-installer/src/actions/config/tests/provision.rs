@@ -148,6 +148,39 @@ fn ensure_config_provisions_the_existing_configured_theme_paths() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn ensure_config_rejects_v4_with_reset_guidance_and_preserves_the_file() {
+    let _lock = test_env_lock();
+    let root = crate::test_support::fs::unique_temp_path("ensure-v4-config");
+    let xdg_root = root.join("xdg");
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", xdg_root.as_os_str());
+    let _home = EnvGuard::set("HOME", root.join("home").as_os_str());
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let paths = test_paths(&root);
+    let mut context = test_context(&detection, &paths);
+    let config_dir = xdg_root.join("unixnotis");
+    let config_path = config_dir.join("config.toml");
+    fs::create_dir_all(&config_dir).expect("create legacy config directory");
+    let legacy = current_config_text("").replacen("config_version = 5", "config_version = 4", 1);
+    fs::write(&config_path, &legacy).expect("write legacy config fixture");
+
+    let error = ensure_config(&mut context).expect_err("v4 config must remain a clean break");
+
+    assert_eq!(
+        error.to_string(),
+        "existing configuration cannot be loaded (Configuration TOML or schema is invalid); schema v5 is required; use Reset config to back it up and create current defaults"
+    );
+    assert_eq!(
+        fs::read_to_string(&config_path).expect("read preserved legacy config"),
+        legacy,
+        "failed installation must not modify the legacy config"
+    );
+    fs::remove_dir_all(root).expect("remove legacy config fixture");
+}
+
 #[cfg(unix)]
 #[test]
 fn ensure_config_preserves_external_theme_files_without_creating_missing_or_unsafe_targets() {

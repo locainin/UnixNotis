@@ -106,6 +106,14 @@ fn systemd_backend_commands_match_existing_behavior() {
         &["--user", "enable", "--now", UNIXNOTIS_DAEMON_SERVICE]
     );
 
+    let prepare = manager
+        .prepare_start_command()
+        .expect("systemd should clear temporary masks before starting");
+    assert_eq!(
+        prepare.args(),
+        &["--user", "--runtime", "unmask", UNIXNOTIS_DAEMON_SERVICE]
+    );
+
     let start = manager.start_command();
     assert_eq!(start.args(), &["--user", "start", UNIXNOTIS_DAEMON_SERVICE]);
 

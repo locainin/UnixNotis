@@ -35,6 +35,18 @@ pub(in crate::actions::install) fn service_start_mode_from_enabled(
 }
 
 pub(in crate::actions::install) fn run_service_start(ctx: &mut ActionContext) -> Result<()> {
+    if let Some(spec) = ctx.paths.service.prepare_start_command() {
+        // A runtime mask is temporary session state and should not defeat explicit installation
+        log_line(
+            ctx,
+            format!(
+                "Clearing temporary service mask for {}",
+                ctx.paths.service.service_name()
+            ),
+        );
+        run_command_spec(ctx, &spec).context("clear temporary service mask")?;
+    }
+
     match service_start_mode(ctx) {
         ServiceStartMode::EnableAndStart => {
             // First install still needs the symlink creation done by `enable`

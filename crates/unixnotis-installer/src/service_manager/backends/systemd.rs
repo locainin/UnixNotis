@@ -68,6 +68,15 @@ pub fn reload_after_artifact_change() -> CommandSpec {
     )
 }
 
+pub fn clear_runtime_mask_command() -> CommandSpec {
+    // Explicit installation may clear only temporary state from the current login session
+    CommandSpec::new(
+        format!("systemctl --user --runtime unmask {SERVICE_NAME}"),
+        "systemctl",
+        ["--user", "--runtime", "unmask", SERVICE_NAME],
+    )
+}
+
 pub fn enable_now_command() -> CommandSpec {
     CommandSpec::new(
         format!("systemctl --user enable --now {SERVICE_NAME}"),

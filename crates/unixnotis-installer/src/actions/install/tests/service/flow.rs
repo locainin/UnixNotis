@@ -41,6 +41,7 @@ fn systemd_install_flow_runs_reload_env_import_and_enable() {
             "program=systemctl argv=[--user][unset-environment][DBUS_SESSION_BUS_ADDRESS]",
             "program=dbus-update-activation-environment argv=[WAYLAND_DISPLAY]",
             "program=systemctl argv=[--user][--no-pager][import-environment][WAYLAND_DISPLAY]",
+            "program=systemctl argv=[--user][--runtime][unmask][unixnotis-daemon.service]",
             "program=systemctl argv=[--user][enable][--now][unixnotis-daemon.service]",
         ],
     );

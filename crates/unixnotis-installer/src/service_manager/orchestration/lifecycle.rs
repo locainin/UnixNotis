@@ -5,6 +5,14 @@ use super::super::contract::{CommandSpec, ServiceProbe};
 use super::model::{ServiceManager, ServiceManagerKind};
 
 impl ServiceManager {
+    pub fn prepare_start_command(&self) -> Option<CommandSpec> {
+        // Other managers have no temporary mask state to clear before an explicit start
+        match self.kind {
+            ServiceManagerKind::Systemd => Some(systemd::clear_runtime_mask_command()),
+            ServiceManagerKind::Dinit | ServiceManagerKind::Runit | ServiceManagerKind::S6 => None,
+        }
+    }
+
     pub fn availability_command(&self) -> Option<CommandSpec> {
         // Availability checks must stay read-only and must not start a service
         match self.kind {

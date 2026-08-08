@@ -8,7 +8,8 @@ use unixnotis_core::{
     filesystem::open_regular_file,
     filesystem::{create_directory_all, write_file_atomic, write_file_if_missing, ContainedPath},
     render_default_config_toml, reset_config_to_defaults, Config, ResetConfigOptions,
-    DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS, DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
+    CURRENT_CONFIG_VERSION, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS,
+    DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
 };
 
 use crate::paths::format_with_home;
@@ -31,9 +32,14 @@ pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
         );
 
         // Existing theme paths are part of the configuration contract
-        Config::load_from_path(&config_path)
-            .map_err(|error| anyhow!(error.to_string()))
-            .context("load existing configuration before provisioning theme files")?
+        Config::load_from_path(&config_path).map_err(|error| {
+            // Parser details may contain private config text, so only a stable summary is shown
+            anyhow!(
+                "existing configuration cannot be loaded ({}); schema v{} is required; use Reset config to back it up and create current defaults",
+                error.shareable_summary(),
+                CURRENT_CONFIG_VERSION
+            )
+        })?
     } else {
         let config = Config::default();
         // Write a default config so there is always a working base to edit
