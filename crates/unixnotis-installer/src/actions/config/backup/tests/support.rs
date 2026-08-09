@@ -17,12 +17,11 @@ pub(super) fn test_paths(root: &std::path::Path) -> InstallPaths {
 }
 
 pub(super) fn test_context<'a>(
-    detection: &'a Detection,
+    _detection: &'a Detection,
     paths: &'a InstallPaths,
 ) -> ActionContext<'a> {
     let (log_tx, _log_rx) = mpsc::sync_channel::<UiMessage>(8);
     ActionContext {
-        detection,
         paths,
         install_state: None,
         log_tx,

@@ -1,30 +1,71 @@
-//! Backup restore helpers and path guards
+//! Transactional backup restore planning and commit
 
+use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
-use unixnotis_core::filesystem::{create_directory_all, open_regular_file, write_file_atomic};
-use unixnotis_core::{Config, DEFAULT_SCRIPTS};
+use unixnotis_core::filesystem::open_regular_file;
+use unixnotis_core::{Config, DEFAULT_SCRIPTS, MAX_CONFIG_BYTES};
 
 use crate::paths::format_with_home;
 
 use super::super::super::{log_line, ActionContext};
 use super::listing::BACKUP_PREFIX;
 
+pub(super) const MAX_RESTORE_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
+struct RestorePlan {
+    config_path: PathBuf,
+    files: Vec<RestoreFile>,
+    warnings: Vec<String>,
+}
+
+struct RestoreFile {
+    label: String,
+    target: PathBuf,
+    mode: u32,
+    contents: Vec<u8>,
+}
+
 pub fn restore_config(ctx: &mut ActionContext) -> Result<()> {
     let Some(backup_dir) = ctx.restore_backup.clone() else {
         return Err(anyhow!("no backup directory selected"));
     };
-
-    // Derive the config root from the selected backup so tests do not depend on env state
     let config_dir = backup_dir
         .parent()
         .ok_or_else(|| anyhow!("backup directory missing parent"))?
         .to_path_buf();
-    let config_path = config_dir.join("config.toml");
+    validate_backup_directory_name(&backup_dir)?;
 
+    // A durable journal makes an interrupted earlier restore safe before another plan is built
+    super::restore_transaction::recover_pending_restore(&config_dir)?;
+
+    log_line(
+        ctx,
+        format!("Restoring config from {}", format_with_home(&backup_dir)),
+    );
+    // Planning reads, parses, resolves, and bounds every source before any live file changes
+    let plan = build_restore_plan(&backup_dir, &config_dir)?;
+    for warning in &plan.warnings {
+        log_line(ctx, format!("Warning: {warning}"));
+    }
+    apply_restore_plan(&plan)?;
+    for file in &plan.files {
+        log_line(
+            ctx,
+            format!(
+                "Restored {} -> {}",
+                file.label,
+                format_with_home(&file.target)
+            ),
+        );
+    }
+    Ok(())
+}
+
+fn validate_backup_directory_name(backup_dir: &Path) -> Result<()> {
     let backup_name = backup_dir
         .file_name()
         .and_then(|name| name.to_str())
@@ -32,192 +73,202 @@ pub fn restore_config(ctx: &mut ActionContext) -> Result<()> {
     if !backup_name.starts_with(BACKUP_PREFIX) {
         return Err(anyhow!("backup directory name is not recognized"));
     }
+    Ok(())
+}
 
-    log_line(
-        ctx,
-        format!("Restoring config from {}", format_with_home(&backup_dir)),
-    );
+fn build_restore_plan(backup_dir: &Path, config_dir: &Path) -> Result<RestorePlan> {
+    let config_path = config_dir.join("config.toml");
+    let backup_config = backup_dir.join("config.toml");
+    let mut files = Vec::new();
+    let mut warnings = Vec::new();
 
-    // Restore config.toml first so restored theme paths drive the rest of the write targets
-    restore_config_file(ctx, &backup_dir, &config_path)?;
-    let config = load_restored_config(ctx, &config_path);
+    let (config, config_restore) = if backup_entry_exists(&backup_config)? {
+        let contents = read_backup_file_bounded(&backup_config, MAX_CONFIG_BYTES)
+            .context("failed to read backup config.toml")?;
+        let text = std::str::from_utf8(&contents)
+            .map_err(|_error| anyhow!("backup config.toml is not valid UTF-8"))?;
+        // Parser details may contain private configuration values, so the public error stays stable
+        let config = Config::parse(text)
+            .map_err(|_error| anyhow!("backup config.toml is not valid schema v5"))?;
+        (
+            config,
+            Some(RestoreFile {
+                label: "config.toml".to_string(),
+                target: config_path.clone(),
+                mode: 0o644,
+                contents,
+            }),
+        )
+    } else if backup_entry_exists(&config_path)? {
+        warnings.push("backup missing config.toml; leaving current file unchanged".to_string());
+        (
+            Config::load_from_path(&config_path)
+                .map_err(|_error| anyhow!("live config.toml is not valid schema v5"))?,
+            None,
+        )
+    } else {
+        warnings.push("backup missing config.toml; leaving current file unchanged".to_string());
+        (Config::default(), None)
+    };
+
     let theme_paths = config
-        .resolve_theme_paths_from(&config_dir)
-        .map_err(|err| anyhow!(err.to_string()))?;
-
-    restore_theme_files(ctx, &backup_dir, &config_dir, &theme_paths)?;
-    restore_bundled_scripts(ctx, &backup_dir, &config_dir)?;
-
-    Ok(())
-}
-
-fn restore_config_file(
-    ctx: &mut ActionContext,
-    backup_dir: &Path,
-    config_path: &Path,
-) -> Result<()> {
-    let source = backup_dir.join("config.toml");
-    if !source.exists() {
-        log_line(
-            ctx,
-            "Warning: backup missing config.toml; leaving current file unchanged".to_string(),
-        );
-        return Ok(());
-    }
-
-    let contents =
-        fs::read_to_string(&source).with_context(|| "failed to read backup config.toml")?;
-    write_file_atomic(config_path, contents.as_bytes(), 0o644)
-        .with_context(|| "failed to restore config.toml")?;
-    log_line(
-        ctx,
-        format!("Restored config.toml -> {}", format_with_home(config_path)),
-    );
-    Ok(())
-}
-
-fn load_restored_config(ctx: &mut ActionContext, config_path: &Path) -> Config {
-    if !config_path.exists() {
-        return Config::default();
-    }
-    match Config::load_from_path(config_path) {
-        Ok(config) => config,
-        Err(err) => {
-            log_line(
-                ctx,
-                format!("Warning: failed to parse restored config.toml ({err:?}); using defaults"),
-            );
-            Config::default()
-        }
-    }
-}
-
-fn restore_theme_files(
-    ctx: &mut ActionContext,
-    backup_dir: &Path,
-    config_dir: &Path,
-    theme_paths: &unixnotis_core::ThemePaths,
-) -> Result<()> {
+        .resolve_theme_paths_from(config_dir)
+        .map_err(|error| anyhow!(error.to_string()))?;
     let theme_targets = [
-        ("base.css", &theme_paths.base_css),
-        ("panel.css", &theme_paths.panel_css),
-        ("popup.css", &theme_paths.popup_css),
-        ("widgets.css", &theme_paths.widgets_css),
-        ("media.css", &theme_paths.media_css),
+        ("base.css", theme_paths.base_css),
+        ("panel.css", theme_paths.panel_css),
+        ("popup.css", theme_paths.popup_css),
+        ("widgets.css", theme_paths.widgets_css),
+        ("media.css", theme_paths.media_css),
     ];
     for (name, target) in theme_targets {
-        restore_theme_file(ctx, backup_dir, config_dir, name, target)?;
+        plan_optional_file(
+            &mut files,
+            &mut warnings,
+            backup_dir,
+            config_dir,
+            name,
+            target,
+            0o644,
+        )?;
     }
-    Ok(())
-}
 
-fn restore_theme_file(
-    ctx: &mut ActionContext,
-    backup_dir: &Path,
-    config_dir: &Path,
-    name: &str,
-    target: &Path,
-) -> Result<()> {
-    let source = backup_dir.join(name);
-    if !source.exists() {
-        log_line(
-            ctx,
-            format!("Warning: backup missing {name}; leaving current file unchanged"),
-        );
-        return Ok(());
-    }
-    if !is_restore_target_allowed(config_dir, target) {
-        log_line(
-            ctx,
-            format!(
-                "Warning: skipped restoring {name} because target escapes config dir ({})",
-                format_with_home(target)
-            ),
-        );
-        return Ok(());
-    }
-    let contents =
-        fs::read_to_string(&source).with_context(|| format!("failed to read backup {name}"))?;
-    write_file_atomic(target, contents.as_bytes(), 0o644)
-        .with_context(|| format!("failed to restore {name}"))?;
-    log_line(
-        ctx,
-        format!("Restored {name} -> {}", format_with_home(target)),
-    );
-    Ok(())
-}
-
-fn restore_bundled_scripts(
-    ctx: &mut ActionContext,
-    backup_dir: &Path,
-    config_dir: &Path,
-) -> Result<()> {
-    // Script backups use their basename because reset stores them directly in the backup root
     for script in DEFAULT_SCRIPTS {
-        restore_bundled_script(ctx, backup_dir, config_dir, script)?;
+        let name = Path::new(script.relative_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| anyhow!("script path has no UTF-8 file name"))?;
+        plan_optional_file(
+            &mut files,
+            &mut warnings,
+            backup_dir,
+            config_dir,
+            script.relative_path,
+            config_dir.join(script.relative_path),
+            0o755,
+        )
+        .with_context(|| format!("plan restore for {name}"))?;
     }
-    Ok(())
+
+    if let Some(config_restore) = config_restore {
+        // Config is the final visibility switch after every referenced payload is durable
+        files.push(config_restore);
+    }
+
+    reject_duplicate_targets(&files)?;
+    Ok(RestorePlan {
+        config_path,
+        files,
+        warnings,
+    })
 }
 
-fn restore_bundled_script(
-    ctx: &mut ActionContext,
+fn plan_optional_file(
+    files: &mut Vec<RestoreFile>,
+    warnings: &mut Vec<String>,
     backup_dir: &Path,
     config_dir: &Path,
-    script: &unixnotis_core::DefaultScript,
+    label: &str,
+    target: PathBuf,
+    mode: u32,
 ) -> Result<()> {
-    let script_name = Path::new(script.relative_path)
+    let source_name = Path::new(label)
         .file_name()
-        .ok_or_else(|| anyhow!("script path has no file name"))?;
-    let source = backup_dir.join(script_name);
-    if !source.exists() {
-        log_line(
-            ctx,
-            format!(
-                "Warning: backup missing {}; leaving current file unchanged",
-                script.relative_path
-            ),
-        );
+        .ok_or_else(|| anyhow!("restore label has no file name"))?;
+    let source = backup_dir.join(source_name);
+    if !backup_entry_exists(&source)? {
+        warnings.push(format!(
+            "backup missing {label}; leaving current file unchanged"
+        ));
         return Ok(());
     }
-
-    let target = config_dir.join(script.relative_path);
     if !is_restore_target_allowed(config_dir, &target) {
-        log_line(
-            ctx,
-            format!(
-                "Warning: skipped restoring {} because target escapes config dir ({})",
-                script.relative_path,
-                format_with_home(&target)
-            ),
-        );
+        warnings.push(format!(
+            "skipped restoring {label} because target escapes config dir ({})",
+            format_with_home(&target)
+        ));
         return Ok(());
     }
-    if let Some(parent) = target.parent() {
-        create_directory_all(parent, 0o700)
-            .with_context(|| format!("create script restore directory {}", parent.display()))?;
-    }
-    let contents = read_backup_file(&source)
-        .with_context(|| format!("failed to read backup {}", script.relative_path))?;
-    write_file_atomic(&target, &contents, 0o755)
-        .with_context(|| format!("failed to restore {}", script.relative_path))?;
-    log_line(
-        ctx,
-        format!(
-            "Restored {} -> {}",
-            script.relative_path,
-            format_with_home(&target)
-        ),
-    );
+    let contents = read_backup_file_bounded(&source, MAX_RESTORE_FILE_BYTES)
+        .with_context(|| format!("failed to read backup {label}"))?;
+    files.push(RestoreFile {
+        label: label.to_string(),
+        target,
+        mode,
+        contents,
+    });
     Ok(())
 }
 
-fn read_backup_file(path: &Path) -> Result<Vec<u8>> {
-    // Pin the backup object and reject links or special files before reading it
-    let mut file =
-        open_regular_file(path).with_context(|| format!("open backup file {}", path.display()))?;
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents)
-        .with_context(|| format!("read backup file {}", path.display()))?;
+fn reject_duplicate_targets(files: &[RestoreFile]) -> Result<()> {
+    let mut targets = HashSet::new();
+    for file in files {
+        let normalized = normalize_path_for_compare(&file.target);
+        if !targets.insert(normalized) {
+            return Err(anyhow!(
+                "backup maps multiple files to the same live restore target"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn apply_restore_plan(plan: &RestorePlan) -> Result<()> {
+    let config_dir = plan
+        .config_path
+        .parent()
+        .ok_or_else(|| anyhow!("live config path has no parent directory"))?;
+    let writes = plan
+        .files
+        .iter()
+        .map(|file| super::restore_transaction::RestoreWrite {
+            label: &file.label,
+            target: &file.target,
+            mode: file.mode,
+            contents: &file.contents,
+        })
+        .collect::<Vec<_>>();
+    super::restore_transaction::apply_restore_transaction(config_dir, &writes, || {
+        // Reloading the published config catches an unexpected filesystem race before commit
+        if plan.config_path.exists() {
+            Config::load_from_path(&plan.config_path)
+                .map_err(|_error| anyhow!("restored config.toml failed post-commit validation"))?;
+        }
+        Ok(())
+    })
+}
+
+fn backup_entry_exists(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_metadata) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| format!("inspect {}", path.display())),
+    }
+}
+
+fn read_backup_file_bounded(path: &Path, max_bytes: u64) -> Result<Vec<u8>> {
+    // Pin the object and reject links or special files before reading any payload bytes
+    let file = open_regular_file(path).with_context(|| format!("open {}", path.display()))?;
+    let size = file
+        .metadata()
+        .with_context(|| format!("inspect {}", path.display()))?
+        .len();
+    if size > max_bytes {
+        return Err(anyhow!(
+            "restore file exceeds {max_bytes} bytes: {}",
+            path.display()
+        ));
+    }
+    let mut contents = Vec::with_capacity(usize::try_from(size).unwrap_or(usize::MAX));
+    file.take(max_bytes.saturating_add(1))
+        .read_to_end(&mut contents)
+        .with_context(|| format!("read {}", path.display()))?;
+    if u64::try_from(contents.len()).unwrap_or(u64::MAX) > max_bytes {
+        return Err(anyhow!(
+            "restore file grew beyond {max_bytes} bytes: {}",
+            path.display()
+        ));
+    }
     Ok(contents)
 }
 
@@ -231,7 +282,7 @@ pub(in crate::actions::config::backup) fn is_restore_target_allowed(
 }
 
 fn normalize_path_for_compare(path: &Path) -> PathBuf {
-    // Canonicalize when possible, then fall back to lexical cleanup for missing paths
+    // Existing objects are resolved first so an in-tree symlink cannot redirect a restore
     if let Ok(canonical) = fs::canonicalize(path) {
         return canonical;
     }
@@ -243,9 +294,6 @@ fn normalize_path_for_compare(path: &Path) -> PathBuf {
             |current_dir| current_dir.join(path),
         )
     };
-    if let Ok(canonical) = fs::canonicalize(&absolute) {
-        return canonical;
-    }
     if let Some(parent) = absolute.parent() {
         if let Ok(parent_canonical) = fs::canonicalize(parent) {
             if let Some(name) = absolute.file_name() {
@@ -267,3 +315,7 @@ fn normalize_path_for_compare(path: &Path) -> PathBuf {
     }
     normalized
 }
+
+#[cfg(test)]
+#[path = "tests/restore_validation.rs"]
+mod validation_tests;

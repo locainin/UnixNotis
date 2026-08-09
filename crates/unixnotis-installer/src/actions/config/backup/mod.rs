@@ -2,6 +2,7 @@
 
 mod listing;
 mod restore;
+mod restore_transaction;
 mod settings;
 mod snapshot;
 

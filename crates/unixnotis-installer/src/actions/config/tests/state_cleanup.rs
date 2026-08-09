@@ -10,7 +10,6 @@ use std::sync::{mpsc, Arc};
 
 use crate::actions::ActionContext;
 use crate::app::events::UiMessage;
-use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
@@ -166,13 +165,8 @@ fn remove_state_uses_xdg_state_home_and_deletes_persisted_state() {
         bin_dir: state_home.join("bin"),
         service: ServiceManager::systemd_user(state_home.join("service")),
     };
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let (log_tx, log_rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx,

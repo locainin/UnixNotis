@@ -29,10 +29,9 @@ fn test_paths(root: &std::path::Path) -> InstallPaths {
     }
 }
 
-fn test_context<'a>(detection: &'a Detection, paths: &'a InstallPaths) -> ActionContext<'a> {
+fn test_context<'a>(_detection: &'a Detection, paths: &'a InstallPaths) -> ActionContext<'a> {
     let (log_tx, _log_rx) = mpsc::sync_channel::<UiMessage>(64);
     ActionContext {
-        detection,
         paths,
         install_state: None,
         log_tx,
