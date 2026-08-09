@@ -3,14 +3,14 @@
 //! Keeps the sequencing logic in one place so install, uninstall, and reset
 //! flows stay predictable
 
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 
 use crate::model::{ActionMode, ActionStep, StepStatus};
 
 use super::{
-    check_install_state_step, enable_service, ensure_config, install_binaries, install_service,
+    check_install_state_step, ensure_config, install_binaries, install_service_under_reservation,
     remove_binaries, remove_state, reset_config, restore_config, run_build, stop_active_daemon,
-    uninstall_service, ActionContext,
+    uninstall_service, ActionContext, DaemonActivationReservation,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,7 +65,11 @@ pub fn steps_from_plan(plan: &[StepKind]) -> Vec<ActionStep> {
         .collect()
 }
 
-pub fn run_step(step: StepKind, ctx: &mut ActionContext) -> Result<()> {
+pub fn run_step_with_reservation(
+    step: StepKind,
+    ctx: &mut ActionContext,
+    reservation: Option<&DaemonActivationReservation>,
+) -> Result<()> {
     match step {
         StepKind::InstallCheck => check_install_state_step(ctx),
         StepKind::StopDaemon => stop_active_daemon(ctx),
@@ -73,9 +77,17 @@ pub fn run_step(step: StepKind, ctx: &mut ActionContext) -> Result<()> {
         StepKind::EnsureConfig => ensure_config(ctx),
         StepKind::ResetConfig => reset_config(ctx),
         StepKind::RestoreConfig => restore_config(ctx),
-        StepKind::InstallBinaries => install_binaries(ctx),
-        StepKind::InstallService => install_service(ctx),
-        StepKind::EnableService => enable_service(ctx),
+        StepKind::InstallBinaries => install_binaries(
+            ctx,
+            reservation.context("binary installation requires daemon activation reservation")?,
+        ),
+        StepKind::InstallService => install_service_under_reservation(
+            ctx,
+            reservation.context("service installation requires daemon activation reservation")?,
+        ),
+        StepKind::EnableService => {
+            bail!("EnableService must use the install lifecycle handoff")
+        }
         StepKind::UninstallService => uninstall_service(ctx),
         StepKind::RemoveBinaries => remove_binaries(ctx),
         StepKind::RemoveState => remove_state(ctx),

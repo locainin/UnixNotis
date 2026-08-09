@@ -13,9 +13,7 @@ const INSTALL_READINESS_TIMEOUT: Duration = Duration::from_secs(20);
 const DBUS_METHOD_TIMEOUT: Duration = Duration::from_secs(2);
 const READINESS_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
-pub(in crate::actions::install) fn enforce_service_readiness(
-    ctx: &mut ActionContext,
-) -> Result<()> {
+pub fn enforce_service_readiness(ctx: &mut ActionContext) -> Result<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

@@ -12,7 +12,6 @@ use super::super::shell_path::{
 };
 use crate::actions::ActionContext;
 use crate::app::events::{UiMessage, WorkerEvent};
-use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
@@ -280,17 +279,12 @@ fn remove_shell_path_entry_removes_managed_block_from_selected_startup_files() {
     let _home = EnvGuard::set("HOME", &home);
     let _shell = EnvGuard::set("SHELL", "/bin/bash");
     let (tx, rx) = mpsc::sync_channel::<UiMessage>(16);
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths {
         repo_root: root.clone(),
         bin_dir,
         service: ServiceManager::systemd_user(home.join(".config/systemd/user")),
     };
     let mut ctx = ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,

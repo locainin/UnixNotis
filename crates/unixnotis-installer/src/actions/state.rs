@@ -8,8 +8,9 @@ use crate::model::ActionMode;
 use crate::paths::format_with_home;
 use crate::service_manager::ReadinessIssue;
 
-use super::installation_channel::reject_conflicting_installation_channel;
-use super::{context::ActionContext, install_state::check_install_state, log_line, InstallState};
+use super::conflicts::ServiceManagerConflictKind;
+use super::install::{check_install_state, reject_conflicting_installation_channel};
+use super::{context::ActionContext, log_line, InstallState};
 
 pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     // Use cached install state when available to keep the UI consistent with the plan
@@ -38,6 +39,9 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
                 format_with_home(&binary.path)
             ),
         );
+        if let super::releases::BinaryHealth::Unsafe(detail) = &binary.health {
+            log_line(ctx, format!("  inspection failure: {detail}"));
+        }
     }
 
     let service_artifact_status = if state.service_artifact_exists {

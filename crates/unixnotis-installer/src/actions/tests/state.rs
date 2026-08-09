@@ -6,7 +6,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 
 use crate::app::events::{UiMessage, WorkerEvent};
-use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::contract::command_routing::use_fake_command_bin;
@@ -15,6 +14,7 @@ use crate::service_manager::{ServiceManager, MANAGED_DIRECTORY_MARKER_CONTENTS};
 use crate::test_support::fs::write_executable;
 
 use super::{check_install_state, check_install_state_step, ActionContext};
+use crate::actions::conflicts::ServiceManagerConflictKind;
 
 #[test]
 fn dinit_artifact_backed_enablement_does_not_log_missing_enabled_command_error() {
@@ -42,6 +42,43 @@ fn dinit_artifact_backed_enablement_does_not_log_missing_enabled_command_error()
     assert!(state.service_enabled_error.is_none());
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn install_check_without_readiness_errors_logs_summary_and_succeeds() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("successful-install-check-summary");
+    let _env = service_scan_env(&root);
+    let _fake_commands = fake_inactive_manager_commands(&root);
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::dinit_user(root.join("home").join(".config").join("dinit.d")),
+    };
+    let state = check_install_state(&paths);
+    let (log_tx, log_rx) = mpsc::sync_channel::<UiMessage>(64);
+    let mut ctx = ActionContext {
+        paths: &paths,
+        install_state: Some(state),
+        log_tx,
+        action_mode: ActionMode::Install,
+        restore_backup: None,
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
+
+    check_install_state_step(&mut ctx).expect("a warning-only backend must pass install checks");
+
+    let logs = log_rx.try_iter().collect::<Vec<_>>();
+    assert!(logs.iter().any(|event| matches!(
+        event,
+        UiMessage::Worker(WorkerEvent::LogLine(line)) if line == "- service enabled: no"
+    )));
+    assert!(logs.iter().any(|event| matches!(
+        event,
+        UiMessage::Worker(WorkerEvent::LogLine(line))
+            if line == "Install will continue and update missing items."
+    )));
+    fs::remove_dir_all(root).expect("remove successful install check fixture");
 }
 
 #[test]
@@ -120,8 +157,12 @@ fn different_backend_artifacts_are_reported_as_install_conflict() {
 
     assert_eq!(state.service_conflicts.len(), 1);
     assert_eq!(state.service_conflicts[0].manager_label, "dinit --user");
-    assert!(state.service_conflicts[0].installed);
-    assert!(!state.service_conflicts[0].active);
+    assert!(state.service_conflicts[0]
+        .kinds
+        .contains(&ServiceManagerConflictKind::Installed));
+    assert!(!state.service_conflicts[0]
+        .kinds
+        .contains(&ServiceManagerConflictKind::Active));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -159,13 +200,15 @@ fn same_backend_different_root_artifacts_are_reported_as_install_conflict() {
         state.service_conflicts[0].artifact_path,
         default_root.join("unixnotis-daemon")
     );
-    assert!(state.service_conflicts[0].installed);
+    assert!(state.service_conflicts[0]
+        .kinds
+        .contains(&ServiceManagerConflictKind::Installed));
 
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn active_probe_errors_are_reported_as_conflict_warnings() {
+fn active_probe_errors_are_fail_closed_as_indeterminate_conflicts() {
     let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("active-probe-warning");
     let _env = service_scan_env(&root);
@@ -176,10 +219,14 @@ fn active_probe_errors_are_reported_as_conflict_warnings() {
     // Non-executable command files force Command::status to return an io error
     fs::set_permissions(&systemctl, fs::Permissions::from_mode(0o644))
         .expect("chmod non-executable systemctl");
-    for command in ["sv", "s6-svstat"] {
-        let path = fake_bin.join(command);
-        write_executable(&path, "#!/bin/sh\nexit 1\n");
-    }
+    write_executable(
+        &fake_bin.join("sv"),
+        "#!/bin/sh\nprintf 'down: unixnotis\\n'\n",
+    );
+    write_executable(
+        &fake_bin.join("s6-svstat"),
+        "#!/bin/sh\nprintf 'false\\n'\n",
+    );
     let _fake_bin = use_fake_command_bin(&fake_bin);
     let paths = InstallPaths {
         repo_root: repo_root(),
@@ -189,13 +236,349 @@ fn active_probe_errors_are_reported_as_conflict_warnings() {
 
     let state = check_install_state(&paths);
 
-    assert!(state.service_conflicts.is_empty());
-    assert!(state
-        .service_conflict_warnings
-        .iter()
-        .any(|warning| warning.contains("could not check whether systemd --user is active")));
+    assert_eq!(state.service_conflicts.len(), 1);
+    assert_eq!(state.service_conflicts[0].manager_label, "systemd --user");
+    assert!(state.service_conflicts[0]
+        .kinds
+        .contains(&ServiceManagerConflictKind::Indeterminate));
+    assert!(state.service_conflicts[0].detail.as_deref().is_some_and(
+        |detail| detail.contains("could not establish whether systemd --user is reachable")
+    ));
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn unavailable_alternate_managers_without_artifacts_do_not_block_systemd_install() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("unavailable-empty-alternates");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("selected-manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create selected manager tool directory");
+    write_executable(&fake_bin.join("systemctl"), "#!/bin/sh\nexit 1\n");
+    // Strict test routing makes every omitted alternate manager program unavailable
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::systemd_user(
+            root.join("home")
+                .join(".config")
+                .join("systemd")
+                .join("user"),
+        ),
+    };
+
+    let state = check_install_state(&paths);
+
+    assert!(
+        state.service_conflicts.is_empty(),
+        "missing irrelevant manager programs must not create ownership conflicts"
+    );
+    fs::remove_dir_all(root).expect("remove unavailable alternate fixture");
+}
+
+#[test]
+fn installed_sv_without_supervised_unixnotis_does_not_block_systemd_install() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("runit-tool-without-supervision");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create manager tool directory");
+    write_inactive_systemctl(&fake_bin);
+    write_executable(
+        &fake_bin.join("sv"),
+        "#!/bin/sh\nprintf 'fail: %s: runsv not running\\n' \"$2\"\nexit 1\n",
+    );
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = systemd_paths(&root);
+
+    let state = check_install_state(&paths);
+
+    assert!(
+        state.service_conflicts.is_empty(),
+        "an unsupervised runit service must be classified as absent"
+    );
+    fs::remove_dir_all(root).expect("remove runit absence fixture");
+}
+
+#[test]
+fn live_runit_service_without_artifacts_blocks_systemd_install() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("live-runit-without-artifacts");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create manager tool directory");
+    write_inactive_systemctl(&fake_bin);
+    write_executable(
+        &fake_bin.join("sv"),
+        "#!/bin/sh\ncase \"$1\" in -V) exit 100 ;; status) printf 'run: %s: (pid 123) 2s\\n' \"$2\"; exit 0 ;; *) exit 100 ;; esac\n",
+    );
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = systemd_paths(&root);
+
+    let state = check_install_state(&paths);
+
+    assert_eq!(state.service_conflicts.len(), 1);
+    assert_eq!(
+        state.service_conflicts[0].manager_label,
+        "runit user services"
+    );
+    assert!(state.service_conflicts[0]
+        .kinds
+        .contains(&ServiceManagerConflictKind::Active));
+    fs::remove_dir_all(root).expect("remove live runit fixture");
+}
+
+#[test]
+fn installed_s6_svstat_without_supervisor_does_not_block_systemd_install() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("s6-tool-without-supervision");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create manager tool directory");
+    write_inactive_systemctl(&fake_bin);
+    write_executable(&fake_bin.join("s6-svstat"), "#!/bin/sh\nexit 1\n");
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = systemd_paths(&root);
+
+    let state = check_install_state(&paths);
+
+    assert!(
+        state.service_conflicts.is_empty(),
+        "a missing s6 supervisor must be classified as absent"
+    );
+    fs::remove_dir_all(root).expect("remove s6 absence fixture");
+}
+
+#[test]
+fn installed_dinitctl_without_loaded_unixnotis_does_not_block_systemd_install() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("dinit-tool-without-loaded-service");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create manager tool directory");
+    write_inactive_systemctl(&fake_bin);
+    write_executable(
+        &fake_bin.join("dinitctl"),
+        "#!/bin/sh\ncase \"$*\" in *' list') exit 0 ;; *' status '*) printf 'dinitctl: service not loaded.\\n' >&2; exit 1 ;; *) exit 1 ;; esac\n",
+    );
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = systemd_paths(&root);
+
+    let state = check_install_state(&paths);
+
+    assert!(
+        state.service_conflicts.is_empty(),
+        "an unloaded dinit service must be classified as absent"
+    );
+    fs::remove_dir_all(root).expect("remove dinit absence fixture");
+}
+
+#[test]
+fn installed_systemctl_without_user_manager_does_not_block_dinit_install() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("systemctl-without-user-manager");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("alternate-manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create alternate manager tool directory");
+    write_executable(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\nprintf 'Failed to connect to bus\\n' >&2\nexit 1\n",
+    );
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::dinit_user(root.join("home").join(".config").join("dinit.d")),
+    };
+
+    let state = check_install_state(&paths);
+
+    assert!(
+        state.service_conflicts.is_empty(),
+        "an unreachable alternate systemd user manager owns no clean backend"
+    );
+    fs::remove_dir_all(root).expect("remove unavailable systemd fixture");
+}
+
+#[test]
+fn offline_systemd_user_manager_without_artifacts_does_not_block_dinit_install() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("offline-systemd-manager");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("alternate-manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create alternate manager tool directory");
+    write_executable(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\nprintf 'offline\\n'\nexit 1\n",
+    );
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::dinit_user(root.join("home").join(".config").join("dinit.d")),
+    };
+
+    let state = check_install_state(&paths);
+
+    assert!(
+        state.service_conflicts.is_empty(),
+        "an explicitly offline alternate systemd manager owns no clean backend"
+    );
+    fs::remove_dir_all(root).expect("remove offline systemd fixture");
+}
+
+#[test]
+fn unknown_systemd_manager_failure_blocks_dinit_install() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("unknown-systemd-manager-failure");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("alternate-manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create alternate manager tool directory");
+    write_executable(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\nprintf 'systemctl query failed unexpectedly\\n' >&2\nexit 1\n",
+    );
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::dinit_user(root.join("home").join(".config").join("dinit.d")),
+    };
+
+    let state = check_install_state(&paths);
+
+    assert_eq!(state.service_conflicts.len(), 1);
+    assert_eq!(state.service_conflicts[0].manager_label, "systemd --user");
+    assert!(state.service_conflicts[0]
+        .kinds
+        .contains(&ServiceManagerConflictKind::Indeterminate));
+    fs::remove_dir_all(root).expect("remove unknown systemd fixture");
+}
+
+#[test]
+fn installed_dinitctl_without_user_daemon_does_not_block_systemd_install() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("dinitctl-without-user-daemon");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("alternate-manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create alternate manager tool directory");
+    write_inactive_systemctl(&fake_bin);
+    write_executable(
+        &fake_bin.join("dinitctl"),
+        "#!/bin/sh\nprintf 'dinit-client: connecting to socket failed\\n' >&2\nexit 1\n",
+    );
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = systemd_paths(&root);
+
+    let state = check_install_state(&paths);
+
+    assert!(
+        state.service_conflicts.is_empty(),
+        "an unreachable alternate dinit daemon owns no clean backend"
+    );
+    fs::remove_dir_all(root).expect("remove unavailable dinit fixture");
+}
+
+#[test]
+fn unknown_dinit_manager_failure_blocks_systemd_install() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("unknown-dinit-manager-failure");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("alternate-manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create alternate manager tool directory");
+    write_inactive_systemctl(&fake_bin);
+    write_executable(
+        &fake_bin.join("dinitctl"),
+        "#!/bin/sh\nprintf 'dinitctl query failed unexpectedly\\n' >&2\nexit 1\n",
+    );
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = systemd_paths(&root);
+
+    let state = check_install_state(&paths);
+
+    assert_eq!(state.service_conflicts.len(), 1);
+    assert_eq!(state.service_conflicts[0].manager_label, "dinit --user");
+    assert!(state.service_conflicts[0]
+        .kinds
+        .contains(&ServiceManagerConflictKind::Indeterminate));
+    fs::remove_dir_all(root).expect("remove unknown dinit fixture");
+}
+
+#[test]
+fn reachable_alternate_manager_with_ambiguous_service_state_blocks_installation() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("reachable-manager-ambiguous-state");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("alternate-manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create alternate manager tool directory");
+    write_executable(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\ncase \"$*\" in *' is-system-running'*) printf 'running\\n'; exit 0 ;; *' show '*) printf 'ambiguous-state\\n'; exit 0 ;; *) exit 1 ;; esac\n",
+    );
+    let _fake_bin = use_fake_command_bin(&fake_bin);
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::dinit_user(root.join("home").join(".config").join("dinit.d")),
+    };
+
+    let state = check_install_state(&paths);
+
+    assert_eq!(state.service_conflicts.len(), 1);
+    assert_eq!(state.service_conflicts[0].manager_label, "systemd --user");
+    assert_eq!(
+        state.service_conflicts[0]
+            .kinds
+            .iter()
+            .filter(|kind| **kind == ServiceManagerConflictKind::Indeterminate)
+            .count(),
+        1
+    );
+    fs::remove_dir_all(root).expect("remove ambiguous alternate fixture");
+}
+
+#[test]
+fn partial_alternate_backend_artifacts_block_installation() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("partial-alternate-backend");
+    let _env = service_scan_env(&root);
+    let fake_bin = root.join("selected-manager-bin");
+    fs::create_dir_all(&fake_bin).expect("create selected manager tool directory");
+    write_executable(&fake_bin.join("systemctl"), "#!/bin/sh\nexit 1\n");
+    // The dinit artifact remains authoritative even when dinitctl is unavailable
+    let _fake_commands = use_fake_command_bin(&fake_bin);
+    let dinit_root = root.join("home").join(".config").join("dinit.d");
+    fs::create_dir_all(&dinit_root).expect("create partial dinit root");
+    let binary = root.join("bin").join("unixnotis-daemon");
+    fs::write(
+        dinit_root.join("unixnotis-daemon"),
+        format!("type = process\ncommand = {}\n", binary.display()),
+    )
+    .expect("write partial dinit service");
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::systemd_user(
+            root.join("home")
+                .join(".config")
+                .join("systemd")
+                .join("user"),
+        ),
+    };
+
+    let state = check_install_state(&paths);
+
+    assert_eq!(state.service_conflicts.len(), 1);
+    assert!(state.service_conflicts[0]
+        .kinds
+        .contains(&ServiceManagerConflictKind::PartialInstall));
+    assert_eq!(
+        state.service_conflicts[0].artifact_paths,
+        [dinit_root.join("unixnotis-daemon")]
+    );
+    fs::remove_dir_all(root).expect("remove partial backend fixture");
 }
 
 #[test]
@@ -206,14 +589,21 @@ fn install_check_blocks_when_different_backend_is_active() {
     let fake_bin = root.join("fake-bin");
     let fake_systemctl = fake_bin.join("systemctl");
     fs::create_dir_all(&fake_bin).expect("fake bin");
-    for command in ["dinitctl", "sv", "s6-svstat"] {
-        // Only systemd should look active; every other backend probe should stay inactive
-        let path = fake_bin.join(command);
-        write_executable(&path, "#!/bin/sh\nexit 1\n");
-    }
+    write_executable(
+        &fake_bin.join("dinitctl"),
+        "#!/bin/sh\nprintf 'Service: unixnotis-daemon\\n    State: STOPPED\\n'\n",
+    );
+    write_executable(
+        &fake_bin.join("sv"),
+        "#!/bin/sh\nprintf 'down: unixnotis\\n'\n",
+    );
+    write_executable(
+        &fake_bin.join("s6-svstat"),
+        "#!/bin/sh\nprintf 'false\\n'\n",
+    );
     write_executable(
         &fake_systemctl,
-        "#!/bin/sh\ncase \" $* \" in *\" is-active \"*) exit 0 ;; *) exit 1 ;; esac\n",
+        "#!/bin/sh\ncase \"$*\" in *' is-system-running'*) printf 'running\\n' ;; *) printf 'LoadState=loaded\\nActiveState=active\\n' ;; esac\n",
     );
     let _fake_bin = use_fake_command_bin(&fake_bin);
     let paths = InstallPaths {
@@ -221,13 +611,8 @@ fn install_check_blocks_when_different_backend_is_active() {
         bin_dir: root.join("bin"),
         service: ServiceManager::dinit_user(root.join("home").join(".config").join("dinit.d")),
     };
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let (log_tx, log_rx) = mpsc::sync_channel::<UiMessage>(16);
     let mut ctx = ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx,
@@ -250,6 +635,42 @@ fn install_check_blocks_when_different_backend_is_active() {
     )));
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn install_check_blocks_when_selected_manager_activity_is_indeterminate() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("selected-backend-indeterminate");
+    let _env = service_scan_env(&root);
+    let _fake_commands = fake_inactive_manager_commands(&root);
+    let paths = InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::dinit_user(root.join("home").join(".config").join("dinit.d")),
+    };
+    let mut state = check_install_state(&paths);
+    state.service_active_error = Some("selected active probe failed".to_string());
+    state.service_conflicts.clear();
+    let (log_tx, log_rx) = mpsc::sync_channel::<UiMessage>(16);
+    let mut ctx = ActionContext {
+        paths: &paths,
+        install_state: Some(state),
+        log_tx,
+        action_mode: ActionMode::Install,
+        restore_backup: None,
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
+
+    let error = check_install_state_step(&mut ctx)
+        .expect_err("an unknown selected-manager state must stop installation immediately");
+
+    assert!(error.to_string().contains("ownership is indeterminate"));
+    assert!(log_rx.try_iter().any(|event| matches!(
+        event,
+        UiMessage::Worker(WorkerEvent::LogLine(line))
+            if line.contains("service status check failed: selected active probe failed")
+    )));
+    fs::remove_dir_all(root).expect("remove selected-manager fixture");
 }
 
 fn repo_root() -> PathBuf {
@@ -311,13 +732,41 @@ fn service_scan_env(root: &Path) -> Vec<EnvGuard> {
 fn fake_inactive_manager_commands(root: &Path) -> impl Drop {
     let fake_bin = root.join("fake-inactive-bin");
     fs::create_dir_all(&fake_bin).expect("fake inactive bin");
-    for command in ["systemctl", "dinitctl", "sv", "s6-svstat"] {
-        // Exit 1 models a healthy inactive service for every active-state probe style
-        let path = fake_bin.join(command);
-        write_executable(&path, "#!/bin/sh\nexit 1\n");
-    }
+    write_inactive_systemctl(&fake_bin);
+    write_executable(
+        &fake_bin.join("dinitctl"),
+        "#!/bin/sh\nprintf 'Service: unixnotis-daemon\\n    State: STOPPED\\n'\n",
+    );
+    write_executable(
+        &fake_bin.join("sv"),
+        "#!/bin/sh\nprintf 'down: unixnotis\\n'\n",
+    );
+    write_executable(
+        &fake_bin.join("s6-svstat"),
+        "#!/bin/sh\nprintf 'false\\n'\n",
+    );
     // Active probes are command-backed, so route them away from the host managers
     use_fake_command_bin(&fake_bin)
+}
+
+fn write_inactive_systemctl(fake_bin: &Path) {
+    write_executable(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\ncase \"$*\" in *' is-system-running'*) printf 'running\\n'; exit 0 ;; *' show '*) printf 'LoadState=not-found\\nActiveState=inactive\\n'; exit 0 ;; *) exit 1 ;; esac\n",
+    );
+}
+
+fn systemd_paths(root: &Path) -> InstallPaths {
+    InstallPaths {
+        repo_root: repo_root(),
+        bin_dir: root.join("bin"),
+        service: ServiceManager::systemd_user(
+            root.join("home")
+                .join(".config")
+                .join("systemd")
+                .join("user"),
+        ),
+    }
 }
 
 struct EnvGuard {

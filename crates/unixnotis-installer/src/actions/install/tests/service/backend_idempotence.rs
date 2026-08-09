@@ -7,7 +7,8 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::service_manager::ServiceManager;
 
-use super::super::super::service::{install_service, uninstall_service};
+use super::super::super::service::flow::install_service;
+use super::super::super::service::uninstall_service;
 use super::super::support::{test_context, test_root};
 use super::flow_support::{flow_env, flow_paths, lock_env, write_fake_tools, FakeToolMode};
 

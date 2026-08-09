@@ -75,10 +75,9 @@ fn run_build_rejects_release_archive_with_missing_bundled_binary() {
     let _ = fs::remove_dir_all(root);
 }
 
-fn test_context<'a>(detection: &'a Detection, paths: &'a InstallPaths) -> ActionContext<'a> {
+fn test_context<'a>(_detection: &'a Detection, paths: &'a InstallPaths) -> ActionContext<'a> {
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(32);
     ActionContext {
-        detection,
         paths,
         install_state: None,
         log_tx: tx,

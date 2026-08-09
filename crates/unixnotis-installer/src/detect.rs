@@ -3,14 +3,21 @@
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
+use anyhow::{anyhow, Context, Result};
 use rustix::process::geteuid;
 use serde_json::Value;
 
 use crate::system_tools;
 
-#[derive(Clone)]
+const MAX_BUSCTL_OUTPUT_BYTES: usize = 64 * 1024;
+const DEFAULT_BUSCTL_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
+#[derive(Clone, Debug)]
 pub struct OwnerInfo {
+    // Exact transport address is present for fail-closed mutation checks
+    pub unique_name: Option<String>,
     pub pid: Option<u32>,
     pub comm: Option<String>,
 }
@@ -37,6 +44,13 @@ pub fn detect() -> Detection {
     let owner = detect_owner();
     let daemons = detect_known_daemons(owner.as_ref());
     Detection { owner, daemons }
+}
+
+pub fn detect_for_mutation() -> Result<Detection> {
+    // Destructive workflow gates keep broker errors distinct from an unowned bus name
+    let owner = read_busctl_owner_strict()?;
+    let daemons = detect_known_daemons(owner.as_ref());
+    Ok(Detection { owner, daemons })
 }
 
 pub fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
@@ -77,7 +91,11 @@ pub fn parse_busctl_status(status: &str) -> Option<OwnerInfo> {
         return None;
     }
 
-    Some(OwnerInfo { pid, comm })
+    Some(OwnerInfo {
+        unique_name: None,
+        pid,
+        comm,
+    })
 }
 
 pub fn parse_busctl_json(status: &str) -> Option<OwnerInfo> {
@@ -91,7 +109,11 @@ pub fn parse_busctl_json(status: &str) -> Option<OwnerInfo> {
         return None;
     }
 
-    Some(OwnerInfo { pid, comm })
+    Some(OwnerInfo {
+        unique_name: None,
+        pid,
+        comm,
+    })
 }
 
 fn walk_busctl_json(value: &Value, comm: &mut Option<String>, pid: &mut Option<u32>) {
@@ -141,12 +163,16 @@ fn parse_pid_value(value: &Value) -> Option<u32> {
 }
 
 fn detect_owner() -> Option<OwnerInfo> {
-    let OwnerInfo { pid, comm } = read_busctl_owner()?;
+    let OwnerInfo { pid, comm, .. } = read_busctl_owner()?;
     // Prefer the executable name derived from argv0; fall back to busctl and /proc data
     let comm = pid
         .and_then(read_cmdline_program)
         .or_else(|| comm.or_else(|| pid.and_then(read_comm)));
-    Some(OwnerInfo { pid, comm })
+    Some(OwnerInfo {
+        unique_name: None,
+        pid,
+        comm,
+    })
 }
 
 fn read_busctl_owner() -> Option<OwnerInfo> {
@@ -190,6 +216,89 @@ fn read_busctl_owner() -> Option<OwnerInfo> {
     parse_busctl_status(&status)
 }
 
+fn read_busctl_owner_strict() -> Result<Option<OwnerInfo>> {
+    let Some(unique_name) = read_busctl_unique_owner_strict()? else {
+        return Ok(None);
+    };
+
+    let mut owner = run_busctl(&["--user", "--json=short", "status", &unique_name])
+        .and_then(|status| parse_busctl_json(&status))
+        .or_else(|| {
+            run_busctl(&["--user", "status", &unique_name])
+                .and_then(|status| parse_busctl_status(&status))
+        })
+        .unwrap_or(OwnerInfo {
+            unique_name: None,
+            pid: None,
+            comm: None,
+        });
+    owner.unique_name = Some(unique_name);
+    owner.comm = owner
+        .pid
+        .and_then(read_cmdline_program)
+        .or_else(|| owner.comm.or_else(|| owner.pid.and_then(read_comm)));
+    Ok(Some(owner))
+}
+
+pub fn notification_owner_for_mutation_until(deadline: Instant) -> Result<Option<String>> {
+    // The final switch only needs the broker address, so it skips slower process discovery
+    read_busctl_unique_owner_strict_until(deadline)
+}
+
+fn read_busctl_unique_owner_strict() -> Result<Option<String>> {
+    let deadline = Instant::now()
+        .checked_add(DEFAULT_BUSCTL_PROBE_TIMEOUT)
+        .ok_or_else(|| anyhow!("notification owner deadline exceeded the monotonic clock"))?;
+    read_busctl_unique_owner_strict_until(deadline)
+}
+
+fn read_busctl_unique_owner_strict_until(deadline: Instant) -> Result<Option<String>> {
+    let has_owner = run_busctl_required_until(
+        &[
+            "--user",
+            "call",
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "NameHasOwner",
+            "s",
+            unixnotis_core::NOTIFICATIONS_BUS_NAME,
+        ],
+        deadline,
+    )?;
+    match has_owner.split_whitespace().collect::<Vec<_>>().as_slice() {
+        ["b", "false"] => return Ok(None),
+        ["b", "true"] => {}
+        _ => return Err(anyhow!("busctl returned malformed NameHasOwner output")),
+    }
+
+    let reply = run_busctl_required_until(
+        &[
+            "--user",
+            "call",
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "GetNameOwner",
+            "s",
+            unixnotis_core::NOTIFICATIONS_BUS_NAME,
+        ],
+        deadline,
+    )?;
+    let unique_name = parse_busctl_string_reply(&reply)
+        .ok_or_else(|| anyhow!("busctl returned malformed GetNameOwner output"))?;
+    Ok(Some(unique_name))
+}
+
+pub fn ensure_owner_is_current(expected_unique_name: &str) -> Result<()> {
+    let current = read_busctl_unique_owner_strict()?;
+    anyhow::ensure!(
+        current.as_deref() == Some(expected_unique_name),
+        "Notifications owner changed before the stop operation; refusing to act on stale process metadata"
+    );
+    Ok(())
+}
+
 fn parse_busctl_string_reply(reply: &str) -> Option<String> {
     // Method-call string output is formatted as `s "value"`
     let (_, quoted) = reply.trim().split_once('"')?;
@@ -207,6 +316,36 @@ fn run_busctl(args: &[&str]) -> Option<String> {
         return None;
     }
     Some(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn run_busctl_required_until(args: &[&str], deadline: Instant) -> Result<String> {
+    let timeout = deadline.saturating_duration_since(Instant::now());
+    if timeout.is_zero() {
+        return Err(std::io::Error::new(
+            ErrorKind::TimedOut,
+            "notification owner probe deadline elapsed",
+        )
+        .into());
+    }
+    let mut command = system_tools::command("busctl").context("locate trusted busctl")?;
+    command.args(args);
+    let output = system_tools::output_bounded(&mut command, timeout, MAX_BUSCTL_OUTPUT_BYTES)
+        .context("query notification owner through busctl")?;
+    validate_busctl_output(output)
+}
+
+fn validate_busctl_output(output: system_tools::BoundedOutput) -> Result<String> {
+    if output.stdout_truncated || output.stderr_truncated {
+        return Err(anyhow!("busctl owner query exceeded the safe output limit"));
+    }
+    if !output.status.success() {
+        return Err(anyhow!(
+            "busctl owner query failed with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    String::from_utf8(output.stdout).context("busctl owner query output was not UTF-8")
 }
 
 fn detect_known_daemons(owner: Option<&OwnerInfo>) -> Vec<DetectedDaemon> {

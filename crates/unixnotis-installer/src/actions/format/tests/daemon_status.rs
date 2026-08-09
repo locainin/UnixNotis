@@ -5,6 +5,7 @@ use crate::detect::{DetectedDaemon, OwnerInfo};
 fn summarize_owner_includes_comm_and_pid() {
     // Verifies formatted owner output includes both fields when available.
     let owner = OwnerInfo {
+        unique_name: None,
         pid: Some(4242),
         comm: Some("unixnotis-daemon".to_string()),
     };
