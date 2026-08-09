@@ -1,8 +1,13 @@
 use std::collections::VecDeque;
 use std::fs;
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::actions::{check_install_state, BuildAccelConfigStatus, BuildAccelDetection};
+use sha2::{Digest, Sha256};
+
+use crate::actions::{
+    check_install_state, BuildAccelConfigStatus, BuildAccelDetection, InstallationDisposition,
+};
 use crate::app::{App, BuildAccelMenuMode, BuildAccelState, MenuItem, ProgressState, Screen};
 use crate::checks::{CheckItem, CheckState, Checks};
 use crate::detect::Detection;
@@ -29,6 +34,46 @@ fn selected_menu_clamps_out_of_range_index_to_last_item() {
 
     // Clamping prevents stale indices from panicking after menu length changes
     assert_eq!(app.selected_menu(), MenuItem::Quit);
+}
+
+#[test]
+fn refresh_reloads_environment_checks_instead_of_retaining_stale_state() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("app-refresh-checks");
+    let _session = crate::test_support::env::EnvGuard::set("XDG_SESSION_TYPE", "x11");
+    let _display = crate::test_support::env::EnvGuard::set("WAYLAND_DISPLAY", "");
+    let _runtime = crate::test_support::env::EnvGuard::set("XDG_RUNTIME_DIR", root.join("run"));
+    let _home = crate::test_support::env::EnvGuard::set("HOME", root.join("home"));
+    let _config = crate::test_support::env::EnvGuard::set("XDG_CONFIG_HOME", root.join("config"));
+    let fake_bin = root.join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
+    let mut app = app_with_build_accel(None);
+
+    assert_eq!(app.checks.wayland.state, CheckState::Ok);
+    app.refresh();
+
+    assert_eq!(app.checks.wayland.state, CheckState::Fail);
+    fs::remove_dir_all(root).expect("remove refresh fixture");
+}
+
+#[test]
+fn refresh_backups_replaces_stale_rows_and_resets_selection() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("app-refresh-backups");
+    let config_home = root.join("config");
+    let backup = config_home.join("unixnotis").join("Backup-2026-08-08");
+    fs::create_dir_all(&backup).expect("backup fixture");
+    let _config = crate::test_support::env::EnvGuard::set("XDG_CONFIG_HOME", &config_home);
+    let mut app = app_with_build_accel(None);
+    app.restore_backups = vec![root.join("stale-backup")];
+    app.restore_menu_index = 9;
+
+    app.refresh_backups();
+
+    assert_eq!(app.restore_backups, [backup]);
+    assert_eq!(app.restore_menu_index, 0);
+    fs::remove_dir_all(root).expect("remove backup refresh fixture");
 }
 
 #[test]
@@ -81,25 +126,75 @@ fn action_label_uses_install_wording_when_state_is_unknown() {
 }
 
 #[test]
-fn action_label_uses_reinstall_when_expected_artifacts_are_present() {
+fn action_label_distinguishes_healthy_install_from_missing_service_artifact() {
+    let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("app-reinstall-label");
     let repo_root = root.join("repo");
     let bin_dir = root.join("bin");
-    let systemd_dir = root.join("systemd");
+    let systemd_dir = root.join("config").join("systemd").join("user");
+    let _home = crate::test_support::env::EnvGuard::set("HOME", root.join("home"));
+    let _user = crate::test_support::env::EnvGuard::set("USER", "unixnotis-test");
+    let _config_home =
+        crate::test_support::env::EnvGuard::set("XDG_CONFIG_HOME", root.join("config"));
+    let _runit =
+        crate::test_support::env::EnvGuard::set("UNIXNOTIS_RUNIT_SERVICE_DIR", root.join("runit"));
+    let _svdir = crate::test_support::env::EnvGuard::set("SVDIR", root.join("runit"));
+    let _s6_data =
+        crate::test_support::env::EnvGuard::set("UNIXNOTIS_S6_DATA_DIR", root.join("s6"));
+    let _s6_live =
+        crate::test_support::env::EnvGuard::set("UNIXNOTIS_S6RC_LIVE_DIR", root.join("s6-live"));
     fs::create_dir_all(&repo_root).expect("repo dir");
     fs::create_dir_all(&bin_dir).expect("bin dir");
+    let fake_bin = root.join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    crate::test_support::fs::write_executable(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\ncase \"$*\" in\n  *is-enabled*) exit 0 ;;\nesac\nprintf '%s\\n' 'LoadState=loaded' 'ActiveState=inactive'\nexit 0\n",
+    );
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
 
-    // Minimal workspace metadata keeps the install-state check focused on one
-    // binary while still using the real metadata parser
+    // A complete release inventory keeps the install-state check focused on one binary
     fs::write(
-        repo_root.join("Cargo.toml"),
-        r#"
-[workspace.metadata.unixnotis.installer]
-binaries = ["unixnotis-daemon"]
-"#,
+        repo_root.join("unixnotis-release.json"),
+        r#"{"version":"test","binaries":["unixnotis-daemon"]}"#,
     )
-    .expect("workspace metadata");
-    fs::write(bin_dir.join("unixnotis-daemon"), "#!/bin/sh\n").expect("installed binary");
+    .expect("release metadata");
+    fs::create_dir_all(repo_root.join("bin")).expect("release source directory");
+    fs::write(repo_root.join("bin/unixnotis-daemon"), "release source")
+        .expect("release source binary");
+    let binary_contents = b"#!/bin/sh\n";
+    let digest = format!("{:x}", Sha256::digest(binary_contents));
+    let size = u64::try_from(binary_contents.len()).expect("test binary size fits u64");
+    let build_id = release_build_id("test", "unixnotis-daemon", size, &digest);
+    let generation = format!("test-{build_id}");
+    let release_root = root
+        .join("lib")
+        .join("unixnotis")
+        .join("releases")
+        .join(&generation);
+    let release_binary = release_root.join("bin").join("unixnotis-daemon");
+    fs::create_dir_all(release_binary.parent().expect("release binary parent"))
+        .expect("release binary directory");
+    fs::write(&release_binary, binary_contents).expect("installed release binary");
+    fs::set_permissions(&release_binary, fs::Permissions::from_mode(0o755))
+        .expect("installed release binary mode");
+    fs::write(
+        release_root.join("manifest.json"),
+        format!(
+            "{{\"schema_version\":1,\"package_version\":\"test\",\"build_id\":\"{build_id}\",\"binaries\":{{\"unixnotis-daemon\":{{\"size\":{size},\"sha256\":\"{digest}\"}}}}}}"
+        ),
+    )
+    .expect("installed release manifest");
+    symlink(
+        std::path::Path::new("releases").join(generation),
+        root.join("lib/unixnotis/current"),
+    )
+    .expect("current release link");
+    symlink(
+        "../lib/unixnotis/current/bin/unixnotis-daemon",
+        bin_dir.join("unixnotis-daemon"),
+    )
+    .expect("installed binary entrypoint");
 
     let service = ServiceManager::systemd_user(systemd_dir);
     for artifact in service.artifacts(&bin_dir) {
@@ -129,8 +224,31 @@ binaries = ["unixnotis-daemon"]
     // Installed binaries plus a safe service artifact should turn the primary
     // install action into a reinstall action in the TUI
     assert_eq!(app.action_label(ActionMode::Install), "Reinstall");
+    assert_eq!(
+        app.installation_disposition(),
+        InstallationDisposition::InstalledHealthy
+    );
+
+    fs::remove_file(paths.service.primary_artifact_path()).expect("remove primary artifact");
+    app.install_state = Some(check_install_state(&paths));
+
+    // Existing verified binaries with an incomplete service install need repair, not a fresh install
+    assert_eq!(app.action_label(ActionMode::Install), "Repair");
+    assert_eq!(
+        app.installation_disposition(),
+        InstallationDisposition::RepairRequired
+    );
 
     let _ = fs::remove_dir_all(root);
+}
+
+fn release_build_id(package_version: &str, binary_name: &str, size: u64, digest: &str) -> String {
+    let mut release_digest = Sha256::new();
+    release_digest.update(package_version.as_bytes());
+    release_digest.update(binary_name.as_bytes());
+    release_digest.update(size.to_le_bytes());
+    release_digest.update(digest.as_bytes());
+    format!("{:x}", release_digest.finalize())
 }
 
 fn app_with_build_accel(detection: Option<BuildAccelDetection>) -> App {

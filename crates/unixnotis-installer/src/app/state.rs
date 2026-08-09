@@ -21,6 +21,8 @@ pub enum ProgressState {
     Completed,
     // Action failed
     Failed,
+    // Recovery could not prove the disk/runtime state safe; the worker remains alive
+    RecoveryRequired,
 }
 
 #[cfg(test)]

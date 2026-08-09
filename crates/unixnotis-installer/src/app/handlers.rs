@@ -14,6 +14,7 @@ use crate::app::{App, MenuItem, ProgressState, Screen};
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::terminal::TerminalGuard;
+use crate::ui;
 
 pub fn handle_welcome_key(app: &mut App, key: KeyEvent) -> Option<ExitAction> {
     match key.code {
@@ -153,7 +154,17 @@ pub fn handle_confirm_key(
                     return Ok(Some(ExitAction::RunTrial { repo_root }));
                 }
                 ActionMode::Install | ActionMode::Uninstall | ActionMode::Reset => {
-                    start_action(app, terminal_guard, ui_tx, mode)?;
+                    start_action(
+                        app,
+                        |app| {
+                            terminal_guard
+                                .terminal_mut()
+                                .draw(|frame| ui::draw(frame, app))?;
+                            Ok(())
+                        },
+                        ui_tx,
+                        mode,
+                    )?;
                 }
             }
 
@@ -166,6 +177,10 @@ pub fn handle_confirm_key(
 pub fn handle_progress_key(app: &mut App, key: KeyEvent) -> Option<ExitAction> {
     if matches!(app.progress_state, ProgressState::Running) {
         return None;
+    }
+    if matches!(app.progress_state, ProgressState::RecoveryRequired) {
+        // The worker still owns the installer lock and activation names
+        return matches!(key.code, KeyCode::Char('q' | 'Q')).then_some(ExitAction::None);
     }
     if let Some(ready_at) = app.progress_ready_at {
         if Instant::now() < ready_at {

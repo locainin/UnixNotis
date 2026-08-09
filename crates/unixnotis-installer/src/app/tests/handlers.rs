@@ -173,6 +173,24 @@ fn progress_screen_quit_and_escape_work_after_action_finishes() {
 }
 
 #[test]
+fn recovery_required_progress_allows_only_quit() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let mut app = App::new(None);
+    app.screen = Screen::Progress(ActionMode::Install);
+    app.progress_state = ProgressState::RecoveryRequired;
+    app.progress_ready_at = None;
+
+    assert!(handle_progress_key(&mut app, key(KeyCode::Enter)).is_none());
+    assert_eq!(app.screen, Screen::Progress(ActionMode::Install));
+    assert!(handle_progress_key(&mut app, key(KeyCode::Esc)).is_none());
+    assert_eq!(app.screen, Screen::Progress(ActionMode::Install));
+    assert!(matches!(
+        handle_progress_key(&mut app, key(KeyCode::Char('q'))),
+        Some(ExitAction::None)
+    ));
+}
+
+#[test]
 fn progress_screen_respects_ready_delay_after_completion() {
     let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);

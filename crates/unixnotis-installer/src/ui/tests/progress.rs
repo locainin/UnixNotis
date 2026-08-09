@@ -63,3 +63,18 @@ fn draw_progress_running_state_uses_running_footer_without_error_summary() {
     assert!(screen.contains("Running..."));
     assert!(!screen.contains("Error:"));
 }
+
+#[test]
+fn draw_progress_recovery_required_warns_that_activation_remains_inhibited() {
+    let mut app = app_for_rendering(Screen::Progress(ActionMode::Install));
+    app.progress_state = ProgressState::RecoveryRequired;
+    app.last_error = Some("rollback state is unknown".to_string());
+
+    let screen = render_app(&app);
+
+    assert!(screen.contains("Install - Manual recovery required"));
+    assert!(screen.contains("UnixNotis activation remains inhibited"));
+    assert!(screen.contains("Do not start another UnixNotis instance"));
+    assert!(screen.contains("Q = quit"));
+    assert!(!screen.contains("Enter = back to menu"));
+}

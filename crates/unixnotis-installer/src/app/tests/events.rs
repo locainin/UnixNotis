@@ -28,15 +28,46 @@ fn ui_message_can_carry_release_status_update() {
 
 #[test]
 fn worker_event_failed_keeps_step_index_and_message() {
-    let event = WorkerEvent::StepFailed(3, "service start failed".to_string());
+    let event = WorkerEvent::StepFailed {
+        index: 3,
+        summary: "service start failed".to_string(),
+        detail: "service start failed: bus unavailable".to_string(),
+    };
 
-    // Failure events need both fields for progress rendering and final error text
+    // Failure events keep a short status summary and a full diagnostic chain
     match event {
-        WorkerEvent::StepFailed(index, message) => {
+        WorkerEvent::StepFailed {
+            index,
+            summary,
+            detail,
+        } => {
             assert_eq!(index, 3);
-            assert_eq!(message, "service start failed");
+            assert_eq!(summary, "service start failed");
+            assert_eq!(detail, "service start failed: bus unavailable");
         }
         _ => panic!("expected failed event"),
+    }
+}
+
+#[test]
+fn worker_event_recovery_required_keeps_detailed_failure_without_finished_event() {
+    let event = WorkerEvent::RecoveryRequired {
+        index: 2,
+        summary: "rollback state is unknown".to_string(),
+        detail: "rollback state is unknown: journal unreadable".to_string(),
+    };
+
+    match event {
+        WorkerEvent::RecoveryRequired {
+            index,
+            summary,
+            detail,
+        } => {
+            assert_eq!(index, 2);
+            assert_eq!(summary, "rollback state is unknown");
+            assert_eq!(detail, "rollback state is unknown: journal unreadable");
+        }
+        _ => panic!("expected recovery-required event"),
     }
 }
 

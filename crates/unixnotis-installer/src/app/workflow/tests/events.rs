@@ -1,24 +1,9 @@
 use crate::app::events::WorkerEvent;
-use crate::app::workflow::{apply_worker_event, reset_to_menu};
-use crate::app::{App, BuildAccelState, ProgressState, Screen};
+use crate::app::{BuildAccelState, ProgressState, Screen};
 use crate::model::{ActionStep, ResetAction, StepStatus};
 
-fn app_with_steps() -> App {
-    let _lock = crate::test_support::env::test_env_lock();
-    let mut app = App::new(None);
-    app.steps = vec![
-        ActionStep {
-            name: "first",
-            status: StepStatus::Pending,
-        },
-        ActionStep {
-            name: "second",
-            status: StepStatus::Pending,
-        },
-    ];
-    app.progress_state = ProgressState::Running;
-    app
-}
+use super::super::events::{apply_worker_event, reset_to_menu};
+use super::support::app_with_steps;
 
 #[test]
 fn worker_step_events_update_only_existing_steps() {
@@ -38,15 +23,53 @@ fn worker_step_events_update_only_existing_steps() {
 fn worker_failure_marks_step_logs_error_and_blocks_finished_from_success() {
     let mut app = app_with_steps();
 
-    apply_worker_event(&mut app, WorkerEvent::StepFailed(1, "boom".to_string()));
+    apply_worker_event(
+        &mut app,
+        WorkerEvent::StepFailed {
+            index: 1,
+            summary: "boom".to_string(),
+            detail: "boom: nested cause".to_string(),
+        },
+    );
     apply_worker_event(&mut app, WorkerEvent::Finished);
 
     // Finished must not erase the failure state produced by the worker
     assert_eq!(app.steps[1].status, StepStatus::Failed);
     assert_eq!(app.progress_state, ProgressState::Failed);
     assert_eq!(app.last_error.as_deref(), Some("boom"));
-    assert_eq!(app.logs.back().map(String::as_str), Some("Error: boom"));
+    assert_eq!(
+        app.logs.back().map(String::as_str),
+        Some("Error: boom: nested cause")
+    );
     assert!(app.progress_ready_at.is_some());
+    assert!(app
+        .progress_ready_at
+        .is_some_and(|deadline| deadline > std::time::Instant::now()));
+}
+
+#[test]
+fn recovery_required_event_keeps_the_worker_state_inhibited() {
+    let mut app = app_with_steps();
+
+    apply_worker_event(
+        &mut app,
+        WorkerEvent::RecoveryRequired {
+            index: 1,
+            summary: "rollback failed".to_string(),
+            detail: "rollback failed: service state unknown".to_string(),
+        },
+    );
+    apply_worker_event(&mut app, WorkerEvent::Finished);
+
+    // A catastrophic worker intentionally does not finish, so Finished cannot turn this into success
+    assert_eq!(app.steps[1].status, StepStatus::Failed);
+    assert_eq!(app.progress_state, ProgressState::RecoveryRequired);
+    assert_eq!(app.last_error.as_deref(), Some("rollback failed"));
+    assert_eq!(
+        app.logs.back().map(String::as_str),
+        Some("CRITICAL: daemon activation remains inhibited because safe rollback could not be proven.")
+    );
+    assert!(app.progress_ready_at.is_none());
 }
 
 #[test]
@@ -58,6 +81,9 @@ fn worker_finished_marks_running_action_completed() {
     // Successful workers delay navigation briefly so users can read completion state
     assert_eq!(app.progress_state, ProgressState::Completed);
     assert!(app.progress_ready_at.is_some());
+    assert!(app
+        .progress_ready_at
+        .is_some_and(|deadline| deadline > std::time::Instant::now()));
 }
 
 #[test]
@@ -77,7 +103,7 @@ fn worker_logs_keep_recent_two_hundred_entries() {
 #[test]
 fn reset_to_menu_clears_transient_action_state() {
     let _lock = crate::test_support::env::test_env_lock();
-    let mut app = App::new(None);
+    let mut app = crate::app::App::new(None);
     app.steps = vec![ActionStep {
         name: "first",
         status: StepStatus::Running,

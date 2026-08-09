@@ -19,7 +19,20 @@ pub enum UiMessage {
 pub enum WorkerEvent {
     StepStarted(usize),
     StepCompleted(usize),
-    StepFailed(usize, String),
+    StepFailed {
+        index: usize,
+        // The summary stays short enough for the progress header
+        summary: String,
+        // The complete anyhow chain stays in the bounded log view
+        detail: String,
+    },
+    RecoveryRequired {
+        index: usize,
+        // The summary stays short enough for the progress header
+        summary: String,
+        // The complete anyhow chain stays in the bounded log view
+        detail: String,
+    },
     LogLine(String),
     Finished,
 }

@@ -16,14 +16,21 @@ pub(super) fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) 
         ProgressState::Running => ("In progress", Color::Yellow),
         ProgressState::Completed => ("Completed", Color::Green),
         ProgressState::Failed => ("Failed", Color::Red),
+        ProgressState::RecoveryRequired => ("Manual recovery required", Color::Red),
         ProgressState::Idle => ("Pending", Color::Gray),
+    };
+
+    let status_height = if matches!(app.progress_state, ProgressState::RecoveryRequired) {
+        8
+    } else {
+        6
     };
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),
-            Constraint::Length(6),
+            Constraint::Length(status_height),
             Constraint::Min(8),
             Constraint::Length(3),
         ])
@@ -46,13 +53,24 @@ pub(super) fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) 
             .add_modifier(Modifier::BOLD),
     ))];
     if let Some(err) = &app.last_error {
-        if matches!(app.progress_state, ProgressState::Failed) {
+        if matches!(
+            app.progress_state,
+            ProgressState::Failed | ProgressState::RecoveryRequired
+        ) {
             let summary = summarize_error(err);
             status_lines.push(Line::from(vec![
                 Span::styled("Error: ", Style::default().fg(Color::Red)),
                 Span::raw(summary),
             ]));
-            status_lines.push(Line::from("See logs for full output."));
+            if matches!(app.progress_state, ProgressState::RecoveryRequired) {
+                status_lines.push(Line::from(
+                    "UnixNotis activation remains inhibited while this installer is running.",
+                ));
+                status_lines.push(Line::from("Do not start another UnixNotis instance."));
+                status_lines.push(Line::from("See logs for the complete failure chain."));
+            } else {
+                status_lines.push(Line::from("See logs for full output."));
+            }
         }
     }
 
@@ -93,6 +111,7 @@ pub(super) fn draw_progress(frame: &mut Frame<'_>, app: &App, mode: ActionMode) 
                 "Enter = back to menu  Q = quit"
             }
         }
+        ProgressState::RecoveryRequired => "Q = quit",
         ProgressState::Idle => "",
     };
     let footer = Paragraph::new(footer_text)
