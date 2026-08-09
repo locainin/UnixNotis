@@ -215,7 +215,8 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
         data: vec![255, 32, 32, 255],
     };
     let decorative_root = state.build_popup_root(&decorative);
-    assert!(descendant_has_class(
+    // Application identity art never enters the message-content lane below the body
+    assert!(!descendant_has_class(
         decorative_root.upcast_ref(),
         "unixnotis-popup-sender-visual"
     ));
@@ -223,6 +224,7 @@ fn popup_image_builders_distinguish_content_badges_and_missing_sources() {
         decorative_root.upcast_ref(),
         "unixnotis-popup-content-image"
     ));
+    assert!(!decorative_root.has_css_class(hooks::popup_card::HAS_IMAGE));
 }
 
 #[gtk::test]

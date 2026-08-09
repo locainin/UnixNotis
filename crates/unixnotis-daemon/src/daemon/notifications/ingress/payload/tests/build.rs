@@ -475,3 +475,53 @@ fn unassociated_communication_image_data_stays_untrusted_content() {
     assert!(!notification.image.content_image.data.is_empty());
     assert!(notification.image.sender_visual.data.is_empty());
 }
+
+#[test]
+fn unresolved_communication_keeps_bounded_wire_pixels_as_conversation_avatar() {
+    let avatar = unixnotis_core::ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![7, 8, 9, 255],
+    };
+    let notification = build_notification(NotificationInput {
+        app_name: "Example Chat".to_string(),
+        app_icon: "/tmp/untrusted-avatar.png".to_string(),
+        summary: "Conversation".to_string(),
+        body: "Message".to_string(),
+        actions: Vec::new(),
+        hints: HashMap::from([(
+            "category".to_string(),
+            string_to_owned_value("im.received").expect("category"),
+        )]),
+        image_data: None,
+        sender_visual_data: Some(avatar),
+        sender_visual: None,
+        sender_visual_role: SenderVisualRole::ConversationAvatar,
+        sender: SenderMetadata::default(),
+        attribution: unixnotis_core::NotificationAttribution::unresolved(
+            "Example Chat",
+            AttributionReason::MissingSenderEvidence,
+            "no sender evidence",
+            "claim:example-chat".to_string(),
+        ),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
+        expire_timeout: 0,
+    });
+
+    assert_eq!(
+        notification.image.sender_visual_role,
+        unixnotis_core::NotificationVisualRole::ConversationAvatar
+    );
+    assert_eq!(notification.image.sender_visual.data, vec![7, 8, 9, 255]);
+    assert!(notification.image.content_image.data.is_empty());
+    assert!(notification.app_icon.is_empty());
+    assert_eq!(
+        notification.attribution.assurance,
+        unixnotis_core::IdentityAssurance::Unresolved
+    );
+}

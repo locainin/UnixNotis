@@ -31,14 +31,3 @@ pub(super) fn enrich_sender_install_provenance_blocking(
     }
     sender.install_provenance = index.install_provenance_for_path(current.canonical_path);
 }
-
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "async wrapper remains for resolver tests")
-)]
-pub(super) async fn enrich_sender_install_provenance(
-    sender: &mut SenderMetadata,
-    index: &DesktopIdentityIndex,
-) {
-    enrich_sender_install_provenance_blocking(sender, index);
-}

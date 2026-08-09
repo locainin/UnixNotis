@@ -1,0 +1,4 @@
+#!/bin/sh
+
+yes X | head -c 1048576 >&2
+exit 1

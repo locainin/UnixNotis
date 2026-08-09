@@ -198,6 +198,72 @@ fn conversation_avatar_uses_the_master_panel_lead_slot_by_default() {
 }
 
 #[gtk::test]
+fn disabled_notification_avatars_suppress_conversation_lead_visual() {
+    let (_root, row) = notification_row();
+    let mut notification = sample_notification();
+    notification.image.sender_visual_role =
+        unixnotis_core::NotificationVisualRole::ConversationAvatar;
+    notification.image.sender_visual = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![255, 0, 0, 255],
+    };
+    let data = row_data(
+        Rc::new(notification),
+        RowFlags {
+            show_avatar: false,
+            ..Default::default()
+        },
+    );
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &data, &IconResolver::new(), &command_tx);
+
+    assert!(row.thumbnail.paintable().is_none());
+    assert!(!row.thumbnail.get_visible());
+    assert!(row.card.has_css_class(hooks::panel_card::NO_THUMBNAIL));
+}
+
+#[gtk::test]
+fn collapsed_and_expanded_group_rows_keep_conversation_avatar() {
+    let (_root, row) = notification_row();
+    let mut notification = sample_notification();
+    notification.image.sender_visual_role =
+        unixnotis_core::NotificationVisualRole::ConversationAvatar;
+    notification.image.sender_visual = ImageData {
+        width: 1,
+        height: 1,
+        rowstride: 4,
+        has_alpha: true,
+        bits_per_sample: 8,
+        channels: 4,
+        data: vec![255, 0, 0, 255],
+    };
+    let notification = Rc::new(notification);
+    let collapsed = row_data(
+        Rc::clone(&notification),
+        RowFlags {
+            collapsed_group_preview: true,
+            ..Default::default()
+        },
+    );
+    let expanded = row_data(notification, RowFlags::default());
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+
+    update_notification_row(&row, &collapsed, &IconResolver::new(), &command_tx);
+    assert!(row.thumbnail.get_visible());
+    assert!(row.thumbnail.paintable().is_some());
+
+    update_notification_row(&row, &expanded, &IconResolver::new(), &command_tx);
+    assert!(row.thumbnail.get_visible());
+    assert!(row.thumbnail.paintable().is_some());
+}
+
+#[gtk::test]
 fn historical_empty_avatar_role_does_not_create_a_blank_lead_slot() {
     let (_root, row) = notification_row();
     let mut notification = sample_notification();

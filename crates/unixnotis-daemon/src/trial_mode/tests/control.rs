@@ -46,6 +46,7 @@ impl Drop for TempDirGuard {
 #[test]
 fn restart_command_preserves_captured_argv_without_trusted_lookup() {
     let owner = OwnerInfo {
+        unique_name: ":1.test".to_string(),
         pid: Some(42),
         comm: Some("mako".to_string()),
         args: Some(vec![
@@ -67,6 +68,7 @@ fn restart_command_resolves_missing_argv_fallback_from_trusted_tools() {
     root.write_executable("mako", "#!/bin/sh\nexit 0\n");
     let _tools = use_fake_tool_bin(&root.path);
     let owner = OwnerInfo {
+        unique_name: ":1.test".to_string(),
         pid: Some(42),
         comm: Some("mako".to_string()),
         args: None,
@@ -86,6 +88,7 @@ fn restart_command_rejects_missing_argv_fallback_when_not_trusted() {
     let empty_trusted = TempDirGuard::new("empty-trusted");
     let _tools = use_fake_tool_bin(&empty_trusted.path);
     let owner = OwnerInfo {
+        unique_name: ":1.test".to_string(),
         pid: Some(42),
         comm: Some("mako".to_string()),
         args: None,
@@ -147,6 +150,7 @@ async fn process_restore_is_fully_constructed_before_owner_is_stopped() {
         run_seconds: None,
     };
     let owner = OwnerInfo {
+        unique_name: ":1.test".to_string(),
         pid: Some(42),
         comm: Some("mako".to_string()),
         args: None,
@@ -174,6 +178,7 @@ async fn stop_active_owner_returns_systemd_restore_action_in_auto_mode() {
         run_seconds: None,
     };
     let owner = OwnerInfo {
+        unique_name: ":1.test".to_string(),
         pid: Some(42),
         comm: Some("mako".to_string()),
         args: Some(vec!["/usr/bin/mako".to_string()]),

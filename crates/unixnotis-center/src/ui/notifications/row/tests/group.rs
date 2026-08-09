@@ -186,6 +186,71 @@ fn update_group_row_keeps_conflict_warning_out_of_the_title() {
 }
 
 #[gtk::test]
+fn recognized_group_keeps_application_icon_separate_from_trust_chip() {
+    support::init_gtk();
+    let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let mut recognized = notification("Example Chat").as_ref().clone();
+    recognized.attribution = unixnotis_core::NotificationAttribution::associated(
+        "Example Chat",
+        "Example Chat",
+        "org.example.Chat",
+        "application-x-executable-symbolic",
+        unixnotis_core::IdentityAssurance::UserAssociated,
+        unixnotis_core::InteractionPolicies::CONFIRM_ACTIONS,
+        unixnotis_core::AttributionReason::ExactUserExecutable,
+        "associated user application",
+        "associated:user-app:org.example.Chat".to_string(),
+    );
+    let data = RowData::group_header(
+        Rc::from("associated:user-app:org.example.Chat"),
+        2,
+        false,
+        Rc::new(recognized),
+    );
+
+    update_group_row(&widgets, &root, &data, &IconResolver::new());
+
+    assert!(widgets.icon.paintable().is_some());
+    assert_ne!(
+        widgets.icon.icon_name().as_deref(),
+        Some("unixnotis-app-unknown-symbolic")
+    );
+    assert_eq!(widgets.trust_chip.text().as_str(), "Local app");
+    assert!(widgets.trust_chip.get_visible());
+}
+
+#[gtk::test]
+fn unresolved_group_uses_neutral_icon_despite_claimed_application_branding() {
+    support::init_gtk();
+    let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let mut unresolved = notification("Example Chat").as_ref().clone();
+    unresolved.attribution = unixnotis_core::NotificationAttribution::unresolved(
+        "Example Chat",
+        unixnotis_core::AttributionReason::MissingSenderEvidence,
+        "no sender evidence",
+        "claim:example-chat".to_string(),
+    );
+    unresolved.image.claimed_theme_icon = "example-chat".to_string();
+    let data = RowData::group_header(
+        Rc::from("claim:example-chat"),
+        2,
+        false,
+        Rc::new(unresolved),
+    );
+
+    update_group_row(&widgets, &root, &data, &IconResolver::new());
+
+    assert_eq!(
+        widgets.icon.icon_name().as_deref(),
+        Some("unixnotis-app-unknown-symbolic")
+    );
+    assert_eq!(widgets.trust_chip.text().as_str(), "Unverified");
+    assert!(widgets.trust_chip.get_visible());
+}
+
+#[gtk::test]
 fn relay_group_header_keeps_claim_below_command_line_identity() {
     support::init_gtk();
     let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);

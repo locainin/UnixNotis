@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use super::super::pipeline::{decode_icon_bytes, decode_target, path_suggests_svg};
-use super::support::png_bytes;
+use super::support::{png_bytes, svg_renderer_binary};
 
 #[test]
 fn content_routing_decodes_raster_bytes_with_an_svg_suffix() {
@@ -27,6 +27,7 @@ fn content_routing_rejects_incomplete_png_data_with_an_svg_suffix() {
 #[test]
 fn content_routing_decodes_extensionless_svg_with_resvg() {
     let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><path d="M0 0h8v4H0z"/></svg>"#;
+    let _renderer = svg_renderer_binary();
 
     let decoded = decode_icon_bytes(Path::new("icon"), svg, 16).expect("bounded SVG fallback");
 

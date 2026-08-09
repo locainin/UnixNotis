@@ -1,4 +1,6 @@
-use super::super::super::{Config, PanelConfig, PopupConfig, PANEL_HEIGHT_PERCENT_DEFAULT};
+use super::super::super::{
+    Config, PanelConfig, PopupConfig, MAX_POPUP_TIMEOUT_MS, PANEL_HEIGHT_PERCENT_DEFAULT,
+};
 use super::{media, panel, plugins, refresh, shell, theme};
 
 pub(in super::super) const MIN_REFRESH_MS: u64 = 100;
@@ -28,6 +30,7 @@ pub(in super::super::super) fn sanitize_config(config: &mut Config) {
     sanitize_refresh_intervals(config);
     sanitize_panel_geometry(config);
     sanitize_popup_geometry(config);
+    sanitize_popup_timeouts(config);
 
     // Media, plugin, and theme rules live in their own files because each has
     // enough edge cases to test directly
@@ -107,6 +110,15 @@ fn sanitize_popup_geometry(config: &mut Config) {
     config.popups.margin.right = config.popups.margin.right.clamp(0, MAX_MARGIN);
     config.popups.margin.bottom = config.popups.margin.bottom.clamp(0, MAX_MARGIN);
     config.popups.margin.left = config.popups.margin.left.clamp(0, MAX_MARGIN);
+}
+
+fn sanitize_popup_timeouts(config: &mut Config) {
+    // Zero remains the no-timeout sentinel while positive values share one finite domain
+    config.popups.default_timeout_ms = config.popups.default_timeout_ms.min(MAX_POPUP_TIMEOUT_MS);
+    config.popups.critical_timeout_ms = config
+        .popups
+        .critical_timeout_ms
+        .map(|timeout| timeout.min(MAX_POPUP_TIMEOUT_MS));
 }
 
 fn sanitize_history(config: &mut Config) {

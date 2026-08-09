@@ -87,7 +87,7 @@ pub enum InhibitMode {
 pub struct HistoryConfig {
     // Saved items
     pub max_entries: usize,
-    // Live items
+    // Live items retained per stable sender process
     pub max_active: usize,
     // Save transient items too
     pub transient_to_history: bool,
@@ -97,7 +97,7 @@ impl Default for HistoryConfig {
     fn default() -> Self {
         Self {
             max_entries: 200,
-            // Match the daemon cap
+            // Match the daemon's per-principal cap
             max_active: 12,
             transient_to_history: false,
         }

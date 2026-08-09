@@ -11,7 +11,6 @@ use unixnotis_core::NotificationView;
 
 use super::presentation::{PopupEntryViewModel, PopupKind};
 use crate::ui::UiState;
-use unixnotis_ui::presentation::SenderVisualPresentation;
 
 pub(super) use common::{build_action_row, build_close_button};
 pub(in crate::ui::entry) use reply::build_inline_reply;
@@ -44,17 +43,10 @@ pub(super) fn append_thumbnail(
     view: &PopupEntryViewModel,
     content: &gtk::Box,
 ) -> bool {
-    let sender_visual = view.visuals.sender;
-    let is_application_visual = sender_visual == SenderVisualPresentation::ApplicationProvidedIcon;
-    if view.thumbnail != super::presentation::ThumbnailKind::Content && !is_application_visual {
+    if !should_append_thumbnail(view) {
         return false;
     }
-    let image =
-        if is_application_visual && view.thumbnail != super::presentation::ThumbnailKind::Content {
-            UiState::build_sender_visual_widget(notification)
-        } else {
-            UiState::build_content_image_widget(notification)
-        };
+    let image = UiState::build_content_image_widget(notification);
     let Some(image) = image else {
         return false;
     };
@@ -62,13 +54,18 @@ pub(super) fn append_thumbnail(
         return false;
     }
 
-    // Keep decorative sender art compact while content media gets the larger image treatment
+    // Only genuine message media belongs below the body in the content lane
     image.set_halign(gtk::Align::Start);
-    if is_application_visual {
-        image.add_css_class("unixnotis-popup-sender-visual");
-    } else {
-        image.add_css_class("unixnotis-popup-content-image");
-    }
+    image.add_css_class("unixnotis-popup-content-image");
     content.append(&image);
     true
 }
+
+const fn should_append_thumbnail(view: &PopupEntryViewModel) -> bool {
+    // Sender and application visuals are identity-lane data, never message attachments
+    matches!(view.thumbnail, super::presentation::ThumbnailKind::Content)
+}
+
+#[cfg(test)]
+#[path = "tests/thumbnail.rs"]
+mod tests;

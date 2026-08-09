@@ -178,20 +178,28 @@ fn build_image(
     if let Some(image_data) = content_image.and_then(NotificationImage::normalize_image_data) {
         image.content_image = image_data;
     }
-    if may_materialize_application_icon(attribution) {
-        if let Some(visual) = wire_sender_visual
-            .or(sender_visual)
-            .and_then(normalize_avatar_visual)
-        {
-            image.sender_visual_role = match sender_visual_role {
-                SenderVisualRole::ConversationAvatar => NotificationVisualRole::ConversationAvatar,
-                SenderVisualRole::ApplicationProvidedIcon => {
-                    NotificationVisualRole::ApplicationProvidedIcon
-                }
-                SenderVisualRole::None => NotificationVisualRole::None,
-            };
-            image.sender_visual = visual;
-        }
+    let sender_visual = match sender_visual_role {
+        // Bounded wire pixels are conversation presentation, not application identity evidence
+        SenderVisualRole::ConversationAvatar => wire_sender_visual.or_else(|| {
+            may_materialize_application_icon(attribution)
+                .then_some(sender_visual)
+                .flatten()
+        }),
+        // Decorative application art still requires a positive local association
+        SenderVisualRole::ApplicationProvidedIcon => may_materialize_application_icon(attribution)
+            .then_some(wire_sender_visual.or(sender_visual))
+            .flatten(),
+        SenderVisualRole::None => None,
+    };
+    if let Some(visual) = sender_visual.and_then(normalize_avatar_visual) {
+        image.sender_visual_role = match sender_visual_role {
+            SenderVisualRole::ConversationAvatar => NotificationVisualRole::ConversationAvatar,
+            SenderVisualRole::ApplicationProvidedIcon => {
+                NotificationVisualRole::ApplicationProvidedIcon
+            }
+            SenderVisualRole::None => NotificationVisualRole::None,
+        };
+        image.sender_visual = visual;
     }
     image
 }

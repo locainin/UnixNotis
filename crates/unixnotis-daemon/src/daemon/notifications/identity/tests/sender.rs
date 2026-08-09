@@ -1,5 +1,18 @@
 use super::*;
 
+fn stable_process_evidence<T>(
+    start_before: Option<u64>,
+    evidence: Option<T>,
+    start_after: Option<u64>,
+) -> (Option<u64>, Option<T>) {
+    // Both lifetime reads must name the same process before executable evidence is trusted
+    if start_before.is_some() && start_before == start_after {
+        (start_before, evidence)
+    } else {
+        (None, None)
+    }
+}
+
 #[tokio::test]
 async fn credential_reads_run_concurrently_within_the_supported_deadline() {
     let started = std::time::Instant::now();

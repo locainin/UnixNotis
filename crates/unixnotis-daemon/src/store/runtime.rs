@@ -237,15 +237,10 @@ impl NotificationStore {
                 popup_hide_after_ms,
             },
         );
-        let deadline = if popup_hide_after_ms == 0 {
-            None
-        } else {
-            Some(
-                admitted_at
-                    .checked_add(Duration::from_millis(popup_hide_after_ms))
-                    .unwrap_or(admitted_at),
-            )
-        };
+        let deadline = (popup_hide_after_ms != 0)
+            .then(|| Duration::from_millis(popup_hide_after_ms))
+            .and_then(|duration| admitted_at.checked_add(duration));
+        // None means indefinite both for the explicit zero sentinel and defensive clock overflow
         self.popup_timings.insert(key, PopupTiming { deadline });
     }
 

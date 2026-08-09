@@ -395,23 +395,6 @@ fn classify_command_line(
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "kept as a focused process-lifetime test seam")
-)]
-fn stable_process_evidence<T>(
-    start_before: Option<u64>,
-    evidence: Option<T>,
-    start_after: Option<u64>,
-) -> (Option<u64>, Option<T>) {
-    // Both lifetime reads must name the same process before executable evidence is trusted
-    if start_before.is_some() && start_before == start_after {
-        (start_before, evidence)
-    } else {
-        (None, None)
-    }
-}
-
 #[cfg(all(target_os = "linux", test))]
 fn parse_process_start_time(stat: &str) -> Option<u64> {
     parse_process_stat(stat).map(|stat| stat.start_time)

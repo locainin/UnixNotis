@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{Anchor, Margins};
 
+/// Longest automatic popup timer accepted by the freedesktop millisecond domain
+pub const MAX_POPUP_TIMEOUT_MS: u64 = 2_147_483_647;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct PopupConfig {

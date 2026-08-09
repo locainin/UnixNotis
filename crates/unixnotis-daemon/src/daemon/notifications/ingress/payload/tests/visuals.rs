@@ -87,10 +87,15 @@ fn associated_noncommunication_path_is_a_small_application_visual() {
     );
 
     assert_eq!(role, SenderVisualRole::ApplicationProvidedIcon);
+    assert!(sender_visual_path_allowed(role, &attribution));
+    assert!(!sender_visual_path_allowed(
+        SenderVisualRole::None,
+        &attribution
+    ));
 }
 
 #[test]
-fn portal_association_cannot_start_host_avatar_materialization() {
+fn portal_communication_keeps_wire_avatar_role_without_allowing_host_path_access() {
     let attribution = unixnotis_core::NotificationAttribution::associated(
         "Portal app",
         "Portal app",
@@ -103,16 +108,39 @@ fn portal_association_cannot_start_host_avatar_materialization() {
         "recognized:portal:org.example.PortalApp".to_string(),
     );
     assert!(!may_materialize_application_icon(&attribution));
-    assert_eq!(
-        sender_visual_role(
-            &attribution,
-            &super::super::super::super::identity::DesktopIdentityIndex::default(),
-            &HashMap::new(),
-            &["inline-reply".to_string(), "Reply".to_string()],
-            "",
-        ),
-        SenderVisualRole::None
+    let role = sender_visual_role(
+        &attribution,
+        &super::super::super::super::identity::DesktopIdentityIndex::default(),
+        &HashMap::new(),
+        &["inline-reply".to_string(), "Reply".to_string()],
+        "/tmp/untrusted-avatar.png",
     );
+
+    assert_eq!(role, SenderVisualRole::ConversationAvatar);
+    assert!(!sender_visual_path_allowed(role, &attribution));
+}
+
+#[test]
+fn unresolved_communication_role_never_authorizes_sender_filesystem_paths() {
+    let attribution = unixnotis_core::NotificationAttribution::unresolved(
+        "Example Chat",
+        AttributionReason::MissingSenderEvidence,
+        "no sender evidence",
+        "claim:example-chat".to_string(),
+    );
+    let role = sender_visual_role(
+        &attribution,
+        &super::super::super::super::identity::DesktopIdentityIndex::default(),
+        &HashMap::from([(
+            "category".to_string(),
+            string_to_owned_value("im.received").expect("category value"),
+        )]),
+        &[],
+        "/tmp/untrusted-avatar.png",
+    );
+
+    assert_eq!(role, SenderVisualRole::ConversationAvatar);
+    assert!(!sender_visual_path_allowed(role, &attribution));
 }
 
 #[test]

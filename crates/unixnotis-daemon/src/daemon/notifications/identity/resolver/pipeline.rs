@@ -167,14 +167,6 @@ where
     resolution
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "helper remains as an explicit pipeline test seam")
-)]
-pub(super) const fn should_return_initial_resolution(needs_provenance: bool) -> bool {
-    !needs_provenance
-}
-
 pub(super) fn needs_sender_provenance(
     status: AttributionStatus,
     interactions: InteractionPolicies,

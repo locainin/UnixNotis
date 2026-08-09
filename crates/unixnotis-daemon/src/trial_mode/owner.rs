@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tokio::fs;
 use tokio::time::timeout;
 use tracing::warn;
@@ -7,32 +7,27 @@ use zbus::fdo::DBusProxy;
 
 use crate::system_tools;
 
+use super::state::NotificationOwnerState;
 use super::{DetectedDaemon, OwnerInfo, KNOWN_DAEMONS, TRIAL_COMMAND_TIMEOUT};
 
 pub(super) async fn detect_owner(
     dbus_proxy: &DBusProxy<'_>,
     notifications_name: zbus::names::BusName<'_>,
-) -> Result<Option<OwnerInfo>> {
+) -> Result<NotificationOwnerState> {
     // Quick owner check avoids extra calls when Notifications is unclaimed
-    let has_owner = match dbus_proxy.name_has_owner(notifications_name.clone()).await {
-        Ok(value) => value,
-        Err(err) => {
-            warn!(?err, "failed to query D-Bus owner state");
-            false
-        }
-    };
+    let has_owner = dbus_proxy
+        .name_has_owner(notifications_name.clone())
+        .await
+        .context("query Notifications ownership")?;
     if !has_owner {
-        return Ok(None);
+        return Ok(NotificationOwnerState::Unowned);
     }
 
     let owner = dbus_proxy
         .get_name_owner(notifications_name)
         .await
-        .ok()
-        .map(|name| name.to_string());
-    let Some(unique_name) = owner else {
-        return Ok(None);
-    };
+        .context("resolve Notifications owner")?;
+    let unique_name = owner.to_string();
 
     // Resolve PID from unique bus name when possible
     let pid = if let Ok(bus_name) = zbus::names::BusName::try_from(unique_name.as_str()) {
@@ -56,7 +51,28 @@ pub(super) async fn detect_owner(
             None => None,
         });
 
-    Ok(Some(OwnerInfo { pid, comm, args }))
+    Ok(NotificationOwnerState::Owned(OwnerInfo {
+        unique_name,
+        pid,
+        comm,
+        args,
+    }))
+}
+
+pub(super) async fn ensure_owner_is_current(
+    dbus_proxy: &DBusProxy<'_>,
+    notifications_name: zbus::names::BusName<'_>,
+    inspected: &OwnerInfo,
+) -> Result<()> {
+    let current = dbus_proxy
+        .get_name_owner(notifications_name)
+        .await
+        .context("revalidate Notifications owner before trial stop")?;
+    anyhow::ensure!(
+        current.as_str() == inspected.unique_name,
+        "Notifications owner changed during trial preparation; refusing to stop either process"
+    );
+    Ok(())
 }
 
 pub(super) async fn detect_known_daemons(owner: &Option<OwnerInfo>) -> Vec<DetectedDaemon> {

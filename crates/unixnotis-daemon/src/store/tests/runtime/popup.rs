@@ -506,6 +506,36 @@ fn popup_materialization_keeps_zero_as_the_no_automatic_hide_value() {
 }
 
 #[test]
+fn popup_deadline_overflow_becomes_indefinite_instead_of_immediate() {
+    let mut store = make_store_with_limits(10, 10);
+    let notification = store
+        .insert(make_notification("overflow-safe deadline"), 0)
+        .active_notification();
+    store.record_popup_commit_environment_at(
+        notification.key(),
+        crate::store::PopupAdmission::Show,
+        &unixnotis_core::UiHealth::default(),
+        u64::MAX,
+        Instant::now(),
+    );
+
+    assert!(
+        store.popup_deadline_is_current(notification.key(), Instant::now()),
+        "timer overflow must not expire a popup at admission"
+    );
+    let timing = store
+        .popup_timings
+        .get(&notification.key())
+        .expect("popup timing");
+    assert!(
+        timing
+            .deadline
+            .is_none_or(|deadline| deadline > Instant::now()),
+        "a representable large timer must remain in the future"
+    );
+}
+
+#[test]
 fn popup_decisions_are_pruned_after_their_active_and_history_generations_are_removed() {
     let mut store = make_store_with_limits(10, 10);
     let notification = store

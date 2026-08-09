@@ -469,6 +469,36 @@ fn sanitize_keeps_active_limit_independent_from_history_retention() {
 }
 
 #[test]
+fn sanitize_clamps_popup_timeouts_to_the_supported_timer_domain() {
+    let mut config = Config::default();
+    config.popups.default_timeout_ms = u64::MAX;
+    config.popups.critical_timeout_ms = Some(u64::MAX);
+
+    sanitize_config(&mut config);
+
+    assert_eq!(
+        config.popups.default_timeout_ms,
+        crate::MAX_POPUP_TIMEOUT_MS
+    );
+    assert_eq!(
+        config.popups.critical_timeout_ms,
+        Some(crate::MAX_POPUP_TIMEOUT_MS)
+    );
+}
+
+#[test]
+fn sanitize_preserves_zero_popup_timeout_as_indefinite() {
+    let mut config = Config::default();
+    config.popups.default_timeout_ms = 0;
+    config.popups.critical_timeout_ms = Some(0);
+
+    sanitize_config(&mut config);
+
+    assert_eq!(config.popups.default_timeout_ms, 0);
+    assert_eq!(config.popups.critical_timeout_ms, Some(0));
+}
+
+#[test]
 fn sanitize_clamps_margins_and_card_heights() {
     // Margin and min-height clamping should cover both stats and cards
     let mut config = Config::default();

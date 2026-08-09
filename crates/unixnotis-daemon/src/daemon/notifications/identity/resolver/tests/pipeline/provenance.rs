@@ -7,12 +7,6 @@ use std::time::Duration;
 use super::super::*;
 
 #[test]
-fn initial_resolution_skips_provenance_when_no_lookup_is_needed() {
-    assert!(should_return_initial_resolution(false));
-    assert!(!should_return_initial_resolution(true));
-}
-
-#[test]
 fn provenance_enrichment_is_limited_to_denied_association_candidates() {
     for (status, policies, has_candidate, expected) in [
         (

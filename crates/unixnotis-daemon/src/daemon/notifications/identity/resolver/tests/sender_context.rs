@@ -1,6 +1,6 @@
 //! Live sender-context enrichment tests
 
-use super::super::sender_context::enrich_sender_install_provenance;
+use super::super::sender_context::enrich_sender_install_provenance_blocking;
 use super::*;
 
 #[tokio::test]
@@ -11,7 +11,7 @@ async fn provenance_enrichment_preserves_known_ownership_without_lookup() {
         ..SenderMetadata::default()
     };
 
-    enrich_sender_install_provenance(&mut metadata, &DesktopIdentityIndex::default()).await;
+    enrich_sender_install_provenance_blocking(&mut metadata, &DesktopIdentityIndex::default());
 
     assert_eq!(metadata.install_provenance, expected);
 }
@@ -20,7 +20,7 @@ async fn provenance_enrichment_preserves_known_ownership_without_lookup() {
 async fn provenance_enrichment_keeps_unknown_when_process_identity_is_missing() {
     let mut metadata = SenderMetadata::default();
 
-    enrich_sender_install_provenance(&mut metadata, &DesktopIdentityIndex::default()).await;
+    enrich_sender_install_provenance_blocking(&mut metadata, &DesktopIdentityIndex::default());
 
     assert_eq!(metadata.install_provenance, InstallProvenance::Unknown);
 }
@@ -30,7 +30,7 @@ async fn provenance_enrichment_resolves_a_reopened_system_executable() {
     let (path, executable_identity) = installed_system_executable();
     let mut metadata = sender(&path, executable_identity);
 
-    enrich_sender_install_provenance(&mut metadata, &DesktopIdentityIndex::default()).await;
+    enrich_sender_install_provenance_blocking(&mut metadata, &DesktopIdentityIndex::default());
 
     assert!(metadata.install_provenance.is_known());
 }
@@ -51,7 +51,7 @@ async fn provenance_enrichment_rejects_untrusted_or_nonexecutable_sender_metadat
 
     for invalid_identity in invalid_identities {
         let mut metadata = sender(&path, invalid_identity);
-        enrich_sender_install_provenance(&mut metadata, &DesktopIdentityIndex::default()).await;
+        enrich_sender_install_provenance_blocking(&mut metadata, &DesktopIdentityIndex::default());
         assert_eq!(metadata.install_provenance, InstallProvenance::Unknown);
     }
 }
@@ -65,7 +65,7 @@ async fn provenance_enrichment_rejects_a_stale_executable_identity() {
     };
     let mut metadata = sender(&path, stale_identity);
 
-    enrich_sender_install_provenance(&mut metadata, &DesktopIdentityIndex::default()).await;
+    enrich_sender_install_provenance_blocking(&mut metadata, &DesktopIdentityIndex::default());
 
     assert_eq!(metadata.install_provenance, InstallProvenance::Unknown);
 }

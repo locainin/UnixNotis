@@ -1,5 +1,4 @@
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
 
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -8,12 +7,11 @@ use super::super::model::RasterImage;
 use super::super::pipeline::{MAX_ICON_DIMENSION, MAX_ICON_PIXELS};
 use super::super::svg::{
     checked_rgba_len, decode_svg_bytes_with_renderer, decompress_svgz_with_limit, is_gzip_payload,
-    resolve_svg_renderer,
 };
+use super::support::{renderer_fixture, svg_renderer_binary};
 
 fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage, String> {
-    let renderer = resolve_svg_renderer()?;
-    decode_svg_bytes_with_renderer(bytes, target, &renderer)
+    decode_svg_bytes_with_renderer(bytes, target, svg_renderer_binary())
 }
 
 #[test]
@@ -171,15 +169,7 @@ fn renderer_output_dimensions_are_checked_before_allocation() {
 
 #[test]
 fn malformed_renderer_dimensions_are_rejected_without_large_allocation() {
-    let directory = tempfile::tempdir().expect("create renderer fixture directory");
-    let renderer = directory.path().join("bad-renderer");
-    std::fs::write(
-        &renderer,
-        "#!/bin/sh\n# Consume the complete request before returning malformed dimensions\ndd bs=1 count=8 iflag=fullblock of=/dev/null 2>/dev/null || exit 1\ncat >/dev/null\nprintf '\\377\\377\\377\\377\\377\\377\\377\\377'\n",
-    )
-    .expect("write renderer fixture");
-    std::fs::set_permissions(&renderer, std::fs::Permissions::from_mode(0o755))
-        .expect("make renderer executable");
+    let renderer = renderer_fixture("bad-renderer");
 
     let error = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
         .expect_err("oversized child dimensions must fail");
@@ -191,15 +181,7 @@ fn malformed_renderer_dimensions_are_rejected_without_large_allocation() {
 
 #[test]
 fn renderer_deadline_terminates_a_slow_child() {
-    let directory = tempfile::tempdir().expect("create renderer fixture directory");
-    let renderer = directory.path().join("slow-renderer");
-    std::fs::write(
-        &renderer,
-        "#!/bin/sh\n# Consume the request so the parent can finish writing before the timeout\ncat >/dev/null\nsleep 2\n",
-    )
-    .expect("write renderer fixture");
-    std::fs::set_permissions(&renderer, std::fs::Permissions::from_mode(0o755))
-        .expect("make renderer executable");
+    let renderer = renderer_fixture("slow-renderer");
 
     let error = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
         .expect_err("slow renderer must be stopped");
@@ -208,15 +190,7 @@ fn renderer_deadline_terminates_a_slow_child() {
 
 #[test]
 fn renderer_stderr_is_drained_while_stdout_is_decoded() {
-    let directory = tempfile::tempdir().expect("create renderer fixture directory");
-    let renderer = directory.path().join("chatty-renderer");
-    std::fs::write(
-        &renderer,
-        "#!/bin/sh\nhead -c 1048576 /dev/zero >&2\nprintf '\\001\\000\\000\\000\\001\\000\\000\\000\\000\\000\\000\\377'\n",
-    )
-    .expect("write renderer fixture");
-    std::fs::set_permissions(&renderer, std::fs::Permissions::from_mode(0o755))
-        .expect("make renderer executable");
+    let renderer = renderer_fixture("chatty-renderer");
 
     let decoded = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
         .expect("chatty renderer should not deadlock");
@@ -225,15 +199,7 @@ fn renderer_stderr_is_drained_while_stdout_is_decoded() {
 
 #[test]
 fn renderer_stderr_is_bounded_before_error_reporting() {
-    let directory = tempfile::tempdir().expect("create renderer fixture directory");
-    let renderer = directory.path().join("noisy-failing-renderer");
-    std::fs::write(
-        &renderer,
-        "#!/bin/sh\nyes X | head -c 1048576 >&2\nexit 1\n",
-    )
-    .expect("write renderer fixture");
-    std::fs::set_permissions(&renderer, std::fs::Permissions::from_mode(0o755))
-        .expect("make renderer executable");
+    let renderer = renderer_fixture("noisy-failing-renderer");
 
     let error = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
         .expect_err("failing renderer should return an error");

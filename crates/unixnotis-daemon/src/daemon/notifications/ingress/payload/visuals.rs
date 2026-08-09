@@ -55,12 +55,7 @@ pub(in crate::daemon::notifications) fn sender_visual_role(
     actions: &[String],
     app_icon: &str,
 ) -> SenderVisualRole {
-    // Sender paths are never opened until attribution grants positive local evidence
-    if !may_materialize_application_icon(attribution) {
-        return SenderVisualRole::None;
-    }
-
-    // An advertised inline reply is an explicit communication signal
+    // Communication metadata selects a presentation slot without authenticating the application
     if actions
         .chunks_exact(2)
         .any(|pair| pair.first().is_some_and(|key| key == "inline-reply"))
@@ -83,11 +78,20 @@ pub(in crate::daemon::notifications) fn sender_visual_role(
     let desktop_metadata = index.desktop_id_has_communication_role(&attribution.desktop_id);
     if explicit_metadata || desktop_metadata {
         SenderVisualRole::ConversationAvatar
-    } else if local_avatar_path(app_icon).is_some() {
+    } else if may_materialize_application_icon(attribution) && local_avatar_path(app_icon).is_some()
+    {
         SenderVisualRole::ApplicationProvidedIcon
     } else {
         SenderVisualRole::None
     }
+}
+
+pub(in crate::daemon::notifications) const fn sender_visual_path_allowed(
+    role: SenderVisualRole,
+    attribution: &NotificationAttribution,
+) -> bool {
+    // Local paths remain identity-gated even when wire pixels may be shown as presentation data
+    !matches!(role, SenderVisualRole::None) && may_materialize_application_icon(attribution)
 }
 
 pub(in crate::daemon::notifications) fn materialize_sender_visual(

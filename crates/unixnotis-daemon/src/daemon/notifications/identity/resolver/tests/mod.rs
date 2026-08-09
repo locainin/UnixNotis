@@ -14,9 +14,9 @@ use super::model::{CandidateVerification, SenderClaimRelation, VerifiedDesktopRe
 use super::pipeline::{
     claim_has_index_candidate, needs_sender_provenance, resolve_attribution_owned_with,
     resolve_attribution_owned_with_pool, resolve_attribution_with_deadline, resolve_with_evidence,
-    should_return_initial_resolution, ATTRIBUTION_TIMEOUT,
+    ATTRIBUTION_TIMEOUT,
 };
-use super::sender_context::enrich_sender_install_provenance;
+use super::sender_context::enrich_sender_install_provenance_blocking;
 use super::AppClaim;
 use crate::daemon::notifications::identity::desktop_index::model::{
     ExecutableIdentity, FieldCode, LaunchArgument, LaunchSpec, LiteralArgument,
@@ -50,10 +50,10 @@ pub(super) async fn resolve_attribution(
         initial.attribution.interactions,
         claim_has_index_candidate(claim, index),
     );
-    if should_return_initial_resolution(needs_provenance) {
+    if !needs_provenance {
         return initial;
     }
-    enrich_sender_install_provenance(&mut sender, index).await;
+    enrich_sender_install_provenance_blocking(&mut sender, index);
     resolve_with_evidence(claim, &sender, index)
 }
 

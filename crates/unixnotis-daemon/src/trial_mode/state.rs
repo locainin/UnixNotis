@@ -35,12 +35,19 @@ pub enum RestoreAction {
 }
 
 pub struct OwnerInfo {
+    // Exact broker address is revalidated immediately before any stop operation
+    pub(super) unique_name: String,
     // D-Bus owner PID when available
     pub(super) pid: Option<u32>,
     // Process name from /proc or ps
     pub(super) comm: Option<String>,
     // Full argv for process-based restore
     pub(super) args: Option<Vec<String>>,
+}
+
+pub(in crate::trial_mode) enum NotificationOwnerState {
+    Unowned,
+    Owned(OwnerInfo),
 }
 
 pub struct DetectedDaemon {
@@ -62,23 +69,24 @@ pub async fn prepare_trial(
 ) -> Result<TrialState> {
     debug!("trial mode detection started");
     // Step 1: resolve the current D-Bus owner for Notifications
-    let owner = owner::detect_owner(dbus_proxy, notifications_name.clone()).await?;
-    if owner.is_none() {
-        debug!("trial mode: no current notification owner");
-        return Ok(TrialState::default());
-    }
+    let owner = match owner::detect_owner(dbus_proxy, notifications_name.clone()).await? {
+        NotificationOwnerState::Unowned => {
+            debug!("trial mode: no current notification owner");
+            return Ok(TrialState::default());
+        }
+        NotificationOwnerState::Owned(owner) => owner,
+    };
 
-    if let Some(info) = owner.as_ref() {
-        debug!(
-            pid = info.pid,
-            comm = info.comm.as_deref().unwrap_or("unknown"),
-            "trial mode: current owner detected"
-        );
-    }
+    debug!(
+        pid = owner.pid,
+        comm = owner.comm.as_deref().unwrap_or("unknown"),
+        "trial mode: current owner detected"
+    );
 
     // Step 2: collect known daemon status so prompt output is actionable
-    let daemons = owner::detect_known_daemons(&owner).await;
-    owner::print_detected_daemons(&daemons, &owner);
+    let owner_view = Some(owner);
+    let daemons = owner::detect_known_daemons(&owner_view).await;
+    owner::print_detected_daemons(&daemons, &owner_view);
 
     if !args.yes {
         // Prompt runs on a blocking worker to keep async runtime responsive
@@ -90,9 +98,10 @@ pub async fn prepare_trial(
         }
     }
 
-    let Some(owner) = owner else {
-        return Err(anyhow!("no current owner detected for trial mode"));
+    let Some(owner) = owner_view else {
+        return Err(anyhow!("trial owner state disappeared before revalidation"));
     };
+    owner::ensure_owner_is_current(dbus_proxy, notifications_name.clone(), &owner).await?;
 
     // Step 3: stop current owner and capture restore plan when applicable
     let restore_action = control::stop_active_owner(args, &owner).await?;
