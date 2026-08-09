@@ -14,6 +14,7 @@ serde_json.workspace = true
 semver.workspace = true
 serde.workspace = true
 rustix.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
 unicode-width.workspace = true
