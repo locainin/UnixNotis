@@ -4,17 +4,19 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 
 use super::{
-    active_unit_metadata, classify_installation_channel, installed_system_package_paths_at,
-    parse_active_unit_metadata, parse_exec_start_path, path_entry_exists, property_value,
-    reject_channel, reject_conflicting_installation_channel, ActiveUnitMetadata,
-    InstallationChannel, SYSTEM_BINARY_ROOT, SYSTEM_UNIT_ROOT,
+    active_unit_metadata, classify_installation_channel, classify_installation_channel_at,
+    installed_system_package_paths_at, parse_active_unit_metadata, parse_exec_start_path,
+    path_entry_exists, property_value, reject_channel, reject_classified_channel,
+    reject_conflicting_installation_channel, validate_systemctl_output, ActiveUnitMetadata,
+    InstallationChannel, MAX_SYSTEMCTL_OUTPUT_BYTES, SYSTEM_BINARY_ROOT, SYSTEM_UNIT_ROOT,
 };
 use crate::actions::ActionContext;
-use crate::app::events::UiMessage;
+use crate::app::events::{UiMessage, WorkerEvent};
 use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
+use std::os::unix::process::ExitStatusExt;
 
 struct TestHomeLayout {
     unit_root: PathBuf,
@@ -48,10 +50,9 @@ fn test_context(root: &Path) -> (Detection, InstallPaths) {
     (detection, paths)
 }
 
-fn action_context<'a>(detection: &'a Detection, paths: &'a InstallPaths) -> ActionContext<'a> {
+fn action_context<'a>(_detection: &'a Detection, paths: &'a InstallPaths) -> ActionContext<'a> {
     let (log_tx, _log_rx) = mpsc::sync_channel::<UiMessage>(32);
     ActionContext {
-        detection,
         paths,
         install_state: None,
         log_tx,
@@ -64,36 +65,100 @@ fn action_context<'a>(detection: &'a Detection, paths: &'a InstallPaths) -> Acti
 #[test]
 fn matching_home_and_system_paths_select_one_installation_channel() {
     let home = test_home_layout("installation-channel-matching");
+    let system = test_home_layout("installation-channel-matching-system");
+    materialize_channel(&home);
+    materialize_channel(&system);
     assert_eq!(
-        classify_installation_channel(
+        classify_installation_channel_at(
             &home.unit_root.join("unixnotis-daemon.service"),
             &home.binary_root.join("unixnotis-daemon"),
             &home.unit_root,
             &home.binary_root,
+            &system.unit_root,
+            &system.binary_root,
         ),
         InstallationChannel::HomeLocal
     );
     assert_eq!(
-        classify_installation_channel(
-            &Path::new(SYSTEM_UNIT_ROOT).join("unixnotis-daemon.service"),
-            &Path::new(SYSTEM_BINARY_ROOT).join("unixnotis-daemon"),
+        classify_installation_channel_at(
+            &system.unit_root.join("unixnotis-daemon.service"),
+            &system.binary_root.join("unixnotis-daemon"),
             &home.unit_root,
             &home.binary_root,
+            &system.unit_root,
+            &system.binary_root,
         ),
         InstallationChannel::SystemPackage
     );
 }
 
 #[test]
+fn one_existing_channel_does_not_require_the_other_policy_root_to_exist() {
+    let home = test_home_layout("installation-channel-one-root-home");
+    let system = test_home_layout("installation-channel-one-root-system");
+    materialize_channel(&system);
+
+    assert_eq!(
+        classify_installation_channel_at(
+            &system.unit_root.join("unixnotis-daemon.service"),
+            &system.binary_root.join("unixnotis-daemon"),
+            &home.unit_root,
+            &home.binary_root,
+            &system.unit_root,
+            &system.binary_root,
+        ),
+        InstallationChannel::SystemPackage
+    );
+
+    fs::remove_dir_all(
+        system
+            .unit_root
+            .ancestors()
+            .nth(4)
+            .expect("system fixture root"),
+    )
+    .expect("remove system fixture");
+    materialize_channel(&home);
+    assert_eq!(
+        classify_installation_channel_at(
+            &home.unit_root.join("unixnotis-daemon.service"),
+            &home.binary_root.join("unixnotis-daemon"),
+            &home.unit_root,
+            &home.binary_root,
+            &system.unit_root,
+            &system.binary_root,
+        ),
+        InstallationChannel::HomeLocal
+    );
+    fs::remove_dir_all(
+        home.unit_root
+            .ancestors()
+            .nth(4)
+            .expect("home fixture root"),
+    )
+    .expect("remove home fixture");
+}
+
+#[test]
 fn crossed_unit_and_binary_paths_are_always_mixed() {
     let home = test_home_layout("installation-channel-crossed");
+    let system = test_home_layout("installation-channel-crossed-system");
+    materialize_channel(&home);
+    materialize_channel(&system);
     let home_unit = home.unit_root.join("unixnotis-daemon.service");
     let home_binary = home.binary_root.join("unixnotis-daemon");
-    let system_unit = Path::new(SYSTEM_UNIT_ROOT).join("unixnotis-daemon.service");
-    let system_binary = Path::new(SYSTEM_BINARY_ROOT).join("unixnotis-daemon");
+    let system_unit = system.unit_root.join("unixnotis-daemon.service");
+    let system_binary = system.binary_root.join("unixnotis-daemon");
     for (unit, binary) in [(&home_unit, &system_binary), (&system_unit, &home_binary)] {
         assert_eq!(
-            classify_installation_channel(unit, binary, &home.unit_root, &home.binary_root,),
+            classify_installation_channel_at(
+                unit,
+                binary,
+                &home.unit_root,
+                &home.binary_root,
+                &system.unit_root,
+                &system.binary_root,
+            ),
             InstallationChannel::Mixed
         );
     }
@@ -112,6 +177,109 @@ fn custom_paths_are_not_silently_treated_as_home_or_package_installs() {
         ),
         InstallationChannel::Unknown
     );
+}
+
+#[test]
+fn channel_classification_follows_cross_channel_symlink_targets() {
+    use std::os::unix::fs::symlink;
+
+    let home = test_home_layout("installation-channel-link-home");
+    let system = test_home_layout("installation-channel-link-system");
+    materialize_channel(&home);
+    materialize_channel(&system);
+    let linked_binary = home.binary_root.join("linked-daemon");
+    symlink(system.binary_root.join("unixnotis-daemon"), &linked_binary)
+        .expect("create home-to-system binary link");
+
+    assert_eq!(
+        classify_installation_channel_at(
+            &home.unit_root.join("unixnotis-daemon.service"),
+            &linked_binary,
+            &home.unit_root,
+            &home.binary_root,
+            &system.unit_root,
+            &system.binary_root,
+        ),
+        InstallationChannel::Mixed
+    );
+
+    let linked_unit = system.unit_root.join("linked.service");
+    symlink(
+        home.unit_root.join("unixnotis-daemon.service"),
+        &linked_unit,
+    )
+    .expect("create system-to-home unit link");
+    assert_eq!(
+        classify_installation_channel_at(
+            &linked_unit,
+            &system.binary_root.join("unixnotis-daemon"),
+            &home.unit_root,
+            &home.binary_root,
+            &system.unit_root,
+            &system.binary_root,
+        ),
+        InstallationChannel::Mixed
+    );
+}
+
+#[test]
+fn dangling_channel_link_is_unknown() {
+    use std::os::unix::fs::symlink;
+
+    let home = test_home_layout("installation-channel-dangling-home");
+    let system = test_home_layout("installation-channel-dangling-system");
+    materialize_channel(&home);
+    materialize_channel(&system);
+    let dangling = home.binary_root.join("dangling-daemon");
+    symlink(home.binary_root.join("missing-daemon"), &dangling).expect("create dangling link");
+
+    assert_eq!(
+        classify_installation_channel_at(
+            &home.unit_root.join("unixnotis-daemon.service"),
+            &dangling,
+            &home.unit_root,
+            &home.binary_root,
+            &system.unit_root,
+            &system.binary_root,
+        ),
+        InstallationChannel::Unknown
+    );
+}
+
+#[test]
+fn unrelated_object_under_the_local_prefix_is_not_a_managed_binary_channel() {
+    let home = test_home_layout("installation-channel-local-prefix-home");
+    let system = test_home_layout("installation-channel-local-prefix-system");
+    materialize_channel(&home);
+    materialize_channel(&system);
+    let local_root = home.binary_root.parent().expect("local root");
+    let unrelated_root = local_root.join("share").join("unrelated");
+    fs::create_dir_all(&unrelated_root).expect("create unrelated local directory");
+    let unrelated_binary = unrelated_root.join("unixnotis-daemon");
+    fs::write(&unrelated_binary, "unrelated binary").expect("write unrelated local binary");
+
+    assert_eq!(
+        classify_installation_channel_at(
+            &home.unit_root.join("unixnotis-daemon.service"),
+            &unrelated_binary,
+            &home.unit_root,
+            &home.binary_root,
+            &system.unit_root,
+            &system.binary_root,
+        ),
+        InstallationChannel::Unknown
+    );
+}
+
+fn materialize_channel(layout: &TestHomeLayout) {
+    fs::create_dir_all(&layout.unit_root).expect("create channel unit root");
+    fs::create_dir_all(&layout.binary_root).expect("create channel binary root");
+    fs::write(
+        layout.unit_root.join("unixnotis-daemon.service"),
+        "[Service]\n",
+    )
+    .expect("write channel unit");
+    fs::write(layout.binary_root.join("unixnotis-daemon"), "binary").expect("write channel binary");
 }
 
 #[test]
@@ -285,6 +453,62 @@ fn systemctl_probe_returns_runtime_mask_metadata_without_dynamic_unit_paths() {
 }
 
 #[test]
+fn systemctl_probe_failure_is_not_treated_as_an_absent_unit() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = crate::test_support::fs::unique_temp_path("systemctl-inspection-failure");
+    let fake_bin = root.join("bin");
+    fs::create_dir_all(&fake_bin).expect("create fake command directory");
+    crate::test_support::fs::write_executable(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\nprintf 'user manager unavailable\\n' >&2\nexit 1\n",
+    );
+    let _path = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
+
+    let error = active_unit_metadata().expect_err("failed inspection must remain unknown");
+
+    assert!(error
+        .to_string()
+        .contains("failed to inspect UnixNotis systemd unit"));
+    assert!(error.to_string().contains("user manager unavailable"));
+    fs::remove_dir_all(root).expect("remove fake systemctl fixture");
+}
+
+#[test]
+fn systemctl_metadata_budget_accepts_exact_stream_limits_and_rejects_oversize() {
+    assert_eq!(MAX_SYSTEMCTL_OUTPUT_BYTES, 32_768);
+    let output = |stdout: Vec<u8>, stderr: Vec<u8>, status| std::process::Output {
+        status: std::process::ExitStatus::from_raw(status),
+        stdout,
+        stderr,
+    };
+    let exact = vec![b'x'; MAX_SYSTEMCTL_OUTPUT_BYTES];
+
+    assert_eq!(
+        validate_systemctl_output(output(exact.clone(), Vec::new(), 0))
+            .expect("exact stdout budget")
+            .len(),
+        MAX_SYSTEMCTL_OUTPUT_BYTES
+    );
+    let exact_stderr = validate_systemctl_output(output(Vec::new(), exact, 1))
+        .expect_err("failed systemctl output remains an error");
+    assert!(exact_stderr
+        .to_string()
+        .contains("failed to inspect UnixNotis systemd unit"));
+    assert!(validate_systemctl_output(output(
+        vec![b'x'; MAX_SYSTEMCTL_OUTPUT_BYTES + 1],
+        Vec::new(),
+        0,
+    ))
+    .is_err());
+    assert!(validate_systemctl_output(output(
+        Vec::new(),
+        vec![b'x'; MAX_SYSTEMCTL_OUTPUT_BYTES + 1],
+        1,
+    ))
+    .is_err());
+}
+
+#[test]
 fn installation_channel_guard_rejects_a_persistent_mask_through_the_real_action_boundary() {
     let _lock = crate::test_support::env::test_env_lock();
     let root = crate::test_support::fs::unique_temp_path("channel-guard-persistent-mask");
@@ -311,11 +535,20 @@ fn installation_channel_guard_rejects_a_persistent_mask_through_the_real_action_
 #[test]
 fn conflict_dispatcher_rejects_system_package_paths() {
     let root = crate::test_support::fs::unique_temp_path("channel-dispatch-package");
-    let (detection, paths) = test_context(&root);
-    let mut context = action_context(&detection, &paths);
+    let (_detection, paths) = test_context(&root);
+    let (log_tx, log_rx) = mpsc::sync_channel::<UiMessage>(8);
+    let mut context = ActionContext {
+        paths: &paths,
+        install_state: None,
+        log_tx,
+        action_mode: ActionMode::Install,
+        restore_backup: None,
+        service_reload_required: Arc::new(AtomicBool::new(false)),
+    };
 
-    let error = reject_channel(
+    let error = reject_classified_channel(
         &mut context,
+        InstallationChannel::SystemPackage,
         &Path::new(SYSTEM_UNIT_ROOT).join("unixnotis-daemon.service"),
         &Path::new(SYSTEM_BINARY_ROOT).join("unixnotis-daemon"),
     )
@@ -325,4 +558,68 @@ fn conflict_dispatcher_rejects_system_package_paths() {
         error.to_string(),
         "the system-package UnixNotis installation must be removed with its package manager before a home-local install"
     );
+    let lines = log_rx
+        .try_iter()
+        .filter_map(|message| match message {
+            UiMessage::Worker(WorkerEvent::LogLine(line)) => Some(line),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(lines
+        .iter()
+        .any(|line| { line == "Error: system package UnixNotis installation channel" }));
+    assert!(lines.iter().any(|line| {
+        line == &format!(
+            "- unit: {}",
+            Path::new(SYSTEM_UNIT_ROOT)
+                .join("unixnotis-daemon.service")
+                .display()
+        )
+    }));
+    assert!(lines.iter().any(|line| {
+        line == &format!(
+            "- executable: {}",
+            Path::new(SYSTEM_BINARY_ROOT)
+                .join("unixnotis-daemon")
+                .display()
+        )
+    }));
+}
+
+#[test]
+fn resolved_channel_boundary_rejects_objects_outside_managed_roots() {
+    let root = crate::test_support::fs::unique_temp_path("channel-boundary-unknown");
+    let home = test_home_layout("channel-boundary-unknown-home");
+    let system = test_home_layout("channel-boundary-unknown-system");
+    materialize_channel(&home);
+    materialize_channel(&system);
+    let (detection, paths) = test_context(&root);
+    let mut context = action_context(&detection, &paths);
+
+    let error = reject_channel(
+        &mut context,
+        &system.unit_root.join("unixnotis-daemon.service"),
+        &system.binary_root.join("unixnotis-daemon"),
+    )
+    .expect_err("unrecognized resolved objects must reach the channel conflict policy");
+
+    assert!(error
+        .to_string()
+        .contains("unrecognized installation channel"));
+    fs::remove_dir_all(root).ok();
+    fs::remove_dir_all(
+        home.unit_root
+            .ancestors()
+            .nth(4)
+            .expect("home fixture root"),
+    )
+    .ok();
+    fs::remove_dir_all(
+        system
+            .unit_root
+            .ancestors()
+            .nth(4)
+            .expect("system fixture root"),
+    )
+    .ok();
 }

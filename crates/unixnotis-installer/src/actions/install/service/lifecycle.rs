@@ -19,7 +19,7 @@ fn service_start_mode(ctx: &ActionContext) -> ServiceStartMode {
     service_start_mode_from_enabled(
         ctx.install_state
             .as_ref()
-            .map(crate::actions::install_state::InstallState::service_enabled),
+            .map(|state| state.service_enabled),
     )
 }
 

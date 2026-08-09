@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
-use super::{log_line, ActionContext};
+use super::super::{log_line, ActionContext};
 
 const SYSTEM_UNIT_ROOT: &str = "/usr/lib/systemd/user";
 const SYSTEM_BINARY_ROOT: &str = "/usr/bin";
@@ -35,7 +35,9 @@ enum ActiveUnitMetadata {
     },
 }
 
-pub(super) fn reject_conflicting_installation_channel(ctx: &mut ActionContext) -> Result<()> {
+pub(in crate::actions) fn reject_conflicting_installation_channel(
+    ctx: &mut ActionContext,
+) -> Result<()> {
     if !ctx.paths.service.is_systemd() {
         return Ok(());
     }
@@ -73,6 +75,15 @@ fn reject_channel(ctx: &mut ActionContext, fragment: &Path, executable: &Path) -
         ctx.paths.service.artifact_root(),
         &ctx.paths.bin_dir,
     );
+    reject_classified_channel(ctx, channel, fragment, executable)
+}
+
+fn reject_classified_channel(
+    ctx: &mut ActionContext,
+    channel: InstallationChannel,
+    fragment: &Path,
+    executable: &Path,
+) -> Result<()> {
     match channel {
         InstallationChannel::HomeLocal => Ok(()),
         InstallationChannel::SystemPackage => {
@@ -111,14 +122,25 @@ fn active_unit_metadata() -> Result<ActiveUnitMetadata> {
     let output = command
         .output()
         .context("inspect active UnixNotis systemd unit")?;
-    if !output.status.success() {
-        return Ok(ActiveUnitMetadata::Absent);
-    }
-    if output.stdout.len() > MAX_SYSTEMCTL_OUTPUT_BYTES {
+    let text = validate_systemctl_output(output)?;
+    parse_active_unit_metadata(&text)
+}
+
+fn validate_systemctl_output(output: std::process::Output) -> Result<String> {
+    if output.stdout.len() > MAX_SYSTEMCTL_OUTPUT_BYTES
+        || output.stderr.len() > MAX_SYSTEMCTL_OUTPUT_BYTES
+    {
         bail!("systemctl unit metadata exceeded the safe output limit");
     }
-    let text = String::from_utf8(output.stdout).context("systemctl unit metadata was not UTF-8")?;
-    parse_active_unit_metadata(&text)
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "failed to inspect UnixNotis systemd unit (status {}): {}",
+            output.status,
+            stderr.trim()
+        );
+    }
+    String::from_utf8(output.stdout).context("systemctl unit metadata was not UTF-8")
 }
 
 fn parse_active_unit_metadata(text: &str) -> Result<ActiveUnitMetadata> {
@@ -203,8 +225,34 @@ fn classify_installation_channel(
     home_unit_root: &Path,
     home_binary_root: &Path,
 ) -> InstallationChannel {
-    let unit_channel = path_channel(fragment, home_unit_root, Path::new(SYSTEM_UNIT_ROOT));
-    let binary_channel = path_channel(executable, home_binary_root, Path::new(SYSTEM_BINARY_ROOT));
+    classify_installation_channel_at(
+        fragment,
+        executable,
+        home_unit_root,
+        home_binary_root,
+        Path::new(SYSTEM_UNIT_ROOT),
+        Path::new(SYSTEM_BINARY_ROOT),
+    )
+}
+
+fn classify_installation_channel_at(
+    fragment: &Path,
+    executable: &Path,
+    home_unit_root: &Path,
+    home_binary_root: &Path,
+    system_unit_root: &Path,
+    system_binary_root: &Path,
+) -> InstallationChannel {
+    let unit_channel = path_channel(fragment, home_unit_root, system_unit_root);
+    let home_release_root = home_binary_root
+        .parent()
+        .map(|root| root.join("lib").join("unixnotis"));
+    let binary_channel = binary_path_channel(
+        executable,
+        home_binary_root,
+        home_release_root.as_deref(),
+        system_binary_root,
+    );
     match (unit_channel, binary_channel) {
         (Some(InstallationChannel::HomeLocal), Some(InstallationChannel::HomeLocal)) => {
             InstallationChannel::HomeLocal
@@ -217,14 +265,44 @@ fn classify_installation_channel(
     }
 }
 
-fn path_channel(path: &Path, home_root: &Path, system_root: &Path) -> Option<InstallationChannel> {
-    if path.starts_with(home_root) {
-        Some(InstallationChannel::HomeLocal)
-    } else if path.starts_with(system_root) {
-        Some(InstallationChannel::SystemPackage)
-    } else {
-        None
+fn binary_path_channel(
+    path: &Path,
+    home_binary_root: &Path,
+    home_release_root: Option<&Path>,
+    system_binary_root: &Path,
+) -> Option<InstallationChannel> {
+    let path = fs::canonicalize(path).ok()?;
+    if fs::canonicalize(home_binary_root)
+        .ok()
+        .is_some_and(|root| path.starts_with(root))
+    {
+        return Some(InstallationChannel::HomeLocal);
     }
+    if home_release_root
+        .and_then(|root| fs::canonicalize(root).ok())
+        .is_some_and(|root| path.starts_with(root))
+    {
+        return Some(InstallationChannel::HomeLocal);
+    }
+    fs::canonicalize(system_binary_root)
+        .ok()
+        .filter(|root| path.starts_with(root))
+        .map(|_root| InstallationChannel::SystemPackage)
+}
+
+fn path_channel(path: &Path, home_root: &Path, system_root: &Path) -> Option<InstallationChannel> {
+    // Resolve the object and both policy roots so lexical symlink placement has no authority
+    let path = fs::canonicalize(path).ok()?;
+    if fs::canonicalize(home_root)
+        .ok()
+        .is_some_and(|root| path.starts_with(root))
+    {
+        return Some(InstallationChannel::HomeLocal);
+    }
+    fs::canonicalize(system_root)
+        .ok()
+        .filter(|root| path.starts_with(root))
+        .map(|_root| InstallationChannel::SystemPackage)
 }
 
 fn log_channel_conflict(ctx: &mut ActionContext, label: &str, fragment: &Path, executable: &Path) {
