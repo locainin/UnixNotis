@@ -6,7 +6,7 @@ async fn daemon_state_boolean_flags_reflect_runtime_updates() {
 
     assert!(state.trial_mode());
     assert!(!state.panel_ready());
-    assert!(!state.popups_process_running());
+    assert!(!state.ui_health().popups_process_running);
 
     // These health flags gate user-visible command handling, so getters must reflect writes exactly
     state.set_center_process_running(true);
@@ -14,7 +14,7 @@ async fn daemon_state_boolean_flags_reflect_runtime_updates() {
     state.set_popups_process_running(true);
 
     assert!(state.panel_ready());
-    assert!(state.popups_process_running());
+    assert!(state.ui_health().popups_process_running);
     state.set_popups_ready(":1.10", true);
 
     let health = state.ui_health();
@@ -36,7 +36,7 @@ async fn daemon_state_boolean_flags_can_return_to_false() {
     state.set_popups_process_running(false);
 
     assert!(!state.panel_ready());
-    assert!(!state.popups_process_running());
+    assert!(!state.ui_health().popups_process_running);
 }
 
 #[tokio::test]

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
 use tracing::{debug, warn};
 use unixnotis_core::{ImageData, Notification, NotificationKey};
 use zbus::message::Header;
@@ -12,7 +11,6 @@ use crate::daemon::notifications::identity::{
 use crate::daemon::notifications::identity::{
     resolve_sender_metadata, SenderMetadataStatus, SENDER_CREDENTIAL_TIMEOUT,
 };
-use crate::daemon::notifications::ingress::metrics::RejectedRequest;
 use crate::daemon::notifications::ingress::payload::{
     build_notification, materialize_sender_visual, may_materialize_content_image, owned_to_string,
     sender_visual_role, NotificationInput, SenderVisualRole, CONVERSATION_AVATAR_TIMEOUT,
@@ -56,7 +54,7 @@ impl NotificationServer {
         body: String,
         actions: Vec<String>,
         hints: WireHints,
-        header: &Header<'_>,
+        sender: SenderMetadata,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<NotifyCompletion> {
         let _ = Self::log_received_notification(
@@ -66,19 +64,6 @@ impl NotificationServer {
             replaces_id,
             expire_timeout,
         );
-        let sender = self.resolve_sender(header).await;
-        if !self
-            .notify_quota
-            .admit_principal(super::quota_principal(&sender), Instant::now())
-        {
-            let rejected = self
-                .ingress_metrics
-                .record_rejection(RejectedRequest::NotifyQuota);
-            debug!(rejected, "notification request rejected by principal quota");
-            return Err(zbus::fdo::Error::LimitsExceeded(
-                "notification ingress quota exceeded".to_string(),
-            ));
-        }
         let (hints, wire_image_data, image_path) = hints.into_parts();
         let notification = self
             .notification_from_wire(
@@ -128,7 +113,7 @@ impl NotificationServer {
         true
     }
 
-    async fn resolve_sender(&self, header: &Header<'_>) -> SenderMetadata {
+    pub(super) async fn resolve_sender(&self, header: &Header<'_>) -> SenderMetadata {
         // Sender metadata helps with ownership checks and diagnostics
         if let Ok(sender) = tokio::time::timeout(
             SENDER_CREDENTIAL_TIMEOUT,
@@ -177,8 +162,12 @@ impl NotificationServer {
             &input.actions,
             &input.app_icon,
         );
-        let sender_visual =
-            materialize_sender_visual_for_role(sender_visual_role, input.app_icon.clone()).await;
+        let sender_visual = materialize_sender_visual_for_role(
+            sender_visual_role,
+            &resolution.attribution,
+            input.app_icon.clone(),
+        )
+        .await;
         let materialized_content =
             materialize_content_visual(&resolution.attribution, input.image_path.as_deref()).await;
         let (image_data, wire_sender_visual) = normalize_wire_image_for_role(
@@ -236,26 +225,11 @@ impl NotificationServer {
         notification: Notification,
         replaces_id: u32,
     ) -> StoredNotification {
-        // Store mutation and scheduler delivery share one serialized lock scope
-        let outcome = {
-            let mut store = self.state.store.lock().await;
-            // Sample renderer health immediately before the serialized commit
-            let ui_health = self.state.ui_health();
-            let outcome = store.insert_with_ui_health(notification, replaces_id, &ui_health);
-            if let CommitDisposition::Active(notification) = &outcome.disposition {
-                // The store resolved both clocks after applying rules and committing the generation
-                let expiration = outcome.expiration;
-                store.set_expiration(notification, expiration);
-                // Unbounded send is synchronous, so commit order is preserved without an await
-                self.scheduler
-                    .schedule(notification.id, notification.generation, expiration);
-            }
-            // Eviction cancellation is committed in the same order as the insertion
-            for key in &outcome.evicted {
-                self.scheduler.schedule(key.id, key.generation, None);
-            }
-            outcome
-        };
+        // Shared state owns generation serialization for every current and future caller
+        let outcome = self
+            .state
+            .commit_notification_generation(notification, replaces_id, &self.scheduler)
+            .await;
         StoredNotification { outcome }
     }
 
@@ -412,9 +386,10 @@ fn normalize_wire_image_for_role(
 
 async fn materialize_sender_visual_for_role(
     role: SenderVisualRole,
+    attribution: &unixnotis_core::NotificationAttribution,
     app_icon: String,
 ) -> Option<ImageData> {
-    if matches!(role, SenderVisualRole::None) {
+    if !super::super::ingress::payload::sender_visual_path_allowed(role, attribution) {
         return None;
     }
     run_avatar_worker(

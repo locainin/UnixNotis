@@ -81,17 +81,6 @@ impl DaemonState {
             .popups_ready
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "getter is used by child-process tests")
-    )]
-    pub(crate) fn popups_process_running(&self) -> bool {
-        self.ui_health
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .popups_process_running
-    }
-
     pub(crate) fn should_warn_popups_unready(&self) -> bool {
         !self.popups_ready()
             && self

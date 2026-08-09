@@ -45,6 +45,7 @@ impl NotificationServer {
         header: &Header<'_>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
+        let sender = self.resolve_sender(header).await;
         let completion = self
             .ingest_notify_deferred(
                 app_name,
@@ -54,7 +55,7 @@ impl NotificationServer {
                 body,
                 actions,
                 hints,
-                header,
+                sender,
                 expire_timeout,
             )
             .await?;

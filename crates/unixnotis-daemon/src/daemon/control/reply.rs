@@ -40,6 +40,8 @@ impl ControlServer {
     {
         // Text validation happens before any notification lookup or signal work
         let reply_text = validate_reply_text(reply_text)?;
+        // Reply signals carry only a numeric ID, so replacement commits share this exact gate
+        let _interaction = self.state.interaction_gates.lock(id).await;
         let target = {
             // Keep the Arc so later cleanup can distinguish a same-ID replacement
             let store = self.state.store.lock().await;
@@ -53,6 +55,18 @@ impl ControlServer {
                 })?
         };
         let destination = self.reply_destination(&target).await?;
+
+        let is_current = self
+            .state
+            .store
+            .lock()
+            .await
+            .is_active_notification_generation(id, &target);
+        if !is_current {
+            return Err(zbus::fdo::Error::InvalidArgs(
+                "notification changed before its reply could be submitted".to_string(),
+            ));
+        }
 
         // A destination header keeps sensitive reply text visible only to its owning connection
         let context = SignalContext::new(self.state.connection(), NOTIFICATIONS_OBJECT_PATH)

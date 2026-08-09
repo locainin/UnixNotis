@@ -75,15 +75,6 @@ impl NotificationServer {
         #[zbus(header)] header: Header<'_>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
-        if !self.notify_quota.admit_global(Instant::now()) {
-            let rejected = self
-                .ingress_metrics
-                .record_rejection(RejectedRequest::NotifyQuota);
-            debug!(rejected, "notification request rejected by ingress quota");
-            return Err(zbus::fdo::Error::LimitsExceeded(
-                "notification ingress quota exceeded".to_string(),
-            ));
-        }
         let _slot = self.notify_slots.try_acquire().map_err(|_error| {
             let rejected = self
                 .ingress_metrics
@@ -97,6 +88,23 @@ impl NotificationServer {
             )
         })?;
         let _activity = self.ingress_metrics.enter_handler();
+        let sender = self.resolve_sender(&header).await;
+        if !self
+            .notify_quota
+            .try_admit_notify(super::quota_principal(&sender), Instant::now())
+            .is_allowed()
+        {
+            let rejected = self
+                .ingress_metrics
+                .record_rejection(RejectedRequest::NotifyQuota);
+            debug!(
+                rejected,
+                "notification request rejected by hierarchical quota"
+            );
+            return Err(zbus::fdo::Error::LimitsExceeded(
+                "notification ingress quota exceeded".to_string(),
+            ));
+        }
         // The interface adapter forwards the authenticated header with the exact wire payload
         let completion = self
             .ingest_notify_deferred(
@@ -107,7 +115,7 @@ impl NotificationServer {
                 body,
                 actions,
                 hints,
-                &header,
+                sender,
                 expire_timeout,
             )
             .await?;
@@ -133,15 +141,6 @@ impl NotificationServer {
         id: u32,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
-        if !self.close_quota.admit_global(Instant::now()) {
-            let rejected = self
-                .ingress_metrics
-                .record_rejection(RejectedRequest::CloseQuota);
-            debug!(rejected, "close request rejected by ingress quota");
-            return Err(zbus::fdo::Error::LimitsExceeded(
-                "notification close quota exceeded".to_string(),
-            ));
-        }
         let _activity = self.ingress_metrics.enter_handler();
         // Ownership checks remain in the shared close path used by all D-Bus callers
         self.close_notification_if_owned(id, &header).await

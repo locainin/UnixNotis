@@ -45,6 +45,153 @@ fn max_active_hard_cap_limits_even_when_config_is_higher() {
 }
 
 #[test]
+fn noisy_principal_cannot_evict_another_principals_active_notifications() {
+    let mut store = make_store_with_limits(5, 128);
+    let protected = (0..5)
+        .map(|index| {
+            store
+                .insert(
+                    make_notification_with_sender(
+                        &format!("protected-{index}"),
+                        ":1.protected",
+                        10,
+                        100,
+                    ),
+                    0,
+                )
+                .active_notification()
+                .key()
+        })
+        .collect::<Vec<_>>();
+
+    for index in 0..50 {
+        store.insert(
+            make_notification_with_sender(&format!("noisy-{index}"), ":1.noisy", 20, 200),
+            0,
+        );
+    }
+
+    let active = store.list_active();
+    for key in protected {
+        assert!(
+            active.iter().any(|notification| notification.key() == key),
+            "a different principal must not evict protected active state"
+        );
+    }
+    assert_eq!(active.len(), 10);
+}
+
+#[test]
+fn distinct_bus_senders_remain_isolated_without_process_metadata() {
+    let mut store = make_store_with_limits(5, 128);
+    let protected = (0..5)
+        .map(|index| {
+            let mut notification = make_notification(&format!("protected-bus-{index}"));
+            notification.sender_name = Some(":1.100".to_string());
+            notification.sender_pid = None;
+            notification.sender_start_time = None;
+            store.insert(notification, 0).active_notification().key()
+        })
+        .collect::<Vec<_>>();
+
+    for index in 0..20 {
+        let mut notification = make_notification(&format!("noisy-bus-{index}"));
+        notification.sender_name = Some(":1.200".to_string());
+        notification.sender_pid = None;
+        notification.sender_start_time = None;
+        store.insert(notification, 0);
+    }
+
+    let active = store.list_active();
+    assert!(
+        protected
+            .iter()
+            .all(|key| active.iter().any(|notification| notification.key() == *key)),
+        "a degraded sender must not evict a different unique bus connection"
+    );
+    assert_eq!(active.len(), 10);
+}
+
+#[test]
+fn absolute_active_cap_keeps_exact_capacity_and_evicts_the_admitted_tie() {
+    let mut store = make_store_with_limits(12, 256);
+    let mut admitted_oldest = None;
+    for principal in 0..12_u32 {
+        let count = if principal < 8 { 11 } else { 10 };
+        for index in 0..count {
+            let outcome = store.insert(
+                make_notification_with_sender(
+                    &format!("principal-{principal}-{index}"),
+                    &format!(":1.{principal}"),
+                    principal.saturating_add(1),
+                    u64::from(principal).saturating_add(100),
+                ),
+                0,
+            );
+            if principal == 0 && index == 0 {
+                admitted_oldest = Some(outcome.active_notification().key());
+            }
+            assert!(
+                outcome.evicted.is_empty(),
+                "the exact global capacity must not evict active state"
+            );
+        }
+    }
+    assert_eq!(store.list_active().len(), 128);
+
+    let outcome = store.insert(
+        make_notification_with_sender("principal-0-tie", ":1.0", 1, 100),
+        0,
+    );
+
+    assert_eq!(store.list_active().len(), 128);
+    assert_eq!(outcome.evicted, vec![admitted_oldest.expect("oldest key")]);
+}
+
+#[test]
+fn absolute_active_cap_evicts_a_largest_existing_share_not_the_newcomer() {
+    let mut store = make_store_with_limits(12, 256);
+    for principal in 0..10_u32 {
+        for index in 0..12 {
+            store.insert(
+                make_notification_with_sender(
+                    &format!("incumbent-{principal}-{index}"),
+                    &format!(":1.{principal}"),
+                    principal.saturating_add(1),
+                    u64::from(principal).saturating_add(100),
+                ),
+                0,
+            );
+        }
+    }
+    let mut newcomer_keys = Vec::new();
+    let mut final_outcome = None;
+    for index in 0..9 {
+        let outcome = store.insert(
+            make_notification_with_sender(&format!("newcomer-{index}"), ":1.newcomer", 999, 9_999),
+            0,
+        );
+        newcomer_keys.push(outcome.active_notification().key());
+        final_outcome = Some(outcome);
+    }
+    let outcome = final_outcome.expect("newcomer outcome");
+
+    assert_eq!(store.list_active().len(), 128);
+    assert_eq!(outcome.evicted.len(), 1);
+    assert!(
+        !newcomer_keys.contains(&outcome.evicted[0]),
+        "a smaller newcomer share must not be selected as the emergency victim"
+    );
+    let active = store.list_active();
+    assert!(
+        newcomer_keys
+            .iter()
+            .all(|key| active.iter().any(|notification| notification.key() == *key)),
+        "every newcomer generation must survive when a larger share exists"
+    );
+}
+
+#[test]
 fn zero_history_limit_keeps_active_notifications_and_drops_evictions() {
     let mut active_store = make_store_with_limits(2, 0);
     active_store.insert(make_notification("first"), 0);

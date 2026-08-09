@@ -230,7 +230,7 @@ fn close_authorization_collapses_missing_foreign_and_history_only_ids() {
 }
 
 #[test]
-fn close_owned_active_removes_only_the_authorized_live_object() {
+fn close_owned_active_generation_removes_only_the_authorized_live_object() {
     let mut store = make_store_with_limits(10, 10);
     let active = store
         .insert(
@@ -240,8 +240,8 @@ fn close_owned_active_removes_only_the_authorized_live_object() {
         .active_notification();
 
     let removed = store
-        .close_owned_active(
-            active.id,
+        .close_owned_active_generation(
+            active.key(),
             Some(":1.owner-b"),
             Some(1234),
             Some(55),
@@ -251,6 +251,37 @@ fn close_owned_active_removes_only_the_authorized_live_object() {
 
     assert_eq!(removed.key(), active.key());
     assert!(store.list_active().is_empty());
+}
+
+#[test]
+fn close_owned_active_generation_rejects_a_same_id_replacement() {
+    let mut store = make_store_with_limits(10, 10);
+    let original = store
+        .insert(
+            make_notification_with_sender("original", ":1.owner", 1234, 55),
+            0,
+        )
+        .active_notification();
+    let replacement = store
+        .insert(
+            make_notification_with_sender("replacement", ":1.owner", 1234, 55),
+            original.id,
+        )
+        .active_notification();
+
+    let removed = store.close_owned_active_generation(
+        original.key(),
+        Some(":1.owner"),
+        Some(1234),
+        Some(55),
+        CloseReason::ClosedByCall,
+    );
+
+    assert!(removed.is_none());
+    assert_eq!(
+        store.active.get(&replacement.id).map(|item| item.key()),
+        Some(replacement.key())
+    );
 }
 
 #[test]

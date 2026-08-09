@@ -12,8 +12,17 @@ use crate::store::{
 
 use super::timeout::resolve_timeout_policy;
 
-// Hard ceiling for concurrently active notifications to protect panel/popups stability
-const ACTIVE_HARD_CAP: usize = 12;
+// Each resolved sender principal receives an isolated active-state budget
+const ACTIVE_PER_PRINCIPAL_HARD_CAP: usize = 12;
+// The emergency ceiling remains large enough that one normal sender cannot displace another
+const ABSOLUTE_ACTIVE_HARD_CAP: usize = 128;
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum ActivePrincipal {
+    Stable(StableProcessIdentity),
+    BusName(zbus::names::OwnedUniqueName),
+    Unknown,
+}
 
 impl NotificationStore {
     pub fn insert_with_ui_health(
@@ -89,12 +98,13 @@ impl NotificationStore {
         let admitted_at = std::time::Instant::now();
         let expiration = timeout_policy
             .active_close_after
-            .map(|duration| admitted_at.checked_add(duration).unwrap_or(admitted_at));
+            // Overflow disables automatic expiration instead of reversing it into immediate close
+            .and_then(|duration| admitted_at.checked_add(duration));
         let notification = Arc::new(notification);
-        // Active map keeps insertion order so oldest eviction is deterministic
+        // Active map keeps insertion order so principal-local eviction is deterministic
         self.active.insert(assigned_id, notification.clone());
-        // Enforce active cap immediately so UI never sees oversized active sets
-        let evicted = self.enforce_active_limit();
+        // Replacement already removed its previous generation and therefore consumes one slot
+        let evicted = self.enforce_active_limits(active_principal(&notification));
 
         let popup_admission = self.popup_admission(&notification);
         self.record_popup_commit_environment_at(
@@ -114,39 +124,73 @@ impl NotificationStore {
         }
     }
 
-    fn enforce_active_limit(&mut self) -> Vec<NotificationKey> {
-        // Config limit still applies, but active list never exceeds the global safety cap
-        let max_active = self.config.history.max_active.min(ACTIVE_HARD_CAP);
-        if max_active == 0 {
-            // max_active=0 means archive everything immediately
-            let mut evicted = Vec::new();
-            while let Some((id, notification)) = self.active.shift_remove_index(0) {
-                let key = notification.key();
-                // Evicted notifications should not retain pending expiration entries
-                self.expirations.remove(&id);
-                // Active-cap eviction behaves like a daemon-side close for history policy
-                self.push_history(notification, CloseReason::Undefined);
-                evicted.push(key);
-            }
-            return evicted;
+    fn enforce_active_limits(&mut self, admitted: ActivePrincipal) -> Vec<NotificationKey> {
+        let per_principal_limit = self
+            .config
+            .history
+            .max_active
+            .min(ACTIVE_PER_PRINCIPAL_HARD_CAP);
+        let mut evicted = Vec::new();
+        while self.active_count_for(&admitted) > per_principal_limit {
+            // A sender over its budget can remove only that sender's oldest active generation
+            let Some(key) = self.evict_oldest_for_principal(&admitted) else {
+                break;
+            };
+            evicted.push(key);
         }
 
-        let mut evicted = Vec::new();
-        while self.active.len() > max_active {
-            // remove_index(0) always pops the oldest notification first
-            if let Some((id, notification)) = self.active.shift_remove_index(0) {
-                let key = notification.key();
-                // Eviction path mirrors close path so state stays consistent
-                self.expirations.remove(&id);
-                // Evicted rows still need the same archive rule as any other close
-                self.push_history(notification, CloseReason::Undefined);
-                evicted.push(key);
-            } else {
-                // Defensive break for impossible map/index mismatch cases
+        while self.active.len() > ABSOLUTE_ACTIVE_HARD_CAP {
+            // At the emergency boundary, the largest consumer yields first
+            // Equal shares prefer the newly admitted principal so established clients stay intact
+            let victim = self
+                .largest_active_principal(&admitted)
+                .unwrap_or_else(|| admitted.clone());
+            let Some(key) = self.evict_oldest_for_principal(&victim) else {
                 break;
-            }
+            };
+            evicted.push(key);
         }
         evicted
+    }
+
+    fn active_count_for(&self, principal: &ActivePrincipal) -> usize {
+        self.active
+            .values()
+            .filter(|notification| &active_principal(notification) == principal)
+            .count()
+    }
+
+    fn largest_active_principal(&self, admitted: &ActivePrincipal) -> Option<ActivePrincipal> {
+        let mut counts = std::collections::HashMap::new();
+        for notification in self.active.values() {
+            let count = counts
+                .entry(active_principal(notification))
+                .or_insert(0usize);
+            *count = count.saturating_add(1);
+        }
+        let admitted_count = counts.get(admitted).copied().unwrap_or(0);
+        let largest = counts.values().copied().max()?;
+        if admitted_count == largest {
+            return Some(admitted.clone());
+        }
+        counts
+            .into_iter()
+            .find_map(|(principal, count)| (count == largest).then_some(principal))
+    }
+
+    fn evict_oldest_for_principal(
+        &mut self,
+        principal: &ActivePrincipal,
+    ) -> Option<NotificationKey> {
+        let index = self
+            .active
+            .values()
+            .position(|notification| &active_principal(notification) == principal)?;
+        let (id, notification) = self.active.shift_remove_index(index)?;
+        let key = notification.key();
+        self.expirations.remove(&id);
+        self.push_history(notification, CloseReason::Undefined);
+        Some(key)
     }
 
     pub(super) fn push_history(&mut self, notification: Arc<Notification>, reason: CloseReason) {
@@ -213,4 +257,16 @@ impl NotificationStore {
         }
         true
     }
+}
+
+fn active_principal(notification: &Notification) -> ActivePrincipal {
+    if let Some((pid, start_time)) = notification.sender_pid.zip(notification.sender_start_time) {
+        return ActivePrincipal::Stable(StableProcessIdentity { pid, start_time });
+    }
+    // A unique bus address is weaker than process identity but still isolates live connections
+    notification
+        .sender_name
+        .as_deref()
+        .and_then(|sender| zbus::names::OwnedUniqueName::try_from(sender).ok())
+        .map_or(ActivePrincipal::Unknown, ActivePrincipal::BusName)
 }

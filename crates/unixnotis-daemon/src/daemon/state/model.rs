@@ -19,6 +19,7 @@ use crate::daemon::events::DaemonEventPublisher;
 use crate::daemon::notifications::identity::{DesktopIdentityIndex, DesktopIndexRefreshHandle};
 use crate::daemon::notifications::NotificationBurstState;
 use crate::daemon::notifications::SenderMetadataCache;
+use crate::daemon::state::InteractionGates;
 
 #[derive(Clone, Default)]
 #[expect(
@@ -38,6 +39,8 @@ pub(in crate::daemon::state) struct UiHealthState {
 /// Shared daemon state guarded behind an async mutex
 pub struct DaemonState {
     pub store: Mutex<NotificationStore>,
+    // Action, reply, and replacement commits for one numeric ID share this bounded gate
+    pub(in crate::daemon) interaction_gates: InteractionGates,
     // This map is built before the control object is exported and never rebuilt from callers
     pub(in crate::daemon) trusted_executables: Arc<HashMap<String, TrustedExecutableSnapshot>>,
     /// Immutable sound settings resolved at startup
@@ -108,6 +111,7 @@ impl DaemonState {
             Arc::new(build_trusted_control_snapshots_for_current_executable());
         Arc::new(Self {
             store: Mutex::new(store),
+            interaction_gates: InteractionGates::new(),
             trusted_executables,
             sound,
             connection: connection.clone(),

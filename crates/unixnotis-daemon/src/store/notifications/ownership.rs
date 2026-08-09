@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tracing::warn;
 
-use unixnotis_core::{CloseReason, Notification};
+use unixnotis_core::{CloseReason, Notification, NotificationKey};
 
 use crate::store::{CloseAuthorization, NotificationStore};
 
@@ -23,9 +23,9 @@ impl NotificationStore {
         }
     }
 
-    pub fn close_owned_active(
+    pub fn close_owned_active_generation(
         &mut self,
-        id: u32,
+        expected: NotificationKey,
         sender: Option<&str>,
         sender_pid: Option<u32>,
         sender_start_time: Option<u64>,
@@ -33,9 +33,11 @@ impl NotificationStore {
     ) -> Option<Arc<Notification>> {
         // SECURITY: missing and foreign-owned IDs collapse before leaving the store
         // CloseNotification therefore cannot become a notification-existence oracle
-        match self.close_authorization(id, sender, sender_pid, sender_start_time) {
-            CloseAuthorization::OwnedActive(_key) => self.close(id, reason),
-            CloseAuthorization::NotClosable => None,
+        match self.close_authorization(expected.id, sender, sender_pid, sender_start_time) {
+            CloseAuthorization::OwnedActive(current) if current == expected => {
+                self.close(expected.id, reason)
+            }
+            CloseAuthorization::OwnedActive(_) | CloseAuthorization::NotClosable => None,
         }
     }
 

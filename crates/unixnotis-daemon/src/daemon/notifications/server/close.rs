@@ -15,16 +15,18 @@ impl NotificationServer {
     ) -> zbus::fdo::Result<()> {
         debug!(id, "close notification requested");
 
-        // Close requests are ownership checked and become no-op when unauthorized
+        // Unauthorized close targets collapse into one generic protocol failure
         let sender = resolve_sender_metadata(
             &self.state.sender_metadata_cache,
             self.state.connection(),
             header,
         )
         .await;
+        let principal = super::quota_principal(&sender);
         if !self
             .close_quota
-            .admit_principal(super::quota_principal(&sender), Instant::now())
+            .try_admit_close_attempt(principal, Instant::now())
+            .is_allowed()
         {
             let rejected = self
                 .ingress_metrics
@@ -34,11 +36,43 @@ impl NotificationServer {
                 "notification close quota exceeded".to_string(),
             ));
         }
+        // Replacement commits share this gate so one close request targets one generation
+        let _interaction = self.state.interaction_gates.lock(id).await;
         let removed = {
             let mut store = self.state.store.lock().await;
-            // Ownership and removal share one lock so a same-ID replacement cannot race the close
-            store.close_owned_active(
+            let authorization = store.close_authorization(
                 id,
+                sender.sender_name.as_deref(),
+                sender.sender_pid,
+                sender.sender_start_time,
+            );
+            let crate::store::CloseAuthorization::OwnedActive(expected) = authorization else {
+                debug!(
+                    id,
+                    sender = sender.sender_name.as_deref().unwrap_or("unknown"),
+                    sender_pid = sender.sender_pid,
+                    "notification close target is not closable"
+                );
+                // Invalid attempts charge only their caller and never consume shared mutation capacity
+                return Err(generic_close_error());
+            };
+            if !self
+                .close_quota
+                .try_admit_close_commit(Instant::now())
+                .is_allowed()
+            {
+                let rejected = self
+                    .ingress_metrics
+                    .record_rejection(RejectedRequest::CloseQuota);
+                debug!(rejected, "owned close rejected by global commit quota");
+                return Err(zbus::fdo::Error::LimitsExceeded(
+                    "notification close quota exceeded".to_string(),
+                ));
+            }
+
+            // Admission and removal share one store lock so only a real mutation spends global quota
+            store.close_owned_active_generation(
+                expected,
                 sender.sender_name.as_deref(),
                 sender.sender_pid,
                 sender.sender_start_time,
@@ -52,7 +86,7 @@ impl NotificationServer {
                 sender_pid = sender.sender_pid,
                 "notification close target is not closable"
             );
-            // Missing, foreign, historical, and otherwise non-closable IDs are indistinguishable
+            // A concurrent replacement or close stays indistinguishable from every invalid target
             return Err(generic_close_error());
         };
 

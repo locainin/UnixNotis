@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
@@ -171,12 +173,12 @@ async fn unconfirmed_action_does_not_emit_or_dismiss() {
 async fn validated_action_rejects_missing_and_stale_action_generations() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
-    let (id, notification) = {
+    let notification = {
         let mut store = state.store.lock().await;
         let notification = store
             .insert(action_notification(&sender, "open"), 0)
             .active_notification();
-        (notification.id, notification.key())
+        notification.key()
     };
     let server = ControlServer::new(state.clone());
 
@@ -184,21 +186,63 @@ async fn validated_action_rejects_missing_and_stale_action_generations() {
         .invoke_validated_action_generation(notification, "missing", false)
         .await
         .expect_err("unadvertised action must fail");
+}
+
+#[tokio::test]
+async fn replacement_commit_waits_until_action_signal_is_emitted() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let mut stream = action_signal_stream(&sender).await;
+    let mut original = action_notification(&sender, "open");
+    original.is_resident = true;
+    let notification = state
+        .store
+        .lock()
+        .await
+        .insert(original, 0)
+        .active_notification()
+        .key();
+    let id = notification.id;
+    let scheduler = crate::expire::ExpirationScheduler::start(state.clone());
     let replacement_state = state.clone();
     let replacement_sender = sender.clone();
-    server
+    let (replacement_done_tx, replacement_done_rx) = tokio::sync::oneshot::channel();
+    let replacement_committed = Arc::new(AtomicBool::new(false));
+    let observed_replacement_commit = Arc::clone(&replacement_committed);
+
+    ControlServer::new(state.clone())
         .invoke_validated_action_generation_with_pre_emit(
             notification,
             "open",
             false,
             move || async move {
                 let replacement = action_notification(&replacement_sender, "different");
-                let outcome = replacement_state.store.lock().await.insert(replacement, id);
-                assert!(outcome.replaced);
+                let replacement_committed = Arc::clone(&replacement_committed);
+                tokio::spawn(async move {
+                    let outcome = replacement_state
+                        .commit_notification_generation(replacement, id, &scheduler)
+                        .await;
+                    let replaced = outcome.replaced;
+                    let committed_id = outcome.active_notification().id;
+                    replacement_committed.store(true, Ordering::Release);
+                    let _sent = replacement_done_tx.send((committed_id, replaced));
+                });
+                tokio::task::yield_now().await;
+                assert!(
+                    !observed_replacement_commit.load(Ordering::Acquire),
+                    "replacement commit must remain blocked while the action signal is in flight"
+                );
             },
         )
         .await
-        .expect_err("stale action generation must fail");
+        .expect("action must finish before replacement commit");
+
+    assert_eq!(next_action_signal(&mut stream).await.0, id);
+    let (committed_id, replaced) = replacement_done_rx
+        .await
+        .expect("replacement commit task must finish");
+    assert_eq!(committed_id, id);
+    assert!(replaced);
 }
 
 #[tokio::test]

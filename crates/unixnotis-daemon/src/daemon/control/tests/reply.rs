@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
@@ -41,6 +43,7 @@ fn validate_reply_text_preserves_unicode_and_bidirectional_content_exactly() {
 
 #[test]
 fn validate_reply_text_accepts_exact_byte_limit() {
+    assert_eq!(MAX_REPLY_TEXT_BYTES, 4_096);
     let reply = "🙂".repeat(MAX_REPLY_TEXT_BYTES / "🙂".len());
 
     assert_eq!(reply.len(), MAX_REPLY_TEXT_BYTES);
@@ -168,19 +171,23 @@ async fn submit_inline_reply_round_trips_unicode_and_exact_byte_limit() {
 }
 
 #[tokio::test]
-async fn reply_listener_replacement_survives_generation_safe_dismissal() {
+async fn replacement_commit_waits_until_reply_signal_is_emitted() {
     let state = daemon_state_for_test(false).await;
     let sender = Connection::session().await.expect("sender session bus");
     let mut stream = reply_signal_stream(&state, &sender).await;
     let (id, generation) = {
         let mut store = state.store.lock().await;
         let notification = store
-            .insert(reply_notification(false, &sender), 0)
+            .insert(reply_notification(true, &sender), 0)
             .active_notification();
         (notification.id, notification.generation)
     };
     let replacement_state = state.clone();
     let replacement_sender = sender.clone();
+    let scheduler = crate::expire::ExpirationScheduler::start(state.clone());
+    let (replacement_done_tx, replacement_done_rx) = tokio::sync::oneshot::channel();
+    let replacement_committed = Arc::new(AtomicBool::new(false));
+    let observed_replacement_commit = Arc::clone(&replacement_committed);
 
     ControlServer::new(state.clone())
         .submit_inline_reply_with_post_emit(id, generation, "yes", move || async move {
@@ -189,11 +196,29 @@ async fn reply_listener_replacement_survives_generation_safe_dismissal() {
             assert_eq!((signal_id, text.as_str()), (id, "yes"));
             let mut replacement = reply_notification(false, &replacement_sender);
             replacement.summary = "Reply received".to_string();
-            let outcome = replacement_state.store.lock().await.insert(replacement, id);
-            assert!(outcome.replaced);
+            let replacement_committed = Arc::clone(&replacement_committed);
+            tokio::spawn(async move {
+                let outcome = replacement_state
+                    .commit_notification_generation(replacement, id, &scheduler)
+                    .await;
+                replacement_committed.store(true, Ordering::Release);
+                let _sent =
+                    replacement_done_tx.send((outcome.active_notification().id, outcome.replaced));
+            });
+            tokio::task::yield_now().await;
+            assert!(
+                !observed_replacement_commit.load(Ordering::Acquire),
+                "replacement commit must remain blocked while reply delivery is in flight"
+            );
         })
         .await
         .expect("reply with replacement");
+
+    let (committed_id, replaced) = replacement_done_rx
+        .await
+        .expect("replacement commit task must finish");
+    assert_eq!(committed_id, id);
+    assert!(replaced);
 
     let active = state
         .store

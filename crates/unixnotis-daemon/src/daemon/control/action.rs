@@ -37,6 +37,9 @@ impl ControlServer {
         F: FnOnce() -> Fut,
         Fut: Future<Output = ()>,
     {
+        // The guard spans validation, destination lookup, signal delivery, and exact cleanup
+        // A same-ID replacement cannot commit while an ID-only protocol signal is in flight
+        let _interaction = self.state.interaction_gates.lock(notification.id).await;
         let target = {
             // Capture one concrete generation while validating the stored action identity
             let store = self.state.store.lock().await;
@@ -58,7 +61,7 @@ impl ControlServer {
         .await
         .ok_or_else(application_unavailable_error)?;
 
-        // The test seam models replacement after the external liveness query
+        // The test seam models concurrent replacement pressure after external liveness work
         pre_emit().await;
         let is_current = self
             .state
