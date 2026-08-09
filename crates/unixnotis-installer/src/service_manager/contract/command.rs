@@ -1,4 +1,4 @@
-use std::process::{Command, Stdio};
+use std::process::Command;
 use unixnotis_core::CommandSpec as ProcessCommandSpec;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -7,9 +7,6 @@ pub struct CommandSpec {
     label: String,
     // Shared process spec keeps executable, arguments, and environment structurally separate
     command: ProcessCommandSpec,
-    // Some probes are intentionally quiet to avoid corrupting the TUI
-    suppress_stdout: bool,
-    suppress_stderr: bool,
 }
 
 impl CommandSpec {
@@ -28,8 +25,6 @@ impl CommandSpec {
                 program.into(),
                 args.into_iter().map(|arg| arg.to_string()),
             ),
-            suppress_stdout: false,
-            suppress_stderr: false,
         }
     }
 
@@ -40,13 +35,6 @@ impl CommandSpec {
     ) -> Self {
         // Values live in the child environment instead of the process argument list
         self.command = self.command.with_env(name.into(), value.into());
-        self
-    }
-
-    pub(in crate::service_manager) const fn quiet(mut self) -> Self {
-        // Availability probes should not leak command output into the parent process
-        self.suppress_stdout = true;
-        self.suppress_stderr = true;
         self
     }
 
@@ -79,12 +67,6 @@ impl CommandSpec {
         // CommandSpec never goes through a shell, which keeps service-manager commands predictable
         command.args(self.args());
         command.envs(self.envs());
-        if self.suppress_stdout {
-            command.stdout(Stdio::null());
-        }
-        if self.suppress_stderr {
-            command.stderr(Stdio::null());
-        }
         Ok(command)
     }
 }

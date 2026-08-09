@@ -69,12 +69,6 @@ fn runit_backend_commands_match_expected_behavior() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
     let service_path = "/tmp/service/unixnotis-daemon";
 
-    let availability = manager
-        .availability_command()
-        .expect("runit checks sv availability");
-    assert_eq!(availability.program(), "sv");
-    assert_eq!(availability.args(), &["-V"]);
-
     // A watched service directory is the enablement source, not an sv query
     assert!(manager.is_enabled_command().is_none());
     assert!(manager.refresh_after_artifact_change().is_none());
@@ -83,12 +77,36 @@ fn runit_backend_commands_match_expected_behavior() {
     let active = manager.active_probe();
     assert_eq!(active.command().args(), &["status", service_path]);
     assert_eq!(
-        active.parser_matches("run: /tmp/service/unixnotis-daemon: (pid 123) 2s"),
-        Some(true)
+        active.parser_state(true, "run: /tmp/service/unixnotis-daemon: (pid 123) 2s"),
+        crate::service_manager::contract::ServiceProbeState::Active
     );
     assert_eq!(
-        active.parser_matches("down: /tmp/service/unixnotis-daemon: 1s"),
-        Some(false)
+        active.parser_state(true, "down: /tmp/service/unixnotis-daemon: 1s"),
+        crate::service_manager::contract::ServiceProbeState::Inactive
+    );
+    assert_eq!(
+        active.parser_state_with_result(
+            Some(1),
+            "fail: /tmp/service/unixnotis-daemon: runsv not running\n",
+            ""
+        ),
+        crate::service_manager::contract::ServiceProbeState::Absent
+    );
+    assert_eq!(
+        active.parser_state_with_result(
+            Some(1),
+            "fail: /tmp/service/unixnotis-daemon: unable to change to service directory: No such file or directory\n",
+            ""
+        ),
+        crate::service_manager::contract::ServiceProbeState::Absent
+    );
+    assert_eq!(
+        active.parser_state_with_result(
+            Some(1),
+            "timeout: down: /tmp/service/unixnotis-daemon: 30s\n",
+            ""
+        ),
+        crate::service_manager::contract::ServiceProbeState::Indeterminate
     );
 
     let enable = manager.enable_now_command();

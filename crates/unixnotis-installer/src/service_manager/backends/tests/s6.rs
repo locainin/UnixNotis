@@ -71,8 +71,6 @@ fn s6_backend_commands_match_expected_behavior() {
         PathBuf::from("/run/user/s6-rc"),
     );
 
-    // Readiness checks own tool validation because availability needs several s6 programs
-    assert!(manager.availability_command().is_none());
     assert!(manager.is_enabled_command().is_none());
     // Database refresh compiles the user source tree before s6-rc can change the live service
     let Some(ServiceArtifactRefresh::S6Database(refresh)) = manager.refresh_after_artifact_change()
@@ -124,8 +122,24 @@ fn s6_backend_active_probe_parses_s6_svstat_output() {
     let active = manager.active_probe();
 
     // s6-svstat -o up prints a boolean, so parsing stays exact and cheap
-    assert_eq!(active.parser_matches("true\n"), Some(true));
-    assert_eq!(active.parser_matches("false\n"), Some(false));
+    assert_eq!(
+        active.parser_state(true, "true\n"),
+        crate::service_manager::contract::ServiceProbeState::Active
+    );
+    assert_eq!(
+        active.parser_state(true, "false\n"),
+        crate::service_manager::contract::ServiceProbeState::Inactive
+    );
+    assert_eq!(
+        active.parser_state_with_result(Some(1), "", ""),
+        crate::service_manager::contract::ServiceProbeState::Absent
+    );
+    for failure_code in [100, 111] {
+        assert_eq!(
+            active.parser_state_with_result(Some(failure_code), "", "system error\n"),
+            crate::service_manager::contract::ServiceProbeState::Indeterminate
+        );
+    }
 }
 
 #[test]
@@ -390,9 +404,18 @@ fn s6_active_probe_rejects_truthy_but_non_exact_output() {
     let active = manager.active_probe();
 
     // s6-svstat -o up emits exact true/false, so loose text must not count as active
-    assert_eq!(active.parser_matches(" true\n"), Some(true));
-    assert_eq!(active.parser_matches("true enough\n"), Some(false));
-    assert_eq!(active.parser_matches("1\n"), Some(false));
+    assert_eq!(
+        active.parser_state(true, " true\n"),
+        crate::service_manager::contract::ServiceProbeState::Active
+    );
+    assert_eq!(
+        active.parser_state(true, "true enough\n"),
+        crate::service_manager::contract::ServiceProbeState::Indeterminate
+    );
+    assert_eq!(
+        active.parser_state(true, "1\n"),
+        crate::service_manager::contract::ServiceProbeState::Indeterminate
+    );
 }
 
 fn test_root(name: &str) -> PathBuf {

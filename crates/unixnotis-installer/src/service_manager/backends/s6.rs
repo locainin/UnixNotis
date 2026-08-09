@@ -6,7 +6,8 @@ use crate::system_tools;
 use super::super::contract::{
     envdir_file_contents, is_safe_env_name, shell_quote, shell_quote_path, CommandSpec,
     ReadinessIssue, S6DatabaseRefresh, ServiceArtifact, ServiceArtifactKind,
-    ServiceArtifactRefresh, ServiceProbe, MANAGED_DIRECTORY_MARKER,
+    ServiceArtifactRefresh, ServiceProbe, ServiceProbeOutput, ServiceProbeState,
+    MANAGED_DIRECTORY_MARKER,
 };
 
 pub const SERVICE_NAME: &str = "unixnotis-daemon";
@@ -71,11 +72,6 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     ]
 }
 
-pub const fn availability_command() -> Option<CommandSpec> {
-    // s6 readiness needs several tools and paths, so readiness_issues owns validation
-    None
-}
-
 pub const fn is_enabled_command() -> Option<CommandSpec> {
     // Enablement is source-backed through the default bundle membership file
     None
@@ -99,7 +95,7 @@ pub fn active_probe(live_dir: &Path) -> ServiceProbe {
         "s6-svstat",
         ["-o".to_string(), "up".to_string(), service],
     );
-    ServiceProbe::stdout(command, status_output_is_running)
+    ServiceProbe::new(command, interpret_active_state)
 }
 
 pub fn refresh_after_artifact_change(
@@ -304,6 +300,17 @@ fn is_directory_or_symlink_to_directory(path: &Path) -> bool {
         .is_ok_and(|metadata| metadata.is_dir())
 }
 
-fn status_output_is_running(stdout: &str) -> bool {
-    stdout.trim() == "true"
+fn interpret_active_state(output: ServiceProbeOutput<'_>) -> ServiceProbeState {
+    // s6 assigns exit one specifically to an absent s6-supervise process
+    if output.status_code() == Some(1) {
+        return ServiceProbeState::Absent;
+    }
+    if !output.status_success() {
+        return ServiceProbeState::Indeterminate;
+    }
+    match output.stdout().trim() {
+        "true" => ServiceProbeState::Active,
+        "false" => ServiceProbeState::Inactive,
+        _ => ServiceProbeState::Indeterminate,
+    }
 }

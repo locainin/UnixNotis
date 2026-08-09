@@ -17,4 +17,5 @@ rustix.workspace = true
 tokio.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
 unicode-width.workspace = true
+wait-timeout.workspace = true
 zbus.workspace = true

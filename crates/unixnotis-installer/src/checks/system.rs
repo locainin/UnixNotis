@@ -4,7 +4,8 @@ use std::env;
 use std::path::Path;
 
 use crate::paths::{InstallPaths, ServiceManagerChoice};
-use crate::service_manager::{CommandSpec, ReadinessIssue, ServiceManager};
+use crate::service_manager::contract::{ServiceManagerAvailability, ServiceProbeState};
+use crate::service_manager::{ReadinessIssue, ServiceManager};
 use crate::system_tools;
 use crate::toolchain::resolve_cargo;
 use unixnotis_core::filesystem::{remove_regular_file, write_file_if_missing};
@@ -46,31 +47,51 @@ pub(super) fn service_manager_check_from(manager: &ServiceManager) -> CheckItem 
         // Hard readiness errors are shown before running optional availability probes
         return CheckItem::fail("Service manager", &detail);
     }
-    if let Some(spec) = manager.availability_command() {
-        // Backends with a native availability command still report softer setup warnings
-        return availability_check_item(manager, &spec, &issues);
-    }
-    if let Some(detail) = readiness_warning_detail(manager, &issues) {
-        // Some experimental backends have no global probe, so warnings become the check result
-        return CheckItem::warn("Service manager", &detail);
-    }
-    // Some managers have no cheap global probe, so backend readiness is the availability check
-    CheckItem::ok("Service manager", &format!("{} ready", manager.label()))
-}
-
-fn availability_check_item(
-    manager: &ServiceManager,
-    spec: &CommandSpec,
-    issues: &[ReadinessIssue],
-) -> CheckItem {
-    match spec.to_command().and_then(|mut command| command.status()) {
-        Ok(status) if status.success() => readiness_warning_detail(manager, issues).map_or_else(
-            || CheckItem::ok("Service manager", &format!("{} available", manager.label())),
-            |detail| CheckItem::warn("Service manager", &detail),
-        ),
-        Ok(_) => CheckItem::fail(
+    // One semantic interpreter is shared with conflict detection and activation checks
+    match manager.availability_state() {
+        Ok(Some(ServiceManagerAvailability::Available)) => {
+            available_manager_check_item(manager, &issues)
+        }
+        Ok(Some(ServiceManagerAvailability::Unavailable)) => CheckItem::fail(
             "Service manager",
             &format!("{} unavailable", manager.label()),
+        ),
+        Ok(Some(ServiceManagerAvailability::Indeterminate)) => CheckItem::fail(
+            "Service manager",
+            &format!("{} availability is indeterminate", manager.label()),
+        ),
+        Ok(None) => native_service_probe_check_item(manager, &issues),
+        Err(err) => CheckItem::fail("Service manager", &format!("check failed: {err}")),
+    }
+}
+
+fn available_manager_check_item(manager: &ServiceManager, issues: &[ReadinessIssue]) -> CheckItem {
+    readiness_warning_detail(manager, issues).map_or_else(
+        || CheckItem::ok("Service manager", &format!("{} available", manager.label())),
+        |detail| CheckItem::warn("Service manager", &detail),
+    )
+}
+
+fn native_service_probe_check_item(
+    manager: &ServiceManager,
+    issues: &[ReadinessIssue],
+) -> CheckItem {
+    // Runit and s6 have no separate manager transport query, so their bounded service probe
+    // decides whether the selected backend can be inspected without inventing another contract
+    match manager.active_probe().evaluate_state() {
+        Ok(ServiceProbeState::Absent | ServiceProbeState::Inactive | ServiceProbeState::Active) => {
+            readiness_warning_detail(manager, issues).map_or_else(
+                || CheckItem::ok("Service manager", &format!("{} ready", manager.label())),
+                |detail| CheckItem::warn("Service manager", &detail),
+            )
+        }
+        Ok(ServiceProbeState::Unavailable) => CheckItem::fail(
+            "Service manager",
+            &format!("{} unavailable", manager.label()),
+        ),
+        Ok(ServiceProbeState::Indeterminate) => CheckItem::fail(
+            "Service manager",
+            &format!("{} state is indeterminate", manager.label()),
         ),
         Err(err) => CheckItem::fail("Service manager", &format!("check failed: {err}")),
     }

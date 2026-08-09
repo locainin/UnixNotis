@@ -5,7 +5,8 @@ use crate::system_tools;
 
 use super::super::contract::{
     envdir_file_contents, is_safe_env_name, shell_quote, shell_quote_path, CommandSpec,
-    ReadinessIssue, ServiceArtifact, ServiceArtifactKind, ServiceProbe, MANAGED_DIRECTORY_MARKER,
+    ReadinessIssue, ServiceArtifact, ServiceArtifactKind, ServiceProbe, ServiceProbeOutput,
+    ServiceProbeState, MANAGED_DIRECTORY_MARKER,
 };
 
 // Runit service directories use the service name directly under the supervision root
@@ -67,11 +68,6 @@ pub fn install_artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArt
     ]
 }
 
-pub fn availability_command() -> CommandSpec {
-    // `sv -V` checks the control binary without requiring the service to exist yet
-    CommandSpec::new("sv -V", "sv", ["-V"]).quiet()
-}
-
 pub const fn is_enabled_command() -> Option<CommandSpec> {
     // Enablement is the presence of the service directory under the watched root
     None
@@ -94,8 +90,10 @@ pub fn active_probe(artifact_root: &Path) -> ServiceProbe {
         format!("sv status {service}"),
         "sv",
         ["status".to_string(), service],
-    );
-    ServiceProbe::stdout(command, status_output_is_running)
+    )
+    // Runit diagnostics are stable English strings only under the C locale
+    .env("LC_ALL", "C");
+    ServiceProbe::new(command, interpret_active_state)
 }
 
 pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
@@ -235,6 +233,28 @@ fn path_is_missing(path: &Path) -> bool {
         .map_or_else(|err| err.kind() == std::io::ErrorKind::NotFound, |_| false)
 }
 
-fn status_output_is_running(stdout: &str) -> bool {
-    stdout.trim_start().starts_with("run:")
+fn interpret_active_state(output: ServiceProbeOutput<'_>) -> ServiceProbeState {
+    let stdout = output.stdout().trim();
+    if output.status_success() {
+        return if stdout.starts_with("run:") {
+            ServiceProbeState::Active
+        } else if stdout.starts_with("down:") {
+            ServiceProbeState::Inactive
+        } else {
+            ServiceProbeState::Indeterminate
+        };
+    }
+
+    // One-service probes return one only for this service-level failure class
+    // Match only runit's documented absence diagnostics so timeouts stay blocking
+    let service_is_absent = output.status_code() == Some(1)
+        && output.stderr().trim().is_empty()
+        && (stdout.ends_with(": runsv not running")
+            || stdout
+                .ends_with(": unable to change to service directory: No such file or directory"));
+    if service_is_absent {
+        ServiceProbeState::Absent
+    } else {
+        ServiceProbeState::Indeterminate
+    }
 }

@@ -8,20 +8,38 @@ thread_local! {
 }
 
 pub(super) fn command_program(program: &str) -> std::io::Result<OsString> {
-    if let Some(fake_program) = fake_command_program(program) {
-        return Ok(fake_program.into_os_string());
+    if let Some(fake_bin) = configured_fake_command_bin() {
+        if program.is_empty() || program.contains(std::path::MAIN_SEPARATOR) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "invalid isolated test tool name",
+            ));
+        }
+        let candidate = fake_bin.join(program);
+        // Fake executable links resolve through the stable test dispatcher
+        if candidate.is_file() {
+            return Ok(candidate.into_os_string());
+        }
+        match std::fs::symlink_metadata(&candidate) {
+            Ok(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("{program} is not a regular test tool"),
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("{program} is unavailable in the isolated test tool directory"),
+        ));
     }
     crate::system_tools::program_path(program).map(PathBuf::into_os_string)
 }
 
-fn fake_command_program(program: &str) -> Option<PathBuf> {
-    if program.is_empty() || program.contains(std::path::MAIN_SEPARATOR) {
-        return None;
-    }
-    FAKE_COMMAND_BIN.with(|fake_bin| {
-        let candidate = fake_bin.borrow().as_ref()?.join(program);
-        candidate.is_file().then_some(candidate)
-    })
+fn configured_fake_command_bin() -> Option<PathBuf> {
+    FAKE_COMMAND_BIN.with(|fake_bin| fake_bin.borrow().clone())
 }
 
 pub struct FakeCommandBinGuard {

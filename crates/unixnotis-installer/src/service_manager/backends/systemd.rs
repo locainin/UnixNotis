@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use super::super::contract::{CommandSpec, ServiceArtifact};
+use super::super::contract::{
+    CommandSpec, ServiceArtifact, ServiceManagerAvailability, ServiceManagerAvailabilityOutput,
+    ServiceManagerAvailabilityProbe, ServiceProbe, ServiceProbeOutput, ServiceProbeState,
+};
 
 // Keep the systemd unit name stable for existing installs and migration cleanup
 pub const SERVICE_NAME: &str = "unixnotis-daemon.service";
@@ -29,19 +32,37 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     ]
 }
 
-pub fn availability_command() -> CommandSpec {
-    CommandSpec::new(
-        "systemctl --user --no-pager --plain list-units --type=service",
+pub fn availability_probe() -> ServiceManagerAvailabilityProbe {
+    // is-system-running gives one bounded manager state instead of an unbounded unit listing
+    let command = CommandSpec::new(
+        "systemctl --user is-system-running",
         "systemctl",
-        [
-            "--user",
-            "--no-pager",
-            "--plain",
-            "list-units",
-            "--type=service",
-        ],
+        ["--user", "is-system-running"],
     )
-    .quiet()
+    // Transport diagnostics are matched only in the stable C locale
+    .env("LC_ALL", "C");
+    ServiceManagerAvailabilityProbe::new(command, interpret_availability)
+}
+
+fn interpret_availability(
+    output: ServiceManagerAvailabilityOutput<'_>,
+) -> ServiceManagerAvailability {
+    match output.stdout().trim() {
+        "initializing" | "starting" | "running" | "degraded" | "maintenance" | "stopping" => {
+            ServiceManagerAvailability::Available
+        }
+        "offline" => ServiceManagerAvailability::Unavailable,
+        _ if !output.status_success()
+            && output.did_exit()
+            && output
+                .stderr()
+                .trim()
+                .starts_with("Failed to connect to bus") =>
+        {
+            ServiceManagerAvailability::Unavailable
+        }
+        _ => ServiceManagerAvailability::Indeterminate,
+    }
 }
 
 pub fn is_enabled_command() -> CommandSpec {
@@ -52,12 +73,55 @@ pub fn is_enabled_command() -> CommandSpec {
     )
 }
 
-pub fn is_active_command() -> CommandSpec {
-    CommandSpec::new(
-        format!("systemctl --user is-active --quiet {SERVICE_NAME}"),
+pub fn active_probe() -> ServiceProbe {
+    // `show` is systemd's machine-readable state interface
+    // A generic nonzero `is-active` result cannot prove the manager was reachable
+    let command = CommandSpec::new(
+        format!("systemctl --user show LoadState and ActiveState for {SERVICE_NAME}"),
         "systemctl",
-        ["--user", "is-active", "--quiet", SERVICE_NAME],
-    )
+        [
+            "--user",
+            "show",
+            "--property=LoadState",
+            "--property=ActiveState",
+            SERVICE_NAME,
+        ],
+    );
+    ServiceProbe::new(command, interpret_active_state)
+}
+
+fn interpret_active_state(output: ServiceProbeOutput<'_>) -> ServiceProbeState {
+    if !output.status_success() {
+        return ServiceProbeState::Indeterminate;
+    }
+    let mut load_state = None;
+    let mut active_state = None;
+    for line in output.stdout().lines() {
+        match line.split_once('=') {
+            Some(("LoadState", value)) if load_state.replace(value).is_none() => {}
+            Some(("ActiveState", value)) if active_state.replace(value).is_none() => {}
+            Some(("LoadState" | "ActiveState", _)) | None => {
+                return ServiceProbeState::Indeterminate;
+            }
+            Some((_other, _value)) => {}
+        }
+    }
+    let load_is_known = matches!(
+        load_state,
+        Some("loaded" | "not-found" | "masked" | "error" | "bad-setting")
+    );
+    if !load_is_known {
+        return ServiceProbeState::Indeterminate;
+    }
+    match (load_state, active_state) {
+        // A missing unit is different from a stopped unit already known to systemd
+        (Some("not-found"), Some("inactive")) => ServiceProbeState::Absent,
+        (_, Some("active" | "activating" | "deactivating" | "reloading" | "refreshing")) => {
+            ServiceProbeState::Active
+        }
+        (_, Some("inactive" | "failed")) => ServiceProbeState::Inactive,
+        (_, Some(_) | None) => ServiceProbeState::Indeterminate,
+    }
 }
 
 pub fn reload_after_artifact_change() -> CommandSpec {

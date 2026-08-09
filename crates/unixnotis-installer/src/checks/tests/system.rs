@@ -5,13 +5,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::checks::CheckState;
 use crate::paths::InstallPaths;
+use crate::service_manager::contract::ServiceManagerAvailability;
 use crate::service_manager::{ReadinessIssue, ServiceManager};
 use crate::test_support::fs::write_executable;
 
 use super::{
     command_success, dbus_update_env_check, install_paths_check, path_is_writable,
     readiness_error_detail, readiness_messages, readiness_warning_detail,
-    service_manager_check_from,
+    service_manager_check_from, wayland_check,
 };
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -32,6 +33,20 @@ fn readiness_error_detail_collects_only_blocking_issues() {
     assert!(detail.contains("s6-rc-compile not found"));
     assert!(detail.contains("s6 live directory missing"));
     assert!(!detail.contains("boot setup incomplete"));
+}
+
+#[test]
+fn wayland_check_accepts_exact_wayland_session_without_display_fallback() {
+    let _lock = env_lock();
+    let root = test_root("exact-wayland-session-check");
+    let _session = crate::test_support::env::EnvGuard::set("XDG_SESSION_TYPE", "wayland");
+    let _display = crate::test_support::env::EnvGuard::set("WAYLAND_DISPLAY", "");
+    let _runtime = crate::test_support::env::EnvGuard::set("XDG_RUNTIME_DIR", &root);
+
+    let item = wayland_check();
+
+    assert_eq!(item.state, CheckState::Ok);
+    assert_eq!(item.detail, "session detected");
 }
 
 #[test]
@@ -60,6 +75,113 @@ fn readiness_messages_split_warnings_and_errors() {
         ["warning one".to_string(), "warning two".to_string()]
     );
     assert_eq!(readiness_messages(&issues, true), ["error one".to_string()]);
+}
+
+#[test]
+fn service_manager_check_uses_canonical_reachable_nonzero_systemd_state() {
+    let _lock = env_lock();
+    let root = test_root("reachable-nonzero-systemd-check");
+    let fake_bin = root.join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    write_fake_tool(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\nprintf '%s\\n' degraded\nexit 1\n",
+    );
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
+    let manager = ServiceManager::systemd_user(root.join("systemd"));
+
+    let availability = manager
+        .availability_state()
+        .expect("systemd availability query")
+        .expect("systemd manager-level probe");
+    let item = service_manager_check_from(&manager);
+
+    assert_eq!(availability, ServiceManagerAvailability::Available);
+    assert_eq!(item.state, CheckState::Ok);
+    assert_eq!(item.detail, "systemd --user available");
+    fs::remove_dir_all(root).expect("remove systemd availability fixture");
+}
+
+#[test]
+fn service_manager_check_rejects_indeterminate_systemd_availability() {
+    let _lock = env_lock();
+    let root = test_root("indeterminate-systemd-check");
+    let fake_bin = root.join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    write_fake_tool(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\nprintf '%s\\n' unexpected-manager-state\nexit 1\n",
+    );
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
+    let manager = ServiceManager::systemd_user(root.join("systemd"));
+
+    let item = service_manager_check_from(&manager);
+
+    assert_eq!(item.state, CheckState::Fail);
+    assert_eq!(item.detail, "systemd --user availability is indeterminate");
+    fs::remove_dir_all(root).expect("remove indeterminate systemd fixture");
+}
+
+#[test]
+fn service_manager_check_rejects_unavailable_systemd_transport() {
+    let _lock = env_lock();
+    let root = test_root("unavailable-systemd-check");
+    let fake_bin = root.join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    write_fake_tool(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\nprintf '%s\\n' 'Failed to connect to bus: No medium found' >&2\nexit 1\n",
+    );
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
+    let manager = ServiceManager::systemd_user(root.join("systemd"));
+
+    let item = service_manager_check_from(&manager);
+
+    assert_eq!(item.state, CheckState::Fail);
+    assert_eq!(item.detail, "systemd --user unavailable");
+    fs::remove_dir_all(root).expect("remove unavailable systemd fixture");
+}
+
+#[test]
+fn service_manager_check_accepts_absent_runit_service_as_ready_backend() {
+    let _lock = env_lock();
+    let root = test_root("absent-runit-service-check");
+    let fake_bin = root.join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    write_fake_tool(&fake_bin.join("chpst"), "#!/bin/sh\nexit 0\n");
+    write_fake_tool(
+        &fake_bin.join("sv"),
+        "#!/bin/sh\nprintf '%s\\n' 'fail: unixnotis-daemon: runsv not running'\nexit 1\n",
+    );
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
+    let manager = ServiceManager::runit_user(root.join("service"));
+
+    let item = service_manager_check_from(&manager);
+
+    assert_eq!(item.state, CheckState::Ok);
+    assert_eq!(item.detail, "runit user services ready");
+    fs::remove_dir_all(root).expect("remove absent runit fixture");
+}
+
+#[test]
+fn service_manager_check_rejects_ambiguous_runit_service_state() {
+    let _lock = env_lock();
+    let root = test_root("ambiguous-runit-service-check");
+    let fake_bin = root.join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir");
+    write_fake_tool(&fake_bin.join("chpst"), "#!/bin/sh\nexit 0\n");
+    write_fake_tool(
+        &fake_bin.join("sv"),
+        "#!/bin/sh\nprintf '%s\\n' ambiguous\nexit 0\n",
+    );
+    let _fake_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
+    let manager = ServiceManager::runit_user(root.join("service"));
+
+    let item = service_manager_check_from(&manager);
+
+    assert_eq!(item.state, CheckState::Fail);
+    assert_eq!(item.detail, "runit user services state is indeterminate");
+    fs::remove_dir_all(root).expect("remove ambiguous runit fixture");
 }
 
 #[test]
@@ -205,6 +327,26 @@ fn install_paths_check_fails_when_service_root_is_not_directory() {
 }
 
 #[test]
+fn install_paths_check_accepts_writable_binary_and_service_directories() {
+    let root = test_root("writable-install-paths-check");
+    let bin_dir = root.join("bin");
+    let service_root = root.join("service-root");
+    fs::create_dir_all(&bin_dir).expect("bin dir");
+    fs::create_dir_all(&service_root).expect("service root");
+    let paths = InstallPaths {
+        repo_root: root.clone(),
+        bin_dir,
+        service: ServiceManager::systemd_user(service_root),
+    };
+
+    let item = install_paths_check(&paths);
+
+    assert_eq!(item.state, CheckState::Ok);
+    assert_eq!(item.detail, "writable");
+    fs::remove_dir_all(root).expect("remove writable install paths fixture");
+}
+
+#[test]
 fn path_is_writable_accepts_a_real_directory_and_removes_its_probe() {
     let root = test_root("writable-path-check");
     fs::create_dir_all(&root).expect("writable directory");
@@ -261,6 +403,10 @@ fn write_fake_s6_tools(fake_bin: &std::path::Path) {
         let path = fake_bin.join(tool);
         write_executable(&path, "#!/bin/sh\nexit 0\n");
     }
+    write_executable(
+        &fake_bin.join("s6-svstat"),
+        "#!/bin/sh\n# Exit 1 means the service is not supervised\nexit 1\n",
+    );
 }
 
 fn write_fake_tool(path: &std::path::Path, contents: &str) {
@@ -282,6 +428,12 @@ fn write_fake_s6_tools_except(fake_bin: &std::path::Path, missing_tool: &str) {
         }
         let path = fake_bin.join(tool);
         write_executable(&path, "#!/bin/sh\nexit 0\n");
+    }
+    if missing_tool != "s6-svstat" {
+        write_executable(
+            &fake_bin.join("s6-svstat"),
+            "#!/bin/sh\n# Exit 1 means the service is not supervised\nexit 1\n",
+        );
     }
 }
 

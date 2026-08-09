@@ -56,6 +56,10 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
     );
     if let Some(err) = state.service_active_error.as_ref() {
         log_line(ctx, format!("- service status check failed: {err}"));
+        return Err(anyhow!(
+            "cannot establish whether {} is active; refusing to install while service ownership is indeterminate",
+            ctx.paths.service.label()
+        ));
     }
     if let Some(err) = state.service_enabled_error.as_ref() {
         log_line(ctx, format!("- service enable check failed: {err}"));
@@ -143,7 +147,7 @@ fn reject_service_manager_conflicts(ctx: &mut ActionContext, state: &InstallStat
 
     // Block before build/copy/write steps so two managers never race to restart the daemon
     for conflict in &state.service_conflicts {
-        if conflict.active {
+        if conflict.kinds.contains(&ServiceManagerConflictKind::Active) {
             log_line(
                 ctx,
                 format!(
@@ -153,7 +157,10 @@ fn reject_service_manager_conflicts(ctx: &mut ActionContext, state: &InstallStat
                 ),
             );
         }
-        if conflict.installed {
+        if conflict
+            .kinds
+            .contains(&ServiceManagerConflictKind::Installed)
+        {
             log_line(
                 ctx,
                 format!(
@@ -163,6 +170,48 @@ fn reject_service_manager_conflicts(ctx: &mut ActionContext, state: &InstallStat
                     format_with_home(&conflict.artifact_path)
                 ),
             );
+        }
+        if conflict
+            .kinds
+            .contains(&ServiceManagerConflictKind::PartialInstall)
+        {
+            log_line(
+                ctx,
+                format!(
+                    "Error: incomplete {} remains under {}",
+                    conflict.artifact_label, conflict.manager_label
+                ),
+            );
+        }
+        if conflict
+            .kinds
+            .contains(&ServiceManagerConflictKind::UnsafeArtifact)
+        {
+            log_line(
+                ctx,
+                format!(
+                    "Error: unsafe {} objects remain under {}",
+                    conflict.artifact_label, conflict.manager_label
+                ),
+            );
+        }
+        if conflict
+            .kinds
+            .contains(&ServiceManagerConflictKind::Indeterminate)
+        {
+            log_line(
+                ctx,
+                format!(
+                    "Error: cannot establish whether {} owns or runs UnixNotis",
+                    conflict.manager_label
+                ),
+            );
+        }
+        for path in &conflict.artifact_paths {
+            log_line(ctx, format!("- leftover: {}", format_with_home(path)));
+        }
+        if let Some(detail) = conflict.detail.as_ref() {
+            log_line(ctx, format!("- inspection failure: {detail}"));
         }
     }
     Err(anyhow!(

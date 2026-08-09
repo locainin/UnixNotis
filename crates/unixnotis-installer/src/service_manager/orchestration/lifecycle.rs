@@ -1,7 +1,9 @@
 //! Availability, state probes, and lifecycle command dispatch
 
 use super::super::backends::{dinit, runit, s6, systemd};
-use super::super::contract::{CommandSpec, ServiceProbe};
+use super::super::contract::{
+    CommandSpec, ServiceManagerAvailability, ServiceManagerAvailabilityProbe, ServiceProbe,
+};
 use super::model::{ServiceManager, ServiceManagerKind};
 
 impl ServiceManager {
@@ -13,13 +15,19 @@ impl ServiceManager {
         }
     }
 
-    pub fn availability_command(&self) -> Option<CommandSpec> {
-        // Availability checks must stay read-only and must not start a service
+    pub(crate) fn availability_state(&self) -> std::io::Result<Option<ServiceManagerAvailability>> {
+        // None keeps backends without a single manager-level query on their native service probe
+        self.availability_probe()
+            .map(|probe| probe.evaluate())
+            .transpose()
+    }
+
+    fn availability_probe(&self) -> Option<ServiceManagerAvailabilityProbe> {
         match self.kind {
-            ServiceManagerKind::Systemd => Some(systemd::availability_command()),
-            ServiceManagerKind::Dinit => Some(dinit::availability_command()),
-            ServiceManagerKind::Runit => Some(runit::availability_command()),
-            ServiceManagerKind::S6 => s6::availability_command(),
+            ServiceManagerKind::Systemd => Some(systemd::availability_probe()),
+            ServiceManagerKind::Dinit => Some(dinit::availability_probe()),
+            // sv has no separate manager transport query; status is the authoritative probe
+            ServiceManagerKind::Runit | ServiceManagerKind::S6 => None,
         }
     }
 
@@ -46,8 +54,8 @@ impl ServiceManager {
     pub fn active_probe(&self) -> ServiceProbe {
         // Probe parsing stays inside each backend because status formats differ
         match self.kind {
-            ServiceManagerKind::Systemd => ServiceProbe::exit_status(systemd::is_active_command()),
-            ServiceManagerKind::Dinit => ServiceProbe::exit_status(dinit::is_active_command()),
+            ServiceManagerKind::Systemd => systemd::active_probe(),
+            ServiceManagerKind::Dinit => dinit::active_probe(),
             ServiceManagerKind::Runit => runit::active_probe(&self.artifact_root),
             ServiceManagerKind::S6 => s6::active_probe(self.live_root()),
         }

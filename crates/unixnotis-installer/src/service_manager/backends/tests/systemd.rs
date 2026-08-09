@@ -62,23 +62,7 @@ fn systemd_backend_renders_exact_unit_artifact() {
 fn systemd_backend_commands_match_existing_behavior() {
     let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
 
-    // Availability should remain a read-only user-manager query
-    let availability = manager
-        .availability_command()
-        .expect("systemd has an availability command");
-    assert_eq!(availability.program(), "systemctl");
-    assert_eq!(
-        availability.args(),
-        &[
-            "--user",
-            "--no-pager",
-            "--plain",
-            "list-units",
-            "--type=service"
-        ]
-    );
-
-    // Enabled and active probes intentionally use quiet status checks for fast install-state reads
+    // Enabled state uses the native status check while active state uses explicit properties
     let enabled = manager
         .is_enabled_command()
         .expect("systemd has an enabled-state command");
@@ -90,7 +74,25 @@ fn systemd_backend_commands_match_existing_behavior() {
     let active = manager.active_probe();
     assert_eq!(
         active.command().args(),
-        &["--user", "is-active", "--quiet", UNIXNOTIS_DAEMON_SERVICE]
+        &[
+            "--user",
+            "show",
+            "--property=LoadState",
+            "--property=ActiveState",
+            UNIXNOTIS_DAEMON_SERVICE
+        ]
+    );
+    assert_eq!(
+        active.parser_state(true, "LoadState=loaded\nActiveState=inactive\n"),
+        crate::service_manager::contract::ServiceProbeState::Inactive
+    );
+    assert_eq!(
+        active.parser_state(true, "LoadState=not-found\nActiveState=inactive\n"),
+        crate::service_manager::contract::ServiceProbeState::Absent
+    );
+    assert_eq!(
+        active.parser_state(false, "Failed to connect to bus\n"),
+        crate::service_manager::contract::ServiceProbeState::Indeterminate
     );
 
     // Unit file changes still require daemon-reload before enable/start

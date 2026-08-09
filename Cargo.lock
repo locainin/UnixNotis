@@ -3713,6 +3713,7 @@ dependencies = [
  "toml 0.8.23",
  "unicode-width",
  "unixnotis-core",
+ "wait-timeout",
  "zbus",
 ]
 

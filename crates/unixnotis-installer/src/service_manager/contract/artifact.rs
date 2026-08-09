@@ -1,4 +1,5 @@
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 pub const MANAGED_DIRECTORY_MARKER: &str = ".unixnotis-managed";
@@ -32,6 +33,13 @@ pub struct ServiceArtifact {
     pub mode: Option<u32>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ServiceArtifactState {
+    Missing,
+    Expected,
+    UnexpectedObject,
+}
+
 impl ServiceArtifact {
     pub(in crate::service_manager) const fn file(path: PathBuf, contents: String) -> Self {
         // File artifacts are the simplest manager-owned shape, used by systemd and dinit
@@ -44,69 +52,69 @@ impl ServiceArtifact {
     }
 
     pub fn is_present_safely(&self) -> bool {
-        // State checks must match writer/remover ownership rules, not raw path existence
-        match &self.kind {
-            ServiceArtifactKind::File | ServiceArtifactKind::ExecutableFile => {
-                // A symlink at a file path is never counted as installed
-                path_is_regular_file(&self.path)
-            }
-            ServiceArtifactKind::SharedFile { .. } => {
-                // Shared files are safe only when the existing bytes match the backend contract
-                path_is_regular_file(&self.path)
-                    && self
-                        .contents
-                        .as_ref()
-                        .is_some_and(|expected| file_contents_match(&self.path, expected))
-            }
-            ServiceArtifactKind::Directory => path_is_directory(&self.path),
-            ServiceArtifactKind::ManagedDirectory => {
-                // Directory backends need the marker before state can call them installer-owned
-                path_is_directory(&self.path)
-                    && managed_directory_marker_is_valid(&managed_directory_marker(&self.path))
-            }
-            ServiceArtifactKind::Symlink { target } => fs::read_link(&self.path)
-                // Symlink state is exact because enablement can depend on the stored target
-                .is_ok_and(|actual| actual == *target),
-        }
+        // Compatibility callers need a boolean while conflict scans retain inspection errors
+        self.inspect()
+            .is_ok_and(|state| state == ServiceArtifactState::Expected)
     }
 
     pub fn exists_at_path_but_not_safely(&self) -> bool {
-        // Unsafe paths are real filesystem entries that do not match the expected artifact shape
-        // Reporting them separately avoids making symlinks or foreign directories look absent
-        path_exists_without_following(&self.path) && !self.is_present_safely()
+        self.inspect()
+            .is_ok_and(|state| state == ServiceArtifactState::UnexpectedObject)
+    }
+
+    pub fn inspect(&self) -> io::Result<ServiceArtifactState> {
+        let metadata = match fs::symlink_metadata(&self.path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(ServiceArtifactState::Missing)
+            }
+            Err(error) => return Err(error),
+        };
+
+        let expected = match &self.kind {
+            ServiceArtifactKind::File | ServiceArtifactKind::ExecutableFile => {
+                metadata.file_type().is_file()
+            }
+            ServiceArtifactKind::SharedFile { .. } => {
+                if metadata.file_type().is_file() {
+                    let Some(expected) = self.contents.as_ref() else {
+                        return Ok(ServiceArtifactState::UnexpectedObject);
+                    };
+                    fs::read_to_string(&self.path)? == *expected
+                } else {
+                    false
+                }
+            }
+            ServiceArtifactKind::Directory => metadata.file_type().is_dir(),
+            ServiceArtifactKind::ManagedDirectory => {
+                metadata.file_type().is_dir() && inspect_managed_marker(&self.path)?
+            }
+            ServiceArtifactKind::Symlink { target } => {
+                metadata.file_type().is_symlink() && fs::read_link(&self.path)? == *target
+            }
+        };
+        Ok(if expected {
+            ServiceArtifactState::Expected
+        } else {
+            ServiceArtifactState::UnexpectedObject
+        })
     }
 }
 
-fn path_is_regular_file(path: &Path) -> bool {
-    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
-}
-
-fn path_is_directory(path: &Path) -> bool {
-    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
-}
-
-fn path_exists_without_following(path: &Path) -> bool {
-    // symlink_metadata checks the artifact path itself, which is what safety diagnostics need
-    fs::symlink_metadata(path).is_ok()
-}
-
-fn file_contents_match(path: &Path, expected: &str) -> bool {
-    // Shared setup files use exact tiny contents, such as s6 bundle type declarations
-    fs::read_to_string(path).is_ok_and(|contents| contents == expected)
+fn inspect_managed_marker(directory: &Path) -> io::Result<bool> {
+    let marker = managed_directory_marker(directory);
+    let metadata = match fs::symlink_metadata(&marker) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    if !metadata.file_type().is_file() {
+        return Ok(false);
+    }
+    Ok(fs::read_to_string(marker)? == MANAGED_DIRECTORY_MARKER_CONTENTS)
 }
 
 pub fn managed_directory_marker(path: &Path) -> PathBuf {
     // Keep marker placement centralized so writer, remover, and state checks agree
     path.join(MANAGED_DIRECTORY_MARKER)
-}
-
-pub fn managed_directory_marker_is_valid(path: &Path) -> bool {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return false;
-    };
-    // A marker symlink is not ownership proof because it can point outside the service dir
-    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
-        return false;
-    }
-    fs::read_to_string(path).is_ok_and(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
 }
