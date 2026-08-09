@@ -4,8 +4,31 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 
 use super::super::binaries::remove_resolved_binaries;
-use super::super::{install_binaries, remove_binaries};
+use super::super::binaries::{log_installed_generation, resolve_install_inputs};
+use super::super::remove_binaries;
 use super::support::{test_context, test_paths, test_root, write_fake_workspace};
+
+fn install_binaries_with_guards<F, R, G>(
+    ctx: &mut crate::actions::ActionContext,
+    mut precommit: F,
+    mut reserve_activation: R,
+) -> anyhow::Result<()>
+where
+    F: FnMut(&crate::paths::InstallPaths) -> anyhow::Result<()>,
+    R: FnMut(&crate::paths::InstallPaths) -> anyhow::Result<G>,
+{
+    let (binaries, release_dir) = resolve_install_inputs(ctx)?;
+    let generation = crate::actions::releases::install_release_generation_transaction(
+        ctx.paths,
+        &release_dir,
+        &binaries,
+        || precommit(ctx.paths),
+        || reserve_activation(ctx.paths),
+        || Ok(()),
+    )?;
+    log_installed_generation(ctx, &binaries, &generation);
+    Ok(())
+}
 
 #[cfg(unix)]
 use std::os::unix::fs::{symlink, PermissionsExt};
@@ -47,7 +70,8 @@ fn install_binaries_copies_all_managed_binaries_and_runtime_helpers() {
     };
     let mut ctx = test_context(&detection, &paths, ActionMode::Install);
 
-    install_binaries(&mut ctx).expect("install should copy binaries");
+    install_binaries_with_guards(&mut ctx, |_paths| Ok(()), |_paths| Ok(()))
+        .expect("install should copy binaries");
 
     for binary in [
         "unixnotis-daemon",
@@ -87,7 +111,8 @@ fn install_binaries_copies_from_release_archive_bin_dir() {
     };
     let mut ctx = test_context(&detection, &paths, ActionMode::Install);
 
-    install_binaries(&mut ctx).expect("release archive install should copy binaries");
+    install_binaries_with_guards(&mut ctx, |_paths| Ok(()), |_paths| Ok(()))
+        .expect("release archive install should copy binaries");
 
     for binary in [
         "unixnotis-daemon",
@@ -105,6 +130,60 @@ fn install_binaries_copies_from_release_archive_bin_dir() {
     }
 
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn binary_install_runs_the_live_precommit_gate_and_activates_the_release() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = test_root("install-binaries-public-boundary");
+    write_fake_workspace(&root, &["unixnotis-daemon"]);
+    let paths = test_paths(&root);
+    let source = paths
+        .repo_root
+        .join("target")
+        .join("release")
+        .join("unixnotis-daemon");
+    fs::create_dir_all(source.parent().expect("release source parent"))
+        .expect("create release source directory");
+    fs::write(&source, "public boundary binary").expect("write release source");
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o755))
+        .expect("set release source mode");
+    let fake_bin = root.join("fake-tools");
+    fs::create_dir_all(&fake_bin).expect("create fake tools directory");
+    crate::test_support::fs::write_executable(
+        &fake_bin.join("busctl"),
+        "#!/bin/sh\nprintf 'b false\\n'\n",
+    );
+    crate::test_support::fs::write_executable(
+        &fake_bin.join("systemctl"),
+        "#!/bin/sh\nprintf 'LoadState=not-found\\nActiveState=inactive\\n'\n",
+    );
+    let _system_tools = crate::system_tools::routing::use_fake_tool_bin(&fake_bin);
+    let _manager_tools =
+        crate::service_manager::contract::command_routing::use_fake_command_bin(&fake_bin);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, &paths, ActionMode::Install);
+
+    install_binaries_with_guards(
+        &mut ctx,
+        |paths| {
+            crate::actions::daemon::wait_until_no_conflicting_live_daemon(
+                paths,
+                crate::actions::daemon::STOP_QUIESCENCE_TIMEOUT,
+            )
+        },
+        |_paths| Ok(()),
+    )
+    .expect("binary install should activate one generation after the live gate");
+
+    assert_eq!(
+        fs::read_to_string(paths.bin_dir.join("unixnotis-daemon")).expect("read installed binary"),
+        "public boundary binary"
+    );
+    fs::remove_dir_all(root).expect("remove public install fixture");
 }
 
 #[cfg(unix)]
@@ -133,6 +212,8 @@ fn install_binaries_rejects_destination_symlink_without_touching_its_target() {
         let source = paths.repo_root.join("target").join("release").join(binary);
         fs::create_dir_all(source.parent().expect("release dir")).expect("make release dir");
         fs::write(&source, format!("binary:{binary}")).expect("write fake binary");
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o755))
+            .expect("set fake binary mode");
     }
     fs::create_dir_all(&paths.bin_dir).expect("bin dir");
     let destination = paths.bin_dir.join("unixnotis-daemon");
@@ -145,9 +226,13 @@ fn install_binaries_rejects_destination_symlink_without_touching_its_target() {
     };
     let mut ctx = test_context(&detection, &paths, ActionMode::Install);
 
-    let error = install_binaries(&mut ctx).expect_err("destination symlink should fail");
+    let error = install_binaries_with_guards(&mut ctx, |_paths| Ok(()), |_paths| Ok(()))
+        .expect_err("destination symlink should fail");
 
-    assert!(error.to_string().contains("failed to install"));
+    assert!(
+        error.to_string().contains("unmanaged target"),
+        "unexpected destination error: {error:#}"
+    );
     assert_eq!(
         fs::read_to_string(&protected).expect("protected remains"),
         "protected"
@@ -209,6 +294,79 @@ fn remove_binaries_removes_all_managed_binaries_and_runtime_helpers() {
     }
 
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn remove_binaries_accepts_only_the_managed_generation_entrypoints() {
+    let root = test_root("remove-managed-generation-binaries");
+    write_fake_workspace(&root, &["unixnotis-daemon", "unixnotis-center"]);
+    let paths = test_paths(&root);
+    for binary in ["unixnotis-daemon", "unixnotis-center"] {
+        let source = paths.repo_root.join("target").join("release").join(binary);
+        fs::create_dir_all(source.parent().expect("release source parent"))
+            .expect("create release source directory");
+        fs::write(&source, format!("managed:{binary}")).expect("write release source");
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o755))
+            .expect("set release source mode");
+    }
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, &paths, ActionMode::Uninstall);
+    install_binaries_with_guards(&mut ctx, |_paths| Ok(()), |_paths| Ok(()))
+        .expect("install managed generation");
+
+    remove_binaries(&mut ctx).expect("remove managed generation");
+
+    assert!(fs::symlink_metadata(paths.bin_dir.join("unixnotis-daemon")).is_err());
+    assert!(fs::symlink_metadata(paths.bin_dir.join("unixnotis-center")).is_err());
+    assert!(!paths
+        .installed_release_root()
+        .expect("installed release root")
+        .exists());
+    fs::remove_dir_all(root).expect("remove managed uninstall fixture");
+}
+
+#[test]
+fn remove_binaries_rejects_a_directory_entrypoint_with_a_stable_error() {
+    let root = test_root("remove-binaries-directory-entrypoint");
+    write_fake_workspace(&root, &["unixnotis-daemon"]);
+    let paths = test_paths(&root);
+    fs::create_dir_all(paths.bin_dir.join("unixnotis-daemon"))
+        .expect("create directory entrypoint");
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, &paths, ActionMode::Uninstall);
+
+    let error = remove_binaries(&mut ctx).expect_err("directory entrypoint must fail closed");
+
+    assert!(error.to_string().contains("non-file binary entrypoint"));
+    assert!(paths.bin_dir.join("unixnotis-daemon").is_dir());
+    fs::remove_dir_all(root).expect("remove directory entrypoint fixture");
+}
+
+#[test]
+fn resolved_binary_removal_propagates_entrypoint_inspection_errors() {
+    let root = test_root("remove-binaries-inspection-error");
+    let paths = test_paths(&root);
+    fs::create_dir_all(paths.bin_dir.parent().expect("binary parent"))
+        .expect("create binary parent");
+    fs::write(&paths.bin_dir, "not a directory").expect("create invalid binary root");
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let mut ctx = test_context(&detection, &paths, ActionMode::Uninstall);
+
+    let error = remove_resolved_binaries(&mut ctx, vec!["unixnotis-daemon".to_string()])
+        .expect_err("entrypoint metadata errors must not become missing files");
+
+    assert!(error.to_string().contains("inspect"));
+    fs::remove_file(&paths.bin_dir).expect("remove invalid binary root");
+    fs::remove_dir_all(root).expect("remove inspection error fixture");
 }
 
 #[cfg(unix)]
@@ -316,6 +474,9 @@ fn write_fake_release_archive(root: &std::path::Path) {
         "unixnotis-css-validate",
         "noticenterctl",
     ] {
-        fs::write(bin_dir.join(binary), format!("release:{binary}")).expect("release binary");
+        let path = bin_dir.join(binary);
+        fs::write(&path, format!("release:{binary}")).expect("release binary");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+            .expect("set release binary mode");
     }
 }
