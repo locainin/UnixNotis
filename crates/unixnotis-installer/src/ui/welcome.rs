@@ -8,6 +8,7 @@ use super::header::draw_header;
 use super::widgets::truncate_to_width;
 use crate::actions::{
     daemon_has_displayable_status, daemon_status_is_warning, format_daemon_status, summarize_owner,
+    InstallationDisposition,
 };
 use crate::app::{App, MenuItem};
 use crate::checks::{CheckItem, CheckState};
@@ -66,6 +67,20 @@ pub(super) fn draw_welcome(frame: &mut Frame<'_>, app: &App) {
 fn render_status(app: &App) -> Text<'static> {
     // Build a list of Lines that ratatui will render as a single Text block.
     // This is kept pure so rendering remains deterministic for any given App state.
+    let disposition = app.installation_disposition();
+    let (version, version_role) = app
+        .install_state
+        .as_ref()
+        .and_then(crate::actions::InstallState::installed_version)
+        .map_or_else(
+            || (app.release_status.current.clone(), "installer"),
+            |installed_version| {
+                (
+                    format!("v{}", installed_version.trim_start_matches('v')),
+                    installed_version_role(disposition),
+                )
+            },
+        );
     let mut lines = vec![
         // Section heading: release version and update status.
         Line::from(Span::styled(
@@ -75,9 +90,16 @@ fn render_status(app: &App) -> Text<'static> {
         Line::from(vec![
             Span::styled("Version: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::styled(
-                app.release_status.display_line(),
-                release_status_style(app.release_status.state),
+                app.release_status.display_line_for(&version, version_role),
+                release_status_style(app.release_status.update_state_for(&version)),
             ),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Install state: ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(disposition.label()),
         ]),
         Line::from(""),
         // Section heading: core environment checks.
@@ -101,6 +123,15 @@ fn render_status(app: &App) -> Text<'static> {
     render_daemon_section(app, &mut lines);
 
     Text::from(lines)
+}
+
+pub(super) const fn installed_version_role(disposition: InstallationDisposition) -> &'static str {
+    // Only a fully verified generation may use the unqualified installed wording
+    if matches!(disposition, InstallationDisposition::InstalledHealthy) {
+        "installed"
+    } else {
+        "binaries present"
+    }
 }
 
 fn render_daemon_section(app: &App, lines: &mut Vec<Line<'static>>) {

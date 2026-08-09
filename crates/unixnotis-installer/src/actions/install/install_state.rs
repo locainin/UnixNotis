@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceArtifact;
 
-use super::binaries::resolve_install_binaries_best_effort;
-use super::conflicts::{detect_service_manager_conflict_state, ServiceManagerConflict};
+use super::super::binaries::resolve_install_binaries_best_effort;
+use super::super::conflicts::{detect_service_manager_conflict_state, ServiceManagerConflict};
+use super::super::releases::{inspect_installed_generation, BinaryHealth};
 
 #[derive(Clone)]
 pub(in crate::actions) struct BinaryState {
@@ -14,8 +15,8 @@ pub(in crate::actions) struct BinaryState {
     pub(in crate::actions) name: String,
     // Concrete install path shown in logs when a binary is missing or present
     pub(in crate::actions) path: PathBuf,
-    // Existence is enough here because binary copying owns replacement safety later
-    pub(in crate::actions) exists: bool,
+    // Read-side health uses the same generation, link, type, size, and digest invariants as install
+    pub(in crate::actions) health: BinaryHealth,
 }
 
 #[derive(Clone)]
@@ -39,20 +40,85 @@ pub struct InstallState {
     pub(in crate::actions) service_conflict_warnings: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InstallationDisposition {
+    // No selected-manager artifact or managed binary entrypoint was found
+    NotInstalled,
+    // Every binary belongs to one verified generation and manager state is trustworthy
+    InstalledHealthy,
+    // A managed footprint exists but at least one required health invariant failed
+    RepairRequired,
+}
+
+impl InstallationDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NotInstalled => "not installed",
+            Self::InstalledHealthy => "healthy",
+            Self::RepairRequired => "repair required",
+        }
+    }
+}
+
 impl InstallState {
     pub fn is_installed(&self) -> bool {
-        // Treat installed as binaries plus the service artifact; runtime status is separate
-        !self.binaries.is_empty()
-            && self.binaries.iter().all(|binary| binary.exists)
+        // Healthy means both filesystem integrity and manager inspection are trustworthy
+        self.healthy_generation().is_some()
             && self.service_artifact_exists
+            && self.service_enabled_error.is_none()
+            && self.service_active_error.is_none()
+            && self.service_conflicts.is_empty()
     }
 
     pub fn is_fully_installed(&self) -> bool {
         self.is_installed() && self.service_active
     }
 
-    pub const fn service_enabled(&self) -> bool {
-        self.service_enabled
+    pub fn disposition(&self) -> InstallationDisposition {
+        if self.is_installed() {
+            InstallationDisposition::InstalledHealthy
+        } else if self.has_installation_footprint() {
+            InstallationDisposition::RepairRequired
+        } else {
+            InstallationDisposition::NotInstalled
+        }
+    }
+
+    pub fn installed_version(&self) -> Option<&str> {
+        self.healthy_generation().map(|(_, version)| version)
+    }
+
+    fn has_installation_footprint(&self) -> bool {
+        self.service_artifact_exists
+            || self
+                .binaries
+                .iter()
+                .any(|binary| !matches!(binary.health, BinaryHealth::Missing))
+    }
+
+    fn healthy_generation(&self) -> Option<(&str, &str)> {
+        let BinaryHealth::Healthy {
+            generation,
+            package_version,
+            ..
+        } = &self.binaries.first()?.health
+        else {
+            return None;
+        };
+        // A set of individually valid binaries is still invalid when generations differ
+        self.binaries
+            .iter()
+            .all(|binary| {
+                matches!(
+                    &binary.health,
+                    BinaryHealth::Healthy {
+                        generation: candidate_generation,
+                        package_version: candidate_version,
+                        ..
+                    } if candidate_generation == generation && candidate_version == package_version
+                )
+            })
+            .then_some((generation, package_version))
     }
 }
 
@@ -60,15 +126,12 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
     // Keep install state aligned with installer binary discovery
     // Best-effort resolution keeps install state usable even if workspace metadata is broken
     let (binaries, warning) = resolve_install_binaries_best_effort(paths);
-    let binaries = binaries
+    let binaries = inspect_installed_generation(paths, &binaries)
         .into_iter()
-        .map(|name| {
-            let path = paths.bin_dir.join(&name);
-            BinaryState {
-                name,
-                exists: path.exists(),
-                path,
-            }
+        .map(|(name, health)| BinaryState {
+            path: paths.bin_dir.join(&name),
+            name,
+            health,
         })
         .collect::<Vec<_>>();
 
@@ -97,9 +160,21 @@ pub fn check_install_state(paths: &InstallPaths) -> InstallState {
     });
     // Active state still matters for the install summary shown in the UI
     let mut service_active_error = None;
-    let service_active = match paths.service.active_probe().evaluate() {
-        // Active probes can be plain exit status or stdout parsing, depending on backend
-        Ok(active) => active,
+    let service_active = match paths.service.active_probe().evaluate_state() {
+        Ok(crate::service_manager::contract::ServiceProbeState::Active) => true,
+        Ok(
+            crate::service_manager::contract::ServiceProbeState::Absent
+            | crate::service_manager::contract::ServiceProbeState::Inactive,
+        ) => false,
+        Ok(crate::service_manager::contract::ServiceProbeState::Unavailable) => {
+            service_active_error = Some("selected service manager is unavailable".to_string());
+            false
+        }
+        Ok(crate::service_manager::contract::ServiceProbeState::Indeterminate) => {
+            service_active_error =
+                Some("selected service manager state is indeterminate".to_string());
+            false
+        }
         Err(err) => {
             service_active_error = Some(err.to_string());
             false

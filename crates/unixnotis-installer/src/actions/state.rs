@@ -28,7 +28,7 @@ pub fn check_install_state_step(ctx: &mut ActionContext) -> Result<()> {
         log_line(ctx, "Warning: no installable binaries discovered");
     }
     for binary in &state.binaries {
-        let status = if binary.exists { "present" } else { "missing" };
+        let status = binary.health.label();
         log_line(
             ctx,
             format!(

@@ -1,6 +1,6 @@
 //! UI state and event handling for the installer TUI
 
-use crate::actions::{check_install_state, InstallState};
+use crate::actions::{check_install_state, InstallState, InstallationDisposition};
 use crate::actions::{BuildAccelConfigStatus, BuildAccelDetection, BuildAccelOutcome};
 use crate::checks::Checks;
 use crate::detect::Detection;
@@ -204,9 +204,15 @@ impl App {
     pub fn action_label(&self, mode: ActionMode) -> &'static str {
         match mode {
             ActionMode::Install => self.install_label(),
-            ActionMode::Reset => "Reset config",
             _ => mode.label(),
         }
+    }
+
+    pub fn installation_disposition(&self) -> InstallationDisposition {
+        self.install_state.as_ref().map_or(
+            InstallationDisposition::NotInstalled,
+            InstallState::disposition,
+        )
     }
 
     pub fn refresh_backups(&mut self) {
@@ -216,15 +222,10 @@ impl App {
     }
 
     fn install_label(&self) -> &'static str {
-        // Installed state is derived from filesystem presence, not runtime health
-        if self
-            .install_state
-            .as_ref()
-            .is_some_and(crate::actions::InstallState::is_installed)
-        {
-            "Reinstall"
-        } else {
-            "Install"
+        match self.installation_disposition() {
+            InstallationDisposition::NotInstalled => "Install",
+            InstallationDisposition::InstalledHealthy => "Reinstall",
+            InstallationDisposition::RepairRequired => "Repair",
         }
     }
 

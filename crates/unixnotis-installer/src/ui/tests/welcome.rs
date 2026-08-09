@@ -1,3 +1,4 @@
+use crate::actions::InstallationDisposition;
 use crate::app::Screen;
 use crate::detect::OwnerInfo;
 use crate::release::{ReleaseStatus, ReleaseUpdateState};
@@ -6,6 +7,22 @@ use ratatui::style::{Color, Modifier};
 use super::test_support::{
     app_for_rendering, detected_daemon_with_status, render_app, render_app_buffer, style_for_text,
 };
+
+#[test]
+fn installed_version_role_distinguishes_verified_and_repair_states() {
+    assert_eq!(
+        super::welcome::installed_version_role(InstallationDisposition::InstalledHealthy),
+        "installed"
+    );
+    assert_eq!(
+        super::welcome::installed_version_role(InstallationDisposition::RepairRequired),
+        "binaries present"
+    );
+    assert_eq!(
+        super::welcome::installed_version_role(InstallationDisposition::NotInstalled),
+        "binaries present"
+    );
+}
 
 #[test]
 fn draw_welcome_renders_status_and_action_menu() {
@@ -19,9 +36,10 @@ fn draw_welcome_renders_status_and_action_menu() {
     assert!(screen.contains("Actions"));
     assert!(screen.contains("Release"));
     assert!(screen.contains(&format!(
-        "Version: v{} installed",
+        "Version: v{} installer",
         env!("CARGO_PKG_VERSION")
     )));
+    assert!(screen.contains("Install state: not installed"));
     assert!(screen.contains("Compatibility"));
     assert!(screen.contains("[ok]"));
     assert!(screen.contains("test - ok"));
@@ -61,6 +79,7 @@ fn draw_welcome_hides_daemon_section_when_only_probe_errors_exist() {
 fn draw_welcome_shows_daemon_section_when_runtime_signal_exists() {
     let mut app = app_for_rendering(Screen::Welcome);
     app.detection.owner = Some(OwnerInfo {
+        unique_name: None,
         pid: Some(4242),
         comm: Some("dunst".to_string()),
     });
