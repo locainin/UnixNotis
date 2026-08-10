@@ -13,8 +13,8 @@ use crate::daemon::notifications::identity::{
 };
 use crate::daemon::notifications::ingress::payload::{
     build_notification, materialize_sender_visual, may_materialize_content_image, owned_to_string,
-    sender_visual_role, NotificationInput, SenderVisualRole, CONVERSATION_AVATAR_TIMEOUT,
-    MAX_STORED_AVATAR_DIMENSION, MAX_STORED_CONTENT_DIMENSION,
+    sender_visual_role, wire_image_role, NotificationInput, SenderVisualRole, WireImageRole,
+    CONVERSATION_AVATAR_TIMEOUT, MAX_STORED_AVATAR_DIMENSION, MAX_STORED_CONTENT_DIMENSION,
 };
 use crate::daemon::{to_fdo_error, NotificationSignalMode};
 use crate::store::{CommitDisposition, InsertOutcome, SuppressedNotification};
@@ -128,10 +128,7 @@ impl NotificationServer {
             sender
         } else {
             warn!("notification sender credentials timed out and failed closed");
-            SenderMetadata {
-                status: SenderMetadataStatus::CredentialLookupTimedOut,
-                ..SenderMetadata::default()
-            }
+            timed_out_sender_metadata()
         }
     }
 
@@ -155,6 +152,12 @@ impl NotificationServer {
             ),
         )
         .await;
+        let wire_image_role = wire_image_role(
+            &resolution.attribution,
+            &desktop_identity_index,
+            &input.hints,
+            &input.actions,
+        );
         let sender_visual_role = sender_visual_role(
             &resolution.attribution,
             &desktop_identity_index,
@@ -171,10 +174,15 @@ impl NotificationServer {
         let materialized_content =
             materialize_content_visual(&resolution.attribution, input.image_path.as_deref()).await;
         let (image_data, wire_sender_visual) = normalize_wire_image_for_role(
-            sender_visual_role,
+            wire_image_role,
             input.wire_image_data,
             materialized_content,
         );
+        let stored_sender_visual_role = if wire_sender_visual.is_some() {
+            SenderVisualRole::ConversationAvatar
+        } else {
+            sender_visual_role
+        };
         if matches!(
             resolution.attribution.status,
             unixnotis_core::AttributionStatus::Conflict
@@ -211,7 +219,7 @@ impl NotificationServer {
             image_data,
             sender_visual_data: wire_sender_visual,
             sender_visual,
-            sender_visual_role,
+            sender_visual_role: stored_sender_visual_role,
             sender,
             attribution: resolution.attribution,
             attribution_diagnostics: resolution.diagnostics,
@@ -363,19 +371,19 @@ impl NotificationServer {
 }
 
 fn normalize_wire_image_for_role(
-    role: SenderVisualRole,
+    role: WireImageRole,
     wire_image_data: Option<super::wire_hints::WireImageData>,
     materialized_content: Option<ImageData>,
 ) -> (Option<ImageData>, Option<ImageData>) {
     match role {
-        SenderVisualRole::ConversationAvatar => {
+        WireImageRole::ConversationAvatar => {
             // Communication artwork becomes a small sender visual before model storage
             let sender_visual = wire_image_data
                 .and_then(|image| image.into_storage_image(MAX_STORED_AVATAR_DIMENSION));
             (materialized_content, sender_visual)
         }
         // Non-communication artwork uses the larger content-image storage bound
-        SenderVisualRole::ApplicationProvidedIcon | SenderVisualRole::None => {
+        WireImageRole::ContentImage => {
             let content_image = wire_image_data
                 .and_then(|image| image.into_storage_image(MAX_STORED_CONTENT_DIMENSION))
                 .or(materialized_content);
@@ -416,6 +424,14 @@ async fn materialize_content_visual(
     )
     .await
     .flatten()
+}
+
+fn timed_out_sender_metadata() -> SenderMetadata {
+    // Timeout status prevents incomplete credentials from being treated as identity evidence
+    SenderMetadata {
+        status: SenderMetadataStatus::CredentialLookupTimedOut,
+        ..SenderMetadata::default()
+    }
 }
 
 #[cfg(test)]

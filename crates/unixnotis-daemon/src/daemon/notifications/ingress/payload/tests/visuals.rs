@@ -29,6 +29,15 @@ fn associated_sender_role_accepts_inline_reply_and_message_categories() {
         ),
         SenderVisualRole::ConversationAvatar
     );
+    assert_eq!(
+        wire_image_role(
+            &attribution,
+            &index,
+            &HashMap::new(),
+            &["inline-reply".to_string(), "Reply".to_string()],
+        ),
+        WireImageRole::ConversationAvatar
+    );
 
     let mut hints = HashMap::new();
     hints.insert(
@@ -91,6 +100,26 @@ fn associated_noncommunication_path_is_a_small_application_visual() {
     assert!(!sender_visual_path_allowed(
         SenderVisualRole::None,
         &attribution
+    ));
+}
+
+#[test]
+fn trusted_conversation_avatar_path_remains_allowed() {
+    let attribution = unixnotis_core::NotificationAttribution::associated(
+        "Example Chat",
+        "Example Chat",
+        "org.example.Chat",
+        "example-chat",
+        IdentityAssurance::SystemAssociated,
+        InteractionPolicies::NATIVE_COMPATIBILITY,
+        unixnotis_core::AttributionReason::ExactSystemExecutable,
+        "associated executable",
+        "associated:system-app:org.example.Chat:sender".to_string(),
+    );
+
+    assert!(sender_visual_path_allowed(
+        SenderVisualRole::ConversationAvatar,
+        &attribution,
     ));
 }
 

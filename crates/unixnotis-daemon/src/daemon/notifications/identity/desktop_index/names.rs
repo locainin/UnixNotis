@@ -4,11 +4,11 @@ use unicode_security::skeleton;
 
 pub(in crate::daemon::notifications::identity) fn normalize_desktop_id(value: &str) -> String {
     // Desktop hints commonly include an optional suffix and mixed case
-    value
-        .trim()
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized
         .strip_suffix(".desktop")
-        .unwrap_or_else(|| value.trim())
-        .to_ascii_lowercase()
+        .unwrap_or(&normalized)
+        .to_string()
 }
 
 pub(in crate::daemon::notifications::identity) fn normalize_name(value: &str) -> String {

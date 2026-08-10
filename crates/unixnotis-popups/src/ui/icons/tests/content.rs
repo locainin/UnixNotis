@@ -2,6 +2,7 @@ use super::*;
 
 fn image_data(channels: i32, rowstride: i32, data: Vec<u8>) -> NotificationImage {
     NotificationImage {
+        claimed_desktop_id: String::new(),
         content_image: ImageData {
             width: 2,
             height: 1,

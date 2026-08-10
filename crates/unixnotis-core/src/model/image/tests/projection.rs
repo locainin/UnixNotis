@@ -4,6 +4,7 @@ fn image() -> NotificationImage {
     NotificationImage {
         badge_icon: "mail".to_string(),
         claimed_theme_icon: String::new(),
+        claimed_desktop_id: String::new(),
         sender_visual_role: NotificationVisualRole::ConversationAvatar,
         sender_visual: ImageData {
             width: 1,

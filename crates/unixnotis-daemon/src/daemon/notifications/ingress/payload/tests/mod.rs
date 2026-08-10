@@ -15,6 +15,7 @@ pub(super) use super::visuals::{
     sender_visual_path_allowed, MAX_SENDER_VISUAL_BYTES,
 };
 pub(super) use super::visuals::{sender_visual_role, SenderVisualRole};
+pub(super) use super::visuals::{wire_image_role, WireImageRole};
 
 pub(super) use unixnotis_core::{
     ApplicationActionPolicy, AttributionReason, IdentityAssurance, InteractionPolicies,

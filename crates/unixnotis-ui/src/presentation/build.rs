@@ -178,7 +178,7 @@ fn identity_presentation(
             let claim = visible_claim(&claimed_name);
             (
                 claim.unwrap_or("Unknown application").to_string(),
-                claim.map(|_| "Identity could not be verified".to_string()),
+                claim.map(|_| "App identity could not be verified".to_string()),
             )
         }
     };
@@ -333,6 +333,7 @@ const fn visual_presentation(notification: &NotificationView) -> VisualPresentat
     } else {
         match notification.image.sender_visual_role {
             unixnotis_core::NotificationVisualRole::ConversationAvatar => {
+                // Bounded sender pixels are conversation presentation, not application identity
                 SenderVisualPresentation::ConversationAvatar
             }
             unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon => {

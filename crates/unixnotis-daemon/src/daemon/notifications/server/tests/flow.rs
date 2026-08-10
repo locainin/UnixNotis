@@ -15,9 +15,9 @@ use zbus::message::{Header, Type};
 use zbus::zvariant::{OwnedValue, Value};
 use zbus::{Connection, MatchRule, Message, MessageStream};
 
-use crate::daemon::notifications::identity::SenderMetadata;
+use crate::daemon::notifications::identity::{SenderMetadata, SenderMetadataStatus};
 use crate::daemon::notifications::ingress::payload::{
-    build_notification, NotificationInput, SenderVisualRole,
+    build_notification, NotificationInput, SenderVisualRole, WireImageRole,
 };
 use crate::daemon::{DaemonState, NotificationServer};
 use crate::expire::ExpirationScheduler;
@@ -64,6 +64,14 @@ impl NotificationServer {
         }
         Ok(completion.id)
     }
+}
+
+#[test]
+fn timed_out_sender_metadata_remains_explicitly_untrusted() {
+    assert_eq!(
+        super::timed_out_sender_metadata().status,
+        SenderMetadataStatus::CredentialLookupTimedOut
+    );
 }
 
 fn notification_with_id(id: u32) -> Arc<Notification> {
@@ -276,7 +284,7 @@ fn conversation_avatar_wire_image_is_stored_with_the_avatar_role_and_bound() {
     .expect("320x320 communication image should pass wire validation");
     // The communication role must send the wire image down the sender-visual branch
     let (content_image, sender_visual_data) = super::normalize_wire_image_for_role(
-        SenderVisualRole::ConversationAvatar,
+        WireImageRole::ConversationAvatar,
         Some(wire_image),
         None,
     );

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::os::fd::AsFd;
+use std::sync::Arc;
 use std::time::Duration;
 
 use zbus::zvariant::{OwnedValue, SerializeValue, Structure, Value};
@@ -12,7 +13,7 @@ use super::{
 use crate::daemon::{NotificationServer, NOTIFICATIONS_OBJECT_PATH};
 use crate::expire::ExpirationScheduler;
 use crate::store::test_support::make_notification_with_sender;
-use crate::test_support::daemon_state_for_test;
+use crate::test_support::{daemon_state_for_test, env_lock, EnvVarGuard, TempRoot};
 
 const NOTIFICATIONS_INTERFACE: &str = "org.freedesktop.Notifications";
 // Four-megabyte D-Bus fixtures need headroom when the full test binary runs in parallel
@@ -218,6 +219,133 @@ async fn supported_wire_hints_keep_text_boolean_and_both_urgency_types() {
     assert!(first.is_transient);
     assert_eq!(first.urgency, 2);
     assert_eq!(second.urgency, 1);
+}
+
+#[tokio::test]
+async fn claimed_communication_desktop_entry_keeps_wire_avatar_untrusted() {
+    let (state, client) = notification_ingress().await;
+    let root = TempRoot::new("claimed-communication-avatar");
+    let applications = root.path().join("applications");
+    std::fs::create_dir_all(&applications).expect("create desktop application fixture root");
+    std::fs::write(
+        applications.join("org.example.Chat.desktop"),
+        "[Desktop Entry]\nType=Application\nName=Example Chat\nCategories=Network;InstantMessaging;\nExec=/usr/bin/true\n",
+    )
+    .expect("write communication desktop fixture");
+    let index = {
+        let _environment_lock = env_lock();
+        let _data_home = EnvVarGuard::set("XDG_DATA_HOME", root.path());
+        let _data_dirs = EnvVarGuard::set("XDG_DATA_DIRS", root.path());
+        crate::daemon::DesktopIdentityIndex::build_snapshot().index
+    };
+    assert!(index.desktop_id_has_communication_role("ORG.EXAMPLE.CHAT.DESKTOP"));
+    state.desktop_identity_index.store(Arc::new(index));
+
+    let hints = HashMap::from([
+        (
+            "desktop-entry".to_string(),
+            OwnedValue::try_from(Value::from("ORG.EXAMPLE.CHAT.DESKTOP"))
+                .expect("desktop-entry hint"),
+        ),
+        (
+            "image-data".to_string(),
+            owned_rgba_pixel([220, 20, 20, 255]),
+        ),
+    ]);
+    let untrusted_icon = root
+        .path()
+        .join("untrusted-application-icon.png")
+        .to_string_lossy()
+        .into_owned();
+    let id = send_notification_with_hints(
+        &state,
+        &client,
+        "Unrelated sender claim",
+        &untrusted_icon,
+        hints,
+    )
+    .await
+    .expect("claimed communication notification should be accepted")
+    .body()
+    .deserialize::<u32>()
+    .expect("notification id");
+
+    let notification = state
+        .store
+        .lock()
+        .await
+        .active_notification_view(id)
+        .expect("notification should be retained");
+    assert_eq!(
+        notification.image.sender_visual_role,
+        unixnotis_core::NotificationVisualRole::ConversationAvatar
+    );
+    assert!(!notification.image.sender_visual.data.is_empty());
+    assert!(notification.image.content_image.data.is_empty());
+    assert_eq!(
+        notification.image.claimed_desktop_id,
+        "ORG.EXAMPLE.CHAT.DESKTOP"
+    );
+    assert!(!notification.attribution.may_materialize_application_icon());
+    assert_ne!(
+        notification.attribution.assurance,
+        unixnotis_core::IdentityAssurance::Authenticated
+    );
+}
+
+#[tokio::test]
+async fn claimed_noncommunication_desktop_entry_keeps_wire_image_as_content() {
+    let (state, client) = notification_ingress().await;
+    let root = TempRoot::new("claimed-content-image");
+    let applications = root.path().join("applications");
+    std::fs::create_dir_all(&applications).expect("create desktop application fixture root");
+    std::fs::write(
+        applications.join("example-viewer.desktop"),
+        "[Desktop Entry]\nType=Application\nName=Example Viewer\nCategories=Graphics;Viewer;\nExec=/usr/bin/true\n",
+    )
+    .expect("write noncommunication desktop fixture");
+    let index = {
+        let _environment_lock = env_lock();
+        let _data_home = EnvVarGuard::set("XDG_DATA_HOME", root.path());
+        let _data_dirs = EnvVarGuard::set("XDG_DATA_DIRS", root.path());
+        crate::daemon::DesktopIdentityIndex::build_snapshot().index
+    };
+    state.desktop_identity_index.store(Arc::new(index));
+
+    let hints = HashMap::from([
+        (
+            "desktop-entry".to_string(),
+            OwnedValue::try_from(Value::from("example-viewer.desktop"))
+                .expect("desktop-entry hint"),
+        ),
+        (
+            "image-data".to_string(),
+            owned_rgba_pixel([20, 40, 220, 255]),
+        ),
+    ]);
+    let id = send_notification_with_hints(&state, &client, "Unrelated viewer claim", "", hints)
+        .await
+        .expect("claimed noncommunication notification should be accepted")
+        .body()
+        .deserialize::<u32>()
+        .expect("notification id");
+
+    let notification = state
+        .store
+        .lock()
+        .await
+        .active_notification_view(id)
+        .expect("notification should be retained");
+    assert_eq!(
+        notification.image.sender_visual_role,
+        unixnotis_core::NotificationVisualRole::None
+    );
+    assert!(notification.image.sender_visual.data.is_empty());
+    assert!(!notification.image.content_image.data.is_empty());
+    assert_eq!(
+        notification.image.claimed_desktop_id,
+        "example-viewer.desktop"
+    );
 }
 
 #[tokio::test]
@@ -492,15 +620,25 @@ async fn send_owned_hints_notification(
     client: &Connection,
     hints: HashMap<String, OwnedValue>,
 ) -> zbus::Result<Message> {
+    send_notification_with_hints(state, client, "app", "", hints).await
+}
+
+async fn send_notification_with_hints(
+    state: &crate::daemon::DaemonState,
+    client: &Connection,
+    app_name: &str,
+    app_icon: &str,
+    hints: HashMap<String, OwnedValue>,
+) -> zbus::Result<Message> {
     let destination = state
         .connection()
         .unique_name()
         .expect("daemon unique name")
         .clone();
     let payload = (
-        "app",
+        app_name,
         0_u32,
-        "",
+        app_icon,
         "summary",
         "body",
         Vec::<String>::new(),

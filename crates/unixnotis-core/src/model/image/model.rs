@@ -39,6 +39,10 @@ pub struct NotificationImage {
     /// Sender-supplied theme name retained only as a decorative lookup hint
     #[serde(default)]
     pub claimed_theme_icon: String,
+    /// Sender-supplied desktop id retained only for bounded decorative lookup
+    /// This value is never attribution evidence or an authorization input
+    #[serde(default)]
+    pub claimed_desktop_id: String,
     /// Safely decoded sender-provided visual
     pub sender_visual_role: NotificationVisualRole,
     pub sender_visual: ImageData,

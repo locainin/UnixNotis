@@ -23,6 +23,11 @@ impl NotificationImage {
         Self {
             badge_icon: String::new(),
             claimed_theme_icon: Self::sanitize_theme_icon_hint(app_icon),
+            claimed_desktop_id: hints
+                .get("desktop-entry")
+                .and_then(|value| value.try_clone().ok())
+                .and_then(|value| String::try_from(value).ok())
+                .map_or_else(String::new, |value| Self::sanitize_desktop_id_hint(&value)),
             sender_visual_role: super::NotificationVisualRole::None,
             sender_visual: ImageData::default(),
             content_image: image_data.unwrap_or_default(),
@@ -34,10 +39,20 @@ impl NotificationImage {
         if value.is_empty()
             || value.len() > 128
             || value.starts_with('.')
-            || value.contains('/')
-            || value.contains('\\')
-            || value.contains(':')
-            || value.chars().any(char::is_whitespace)
+            || !value.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
+            })
+        {
+            return String::new();
+        }
+        value.to_string()
+    }
+
+    fn sanitize_desktop_id_hint(value: &str) -> String {
+        let value = value.trim();
+        if value.is_empty()
+            || value.len() > 128
+            || value.starts_with('.')
             || !value.chars().all(|character| {
                 character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
             })

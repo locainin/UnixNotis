@@ -36,6 +36,12 @@ pub(in crate::daemon::notifications) enum SenderVisualRole {
     ApplicationProvidedIcon,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(in crate::daemon::notifications) enum WireImageRole {
+    ContentImage,
+    ConversationAvatar,
+}
+
 pub(in crate::daemon::notifications) const fn may_materialize_application_icon(
     attribution: &NotificationAttribution,
 ) -> bool {
@@ -48,19 +54,18 @@ pub(in crate::daemon::notifications) const fn may_materialize_content_image(
     attribution.may_materialize_content_image()
 }
 
-pub(in crate::daemon::notifications) fn sender_visual_role(
+pub(in crate::daemon::notifications) fn wire_image_role(
     attribution: &NotificationAttribution,
     index: &DesktopIdentityIndex,
     hints: &HashMap<String, OwnedValue>,
     actions: &[String],
-    app_icon: &str,
-) -> SenderVisualRole {
+) -> WireImageRole {
     // Communication metadata selects a presentation slot without authenticating the application
     if actions
         .chunks_exact(2)
         .any(|pair| pair.first().is_some_and(|key| key == "inline-reply"))
     {
-        return SenderVisualRole::ConversationAvatar;
+        return WireImageRole::ConversationAvatar;
     }
 
     // Category hints remain presentation input, not identity proof
@@ -76,10 +81,33 @@ pub(in crate::daemon::notifications) fn sender_visual_role(
             });
     // Desktop categories cover clients that omit the optional wire category
     let desktop_metadata = index.desktop_id_has_communication_role(&attribution.desktop_id);
-    if explicit_metadata || desktop_metadata {
-        SenderVisualRole::ConversationAvatar
-    } else if may_materialize_application_icon(attribution) && local_avatar_path(app_icon).is_some()
-    {
+    // A claimed desktop entry is presentation metadata only; it never proves identity
+    let claimed_desktop_metadata = hints
+        .get("desktop-entry")
+        .and_then(owned_to_string)
+        .is_some_and(|desktop_id| index.desktop_id_has_communication_role(&desktop_id));
+    if explicit_metadata || desktop_metadata || claimed_desktop_metadata {
+        WireImageRole::ConversationAvatar
+    } else {
+        WireImageRole::ContentImage
+    }
+}
+
+pub(in crate::daemon::notifications) fn sender_visual_role(
+    attribution: &NotificationAttribution,
+    index: &DesktopIdentityIndex,
+    hints: &HashMap<String, OwnedValue>,
+    actions: &[String],
+    app_icon: &str,
+) -> SenderVisualRole {
+    // Wire pixels and local application artwork use separate authorization decisions
+    if matches!(
+        wire_image_role(attribution, index, hints, actions),
+        WireImageRole::ConversationAvatar
+    ) {
+        return SenderVisualRole::ConversationAvatar;
+    }
+    if may_materialize_application_icon(attribution) && local_avatar_path(app_icon).is_some() {
         SenderVisualRole::ApplicationProvidedIcon
     } else {
         SenderVisualRole::None
@@ -90,8 +118,12 @@ pub(in crate::daemon::notifications) const fn sender_visual_path_allowed(
     role: SenderVisualRole,
     attribution: &NotificationAttribution,
 ) -> bool {
-    // Local paths remain identity-gated even when wire pixels may be shown as presentation data
-    !matches!(role, SenderVisualRole::None) && may_materialize_application_icon(attribution)
+    // Local paths remain forbidden for unresolved, conflicting, and relay senders
+    // A positively associated sender may use a path for either visual presentation role
+    matches!(
+        role,
+        SenderVisualRole::ConversationAvatar | SenderVisualRole::ApplicationProvidedIcon
+    ) && may_materialize_application_icon(attribution)
 }
 
 pub(in crate::daemon::notifications) fn materialize_sender_visual(

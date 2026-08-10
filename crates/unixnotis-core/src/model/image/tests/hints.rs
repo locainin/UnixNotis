@@ -45,6 +45,61 @@ fn app_icon_theme_names_are_retained_only_as_bounded_lookup_hints() {
 }
 
 #[test]
+fn desktop_entry_is_retained_only_as_a_bounded_branding_hint() {
+    let mut hints = HashMap::new();
+    hints.insert(
+        "desktop-entry".to_string(),
+        string_value("Example.Chat.desktop"),
+    );
+    let image = NotificationImage::from_hints("App", "", &hints);
+    assert_eq!(image.claimed_desktop_id, "Example.Chat.desktop");
+
+    for value in [
+        "/tmp/example.desktop",
+        "file:///tmp/example",
+        "bad id",
+        ".hidden",
+    ] {
+        let mut hints = HashMap::new();
+        hints.insert("desktop-entry".to_string(), string_value(value));
+        let image = NotificationImage::from_hints("App", "", &hints);
+        assert!(
+            image.claimed_desktop_id.is_empty(),
+            "unsafe desktop hint: {value}"
+        );
+    }
+
+    for value in [
+        "example/chat",
+        "example\\chat",
+        "example:chat",
+        "example chat",
+        "example@chat",
+    ] {
+        let mut hints = HashMap::new();
+        hints.insert("desktop-entry".to_string(), string_value(value));
+        let image = NotificationImage::from_hints("App", "", &hints);
+        assert!(
+            image.claimed_desktop_id.is_empty(),
+            "unsafe desktop hint: {value}"
+        );
+    }
+
+    let mut hints = HashMap::new();
+    hints.insert("desktop-entry".to_string(), string_value(&"a".repeat(128)));
+    assert_eq!(
+        NotificationImage::from_hints("App", "", &hints)
+            .claimed_desktop_id
+            .len(),
+        128
+    );
+    hints.insert("desktop-entry".to_string(), string_value(&"a".repeat(129)));
+    assert!(NotificationImage::from_hints("App", "", &hints)
+        .claimed_desktop_id
+        .is_empty());
+}
+
+#[test]
 fn parse_image_data_rejects_wrong_structure() {
     let wrong = Structure::from((1_i32, 1_i32));
     let wrong: OwnedValue = Value::from(wrong).try_into().expect("structure conversion");

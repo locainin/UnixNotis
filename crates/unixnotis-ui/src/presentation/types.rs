@@ -55,6 +55,12 @@ impl TrustLevel {
             Self::Relay => "relay",
         }
     }
+
+    /// Returns whether the semantic trust badge must remain the leading icon
+    #[must_use]
+    pub const fn semantic_badge_is_authoritative(self) -> bool {
+        matches!(self, Self::Conflict | Self::Relay)
+    }
 }
 
 /// Controlled badge source selected from daemon-owned identity evidence

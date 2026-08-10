@@ -167,7 +167,9 @@ impl DesktopIdentityIndex {
         &self,
         desktop_id: &str,
     ) -> bool {
-        self.communication_desktop_ids.contains(desktop_id) && self.by_id.contains_key(desktop_id)
+        // Wire hints commonly carry mixed case or a trailing .desktop suffix
+        let normalized = super::names::normalize_desktop_id(desktop_id);
+        self.communication_desktop_ids.contains(&normalized) && self.by_id.contains_key(&normalized)
     }
 }
 

@@ -287,7 +287,54 @@ fn unknown_claim_is_primary_but_remains_unverified() {
     assert_eq!(presentation.identity.primary_label, "Local helper");
     assert_eq!(
         presentation.identity.secondary_claim.as_deref(),
-        Some("Identity could not be verified")
+        Some("App identity could not be verified")
+    );
+    assert_ne!(presentation.trust.short_label.as_deref(), Some("Local app"));
+    assert_eq!(
+        presentation.trust.short_label.as_deref(),
+        Some("Unverified")
+    );
+}
+
+#[test]
+fn local_process_ownership_does_not_equal_local_application_identity() {
+    let mut unresolved = notification();
+    unresolved.attribution = NotificationAttribution::unresolved(
+        "Example Application",
+        AttributionReason::MissingSenderEvidence,
+        "application association unavailable",
+        "unknown:example".to_string(),
+    );
+    unresolved.attribution.interactions = InteractionPolicies::OWNER_BOUND_DEFAULT;
+
+    let unresolved_presentation = NotificationPresentation::from_view_at(&unresolved, 1_000);
+    assert_eq!(unresolved_presentation.trust.level, TrustLevel::Unresolved);
+    assert_eq!(
+        unresolved_presentation.trust.short_label.as_deref(),
+        Some("Unverified")
+    );
+
+    let mut associated = notification();
+    associated.attribution = NotificationAttribution::associated(
+        "Example Application",
+        "Example Application",
+        "org.example.Application",
+        "example-application",
+        IdentityAssurance::UserAssociated,
+        InteractionPolicies::CONFIRM_ACTIONS,
+        AttributionReason::ExactUserExecutable,
+        "generic user association fixture",
+        "associated:user:example".to_string(),
+    );
+
+    let associated_presentation = NotificationPresentation::from_view_at(&associated, 1_000);
+    assert_eq!(
+        associated_presentation.trust.level,
+        TrustLevel::UserAssociated
+    );
+    assert_eq!(
+        associated_presentation.trust.short_label.as_deref(),
+        Some("Local app")
     );
 }
 
@@ -349,6 +396,70 @@ fn unresolved_claim_has_no_application_actions_or_reply() {
     assert!(presentation.actions.default_key.is_none());
     assert!(presentation.actions.primary.is_empty());
     assert!(presentation.actions.overflow.is_empty());
+}
+
+#[test]
+fn owner_bound_unresolved_sender_exposes_only_the_advertised_default_action() {
+    let mut view = notification();
+    view.attribution = NotificationAttribution::unresolved(
+        "Example Application",
+        AttributionReason::MissingSenderEvidence,
+        "application identity unavailable",
+        "unknown:example".to_string(),
+    );
+    view.attribution.interactions = InteractionPolicies::OWNER_BOUND_DEFAULT;
+    view.inline_reply.available = true;
+    view.actions = vec![
+        Action {
+            key: "inline-reply".to_string(),
+            label: "Reply".to_string(),
+        },
+        Action {
+            key: "default".to_string(),
+            label: "Open".to_string(),
+        },
+        Action {
+            key: "delete".to_string(),
+            label: "Delete".to_string(),
+        },
+    ];
+
+    let presentation = NotificationPresentation::from_view_at(&view, 1_000);
+
+    assert_eq!(presentation.trust.level, TrustLevel::Unresolved);
+    assert_eq!(presentation.actions.default_key.as_deref(), Some("default"));
+    assert!(presentation.actions.primary.iter().any(|action| {
+        action.key == "default"
+            && action.label == "Open"
+            && action.policy == unixnotis_core::ApplicationActionPolicy::Allow
+    }));
+    assert!(!presentation
+        .actions
+        .primary
+        .iter()
+        .any(|action| action.key == "delete"));
+    assert_eq!(presentation.trust.reply, ReplyPresentation::Unavailable);
+}
+
+#[test]
+fn owner_bound_blank_default_uses_card_activation_without_a_redundant_button() {
+    let mut view = notification();
+    view.attribution = NotificationAttribution::unresolved(
+        "Example Application",
+        AttributionReason::MissingSenderEvidence,
+        "application identity unavailable",
+        "unknown:example".to_string(),
+    );
+    view.attribution.interactions = InteractionPolicies::OWNER_BOUND_DEFAULT;
+    view.actions = vec![Action {
+        key: "default".to_string(),
+        label: String::new(),
+    }];
+
+    let presentation = NotificationPresentation::from_view_at(&view, 1_000);
+
+    assert_eq!(presentation.actions.default_key.as_deref(), Some("default"));
+    assert!(presentation.actions.primary.is_empty());
 }
 
 #[test]
