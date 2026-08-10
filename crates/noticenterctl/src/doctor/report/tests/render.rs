@@ -46,7 +46,7 @@ fn human_output_omits_machine_data_that_duplicates_curated_details() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("Manager: systemd\nState: active"));
+    assert!(rendered.contains("Manager: systemd State: active"));
     assert!(!rendered.contains("manager: systemd"));
     assert!(!rendered.contains("active: true"));
 }
@@ -78,6 +78,52 @@ fn human_output_renders_typed_configuration_diagnostics() {
     assert!(rendered.contains("Key: widgets.refresh_ms"));
     assert!(rendered.contains("Original: 1"));
     assert!(rendered.contains("Effective: 100"));
+}
+
+#[test]
+fn human_output_sanitizes_every_free_form_terminal_field() {
+    let report = DoctorReport::new(
+        vec![DoctorCheck::new(
+            "example",
+            "Example\nFORGED_CHECK_HEADING",
+            DoctorSeverity::Warning,
+            "Unsafe\u{1b}[31m summary",
+        )
+        .details("detail\nFORGED_DETAIL_LINE")
+        .hint("hint\u{202e}spoof")],
+        vec![ConfigDiagnostic {
+            code: "config.unknown-key",
+            kind: ConfigDiagnosticKind::Warning,
+            path: Some("example\nFORGED_CONFIG_FIELD".to_string()),
+            message: "Unknown\u{1b}[31m configuration key".to_string(),
+            original: Some("before\nFORGED_ORIGINAL_FIELD".to_string()),
+            effective: Some("after\u{202e}spoof".to_string()),
+        }],
+        DoctorLogResult::Unavailable {
+            source: DoctorLogSource::Manual,
+            reason: "unavailable\nFORGED_LOG_FIELD".to_string(),
+            hint: Some("log hint\u{1b}[31mred".to_string()),
+        },
+    );
+
+    let rendered = render_human(&report);
+
+    assert!(!rendered.contains('\u{1b}'));
+    assert!(!rendered.contains('\u{202e}'));
+    for forged_line in [
+        "\nFORGED_CHECK_HEADING",
+        "\nFORGED_DETAIL_LINE",
+        "\nFORGED_CONFIG_FIELD",
+        "\nFORGED_ORIGINAL_FIELD",
+        "\nFORGED_LOG_FIELD",
+    ] {
+        assert!(
+            !rendered.contains(forged_line),
+            "free-form report values must not create terminal lines"
+        );
+    }
+    assert!(rendered.contains("detail FORGED_DETAIL_LINE"));
+    assert!(rendered.contains("Key: example FORGED_CONFIG_FIELD"));
 }
 
 #[test]

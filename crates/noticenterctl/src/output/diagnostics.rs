@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use anyhow::Result;
 use unixnotis_core::{
-    ApplicationActionPolicy, CommandLineQualityView, IdentityAssurance, InlineReplyPolicy,
+    util, ApplicationActionPolicy, CommandLineQualityView, IdentityAssurance, InlineReplyPolicy,
     LaunchAuthorityView, LaunchVerificationView, NotificationDiagnosticsView, PopupAdmissionView,
     PopupDeliveryStage, RecordTrust,
 };
@@ -15,6 +15,9 @@ pub fn print_notification_diagnostics(view: &NotificationDiagnosticsView) -> Res
     write_stdout(&format_notification_diagnostics(view)?)
 }
 
+// Diagnostic wire values include sender-controlled notification metadata
+// Every free-form string passes through the terminal sanitizer here
+// Enum labels and numeric fields cannot carry free-form terminal text
 fn format_notification_diagnostics(view: &NotificationDiagnosticsView) -> Result<String> {
     let diagnostics = &view.attribution;
     let mut output = String::new();
@@ -22,22 +25,22 @@ fn format_notification_diagnostics(view: &NotificationDiagnosticsView) -> Result
     writeln!(
         output,
         "Application claim: {}",
-        value_or_none(&diagnostics.claimed_name)
+        diagnostic_value(&diagnostics.claimed_name)
     )?;
     writeln!(
         output,
         "Claimed desktop entry: {}",
-        value_or_none(&diagnostics.claimed_desktop_entry)
+        diagnostic_value(&diagnostics.claimed_desktop_entry)
     )?;
     writeln!(
         output,
         "Sender executable: {}",
-        value_or_none(&diagnostics.sender_executable)
+        diagnostic_value(&diagnostics.sender_executable)
     )?;
     writeln!(
         output,
         "Matched desktop ID: {}",
-        value_or_none(&diagnostics.matched_desktop_id)
+        diagnostic_value(&diagnostics.matched_desktop_id)
     )?;
     writeln!(
         output,
@@ -62,7 +65,7 @@ fn format_notification_diagnostics(view: &NotificationDiagnosticsView) -> Result
     writeln!(
         output,
         "Launch detail: {}",
-        value_or_none(&diagnostics.reason)
+        diagnostic_value(&diagnostics.reason)
     )?;
     writeln!(
         output,
@@ -166,9 +169,13 @@ const fn popup_delivery_stage(value: PopupDeliveryStage) -> &'static str {
     }
 }
 
-fn value_or_none(value: &str) -> &str {
-    if value.trim().is_empty() {
-        "none"
+fn diagnostic_value(value: &str) -> String {
+    // Attribution diagnostics may contain sender-controlled metadata
+    // Keep each field bounded and single-line before it reaches the terminal
+    let value = util::sanitize_log_value(value, util::diagnostic_log_limit());
+
+    if value.is_empty() {
+        "none".to_string()
     } else {
         value
     }
